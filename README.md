@@ -1,4 +1,4 @@
-# AAE
+# A.A.E (Another Arcade Emulator)
 AAE - Revisited
 This is the placeholder for the 2023/Fix/Upgrade/Re-release of my 2007 A.A.E. (Another Arcade Emulator)
 
