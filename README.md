@@ -1,4 +1,4 @@
-# A.A.E (Another Arcade Emulator)
+# A.A.E (Another Arcade Emulator) - Code is in MASTER
 AAE - Revisited
 
 This is the placeholder for the 2023/Fix/Upgrade/Re-release of my 2007 A.A.E. (Another Arcade Emulator)
