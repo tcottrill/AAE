@@ -1,0 +1,37 @@
+
+bool AsteroidsVectorInterpreter::ClipEndPoint(int &startX, int &startY, int &endX, int &endY)
+{
+   if (endX < -32768)
+   {
+      if (startX < -32768)
+         return false;
+      endY = (int)(startY + (int64_t)(endY - startY) * (-32768 - startX) / (endX - startX));
+      endX = -32768;
+   }
+
+   if (endY < -32768)
+   {
+      if (startY < -32768)
+         return false;
+      endX = (int)(startX + (int64_t)(endX - startX) * (-32768 - startY) / (endY - startY));
+      endY = -32768;
+   }
+
+   if (endX > 32767)
+   {
+      if (startX > 32767)
+         return false;
+      endY = (int)(startY + (int64_t)(endY - startY) * (32767 - startX) / (endX - startX));
+      endX = 32767;
+   }
+
+   if (endY > 32767)
+   {
+      if (startY > 32767)
+         return false;
+      endX = (int)(startX + (int64_t)(endX - startX) * (32767 - startY) / (endY - startY));
+      endY = 32767;
+   }
+
+   return true;
+}

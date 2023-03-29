@@ -1,0 +1,4 @@
+// Hint files help the Visual Studio IDE interpret Visual C++ identifiers
+// such as names of functions and macros.
+// For more information see https://go.microsoft.com/fwlink/?linkid=865984
+#define bittest_st(name, dump) static void name(void){ byte shiftby=(fetch()&0xFF); ea;sprintf(sdebug,"%s    #$"hex08",%s",dump,shiftby,eabuffer);}

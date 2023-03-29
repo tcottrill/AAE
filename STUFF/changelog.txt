@@ -1,0 +1,26 @@
+Centralized all CPU code with a CPU dispatch system.
+Added support for up to 5 cpus.
+Improved Pokey sound generation
+Centralized all Atari AVG code.
+Major Havoc is now working perfectly.
+Corrected Major Havoc video thanks to documentation provided by recent Mame (TM) Atari AVG updates.
+Added my own direct input mouse code (not 100% yet).
+Renamed the modified allegro.dll so as not to conflict. 
+Fixed BattleZone led toggling (thanks to Retrocade source).
+Added Noob friendly FPS counter.
+Fixed minor key configuration annoyances.
+Added widescreen support for 16:9 and 16:10 ratios.
+Changed artwork handling. All available artwork is now automatically loaded for the running game. 
+Made all artwork changes in the video menu dynamic.
+Major cleanup of all color Atari Games.
+
+This will be the last release for a 2 to 3 months.
+In a future release:
+
+Overhaul of the complete Input system.(Finally!)
+Overhaul artwork rendering with bezels. 
+Add YM8910 code.
+Add graphic filters for shadow mask generation.
+New Gui options.
+Maybe add a few Raster games ;)
+

@@ -1,0 +1,430 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Source Files\Drivers">
+      <UniqueIdentifier>{dc64d1c9-6e8f-4969-a436-027c129fe1fa}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\Sound">
+      <UniqueIdentifier>{b91305a9-c861-4b7e-9188-6809210b4a7b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\Support">
+      <UniqueIdentifier>{0eb59502-8a32-468a-b83d-3ff93189c42d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\SWMachine">
+      <UniqueIdentifier>{56c03cb9-f7f4-44f7-8f52-a8f4acee5bfd}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\SWVideo">
+      <UniqueIdentifier>{3b9c791f-2049-4fa7-9c42-19aceab66dfd}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Headers">
+      <UniqueIdentifier>{a5180c70-4759-461c-b831-c05080cc2b4b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Headers\Cpus">
+      <UniqueIdentifier>{e355cc89-0780-4363-aa4f-13031fc12bb5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Headers\Drivers">
+      <UniqueIdentifier>{61d7c241-238f-4914-a262-560927def665}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Mame">
+      <UniqueIdentifier>{47850534-70dd-45f7-bae6-969cc4174565}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\New Code">
+      <UniqueIdentifier>{c792cc57-b1b1-4bb6-b68b-109e19dcf8d6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\Cpu">
+      <UniqueIdentifier>{26aca45f-03b6-4ebb-830c-76360f4701a8}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="aae_avg.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="aaemain.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="acommon.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="animation.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="config.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="cpu_control.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="cpudebug.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="earom.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="fonts.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="glcode.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="loaders.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="log.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="mathbox.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="menu.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="rand.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="segacrypt.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="sys_timer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="vector.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="asteroid.cpp">
+      <Filter>Source Files\Drivers</Filter>
+    </ClCompile>
+    <ClCompile Include="bzone.cpp">
+      <Filter>Source Files\Drivers</Filter>
+    </ClCompile>
+    <ClCompile Include="cinemat.cpp">
+      <Filter>Source Files\Drivers</Filter>
+    </ClCompile>
+    <ClCompile Include="cinematvid.cpp">
+      <Filter>Source Files\Drivers</Filter>
+    </ClCompile>
+    <ClCompile Include="cinesnd.cpp">
+      <Filter>Source Files\Drivers</Filter>
+    </ClCompile>
+    <ClCompile Include="llander.cpp">
+      <Filter>Source Files\Drivers</Filter>
+    </ClCompile>
+    <ClCompile Include="mhavoc.cpp">
+      <Filter>Source Files\Drivers</Filter>
+    </ClCompile>
+    <ClCompile Include="omegrace.cpp">
+      <Filter>Source Files\Drivers</Filter>
+    </ClCompile>
+    <ClCompile Include="quantum.cpp">
+      <Filter>Source Files\Drivers</Filter>
+    </ClCompile>
+    <ClCompile Include="SegaG80.cpp">
+      <Filter>Source Files\Drivers</Filter>
+    </ClCompile>
+    <ClCompile Include="SegaG80snd.cpp">
+      <Filter>Source Files\Drivers</Filter>
+    </ClCompile>
+    <ClCompile Include="spacduel.cpp">
+      <Filter>Source Files\Drivers</Filter>
+    </ClCompile>
+    <ClCompile Include="starwars.c">
+      <Filter>Source Files\Drivers</Filter>
+    </ClCompile>
+    <ClCompile Include="tempest.cpp">
+      <Filter>Source Files\Drivers</Filter>
+    </ClCompile>
+    <ClCompile Include="sndhrdw\5220intf.cpp">
+      <Filter>Source Files\Sound</Filter>
+    </ClCompile>
+    <ClCompile Include="AY8910.Cpp">
+      <Filter>Source Files\Sound</Filter>
+    </ClCompile>
+    <ClCompile Include="pokey.cpp">
+      <Filter>Source Files\Sound</Filter>
+    </ClCompile>
+    <ClCompile Include="sndhrdw\pokyintf.cpp">
+      <Filter>Source Files\Sound</Filter>
+    </ClCompile>
+    <ClCompile Include="samples.cpp">
+      <Filter>Source Files\Sound</Filter>
+    </ClCompile>
+    <ClCompile Include="sndhrdw\tms5220.cpp">
+      <Filter>Source Files\Sound</Filter>
+    </ClCompile>
+    <ClCompile Include="machine\matari_vg.c">
+      <Filter>Source Files\SWMachine</Filter>
+    </ClCompile>
+    <ClCompile Include="machine\swmathbx.c">
+      <Filter>Source Files\SWMachine</Filter>
+    </ClCompile>
+    <ClCompile Include="vidhrdw\atari_vg.c">
+      <Filter>Source Files\SWVideo</Filter>
+    </ClCompile>
+    <ClCompile Include="vidhrdw\swavg.c">
+      <Filter>Source Files\SWVideo</Filter>
+    </ClCompile>
+    <ClCompile Include="M6809\m6809.c">
+      <Filter>Headers\Cpus</Filter>
+    </ClCompile>
+    <ClCompile Include="cpuintrf.c">
+      <Filter>Mame</Filter>
+    </ClCompile>
+    <ClCompile Include="sndhrdw\starwars_snd.cpp">
+      <Filter>Source Files\Sound</Filter>
+    </ClCompile>
+    <ClCompile Include="machine\starwars_mech.c">
+      <Filter>Source Files\SWMachine</Filter>
+    </ClCompile>
+    <ClCompile Include="miniz.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="loader_shim.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="texture_loading_shim.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="globals.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="mame_fileio.cpp">
+      <Filter>Source Files\New Code</Filter>
+    </ClCompile>
+    <ClCompile Include="inptport.cpp">
+      <Filter>Source Files\New Code</Filter>
+    </ClCompile>
+    <ClCompile Include="os_input.cpp">
+      <Filter>Source Files\New Code</Filter>
+    </ClCompile>
+    <ClCompile Include="gui.cpp">
+      <Filter>Source Files\Drivers</Filter>
+    </ClCompile>
+    <ClCompile Include="vector_fonts.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="fpsclass.cpp">
+      <Filter>Source Files\New Code</Filter>
+    </ClCompile>
+    <ClCompile Include="ccpu.cpp">
+      <Filter>Source Files\Cpu</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="sndhrdw\5220intf.h">
+      <Filter>Source Files\Sound</Filter>
+    </ClInclude>
+    <ClInclude Include="AY8910.H">
+      <Filter>Source Files\Sound</Filter>
+    </ClInclude>
+    <ClInclude Include="pokey.h">
+      <Filter>Source Files\Sound</Filter>
+    </ClInclude>
+    <ClInclude Include="sndhrdw\pokyintf.h">
+      <Filter>Source Files\Sound</Filter>
+    </ClInclude>
+    <ClInclude Include="sndhrdw\tms5220.h">
+      <Filter>Source Files\Sound</Filter>
+    </ClInclude>
+    <ClInclude Include="machine\matari_vg.h">
+      <Filter>Source Files\SWMachine</Filter>
+    </ClInclude>
+    <ClInclude Include="machine\swmathbx.h">
+      <Filter>Source Files\SWMachine</Filter>
+    </ClInclude>
+    <ClInclude Include="vidhrdw\atari_vg.h">
+      <Filter>Source Files\SWVideo</Filter>
+    </ClInclude>
+    <ClInclude Include="vidhrdw\swavg.h">
+      <Filter>Source Files\SWVideo</Filter>
+    </ClInclude>
+    <ClInclude Include="M6502.H">
+      <Filter>Headers\Cpus</Filter>
+    </ClInclude>
+    <ClInclude Include="M6809\m6809.h">
+      <Filter>Headers\Cpus</Filter>
+    </ClInclude>
+    <ClInclude Include="MZ80.H">
+      <Filter>Headers\Cpus</Filter>
+    </ClInclude>
+    <ClInclude Include="starcpu.h">
+      <Filter>Headers\Cpus</Filter>
+    </ClInclude>
+    <ClInclude Include="cpuintrf.h">
+      <Filter>Mame</Filter>
+    </ClInclude>
+    <ClInclude Include="driver.h">
+      <Filter>Mame</Filter>
+    </ClInclude>
+    <ClInclude Include="mamecommon.h">
+      <Filter>Mame</Filter>
+    </ClInclude>
+    <ClInclude Include="sndhrdw\starwars_snd.h">
+      <Filter>Source Files\Sound</Filter>
+    </ClInclude>
+    <ClInclude Include="machine\starwars_mech.h">
+      <Filter>Source Files\SWMachine</Filter>
+    </ClInclude>
+    <ClInclude Include="vidhrdw\starwars_vid.h">
+      <Filter>Source Files\SWVideo</Filter>
+    </ClInclude>
+    <ClInclude Include="log.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="stb_image.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="stb_image_write.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="miniz.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="loader_shim.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="texture_loading_shim.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="samples.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="osd_cpu.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="menu.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="gamesamp.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="gameroms.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="gameart.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="fonts.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="vector.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="aae_avg.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="aaemain.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="acommon.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="animation.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="config.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="cpu_control.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="cpudebug.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="earom.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="glcode.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="globals.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="loaders.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="mathbox.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="rand.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="sys_timer.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="asteroid.h">
+      <Filter>Source Files\Drivers</Filter>
+    </ClInclude>
+    <ClInclude Include="bzone.h">
+      <Filter>Source Files\Drivers</Filter>
+    </ClInclude>
+    <ClInclude Include="cinemat.h">
+      <Filter>Source Files\Drivers</Filter>
+    </ClInclude>
+    <ClInclude Include="llander.h">
+      <Filter>Source Files\Drivers</Filter>
+    </ClInclude>
+    <ClInclude Include="mhavoc.h">
+      <Filter>Source Files\Drivers</Filter>
+    </ClInclude>
+    <ClInclude Include="omegrace.h">
+      <Filter>Source Files\Drivers</Filter>
+    </ClInclude>
+    <ClInclude Include="quantum.h">
+      <Filter>Source Files\Drivers</Filter>
+    </ClInclude>
+    <ClInclude Include="SegaG80.h">
+      <Filter>Source Files\Drivers</Filter>
+    </ClInclude>
+    <ClInclude Include="spacduel.h">
+      <Filter>Source Files\Drivers</Filter>
+    </ClInclude>
+    <ClInclude Include="starwars.h">
+      <Filter>Source Files\Drivers</Filter>
+    </ClInclude>
+    <ClInclude Include="tempest.h">
+      <Filter>Source Files\Drivers</Filter>
+    </ClInclude>
+    <ClInclude Include="deftypes.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="mame_fileio.h">
+      <Filter>Source Files\New Code</Filter>
+    </ClInclude>
+    <ClInclude Include="inptport.h">
+      <Filter>Source Files\New Code</Filter>
+    </ClInclude>
+    <ClInclude Include="mame.h">
+      <Filter>Mame</Filter>
+    </ClInclude>
+    <ClInclude Include="osdepend.h">
+      <Filter>Source Files\New Code</Filter>
+    </ClInclude>
+    <ClInclude Include="gamekeys2.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="gui.h">
+      <Filter>Source Files\Drivers</Filter>
+    </ClInclude>
+    <ClInclude Include="vector_fonts.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="rotation_table.h">
+      <Filter>Source Files\New Code</Filter>
+    </ClInclude>
+    <ClInclude Include="colordefs.h">
+      <Filter>Source Files\New Code</Filter>
+    </ClInclude>
+    <ClInclude Include="fpsclass.h">
+      <Filter>Source Files\New Code</Filter>
+    </ClInclude>
+    <ClInclude Include="ccpu.h">
+      <Filter>Source Files\Cpu</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="cpp.hint" />
+  </ItemGroup>
+</Project>

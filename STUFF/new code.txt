@@ -1,0 +1,413 @@
+#define OSD_MAX_KEY         115
+
+static int mouse_last_x,mouse_last_y;
+static int mouse_current_x,mouse_current_y;
+static int mouse_previous_x,mouse_previous_y;
+
+
+
+* check if a key is pressed. The keycode is the standard PC keyboard code, as */
+/* defined in osdepend.h. Return 0 if the key is not pressed, nonzero otherwise. */
+int osd_key_pressed(int keycode)
+{
+	if (keycode == OSD_KEY_RCONTROL) keycode = KEY_RCONTROL;
+	if (keycode == OSD_KEY_ALTGR) keycode = KEY_ALTGR;
+
+	return key[keycode];
+}
+
+
+
+/* wait for a key press and return the keycode */
+int osd_read_key(void)
+{
+	int k;
+
+
+	/* wait for all keys to be released */
+	do
+	{
+	      for (k = OSD_MAX_KEY;k >= 0;k--)
+	      if (osd_key_pressed(k)) break;
+	} while (k >= 0);
+
+	/* wait for a key press */
+	do
+	{
+	      for (k = OSD_MAX_KEY;k >= 0;k--)
+	      if (osd_key_pressed(k)) break;
+	} while (k < 0);
+
+	return k;
+}
+
+
+
+/* Wait for a key press and return keycode.  Support repeat */
+int osd_read_keyrepeat(void)
+{
+	int res;
+
+
+	clear_keybuf();
+	res = readkey() >> 8;
+
+	if (res == KEY_RCONTROL) res = OSD_KEY_RCONTROL;
+	if (res == KEY_ALTGR) res = OSD_KEY_ALTGR;
+
+	return res;
+}
+
+
+
+void osd_poll_joystick(void)
+{
+	if (joystick > JOY_TYPE_NONE)
+		poll_joystick();
+}
+
+
+/* check if the joystick is moved in the specified direction, defined in */
+/* osdepend.h. Return 0 if it is not pressed, nonzero otherwise. */
+int osd_joy_pressed(int joycode)
+{
+	int joy_num;
+
+	/* which joystick are we polling? */
+	if (joycode < OSD_JOY_LEFT)
+		return 0;
+	else if (joycode < OSD_JOY2_LEFT)
+	{
+		joy_num = 0;
+	}
+	else if (joycode < OSD_JOY3_LEFT)
+	{
+		joy_num = 1;
+		joycode = joycode - OSD_JOY2_LEFT + OSD_JOY_LEFT;
+	}
+	else if (joycode < OSD_JOY4_LEFT)
+	{
+		joy_num = 2;
+		joycode = joycode - OSD_JOY3_LEFT + OSD_JOY_LEFT;
+	}
+	else if (joycode < OSD_MAX_JOY)
+	{
+		joy_num = 3;
+		joycode = joycode - OSD_JOY4_LEFT + OSD_JOY_LEFT;
+	}
+	else
+		return 0;
+
+	if (joy_num == 0)
+	{
+		/* special case for mouse buttons */
+		switch (joycode)
+		{
+			case OSD_JOY_FIRE1:
+				if (mouse_b & 1) return 1; break;
+			case OSD_JOY_FIRE2:
+				if (mouse_b & 2) return 1; break;
+			case OSD_JOY_FIRE3:
+				if (mouse_b & 4) return 1; break;
+			case OSD_JOY_FIRE: /* any mouse button */
+				if (mouse_b) return 1; break;
+		}
+	}
+
+	/* do we have as many sticks? */
+	if (joy_num+1 > num_joysticks)
+		return 0;
+
+	switch (joycode)
+	{
+		case OSD_JOY_LEFT:
+			return joy[joy_num].stick[0].axis[0].d1;
+			break;
+		case OSD_JOY_RIGHT:
+			return joy[joy_num].stick[0].axis[0].d2;
+			break;
+		case OSD_JOY_UP:
+			return joy[joy_num].stick[0].axis[1].d1;
+			break;
+		case OSD_JOY_DOWN:
+			return joy[joy_num].stick[0].axis[1].d2;
+			break;
+		case OSD_JOY_FIRE1:
+			return joy[joy_num].button[0].b;
+			break;
+		case OSD_JOY_FIRE2:
+			return joy[joy_num].button[1].b;
+			break;
+		case OSD_JOY_FIRE3:
+			return joy[joy_num].button[2].b;
+			break;
+		case OSD_JOY_FIRE4:
+			return joy[joy_num].button[3].b;
+			break;
+		case OSD_JOY_FIRE5:
+			return joy[joy_num].button[4].b;
+			break;
+		case OSD_JOY_FIRE6:
+			return joy[joy_num].button[5].b;
+			break;
+		case OSD_JOY_FIRE7:
+			return joy[joy_num].button[6].b;
+			break;
+		case OSD_JOY_FIRE8:
+			return joy[joy_num].button[7].b;
+			break;
+		case OSD_JOY_FIRE9:
+			return joy[joy_num].button[8].b;
+			break;
+		case OSD_JOY_FIRE10:
+			return joy[joy_num].button[9].b;
+			break;
+		case OSD_JOY_FIRE:
+			{
+				int i;
+				for (i = 0; i < 10; i++)
+					if (joy[joy_num].button[i].b)
+						return 1;
+			}
+			break;
+	}
+	return 0;
+}
+
+/* return a value in the range -128 .. 128 (yes, 128, not 127) */
+void osd_analogjoy_read(int *analog_x, int *analog_y)
+{
+	*analog_x = *analog_y = 0;
+
+	/* is there an analog joystick at all? */
+	if (joystick == JOY_TYPE_NONE)
+		return;
+
+	*analog_x = joy[0].stick[0].axis[0].pos;
+	*analog_y = joy[0].stick[0].axis[1].pos;
+}
+
+
+void osd_trak_read(int *deltax,int *deltay)
+{
+	if (use_mouse == 0) *deltax = *deltay = 0;
+	else get_mouse_mickeys(deltax,deltay);
+}
+
+
+void update_analog_port(int port)
+{
+	struct InputPort *in;
+	int current, delta, type, sensitivity, clip, min, max, default_value;
+	int axis, is_stick, check_bounds;
+	int inckey, deckey, keydelta, incjoy, decjoy, joydelta;
+	int key,joy;
+
+	/* get input definition */
+	in=input_analog[port];
+	if (nocheat && (in->type & IPF_CHEAT)) return;
+	type=(in->type & ~IPF_MASK);
+
+
+	key = default_key(in);
+	joy = default_joy(in);
+
+	deckey =   key & 0x000000ff;
+	inckey =   (key & 0x0000ff00) >> 8;
+	keydelta = (key & 0x00ff0000) >> 16;
+	decjoy =   joy & 0x000000ff;
+	incjoy =   (joy & 0x0000ff00) >> 8;
+	/* I am undecided if the joydelta is really needed. LBO 120897 */
+	/* We probably don't, but this teases the compiler. BW 120997 */
+	joydelta = (joy & 0x00ff0000) >> 16;
+
+	switch (type)
+	{
+		case IPT_PADDLE:
+			axis = X_AXIS; is_stick = 0; check_bounds = 1; break;
+		case IPT_DIAL:
+			axis = X_AXIS; is_stick = 0; check_bounds = 0; break;
+		case IPT_TRACKBALL_X:
+			axis = X_AXIS; is_stick = 0; check_bounds = 0; break;
+		case IPT_TRACKBALL_Y:
+			axis = Y_AXIS; is_stick = 0; check_bounds = 0; break;
+		case IPT_AD_STICK_X:
+			axis = X_AXIS; is_stick = 1; check_bounds = 1; break;
+		case IPT_AD_STICK_Y:
+			axis = Y_AXIS; is_stick = 1; check_bounds = 1; break;
+		default:
+			/* Use some defaults to prevent crash */
+			axis = X_AXIS; is_stick = 0; check_bounds = 0;
+			if (errorlog)
+				fprintf (errorlog,"Oops, polling non analog device in update_analog_port()????\n");
+	}
+
+
+	sensitivity = in->arg & 0x000000ff;
+	clip = (in->arg & 0x0000ff00) >> 8;
+	min = (in->arg & 0x00ff0000) >> 16;
+	max = (in->arg & 0xff000000) >> 24;
+	default_value = in->default_value * 100 / sensitivity;
+	/* extremes can be either signed or unsigned */
+	if (min > max) min = min - 256;
+
+	/* if IPF_CENTER go back to the default position, but without */
+	/* throwing away sub-precision movements which might have been done. */
+	/* sticks are handled later... */
+	if ((in->type & IPF_CENTER) && (!is_stick))
+		input_analog_value[port] -=
+				(input_analog_value[port] * sensitivity / 100 - in->default_value) * 100 / sensitivity;
+
+	current = input_analog_value[port];
+
+	delta = 0;
+
+	/* we can't support more than one analog input for now */
+	if ((in->type & IPF_PLAYERMASK) == IPF_PLAYER1)
+	{
+		if (axis == X_AXIS)
+		{
+			int now;
+
+			now = cpu_scalebyfcount(mouse_current_x - mouse_previous_x) + mouse_previous_x;
+			delta = now - mouse_last_x;
+			mouse_last_x = now;
+		}
+		else
+		{
+			int now;
+
+			now = cpu_scalebyfcount(mouse_current_y - mouse_previous_y) + mouse_previous_y;
+			delta = now - mouse_last_y;
+			mouse_last_y = now;
+		}
+	}
+
+	if (osd_key_pressed(deckey)) delta -= keydelta;
+	if (osd_key_pressed(inckey)) delta += keydelta;
+	if (osd_joy_pressed(decjoy)) delta -= keydelta; /* LBO 120897 */
+	if (osd_joy_pressed(incjoy)) delta += keydelta;
+
+	if (clip != 0)
+	{
+		if (delta*sensitivity/100 < -clip)
+			delta = -clip*100/sensitivity;
+		else if (delta*sensitivity/100 > clip)
+			delta = clip*100/sensitivity;
+	}
+
+	if (in->type & IPF_REVERSE) delta = -delta;
+
+	/* we can't support more than one analog input for now */
+	if ((in->type & IPF_PLAYERMASK) == IPF_PLAYER1)
+	{
+		if (is_stick)
+		{
+			int new, prev;
+
+			/* center stick */
+			if ((delta == 0) && (in->type & IPF_CENTER))
+			{
+				if (current > default_value)
+					delta = -100 / sensitivity;
+				if (current < default_value)
+					delta =  100 / sensitivity;
+			}
+
+			/* An analog joystick which is not at zero position (or has just */
+			/* moved there) takes precedence over all other computations */
+			/* analog_x/y holds values from -128 to 128 (yes, 128, not 127) */
+
+			if (axis == X_AXIS)
+			{
+				new  = analog_current_x;
+				prev = analog_previous_x;
+			}
+			else
+			{
+				new  = analog_current_y;
+				prev = analog_previous_y;
+			}
+
+			if ((new != 0) || (new-prev != 0))
+			{
+				delta=0;
+
+				if (in->type & IPF_REVERSE)
+				{
+					new  = -new;
+					prev = -prev;
+				}
+
+				/* scale by time */
+
+				new = cpu_scalebyfcount(new - prev) + prev;
+
+#if 1 /* logarithmic scale */
+				if (new > 0)
+				{
+					current = (pow(new / 128.0, 100.0 / sensitivity) * (max-in->default_value)
+							+ in->default_value) * 100 / sensitivity;
+				}
+				else
+				{
+					current = (pow(-new / 128.0, 100.0 / sensitivity) * (min-in->default_value)
+							+ in->default_value) * 100 / sensitivity;
+				}
+#else
+				current = default_value + (new * (max-min) * 100) / (256 * sensitivity);
+#endif
+
+			}
+		}
+	}
+
+	current += delta;
+
+	if (check_bounds)
+	{
+		if (current*sensitivity/100 < min)
+			current=min*100/sensitivity;
+		if (current*sensitivity/100 > max)
+			current=max*100/sensitivity;
+	}
+
+	input_analog_value[port]=current;
+
+	input_port_value[port] &= ~in->mask;
+	input_port_value[port] |= (current * sensitivity / 100) & in->mask;
+
+	if (playback)
+		osd_fread(playback,&input_port_value[port],1);
+	else if (record)
+		osd_fwrite(record,&input_port_value[port],1);
+}
+
+void inputport_vblank_end(void)
+{
+	int port;
+	int deltax,deltay;
+
+
+	for (port = 0;port < MAX_INPUT_PORTS;port++)
+	{
+		if (input_vblank[port])
+		{
+			input_port_value[port] ^= input_vblank[port];
+			input_vblank[port] = 0;
+		}
+	}
+
+	/* update joysticks */
+	analog_previous_x = analog_current_x;
+	analog_previous_y = analog_current_y;
+	osd_poll_joystick();
+	osd_analogjoy_read(&analog_current_x, &analog_current_y);
+
+	/* update mouse position */
+	mouse_previous_x = mouse_current_x;
+	mouse_previous_y = mouse_current_y;
+	osd_trak_read(&deltax,&deltay);
+	mouse_current_x += deltax;
+	mouse_current_y += deltay;
+}
