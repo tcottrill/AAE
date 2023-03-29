@@ -7,4 +7,4 @@ I've worked on this every off and on every couple of years since 2007, and decid
 
 Code is in the master branch. 
 
-I've dumped what I have completed, unfortunately it looks like I amm not going to get time to convert everything from the old allegro dll to my new code. Currently returning from the menu is broken. If I get time I will fix it. I have starwars working in a seperate framework that I meant to combine with this one, but I am not going to get the chance. I'll upload it seperately. 
+I've dumped what I have completed, unfortunately it looks like I am not going to get time to convert everything from the old allegro dll to my new code. Currently returning from the menu is broken. If I get time I will fix it. I have starwars working in a seperate framework that I meant to combine with this one, but I am not going to get the chance. I'll upload it seperately. 
