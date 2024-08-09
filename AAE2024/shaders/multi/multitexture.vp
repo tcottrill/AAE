@@ -1,0 +1,36 @@
+/*==================
+multitexture.vp
+Written 2006.03.03 for 15-462 by Chris Cameron
+
+This program will take two textures and blend them together using
+the vertex attribute blend as the weight for blending.  
+
+To interpolate this blend attribute over the faces, it will be 
+stored in the varying variable v_blend.  
+
+Also, the zeroth multitexture coordinate attribute will be used
+as the texture coordinate for reading both textures, so we will
+store it in the varying texture coordinate zero.
+==================*/
+
+/* this float will be assigned on every vertex, representing the
+fraction to use when blending between the two textures */
+attribute float blend;
+
+/* we will want the passed-in blending value to be interpolated
+over the polygon, so we'll output it as a varying variable to 
+the vertex program */
+varying float v_blend;
+
+void main ()
+{
+	/* send the blend fraction to the fragment program */
+	v_blend = blend;
+
+	/* send the texture coordinate to the fragment program */
+	gl_TexCoord[0] = gl_MultiTexCoord0;
+
+	/* use the standard OpenGL transformation matrix */
+	gl_Position = ftransform ();
+}
+
