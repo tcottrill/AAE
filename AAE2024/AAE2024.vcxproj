@@ -1,0 +1,259 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>16.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{626283ae-0792-4b59-befc-d375e8bd3b33}</ProjectGuid>
+    <RootNamespace>AAE2024</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>NotSet</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <WarningLevel>Level1</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <AdditionalIncludeDirectories>C:\allegro\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>/Zc:strictStrings %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>false</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>C:\allegro\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>alleg44.lib;opengl32.lib;glu32.lib;user32.lib;gdi32.lib;alleggl.lib;winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <ImageHasSafeExceptionHandlers>false</ImageHasSafeExceptionHandlers>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="aaemain.cpp" />
+    <ClCompile Include="acommon.cpp" />
+    <ClCompile Include="config.cpp" />
+    <ClCompile Include="cpu_code\ccpu.cpp" />
+    <ClCompile Include="cpu_code\cpu_6809.cpp" />
+    <ClCompile Include="cpu_code\cpu_control.cpp" />
+    <ClCompile Include="cpu_code\cpu_i8080.cpp" />
+    <ClCompile Include="drivers\asteroid.cpp" />
+    <ClCompile Include="drivers\bzone.cpp" />
+    <ClCompile Include="drivers\cinemat.cpp" />
+    <ClCompile Include="drivers\llander.cpp" />
+    <ClCompile Include="drivers\mhavoc.cpp" />
+    <ClCompile Include="drivers\omegrace.cpp" />
+    <ClCompile Include="drivers\quantum.cpp" />
+    <ClCompile Include="drivers\SegaG80.cpp" />
+    <ClCompile Include="drivers\spacduel.cpp" />
+    <ClCompile Include="drivers\tempest.cpp" />
+    <ClCompile Include="fileio\aae_fileio.cpp" />
+    <ClCompile Include="fileio\loaders.cpp" />
+    <ClCompile Include="fileio\mame_fileio.cpp" />
+    <ClCompile Include="fileio\miniz.c" />
+    <ClCompile Include="fpsclass.cpp" />
+    <ClCompile Include="aae_mame_driver.cpp" />
+    <ClCompile Include="gui\animation.cpp" />
+    <ClCompile Include="gui\gui.cpp" />
+    <ClCompile Include="inptport.cpp" />
+    <ClCompile Include="log.cpp" />
+    <ClCompile Include="machine\earom.cpp" />
+    <ClCompile Include="machine\mathbox.cpp" />
+    <ClCompile Include="machine\segacrypt.cpp" />
+    <ClCompile Include="menu.cpp" />
+    <ClCompile Include="os_input.cpp" />
+    <ClCompile Include="rand.cpp" />
+    <ClCompile Include="sndhrdw\5220intf.cpp" />
+    <ClCompile Include="sndhrdw\AY8910.Cpp" />
+    <ClCompile Include="sndhrdw\cinesnd.cpp" />
+    <ClCompile Include="sndhrdw\pokey.cpp" />
+    <ClCompile Include="sndhrdw\pokyintf.cpp" />
+    <ClCompile Include="sndhrdw\samples.cpp" />
+    <ClCompile Include="sndhrdw\SegaG80snd.cpp" />
+    <ClCompile Include="sndhrdw\tms5220.cpp" />
+    <ClCompile Include="sys_timer.cpp" />
+    <ClCompile Include="sys_video\fonts.cpp" />
+    <ClCompile Include="sys_video\glcode.cpp" />
+    <ClCompile Include="sys_video\texture_loading_shim.cpp" />
+    <ClCompile Include="sys_video\vector_fonts.cpp" />
+    <ClCompile Include="vidhrdwr\aae_avg.cpp" />
+    <ClCompile Include="vidhrdwr\cinematvid.cpp" />
+    <ClCompile Include="vidhrdwr\vector.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="aaemain.h" />
+    <ClInclude Include="acommon.h" />
+    <ClInclude Include="colordefs.h" />
+    <ClInclude Include="config.h" />
+    <ClInclude Include="cpu_code\ccpu.h" />
+    <ClInclude Include="cpu_code\cpu_6809.h" />
+    <ClInclude Include="cpu_code\cpu_control.h" />
+    <ClInclude Include="cpu_code\cpu_i8080.h" />
+    <ClInclude Include="cpu_code\M6502.H" />
+    <ClInclude Include="cpu_code\MZ80.H" />
+    <ClInclude Include="cpu_code\starcpu.h" />
+    <ClInclude Include="deftypes.h" />
+    <ClInclude Include="drivers\asteroid.h" />
+    <ClInclude Include="drivers\bzone.h" />
+    <ClInclude Include="drivers\cinemat.h" />
+    <ClInclude Include="drivers\llander.h" />
+    <ClInclude Include="drivers\mhavoc.h" />
+    <ClInclude Include="drivers\omegrace.h" />
+    <ClInclude Include="drivers\quantum.h" />
+    <ClInclude Include="drivers\SegaG80.h" />
+    <ClInclude Include="drivers\spacduel.h" />
+    <ClInclude Include="drivers\tempest.h" />
+    <ClInclude Include="fileio\aae_fileio.h" />
+    <ClInclude Include="fileio\loaders.h" />
+    <ClInclude Include="fileio\mame_fileio.h" />
+    <ClInclude Include="fileio\miniz.h" />
+    <ClInclude Include="fpsclass.h" />
+    <ClInclude Include="gameart.h" />
+    <ClInclude Include="gamekeys.h" />
+    <ClInclude Include="gameroms.h" />
+    <ClInclude Include="gamesamp.h" />
+    <ClInclude Include="aae_mame_driver.h" />
+    <ClInclude Include="gui\animation.h" />
+    <ClInclude Include="gui\gui.h" />
+    <ClInclude Include="inptport.h" />
+    <ClInclude Include="log.h" />
+    <ClInclude Include="machine\earom.h" />
+    <ClInclude Include="machine\mathbox.h" />
+    <ClInclude Include="menu.h" />
+    <ClInclude Include="osdepend.h" />
+    <ClInclude Include="osd_cpu.h" />
+    <ClInclude Include="os_input.h" />
+    <ClInclude Include="rand.h" />
+    <ClInclude Include="rotation_table.h" />
+    <ClInclude Include="sndhrdw\5220intf.h" />
+    <ClInclude Include="sndhrdw\AY8910.H" />
+    <ClInclude Include="sndhrdw\pokey.h" />
+    <ClInclude Include="sndhrdw\pokyintf.h" />
+    <ClInclude Include="sndhrdw\samples.h" />
+    <ClInclude Include="sndhrdw\tms5220.h" />
+    <ClInclude Include="sys_timer.h" />
+    <ClInclude Include="sys_video\fonts.h" />
+    <ClInclude Include="sys_video\glcode.h" />
+    <ClInclude Include="sys_video\stb_image.h" />
+    <ClInclude Include="sys_video\stb_image_write.h" />
+    <ClInclude Include="sys_video\texture_loading_shim.h" />
+    <ClInclude Include="sys_video\vector_fonts.h" />
+    <ClInclude Include="targetver.h" />
+    <ClInclude Include="vidhrdwr\aae_avg.h" />
+    <ClInclude Include="vidhrdwr\vector.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="video.ini" />
+  </ItemGroup>
+  <ItemGroup>
+    <Object Include="objfiles\68000.obj" />
+    <Object Include="objfiles\m6502.obj" />
+    <Object Include="objfiles\m6502zp.obj" />
+    <Object Include="objfiles\mz80.obj" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>
