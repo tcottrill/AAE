@@ -1,8 +1,9 @@
 #include "samples.h"
-#include "../aae_mame_driver.h"
-#include "../log.h"
+#include "aae_mame_driver.h"
+
 
 #define MAX_VOICE 16
+#define SAMPLE_RAMP_MIN 75
 int testvoc = 0;
 int testvol;
 int game_voice[MAX_VOICE]; //Global Voice For Samples
@@ -20,16 +21,11 @@ void voice_init(int num)
 
 void sample_start(int channel, int samplenum, int loop)
 {
-	//wrlog("Voice State %x Voice Num %x",voice_check(gv0),samplenum);
-
-	//if ( voice_check(game_voice[channel])) {reallocate_voice(game_voice[channel],game_sounds[samplenum]);}
-	//else  game_voice[channel]=allocate_voice(game_sounds[samplenum]);
 	voice_stop(game_voice[channel]);
 	reallocate_voice(game_voice[channel], game_sounds[samplenum]);
 
 	voice_set_playmode(game_voice[channel], loop);
-	//voice_set_volume(game_voice[channel], config.mainvol );
-	voice_ramp_volume(game_voice[channel], 10, config.mainvol);
+	voice_ramp_volume(game_voice[channel], SAMPLE_RAMP_MIN, config.mainvol);
 	voice_set_position(game_voice[channel], 0);
 	voice_start(game_voice[channel]);
 	//wrlog("Voice allocated Voice: %d Channel %d",samplenum,channel);
@@ -58,8 +54,8 @@ void sample_stop(int channel)
 }
 void sample_end(int channel) //For looped samples to avoid crackle.
 {
-	voice_ramp_volume(game_voice[channel], 32, 0);
-	voice_set_playmode(game_voice[channel], PLAYMODE_PLAY);
+	voice_ramp_volume(game_voice[channel], SAMPLE_RAMP_MIN, 0);
+	//voice_set_playmode(game_voice[channel], PLAYMODE_PLAY);
 	//voice_set_volume(game_voice[channel],5);
 }
 int sample_playing(int channel)
@@ -94,14 +90,13 @@ void free_samples(void)
 }
 
 void mute_sound()
-{//set_volume(5,0);
+{
 	set_volume(5, -1);
 }
 
 void restore_sound()
 {
 	set_volume(config.mainvol, -1);
-	//set_volume(255,-1);
 }
 
 void aae_play_streamed_sample(int channel, unsigned char* data, int len, int freq, int volume)

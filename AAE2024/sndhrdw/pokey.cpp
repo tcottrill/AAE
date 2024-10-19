@@ -1,3 +1,5 @@
+//NOTE to self: Upgrade this to V2.3.9 with correct rand and filters
+
 /*****************************************************************************/
 /*                                                                           */
 /* Module:  POKEY Chip Emulator, V2.3                                        */
@@ -85,7 +87,7 @@
 #include <time.h>
 
 #include "pokey.h"
-#include "..\log.h"
+#include "log.h"
 
 /* CONSTANT DEFINITIONS */
 
@@ -393,7 +395,7 @@ int Pokey_sound_init(uint32 freq17, uint16 playback_freq, uint8 num_pokeys, uint
 	/* set the number of pokey chips currently emulated */
 	Num_pokeys = num_pokeys;
 	clip = use_clip; /* LBO 101297 */
-
+	wrlog("Completed Pokey Sound Init");
 	return 0;
 }
 
@@ -887,11 +889,7 @@ void Pokey_process(register unsigned char* buffer, register uint16 n)
 		{
 			/* adjust the sample counter - note we're using the 24.8 integer
 			   which includes an 8 bit fraction for accuracy */
-#ifdef BIG_ENDIAN
-			* (Samp_n_cnt + 1) += Samp_n_max;
-#else
 			* Samp_n_cnt += Samp_n_max;
-#endif
 
 #ifdef CLIP                         /* if clipping is selected */
 			if (clip) {

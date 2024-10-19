@@ -177,9 +177,6 @@
     <ClCompile Include="fileio\miniz.c">
       <Filter>Source Files\fileio</Filter>
     </ClCompile>
-    <ClCompile Include="sys_video\texture_loading_shim.cpp">
-      <Filter>Source Files\sys_video</Filter>
-    </ClCompile>
     <ClCompile Include="gui\animation.cpp">
       <Filter>Source Files\gui</Filter>
     </ClCompile>
@@ -193,6 +190,27 @@
       <Filter>Source Files\cpu_code</Filter>
     </ClCompile>
     <ClCompile Include="cpu_code\cpu_i8080.cpp">
+      <Filter>Source Files\cpu_code</Filter>
+    </ClCompile>
+    <ClCompile Include="cpu_code\timer.cpp">
+      <Filter>Source Files\cpu_code</Filter>
+    </ClCompile>
+    <ClCompile Include="machine\swmathbx.cpp">
+      <Filter>Source Files\machine</Filter>
+    </ClCompile>
+    <ClCompile Include="drivers\starwars.cpp">
+      <Filter>Source Files\drivers</Filter>
+    </ClCompile>
+    <ClCompile Include="cpu_code\cpu_z80.cpp">
+      <Filter>Source Files\cpu_code</Filter>
+    </ClCompile>
+    <ClCompile Include="vidhrdwr\dvg.cpp">
+      <Filter>Source Files\vidhrdwr</Filter>
+    </ClCompile>
+    <ClCompile Include="sndhrdw\starwars_snd.cpp">
+      <Filter>Source Files\sndhrdwr</Filter>
+    </ClCompile>
+    <ClCompile Include="cpu_code\cpu_6502.cpp">
       <Filter>Source Files\cpu_code</Filter>
     </ClCompile>
   </ItemGroup>
@@ -287,12 +305,6 @@
     <ClInclude Include="cpu_code\cpu_control.h">
       <Filter>Source Files\cpu_code</Filter>
     </ClInclude>
-    <ClInclude Include="cpu_code\M6502.H">
-      <Filter>Source Files\cpu_code</Filter>
-    </ClInclude>
-    <ClInclude Include="cpu_code\MZ80.H">
-      <Filter>Source Files\cpu_code</Filter>
-    </ClInclude>
     <ClInclude Include="cpu_code\starcpu.h">
       <Filter>Source Files\cpu_code</Filter>
     </ClInclude>
@@ -356,9 +368,6 @@
     <ClInclude Include="sys_video\stb_image_write.h">
       <Filter>Source Files\sys_video</Filter>
     </ClInclude>
-    <ClInclude Include="sys_video\texture_loading_shim.h">
-      <Filter>Source Files\sys_video</Filter>
-    </ClInclude>
     <ClInclude Include="gui\animation.h">
       <Filter>Source Files\gui</Filter>
     </ClInclude>
@@ -377,24 +386,34 @@
     <ClInclude Include="cpu_code\cpu_i8080.h">
       <Filter>Source Files\cpu_code</Filter>
     </ClInclude>
+    <ClInclude Include="gamedriver.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="cpu_code\timer.h">
+      <Filter>Source Files\cpu_code</Filter>
+    </ClInclude>
+    <ClInclude Include="machine\swmathbx.h">
+      <Filter>Source Files\machine</Filter>
+    </ClInclude>
+    <ClInclude Include="drivers\starwars.h">
+      <Filter>Source Files\drivers</Filter>
+    </ClInclude>
+    <ClInclude Include="cpu_code\cpu_z80.h">
+      <Filter>Source Files\cpu_code</Filter>
+    </ClInclude>
+    <ClInclude Include="vidhrdwr\dvg.h">
+      <Filter>Source Files\vidhrdwr</Filter>
+    </ClInclude>
+    <ClInclude Include="sndhrdw\starwars_snd.h">
+      <Filter>Source Files\sndhrdwr</Filter>
+    </ClInclude>
+    <ClInclude Include="cpu_code\cpu_6502.h">
+      <Filter>Source Files\cpu_code</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="video.ini">
       <Filter>Source Files</Filter>
     </None>
-  </ItemGroup>
-  <ItemGroup>
-    <Object Include="objfiles\68000.obj">
-      <Filter>Source Files\objfiles</Filter>
-    </Object>
-    <Object Include="objfiles\m6502.obj">
-      <Filter>Source Files\objfiles</Filter>
-    </Object>
-    <Object Include="objfiles\m6502zp.obj">
-      <Filter>Source Files\objfiles</Filter>
-    </Object>
-    <Object Include="objfiles\mz80.obj">
-      <Filter>Source Files\objfiles</Filter>
-    </Object>
   </ItemGroup>
 </Project>

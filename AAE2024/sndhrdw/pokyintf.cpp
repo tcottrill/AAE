@@ -11,15 +11,11 @@
 ***************************************************************************/
 
 #include "pokyintf.h"
-//#include "e:\AAETEST\sndhrdw\pokyintf.h"
-#include "../aae_mame_driver.h"
-#include "../cpu_code/cpu_control.h"
-
+#include "aae_mame_driver.h"
+#include "cpu_control.h"
 #include "samples.h"
-#include "../acommon.h"
-//#include "../driver.h"
 #include "../rand.h"
-#include "../log.h"
+
 
 #define MIN_SLICE 1	/* minimum update step for POKEY (226usec @ 44100Hz) */
 #define TARGET_EMULATION_RATE 44100//44100	/* will be adapted to be a multiple of buffer_len */
@@ -31,7 +27,6 @@ static uint8 pokey_random[MAXPOKEYS];     /* The random number for each pokey */
 
 static struct POKEYinterface* intfa;
 static unsigned char* buffer;
-//static short int *sixbitbuf;
 
 int pokey_sh_start(struct POKEYinterface* iinterface)
 {
@@ -45,12 +40,11 @@ int pokey_sh_start(struct POKEYinterface* iinterface)
 		free(buffer);
 		return 1;
 	}
-	//sixbitbuf = malloc(buffer_len * 4);
-	 //memset(buffer,0x80,buffer_len);
-	stream = play_audio_stream(buffer_len, 8, 0, TARGET_EMULATION_RATE, config.pokeyvol, 128); //450  13500
-
+	
+	//stream = play_audio_stream(buffer_len, 8, 0, TARGET_EMULATION_RATE, config.pokeyvol, 128); //450  13500
+	stream = play_audio_stream(buffer_len, 8, 0, TARGET_EMULATION_RATE, 250, 128); //450  13500
 	Pokey_sound_init(intfa->clock, emulation_rate, intfa->num, intfa->clip);
-	//wrlog("Emulation rate %d Buffer len %d",emulation_rate,buffer_len);
+	wrlog("Pokey sound init: Emulation rate %d Buffer len %d Num Pokeys: %d",emulation_rate,buffer_len, intfa->num);
 
 	for (i = 0; i < intfa->num; i++)
 		/* Seed the values */
@@ -128,6 +122,9 @@ int Read_pokey_regs(uint16 addr, uint8 chip)
 #ifdef DEBUG
 		if (errorlog) fprintf(errorlog, "Pokey #%d read from register %02x\n", chip, addr);
 #endif
+
+		wrlog("Pokey #%d read from register %02x\n", chip, addr);
+
 		return 0;
 		break;
 	}
@@ -137,7 +134,7 @@ int Read_pokey_regs(uint16 addr, uint8 chip)
 
 UINT8 quadpokey_r(UINT32 address, struct MemoryReadByte* psMemRead)
 {
-	return quad_pokey_r(address - 0x2000);
+	return quad_pokey_r(address & 0xff);// -0x2000);
 }
 UINT8 pokey_1_r(UINT32 address, struct MemoryReadByte* psMemRead)
 {
@@ -177,20 +174,19 @@ int pokey4_r(int offset)
 
 int quad_pokey_r(int offset)
 {
+
 	int pokey_num = (offset >> 3) & ~0x04;
 	int control = (offset & 0x20) >> 2;
 	int pokey_reg = (offset % 8) | control;
 
-	//    if (errorlog) fprintf (errorlog, "offset: %04x pokey_num: %02x pokey_reg: %02x\n", offset, pokey_num, pokey_reg);
+	//if (errorlog) fprintf (errorlog, "offset: %04x pokey_num: %02x pokey_reg: %02x\n", offset, pokey_num, pokey_reg);
 	return Read_pokey_regs(pokey_reg, pokey_num);
 }
 
 void quadpokey_w(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite)
 {
-	int addr;
-
-	addr = address - 0x2000;
-	quad_pokey_w(addr, data);
+	//wrlog("Quad Pokey Read");
+	quad_pokey_w(address & 0xff, data);
 }
 
 void pokey_1_w(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite)
@@ -209,8 +205,6 @@ void pokey_4_w(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite)
 {
 	pokey4_w((address & 0x0f), data);
 }
-
-//Update_pokey_sound (uint16 addr, uint8 val, uint8 chip, uint8 gain)
 
 void pokey1_w(int offset, int data)
 {
@@ -238,6 +232,7 @@ void pokey4_w(int offset, int data)
 
 void quad_pokey_w(int offset, int data)
 {
+		
 	int pokey_num = (offset >> 3) & ~0x04;
 	int control = (offset & 0x20) >> 2;
 	int pokey_reg = (offset % 8) | control;
@@ -258,21 +253,12 @@ void quad_pokey_w(int offset, int data)
 	}
 }
 
-void pokey_update(void)
+void pokey_update(void)  // Look at this when finishing adding Star Wars back.
 {
 	int totcycles, leftcycles, newpos;
 
-	newpos = 0;
-	if (driver[gamenum].cpu_type[0] == CPU_6809)
-	{
-		totcycles = 0;// cpu_getfperiod();
-		leftcycles = 0;// cpu_getfcount();
-		newpos = buffer_len * (totcycles - leftcycles) / totcycles;
-	}
-	else {
-		newpos = cpu_scale_by_cycles(buffer_len);
-	}// get current position based on the cycle count //
-
+	newpos = cpu_scale_by_cycles(buffer_len);
+	
 	if (newpos - sample_pos < MIN_SLICE)
 		return;
 	Pokey_process(buffer + sample_pos, newpos - sample_pos);
@@ -282,21 +268,9 @@ void pokey_update(void)
 
 void pokey_sh_update(void)
 {
-	int i;
-	int y = 0;
 
 	if (sample_pos < buffer_len) { Pokey_process(buffer + sample_pos, buffer_len - sample_pos); }
-	/*
-	 for (i=0; i <  buffer_len+1; i++)
-		{
-			sixbitbuf[y] = (buffer[i] ^0x80)  << 8;
-			sixbitbuf[y+1] = (buffer[i] ^ 0x80)  << 8;
-			//sixbitbuf[y+1] = (buffer[i] ^0x80 ) << 8;
-			y+=2;
-		   //Unsigned 8 bit to signed 16 bit.	 // short samp16 = (samp8 - 128) << 8;
-		}
-*/
-
+	
 	aae_play_streamed_sample(0, buffer, buffer_len, emulation_rate, intfa->volume);
 
 	sample_pos = 0;

@@ -13,17 +13,16 @@
 
 
 #include "spacduel.h"
-#include "../sndhrdw/samples.h"
-#include "../vidhrdwr/vector.h"
-#include "../vidhrdwr/aae_avg.h"
-#include "../machine/earom.h"
-#include "../sndhrdw/pokyintf.h"
-#include "../acommon.h"
-#include "../aae_mame_driver.h"
-#include "../inptport.h"
-#include "../log.h"
+#include "samples.h"
+#include "vector.h"
+#include "aae_avg.h"
+#include "earom.h"
+#include "pokyintf.h"
+#include "aae_mame_driver.h"
 
-//Below Taken Straight from M.A.M.E. Unfortunately
+
+
+
 #define IN_LEFT	(1 << 0)
 #define IN_RIGHT (1 << 1)
 #define IN_FIRE (1 << 2)
@@ -32,14 +31,6 @@
 #define IN_P1 (1 << 5)
 #define IN_P2 (1 << 6)
 
-//Why is this here and not in the timer code??
-
-#define TIME_IN_HZ(hz)        (1.0 / (double)(hz))
-//#define TIME_IN_CYCLES(c,cpu) ((double)(c) * cycles_to_sec[cpu])
-#define TIME_IN_SEC(s)        ((double)(s))
-#define TIME_IN_MSEC(ms)      ((double)(ms) * (1.0 / 1000.0))
-#define TIME_IN_USEC(us)      ((double)(us) * (1.0 / 1000000.0))
-#define TIME_IN_NSEC(us)      ((double)(us) * (1.0 / 1000000000.0))
 
 static struct POKEYinterface pokey_interface =
 {
@@ -217,19 +208,20 @@ int init_spacduel()
 {
 	switch (gamenum)
 	{
-	case SPACDUEL: init6502Z(SpaceDuelRead, SpaceDuelWrite, 0); break;
-	case GRAVITAR: init6502Z(GravRead, GravWrite, 0); break;
-	case GRAVITR2: init6502Z(GravRead, GravWrite, 0); break;
-	case GRAVP:    init6502Z(GravRead, GravWrite, 0); break;
-	case BWIDOW:   init6502Z(BwidowRead, BwidowWrite, 0); break;
-	case LUNARBAT: init6502Z(GravRead, GravWrite, 0); break;
-	case LUNARBA1: init6502Z(SpaceDuelRead, SpaceDuelWrite, 0); break;
+	case SPACDUEL: init6502(SpaceDuelRead, SpaceDuelWrite, 0); break;
+	case GRAVITAR: init6502(GravRead, GravWrite, 0); break;
+	case GRAVITR2: init6502(GravRead, GravWrite, 0); break;
+	case GRAVP:    init6502(GravRead, GravWrite, 0); break;
+	case BWIDOW:   init6502(BwidowRead, BwidowWrite, 0); break;
+	case LUNARBAT: init6502(GravRead, GravWrite, 0); break;
+	case LUNARBA1: init6502(SpaceDuelRead, SpaceDuelWrite, 0); break;
 	}
 
 	cache_clear();
 	pokey_sh_start(&pokey_interface);
 	LoadEarom();
 	avg_init();
+	wrlog("SPACDUEL INIT COMPLETED");
 	return 0;
 }
 void end_spacduel()

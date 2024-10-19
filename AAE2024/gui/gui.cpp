@@ -1,13 +1,13 @@
 
 
 #include "gui.h"
-#include "../aae_mame_driver.h"
-#include "../sndhrdw/samples.h"
-#include "../vidhrdwr/vector.h"
-#include "../sys_video/glcode.h"
+#include "aae_mame_driver.h"
+#include "samples.h"
+#include "vector.h"
+#include "glcode.h"
 #include "animation.h"
-#include "../sys_video/fonts.h"
-#include "../menu.h"
+#include "fonts.h"
+#include "menu.h"
 
 static int rottoggle = 0;
 static float rotation = 0;
@@ -107,7 +107,7 @@ void gui_loop()
 	}
 	glPrint_centered(30, "Press Start 1 to Select Game", 20, 20, 255, 255, 1.3, 0, 0);
 	glPrint_centered(33, "Press Start 1 to Select Game", 255, 255, 255, 255, 1.3, 0, 0);
-	glPrint_centered(7, "2022 Version - Press <TAB> for Menu", 168, 40, 40, 255, .6, 0, 0);
+	glPrint_centered(7, "2024 Rebuild C Version - Press <TAB> for Menu", 168, 40, 40, 255, .6, 0, 0);
 	shot_animate(pi);
 }
 
@@ -259,7 +259,7 @@ int init_gui()
 	//Is this the first time through?? Then init the GUI textures
 	if (!mtime) { sample_start(2, 1, 0); mtime++; }
 
-	set_window_title("AAE GUI (Build 8092024)");
+	set_window_title("AAE GUI (Build 10182024)");
 
 	make_single_bitmap(&fun_tex[0], "ship.png", "aae.zip", 0);
 	make_single_bitmap(&fun_tex[1], "shipeng.png", "aae.zip", 0);

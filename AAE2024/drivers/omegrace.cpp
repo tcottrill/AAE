@@ -12,6 +12,10 @@
 // THE CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.  
 //==========================================================================
 
+// 10_13_2024
+// I now have the ability to emulate this 100% correctly with ay8910 support and both cpu's in sync, coming soon.
+
+//Current code is missing the "dink" sound when destroying the triangles.
 /***************************************************************************
 
 This driver is dedicated to my loving wife Natalia Wiebelt
@@ -203,15 +207,16 @@ Sound Commands:
 ***************************************************************************/
 
 #include "omegrace.h"
-#include "../aae_mame_driver.h"
-#include "../sndhrdw/samples.h"
-#include "../vidhrdwr/vector.h"
-#include "../vidhrdwr/aae_avg.h"
+#include "aae_mame_driver.h"
+#include "samples.h"
+#include "vector.h"
+#include "aae_avg.h"
+#include "AY8910.H"
 
 //Todo rewrite this and add second cp
 
-static int oticks = 0;
-int ovec_time = 0;
+//static int oticks = 0;
+//int ovec_time = 0;
 
 int scrflip = 0;
 int angle = 1;
@@ -263,7 +268,7 @@ static int load_nvram(void)
 	fread(membuffer, 1, 0xff, fd);
 	for (x = 0; x <= 0xff; x++)
 	{
-		cMZ80[0].z80Base[0x5c00 + x] = membuffer[x];
+		GI[0][0x5c00 + x] = membuffer[x];
 	}
 
 	fclose(fd);
@@ -288,7 +293,7 @@ static void save_nvram(void)
 	wrlog("Saving NVRAM");
 	for (x = 0; x <= 0xff; x++)
 	{
-		membuffer[x] = cMZ80[0].z80Base[0x5c00 + x];
+		membuffer[x] = GI[0][0x5c00 + x];
 	}
 
 	save_file(fullpath, membuffer, 0xff);
@@ -322,7 +327,7 @@ static void Odvg_generate_vector_list(void)
 	int  sp = 0;
 	int stack[4];
 	int scale = 0;
-	float gc = 0;
+	//float gc = 0;
 	int done = 0;
 	int firstwd, secondwd;
 	int opcode;
@@ -330,11 +335,15 @@ static void Odvg_generate_vector_list(void)
 	int temp;
 	int z = 0;
 	int deltax, deltay = 0;
-	int currentx, currenty = 0;
+	int currentx = 0;
+	int currenty = 0;
 
 	while (!done)
 	{
-		firstwd = memrdwd(pc); opcode = firstwd & 0xf000; pc++; pc++;
+		firstwd = memrdwd(pc); 
+		opcode = firstwd & 0xf000; 
+		pc++; 
+		pc++;
 		switch (opcode)
 		{
 		case 0:
@@ -375,25 +384,17 @@ static void Odvg_generate_vector_list(void)
 			deltay = (y << VEC_SHIFT) >> (9 - temp);
 
 		DRAWCODE:
-			if (z > 1)
+			if (z )
 			{
-				gc = (float)z / 16.00;
-				gc = gc + .05;
-				if (gc > 1) { gc = 1.0; }
-				// z=z*16+42;
-				//if (z>255) z=255;
-				//if (config.overlay){ glColor3ub(z,z,z/3);}
-				//else { glColor3ub(z,z,z);}
-
 				if ((currentx == (currentx)+deltax) && (currenty == (currenty)-deltay))
 				{
-					cache_point(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, z, gc, 0, 1);
+					cache_point(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, z, config.gain, 0, 1);
 				}
 				else
 				{
-					cache_line(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, (currentx + deltax) >> VEC_SHIFT, (currenty - deltay) >> VEC_SHIFT, z, gc, 0);
-					cache_point(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, z, gc, 0, 0);
-					cache_point((currentx + deltax) >> VEC_SHIFT, (currenty - deltay) >> VEC_SHIFT, z, gc, 0, 0);
+					cache_line(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, (currentx + deltax) >> VEC_SHIFT, (currenty - deltay) >> VEC_SHIFT, z, config.gain, 0);
+					cache_point(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, z, config.gain, 0, 0);
+					cache_point((currentx + deltax) >> VEC_SHIFT, (currenty - deltay) >> VEC_SHIFT, z, config.gain, 0, 0);
 				}
 			}
 			currentx += deltax;
@@ -439,11 +440,9 @@ static void Odvg_generate_vector_list(void)
 		case 0xf000:
 
 			// compute raw X and Y values //
-
-			//z = (firstwd & 0xf0) >> 4;
-			z = (firstwd >> 4) & 0x0f;
 			y = firstwd & 0x0300;
 			x = (firstwd & 0x03) << 8;
+			z = (firstwd >> 4) & 0x0f;
 			//Check Sign Values and adjust as necessary
 			if (firstwd & 0x0400) { y = -y; }
 			if (firstwd & 0x04) { x = -x; }
@@ -481,19 +480,32 @@ PORT_WRITE_HANDLER(bs)
 
 PORT_READ_HANDLER(BWVG)
 {
-	//	wrlog("----AVG GO Check CALLED %d");
-	if (vecwrite1 == 0x80) return 0x80;
+	static int lastframe;
+	
+	wrlog("----AVG GO Check CALLED");
+	//if (vecwrite1 == 0x80) return 0x80;
 
-	cache_clear();
-	Odvg_generate_vector_list();
-	if (vec_total) { vecwrite1 = 0x80; oticks = get_video_ticks(0xff); }
-	else { vecwrite1 = 0; }
-	return 0x0;//vecwrite1;
+	if (frames != lastframe)
+	{
+		cache_clear();
+		Odvg_generate_vector_list();
+		vecwrite1 = 0x80;
+		wrlog("----AVG GO ACTUALLY RAN");
+		lastframe = frames;
+	}
+
+	//if (vec_total) 
+	//{ vecwrite1 = 0x80;  }
+//	else { vecwrite1 = 0; }
+	//return 0x0;//vecwrite1;
+	if (vecwrite1) { return 0x80; }
+	else return 0x0;//vecwrite1;
+
 }
 
 WRITE_HANDLER(VectorRam)
 {
-	cMZ80[0].z80Base[address] = data;
+	GI[0][address] = data;
 }
 WRITE_HANDLER(NVRAM_W)
 {
@@ -517,13 +529,20 @@ PORT_READ_HANDLER(omegrace_watchdog_r)
 
 PORT_READ_HANDLER(omegrace_vg_status_r)
 {
-	float me;
+	//float me;
 
-	me = (((4500 * vec_total) / 1000000) * 1512); //4500
+	//me = (((10 * vec_total) / 1000000) * 1512); //4500
 
 	//wrlog("Total LENGTH HERE %f and TOTAL TICKS %d",me,ticks );
 
-	if (get_video_ticks(0) > me && vecwrite1 == 0x80) { vecwrite1 = 0; vec_total = 0; }
+	//wrlog("VG Status Read, Cycles are %d", get_elapsed_ticks(0));
+
+	if (get_elapsed_ticks(0) > 54000)
+	{
+		vecwrite1 = 0;
+	}
+
+//	if (get_video_ticks(0) > me && vecwrite1 == 0x80) { vecwrite1 = 0; vec_total = 0; }
 	return vecwrite1;
 }
 
@@ -660,19 +679,19 @@ PORT_ADDR(0x01, 0x01, bs)
 PORT_ADDR(0x02, 0x02, bs)
 PORT_ADDR(0x03, 0x03, bs)
 PORT_END
-/*
-PORT_WRITE(SoundPortWrite)
+
+PORT_WRITE(AYSoundPortWrite)
 	{ 0x00, 0x00, AY8910_control_port_0_w },
 	{ 0x01, 0x01, AY8910_write_port_0_w },
 	{ 0x02, 0x02, AY8910_control_port_1_w },
 	{ 0x03, 0x03, AY8910_write_port_1_w },
 PORT_END
-*/
+
 /////////////////// MAIN() for program ///////////////////////////////////////////////////
 int init_omega()
 {
-	initz80N(OmegaRead, OmegaWrite, OmegaPortRead, OmegaPortWrite, 0);
-	initz80N(SoundMemRead, SoundMemWrite, SoundPortRead, SoundPortWrite, 1);
+	init_z80(OmegaRead, OmegaWrite, OmegaPortRead, OmegaPortWrite, 0);
+	init_z80(SoundMemRead, SoundMemWrite, SoundPortRead, SoundPortWrite, 1);
 	vecwrite1 = 0;
 	set_omega_colors();
 	cache_clear();

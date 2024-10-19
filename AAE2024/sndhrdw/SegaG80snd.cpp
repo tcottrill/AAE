@@ -1,6 +1,6 @@
-#include "../drivers/SegaG80.h"
-#include "../sndhrdw/samples.h"
-#include "../aae_mame_driver.h"
+#include "segag80.h"
+#include "samples.h"
+#include "aae_mame_driver.h"
 
 static int roarPlaying;	/* Is the ship roar noise playing? */
 #define MAX_SPEECH	16		/* Number of speech samples which can be queued */
@@ -148,6 +148,7 @@ void spacfury1_sh_w(UINT16 port, UINT8 data, struct z80PortWrite* pPW)
 	if (data & 0x80)
 		sample_start(4, 0x1e, 0);
 }
+
 void spacfury2_sh_w(UINT16 port, UINT8 data, struct z80PortWrite* pPW)
 {
 	data ^= 0xff;
@@ -212,6 +213,7 @@ void elim1_sh_w(UINT16 port, UINT8 data, struct z80PortWrite* pPW)
 		sample_start(3, 5, 0);
 	}
 }
+
 void elim2_sh_w(UINT16 port, UINT8 data, struct z80PortWrite* pPW)
 {
 	data ^= 0xff;
@@ -300,7 +302,7 @@ void Zektor2_sh_w(UINT16 port, UINT8 data, struct z80PortWrite* pPW)
 {
 	static int lastdata = 0;
 
-	wrlog("Data Zektor sh 2 %x", data);
+	//wrlog("Data Zektor sh 2 %x", data);
 	data ^= 0xff;
 
 	/* Play thrust sample */
@@ -327,6 +329,7 @@ void Zektor2_sh_w(UINT16 port, UINT8 data, struct z80PortWrite* pPW)
 	if (data & 0x80)
 		sample_start(7, 41, 0);
 }
+
 void StarTrek_sh_w(UINT16 port, UINT8 data, struct z80PortWrite* pPW)
 {
 	switch (data)

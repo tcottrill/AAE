@@ -1,5 +1,5 @@
 #pragma once
-#include "../osd_cpu.h"
+#include "osd_cpu.h"
 
 #define osd_fread_msbfirst osd_fread_swap
 #define osd_fwrite_msbfirst osd_fwrite_swap

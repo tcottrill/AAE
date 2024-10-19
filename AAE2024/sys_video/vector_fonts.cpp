@@ -4,10 +4,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "../aae_mame_driver.h"
+#include "aae_mame_driver.h"
 #include "vector_fonts.h"
-#include "../rotation_table.h"
-#include "../colordefs.h"
+#include "rotation_table.h"
+#include "colordefs.h"
 
 #define FONT_SPACING 9.5
 #define EOC  256

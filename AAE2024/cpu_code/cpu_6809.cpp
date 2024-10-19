@@ -3496,7 +3496,7 @@ int cpu_6809::exec6809(int timerTicks)
 
 		ppc = pcreg;
 		ireg = M_RDMEM(pcreg++);
-		//if (cpu_num) wrlog(":%d  INS: %x, PC: %x CC: %x", count, ireg, pcreg, cc);
+		//wrlog("CPU: %d Count:%d  INS: %x, PC: %x CC: %x", cpu_num, count, ireg, pcreg, cc);
 		count++;
 		if (ireg != 0x10 && ireg != 0x11)
 		{
@@ -3840,6 +3840,6 @@ int cpu_6809::exec6809(int timerTicks)
 
 	/* Interrupt if needed  */
 	//if (cpu_interrupt() == INT_IRQ) m6809_Interrupt();
-
-	return clockticks6809;
+	return 0x80000000;
+	//return clockticks6809;
 }

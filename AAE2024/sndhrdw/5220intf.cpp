@@ -15,7 +15,7 @@
 //#include "../driver.h"
 #include "tms5220.h"
 #include "5220intf.h"
-#include "../aae_mame_driver.h"
+#include "aae_mame_driver.h"
 #include "samples.h"
 //#include "generic.h"
 
@@ -42,27 +42,24 @@ int tms5220_sh_start(struct TMS5220interface* iinterface)
 {
 	intfa = iinterface;
 
-	/* determine the output sample rate and buffer size */
-	if (gamenum == MHAVOCRV) {
-		buffer_len = intfa->clock / 80 / 50;
-		emulation_rate = buffer_len * 50;
-	}
-	else {
-		buffer_len = intfa->clock / 80 / 50;//Machine->drv->frames_per_second;
-		emulation_rate = buffer_len * 50;//Machine->drv->frames_per_second;
-	}
+	buffer_len = intfa->clock / 80 / driver[gamenum].fps;
+	emulation_rate = buffer_len * driver[gamenum].fps;
+	
 	sample_pos = 0;
 	/* allocate the buffer */
 	if ((buffer = (unsigned char*)malloc(buffer_len)) == 0)
 		return 1;
 	memset(buffer, 0x80, buffer_len);
-	stream2 = play_audio_stream(buffer_len, 8, FALSE, emulation_rate, config.mainvol, 128); //450  13500
+	stream2 = play_audio_stream(buffer_len, 8, FALSE, emulation_rate, config.pokeyvol, 128); //450  13500
 	/* reset the 5220 */
 	tms5220_reset();
 	tms5220_set_irq(iinterface->irq);
 
 	/* request a sound channel */
 	//channel = get_play_channels (1);
+
+	wrlog("TMS 5250 Init completed");
+
 	channel = 1;
 	return 0;
 }
@@ -161,23 +158,13 @@ static void tms5220_update(int force)
 {
 	int totcycles, leftcycles, newpos;
 
-	/* determine the new buffer positon */
-	if (gamenum == MHAVOCRV)
-	{
-		totcycles = 25000;
-		leftcycles = gammaticks;
-	}
-	else {
-		//This was for the Star Wars Mame Hack
-		totcycles = 0;// cpu_getfperiod();
-		leftcycles = 0;// cpu_getfcount();
-	}
-	newpos = buffer_len * (totcycles - leftcycles) / totcycles;
-	/* if we need more than MIN_SLICE samples, or if we're not yet talking, generate them now */
-	if (newpos > buffer_len)
-		newpos = buffer_len;
+	//newpos = cpu_scale_by_cycles(buffer_len, intfa->clock);
+	newpos = cpu_scale_by_cycles(buffer_len);
+	//WRLOG("NEW Pokey Position here is %d", newpos);
 	if (newpos - sample_pos < MIN_SLICE && !force)
 		return;
 	tms5220_process(buffer + sample_pos, newpos - sample_pos);
+
 	sample_pos = newpos;
+	
 }

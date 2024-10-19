@@ -1,18 +1,81 @@
 #ifndef GAMESAMP_H
 #define GAMESAMP_H
 
-static const char* noise_samples[] = { "aae.zip","key.wav","error.wav","hiss.wav","psnoise.wav","flyback.wav",0 };
+static const char* noise_samples[] = { 
+	"aae.zip",
+	"key.wav",
+	"error.wav",
+	"hiss.wav",
+	"psnoise.wav",
+	"flyback.wav",
+	 0 };
 
-static const char* nosamples[] = { "nosamples.zip","test.zip","one.zip",0 };
+
+static const char* nosamples[] = { 
+	"nosamples.zip",
+	"test.zip",
+	"one.zip",
+	 0 };
+
 //static const char *guisamples[]={"aae.zip","error.wav","hiss.wav","psnoise.wav","flyback.wav","opening.wav","key.wav","idle.wav","explode1.wav","fire.wav",0};
-static const char* guisamples[] = { "aae.zip","error.wav","opening.wav","key.wav","idle.wav","explode1.wav","fire.wav", 0 };
-static const char* asteroidsamples[] = { "asteroid.zip","fire.wav","sfire.wav","thrust.wav","explode1.wav","explode2.wav",
-"explode3.wav","thumphi.wav","thumplo.wav","ssaucer.wav","lsaucer.wav","life.wav",0 };
-static const char* deluxesamples[] = { "astdelux.zip","thrust.wav","explode1.wav","explode2.wav","explode3.wav",0 };
-static const char* bzonesamples[] = { "bzone.zip","fire1.wav","fire2.wav","engine1.wav","engine2.wav","explode1.wav","explode2.wav",0 };
+static const char* guisamples[] = { 
+	"aae.zip",
+	"error.wav",
+	"opening.wav",
+	"key.wav",
+	"idle.wav",
+	"explode1.wav",
+	"fire.wav",
+	 0 };
 
-static const char* redbaron_samples[] = { "redbaron.zip","explode.wav","shot.wav","spin.wav",0 };
-static const char* llander_samples[] = { "llander.zip","lthrust.wav","beep.wav","lexplode.wav","lander6k.wav",0 };
+static const char* asteroidsamples[] = { 
+	"asteroid.zip",
+	"fire.wav",
+	"sfire.wav",
+	"thrust.wav",
+	"explode1.wav",
+	"explode2.wav",
+	"explode3.wav",
+	"thumphi.wav",
+	"thumplo.wav",
+	"ssaucer.wav",
+	"lsaucer.wav",
+	"life.wav",
+	 0 };
+
+static const char* deluxesamples[] = { 
+	"astdelux.zip",
+	"thrust.wav",
+	"explode1.wav",
+	"explode2.wav",
+	"explode3.wav",
+	 0 };
+
+static const char* bzonesamples[] = { 
+	"bzone.zip",
+	"fire1.wav",
+	"fire2.wav",
+	"engine1.wav",
+	"engine2.wav",
+	"explode1.wav",
+	"explode2.wav",
+	 0 };
+
+static const char* redbaron_samples[] = { 
+	"redbaron.zip",
+	"explode.wav",
+	"shot.wav",
+	"spin.wav",
+	 0 };
+
+static const char* llander_samples[] = { 
+	"llander.zip",
+	"lthrust.wav",
+	"beep.wav",
+	"lexplode.wav",
+	"lander6k.wav",
+	 0 };
+
 static const char* zektor_samples[] = {
 	"zektor.zip",
 	"zk01.wav",  /* 1 */
@@ -49,7 +112,7 @@ static const char* zektor_samples[] = {
 	"ping.wav",   /* PING */
 	"cityfly.wav",/* City fly by */
 	"rrings.wav", /* Rotation Rings */
-	  0
+	 0
 };
 
 static const char* tacscan_samples[] =
@@ -78,7 +141,7 @@ static const char* tacscan_samples[] =
 	"warp.wav",
 	"credit.wav",
 	"1up.wav",
-	0
+	 0
 };
 
 static const char* startrek_samples[] =
@@ -135,8 +198,7 @@ static const char* startrek_samples[] =
 	"trek26.wav",
 	"trek27.wav",
 	"trek28.wav",
-	0
-};
+	 0};
 
 static const char* elim_samples[] = {
 	"elim2p.zip",
@@ -152,8 +214,7 @@ static const char* elim_samples[] = {
 	"elim10.wav", // 28 med explosion
 	"elim11.wav", // 29 big explosion
 	"elim12.wav", // 29 big explosion
-	0
-};
+	 0};
 
 static const char* spacfury_samples[] = {
 	"spacfury.zip",
@@ -188,38 +249,110 @@ static const char* spacfury_samples[] = {
 	"sfury8.wav",
 	"sfury9.wav",
 	"sfury10.wav",
-	0
-};
+	 0};
 
 //
 // Cinematronics Games. Sample definitions from M.A.M.E. (TM)
 //
 
-static const char* ripoff_samples[] =
-{ "ripoff.zip","efire.wav","eattack.wav","bonuslvl.wav","explosn.wav","shipfire.wav","bg1.wav","bg2.wav",
- "bg3.wav","bg4.wav","bg5.wav","bg6.wav","bg7.wav","bg8.wav",0 };
-static const char* armora_samples[] =
-{ "armora.zip","loexp.wav","jeepfire.wav","hiexp.wav","tankfire.wav","tankeng.wav","beep.wav","chopper.wav",0 };
-static const char* starcas_samples[] =
-{ "starcas.zip","lexplode.wav","sexplode.wav","cfire.wav","pfire.wav","drone.wav","shield.wav","star.wav","thrust.wav",0 };
-static const char* solarq_samples[] =
-{ "solarq.zip","bigexpl.wav","smexpl.wav","lthrust.wav","slaser.wav","pickup.wav","nuke1.wav","nuke2.wav","hypersp.wav",
- "extra.wav","phase.wav","efire.wav",0 };
-static const char* spacewar_samples[] =
-{ "spacewar.zip","explode1.wav","fire1.wav","idle.wav","thrust1.wav","thrust2.wav","pop.wav","explode2.wav","fire2.wav",0 };
-static const char* warrior_samples[] =
-{ "warrior.zip","appear.wav","bgmhum1.wav","bgmhum2.wav","fall.wav","killed.wav",0 };
-static const char* tailg_samples[] =
-{ "tailg.zip","hypersp.wav","sexplode.wav","slaser.wav","shield.wav","bounce.wav","thrust1.wav",0 };
-static const char* barrier_samples[] =
-{ "barrier.zip","playrdie.wav","playmove.wav","enemmove.wav",0 };
+static const char* ripoff_samples[] = { 
+	"ripoff.zip",
+	"efire.wav",
+	"eattack.wav",
+	"bonuslvl.wav",
+	"explosn.wav",
+	"shipfire.wav",
+	"bg1.wav",
+	"bg2.wav", 
+	"bg3.wav",
+	"bg4.wav",
+	"bg5.wav",
+	"bg6.wav",
+	"bg7.wav",
+	"bg8.wav",
+	 0 };
+
+static const char* armora_samples[] = { 
+	"armora.zip",
+	"loexp.wav",
+	"jeepfire.wav",
+	"hiexp.wav",
+	"tankfire.wav",
+	"tankeng.wav",
+	"beep.wav",
+	"chopper.wav",
+	 0 };
+
+static const char* starcas_samples[] = { 
+	"starcas.zip",
+	"lexplode.wav",
+	"sexplode.wav",
+	"cfire.wav",
+	"pfire.wav",
+	"drone.wav",
+	"shield.wav",
+	"star.wav",
+	"thrust.wav",
+	 0 };
+
+static const char* solarq_samples[] = { 
+	"solarq.zip",
+	"bigexpl.wav",
+	"smexpl.wav",
+	"lthrust.wav",
+	"slaser.wav",
+	"pickup.wav",
+	"nuke1.wav",
+	"nuke2.wav",
+	"hypersp.wav",
+	"extra.wav",
+	"phase.wav",
+	"efire.wav",
+	0 };
+
+static const char* spacewar_samples[] = { 
+	"spacewar.zip",
+	"explode1.wav",
+	"fire1.wav",
+	"idle.wav",
+	"thrust1.wav",
+	"thrust2.wav",
+	"pop.wav",
+	"explode2.wav",
+	"fire2.wav",
+	 0 };
+
+static const char* warrior_samples[] = { 
+	"warrior.zip",
+	"appear.wav",
+	"bgmhum1.wav",
+	"bgmhum2.wav",
+	"fall.wav",
+	"killed.wav",
+	 0 };
+
+static const char* tailg_samples[] = { 
+	"tailg.zip",
+	"hypersp.wav",
+	"sexplode.wav",
+	"slaser.wav",
+	"shield.wav",
+	"bounce.wav",
+	"thrust1.wav",
+	 0 };
+
+static const char* barrier_samples[] = { 
+	"barrier.zip",
+	"playrdie.wav",
+	"playmove.wav",
+	"enemmove.wav",
+	 0 };
 
 /*************************************
  *
  *  War of the Worlds (B&W) + Color
  *
  *************************************/
-
 static const char* wotw_samples[] =
 {
 	"wotw.zip",
@@ -231,7 +364,7 @@ static const char* wotw_samples[] =
 	"lexplode.wav",
 	"sexplode.wav",
 	"pfire.wav",
-	NULL
+	 0
 };
 
 /*************************************
@@ -255,7 +388,7 @@ static const char* boxingb_samples[] =
 	"cannon.wav",
 	"bounce.wav",
 	"bell.wav",
-	NULL
+	 0
 };
 
 /*************************************
@@ -273,14 +406,28 @@ static const char* starhawk_samples[] =
 	"k.wav",
 	"master.wav",
 	"kexit.wav",
-	NULL
+	 0
 };
 
-static const char* speedfrk_samples[] =
-{ "starhawk.zip","explode.wav","rlaser.wav","llaser.wav","k.wav","master.wav","kexit.wav",0 };
+static const char* speedfrk_samples[] = { 
+	"starhawk.zip",
+	"explode.wav",
+	"rlaser.wav",
+	"llaser.wav",
+	"k.wav",
+	"master.wav",
+	"kexit.wav",
+	 0 };
 
-static const char* demon_samples[] =
-{ "starhawk.zip","explode.wav","rlaser.wav","llaser.wav","k.wav","master.wav","kexit.wav",0 };
+static const char* demon_samples[] = { 
+	"starhawk.zip",
+	"explode.wav",
+	"rlaser.wav",
+	"llaser.wav",
+	"k.wav",
+	"master.wav",
+	"kexit.wav",
+	 0 };
 
 /*************************************
  *
@@ -297,11 +444,34 @@ static const char* sundance_samples[] =
 	"ping1.wav",
 	"ping2.wav",
 	"hatch.wav",
-	0
+	 0
 };
 
-static const char* omega_samples[] = { "omegrace.zip","0.wav","1.wav","2.wav","3.wav","4.wav","5.wav","6.wav","7.wav","8.wav","9.wav","a.wav","b.wav","c.wav","d.wav","e.wav","f.wav",
-							   "10.wav","11.wav","12.wav","13.wav","14.wav","15.wav","16.wav",
-							   0 };
+static const char* omega_samples[] = { 
+	"omegrace.zip",
+	"0.wav",
+	"1.wav",
+	"2.wav",
+	"3.wav",
+	"4.wav",
+	"5.wav",
+	"6.wav",
+	"7.wav",
+	"8.wav",
+	"9.wav",
+	"a.wav",
+	"b.wav",
+	"c.wav",
+	"d.wav",
+	"e.wav",
+	"f.wav",
+	"10.wav",
+	"11.wav",
+	"12.wav",
+	"13.wav",
+	"14.wav",
+	"15.wav",
+	"16.wav",
+	 0 };
 
 #endif

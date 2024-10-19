@@ -1,3 +1,16 @@
+//= ========================================================================== =
+// AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME 
+// code, 0.29 through .90 mixed with code of my own. This emulator was 
+// created solely for my amusement and learning and is provided only 
+// as an archival experience. 
+// 
+// All MAME code used and abused in this emulator remains the copyright 
+// of the dedicated people who spend countless hours creating it. All
+// MAME code should be annotated as belonging to the MAME TEAM.
+// 
+// SOME CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.  
+//============================================================================
+
 #include "aae_mame_driver.h"
 #include "allegro.h"
 
@@ -20,7 +33,7 @@ float bezelzoom;
 int bezelx;
 int bezely;
 float overalpha;
-struct game_rect GameRect;
+//struct game_rect GameRect;
 
 //GLOBAL AUDIO VARIABLES
 int gammaticks; //Needed for Pokey Sound for Major Havoc
@@ -61,10 +74,7 @@ int WATCHDOG;
 //int key_set_flag;
 int total_length;
 
-//CPU Contexts
-CONTEXTM6502* c6502[MAX_CPU];
-CONTEXTMZ80 cMZ80[MAX_CPU];
-struct S68000CONTEXT c68k[MAX_CPU];
+
 
 settings config;
 int index;	/* avoid a common "shadows global declaration" warning in the DOS build */

@@ -24,46 +24,26 @@
 #include "aae_mame_driver.h"
 #include <mmsystem.h>
 #include "allglint.h"
-#include "sys_video/fonts.h"
+#include "fonts.h"
 #include "gui/gui.h"
 #include "gui/animation.h"
+#include "gamedriver.h"
 #include "rand.h"
-#include "drivers/asteroid.h"
-#include "drivers/spacduel.h"
-#include "drivers/SegaG80.h"
-#include "drivers/mhavoc.h"
-#include "drivers/tempest.h"
-#include "drivers/bzone.h"
-//#include "drivers/starwars.h"
-#include "drivers/cinemat.h"
-#include "drivers/omegrace.h"
-#include "drivers/quantum.h"
-#include "drivers/llander.h"
-#include "sys_video/glcode.h"
-#include "gameroms.h"
-#include "gamekeys.h"
-#include "gamesamp.h"
-#include "gameart.h"
-#include "sndhrdw/samples.h"
+#include "glcode.h"
+#include "samples.h"
 #include "menu.h"
-#include "vidhrdwr/aae_avg.h"
+#include "aae_avg.h"
 #include "fpsclass.h"
-#include "vidhrdwr/vector.h"
-#include "machine/earom.h"
+#include "vector.h"
 #include "os_input.h"
+#include "timer.h"
 
 //TEST VARIABLES
-static int m_currentx;
-static int m_currenty;
 static int res_reset;
-
 static int x_override;
 static int y_override;
 static int win_override = 0;
 
-TOGGLEKEYS g_StartupToggleKeys = { sizeof(TOGGLEKEYS), 0 };
-FILTERKEYS g_StartupFilterKeys = { sizeof(FILTERKEYS), 0 };
-STICKYKEYS g_StartupStickyKeys = { sizeof(STICKYKEYS), 0 };
 
 int previous_game = 0;
 int hiscoreloaded;
@@ -105,1112 +85,6 @@ void close_button_handler(void)
 	close_button_pressed = TRUE;
 }
 END_OF_FUNCTION(close_button_handler)
-
-struct AAEDriver driver[] =
-{
-		{
-		"aae", "AAE GUI",  rom_asterock,
-		&init_gui,0,&run_gui, &end_gui,
-		input_ports_gui,
-		guisamples, noart,
-		{CPU_NONE,CPU_NONE,CPU_NONE,CPU_NONE},
-		{0,0,0,0},
-		{0,0,0,0},
-		{0,0,0,0},
-		{0,0,0,0},
-		{0,0,0,0},
-		60, VEC_COLOR,0,
-		{0,1024,0,812},
-		asteroid_load_hi, asteroid_save_hi,
-		0x4000, 0x800,0
-		},
-
-		{
-		"asteroi1", "Asteroids (Revision 1)", rom_asteroi1,
-		&init_asteroid,0,&run_asteroids,&end_asteroids,
-		input_ports_asteroid,
-		asteroidsamples,asteroidsart,
-		{CPU_6502Z,CPU_NONE,CPU_NONE,CPU_NONE},
-		{1512000,0,0,0},
-		{4,0,0,0},
-		{1,0,0,0},
-		{INT_TYPE_NMI,0,0,0},
-		{0,0,0,0},
-		60,VEC_BW_16,0,
-		{0,1024,0,812},
-		asteroid_load_hi, asteroid_save_hi,
-		0x4000, 0x800,0
-		},
-		{ "asteroid", "Asteroids (Revision 2)", rom_asteroid
-		,&init_asteroid,0, &run_asteroids,&end_asteroids,
-		input_ports_asteroid,
-		asteroidsamples,asteroidsart,
-		{CPU_6502Z,CPU_NONE,CPU_NONE,CPU_NONE},
-		{1512000,0,0,0},
-		{4,0,0,0},
-		{1,0,0,0},
-		{INT_TYPE_NMI,0,0,0},
-		{0,0,0,0},
-		60,VEC_BW_16,0,
-		{0,1024,0,812},
-		asteroid_load_hi, asteroid_save_hi,
-		0x4000, 0x800,0
-		},
-		{
-		"astdelu1", "Asteroids Deluxe (Revision 1)", rom_astdelu1,
-		&init_astdelux,0, &run_asteroids,&end_astdelux,
-		input_ports_astdelux,
-		deluxesamples, astdelu1art,
-		{CPU_6502Z,CPU_NONE,CPU_NONE,CPU_NONE},
-		{1512000,0,0,0},
-		{4,0,0,0},
-		{1,0,0,0},
-		{INT_TYPE_NMI,0,0,0},
-		{0,0,0,0},
-		60,VEC_BW_16,0,
-		{0,1024,0,812},
-		0, 0,
-		0x4000, 0x800,
-		atari_vg_earom_handler
-		},
-		{
-		"astdelu2", "Asteroids Deluxe (Revision 2)", rom_astdelu2,
-		&init_astdelux,0, &run_asteroids,&end_astdelux,
-		input_ports_astdelux,
-		deluxesamples, astdeluxart,
-		{CPU_6502Z,CPU_NONE,CPU_NONE,CPU_NONE},
-		{1512000,0,0,0},
-		{4,0,0,0},
-		{1,0,0,0},
-		{INT_TYPE_NMI,0,0,0},
-		{0,0,0,0},
-		60,VEC_BW_16,0,
-		{0,1024,0,812},
-		0, 0,
-		0x4000, 0x800,
-		atari_vg_earom_handler
-		},
-		{
-		"astdelux", "Asteroids Deluxe (Revision 3)", rom_astdelux,
-		&init_astdelux,0, &run_asteroids,&end_astdelux,
-		input_ports_astdelux,
-		deluxesamples, astdeluxart,
-		{CPU_6502Z,CPU_NONE,CPU_NONE,CPU_NONE},
-		{1512000,0,0,0},
-		{4,0,0,0},
-		{1,0,0,0},
-		{INT_TYPE_NMI,0,0,0},
-		{0,0,0,0},
-		60,VEC_BW_16,0,
-		{0,1024,0,812},
-		0, 0,
-		0x4000, 0x800,
-		atari_vg_earom_handler
-		},
-
-		{
-		"meteorts", "Meteorites (Asteroids Bootleg)", rom_meteorts,
-		&init_asteroid,0,&run_asteroids,&end_asteroids,
-		input_ports_asteroid,
-		asteroidsamples, asteroidsart,
-		{CPU_6502Z,CPU_NONE,CPU_NONE,CPU_NONE},
-		{1512000,0,0,0},
-		{4,0,0,0},
-		{1,0,0,0},
-		{INT_TYPE_NMI,0,0,0},
-		{0,0,0,0},
-		60,VEC_BW_16 ,0,
-		{0,1024,0,812},
-		asteroid_load_hi, asteroid_save_hi,
-		0x4000, 0x800,0
-		},
-		{
-		"asterock", "Asterock (Asteroids Bootleg)", rom_asterock,
-		&init_asteroid,0,&run_asteroids, &end_asteroids,
-		input_ports_asteroid,
-		asteroidsamples, asteroidsart,
-		{CPU_6502Z,CPU_NONE,CPU_NONE,CPU_NONE},
-		{1512000,0,0,0},
-		{4,0,0,0},
-		{1,0,0,0},
-		{INT_TYPE_NMI,0,0,0},
-		{0,0,0,0},
-		60,VEC_BW_16,0,
-		{0,1024,0,812},
-		asteroid_load_hi, asteroid_save_hi,
-		0x4000, 0x800,0
-		},
-		{
-		"asteroib", "Asteroids (Bootleg on Lunar Lander Hardware)",  rom_asteroib,
-		&init_asteroid,0,&run_asteroids,&end_asteroids,
-		input_ports_asteroid,
-		asteroidsamples,asteroidsart,
-		{CPU_6502Z,CPU_NONE,CPU_NONE,CPU_NONE},
-		{1512000,0,0,0},
-		{4,0,0,0},
-		{1,0,0,0},
-		{INT_TYPE_NMI,0,0,0},
-		{0,0,0,0},
-		60,VEC_BW_16,0,
-		{0,1024,0,812},
-		asteroid_load_hi, asteroid_save_hi,
-		0x4000, 0x800,0
-		},
-		{
-		"llander1", "Lunar Lander (Revision 1)", rom_llander,
-		&init_llander,0, &run_llander,&end_llander,
-		input_ports_llander,
-		llander_samples, noart,
-		{CPU_6502,CPU_NONE,CPU_NONE,CPU_NONE},
-		{1512000,0,0,0},
-		{6,0,0,0},
-		{1,0,0,0},
-		{INT_TYPE_NMI,0,0,0},
-		{0,0,0,0},
-		40,VEC_BW_16,0,
-		{0,1024,0,812},
-		0,0,
-		0x4000, 0x800,0
-		},
-		{
-		"llander", "Lunar Lander (Revision 2)", rom_llander,
-		&init_llander,0,&run_llander,&end_llander,
-		input_ports_llander,
-		llander_samples, noart,
-		{CPU_6502,CPU_NONE,CPU_NONE,CPU_NONE},
-		{1512000,0,0,0},
-		{6,0,0,0},
-		{1,0,0,0},
-		{INT_TYPE_NMI,0,0,0},
-		{0,0,0,0},
-		40,VEC_BW_16,0,
-		{0,1024,0,812},
-		0,0,
-		0x4000, 0x800,0
-		},
-	   {
-		"omegrace", "Omega Race", rom_omegrace,
-		&init_omega,0,&run_omega, &end_omega,
-		input_ports_omegrace,
-		omega_samples,omegarace_art,
-		{CPU_MZ80,CPU_MZ80,CPU_NONE,CPU_NONE},
-		{3020000,1512000,0,0},
-		{25,25,0,0},
-		{4,4,0,0},
-		{INT_TYPE_INT,0,0,0},
-		{0,0,0,0},
-		40,VEC_BW_16,0,
-		{0,1024,0,812}
-		},
-		{
-		"deltrace", "Delta Race (Omega Race Bootleg)", rom_deltrace,
-		&init_omega,0,&run_omega, &end_omega,
-		input_ports_omegrace,
-		omega_samples,omegarace_art,
-		{CPU_MZ80,CPU_MZ80,CPU_NONE,CPU_NONE},
-		{3020000,1512000,0,0},
-		{25,25,0,0},
-		{4,4,0,0},
-		{INT_TYPE_INT,0,0,0},
-		{0,0,0,0},
-		40,VEC_BW_16,0,
-		{0,1024,0,812}
-		},
-		{
-		"bzone", "Battlezone (Revision 1)", rom_bzone,
-		&init_bzone,0,&run_bzone, &end_bzone,
-		input_ports_bzone,
-		bzonesamples, bzoneart,
-		{CPU_6502Z,CPU_NONE,CPU_NONE,CPU_NONE},
-		{1512000,0,0,0},
-		{189,0,0,0},
-		{31,0,0,0},
-		{INT_TYPE_NMI,0,0,0},
-		{0,0,0,0},
-		40 ,VEC_BW_16,0,
-		{0,1024,0,812},
-		0, 0,
-		0x2000, 0x1000,
-		atari_vg_earom_handler
-		},
-		{
-		"bzone2", "Battlezone (Revision 2)", rom_bzone2,
-		&init_bzone,0,&run_bzone, &end_bzone,
-		input_ports_bzone,
-		bzonesamples, bzoneart,
-		{CPU_6502Z,CPU_NONE,CPU_NONE,CPU_NONE},
-		{1512000,0,0,0},
-		{189,0,0,0},
-		{31,0,0,0},
-		{INT_TYPE_NMI,0,0,0},
-		{0,0,0,0},
-		40 ,VEC_BW_16,0,
-		{0,1024,0,812},
-		0, 0,
-		0x2000, 0x1000,
-		atari_vg_earom_handler
-		},
-		{
-		"bzonec", "Battlezone Cocktail Proto", rom_bzonec,
-		&init_bzone,0,&run_bzone, &end_bzone,
-		input_ports_bzone,
-		bzonesamples, bzoneart,
-		{CPU_6502Z,CPU_NONE,CPU_NONE,CPU_NONE},
-		{1512000,0,0,0},
-		{189,0,0,0},
-		{31,0,0,0},
-		{INT_TYPE_NMI,0,0,0},
-		{0,0,0,0},
-		40 ,VEC_BW_16,0,
-		{0,1024,0,812},
-		0, 0,
-		0x2000, 0x1000,
-		atari_vg_earom_handler
-		},
-		{
-		"bzonep", "Battlezone Plus (Clay Cowgill)", rom_bzonep,
-		&init_bzone,0,&run_bzone, &end_bzone,
-		input_ports_bzone,
-		bzonesamples, bzoneart,
-		{CPU_6502Z,CPU_NONE,CPU_NONE,CPU_NONE},
-		{1512000,0,0,0},
-		{189,0,0,0},
-		{31,0,0,0},
-		{INT_TYPE_NMI,0,0,0},
-		{0,0,0,0},
-		40 ,VEC_BW_16,0,
-		{0,1024,0,812},
-		0, 0,
-		0x2000, 0x1000,
-		atari_vg_earom_handler
-		},
-		{
-		"redbaron", "Red Baron", rom_redbaron,
-		&init_bzone,0,&run_bzone, &end_bzone,
-		input_ports_redbaron,
-		redbaron_samples, redbaronart,
-		{CPU_6502Z,CPU_NONE,CPU_NONE,CPU_NONE},
-		{1512000,0,0,0},
-		{41,0,0,0},
-		{10,0,0,0},
-		{INT_TYPE_NMI,0,0,0},
-		{0,0,0,0},
-		60,VEC_BW_16,0,
-		{0,1024,0,812},
-		0, 0,
-		0x2000, 0x1000,
-		atari_vg_earom_handler
-		},
-		{
-		"bradley", "Bradley Trainer", rom_bradley,
-		&init_bzone,0,&run_bzone, &end_bzone,
-		input_ports_bzone,
-		bzonesamples, noart,
-		{CPU_6502Z,CPU_NONE,CPU_NONE,CPU_NONE},
-		{1512000,0,0,0},
-		{189,0,0,0},
-		{31,0,0,0},
-		{INT_TYPE_NMI,0,0,0},
-		{0,0,0,0},
-		40 ,VEC_BW_16,0,
-		{0,1024,0,812},
-		0, 0,
-		0x2000, 0x1000,
-		atari_vg_earom_handler
-		},
-		{
-		"spacduel", "Space Duel", rom_spacduel,
-		&init_spacduel,0,&run_spacduel,&end_spacduel,//&set_sd
-		input_ports_spacduel,
-		nosamples, noart,
-		{CPU_6502Z,CPU_NONE,CPU_NONE,CPU_NONE},
-		{1512000,0,0,0},
-		{168,0,0,0},
-		{31,0,0,0},
-		{INT_TYPE_INT,0,0,0},
-		{0,0,0,0},
-		45,VEC_COLOR,0,
-		{0,1024,0,812},
-		0, 0,
-		0x2000, 0x800,
-		atari_vg_earom_handler
-		},
-		{
-		"bwidow",   "Black Widow", rom_bwidow,
-		&init_spacduel,0,&run_spacduel,&end_spacduel,
-		input_ports_bwidow,
-		nosamples, noart,
-		{CPU_6502Z,CPU_NONE,CPU_NONE,CPU_NONE},
-		{1512000,0,0,0},
-		{41,0,0,0},
-		{10,0,0,0},
-		{INT_TYPE_INT,0,0,0},
-		{0,0,0,0},
-		60,VEC_COLOR,0,
-		{0,1024,0,812},
-		0, 0,
-		0x2000, 0x800,
-		atari_vg_earom_handler
-		},
-		{
-		"gravitar", "Gravitar (Revision 3)", rom_gravitar,
-		&init_spacduel,0,&run_spacduel,&end_spacduel,
-		input_ports_gravitar,
-		nosamples, noart,
-		{CPU_6502Z,CPU_NONE,CPU_NONE,CPU_NONE},
-		{1515000,0,0,0},
-		{41,0,0,0},
-		{10,0,0,0},
-		{INT_TYPE_INT,0,0,0},
-		{0,0,0,0},
-		60,VEC_COLOR,0,
-		{0,1024,0,812},
-		0, 0,
-		0x2000, 0x800,
-		atari_vg_earom_handler
-		},
-		{
-		"gravitr2", "Gravitar (Revision 2)", rom_gravitr2,
-		&init_spacduel,0,&run_spacduel,&end_spacduel,
-		input_ports_gravitar,
-		nosamples, noart,
-		{CPU_6502Z,CPU_NONE,CPU_NONE,CPU_NONE},
-		{1515000,0,0,0},
-		{41,0,0,0},
-		{10,0,0,0},
-		{INT_TYPE_INT,0,0,0},
-		{0,0,0,0},
-		60,VEC_COLOR,0,
-		{0,1024,0,812},
-		0, 0,
-		0x2000, 0x800,
-		atari_vg_earom_handler
-		},
-		{
-		"gravp", "Gravitar (Prototype)", rom_gravp,
-		&init_spacduel,0,&run_spacduel,&end_spacduel,
-		input_ports_gravitar,
-		nosamples, noart,
-		{CPU_6502Z,CPU_NONE,CPU_NONE,CPU_NONE},
-		{1515000,0,0,0},
-		{41,0,0,0},
-		{10,0,0,0},
-		{INT_TYPE_INT,0,0,0},
-		{0,0,0,0},
-		60,VEC_COLOR,0,
-		{0,1024,0,812},
-		0, 0,
-		0x2000, 0x800,
-		atari_vg_earom_handler
-		},
-		{
-		"lunarbat", "Lunar Battle (Prototype, Late)", rom_lunarbat,
-		&init_spacduel,0,&run_spacduel,&end_spacduel,
-		input_ports_gravitar,
-		nosamples, noart,
-		{CPU_6502Z,CPU_NONE,CPU_NONE,CPU_NONE},
-		{1512000,0,0,0},
-		{55,0,0,0},
-		{10,0,0,0},
-		{INT_TYPE_INT,0,0,0},
-		{0,0,0,0},
-		45,VEC_COLOR,0,
-		{0,1024,0,812},
-		0, 0,
-		0x2000, 0x800,
-		atari_vg_earom_handler
-		},
-		{
-		"lunarba1", "Lunar Battle (Prototype, Early)", rom_lunarba1,
-		&init_spacduel,0,&run_spacduel,&end_spacduel,
-		input_ports_gravitar,
-		nosamples, noart,
-		{CPU_6502Z,CPU_NONE,CPU_NONE,CPU_NONE},
-		{1512000,0,0,0},
-		{55,0,0,0},
-		{10,0,0,0},
-		{INT_TYPE_INT,0,0,0},
-		{0,0,0,0},
-		45,VEC_COLOR ,0,
-		{0,1024,0,812},
-		0, 0,
-		0x2000, 0x800,
-		atari_vg_earom_handler
-		},
-
-		{
-		"tempestm", "Tempest Multigame (1999 Clay Cowgill)", rom_tempestm,
-		&init_tempest,&set_tempest_video,&run_tempest,&end_tempest,
-		input_ports_tempest,
-		nosamples, tempestart,
-		{CPU_6502Z,CPU_NONE,CPU_NONE,CPU_NONE},
-		{1512000,0,0,0},
-		{41,0,0,0},
-		{10,0,0,0},
-		{INT_TYPE_INT,0,0,0},
-		{0,0,0,0},
-		60, VEC_COLOR,1,
-		{0,1024,0,812},
-		0, 0,
-		0x2000, 0x1000,
-		atari_vg_earom_handler
-		},
-		{
-		"tempest", "Tempest (Revision 3)", rom_tempest,
-		&init_tempest,&set_tempest_video,&run_tempest,&end_tempest,
-		input_ports_tempest,
-		nosamples, tempestart,
-		{CPU_6502Z,CPU_NONE,CPU_NONE,CPU_NONE},
-		{1515000,0,0,0},
-		{41,0,0,0},
-		{10,0,0,0},
-		{INT_TYPE_INT,0,0,0},
-		{0,0,0,0},
-		60, VEC_COLOR,1,
-		{0,1024,0,812},
-		0, 0,
-		0x2000, 0x1000,
-		atari_vg_earom_handler
-		},
-		{
-		"tempest3", "Tempest (Revision 2B)", rom_tempest3,
-		&init_tempest,&set_tempest_video,&run_tempest,&end_tempest,
-		input_ports_tempest,
-		nosamples, tempestart,
-		{CPU_6502Z,CPU_NONE,CPU_NONE,CPU_NONE},
-		{1512000,0,0,0},
-		{41,0,0,0},
-		{10,0,0,0},
-		{INT_TYPE_INT,0,0,0},
-		{0,0,0,0},
-		60, VEC_COLOR ,1,
-		{0,1024,0,812},
-		0, 0,
-		0x2000, 0x1000,
-		atari_vg_earom_handler
-		},
-		{
-		"tempest2", "Tempest (Revision 2A)", rom_tempest2,
-		&init_tempest,&set_tempest_video,&run_tempest,&end_tempest,
-		input_ports_tempest,
-		nosamples, tempestart,
-		{CPU_6502Z,CPU_NONE,CPU_NONE,CPU_NONE},
-		{1512000,0,0,0},
-		{41,0,0,0},
-		{10,0,0,0},
-		{INT_TYPE_INT,0,0,0},
-		{0,0,0,0},
-		60, VEC_COLOR,1,
-		{0,1024,0,812},
-		0, 0,
-		0x2000, 0x1000,
-		atari_vg_earom_handler
-		},
-		{
-		"tempest1", "Tempest (Revision 1)", rom_tempest1,
-		&init_tempest,&set_tempest_video,&run_tempest,&end_tempest,
-		input_ports_tempest,
-		nosamples, tempestart,
-		{CPU_6502Z,CPU_NONE,CPU_NONE,CPU_NONE},
-		{1512000,0,0,0},
-		{41,0,0,0},
-		{10,0,0,0},
-		{INT_TYPE_INT,0,0,0},
-		{0,0,0,0},
-		60, VEC_COLOR,1,
-		{0,1024,0,812},
-		0, 0,
-		0x2000, 0x1000,
-		atari_vg_earom_handler
-		},
-		{
-		"temptube", "Tempest (Revision 1)", rom_temptube,
-		&init_tempest,&set_tempest_video,&run_tempest,&end_tempest,
-		input_ports_tempest,
-		nosamples, tempestart,
-		{CPU_6502Z,CPU_NONE,CPU_NONE,CPU_NONE},
-		{1512000,0,0,0},
-		{41,0,0,0},
-		{10,0,0,0},
-		{INT_TYPE_INT,0,0,0},
-		{0,0,0,0},
-		60, VEC_COLOR,1,
-		{0,1024,0,812},
-		0, 0,
-		0x2000, 0x1000,
-		atari_vg_earom_handler
-		},
-		{
-		"alienst", "Aliens (Tempest Alpha)", rom_alienst,
-		&init_tempest,&set_tempest_video,&run_tempest,&end_tempest,
-		input_ports_tempest,
-		nosamples, tempestart,
-		{CPU_6502Z,CPU_NONE,CPU_NONE,CPU_NONE},
-		{1512000,0,0,0},
-		{41,0,0,0},
-		{10,0,0,0},
-		{INT_TYPE_INT,0,0,0},
-		{0,0,0,0},
-		60, VEC_COLOR,1,
-		{0,1024,0,812},
-		0, 0,
-		0x2000, 0x1000,
-		atari_vg_earom_handler
-		},
-		{
-		"vbreak", "Vector Breakout (1999 Clay Cowgill)", rom_vbreak,
-		&init_tempest,&set_tempest_video,&run_tempest,&end_tempest,
-		input_ports_tempest,
-		nosamples, tempestart,
-		{CPU_6502Z,CPU_NONE,CPU_NONE,CPU_NONE},
-		{1512000,0,0,0},
-		{41,0,0,0},
-		{10,0,0,0},
-		{INT_TYPE_INT,0,0,0},
-		{0,0,0,0},
-		60, VEC_COLOR,1,
-		{0,1024,0,812},
-		0, 0,
-		0x2000, 0x1000,
-		atari_vg_earom_handler
-		},
-		{
-		"vortex", "Vortex (Tempest Beta)", rom_vortex,
-		&init_tempest,&set_tempest_video,&run_tempest,&end_tempest,
-		input_ports_tempest,
-		nosamples, tempestart,
-		{CPU_6502Z,CPU_NONE,CPU_NONE,CPU_NONE},
-		{1512000,0,0,0},
-		{41,0,0,0},
-		{10,0,0,0},
-		{INT_TYPE_INT,0,0,0},
-		{0,0,0,0},
-		60, VEC_COLOR ,1,
-		{0,1024,0,812},
-		0, 0,
-		0x2000, 0x1000,
-		atari_vg_earom_handler
-		},
-
-		{
-		"zektor", "Zektor", rom_zektor,
-		&init_segag80,0,&run_segag80,&end_segag80,
-		input_ports_zektor,
-		zektor_samples, noart,
-		{CPU_MZ80,CPU_NONE,CPU_NONE,CPU_NONE},
-		{3000000,0,0,0},
-		{1,0,0,0},
-		{1,0,0,0},
-		{INT_TYPE_INT,0,0,0},
-		{sega_interrupt,0,0,0},
-		40, VEC_COLOR,0,
-		{0,1024,0,812}
-		},
-		{
-		"tacscan", "Tac/Scan", rom_tacscan,
-		&init_segag80,0,&run_segag80,&end_segag80,
-		input_ports_tacscan,
-		tacscan_samples, tacscanart,
-		{CPU_MZ80,CPU_NONE,CPU_NONE,CPU_NONE},
-		{3000000,0,0,0},
-		{1,0,0,0},
-		{1,0,0,0},
-		{INT_TYPE_INT,0,0,0},
-		{0,0,0,0},
-		40, VEC_COLOR,1,
-		{0,1024,0,812}
-		},
-		{
-		"startrek", "Star Trek", rom_startrek,
-		&init_segag80,0,&run_segag80,&end_segag80,
-		input_ports_startrek,
-		startrek_samples, startrekart,
-		{ CPU_MZ80,CPU_NONE,CPU_NONE,CPU_NONE},
-		{3000000,0,0,0},
-		{1,0,0,0},
-		{1,0,0,0},
-		{INT_TYPE_INT,0,0,0},
-		{0,0,0,0},
-		40, VEC_COLOR,0,
-		{0,1024,0,812}
-		},
-		{
-		"spacfury", "Space Fury (Revision C)", rom_spacfury,
-		&init_segag80,0,&run_segag80,&end_segag80,
-		input_ports_spacfury,
-		spacfury_samples, spacfuryart,
-		{ CPU_MZ80,CPU_NONE,CPU_NONE,CPU_NONE},
-		{3000000,0,0,0},
-		{1,0,0,0},
-		{1,0,0,0},
-		{INT_TYPE_INT,0,0,0},
-		{0,0,0,0},
-		40, VEC_COLOR ,0,
-		{0,1024,0,812}
-		},
-		{
-		"spacfura", "Space Fury (Revision A)", rom_spacfura,
-		&init_segag80,0,&run_segag80,&end_segag80,
-		input_ports_spacfury,
-		spacfury_samples, spacfuryart,
-		{CPU_MZ80,CPU_NONE,CPU_NONE,CPU_NONE},
-		{3000000,0,0,0},
-		{1,0,0,0},
-		{1,0,0,0},
-		{INT_TYPE_INT,0,0,0},
-		{0,0,0,0},
-		40, VEC_COLOR,0,
-		{0,1024,0,812}
-		},
-		{
-		"spacfurb", "Space Fury (Revision B)", rom_spacfurb,
-		&init_segag80,0,&run_segag80,&end_segag80,
-		input_ports_spacfury,
-		spacfury_samples, spacfuryart,
-		{CPU_MZ80,CPU_NONE,CPU_NONE,CPU_NONE},
-		{3000000,0,0,0},
-		{1,0,0,0},
-		{1,0,0,0},
-		{INT_TYPE_INT,0,0,0},
-		{0,0,0,0},
-		40, VEC_COLOR,0,
-		{0,1024,0,812}
-		},
-		{
-		"elim2", "Eliminator (2 Player Set 1)", rom_elim2,
-		&init_segag80,0,&run_segag80,&end_segag80,
-		input_ports_elim2,
-		elim_samples, noart,
-		{CPU_MZ80,CPU_NONE,CPU_NONE,CPU_NONE},
-		{3000000,0,0,0},
-		{1,0,0,0},
-		{1,0,0,0},
-		{INT_TYPE_INT,0,0,0},
-		{sega_interrupt,0,0,0},
-		40, VEC_COLOR ,0,
-		{0,1024,0,812}
-		},
-		{
-		"elim2a", "Eliminator (2 Player Set 2A)", rom_elim2a,
-		&init_segag80,0,&run_segag80,&end_segag80,
-		input_ports_elim2,
-		elim_samples, noart,
-		{CPU_MZ80,CPU_NONE,CPU_NONE,CPU_NONE},
-		{3000000,0,0,0},
-		{1,0,0,0},
-		{1,0,0,0},
-		{INT_TYPE_INT,0,0,0},
-		{0,0,0,0},
-		40, VEC_COLOR,0,
-		{0,1024,0,812}
-		},
-		{
-		"elim2c", "Eliminator (2 Player Set 2C)", rom_elim2c,
-		&init_segag80,0,&run_segag80,&end_segag80,
-		input_ports_elim2,
-		elim_samples, noart,
-		{CPU_MZ80,CPU_NONE,CPU_NONE,CPU_NONE},
-		{3000000,0,0,0},
-		{1,0,0,0},
-		{1,0,0,0},
-		{INT_TYPE_INT,0,0,0},
-		{0,0,0,0},
-		40, VEC_COLOR ,0,
-		{0,1024,0,812}
-		},
-		{
-		"elim4", "Eliminator (4 Player)", rom_elim4,
-		&init_segag80,0,&run_segag80,&end_segag80,
-		input_ports_elim4,
-		elim_samples, noart,
-		{CPU_MZ80,CPU_NONE,CPU_NONE,CPU_NONE},
-		{3000000,0,0,0},
-		{1,0,0,0},
-		{1,0,0,0},
-		{INT_TYPE_INT,0,0,0},
-		{0,0,0,0},
-		40, VEC_COLOR,0,
-		{0,1024,0,812}
-		},
-		{
-		"elim4p", "Eliminator (4 Player Prototype)", rom_elim4p,
-		&init_segag80,0,&run_segag80,&end_segag80,
-		input_ports_elim4,
-		elim_samples, noart,
-		{ CPU_MZ80,CPU_NONE,CPU_NONE,CPU_NONE},
-		{3000000,0,0,0},
-		{1,0,0,0},
-		{1,0,0,0},
-		{INT_TYPE_INT,0,0,0},
-		{0,0,0,0},
-		40, VEC_COLOR,0,
-		{0,1024,0,812}
-		},
-
-		{
-		"mhavoc", "Major Havoc (Revision 3)", rom_mhavoc,
-		&init_mhavoc,0,&run_mhavoc,&end_mhavoc,
-		input_ports_mhavoc,
-		nosamples, noart,
-		{CPU_NONE,CPU_NONE,CPU_NONE,CPU_NONE},
-		{2500000,1250000,0,0},//1250000//2505000,1260000,
-		{400,400,0,0},
-		{0,0,0,0},
-		{INT_TYPE_NONE,INT_TYPE_NONE,0,0},
-		{0,&mhavoc_interrupt,0,0},
-		50,VEC_COLOR,0,
-		{0,1024,0,812}
-		},
-					{
-		"mhavoc2", "Major Havoc (Revision 2)", rom_mhavoc2,
-		&init_mhavoc,0,&run_mhavoc,&end_mhavoc,
-		input_ports_mhavoc,
-		nosamples, noart,
-		{CPU_NONE,CPU_NONE,CPU_NONE,CPU_NONE},
-		{2500000,1250000,0,0},
-		{400,400,0,0},
-		{31,31,0,0},
-		{INT_TYPE_INT,INT_TYPE_INT,0,0},
-		{0,0,0,0},
-		50,VEC_COLOR,0,
-		{0,1024,0,812}
-		},
-		{
-		"mhavocrv", "Major Havoc (Return To VAX - Mod by Jeff Askey)", rom_mhavocrv,
-		&init_mhavoc,0,&run_mhavoc,&end_mhavoc,
-		input_ports_mhavoc,
-		nosamples, noart,
-		{CPU_NONE,CPU_NONE,CPU_NONE,CPU_NONE},
-		{2500000,1250000,0,0},
-		{400,400,0,0},
-		{31,31,0,0},
-		{INT_TYPE_INT,INT_TYPE_INT,0,0},
-		{0,0,0,0},
-		50,VEC_COLOR,0,
-		{0,1024,0,812}
-		},
-		{
-		"mhavocp", "Major Havoc (Prototype)", rom_mhavocp,
-		&init_mhavoc,0,&run_mhavoc,&end_mhavoc,
-		input_ports_mhavocp,
-		nosamples, noart,
-		{CPU_NONE,CPU_NONE,CPU_NONE,CPU_NONE},
-		{2500000,1250000,0,0},
-		{400,400,0,0},
-		{31,31,0,0},
-		{INT_TYPE_INT,INT_TYPE_INT,0,0},
-		{0,0,0,0},
-		50,VEC_COLOR,0,
-		{0,1024,0,812}
-		},
-		{
-		"alphaone", " Alpha One (Major Havoc Prototype - 3 Lives)", rom_alphaone,
-		&init_mhavoc,0,&run_mhavoc,&end_mhavoc,
-		input_ports_alphaone,
-		nosamples, noart,
-		{CPU_NONE,CPU_NONE,CPU_NONE,CPU_NONE},
-		{2500000,1250000,0,0},
-		{400,400,0,0},
-		{31,31,0,0},
-		{INT_TYPE_INT,INT_TYPE_INT,0,0},
-		{0,0,0,0},
-		50,VEC_COLOR,0,
-		{0,1024,0,812}
-		},
-		{
-		"alphaona", " Alpha One (Major Havoc Prototype - 5 Lives)", rom_alphaona,
-		&init_mhavoc,0,&run_mhavoc,&end_mhavoc,
-		input_ports_alphaone,
-		nosamples, noart,
-		{CPU_NONE,CPU_NONE,CPU_NONE,CPU_NONE},
-		{2500000,1250000,0,0},
-		{400,400,0,0},
-		{31,31,0,0},
-		{INT_TYPE_INT,INT_TYPE_INT,0,0},
-		{0,0,0,0},
-		50,VEC_COLOR,0,
-		{0,1024,0,812}
-		},
-
-	///////////////////////////////////////CINEMATRONICS////////////////////////////////////////////////
-
-		{
-		"solarq", "Solar Quest", rom_solarq,
-		&init_cinemat,0,&run_cinemat, &end_cinemat,
-		input_ports_solarq,
-		solarq_samples, solarq_art,
-		{CPU_CCPU,CPU_NONE,CPU_NONE,CPU_NONE},
-		{4980750,0,0,0},
-		{1,0,0,0},
-		{1,0,0,0},
-		{0,0,0,0},
-		{0,0,0,0},
-		38 ,VEC_BW_64,0,
-		{0,1024,0,812}
-		},
-		{
-		"starcas", "Star Castle", rom_starcas,
-		&init_cinemat,0,&run_cinemat, &end_cinemat,
-		input_ports_starcas,
-		starcas_samples, starcas_art,
-		{CPU_CCPU,CPU_NONE,CPU_NONE,CPU_NONE},
-		{4980750,0,0,0},
-		{1,0,0,0},
-		{1,0,0,0},
-		{0,0,0,0},
-		{0,0,0,0},
-		38 ,VEC_BW_64,0,
-		{0,1024,0,812}
-		},
-		{
-		"ripoff", "RipOff", rom_ripoff,
-		&init_cinemat,0,&run_cinemat, &end_cinemat,
-		input_ports_ripoff,
-		ripoff_samples, ripoff_art,
-		{CPU_CCPU,CPU_NONE,CPU_NONE,CPU_NONE},
-		{4980750,0,0,0},
-		{1,0,0,0},
-		{1,0,0,0},
-		{0,0,0,0},
-		{0,0,0,0},
-		38 ,VEC_BW_64,0,
-		{0,1024,0,812}
-		},
-		{
-		"armora", "Armor Attack", rom_armora,
-		&init_cinemat,0,&run_cinemat, &end_cinemat,
-		input_ports_armora,
-		armora_samples, armora_art,
-		{CPU_CCPU,CPU_NONE,CPU_NONE,CPU_NONE},
-		{4980750,0,0,0},
-		{1,0,0,0},
-		{1,0,0,0},
-		{0,0,0,0},
-		{0,0,0,0},
-		38 ,VEC_BW_64,2,
-		{0,1024,0,812}
-		},
-		{
-		"barrier", "Barrier", rom_barrier,
-		&init_cinemat,0,&run_cinemat, &end_cinemat,
-		input_ports_barrier,
-		barrier_samples, barrier_art,
-		{CPU_CCPU,CPU_NONE,CPU_NONE,CPU_NONE},
-		{4980750,0,0,0},
-		{1,0,0,0},
-		{1,0,0,0},
-		{0,0,0,0},
-		{0,0,0,0},
-		38 ,VEC_BW_64,0,
-		{0,1024,0,812}
-		},
-		{
-		"sundance", "Sundance", rom_sundance,
-		&init_cinemat,0,&run_cinemat, &end_cinemat,
-		input_ports_sundance,
-		sundance_samples, sundance_art,
-		{CPU_CCPU,CPU_NONE,CPU_NONE,CPU_NONE},
-		{4980750,0,0,0},
-		{1,0,0,0},
-		{1,0,0,0},
-		{0,0,0,0},
-		{0,0,0,0},
-		38 ,VEC_BW_64,1,
-		{0,1024,0,812}
-		},
-		{
-		"warrior", "Warrior", rom_warrior,
-		&init_cinemat,0,&run_cinemat, &end_cinemat,
-		input_ports_warrior,
-		warrior_samples, warrior_art,
-		{CPU_CCPU,CPU_NONE,CPU_NONE,CPU_NONE},
-		{4980750,0,0,0},
-		{1,0,0,0},
-		{1,0,0,0},
-		{0,0,0,0},
-		{0,0,0,0},
-		38 ,VEC_BW_64,0,
-		{0,1024,0,812}
-		},
-		{
-		"tailg", "TailGunner", rom_tailg,
-		&init_cinemat,0,&run_cinemat, &end_cinemat,
-		input_ports_tailg,
-		tailg_samples, tailg_art,
-		{CPU_CCPU,CPU_NONE,CPU_NONE,CPU_NONE},
-		{4980750,0,0,0},
-		{1,0,0,0},
-		{1,0,0,0},
-		{0,0,0,0},
-		{0,0,0,0},
-		38 ,VEC_BW_64,0,
-		{0,1024,0,812}
-		},
-		{
-		"starhawk", "StarHawk", rom_starhawk,
-		&init_cinemat,0,&run_cinemat, &end_cinemat,
-		input_ports_starhawk,
-		starhawk_samples, starhawk_art,
-		{CPU_CCPU,CPU_NONE,CPU_NONE,CPU_NONE},
-		{4980750,0,0,0},
-		{1,0,0,0},
-		{1,0,0,0},
-		{0,0,0,0},
-		{0,0,0,0},
-		38 ,VEC_BW_64,0,
-		{0,1024,0,812}
-		},
-		{
-		"spacewar", "SpaceWar", rom_spacewar,
-		&init_cinemat,0,&run_cinemat, &end_cinemat,
-		input_ports_spacewar,
-		spacewar_samples, spacewar_art,
-		{CPU_CCPU,CPU_NONE,CPU_NONE,CPU_NONE},
-		{4980750,0,0,0},
-		{1,0,0,0},
-		{1,0,0,0},
-		{0,0,0,0},
-		{0,0,0,0},
-		38 ,VEC_BW_64,0,
-		{0,1024,0,812}
-		},
-		{
-		"speedfrk", "Speed Freak", rom_speedfrk,
-		&init_cinemat,0,&run_cinemat, &end_cinemat,
-		input_ports_speedfrk,
-		speedfrk_samples, speedfrk_art,
-		{CPU_CCPU,CPU_NONE,CPU_NONE,CPU_NONE},
-		{4980750,0,0,0},
-		{1,0,0,0},
-		{1,0,0,0},
-		{0,0,0,0},
-		{0,0,0,0},
-		38 ,VEC_BW_64,0,
-		{0,1024,0,812}
-		},
-		{
-		"demon", "Demon", rom_demon,
-		&init_cinemat,0,&run_cinemat, &end_cinemat,
-		input_ports_demon,
-		demon_samples, demon_art,
-		{CPU_CCPU,CPU_NONE,CPU_NONE,CPU_NONE},
-		{4980750,0,0,0},
-		{1,0,0,0},
-		{1,0,0,0},
-		{0,0,0,0},
-		{0,0,0,0},
-		38 ,VEC_BW_64,2,
-		{0,1024,0,812}
-		},
-		{
-		"boxingb", "Boxing Bugs", rom_boxingb,
-		&init_cinemat,0,&run_cinemat,
-		&end_cinemat, input_ports_boxingb,
-		boxingb_samples, noart,
-		{CPU_CCPU,CPU_NONE,CPU_NONE,CPU_NONE},
-		{4980750,0,0,0},
-		{1,0,0,0},
-		{1,0,0,0},
-		{0,0,0,0},
-		{0,0,0,0},
-		38 ,VEC_BW_64,0,
-		{0,1024,0,812}
-		},
-		{
-		"wotw", "War of the Worlds", rom_wotw,
-		&init_cinemat,0,&run_cinemat, &end_cinemat,
-		input_ports_wotw,
-		wotw_samples, noart,
-		{CPU_CCPU,CPU_NONE,CPU_NONE,CPU_NONE},
-		{4980750,0,0,0},
-		{1,0,0,0},
-		{1,0,0,0},
-		{0,0,0,0},
-		{0,0,0,0},
-		38 ,VEC_BW_64,0,
-		{0,1024,0,812}
-		},
-		{
-		"quantum1", "Quantum (Revision 1)", rom_quantum1,
-		&init_quantum,0,&run_quantum, &end_quantum,
-		input_ports_quantum,
-		nosamples,quantumart,
-		{CPU_68000,CPU_NONE,CPU_NONE,CPU_NONE},
-		{6048000,0,0,0},
-		{10,0,0,0},
-		{1,0,0,0},
-		{INT_TYPE_INT,0,0,0},
-		{0,0,0,0},
-		60,VEC_COLOR,1,
-		{0,1024,0,812},
-		0, 0,
-		0x0, 0x2000
-		,0
-		},
-		{
-		"quantum", "Quantum (Revision 2)", rom_quantum,
-		&init_quantum,0,&run_quantum, &end_quantum,
-		input_ports_quantum,
-		nosamples,quantumart,
-		{CPU_68000,CPU_NONE,CPU_NONE,CPU_NONE},
-		{6000000,0,0,0},
-		{126,0,0,0},
-		{31,0,0,0},
-		{INT_TYPE_68K1,0,0,0},
-		{0,0,0,0},
-		60,VEC_COLOR,1,
-		{0,1024,0,812},
-		0, 0,
-		0x0, 0x2000
-		,0
-		},
-		{
-		"quantump", "Quantum (Prototype)", rom_quantump,
-		&init_quantum,0,&run_quantum, &end_quantum,
-		input_ports_quantum,
-		nosamples,quantumart,
-		{CPU_68000,CPU_NONE,CPU_NONE,CPU_NONE},
-		{6048000,0,0,0},
-		{10,0,0,0},
-		{1,0,0,0},
-		{INT_TYPE_INT,0,0,0},
-		{0,0,0,0},
-		60,VEC_COLOR,1,
-		{0,1024,0,812},
-		0, 0,
-		0x0, 0x2000
-		,0
-		},
-	/*
-"starwar1", "Star Wars (Revision 1)", starwar1,
-&init_starwars,0,&run_starwars,&end_starwars,
-starwars_dips,starwars_keys,
-nosamples, noart,
-{CPU_6809,CPU_6809,CPU_NONE,CPU_NONE},
-{2500000,1250000,0,0},
-{400,400,0,0},
-{31,31,0,0},
-{INT_TYPE_INT,INT_TYPE_INT,0,0},
-{0,0,0,0},
-30,VEC_COLOR,0
-},
-{
-"starwars", "Star Wars (Revision 2)", starwars,
-&init_starwars,0,&run_starwars,&end_starwars,
-starwars_dips,starwars_keys,
-nosamples, noart,
-{CPU_6809,CPU_6809,CPU_NONE,CPU_NONE},
-{2500000,1250000,0,0},
-{400,400,0,0},
-{31,31,0,0},
-{INT_TYPE_INT,INT_TYPE_INT,0,0},
-{0,0,0,0},
-30,VEC_COLOR,0
-},
-
-*/
-{ 0,0,0,0,0,0,0,0,0,0}// end of array
-};
 
 //--------------------------------------------------------------------------------------
 // Limit the current thread to one processor (the current one). This ensures that timing code
@@ -1374,7 +248,7 @@ void msg_loop(void)
 {
 	if (osd_key_pressed_memory(OSD_KEY_RESET_MACHINE))
 	{
-		cpu_needs_reset(0);
+		cpu_reset(0);
 	}
 
 	if (osd_key_pressed_memory(OSD_KEY_P))
@@ -1389,9 +263,9 @@ void msg_loop(void)
 		show_fps ^= 1;
 	}
 
-	if (osd_key_pressed_memory(OSD_KEY_PRTSCR))
+	if (osd_key_pressed_memory(OSD_KEY_F12))
 	{
-		snapshot("snaptest.bmp");
+		snapshot();
 	}
 
 	if (osd_key_pressed_memory(OSD_KEY_CONFIGURE))
@@ -1478,9 +352,9 @@ void run_game(void)
 	double gametime = 0;
 	double millsec = 0;
 
-	int c = 0;
-	static int framemiss = 0;
-	int framecount = 0;
+	//int c = 0;
+	//static int framemiss = 0;
+	
 
 	num_samples = 0;
 	errorlog = 0;
@@ -1491,12 +365,12 @@ void run_game(void)
 	res_reset = 1;
 	testwidth = config.screenw; testheight = config.screenh; testwindow = config.windowed;
 
-	GameRect.min_x = driver[gamenum].gamerect[0];
-	GameRect.max_x = driver[gamenum].gamerect[1];
-	GameRect.min_y = driver[gamenum].gamerect[2];
-	GameRect.max_y = driver[gamenum].gamerect[3];
+	//GameRect.min_x = driver[gamenum].gamerect[0];
+	//GameRect.max_x = driver[gamenum].gamerect[1];
+	//GameRect.min_y = driver[gamenum].gamerect[2];
+	//GameRect.max_y = driver[gamenum].gamerect[3];
 
-	wrlog("Game Main Texture rect: X: %d Y: %d EX: %d EY: %d", driver[gamenum].gamerect[0], driver[gamenum].gamerect[1], driver[gamenum].gamerect[2], driver[gamenum].gamerect[3]);
+	//wrlog("Game Main Texture rect: X: %d Y: %d EX: %d EY: %d", driver[gamenum].gamerect[0], driver[gamenum].gamerect[1], driver[gamenum].gamerect[2], driver[gamenum].gamerect[3]);
 	setup_game_config();
 	sanity_check_config();
 	wrlog("Running game %s", driver[gamenum].desc);
@@ -1531,9 +405,13 @@ void run_game(void)
 	//////////////////////////////////////////////////////////////INITIAL VARIABLES SETUP ///////////////////////////////////////////////////
 	options.cheat = 1;
 	set_aae_leds(0, 0, 0);  //Reset LEDS
-	config.mainvol *= 12.75;
-	config.pokeyvol *= 12.75; //Adjust from menu values
-	config.noisevol *= 12.75;
+	//config.mainvol *= 12.75;
+	//config.pokeyvol *= 12.75; //Adjust from menu values
+	//config.noisevol *= 12.75;
+	config.mainvol = 150;
+	config.pokeyvol = 250; //Adjust from menu values
+	config.noisevol = 200;
+	
 	//Check;
 	if (config.noisevol > 255) config.noisevol = 254;
 	if (config.pokeyvol > 255) config.pokeyvol = 254;
@@ -1581,8 +459,7 @@ void run_game(void)
 
 	frameavg = 0; fps_count = 0; frames = 0;
 	//////////////////////////
-	m_currentx = 0;
-	m_currenty = 0;
+	
 
 	millsec = (double)1000 / (double)driver[gamenum].fps;
 	goodload = load_samples(driver[gamenum].game_samples, 0);
@@ -1608,15 +485,23 @@ void run_game(void)
 
 	while (!done && !close_button_pressed)
 	{
- ////	wrlog("STARTING FRAME");
-		set_new_frame(); //This is for the AVG Games.
+    	wrlog("STARTING FRAME");
+		//set_new_frame(); //This is for the AVG Games.
 		set_render();
 
-		if (driver[gamenum].cpu_type[0] == CPU_6502Z || driver[gamenum].cpu_type[0] == CPU_6502 || driver[gamenum].cpu_type[0] == CPU_MZ80 || driver[gamenum].cpu_type[0] == CPU_68000)
+		if (driver[gamenum].cpu_type[0] == CPU_M6809)
+		{
+			if (!paused && have_error == 0) { if (driver[gamenum].pre_run) driver[gamenum].pre_run(); }
+			if (!paused && have_error == 0) { cpu_run_mame(); }
+			
+		}
+		
+		if (driver[gamenum].cpu_type[0] == CPU_M6502 || driver[gamenum].cpu_type[0] == CPU_MZ80 || driver[gamenum].cpu_type[0] == CPU_68000)
 		{
 			if (!paused && have_error == 0) { if (driver[gamenum].pre_run) driver[gamenum].pre_run(); }
 			if (!paused && have_error == 0) { run_cpus_to_cycles(); }
 		}
+		
 		if (!paused && have_error == 0) { driver[gamenum].run_game(); }
 
 		render();
@@ -1624,6 +509,8 @@ void run_game(void)
 
 		inputport_vblank_end();
 		update_input_ports();
+
+		//timer_clear_all_eof();
 
 		gametime = TimerGetTimeMS();
 		//if (driver[gamenum].fps !=60){
@@ -1646,14 +533,13 @@ void run_game(void)
 			frameavg++; if (frameavg > 10000) { frameavg = 0; fps_count = 0; }
 			fps_count += 1000 / ((double)(gametime)-(double)starttime);
 		}
-		//if (fps_count < (driver[gamenum].fps-5)){framemiss++;wrlog("Frame MISS#: %d Frame Count: %d",framemiss,framecount);}
-		//framecount++;
+		
 		frames++;
 		if (frames > 0xfffffff) { frames = 0; }
 		starttime = TimerGetTimeMS();
 
 		allegro_gl_flip();
-////		wrlog("END OF FRAME");
+		wrlog("END OF FRAME");
 		//wrlog("FRAME %d", frames);
 	}
 	wrlog("------- Calling game end and reset to GUI -----------");
@@ -1797,57 +683,6 @@ void gameparse(int argc, char* argv[])
 	}
 }
 
-void AllowAccessibilityShortcutKeys(int bAllowKeys)
-{
-	if (bAllowKeys)
-	{
-		// Restore StickyKeys/etc to original state and enable Windows key
-		//STICKYKEYS sk = g_StartupStickyKeys;
-		//TOGGLEKEYS tk = g_StartupToggleKeys;
-		//FILTERKEYS fk = g_StartupFilterKeys;
-
-		SystemParametersInfo(SPI_SETSTICKYKEYS, sizeof(STICKYKEYS), &g_StartupStickyKeys, 0);
-		SystemParametersInfo(SPI_SETTOGGLEKEYS, sizeof(TOGGLEKEYS), &g_StartupToggleKeys, 0);
-		SystemParametersInfo(SPI_SETFILTERKEYS, sizeof(FILTERKEYS), &g_StartupFilterKeys, 0);
-	}
-
-	else
-	{
-		// Disable StickyKeys/etc shortcuts but if the accessibility feature is on,
-		// then leave the settings alone as its probably being usefully used
-
-		FILTERKEYS fkOff = g_StartupFilterKeys;
-		STICKYKEYS skOff = g_StartupStickyKeys;
-		TOGGLEKEYS tkOff = g_StartupToggleKeys;
-
-		if ((skOff.dwFlags & SKF_STICKYKEYSON) == 0)
-		{
-			// Disable the hotkey and the confirmation
-			skOff.dwFlags &= ~SKF_HOTKEYACTIVE;
-			skOff.dwFlags &= ~SKF_CONFIRMHOTKEY;
-
-			SystemParametersInfo(SPI_SETSTICKYKEYS, sizeof(STICKYKEYS), &skOff, 0);
-		}
-
-		if ((tkOff.dwFlags & TKF_TOGGLEKEYSON) == 0)
-		{
-			// Disable the hotkey and the confirmation
-			tkOff.dwFlags &= ~TKF_HOTKEYACTIVE;
-			tkOff.dwFlags &= ~TKF_CONFIRMHOTKEY;
-
-			SystemParametersInfo(SPI_SETTOGGLEKEYS, sizeof(TOGGLEKEYS), &tkOff, 0);
-		}
-
-		if ((fkOff.dwFlags & FKF_FILTERKEYSON) == 0)
-		{
-			// Disable the hotkey and the confirmation
-			fkOff.dwFlags &= ~FKF_HOTKEYACTIVE;
-			fkOff.dwFlags &= ~FKF_CONFIRMHOTKEY;
-
-			SystemParametersInfo(SPI_SETFILTERKEYS, sizeof(FILTERKEYS), &fkOff, 0);
-		}
-	}
-}
 
 int main(int argc, char* argv[])
 {
@@ -1899,12 +734,6 @@ int main(int argc, char* argv[])
 	sort_games();
 	loop2 = 0;
 	loop = 1;
-
-	///TURN OFF STICKY KEYS
-	 // Save the current sticky/toggle/filter key settings so they can be restored them later
-	SystemParametersInfo(SPI_GETSTICKYKEYS, sizeof(STICKYKEYS), &g_StartupStickyKeys, 0);
-	SystemParametersInfo(SPI_GETTOGGLEKEYS, sizeof(TOGGLEKEYS), &g_StartupToggleKeys, 0);
-	SystemParametersInfo(SPI_GETFILTERKEYS, sizeof(FILTERKEYS), &g_StartupFilterKeys, 0);
 
 	// Disable ShortCut Keys
 	AllowAccessibilityShortcutKeys(0);

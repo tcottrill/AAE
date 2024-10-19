@@ -1,15 +1,17 @@
 // 6502 CPU Core, based on code by Neil Bradley, with many changes from sources across the web.
 // ADC and SBC code from M.A.M.E. (tm)  Copyright (c) 1998,1999,2000, etc Juergen Buchmueller
 // Timing table and debug code from FakeNes
-// Code rewritten to c++ and updated by TC 2015-2024 explicitly written to work with with older M.A.M.E. source code for my testing.
+// Code rewritten to c++ and updated by Tim Cottrill 2015-2024 explicitly written to work with with older M.A.M.E. source code for my testing.
 // Currently does not handle IRQ after CLI correctly.
-// TODO: fix issues with incorrect operand display in the debug code.
-// Code has been verified to run multi-cpu correctly with Major Havoc.
+// TODO, fix issues with incorrect operand display in the debug code.
+
+// Note this is a custom version with non-mame function addressing until I can get things cleaned up.
 
 #include <stdio.h>
 #include "cpu_6502.h"
 #include "log.h"
 #include <string>
+#include "timer.h"
 
 //Version 2024.7.14
 
@@ -35,14 +37,13 @@ static const uint32_t ticks[256] = {
 	/* F */      2,    5,    2,    8,    4,    4,    6,    6,    2,    4,    2,    7,    4,    4,    7,    7   /* F */
 };
 
-
 cpu_6502::cpu_6502(uint8_t* mem, MemoryReadByte* read_mem, MemoryWriteByte* write_mem, uint16_t addr, int num)
 {
 	MEM = mem;
 	memory_write = write_mem;
 	memory_read = read_mem;
 	cpu_num = num;
-	log_debug_rw = 0;
+	log_debug_rw = 1;
 	debug = 0;
 	init6502(addr);
 }
@@ -76,11 +77,13 @@ uint8_t cpu_6502::get6502memory(uint16_t addr)
 		{
 			if (MemRead->memoryCall)
 			{
-				temp = MemRead->memoryCall(addr - MemRead->lowAddr, MemRead);  //Note MAME(tm) offset addressing here.
+				//temp = MemRead->memoryCall(addr - MemRead->lowAddr, MemRead);
+				temp = MemRead->memoryCall(addr, MemRead);
 			}
 			else
 			{
-				temp = *((uint8_t*)MemRead->pUserArea + (addr - MemRead->lowAddr)); //Note the addressing here!
+				//temp = *((uint8_t*)MemRead->pUserArea + (addr - MemRead->lowAddr)); //Note the addressing here!
+				temp = *((uint8_t*)MemRead->pUserArea + (addr )); //Note the addressing here!
 			}
 			MemRead = nullptr;
 			break;
@@ -111,11 +114,13 @@ void cpu_6502::put6502memory(uint16_t addr, uint8_t byte)
 		{
 			if (MemWrite->memoryCall)
 			{
-				MemWrite->memoryCall(addr - MemWrite->lowAddr, byte, MemWrite); //Note MAME(tm) offset addressing here. 
+				//MemWrite->memoryCall(addr - MemWrite->lowAddr, byte, MemWrite);
+				MemWrite->memoryCall(addr, byte, MemWrite);
 			}
 			else
 			{
-				*((uint8_t*)MemWrite->pUserArea + (addr - MemWrite->lowAddr)) = byte; //Note the addressing here!
+				//*((uint8_t*)MemWrite->pUserArea + (addr - MemWrite->lowAddr)) = byte; //Note the addressing here!
+				*((uint8_t*)MemWrite->pUserArea + (addr)) = byte; //Note the addressing here!
 			}
 			MemWrite = nullptr;
 			break;
@@ -1193,6 +1198,7 @@ void cpu_6502::irq6502()
 
 	if (!(P & F_I))
 	{
+		//wrlog("6502 IRQ Taken on CPU %d", cpu_num);
 		push16(PC);
 		push8(P & ~F_B);
 		P |= F_I;		// set I flag
@@ -1209,14 +1215,13 @@ void cpu_6502::irq6502()
 int cpu_6502::exec6502(int timerTicks)
 {
 	clockticks6502 = 0;
-	debug = 0;
+
 	while (clockticks6502 < timerTicks)
 	{
 		P |= F_T;
-
 		int lastticks = clockticks6502;
 
-		//if (_irqPending) irq6502();
+		if (_irqPending) irq6502();
 
 		// fetch instruction
 		opcode = get6502memory(PC++);
@@ -1250,10 +1255,11 @@ int cpu_6502::exec6502(int timerTicks)
 		// update clock cycles
 		clockticks6502 += ticks[opcode];
 		clocktickstotal += ticks[opcode];
-		//	timer_update(clockticks6502 - lastticks, cpu_num);
+		//timer_update(ticks[opcode], cpu_num);
 		if (clocktickstotal > 0xfffffff) clocktickstotal = 0;
 	}
-	return clockticks6502;
+	//return clockticks6502;
+	return (0x80000000);
 }
 
 int cpu_6502::step6502()
@@ -1296,7 +1302,8 @@ int cpu_6502::step6502()
 	clocktickstotal += ticks[opcode];
 	if (clocktickstotal > 0xfffffff) clocktickstotal = 0;
 
-	return clockticks6502;
+	//return clockticks6502;
+	return (0x80000000);
 }
 
 std::string cpu_6502::disam(uint8_t opcode)

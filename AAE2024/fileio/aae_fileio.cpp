@@ -1,9 +1,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "aae_fileio.h"
-#include "../log.h"
+#include "log.h"
+
 //For zip file loading
 #include "miniz.h"
+
+
 
 unsigned int filesz = 0;
 unsigned int uncomp_size = 0;
@@ -63,6 +66,22 @@ int save_file(const char* filename, unsigned char* buf, int size)
 	return 1;
 }
 
+/*
+
+bool file_exists(const char * filename) {
+	struct stat fileinfo;
+
+	return !stat(filename, &fileinfo);
+}
+
+BOOL DirectoryExists(const char* dirName) {
+	DWORD attribs = ::GetFileAttributesA(dirName);
+	if (attribs == INVALID_FILE_ATTRIBUTES) {
+		return false;
+	}
+	return (attribs & FILE_ATTRIBUTE_DIRECTORY);
+}
+*/
 // ToDo: Add a debug clause in front of the logging to disable it
 unsigned char* load_zip_file(const char* filename, const char* archname)
 {

@@ -3,7 +3,7 @@
 #ifndef SEGAG80_H
 #define SEGAG80_H
 
-#include "../deftypes.h"
+#include "deftypes.h"
 
 #define SEGA_SHIFT 10	/* do not use a higher value. Values will overflow */
 #define NUM_SPACFURY_SPEECH 21 //31

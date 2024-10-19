@@ -1,7 +1,7 @@
 #ifndef ASTEROID_H
 #define ASTEROID_H
 
-#include "../aaemain.h"
+#include "aaemain.h"
 
 extern char* gamename[];
 

@@ -13,18 +13,21 @@
 //============================================================================
 /* Asteroid Emu */
 #include "asteroid.h"
-#include "../aae_mame_driver.h"
-#include "../sndhrdw/samples.h"
-#include "../vidhrdwr/vector.h"
-#include "../machine/earom.h"
-#include "../sndhrdw/pokyintf.h"
-#include "../acommon.h"
-#include "../fileio/loaders.h"
+#include "aae_mame_driver.h"
+#include "samples.h"
+#include "vector.h"
+#include "earom.h"
+#include "aae_avg.h"
+#include "pokyintf.h"
+#include "acommon.h"
+#include "loaders.h"
+
+#include "timer.h"
 
 int SCRFLIP;
 int dvggo = 0;
 UINT8 buffer[0x100];
-//int astdelux_bank;
+
 
 int psound = 0;
 int vec_done = 0;
@@ -32,7 +35,7 @@ int vec_done = 0;
 void asteroid_interrupt()
 {
 	// Turn off interrupts if self-test is enabled
-	//if (!(readinputport(0) & 0x80)) { set_pending_interrupt(INT_TYPE_NMI, CPU0); }
+	if (!(readinputport(0) & 0x80)) { set_pending_interrupt(INT_TYPE_NMI, CPU0); }
 }
 
 int asteroid_load_hi()
@@ -273,16 +276,18 @@ void dvg_generate_vector_list(void)
 	int temp;
 	int z;
 	int a;
-	float deltax, deltay; //float
-	float currentx, currenty = 0; //float
-	int div = 0;
-	int bright = 0;
+	int  deltax, deltay; //float
+	int  currentx, currenty = 0; //float
+	//int div = 0;
+	//int bright = 0;
 	total_length = 0;
-	currentx = 0;
-	currenty = 0;
+	
 	while (!done)
 	{
-		firstwd = memrdwd(pc); opcode = firstwd & 0xf000; pc++; pc++;
+		firstwd = memrdwd(pc); 
+		opcode = firstwd & 0xf000; 
+		pc++; 
+		pc++;
 
 		switch (opcode)
 		{
@@ -292,17 +297,16 @@ void dvg_generate_vector_list(void)
 			z = (firstwd & 0xf0) >> 4;
 			y = firstwd & 0x0300;
 			x = (firstwd & 0x03) << 8;
-			//Scale Y best we can
-			x = x * 4;
-			y = y * 4;
+			
 			//Check Sign Values and adjust as necessary
 			if (firstwd & 0x0400) { y = -y; }
 			if (firstwd & 0x04) { x = -x; }
-			//Invert Drawing if in Cocktal mode and Player 2 selected
+			//Invert Drawing if in Cocktail mode and Player 2 selected
 			if (!testsw) {
 				if (SCRFLIP && config.cocktail)
 				{
-					x = -x; y = -y;
+					x = -x; 
+					y = -y;
 				}
 			}
 
@@ -311,29 +315,27 @@ void dvg_generate_vector_list(void)
 			if (temp > 9) temp = -1;
 			dvg_vector_timer(temp);
 
-			deltax = x >> (9 - temp);
-			deltay = y >> (9 - temp);
-			deltax = deltax * .25;
-			deltay = deltay * .25;
+			deltax = (x << VEC_SHIFT) >> (9 - temp);
+			deltay = (y << VEC_SHIFT) >> (9 - temp);
 
 			if ((currentx == (currentx)+deltax) && (currenty == (currenty)-deltay))
 			{
-				if (z == 7) { cache_txt(currentx, currenty, config.explode_point_size, 255); }
-				else { cache_point(currentx, currenty, z, config.gain, 0, 1.0); }
+				if (z == 7) { cache_txt(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, config.explode_point_size, 255); }
+				else { cache_point(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, z, config.gain, 0, 1.0); }
 			}
 
 			else
 			{
-				cache_line(currentx, currenty, currentx + deltax, currenty - deltay, z, config.gain, 0);
-				cache_point(currentx, currenty, z, config.gain, 0, 0);
-				cache_point(currentx + deltax, currenty - deltay, z, config.gain, 0, 0);
+				cache_line(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, (currentx + deltax) >> VEC_SHIFT, (currenty - deltay) >> VEC_SHIFT, z, config.gain, 0);
+				cache_point(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, z, config.gain, 0, 0);
+				cache_point((currentx + deltax) >> VEC_SHIFT, (currenty - deltay) >> VEC_SHIFT, z, config.gain, 0, 0);
 			}
 
 			currentx += deltax;
 			currenty -= deltay;
 			break;
 
-		case 0:done = 1; break;
+		case 0://done = 1; break;
 		case 0x1000:
 		case 0x2000:
 		case 0x3000:
@@ -350,9 +352,7 @@ void dvg_generate_vector_list(void)
 			z = secondwd >> 12;
 			y = firstwd & 0x03ff;
 			x = secondwd & 0x03ff;
-			//Scale Y best we can
-			x = x * 4; y = y * 4;
-
+				
 			//Check Sign Values and adjust as necessary
 			if (firstwd & 0x0400)
 			{
@@ -362,7 +362,7 @@ void dvg_generate_vector_list(void)
 			{
 				x = -x;
 			}
-			//Invert Drawing if in Cocktal mode and Player 2 selected
+			//Invert Drawing if in Cocktail mode and Player 2 selected
 			if (!testsw) {
 				if (SCRFLIP && config.cocktail)
 				{
@@ -373,23 +373,21 @@ void dvg_generate_vector_list(void)
 			temp = scale + (opcode >> 12); temp = temp & 0x0f;
 			if (temp > 9) { temp = -1; }
 			dvg_vector_timer(temp);
-
-			deltax = x >> (9 - temp);
-			deltay = y >> (9 - temp);
-
-			deltax = deltax * .25;
-			deltay = deltay * .25;
+					
+			deltax = (x << VEC_SHIFT) >> (9 - temp);
+			deltay = (y << VEC_SHIFT) >> (9 - temp);
 
 			if ((currentx == (currentx)+deltax) && (currenty == (currenty)-deltay))
 			{
-				if (z > 14) cache_txt(currentx, currenty, config.fire_point_size, 255); else cache_point(currentx, currenty, z, 0, 0, 1.0);
+				if (z > 14) cache_txt(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, config.fire_point_size, 255); else cache_point(currentx, currenty, z, 0, 0, 1.0);
 			}
 
-			cache_line(currentx, currenty, currentx + deltax, currenty - deltay, z, config.gain, 0);
-			cache_point(currentx, currenty, z, config.gain, 0, 0);
-			cache_point(currentx + deltax, currenty - deltay, z, config.gain, 0, 0);
+			cache_line(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, (currentx + deltax) >> VEC_SHIFT, (currenty - deltay) >> VEC_SHIFT,  z, config.gain, 0);
+			cache_point(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, z, config.gain, 0, 0);
+			cache_point((currentx + deltax) >> VEC_SHIFT, (currenty - deltay) >> VEC_SHIFT, z, config.gain, 0, 0);
 
-			currentx += deltax; currenty -= deltay;
+			currentx += deltax; 
+			currenty -= deltay;
 			break;
 
 		case 0xa000:
@@ -408,8 +406,8 @@ void dvg_generate_vector_list(void)
 			}
 			//Do overall draw scaling
 			scale = (secondwd >> 12) & 0x0f;
-			currenty = 1130 - y; //y-100; 1130-y
-			currentx = x;
+			currenty = (1130 - y) << VEC_SHIFT;
+			currentx = x  << VEC_SHIFT;
 			break;
 
 		case 0xb000: done = 1; break;
@@ -538,9 +536,6 @@ void run_asteroids()
 	static int k = 0;
 	vec_done = 0;
 
-	if (readinputport(0) & 0x80) { cpu_disable_interrupts(0, 0); }
-	else { cpu_disable_interrupts(0, 1); }
-
 	if (psound && !paused) { pokey_sh_update(); }
 
 	wrlog("Watchdog this frame %x", WATCHDOG);
@@ -548,7 +543,7 @@ void run_asteroids()
 	if (k > 60)
 	{
 		k = 0;
-		cpu_needs_reset(0);
+		cpu_reset(0);
 	}
 	WATCHDOG = 0;
 }
@@ -633,11 +628,11 @@ int init_asteroid(void)
 {
 	if (gamenum == ASTEROCK)
 	{
-		init6502Z(AsterRockRead, AsteroidWrite, 0);
+		init6502(AsterRockRead, AsteroidWrite, 0);
 	}
 	else
 	{
-		init6502Z(AsteroidRead, AsteroidWrite, 0);
+		init6502(AsteroidRead, AsteroidWrite, 0);
 	}
 
 	cache_clear();
@@ -649,6 +644,9 @@ int init_asteroid(void)
 	dvggo = 0;
 	total_length = 0;
 	AsteroidsSwapRam(0, 0, 0);
+
+	//timer_set(TIME_IN_HZ(23), 0, watchdog_callback);
+
 	wrlog("End init");
 	return 0;
 }
@@ -657,7 +655,7 @@ int init_astdelux(void)
 {
 	int k;
 	if (config.bezel) { config.cocktail = 0; }//Just to check
-	init6502Z(AsteroidDeluxeRead, AsteroidDeluxeWrite, 0);
+	init6502(AsteroidDeluxeRead, AsteroidDeluxeWrite, 0);
 
 	cache_clear();
 	set_ast_colors();
@@ -667,6 +665,9 @@ int init_astdelux(void)
 	dvggo = 0;
 	vec_done = 0;
 	total_length = 0;
+
+	//timer_set(TIME_IN_HZ(23), 0, watchdog_callback);
+
 	k = pokey_sh_start(&pokey_interface);
 
 	return 0;

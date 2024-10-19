@@ -4,12 +4,14 @@
 #include <allegro.h>
 #include "alleggl.h"
 #include "winalleg.h"
-#include "../gameroms.h"
-#include "../aae_mame_driver.h"
-//#include "sndhrdw/samples.h"
+#include "gameroms.h"
+#include "aae_mame_driver.h"
+//#include "samples.h"
 //#include "acommon.h"
 
+#define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "../sys_video/stb_image.h"
 #include "../sys_video/stb_image_write.h" // https://github.com/nothings/stb
 
 #define ZIPNOTFOUND 5
@@ -48,7 +50,7 @@ void bswap(char* mem, int length)
 	}
 }
 
-int load_roms(const char* archname, const struct RomModule p[])
+int load_roms(const char* archname, const struct RomModule *p)
 {
 	int test = 0;
 	int skip = 0;
@@ -136,7 +138,7 @@ int load_roms(const char* archname, const struct RomModule p[])
 	return (1);
 }
 
-int load_samples(const char* p[], int val)
+int load_samples(const char **p, int val)
 {
 	char temppath[255];
 	unsigned char* zipdata = 0;
@@ -257,12 +259,12 @@ int save_hi_aae(int start, int size, int image)
 	return 0;
 }
 
-int verify_rom(const char* archname, const struct RomModule p[], int romnum)
+int verify_rom(const char* archname, const struct RomModule *p, int romnum)
 {
 	return 1;
 }
 
-int verify_sample(const char* p[], int num)
+int verify_sample(const char **p, int num)
 {
 	return 1;
 }
@@ -275,6 +277,7 @@ int file_exist(char* filename)
 	return (1);
 }
 
+/*
 void flipVertically(int width, int height, char* data)
 {
 	char rgb[3];
@@ -292,44 +295,26 @@ void flipVertically(int width, int height, char* data)
 		}
 	}
 }
-
-void snapshot(const char* filename)
+*/
+void snapshot()
 {
-	BITMAP* tempbmp;
-	BYTE* bmpBuffer;
-	//BYTE* copybuffer;
-	FILE* filePtr;
+	unsigned char* bmpBuffer;
 	time_t tim;
 	struct tm tm;
 	char buf[15];
-	char temppath[80];
-	char temppathp[80];
-	int windowWidth = 0;
-	int windowHeight = 0;
-	int i = 0;
-	BITMAPFILEHEADER bitmapFileHeader;
-	BITMAPINFOHEADER bitmapInfoHeader;
-	///////////////////////////////////
-	windowWidth = SCREEN_W + 1;
-	windowHeight = SCREEN_H + 1;
-	bitmapFileHeader.bfType = 0x4D42; //"BM"
-	bitmapFileHeader.bfSize = windowWidth * windowHeight * 3;
-	bitmapFileHeader.bfReserved1 = 0;
-	bitmapFileHeader.bfReserved2 = 0;
-	bitmapFileHeader.bfOffBits =
-		sizeof(bitmapFileHeader) + sizeof(bitmapInfoHeader);
+	char temppath[80] = { 0 };
 
-	bitmapInfoHeader.biSize = sizeof(bitmapInfoHeader);
-	bitmapInfoHeader.biWidth = windowWidth - 1;
-	bitmapInfoHeader.biHeight = windowHeight - 1;
-	bitmapInfoHeader.biPlanes = 1;
-	bitmapInfoHeader.biBitCount = 24;
-	bitmapInfoHeader.biCompression = BI_RGB;
-	bitmapInfoHeader.biSizeImage = 0;
-	bitmapInfoHeader.biXPelsPerMeter = 0; // ?
-	bitmapInfoHeader.biYPelsPerMeter = 0; // ?
-	bitmapInfoHeader.biClrUsed = 0;
-	bitmapInfoHeader.biClrImportant = 0;
+	int Width = 0;
+	int Height = 0;
+	int i = 0;
+
+	RECT rect;
+
+	GetClientRect(win_get_window(), &rect);
+	Width = rect.right - rect.left;
+	Height = rect.bottom - rect.top;
+
+	memset(&temppath[0], 0, sizeof(temppath));
 
 	//Get time/date stamp
 	tim = time(0);
@@ -337,30 +322,126 @@ void snapshot(const char* filename)
 	strftime(buf, sizeof buf, "%Y%m%d%H%M%S", &tm);
 	puts(buf);
 	//////
-	bmpBuffer = (BYTE*)malloc(windowWidth * windowHeight * 3);
-	//copybuffer = (BYTE*)malloc(sizeof(bitmapFileHeader) + sizeof(bitmapInfoHeader) + (windowWidth * windowHeight * 3));
+	bmpBuffer = (unsigned char*)malloc(Width * Height * 4);
+	wrlog("Snap width %d , Height %d", Width, Height);
 
 	if (!bmpBuffer)
+	{
+		wrlog("Error creating buffer for snapshot");
 		return;
+	}
 
-	glReadPixels((GLint)0, (GLint)0, (GLint)windowWidth - 1, (GLint)windowHeight - 1, GL_BGR, GL_UNSIGNED_BYTE, bmpBuffer);
+	glReadPixels((GLint)0, (GLint)0, (GLint)Width, (GLint)Height, GL_RGBA, GL_UNSIGNED_BYTE, bmpBuffer);
+
+	//Flip Texture
+	int width_in_bytes = Width * STBI_rgb_alpha;
+	unsigned char* top = NULL;
+	unsigned char* bottom = NULL;
+	unsigned char temp = 0;
+	int half_height = Height / 2;
+
+	for (int row = 0; row < half_height; row++)
+	{
+		top = bmpBuffer + row * width_in_bytes;
+		bottom = bmpBuffer + (Height - row - 1) * width_in_bytes;
+		for (int col = 0; col < width_in_bytes; col++)
+		{
+			temp = *top;
+			*top = *bottom;
+			*bottom = temp;
+			top++;
+			bottom++;
+		}
+	}
+
 	//Make Full PATH
-	strcpy(temppath, "snap\\");
+	// Add test here to make sure the SNAP Directory exists.
+	strcat(temppath, "snap\\");
 	strcat(temppath, driver[gamenum].name);
+	strcat(temppath, "_");
 	strcat(temppath, buf);
-	strcat(temppath, ".bmp");
+	strcat(temppath, ".png");
 	strcat(temppath, "\0");
-	wrlog("Saving Snapshot: %s", temppath);
+	LOG_DEBUG("Saving Snapshot: %s", temppath);
 
-	//int saved = stbi_write_png(filename, windowWidth, windowHeight, 3, bmpBuffer, 0);
-
-	filePtr = fopen(temppath, "wb");
-	if (!filePtr)
-		return;
-
-	fwrite(&bitmapFileHeader, sizeof(bitmapFileHeader), 1, filePtr);
-	fwrite(&bitmapInfoHeader, sizeof(bitmapInfoHeader), 1, filePtr);
-	fwrite(bmpBuffer, windowWidth * windowHeight * 3, 1, filePtr);
-	fclose(filePtr);
+	stbi_write_png(temppath, Width, Height, 4, bmpBuffer, Width * 4);
 	free(bmpBuffer);
+}
+
+GLuint load_texture(const char* filename, const char* archname, int numcomponents, int filter)
+{
+	GLuint tex = 0;
+	int width = 0;
+	int height = 0;
+	int comp = 0;
+	unsigned char* image_data = 0;
+	unsigned char* raw_data = 0;
+
+	//Stupid
+	stbi_set_flip_vertically_on_load(1);
+
+	//If no archive name is supplied, it's assumed the file is being loaded from the file system.
+	if (!archname)
+	{
+		image_data = stbi_load(filename, &width, &height, &comp, STBI_rgb_alpha);
+	}
+	else
+	{
+		//Otherwise load with our generic zip functionality
+		raw_data = load_zip_file(filename, archname);
+		image_data = stbi_load_from_memory(raw_data, (int)(get_last_zip_file_size()), &width, &height, &comp, STBI_rgb_alpha);
+	}
+	if (!image_data) {
+		wrlog("ERROR: could not load %s\n", filename);
+		//	return 0;
+	}
+	wrlog("Texture x is %d, y is %d, components %d", width, height, comp);
+	// NPOT check, we checked the card capabilities beforehand, flag if it's not npot
+
+	if ((width & (width - 1)) != 0 || (height & (height - 1)) != 0) {
+		wrlog("WARNING: texture %s is not power-of-2 dimensions\n", filename);
+	}
+
+	//Create Texture
+
+	glGenTextures(1, &tex);
+	glBindTexture(GL_TEXTURE_2D, tex);
+	// OLD OpenGL 2.0 style binding
+	glTexImage2D(
+		GL_TEXTURE_2D,
+		0,
+		GL_RGBA8,
+		width,
+		height,
+		0,
+		GL_RGBA,
+		GL_UNSIGNED_BYTE,
+		image_data
+	);
+
+	//glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, width, height);
+	//glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, image_data);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+	//Check for errors
+	//check_gl_error();
+
+	//The below gluBuild2DMipmaps is ONLY for maximum compatibility using OpenGL 1.4 - 2.0.
+	//In a real program, you should be using GLEW or some other library to allow glGenerateMipmap to work.
+	// it's much better,and you should be using an OpenGL 3+ context anyways. This is just for my example program.
+	//gluBuild2DMipmaps(GL_TEXTURE_2D, 4, width, height, GL_RGBA, GL_UNSIGNED_BYTE, image_data); //Never use this in anything but an opengl 2 demo.
+	//This is openGL3 now so:
+	//glGenerateMipmap(GL_TEXTURE_2D); //Only if using opengl 3+, next example...
+
+	//Now that we're done making a texture, free the image data
+	stbi_image_free(image_data);
+	free(raw_data);
+	//set image data properties
+
+	wrlog("New Texture created:");
+	wrlog("Texture ID: %d", tex);
+	return tex;
 }

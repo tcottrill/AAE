@@ -17,11 +17,11 @@
 ***************************************************************************/
 
 //#include "ccpu.h"
-#include "../drivers/cinemat.h"
-#include "../aaemain.h"
-#include "../sndhrdw/samples.h"
-#include "../aae_mame_driver.h"
-#include "../cpu_code/ccpu.h"
+#include "cinemat.h"
+#include "aaemain.h"
+#include "samples.h"
+#include "aae_mame_driver.h"
+#include "ccpu.h"
 
 /*************************************
  *

@@ -14,7 +14,7 @@
 
 #include <stdio.h>
 #include "earom.h"
-#include "../aae_mame_driver.h"
+#include "aae_mame_driver.h"
 
 extern int gamenum;
 

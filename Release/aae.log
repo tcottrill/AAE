@@ -1,0 +1,510 @@
+Installed Joystick
+Number of supported games is: 71
+Sorting games
+Setting timer resolution to Min Supported: 1 (ms)
+Number of supported joysticks: 0 
+Number of supported games in this release: 72
+Main AAE Path: C:\Users\HOME1\Documents\GitHub\AAE\Release\aae.ini
+Path Override Value: 0
+Loading configuration information for AAE GUI
+Configured Mame Rom Path is NONE
+Running game AAE GUI
+OpenGL Init
+OpenGL 2.0 support detected, good.
+Max Texture Size supported by this card: 32768x32768
+Max number of color buffers per fbo supported on this card: 8
+ARB_Multisample Extension Supported
+Anisotropic Filtering Supported
+Your video card supports vysnc, good.
+EXT_Frambuffer Object Supported (Required)
+Generating Phospher Texture
+Initalizing FBO's
+Framebuffer Complete! A-OK
+Framebuffer Complete! A-OK
+Framebuffer Complete! A-OK
+Opening Archive artwork\aae.zip
+Closing Archive
+Zip file loaded Successfully: 1679380 from archive artwork\aae.zip
+Texture x is 128, y is 128, components 4
+New Texture created:
+Texture ID: 9
+Opening Archive artwork\aae.zip
+Closing Archive
+Zip file loaded Successfully: 1679392 from archive artwork\aae.zip
+Texture x is 128, y is 128, components 4
+New Texture created:
+Texture ID: 10
+Opening Archive artwork\aae.zip
+Closing Archive
+Zip file loaded Successfully: 1679404 from archive artwork\aae.zip
+Texture x is 64, y is 64, components 4
+New Texture created:
+Texture ID: 11
+Opening Archive artwork\aae.zip
+Closing Archive
+Zip file loaded Successfully: 1679420 from archive artwork\aae.zip
+Texture x is 64, y is 64, components 4
+New Texture created:
+Texture ID: 12
+Opening Archive artwork\aae.zip
+Closing Archive
+Zip file loaded Successfully: 1679432 from archive artwork\aae.zip
+Texture x is 64, y is 64, components 4
+New Texture created:
+Texture ID: 13
+Opening Archive artwork\aae.zip
+Closing Archive
+Zip file loaded Successfully: 1679448 from archive artwork\aae.zip
+Texture x is 64, y is 64, components 4
+New Texture created:
+Texture ID: 14
+Opening Archive artwork\aae.zip
+Closing Archive
+Zip file loaded Successfully: 1679460 from archive artwork\aae.zip
+Texture x is 64, y is 64, components 4
+New Texture created:
+Texture ID: 15
+Opening Archive artwork\aae.zip
+Closing Archive
+Zip file loaded Successfully: 1679472 from archive artwork\aae.zip
+Texture x is 64, y is 16, components 4
+New Texture created:
+Texture ID: 16
+Opening Archive artwork\aae.zip
+Closing Archive
+Zip file loaded Successfully: 1679484 from archive artwork\aae.zip
+Texture x is 512, y is 512, components 4
+New Texture created:
+Texture ID: 17
+Building Font
+Shader Init Start
+Program linked ok
+Program linked ok
+Program linked ok
+Program linked ok
+Program linked ok
+Finished configuration of OpenGl sucessfully
+Starting game, Driver name now is aae
+Calling init machine to build shadow input ports
+Opening, samples\aae.zip
+Opening Archive samples\aae.zip
+Closing Archive
+Zip file loaded Successfully: 1634608 from archive samples\aae.zip
+Opening Archive samples\aae.zip
+Closing Archive
+Zip file loaded Successfully: 1634692 from archive samples\aae.zip
+Opening Archive samples\aae.zip
+Closing Archive
+Zip file loaded Successfully: 1634600 from archive samples\aae.zip
+Opening Archive samples\aae.zip
+Closing Archive
+Zip file loaded Successfully: 1634704 from archive samples\aae.zip
+Opening Archive samples\aae.zip
+Closing Archive
+Zip file loaded Successfully: 1634716 from archive samples\aae.zip
+Opening Archive samples\aae.zip
+Closing Archive
+Zip file loaded Successfully: 1634732 from archive samples\aae.zip
+Opening, samples\aae.zip
+Opening Archive samples\aae.zip
+Closing Archive
+Zip file loaded Successfully: 1634600 from archive samples\aae.zip
+Opening Archive samples\aae.zip
+Closing Archive
+Zip file loaded Successfully: 1634608 from archive samples\aae.zip
+Opening Archive samples\aae.zip
+Closing Archive
+Zip file loaded Successfully: 1634620 from archive samples\aae.zip
+Opening Archive samples\aae.zip
+Closing Archive
+Zip file loaded Successfully: 1634632 from archive samples\aae.zip
+Opening Archive samples\aae.zip
+Closing Archive
+Zip file loaded Successfully: 1634644 from archive samples\aae.zip
+Number of samples for this game is 11
+Initializing Game
+Loading InputPort Settings
+Setting Default Keys
+opening File
+Gamenum here in input ports is 0
+Tag IN0 :: Num 0
+Tag IN1 :: Num 1
+Tag IN2 :: Num 2
+timer 0 removed
+timer 1 removed
+timer 2 removed
+timer 3 removed
+timer 4 removed
+timer 5 removed
+timer 6 removed
+timer 7 removed
+NUMBER OF CPU'S to RUN: 0 
+Finished starting up cpu settings, defaults
+STARTING GUI
+Opening Archive artwork\aae.zip
+Closing Archive
+Zip file loaded Successfully: 1670208 from archive artwork\aae.zip
+Texture x is 64, y is 64, components 4
+New Texture created:
+Texture ID: 18
+Opening Archive artwork\aae.zip
+Closing Archive
+Zip file loaded Successfully: 1670220 from archive artwork\aae.zip
+Texture x is 64, y is 64, components 4
+New Texture created:
+Texture ID: 19
+Opening Archive artwork\aae.zip
+Closing Archive
+Zip file loaded Successfully: 1670232 from archive artwork\aae.zip
+Texture x is 64, y is 64, components 4
+New Texture created:
+Texture ID: 20
+Opening Archive artwork\aae.zip
+Closing Archive
+Zip file loaded Successfully: 1670248 from archive artwork\aae.zip
+Texture x is 64, y is 64, components 4
+New Texture created:
+Texture ID: 21
+
+
+
+----END OF INIT -----!
+
+
+
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+STARTING FRAME
+END OF FRAME
+------- Calling game end and reset to GUI -----------
+@@@RESETTING for NEW GAME CALLED@#@@@@
+restarting
+Freed sample 0 num_samples is 11
+Freed sample 1 num_samples is 11
+Freed sample 2 num_samples is 11
+Freed sample 3 num_samples is 11
+Freed sample 4 num_samples is 11
+Freed sample 5 num_samples is 11
+Freed sample 6 num_samples is 11
+Freed sample 7 num_samples is 11
+Freed sample 8 num_samples is 11
+Freed sample 9 num_samples is 11
+Freed sample 10 num_samples is 11
+Finished Freeing Samples
+Finished Freeing Textures
+Done Freeing All
+Saving Input Port Settings
+Saving input port settings (in function)
+DONE here is 1, exiting

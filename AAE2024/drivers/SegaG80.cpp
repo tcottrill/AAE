@@ -11,13 +11,13 @@
 // THE CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.  
 //==========================================================================
 
+//NOTE: SegaG80 decryption fixed
 
-#include "SegaG80.h"
+#include "segag80.h"
 #include <math.h>
-//#include "segacrypt.cpp"
-#include "../aae_mame_driver.h"
-#include "../sndhrdw/samples.h"
-#include "../vidhrdwr/vector.h"
+#include "aae_mame_driver.h"
+#include "samples.h"
+#include "vector.h"
 
 // To Do, add interupt handler for entering test mode.
 void sega_interrupt() {
@@ -59,6 +59,7 @@ static struct AY8910interface interface =
 */
 
 int sega_rotate = 0;
+unsigned char* vectorram;
 int vectorram_size = 0;
 static long int* sinTable, * cosTable;
 int nodecrypt = 0;
@@ -71,12 +72,8 @@ long int mz80clockticks = 0;
 int coin_in = 0;
 int coin_count = 0;
 
-//float r,g,b;
-unsigned char* vectorram;
 int sysReset = 0;
-int spinvert = 0;
-int toggle_mouse = 1;
-int lastcolor = 0;
+
 
 #define VECTOR_CLOCK		15468480			/* master clock */
 #define U34_CLOCK			(VECTOR_CLOCK/3)	/* clock for interrupt chain */
@@ -315,321 +312,6 @@ void sega_security(int chip)
 	default:
 		sega_decrypt = sega_decrypt64;
 		break;
-	}
-}
-
-void Decrypt(int gamenum)
-{//960a
-	switch (gamenum) {
-	case 6:
-		cMZ80[0].z80Base[0x443b] = 0x21;
-		cMZ80[0].z80Base[0xa3e] = 0x21;
-		cMZ80[0].z80Base[0xa41] = 0x31;
-		cMZ80[0].z80Base[0xa52] = 0x20;
-		cMZ80[0].z80Base[0x32e7] = 0x23;
-		cMZ80[0].z80Base[0x32ea] = 0x24;
-		cMZ80[0].z80Base[0x32f2] = 0x25;
-		cMZ80[0].z80Base[0x32f5] = 0x28;
-		cMZ80[0].z80Base[0xb7a] = 0x40;
-		cMZ80[0].z80Base[0xb7d] = 0x3a;
-		cMZ80[0].z80Base[0xbb2] = 0x1c;
-		cMZ80[0].z80Base[0xbb5] = 0x1d;
-		cMZ80[0].z80Base[0xbb8] = 0x1e;
-		cMZ80[0].z80Base[0x4423] = 0x21;
-		cMZ80[0].z80Base[0x4495] = 0x21;
-		cMZ80[0].z80Base[0x44bb] = 0x21;
-		cMZ80[0].z80Base[0xbd2] = 0x36;
-		cMZ80[0].z80Base[0xbd5] = 0x37;
-		cMZ80[0].z80Base[0x1fa4] = 0x0;
-		cMZ80[0].z80Base[0x2c44] = 0x15;
-		cMZ80[0].z80Base[0x1fc9] = 0x0;
-		cMZ80[0].z80Base[0xb69] = 0x20;
-		cMZ80[0].z80Base[0x443b] = 0x21;
-		cMZ80[0].z80Base[0xb88] = 0x21;
-		cMZ80[0].z80Base[0xb8b] = 0x22;
-		cMZ80[0].z80Base[0xa90] = 0x20;
-		cMZ80[0].z80Base[0xc46] = 0x24;
-		cMZ80[0].z80Base[0xc4a] = 0x23;
-		cMZ80[0].z80Base[0x334c] = 0x28;
-		cMZ80[0].z80Base[0x3366] = 0x2e;
-		cMZ80[0].z80Base[0x336b] = 0x24;
-		cMZ80[0].z80Base[0x331c] = 0x2e;
-		cMZ80[0].z80Base[0x3324] = 0x2e;
-		cMZ80[0].z80Base[0x343c] = 0x29;
-		cMZ80[0].z80Base[0x343f] = 0x25;
-		cMZ80[0].z80Base[0x347c] = 0x24;
-		cMZ80[0].z80Base[0x342d] = 0x29;
-		cMZ80[0].z80Base[0x326d] = 0xc;
-		cMZ80[0].z80Base[0x327d] = 0xc;
-		cMZ80[0].z80Base[0x4031] = 0x20;
-		cMZ80[0].z80Base[0x348c] = 0x34;
-		cMZ80[0].z80Base[0x3490] = 0x23;
-		cMZ80[0].z80Base[0x3493] = 0x24;
-		cMZ80[0].z80Base[0x34ac] = 0x23;
-		cMZ80[0].z80Base[0x34b6] = 0x34;
-		cMZ80[0].z80Base[0x34f0] = 0x2e;
-		cMZ80[0].z80Base[0x34f5] = 0x24;
-		cMZ80[0].z80Base[0x3510] = 0x2e;
-		cMZ80[0].z80Base[0x3517] = 0x2e;
-		cMZ80[0].z80Base[0x3529] = 0x24;
-		cMZ80[0].z80Base[0x352f] = 0x23;
-		cMZ80[0].z80Base[0x3532] = 0x24;
-		cMZ80[0].z80Base[0x213e] = 0x31;
-		cMZ80[0].z80Base[0x217d] = 0x21;
-		break;
-
-	case 5: {//SPACEFURY
-		cMZ80[0].z80Base[0x824] = 0xaf;
-		cMZ80[0].z80Base[0x825] = 0xdd;
-		cMZ80[0].z80Base[0x826] = 0xb2;
-		cMZ80[0].z80Base[0x827] = 0xab;
-		cMZ80[0].z80Base[0x834] = 0xd7;
-		cMZ80[0].z80Base[0x835] = 0xc7;
-		cMZ80[0].z80Base[0x839] = 0xe6;
-		cMZ80[0].z80Base[0x83a] = 0x9f;
-		cMZ80[0].z80Base[0x83b] = 0x66;
-		cMZ80[0].z80Base[0x83c] = 0x93;
-		cMZ80[0].z80Base[0x847] = 0xc4;
-		cMZ80[0].z80Base[0x848] = 0xfd;
-		cMZ80[0].z80Base[0x849] = 0xeb;
-		cMZ80[0].z80Base[0x84a] = 0xf9;
-		cMZ80[0].z80Base[0x84e] = 0xaa;
-		cMZ80[0].z80Base[0x84f] = 0x45;
-		cMZ80[0].z80Base[0x857] = 0x24;
-		cMZ80[0].z80Base[0x858] = 0x03;
-
-		cMZ80[0].z80Base[0xa3c] = 0x21;
-		cMZ80[0].z80Base[0xa3f] = 0x31;
-		cMZ80[0].z80Base[0xa50] = 0x20;
-		cMZ80[0].z80Base[0xa8e] = 0x20;
-		cMZ80[0].z80Base[0xb67] = 0x20;
-		cMZ80[0].z80Base[0xb78] = 0x40;
-		cMZ80[0].z80Base[0xb7b] = 0x3a;
-		cMZ80[0].z80Base[0xb86] = 0x21;
-		cMZ80[0].z80Base[0xbb0] = 0x1c;
-		cMZ80[0].z80Base[0xbb3] = 0x1d;
-		cMZ80[0].z80Base[0xbb6] = 0x1e;
-		cMZ80[0].z80Base[0xbd0] = 0x36;
-		cMZ80[0].z80Base[0xbd3] = 0x37;
-		cMZ80[0].z80Base[0xc44] = 0x24;
-		cMZ80[0].z80Base[0xc48] = 0x23;
-		//962a
-		cMZ80[0].z80Base[0x1fa2] = 0x00;
-		cMZ80[0].z80Base[0x1fc7] = 0x00;
-		//963a
-
-		cMZ80[0].z80Base[0x213c] = 0x31;
-		cMZ80[0].z80Base[0x2147] = 0x31;
-		cMZ80[0].z80Base[0x216b] = 0x21;
-		cMZ80[0].z80Base[0x217b] = 0x21;
-		cMZ80[0].z80Base[0x21d0] = 0x20;
-		cMZ80[0].z80Base[0x2672] = 0x34;
-		cMZ80[0].z80Base[0x2677] = 0x35;
-		cMZ80[0].z80Base[0x2687] = 0x34;
-		//965
-		cMZ80[0].z80Base[0x326a] = 0x0c;
-		cMZ80[0].z80Base[0x327a] = 0x0c;
-		cMZ80[0].z80Base[0x32e4] = 0x23;
-		cMZ80[0].z80Base[0x32e7] = 0x24;
-		cMZ80[0].z80Base[0x32ef] = 0x25;
-		cMZ80[0].z80Base[0x32f2] = 0x28;
-		cMZ80[0].z80Base[0x3363] = 0x2e;
-		cMZ80[0].z80Base[0x3368] = 0x24;
-		cMZ80[0].z80Base[0x342a] = 0x29;
-		cMZ80[0].z80Base[0x343c] = 0x25;
-		cMZ80[0].z80Base[0x3490] = 0x24;
-		cMZ80[0].z80Base[0x34b3] = 0x34;
-		cMZ80[0].z80Base[0x34f2] = 0x24;
-		cMZ80[0].z80Base[0x3514] = 0x2e;
-		cMZ80[0].z80Base[0x3526] = 0x24;
-		cMZ80[0].z80Base[0x352c] = 0x23;
-		cMZ80[0].z80Base[0x352f] = 0x24;
-		//966
-		cMZ80[0].z80Base[0x39a8] = 0xf8;
-		cMZ80[0].z80Base[0x39ab] = 0xf9;
-		cMZ80[0].z80Base[0x39ae] = 0xfa;
-		//967
-		cMZ80[0].z80Base[0x4412] = 0x21;
-		cMZ80[0].z80Base[0x4423] = 0x21;
-		cMZ80[0].z80Base[0x443b] = 0x21;
-		cMZ80[0].z80Base[0x44bb] = 0x21;
-
-		break;
-	}
-
-	case 0: {//SPACEFURY
-		cMZ80[0].z80Base[0xa5f] = 0x21;
-		cMZ80[0].z80Base[0xa62] = 0x31;
-		cMZ80[0].z80Base[0xa73] = 0x20;
-		cMZ80[0].z80Base[0xb8a] = 0x20;
-
-		cMZ80[0].z80Base[0xba5] = 0x3a;
-		cMZ80[0].z80Base[0xbda] = 0x1c;
-		cMZ80[0].z80Base[0xbdd] = 0x1d;
-		cMZ80[0].z80Base[0xbfd] = 0x37;
-
-		cMZ80[0].z80Base[0xbb0] = 0x21;
-		cMZ80[0].z80Base[0xbb3] = 0x22;
-		cMZ80[0].z80Base[0xbda] = 0x1c;
-		cMZ80[0].z80Base[0xbe0] = 0x1e;
-		cMZ80[0].z80Base[0xbfa] = 0x36;
-		cMZ80[0].z80Base[0xc86] = 0x24;
-		cMZ80[0].z80Base[0xc8a] = 0x23;
-		cMZ80[0].z80Base[0x1fc0] = 0x0;
-
-		cMZ80[0].z80Base[0x215a] = 0x31;
-		cMZ80[0].z80Base[0x21a7] = 0x21;
-		cMZ80[0].z80Base[0x21b7] = 0x21;
-		cMZ80[0].z80Base[0x26ae] = 0x34;
-		cMZ80[0].z80Base[0x26b3] = 0x35;
-		cMZ80[0].z80Base[0x26c3] = 0x34;
-		cMZ80[0].z80Base[0x2c7d] = 0x15;
-		cMZ80[0].z80Base[0x32bb] = 0xc;
-		cMZ80[0].z80Base[0x32cb] = 0xc;
-		cMZ80[0].z80Base[0x3335] = 0x23;
-
-		cMZ80[0].z80Base[0x3338] = 0x24;
-		cMZ80[0].z80Base[0x3340] = 0x25;
-		cMZ80[0].z80Base[0x3343] = 0x28;
-		cMZ80[0].z80Base[0x339a] = 0x28;
-		cMZ80[0].z80Base[0x33b4] = 0x2e;
-		cMZ80[0].z80Base[0x336a] = 0x2e;
-		cMZ80[0].z80Base[0x3372] = 0x2e;
-		cMZ80[0].z80Base[0x348a] = 0x29;
-		cMZ80[0].z80Base[0x34ca] = 0x24;
-		cMZ80[0].z80Base[0x347b] = 0x29;
-		cMZ80[0].z80Base[0x34da] = 0x34;
-		cMZ80[0].z80Base[0x34de] = 0x23;
-		cMZ80[0].z80Base[0x34fa] = 0x23;
-		cMZ80[0].z80Base[0x3504] = 0x34;
-		cMZ80[0].z80Base[0x353e] = 0x2e;
-		cMZ80[0].z80Base[0x3543] = 0x24;
-		cMZ80[0].z80Base[0x355e] = 0x2e;
-		cMZ80[0].z80Base[0x3577] = 0x24;
-		cMZ80[0].z80Base[0x3580] = 0x24;
-
-		cMZ80[0].z80Base[0x4024] = 0x20;
-		cMZ80[0].z80Base[0x4412] = 0x21;
-		cMZ80[0].z80Base[0x4484] = 0x21;
-		cMZ80[0].z80Base[0x44aa] = 0x21;
-		cMZ80[0].z80Base[0x442a] = 0x21;
-
-		break; }
-
-	case 2: { //zektor
-		cMZ80[0].z80Base[0x9c90] = 0x21;
-		cMZ80[0].z80Base[0xcbb] = 0x4c;
-		cMZ80[0].z80Base[0xccc] = 0x20;
-		cMZ80[0].z80Base[0x8ff1] = 0x34;
-		cMZ80[0].z80Base[0x8ff4] = 0x35;
-		cMZ80[0].z80Base[0xe3a] = 0x51;
-		cMZ80[0].z80Base[0xe72] = 0x31;
-		cMZ80[0].z80Base[0xe75] = 0x32;
-		cMZ80[0].z80Base[0xe78] = 0x33;
-		cMZ80[0].z80Base[0x8e1b] = 0x5;
-		cMZ80[0].z80Base[0xdb9] = 0x1;
-		cMZ80[0].z80Base[0x9c78] = 0x21;
-		cMZ80[0].z80Base[0x9cea] = 0x21;
-		cMZ80[0].z80Base[0x9d10] = 0x21;
-		cMZ80[0].z80Base[0x6b5b] = 0x0;
-		cMZ80[0].z80Base[0x6b77] = 0x0;
-		cMZ80[0].z80Base[0x79bc] = 0x4;
-		cMZ80[0].z80Base[0xf8a] = 0x35;
-		cMZ80[0].z80Base[0xf8e] = 0x34;
-		cMZ80[0].z80Base[0x9055] = 0x38;
-		cMZ80[0].z80Base[0x905a] = 0x35;
-		cMZ80[0].z80Base[0x9019] = 0x38;
-		cMZ80[0].z80Base[0x907d] = 0x35;
-		cMZ80[0].z80Base[0x8df0] = 0x5;
-		cMZ80[0].z80Base[0x8e00] = 0x5;
-		cMZ80[0].z80Base[0x890c] = 0x4b;
-		cMZ80[0].z80Base[0x8948] = 0x2;
-		cMZ80[0].z80Base[0x8ed7] = 0x23;
-		cMZ80[0].z80Base[0x7010] = 0x23;
-		cMZ80[0].z80Base[0x6d59] = 0x1;
-		cMZ80[0].z80Base[0x70da] = 0x3;
-		cMZ80[0].z80Base[0x988a] = 0x20;
-		cMZ80[0].z80Base[0x90a0] = 0x4d;
-		cMZ80[0].z80Base[0x90a4] = 0x34;
-		cMZ80[0].z80Base[0x90c0] = 0x34;
-		cMZ80[0].z80Base[0x90ca] = 0x4d;
-		cMZ80[0].z80Base[0x9104] = 0x38;
-		cMZ80[0].z80Base[0x9124] = 0x38;
-		cMZ80[0].z80Base[0x913d] = 0x35;
-		cMZ80[0].z80Base[0x9146] = 0x35;
-
-		break; }
-
-	case 3: {//startrek
-		cMZ80[0].z80Base[0x6a58] = 0x3;
-		cMZ80[0].z80Base[0x6a5e] = 0x4;
-		cMZ80[0].z80Base[0x486c] = 0x2a;
-		cMZ80[0].z80Base[0xe93] = 0x35;
-		cMZ80[0].z80Base[0xe96] = 0x36;
-		cMZ80[0].z80Base[0xe9b] = 0x6;
-		cMZ80[0].z80Base[0xeb0] = 0x17;
-		cMZ80[0].z80Base[0xeb3] = 0x18;
-		cMZ80[0].z80Base[0xeb6] = 0x1a;
-		cMZ80[0].z80Base[0xec2] = 0xd9;
-		cMZ80[0].z80Base[0x2d7b] = 0x2a;
-		cMZ80[0].z80Base[0x2d7f] = 0x29;
-		cMZ80[0].z80Base[0x48ce] = 0x2a;
-		cMZ80[0].z80Base[0xf6c] = 0x6;
-		cMZ80[0].z80Base[0xf76] = 0x7;
-		cMZ80[0].z80Base[0x105e] = 0x15;
-		cMZ80[0].z80Base[0x12f2] = 0xd9;
-		cMZ80[0].z80Base[0x290c] = 0x8;
-		cMZ80[0].z80Base[0x2912] = 0x5;
-		cMZ80[0].z80Base[0x291c] = 0x7;
-		cMZ80[0].z80Base[0x2d9b] = 0x22;
-		cMZ80[0].z80Base[0x2cc8] = 0x6e;
-		cMZ80[0].z80Base[0x29ab] = 0xa;
-		cMZ80[0].z80Base[0x350b] = 0x18;
-		cMZ80[0].z80Base[0x3537] = 0x3b;
-		cMZ80[0].z80Base[0x3576] = 0x3b;
-		cMZ80[0].z80Base[0x6abe] = 0x3;
-		cMZ80[0].z80Base[0x6ace] = 0x4;
-		cMZ80[0].z80Base[0x3564] = 0x4f;
-		cMZ80[0].z80Base[0x2d3a] = 0x23;
-		cMZ80[0].z80Base[0x2d3f] = 0x50;
-		cMZ80[0].z80Base[0x2d42] = 0x5a;
-		cMZ80[0].z80Base[0x2d47] = 0x59;
-		cMZ80[0].z80Base[0x2d4a] = 0x63;
-		cMZ80[0].z80Base[0x2d07] = 0x59;
-		cMZ80[0].z80Base[0x2d0a] = 0x63;
-		cMZ80[0].z80Base[0x2ed0] = 0x17;
-		cMZ80[0].z80Base[0x300b] = 0x1d;
-		cMZ80[0].z80Base[0x1470] = 0x2;
-		cMZ80[0].z80Base[0x32ea] = 0x17;
-		cMZ80[0].z80Base[0x32f3] = 0x18;
-		cMZ80[0].z80Base[0x334a] = 0x9a;
-		cMZ80[0].z80Base[0x33df] = 0x2;
-		cMZ80[0].z80Base[0x2e9b] = 0x22;
-		cMZ80[0].z80Base[0x2f33] = 0x6;
-		cMZ80[0].z80Base[0x48fc] = 0x2a;
-		cMZ80[0].z80Base[0x491f] = 0x30;
-		cMZ80[0].z80Base[0x495e] = 0x2a;
-		cMZ80[0].z80Base[0x4980] = 0x2d;
-		cMZ80[0].z80Base[0x4992] = 0x2a;
-		cMZ80[0].z80Base[0x4998] = 0x29;
-		cMZ80[0].z80Base[0x499b] = 0x2a;
-		cMZ80[0].z80Base[0x3b38] = 0x32;
-		cMZ80[0].z80Base[0x3d2a] = 0x32;
-		cMZ80[0].z80Base[0x3d3b] = 0x94;
-		cMZ80[0].z80Base[0x3dab] = 0x17;
-		cMZ80[0].z80Base[0x3dae] = 0x18;
-		cMZ80[0].z80Base[0x3db7] = 0x2;
-		cMZ80[0].z80Base[0x3dbf] = 0x6;
-		cMZ80[0].z80Base[0x3dc7] = 0x10;
-		cMZ80[0].z80Base[0x3e0a] = 0x10;
-		cMZ80[0].z80Base[0x3eee] = 0x17;
-		cMZ80[0].z80Base[0x4053] = 0x13;
-		cMZ80[0].z80Base[0x4058] = 0x0;
-		cMZ80[0].z80Base[0x4064] = 0xa;
-		cMZ80[0].z80Base[0x4070] = 0x3c;
-		cMZ80[0].z80Base[0x4073] = 0x5a;
-		break;
-	}
 	}
 }
 
@@ -928,8 +610,6 @@ void sega_generate_vector_list(void)
 									add_color_point((adjx >> 16), (adjy >> 16), red, green, blue);
 								}
 							}
-
-							//wrlog("LINE from sx %d sy %d to endx %d endy %d",sx>>16,sy>>16,adjx>>16,adjy>>16);
 						}
 					}
 					clipped = newclip;
@@ -989,18 +669,9 @@ static void BWVectorGenerator(void)
 	sega_generate_vector_list();
 }
 
-/*
-static void swap(int *i, int *j)
-{
-	int t;
-	t = *i;
-	*i = *j;
-	*j = t;
-}
-*/
 READ_HANDLER(VectorRam_r)
 {
-	return vectorram[address - 0xe000];
+	return vectorram[address];
 }
 
 READ_HANDLER(SoundRam)
@@ -1008,46 +679,40 @@ READ_HANDLER(SoundRam)
 	return 0x00;
 }
 
+
 WRITE_HANDLER(Vector_Write)
 {
-	int op = 0;
-	int page = 0;
-	int val = 0; //unsigned
-	int offset = 0;
-	unsigned int bad = 0;//
-	int test = 0;
+	int page;
+	int pc;
+	UINT32 offset = address;
+	unsigned int bad = 0;
+	uint8_t* MEM;
 
-	val = mz80GetRegisterValue(0, CPUREG_PC);
-	//wrlog("OP Handler, Z80PC is %x",mz80GetRegisterValue(temp, CPUREG_PC));
-	test = val;
-	val = val - 3;
+	MEM = GI[0];
 
-	op = cMZ80[0].z80Base[val] & 0xff;
-	//wrlog("current %x -3 val %x",val,test);
-	if (op == 0x32) {
-		bad = cMZ80[0].z80Base[(val + 1)] & 0xFF;
-		page = (cMZ80[0].z80Base[(val + 2)] & 0xFF) << 8;
-		(*sega_decrypt)(val, &bad);
-
+	if (m_cpu_z80[CPU0]->GetLastOpcode() == 0x32)
+	{
+		pc = m_cpu_z80[CPU0]->GetPC() - 3;
+		bad = MEM[pc + 1] & 0xFF;
+		page = (MEM[pc + 2] & 0xFF) << 8;
+		(*sega_decrypt)(pc, &bad);
 		offset = (page & 0xFF00) | (bad & 0x00FF);
-		//wrlog("VAL %x, OP %x BAD %x PAGE %x ADDRESS %x OFFSET %x",val,op,bad,page,address,offset);
-
-		if (nodecrypt) { offset = address; }
-		else { address = offset; }
-		//if ((offset>=0x0000) && (offset<=0xbfff)){;}
-		//if (offset >= 0xc800 && offset <= 0xdfff ) {cMZ80[0]->z80Base[offset]=data;} //memory+soundram
-		//if (offset >= 0xe000 && offset <= 0xefff ) {vectorram[offset-0xe000]=data;cMZ80[0]->z80Base[offset]=data;} //vectorram
+		//wrlog("OP 32, PC is %x, opcode is %x, bad is %x, page is %x offset is %x Real PC is %x", pc, m_cpu_z80[CPU0]->GetLastOpcode(), bad, page, offset, m_cpu_z80[CPU0]->GetPC());
 	}
-
-	if ((address >= 0x0000) && (address <= 0xbfff)) { ; }
-	else if (address >= 0xc800 && address <= 0xdfff) { cMZ80[0].z80Base[address] = data; }
-	else if (address >= 0xe000 && address <= 0xefff) { vectorram[address - 0xe000] = data; cMZ80[0].z80Base[address] = data; }
-	//if (op!=0x32){
-	// if ((address>=0x0000) && (address<=0xbfff)){;}
-	 //if (address >= 0xc800 && address <= 0xdfff ){z80.z80Base[address]=data;}
-	 //if (address >= 0xe000 && address <= 0xefff ){vectorram[address-0xe000]=data;z80.z80Base[address]=data; }
-	//}
+	if ((offset >= 0x0000) && (offset <= 0xbfff))
+	{
+		;
+	}
+	else if ((offset >= 0xc800) && (offset <= 0xd000))
+	{
+		MEM[offset] = data;
+	}
+	else if ((offset >= 0xe000) && (offset <= 0xefff))
+	{
+		vectorram[offset - 0xe000] = data;
+	}
 }
+
 
 PORT_READ_HANDLER(sega_sh_r)
 {
@@ -1056,6 +721,8 @@ PORT_READ_HANDLER(sega_sh_r)
 	else
 		return 0x80;
 }
+
+
 PORT_READ_HANDLER(sega_mult_r)
 {
 	int c;
@@ -1125,12 +792,12 @@ PORT_READ_HANDLER(sega_IN4_r) {
 	static int spinner;
 
 	if (ioSwitch & 1) /* ioSwitch = 0x01 or 0xff */
-		return readinputportbytag("IN4");
+		return readinputport(4);
 
 	/* else ioSwitch = 0xfe */
 
 	/* I'm sure this can be further simplified ;-) BW */
-	delta = readinputportbytag("IN8");
+	delta = readinputport(8);
 	if (delta != 0)
 	{
 		sign = delta >> 7;
@@ -1176,10 +843,10 @@ PORT_WRITE_HANDLER(sega_coin_counter_w)
 ///////////////////////  MAIN LOOP /////////////////////////////////////
 void run_segag80(void)
 {
-	//wrlog("FRAME-------------------------------");
-		//    if (KeyCheck(config.ktest))     {set_pending_interrupt(INT_TYPE_NMI, 0);}
-		//	if (KeyCheck(config.kcoin1) || KeyCheck(config.kcoin2) )	{coin_in=1;	}
-		 //   if (KeyCheck(config.kreset))    {cpu_needs_reset(0);}
+	
+	//    if (KeyCheck(config.ktest))     {set_pending_interrupt(INT_TYPE_NMI, 0);}
+	//	if (KeyCheck(config.kcoin1) || KeyCheck(config.kcoin2) )	{coin_in=1;	}
+	 //   if (KeyCheck(config.kreset))    {cpu_reset(0);}
 
 	BWVectorGenerator();
 	if (gamenum == TACSCAN)
@@ -1294,21 +961,21 @@ int init_segag80()
 
 	switch (gamenum)
 	{
-	case ZEKTOR:initz80N(SegaRead, SegaWrite, G80SpinPortRead, ZektorPortWrite, 0); NUM_SPEECH_SAMPLES = NUM_ZEKTOR_SPEECH; sega_security(82); break;
-	case TACSCAN:sega_rotate = 1; initz80N(SegaRead, SegaWrite, G80SpinPortRead, TacScanPortWrite, 0); sega_security(76); break;
-	case STARTREK:initz80N(SegaRead, SegaWrite, G80SpinPortRead, StarTrekPortWrite, 0); NUM_SPEECH_SAMPLES = NUM_STARTREK_SPEECH; sega_security(64); break;
-	case SPACFURY:initz80N(SegaRead, SegaWrite, SpacfuryPortRead, SpacfuryPortWrite, 0); NUM_SPEECH_SAMPLES = NUM_SPACFURY_SPEECH; sega_security(0); Decrypt(0); nodecrypt = 1; break;
-	case SPACFURA:initz80N(SegaRead, SegaWrite, SpacfuryPortRead, SpacfuryPortWrite, 0); NUM_SPEECH_SAMPLES = NUM_SPACFURY_SPEECH; sega_security(0); Decrypt(5); nodecrypt = 1; break;
-	case SPACFURB:initz80N(SegaRead, SegaWrite, SpacfuryPortRead, SpacfuryPortWrite, 0); NUM_SPEECH_SAMPLES = NUM_SPACFURY_SPEECH; sega_security(0); Decrypt(6); nodecrypt = 1; break;
-	case ELIM2:initz80N(SegaRead, SegaWrite, Elim2PortRead, ElimPortWrite, 0); sega_security(70); break;
-	case ELIM2A:initz80N(SegaRead, SegaWrite, Elim2PortRead, ElimPortWrite, 0); sega_security(70); break;
-	case ELIM2C:initz80N(SegaRead, SegaWrite, Elim2PortRead, ElimPortWrite, 0); sega_security(70); break;
-	case ELIM4:initz80N(SegaRead, SegaWrite, Elim4PortRead, ElimPortWrite, 0); sega_security(76); break;
-	case ELIM4P:initz80N(SegaRead, SegaWrite, Elim4PortRead, ElimPortWrite, 0); sega_security(76); break;
+	case ZEKTOR:init_z80(SegaRead, SegaWrite, G80SpinPortRead, ZektorPortWrite, 0); NUM_SPEECH_SAMPLES = NUM_ZEKTOR_SPEECH; sega_security(82); break;
+	case TACSCAN:sega_rotate = 1; init_z80(SegaRead, SegaWrite, G80SpinPortRead, TacScanPortWrite, 0); sega_security(76); break;
+	case STARTREK:init_z80(SegaRead, SegaWrite, G80SpinPortRead, StarTrekPortWrite, 0); NUM_SPEECH_SAMPLES = NUM_STARTREK_SPEECH; sega_security(64); break;
+	case SPACFURY:init_z80(SegaRead, SegaWrite, SpacfuryPortRead, SpacfuryPortWrite, 0); NUM_SPEECH_SAMPLES = NUM_SPACFURY_SPEECH; sega_security(64); break;
+	case SPACFURA:init_z80(SegaRead, SegaWrite, SpacfuryPortRead, SpacfuryPortWrite, 0); NUM_SPEECH_SAMPLES = NUM_SPACFURY_SPEECH; sega_security(64);  break;
+	case SPACFURB:init_z80(SegaRead, SegaWrite, SpacfuryPortRead, SpacfuryPortWrite, 0); NUM_SPEECH_SAMPLES = NUM_SPACFURY_SPEECH; sega_security(64);  break;
+	case ELIM2:init_z80(SegaRead, SegaWrite, Elim2PortRead, ElimPortWrite, 0); sega_security(70); break;
+	case ELIM2A:init_z80(SegaRead, SegaWrite, Elim2PortRead, ElimPortWrite, 0); sega_security(70); break;
+	case ELIM2C:init_z80(SegaRead, SegaWrite, Elim2PortRead, ElimPortWrite, 0); sega_security(70); break;
+	case ELIM4:init_z80(SegaRead, SegaWrite, Elim4PortRead, ElimPortWrite, 0); sega_security(76); break;
+	case ELIM4P:init_z80(SegaRead, SegaWrite, Elim4PortRead, ElimPortWrite, 0); sega_security(76); break;
 	}
 
 	sega_sh_start();
-	mz80reset();
+	
 	return 0;
 }
 

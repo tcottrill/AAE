@@ -1,7 +1,7 @@
 #ifndef SPACDUEL_H
 #define SPACDUEL_H
 
-#include "../aaemain.h"
+#include "aaemain.h"
 
 extern char* gamename[];
 

@@ -15,9 +15,10 @@
 /* Lunar Lander Emu */
 
 #include "llander.h"
-#include "../aae_mame_driver.h"
-#include "../sndhrdw/samples.h"
-#include "../vidhrdwr/vector.h"
+#include "aae_mame_driver.h"
+#include "samples.h"
+#include "vector.h"
+#include "aae_avg.h"
 
 static int ldvggo = 0;
 static int thrust = 0;
@@ -429,12 +430,12 @@ void run_llander()
 
 		*/
 
-		//if (KeyCheck(config.kreset))  {cpu_needs_reset(0);}
+		//if (KeyCheck(config.kreset))  {cpu_reset(0);}
    //  if (getport(0) & 0x80) {cpu_disable_interrupts(0,0);} else {cpu_disable_interrupts(0,1);}
 
 	//wrlog("Watchdog this frame %x",WATCHDOG);
 	//if (WATCHDOG==0) k++;
-	//if (k > 60) {cpu_needs_reset(0);k=0;}
+	//if (k > 60) {cpu_reset(0);k=0;}
 
 	WATCHDOG = 0;
 

@@ -1,21 +1,16 @@
-// 6502 CPU Core, based on code by Neil Bradley, with many changes from sources across the web.
+// 6502 CPU Core, based on code by Neil Bradley, with many changes from sources across the web. 
 // ADC and SBC code from M.A.M.E. (tm)  Copyright (c) 1998,1999,2000, etc Juergen Buchmueller
-// Timing table and debug code from FakeNes
-// Code rewritten to c++ and updated by TC 2015-2024 explicitly written to work with with older M.A.M.E. source code for my testing.
-// Currently does not handle IRQ after CLI correctly.
-// TODO: fix issues with incorrect operand display in the debug code.
-// Code has been verified to run multi-cpu correctly with Major Havoc.
-
-//This code is freeware.
-//Version 2024.7.14
+// Timing table & push/pull operations from FakeNes
+// Code rewritten to c++ and updated by Tim Cottrill 2015-2024 explicitly written to work with with older M.A.M.E. source code for my testing. 
+// Currently does not handle IRQ after CLI correctly. 
 
 #ifndef _6502_H_
 #define _6502_H_
 
 #pragma once
 
-/*
- Only Required for testing with antique Allegro code.
+
+// REMOVE below if not needed for your code. 
 #undef int8_t
 #undef uint8_t
 #undef int16_t
@@ -26,18 +21,21 @@
 #undef uintptr_t
 #undef int64_t
 #undef uint64_t
- */
+/////////////////////////////////////////////
+
 
 #include <cstdint>
 #include <string>
-#include "..\\deftypes.h"
+#include "deftypes.h"
+
+
 
 class cpu_6502
 {
 
 public:
 
-	//Register Enums
+	//For convenience from mame, these are for getting the register values
 	enum
 	{
 		M6502_A = 0x01,
@@ -47,7 +45,7 @@ public:
 		M6502_S = 0x10,
 	};
 
-	// Pointer to the games 32 bit memory map
+	// Pointer to the game memory map (32 bit)
 	uint8_t *MEM = nullptr;
 	//Pointer to the handler structures
 	MemoryReadByte  *memory_read = nullptr;
@@ -56,6 +54,7 @@ public:
 	//Constructors
 	cpu_6502(uint8_t *mem, MemoryReadByte *read_mem, MemoryWriteByte *write_mem, uint16_t addr, int num);
 	
+
 	//Destructor
 	~cpu_6502() {};
 
@@ -115,7 +114,7 @@ private:
 	void (cpu_6502::*adrmode[0x100])();
 	void (cpu_6502::*instruction[0x100])();
 
-	// Flags
+	// flags
 	enum
 	{
 		F_C = 0x01, //Carry
@@ -130,33 +129,35 @@ private:
 
 	////////////////////////////////////////////////////////////////////////////////////////////////////
     #define SET_NZ(n)	if ((n) == 0) P = (P & ~F_N) | F_Z; else P = (P & ~(F_N | F_Z)) | ((n) & F_N)
-	#define SET_Z(n)	if ((n) == 0) P |= F_Z; else P &= ~F_Z
-	#define BASE_STACK     0x100
+
+    #define SET_Z(n)	if ((n) == 0) P |= F_Z; else P &= ~F_Z
+
+    #define BASE_STACK     0x100
     #define MAX_HANDLER 50
 	
 
-	uint16_t addrmask;     //Address Mask for < 0xffff top
+	uint16_t addrmask;   //Address Mask for < 0xffff top
 	// internal registers 
 	uint8_t opcode;
 	int clockticks6502;
-	int clocktickstotal;   //Runnning, resetable total of clockticks
+	int clocktickstotal; //Runnning, resetable total of clockticks
 	uint16_t reladdr;
 
 	// help variables, could be refined.
-	uint16_t savepc;       // Holds the PC of the last operation (EA) Effective Address
-	uint16_t oldpc;        // Only use in B commands
-	uint8_t  value;        //Helper for address calculation
-	int saveflags;         //Used in rotate commands to save the flags
-	uint16_t help;         //Just a temp variable
+	uint16_t savepc; // Holds the PC of the last operation (EA) Effective Address
+	uint16_t oldpc;  // Only use in B commands
+	uint8_t  value;  //Helper for address calculation
+	int saveflags;  //Used in rotate commands to save the flags
+	uint16_t help;  //Just a temp variable
 	
-	bool debug = 1;
-	bool mmem = 0;         //Use mame style memory handling, reject unhandled read/writes
+	bool debug = 0;
+	bool mmem = 0; //Use mame style memory handling, reject unhandled read/writes
 	bool log_debug_rw = 0; //Log unhandled reads and writes
 	
 		
 	//int num;
-	int _irqPending;       //Non-zero if Irq Pending. Required only in this cpucore by Major Havoc.
-	int cpu_num;           //For multicpu identification
+	int _irqPending;  //Non-zero if Irq Pending. Required only in this cpucore by Major Havoc.
+	int cpu_num;      //For multicpu identification
 
 	//Addressing
 	void implied6502();

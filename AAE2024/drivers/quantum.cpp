@@ -11,17 +11,17 @@
 // THE CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.  
 //==========================================================================
 
-
 #include "quantum.h"
-#include "../aae_mame_driver.h"
-#include "../sndhrdw/samples.h"
-#include "../vidhrdwr/vector.h"
-#include "../vidhrdwr/aae_avg.h"
-#include "../machine/earom.h"
-#include "../sndhrdw/pokyintf.h"
+#include "aaemain.h"
+#include "starcpu.h"
+#include "aae_mame_driver.h"
+#include "samples.h"
+#include "vector.h"
+#include "aae_avg.h"
+#include "earom.h"
+#include "pokyintf.h"
 #include "math.h"
-#include "../acommon.h"
-#include "../log.h"
+
 
 #pragma warning(disable : 4838)
 
@@ -159,7 +159,7 @@ void quantum_led_write(unsigned address, unsigned data)
 		//vector_set_flip_y (data & 0x80);
 	}
 }
-void MWA_NOP(unsigned address, unsigned data)
+void QMWA_NOP(unsigned address, unsigned data)
 {
 	wrlog("NOOP Write Address: %x Data: %x", address, data);
 }
@@ -174,7 +174,7 @@ void UN_WRITE(unsigned address, unsigned data)
 	wrlog("--------------------Unhandled Read, %x data: %x", address, data);
 }
 
-unsigned MRA_NOP(unsigned address)
+unsigned QMRA_NOP(unsigned address)
 {
 	return 0x00;
 }//wrlog("WATCHDOG read");
@@ -192,6 +192,7 @@ unsigned quantum_snd_read(unsigned address)
 	else
 		return pokey1_r((address >> 1) % 0x10);
 }
+
 void quantum_snd_write(unsigned address, unsigned data)
 {
 	unsigned int data1;
@@ -199,8 +200,7 @@ void quantum_snd_write(unsigned address, unsigned data)
 
 	data1 = (data & 0xff00) >> 8;
 	data2 = data & 0x00ff;
-
-	//wrlog("SOUND ADDRESS CONVERSION %x data %x", (address>>1)&0xf,data1);
+		
 	if (address & 0x1) {
 		pokey1_w((address >> 1) & 0xf, data1 & 0xff);
 	}
@@ -232,20 +232,16 @@ void quantum_colorram_w(unsigned address, unsigned data)
 	vec_colors[address].g = g;
 	vec_colors[address].b = b;
 }
+
 void avgdvg_resetQ(unsigned address, unsigned data)
 {
 	wrlog("AVG Reset");
 }
+
 void avgdvg_goQ(unsigned address, unsigned data)
 {
 	//avg_go();
 }
-/*
-unsigned read_handler(unsigned address)
-{;}
-void write_handler(unsigned address, unsigned data)
-{;}
-*/
 
 static struct POKEYinterface pokey_interface =
 {
@@ -286,7 +282,7 @@ struct STARSCREAM_DATAREGION quantum_readbyte[] =
 	{ 0x948000, 0x948001,  quantum_switches_r, NULL },
 	//{ 0x950000, 0x95001f,  NULL, color_ram},
 	{ 0x960000, 0x9601ff,  UN_READ,NULL },
-	{ 0x978000, 0x978001,  MRA_NOP,NULL },
+	{ 0x978000, 0x978001,  QMRA_NOP,NULL },
 	//{ 0x000000, 0xfffff, UN_READ, NULL },
 	 {-1, -1, NULL, NULL}
 };
@@ -302,7 +298,7 @@ struct STARSCREAM_DATAREGION quantum_readword[] =
 	{ 0x948000, 0x948001,  quantum_switches_r, NULL },
 	//{ 0x950000, 0x95001f,  NULL, color_ram},
 	{ 0x960000, 0x9601ff,  UN_READ,NULL },
-	{ 0x978000, 0x978001,  MRA_NOP,NULL },
+	{ 0x978000, 0x978001,  QMRA_NOP,NULL },
 	//{ 0x000000, 0xfffff, UN_READ, NULL },
 	 {-1, -1, NULL, NULL}
 };
@@ -316,7 +312,7 @@ struct STARSCREAM_DATAREGION quantum_writebyte[] =
 	{ 0x900000, 0x9001ff,  NULL,nv_ram },
 	{ 0x950000, 0x95001f,  quantum_colorram_w,NULL},
 	{ 0x958000, 0x958001,  quantum_led_write,NULL },
-	{ 0x960000, 0x960001,  MWA_NOP,NULL },	// enable NVRAM?
+	{ 0x960000, 0x960001,  QMWA_NOP,NULL },	// enable NVRAM?
 	{ 0x968000, 0x968001,  avgdvg_resetQ,NULL },
 	//{ 0x970000, 0x970001,  avgdvg_goQ,NULL },
 	//{ 0x970000, 0x970001, NULL,qavggo },
@@ -336,7 +332,7 @@ struct STARSCREAM_DATAREGION quantum_writeword[] =
 	{ 0x900000, 0x9001ff, NULL,nv_ram },
 	{ 0x950000, 0x95001f, quantum_colorram_w, NULL},
 	{ 0x958000, 0x958001, quantum_led_write,NULL },
-	{ 0x960000, 0x960001, MWA_NOP,NULL },	// enable NVRAM?
+	{ 0x960000, 0x960001, QMWA_NOP,NULL },	// enable NVRAM?
 	{ 0x968000, 0x968001, avgdvg_resetQ,NULL },
 	//{ 0x970000, 0x970001,  avgdvg_goQ,NULL },
 	//{ 0x978000, 0x978001, watchdog_reset_w,NULL },
@@ -346,29 +342,6 @@ struct STARSCREAM_DATAREGION quantum_writeword[] =
 	 {-1, -1, NULL, NULL}
 };
 
-/*
-void init68k(struct STARSCREAM_PROGRAMREGION *fetch, struct STARSCREAM_DATAREGION *readbyte, struct STARSCREAM_DATAREGION *readword, struct STARSCREAM_DATAREGION *writebyte, struct STARSCREAM_DATAREGION *writeword)
-{
-	  s68000init();
-	   s68000context.fetch=fetch;
-	  s68000context.s_fetch=fetch;
-	  s68000context.u_fetch=fetch;
-	  s68000context.s_readbyte=readbyte;
-	  s68000context.u_readbyte=readbyte;
-	  s68000context.s_readword=readword;
-	  s68000context.u_readword=readword;
-	  s68000context.s_writebyte=writebyte;
-	  s68000context.u_writebyte=writebyte;
-	  s68000context.s_writeword=writeword;
-	  s68000context.u_writeword=writeword;
-	  s68000SetContext(&s68000context);
-	  s68000reset();
-	  s68000exec(100);
-	   s68000reset();
-	 wrlog("Initial PC is %06X\n",s68000context.pc);
-}
-
-*/
 
 /*--------------------------------------------------------------------------*/
 /* Memory handlers                                                          */

@@ -1,7 +1,7 @@
 #ifndef GUI_H
 #define GUI_H
 
-#include "../aaemain.h"
+#include "aaemain.h"
 
 int init_gui();
 void gui_animate(int reset);

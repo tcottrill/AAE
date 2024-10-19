@@ -1,7 +1,7 @@
 #ifndef MHAVOC_H
 #define MHAVOC_H
 
-#include "../aaemain.h"
+#include "aaemain.h"
 
 //extern char *gamename[];
 int MHscale_by_cycles(int val, int clock);

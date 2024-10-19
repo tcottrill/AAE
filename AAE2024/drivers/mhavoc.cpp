@@ -12,6 +12,9 @@
 // THE CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.  
 //============================================================================
 
+// Note to me, figure out why this works and my perfectly timed version in my other emulator has sound lag.
+
+
 /*
 	 Memory Map for Major Havoc
 
@@ -161,16 +164,15 @@
 ***************************************************************************/
 
 #include "mhavoc.h"
-#include "../aae_mame_driver.h"
-#include "../sndhrdw/samples.h"
-#include "../vidhrdwr/vector.h"
-#include "../vidhrdwr/aae_avg.h"
-//#include "../glcode.h"
-#include "../sndhrdw/pokyintf.h"
-#include "../machine/earom.h"
-#include "../rand.h"
-#include "../sndhrdw/5220intf.h"
-#include "../fileio/loaders.h"
+#include "aae_mame_driver.h"
+#include "samples.h"
+#include "vector.h"
+#include "aae_avg.h"
+#include "pokyintf.h"
+#include "earom.h"
+#include "rand.h"
+#include "5220intf.h"
+#include "loaders.h"
 
 static struct POKEYinterface pokey_interface =
 {
@@ -251,12 +253,12 @@ int get_vidticks(int reset)
 	if (reset == 0xff) //Reset Tickcount;
 	{
 		vidticks = 0;
-		vidticks -= m6502zpGetElapsedTicks(0);  //Make vid_tickcount a negative number to check for reset later;
+		vidticks -= m_cpu_6502[0]->get6502ticks(0);  //Make vid_tickcount a negative number to check for reset later;
 		return 0;
 	}
 
 	v = vidticks;
-	temp = m6502zpGetElapsedTicks(0);
+	temp = m_cpu_6502[0]->get6502ticks(0);
 	wrlog("Vid ticks here is ------------------------- %d", temp);
 	//if (temp <= cyclecount[running_cpu]) temp = cyclecount[running_cpu]-m6502zpGetElapsedTicks(0);
 	//else wrlog("Video CYCLE Count ERROR occured, check code.");
@@ -270,7 +272,7 @@ int MHscale_by_cycles(int val, int clock)
 	int current = 0;
 	int max;
 
-	current = m6502zpGetElapsedTicks(0);
+	current = m_cpu_6502[1]->get6502ticks(0);
 	current += gammaticks;
 	max = clock / 50;
 
@@ -324,14 +326,15 @@ void run_reset()
 	gamma_xmtd = 0;
 	player_1 = 0;
 	cache_clear();
-	m6502zpSetContext(c6502[0]);
-	m6502zpreset();
-	m6502zpGetContext(c6502[0]);
+	//m6502zpSetContext(c6502[0]);
+	//m6502zpreset();
+	m_cpu_6502[0]->reset6502();
+	//m6502zpGetContext(c6502[0]);
 	if (has_gamma_cpu)
 	{
-		m6502zpSetContext(c6502[1]);
-		m6502zpreset();
-		m6502zpGetContext(c6502[1]);
+		//m6502zpSetContext(c6502[1]);
+		m_cpu_6502[1]->reset6502();
+		//m6502zpGetContext(c6502[1]);
 		Pokey_sound_init(1250000, 44100, 4, 6);
 	}
 	else { Pokey_sound_init(1250000, 44100, 2, 6); }
@@ -353,9 +356,10 @@ void mhavoc_interrupt()
 		{  //  wrlog("IRQ ALPHA CPU");
 			intcpu1 = 1;
 			//cpunum_set_input_line(machine, 0, 0, ASSERT_LINE);
-			m6502zpSetContext(c6502[0]);
-			m6502zpint(1);
-			m6502zpGetContext(c6502[0]);
+			//m6502zpSetContext(c6502[0]);
+			m_cpu_6502[0]->irq6502();
+			//m6502zpint(1);
+			//m6502zpGetContext(c6502[0]);
 			alpha_irq_clock_enable = 0;
 		}
 	}
@@ -368,9 +372,10 @@ void mhavoc_interrupt()
 		{
 			//wrlog("IRQ GAMMA CPU");
 			intcpu2 = 1;
-			m6502zpSetContext(c6502[1]);
-			m6502zpint(1);
-			m6502zpGetContext(c6502[1]);
+			//m6502zpSetContext(c6502[1]);
+			m_cpu_6502[1]->irq6502();
+			//m6502zpint(1);
+			//m6502zpGetContext(c6502[1]);
 		}
 		//cpunum_set_input_line(machine, 1, 0, (gamma_irq_clock & 0x08) ? ASSERT_LINE : CLEAR_LINE);
 	}
@@ -544,7 +549,7 @@ READ_HANDLER(mhavoc_port_0_r)
 	float me;
 
 	me = 3.75 * total_length;//(((1780 * total_length)/ 1000000) * 1512);//* 1512);
-	ticks = m6502zpGetElapsedTicks(0);
+	ticks = m_cpu_6502[0]->get6502ticks(0);
 	if (MHAVGDONE == 0)wrlog("Total LENGTH HERE %f and TOTAL TICKS %d", me, ticks);
 	if (get_vidticks(0) > me && MHAVGDONE == 0) { MHAVGDONE = 1; total_length = 0; }
 
@@ -739,7 +744,7 @@ static void MH_generate_vector_list(void)
 	int scalef = 0;
 	int one = 0;
 	int two = 0;
-	int escape = 0;
+	//int escape = 0;
 	static int spkl_shift = 0;
 	sp = 0;
 	statz = 0;
@@ -819,8 +824,7 @@ static void MH_generate_vector_list(void)
 				{
 					one = 0;
 					two = 0;
-					escape = 0;
-
+					// Get direction
 					if (ex > sx) one = 1;
 					if (ey > sy) two = 1;
 
@@ -852,13 +856,10 @@ static void MH_generate_vector_list(void)
 							if (two) { sy += 1; }
 							else { sy -= 1; }
 						}
-						escape++;
-						//if (escape > 40) wrlog("SX  %f  EX %f SY %f EY %f",sx,ex,ey,sy);
+						
 						add_color_point(sx, sy, red, green, blue);
-						//add_color_point(sx, sy,255,255,255);
-
-						spkl_shift = (((spkl_shift & 0x40) >> 6) ^ ((spkl_shift & 0x20) >> 5)
-							^ 1) | (spkl_shift << 1);
+						
+						spkl_shift = (((spkl_shift & 0x40) >> 6) ^ ((spkl_shift & 0x20) >> 5)^ 1) | (spkl_shift << 1);
 
 						if ((spkl_shift & 0x7f) == 0x7f) spkl_shift = 0;
 					}
@@ -893,7 +894,7 @@ static void MH_generate_vector_list(void)
 
 			if (lastbank != vectorbank) {
 				lastbank = vectorbank;
-				wrlog("Vector Bank Switch %x", 0x18000 + ((firstwd >> 8) & 3) * 0x2000);
+				//wrlog("Vector Bank Switch %x", 0x18000 + ((firstwd >> 8) & 3) * 0x2000);
 				memcpy(GI[CPU0] + 0x6000, GI[CPU0] + vectorbank, 0x2000);
 			}
 			break;
@@ -908,8 +909,15 @@ static void MH_generate_vector_list(void)
 			else { scale = scale * 2; }
 			if (firstwd & 0x0800)
 			{
-				if (ywindow == 0) { ywindow = 1; clip = currenty >> VEC_SHIFT; }
-				else { ywindow = 0; }
+				if (ywindow == 0)
+				{ 
+					ywindow = 1; 
+					clip = currenty >> VEC_SHIFT; 
+				}
+				else 
+				{ 
+					ywindow = 0; 
+				}
 			}
 
 			break;
@@ -1123,7 +1131,7 @@ MEM_ADDR(0x2000, 0x203f, mh_quad_pokey_write)	 /* Quad Pokey write	*/
 MEM_ADDR(0x4000, 0x4000, mhavoc_gamma_irq_ack_w)/* IRQ Acknowledge	*/
 MEM_ADDR(0x4800, 0x4800, mhavoc_out_1_w)		 /* Coin Counters 	*/
 MEM_ADDR(0x5000, 0x5000, mhavoc_alpha_w)		 /* Alpha Comm. Write Port */
-MEM_ADDR(0x5800, 0x5800, speech_data_w)		 /* Alpha Comm. Write Port */
+MEM_ADDR(0x5800, 0x5800, speech_data_w)		     /* Alpha Comm. Write Port */
 MEM_ADDR(0x5900, 0x5900, speech_strobe_w)		 /* Alpha Comm. Write Port */
 MEM_ADDR(0x6000, 0x61ff, eprom_w)   	         /* EEROM		*/
 MEM_ADDR(0x8000, 0xbfff, NoWrite)
@@ -1171,15 +1179,15 @@ void run_alphaone()
 	//wrlog("------------FRAME START --------------");
 	for (x = 0; x < (passes + 1); x++) //160
 	{
-		m6502zpSetContext(c6502[0]);	// Set CPU #1's information
-		dwResult = m6502zpexec((int)cycles1 / passes);
+		//m6502zpSetContext(c6502[0]);	// Set CPU #1's information
+		dwResult = m_cpu_6502[0]->exec6502((int)cycles1 / passes);
 		if (0x80000000 != dwResult)
 		{
 			x = 3000; done = 1;
-			allegro_message("Invalid instruction at %.2x on CPU 0", c6502[0]->m6502pc);
+			allegro_message("Invalid instruction at %.2x on CPU 0", m_cpu_6502[0]->get_pc());
 		}
 
-		m6502zpGetContext(c6502[0]);	// Get CPU #1's state info
+		//m6502zpGetContext(c6502[0]);	// Get CPU #1's state info
 
 		mhavoc_interrupt();
 	}
@@ -1202,7 +1210,7 @@ void run_mhavoc()
 	UINT32 m6502NmiTicks = 0;
 	UINT32 dwElapsedTicks = 0;
 	UINT32 dwResult = 0;
-	dwElapsedTicks = m6502zpGetElapsedTicks(0xff);
+	dwElapsedTicks = m_cpu_6502[0]->get6502ticks(0xff);
 
 	gammaticks = 0;
 	ticktest = 0;
@@ -1213,21 +1221,21 @@ void run_mhavoc()
 	for (x = 0; x < passes; x++)
 	{
 		//cpunum=0;
-		m6502zpSetContext(c6502[0]);	// Set CPU #1's information
-		cycles = m6502zpGetElapsedTicks(0xff);
+		//m6502zpSetContext(c6502[0]);	// Set CPU #1's information
+		cycles = m_cpu_6502[0]->get6502ticks(0xff);
 		wrlog("Cycles ticks here is %d", cycles);
 
 		if (cpu1ticks < 50000) {
-			dwResult = m6502zpexec((int)cycles1 / passes);
+			dwResult = m_cpu_6502[0]->exec6502((int)cycles1 / passes);
 			if (0x80000000 != dwResult)
 			{
 				x = 3000; done = 1;
-				allegro_message("Invalid instruction at %.2x on CPU 0", c6502[0]->m6502pc);
+				allegro_message("Invalid instruction at %.2x on CPU 0", m_cpu_6502[0]->get_pc());
 			}
 		}
-		else dwResult = m6502zpexec(cpu1ticks - 50000);
+		else dwResult = m_cpu_6502[0]->exec6502(cpu1ticks - 50000);
 
-		cycles = m6502zpGetElapsedTicks(0xff);
+		cycles = m_cpu_6502[0]->get6502ticks(0xff);
 
 		cpu1ticks += cycles;
 		bigticks += cycles;
@@ -1241,18 +1249,18 @@ void run_mhavoc()
 		//wrlog("HRTZ Counter %d",hrzcounter);
 		if (twokticks > 120) { twokticks -= 120; bitflip ^= 1; }
 
-		m6502zpGetContext(c6502[0]);	// Get CPU #1's state info
+		//m6502zpGetContext(c6502[0]);	// Get CPU #1's state info
 
 		if (has_gamma_cpu)
 		{
 			//----------------------------------------------------------------------------------------------------------------------
 									 //cpunum=1;
-			m6502zpSetContext(c6502[1]);	// Set CPU #2's information
+			//m6502zpSetContext(c6502[1]);	// Set CPU #2's information
 
-			if (reset1) { m6502zpreset(); reset1 = 0; wrlog("Reset, Gamma CPU"); }
+			if (reset1) { m_cpu_6502[1]->reset6502(); reset1 = 0; wrlog("Reset, Gamma CPU"); }
 
 			if (nmicpu1) {
-				m6502zpnmi();
+				m_cpu_6502[1]->nmi6502();
 				nmicpu1 = 0;
 				gamma_rcvd = 0;
 				alpha_xmtd = 1;
@@ -1260,19 +1268,19 @@ void run_mhavoc()
 				//wrlog("NMI Taken, Gamma CPU");
 			}
 
-			cyclesgamma = m6502zpGetElapsedTicks(0xff);
+			cyclesgamma = m_cpu_6502[1]->get6502ticks(0xff);
 			cyclesgamma = 0;
-			dwResult = m6502zpexec(63); //(cycles2 / passes)
+			dwResult = m_cpu_6502[1]->exec6502(63); //(cycles2 / passes)
 			if (0x80000000 != dwResult)
 			{
 				x = 3000; done = 1; end_mhavoc();
-				allegro_message("Invalid instruction at %.2x on CPU 2", c6502[0]->m6502pc);
+				allegro_message("Invalid instruction at %.2x on CPU 2", m_cpu_6502[1]->get_pc());
 			}
 
-			cyclesgamma = m6502zpGetElapsedTicks(0);
+			cyclesgamma = m_cpu_6502[1]->get6502ticks(0xff);
 			gammaticks += cyclesgamma;
 			ticktest += cyclesgamma;
-			m6502zpGetContext(c6502[1]);	// Get CPU #2's state info
+			//m6502zpGetContext(c6502[1]);	// Get CPU #2's state info
 		}
 		mhavoc_interrupt();
 	}
@@ -1308,13 +1316,13 @@ int init_mhavoc(void)
 	gammaticks = 0;
 
 	if (has_gamma_cpu) {
-		init6502Z(AlphaRead, AlphaWrite, 0);
-		init6502Z(GammaRead, GammaWrite, 1);
+		init6502(AlphaRead, AlphaWrite, 0);
+		init6502(GammaRead, GammaWrite, 1);
 		memset(GI[1] + 0x6000, 0xff, 0x1ff);
 		Pokey_sound_init(1250000, 44100, 4, 6);
 	}
 	else {
-		init6502Z(AlphaOneRead, AlphaOneWrite, 0);
+		init6502(AlphaOneRead, AlphaOneWrite, 0);
 		Pokey_sound_init(1250000, 44100, 2, 6);
 		memset(GI[CPU0] + 0x1800, 0xff, 0xff);
 	}

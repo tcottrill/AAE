@@ -11,7 +11,7 @@ See drivers\starwars.c for notes
 
 ***************************************************************************/
 
-#include "../driver.h"
+#include "../aae_mame_driver.h"
 #include "../sndhrdw/pokyintf.h"
 #include "starwars_snd.h"
 #include "5220intf.h"
@@ -56,7 +56,8 @@ int port_A_ddr = 0;      /* 6532 Data Direction Register A */
 int port_B_ddr = 0;      /* 6532 Data Direction Register B */
                          /* for each bit, 0 = input, 1 = output */
 
-
+//static int irq_flag = 0;   /* 6532 interrupt flag register */
+//static int PA7_irq = 0;  /* IRQ-on-write flag (sound CPU) */
 
 static struct TMS5220interface tms5220_interface =
 {
@@ -66,72 +67,77 @@ static struct TMS5220interface tms5220_interface =
 };
 static struct POKEYinterface pokey_interface =
 {
-	4,			/* 4 chips */
-	1512000,	/* 1.5 MHz? */
-    10,    /* volume */
-	6,//POKEY_DEFAULT_GAIN/4,
-	USE_CLIP,
-	/* The 8 pot handlers */
-	{ 0, 0, 0, 0 },
-	{ 0, 0, 0, 0 },
-	{ 0, 0, 0, 0 },
-	{ 0, 0, 0, 0 },
-	{ 0, 0, 0, 0 },
-	{ 0, 0, 0, 0 },
-	{ 0, 0, 0, 0 },
-	{ 0, 0, 0, 0 },
-	/* The allpot handler */
-	{ 0, 0, 0, 0 },
+    4,			/* 4 chips */
+    1512000,	/* 1.5 MHz? */
+    255,    /* volume */
+    6,//POKEY_DEFAULT_GAIN/4,
+    USE_CLIP,
+    /* The 8 pot handlers */
+    { 0, 0, 0, 0 },
+    { 0, 0, 0, 0 },
+    { 0, 0, 0, 0 },
+    { 0, 0, 0, 0 },
+    { 0, 0, 0, 0 },
+    { 0, 0, 0, 0 },
+    { 0, 0, 0, 0 },
+    { 0, 0, 0, 0 },
+    /* The allpot handler */
+    { 0, 0, 0, 0 },
 };
 
 int starwars_sh_start(void)
 {
-	int rv;
+    int rv;
 
-    rv = pokey_sh_start (&pokey_interface);
+    rv = pokey_sh_start(&pokey_interface);
     if (rv) return rv;
-    return(tms5220_sh_start (&tms5220_interface));
+    return(tms5220_sh_start(&tms5220_interface));
 }
 
 
 void starwars_sh_stop(void)
 {
-    pokey_sh_stop ();
-    tms5220_sh_stop ();
+    pokey_sh_stop();
+    tms5220_sh_stop();
 }
 
 void starwars_sh_update()
 {
-    pokey_sh_update ();
+    pokey_sh_update();
     tms5220_sh_update();
 }
 
+
 /********************************************************/
 
-int starwars_snd_interrupt(void)
+void starwars_snd_interrupt()
 {
-	/* if the timer is running, decrement it, and check if it */
-	/* has expired.  If so - IRQ, otherwise ignore            */
-	if (timer_running)
-	{
-		if (--timer == 0)
-		{
-			timer_running = 0;
-			interrupt_flags |= 0x80; /* set timer interrupt flag */
-			return interrupt();
-		}
-	}
 
-	return ignore_interrupt();
+  //  wrlog("Sound Interrupt called");
+    /* if the timer is running, decrement it, and check if it */
+    /* has expired.  If so - IRQ, otherwise ignore            */
+    if (timer_running)
+    {
+        if (--timer == 0)
+        {
+            timer_running = 0;
+            interrupt_flags |= 0x80; /* set timer interrupt flag */
+            //return interrupt();
+            //cpu_set_pending_interrupt(INT_TYPE_INT, 1);
+            cpu_do_int_imm(1, INT_TYPE_INT);
+            //cpu_do_interrupt(INT_TYPE_INT, 1);
+            wrlog("Sound Interrupt Taken");
+        }
+    }
 }
 
 /********************************************************/
 
-int m6532_r(int offset)
+UINT8 m6532_r(UINT32 address, struct MemoryReadByte* psMemRead)
 {
     static int temp;
 
-    switch (offset)
+    switch (address)
     {
         case 0: /* 0x80 - Read Port A */
 
@@ -167,9 +173,10 @@ int m6532_r(int offset)
 }
 /********************************************************/
 
-void m6532_w(int offset, int data)
+void m6532_w(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite)
 {
-    switch (offset)
+  // wrlog("M6532 Write, address %x, data %x", address, data);
+    switch (address)
     {
         case 0: /* 0x80 - Port A Write */
             
@@ -230,7 +237,7 @@ void m6532_w(int offset, int data)
             /* instead we are decrementing at half that rate, so we'll */
             /* cut the time in half */
 
-            timer = data>>1;
+            timer = data >> 1;
 
             timer_running = 1;
             return;
@@ -247,7 +254,7 @@ void m6532_w(int offset, int data)
 /* communicate with the Main CPU                        */
 /********************************************************/
 
-int sin_r(int offset)
+UINT8 sin_r(UINT32 address, struct MemoryReadByte* psMemRead)
 {
     static int temp;
 
@@ -270,7 +277,7 @@ int sin_r(int offset)
     return temp;
 }
 
-void sout_w(int offset, int data)
+void sout_w(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite)
 {
     mainread = data;
     port_A |= 0x40;  /* set sound ready flag */
@@ -284,7 +291,7 @@ void sout_w(int offset, int data)
 /* CPU communications                                   */
 /********************************************************/
 
-int main_read_r(int offset)
+UINT8 main_read_r(UINT32 address, struct MemoryReadByte* psMemRead)
    {
 
    #if(SNDDEBUG==1)
@@ -297,7 +304,7 @@ int main_read_r(int offset)
 
 /********************************************************/
 
-int main_ready_flag_r(int offset)
+UINT8 main_ready_flag_r(UINT32 address, struct MemoryReadByte* psMemRead)
    {
    #if(SNDDEBUG==1)
    printf("main_ready_flag_r\n");
@@ -314,7 +321,7 @@ int main_ready_flag_r(int offset)
 
 /********************************************************/
 
-void main_wr_w(int offset, int data)
+void main_wr_w(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite)
    {
    #if(SNDDEBUG==1)
    printf("main_wr_w\n");
@@ -342,7 +349,7 @@ void main_wr_w(int offset, int data)
 
 /********************************************************/
 
-void soundrst(int offset, int data)
+void soundrst(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite)
    {
 
    #if(SNDDEBUG==1)
@@ -353,6 +360,7 @@ void soundrst(int offset, int data)
    fifo_head = fifo_tail = 0;
    port_A &= 0x3f;
    /* should reset sound CPU here  */
+  // cpu_reset(1);
    }
 
 

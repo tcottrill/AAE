@@ -1,6 +1,6 @@
 #include "vector.h"
 #include "../sys_video/glcode.h"
-#include "../aae_mame_driver.h"
+#include "aae_mame_driver.h"
 
 //This is such horrible code, sorry. It was written long ago when I was just starting.
 
@@ -169,7 +169,7 @@ void draw_lines(void)
 				//Clip color values
 				if (r > 255) { r = 255; }if (g > 255) { g = 255; }if (b > 255) { b = 255; }
 				if (r < 0) { r = 0; }if (g < 0) { g = 0; }if (b < 0) { b = 0; }
-				//Only set if changed, slight speed increase
+				//Only set if changed, speed increase
 				if (llz != i) { glColor3ub(r, g, b); llz = i; }
 				//actual drawing
 				glVertex3f(linecache[loop], linecache[loop + 1], 0);// Top Left
@@ -231,7 +231,7 @@ void draw_texs(void)
 
 void cache_line(float startx, float starty, float endx, float endy, int zvalue, float gc, float mod)
 {
-	if (dvglnptr > 144900) { wrlog("possible Line Cache overflow!"); cache_clear(); }
+	if (dvglnptr > 144900) { wrlog("Line Cache overflow!"); cache_clear(); }
 
 	linecache[dvglnptr] = startx; dvglnptr++;
 	linecache[dvglnptr] = starty; dvglnptr++;
@@ -242,7 +242,7 @@ void cache_line(float startx, float starty, float endx, float endy, int zvalue, 
 
 void cache_point(float pointx, float pointy, int zvalue, float gc, float mod, float adj)
 {
-	if (dvgpntptr > 149900) { wrlog("possible POINT CACHE overflow!"); cache_clear(); }
+	if (dvgpntptr > 149900) { wrlog("POINT CACHE overflow!"); cache_clear(); }
 
 	pointcache[dvgpntptr] = pointx; dvgpntptr++;
 	pointcache[dvgpntptr] = pointy; dvgpntptr++;

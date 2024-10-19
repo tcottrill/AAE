@@ -19,25 +19,29 @@
 #include <allegro.h>
 
 //Note: Move these to cpu_control.h
-#include "cpu_code/mz80.h"
-#include "cpu_code/m6502.h"
-#include "cpu_code/starcpu.h"
+
+#include "starcpu.h"
 #include "log.h"
 #include "inptport.h"
-#include "cpu_code/cpu_control.h"
-#include "fileio/mame_fileio.h"
-#include "fileio/aae_fileio.h"
+#include "cpu_control.h"
+#include "mame_fileio.h"
+#include "aae_fileio.h"
 #include "acommon.h"
 #include "osdepend.h"
+#include "config.h"
 
 extern FILE* errorlog;
 
-#define MAX_CPU 4
+
 #define MAX_SOUND 4
 #define MAX_MEMORY_REGIONS 10
+
 #define str_eq(s1,s2)  (!strcmp ((s1),(s2))); //Equate string1 and sring2 true is equal
-#define EPSILON 0.0001   // Define your own tolerance
-#define FLOAT_EQ(x,v) (((v - EPSILON) < x) && (x <( v + EPSILON)))
+
+//#define EPSILON 0.0001   // Define your own tolerance
+//#define FLOAT_EQ(x,v) (((v - EPSILON) < x) && (x <( v + EPSILON)))
+
+//Replace this with the correct one.
 #define twos_comp_val(num,bits) ((num&(1<<(bits-1)))?(num|~((1<<bits)-1)):(num&((1<<bits)-1)))
 
 #define VECTOR 500
@@ -53,18 +57,15 @@ extern FILE* errorlog;
 #define ART_TEX  10
 #define GAME_TEX 15
 
-#define MAXSTACK 8
-#define VEC_SHIFT  16
+
 #define NORMAL      1
 #define FLIP        2
 #define RRIGHT      3
 #define RLEFT       4
 // GENERAL FUNCTION DEFINES
 #define SWAP(a, b)  {a ^= b; b ^= a; a ^= b;}
-#define memrdwd_flip(address) ((GI[CPU0][pc+1]) | (GI[CPU0][pc]<<8))
-#define memrdwd(address) ((GI[CPU0][pc]) | (GI[CPU0][pc+1]<<8)) /* LBO 062797 */
-#define memrdwdf(address) ((vec_ram[pc+1]) | (vec_ram[pc]<<8))
 
+//These should be somewhere else as well. 
 #define bitget(p,m) ((p) & (m))
 #define bitset(p,m) ((p) |= (m))
 #define bitclr(p,m) ((p) &= ~(m))
@@ -73,7 +74,7 @@ extern FILE* errorlog;
 #define BIT(x) (0x01 << (x))
 #define LONGBIT(x) ((unsigned long)0x00000001 << (x))
 
-//CPU and WRITE READ HANDLERS
+//CPU and WRITE READ HANDLERS WHY ARE THESE HERE!!!!
 #define READ_HANDLER(name)  static UINT8 name(UINT32 address, struct MemoryReadByte *psMemRead)
 #define WRITE_HANDLER(name)  static void name(UINT32 address, UINT8 data, struct MemoryWriteByte *psMemWrite)
 #define MEM_WRITE(name) struct MemoryWriteByte name[] = {
@@ -81,7 +82,7 @@ extern FILE* errorlog;
 #define MEM_ADDR(start,end,routine) {start,end,routine},
 #define MEM_END {(UINT32) -1,(UINT32) -1,NULL}};
 
-//CPU PORT HANDLERS FOR the Z80
+//CPU PORT HANDLERS FOR the Z80 AGAIN, WHY ARE THESE HERE?
 #define PORT_WRITE_HANDLER(name) static void name(UINT16 port, UINT8 data, struct z80PortWrite *pPW)
 #define PORT_READ_HANDLER(name) static UINT16 name(UINT16 port, struct z80PortRead *pPR)
 #define PORT_WRITE(name) struct z80PortWrite name[] = {
@@ -100,7 +101,18 @@ extern FILE* errorlog;
 
 // STRUCTS AND GLOBAL VARIABLES START HERE
 
-struct game_rect
+
+/*
+void swap(int *i, int *j)
+{
+	int t;
+	t = *i;
+	*i = *j;
+	*j = t;
+}
+
+*/
+struct gamerect
 {
 	int min_x, max_x;
 	int min_y, max_y;
@@ -114,15 +126,6 @@ const struct artworks
 	int target;
 };
 
-//DEFINES FOR STRUCTS
-
-#define HEADING_SIZE    (11)
-#define OPTION_SIZE     (12)
-#define NUM_SWITCHES    (5)
-
-typedef char* HEADING;
-typedef char* OPTIONS;
-
 typedef struct {
 	int next; // index of next entry in array
 	int prev; // previous entry (if double-linked)
@@ -134,28 +137,18 @@ typedef struct {
 
 extern glist gamelist[256];
 
-struct GameCPU
+
+struct MachineCPU
 {
-	int cpu_type;	/* see #defines below. */
-	int cpu_freq;	/* in Hertz */
-	int cpu_divisions; // Divisions per frame cycle
-	int cpu_intpass_per_frame; //Passes from above before interrupt called.(Interrupt Period)
-	int cpu_int_type;
-	void (*int_cpu)(); //Interrupt Handler if a separate interrupt handler is required
+	int cpu_type;	
+	int cpu_clock;	
+	int memory_region;
 	struct MemoryReadByte* memory_read;
 	struct MemoryWriteByte* memory_write;
 	struct z80PortRead* port_read;
 	struct z80PortWrite* port_write;
-
-	//int (*vblank_interrupt)(void);
-  //  int vblank_interrupts_per_frame;    /* usually 1 */
-/* use this for interrupts which are not tied to vblank 	*/
-/* usually frequency in Hz, but if you need 				*/
-/* greater precision you can give the period in nanoseconds */
-	//int (*timed_interrupt)(void);
-	//int timed_interrupts_per_second;
-/* pointer to a parameter to pass to the CPU cores reset function */
-	//void *reset_param;
+	void (*interrupt)(int); //Special Interrupt handler
+	int interrupts_cycles;	//Number of cycles (hertz) between reocurring interrupts
 };
 
 struct AAEDriver
@@ -179,13 +172,12 @@ struct AAEDriver
 	int cpu_divisions[4];          // Divisions per frame cycle
 	int cpu_intpass_per_frame[4];  // Passes from above before interrupt called.(Interrupt Period)
 	int cpu_int_type[4];           // Main type of CPU interrupt
-	//int cpu_current[4];
 	void (*int_cpu[4])(); //Interrupt Handler CPU 0/4
 
 	const int fps;
 	const int vid_type;
 	const int rotation;
-	const int gamerect[4];
+	struct gamerect visible_area;
 
 	int (*hiscore_load)();	// will be called every vblank until it returns nonzero
 	void (*hiscore_save)();	// will not be called if hiscore_load() hasn't yet
@@ -223,10 +215,7 @@ extern unsigned char* membuffer;
 extern unsigned char vec_ram[0x4000];
 extern unsigned char* GI[5]; //Global 6502/Z80/6809 GameImage
 
-//CPU Contexts
-extern CONTEXTM6502* c6502[MAX_CPU];
-extern CONTEXTMZ80 cMZ80[MAX_CPU];
-extern struct S68000CONTEXT c68k[MAX_CPU];
+
 
 
 extern int art_loaded[6];
@@ -240,7 +229,7 @@ extern int bezely;
 extern float overalpha;
 extern struct game_rect GameRect;
 
-//GLOBAL AUDIO VARIABLES
+//GLOBAL AUDIO VARIABLES , should be in generic.cpp
 extern int gammaticks; //Needed for Pokey Sound for Major Havoc
 extern SAMPLE* game_sounds[60]; //Global Samples
 extern int chip;  //FOR POKEY
@@ -354,10 +343,7 @@ typedef struct {
 extern settings config;
 
 struct GameOptions {
-	//FILE *errorlog;
-	//void *record;
-	//void *playback;
-	//int mame_debug;
+	
 	int cheat;
 	int gui_host;
 

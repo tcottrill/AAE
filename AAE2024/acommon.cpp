@@ -16,34 +16,26 @@
 #include "alleggl.h"
 #include "winalleg.h"
 #include "osd_cpu.h"
-//#include "loaders.h"
-
-#include "sys_video/glcode.h"
-#include "sndhrdw/pokey.h"
+#include "glcode.h"
+#include "pokey.h"
 #include "rand.h"
-#include "sys_video/fonts.h"
-#include "sndhrdw/samples.h"
+#include "fonts.h"
+#include "samples.h"
 #include "menu.h"
 #include "aae_mame_driver.h"
-#include "log.h"
-#include "sys_video/vector_fonts.h"
+#include "vector_fonts.h"
 
 extern int errorsound;
 extern int show_fps;
 extern int menulevel;
 extern int gamenum;
 
-//PLease Move this
-int vector_timer(int deltax, int deltay)
-{
-	deltax = abs(deltax);
-	deltay = abs(deltay);
+//For stickykeys
+TOGGLEKEYS g_StartupToggleKeys = { sizeof(TOGGLEKEYS), 0 };
+FILTERKEYS g_StartupFilterKeys = { sizeof(FILTERKEYS), 0 };
+STICKYKEYS g_StartupStickyKeys = { sizeof(STICKYKEYS), 0 };
 
-	if (deltax > deltay)
-		return deltax >> VEC_SHIFT;
-	else
-		return deltay >> VEC_SHIFT;
-}
+
 
 void set_aae_leds(int a, int b, int c)
 {
@@ -314,3 +306,66 @@ void setup_ambient(int style)
 					  }
 			*/
 }
+
+
+
+void AllowAccessibilityShortcutKeys(int bAllowKeys)
+{
+	if (bAllowKeys)
+	{
+		// Restore StickyKeys/etc to original state and enable Windows key
+		STICKYKEYS sk = g_StartupStickyKeys;
+		TOGGLEKEYS tk = g_StartupToggleKeys;
+		FILTERKEYS fk = g_StartupFilterKeys;
+
+		SystemParametersInfo(SPI_SETSTICKYKEYS, sizeof(STICKYKEYS), &g_StartupStickyKeys, 0);
+		SystemParametersInfo(SPI_SETTOGGLEKEYS, sizeof(TOGGLEKEYS), &g_StartupToggleKeys, 0);
+		SystemParametersInfo(SPI_SETFILTERKEYS, sizeof(FILTERKEYS), &g_StartupFilterKeys, 0);
+	}
+
+	else
+	{
+		// Disable StickyKeys/etc shortcuts but if the accessibility feature is on,
+		// then leave the settings alone as its probably being usefully used
+		SystemParametersInfo(SPI_GETSTICKYKEYS, sizeof(STICKYKEYS), &g_StartupStickyKeys, 0);
+		SystemParametersInfo(SPI_GETTOGGLEKEYS, sizeof(TOGGLEKEYS), &g_StartupToggleKeys, 0);
+		SystemParametersInfo(SPI_GETFILTERKEYS, sizeof(FILTERKEYS), &g_StartupFilterKeys, 0);
+
+
+		FILTERKEYS fkOff = g_StartupFilterKeys;
+		STICKYKEYS skOff = g_StartupStickyKeys;
+		TOGGLEKEYS tkOff = g_StartupToggleKeys;
+
+		if ((skOff.dwFlags & SKF_STICKYKEYSON) == 0)
+		{
+			// Disable the hotkey and the confirmation
+			skOff.dwFlags &= ~SKF_HOTKEYACTIVE;
+			skOff.dwFlags &= ~SKF_CONFIRMHOTKEY;
+
+			SystemParametersInfo(SPI_SETSTICKYKEYS, sizeof(STICKYKEYS), &skOff, 0);
+		}
+
+		if ((tkOff.dwFlags & TKF_TOGGLEKEYSON) == 0)
+		{
+			// Disable the hotkey and the confirmation
+			tkOff.dwFlags &= ~TKF_HOTKEYACTIVE;
+			tkOff.dwFlags &= ~TKF_CONFIRMHOTKEY;
+
+			SystemParametersInfo(SPI_SETTOGGLEKEYS, sizeof(TOGGLEKEYS), &tkOff, 0);
+		}
+
+		if ((fkOff.dwFlags & FKF_FILTERKEYSON) == 0)
+		{
+			// Disable the hotkey and the confirmation
+			fkOff.dwFlags &= ~FKF_HOTKEYACTIVE;
+			fkOff.dwFlags &= ~FKF_CONFIRMHOTKEY;
+
+			SystemParametersInfo(SPI_SETFILTERKEYS, sizeof(FILTERKEYS), &fkOff, 0);
+		}
+	}
+}
+
+// Save the current sticky/toggle/filter key settings so they can be restored them later
+//SystemParametersInfo(SPI_GETSTICKYKEYS, sizeof(STICKYKEYS), &g_StartupStickyKeys, 0);
+//SystemParametersInfo(SPI_GETTOGGLEKEYS, sizeof(TOGGLEKEYS), &g_StartupToggleKeys, 0);
+//SystemParametersInfo(SPI_GETFILTERKEYS, sizeof(FILTERKEYS), &g_StartupFilterKeys, 0);

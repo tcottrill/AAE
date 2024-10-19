@@ -16,6 +16,6 @@ void setup_ambient(int style);
 
 void do_AYsound(void);
 void playstreamedsample(int channel, signed char* data, int len, int vol);
-
+void AllowAccessibilityShortcutKeys(int bAllowKeys);
 int vector_timer(int deltax, int deltay);
 #endif

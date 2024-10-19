@@ -90,7 +90,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>C:\allegro\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>./cpu_code;./sndhrdw;./vidhrdwr;./sys_video;./fileio;./shaders;./osfiles;./machine;./gui;./drivers;./;C:\allegro\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>/Zc:strictStrings %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
@@ -99,7 +99,7 @@
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>false</GenerateDebugInformation>
       <AdditionalLibraryDirectories>C:\allegro\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>alleg44.lib;opengl32.lib;glu32.lib;user32.lib;gdi32.lib;alleggl.lib;winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>alleg44.lib;opengl32.lib;glu32.lib;user32.lib;gdi32.lib;alleggl.lib;winmm.lib;68000.obj;%(AdditionalDependencies)</AdditionalDependencies>
       <ImageHasSafeExceptionHandlers>false</ImageHasSafeExceptionHandlers>
     </Link>
   </ItemDefinitionGroup>
@@ -109,6 +109,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
+      <AdditionalIncludeDirectories>./drivers;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -136,9 +137,16 @@
     <ClCompile Include="acommon.cpp" />
     <ClCompile Include="config.cpp" />
     <ClCompile Include="cpu_code\ccpu.cpp" />
+    <ClCompile Include="cpu_code\cpu_6502.cpp" />
     <ClCompile Include="cpu_code\cpu_6809.cpp" />
     <ClCompile Include="cpu_code\cpu_control.cpp" />
     <ClCompile Include="cpu_code\cpu_i8080.cpp" />
+    <ClCompile Include="cpu_code\cpu_z80.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="cpu_code\timer.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</ExcludedFromBuild>
+    </ClCompile>
     <ClCompile Include="drivers\asteroid.cpp" />
     <ClCompile Include="drivers\bzone.cpp" />
     <ClCompile Include="drivers\cinemat.cpp" />
@@ -148,6 +156,9 @@
     <ClCompile Include="drivers\quantum.cpp" />
     <ClCompile Include="drivers\SegaG80.cpp" />
     <ClCompile Include="drivers\spacduel.cpp" />
+    <ClCompile Include="drivers\starwars.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</ExcludedFromBuild>
+    </ClCompile>
     <ClCompile Include="drivers\tempest.cpp" />
     <ClCompile Include="fileio\aae_fileio.cpp" />
     <ClCompile Include="fileio\loaders.cpp" />
@@ -162,6 +173,7 @@
     <ClCompile Include="machine\earom.cpp" />
     <ClCompile Include="machine\mathbox.cpp" />
     <ClCompile Include="machine\segacrypt.cpp" />
+    <ClCompile Include="machine\swmathbx.cpp" />
     <ClCompile Include="menu.cpp" />
     <ClCompile Include="os_input.cpp" />
     <ClCompile Include="rand.cpp" />
@@ -172,14 +184,15 @@
     <ClCompile Include="sndhrdw\pokyintf.cpp" />
     <ClCompile Include="sndhrdw\samples.cpp" />
     <ClCompile Include="sndhrdw\SegaG80snd.cpp" />
+    <ClCompile Include="sndhrdw\starwars_snd.cpp" />
     <ClCompile Include="sndhrdw\tms5220.cpp" />
     <ClCompile Include="sys_timer.cpp" />
     <ClCompile Include="sys_video\fonts.cpp" />
     <ClCompile Include="sys_video\glcode.cpp" />
-    <ClCompile Include="sys_video\texture_loading_shim.cpp" />
     <ClCompile Include="sys_video\vector_fonts.cpp" />
     <ClCompile Include="vidhrdwr\aae_avg.cpp" />
     <ClCompile Include="vidhrdwr\cinematvid.cpp" />
+    <ClCompile Include="vidhrdwr\dvg.cpp" />
     <ClCompile Include="vidhrdwr\vector.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -188,12 +201,17 @@
     <ClInclude Include="colordefs.h" />
     <ClInclude Include="config.h" />
     <ClInclude Include="cpu_code\ccpu.h" />
+    <ClInclude Include="cpu_code\cpu_6502.h" />
     <ClInclude Include="cpu_code\cpu_6809.h" />
     <ClInclude Include="cpu_code\cpu_control.h" />
     <ClInclude Include="cpu_code\cpu_i8080.h" />
-    <ClInclude Include="cpu_code\M6502.H" />
-    <ClInclude Include="cpu_code\MZ80.H" />
+    <ClInclude Include="cpu_code\cpu_z80.h">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</ExcludedFromBuild>
+    </ClInclude>
     <ClInclude Include="cpu_code\starcpu.h" />
+    <ClInclude Include="cpu_code\timer.h">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</ExcludedFromBuild>
+    </ClInclude>
     <ClInclude Include="deftypes.h" />
     <ClInclude Include="drivers\asteroid.h" />
     <ClInclude Include="drivers\bzone.h" />
@@ -204,6 +222,9 @@
     <ClInclude Include="drivers\quantum.h" />
     <ClInclude Include="drivers\SegaG80.h" />
     <ClInclude Include="drivers\spacduel.h" />
+    <ClInclude Include="drivers\starwars.h">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</ExcludedFromBuild>
+    </ClInclude>
     <ClInclude Include="drivers\tempest.h" />
     <ClInclude Include="fileio\aae_fileio.h" />
     <ClInclude Include="fileio\loaders.h" />
@@ -211,6 +232,7 @@
     <ClInclude Include="fileio\miniz.h" />
     <ClInclude Include="fpsclass.h" />
     <ClInclude Include="gameart.h" />
+    <ClInclude Include="gamedriver.h" />
     <ClInclude Include="gamekeys.h" />
     <ClInclude Include="gameroms.h" />
     <ClInclude Include="gamesamp.h" />
@@ -221,6 +243,7 @@
     <ClInclude Include="log.h" />
     <ClInclude Include="machine\earom.h" />
     <ClInclude Include="machine\mathbox.h" />
+    <ClInclude Include="machine\swmathbx.h" />
     <ClInclude Include="menu.h" />
     <ClInclude Include="osdepend.h" />
     <ClInclude Include="osd_cpu.h" />
@@ -232,26 +255,21 @@
     <ClInclude Include="sndhrdw\pokey.h" />
     <ClInclude Include="sndhrdw\pokyintf.h" />
     <ClInclude Include="sndhrdw\samples.h" />
+    <ClInclude Include="sndhrdw\starwars_snd.h" />
     <ClInclude Include="sndhrdw\tms5220.h" />
     <ClInclude Include="sys_timer.h" />
     <ClInclude Include="sys_video\fonts.h" />
     <ClInclude Include="sys_video\glcode.h" />
     <ClInclude Include="sys_video\stb_image.h" />
     <ClInclude Include="sys_video\stb_image_write.h" />
-    <ClInclude Include="sys_video\texture_loading_shim.h" />
     <ClInclude Include="sys_video\vector_fonts.h" />
     <ClInclude Include="targetver.h" />
     <ClInclude Include="vidhrdwr\aae_avg.h" />
+    <ClInclude Include="vidhrdwr\dvg.h" />
     <ClInclude Include="vidhrdwr\vector.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="video.ini" />
-  </ItemGroup>
-  <ItemGroup>
-    <Object Include="objfiles\68000.obj" />
-    <Object Include="objfiles\m6502.obj" />
-    <Object Include="objfiles\m6502zp.obj" />
-    <Object Include="objfiles\mz80.obj" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

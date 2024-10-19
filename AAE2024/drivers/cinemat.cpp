@@ -1,7 +1,7 @@
 /* Cinematronics Emu */
 #include "../cpu_code/ccpu.h"
 #include "cinemat.h"
-#include "../aae_mame_driver.h"
+#include "aae_mame_driver.h"
 #include "../sndhrdw/samples.h"
 #include "../vidhrdwr/vector.h"
 
@@ -39,7 +39,7 @@
 extern char* gamename[];
 extern int gamenum;
 
-static int cframe = 0;
+//static int cframe = 0;
 
 /////NEW VARIABLES AND STUFF
 static UINT16* rambase;
@@ -55,7 +55,6 @@ int thisframe = 0;
 int lastframe = 0;
 
 UINT8 bSwapXY;
-
 UINT8 bFlipX;
 UINT8 bFlipY;
 
@@ -319,13 +318,13 @@ UINT8 joystick_read(void)
  *
  *************************************/
 
-static int bbug_read(int offset, int value)// boxingb_dial_r
-{
+//static int bbug_read(int offset, int value)// boxingb_dial_r
+//{
 	//int value;
-	value = readinputportbytag("DIAL");
-	if (!mux_select) offset += 4;
-	return (value >> offset) & 1;
-}
+//	value = readinputportbytag("DIAL");
+//	if (!mux_select) offset += 4;
+//	return (value >> offset) & 1;
+//}
 
 /*************************************
  *
@@ -348,200 +347,14 @@ static struct CCPUConfig config_jmi =
 /////END OF NEW CODE//////
 ////////////////////////////////////////////////////
 
-///////////////////////////////////////////////////////////////////////////////////////
-//Input Handlers
-/*
-void sundance_input()
-{
-	int x=1;
-	int y=1;
- //SUNDANCE
-	ioInputs = 0xffff;
-	ioSwitches = 0xffee; //fff0 = 2 min c0 = 1.30 min  d0 = 5 min e0 = 3 min
-//    if (GkeyCheck(config.kcoin1)){ioSwitches &= ~SW_COIN;}
-
-	if (key[config.kstart1]) {ioInputs -= 0x0004;} //start 1
-	if (key[config.kstart2]) {ioInputs -= 0x0008;} //start2
-	if (key[config.kp1but1]) {ioInputs -= 0x0020;} //grid
-	if (key[config.kp1but2]) {ioInputs -= 0x0800;} //2suns
-	if (key[config.kp1but3]) {ioInputs -= 0x0010;} //3 suns
-	if (key[config.kp1but4]) {ioInputs -= 0x0040;} //4 suns
-	//Player 1
-	if (key[config.pad0])   {ioInputs -= 0x0002;}
-	if (x){if (key[config.pad9])   {ioInputs -= 0x0001;x=0;}}
-	if (x){if (key[config.pad8])   {ioInputs -= 0x1000;x=0;}}
-	if (x){if (key[config.pad7])   {ioInputs -= 0x1201;x=0;}}
-	if (x){if (key[config.pad6])   {ioInputs -= 0x0200;x=0;}}
-	if (x){if (key[config.pad5])   {ioInputs -= 0x1001;x=0;}}
-	if (x){if (key[config.pad4])   {ioInputs -= 0x4000;x=0;}}
-	if (x){if (key[config.pad3])   {ioInputs -= 0x0201;x=0;}}
-	if (x){if (key[config.pad2])   {ioInputs -= 0x1200;x=0;}}
-	if (x){if (key[config.pad1])   {ioInputs -= 0x4001;x=0;}}
-	//Player 2
-	if (key[config.kp2but6])          {ioInputs -= 0x0080;}
-	if (y){if (key[config.kp2right])  {ioInputs -= 0x8400;y=0;}}//2500 1
-	if (y){if (key[config.kp2left])   {ioInputs -= 0x2100;y=0;}}//2000 2
-	if (y){if (key[config.kp2up])     {ioInputs -= 0x0500;y=0;}}//0400 3
-	if (y){if (key[config.kp2down])   {ioInputs -= 0x8000;y=0;}}//8000 4
-	if (y){if (key[config.kp2but1])   {ioInputs -= 0x2400;y=0;}}//2400 5
-	if (y){if (key[config.kp2but2])   {ioInputs -= 0x0100;y=0;}}//0100 6
-	if (y){if (key[config.kp2but3])   {ioInputs -= 0x2500;y=0;}}//8400 7
-	if (y){if (key[config.kp2but4])   {ioInputs -= 0x2000;y=0;}}//2100 8
-	if (y){if (key[config.kp2but5])   {ioInputs -= 0x0400;y=0;}}//0500 9
-}
-
-void solarq_input()
-{
-   //Solar Quest
-   ioInputs = 0xffff;
-   ioSwitches = 0x00bb; //9 bit 2 of 3rd switch is diag mode
-   if (testsw){ioSwitches+=0x40;}
-
-  // if (GkeyCheck(config.kcoin1)){ioSwitches &= ~SW_COIN;}
-   if (key[config.kstart1]) {ioInputs -=0x0008;}
-   if (key[config.kstart2]) {ioInputs -=0x0001;}
-
-	if (key[config.kp1left])   {ioInputs -= 0x0020;}
-	if (key[config.kp1right])  {ioInputs -= 0x0010;}
-	if (key[config.kp1but1])   {ioInputs -= 0x0002;}
-	if (key[config.kp1but2])   {ioInputs -= 0x0004;}
-	if (key[config.kp1but3])   {ioInputs -= 0x0008;}
-	if (key[config.kp1but4])   {ioInputs -= 0x0001;}
-}
-
-void warrior_input()
-{
-   //WARRIOR
-   ioInputs = 0xffff;
-   ioSwitches = 0x009e; //00ff=2min 00ef=1min  00df 1:30 00cf 45sec
-  // if (GkeyCheck(config.kcoin1)){ioSwitches &= ~SW_COIN;}
-	if (key[config.kstart1])   {ioInputs -= 0x4000;}
-	if (key[config.kstart2])   {ioInputs -= 0x2000;}
-	//P1
-	if (key[config.kp1right])  {ioInputs -= 0x0100;}
-	if (key[config.kp1left])   {ioInputs -= 0x0200;}
-	if (key[config.kp1up])     {ioInputs -= 0x0400;}
-	if (key[config.kp1down])   {ioInputs -= 0x0800;}
-	if (key[config.kp1but1])   {ioInputs -= 0x1000;}
-	//P2
-	if (key[config.kp2right])  {ioInputs -= 0x0001;}
-	if (key[config.kp2left])   {ioInputs -= 0x0002;}
-	if (key[config.kp2up])     {ioInputs -= 0x0004;}
-	if (key[config.kp2down])   {ioInputs -= 0x0008;}
-	if (key[config.kp2but1])   {ioInputs -= 0x0010;}
-}
-
-void spacewar_input()
-{
-  //Spacewar inputs
-   ioInputs = 0xffff;
-   ioSwitches = 0x00cf; //00ff=45 00ef=2min  00df 1:30 00cf 1min
-  // if (GkeyCheck(config.kcoin1)){ioSwitches &= ~SW_COIN;}
-
-	if (key[config.kp1left])   {ioInputs -= 0x0100;}
-	if (key[config.kp1right])  {ioInputs -= 0x2000;}
-	if (key[config.kp1but1])   {ioSwitches -= 0x04;}
-	if (key[config.kp1but2])   {ioInputs -= 0x8000;}
-	if (key[config.kp1but3])   {ioSwitches -= 0x02;}
-
-	if (key[config.kp2left])   {ioInputs -= 0x4000;}
-	if (key[config.kp2right])  {ioInputs -= 0x1000;}
-	if (key[config.kp2but1])   {ioSwitches -= 0x01;}
-	if (key[config.kp2but2])   {ioInputs -= 0x0200;}
-	if (key[config.kp2but3])   {ioSwitches -= 0x08;}
-
-	if (key[config.pad9])   {ioInputs -= 0x0008;}
-	if (key[config.pad8])   {ioInputs -= 0x0002;}
-	if (key[config.pad7])   {ioInputs -= 0x0080;}
-	if (key[config.pad6])   {ioInputs -= 0x0020;}
-	if (key[config.pad5])   {ioInputs -= 0x0400;}
-	if (key[config.pad4])   {ioInputs -= 0x0004;}
-	if (key[config.pad3])   {ioInputs -= 0x0001;}
-	if (key[config.pad2])   {ioInputs -= 0x0040;}
-	if (key[config.pad1])   {ioInputs -= 0x0010;}
-	if (key[config.pad0])   {ioInputs -= 0x0800;}
-}
-
-*/
-/*
-
-static void speedfrk_input()
-{
-	static UINT8 speedfrk_steer[] = {0xe, 0x6, 0x2, 0x0, 0x3, 0x7, 0xf};
-	static int last_wheel=0, delta_wheel, last_frame=0, gear=0xe0;
-	int val, current_frame;
-
-	ioInputs = 0xff00;
-	ioSwitches = 0x00f0;
-   if (testsw){ioSwitches+=0x40;}
-//   if (GkeyCheck(config.kcoin1)){ioSwitches &= ~SW_COIN;}
-   if (key[config.kstart1])   {ioInputs &= ~0x80;}
-}
-
-void barrier_input()
-{  //Barrier inputs
-   ioInputs = 0xffff;
-   ioSwitches = 0xfff0; //00ff=45 00ef=2min  00df 1:30 00cf 1min
-//   if (GkeyCheck(config.kcoin1)){ioSwitches &= ~SW_COIN;}
-
-	if (key[config.kstart1])   {ioInputs -= 0x0800;}
-	if (key[config.kstart2])   {ioInputs -= 0x0010;}
-
-	if (key[config.kp1left])   {ioInputs -= 0x4000;}
-	if (key[config.kp1right])  {ioInputs -= 0x0200;}
-	if (key[config.kp1up])     {ioInputs -= 0x1000;}
-	if (key[config.kp1down])   {ioInputs -= 0x0008;}
-	//Skill
-	if (key[config.kp1but1])   {ioInputs -= 0x0001;}
-	if (key[config.kp1but2])   {ioInputs -= 0x0004;}
-	if (key[config.kp1but3])   {ioInputs -=0x0040;}
-
-	if (key[config.kp2left])   {ioInputs -= 0x0100;}
-	if (key[config.kp2right])  {ioInputs -= 0x8000;}
-	if (key[config.kp2up])     {ioInputs -= 0x2000;}
-	if (key[config.kp2down])   {ioInputs -= 0x0400;}
-}
-
-void demon_input()
-{
-   //DEMON
-   ioInputs = 0xffff;
-   ioSwitches = 0xffff; //00ff=2min 00ef=1min  00df 1:30 00cf 45sec
-//   if (GkeyCheck(config.kcoin1)){ioSwitches &= ~SW_COIN;}
-
-   if (key[config.kstart1]) {ioInputs -=0x01;}
-   if (key[config.kstart2]) {ioInputs -=0x02;}
-	//p1
-   if (key[config.kp1left])   {ioInputs -= 0x0004;}
-   if (key[config.kp1right])  {ioInputs -= 0x0008;}
-   if (key[config.kp1but1])   {ioInputs -= 0x0020;}
-   if (key[config.kp1but2])   {ioInputs -= 0x0010;}
-   if (key[config.kp1but3])   {ioInputs -= 0x0200;}
-   //p2
-   if (key[config.kp2left])   {ioInputs -= 0x0800;}
-   if (key[config.kp2right])  {ioInputs -= 0x1000;}
-   if (key[config.kp2but1])   {ioInputs -= 0x4000;}
-   if (key[config.kp2but2])   {ioInputs -= 0x2000;}
-   if (key[config.kp2but3])   {ioInputs -= 0x0400;}
-}
-
-*/
-
 void run_cinemat(void)
 {
-	wrlog("Running a CCPU Frame");
+	//Note: What the crap is this, get it in the CPU code and proper reset and testswitch 
+
 	int b = 1;
 
 	b = run_ccpu(19923000 / 4 / 38);//131072);19923000
-	wrlog("after cpu");
 	cinevid_up();
-
-	cframe++;
-	if (cframe > 70) cframe = 0;
-
-	//if (KeyCheck(config.kreset)) { ccpu_reset(); }
-	//if (KeyCheck(config.ktest))      {testsw^=1;}
-	// if (KeyCheck(config.kreset))     {cineReset();}
 }
 
 int init_cinemat(void)
@@ -639,7 +452,7 @@ int init_cinemat(void)
 	case DEMON:    sound_write = &demon_sound;
 		video_type_set(COLOR_BILEVEL);
 		CCPUROMSIZE = 16;
-		init_ccpu(1);
+		init_ccpu(0);
 		break;
 
 	case BOXINGB:  sound_write = &boxingb_sound;
@@ -664,3 +477,5 @@ void end_cinemat()
 
 	cache_clear();
 }
+
+

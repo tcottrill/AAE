@@ -270,9 +270,9 @@ void setup_config(void)
 	config.psnoise = my_get_config_int("main", "psnoise", 0);
 	config.hvnoise = my_get_config_int("main", "hvnoise", 0);
 	config.pshiss = my_get_config_int("main", "pshiss", 0);
-	config.pokeyvol = my_get_config_int("main", "pokeyvol", 20);
-	config.mainvol = my_get_config_int("main", "mainvol", 120);
-	config.noisevol = my_get_config_int("main", "noisevol", 20);
+	config.pokeyvol = my_get_config_int("main", "pokeyvol", 200);
+	config.mainvol = my_get_config_int("main", "mainvol", 220);
+	config.noisevol = my_get_config_int("main", "noisevol", 200);
 	config.priority = my_get_config_int("main", "priority", 1);
 	config.showinfo = my_get_config_int("main", "showinfo", 0);
 	config.kbleds = my_get_config_int("main", "kbleds", 1);

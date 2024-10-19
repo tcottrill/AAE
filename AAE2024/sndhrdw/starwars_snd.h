@@ -1,23 +1,31 @@
 #ifndef STARWARS_SND_H
 #define STARWARS_SND_H
 
+
+#include "deftypes.h"
+
+
 int  starwars_sh_start(void);
 void starwars_sh_stop(void);
 void starwars_sh_update(void);
 
-void starwars_pokey_sound_w(int offset,int data);
-void starwars_pokey_ctl_w(int offset,int data);
 
-int main_read_r(int);
-int main_ready_flag_r(int);
-void main_wr_w(int, int);
-void soundrst(int, int);
+void starwars_snd_interrupt();
 
-int sin_r(int);
-int m6532_r(int);
+UINT8 main_read_r(UINT32 address, struct MemoryReadByte* psMemRead);
+UINT8 main_ready_flag_r(UINT32 address, struct MemoryReadByte* psMemRead);
 
-void sout_w(int, int);
-void m6532_w(int, int);
+void main_wr_w(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite);
+void soundrst(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite);
 
-int starwars_snd_interrupt(void);
+
+UINT8 m6532_r(UINT32 address, struct MemoryReadByte* psMemRead);
+UINT8 sin_r(UINT32 address, struct MemoryReadByte* psMemRead);
+
+
+void sout_w(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite);
+void m6532_w(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite);
+
+
+
 #endif

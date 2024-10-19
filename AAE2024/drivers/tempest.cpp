@@ -13,14 +13,13 @@
 
 
 #include "tempest.h"
-#include "../aae_mame_driver.h"
-#include "../vidhrdwr/vector.h"
-#include "../vidhrdwr/aae_avg.h"
-#include "../sndhrdw/pokyintf.h"
-#include "../machine/earom.h"
-#include "../machine/mathbox.h"
-#include "../acommon.h"
-#include "../config.h"
+#include "aae_mame_driver.h"
+#include "vector.h"
+#include "aae_avg.h"
+#include "pokyintf.h"
+#include "earom.h"
+#include "mathbox.h"
+
 
 //
 // Tempest Multigame Notes:
@@ -340,7 +339,7 @@ static struct POKEYinterface pokey_interface =
 void tempm_reset()
 {
 	memcpy(GI[CPU0], tbuffer, 0x10000);
-	m6502zpreset();
+	m_cpu_6502[0]->reset6502();
 	INMENU = 1;
 }
 
@@ -372,7 +371,7 @@ static void switch_game()
 	memset(GI[CPU0], 0x10000, 0);
 	memcpy(GI[CPU0], GI[CPU0] + b, 0x10000);
 	cache_clear();
-	m6502zpreset();
+	m_cpu_6502[0]->reset6502();
 }
 
 READ_HANDLER(pokey_2_tempest_read)
@@ -499,7 +498,7 @@ void run_tempest()
 /////////////////// MAIN() for program ///////////////////////////////////////////////////
 int init_tempest(void)
 {
-	init6502Z(TempestRead, TempestWrite, 0);
+	init6502(TempestRead, TempestWrite, 0);
 
 	cache_clear();
 	\

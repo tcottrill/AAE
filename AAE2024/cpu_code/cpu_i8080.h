@@ -145,7 +145,7 @@ private:
 	bool mmem = 0; //Use mame style memory handling, reject unhandled read/writes
 	int log_debug_rw = 0; //Log unhandled reads and writes
 	int clocktickstotal=0; //Runnning, resetable total of clockticks
-	int clockticks6502=0;
+	
 };
 
 #endif 

@@ -13,7 +13,7 @@
 
 
 #include "glcode.h"
-#include "../aae_mame_driver.h"
+#include "aae_mame_driver.h"
 #include "fonts.h"
 #include "vector_fonts.h"
 #include "../config.h"
@@ -21,7 +21,8 @@
 #include "../vidhrdwr/vector.h"
 #include "../config.h"
 #include "../acommon.h"
-#include "texture_loading_shim.h"
+#include "../fileio/loaders.h"
+//include "texture_loading_shim.h"
 
 #define v1 1.5 //1.7 //1.0
 #define v2 2.5 //2.7 //2.0

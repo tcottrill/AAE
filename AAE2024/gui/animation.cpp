@@ -2,7 +2,7 @@
 #include "alleggl.h"
 #include "winalleg.h"
 #include "animation.h"
-#include "../aae_mame_driver.h"
+#include "aae_mame_driver.h"
 
 STAR_STRUCT stars[255];
 

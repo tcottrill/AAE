@@ -1,11 +1,12 @@
-//Consolidated Atari AVG Code, my interpretation.
+// This is an insane mess, working on a rewrite, or switch to modern AVG drawing code. 
 
 #include "aae_avg.h"
 #include "vector.h"
-#include "../aae_mame_driver.h"
-//#include "acommon.h"
+#include "aae_mame_driver.h"
 
-static int NEW_FRAME = 0;
+
+static int vector_type = 0;
+
 static int XFLIP = 0;
 static int YFLIP = 0;
 static int TYPE_BZ = 0;
@@ -26,6 +27,19 @@ static int NO_CACHE = 0;
 
 #define TIME_IN_NSEC(us)      ((double)(us) * (1.0 / 1000000000.0))
 
+
+//PLease Move this
+int vector_timer(int deltax, int deltay)
+{
+	deltax = abs(deltax);
+	deltay = abs(deltay);
+
+	if (deltax > deltay)
+		return deltax >> VEC_SHIFT;
+	else
+		return deltay >> VEC_SHIFT;
+}
+
 static void calc_sweep()
 {
 	//sweep = 2.35 * total_length; // 2.25 = 1500 us * 1.512 (freq)
@@ -34,46 +48,6 @@ static void calc_sweep()
 	sweep = (TIME_IN_NSEC(1600) * total_length) * 1512000;
 }
 
-void set_new_frame()
-{
-	NEW_FRAME = 1; //TRUE!!
-}
-
-//What the heck is this here for.
-/*
-static void set_sd_colors(void)
-{
-	int i, c = 0;
-	int* cmap;
-
-	int colormapsd[] = { 0,0,0, //should be zero,255,255,
-						0,0,255,
-						0,255,0,
-						0,255,255, //???
-						255,0,0,
-						255,0,255,
-						255,255,0,
-						255,255,255,
-						255,0,0,
-						255,255,255,
-						0,0,255,
-						0,255,0,
-						255,0,0,
-						255,0,0,
-						255,0,255,
-						255,255,255 };
-
-	cmap = colormapsd;
-
-	for (i = 0; i < 16; i++)
-	{
-		vec_colors[i].r = cmap[c];
-		vec_colors[i].g = cmap[c + 1];
-		vec_colors[i].b = cmap[c + 2];
-		c += 3;
-	}
-}
-*/
 
 static void set_bw_colors()
 {
@@ -90,93 +64,7 @@ static void set_bw_colors()
 		vec_colors[i].b = i * 16;
 	}
 }
-/*
-static void MH_DRAW(int currentx, int currenty, int deltax, int deltay, int z, int color)
-{
-	float sy = 0;
-	float ey = 0;
-	float sx = 0;
-	float ex = 0;
-	static int sparkle = 0;
-	static int spkl_shift = 0;
-	int clip = 0;
-	int ywindow = 0;
-	int red = 0;
-	int green = 0;
-	int blue = 0;
-	int one = 0;
-	int two = 0;
-	int draw = 0;
 
-	ey = ((currenty - deltay) >> VEC_SHIFT);
-	sy = currenty >> VEC_SHIFT;
-	sx = (currentx >> VEC_SHIFT);
-	sx = (currentx + deltax) >> VEC_SHIFT;
-
-	if (sparkle)
-	{
-		one = 0;
-		two = 0;
-
-		if (ex > sx) one = 1;
-		if (ey > sy) two = 1;
-
-		add_color_point(ex, ey, red, green, blue);
-
-		color = 0xf + (((spkl_shift & 1) << 3) | (spkl_shift & 4)
-			| ((spkl_shift & 0x10) >> 3) | ((spkl_shift & 0x40) >> 6));
-
-		if (vec_colors[color].r) red = z; else red = 0;
-		if (vec_colors[color].g) green = z; else green = 0;
-		if (vec_colors[color].b) blue = z; else blue = 0;
-
-		add_color_point(sx, sy, red, green, blue);
-
-		while (ex != sx || ey != sy)
-		{
-			color = 0xf + (((spkl_shift & 1) << 3) | (spkl_shift & 4)
-				| ((spkl_shift & 0x10) >> 3) | ((spkl_shift & 0x40) >> 6));
-			if (vec_colors[color].r) red = z; else red = 0;
-			if (vec_colors[color].g) green = z; else green = 0;
-			if (vec_colors[color].b) blue = z; else blue = 0;
-
-			if (sx != ex) {
-				if (one) { sx += 1; }
-				else { sx -= 1; }
-			}
-
-			if (sy != ey) {
-				if (two) { sy += 1; }
-				else { sy -= 1; }
-			}
-
-			//if (escape > 40) wrlog("SX  %f  EX %f SY %f EY %f",sx,ex,ey,sy);
-			add_color_point(sx, sy, red, green, blue);
-			//add_color_point(sx, sy,255,255,255);
-
-			spkl_shift = (((spkl_shift & 0x40) >> 6) ^ ((spkl_shift & 0x20) >> 5)
-				^ 1) | (spkl_shift << 1);
-
-			if ((spkl_shift & 0x7f) == 0x7f) spkl_shift = 0;
-		}
-	}
-	if (ywindow == 1)
-	{
-		//Y-Window clipping
-		if (sy < clip && ey < clip) { draw = 0; }
-		else { draw = 1; }
-		if (ey < clip && ey < sy) { ex = ((clip - ey) * ((ex - sx) / (ey - sy))) + ex; ey = clip; }
-		if (sy < clip && sy < ey) { sx = ((clip - sy) * ((sx - ex) / (sy - ey))) + sx; sy = clip; }
-	}
-
-	if (draw && sparkle == 0)
-	{
-		add_color_line(sx, sy, ex, ey, red, green, blue);
-		add_color_point(sx, sy, red, green, blue);
-		add_color_point(ex, ey, red, green, blue);
-	}
-}
-*/
 static void BZ_DRAW(int currentx, int currenty, int deltax, int deltay, int z, int color)
 {
 	float sy = 0;
@@ -235,7 +123,7 @@ void AVG_RUN(void)
 	int clip = 0;
 	int oldscale = 0;
 
-	pc = PCTOP;
+	pc = driver[gamenum].vectorram;
 
 	if (TYPE_QU) COMPSHFT = 12;
 	sp = 0;
@@ -245,9 +133,12 @@ void AVG_RUN(void)
 	total_length = 0;
 	if (NO_CACHE) cache_clear();
 
+	//wrlog("Starting AVG RUN");
+
 	while (!done)
 	{
 		if (TYPE_QU) firstwd = memrdwdf(pc);
+		if (TYPE_SW) firstwd = memrdwd_flip(pc);
 		else firstwd = memrdwd(pc);
 
 		opcode = firstwd >> 13;
@@ -256,6 +147,7 @@ void AVG_RUN(void)
 		if (opcode == VCTR) //Get the second word if it's a draw command
 		{
 			if (TYPE_QU) secondwd = memrdwdf(pc);
+			if (TYPE_SW) secondwd = memrdwd_flip(pc);
 			else secondwd = memrdwd(pc);
 			pc++; pc++;
 		}
@@ -270,14 +162,24 @@ void AVG_RUN(void)
 			goto DRAWCODE;
 			break;
 
-		case SVEC: x = twos_comp_val(firstwd, 5) << 1;
+		case SVEC: 
+			x = twos_comp_val(firstwd, 5) << 1;
 			y = twos_comp_val(firstwd >> 8, 5) << 1;
 			z = ((firstwd >> 4) & 0x0e);
 
 		DRAWCODE:
-			if (z == 2) { z = statz; }
-			if (z) { z = (z << 4) | 0x1f; }
 
+			if (TYPE_SW)
+			{
+				z = (z * statz) /  8; // Brightness / Translucency here
+				if (z > 0xff)
+					z = 0xff;
+			}
+			else
+			{
+				if (z == 2) { z = statz; }
+				if (z) { z = (z << 4) | 0x1f; }
+			}
 			total_length += vector_timer(x * oldscale, y * oldscale);
 
 			deltax = x * scale;
@@ -296,7 +198,7 @@ void AVG_RUN(void)
 							| ((spkl_shift & 0x10) >> 3) | ((spkl_shift & 0x40) >> 6));
 					}
 
-					//Gravitar, Space Duel and Black Widow
+					//Gravitar, Space Duel, Black Widow and Star Wars
 					if (color & 0x04) red = z; else red = 0;
 					if (color & 0x02) green = z; else green = 0;
 					if (color & 0x01) blue = z; else blue = 0;
@@ -311,14 +213,13 @@ void AVG_RUN(void)
 						blue = vec_colors[color].b;
 					}
 
-					if (TYPE_QU)
+					if (TYPE_QU )
 					{
 						red = vec_colors[color].r;
 						green = vec_colors[color].g;
 						blue = vec_colors[color].b;
 					}
 
-					if (NEW_FRAME) {
 						if ((currentx == (currentx)+deltax) && (currenty == (currenty)-deltay))
 						{
 							add_color_point((currentx >> VEC_SHIFT), currenty >> VEC_SHIFT, red, green, blue);
@@ -329,15 +230,24 @@ void AVG_RUN(void)
 							add_color_point((currentx >> VEC_SHIFT), currenty >> VEC_SHIFT, red, green, blue);
 							add_color_point((currentx + deltax) >> VEC_SHIFT, (currenty - deltay) >> VEC_SHIFT, red, green, blue);
 						}
-					}
+					
 				}
 			}
 			currentx += deltax; currenty -= deltay;
 
 			break;
 
-		case STAT: statz = (firstwd >> 4) & 0x000f;
-			color = (firstwd) & 0x000f;
+		case STAT: 
+			
+			if (TYPE_SW)
+			{
+				color = (char)((firstwd & 0x0700) >> 8);
+				statz = (firstwd) & 0xff;
+			}
+			else {
+				statz = (firstwd >> 4) & 0x000f;
+				color = (firstwd) & 0x000f;
+			}
 			if (TYPE_TEMP) { sparkle = !(firstwd & 0x0800); }
 			if (TYPE_MH)
 			{
@@ -370,14 +280,22 @@ void AVG_RUN(void)
 			break;
 
 		case CNTR: d = firstwd & 0xff;
-			currentx = 512 << VEC_SHIFT;
-			currenty = 512 << VEC_SHIFT;
+			if (TYPE_SW)
+			{
+				currentx = 379 << VEC_SHIFT;
+				currenty = 410 << VEC_SHIFT;
+			}
+			else
+			{
+				currentx = 512 << VEC_SHIFT;
+				currenty = 512 << VEC_SHIFT;
+			}
 			break;
 		case RTSL:
 
 			if (sp == 0)
 			{
-				wrlog("AVG Stack Underflow, <quantum error.>");
+				wrlog("AVG Stack Underflow");
 				done = 1; sp = MAXSTACK - 1;
 			}
 			else { sp--; pc = stack[sp]; }
@@ -393,18 +311,20 @@ void AVG_RUN(void)
 
 				if (sp == (MAXSTACK - 1))
 				{
-					wrlog("AVG Stack Overflow <quantum error>"); done = 1; sp = 0;
+					wrlog("AVG Stack Overflow"); done = 1; sp = 0;
 				}
 				else { sp++; pc = a; }
 			}break;
 
-		default: wrlog("Some sort of Error in AVG engine, default reached.");
+		default: wrlog("Some sort of Error in AVG engine, max stack reached.");
 		}
 	}
 }
 
 int avg_go()
 {
+	//wrlog("AVG GO CALLED");
+
 	if (AVG_BUSY) { return 1; }
 	else {
 		AVG_RUN();
@@ -448,20 +368,23 @@ void avg_init()
 		gamenum == BZONEP ||
 		gamenum == BZONEC ||
 		gamenum == BRADLEY ||
-		gamenum == REDBARON) {
+		gamenum == REDBARON) 
+	  {
 		TYPE_BZ = 1;
 		pc = 0x2000;
 		set_bw_colors();
-		PCTOP = 0x2000;
 		YFLIP = 1;
 		AVG_BUSY = 1;
+		PCTOP = driver[gamenum].vectorram;
 	}
 
 	else if (gamenum == SPACDUEL ||
 		gamenum == BWIDOW ||
 		gamenum == LUNARBAT ||
 		gamenum == LUNARBA1) {
-		TYPE_SD = 1; PCTOP = 0x2000;  NO_CACHE = 1;
+		TYPE_SD = 1; 
+		PCTOP = 0x2000;  
+		NO_CACHE = 1;
 	}
 	else if (gamenum == GRAVITAR ||
 		gamenum == GRAVITR2 ||
@@ -491,11 +414,90 @@ void avg_init()
 	else if (gamenum == QUANTUM ||
 		gamenum == QUANTUM1 ||
 		gamenum == QUANTUMP) {
-		TYPE_QU = 1; PCTOP = 0; NO_CACHE = 1; SCALEADJ = 1;
+		TYPE_QU = 1; 
+		PCTOP = 0; 
+		NO_CACHE = 1; 
+		SCALEADJ = 1;
 	}
-	else if (gamenum == STARWARS || gamenum == STARWAR1) {
-		TYPE_SW = 1; PCTOP = 0;
+	else if (gamenum == STARWARS || gamenum == STARWAR1)
+	{
+		TYPE_SW = 1; 
+		PCTOP = 0;
+		YFLIP = 1;
+		NO_CACHE = 1;
+		SCALEADJ = 3;
 	}
 
 	//TYPE_SD=1;PCTOP=0x2000;set_sd_colors();NO_CACHE=1;
 }
+
+
+/*************************************
+ *
+ *	Video startup
+ *
+ ************************************/
+
+int dvg_start(void)
+{
+	//return avgdvg_init(USE_DVG);
+}
+
+int dvg_start_asteroid(void)
+{
+	//return avgdvg_init(USE_DVG_ASTEROID);
+}
+
+int avg_start(void)
+{
+	//return avgdvg_init(USE_AVG);
+}
+
+int avg_start_starwars(void)
+{
+	//return avgdvg_init(USE_AVG_SWARS);
+}
+
+int avg_start_tempest(void)
+{
+	//return avgdvg_init(USE_AVG_TEMPEST);
+}
+
+int avg_start_mhavoc(void)
+{
+	//return avgdvg_init(USE_AVG_MHAVOC);
+}
+
+int avg_start_alphaone(void)
+{
+	//return avgdvg_init(USE_AVG_ALPHAONE);
+}
+
+int avg_start_bzone(void)
+{
+
+	//return avgdvg_init(USE_AVG_BZONE);
+}
+
+int avg_start_quantum(void)
+{
+	//return avgdvg_init(USE_AVG_QUANTUM);
+}
+
+int avg_start_redbaron(void)
+{
+	//return avgdvg_init(USE_AVG_RBARON);
+}
+
+void avg_stop(void)
+{
+	//busy = 0;
+	//vector_clear_list();
+}
+
+void dvg_stop(void)
+{
+	//busy = 0;
+	//vector_clear_list();
+}
+

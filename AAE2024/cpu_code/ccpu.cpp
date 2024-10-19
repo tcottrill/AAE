@@ -18,7 +18,7 @@
 
 #include "basetsd.h"
 #include "ccpu.h"
-#include "../aae_mame_driver.h"
+#include "aae_mame_driver.h"
 
 UINT8 MUX_VAL;
 UINT8 SOUNDBITS;
@@ -159,11 +159,14 @@ void ccpu_wdt_timer_trigger(void)
 {
 	ccpu.waiting = 0;
 	ccpu.watchdog++;
-	if (gamenum != SUNDANCE)
+	//if (gamenum != SUNDANCE)
+	//{
+	if (ccpu.watchdog >= 3)
 	{
-		if (ccpu.watchdog >= 3)
-			ccpu.PC = 0;
+		ccpu.PC = 0;
+		ccpu_reset();
 	}
+	//}
 }
 
 static void ccpu_init(int index, int clock, const void* _config, int (*irqcallback)(int))

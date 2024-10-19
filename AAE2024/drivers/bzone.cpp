@@ -1,14 +1,12 @@
 /* Battlezone Emu */
 
 #include "bzone.h"
-#include "../aae_mame_driver.h"
-#include "../vidhrdwr/vector.h"
-#include "../vidhrdwr/aae_avg.h"
-#include "../machine/earom.h"
-#include "../machine/mathbox.h"
-#include "../sndhrdw/samples.h"
-#include "../sndhrdw/pokyintf.h"
-#include "../acommon.h"
+#include "aae_mame_driver.h"
+#include "aae_avg.h"
+#include "earom.h"
+#include "mathbox.h"
+#include "samples.h"
+#include "pokyintf.h"
 
 #define IN0_3KHZ (1<<7)
 #define IN0_VG_HALT (1<<6)
@@ -130,12 +128,7 @@ READ_HANDLER(BzoneIN0read)
 
 	return res;
 }
-/*
-READ_HANDLER(RBJoyRead)
-{
-	return getport(rb_input_select ? 6 : 3);
-}
-*/
+
 READ_HANDLER(BzoneControls)
 {
 	int res = bzone_IN3_r(address & 0x0f);
@@ -244,18 +237,8 @@ void run_bzone()
 {
 	static int k = 0;
 
-	if (!(readinputport(0) & 0x10)) { cpu_disable_interrupts(0, 0); testsw = 1; }
-	else { cpu_disable_interrupts(0, 1); testsw = 0; }
-
-	/*
-	if (WATCHDOG==4) k++;
-	if (k > 60)
-	{
-		k = 0;
-		cpu_needs_reset(0);
-		WATCHDOG = 0;
-	}
-	*/
+	if (!(readinputport(0) & 0x10)) { cpu_disable_interrupts(0, 0); }
+	else { cpu_disable_interrupts(0, 1); }
 
 	if (!paused && soundEnable) { pokey_sh_update(); }
 }
@@ -336,13 +319,13 @@ int init_bzone()
 {
 	if (gamenum == REDBARON)
 	{
-		init6502Z(RedBaronRead, RedBaronWrite, 0);
+		init6502(RedBaronRead, RedBaronWrite, 0);
 		pokey_sh_start(&rb_pokey_interface);
 		LoadEarom();
 	}
 	else
 	{
-		init6502Z(BzoneRead, BzoneWrite, 0);
+		init6502(BzoneRead, BzoneWrite, 0);
 		pokey_sh_start(&bzone_pokey_interface);
 	}
 

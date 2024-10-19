@@ -974,7 +974,6 @@ int cpu_i8080::exec(int cycles)
 			exit(0);
 #endif
 			// update clock cycles
-			clockticks6502 += cycles;
 			clocktickstotal += cycles;
 			if (clocktickstotal > 0xfffffff) clocktickstotal = 0;
 		}
