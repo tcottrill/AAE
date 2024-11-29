@@ -172,9 +172,11 @@
     <ClCompile Include="log.cpp" />
     <ClCompile Include="machine\earom.cpp" />
     <ClCompile Include="machine\mathbox.cpp" />
-    <ClCompile Include="machine\segacrypt.cpp" />
+    <ClCompile Include="machine\SegaG80crypt.cpp" />
     <ClCompile Include="machine\swmathbx.cpp" />
     <ClCompile Include="menu.cpp" />
+    <ClCompile Include="newfbo.cpp" />
+    <ClCompile Include="os_basic.cpp" />
     <ClCompile Include="os_input.cpp" />
     <ClCompile Include="rand.cpp" />
     <ClCompile Include="sndhrdw\5220intf.cpp" />
@@ -190,9 +192,12 @@
     <ClCompile Include="sys_video\fonts.cpp" />
     <ClCompile Include="sys_video\glcode.cpp" />
     <ClCompile Include="sys_video\vector_fonts.cpp" />
+    <ClCompile Include="texrect.cpp" />
+    <ClCompile Include="texrect2dvbo.cpp" />
     <ClCompile Include="vidhrdwr\aae_avg.cpp" />
     <ClCompile Include="vidhrdwr\cinematvid.cpp" />
     <ClCompile Include="vidhrdwr\dvg.cpp" />
+    <ClCompile Include="vidhrdwr\SegaG80vid.cpp" />
     <ClCompile Include="vidhrdwr\vector.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -243,10 +248,14 @@
     <ClInclude Include="log.h" />
     <ClInclude Include="machine\earom.h" />
     <ClInclude Include="machine\mathbox.h" />
+    <ClInclude Include="machine\SegaG80crypt.h" />
     <ClInclude Include="machine\swmathbx.h" />
+    <ClInclude Include="MathUtils.h" />
     <ClInclude Include="menu.h" />
+    <ClInclude Include="newfbo.h" />
     <ClInclude Include="osdepend.h" />
     <ClInclude Include="osd_cpu.h" />
+    <ClInclude Include="os_basic.h" />
     <ClInclude Include="os_input.h" />
     <ClInclude Include="rand.h" />
     <ClInclude Include="rotation_table.h" />
@@ -255,6 +264,7 @@
     <ClInclude Include="sndhrdw\pokey.h" />
     <ClInclude Include="sndhrdw\pokyintf.h" />
     <ClInclude Include="sndhrdw\samples.h" />
+    <ClInclude Include="sndhrdw\segag80snd.h" />
     <ClInclude Include="sndhrdw\starwars_snd.h" />
     <ClInclude Include="sndhrdw\tms5220.h" />
     <ClInclude Include="sys_timer.h" />
@@ -264,8 +274,11 @@
     <ClInclude Include="sys_video\stb_image_write.h" />
     <ClInclude Include="sys_video\vector_fonts.h" />
     <ClInclude Include="targetver.h" />
+    <ClInclude Include="texrect.h" />
+    <ClInclude Include="texrect2dvbo.h" />
     <ClInclude Include="vidhrdwr\aae_avg.h" />
     <ClInclude Include="vidhrdwr\dvg.h" />
+    <ClInclude Include="vidhrdwr\SegaG80vid.h" />
     <ClInclude Include="vidhrdwr\vector.h" />
   </ItemGroup>
   <ItemGroup>

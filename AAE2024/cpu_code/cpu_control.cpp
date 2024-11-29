@@ -56,7 +56,8 @@ static int iloops[MAX_CPU];
 // End of new code.
 
 //New
-static int active_cpu, totalcpu;
+static int active_cpu = 0;
+static int totalcpu = 0;
 static int watchdog_timer = 0;
 
 // New CPU Contexts
@@ -360,6 +361,7 @@ void cpu_do_int_imm(int cpunum, int int_type)
 
 	case CPU_68000: s68000interrupt(int_type, -1); //add interrupt num here
 		s68000flushInterrupts();
+		//wrlog("68000 IRQ Called on CPU %d", cpunum);
 		break;
 	}
 }
@@ -407,12 +409,13 @@ void cpu_do_interrupt(int int_type, int cpunum)
 			}
 			else {
 				m_cpu_6809[cpunum]->irq6809();
-				wrlog("INT Taken 6809");
+				//wrlog("INT Taken 6809");
 			}
 			break;
 	
 		case CPU_68000: s68000interrupt(driver[gamenum].cpu_int_type[active_cpu], -1);
 			s68000flushInterrupts();
+			//wrlog("INT Taken 68000");
 
 			break;
 		}
@@ -429,7 +432,9 @@ void exec_cpu()
 	{
 	case CPU_MZ80:   dwResult = m_cpu_z80[active_cpu]->mz80exec(cyclecount[active_cpu]); break;
 	case CPU_M6502:  dwResult = m_cpu_6502[active_cpu]->exec6502(cyclecount[active_cpu]); break;
-	case CPU_68000:  dwResult = s68000exec(cyclecount[active_cpu]); break;
+	case CPU_68000:  dwResult = s68000exec(cyclecount[active_cpu]); 
+		//wrlog("68000 exec called");
+		              break;
 	case CPU_M6809:
 			{   dwResult = m_cpu_6809[active_cpu]->exec6809(cyclecount[active_cpu]); break;	}
 	}
@@ -860,24 +865,26 @@ READ_HANDLER(watchdog_reset_r)
 	return 0;
 }
 
-//Read
+//Read Ram
 UINT8 MRA_RAM(UINT32 address, struct MemoryReadByte* psMemRead)
 {
 	return GI[active_cpu][address + psMemRead->lowAddr];
 }
 
+//Write Ram
+void MWA_RAM(UINT32 address, UINT8 data, struct MemoryWriteByte* pMemWrite)
+{
+	GI[active_cpu][address + pMemWrite->lowAddr] = data;
+}
+
+// Read Rom
 UINT8 MRA_ROM(UINT32 address, struct MemoryReadByte* psMemRead)
 {
 	//wrlog("Address here is %x Lowaddr %x data %x", address, psMemRead->lowAddr, Machine->memory_region[active_cpu][address + psMemRead->lowAddr]);
 	return GI[active_cpu][address + psMemRead->lowAddr];
 }
 
-//Write
-void MWA_RAM(UINT32 address, UINT8 data, struct MemoryWriteByte* pMemWrite)
-{
-	GI[active_cpu][address + pMemWrite->lowAddr] = data;
-}
-
+// Write Rom
 void MWA_ROM(UINT32 address, UINT8 data, struct MemoryWriteByte* pMemWrite)
 {
 	//If logging add here
@@ -887,3 +894,4 @@ void MWA_NOP(UINT32 address, UINT8 data, struct MemoryWriteByte* pMemWrite)
 {
 	//If logging add here
 }
+

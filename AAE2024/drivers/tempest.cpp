@@ -354,6 +354,7 @@ static void switch_game()
 	INMENU = 0;
 	oldgamenum = gamenum;
 	a = (GI[CPU0][0x51]) + 1;
+	wrlog("A here is %d", a);
 	switch (a)
 	{
 	case 1: b = 0x10000; gamenum = ALIENST; break;
@@ -430,9 +431,9 @@ WRITE_HANDLER(colorram_w)
 	int b = bit2 * 0xee;
 
 	//Update the color ram.
-	vec_colors[address & 0x0f].r = r;
-	vec_colors[address & 0x0f].g = g;
-	vec_colors[address & 0x0f].b = b;
+	vec_colors[address].r = r;
+	vec_colors[address].g = g;
+	vec_colors[address].b = b;
 }
 
 WRITE_HANDLER(avg_reset_w)
@@ -446,9 +447,19 @@ WRITE_HANDLER(coin_write)
 	else { flipscreen = 0; }
 }
 
-WRITE_HANDLER(prot_w)
+WRITE_HANDLER(prot_w_1)
 {
-	GI[CPU0][address] = 0;
+	GI[CPU0][0x011b] = 0;
+}
+
+WRITE_HANDLER(prot_w_2)
+{
+	GI[CPU0][0x011f] = 0;
+}
+
+WRITE_HANDLER(prot_w_3)
+{
+	GI[CPU0][0x0455] = 0;
 }
 
 ///////////////////////  MAIN LOOP /////////////////////////////////////
@@ -472,9 +483,9 @@ MEM_ADDR(0x6070, 0x6070, MathboxHighbitRead)
 MEM_END
 
 MEM_WRITE(TempestWrite)
-MEM_ADDR(0x011b, 0x011b, prot_w)
-MEM_ADDR(0x011f, 0x011f, prot_w)
-MEM_ADDR(0x0455, 0x0455, prot_w)
+MEM_ADDR(0x011b, 0x011b, prot_w_1)
+MEM_ADDR(0x011f, 0x011f, prot_w_2)
+MEM_ADDR(0x0455, 0x0455, prot_w_3)
 MEM_ADDR(0x0800, 0x080f, colorram_w)
 MEM_ADDR(0x60c0, 0x60cf, pokey_1_w)
 MEM_ADDR(0x60d0, 0x60df, pokey_2_w)

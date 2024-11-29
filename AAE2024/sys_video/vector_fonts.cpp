@@ -272,7 +272,7 @@ void fontmode_start()
 	glLoadIdentity();
 	// Reset The Projection Matrix
 	glViewport(0, 0, 1024, 768);//Machine->drv->vector_width, Machine->drv->vector_height);
-	glOrtho(0, 1024, 768, 0, -1.0f, 1.0f);
+	glOrtho(1024, 0,768, 0, -1.0f, 1.0f);
 
 	glMatrixMode(GL_MODELVIEW);								// Select The Modelview Matrix
 	glLoadIdentity();
@@ -290,12 +290,12 @@ void fontmode_start()
 	//case 3: fangle = 180; break;
 	//case 6: fangle = 270; break;
 	//}
-	fangle = 0;
+	fangle = 90;
 	/* compute the min/max values */
-	int xmin = 0;// Machine->drv->absolute_visible_area.min_x;
-	int ymin = 0;// Machine->drv->absolute_visible_area.min_y;
-	int xmax = 1024;// Machine->drv->absolute_visible_area.max_x;
-	int ymax = 768;// Machine->drv->absolute_visible_area.max_y;
+	int xmin = Machine->gamedrv->visible_area.min_x;
+	int ymin = Machine->gamedrv->visible_area.min_y;
+	int xmax = Machine->gamedrv->visible_area.max_x;
+	int ymax = Machine->gamedrv->visible_area.max_y;
 
 	/* determine the center points */
 	xcenter = ((xmax + xmin) / 2);
@@ -307,7 +307,7 @@ void fontmode_end()
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE);
 	glColor4ub(255, 255, 255, 255);
 	glPopMatrix();
-	//glLoadIdentity();
+	glLoadIdentity();
 }
 
 spoint RotateAroundPoint(float x, float y, float cx, float cy, float cosTheta, float sinTheta)
@@ -317,6 +317,10 @@ spoint RotateAroundPoint(float x, float y, float cx, float cy, float cosTheta, f
 	p.y = ((((x)-(cx)) * (sinTheta)) + (((y)-(cy)) * (cosTheta))) + (cy);
 	return p;
 }
+
+
+//Note to self:
+// All of the printing and rotation is a complete test hack, please fix
 
 void fprint(float x, int y, unsigned int color, float scale, const char* fmt, ...)	// Where The Printing Happens
 {
@@ -347,6 +351,8 @@ void fprint(float x, int y, unsigned int color, float scale, const char* fmt, ..
 	len = strnlen(text, 255);
 	lastscale = scale;
 	spoint center = { 580 , 325 }; // { xcenter, ycenter };/
+	
+	x = x + 256;
 
 	if (fangle)
 	{
@@ -354,7 +360,7 @@ void fprint(float x, int y, unsigned int color, float scale, const char* fmt, ..
 		cosTheta = _cos[fangle];
 		sinTheta = _sin[fangle];
 	}
-
+	
 	for (i = 0; i < len; i++)
 	{
 		a = fstart[text[i]];
@@ -362,6 +368,7 @@ void fprint(float x, int y, unsigned int color, float scale, const char* fmt, ..
 		b = a + 1;
 		while (fontdata[a] != EOC)
 		{
+			
 			if (fangle)
 			{
 				p0 = RotateAroundPoint((fontdata[a] * scale) + x, (fontdata[b] * scale) + y,
@@ -372,20 +379,20 @@ void fprint(float x, int y, unsigned int color, float scale, const char* fmt, ..
 			}
 			else
 			{
+
 				p0 = { (fontdata[a] * scale) + x, (fontdata[b] * scale) + y };
 				p1 = { (fontdata[a + 2] * scale) + x, (fontdata[b + 2] * scale) + y };
 			}
-
 			//TODO: Change this to proper rendering.
 
 			glBegin(GL_LINES);
-			glVertex2f(p0.x, p0.y);// Top Left
-			glVertex2f(p1.x, p1.y);// Top Left
+			glVertex2f(p0.y, p0.x);// Top Left
+			glVertex2f(p1.y, p1.x);// Top Left
 			glEnd();
 
 			glBegin(GL_POINTS);
-			glVertex2f(p0.x, p0.y);// Top Left
-			glVertex2f(p1.x, p1.y);// Top Left
+			glVertex2f(p0.y, p0.x);// Top Left
+			glVertex2f(p1.y, p1.x);// Top Left
 			glEnd();
 
 			a += 4; b += 4;

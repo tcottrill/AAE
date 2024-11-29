@@ -29,15 +29,15 @@ UINT8 EaromRead(UINT32 address, struct MemoryReadByte* psMemRead)
 	return (earom_data);
 }
 
-//Fix this with the new 6502 code
+//Fix this with the new 6502 code, remove the offset.
 void EaromWrite(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite)
 {
+	 wrlog("Earom write? address %x data %d", earom_offset,data);
 	earom_offset = (address & 0x00ff);
-	if (gamenum == REDBARON) { earom_offset -= 0x20; }
-	if (gamenum == GRAVITAR || gamenum == BWIDOW) { earom_offset -= 0x40; }
+	//if (gamenum == REDBARON) { earom_offset -= 0x20; }
+	//if (gamenum == GRAVITAR || gamenum == BWIDOW) { earom_offset -= 0x40; }
 
 	earom_data = data;
-	//if (debug) wrlog("Earom write? address %x data %d", earom_offset,data);
 }
 
 /* 0,8 and 14 get written to this location, too.

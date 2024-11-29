@@ -77,7 +77,7 @@ void pokey_sh_stop(void)
 
 int Read_pokey_regs(uint16 addr, uint8 chip)
 {
-	//wrlog("POKEY READ here address %x chip %x",addr,chip);
+	wrlog("POKEY READ here address %x chip %x",addr,chip);
 	switch (addr & 0x0f)
 	{
 	case POT0_C:
@@ -134,7 +134,7 @@ int Read_pokey_regs(uint16 addr, uint8 chip)
 
 UINT8 quadpokey_r(UINT32 address, struct MemoryReadByte* psMemRead)
 {
-	return quad_pokey_r(address & 0xff);// -0x2000);
+	return quad_pokey_r(address);// -0x2000);
 }
 UINT8 pokey_1_r(UINT32 address, struct MemoryReadByte* psMemRead)
 {
@@ -185,8 +185,7 @@ int quad_pokey_r(int offset)
 
 void quadpokey_w(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite)
 {
-	//wrlog("Quad Pokey Read");
-	quad_pokey_w(address & 0xff, data);
+	quad_pokey_w(address, data);
 }
 
 void pokey_1_w(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite)

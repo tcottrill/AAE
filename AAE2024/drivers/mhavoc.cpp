@@ -1,19 +1,17 @@
-
 //============================================================================
-// AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME 
-// code, 0.29 through .90 mixed with code of my own. This emulator was 
-// created solely for my amusement and learning and is provided only 
-// as an archival experience. 
-// 
-// All MAME code used and abused in this emulator remains the copyright 
+// AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME
+// code, 0.29 through .90 mixed with code of my own. This emulator was
+// created solely for my amusement and learning and is provided only
+// as an archival experience.
+//
+// All MAME code used and abused in this emulator remains the copyright
 // of the dedicated people who spend countless hours creating it. All
 // MAME code should be annotated as belonging to the MAME TEAM.
-// 
-// THE CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.  
+//
+// THE CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.
 //============================================================================
 
-// Note to me, figure out why this works and my perfectly timed version in my other emulator has sound lag.
-
+// Note: This is running perfectly in my more mame like emulator
 
 /*
 	 Memory Map for Major Havoc
@@ -214,8 +212,7 @@ static UINT8 gamma_xmtd = 0;
 static UINT8 speech_write_buffer;
 static UINT8 player_1;
 int has_gamma_cpu = 1;
-int intcpu1 = 0;
-int intcpu2 = 0;
+
 int nmicpu1 = 0;
 int nmicounter = 0;
 int delayed_data = 0;
@@ -228,6 +225,7 @@ static int ram_bank[2] = { 0x20200, 0x20800 };
 static int ram_bank_sel = 0;
 static int rom_bank[4] = { 0x10000, 0x12000, 0x14000, 0x16000 };
 static int rom_bank_sel = 0;
+unsigned char* cur_bank;
 
 static int reset1 = 0;
 static int MHAVGDONE = 1;
@@ -259,7 +257,7 @@ int get_vidticks(int reset)
 
 	v = vidticks;
 	temp = m_cpu_6502[0]->get6502ticks(0);
-	wrlog("Vid ticks here is ------------------------- %d", temp);
+	//wrlog("Vid ticks here is ------------------------- %d", temp);
 	//if (temp <= cyclecount[running_cpu]) temp = cyclecount[running_cpu]-m6502zpGetElapsedTicks(0);
 	//else wrlog("Video CYCLE Count ERROR occured, check code.");
 	v += temp;
@@ -271,8 +269,8 @@ int MHscale_by_cycles(int val, int clock)
 	int k;
 	int current = 0;
 	int max;
-
-	current = m_cpu_6502[1]->get6502ticks(0);
+	// Have to use Alpha CPU here.
+	current = m_cpu_6502[0]->get6502ticks(0);
 	current += gammaticks;
 	max = clock / 50;
 
@@ -281,9 +279,6 @@ int MHscale_by_cycles(int val, int clock)
 	return k;
 }
 
-//
-//Why is Major Havoc separate here, did I not add FREQ to the sound buffer scaling?? Get this out of here!
-//
 static void mh_pokey_update()
 {
 	int newpos = 0;
@@ -304,6 +299,7 @@ static void pokey_do_update(void)
 
 void end_mhavoc()
 {
+	wrlog("End Major Havoc Called");
 	free_audio_stream_buffer(stream);
 	stop_audio_stream(stream);
 	free(soundbuffer);
@@ -326,15 +322,11 @@ void run_reset()
 	gamma_xmtd = 0;
 	player_1 = 0;
 	cache_clear();
-	//m6502zpSetContext(c6502[0]);
-	//m6502zpreset();
 	m_cpu_6502[0]->reset6502();
-	//m6502zpGetContext(c6502[0]);
+
 	if (has_gamma_cpu)
 	{
-		//m6502zpSetContext(c6502[1]);
 		m_cpu_6502[1]->reset6502();
-		//m6502zpGetContext(c6502[1]);
 		Pokey_sound_init(1250000, 44100, 4, 6);
 	}
 	else { Pokey_sound_init(1250000, 44100, 2, 6); }
@@ -354,12 +346,7 @@ void mhavoc_interrupt()
 		alpha_irq_clock++;
 		if ((alpha_irq_clock & (0x30)) == (0x30)) //0x0c //0x30
 		{  //  wrlog("IRQ ALPHA CPU");
-			intcpu1 = 1;
-			//cpunum_set_input_line(machine, 0, 0, ASSERT_LINE);
-			//m6502zpSetContext(c6502[0]);
 			m_cpu_6502[0]->irq6502();
-			//m6502zpint(1);
-			//m6502zpGetContext(c6502[0]);
 			alpha_irq_clock_enable = 0;
 		}
 	}
@@ -371,13 +358,8 @@ void mhavoc_interrupt()
 		if (gamma_irq_clock & (0x20)) //08 //0x20
 		{
 			//wrlog("IRQ GAMMA CPU");
-			intcpu2 = 1;
-			//m6502zpSetContext(c6502[1]);
 			m_cpu_6502[1]->irq6502();
-			//m6502zpint(1);
-			//m6502zpGetContext(c6502[1]);
 		}
-		//cpunum_set_input_line(machine, 1, 0, (gamma_irq_clock & 0x08) ? ASSERT_LINE : CLEAR_LINE);
 	}
 }
 
@@ -385,7 +367,7 @@ WRITE_HANDLER(mhavoc_alpha_irq_ack_w)
 {
 	/* clear the line and reset the clock */
 	//cpu_set_irq_line(0, 0, CLEAR_LINE);
-	wrlog("Alpha IRQ ACK!", data);
+//	wrlog("Alpha IRQ ACK!", data);
 	alpha_irq_clock = 0;
 	alpha_irq_clock_enable = 1;
 }
@@ -394,7 +376,7 @@ WRITE_HANDLER(mhavoc_gamma_irq_ack_w)
 {
 	/* clear the line and reset the clock */
 	//cpu_set_irq_line(1, 0, CLEAR_LINE);
-	wrlog("Gamma IRQ ACK!", data);
+	//wrlog("Gamma IRQ ACK!", data);
 	gamma_irq_clock = 0;
 }
 
@@ -403,11 +385,11 @@ READ_HANDLER(mh_quad_pokey_read)
 	static int rng = 0;
 	int pokey_reg[4];
 
-	int offset = address - 0x2000;
+	int offset = address;
 	int pokey_num = (offset >> 3) & ~0x04;
 	int control = (offset & 0x20) >> 2;
 	pokey_reg[pokey_num] = (offset % 8) | control;
-	//wrlog("Pokey Read # %x  address %x",pokey_num,pokey_reg);
+	//wrlog("Pokey Read # %x  address %x", pokey_num, pokey_reg);
 	if (pokey_reg[pokey_num] == 0x08) return input_port_3_r(0); //Dipswitch Read
 
 	if (pokey_reg[pokey_num] == 0x0a)
@@ -426,10 +408,11 @@ READ_HANDLER(mh_quad_pokey_read)
 WRITE_HANDLER(mh_quad_pokey_write)
 {
 	int pokey_reg[4];
-	int offset = address - 0x2000;
+	int offset = address & 0xff;
 	int pokey_num = (offset >> 3) & ~0x04;
 	int control = (offset & 0x20) >> 2;
 	pokey_reg[pokey_num] = (offset % 8) | control;
+	//wrlog("Pokey Read # %x  address %x", pokey_num, pokey_reg);
 	if (pokey_reg[pokey_num] == 0x0f) { pkenable[pokey_num] = data; }
 	switch (pokey_num) {
 	case 0:
@@ -453,7 +436,7 @@ WRITE_HANDLER(mh_quad_pokey_write)
 
 READ_HANDLER(dual_pokey_r)
 {
-	int offset = address - 0x1020;
+	int offset = address;
 	int pokey_num = (offset >> 3) & 0x01;
 	int control = (offset & 0x10) >> 1;
 	int pokey_reg = (offset % 8) | control;
@@ -467,7 +450,7 @@ READ_HANDLER(dual_pokey_r)
 
 WRITE_HANDLER(dual_pokey_w)
 {
-	int offset = address - 0x1020;
+	int offset = address;
 	int pokey_reg[4];
 	int pokey_num = (offset >> 3) & 0x01;
 	int control = (offset & 0x10) >> 1;
@@ -513,7 +496,7 @@ WRITE_HANDLER(avg_mgo)
 	//wrlog("Total Frame list length %d" ,total_length );
 	if (total_length > 1) {
 		MHAVGDONE = 0; get_vidticks(0xff);
-		wrlog("Total LENGTH HERE %d ", total_length);
+		//wrlog("Total LENGTH HERE %d ", total_length);
 	}
 	else { MHAVGDONE = 1; }
 	//wrlog("AVG RUN CALLED.");
@@ -550,7 +533,7 @@ READ_HANDLER(mhavoc_port_0_r)
 
 	me = 3.75 * total_length;//(((1780 * total_length)/ 1000000) * 1512);//* 1512);
 	ticks = m_cpu_6502[0]->get6502ticks(0);
-	if (MHAVGDONE == 0)wrlog("Total LENGTH HERE %f and TOTAL TICKS %d", me, ticks);
+	//if (MHAVGDONE == 0)wrlog("Total LENGTH HERE %f and TOTAL TICKS %d", me, ticks);
 	if (get_vidticks(0) > me && MHAVGDONE == 0) { MHAVGDONE = 1; total_length = 0; }
 
 	/* Bits 7-6 = selected based on Player 1 */
@@ -634,7 +617,6 @@ READ_HANDLER(alphaone_port_1_r)
 
 	res = readinputportbytag("IN1");
 
-	//if (KeyCheck(config.ktest))  service ^= 1;
 	if (service)     bitclr(res, 0x10);
 
 	return res;
@@ -649,19 +631,15 @@ WRITE_HANDLER(mhavoc_ram_banksel_w)
 
 WRITE_HANDLER(mhavoc_rom_banksel_w)
 {
-	static int lastbank = 0;
+	int bank[4] = { 0x10000, 0x12000, 0x14000, 0x16000 };
 	data &= 0x03;
-	rom_bank_sel = data;
-	if (rom_bank_sel != lastbank) {
-		if (rom_bank_sel == 3) { memcpy(GI[CPU0] + 0x2000, GI[CPU0] + 0x16000, 0x2000); }
-		if (rom_bank_sel == 2) { memcpy(GI[CPU0] + 0x2000, GI[CPU0] + 0x14000, 0x2000); }
-		if (rom_bank_sel == 1) { memcpy(GI[CPU0] + 0x2000, GI[CPU0] + 0x12000, 0x2000); }
-		if (rom_bank_sel == 0) { memcpy(GI[CPU0] + 0x2000, GI[CPU0] + 0x10000, 0x2000); }
-		lastbank = rom_bank_sel;
-	}
-	GI[CPU0][address] = data;
+	cur_bank = &GI[CPU0][bank[data &= 0x03]];
 }
 
+READ_HANDLER(MRA_BANK2_R)
+{
+	return cur_bank[address];
+}
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
 WRITE_HANDLER(MWA_BANK1_W)
@@ -670,7 +648,8 @@ WRITE_HANDLER(MWA_BANK1_W)
 
 	if (ram_bank_sel == 0) { bank = 0x20200; }
 	else { bank = 0x20800; }
-	bank = bank + (address - 0x200);
+	bank = bank + address;
+	
 	GI[CPU0][bank] = data;
 }
 
@@ -680,7 +659,7 @@ READ_HANDLER(MRA_BANK1_R)
 
 	if (ram_bank_sel == 0) { bank = 0x20200; }
 	else { bank = 0x20800; }
-	bank = bank + (address - 0x200);
+	bank = bank + (address);
 
 	return GI[CPU0][bank];
 }
@@ -692,22 +671,11 @@ WRITE_HANDLER(mhavoc_colorram_w)
 	int g = (data & 2) ? 0x00 : i;
 	int b = (data & 1) ? 0x00 : i;
 
-	vec_colors[address - 0x1400].r = r;
-	vec_colors[address - 0x1400].g = g;
-	vec_colors[address - 0x1400].b = b;
+	vec_colors[address].r = r;
+	vec_colors[address].g = g;
+	vec_colors[address].b = b;
 }
 
-WRITE_HANDLER(alphaone_colorram_w)
-{
-	int i = (data & 4) ? 0x0f : 0x08;
-	int r = (data & 8) ? 0x00 : i;
-	int g = (data & 2) ? 0x00 : i;
-	int b = (data & 1) ? 0x00 : i;
-
-	vec_colors[address - 0x10e0].r = r;
-	vec_colors[address - 0x10e0].g = g;
-	vec_colors[address - 0x10e0].b = b;
-}
 /////////////////////////////VECTOR GENERATOR//////////////////////////////////
 static void MH_generate_vector_list(void)
 {
@@ -856,13 +824,14 @@ static void MH_generate_vector_list(void)
 							if (two) { sy += 1; }
 							else { sy -= 1; }
 						}
-						
+
 						add_color_point(sx, sy, red, green, blue);
-						
-						spkl_shift = (((spkl_shift & 0x40) >> 6) ^ ((spkl_shift & 0x20) >> 5)^ 1) | (spkl_shift << 1);
+
+						spkl_shift = (((spkl_shift & 0x40) >> 6) ^ ((spkl_shift & 0x20) >> 5) ^ 1) | (spkl_shift << 1);
 
 						if ((spkl_shift & 0x7f) == 0x7f) spkl_shift = 0;
 					}
+					add_color_line(sx, sy, ex, ey, red, green, blue);
 				}
 				if (ywindow == 1)
 				{
@@ -910,13 +879,13 @@ static void MH_generate_vector_list(void)
 			if (firstwd & 0x0800)
 			{
 				if (ywindow == 0)
-				{ 
-					ywindow = 1; 
-					clip = currenty >> VEC_SHIFT; 
+				{
+					ywindow = 1;
+					clip = currenty >> VEC_SHIFT;
 				}
-				else 
-				{ 
-					ywindow = 0; 
+				else
+				{
+					ywindow = 0;
 				}
 			}
 
@@ -1023,30 +992,20 @@ WRITE_HANDLER(mhavoc_alpha_w)
 WRITE_HANDLER(mhavoc_gamma_w)
 {
 	//wrlog(  "Gamma: Writing to Alpha: %02x", data);
-	 //gamma_rcvd=0;
-	//alpha_xmtd=1;
 	delayed_data = data;
-	//alpha_data = data;
-		//wrlog("--------------------------RELEASING CPU SLICE TO GAMMA");
-
 	nmicpu1 = 1;
-	//m6502zpReleaseTimeslice();
-	//cpu_cause_interrupt (1, INT_NMI);
-	//m6502zpint(1);wrlog("interrupt, processor 2 (gamma)");
-	/* the sound CPU needs to reply in 250ms (according to Neil Bradley) */
-	//timer_set (TIME_IN_USEC(250), 0, 0);
 }
 
 READ_HANDLER(mhavoc_gammaram_r)
 {
 	//wrlog("Ram read from Gamma CPU %x",address);
-	return GI[1][(address - 0x800) & 0x7ff];
+	return GI[CPU1][address & 0x7ff];
 }
 
 WRITE_HANDLER(mhavoc_gammaram_w)
 {
 	//wrlog("Ram write from Gamma CPU address:%x data:%x",address,data);
-	GI[1][(address - 0x800) & 0x7ff] = data;
+	GI[CPU1][address & 0x7ff] = data;
 }
 
 WRITE_HANDLER(watchdog_w)
@@ -1057,12 +1016,12 @@ WRITE_HANDLER(watchdog_w)
 READ_HANDLER(eprom_r)
 {
 	//wrlog("EEPROM READ %x",address);
-	return GI[1][address];
+	return GI[CPU1][address];
 }
 
 WRITE_HANDLER(eprom_w)
 {
-	GI[1][address] = data;
+	GI[CPU1][address] = data;
 }
 
 WRITE_HANDLER(speech_data_w)
@@ -1083,10 +1042,10 @@ MEM_ADDR(0x0200, 0x07ff, MRA_BANK1_R)			/* 3K Paged Program RAM	*/
 //MEM_ADDR( 0x0800, 0x09ff, MRA_RAM)			/* 0.5K Program RAM */
 MEM_ADDR(0x1000, 0x1000, mhavoc_gamma_r)		/* Gamma Read Port */
 MEM_ADDR(0x1200, 0x1200, mhavoc_port_0_r)	    /* Alpha Input Port 0 */
-//MEM_ADDR(0x1800, 0x1FFF, MRA_RAM)			/* Shared Beta Ram */
-//MEM_ADDR(0x2000, 0x3fff, Alpha_ReadBank )	/* Paged Program ROM (32K) */
-//MEM_ADDR(0x4000, 0x4fff, MRA_RAM ) /* Vector RAM	(4K) */
-// MEM_ADDR(0x5000, 0x5fff, VectorRom )		/* Vector ROM (4K) */
+//MEM_ADDR(0x1800, 0x1FFF, MRA_RAM)				/* Shared Beta Ram */
+MEM_ADDR(0x2000, 0x3fff, MRA_BANK2_R)			/* Paged Program ROM (32K) */
+//MEM_ADDR(0x4000, 0x4fff, MRA_RAM )			/* Vector RAM	(4K) */
+// MEM_ADDR(0x5000, 0x5fff, VectorRom )			/* Vector ROM (4K) */
 //MEM_ADDR(0x6000, 0x7fff, VectorRom )			/* Paged Vector ROM (32K) */
 //MEM_ADDR( 0x8000, 0xffff, MRA_ROM )			/* Program ROM (32K) */
 MEM_END
@@ -1097,36 +1056,36 @@ MEM_WRITE(AlphaWrite)
 MEM_ADDR(0x0200, 0x07ff, MWA_BANK1_W)			 /* 3K Paged Program RAM */
 //MEM_ADDR(0x0800, 0x09ff, MWA_RAM )			 /* 0.5K Program RAM */
 MEM_ADDR(0x1200, 0x1200, NoWrite)			     /* don't care */
-MEM_ADDR(0x1400, 0x141f, mhavoc_colorram_w)	 /* ColorRAM */
+MEM_ADDR(0x1400, 0x141f, mhavoc_colorram_w)		 /* ColorRAM */
 MEM_ADDR(0x1600, 0x1600, mhavoc_out_0_w)		 /* Control Signals */
 MEM_ADDR(0x1640, 0x1640, avg_mgo)			     /* Vector Generator GO */
 MEM_ADDR(0x1680, 0x1680, watchdog_w)			 /* Watchdog Clear */
 MEM_ADDR(0x16c0, 0x16c0, avgdvg_reset_w)		 /* Vector Generator Reset */
 MEM_ADDR(0x1700, 0x1700, mhavoc_alpha_irq_ack_w) /* IRQ ack */
-MEM_ADDR(0x1740, 0x1740, mhavoc_rom_banksel_w) /* Program ROM Page Select */
-MEM_ADDR(0x1780, 0x1780, mhavoc_ram_banksel_w) /* Program RAM Page Select */
+MEM_ADDR(0x1740, 0x1740, mhavoc_rom_banksel_w)	 /* Program ROM Page Select */
+MEM_ADDR(0x1780, 0x1780, mhavoc_ram_banksel_w)	 /* Program RAM Page Select */
 MEM_ADDR(0x17c0, 0x17c0, mhavoc_gamma_w)		 /* Gamma Communication Write Port */
 //MEM_ADDR( 0x1800, 0x1fff, MWA_RAM )			 /* Shared Beta Ram (Not Used)*/
 MEM_ADDR(0x2000, 0x3fff, NoWrite)			     /* (ROM)Major Havoc writes here.*/
 //MEM_ADDR( 0x4000, 0x4fff, MWA_RAM,             /* Vector Generator RAM	*/
-MEM_ADDR(0x6000, 0x7fff, NoWrite)              /* ROM */
+MEM_ADDR(0x6000, 0x7fff, NoWrite)				 /* ROM */
 MEM_END
 
 MEM_READ(GammaRead)
-//MEM_ADDR(0x0000, 0x07ff, MRA_RAM)			/* Program RAM (2K)	*/
-MEM_ADDR(0x0800, 0x1fff, mhavoc_gammaram_r)	/* wraps to 0x000-0x7ff */
+//MEM_ADDR(0x0000, 0x07ff, MRA_RAM)				/* Program RAM (2K)	*/
+MEM_ADDR(0x0800, 0x1fff, mhavoc_gammaram_r)		/* wraps to 0x000-0x7ff */
 MEM_ADDR(0x2000, 0x203f, mh_quad_pokey_read)	/* Quad Pokey read	*/
 MEM_ADDR(0x2800, 0x2800, mhavoc_port_1_r)	    /* Gamma Input Port	*/
 MEM_ADDR(0x3000, 0x3000, mhavoc_alpha_r)		/* Alpha Comm. Read Port*/
-MEM_ADDR(0x3800, 0x3803, ip_port_2_r)		/* Roller Controller Input*/
-MEM_ADDR(0x4000, 0x4000, ip_port_4_r)		/* DSW at 8S */
-MEM_ADDR(0x6000, 0x61ff, eprom_r)	/* EEROM	*/
+MEM_ADDR(0x3800, 0x3803, ip_port_2_r)			/* Roller Controller Input*/
+MEM_ADDR(0x4000, 0x4000, ip_port_4_r)			/* DSW at 8S */
+MEM_ADDR(0x6000, 0x61ff, eprom_r)				/* EEROM	*/
 //MEM_ADDR(0x8000, 0xffff, MRA_ROM )			/* Program ROM (16K)	*/
 MEM_END
 
 MEM_WRITE(GammaWrite)
 //MEM_ADDR(0x0000, 0x07ff, MWA_RAM )			 /* Program RAM (2K)	*/
-MEM_ADDR(0x0800, 0x1fff, mhavoc_gammaram_w)	 /* wraps to 0x000-0x7ff */
+MEM_ADDR(0x0800, 0x1fff, mhavoc_gammaram_w)		 /* wraps to 0x000-0x7ff */
 MEM_ADDR(0x2000, 0x203f, mh_quad_pokey_write)	 /* Quad Pokey write	*/
 MEM_ADDR(0x4000, 0x4000, mhavoc_gamma_irq_ack_w)/* IRQ Acknowledge	*/
 MEM_ADDR(0x4800, 0x4800, mhavoc_out_1_w)		 /* Coin Counters 	*/
@@ -1138,61 +1097,28 @@ MEM_ADDR(0x8000, 0xbfff, NoWrite)
 MEM_END
 //----------------------------ALPHAONE DEFINITIONS-----------------------------------------------------------------------
 MEM_READ(AlphaOneRead)
-MEM_ADDR(0x0200, 0x07ff, MRA_BANK1_R)			/* 3K Paged Program RAM	*/
+MEM_ADDR(0x0200, 0x07ff, MRA_BANK1_R)				/* 3K Paged Program RAM	*/
 MEM_ADDR(0x1020, 0x103f, dual_pokey_r)
-MEM_ADDR(0x1040, 0x1040, alphaone_port_0_r)//alphaone_port_0_r )	/* Alpha Input Port 0 */
+MEM_ADDR(0x1040, 0x1040, alphaone_port_0_r)	//alphaone_port_0_r )	/* Alpha Input Port 0 */
 MEM_ADDR(0x1060, 0x1060, alphaone_port_1_r)//alphaone_port_1_r)		/* Gamma Input Port	*/
-MEM_ADDR(0x1080, 0x1080, ip_port_2_r)		/* Roller Controller Input*/
+MEM_ADDR(0x1080, 0x1080, ip_port_2_r)				/* Roller Controller Input*/
 MEM_END
 
 MEM_WRITE(AlphaOneWrite)
-MEM_ADDR(0x0200, 0x07ff, MWA_BANK1_W)			/* 3K Paged Program RAM */
+MEM_ADDR(0x0200, 0x07ff, MWA_BANK1_W)				/* 3K Paged Program RAM */
 MEM_ADDR(0x1020, 0x103f, dual_pokey_w)
-MEM_ADDR(0x1040, 0x1040, NoWrite)			/* don't care */
-MEM_ADDR(0x10a0, 0x10a0, mhavoc_out_0_w)		/* Control Signals */
-MEM_ADDR(0x10a4, 0x10a4, avg_mgo)			/* Vector Generator GO */
-MEM_ADDR(0x10a8, 0x10a8, NoWrite)			/* Watchdog Clear */
-MEM_ADDR(0x10ac, 0x10ac, avgdvg_reset_w)		/* Vector Generator Reset */
-MEM_ADDR(0x10b0, 0x10b0, mhavoc_alpha_irq_ack_w)        /* IRQ ack */
-MEM_ADDR(0x10b4, 0x10b4, mhavoc_rom_banksel_w)      /* Program ROM Page Select */
-MEM_ADDR(0x10b8, 0x10b8, mhavoc_ram_banksel_w)      /* Program RAM Page Select */
-MEM_ADDR(0x10e0, 0x10ff, alphaone_colorram_w)	/* ColorRAM */
-MEM_ADDR(0x2000, 0x3fff, NoWrite)			/* Major Havoc writes here.*/
+MEM_ADDR(0x1040, 0x1040, NoWrite)					/* don't care */
+MEM_ADDR(0x10a0, 0x10a0, mhavoc_out_0_w)			/* Control Signals */
+MEM_ADDR(0x10a4, 0x10a4, avg_mgo)					/* Vector Generator GO */
+MEM_ADDR(0x10a8, 0x10a8, NoWrite)					/* Watchdog Clear */
+MEM_ADDR(0x10ac, 0x10ac, avgdvg_reset_w)			/* Vector Generator Reset */
+MEM_ADDR(0x10b0, 0x10b0, mhavoc_alpha_irq_ack_w)	/* IRQ ack */
+MEM_ADDR(0x10b4, 0x10b4, mhavoc_rom_banksel_w)		/* Program ROM Page Select */
+MEM_ADDR(0x10b8, 0x10b8, mhavoc_ram_banksel_w)		/* Program RAM Page Select */
+MEM_ADDR(0x10e0, 0x10ff, mhavoc_colorram_w)			/* ColorRAM */
+MEM_ADDR(0x2000, 0x3fff, NoWrite)					/* Major Havoc writes here.*/
 MEM_ADDR(0x6000, 0xffff, NoWrite)
 MEM_END
-
-void run_alphaone()
-{
-	int x;
-	int bugger = 0;
-	int counter = 0;
-	int cycles1 = (2500000 / 30);
-
-	int passes = 400;  //90
-	//this is going to hit 42 times per frame
-	UINT32 m6502NmiTicks = 0;
-	UINT32 dwElapsedTicks = 0;
-	UINT32 dwResult = 0;
-
-	//if (KeyCheck(config.kreset)) { run_reset(); }
-
-	//wrlog("------------FRAME START --------------");
-	for (x = 0; x < (passes + 1); x++) //160
-	{
-		//m6502zpSetContext(c6502[0]);	// Set CPU #1's information
-		dwResult = m_cpu_6502[0]->exec6502((int)cycles1 / passes);
-		if (0x80000000 != dwResult)
-		{
-			x = 3000; done = 1;
-			allegro_message("Invalid instruction at %.2x on CPU 0", m_cpu_6502[0]->get_pc());
-		}
-
-		//m6502zpGetContext(c6502[0]);	// Get CPU #1's state info
-
-		mhavoc_interrupt();
-	}
-	pokey_do_update();
-}
 
 void run_mhavoc()
 {
@@ -1215,15 +1141,11 @@ void run_mhavoc()
 	gammaticks = 0;
 	ticktest = 0;
 
-	//	if (KeyCheck(config.kreset)) { run_reset(); }
-
-	wrlog("------------FRAME START --------------");
+	//wrlog("------------FRAME START --------------");
 	for (x = 0; x < passes; x++)
 	{
-		//cpunum=0;
-		//m6502zpSetContext(c6502[0]);	// Set CPU #1's information
 		cycles = m_cpu_6502[0]->get6502ticks(0xff);
-		wrlog("Cycles ticks here is %d", cycles);
+		//wrlog("Cycles ticks here is %d", cycles);
 
 		if (cpu1ticks < 50000) {
 			dwResult = m_cpu_6502[0]->exec6502((int)cycles1 / passes);
@@ -1249,13 +1171,9 @@ void run_mhavoc()
 		//wrlog("HRTZ Counter %d",hrzcounter);
 		if (twokticks > 120) { twokticks -= 120; bitflip ^= 1; }
 
-		//m6502zpGetContext(c6502[0]);	// Get CPU #1's state info
-
 		if (has_gamma_cpu)
 		{
 			//----------------------------------------------------------------------------------------------------------------------
-									 //cpunum=1;
-			//m6502zpSetContext(c6502[1]);	// Set CPU #2's information
 
 			if (reset1) { m_cpu_6502[1]->reset6502(); reset1 = 0; wrlog("Reset, Gamma CPU"); }
 
@@ -1280,7 +1198,6 @@ void run_mhavoc()
 			cyclesgamma = m_cpu_6502[1]->get6502ticks(0xff);
 			gammaticks += cyclesgamma;
 			ticktest += cyclesgamma;
-			//m6502zpGetContext(c6502[1]);	// Get CPU #2's state info
 		}
 		mhavoc_interrupt();
 	}
@@ -1327,7 +1244,7 @@ int init_mhavoc(void)
 		memset(GI[CPU0] + 0x1800, 0xff, 0xff);
 	}
 
-	wrlog("CPU init complete");
+	wrlog("MHAVOC CPU init complete");
 	memcpy(GI[CPU0] + 0x6000, GI[CPU0] + 0x18000, 0x2000);
 
 	//Load High Score table

@@ -80,7 +80,7 @@ READ_HANDLER(SDControls)
 	res2 = readinputport(4);
 	res = 0x00;
 
-	switch ((address & 0x0f) & 0x07)
+	switch (address & 0x07)
 	{
 	case 0:
 		if (res1 & IN_SHIELD) res |= 0x80;
@@ -123,7 +123,7 @@ WRITE_HANDLER(avgdvg_reset_w)
 
 WRITE_HANDLER(intack)
 {
-	GI[CPU0][address] = data;
+	GI[CPU0][0x88c0] = data;
 }
 
 WRITE_HANDLER(led_write)
@@ -138,8 +138,8 @@ void run_spacduel()
 
 MEM_READ(BwidowRead)
 
-MEM_ADDR(0x600a, 0x600f, pokey_1_r)
-MEM_ADDR(0x680a, 0x680f, pokey_2_r)
+MEM_ADDR(0x6000, 0x67ff, pokey_1_r)
+MEM_ADDR(0x6800, 0x6fff, pokey_2_r)
 MEM_ADDR(0x7000, 0x7000, EaromRead)
 MEM_ADDR(0x7800, 0x7800, IN0read)
 MEM_ADDR(0x8000, 0x8000, ip_port_3_r)
@@ -147,7 +147,6 @@ MEM_ADDR(0x8800, 0x8800, ip_port_4_r)
 MEM_END
 
 MEM_WRITE(BwidowWrite)
-MEM_ADDR(0x2800, 0x5fff, NoWrite)
 MEM_ADDR(0x6000, 0x67ff, pokey_1_w)
 MEM_ADDR(0x6800, 0x6fff, pokey_2_w)
 MEM_ADDR(0x8800, 0x8800, led_write)
@@ -155,8 +154,8 @@ MEM_ADDR(0x8840, 0x8840, AVGgo)
 MEM_ADDR(0x88c0, 0x88c0, intack)
 MEM_ADDR(0x8900, 0x8900, EaromCtrl)
 MEM_ADDR(0x8940, 0x897f, EaromWrite)
-MEM_ADDR(0x8980, 0x89ed, NoWrite)
-MEM_ADDR(0x9000, 0xffff, NoWrite)
+MEM_ADDR(0x8980, 0x89ed, NoWrite) //Watchdog
+MEM_ADDR(0x9000, 0xffff, MWA_ROM)
 MEM_END
 
 MEM_READ(GravRead)

@@ -144,9 +144,6 @@
     <ClCompile Include="sndhrdw\SegaG80snd.cpp">
       <Filter>Source Files\sndhrdwr</Filter>
     </ClCompile>
-    <ClCompile Include="machine\segacrypt.cpp">
-      <Filter>Source Files\machine</Filter>
-    </ClCompile>
     <ClCompile Include="drivers\cinemat.cpp">
       <Filter>Source Files\drivers</Filter>
     </ClCompile>
@@ -213,15 +210,30 @@
     <ClCompile Include="cpu_code\cpu_6502.cpp">
       <Filter>Source Files\cpu_code</Filter>
     </ClCompile>
+    <ClCompile Include="texrect2dvbo.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="os_basic.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="newfbo.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="texrect.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="vidhrdwr\SegaG80vid.cpp">
+      <Filter>Source Files\vidhrdwr</Filter>
+    </ClCompile>
+    <ClCompile Include="machine\SegaG80crypt.cpp">
+      <Filter>Source Files\machine</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="aaemain.h">
       <Filter>Source Files</Filter>
     </ClInclude>
     <ClInclude Include="acommon.h">
-      <Filter>Source Files</Filter>
-    </ClInclude>
-    <ClInclude Include="colordefs.h">
       <Filter>Source Files</Filter>
     </ClInclude>
     <ClInclude Include="config.h">
@@ -409,6 +421,33 @@
     </ClInclude>
     <ClInclude Include="cpu_code\cpu_6502.h">
       <Filter>Source Files\cpu_code</Filter>
+    </ClInclude>
+    <ClInclude Include="texrect2dvbo.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="os_basic.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="newfbo.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="MathUtils.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="texrect.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="colordefs.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="vidhrdwr\SegaG80vid.h">
+      <Filter>Source Files\vidhrdwr</Filter>
+    </ClInclude>
+    <ClInclude Include="machine\SegaG80crypt.h">
+      <Filter>Source Files\machine</Filter>
+    </ClInclude>
+    <ClInclude Include="sndhrdw\segag80snd.h">
+      <Filter>Source Files\sndhrdwr</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

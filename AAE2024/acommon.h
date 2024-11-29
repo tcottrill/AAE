@@ -6,8 +6,6 @@ void set_aae_leds(int a, int b, int c);
 void NoWrite(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite);
 unsigned char randRead(unsigned int address, struct MemoryReadByte* psMemRead);
 
-void center_window(void);
-void Set_ForeGround(void);
 
 void video_loop(void);
 void return_to_menu(void);

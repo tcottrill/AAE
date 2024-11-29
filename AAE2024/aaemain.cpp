@@ -37,6 +37,18 @@
 #include "vector.h"
 #include "os_input.h"
 #include "timer.h"
+#include "vector_fonts.h"
+
+//New 2024
+#include "os_basic.h"
+//#include "dwmapi.h" // Windows 10 rendering code
+#include <chrono>
+
+//#pragma comment (lib,"dwmapi.lib")
+
+using namespace std;
+using namespace chrono;
+
 
 //TEST VARIABLES
 static int res_reset;
@@ -86,36 +98,7 @@ void close_button_handler(void)
 }
 END_OF_FUNCTION(close_button_handler)
 
-//--------------------------------------------------------------------------------------
-// Limit the current thread to one processor (the current one). This ensures that timing code
-// runs on only one processor, and will not suffer any ill effects from power management.
-// See "Game Timing and Multicore Processors" for more details
-//--------------------------------------------------------------------------------------
-void LimitThreadAffinityToCurrentProc()
-{
-	HANDLE hCurrentProcess = GetCurrentProcess();
 
-	// Get the processor affinity mask for this process
-	DWORD_PTR dwProcessAffinityMask = 0;
-	DWORD_PTR dwSystemAffinityMask = 0;
-
-	if (GetProcessAffinityMask(hCurrentProcess, &dwProcessAffinityMask, &dwSystemAffinityMask) != 0 && dwProcessAffinityMask)
-	{
-		// Find the lowest processor that our process is allows to run against
-		DWORD_PTR dwAffinityMask = (dwProcessAffinityMask & ((~dwProcessAffinityMask) + 1));
-
-		// Set this as the processor that our thread must always run against
-		// This must be a subset of the process affinity mask
-		HANDLE hCurrentThread = GetCurrentThread();
-		if (INVALID_HANDLE_VALUE != hCurrentThread)
-		{
-			SetThreadAffinityMask(hCurrentThread, dwAffinityMask);
-			CloseHandle(hCurrentThread);
-		}
-	}
-
-	CloseHandle(hCurrentProcess);
-}
 
 int mystrcmp(const char* s1, const char* s2)
 {
@@ -183,8 +166,17 @@ int run_a_game(int game)
 
 void reset_for_new_game(int new_gamenum, int in_giu)
 {
+
+//	if (!in_gui) { driver[gamenum].end_game(); }
+
+
 	cache_end();
 	cache_clear();
+
+	if (driver[gamenum].end_game)
+	{
+		driver[gamenum].end_game();
+	}
 
 	wrlog("@@@RESETTING for NEW GAME CALLED@#@@@@");
 
@@ -362,8 +354,8 @@ void run_game(void)
 	EnumDisplaySettings(NULL, ENUM_CURRENT_SETTINGS, &dvmd);
 
 	//Check for same resolution or need to switch.
-	res_reset = 1;
-	testwidth = config.screenw; testheight = config.screenh; testwindow = config.windowed;
+	//res_reset = 1;
+	//testwidth = config.screenw; testheight = config.screenh; testwindow = config.windowed;
 
 	//GameRect.min_x = driver[gamenum].gamerect[0];
 	//GameRect.max_x = driver[gamenum].gamerect[1];
@@ -374,33 +366,37 @@ void run_game(void)
 	setup_game_config();
 	sanity_check_config();
 	wrlog("Running game %s", driver[gamenum].desc);
+	
 	if (in_gui) {
-		if (config.windowed == testwindow && config.screenh == testheight && config.screenw == testwidth) { res_reset = 0; }
-		else { res_reset = 1; }
+		//if (config.windowed == testwindow && config.screenh == testheight && config.screenw == testwidth) { res_reset = 0; }
+		//else { res_reset = 1; }
 	}
 	if (x_override || y_override)
 	{
-		res_reset = 1;
-		config.screenh = y_override;
-		config.screenw = x_override;
+		//res_reset = 1;
+	//	config.screenh = y_override;
+		//config.screenw = x_override;
 	}
 	if (win_override)
 
-		config.windowed = win_override - 2;
+	//	config.windowed = win_override - 2;
+	
 	//Check for setting greater then screen availability
-	//if ( config.screenh > cy || config.screenw > cx)
-	//{
-	//	allegro_message("Overriding config screen settings, \nphysical size smaller then config setting");
-	//	config.screenh = cy; config.screenw=cx; res_reset=1;
-	//}
-
-	if (res_reset)
+	if ( config.screenh > cy || config.screenw > cx)
 	{
-		wrlog("OpenGL Init");
-		end_gl();   //Clean up any stray textures
-		init_gl();  //Reinit OpenGl
+		allegro_message("Overriding config screen settings, \nphysical size smaller then config setting");
+	//	config.screenh = cy; config.screenw=cx; res_reset=1;
 	}
-	else texture_reinit(); //This cleans up the FBO textures preping them for reuse.
+
+	//if (res_reset)
+	//{
+		wrlog("OpenGL Init");
+		init_gl();
+		end_gl();   //Clean up any stray textures
+		 //Reinit OpenGl
+	//}
+	//else
+	texture_reinit(); //This cleans up the FBO textures preping them for reuse.
 
 	//////////////////////////////////////////////////////////////INITIAL VARIABLES SETUP ///////////////////////////////////////////////////
 	options.cheat = 1;
@@ -487,7 +483,11 @@ void run_game(void)
 	{
     	wrlog("STARTING FRAME");
 		//set_new_frame(); //This is for the AVG Games.
+		
+		auto start = chrono::steady_clock::now();
+
 		set_render();
+	
 
 		if (driver[gamenum].cpu_type[0] == CPU_M6809)
 		{
@@ -504,7 +504,17 @@ void run_game(void)
 		
 		if (!paused && have_error == 0) { driver[gamenum].run_game(); }
 
+		if (get_menu_status())
+		{
+			fontmode_start();
+			glColor4f(1, 1, 1, 1);
+			do_the_menu();
+			fontmode_end();
+		}
+
+
 		render();
+		
 		msg_loop();
 
 		inputport_vblank_end();
@@ -513,6 +523,12 @@ void run_game(void)
 		//timer_clear_all_eof();
 
 		gametime = TimerGetTimeMS();
+
+		auto end = chrono::steady_clock::now();
+		auto diff = end - start;
+		wrlog("Total Render Time %f ", chrono::duration <double, milli>(diff).count());
+
+
 		//if (driver[gamenum].fps !=60){
 		while (((double)(gametime)-(double)starttime) < (double)millsec)
 		{
@@ -546,6 +562,7 @@ void run_game(void)
 	if (gamenum == 0) { done = 1; } //Roll off to exit
 	else { done = 3; }
 
+	
 	reset_for_new_game(gamenum, 0);
 }
 
@@ -683,6 +700,27 @@ void gameparse(int argc, char* argv[])
 	}
 }
 
+/*
+HRESULT DisableNCRendering(HWND hWnd)
+{
+	HRESULT hr = S_OK;
+
+	DWMNCRENDERINGPOLICY ncrp = DWMNCRP_DISABLED;
+
+	// Disable non-client area rendering on the window.
+	hr = ::DwmSetWindowAttribute(hWnd,
+		DWMWA_NCRENDERING_POLICY,
+		&ncrp,
+		sizeof(ncrp));
+
+	if (SUCCEEDED(hr))
+	{
+		// ...
+	}
+
+	return hr;
+}
+*/
 
 int main(int argc, char* argv[])
 {
@@ -691,8 +729,13 @@ int main(int argc, char* argv[])
 	int loop2 = 0;
 	char str[20];
 	char* mylist;
-
 	TIMECAPS caps;
+
+	//For resolution
+	int horizontal;
+	int vertical;
+
+
 	// int goodload;
 	 //set_cpu();
 	LogOpen("aae.log");
@@ -734,6 +777,16 @@ int main(int argc, char* argv[])
 	sort_games();
 	loop2 = 0;
 	loop = 1;
+
+	//Move this after command line processing is re-added
+	GetDesktopResolution(horizontal, vertical);
+	wrlog("Actual primary monitor desktop screen size %d  %d", horizontal, vertical);
+	//if (config.screenw == 0 && config.screenh == 0)
+	//{
+		config.screenw = horizontal;
+		config.screenh = vertical;
+	//}
+
 
 	// Disable ShortCut Keys
 	AllowAccessibilityShortcutKeys(0);
@@ -786,9 +839,14 @@ int main(int argc, char* argv[])
 			exit(1);
 		}
 
+		// Here is where we are checking command line for a supported game name. 
+		// If not, it jums straight into the GUI, bleh.
 		for (loop = 1; loop < (num_games - 1); loop++)
 		{
-			if (strcmp(argv[1], driver[loop].name) == 0) gamenum = loop;
+			if (strcmp(argv[1], driver[loop].name) == 0)
+			{
+				gamenum = loop;
+			}
 		}
 		if (argc > 2) gameparse(argc, argv);
 	}
@@ -828,13 +886,22 @@ int main(int argc, char* argv[])
 	showinfo = 0;
 	done = 0;
 	//////////////////////////////////////////////////////
-	set_display_switch_mode(SWITCH_PAUSE);
+	//set_display_switch_mode(SWITCH_PAUSE);
 	TimerInit(); //Start timer
 	wrlog("Number of supported games in this release: %d", num_games);
 
 	initrand();
 	fillstars(stars);
 	have_error = 0;
+
+
+/*
+#if WINVER > 0x502// Windows Vista or better required for DWM
+	DisableNCRendering(win_get_window()); 
+	SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_SYSTEM_AWARE);
+	SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_SYSTEM_AWARE);
+#endif
+*/
 	//key_set_flag = 0;
 
 	//ListDisplaySettings();
@@ -864,6 +931,12 @@ int main(int argc, char* argv[])
 
 	//printf("This is a console output test");
 	//wrlog("CPU TYPE FOR THIS GAME is %d %d %d %d", driver[gamenum].cputype[0],driver[gamenum].cputype[1],driver[gamenum].cputype[2],driver[gamenum].cputype[3]);
+	
+	// Main run point moves to Run Game, which takes care of jumping back and forth into the GUI as well as cleaning up after each game. 
+	// Unfortunately, it does neither very well. 
+	//
+	
+
 	run_game();
 	wrlog("Shutting down program");
 	//END-----------------------------------------------------

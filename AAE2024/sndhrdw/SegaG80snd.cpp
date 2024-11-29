@@ -1,6 +1,49 @@
 #include "segag80.h"
+#include "segag80snd.h"
 #include "samples.h"
 #include "aae_mame_driver.h"
+
+
+//TACSCAN SOUND CONSTANTS
+#define	shipStop 0x10
+#define shipLaser 0x18
+#define	shipExplosion 0x20
+#define	shipDocking 0x28
+#define	shipRoar 0x40
+#define	tunnelHigh 0x48
+#define	stingerThrust 0x50
+#define	stingerLaser 0x51
+#define	stingerStop 0x52
+#define	stingerExplosion 0x54
+#define	enemyBullet0 0x61
+#define	enemyBullet1 0x62
+#define	enemyBullet2 0x63
+#define	enemyExplosion0 0x6c
+#define	enemyExplosion1 0x6d
+#define	enemyExplosion2 0x6e
+#define tunnelw   0x09
+#define flight1   0x36
+#define flight2   0x3b
+#define flight3   0x3d
+#define flight4   0x3e
+#define flight5   0x3f
+#define warp      0x37
+#define formation 0x0b
+#define nothing1  0x1a
+#define nothing2  0x1b
+#define extralife 0x1c
+#define credit    0x2c
+
+#define	kVoiceShip 1
+#define	kVoiceTunnel 2
+#define	kVoiceStinger 3
+#define	kVoiceEnemy 4
+#define	kVoiceShipRoar 5
+#define kVoiceWarp 6
+#define kVoiceForm 7
+#define kVoiceExtra 8
+#define kVoiceExtralife 9
+
 
 static int roarPlaying;	/* Is the ship roar noise playing? */
 #define MAX_SPEECH	16		/* Number of speech samples which can be queued */
@@ -38,6 +81,11 @@ void sega_sh_update(void) {
 		if (queuePtr >= MAX_SPEECH)
 			queuePtr = 0;
 	}
+}
+
+void sega_sh_stop()
+{
+
 }
 
 void sega_sh_speech_w(UINT16 port, UINT8 data, struct z80PortWrite* pPW)

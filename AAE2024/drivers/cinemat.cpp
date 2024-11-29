@@ -36,7 +36,7 @@
 ***************************************************************************/
 
 //What is this?
-extern char* gamename[];
+extern char *gamename;
 extern int gamenum;
 
 //static int cframe = 0;

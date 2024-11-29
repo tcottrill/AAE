@@ -101,16 +101,12 @@ extern FILE* errorlog;
 
 // STRUCTS AND GLOBAL VARIABLES START HERE
 
-
 /*
-void swap(int *i, int *j)
-{
-	int t;
-	t = *i;
-	*i = *j;
-	*j = t;
+void swap(int* x, int* y) {
+	int temp = *x;
+	*x = *y;
+	*y = temp;
 }
-
 */
 struct gamerect
 {
@@ -136,8 +132,7 @@ typedef struct {
 } glist;                      //Only one gamelist at a time
 
 extern glist gamelist[256];
-
-
+/*
 struct MachineCPU
 {
 	int cpu_type;	
@@ -150,7 +145,7 @@ struct MachineCPU
 	void (*interrupt)(int); //Special Interrupt handler
 	int interrupts_cycles;	//Number of cycles (hertz) between reocurring interrupts
 };
-
+*/
 struct AAEDriver
 {
 	const char* name;
@@ -328,6 +323,7 @@ typedef struct {
 	int noisevol;
 	int snappng;
 
+	char* aspect;
 	int prescale;
 	int anisfilter;
 	int priority;

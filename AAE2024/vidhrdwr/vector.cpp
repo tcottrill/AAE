@@ -2,6 +2,8 @@
 #include "../sys_video/glcode.h"
 #include "aae_mame_driver.h"
 
+
+
 //This is such horrible code, sorry. It was written long ago when I was just starting.
 
 //Vector Video Variables
@@ -49,6 +51,19 @@ float linecache[150000];
 float pointcache[150000];
 float texcache[8000];
 
+void add_color_line(float sx, float sy, float ex, float ey, rgb_t color)
+{
+	//	wrlog("Adding color line %f %f %f %f color %d %d %d",sx,sy,ex,ey,r,g,b);
+	glines[lpntr].sx = sx;
+	glines[lpntr].sy = sy;
+	glines[lpntr].ex = ex;
+	glines[lpntr].ey = ey;
+	glines[lpntr].r = RGB_BLUE(color);
+	glines[lpntr].g = RGB_GREEN(color);
+	glines[lpntr].b = RGB_RED(color);
+	if (lpntr < MAX_LINES) { lpntr++; }
+}
+
 void add_color_line(float sx, float sy, float ex, float ey, int r, int g, int b)
 {
 	//	wrlog("Adding color line %f %f %f %f color %d %d %d",sx,sy,ex,ey,r,g,b);
@@ -60,6 +75,17 @@ void add_color_line(float sx, float sy, float ex, float ey, int r, int g, int b)
 	glines[lpntr].g = g;
 	glines[lpntr].b = b;
 	if (lpntr < MAX_LINES) { lpntr++; }
+}
+
+
+void add_color_point(float sx, float sy, rgb_t color)
+{
+	gpoints[ppntr].sx = sx;
+	gpoints[ppntr].sy = sy;
+	gpoints[ppntr].r = RGB_BLUE(color);
+	gpoints[ppntr].g = RGB_GREEN(color);
+	gpoints[ppntr].b = RGB_RED(color);;
+	if (ppntr < MAX_LINES) { ppntr++; }
 }
 
 void add_color_point(float sx, float sy, int r, int g, int b)

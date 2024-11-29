@@ -15,13 +15,12 @@
  * Original copyright (C) 1997 Edward Massey
  */
 
- //This is a rework in progress.
+ //This is very much a rework in progress. See z80.h for detailed changes
 
 #include "cpu_z80.h"
 #include <assert.h>
 #include "log.h"
 #include <stdlib.h>
-#include "timer.h"
 
 #pragma warning( disable : 4244) //16 bit to 8 bit port return
 
@@ -73,7 +72,7 @@ static uint8_t ZSPTable[256] =
 void cpu_z80::mz80reset()
 {
 	m_fPendingInterrupt = false;
-	m_rgbOpcodeBase = m_rgbMemory;
+	//m_rgbOpcodeBase = m_rgbMemory;
 	/* m_rgbMemory = */
 	m_rgbStackBase = m_rgbMemory;
 
@@ -99,11 +98,12 @@ void cpu_z80::mz80reset()
 	z80intAddr = 0x38;
 	z80nmiAddr = 0x66;
 	pending_int = 0;        // Added for int strobe
-	previous_opcode = 0;    // added for Sega Vector decryption since get PPC wasn't working and I gave up.
 	SetPC(0x0000);
 	SetSP(0x0000);
 	z80pc = 0;
+	z80ppc = 0;
 	cCycles = 0;
+	Rbit7 = 0x0;
 	dwElapsedTicks = 0;
 }
 
@@ -122,34 +122,34 @@ cpu_z80::cpu_z80(uint8_t* MEM, MemoryReadByte* read_mem, MemoryWriteByte* write_
 
 uint8_t cpu_z80::ImmedByte()
 {
-	return *m_rgbOpcode++;
+	return m_rgbMemory[z80pc++];
 }
 
 UINT16 cpu_z80::ImmedWord()
 {
-	uint16_t w = *(uint16_t*)m_rgbOpcode; //Have to convert AND dereference!
-	m_rgbOpcode += 2;
-	return w;
-}
-
-uint8_t  cpu_z80::GetLastOpcode()
-{
-	return previous_opcode;
+	uint8_t a, b;
+	a = m_rgbMemory[z80pc++];
+	b = (m_rgbMemory[z80pc++] & 0xFFFF);
+	return ((b << 8) | a);
 }
 
 uint16_t cpu_z80::GetPC()
 {
-	return (uint16_t)(m_rgbOpcode - m_rgbOpcodeBase);
+	return z80pc;
 }
 
+uint16_t cpu_z80::GetPPC()
+{
+	return z80ppc;
+}
 void cpu_z80::SetPC(uint16_t wAddr)
 {
-	m_rgbOpcode = &m_rgbOpcodeBase[wAddr];
+	z80pc = wAddr;
 }
 
 void cpu_z80::AdjustPC(int8_t cb)
 {
-	m_rgbOpcode += cb;
+	z80pc += cb;
 }
 
 void cpu_z80::Push(uint16_t wArg)
@@ -180,18 +180,14 @@ void cpu_z80::SetSP(uint16_t wAddr)
 
 //Memory and IP Accesses
 
-
 UINT8 cpu_z80::mz80GetMemory(uint16_t addr)
 {
 	MemoryReadByte* MemRead = z80MemoryRead;
-
-	z80pc = GetPC(); /* for some of the platforms */
 
 	while (MemRead->lowAddr != 0xffffffff)
 	{
 		if (addr >= MemRead->lowAddr && addr <= MemRead->highAddr)
 		{
-			z80pc = GetPC();
 			return (MemRead->memoryCall(addr - MemRead->lowAddr, MemRead));
 		}
 
@@ -209,7 +205,6 @@ void cpu_z80::mz80PutMemory(uint16_t addr, uint8_t byte)
 	{
 		if (addr >= MemWrite->lowAddr && addr <= MemWrite->highAddr)
 		{
-			z80pc = GetPC();
 			MemWrite->memoryCall(addr - MemWrite->lowAddr, byte, MemWrite);
 			return;
 		}
@@ -225,8 +220,6 @@ uint8_t cpu_z80::In(uint8_t bPort)
 
 	struct z80PortRead* mr = z80IoRead;
 
-	z80pc = GetPC(); /* for some of the platforms */
-
 	while (mr->lowIoAddr != 0xffff) {
 		if (bPort >= mr->lowIoAddr && bPort <= mr->highIoAddr) {
 			bVal = mr->IOCall(bPort, mr);
@@ -240,14 +233,13 @@ uint8_t cpu_z80::In(uint8_t bPort)
 	return bVal;
 }
 
+// This is only used for 0xDB (IN A,n) Flags are not affected
 uint8_t cpu_z80::InRaw(uint8_t bPort)
 {
 	uint8_t bVal = 0xff;
 
 	struct z80PortRead* mr = z80IoRead;
 
-	z80pc = GetPC(); /* for some of the platforms */
-
 	while (mr->lowIoAddr != 0xffff) {
 		if (bPort >= mr->lowIoAddr && bPort <= mr->highIoAddr) {
 			bVal = mr->IOCall(bPort, mr);
@@ -255,16 +247,12 @@ uint8_t cpu_z80::InRaw(uint8_t bPort)
 		}
 		mr++;
 	}
-
-	m_regF = (m_regF & C_FLAG) | ZSPTable[bVal];
 	return bVal;
 }
 
 void cpu_z80::Out(uint8_t bPort, uint8_t bVal)
 {
 	struct z80PortWrite* mr = z80IoWrite;
-
-	z80pc = GetPC(); /* for some of the platforms */
 
 	while (mr->lowIoAddr != 0xffff) {
 		if (bPort >= mr->lowIoAddr && bPort <= mr->highIoAddr) {
@@ -370,6 +358,7 @@ int cpu_z80::Ret1(int f)
 	}
 }
 
+// 16 bit add carry
 uint16_t cpu_z80::Adc_2(uint16_t wArg1, uint16_t wArg2)
 {
 	int q = wArg1 + wArg2 + (m_regF & C_FLAG);
@@ -377,6 +366,7 @@ uint16_t cpu_z80::Adc_2(uint16_t wArg1, uint16_t wArg2)
 	return q;
 }
 
+//16 bit sub carry
 uint16_t cpu_z80::Sbc_2(uint16_t wArg1, uint16_t wArg2)
 {
 	int q = wArg1 - wArg2 - (m_regF & C_FLAG);
@@ -387,76 +377,118 @@ uint16_t cpu_z80::Sbc_2(uint16_t wArg1, uint16_t wArg2)
 	return q;
 }
 
+// 16 bit add
 uint16_t cpu_z80::Add_2(uint16_t wArg1, uint16_t wArg2)
 {
-	int q = wArg1 + wArg2;
-	m_regF = (m_regF & (S_FLAG | Z_FLAG | V_FLAG)) | (((wArg1 ^ q ^ wArg2) & 0x1000) >> 8) | ((q >> 16) & 1);
-	return q;
+	uint32_t res = wArg1 + wArg2;
+	m_regF &= S_FLAG | Z_FLAG | V_FLAG;
+	if (res > 0xFFFF) m_regF |= C_FLAG;
+	if (((wArg1 & 0xFFF) + (wArg2 & 0xFFF)) > 0xFFF) m_regF |= H_FLAG;
+	return (res & 0xFFFF);
 }
 
+// 8 bit add
 void cpu_z80::Add_1(uint8_t bArg)
 {
-	int q = m_regA + bArg;
-	m_regF = ZSTable[q & 255] | ((q & 256) >> 8) | ((m_regA ^ q ^ bArg) & H_FLAG) | (((bArg ^ m_regA ^ 0x80) & (bArg ^ q) & 0x80) >> 5);
-	m_regA = q;
+	uint16_t tmp1 = ((m_regA + bArg));
+	m_regF = (tmp1 & 0x80);                    /* Set sign */
+	m_regF |= (tmp1 >> 8);                     /* Set Carry */
+	tmp1 &= 0xff;                              /* 8bit wrap */
+	if ((tmp1 ^ m_regA ^ bArg) & 0x10) m_regF |= H_FLAG;       /* Set Half flag */
+	if (~(m_regA ^ bArg) & (m_regA ^ m_regF) & 0x80) m_regF |= V_FLAG; /* Set VF flag  F already has sign.*/
+	if (tmp1 == 0) m_regF |= Z_FLAG;                   /* Set Zero Flag */
+	//    F |= ( tmp1 &( YF | XF ));					   /* undocumented flag bits 5+3 */
+	m_regA = tmp1;
 }
 
+// 8 bit add with carry
 void cpu_z80::Adc_1(uint8_t bArg)
 {
-	int q = m_regA + bArg + (m_regF & C_FLAG);
-	m_regF = ZSTable[q & 255] | ((q & 256) >> 8) | ((m_regA ^ q ^ bArg) & H_FLAG) | (((bArg ^ m_regA ^ 0x80) & (bArg ^ q) & 0x80) >> 5);
-	m_regA = q;
+	uint16_t tmp1 = ((m_regA + bArg) + (m_regF & C_FLAG));
+	m_regF = (tmp1 & 0x80);                        /* Save sign */
+	m_regF |= ((tmp1) >> 8);                       /* Set Carry */
+	tmp1 &= 0xff;                                  /* 8bit wrap */
+	if (tmp1 == 0) m_regF |= Z_FLAG;               /* Set Zero Flag */
+	if (((m_regA ^ bArg ^ tmp1) & 0x10) != 0) m_regF |= H_FLAG; /* Set Half flag */
+	if (~(m_regA ^ bArg) & (m_regA ^ m_regF) & 0x80) m_regF |= V_FLAG;   /* Set VF flag  F already has sign.*/
+	//    F |= ( tmp1 &( YF | XF ));                   /* undocumented flag bits 5+3 */
+	m_regA = tmp1;
 }
 
+// 8 bit sub
 void cpu_z80::Sub_1(uint8_t bArg)
 {
-	int q = m_regA - bArg;
-	m_regF = ZSTable[q & 255] | ((q & 256) >> 8) | N_FLAG | ((m_regA ^ q ^ bArg) & H_FLAG) | (((bArg ^ m_regA) & (m_regA ^ q) & 0x80) >> 5);
-	m_regA = q;
+	uint16_t tmp1 = (m_regA - bArg);
+	m_regF = (tmp1 & 0x80) | N_FLAG;				/* Save sign, set N flag */
+	if (tmp1 == 0) m_regF |= Z_FLAG;				/* Set Zero Flag */
+	m_regF |= (tmp1 & 0x100) >> 8;					/* Set Carry */
+	if (((bArg ^ m_regA) & (m_regA ^ tmp1) & 0x80) != 0) m_regF |= V_FLAG; /* Set overflow */
+	if (((m_regA ^ bArg ^ tmp1) & 0x10) != 0) m_regF |= H_FLAG;			   /* Set Half flag */
+	tmp1 &= 0xff;
+	//    F |= ( tmp1 &( YF | XF ));				/* undocumented flag bits 5+3 */
+	m_regA = tmp1;
 }
 
+// 8 bit sub carry
 void cpu_z80::Sbc_1(uint8_t bArg)
 {
-	int q = m_regA - bArg - (m_regF & C_FLAG);
-	m_regF = ZSTable[q & 255] | ((q & 256) >> 8) | N_FLAG | ((m_regA ^ q ^ bArg) & H_FLAG) | (((bArg ^ m_regA) & (bArg ^ q) & 0x80) >> 5);
-	m_regA = q;
+	uint16_t tmp1 = m_regA - bArg - (m_regF & C_FLAG);
+	m_regF = (tmp1 & 0x80) | N_FLAG;		/* save sign, set NF */
+	m_regF |= ((tmp1 & 0x100) >> 8);		/* save carry */
+	if (((m_regA ^ bArg ^ tmp1) & 0x10) != 0) m_regF |= H_FLAG;
+	if (((bArg ^ m_regA) & (m_regA ^ tmp1) & 0x80) != 0) m_regF |= V_FLAG;
+	tmp1 &= 0xff;
+	if (tmp1 == 0) m_regF |= Z_FLAG;
+	//    F |= ( tmp1 &( YF | XF ));		/* undocumented flag bits 5+3 */
+	m_regA = tmp1;
 }
 
-void cpu_z80::And(uint8_t bArg)
+void cpu_z80::And(uint8_t bArg) // Checked
 {
 	m_regF = ZSPTable[m_regA &= bArg] | H_FLAG;
 }
 
-void cpu_z80::Or(uint8_t bArg)
+void cpu_z80::Or(uint8_t bArg) // Checked
 {
 	m_regF = ZSPTable[m_regA |= bArg];
 }
 
-void cpu_z80::Xor(uint8_t bArg)
+void cpu_z80::Xor(uint8_t bArg) // Checked
 {
 	m_regF = ZSPTable[m_regA ^= bArg];
 }
 
 void cpu_z80::Cp(uint8_t bArg)
 {
-	int q = m_regA - bArg;
-	m_regF = ZSTable[q & 255] | ((q & 256) >> 8) | N_FLAG | ((m_regA ^ q ^ bArg) & H_FLAG) | (((bArg ^ m_regA) & (bArg ^ q) & 0x80) >> 5);
+	uint16_t tmp1 = (m_regA - bArg);
+	m_regF = (tmp1 & 0x80) | N_FLAG; /* Save sign, set N flag */
+	if (tmp1 == 0) m_regF |= Z_FLAG;     /* Set Zero Flag */
+	m_regF |= (tmp1 & 0x100) >> 8; /* Set Carry */
+	if (((bArg ^ m_regA) & (m_regA ^ tmp1) & 0x80) != 0) m_regF |= V_FLAG; /* Set overflow */
+	if (((m_regA ^ bArg ^ tmp1) & 0x10) != 0) m_regF |= H_FLAG; /* Set Half flag */
 }
 
 uint8_t cpu_z80::Inc(uint8_t bArg)
 {
-	bArg++;
-	m_regF = (m_regF & C_FLAG) | ZSTable[bArg] | ((bArg == 0x80) ? V_FLAG : 0) | ((bArg & 0x0F) ? 0 : H_FLAG);
-	return bArg;
+	bArg++;                             /* Inc value, wrap on 8 bits 	*/
+	m_regF &= C_FLAG;                   /* Clear all used flags 	*/
+	m_regF |= (bArg & 0x80);            /* Save S flag (bit sign)	*/
+	if (bArg == 0) m_regF |= Z_FLAG;    /* If v is zero Set Zero bit.	*/
+	if (bArg == 0x80) m_regF |= V_FLAG; /* Set Overflow flag		*/
+	if (!(bArg & 0xf)) m_regF |= 0x10;  /* Half flag if Carry from bit 3*/
+	//    F |= ( v &( YF | XF ));           /* undocumented flag bits 5+3 */
+	return (bArg);
 }
 
 uint8_t cpu_z80::Dec(uint8_t bArg)
 {
-	m_regF = (m_regF & C_FLAG) | N_FLAG |
-		((bArg == 0x80) ? V_FLAG : 0) | ((bArg & 0x0F) ? 0 : H_FLAG);
-
-	m_regF |= ZSTable[--bArg];
-
+	bArg--;										  /* Dec value, wrap on 8 bit	*/
+	m_regF = (m_regF & C_FLAG) | N_FLAG;          /* Clear all used flags set N */
+	m_regF |= (bArg & S_FLAG);                    /* Save S flag (bit sign)	*/
+	if (bArg == 0) m_regF |= Z_FLAG;              /* If v is zero Set Zero bit.	*/
+	if (bArg == 0x7f) m_regF |= V_FLAG;           /* Set overflow flag		*/
+	if ((bArg & 0x0f) == 0x0f) m_regF |= H_FLAG;  /* Half carry 		*/
+	//    m_regF |= ( v &( YF | XF ));				  /* undocumented flag bits 5+3 */
 	return bArg;
 }
 
@@ -470,41 +502,53 @@ uint8_t cpu_z80::Res(uint8_t bArg, int nBit)
 	return (bArg & ~(1 << nBit));
 }
 
-void cpu_z80::Bit(uint8_t bArg, int nBit)
+void cpu_z80::Bit(uint8_t bArg, uint8_t nBit)
 {
-	m_regF = (m_regF & C_FLAG) | H_FLAG | ((bArg & (1 << nBit)) ? ((nBit == 7) ? S_FLAG : 0) : Z_FLAG);
+	// Based on Sean Young documentation, "Z80-documented".
+	m_regF = (m_regF & C_FLAG) | H_FLAG;                       // Clear all bits except CF, HF (always set) from F.
+	if (!(bArg & (1 << nBit))) m_regF |= (Z_FLAG | V_FLAG);    // ZF is set if tested bit is reset.PF is like ZF.
+	if ((nBit == 7) && !(m_regF & Z_FLAG)) m_regF |= S_FLAG;   // if tested bit is 7 is set, set SF
+	//    if(( bit == 5 ) && !( F &ZF )) F |= YF;				   // if tested bit is 5 is set, set YF UNDOC Flag
+	//    if(( bit == 3 ) && !( F &ZF )) F |= XF;			       // if tested bit is 3 is set, set XF UNDOC Flag
 }
 
 uint8_t cpu_z80::Rlc(uint8_t bArg)
 {
-	int q = bArg >> 7;
-	bArg = (bArg << 1) | q;
-	m_regF = ZSPTable[bArg] | q;
-	return bArg;
+	uint8_t tmp1 = (bArg << 1);
+	m_regF = (bArg >> 7); /* All flags to zero, C = bit7 */
+	tmp1 |= (m_regF & 1);
+	m_regF |= ZSPTable[tmp1];
+	//    F |= ( tmp1 &( YF | XF )); /* undocumented flag bits 5+3 */
+	return tmp1;
 }
 
 uint8_t cpu_z80::Rrc(uint8_t bArg)
 {
-	int q = bArg & 1;
-	bArg = (bArg >> 1) | (q << 7);
-	m_regF = ZSPTable[bArg] | q;
-	return bArg;
+	uint8_t tmp1 = bArg >> 1;
+	m_regF = (bArg & 1); /* Set Carry from bit0*/
+	tmp1 |= (m_regF << 7); /* Set outgoing bit0 in bit7 */
+	m_regF |= ZSPTable[tmp1];
+	//    F |= ( tmp1 &( YF | XF )); /* undocumented flag bits 5+3 */
+	return tmp1;
 }
 
 uint8_t cpu_z80::Rl(uint8_t bArg)
 {
-	int q = bArg >> 7;
-	bArg = (bArg << 1) | (m_regF & 1);
-	m_regF = ZSPTable[bArg] | q;
-	return bArg;
+	uint8_t tmp1 = ((bArg << 1) | (m_regF & 1));
+	m_regF = bArg >> 7; /* F = bit7 */
+	m_regF |= ZSPTable[tmp1];
+	//    F |= ( tmp1 &( YF | XF )); /* undocumented flag bits 5+3 */
+	return tmp1;
 }
 
 uint8_t cpu_z80::Rr(uint8_t bArg)
 {
-	int q = bArg & 1;
-	bArg = (bArg >> 1) | (m_regF << 7);
-	m_regF = ZSPTable[bArg] | q;
-	return bArg;
+	uint8_t c = (m_regF & 1);
+	m_regF = bArg & 1;						/* bit0 -> Carry */
+	UINT8 tmp1 = (bArg >> 1) | (c << 7);	/* Old Carry -> bit7 */
+	m_regF |= ZSPTable[tmp1];
+	//    F |= ( tmp1 &( YF | XF ));		/* undocumented flag bits 5+3 */
+	return tmp1;
 }
 
 uint8_t cpu_z80::Sll(uint8_t bArg)
@@ -588,1339 +632,1346 @@ void cpu_z80::Rra()
 	function immediately returns 0.
 
 ---------------------------------------------------------------------------*/
-
 unsigned long int cpu_z80::mz80exec(unsigned long int cCyclesArg)
 {
-	UINT32 origElapsedTicks = dwElapsedTicks;
+	unsigned cyc = 0;
 
-	cCycles = cCyclesArg;
-
-	while (cCycles > 0)
+	while (cyc < cCyclesArg)
 	{
-		int prev_cycles = cCycles;
-		// Note: Fix this nonsense. Move the main loop out. Make the cycle counting positive to make it easier. 
-		if (m_fHalt)
-		{
-			m_regR++;
-			cCycles -= 4;
-			previous_opcode = 0x76;
-		}
-		else
-		{
-		const uint8_t bOpcode = ImmedByte();
-		m_regR++;
-		z80pc = GetPC(); /* for some of the platforms */
-		previous_opcode = bOpcode;
-
-		switch (bOpcode)
-		{
-		case 0x00: // nop
-			cCycles -= 4;
-			break;
-
-		case 0x01: // ld_bc_word
-			cCycles -= 10;
-			m_regBC = ImmedWord();
-			break;
-
-		case 0x02: // ld_xbc_a
-			cCycles -= 7;
-			MemWriteByte(m_regBC, m_regA);
-			break;
-
-		case 0x03: // inc_bc
-			cCycles -= 6;
-			m_regBC++;
-			break;
-
-		case 0x04: // inc_b
-			cCycles -= 4;
-			m_regB = Inc(m_regB);
-			break;
-
-		case 0x05: // dec_b
-			cCycles -= 4;
-			m_regB = Dec(m_regB);
-			break;
-
-		case 0x06: // ld_b_byte
-			cCycles -= 7;
-			m_regB = ImmedByte();
-			break;
-
-		case 0x07: // rlca
-			cCycles -= 4;
-			Rlca();
-			break;
-
-		case 0x08: // ex_af_af
-			cCycles -= 4;
-			swap(m_regAF, m_regAF2);
-			break;
-
-		case 0x09: // add_hl_bc
-			cCycles -= 11;
-			m_regHL = Add_2(m_regHL, m_regBC);
-			break;
-
-		case 0x0A: // ld_a_xbc
-			cCycles -= 7;
-			m_regA = MemReadByte(m_regBC);
-			break;
-
-		case 0x0B: // dec_bc
-			cCycles -= 6;
-			m_regBC--;
-			break;
-
-		case 0x0C: // inc_c
-			cCycles -= 4;
-			m_regC = Inc(m_regC);
-			break;
-
-		case 0x0D: // dec_c
-			cCycles -= 4;
-			m_regC = Dec(m_regC);
-			break;
-
-		case 0x0E: // ld_c_byte
-			cCycles -= 7;
-			m_regC = ImmedByte();
-			break;
-
-		case 0x0F: // rrca
-			cCycles -= 4;
-			Rrca();
-			break;
-
-		case 0x10: // djnz
-			cCycles -= 8;
-			cCycles -= Jr0(--m_regB);
-			break;
-
-		case 0x11: // ld_de_word
-			cCycles -= 10;
-			m_regDE = ImmedWord();
-			break;
-
-		case 0x12: // ld_xde_a
-			cCycles -= 7;
-			MemWriteByte(m_regDE, m_regA);
-			break;
-
-		case 0x13: // inc_de
-			cCycles -= 6;
-			m_regDE++;
-			break;
-
-		case 0x14: // inc_d
-			cCycles -= 4;
-			m_regD = Inc(m_regD);
-			break;
-
-		case 0x15: // dec_d
-			cCycles -= 4;
-			m_regD = Dec(m_regD);
-			break;
-
-		case 0x16: // ld_d_byte
-			cCycles -= 7;
-			m_regD = ImmedByte();
-			break;
-
-		case 0x17: // rla
-			cCycles -= 4;
-			Rla();
-			break;
-
-		case 0x18: // jr
-			cCycles -= Jr0(1);
-			break;
-
-		case 0x19: // add_hl_de
-			cCycles -= 11;
-			m_regHL = Add_2(m_regHL, m_regDE);
-			break;
-
-		case 0x1A: // ld_a_xde
-			cCycles -= 7;
-			m_regA = MemReadByte(m_regDE);
-			break;
-
-		case 0x1B: // dec_de
-			cCycles -= 6;
-			m_regDE--;
-			break;
-
-		case 0x1C: // inc_e
-			cCycles -= 4;
-			m_regE = Inc(m_regE);
-			break;
-
-		case 0x1D: // dec_e
-			cCycles -= 4;
-			m_regE = Dec(m_regE);
-			break;
-
-		case 0x1E: // ld_e_byte
-			cCycles -= 7;
-			m_regE = ImmedByte();
-			break;
-
-		case 0x1F: // rra
-			cCycles -= 4;
-			Rra();
-			break;
-
-		case 0x20: // jr_nz
-			cCycles -= 7;
-			cCycles -= Jr1(m_regF & Z_FLAG);
-			break;
-
-		case 0x21: // ld_hl_word
-			cCycles -= 10;
-			m_regHL = ImmedWord();
-			break;
-
-		case 0x22: // ld_xword_hl
-			cCycles -= 16;
-			MemWriteWord(ImmedWord(), m_regHL);
-			break;
-
-		case 0x23: // inc_hl
-			cCycles -= 6;
-			m_regHL++;
-			break;
-
-		case 0x24: // inc_h
-			cCycles -= 4;
-			m_regH = Inc(m_regH);
-			break;
-
-		case 0x25: // dec_h
-			cCycles -= 4;
-			m_regH = Dec(m_regH);
-			break;
-
-		case 0x26: // ld_h_byte
-			cCycles -= 7;
-			m_regH = ImmedByte();
-			break;
-
-		case 0x27: // daa
-		{
-			cCycles -= 4;
-			Daa();
-			break;
-		}
-
-		case 0x28: // jr_z
-			cCycles -= 7;
-			cCycles -= Jr0(m_regF & Z_FLAG);
-			break;
-
-		case 0x29: // add_hl_hl
-			cCycles -= 11;
-			m_regHL = Add_2(m_regHL, m_regHL);
-			break;
-
-		case 0x2A: // ld_hl_xword
-			cCycles -= 16;
-			m_regHL = MemReadWord(ImmedWord());
-			break;
-
-		case 0x2B: // dec_hl
-			cCycles -= 6;
-			m_regHL--;
-			break;
-
-		case 0x2C: // inc_l
-			cCycles -= 4;
-			m_regL = Inc(m_regL);
-			break;
-
-		case 0x2D: // dec_l
-			cCycles -= 4;
-			m_regL = Dec(m_regL);
-			break;
-
-		case 0x2E: // ld_l_byte
-			cCycles -= 7;
-			m_regL = ImmedByte();
-			break;
-
-		case 0x2F: // cpl
-			cCycles -= 4;
-			m_regA ^= 0xFF;
-			m_regF |= (H_FLAG | N_FLAG);
-			break;
-
-		case 0x30: // jr_nc
-			cCycles -= 7;
-			cCycles -= Jr1(m_regF & C_FLAG);
-			break;
-
-		case 0x31: // ld_sp_word
-			cCycles -= 10;
-			SetSP(ImmedWord());
-			break;
-
-		case 0x32: // ld_xbyte_a
-			cCycles -= 13;
-			MemWriteByte(ImmedWord(), m_regA);
-			break;
-
-		case 0x33: // inc_sp
-			cCycles -= 6;
-			SetSP(GetSP() + 1);
-			break;
-
-		case 0x34: // inc_xhl
-			cCycles -= 11;
-			MemWriteByte(m_regHL, Inc(MemReadByte(m_regHL)));
-			break;
-
-		case 0x35: // dec_xhl
-			cCycles -= 11;
-			MemWriteByte(m_regHL, Dec(MemReadByte(m_regHL)));
-			break;
-
-		case 0x36: // ld_xhl_byte
-			cCycles -= 10;
-			MemWriteByte(m_regHL, ImmedByte());
-			break;
-
-		case 0x37: // scf
-			cCycles -= 4;
-			m_regF = (m_regF & 0xEC) | C_FLAG;
-			break;
-
-		case 0x38: // jr_c
-			cCycles -= 7;
-			cCycles -= Jr0(m_regF & C_FLAG);
-			break;
-
-		case 0x39: // add_hl_sp
-			cCycles -= 11;
-			m_regHL = Add_2(m_regHL, GetSP());
-			break;
-
-		case 0x3A: // ld_a_xbyte
-			cCycles -= 13;
-			m_regA = MemReadByte(ImmedWord());
-			break;
-
-		case 0x3B: // dec_sp
-			cCycles -= 6;
-			SetSP(GetSP() - 1);
-			break;
-
-		case 0x3C: // inc_a
-			cCycles -= 4;
-			m_regA = Inc(m_regA);
-			break;
-
-		case 0x3D: // dec_a
-			cCycles -= 4;
-			m_regA = Dec(m_regA);
-			break;
-
-		case 0x3E: // ld_a_byte
-			cCycles -= 7;
-			m_regA = ImmedByte();
-			break;
-
-		case 0x3F: // ccf
-			cCycles -= 4;
-			m_regF = ((m_regF & 0xED) | ((m_regF & 1) << 4)) ^ 1;
-			break;
-
-		case 0x40: // ld_b_b
-			cCycles -= 4;
-			m_regB = m_regB;
-			break;
-
-		case 0x41: // ld_b_c
-			cCycles -= 4;
-			m_regB = m_regC;
-			break;
-
-		case 0x42: // ld_b_d
-			cCycles -= 4;
-			m_regB = m_regD;
-			break;
-
-		case 0x43: // ld_b_e
-			cCycles -= 4;
-			m_regB = m_regE;
-			break;
-
-		case 0x44: // ld_b_h
-			cCycles -= 4;
-			m_regB = m_regH;
-			break;
-
-		case 0x45: // ld_b_l
-			cCycles -= 4;
-			m_regB = m_regL;
-			break;
-
-		case 0x46: // ld_b_xhl
-			cCycles -= 7;
-			m_regB = MemReadByte(m_regHL);
-			break;
-
-		case 0x47: // ld_b_a
-			cCycles -= 4;
-			m_regB = m_regA;
-			break;
-
-		case 0x48: // ld_c_b
-			cCycles -= 4;
-			m_regC = m_regB;
-			break;
-
-		case 0x49: // ld_c_c
-			cCycles -= 4;
-			m_regC = m_regC;
-			break;
-
-		case 0x4A: // ld_c_d
-			cCycles -= 4;
-			m_regC = m_regD;
-			break;
-
-		case 0x4B: // ld_c_e
-			cCycles -= 4;
-			m_regC = m_regE;
-			break;
-
-		case 0x4C: // ld_c_h
-			cCycles -= 4;
-			m_regC = m_regH;
-			break;
-
-		case 0x4D: // ld_c_l
-			cCycles -= 4;
-			m_regC = m_regL;
-			break;
-
-		case 0x4E: // ld_c_xhl
-			cCycles -= 7;
-			m_regC = MemReadByte(m_regHL);
-			break;
-
-		case 0x4F: // ld_c_a
-			cCycles -= 4;
-			m_regC = m_regA;
-			break;
-
-		case 0x50: // ld_d_b
-			cCycles -= 4;
-			m_regD = m_regB;
-			break;
-
-		case 0x51: // ld_d_c
-			cCycles -= 4;
-			m_regD = m_regC;
-			break;
-
-		case 0x52: // ld_d_d
-			cCycles -= 4;
-			m_regD = m_regD;
-			break;
-
-		case 0x53: // ld_d_e
-			cCycles -= 4;
-			m_regD = m_regE;
-			break;
-
-		case 0x54: // ld_d_h
-			cCycles -= 4;
-			m_regD = m_regH;
-			break;
-
-		case 0x55: // ld_d_l
-			cCycles -= 4;
-			m_regD = m_regL;
-			break;
-
-		case 0x56: // ld_d_xhl
-			cCycles -= 7;
-			m_regD = MemReadByte(m_regHL);
-			break;
-
-		case 0x57: // ld_d_a
-			cCycles -= 4;
-			m_regD = m_regA;
-			break;
-
-		case 0x58: // ld_e_b
-			cCycles -= 4;
-			m_regE = m_regB;
-			break;
-
-		case 0x59: // ld_e_c
-			cCycles -= 4;
-			m_regE = m_regC;
-			break;
-
-		case 0x5A: // ld_e_d
-			cCycles -= 4;
-			m_regE = m_regD;
-			break;
-
-		case 0x5B: // ld_e_e
-			cCycles -= 4;
-			m_regE = m_regE;
-			break;
-
-		case 0x5C: // ld_e_h
-			cCycles -= 4;
-			m_regE = m_regH;
-			break;
-
-		case 0x5D: // ld_e_l
-			cCycles -= 4;
-			m_regE = m_regL;
-			break;
-
-		case 0x5E: // ld_e_xhl
-			cCycles -= 7;
-			m_regE = MemReadByte(m_regHL);
-			break;
-
-		case 0x5F: // ld_e_a
-			cCycles -= 4;
-			m_regE = m_regA;
-			break;
-
-		case 0x60: // ld_h_b
-			cCycles -= 4;
-			m_regH = m_regB;
-			break;
-
-		case 0x61: // ld_h_c
-			cCycles -= 4;
-			m_regH = m_regC;
-			break;
-
-		case 0x62: // ld_h_d
-			cCycles -= 4;
-			m_regH = m_regD;
-			break;
-
-		case 0x63: // ld_h_e
-			cCycles -= 4;
-			m_regH = m_regE;
-			break;
-
-		case 0x64: // ld_h_h
-			cCycles -= 4;
-			m_regH = m_regH;
-			break;
-
-		case 0x65: // ld_h_l
-			cCycles -= 4;
-			m_regH = m_regL;
-			break;
-
-		case 0x66: // ld_h_xhl
-			cCycles -= 7;
-			m_regH = MemReadByte(m_regHL);
-			break;
-
-		case 0x67: // ld_h_a
-			cCycles -= 4;
-			m_regH = m_regA;
-			break;
-
-		case 0x68: // ld_l_b
-			cCycles -= 4;
-			m_regL = m_regB;
-			break;
-
-		case 0x69: // ld_l_c
-			cCycles -= 4;
-			m_regL = m_regC;
-			break;
-
-		case 0x6A: // ld_l_d
-			cCycles -= 4;
-			m_regL = m_regD;
-			break;
-
-		case 0x6B: // ld_l_e
-			cCycles -= 4;
-			m_regL = m_regE;
-			break;
-
-		case 0x6C: // ld_l_h
-			cCycles -= 4;
-			m_regL = m_regH;
-			break;
-
-		case 0x6D: // ld_l_l
-			cCycles -= 4;
-			m_regL = m_regL;
-			break;
-
-		case 0x6E: // ld_l_xhl
-			cCycles -= 7;
-			m_regL = MemReadByte(m_regHL);
-			break;
-
-		case 0x6F: // ld_l_a
-			cCycles -= 4;
-			m_regL = m_regA;
-			break;
-
-		case 0x70: // ld_xhl_b
-			cCycles -= 7;
-			MemWriteByte(m_regHL, m_regB);
-			break;
-
-		case 0x71: // ld_xhl_c
-			cCycles -= 7;
-			MemWriteByte(m_regHL, m_regC);
-			break;
-
-		case 0x72: // ld_xhl_d
-			cCycles -= 7;
-			MemWriteByte(m_regHL, m_regD);
-			break;
-
-		case 0x73: // ld_xhl_e
-			cCycles -= 7;
-			MemWriteByte(m_regHL, m_regE);
-			break;
-
-		case 0x74: // ld_xhl_h
-			cCycles -= 7;
-			MemWriteByte(m_regHL, m_regH);
-			break;
-
-		case 0x75: // ld_xhl_l
-			cCycles -= 7;
-			MemWriteByte(m_regHL, m_regL);
-			break;
-
-		case 0x76: // halt
-			cCycles -= 4;
-			m_fHalt = 1;
-		
-		case 0x77: // ld_xhl_a
-			cCycles -= 7;
-			MemWriteByte(m_regHL, m_regA);
-			break;
-
-		case 0x78: // ld_a_b
-			cCycles -= 4;
-			m_regA = m_regB;
-			break;
-
-		case 0x79: // ld_a_c
-			cCycles -= 4;
-			m_regA = m_regC;
-			break;
-
-		case 0x7A: // ld_a_d
-			cCycles -= 4;
-			m_regA = m_regD;
-			break;
-
-		case 0x7B: // ld_a_e
-			cCycles -= 4;
-			m_regA = m_regE;
-			break;
-
-		case 0x7C: // ld_a_h
-			cCycles -= 4;
-			m_regA = m_regH;
-			break;
-
-		case 0x7D: // ld_a_l
-			cCycles -= 4;
-			m_regA = m_regL;
-			break;
-
-		case 0x7E: // ld_a_xhl
-			cCycles -= 7;
-			m_regA = MemReadByte(m_regHL);
-			break;
-
-		case 0x7F: // ld_a_a
-			cCycles -= 4;
-			m_regA = m_regA;
-			break;
-
-		case 0x80: // add_a_b
-			cCycles -= 4;
-			Add_1(m_regB);
-			break;
-
-		case 0x81: // add_a_c
-			cCycles -= 4;
-			Add_1(m_regC);
-			break;
-
-		case 0x82: // add_a_d
-			cCycles -= 4;
-			Add_1(m_regD);
-			break;
-
-		case 0x83: // add_a_e
-			cCycles -= 4;
-			Add_1(m_regE);
-			break;
-
-		case 0x84: // add_a_h
-			cCycles -= 4;
-			Add_1(m_regH);
-			break;
-
-		case 0x85: // add_a_l
-			cCycles -= 4;
-			Add_1(m_regL);
-			break;
-
-		case 0x86: // add_a_xhl
-			cCycles -= 7;
-			Add_1(MemReadByte(m_regHL));
-			break;
-
-		case 0x87: // add_a_a
-			cCycles -= 4;
-			Add_1(m_regA);
-			break;
-
-		case 0x88: // adc_a_b
-			cCycles -= 4;
-			Adc_1(m_regB);
-			break;
-
-		case 0x89: // adc_a_c
-			cCycles -= 4;
-			Adc_1(m_regC);
-			break;
-
-		case 0x8A: // adc_a_d
-			cCycles -= 4;
-			Adc_1(m_regD);
-			break;
-
-		case 0x8B: // adc_a_e
-			cCycles -= 4;
-			Adc_1(m_regE);
-			break;
-
-		case 0x8C: // adc_a_h
-			cCycles -= 4;
-			Adc_1(m_regH);
-			break;
-
-		case 0x8D: // adc_a_l
-			cCycles -= 4;
-			Adc_1(m_regL);
-			break;
-
-		case 0x8E: // adc_a_xhl
-			cCycles -= 7;
-			Adc_1(MemReadByte(m_regHL));
-			break;
-
-		case 0x8F: // adc_a_a
-			cCycles -= 4;
-			Adc_1(m_regA);
-			break;
-
-		case 0x90: // sub_b
-			cCycles -= 4;
-			Sub_1(m_regB);
-			break;
-
-		case 0x91: // sub_c
-			cCycles -= 4;
-			Sub_1(m_regC);
-			break;
-
-		case 0x92: // sub_d
-			cCycles -= 4;
-			Sub_1(m_regD);
-			break;
-
-		case 0x93: // sub_e
-			cCycles -= 4;
-			Sub_1(m_regE);
-			break;
-
-		case 0x94: // sub_h
-			cCycles -= 4;
-			Sub_1(m_regH);
-			break;
-
-		case 0x95: // sub_l
-			cCycles -= 4;
-			Sub_1(m_regL);
-			break;
-
-		case 0x96: // sub_xhl
-			cCycles -= 7;
-			Sub_1(MemReadByte(m_regHL));
-			break;
-
-		case 0x97: // sub_a
-			cCycles -= 4;
-			Sub_1(m_regA);
-			break;
-
-		case 0x98: // sbc_a_b
-			cCycles -= 4;
-			Sbc_1(m_regB);
-			break;
-
-		case 0x99: // sbc_a_c
-			cCycles -= 4;
-			Sbc_1(m_regC);
-			break;
-
-		case 0x9A: // sbc_a_d
-			cCycles -= 4;
-			Sbc_1(m_regD);
-			break;
-
-		case 0x9B: // sbc_a_e
-			cCycles -= 4;
-			Sbc_1(m_regE);
-			break;
-
-		case 0x9C: // sbc_a_h
-			cCycles -= 4;
-			Sbc_1(m_regH);
-			break;
-
-		case 0x9D: // sbc_a_l
-			cCycles -= 4;
-			Sbc_1(m_regL);
-			break;
-
-		case 0x9E: // sbc_a_xhl
-			cCycles -= 7;
-			Sbc_1(MemReadByte(m_regHL));
-			break;
-
-		case 0x9F: // sbc_a_a
-			cCycles -= 4;
-			Sbc_1(m_regA);
-			break;
-
-		case 0xA0: // and_b
-			cCycles -= 4;
-			And(m_regB);
-			break;
-
-		case 0xA1: // and_c
-			cCycles -= 4;
-			And(m_regC);
-			break;
-
-		case 0xA2: // and_d
-			cCycles -= 4;
-			And(m_regD);
-			break;
-
-		case 0xA3: // and_e
-			cCycles -= 4;
-			And(m_regE);
-			break;
-
-		case 0xA4: // and_h
-			cCycles -= 4;
-			And(m_regH);
-			break;
-
-		case 0xA5: // and_l
-			cCycles -= 4;
-			And(m_regL);
-			break;
-
-		case 0xA6: // and_xhl
-			cCycles -= 7;
-			And(MemReadByte(m_regHL));
-			break;
-
-		case 0xA7: // and_a
-			cCycles -= 4;
-			And(m_regA);
-			break;
-
-		case 0xA8: // xor_b
-			cCycles -= 4;
-			Xor(m_regB);
-			break;
-
-		case 0xA9: // xor_c
-			cCycles -= 4;
-			Xor(m_regC);
-			break;
-
-		case 0xAA: // xor_d
-			cCycles -= 4;
-			Xor(m_regD);
-			break;
-
-		case 0xAB: // xor_e
-			cCycles -= 4;
-			Xor(m_regE);
-			break;
-
-		case 0xAC: // xor_h
-			cCycles -= 4;
-			Xor(m_regH);
-			break;
-
-		case 0xAD: // xor_l
-			cCycles -= 4;
-			Xor(m_regL);
-			break;
-
-		case 0xAE: // xor_xhl
-			cCycles -= 7;
-			Xor(MemReadByte(m_regHL));
-			break;
-
-		case 0xAF: // xor_a
-			cCycles -= 4;
-			Xor(m_regA);
-			break;
-
-		case 0xB0: // or_b
-			cCycles -= 4;
-			Or(m_regB);
-			break;
-
-		case 0xB1: // or_c
-			cCycles -= 4;
-			Or(m_regC);
-			break;
-
-		case 0xB2: // or_d
-			cCycles -= 4;
-			Or(m_regD);
-			break;
-
-		case 0xB3: // or_e
-			cCycles -= 4;
-			Or(m_regE);
-			break;
-
-		case 0xB4: // or_h
-			cCycles -= 4;
-			Or(m_regH);
-			break;
-
-		case 0xB5: // or_l
-			cCycles -= 4;
-			Or(m_regL);
-			break;
-
-		case 0xB6: // or_xhl
-			cCycles -= 7;
-			Or(MemReadByte(m_regHL));
-			break;
-
-		case 0xB7: // or_a
-			cCycles -= 4;
-			Or(m_regA);
-			break;
-
-		case 0xB8: // cp_b
-			cCycles -= 4;
-			Cp(m_regB);
-			break;
-
-		case 0xB9: // cp_c
-			cCycles -= 4;
-			Cp(m_regC);
-			break;
-
-		case 0xBA: // cp_d
-			cCycles -= 4;
-			Cp(m_regD);
-			break;
-
-		case 0xBB: // cp_e
-			cCycles -= 4;
-			Cp(m_regE);
-			break;
-
-		case 0xBC: // cp_h
-			cCycles -= 4;
-			Cp(m_regH);
-			break;
-
-		case 0xBD: // cp_l
-			cCycles -= 4;
-			Cp(m_regL);
-			break;
-
-		case 0xBE: // cp_xhl
-			cCycles -= 7;
-			Cp(MemReadByte(m_regHL));
-			break;
-
-		case 0xBF: // cp_a
-			cCycles -= 4;
-			Cp(m_regA);
-			break;
-
-		case 0xC0: // ret_nz
-			cCycles -= 5;
-			cCycles -= Ret1(m_regF & Z_FLAG);
-			break;
-
-		case 0xC1: // pop_bc
-			cCycles -= 10;
-			m_regBC = Pop();
-			break;
-
-		case 0xC2: // jp_nz
-			cCycles -= 10;
-			cCycles -= Jp1(m_regF & Z_FLAG);
-			break;
-
-		case 0xC3: // jp
-			cCycles -= 10;
-			Jp0(1);
-			break;
-
-		case 0xC4: // call_nz
-			cCycles -= 10;
-			cCycles -= Call1(m_regF & Z_FLAG);
-			break;
-
-		case 0xC5: // push_bc
-			cCycles -= 11;
-			Push(m_regBC);
-			break;
-
-		case 0xC6: // add_a_byte
-			cCycles -= 7;
-			Add_1(ImmedByte());
-			break;
-
-		case 0xC7: // rst_00
-			cCycles -= 11;
-			Rst(0x00);
-			break;
-
-		case 0xC8: // ret_z
-			cCycles -= 5;
-			cCycles -= Ret0(m_regF & Z_FLAG);
-			break;
-
-		case 0xC9: // ret
-			cCycles -= 4;
-			cCycles -= Ret0(1);
-			break;
-
-		case 0xCA: // jp_z
-			cCycles -= 10;
-			cCycles -= Jp0(m_regF & Z_FLAG);
-			break;
-
-		case 0xCB: // cb
-			cCycles -= HandleCB();
-			break;
-
-		case 0xCC: // call_z
-			cCycles -= 10;
-			cCycles -= Call0(m_regF & Z_FLAG);
-			break;
-
-		case 0xCD: // call
-			cCycles -= 10;
-			cCycles -= Call0(1);
-			break;
-
-		case 0xCE: // adc_a_byte
-			cCycles -= 7;
-			Adc_1(ImmedByte());
-			break;
-
-		case 0xCF: // rst_08
-			cCycles -= 11;
-			Rst(0x08);
-			break;
-
-		case 0xD0: // ret_nc
-			cCycles -= 5;
-			cCycles -= Ret1(m_regF & C_FLAG);
-			break;
-
-		case 0xD1: // pop_de
-			cCycles -= 10;
-			m_regDE = Pop();
-			break;
-
-		case 0xD2: // jp_nc
-			cCycles -= 10;
-			cCycles -= Jp1(m_regF & C_FLAG);
-			break;
-
-		case 0xD3: // out_byte_a
-			cCycles -= 11;
-			Out(ImmedByte(), m_regA);
-			break;
-
-		case 0xD4: // call_nc
-			cCycles -= 10;
-			cCycles -= Call1(m_regF & C_FLAG);
-			break;
-
-		case 0xD5: // push_de
-			cCycles -= 11;
-			Push(m_regDE);
-			break;
-
-		case 0xD6: // sub_byte
-			cCycles -= 7;
-			Sub_1(ImmedByte());
-			break;
-
-		case 0xD7: // rst_10
-			cCycles -= 11;
-			Rst(0x10);
-			break;
-
-		case 0xD8: // ret_c
-			cCycles -= 5;
-			cCycles -= Ret0(m_regF & C_FLAG);
-			break;
-
-		case 0xD9: // exx
-			cCycles -= 4;
-			Exx();
-			break;
-
-		case 0xDA: // jp_c
-			cCycles -= 10;
-			cCycles -= Jp0(m_regF & C_FLAG);
-			break;
-
-		case 0xDB: // in_a_byte
-		{
-			uint8_t bPort = ImmedByte();
-			cCycles -= 11;
-			m_regA = InRaw(bPort);
-			break;
-		}
-
-		case 0xDC: // call_c
-			cCycles -= 10;
-			cCycles -= Call0(m_regF & C_FLAG);
-			break;
-
-		case 0xDD: // dd
-			cCycles -= HandleDD();
-			break;
-
-		case 0xDE: // sbc_a_byte
-			cCycles -= 7;
-			Sbc_1(ImmedByte());
-			break;
-
-		case 0xDF: // rst_18
-			cCycles -= 11;
-			Rst(0x18);
-			break;
-
-		case 0xE0: // ret_po
-			cCycles -= 5;
-			cCycles -= Ret1(m_regF & V_FLAG);
-			break;
-
-		case 0xE1: // pop_hl
-			cCycles -= 10;
-			m_regHL = Pop();
-			break;
-
-		case 0xE2: // jp_po
-			cCycles -= 10;
-			cCycles -= Jp1(m_regF & V_FLAG);
-			break;
-
-		case 0xE3: // ex_xsp_hl
-			cCycles -= 19;
-			{
-				int i = MemReadWord(GetSP());
-				MemWriteWord(GetSP(), m_regHL);
-				m_regHL = i;
-				break;
-			}
-
-		case 0xE4: // call_po
-			cCycles -= 10;
-			cCycles -= Call1(m_regF & V_FLAG);
-			break;
-
-		case 0xE5: // push_hl
-			cCycles -= 11;
-			Push(m_regHL);
-			break;
-
-		case 0xE6: // and_byte
-			cCycles -= 7;
-			And(ImmedByte());
-			break;
-
-		case 0xE7: // rst_20
-			cCycles -= 11;
-			Rst(0x20);
-			break;
-
-		case 0xE8: // ret_pe
-			cCycles -= 5;
-			cCycles -= Ret0(m_regF & V_FLAG);
-			break;
-
-		case 0xE9: // jp_hl
-			cCycles -= 4;
-			SetPC(m_regHL);
-			break;
-
-		case 0xEA: // jp_pe
-			cCycles -= 10;
-			cCycles -= Jp0(m_regF & V_FLAG);
-			break;
-
-		case 0xEB: // ex_de_hl
-			cCycles -= 4;
-			swap(m_regDE, m_regHL);
-			break;
-
-		case 0xEC: // call_pe
-			cCycles -= 10;
-			cCycles -= Call0(m_regF & V_FLAG);
-			break;
-
-		case 0xED: // ed
-			HandleED();
-			break;
-
-		case 0xEE: // xor_byte
-			cCycles -= 7;
-			Xor(ImmedByte());
-			break;
-
-		case 0xEF: // rst_28
-			cCycles -= 11;
-			Rst(0x28);
-			break;
-
-		case 0xF0: // ret_p
-			cCycles -= 5;
-			cCycles -= Ret1(m_regF & S_FLAG);
-			break;
-
-		case 0xF1: // pop_af
-			cCycles -= 10;
-			m_regAF = Pop();
-			break;
-
-		case 0xF2: // jp_p
-			cCycles -= 10;
-			cCycles -= Jp1(m_regF & S_FLAG);
-			break;
-
-		case 0xF3: // di
-			cCycles -= 4;
-			Di();
-			break;
-
-		case 0xF4: // call_p
-			cCycles -= 10;
-			cCycles -= Call1(m_regF & S_FLAG);
-			break;
-
-		case 0xF5: // push_af
-			cCycles -= 11;
-			Push(m_regAF);
-			break;
-
-		case 0xF6: // or_byte
-			cCycles -= 7;
-			Or(ImmedByte());
-			break;
-
-		case 0xF7: // rst_30
-			cCycles -= 11;
-			Rst(0x30);
-			break;
-
-		case 0xF8: // ret_m
-			cCycles -= 5;
-			cCycles -= Ret0(m_regF & S_FLAG);
-			break;
-
-		case 0xF9: // ld_sp_hl
-			cCycles -= 6;
-			SetSP(m_regHL);
-			break;
-
-		case 0xFA: // jp_m
-			cCycles -= 10;
-			cCycles -= Jp0(m_regF & S_FLAG);
-			break;
-
-		case 0xFB: // ei
-			cCycles -= 4;
-			cCycles -= Ei();
-			break;
-
-		case 0xFC: // call_m
-			cCycles -= 10;
-			cCycles -= Call0(m_regF & S_FLAG);
-			break;
-
-		case 0xFD: // fd
-			cCycles -= HandleFD();
-			break;
-
-		case 0xFE: // cp_byte
-			cCycles -= 7;
-			Cp(ImmedByte());
-			break;
-
-		case 0xFF: // rst_38
-			cCycles -= 11;
-			Rst(0x38);
-			break;
-
-		default:
-			assert(false);
-			break;
-		}
-
-		if (pending_int && !m_fHalt)
-		{
-			mz80int(irq_vector);
-		}
-		}
-		dwElapsedTicks += (prev_cycles - cCycles);
-		timer_update(prev_cycles - cCycles, cpu_num);
+		cyc += mz80step();
 	}
 
-	z80pc = GetPC(); /* for some of the platforms */
-	//dwElapsedTicks = origElapsedTicks + (cCyclesArg - cCycles);
+	// My emulator expects a return code here rather then the number of cycles ran. Change this per your preferences.
+	//return cyc;
+	return 0x80000000;
+}
 
-	//return (dwElapsedTicks);//0x80000000);
-	return (0x80000000);
+unsigned cpu_z80::mz80step()
+{
+	unsigned cyc = 0;
+
+	if (m_fHalt)
+	{
+		cyc += exec_opcode(0x00);
+	}
+	else
+	{
+		z80ppc = z80pc;
+		const uint8_t bOpcode = ImmedByte();
+		cyc += exec_opcode(bOpcode);
+	}
+
+	if (pending_int && !m_fHalt)
+	{
+		mz80int(irq_vector);
+	}
+
+	dwElapsedTicks += cyc;
+	if (dwElapsedTicks > 0xfffffff) dwElapsedTicks = 0;
+
+	return cyc;
+}
+
+unsigned cpu_z80::exec_opcode(uint8_t bOpcode)
+{
+	cCycles = 0;
+	m_regR++;
+
+	switch (bOpcode)
+	{
+	case 0x00: // nop
+		cCycles += 4;
+		break;
+
+	case 0x01: // ld_bc_word
+		cCycles += 10;
+		m_regBC = ImmedWord();
+		break;
+
+	case 0x02: // ld_xbc_a
+		cCycles += 7;
+		MemWriteByte(m_regBC, m_regA);
+		break;
+
+	case 0x03: // inc_bc
+		cCycles += 6;
+		m_regBC++;
+		break;
+
+	case 0x04: // inc_b
+		cCycles += 4;
+		m_regB = Inc(m_regB);
+		break;
+
+	case 0x05: // dec_b
+		cCycles += 4;
+		m_regB = Dec(m_regB);
+		break;
+
+	case 0x06: // ld_b_byte
+		cCycles += 7;
+		m_regB = ImmedByte();
+		break;
+
+	case 0x07: // rlca
+		cCycles += 4;
+		Rlca();
+		break;
+
+	case 0x08: // ex_af_af
+		cCycles += 4;
+		swap(m_regAF, m_regAF2);
+		break;
+
+	case 0x09: // add_hl_bc
+		cCycles += 11;
+		m_regHL = Add_2(m_regHL, m_regBC);
+		break;
+
+	case 0x0A: // ld_a_xbc
+		cCycles += 7;
+		m_regA = MemReadByte(m_regBC);
+		break;
+
+	case 0x0B: // dec_bc
+		cCycles += 6;
+		m_regBC--;
+		break;
+
+	case 0x0C: // inc_c
+		cCycles += 4;
+		m_regC = Inc(m_regC);
+		break;
+
+	case 0x0D: // dec_c
+		cCycles += 4;
+		m_regC = Dec(m_regC);
+		break;
+
+	case 0x0E: // ld_c_byte
+		cCycles += 7;
+		m_regC = ImmedByte();
+		break;
+
+	case 0x0F: // rrca
+		cCycles += 4;
+		Rrca();
+		break;
+
+	case 0x10: // djnz
+		cCycles += 8;
+		cCycles += Jr0(--m_regB);
+		break;
+
+	case 0x11: // ld_de_word
+		cCycles += 10;
+		m_regDE = ImmedWord();
+		break;
+
+	case 0x12: // ld_xde_a
+		cCycles += 7;
+		MemWriteByte(m_regDE, m_regA);
+		break;
+
+	case 0x13: // inc_de
+		cCycles += 6;
+		m_regDE++;
+		break;
+
+	case 0x14: // inc_d
+		cCycles += 4;
+		m_regD = Inc(m_regD);
+		break;
+
+	case 0x15: // dec_d
+		cCycles += 4;
+		m_regD = Dec(m_regD);
+		break;
+
+	case 0x16: // ld_d_byte
+		cCycles += 7;
+		m_regD = ImmedByte();
+		break;
+
+	case 0x17: // rla
+		cCycles += 4;
+		Rla();
+		break;
+
+	case 0x18: // jr
+		cCycles += Jr0(1);
+		break;
+
+	case 0x19: // add_hl_de
+		cCycles += 11;
+		m_regHL = Add_2(m_regHL, m_regDE);
+		break;
+
+	case 0x1A: // ld_a_xde
+		cCycles += 7;
+		m_regA = MemReadByte(m_regDE);
+		break;
+
+	case 0x1B: // dec_de
+		cCycles += 6;
+		m_regDE--;
+		break;
+
+	case 0x1C: // inc_e
+		cCycles += 4;
+		m_regE = Inc(m_regE);
+		break;
+
+	case 0x1D: // dec_e
+		cCycles += 4;
+		m_regE = Dec(m_regE);
+		break;
+
+	case 0x1E: // ld_e_byte
+		cCycles += 7;
+		m_regE = ImmedByte();
+		break;
+
+	case 0x1F: // rra
+		cCycles += 4;
+		Rra();
+		break;
+
+	case 0x20: // jr_nz
+		cCycles += 7;
+		cCycles += Jr1(m_regF & Z_FLAG);
+		break;
+
+	case 0x21: // ld_hl_word
+		cCycles += 10;
+		m_regHL = ImmedWord();
+		break;
+
+	case 0x22: // ld_xword_hl
+		cCycles += 16;
+		MemWriteWord(ImmedWord(), m_regHL);
+		break;
+
+	case 0x23: // inc_hl
+		cCycles += 6;
+		m_regHL++;
+		break;
+
+	case 0x24: // inc_h
+		cCycles += 4;
+		m_regH = Inc(m_regH);
+		break;
+
+	case 0x25: // dec_h
+		cCycles += 4;
+		m_regH = Dec(m_regH);
+		break;
+
+	case 0x26: // ld_h_byte
+		cCycles += 7;
+		m_regH = ImmedByte();
+		break;
+
+	case 0x27: // daa
+	{
+		cCycles += 4;
+		Daa();
+		break;
+	}
+
+	case 0x28: // jr_z
+		cCycles += 7;
+		cCycles += Jr0(m_regF & Z_FLAG);
+		break;
+
+	case 0x29: // add_hl_hl
+		cCycles += 11;
+		m_regHL = Add_2(m_regHL, m_regHL);
+		break;
+
+	case 0x2A: // ld_hl_xword
+		cCycles += 16;
+		m_regHL = MemReadWord(ImmedWord());
+		break;
+
+	case 0x2B: // dec_hl
+		cCycles += 6;
+		m_regHL--;
+		break;
+
+	case 0x2C: // inc_l
+		cCycles += 4;
+		m_regL = Inc(m_regL);
+		break;
+
+	case 0x2D: // dec_l
+		cCycles += 4;
+		m_regL = Dec(m_regL);
+		break;
+
+	case 0x2E: // ld_l_byte
+		cCycles += 7;
+		m_regL = ImmedByte();
+		break;
+
+	case 0x2F: // cpl
+		cCycles += 4;
+		m_regA ^= 0xFF;
+		m_regF |= (H_FLAG | N_FLAG);
+		break;
+
+	case 0x30: // jr_nc
+		cCycles += 7;
+		cCycles += Jr1(m_regF & C_FLAG);
+		break;
+
+	case 0x31: // ld_sp_word
+		cCycles += 10;
+		SetSP(ImmedWord());
+		break;
+
+	case 0x32: // ld_xbyte_a
+		cCycles += 13;
+		MemWriteByte(ImmedWord(), m_regA);
+		break;
+
+	case 0x33: // inc_sp
+		cCycles += 6;
+		SetSP(GetSP() + 1);
+		break;
+
+	case 0x34: // inc_xhl
+		cCycles += 11;
+		MemWriteByte(m_regHL, Inc(MemReadByte(m_regHL)));
+		break;
+
+	case 0x35: // dec_xhl
+		cCycles += 11;
+		MemWriteByte(m_regHL, Dec(MemReadByte(m_regHL)));
+		break;
+
+	case 0x36: // ld_xhl_byte
+		cCycles += 10;
+		MemWriteByte(m_regHL, ImmedByte());
+		break;
+
+	case 0x37: // scf
+		cCycles += 4;
+		m_regF = (m_regF & 0xEC) | C_FLAG;
+		break;
+
+	case 0x38: // jr_c
+		cCycles += 7;
+		cCycles += Jr0(m_regF & C_FLAG);
+		break;
+
+	case 0x39: // add_hl_sp
+		cCycles += 11;
+		m_regHL = Add_2(m_regHL, GetSP());
+		break;
+
+	case 0x3A: // ld_a_xbyte
+		cCycles += 13;
+		m_regA = MemReadByte(ImmedWord());
+		break;
+
+	case 0x3B: // dec_sp
+		cCycles += 6;
+		SetSP(GetSP() - 1);
+		break;
+
+	case 0x3C: // inc_a
+		cCycles += 4;
+		m_regA = Inc(m_regA);
+		break;
+
+	case 0x3D: // dec_a
+		cCycles += 4;
+		m_regA = Dec(m_regA);
+		break;
+
+	case 0x3E: // ld_a_byte
+		cCycles += 7;
+		m_regA = ImmedByte();
+		break;
+
+	case 0x3F: // ccf
+		cCycles += 4;
+		m_regF = ((m_regF & 0xED) | ((m_regF & 1) << 4)) ^ 1;
+		break;
+
+	case 0x40: // ld_b_b
+		cCycles += 4;
+		m_regB = m_regB;
+		break;
+
+	case 0x41: // ld_b_c
+		cCycles += 4;
+		m_regB = m_regC;
+		break;
+
+	case 0x42: // ld_b_d
+		cCycles += 4;
+		m_regB = m_regD;
+		break;
+
+	case 0x43: // ld_b_e
+		cCycles += 4;
+		m_regB = m_regE;
+		break;
+
+	case 0x44: // ld_b_h
+		cCycles += 4;
+		m_regB = m_regH;
+		break;
+
+	case 0x45: // ld_b_l
+		cCycles += 4;
+		m_regB = m_regL;
+		break;
+
+	case 0x46: // ld_b_xhl
+		cCycles += 7;
+		m_regB = MemReadByte(m_regHL);
+		break;
+
+	case 0x47: // ld_b_a
+		cCycles += 4;
+		m_regB = m_regA;
+		break;
+
+	case 0x48: // ld_c_b
+		cCycles += 4;
+		m_regC = m_regB;
+		break;
+
+	case 0x49: // ld_c_c
+		cCycles += 4;
+		m_regC = m_regC;
+		break;
+
+	case 0x4A: // ld_c_d
+		cCycles += 4;
+		m_regC = m_regD;
+		break;
+
+	case 0x4B: // ld_c_e
+		cCycles += 4;
+		m_regC = m_regE;
+		break;
+
+	case 0x4C: // ld_c_h
+		cCycles += 4;
+		m_regC = m_regH;
+		break;
+
+	case 0x4D: // ld_c_l
+		cCycles += 4;
+		m_regC = m_regL;
+		break;
+
+	case 0x4E: // ld_c_xhl
+		cCycles += 7;
+		m_regC = MemReadByte(m_regHL);
+		break;
+
+	case 0x4F: // ld_c_a
+		cCycles += 4;
+		m_regC = m_regA;
+		break;
+
+	case 0x50: // ld_d_b
+		cCycles += 4;
+		m_regD = m_regB;
+		break;
+
+	case 0x51: // ld_d_c
+		cCycles += 4;
+		m_regD = m_regC;
+		break;
+
+	case 0x52: // ld_d_d
+		cCycles += 4;
+		m_regD = m_regD;
+		break;
+
+	case 0x53: // ld_d_e
+		cCycles += 4;
+		m_regD = m_regE;
+		break;
+
+	case 0x54: // ld_d_h
+		cCycles += 4;
+		m_regD = m_regH;
+		break;
+
+	case 0x55: // ld_d_l
+		cCycles += 4;
+		m_regD = m_regL;
+		break;
+
+	case 0x56: // ld_d_xhl
+		cCycles += 7;
+		m_regD = MemReadByte(m_regHL);
+		break;
+
+	case 0x57: // ld_d_a
+		cCycles += 4;
+		m_regD = m_regA;
+		break;
+
+	case 0x58: // ld_e_b
+		cCycles += 4;
+		m_regE = m_regB;
+		break;
+
+	case 0x59: // ld_e_c
+		cCycles += 4;
+		m_regE = m_regC;
+		break;
+
+	case 0x5A: // ld_e_d
+		cCycles += 4;
+		m_regE = m_regD;
+		break;
+
+	case 0x5B: // ld_e_e
+		cCycles += 4;
+		m_regE = m_regE;
+		break;
+
+	case 0x5C: // ld_e_h
+		cCycles += 4;
+		m_regE = m_regH;
+		break;
+
+	case 0x5D: // ld_e_l
+		cCycles += 4;
+		m_regE = m_regL;
+		break;
+
+	case 0x5E: // ld_e_xhl
+		cCycles += 7;
+		m_regE = MemReadByte(m_regHL);
+		break;
+
+	case 0x5F: // ld_e_a
+		cCycles += 4;
+		m_regE = m_regA;
+		break;
+
+	case 0x60: // ld_h_b
+		cCycles += 4;
+		m_regH = m_regB;
+		break;
+
+	case 0x61: // ld_h_c
+		cCycles += 4;
+		m_regH = m_regC;
+		break;
+
+	case 0x62: // ld_h_d
+		cCycles += 4;
+		m_regH = m_regD;
+		break;
+
+	case 0x63: // ld_h_e
+		cCycles += 4;
+		m_regH = m_regE;
+		break;
+
+	case 0x64: // ld_h_h
+		cCycles += 4;
+		m_regH = m_regH;
+		break;
+
+	case 0x65: // ld_h_l
+		cCycles += 4;
+		m_regH = m_regL;
+		break;
+
+	case 0x66: // ld_h_xhl
+		cCycles += 7;
+		m_regH = MemReadByte(m_regHL);
+		break;
+
+	case 0x67: // ld_h_a
+		cCycles += 4;
+		m_regH = m_regA;
+		break;
+
+	case 0x68: // ld_l_b
+		cCycles += 4;
+		m_regL = m_regB;
+		break;
+
+	case 0x69: // ld_l_c
+		cCycles += 4;
+		m_regL = m_regC;
+		break;
+
+	case 0x6A: // ld_l_d
+		cCycles += 4;
+		m_regL = m_regD;
+		break;
+
+	case 0x6B: // ld_l_e
+		cCycles += 4;
+		m_regL = m_regE;
+		break;
+
+	case 0x6C: // ld_l_h
+		cCycles += 4;
+		m_regL = m_regH;
+		break;
+
+	case 0x6D: // ld_l_l
+		cCycles += 4;
+		m_regL = m_regL;
+		break;
+
+	case 0x6E: // ld_l_xhl
+		cCycles += 7;
+		m_regL = MemReadByte(m_regHL);
+		break;
+
+	case 0x6F: // ld_l_a
+		cCycles += 4;
+		m_regL = m_regA;
+		break;
+
+	case 0x70: // ld_xhl_b
+		cCycles += 7;
+		MemWriteByte(m_regHL, m_regB);
+		break;
+
+	case 0x71: // ld_xhl_c
+		cCycles += 7;
+		MemWriteByte(m_regHL, m_regC);
+		break;
+
+	case 0x72: // ld_xhl_d
+		cCycles += 7;
+		MemWriteByte(m_regHL, m_regD);
+		break;
+
+	case 0x73: // ld_xhl_e
+		cCycles += 7;
+		MemWriteByte(m_regHL, m_regE);
+		break;
+
+	case 0x74: // ld_xhl_h
+		cCycles += 7;
+		MemWriteByte(m_regHL, m_regH);
+		break;
+
+	case 0x75: // ld_xhl_l
+		cCycles += 7;
+		MemWriteByte(m_regHL, m_regL);
+		break;
+
+	case 0x76: // halt
+		cCycles += 4;
+		m_fHalt = 1;
+
+	case 0x77: // ld_xhl_a
+		cCycles += 7;
+		MemWriteByte(m_regHL, m_regA);
+		break;
+
+	case 0x78: // ld_a_b
+		cCycles += 4;
+		m_regA = m_regB;
+		break;
+
+	case 0x79: // ld_a_c
+		cCycles += 4;
+		m_regA = m_regC;
+		break;
+
+	case 0x7A: // ld_a_d
+		cCycles += 4;
+		m_regA = m_regD;
+		break;
+
+	case 0x7B: // ld_a_e
+		cCycles += 4;
+		m_regA = m_regE;
+		break;
+
+	case 0x7C: // ld_a_h
+		cCycles += 4;
+		m_regA = m_regH;
+		break;
+
+	case 0x7D: // ld_a_l
+		cCycles += 4;
+		m_regA = m_regL;
+		break;
+
+	case 0x7E: // ld_a_xhl
+		cCycles += 7;
+		m_regA = MemReadByte(m_regHL);
+		break;
+
+	case 0x7F: // ld_a_a
+		cCycles += 4;
+		m_regA = m_regA;
+		break;
+
+	case 0x80: // add_a_b
+		cCycles += 4;
+		Add_1(m_regB);
+		break;
+
+	case 0x81: // add_a_c
+		cCycles += 4;
+		Add_1(m_regC);
+		break;
+
+	case 0x82: // add_a_d
+		cCycles += 4;
+		Add_1(m_regD);
+		break;
+
+	case 0x83: // add_a_e
+		cCycles += 4;
+		Add_1(m_regE);
+		break;
+
+	case 0x84: // add_a_h
+		cCycles += 4;
+		Add_1(m_regH);
+		break;
+
+	case 0x85: // add_a_l
+		cCycles += 4;
+		Add_1(m_regL);
+		break;
+
+	case 0x86: // add_a_xhl
+		cCycles += 7;
+		Add_1(MemReadByte(m_regHL));
+		break;
+
+	case 0x87: // add_a_a
+		cCycles += 4;
+		Add_1(m_regA);
+		break;
+
+	case 0x88: // adc_a_b
+		cCycles += 4;
+		Adc_1(m_regB);
+		break;
+
+	case 0x89: // adc_a_c
+		cCycles += 4;
+		Adc_1(m_regC);
+		break;
+
+	case 0x8A: // adc_a_d
+		cCycles += 4;
+		Adc_1(m_regD);
+		break;
+
+	case 0x8B: // adc_a_e
+		cCycles += 4;
+		Adc_1(m_regE);
+		break;
+
+	case 0x8C: // adc_a_h
+		cCycles += 4;
+		Adc_1(m_regH);
+		break;
+
+	case 0x8D: // adc_a_l
+		cCycles += 4;
+		Adc_1(m_regL);
+		break;
+
+	case 0x8E: // adc_a_xhl
+		cCycles += 7;
+		Adc_1(MemReadByte(m_regHL));
+		break;
+
+	case 0x8F: // adc_a_a
+		cCycles += 4;
+		Adc_1(m_regA);
+		break;
+
+	case 0x90: // sub_b
+		cCycles += 4;
+		Sub_1(m_regB);
+		break;
+
+	case 0x91: // sub_c
+		cCycles += 4;
+		Sub_1(m_regC);
+		break;
+
+	case 0x92: // sub_d
+		cCycles += 4;
+		Sub_1(m_regD);
+		break;
+
+	case 0x93: // sub_e
+		cCycles += 4;
+		Sub_1(m_regE);
+		break;
+
+	case 0x94: // sub_h
+		cCycles += 4;
+		Sub_1(m_regH);
+		break;
+
+	case 0x95: // sub_l
+		cCycles += 4;
+		Sub_1(m_regL);
+		break;
+
+	case 0x96: // sub_xhl
+		cCycles += 7;
+		Sub_1(MemReadByte(m_regHL));
+		break;
+
+	case 0x97: // sub_a
+		cCycles += 4;
+		Sub_1(m_regA);
+		break;
+
+	case 0x98: // sbc_a_b
+		cCycles += 4;
+		Sbc_1(m_regB);
+		break;
+
+	case 0x99: // sbc_a_c
+		cCycles += 4;
+		Sbc_1(m_regC);
+		break;
+
+	case 0x9A: // sbc_a_d
+		cCycles += 4;
+		Sbc_1(m_regD);
+		break;
+
+	case 0x9B: // sbc_a_e
+		cCycles += 4;
+		Sbc_1(m_regE);
+		break;
+
+	case 0x9C: // sbc_a_h
+		cCycles += 4;
+		Sbc_1(m_regH);
+		break;
+
+	case 0x9D: // sbc_a_l
+		cCycles += 4;
+		Sbc_1(m_regL);
+		break;
+
+	case 0x9E: // sbc_a_xhl
+		cCycles += 7;
+		Sbc_1(MemReadByte(m_regHL));
+		break;
+
+	case 0x9F: // sbc_a_a
+		cCycles += 4;
+		Sbc_1(m_regA);
+		break;
+
+	case 0xA0: // and_b
+		cCycles += 4;
+		And(m_regB);
+		break;
+
+	case 0xA1: // and_c
+		cCycles += 4;
+		And(m_regC);
+		break;
+
+	case 0xA2: // and_d
+		cCycles += 4;
+		And(m_regD);
+		break;
+
+	case 0xA3: // and_e
+		cCycles += 4;
+		And(m_regE);
+		break;
+
+	case 0xA4: // and_h
+		cCycles += 4;
+		And(m_regH);
+		break;
+
+	case 0xA5: // and_l
+		cCycles += 4;
+		And(m_regL);
+		break;
+
+	case 0xA6: // and_xhl
+		cCycles += 7;
+		And(MemReadByte(m_regHL));
+		break;
+
+	case 0xA7: // and_a
+		cCycles += 4;
+		And(m_regA);
+		break;
+
+	case 0xA8: // xor_b
+		cCycles += 4;
+		Xor(m_regB);
+		break;
+
+	case 0xA9: // xor_c
+		cCycles += 4;
+		Xor(m_regC);
+		break;
+
+	case 0xAA: // xor_d
+		cCycles += 4;
+		Xor(m_regD);
+		break;
+
+	case 0xAB: // xor_e
+		cCycles += 4;
+		Xor(m_regE);
+		break;
+
+	case 0xAC: // xor_h
+		cCycles += 4;
+		Xor(m_regH);
+		break;
+
+	case 0xAD: // xor_l
+		cCycles += 4;
+		Xor(m_regL);
+		break;
+
+	case 0xAE: // xor_xhl
+		cCycles += 7;
+		Xor(MemReadByte(m_regHL));
+		break;
+
+	case 0xAF: // xor_a
+		cCycles += 4;
+		Xor(m_regA);
+		break;
+
+	case 0xB0: // or_b
+		cCycles += 4;
+		Or(m_regB);
+		break;
+
+	case 0xB1: // or_c
+		cCycles += 4;
+		Or(m_regC);
+		break;
+
+	case 0xB2: // or_d
+		cCycles += 4;
+		Or(m_regD);
+		break;
+
+	case 0xB3: // or_e
+		cCycles += 4;
+		Or(m_regE);
+		break;
+
+	case 0xB4: // or_h
+		cCycles += 4;
+		Or(m_regH);
+		break;
+
+	case 0xB5: // or_l
+		cCycles += 4;
+		Or(m_regL);
+		break;
+
+	case 0xB6: // or_xhl
+		cCycles += 7;
+		Or(MemReadByte(m_regHL));
+		break;
+
+	case 0xB7: // or_a
+		cCycles += 4;
+		Or(m_regA);
+		break;
+
+	case 0xB8: // cp_b
+		cCycles += 4;
+		Cp(m_regB);
+		break;
+
+	case 0xB9: // cp_c
+		cCycles += 4;
+		Cp(m_regC);
+		break;
+
+	case 0xBA: // cp_d
+		cCycles += 4;
+		Cp(m_regD);
+		break;
+
+	case 0xBB: // cp_e
+		cCycles += 4;
+		Cp(m_regE);
+		break;
+
+	case 0xBC: // cp_h
+		cCycles += 4;
+		Cp(m_regH);
+		break;
+
+	case 0xBD: // cp_l
+		cCycles += 4;
+		Cp(m_regL);
+		break;
+
+	case 0xBE: // cp_xhl
+		cCycles += 7;
+		Cp(MemReadByte(m_regHL));
+		break;
+
+	case 0xBF: // cp_a
+		cCycles += 4;
+		Cp(m_regA);
+		break;
+
+	case 0xC0: // ret_nz
+		cCycles += 5;
+		cCycles += Ret1(m_regF & Z_FLAG);
+		break;
+
+	case 0xC1: // pop_bc
+		cCycles += 10;
+		m_regBC = Pop();
+		break;
+
+	case 0xC2: // jp_nz
+		cCycles += 10;
+		cCycles += Jp1(m_regF & Z_FLAG);
+		break;
+
+	case 0xC3: // jp
+		cCycles += 10;
+		Jp0(1);
+		break;
+
+	case 0xC4: // call_nz
+		cCycles += 10;
+		cCycles += Call1(m_regF & Z_FLAG);
+		break;
+
+	case 0xC5: // push_bc
+		cCycles += 11;
+		Push(m_regBC);
+		break;
+
+	case 0xC6: // add_a_byte
+		cCycles += 7;
+		Add_1(ImmedByte());
+		break;
+
+	case 0xC7: // rst_00
+		cCycles += 11;
+		Rst(0x00);
+		break;
+
+	case 0xC8: // ret_z
+		cCycles += 5;
+		cCycles += Ret0(m_regF & Z_FLAG);
+		break;
+
+	case 0xC9: // ret
+		cCycles += 4;
+		cCycles += Ret0(1);
+		break;
+
+	case 0xCA: // jp_z
+		cCycles += 10;
+		cCycles += Jp0(m_regF & Z_FLAG);
+		break;
+
+	case 0xCB: // cb
+		cCycles += HandleCB();
+		break;
+
+	case 0xCC: // call_z
+		cCycles += 10;
+		cCycles += Call0(m_regF & Z_FLAG);
+		break;
+
+	case 0xCD: // call
+		cCycles += 10;
+		cCycles += Call0(1);
+		break;
+
+	case 0xCE: // adc_a_byte
+		cCycles += 7;
+		Adc_1(ImmedByte());
+		break;
+
+	case 0xCF: // rst_08
+		cCycles += 11;
+		Rst(0x08);
+		break;
+
+	case 0xD0: // ret_nc
+		cCycles += 5;
+		cCycles += Ret1(m_regF & C_FLAG);
+		break;
+
+	case 0xD1: // pop_de
+		cCycles += 10;
+		m_regDE = Pop();
+		break;
+
+	case 0xD2: // jp_nc
+		cCycles += 10;
+		cCycles += Jp1(m_regF & C_FLAG);
+		break;
+
+	case 0xD3: // out_byte_a
+		cCycles += 11;
+		Out(ImmedByte(), m_regA);
+		break;
+
+	case 0xD4: // call_nc
+		cCycles += 10;
+		cCycles += Call1(m_regF & C_FLAG);
+		break;
+
+	case 0xD5: // push_de
+		cCycles += 11;
+		Push(m_regDE);
+		break;
+
+	case 0xD6: // sub_byte
+		cCycles += 7;
+		Sub_1(ImmedByte());
+		break;
+
+	case 0xD7: // rst_10
+		cCycles += 11;
+		Rst(0x10);
+		break;
+
+	case 0xD8: // ret_c
+		cCycles += 5;
+		cCycles += Ret0(m_regF & C_FLAG);
+		break;
+
+	case 0xD9: // exx
+		cCycles += 4;
+		Exx();
+		break;
+
+	case 0xDA: // jp_c
+		cCycles += 10;
+		cCycles += Jp0(m_regF & C_FLAG);
+		break;
+
+	case 0xDB: // in_a_byte
+	{
+		uint8_t bPort = ImmedByte();
+		cCycles += 11;
+		m_regA = InRaw(bPort);
+		break;
+	}
+
+	case 0xDC: // call_c
+		cCycles += 10;
+		cCycles += Call0(m_regF & C_FLAG);
+		break;
+
+	case 0xDD: // dd
+		cCycles += HandleDD();
+		break;
+
+	case 0xDE: // sbc_a_byte
+		cCycles += 7;
+		Sbc_1(ImmedByte());
+		break;
+
+	case 0xDF: // rst_18
+		cCycles += 11;
+		Rst(0x18);
+		break;
+
+	case 0xE0: // ret_po
+		cCycles += 5;
+		cCycles += Ret1(m_regF & V_FLAG);
+		break;
+
+	case 0xE1: // pop_hl
+		cCycles += 10;
+		m_regHL = Pop();
+		break;
+
+	case 0xE2: // jp_po
+		cCycles += 10;
+		cCycles += Jp1(m_regF & V_FLAG);
+		break;
+
+	case 0xE3: // ex_xsp_hl
+		cCycles += 19;
+		{
+			int i = MemReadWord(GetSP());
+			MemWriteWord(GetSP(), m_regHL);
+			m_regHL = i;
+			break;
+		}
+
+	case 0xE4: // call_po
+		cCycles += 10;
+		cCycles += Call1(m_regF & V_FLAG);
+		break;
+
+	case 0xE5: // push_hl
+		cCycles += 11;
+		Push(m_regHL);
+		break;
+
+	case 0xE6: // and_byte
+		cCycles += 7;
+		And(ImmedByte());
+		break;
+
+	case 0xE7: // rst_20
+		cCycles += 11;
+		Rst(0x20);
+		break;
+
+	case 0xE8: // ret_pe
+		cCycles += 5;
+		cCycles += Ret0(m_regF & V_FLAG);
+		break;
+
+	case 0xE9: // jp_hl
+		cCycles += 4;
+		SetPC(m_regHL);
+		break;
+
+	case 0xEA: // jp_pe
+		cCycles += 10;
+		cCycles += Jp0(m_regF & V_FLAG);
+		break;
+
+	case 0xEB: // ex_de_hl
+		cCycles += 4;
+		swap(m_regDE, m_regHL);
+		break;
+
+	case 0xEC: // call_pe
+		cCycles += 10;
+		cCycles += Call0(m_regF & V_FLAG);
+		break;
+
+	case 0xED: // ed
+		HandleED();
+		break;
+
+	case 0xEE: // xor_byte
+		cCycles += 7;
+		Xor(ImmedByte());
+		break;
+
+	case 0xEF: // rst_28
+		cCycles += 11;
+		Rst(0x28);
+		break;
+
+	case 0xF0: // ret_p
+		cCycles += 5;
+		cCycles += Ret1(m_regF & S_FLAG);
+		break;
+
+	case 0xF1: // pop_af
+		cCycles += 10;
+		m_regAF = Pop();
+		break;
+
+	case 0xF2: // jp_p
+		cCycles += 10;
+		cCycles += Jp1(m_regF & S_FLAG);
+		break;
+
+	case 0xF3: // di
+		cCycles += 4;
+		Di();
+		break;
+
+	case 0xF4: // call_p
+		cCycles += 10;
+		cCycles += Call1(m_regF & S_FLAG);
+		break;
+
+	case 0xF5: // push_af
+		cCycles += 11;
+		Push(m_regAF);
+		break;
+
+	case 0xF6: // or_byte
+		cCycles += 7;
+		Or(ImmedByte());
+		break;
+
+	case 0xF7: // rst_30
+		cCycles += 11;
+		Rst(0x30);
+		break;
+
+	case 0xF8: // ret_m
+		cCycles += 5;
+		cCycles += Ret0(m_regF & S_FLAG);
+		break;
+
+	case 0xF9: // ld_sp_hl
+		cCycles += 6;
+		SetSP(m_regHL);
+		break;
+
+	case 0xFA: // jp_m
+		cCycles += 10;
+		cCycles += Jp0(m_regF & S_FLAG);
+		break;
+
+	case 0xFB: // ei
+		cCycles += 4;
+		cCycles += Ei();
+		break;
+
+	case 0xFC: // call_m
+		cCycles += 10;
+		cCycles += Call0(m_regF & S_FLAG);
+		break;
+
+	case 0xFD: // fd
+		cCycles += HandleFD();
+		break;
+
+	case 0xFE: // cp_byte
+		cCycles += 7;
+		Cp(ImmedByte());
+		break;
+
+	case 0xFF: // rst_38
+		cCycles += 11;
+		Rst(0x38);
+		break;
+
+	default:
+		assert(false);
+		break;
+	}
+
+	return cCycles;
 }
 
 int cpu_z80::Ei()
 {
-	/* fprintf ( stderr, "Enable Interrupt\n" ); */
 	m_iff2 = 1;
 
 	if (m_iff1 != 0)
@@ -1933,7 +1984,6 @@ int cpu_z80::Ei()
 
 void cpu_z80::Di()
 {
-	/* fprintf ( stderr, "Disable Interrupt\n" ); */
 	m_iff1 = 0;
 	m_iff2 = 0;
 }
@@ -1941,8 +1991,8 @@ void cpu_z80::Di()
 UINT32 cpu_z80::mz80int(UINT32 bVal)
 {
 	irq_vector = bVal;
-	
-	// Note: When I enable this, everything breaks. 
+
+	// Note: When I enable this, everything breaks.
 	// "When an EI instruction is executed, any pending interrupt request
 	// is not accepted until after the instruction following EI is executed."
    /*
@@ -1955,33 +2005,35 @@ UINT32 cpu_z80::mz80int(UINT32 bVal)
 		   return 0;
 	   }
    */
-		
+
 	if (m_iff1)
 	{
 		m_iff1 = 0;
 		m_fHalt = false;
-
+		z80ppc = -1;
 		switch (m_nIM)
 		{
 		case 0:
-			cCycles -= 11;
-			// Subtract C7 from the Opcode to get the memory vector. 
-			Rst(irq_vector - 0xC7);
-			wrlog("Interrupt Mode 0 Taken");
+			cCycles += 11;
+			// Subtract C7 from the Opcode to get the memory vector.
+			// Or fancy shifting as seen below, the fancy way.
+			//Rst(irq_vector - 0xC7);
+			Rst(((irq_vector >> 3) & 7) << 3);
+			//wrlog("Interrupt Mode 0 Taken");
 			pending_int = 0;
 			break;
 
 		case 1:
-			cCycles -= 13;
+			cCycles += 13;
 			Rst(z80intAddr);
-			wrlog("Interrupt Mode 1 Taken");
+			//wrlog("Interrupt Mode 1 Taken");
 			pending_int = 0;
 			break;
 
 		case 2:
-			cCycles -= 19;
+			cCycles += 19;
 			pending_int = 0;
-			wrlog("Interrupt Mode 2 Taken");
+			//wrlog("Interrupt Mode 2 Taken");
 			Push(GetPC());
 			SetPC(MemReadWord(irq_vector | (m_regI << 8)));
 			break;
@@ -2001,9 +2053,10 @@ UINT32 cpu_z80::mz80int(UINT32 bVal)
 
 UINT32 cpu_z80::mz80nmi()
 {
+	z80ppc = -1;
 	m_iff1 = 0;
 	m_fHalt = false;
-    cCycles -= 11;
+	cCycles += 11;
 	Rst(z80nmiAddr);
 	return(0);
 }
@@ -4226,283 +4279,283 @@ void cpu_z80::HandleED() {
 	switch (bOpcode)
 	{
 	case 0x00: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x01: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x02: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x03: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x04: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x05: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x06: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x07: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x08: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x09: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x0A: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x0B: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x0C: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x0D: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x0E: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x0F: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x10: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x11: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x12: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x13: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x14: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x15: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x16: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x17: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x18: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x19: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x1A: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x1B: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x1C: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x1D: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x1E: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x1F: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x20: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x21: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x22: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x23: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x24: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x25: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x26: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x27: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x28: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x29: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x2A: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x2B: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x2C: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x2D: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x2E: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x2F: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x30: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x31: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x32: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x33: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x34: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x35: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x36: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x37: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x38: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x39: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x3A: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x3B: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x3C: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x3D: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x3E: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x3F: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x40: // in_b_c
-		cCycles -= 12;
+		cCycles += 12;
 		m_regB = In(m_regC);
 		break;
 
 	case 0x41: // out_c_b
-		cCycles -= 12;
+		cCycles += 12;
 		Out(m_regC, m_regB);
 		break;
 
 	case 0x42: // sbc_hl_bc
-		cCycles -= 15;
+		cCycles += 15;
 		m_regHL = Sbc_2(m_regHL, m_regBC);
 		break;
 
 	case 0x43: // ld_xword_bc
-		cCycles -= 20;
+		cCycles += 20;
 		MemWriteWord(ImmedWord(), m_regBC);
 		break;
 
 	case 0x44: // neg
-		cCycles -= 8;
+		cCycles += 8;
 		{
 			uint8_t b = m_regA;
 			m_regA = 0;
@@ -4511,43 +4564,43 @@ void cpu_z80::HandleED() {
 		}
 
 	case 0x45: // retn
-		cCycles -= 8;
+		cCycles += 8;
 		m_iff1 = m_iff2;
-		cCycles -= Ret0(1);
+		cCycles += Ret0(1);
 		break;
 
 	case 0x46: // im_0
-		cCycles -= 8;
+		cCycles += 8;
 		m_nIM = 0;
 		break;
 
 	case 0x47: // ld_i_a
-		cCycles -= 9;
+		cCycles += 9;
 		m_regI = m_regA;
 		break;
 
 	case 0x48: // in_c_c
-		cCycles -= 12;
+		cCycles += 12;
 		m_regC = In(m_regC);
 		break;
 
 	case 0x49: // out_c_c
-		cCycles -= 12;
+		cCycles += 12;
 		Out(m_regC, m_regC);
 		break;
 
 	case 0x4A: // adc_hl_bc
-		cCycles -= 15;
+		cCycles += 15;
 		m_regHL = Adc_2(m_regHL, m_regBC);
 		break;
 
 	case 0x4B: // ld_bc_xword
-		cCycles -= 20;
+		cCycles += 20;
 		m_regBC = MemReadWord(ImmedWord());
 		break;
 
 	case 0x4C: // neg
-		cCycles -= 8;
+		cCycles += 8;
 		{
 			uint8_t b = m_regA;
 			m_regA = 0;
@@ -4556,43 +4609,43 @@ void cpu_z80::HandleED() {
 		}
 
 	case 0x4D: // reti
-		cCycles -= 8;
-		cCycles -= Ret0(1);
+		cCycles += 8;
+		cCycles += Ret0(1);
 		break;
 
 	case 0x4E: // im_0
-		cCycles -= 8;
+		cCycles += 8;
 		m_nIM = 0;
 		break;
 
 	case 0x4F: // ld_r_a
-		cCycles -= 9;
+		cCycles += 9;
 		m_regR = m_regA;
-		//			m_regR2 = m_regA;
+		Rbit7 = (m_regA & 0x80); // save R bit 7.
 		break;
 
 	case 0x50: // in_d_c
-		cCycles -= 12;
+		cCycles += 12;
 		m_regD = In(m_regC);
 		break;
 
 	case 0x51: // out_c_d
-		cCycles -= 12;
+		cCycles += 12;
 		Out(m_regC, m_regD);
 		break;
 
 	case 0x52: // sbc_hl_de
-		cCycles -= 15;
+		cCycles += 15;
 		m_regHL = Sbc_2(m_regHL, m_regDE);
 		break;
 
 	case 0x53: // ld_xword_de
-		cCycles -= 20;
+		cCycles += 20;
 		MemWriteWord(ImmedWord(), m_regDE);
 		break;
 
 	case 0x54: // neg
-		cCycles -= 8;
+		cCycles += 8;
 		{
 			uint8_t b = m_regA;
 			m_regA = 0;
@@ -4601,44 +4654,44 @@ void cpu_z80::HandleED() {
 		}
 
 	case 0x55: // retn
-		cCycles -= 8;
+		cCycles += 8;
 		m_iff1 = m_iff2;
-		cCycles -= Ret0(1);
+		cCycles += Ret0(1);
 		break;
 
 	case 0x56: // im_1
-		cCycles -= 8;
+		cCycles += 8;
 		m_nIM = 1;
 		break;
 
 	case 0x57: // ld_a_i
-		cCycles -= 9;
+		cCycles += 9;
 		m_regA = m_regI;
 		m_regF = (m_regF & C_FLAG) | ZSTable[m_regI] | (m_iff2 << 2);
 		break;
 
 	case 0x58: // in_e_c
-		cCycles -= 12;
+		cCycles += 12;
 		m_regE = In(m_regC);
 		break;
 
 	case 0x59: // out_c_e
-		cCycles -= 12;
+		cCycles += 12;
 		Out(m_regC, m_regE);
 		break;
 
 	case 0x5A: // adc_hl_de
-		cCycles -= 15;
+		cCycles += 15;
 		m_regHL = Adc_2(m_regHL, m_regDE);
 		break;
 
 	case 0x5B: // ld_de_xword
-		cCycles -= 20;
+		cCycles += 20;
 		m_regDE = MemReadWord(ImmedWord());
 		break;
 
 	case 0x5C: // neg
-		cCycles -= 8;
+		cCycles += 8;
 		{
 			uint8_t b = m_regA;
 			m_regA = 0;
@@ -4647,43 +4700,43 @@ void cpu_z80::HandleED() {
 		}
 
 	case 0x5D: // reti
-		cCycles -= 8;
-		cCycles -= Ret0(1);
+		cCycles += 8;
+		cCycles += Ret0(1);
 		break;
 
 	case 0x5E: // im_2
-		cCycles -= 8;
+		cCycles += 8;
 		m_nIM = 2;
 		break;
 
 	case 0x5F: // ld_a_r
-		cCycles -= 9;
-		m_regA = (m_regR & 0x7F); /////////////////////////////////////// | (m_regR2 & 0x80);
+		cCycles += 9;
+		m_regA = ((m_regR & 0x7F) | Rbit7); /////////////////////////////////////// | (m_regR2 & 0x80);
 		m_regF = (m_regF & C_FLAG) | ZSTable[m_regA] | (m_iff2 << 2);
 		break;
 
 	case 0x60: // in_h_c
-		cCycles -= 12;
+		cCycles += 12;
 		m_regH = In(m_regC);
 		break;
 
 	case 0x61: // out_c_h
-		cCycles -= 12;
+		cCycles += 12;
 		Out(m_regC, m_regH);
 		break;
 
 	case 0x62: // sbc_hl_hl
-		cCycles -= 15;
+		cCycles += 15;
 		m_regHL = Sbc_2(m_regHL, m_regHL);
 		break;
 
 	case 0x63: // ld_xword_hl
-		cCycles -= 20;
+		cCycles += 20;
 		MemWriteWord(ImmedWord(), m_regHL);
 		break;
 
 	case 0x64: // neg
-		cCycles -= 8;
+		cCycles += 8;
 		{
 			uint8_t b = m_regA;
 			m_regA = 0;
@@ -4692,18 +4745,18 @@ void cpu_z80::HandleED() {
 		}
 
 	case 0x65: // retn
-		cCycles -= 8;
+		cCycles += 8;
 		m_iff1 = m_iff2;
-		cCycles -= Ret0(1);
+		cCycles += Ret0(1);
 		break;
 
 	case 0x66: // im_0
-		cCycles -= 8;
+		cCycles += 8;
 		m_nIM = 0;
 		break;
 
 	case 0x67: // rrd
-		cCycles -= 18;
+		cCycles += 18;
 		{
 			uint8_t i = MemReadByte(m_regHL);
 			MemWriteByte(m_regHL, (i >> 4) | (m_regA << 4));
@@ -4713,27 +4766,27 @@ void cpu_z80::HandleED() {
 		}
 
 	case 0x68: // in_l_c
-		cCycles -= 12;
+		cCycles += 12;
 		m_regL = In(m_regC);
 		break;
 
 	case 0x69: // out_c_l
-		cCycles -= 12;
+		cCycles += 12;
 		Out(m_regC, m_regL);
 		break;
 
 	case 0x6A: // adc_hl_hl
-		cCycles -= 15;
+		cCycles += 15;
 		m_regHL = Adc_2(m_regHL, m_regHL);
 		break;
 
 	case 0x6B: // ld_hl_xword
-		cCycles -= 20;
+		cCycles += 20;
 		m_regHL = MemReadWord(ImmedWord());
 		break;
 
 	case 0x6C: // neg
-		cCycles -= 8;
+		cCycles += 8;
 		{
 			uint8_t b = m_regA;
 			m_regA = 0;
@@ -4742,17 +4795,17 @@ void cpu_z80::HandleED() {
 		}
 
 	case 0x6D: // reti
-		cCycles -= 8;
-		cCycles -= Ret0(1);
+		cCycles += 8;
+		cCycles += Ret0(1);
 		break;
 
 	case 0x6E: // im_0
-		cCycles -= 8;
+		cCycles += 8;
 		m_nIM = 0;
 		break;
 
 	case 0x6F: // rld
-		cCycles -= 18;
+		cCycles += 18;
 		{
 			uint8_t i;
 			i = MemReadByte(m_regHL);
@@ -4763,27 +4816,27 @@ void cpu_z80::HandleED() {
 		}
 
 	case 0x70: // in_0_c
-		cCycles -= 12;
+		cCycles += 12;
 		In(m_regC);
 		break;
 
 	case 0x71: // out_c_0
-		cCycles -= 12;
+		cCycles += 12;
 		Out(m_regC, 0);
 		break;
 
 	case 0x72: // sbc_hl_sp
-		cCycles -= 15;
+		cCycles += 15;
 		m_regHL = Sbc_2(m_regHL, GetSP());
 		break;
 
 	case 0x73: // ld_xword_sp
-		cCycles -= 20;
+		cCycles += 20;
 		MemWriteWord(ImmedWord(), GetSP());
 		break;
 
 	case 0x74: // neg
-		cCycles -= 8;
+		cCycles += 8;
 		{
 			uint8_t b = m_regA;
 			m_regA = 0;
@@ -4792,42 +4845,42 @@ void cpu_z80::HandleED() {
 		}
 
 	case 0x75: // retn
-		cCycles -= 8;
+		cCycles += 8;
 		m_iff1 = m_iff2;
-		cCycles -= Ret0(1);
+		cCycles += Ret0(1);
 		break;
 
 	case 0x76: // im_1
-		cCycles -= 8;
+		cCycles += 8;
 		m_nIM = 1;
 		break;
 
 	case 0x77: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x78: // in_a_c
-		cCycles -= 12;
+		cCycles += 12;
 		m_regA = In(m_regC);
 		break;
 
 	case 0x79: // out_c_a
-		cCycles -= 12;
+		cCycles += 12;
 		Out(m_regC, m_regA);
 		break;
 
 	case 0x7A: // adc_hl_sp
-		cCycles -= 15;
+		cCycles += 15;
 		m_regHL = Adc_2(m_regHL, GetSP());
 		break;
 
 	case 0x7B: // ld_sp_xword
-		cCycles -= 20;
+		cCycles += 20;
 		SetSP(MemReadWord(ImmedWord()));
 		break;
 
 	case 0x7C: // neg
-		cCycles -= 8;
+		cCycles += 8;
 		{
 			uint8_t b = m_regA;
 			m_regA = 0;
@@ -4836,149 +4889,149 @@ void cpu_z80::HandleED() {
 		}
 
 	case 0x7D: // reti
-		cCycles -= 8;
-		cCycles -= Ret0(1);
+		cCycles += 8;
+		cCycles += Ret0(1);
 		break;
 
 	case 0x7E: // im_2
-		cCycles -= 8;
+		cCycles += 8;
 		m_nIM = 2;
 		break;
 
 	case 0x7F: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x80: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x81: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x82: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x83: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x84: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x85: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x86: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x87: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x88: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x89: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x8A: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x8B: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x8C: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x8D: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x8E: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x8F: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x90: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x91: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x92: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x93: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x94: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x95: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x96: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x97: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x98: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x99: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x9A: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x9B: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x9C: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x9D: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x9E: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0x9F: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xA0: // ldi
-		cCycles -= 16;
+		cCycles += 16;
 		{
 			MemWriteByte(m_regDE++, MemReadByte(m_regHL++));
 			m_regBC--;
@@ -4987,7 +5040,7 @@ void cpu_z80::HandleED() {
 		}
 
 	case 0xA1: // cpi
-		cCycles -= 16;
+		cCycles += 16;
 		{
 			uint8_t i, j;
 			i = MemReadByte(m_regHL);
@@ -5000,7 +5053,7 @@ void cpu_z80::HandleED() {
 		}
 
 	case 0xA2: // ini  //Review
-		cCycles -= 16;
+		cCycles += 16;
 		{
 			MemWriteByte(m_regHL, In(m_regC));
 			++m_regHL;
@@ -5010,7 +5063,7 @@ void cpu_z80::HandleED() {
 		}
 
 	case 0xA3: // outi
-		cCycles -= 16;
+		cCycles += 16;
 		{
 			Out(m_regC, MemReadByte(m_regHL));
 			++m_regHL;
@@ -5020,23 +5073,23 @@ void cpu_z80::HandleED() {
 		}
 
 	case 0xA4: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xA5: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xA6: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xA7: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xA8: // ldd
-		cCycles -= 16;
+		cCycles += 16;
 		{
 			MemWriteByte(m_regDE, MemReadByte(m_regHL));
 			--m_regDE;
@@ -5047,7 +5100,7 @@ void cpu_z80::HandleED() {
 		}
 
 	case 0xA9: // cpd
-		cCycles -= 16;
+		cCycles += 16;
 		{
 			uint8_t i, j;
 			i = MemReadByte(m_regHL);
@@ -5060,7 +5113,7 @@ void cpu_z80::HandleED() {
 		}
 
 	case 0xAA: // ind //Review
-		cCycles -= 16;
+		cCycles += 16;
 		{
 			MemWriteByte(m_regHL, In(m_regC));
 			--m_regHL;
@@ -5077,7 +5130,7 @@ void cpu_z80::HandleED() {
 		}
 
 	case 0xAB: // outd
-		cCycles -= 16;
+		cCycles += 16;
 		{
 			Out(m_regC, MemReadByte(m_regHL));
 			--m_regHL;
@@ -5087,25 +5140,25 @@ void cpu_z80::HandleED() {
 		}
 
 	case 0xAC: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xAD: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xAE: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xAF: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xB0: // ldir
 	{
 		MemWriteByte(m_regDE, MemReadByte(m_regHL));
-		cCycles -= 0x16;
+		cCycles += 0x16;
 
 		++m_regDE;
 		++m_regHL;
@@ -5116,7 +5169,7 @@ void cpu_z80::HandleED() {
 		if (m_regBC)
 		{
 			AdjustPC(-2);
-			cCycles -= 5;
+			cCycles += 5;
 			m_regF |= V_FLAG;
 		}
 		break;
@@ -5130,14 +5183,14 @@ void cpu_z80::HandleED() {
 		j = m_regA - i;
 		++m_regHL;
 		--m_regBC;
-		cCycles -= 16;
+		cCycles += 16;
 
 		m_regF = (m_regF & C_FLAG) | ZSTable[j] |
 			((m_regA ^ i ^ j) & H_FLAG) | (m_regBC ? V_FLAG : 0) | N_FLAG;
 		if (m_regBC && j)
 		{
 			AdjustPC(-2);
-			cCycles -= 5;
+			cCycles += 5;
 		}
 		break;
 	}
@@ -5147,13 +5200,13 @@ void cpu_z80::HandleED() {
 		MemWriteByte(m_regHL, In(m_regC));
 		++m_regHL;
 		--m_regB;
-		cCycles -= 16;
+		cCycles += 16;
 
 		m_regF = (m_regB) ? N_FLAG : (N_FLAG | Z_FLAG);
 		if (m_regB)
 		{
 			AdjustPC(-2);
-			cCycles -= 5;
+			cCycles += 5;
 		}
 		break;
 
@@ -5165,31 +5218,31 @@ void cpu_z80::HandleED() {
 		Out(m_regC, MemReadByte(m_regHL));
 		++m_regHL;
 		--m_regB;
-		cCycles -= 16;
+		cCycles += 16;
 
 		m_regF = (m_regB) ? N_FLAG : (Z_FLAG | N_FLAG);
 		if (m_regB)
 		{
 			AdjustPC(-2);
-			cCycles -= 5;
+			cCycles += 5;
 		}
 	}
 	break;
 
 	case 0xB4: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xB5: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xB6: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xB7: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xB8: // lddr
@@ -5198,19 +5251,19 @@ void cpu_z80::HandleED() {
 		--m_regDE;
 		--m_regHL;
 		--m_regBC;
-		cCycles -= 16;
+		cCycles += 16;
 
 		m_regF = (m_regF & 0xE9) | (m_regBC ? V_FLAG : 0);
 		if (m_regBC)
 		{
 			AdjustPC(-2);
-			cCycles -= 5;
+			cCycles += 5;
 		}
 		break;
 	}
 
 	case 0xB9: // cpdr
-		cCycles -= 0;
+		cCycles += 0;
 		{
 			uint8_t i, j;
 
@@ -5218,322 +5271,322 @@ void cpu_z80::HandleED() {
 			j = m_regA - i;
 			--m_regHL;
 			--m_regBC;
-			cCycles -= 16;
+			cCycles += 16;
 
 			m_regF = (m_regF & C_FLAG) | ZSTable[j] |
 				((m_regA ^ i ^ j) & H_FLAG) | (m_regBC ? V_FLAG : 0) | N_FLAG;
 			if (m_regBC && j)
 			{
 				AdjustPC(-2);
-				cCycles -= 5;
+				cCycles += 5;
 			}
 			break;
 		}
 
 	case 0xBA: // indr
-		cCycles -= 0;
+		cCycles += 0;
 		{
 			MemWriteByte(m_regHL, In(m_regC));
 			--m_regHL;
 			--m_regB;
-			cCycles -= 16;
+			cCycles += 16;
 
 			m_regF = (m_regB) ? N_FLAG : (N_FLAG | Z_FLAG);
 			if (m_regB)
 			{
 				AdjustPC(-2);
-				cCycles -= 5;
+				cCycles += 5;
 			}
 			break;
 		}
 
 	case 0xBB: // otdr
-		cCycles -= 0;
+		cCycles += 0;
 		{
 			Out(m_regC, MemReadByte(m_regHL));
 			--m_regHL;
 			--m_regB;
-			cCycles -= 16;
+			cCycles += 16;
 
 			m_regF = (m_regB) ? N_FLAG : (Z_FLAG | N_FLAG);
 			if (m_regB)
 			{
 				AdjustPC(-2);
-				cCycles -= 5;
+				cCycles += 5;
 			}
 			break;
 		}
 
 	case 0xBC: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xBD: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xBE: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xBF: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xC0: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xC1: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xC2: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xC3: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xC4: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xC5: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xC6: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xC7: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xC8: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xC9: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xCA: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xCB: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xCC: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xCD: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xCE: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xCF: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xD0: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xD1: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xD2: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xD3: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xD4: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xD5: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xD6: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xD7: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xD8: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xD9: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xDA: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xDB: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xDC: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xDD: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xDE: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xDF: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xE0: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xE1: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xE2: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xE3: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xE4: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xE5: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xE6: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xE7: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xE8: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xE9: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xEA: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xEB: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xEC: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xED: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xEE: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xEF: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xF0: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xF1: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xF2: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xF3: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xF4: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xF5: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xF6: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xF7: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xF8: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xF9: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xFA: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xFB: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xFC: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xFD: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xFE: // patch
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	case 0xFF: // nop
-		cCycles -= 0;
+		cCycles += 0;
 		break;
 
 	default:
@@ -8036,3 +8089,4 @@ endif,
 tmp = > flags, cf : = cf OR[a > 0x99],
 hf : = a.4 XOR tmp.4, a : = tmp
 */
+//wrlog("%04X %04X %04X %04X %04X %04X %04X %04X %04X \n",GetPC(), m_regAF, m_regBC, m_regDE, m_regHL,m_regIX, m_regIY, GetSP(), cCycles);

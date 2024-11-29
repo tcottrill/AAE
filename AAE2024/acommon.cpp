@@ -128,63 +128,6 @@ void do_AYsound(void)
 	}
 }
 
-//TODO: Relocate sound section above
-
-void center_window(void)
-{
-	//   long lWS;
-   //    long lWSEX;
-
-	HWND wnd = win_get_window();
-	HWND desktop = GetDesktopWindow();
-	RECT wndRect, desktopRect;
-	int  w, h, dw, dh;
-
-	GetWindowRect(wnd, &wndRect);
-	GetWindowRect(desktop, &desktopRect);
-	w = wndRect.right - wndRect.left;
-	h = wndRect.bottom - wndRect.top;
-	dw = desktopRect.right - desktopRect.left;
-	dh = desktopRect.bottom - desktopRect.top;
-
-	MoveWindow(wnd, (dw - w) / 2, (dh - h) / 2, w, h, TRUE);
-
-	//lWS = GetWindowLong(wnd,GWL_STYLE); // for current WS style.
-	//lWSEX = GetWindowLong(WS_EX); //for current WS_EX style.
-
-	// Bitwise /*OR*/AND the flags you don't want (WS_OVERLAPPEDWINDOW etc.)
-	//lWS /*=|*/ &= ~WS_OVERLAPPEDWINDOW;
-	//lWSEX /*=|*/ &= ~WS_EX_WHATEVERELSE
-
-	// Add the flags you want.
-	//lWS /*=&*/ |= WS_POPUP;
-	//lWSEX /*=&*/ |= WS_EX_WHATEVERELSE
-
-	// Set the new styles:
-	//SetWindowLong(wnd,GWL_STYLE,lWS);
-	//SetWindowLong(wnd,GWL_STYLE,lWSEX);
-	//THIS IS JUST FOR TESTING PURPOSES!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-	//Update window
-	//SetWindowPos(wnd,HWND_TOP,0,SCREEN_H,SCREEN_W,SCREEN_H,SWP_SHOWWINDOW );
-}
-
-void Set_ForeGround(void)
-{
-	HWND hCurrWnd;
-	int iMyTID;
-	int iCurrTID;
-
-	hCurrWnd = win_get_window();
-	iMyTID = GetCurrentThreadId();
-	iCurrTID = GetWindowThreadProcessId(hCurrWnd, 0);
-
-	AttachThreadInput(iMyTID, iCurrTID, TRUE);
-	SetForegroundWindow(hCurrWnd);
-	AttachThreadInput(iMyTID, iCurrTID, FALSE);
-	remove_mouse(); //Reset mouse to ensure cursor is removed and to regain exclusive control
-	//install_mouse();
-}
-
 
 void sanity_check_config(void)
 {
@@ -213,13 +156,10 @@ void sanity_check_config(void)
 
 void video_loop(void)
 {
-	HWND hwnd;
-	hwnd = GetForegroundWindow();
-	// glPrint(200, 230, 255,255,255,255,1,0,0,"Hwind %x",hwnd);
-
 	//show_info();
 
 	//If were displaying the menu, go ahead and show it.
+	/*
 	if (get_menu_status())
 	{
 		fontmode_start();
@@ -227,7 +167,7 @@ void video_loop(void)
 		do_the_menu();
 		fontmode_end();
 	}
-
+	*/
 	show_error(); //If there is currently an error condition, show it.
 
 	if (show_fps)

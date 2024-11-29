@@ -156,6 +156,7 @@ void setup_config(void)
 	config.exrompath = my_get_config_string("main", "mame_rom_path", "NONE");
 	wrlog("Configured Mame Rom Path is %s", config.exrompath);
 	//////VIDEO///////////
+	config.aspect = my_get_config_string("main", "aspect_ratio", "4:3");
 	config.prescale = my_get_config_int("main", "prescale", 1);
 	config.anisfilter = my_get_config_int("main", "anisfilter", 0);
 	config.translucent = my_get_config_int("main", "translucent", 0);
@@ -184,7 +185,7 @@ void setup_config(void)
 	config.contrast = my_get_config_int("main", "contrast", 127);
 	config.explode_point_size = my_get_config_int("main", "explode_point_size", 12);
 	config.fire_point_size = my_get_config_int("main", "fire_point_size", 12);
-	config.vecglow = my_get_config_int("main", "vectorglow", 1);
+	config.vecglow = my_get_config_int("main", "vectorglow", 5);
 	config.vectrail = my_get_config_int("main", "vectortrail", 1);
 	config.gain = my_get_config_int("main", "gain", 1);
 	//config.accumlevel = my_get_config_int("main","accumlevel", 0);

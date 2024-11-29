@@ -138,7 +138,7 @@ void AVG_RUN(void)
 	while (!done)
 	{
 		if (TYPE_QU) firstwd = memrdwdf(pc);
-		if (TYPE_SW) firstwd = memrdwd_flip(pc);
+		else if (TYPE_SW) firstwd = memrdwd_flip(pc);
 		else firstwd = memrdwd(pc);
 
 		opcode = firstwd >> 13;
@@ -147,7 +147,7 @@ void AVG_RUN(void)
 		if (opcode == VCTR) //Get the second word if it's a draw command
 		{
 			if (TYPE_QU) secondwd = memrdwdf(pc);
-			if (TYPE_SW) secondwd = memrdwd_flip(pc);
+			else if (TYPE_SW) secondwd = memrdwd_flip(pc);
 			else secondwd = memrdwd(pc);
 			pc++; pc++;
 		}
@@ -323,7 +323,7 @@ void AVG_RUN(void)
 
 int avg_go()
 {
-	//wrlog("AVG GO CALLED");
+	wrlog("AVG GO CALLED");
 
 	if (AVG_BUSY) { return 1; }
 	else {

@@ -395,7 +395,7 @@ int Pokey_sound_init(uint32 freq17, uint16 playback_freq, uint8 num_pokeys, uint
 	/* set the number of pokey chips currently emulated */
 	Num_pokeys = num_pokeys;
 	clip = use_clip; /* LBO 101297 */
-	wrlog("Completed Pokey Sound Init");
+	wrlog("Completed Pokey Sound Init, Num Pokeys: %d", num_pokeys);
 	return 0;
 }
 

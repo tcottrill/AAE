@@ -77,13 +77,15 @@ uint8_t cpu_6502::get6502memory(uint16_t addr)
 		{
 			if (MemRead->memoryCall)
 			{
-				//temp = MemRead->memoryCall(addr - MemRead->lowAddr, MemRead);
-				temp = MemRead->memoryCall(addr, MemRead);
+				//Note the MAME style addressing here!
+				temp = MemRead->memoryCall(addr - MemRead->lowAddr, MemRead);
+				//temp = MemRead->memoryCall(addr, MemRead);
 			}
 			else
 			{
-				//temp = *((uint8_t*)MemRead->pUserArea + (addr - MemRead->lowAddr)); //Note the addressing here!
-				temp = *((uint8_t*)MemRead->pUserArea + (addr )); //Note the addressing here!
+				//Note the MAME style addressing here!
+				temp = *((uint8_t*)MemRead->pUserArea + (addr - MemRead->lowAddr)); 
+				//temp = *((uint8_t*)MemRead->pUserArea + (addr )); //Note the addressing here!
 			}
 			MemRead = nullptr;
 			break;
@@ -114,13 +116,13 @@ void cpu_6502::put6502memory(uint16_t addr, uint8_t byte)
 		{
 			if (MemWrite->memoryCall)
 			{
-				//MemWrite->memoryCall(addr - MemWrite->lowAddr, byte, MemWrite);
-				MemWrite->memoryCall(addr, byte, MemWrite);
+				MemWrite->memoryCall(addr - MemWrite->lowAddr, byte, MemWrite);
+				//MemWrite->memoryCall(addr, byte, MemWrite);
 			}
 			else
 			{
-				//*((uint8_t*)MemWrite->pUserArea + (addr - MemWrite->lowAddr)) = byte; //Note the addressing here!
-				*((uint8_t*)MemWrite->pUserArea + (addr)) = byte; //Note the addressing here!
+				*((uint8_t*)MemWrite->pUserArea + (addr - MemWrite->lowAddr)) = byte; //Note the addressing here!
+				//*((uint8_t*)MemWrite->pUserArea + (addr)) = byte; //Note the addressing here!
 			}
 			MemWrite = nullptr;
 			break;
@@ -1215,7 +1217,7 @@ void cpu_6502::irq6502()
 int cpu_6502::exec6502(int timerTicks)
 {
 	clockticks6502 = 0;
-
+	
 	while (clockticks6502 < timerTicks)
 	{
 		P |= F_T;

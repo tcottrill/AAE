@@ -237,8 +237,14 @@ void run_bzone()
 {
 	static int k = 0;
 
-	if (!(readinputport(0) & 0x10)) { cpu_disable_interrupts(0, 0); }
-	else { cpu_disable_interrupts(0, 1); }
+	if (!(readinputport(0) & 0x10)) 
+	{
+		cpu_disable_interrupts(CPU0, 0); 
+	}
+	else 
+	{ 
+		cpu_disable_interrupts(CPU0, 1); 
+	}
 
 	if (!paused && soundEnable) { pokey_sh_update(); }
 }

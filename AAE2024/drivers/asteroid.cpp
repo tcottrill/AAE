@@ -78,6 +78,9 @@ void set_ast_colors()
 }
 
 ////////////   SOUND ROUTINE FOR FIRST SET OF SOUNDS  /////////////////////////
+
+// Note: Please come back and fix this later 
+
 WRITE_HANDLER(Sounds2)
 {
 	static int mfire = 0;
@@ -91,9 +94,9 @@ WRITE_HANDLER(Sounds2)
 	int mfire2;
 	int vsfire2;
 
-	GI[CPU0][address] = data;
+	GI[CPU0][address+ 0x3c00] = data;
 
-	switch (address)
+	switch (address + 0x3c00)
 	{
 	case 0x3c00:
 		if (data & 0x80 && saucertoggle == 0)
@@ -397,7 +400,8 @@ void dvg_generate_vector_list(void)
 			pc++;
 			x = twos_comp_val(secondwd, 12);
 			y = twos_comp_val(firstwd, 12);
-			//Invert the screen drawing if cocktail and Player 2 selected
+			
+			//Invert the screen drawing if cocktail and Player 2 selected and we are not in test mode
 			if (!testsw) {
 				if (SCRFLIP && config.cocktail)
 				{
@@ -484,11 +488,12 @@ READ_HANDLER(AstPIA1Read)
 
 	res = readinputportbytag("IN0");
 
-	bitmask = (1 << (address & 0x0f));
-
+	bitmask = (1 << (address));
+	
 	if (get_video_ticks(0) & 0x100)
 		res |= 0x02;
-	if (address == 0x2002) {
+	if (address == 0x02) 
+	{
 		me = (((4500 * total_length) / 1000000) * 1512);
 		if (get_video_ticks(0) > me && vec_done == 1) { vec_done = 0; res |= 0x04; }
 	}
