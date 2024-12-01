@@ -44,6 +44,25 @@ Omega Race is fixed, if not emulated correctly, at least it plays well.
 Next is to fix the menu system, fix some pokey sound issues and start chipping away at the more insane spagetti code.
 The GUI is still an issue, with at least two memory leaks.
 
+10/27/24 to 11/28/24
+
+Major Fix: found and corrected a serious memory leak in the graphics core, this has been plaguing the emulator for so many years, fixes many small and (large) crashes and issues. error_tex[2], not error_tex[1]! 
+
+Redid the PPC code on the Z80 core, invalidated the PPC on Interrupt, this fixed all the decryption on the SegaG80 games. So that's what "Spurious Interrupts" means in the M.A.M.E(tm) driver. :(
+Redid most of the SegaG80 driver, all games should be working correctly. 
+More Z80 changes, they are in their own changelog.
+Changed the 6502 cpu core back to mame style address handling, had to touch most of the drivers to fix issues. Fixed a pokey addressing issue with Black Widow, did a lot of cleanup on Major Havoc. 
+Started cleanup of the graphics code, what a mess. Lots more to do. 
+General cleanup everywhere, touched nearly every driver. 
+Added back Star Wars, had to use very old M.A.M.E.(TM) driver code to get Luke to speak every time, I have this running in AAE2014 with modern drivers in other, cycle accurate timing code, and it still doesn't work there 100% either. I'll come back to it, at least it's working now, if not very accurate. Added different CPU handling to accomidate this. 
+Now that the games are working mostly correctly, it's back to cleanup, consolidation, improving accuracy, and getting the menu system back working for sound and video. 
+
+11/28/24 to 12/01/24
+
+Cleaned up and added a new AY8910 core, added it to Omega Race and added nvram handling to all drivers that support it. Omega Race should be at least fairly accurate now.  
+Reorganized all the OpenGl code in an attempt to make some sense of it. Added the Mushai 68000 core to maybe use with Quantum.
+
+
 
 
 
