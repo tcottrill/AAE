@@ -218,7 +218,7 @@ int init_spacduel()
 
 	cache_clear();
 	pokey_sh_start(&pokey_interface);
-	LoadEarom();
+	
 	avg_init();
 	wrlog("SPACDUEL INIT COMPLETED");
 	return 0;
@@ -226,6 +226,5 @@ int init_spacduel()
 void end_spacduel()
 {
 	pokey_sh_stop();
-	SaveEarom();
 }
 //////////////////  END OF MAIN PROGRAM /////////////////////////////////////////////

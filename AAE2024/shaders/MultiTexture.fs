@@ -27,7 +27,7 @@ void main (void)
    
    
    if ( brighten > 0 && useart > 0 && usefb ==0) bval = 1.6;
-   if (usefb > 0) bval=1.0;
+   else if (usefb > 0) bval=1.0;
    vec4 result = texval2 * bval;
    
    if (useart > 0)  result += (texval1 * .60);

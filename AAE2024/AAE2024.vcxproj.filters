@@ -46,6 +46,9 @@
     <Filter Include="Source Files\objfiles">
       <UniqueIdentifier>{fd49985c-ad17-4d89-9a8a-7e5a52ec5296}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\cpu_code\68000Mushai">
+      <UniqueIdentifier>{1e6e0e65-3baa-4d8f-b0e2-a610cfcb1b53}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="acommon.cpp">
@@ -85,9 +88,6 @@
       <Filter>Source Files\sndhrdwr</Filter>
     </ClCompile>
     <ClCompile Include="sndhrdw\tms5220.cpp">
-      <Filter>Source Files\sndhrdwr</Filter>
-    </ClCompile>
-    <ClCompile Include="sndhrdw\AY8910.Cpp">
       <Filter>Source Files\sndhrdwr</Filter>
     </ClCompile>
     <ClCompile Include="sndhrdw\pokey.cpp">
@@ -228,6 +228,33 @@
     <ClCompile Include="machine\SegaG80crypt.cpp">
       <Filter>Source Files\machine</Filter>
     </ClCompile>
+    <ClCompile Include="sys_video\gl_fbo.cpp">
+      <Filter>Source Files\sys_video</Filter>
+    </ClCompile>
+    <ClCompile Include="sys_video\gl_texturing.cpp">
+      <Filter>Source Files\sys_video</Filter>
+    </ClCompile>
+    <ClCompile Include="sys_video\gl_shader.cpp">
+      <Filter>Source Files\sys_video</Filter>
+    </ClCompile>
+    <ClCompile Include="cpu_code\m68kops.c">
+      <Filter>Source Files\cpu_code\68000Mushai</Filter>
+    </ClCompile>
+    <ClCompile Include="cpu_code\m68kcpu.c">
+      <Filter>Source Files\cpu_code\68000Mushai</Filter>
+    </ClCompile>
+    <ClCompile Include="cpu_code\softfloat\softfloat.c">
+      <Filter>Source Files\cpu_code\68000Mushai</Filter>
+    </ClCompile>
+    <ClCompile Include="cpu_code\m68kfpu.c">
+      <Filter>Source Files\cpu_code\68000Mushai</Filter>
+    </ClCompile>
+    <ClCompile Include="mem68k.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="sndhrdw\ay8910.cpp">
+      <Filter>Source Files\sndhrdwr</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="aaemain.h">
@@ -295,9 +322,6 @@
     </ClInclude>
     <ClInclude Include="targetver.h">
       <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="sndhrdw\AY8910.H">
-      <Filter>Source Files\sndhrdwr</Filter>
     </ClInclude>
     <ClInclude Include="sndhrdw\pokey.h">
       <Filter>Source Files\sndhrdwr</Filter>
@@ -447,6 +471,45 @@
       <Filter>Source Files\machine</Filter>
     </ClInclude>
     <ClInclude Include="sndhrdw\segag80snd.h">
+      <Filter>Source Files\sndhrdwr</Filter>
+    </ClInclude>
+    <ClInclude Include="sys_video\gl_fbo.h">
+      <Filter>Source Files\sys_video</Filter>
+    </ClInclude>
+    <ClInclude Include="sys_video\gl_texturing.h">
+      <Filter>Source Files\sys_video</Filter>
+    </ClInclude>
+    <ClInclude Include="sys_video\gl_shader.h">
+      <Filter>Source Files\sys_video</Filter>
+    </ClInclude>
+    <ClInclude Include="cpu_code\m68k.h">
+      <Filter>Source Files\cpu_code\68000Mushai</Filter>
+    </ClInclude>
+    <ClInclude Include="cpu_code\m68kconf.h">
+      <Filter>Source Files\cpu_code\68000Mushai</Filter>
+    </ClInclude>
+    <ClInclude Include="cpu_code\m68kmmu.h">
+      <Filter>Source Files\cpu_code\68000Mushai</Filter>
+    </ClInclude>
+    <ClInclude Include="cpu_code\m68kops.h">
+      <Filter>Source Files\cpu_code\68000Mushai</Filter>
+    </ClInclude>
+    <ClInclude Include="cpu_code\m68kcpu.h">
+      <Filter>Source Files\cpu_code\68000Mushai</Filter>
+    </ClInclude>
+    <ClInclude Include="cpu_code\softfloat\mamesf.h">
+      <Filter>Source Files\cpu_code\68000Mushai</Filter>
+    </ClInclude>
+    <ClInclude Include="cpu_code\softfloat\milieu.h">
+      <Filter>Source Files\cpu_code\68000Mushai</Filter>
+    </ClInclude>
+    <ClInclude Include="cpu_code\softfloat\softfloat.h">
+      <Filter>Source Files\cpu_code\68000Mushai</Filter>
+    </ClInclude>
+    <ClInclude Include="mem68k.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="sndhrdw\ay8910.h">
       <Filter>Source Files\sndhrdwr</Filter>
     </ClInclude>
   </ItemGroup>

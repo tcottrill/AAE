@@ -45,6 +45,7 @@ public:
 		M6502_S = 0x10,
 	};
 
+
 	// Pointer to the game memory map (32 bit)
 	uint8_t *MEM = nullptr;
 	//Pointer to the handler structures
@@ -129,12 +130,16 @@ private:
 
 	////////////////////////////////////////////////////////////////////////////////////////////////////
     #define SET_NZ(n)	if ((n) == 0) P = (P & ~F_N) | F_Z; else P = (P & ~(F_N | F_Z)) | ((n) & F_N)
-
-    #define SET_Z(n)	if ((n) == 0) P |= F_Z; else P &= ~F_Z
+	#define SET_Z(n)	if ((n) == 0) P |= F_Z; else P &= ~F_Z
 
     #define BASE_STACK     0x100
     #define MAX_HANDLER 50
 	
+    #define SPUSH(n)           MEM[0x100+S--] = n
+    #define SPULL(n)       n = MEM[++S+0x100]
+    #define GETOPARG(n)    n = MEM[PC++]
+    #define READWORD(n)    n = MEM[PC] + (MEM[PC + 1] << 8)
+    #define READWORDB(n,v) n = MEM[v] + (MEM[v + 1] << 8)
 
 	uint16_t addrmask;   //Address Mask for < 0xffff top
 	// internal registers 

@@ -327,7 +327,7 @@ int init_bzone()
 	{
 		init6502(RedBaronRead, RedBaronWrite, 0);
 		pokey_sh_start(&rb_pokey_interface);
-		LoadEarom();
+		//LoadEarom();
 	}
 	else
 	{
@@ -343,7 +343,7 @@ void end_bzone()
 {
 	pokey_sh_stop();
 
-	if (gamenum == REDBARON) SaveEarom();
+//	if (gamenum == REDBARON) SaveEarom();
 }
 
 //////////////////  END OF MAIN PROGRAM /////////////////////////////////////////////

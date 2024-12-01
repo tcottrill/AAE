@@ -264,6 +264,26 @@ int get_vidticks(int reset)
 	return v;
 }
 
+
+void playstreamedsample_mhavoc(int channel, unsigned char* data, int len, int vol)
+{
+	unsigned char* p;
+
+	p = (unsigned char*)get_audio_stream_buffer(stream1);
+
+	if (p)
+	{
+		for (int i = 0; i < len; i++)
+		{
+			p[i] = data[i];
+			p[i] ^= 0x80;
+		}
+
+		free_audio_stream_buffer(stream1);
+	}
+}
+
+
 int MHscale_by_cycles(int val, int clock)
 {
 	int k;
@@ -293,15 +313,15 @@ static void mh_pokey_update()
 static void pokey_do_update(void)
 {
 	if (sample_pos < BUFFER_SIZE) { Pokey_process(soundbuffer + sample_pos, BUFFER_SIZE - sample_pos); }
-	aae_play_streamed_sample(0, soundbuffer, BUFFER_SIZE, 44100, 127);
+	playstreamedsample_mhavoc(0, soundbuffer, BUFFER_SIZE, 200);
 	sample_pos = 0;
 }
 
 void end_mhavoc()
 {
 	wrlog("End Major Havoc Called");
-	free_audio_stream_buffer(stream);
-	stop_audio_stream(stream);
+	free_audio_stream_buffer(stream1);
+	stop_audio_stream(stream1);
 	free(soundbuffer);
 	if (gamenum == MHAVOCRV) { tms5220_sh_stop(); }
 	if (has_gamma_cpu) { save_hi_aae(0x6000, 0x200, 1); }
@@ -1255,7 +1275,7 @@ int init_mhavoc(void)
 
 	soundbuffer = (unsigned char*)malloc(BUFFER_SIZE);
 	memset(soundbuffer, 0, BUFFER_SIZE);
-	stream = play_audio_stream(BUFFER_SIZE, 8, FALSE, 44100, 125, 128); //config.pokeyvol
+	stream1 = play_audio_stream(BUFFER_SIZE, 8, FALSE, 44100, 125, 128); //config.pokeyvol
 	//mhavoc_sh_start();
 	if (gamenum == MHAVOCRV) { tms5220_sh_start(&tms5220_interface); }
 	cache_clear();

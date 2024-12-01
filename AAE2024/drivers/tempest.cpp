@@ -527,7 +527,7 @@ int init_tempest(void)
 		gamenum == VBREAK ||
 		gamenum == TEMPEST)
 	{
-		LoadEarom();
+		
 		//LEVEL SELECTION HACK   (Does NOT Work on Protos)
 		if (config.hack) { GI[CPU0][0x90cd] = 0xea; GI[CPU0][0x90ce] = 0xea; }
 	}
@@ -546,7 +546,7 @@ void end_tempest()
 		gamenum == VBREAK ||
 		gamenum == TEMPEST)
 	{
-		SaveEarom();
+		
 	}
 
 	pokey_sh_stop();

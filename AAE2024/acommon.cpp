@@ -24,6 +24,7 @@
 #include "menu.h"
 #include "aae_mame_driver.h"
 #include "vector_fonts.h"
+#include "gl_texturing.h"
 
 extern int errorsound;
 extern int show_fps;
@@ -88,44 +89,6 @@ UINT8 randRead(unsigned int address, struct MemoryReadByte* psMemRead)
 void NoWrite(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite)
 {
 	;
-}
-
-//Please Move this
-void playstreamedsample(int channel, signed char* data, int len, int vol)
-{
-	int i;
-	unsigned char* p = (unsigned char*)get_audio_stream_buffer(stream);
-
-	if (!p) return;
-	if (channel) return;
-	//Streams[channel].bUpdated=TRUE;
-	//Streams[channel].nVol=vol;
-
-	for (i = 0; i < (len); i++) {
-		p[i] = data[i];
-
-		((short*)p)[i] ^= 0x8000;
-	}
-
-	free_audio_stream_buffer(stream);
-}
-
-//PLease move this
-void do_AYsound(void)
-{
-	int i;
-
-	signed char* p = (signed char*)get_audio_stream_buffer(stream);
-
-	if (p)
-	{  //AYUpdate();
-		for (i = 0; i < (1500); i++) {
-			p[i] = aybuffer[i];
-
-			((short*)p)[i] ^= 0x8000;
-		}
-		free_audio_stream_buffer(stream);
-	}
 }
 
 

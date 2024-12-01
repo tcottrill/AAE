@@ -146,7 +146,7 @@ int load_samples(const char **p, int val)
 	int i = 1;
 	int size = 0;
 
-	if (strcmp(p[0], "nosamples.zip") == 0) { return 1; } //No samples, bye!
+	//if (strcmp(p[0], "nosamples.zip") == 0) { return 1; } //No samples, bye!
 
 	strcpy(temppath, "samples\\");//if it's not there, try sample dir
 	strcat(temppath, p[0]);

@@ -1,4 +1,12 @@
-//==========================================================================
+
+#include <stdio.h>
+#include <stdlib.h>
+#include "aae_mame_driver.h"
+#include "log.h"
+#include "config.h"
+#include "mame_fileio.h"
+
+//= ========================================================================== =
 // AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME 
 // code, 0.29 through .90 mixed with code of my own. This emulator was 
 // created solely for my amusement and learning and is provided only 
@@ -8,27 +16,20 @@
 // of the dedicated people who spend countless hours creating it. All
 // MAME code should be annotated as belonging to the MAME TEAM.
 // 
-// THE CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.  
-//==========================================================================
+// SOME CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.  
+//============================================================================
 
 
-//#include "driver.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include "../log.h"
-#include "../config.h"
-//#include "ini.h"
-#include "mame_fileio.h"
 /* file handling routines from mame (TM) */
 
 /* gamename holds the driver name, filename is only used for ROMs and samples. */
 /* if 'write' is not 0, the file is opened for write. Otherwise it is opened */
 /* for read. */
-void* osd_fopen(const char* gamename, const char* filename, int filetype, int write)
+void *osd_fopen(const char *gamename, const char *filename, int filetype, int write)
 {
 	char name[100];
-	void* f;
-	const char* dirname;
+	void *f;
+	const char *dirname;
 
 	//set_config_file ("mame.cfg");
 
@@ -37,42 +38,44 @@ void* osd_fopen(const char* gamename, const char* filename, int filetype, int wr
 	case OSD_FILETYPE_ROM:
 	case OSD_FILETYPE_SAMPLE:
 		sprintf(name, "%s/%s", gamename, filename);
-		wrlog("Trying Opening sample  name,%s/%s", gamename, filename);
+		write_to_log("Trying Opening sample  name,%s/%s", gamename, filename);
 		f = fopen(name, write ? "wb" : "rb");
 		if (f == 0)
 		{
-			//write_to_log("Trying Opening sample zip name,%s/%s", gamename, filename);
+			write_to_log("Trying Opening sample zip name,%s/%s", gamename, filename);
 			/* try with a .zip directory (if ZipMagic is installed) */
-			//sprintf(name, "%s.zip/%s", gamename, filename);
-			//f = fopen(name, write ? "wb" : "rb");
+			sprintf(name, "%s.zip/%s", gamename, filename);
+			f = fopen(name, write ? "wb" : "rb");
 		}
 
 		if (f == 0)
 		{
+
 			/* try again in the appropriate subdirectory */
 			dirname = "";
 			if (filetype == OSD_FILETYPE_ROM)
-				dirname = (const char*)my_get_config_string("directory", "rompath", "roms");
+				dirname = get_config_string("directory", "rompath", "roms");
 			if (filetype == OSD_FILETYPE_SAMPLE)
-				dirname = my_get_config_string("directory", "samplepath", "samples");
+				dirname = get_config_string("directory","samplepath","samples");
 
-			wrlog("Trying Opening sample in dir: %s gamename: %s filename: %s", dirname, gamename, filename);
+			write_to_log("Trying Opening sample in dir: %s gamename: %s filename: %s", dirname, gamename, filename);
 			sprintf(name, "%s/%s/%s", dirname, gamename, filename);
 			f = fopen(name, write ? "wb" : "rb");
 			if (f == 0)
 			{
-				//write_to_log("Trying Opening sample in dir %s name as zip, last try,%s/%s", dirname, gamename, filename);
+				write_to_log("Trying Opening sample in dir %s name as zip, last try,%s/%s", dirname, gamename, filename);
 				/* try with a .zip directory (if ZipMagic is installed) */
-				//sprintf(name, "%s/%s.zip/%s", dirname, gamename, filename);
-				//f = fopen(name, write ? "wb" : "rb");
+				sprintf(name, "%s/%s.zip/%s", dirname, gamename, filename);
+				f = fopen(name, write ? "wb" : "rb");
 			}
+
 		}
 		if (f) wrlog("Yay found and loaded file!");
 		return f;
 		break;
 	case OSD_FILETYPE_HIGHSCORE:
 		/* try again in the appropriate subdirectory */
-		dirname = my_get_config_string("directory", "hi", "HI");
+		dirname = get_config_string("directory","hi","HI");
 
 		sprintf(name, "%s/%s.hi", dirname, gamename);
 		f = fopen(name, write ? "wb" : "rb");
@@ -85,9 +88,25 @@ void* osd_fopen(const char* gamename, const char* filename, int filetype, int wr
 
 		return f;
 		break;
+
+	case OSD_FILETYPE_NVRAM:
+		/* try again in the appropriate subdirectory */
+		dirname = get_config_string("directory", "hi", "HI");
+
+		sprintf(name, "%s/%s.nv", dirname, gamename);
+		f = fopen(name, write ? "wb" : "rb");
+		if (f == 0)
+		{
+			/* try with a .zip directory (if ZipMagic is installed) */
+			sprintf(name, "%s.zip/%s.nv", dirname, gamename);
+			f = fopen(name, write ? "wb" : "rb");
+		}
+
+		return f;
+		break;
 	case OSD_FILETYPE_CONFIG:
 		/* try again in the appropriate subdirectory */
-		dirname = my_get_config_string("directory", "cfg", "CFG");
+		dirname = get_config_string("directory","cfg","CFG");
 
 		sprintf(name, "%s/%s.cfg", dirname, gamename);
 		f = fopen(name, write ? "wb" : "rb");
@@ -110,7 +129,8 @@ void* osd_fopen(const char* gamename, const char* filename, int filetype, int wr
 	}
 }
 
-int osd_fread_scatter(void* file, void* buffer, int length, int increment)
+
+int osd_fread_scatter(void *file, void *buffer, int length, int increment)
 {
 	/*
 	unsigned char *buf = buffer;
@@ -161,21 +181,24 @@ int osd_fread_scatter(void* file, void* buffer, int length, int increment)
 	return 0;
 }
 
-int osd_fread(void* file, void* buffer, int length)
+
+int osd_fread(void *file, void *buffer, int length)
 {
-	return fread(buffer, 1, length, (FILE*)file);
+	return fread(buffer, 1, length, (FILE *)file);
 }
 
-int osd_fread_swap(void* file, void* buffer, int length)
+
+int osd_fread_swap(void *file, void *buffer, int length)
 {
 	int i;
-	unsigned char* buf;
+	unsigned char *buf;
 	unsigned char temp;
 	int res;
 
+
 	res = osd_fread(file, buffer, length);
 
-	buf = (unsigned char*)buffer;
+	buf = (unsigned char *)buffer;
 	for (i = 0; i < length; i += 2)
 	{
 		temp = buf[i];
@@ -186,27 +209,34 @@ int osd_fread_swap(void* file, void* buffer, int length)
 	return res;
 }
 
-int osd_fwrite(void* file, const void* buffer, int length)
+
+int osd_fwrite(void *file, const void *buffer, int length)
 {
-	return fwrite(buffer, 1, length, (FILE*)file);
+	return fwrite(buffer, 1, length, (FILE *)file);
 }
 
-int osd_fseek(void* file, int offset, int whence)
+
+
+int osd_fseek(void *file, int offset, int whence)
 {
-	return fseek((FILE*)file, offset, whence);
+	return fseek((FILE *)file, offset, whence);
 }
 
-void osd_fclose(void* file)
+
+void osd_fclose(void *file)
 {
-	fclose((FILE*)file);
+	fclose((FILE *)file);
 }
 
-unsigned int osd_fcrc(void* file)
+
+unsigned int osd_fcrc(void *file)
 {
+
 	return 0;
 }
 
-int readint(void* f, UINT32* num)
+
+int readint(void *f, UINT32 *num)
 {
 	int i;
 
@@ -214,6 +244,7 @@ int readint(void* f, UINT32* num)
 	for (i = 0; i < sizeof(UINT32); i++)
 	{
 		unsigned char c;
+
 
 		*num <<= 8;
 		if (osd_fread(f, &c, 1) != 1)
@@ -224,13 +255,16 @@ int readint(void* f, UINT32* num)
 	return 0;
 }
 
-void writeint(void* f, UINT32 num)
+
+void writeint(void *f, UINT32 num)
 {
 	int i;
+
 
 	for (i = 0; i < sizeof(UINT32); i++)
 	{
 		unsigned char c;
+
 
 		c = (num >> 8 * (sizeof(UINT32) - 1)) & 0xff;
 		osd_fwrite(f, &c, 1);
@@ -238,14 +272,17 @@ void writeint(void* f, UINT32 num)
 	}
 }
 
-int readword(void* f, UINT16* num)
+
+int readword(void *f, UINT16 *num)
 {
 	int i, res;
+
 
 	res = 0;
 	for (i = 0; i < sizeof(UINT16); i++)
 	{
 		unsigned char c;
+
 
 		res <<= 8;
 		if (osd_fread(f, &c, 1) != 1)
@@ -257,13 +294,16 @@ int readword(void* f, UINT16* num)
 	return 0;
 }
 
-void writeword(void* f, UINT16 num)
+
+void writeword(void *f, UINT16 num)
 {
 	int i;
+
 
 	for (i = 0; i < sizeof(UINT16); i++)
 	{
 		unsigned char c;
+
 
 		c = (num >> 8 * (sizeof(UINT16) - 1)) & 0xff;
 		osd_fwrite(f, &c, 1);

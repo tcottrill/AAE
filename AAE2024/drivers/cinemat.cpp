@@ -5,7 +5,21 @@
 #include "../sndhrdw/samples.h"
 #include "../vidhrdwr/vector.h"
 
-//#include "sys_video/glcode.h"
+
+//= ========================================================================== =
+// AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME 
+// code, 0.29 through .90 mixed with code of my own. This emulator was 
+// created solely for my amusement and learning and is provided only 
+// as an archival experience. 
+// 
+// All MAME code used and abused in this emulator remains the copyright 
+// of the dedicated people who spend countless hours creating it. All
+// MAME code should be annotated as belonging to the MAME TEAM.
+// 
+// SOME CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.  
+//============================================================================
+
+
 
 //From M.A.M.E. (TM)
 /***************************************************************************
@@ -38,8 +52,6 @@
 //What is this?
 extern char *gamename;
 extern int gamenum;
-
-//static int cframe = 0;
 
 /////NEW VARIABLES AND STUFF
 static UINT16* rambase;
@@ -78,48 +90,6 @@ static int coin_read(int coin_input_r)
 	return !coin_detected;
 }
 
-/*
-
-static int speedfrk_wheel_r(int offset)
-{
-	static UINT8 speedfrk_steer[] = { 0xe, 0x6, 0x2, 0x0, 0x3, 0x7, 0xf };
-	static int last_wheel = 0, delta_wheel, last_frame = 0, gear = 0xe0;
-	int  current_frame, val;
-
-	// check the fake gear input port and determine the bit settings for the gear
-	if ((input_port_5_r(0) & 0xf0) != 0xf0)
-		gear = input_port_5_r(0) & 0xf0;
-
-	val = (input_port_1_r(0) & 0xff00) | gear;
-
-	// add the start key into the mix
-	if (input_port_1_r(0) & 0x80)
-		val |= 0x80;
-	else
-		val &= ~0x80;
-
-// and for the cherry on top, we add the scrambled analog steering
-	current_frame = cframe;//cpu_getcurrentframe();
-	if (current_frame != last_frame)
-	{
-		// the shift register is cleared once per 'frame'
-		delta_wheel = readinputport(4) - last_wheel;
-		wrlog("DELTA WHEEL %d", delta_wheel);
-		last_wheel += delta_wheel;
-		if (delta_wheel > 3)
-			delta_wheel = 3;
-		else if (delta_wheel < -3)
-			delta_wheel = -3;
-	}
-	last_frame = current_frame;
-
-	//return (speedfrk_steer[delta_wheel + 3] >> offset) & 1;
-	val |= speedfrk_steer[delta_wheel + 3];
-
-	return val;
-}
-
-*/
 
 /*************************************
  *

@@ -16,6 +16,10 @@ void free_samples(void);
 void sample_adjust(int channel, int mode);
 void mute_sound();
 void restore_sound();
+
 void aae_play_streamed_sample(int channel, unsigned char* data, int len, int freq, int volume);
+void aae_stop_stream(int channel);
+int aae_stream_init(int channel, int rate, int len, int vol);
+
 
 #endif

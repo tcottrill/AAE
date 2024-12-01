@@ -5,6 +5,7 @@
 #include "samples.h"
 #include "vector.h"
 #include "glcode.h"
+#include "gl_texturing.h"
 #include "animation.h"
 #include "fonts.h"
 #include "menu.h"

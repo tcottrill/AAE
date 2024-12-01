@@ -1,8 +1,10 @@
 #include "stdio.h" //Required for vsprintf
 #include "fonts.h"
 #include "glcode.h"
+#include "gl_texturing.h" //For font_tex[1]  ??? why not have it here?
 
 GLuint base = 0;
+GLuint font_tex[2];
 
 float fwidth[] = { 9,8,8,18,18,22,19,5,8,8,12,20,5,9,5,10,19,13,17,16,20,16,18,15,18,17,5,5,20,20,20,17,24,17,18,16,19,16,
 				16,18,17,7,14,16,13,23,19,19,18,19,18,18,16,18,19,27,17,17,18,8,10,8,24,12,5,15,15,13,15,13,10,15,14,6,
@@ -20,9 +22,8 @@ void BuildFont(void)						// Build Our Font Display List
 
 	// Creating 256 Display Lists
 	base = glGenLists(256);
-	//parse_font_vars("aaeres\\font1.idx");
-
-	//make_single_bitmap( &font_tex[0],"font1.png","aaeres.zip");
+	
+	make_single_bitmap(&font_tex[1], "font.png", "aae.zip", 0);
 
 	glBindTexture(GL_TEXTURE_2D, font_tex[1]);			    // Select Our Font Texture
 
@@ -55,6 +56,7 @@ void BuildFont(void)						// Build Our Font Display List
 void KillFont(void)									    // Delete The Font From Memory
 {
 	glDeleteLists(base, 256);							// Delete All 256 Display Lists
+	glDeleteTextures(1, &font_tex[1]);
 }
 
 void glPrint(float x, int y, int r, int g, int b, int alpha, float scale, float angle, int set, const char* fmt, ...)	// Where The Printing Happens

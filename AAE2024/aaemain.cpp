@@ -38,13 +38,14 @@
 #include "os_input.h"
 #include "timer.h"
 #include "vector_fonts.h"
+#include "gl_texturing.h"
 
 //New 2024
 #include "os_basic.h"
-//#include "dwmapi.h" // Windows 10 rendering code
+#include "dwmapi.h" // Windows 10 rendering code
 #include <chrono>
 
-//#pragma comment (lib,"dwmapi.lib")
+#pragma comment (lib,"dwmapi.lib")
 
 using namespace std;
 using namespace chrono;
@@ -97,7 +98,6 @@ void close_button_handler(void)
 	close_button_pressed = TRUE;
 }
 END_OF_FUNCTION(close_button_handler)
-
 
 
 int mystrcmp(const char* s1, const char* s2)
@@ -179,6 +179,20 @@ void reset_for_new_game(int new_gamenum, int in_giu)
 	}
 
 	wrlog("@@@RESETTING for NEW GAME CALLED@#@@@@");
+
+	//If the game uses NVRAM, save it. This code is from M.A.M.E. (TM)
+	if (driver[gamenum].nvram_handler)
+	{
+		void* f;
+
+		if ((f = osd_fopen(Machine->gamedrv->name, 0, OSD_FILETYPE_NVRAM, 1)) != 0)
+		{
+			(*driver[gamenum].nvram_handler)(f, 1);
+			osd_fclose(f);
+		}
+		
+	}
+
 
 	wrlog("restarting");
 	free_samples();//Free any allocated Samples
@@ -458,11 +472,17 @@ void run_game(void)
 	
 
 	millsec = (double)1000 / (double)driver[gamenum].fps;
-	goodload = load_samples(driver[gamenum].game_samples, 0);
-	if (goodload == 0) { wrlog("Samples loading failure, bad with no sound..."); }
+	
+	// Load samples if the game has any. This needs to move!
+	if (driver[gamenum].game_samples)
+	{
+		goodload = load_samples(driver[gamenum].game_samples, 0);
+		if (!goodload) { wrlog("Samples loading failure, please check error output for details..."); }
+	}
+	
 	//Now load the Ambient and menu samples
 	goodload = load_samples(noise_samples, 1);
-	if (goodload == 0) { wrlog("Samples loading failure, bad with no sound..."); }
+	if (!goodload) { wrlog("Noise Samples loading failure, not critical, continuing."); }
 	voice_init(num_samples); //INITIALIZE SAMPLE VOICES
 	wrlog("Number of samples for this game is %d", num_samples);
 
@@ -477,32 +497,50 @@ void run_game(void)
 	if (gamenum) game0 = 1; else game0 = 0;
 	previous_game = gamenum;
 	WATCHDOG = 0;
-	wrlog("\n\n\n----END OF INIT -----!\n\n\n");
+
+	//If the game uses NVRAM, initalize/load it. . This code is from M.A.M.E. (TM)
+	if (driver[gamenum].nvram_handler)
+	{
+		void* f;
+
+		f = osd_fopen(Machine->gamedrv->name, 0, OSD_FILETYPE_NVRAM, 0);
+		(*driver[gamenum].nvram_handler)(f, 0);
+		if (f) osd_fclose(f);
+	}
+
+	wrlog("\n\n----END OF INIT -----!\n\n");
 
 	while (!done && !close_button_pressed)
 	{
     	wrlog("STARTING FRAME");
 		//set_new_frame(); //This is for the AVG Games.
 		
-		auto start = chrono::steady_clock::now();
+		
 
 		set_render();
 	
-
-		if (driver[gamenum].cpu_type[0] == CPU_M6809)
+		auto start = chrono::steady_clock::now();
+		if (driver[gamenum].cpu_type[0] == CPU_M6809 || driver[gamenum].cpu_type[0] == CPU_MZ80)
 		{
 			if (!paused && have_error == 0) { if (driver[gamenum].pre_run) driver[gamenum].pre_run(); }
 			if (!paused && have_error == 0) { cpu_run_mame(); }
 			
 		}
 		
-		if (driver[gamenum].cpu_type[0] == CPU_M6502 || driver[gamenum].cpu_type[0] == CPU_MZ80 || driver[gamenum].cpu_type[0] == CPU_68000)
+		if (driver[gamenum].cpu_type[0] == CPU_M6502 || driver[gamenum].cpu_type[0] == CPU_68000)
 		{
 			if (!paused && have_error == 0) { if (driver[gamenum].pre_run) driver[gamenum].pre_run(); }
 			if (!paused && have_error == 0) { run_cpus_to_cycles(); }
 		}
 		
+		
+
 		if (!paused && have_error == 0) { driver[gamenum].run_game(); }
+
+		auto end = chrono::steady_clock::now();
+		auto diff = end - start;
+		wrlog("CPU Time: %f ", chrono::duration <double, milli>(diff).count());
+
 
 		if (get_menu_status())
 		{
@@ -524,10 +562,7 @@ void run_game(void)
 
 		gametime = TimerGetTimeMS();
 
-		auto end = chrono::steady_clock::now();
-		auto diff = end - start;
-		wrlog("Total Render Time %f ", chrono::duration <double, milli>(diff).count());
-
+		
 
 		//if (driver[gamenum].fps !=60){
 		while (((double)(gametime)-(double)starttime) < (double)millsec)
@@ -700,7 +735,7 @@ void gameparse(int argc, char* argv[])
 	}
 }
 
-/*
+
 HRESULT DisableNCRendering(HWND hWnd)
 {
 	HRESULT hr = S_OK;
@@ -720,7 +755,7 @@ HRESULT DisableNCRendering(HWND hWnd)
 
 	return hr;
 }
-*/
+
 
 int main(int argc, char* argv[])
 {
@@ -895,13 +930,13 @@ int main(int argc, char* argv[])
 	have_error = 0;
 
 
-/*
+
 #if WINVER > 0x502// Windows Vista or better required for DWM
 	DisableNCRendering(win_get_window()); 
 	SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_SYSTEM_AWARE);
 	SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_SYSTEM_AWARE);
 #endif
-*/
+
 	//key_set_flag = 0;
 
 	//ListDisplaySettings();

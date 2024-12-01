@@ -11,8 +11,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
-
-//#include "../driver.h"
 #include "tms5220.h"
 #include "5220intf.h"
 #include "aae_mame_driver.h"
@@ -50,7 +48,8 @@ int tms5220_sh_start(struct TMS5220interface* iinterface)
 	if ((buffer = (unsigned char*)malloc(buffer_len)) == 0)
 		return 1;
 	memset(buffer, 0x80, buffer_len);
-	stream2 = play_audio_stream(buffer_len, 8, FALSE, emulation_rate, config.pokeyvol, 128); //450  13500
+	//stream2 = play_audio_stream(buffer_len, 8, FALSE, emulation_rate, config.pokeyvol, 128); //450  13500
+	aae_stream_init(1, emulation_rate, buffer_len, 190);
 	/* reset the 5220 */
 	tms5220_reset();
 	tms5220_set_irq(iinterface->irq);
@@ -93,7 +92,8 @@ void tms5220_sh_update(void)
 	sample_pos = 0;
 
 	/* play this sample */
-	aae_play_streamed_sample(1, buffer, buffer_len, emulation_rate, intfa->volume);
+	//aae_play_streamed_sample(1, buffer, buffer_len, emulation_rate, intfa->volume);
+	aae_play_streamed_sample(1, buffer, buffer_len, emulation_rate, 255);//intfa->volume);
 }
 
 /**********************************************************************************************

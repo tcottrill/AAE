@@ -144,6 +144,10 @@
     <ClCompile Include="cpu_code\cpu_z80.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</ExcludedFromBuild>
     </ClCompile>
+    <ClCompile Include="cpu_code\m68kcpu.c" />
+    <ClCompile Include="cpu_code\m68kfpu.c" />
+    <ClCompile Include="cpu_code\m68kops.c" />
+    <ClCompile Include="cpu_code\softfloat\softfloat.c" />
     <ClCompile Include="cpu_code\timer.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</ExcludedFromBuild>
     </ClCompile>
@@ -174,13 +178,14 @@
     <ClCompile Include="machine\mathbox.cpp" />
     <ClCompile Include="machine\SegaG80crypt.cpp" />
     <ClCompile Include="machine\swmathbx.cpp" />
+    <ClCompile Include="mem68k.c" />
     <ClCompile Include="menu.cpp" />
     <ClCompile Include="newfbo.cpp" />
     <ClCompile Include="os_basic.cpp" />
     <ClCompile Include="os_input.cpp" />
     <ClCompile Include="rand.cpp" />
     <ClCompile Include="sndhrdw\5220intf.cpp" />
-    <ClCompile Include="sndhrdw\AY8910.Cpp" />
+    <ClCompile Include="sndhrdw\ay8910.cpp" />
     <ClCompile Include="sndhrdw\cinesnd.cpp" />
     <ClCompile Include="sndhrdw\pokey.cpp" />
     <ClCompile Include="sndhrdw\pokyintf.cpp" />
@@ -191,6 +196,9 @@
     <ClCompile Include="sys_timer.cpp" />
     <ClCompile Include="sys_video\fonts.cpp" />
     <ClCompile Include="sys_video\glcode.cpp" />
+    <ClCompile Include="sys_video\gl_fbo.cpp" />
+    <ClCompile Include="sys_video\gl_shader.cpp" />
+    <ClCompile Include="sys_video\gl_texturing.cpp" />
     <ClCompile Include="sys_video\vector_fonts.cpp" />
     <ClCompile Include="texrect.cpp" />
     <ClCompile Include="texrect2dvbo.cpp" />
@@ -213,6 +221,14 @@
     <ClInclude Include="cpu_code\cpu_z80.h">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</ExcludedFromBuild>
     </ClInclude>
+    <ClInclude Include="cpu_code\m68k.h" />
+    <ClInclude Include="cpu_code\m68kconf.h" />
+    <ClInclude Include="cpu_code\m68kcpu.h" />
+    <ClInclude Include="cpu_code\m68kmmu.h" />
+    <ClInclude Include="cpu_code\m68kops.h" />
+    <ClInclude Include="cpu_code\softfloat\mamesf.h" />
+    <ClInclude Include="cpu_code\softfloat\milieu.h" />
+    <ClInclude Include="cpu_code\softfloat\softfloat.h" />
     <ClInclude Include="cpu_code\starcpu.h" />
     <ClInclude Include="cpu_code\timer.h">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</ExcludedFromBuild>
@@ -251,6 +267,7 @@
     <ClInclude Include="machine\SegaG80crypt.h" />
     <ClInclude Include="machine\swmathbx.h" />
     <ClInclude Include="MathUtils.h" />
+    <ClInclude Include="mem68k.h" />
     <ClInclude Include="menu.h" />
     <ClInclude Include="newfbo.h" />
     <ClInclude Include="osdepend.h" />
@@ -260,7 +277,7 @@
     <ClInclude Include="rand.h" />
     <ClInclude Include="rotation_table.h" />
     <ClInclude Include="sndhrdw\5220intf.h" />
-    <ClInclude Include="sndhrdw\AY8910.H" />
+    <ClInclude Include="sndhrdw\ay8910.h" />
     <ClInclude Include="sndhrdw\pokey.h" />
     <ClInclude Include="sndhrdw\pokyintf.h" />
     <ClInclude Include="sndhrdw\samples.h" />
@@ -270,6 +287,9 @@
     <ClInclude Include="sys_timer.h" />
     <ClInclude Include="sys_video\fonts.h" />
     <ClInclude Include="sys_video\glcode.h" />
+    <ClInclude Include="sys_video\gl_fbo.h" />
+    <ClInclude Include="sys_video\gl_shader.h" />
+    <ClInclude Include="sys_video\gl_texturing.h" />
     <ClInclude Include="sys_video\stb_image.h" />
     <ClInclude Include="sys_video\stb_image_write.h" />
     <ClInclude Include="sys_video\vector_fonts.h" />

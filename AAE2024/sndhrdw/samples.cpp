@@ -9,6 +9,8 @@ int testvol;
 int game_voice[MAX_VOICE]; //Global Voice For Samples
 int sample_vol[MAX_VOICE];
 
+AUDIOSTREAM* stream[12]; //Global Streaming Sound
+
 void voice_init(int num)
 {
 	int i;
@@ -99,24 +101,35 @@ void restore_sound()
 	set_volume(config.mainvol, -1);
 }
 
+
+void aae_stop_stream(int channel)
+{
+	stop_audio_stream(stream[channel]);
+}
+
+int aae_stream_init(int channel, int rate, int len, int vol)
+{
+	wrlog("Stream init:channel: %d", channel);
+	stream[channel] = play_audio_stream(len, 8, 0, rate, vol, 128);
+	return 1;
+}
+
 void aae_play_streamed_sample(int channel, unsigned char* data, int len, int freq, int volume)
 {
-	int i;
-	int y = 0;
+	//	wrlog("Playing stream channel: %d", channel);
+
 	unsigned char* p;
 
-	if (channel == 0) p = (unsigned char*)get_audio_stream_buffer(stream); //stream2
-	else p = (unsigned char*)get_audio_stream_buffer(stream2);
+	p = (unsigned char*)get_audio_stream_buffer(stream[channel]);
 
 	if (p)
 	{
-		for (i = 0; i < len; i++)
+		for (int i = 0; i < len; i++)
 		{
 			p[i] = data[i];
 			p[i] ^= 0x80;
 		}
 
-		if (channel == 0)  free_audio_stream_buffer(stream);
-		else free_audio_stream_buffer(stream2);
+		free_audio_stream_buffer(stream[channel]);
 	}
 }

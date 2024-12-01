@@ -1,3 +1,16 @@
+//============================================================================
+// AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME 
+// code, 0.29 through .90 mixed with code of my own. This emulator was 
+// created solely for my amusement and learning and is provided only 
+// as an archival experience. 
+// 
+// All MAME code used and abused in this emulator remains the copyright 
+// of the dedicated people who spend countless hours creating it. All
+// MAME code should be annotated as belonging to the MAME TEAM.
+// 
+// SOME CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.  
+//============================================================================
+
 /***************************************************************************
 
 	pokyintf.c
@@ -35,6 +48,7 @@ int pokey_sh_start(struct POKEYinterface* iinterface)
 
 	buffer_len = TARGET_EMULATION_RATE / driver[gamenum].fps;
 	emulation_rate = buffer_len * driver[gamenum].fps;
+	
 	if ((buffer = (unsigned char*)malloc(buffer_len)) == 0)
 	{
 		free(buffer);
@@ -42,7 +56,8 @@ int pokey_sh_start(struct POKEYinterface* iinterface)
 	}
 	
 	//stream = play_audio_stream(buffer_len, 8, 0, TARGET_EMULATION_RATE, config.pokeyvol, 128); //450  13500
-	stream = play_audio_stream(buffer_len, 8, 0, TARGET_EMULATION_RATE, 250, 128); //450  13500
+	//stream = play_audio_stream(buffer_len, 8, 0, TARGET_EMULATION_RATE, 250, 128); //450  13500
+	aae_stream_init(0, emulation_rate, buffer_len, intfa->volume);
 	Pokey_sound_init(intfa->clock, emulation_rate, intfa->num, intfa->clip);
 	wrlog("Pokey sound init: Emulation rate %d Buffer len %d Num Pokeys: %d",emulation_rate,buffer_len, intfa->num);
 
@@ -55,8 +70,9 @@ int pokey_sh_start(struct POKEYinterface* iinterface)
 
 void pokey_sh_stop(void)
 {
-	free_audio_stream_buffer(stream);
-	stop_audio_stream(stream);
+	//free_audio_stream_buffer(stream);
+	//stop_audio_stream(stream);
+	aae_stop_stream(0);
 	free(buffer);
 }
 
@@ -77,7 +93,7 @@ void pokey_sh_stop(void)
 
 int Read_pokey_regs(uint16 addr, uint8 chip)
 {
-	wrlog("POKEY READ here address %x chip %x",addr,chip);
+	//wrlog("POKEY READ here address %x chip %x",addr,chip);
 	switch (addr & 0x0f)
 	{
 	case POT0_C:

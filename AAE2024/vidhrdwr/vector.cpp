@@ -1,7 +1,7 @@
 #include "vector.h"
 #include "../sys_video/glcode.h"
 #include "aae_mame_driver.h"
-
+#include "gl_texturing.h" // For game_tex[0]
 
 
 //This is such horrible code, sorry. It was written long ago when I was just starting.

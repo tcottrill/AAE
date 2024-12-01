@@ -20,8 +20,6 @@
 #include "aae_mame_driver.h"
 #include "samples.h"
 
-
-// To Do, add interupt handler for entering test mode.
 void sega_interrupt() {
 	if (input_port_5_r(0) & 0x01)
 		cpu_do_interrupt(INT_TYPE_NMI, CPU0);
@@ -39,7 +37,7 @@ extern int gamenum;
 
 unsigned char* sega_vectorram;
 
-//MAJOR VARIABLES
+//INPUT VARIABLES
 unsigned char mult1;
 unsigned short result;
 unsigned char ioSwitch;

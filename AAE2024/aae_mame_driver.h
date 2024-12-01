@@ -185,7 +185,7 @@ extern struct AAEDriver driver[];
 
 struct RunningMachine
 {
-	unsigned char* memory_region[MAX_MEMORY_REGIONS];
+	unsigned char* memory_region[MAX_MEMORY_REGIONS]; //TBD
 	//unsigned int memory_region_length[MAX_MEMORY_REGIONS];	/* some drivers might find this useful */
 	//struct GfxElement *gfx[MAX_GFX_ELEMENTS];	/* graphic sets (chars, sprites) */
 	const struct AAEDriver* gamedrv;	/* contains the definition of the game machine */
@@ -230,8 +230,8 @@ extern SAMPLE* game_sounds[60]; //Global Samples
 extern int chip;  //FOR POKEY
 extern int gain;  //FOR POKEY
 extern int BUFFER_SIZE;  //FOR POKEY
-extern AUDIOSTREAM* stream; //Global Streaming Sound 1
-extern AUDIOSTREAM* stream2; //Global Streaming Sound 2
+extern AUDIOSTREAM* stream1; //Global Streaming Sound 1
+//extern AUDIOSTREAM* stream2; //Global Streaming Sound 2
 extern unsigned char* soundbuffer;
 extern signed char* aybuffer;
 
@@ -268,7 +268,7 @@ extern int sx, ex, sy, ey;
 
 typedef struct {
 	char rompath[256];
-
+	char samplepath[256];
 	//int ksfps;
 	//int kquit;
 	int kreset;

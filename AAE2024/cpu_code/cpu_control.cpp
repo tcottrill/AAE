@@ -645,9 +645,10 @@ void cpu_run_mame(void)
 						if (ran_this_frame[active_cpu] >= next_interrupt)
 						{
 							// Call the interrupt handler.
-						//	 if (driver[gamenum].int_cpu[active_cpu]) { 
+							 if (driver[gamenum].int_cpu[active_cpu]) 
+							 { 
 								 driver[gamenum].int_cpu[active_cpu](); 
-							 //}
+							 }
 							//(*Machine->drv->cpu[active_cpu].interrupt)(0);
 							//cpu_cause_interrupt(active_cpu, 0); // Original Code
 							iloops[active_cpu]--;

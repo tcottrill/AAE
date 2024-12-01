@@ -1,21 +1,16 @@
-
 //==========================================================================
-// AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME 
-// code, 0.29 through .90 mixed with code of my own. This emulator was 
-// created solely for my amusement and learning and is provided only 
-// as an archival experience. 
-// 
-// All MAME code used and abused in this emulator remains the copyright 
+// AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME
+// code, 0.29 through .90 mixed with code of my own. This emulator was
+// created solely for my amusement and learning and is provided only
+// as an archival experience.
+//
+// All MAME code used and abused in this emulator remains the copyright
 // of the dedicated people who spend countless hours creating it. All
 // MAME code should be annotated as belonging to the MAME TEAM.
-// 
-// THE CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.  
+//
+// THE CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.
 //==========================================================================
 
-// 10_13_2024
-// I now have the ability to emulate this 100% correctly with ay8910 support and both cpu's in sync, coming soon.
-
-//Current code is missing the "dink" sound when destroying the triangles.
 /***************************************************************************
 
 This driver is dedicated to my loving wife Natalia Wiebelt
@@ -213,15 +208,22 @@ Sound Commands:
 #include "aae_avg.h"
 #include "AY8910.H"
 
-//Todo rewrite this and add second cp
+static struct AY8910interface ay8910_interface =
+{
+	2,
+	1500000,
+	{ 25, 25 }, //7
+	{ 0, 0 }, //2
+	{ 0 },
+	{ 0 },
+	{ 0 },
+	{ 0 }
+};
 
-//static int oticks = 0;
-//int ovec_time = 0;
-
+static unsigned char orace_nvram[256];
 int scrflip = 0;
 int angle = 1;
 int angle2 = 1;
-//int sbit=0;
 int vecwrite1 = 0x80;// Vector Processor Flag, 0=busy
 int soundlatch = 0;
 int vec_total = 0;
@@ -248,56 +250,36 @@ static unsigned char spinnerTable[64] = {
 	0xa0, 0xa4, 0xb4, 0xb0, 0xb8, 0xbc, 0x3c, 0x38,
 	0x30, 0x34, 0x24, 0x20, 0x28, 0x2c, 0x0c, 0x08 };
 
-static int load_nvram(void)
+void  omega_interrupt()
 {
-	int num = 0;
-	int x = 0;
-	char fullpath[180];
-	unsigned char* membuffer = nullptr;
-	FILE* fd;
-	membuffer = (unsigned char*)malloc(0xff);
-	memset(membuffer, 0, 0xff);
-
-	strcpy(fullpath, "hi");
-	strcat(fullpath, "\\");
-	strcat(fullpath, driver[gamenum].name);
-	strcat(fullpath, ".aae");
-
-	fd = fopen(fullpath, "rb");
-	if (!fd) { wrlog("file not found"); return 1; }
-	fread(membuffer, 1, 0xff, fd);
-	for (x = 0; x <= 0xff; x++)
-	{
-		GI[0][0x5c00 + x] = membuffer[x];
-	}
-
-	fclose(fd);
-	free(membuffer);
-	return 1;
+	cpu_do_int_imm(CPU0, INT_TYPE_INT);
 }
 
-static void save_nvram(void)
+void  omega_nmi_interrupt()
 {
-	int num = 0xff;
-	int x = 0;
-	char fullpath[180];
-	unsigned char* membuffer;
+	cpu_do_int_imm(CPU1, INT_TYPE_NMI);
+}
 
-	membuffer = (unsigned char*)malloc(0xff);
-	memset(membuffer, 0, 0xff);
-
-	strcpy(fullpath, "hi");
-	strcat(fullpath, "\\");
-	strcat(fullpath, driver[gamenum].name);
-	strcat(fullpath, ".aae");
-	wrlog("Saving NVRAM");
-	for (x = 0; x <= 0xff; x++)
+void nvram_handler(void* file, int read_or_write)
+{
+	if (read_or_write)
 	{
-		membuffer[x] = GI[0][0x5c00 + x];
+		wrlog("Writing NVRAM File");
+		osd_fwrite(file, orace_nvram, 0xff);
 	}
-
-	save_file(fullpath, membuffer, 0xff);
-	free(membuffer);
+	else
+	{
+		if (file)
+		{
+			wrlog("Reading NVRAM File");
+			osd_fread(file, orace_nvram, 0xff);
+		}
+		else
+		{
+			wrlog("Creating NVRAM File");
+			memset(orace_nvram, 0, 0xff);
+		}
+	}
 }
 
 static void set_omega_colors(void)
@@ -340,9 +322,9 @@ static void Odvg_generate_vector_list(void)
 
 	while (!done)
 	{
-		firstwd = memrdwd(pc); 
-		opcode = firstwd & 0xf000; 
-		pc++; 
+		firstwd = memrdwd(pc);
+		opcode = firstwd & 0xf000;
+		pc++;
 		pc++;
 		switch (opcode)
 		{
@@ -384,7 +366,7 @@ static void Odvg_generate_vector_list(void)
 			deltay = (y << VEC_SHIFT) >> (9 - temp);
 
 		DRAWCODE:
-			if (z )
+			if (z)
 			{
 				if ((currentx == (currentx)+deltax) && (currenty == (currenty)-deltay))
 				{
@@ -464,62 +446,45 @@ static void Odvg_generate_vector_list(void)
 PORT_WRITE_HANDLER(omegrace_soundlatch_w)
 {
 	soundlatch = data;
-	//callint=1;
-	set_pending_interrupt(INT_TYPE_NMI, 1);
-	//cpu_cause_interrupt (1, 0xff);
+	cpu_do_int_imm(CPU1, INT_TYPE_INT);
 }
 PORT_READ_HANDLER(omegrace_soundlatch_r)
 {
 	return soundlatch;
 }
 
-PORT_WRITE_HANDLER(bs)
-{
-	wrlog("AY Port Write");
-}
-
 PORT_READ_HANDLER(BWVG)
 {
 	static int lastframe;
-	
-	wrlog("----AVG GO Check CALLED");
-	//if (vecwrite1 == 0x80) return 0x80;
+
+	//wrlog("----AVG GO Check CALLED");
 
 	if (frames != lastframe)
 	{
 		cache_clear();
 		Odvg_generate_vector_list();
 		vecwrite1 = 0x80;
-		wrlog("----AVG GO ACTUALLY RAN");
+		//wrlog("----AVG GO ACTUALLY RAN");
 		lastframe = frames;
 	}
 
-	//if (vec_total) 
-	//{ vecwrite1 = 0x80;  }
-//	else { vecwrite1 = 0; }
-	//return 0x0;//vecwrite1;
 	if (vecwrite1) { return 0x80; }
-	else return 0x0;//vecwrite1;
-
+	else return 0x0;
 }
 
-WRITE_HANDLER(VectorRam)
+WRITE_HANDLER(nvram_w)
 {
-	GI[0][address] = data;
+	orace_nvram[address] = data;
 }
-WRITE_HANDLER(NVRAM_W)
-{
-	//wrlog("NVRAM WRITE address %x data %x", address & 0xffff,data);
-	//GI[CPU0][address & 0xffff]=data;
-	//z80.z80Base[address & 0xffff]=data;
 
-	//crap->z80Base[address & 0xffff]=data;
+READ_HANDLER(nvram_r)
+{
+	return orace_nvram[address];
 }
+
 PORT_WRITE_HANDLER(omega_reset)
 {
-	wrlog("DVG reset.");
-	//vecwrite1=0;
-	   // ocount=0;
+	wrlog("DVG reset called");
 }
 
 PORT_READ_HANDLER(omegrace_watchdog_r)
@@ -542,7 +507,7 @@ PORT_READ_HANDLER(omegrace_vg_status_r)
 		vecwrite1 = 0;
 	}
 
-//	if (get_video_ticks(0) > me && vecwrite1 == 0x80) { vecwrite1 = 0; vec_total = 0; }
+	//	if (get_video_ticks(0) > me && vecwrite1 == 0x80) { vecwrite1 = 0; vec_total = 0; }
 	return vecwrite1;
 }
 
@@ -594,61 +559,35 @@ PORT_WRITE_HANDLER(omegrace_leds_w)
 	if (!(data & 0x40)) scrflip = 1; else scrflip = 0;
 }
 
-PORT_WRITE_HANDLER(SoundWrite)
-{
-	switch (data)
-	{
-	case 0: {sample_stop(7); sample_stop(5); break;  }//sound off
-	case 0x1:sample_start(2, 1, 0); break;  // my ship explosion
-	case 0x2:sample_start(2, 2, 0); break; //empty ship explosion
-	case 0x3:sample_start(2, 3, 0); break;  //Triangle Destruction
-	case 0x4:sample_start(1, 4, 0); break; //Level complete music
-	case 0x5:wrlog("SOUND 5??"); break; //?no sound? off sound?
-	case 0x6:wrlog("SOUND 6??"); break; // ?no sound? off sound?
-	case 0x7:sample_start(4, 7, 0); break; //ship fire
-	case 0x8:sample_start(3, 8, 0); break; //wall hit
-	case 0x9:sample_start(5, 0x09, 1); sample_start(6, 0x0a, 0); break; // thrust hiss/snap start
-	case 0xa:sample_stop(5); break; //stop thrust
-	case 0xb:sample_start(7, 0xb, 1); break; //slow bump bump sound loops
-	case 0xc:sample_start(7, 0xc, 1); break; //Triggers bump bump after small ship die
-	case 0xd:sample_start(7, 0xd, 1); break; //med bump bump sound
-	case 0xe:sample_start(7, 0xe, 1); break; //ship spawn fast sound verified
-	case 0xf:sample_start(7, 0xf, 1); break; //ship spawn fast sound????????????????
-	case 0x10:sample_start(2, 0x10, 0); break; //manned ship explosion
-	case 0x11:sample_start(1, 0x11, 0); break; //sweep sound
-	case 0x12:sample_start(1, 0x12, 0); break; //coin
-	case 0x13:sample_start(1, 0x13, 0); break; //TILT
-	case 0x14:sample_start(1, 0x14, 0); break; //beeping sound
-	case 0x15:sample_start(2, 0x15, 0); break; //little ship die
-	case 0x16:sample_start(7, 0x16, 1); break; //test mode sweep sound
-
-	default: wrlog("!!!! Unhandled sound effect!!!! %x ", data);
-	}
-
-	soundlatch = data;
-}
-
 /////////////////////////////VECTOR GENERATOR//////////////////////////////////
 
 ///////////////////////  MAIN LOOP /////////////////////////////////////
 void run_omega()
 {
+	AY8910_sh_update();
 }
 
 MEM_READ(OmegaRead)
+//{ 0x0000, 0x3fff, MRA_ROM },
+//{ 0x4000, 0x4bff, MRA_RAM },
+MEM_ADDR(0x5c00, 0x5cff, nvram_r) /* NVRAM */
+//{ 0x8000, 0x8fff, MRA_RAM, &vectorram, &vectorram_size },
+//{ 0x9000, 0x9fff, MRA_ROM }, /* vector rom */
+/* 9000-9fff is ROM, hopefully there are no writes to it */
 MEM_END
+
 MEM_WRITE(OmegaWrite)
-MEM_ADDR(0x0000, 0x3fff, NoWrite)
-//MEM_ADDR(0x5c00, 0x5cff, NVRAM_W)
+MEM_ADDR(0x0000, 0x3fff, MWA_ROM)
+MEM_ADDR(0x5c00, 0x5cff, nvram_w)  /* NVRAM */
 //MEM_ADDR(0x8000, 0x8fff, VectorRam)
-MEM_ADDR(0x9000, 0x9fff, NoWrite)
+MEM_ADDR(0x9000, 0x9fff, MWA_ROM)
 MEM_END
 
 MEM_READ(SoundMemRead)
 MEM_END
 
 MEM_WRITE(SoundMemWrite)
-MEM_ADDR(0x0000, 0x07ff, NoWrite)
+MEM_ADDR(0x0000, 0x07ff, MWA_ROM)
 MEM_END
 
 PORT_READ(OmegaPortRead)
@@ -666,7 +605,7 @@ PORT_END
 PORT_WRITE(OmegaPortWrite)
 PORT_ADDR(0x21, 0x21, omega_reset)
 PORT_ADDR(0x13, 0x13, omegrace_leds_w) // coin counters, leds, flip screen
-PORT_ADDR(0x14, 0x14, SoundWrite) //Sound command
+PORT_ADDR(0x14, 0x14, omegrace_soundlatch_w) //Sound command
 PORT_END
 
 PORT_READ(SoundPortRead)
@@ -674,17 +613,10 @@ PORT_ADDR(0x00, 0x00, omegrace_soundlatch_r)
 PORT_END
 
 PORT_WRITE(SoundPortWrite)
-PORT_ADDR(0x00, 0x00, bs)
-PORT_ADDR(0x01, 0x01, bs)
-PORT_ADDR(0x02, 0x02, bs)
-PORT_ADDR(0x03, 0x03, bs)
-PORT_END
-
-PORT_WRITE(AYSoundPortWrite)
-	{ 0x00, 0x00, AY8910_control_port_0_w },
-	{ 0x01, 0x01, AY8910_write_port_0_w },
-	{ 0x02, 0x02, AY8910_control_port_1_w },
-	{ 0x03, 0x03, AY8910_write_port_1_w },
+PORT_ADDR(0x00, 0x00, AY8910_control_port_0_w)
+PORT_ADDR(0x01, 0x01, AY8910_write_port_0_w)
+PORT_ADDR(0x02, 0x02, AY8910_control_port_1_w)
+PORT_ADDR(0x03, 0x03, AY8910_write_port_1_w)
 PORT_END
 
 /////////////////// MAIN() for program ///////////////////////////////////////////////////
@@ -695,18 +627,13 @@ int init_omega()
 	vecwrite1 = 0;
 	set_omega_colors();
 	cache_clear();
-	//AY8910_sh_start(&ay8910_interface);
-
-	 //load_hi_aae(0x5c00, 100, 0);
-	memset(GI[CPU0] + 0x5c00, 0xff, 0xff);
-	// load_nvram();
-	wrlog("running cpu");
+	AY8910_sh_start(&ay8910_interface);
+	//nvram = &GI[0][0x5c00];
+	wrlog("End of Omega Race Driver Init");
 	return 0;
 }
 
 void end_omega()
 {
-	//save_nvram();
-
-	//save_hi_aae(0x5c00, 100, 0);
+	AY8910clear();
 }

@@ -41,8 +41,8 @@ SAMPLE* game_sounds[60]; //Global Samples
 int chip;  //FOR POKEY
 int gain;  //FOR POKEY
 int BUFFER_SIZE;  //FOR POKEY
-AUDIOSTREAM* stream; //Global Streaming Sound 1
-AUDIOSTREAM* stream2; //Global Streaming Sound 2
+AUDIOSTREAM* stream1; //Global Streaming Sound 1
+//AUDIOSTREAM* stream2; //Global Streaming Sound 2
 unsigned char* soundbuffer;
 signed char* aybuffer;
 

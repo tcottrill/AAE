@@ -447,31 +447,4 @@ static const char* sundance_samples[] =
 	 0
 };
 
-static const char* omega_samples[] = { 
-	"omegrace.zip",
-	"0.wav",
-	"1.wav",
-	"2.wav",
-	"3.wav",
-	"4.wav",
-	"5.wav",
-	"6.wav",
-	"7.wav",
-	"8.wav",
-	"9.wav",
-	"a.wav",
-	"b.wav",
-	"c.wav",
-	"d.wav",
-	"e.wav",
-	"f.wav",
-	"10.wav",
-	"11.wav",
-	"12.wav",
-	"13.wav",
-	"14.wav",
-	"15.wav",
-	"16.wav",
-	 0 };
-
 #endif

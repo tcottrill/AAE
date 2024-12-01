@@ -1,17 +1,28 @@
-#include "ay8910.h"
+//==========================================================================
+// AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME 
+// code, 0.29 through .90 mixed with code of my own. This emulator was 
+// created solely for my amusement and learning and is provided only 
+// as an archival experience. 
+// 
+// All MAME code used and abused in this emulator remains the copyright 
+// of the dedicated people who spend countless hours creating it. All
+// MAME code should be annotated as belonging to the MAME TEAM.
+// 
+// THE CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.  
+//==========================================================================
 
-#include "..\log.h"
-//For z80 port, move.
-#include "..\aae_mame_driver.h"
-//For playstreamedsample
-#include "..\acommon.h"
+//Note to me: Mix the AY Channels to 16 bit so we don't have to support multiple streams per device emulated. 
+
+#include "sndhrdw/ay8910.h"
+#include <stdio.h>
 #include <stdlib.h>
-#include <memory.h>
+#include <string.h>
+#include "samples.h"
 
 static struct z80PortWrite fakezpw;
+static struct AY8910interface* ayintf;
 
 #define MAX_OUTPUT 0x7fff
-
 #define STEP 0x8000
 
 unsigned char* buf[MAX_8910][3];
@@ -21,8 +32,7 @@ static int updlast[MAX_8910];
 static int ayvol[MAX_8910];
 static int ayvolshift[MAX_8910];
 static int aysamples;
-int actsamples = 2000;
-int samplerate = 44100;
+static int sample_pos;
 
 struct AY8910
 {
@@ -368,8 +378,6 @@ static void AY8910Update(int chip, pBYTE* buffer, int length)
 		do
 		{
 			int nextevent;
-
-			int thing = 0;
 			if (PSG->CountN < left)
 				nextevent = PSG->CountN;
 			else
@@ -552,9 +560,9 @@ static void AY8910Update(int chip, pBYTE* buffer, int length)
 			}
 		}
 
-		*(buf1++) = (BYTE)((vola * PSG->VolA) >> mixshift);
-		*(buf2++) = (BYTE)((volb * PSG->VolB) >> mixshift);
-		*(buf3++) = (BYTE)((volc * PSG->VolC) >> mixshift);
+		*(buf1++) = (unsigned char)((vola * PSG->VolA) >> mixshift);
+		*(buf2++) = (unsigned char)((volb * PSG->VolB) >> mixshift);
+		*(buf3++) = (unsigned char)((volc * PSG->VolC) >> mixshift);
 
 		length--;
 	}
@@ -589,8 +597,8 @@ static void build_mixer_table(int chip)
 	for (i = 31; i > 0; i--)
 	{
 		PSG->VolTable[i] = out + 0.5; /* round to nearest */
-		//      out /= (1.188502227);  /* = 10 ^ (1.5/20) = 1.5dB */
-		out /= (1.14);
+		out /= (1.188502227);  /* = 10 ^ (1.5/20) = 1.5dB */
+  //      out /= (1.14);
 	}
 	PSG->VolTable[0] = 0;
 }
@@ -608,8 +616,8 @@ void AY8910_reset(int chip)
 	PSG->OutputN = 0xff;
 	for (i = 0; i < AY_PORTA; i++)
 		_AYWriteReg(chip, i, 0);	/* AYWriteReg() uses the timer system; we cannot */
-	/* call it at this time because the timer system */
-	/* has not been initialized. */
+								/* call it at this time because the timer system */
+								/* has not been initialized. */
 }
 
 static int AY8910_init(int chip,
@@ -628,6 +636,8 @@ static int AY8910_init(int chip,
 	ayvol[chip] = volume;
 	ayvolshift[chip] = volshift;
 
+	wrlog("AY8910 INIT ----------->");
+
 	AY8910_set_clock(chip, clock);
 	AY8910_reset(chip);
 
@@ -638,23 +648,15 @@ void AY8910_sh_update(void)
 {
 	int i, ch;
 
-	//   if(soundcard==0)
-		// return;
+	//if(soundcard==0)     return;
+	//wrlog("AY8910 Update ----------->");
 
 	for (i = 0; i < numchips; i++)
 	{
 		AY8910Update(i, buf[i], aysamples - updpos[i]);
 		for (ch = 0; ch < 3; ch++)
-
-			playstreamedsample((i * 3) + ch, (signed char*)buf[i][ch], aysamples, ayvol[i]);
-		wrlog("PLay sample %d,%d,%d,%d", (i * 3) + ch, buf[i][ch], aysamples, ayvol[i]);
-
-		//    void playstreamedsample(int channel,signed char *data,int len,int vol)
-		//{
-		//  Streams[channel].bUpdated=TRUE;
-		//  Streams[channel].nVol=vol;
-		//  memcpy(Streams[channel].pStreamUpdate,data,len);
-		//}
+			//  playstreamedsample((i*3)+ch,buf[i][ch],aysamples,ayvol[i]);
+			aae_play_streamed_sample((i * 3) + ch, buf[i][ch], aysamples, 44100, ayvol[i]);
 
 		updpos[i] = 0;
 		updlast[i] = 0;
@@ -664,13 +666,13 @@ void AY8910_sh_update(void)
 void AY8910partupdate(int chip)
 {
 	int work, updlen;
-	//   if(soundcard==0)
-	 //     return;
+
+	//if(soundcard==0)     return;
 
 	//get ticks this frame
-	work = 1000;// HAVE TO CHANGE THIS LATER SAMPLESSOFAR;
+	work = cpu_scale_by_cycles(aysamples);// , ayintf->baseclock); // get current position based on the timer
 
-	//update since last
+ //update since last
 	updlen = work - updlast[chip];
 	if (updlen > 32)
 	{
@@ -682,34 +684,52 @@ void AY8910partupdate(int chip)
 	}
 }
 
-int AY8910_sh_start(const struct AY8910interface* intf)
+int AY8910_sh_start(struct AY8910interface* intf)
 {
 	int chip;
 	numchips = intf->num;
-	aysamples = actsamples;
+	aysamples = 44100 / driver[gamenum].fps;
+	int emulation_rate = aysamples * driver[gamenum].fps;
+	ayintf = intf;
 
 	for (chip = 0; chip < intf->num; chip++)
 	{
-		buf[chip][0] = (unsigned char*)malloc(aysamples * sizeof(BYTE));
-		buf[chip][1] = (unsigned char*)malloc(aysamples * sizeof(BYTE));
-		buf[chip][2] = (unsigned char*)malloc(aysamples * sizeof(BYTE));
+		buf[chip][0] = (unsigned char*)malloc(aysamples * sizeof(unsigned char));
+		buf[chip][1] = (unsigned char*)malloc(aysamples * sizeof(unsigned char));
+		buf[chip][2] = (unsigned char*)malloc(aysamples * sizeof(unsigned char));
+
 		updpos[chip] = 0;
 		updlast[chip] = 0;
 
 		if (AY8910_init(chip, intf->baseclock,
 			intf->vol[chip], intf->volshift[chip],
-			samplerate,
+			44100,
 			intf->portAread[chip], intf->portBread[chip],
 			intf->portAwrite[chip], intf->portBwrite[chip]) != 0)
 			return 1;
 		build_mixer_table(chip);
 	}
+
+	aae_stream_init(0, emulation_rate, aysamples, 128);
+	aae_stream_init(1, emulation_rate, aysamples, 128);
+	aae_stream_init(2, emulation_rate, aysamples, 128);
+	aae_stream_init(3, emulation_rate, aysamples, 128);
+	aae_stream_init(4, emulation_rate, aysamples, 128);
+	aae_stream_init(5, emulation_rate, aysamples, 128);
+
 	return 0;
 }
 
 void AY8910clear(void)
 {
 	int chip;
+
+	aae_stop_stream(0);
+	aae_stop_stream(1);
+	aae_stop_stream(2);
+	aae_stop_stream(3);
+	aae_stop_stream(4);
+	aae_stop_stream(5);
 
 	for (chip = 0; chip < numchips; chip++)
 	{

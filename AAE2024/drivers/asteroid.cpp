@@ -626,7 +626,7 @@ void end_asteroids()
 void end_astdelux()
 {
 	cache_clear();
-	SaveEarom();
+	//SaveEarom();
 	pokey_sh_stop();
 }
 int init_asteroid(void)
@@ -664,7 +664,7 @@ int init_astdelux(void)
 
 	cache_clear();
 	set_ast_colors();
-	LoadEarom();
+	//LoadEarom();
 
 	psound = 1; //Enable Pokey Sound Processing
 	dvggo = 0;
