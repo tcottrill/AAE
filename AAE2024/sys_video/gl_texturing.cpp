@@ -257,19 +257,26 @@ void Centered_Rect(int facing, int size)
 
 void Resize_Rect(int facing, int size)
 {
-	//glBegin(GL_QUADS);
-	//glTexCoord2f(0, 1); glVertex2f(0, size * .75);
-	//glTexCoord2f(0, 0); glVertex2f(0, 0);
-	//glTexCoord2f(1, 0); glVertex2f(size, 0);
-	//glTexCoord2f(1, 1); glVertex2f(size, size * .75);
-	//glEnd();
-
-	glBegin(GL_QUADS);
-	glTexCoord2f(0, 1); glVertex2f(0, size);
-	glTexCoord2f(0, 0); glVertex2f(0, 0);
-	glTexCoord2f(1, 0); glVertex2f(size, 0);
-	glTexCoord2f(1, 1); glVertex2f(size, size);
-	glEnd();
+	//Hack, please find and fix. This one was frustrating. 
+	if (gamenum == ARMORA) 
+	{
+		glBegin(GL_QUADS);
+		glTexCoord2f(0, 1); glVertex2f(0, size);
+		glTexCoord2f(0, 0); glVertex2f(0, 0);
+		glTexCoord2f(1, 0); glVertex2f(size, 0);
+		glTexCoord2f(1, 1); glVertex2f(size, size);
+		glEnd();
+	}
+	else
+	{
+		glBegin(GL_QUADS);
+		glTexCoord2f(0, 1); glVertex2f(0, size * .75);
+		glTexCoord2f(0, 0); glVertex2f(0, 0);
+		glTexCoord2f(1, 0); glVertex2f(size, 0);
+		glTexCoord2f(1, 1); glVertex2f(size, size * .75);
+		glEnd();
+	
+	}
 }
 
 // This code should never have to be ran.
@@ -324,8 +331,16 @@ void texture_reinit()
 
 void resize_art_textures()
 {
+
 	set_render();
 	/*
+		glMatrixMode(GL_PROJECTION);							// Select The Projection Matrix
+		glLoadIdentity();										// Reset The Projection Matrix
+		glViewport(0, 0,1023, 1023);
+		glOrtho(0, 1023, 1023,0, -1.0f, 1.0f);
+		glMatrixMode(GL_MODELVIEW);								// Select The Modelview Matrix
+		glLoadIdentity();
+	*/
 	if (config.artwork) {
 		glDrawBuffer(GL_COLOR_ATTACHMENT2_EXT);
 		glReadBuffer(GL_COLOR_ATTACHMENT2_EXT);
@@ -339,8 +354,8 @@ void resize_art_textures()
 		glDisable(GL_BLEND);
 		// Norm_Rect(0,1024);
 		 //Centered_Rect(0,1024);
-		//Resize_Rect(0, 1024);
-		Any_Rect(0, 0, 1024, 0, 750);
+		Resize_Rect(0, 1024);
+		//Any_Rect(0, 0, 1024, 0, 750);
 		glBindTexture(GL_TEXTURE_2D, 0);
 		glDeleteTextures(1, &art_tex[0]);
 		glGenTextures(1, &art_tex[0]);
@@ -354,7 +369,7 @@ void resize_art_textures()
 		glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT);
 		glReadBuffer(GL_COLOR_ATTACHMENT0_EXT);
 	}
-	*/
+	
 	if (config.overlay) {
 		glDrawBuffer(GL_COLOR_ATTACHMENT2_EXT);
 		glReadBuffer(GL_COLOR_ATTACHMENT2_EXT);
@@ -369,7 +384,7 @@ void resize_art_textures()
 		//Norm_Rect(0,1024);
 		//Centered_Rect(0,1024);
 		Resize_Rect(0, 1024);
-		//Any_Rect(0, 0, 1024, 0, 720);
+		//Any_Rect(0, sx, sy, ex, ey);
 		glBindTexture(GL_TEXTURE_2D, 0);
 		glDeleteTextures(1, &art_tex[1]);
 		glGenTextures(1, &art_tex[1]);
@@ -391,6 +406,7 @@ void resize_art_textures()
 	set_ortho(1024, 768);
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	
 }
 
 void set_blending2()

@@ -18,8 +18,6 @@
 #include "fonts.h"
 #include "vector_fonts.h"
 #include "vector.h"
-//#include "config.h"
-//#include "acommon.h"
 #include "loaders.h"
 #include "gl_fbo.h"
 #include "gl_texturing.h"
@@ -332,7 +330,7 @@ void load_artwork(const struct artworks* p)
 			}
 		}break;
 		case GAME_TEX: goodload = make_single_bitmap(&game_tex[p[i].target], p[i].filename, p[i].zipfile, 0); break;
-		default: wrlog("You have defines something wrong in the artwork loading!!!!"); break;
+		default: wrlog("You have defined something wrong in the artwork loading!!!!"); break;
 		}
 		if (goodload == 0) { wrlog("A requested artwork file was not found!"); have_error = 15; }
 	}
@@ -527,16 +525,31 @@ void RendertoTarget2() //Downsample part 3
 // FINAL COMPOSITING AND RENDERING CODE STARTS HERE  ///////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
-// Rendering Start, this is STEP 1
+// Rendering Start, this is STEP 1 This sets the screen viewport and projection to 1014x1024 for rendering
+// to FBO1, img1a. 
 void set_render()
 {
 	//glPushAttrib(GL_VIEWPORT_BIT | GL_COLOR_BUFFER_BIT);
-	// First we bind the FBO so we can render to it
-	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo1);
-	glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT);
+	
+	GLint viewport[4];
+	glGetIntegerv(GL_VIEWPORT, viewport);
+	//Viewport here is : 0, 0, 1023, 767
 
+	// viewport[0] = x coordinate of the lower-left corner
+    // viewport[1] = y coordinate of the lower-left corner
+    // viewport[2] = width of the viewport
+    // viewport[3] = height of the viewport
+	//wrlog("Viewport % d, % d, % d, % d", viewport[0], viewport[1], viewport[2], viewport[3]);
+
+	// First we bind to FBO1 so we can render to it
+	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo1);
+	//Write To Texture img1a
+	glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT); 
+
+	// Set the projection to 1024x1024
 	//set_ortho(width - 1, height - 1);
-	set_ortho(width, height);
+	set_ortho(1024, 1024);
+
 	// Then render as normal
 	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);	// Clear Screen And Depth Buffer
@@ -554,7 +567,7 @@ void set_render()
 }
 
 
-// Rendering Continued, this is STEP 2
+// Rendering Continued, this is STEP 2, this is where the vectors are drawn to our 1024x1024 texture.
 void render()
 {
 	cache_end();
@@ -602,25 +615,30 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 	glDrawBuffer(GL_COLOR_ATTACHMENT1_EXT);
 	glClearColor(0.0f, 0.0f, 0.0f, 0.0f); //THIS IS FOR THE VARIOUS MONITOR TYPES???
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
 	set_texture(&img1a, 1, 0, 0, 1);
-
-	glTranslated(shiftx, shifty, 0);
+	//glTranslated(shiftx, shifty, 0);
 	glTranslatef(.25, .25, 0);  // This may need to go.
 	glBlendFunc(GL_ONE, GL_ONE);
+    // Draw the vecture texture to fbo1, img1b 
 	Any_Rect(0, xmin, xmax, ymin, ymax);
-
+	//wrlog("Final Render coords : %d %d %d %d. ",xmin, xmax, ymin, ymax);
+	
 	if (gamenum)
 	{
-		// DRAW OVERLAY to FBO1, Image img1a
+		// art_tex[1] is always overlay.
+		// DRAW OVERLAY to FBO1, Image img1b from image1a Ortho 1024x1014, Viewport 1024x1024
+		// Rotated overlays for tempest and tacscan are handled as bezels down below, ugh.
 		if (driver[gamenum].rotation < 2 && config.overlay && art_loaded[1]) {
 			set_texture(&art_tex[1], 1, 0, 0, 0);
+			//glViewport(0, 0, 1023, 1023);
 			//Normal Overlay
 			glBlendFunc(GL_DST_COLOR, GL_SRC_COLOR); //GOOD
-			glColor4f(.7f, .7f, .7f, 1.0f);
-			glColor4f(1, 1, 1, 1);
+			//glColor4f(.7f, .7f, .7f, 1.0f);
+			glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
 			FS_Rect(0, 1024);
+			//Any_Rect(0, xmin, xmax, ymin, ymax);
 		}
+		
 	}
 
 	//// Render to feedback texture FBO1 Image img1b  //////////////////////////////////////////////////
@@ -761,6 +779,9 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 	glBindTexture(GL_TEXTURE_2D, 0);
 
 	//POST COMBINING OVERLAY FOR CINEMATRONICS GAMES WITH MONITOR COVERS & NO BACKGROUND ARTWORK
+
+	//Note to Self, this is why Armor Attack overly isn't scaling correctly. FIX!!!!
+
 	if (driver[gamenum].rotation == 2 && config.overlay && art_loaded[1] && gamenum)
 	{
 		set_texture(&art_tex[1], 1, 0, 0, 0);
