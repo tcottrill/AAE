@@ -114,7 +114,6 @@ public:
 	uint16_t z80nmiAddr = 0x66;
 
 	//PC Manipulations
-	uint8_t  GetLastOpcode();
 	uint16_t GetPC();
 	uint16_t GetPPC();
 	void SetPC(uint16_t wAddr);

@@ -11,7 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
-
+#include "log.h"
 //#include "../driver.h"
 #include "tms5220.h"
 #include "string.h"
@@ -239,7 +239,7 @@ void tms5220_data_write(int data)
 		fifo[fifo_tail] = data;
 		fifo_tail = (fifo_tail + 1) % FIFO_SIZE;
 		fifo_count++;
-
+		
 #ifdef DEBUG_5220
 		if (f) fprintf(f, "Added byte to FIFO (size=%2d)\n", fifo_count);
 #endif

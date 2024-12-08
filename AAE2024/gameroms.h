@@ -49,10 +49,11 @@ ROM_LOAD("e000.tw", 0x0e000, 0x1000)
 ROM_LOAD("e000.tw", 0x0f000, 0x1000)
 /* Paged Program ROM - switched to 2000-3fff */
 ROM_LOAD("page01.tw", 0x10000, 0x4000)
+
+ROM_REGION(0x10000, CPU2)
 /* Paged Vector Generator ROM */
-ROM_LOAD("vec_pg01.tw", 0x18000, 0x4000)
-ROM_LOAD("vec_pg23.tw", 0x1c000, 0x4000)
-/* the last 0x1000 is used for the 2 RAM pages */
+ROM_LOAD("vec_pg01.tw", 0x0, 0x4000)
+ROM_LOAD("vec_pg23.tw", 0x4000, 0x4000)
 ROM_END
 
 ROM_START(alphaona)
@@ -68,8 +69,9 @@ ROM_LOAD("e000.tw", 0x0f000, 0x1000)
 /* Paged Program ROM - switched to 2000-3fff */
 ROM_LOAD("page01.tw", 0x10000, 0x4000)
 /* Paged Vector Generator ROM */
-ROM_LOAD("vec_pg01.tw", 0x18000, 0x4000)
-ROM_LOAD("vec_pg23.tw", 0x1c000, 0x4000)
+ROM_REGION(0x10000, CPU2)
+ROM_LOAD("vec_pg01.tw", 0x0, 0x4000)
+ROM_LOAD("vec_pg23.tw", 0x4000, 0x4000)
 /* the last 0x1000 is used for the 2 RAM pages */
 ROM_END
 
@@ -85,8 +87,9 @@ ROM_LOAD("136025.104", 0x0c000, 0x4000)
 ROM_LOAD("136025.101", 0x10000, 0x4000) /* page 0+1 */
 ROM_LOAD("136025.109", 0x14000, 0x4000) /* page 2+3 */
 /* Paged Vector Generator ROM */
-ROM_LOAD("136025.106", 0x18000, 0x4000) /* page 0+1 */
-ROM_LOAD("136025.107", 0x1c000, 0x4000) /* page 2+3 */
+ROM_REGION(0x10000, CPU2)
+ROM_LOAD("136025.106", 0x0, 0x4000) /* page 0+1 */
+ROM_LOAD("136025.107", 0x4000, 0x4000) /* page 2+3 */
 /* Gamma Processor ROM */
 ROM_REGION(0x10000, CPU1)
 ROM_LOAD("136025.108", 0x8000, 0x4000)
@@ -105,8 +108,9 @@ ROM_LOAD("136025.917", 0x0c000, 0x4000)
 ROM_LOAD("136025.915", 0x10000, 0x4000) /* page 0+1 */
 ROM_LOAD("136025.918", 0x14000, 0x4000) /* page 2+3 */
 /* Paged Vector Generator ROM */
-ROM_LOAD("136025.106", 0x18000, 0x4000) /* page 0+1 */
-ROM_LOAD("136025.907", 0x1c000, 0x4000) /* page 2+3 */
+ROM_REGION(0x10000, CPU2)
+ROM_LOAD("136025.106", 0x0, 0x4000) /* page 0+1 */
+ROM_LOAD("136025.907", 0x4000, 0x4000) /* page 2+3 */
 /* Gamma Processor ROM */
 ROM_REGION(0x10000, CPU1)
 ROM_LOAD("136025.908", 0x8000, 0x4000)
@@ -125,8 +129,9 @@ ROM_LOAD("136025.017", 0x0c000, 0x4000)
 ROM_LOAD("136025.015", 0x10000, 0x4000)
 ROM_LOAD("136025.018", 0x14000, 0x4000)
 /* Paged Vector Generator ROM */
-ROM_LOAD("136025.006", 0x18000, 0x4000)
-ROM_LOAD("136025.007", 0x1c000, 0x4000)
+ROM_REGION(0x10000, CPU2)
+ROM_LOAD("136025.006", 0x0, 0x4000)
+ROM_LOAD("136025.007", 0x4000, 0x4000)
 /* Gamma Processor ROM */
 ROM_REGION(0x10000, CPU1)
 ROM_LOAD("136025.008", 0x8000, 0x4000)
@@ -144,12 +149,39 @@ ROM_LOAD("136025.217", 0x0c000, 0x4000)
 ROM_LOAD("136025.215", 0x10000, 0x4000) /* page 0+1 */
 ROM_LOAD("136025.318", 0x14000, 0x4000) /* page 2+3 */
 /* Paged Vector Generator ROM */
-ROM_LOAD("136025.106", 0x18000, 0x4000) /* page 0+1 */
-ROM_LOAD("136025.107", 0x1c000, 0x4000) /* page 2+3 */
+ROM_REGION(0x10000, CPU2)
+ROM_LOAD("136025.106", 0x0, 0x4000) /* page 0+1 */
+ROM_LOAD("136025.107", 0x4000, 0x4000) /* page 2+3 */
 ROM_REGION(0x10000, CPU1)
 //GAMMA CPU
 ROM_LOAD("136025.108", 0x08000, 0x4000)
 ROM_LOAD("136025.108", 0x0c000, 0x4000) /* reset+interrupt vectors */
+ROM_END
+
+ROM_START(mhavocpe)
+ROM_REGION(0x22000, CPU0)
+// Vector Generator ROM 
+ROM_LOAD("mhpe101.6kl", 0x05000, 0x2000)
+// Program ROM 
+ROM_LOAD("mhpe101.1mn", 0x08000, 0x4000)
+ROM_LOAD("mhpe101.1l",  0x0c000, 0x4000)
+// Paged Program ROM 
+ROM_LOAD("mhpe101.1q", 0x10000, 0x8000) // page 0+1 
+ROM_LOAD("mhpe101.1np", 0x18000, 0x8000) // page 2+3 
+
+ROM_REGION(0x10000, CPU1)
+//GAMMA CPU
+ROM_LOAD("mhpe101.9s", 0x08000, 0x4000)
+ROM_LOAD("mhpe101.9s", 0x0c000, 0x4000) /* reset+interrupt vectors */
+//ROM_LOAD("mhpe101lpc.9s", 0x08000, 0x8000) // reset+interrupt vectors 
+
+// Paged Vector Generator ROM
+ROM_REGION(0x10000, CPU2)
+ROM_LOAD("mhpe101.6h", 0x0, 0x4000) // page 0+1 
+ROM_LOAD("mhpe101.6jk", 0x4000, 0x4000) // page 2+3 
+// Load the ADPCM Speech Rom, currently not used. 
+ROM_REGION(0x40000, CPU3)
+ROM_LOAD("mhpe101.x1", 0x000000, 0x040000)
 ROM_END
 
 ROM_START(meteorts)

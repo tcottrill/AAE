@@ -5,6 +5,8 @@
 #include <allegro.h>
 //PLACE STUFF HERE
 
+extern SAMPLE* game_sounds[60]; //Global Samples
+
 void voice_init(int num);
 void sample_start(int channel, int samplenum, int loop);
 void sample_set_freq(int channel, int freq);

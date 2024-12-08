@@ -52,6 +52,7 @@ static struct POKEYinterface pokey_interface =
 	{ input_port_1_r, input_port_2_r },
 };
 
+
 WRITE_HANDLER(AVGgo)
 {
 	avg_go();

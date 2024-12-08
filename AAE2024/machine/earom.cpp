@@ -60,7 +60,7 @@ void EaromCtrl(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite)
 	}
 	//if (debug) wrlog("Earom Control Write: address %x data %d", address,data);
 }
-
+/*
 void LoadEarom()
 {
 	FILE* fp;
@@ -78,11 +78,11 @@ void LoadEarom()
 	if (!fp) { return; }
 	else {
 		do {
-			c = getc(fp);    /* get one character from the file */
-			earom[i] = c;         /* display it on the monitor       */
+			c = getc(fp);   
+			earom[i] = c;      
 			i++;
 			//wrlog("Earom Read for %x",c);
-		} while (i < 62);    /* repeat until EOF (end of file)  */
+		} while (i < 62);    // repeat until EOF (end of file)
 	}
 	fclose(fp);
 	wrlog("Loaded Earom Data for %s", driver[gamenum].name);
@@ -109,7 +109,7 @@ void SaveEarom(void)
 	fclose(fp);
 	wrlog("Saved Earom Data for %s", driver[gamenum].name);
 }
-
+*/
 int atari_vg_earom_load()
 {
 	/* We read the EAROM contents from disk */

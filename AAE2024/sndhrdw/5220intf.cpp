@@ -15,7 +15,9 @@
 #include "5220intf.h"
 #include "aae_mame_driver.h"
 #include "samples.h"
-//#include "generic.h"
+
+//Oh this is stupid messy
+#include "mhavoc.h"
 
 /* these describe the current state of the output buffer */
 #define MIN_SLICE 100	/* minimum update step for TMS5220 */
@@ -49,7 +51,7 @@ int tms5220_sh_start(struct TMS5220interface* iinterface)
 		return 1;
 	memset(buffer, 0x80, buffer_len);
 	//stream2 = play_audio_stream(buffer_len, 8, FALSE, emulation_rate, config.pokeyvol, 128); //450  13500
-	aae_stream_init(1, emulation_rate, buffer_len, 190);
+	aae_stream_init(1, emulation_rate, buffer_len, 255);
 	/* reset the 5220 */
 	tms5220_reset();
 	tms5220_set_irq(iinterface->irq);
@@ -159,8 +161,13 @@ static void tms5220_update(int force)
 	int totcycles, leftcycles, newpos;
 
 	//newpos = cpu_scale_by_cycles(buffer_len, intfa->clock);
-	newpos = cpu_scale_by_cycles(buffer_len);
-	//WRLOG("NEW Pokey Position here is %d", newpos);
+	
+	if (gamenum == MHAVOCRV || gamenum == MHAVOCPE) {
+		newpos = cpu_scale_by_cycles_mh(buffer_len);
+	}
+	else
+		newpos = cpu_scale_by_cycles(buffer_len);
+	//WRLOG("NEW TMS Position here is %d", newpos);
 	if (newpos - sample_pos < MIN_SLICE && !force)
 		return;
 	tms5220_process(buffer + sample_pos, newpos - sample_pos);

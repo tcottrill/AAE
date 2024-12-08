@@ -27,6 +27,8 @@
 	Cinematronics vector hardware
 
 	driver by Aaron Giles
+        license:BSD-3-Clause
+        copyright-holders:Aaron Giles
 
 	Special thanks to Neil Bradley, Zonn Moore, and Jeff Mitchell of the
 	Retrocade Alliance

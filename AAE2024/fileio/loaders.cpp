@@ -6,7 +6,7 @@
 #include "winalleg.h"
 #include "gameroms.h"
 #include "aae_mame_driver.h"
-//#include "samples.h"
+#include "samples.h"
 //#include "acommon.h"
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -50,7 +50,7 @@ void bswap(char* mem, int length)
 	}
 }
 
-int load_roms(const char* archname, const struct RomModule *p)
+int load_roms(const char* archname, const struct RomModule* p)
 {
 	int test = 0;
 	int skip = 0;
@@ -76,7 +76,7 @@ int load_roms(const char* archname, const struct RomModule *p)
 		strcat(temppath, archname);
 		strcat(temppath, ".zip\0");
 	}
-	wrlog("Opening, %s", temppath);
+	//wrlog("Opening, %s", temppath);
 
 	/// Start Loading ROMS HERE ///
 
@@ -95,6 +95,7 @@ int load_roms(const char* archname, const struct RomModule *p)
 			}
 			else
 			{
+				wrlog("Loading Rom: %s", p[i].filename);
 				zipdata = load_zip_file(p[i].filename, temppath);
 			}
 			if (!zipdata)
@@ -138,7 +139,7 @@ int load_roms(const char* archname, const struct RomModule *p)
 	return (1);
 }
 
-int load_samples(const char **p, int val)
+int load_samples(const char** p, int val)
 {
 	char temppath[255];
 	unsigned char* zipdata = 0;
@@ -151,11 +152,10 @@ int load_samples(const char **p, int val)
 	strcpy(temppath, "samples\\");//if it's not there, try sample dir
 	strcat(temppath, p[0]);
 	strcat(temppath, "\0");
-
-	wrlog("Opening, %s", temppath);
-
+	//wrlog("Opening, %s", temppath); // Redundant logging. 
 	do
 	{
+		wrlog("Loading Sample %s", p[i]);
 		zipdata = load_zip_file((const char*)p[i], temppath);
 
 		if (!zipdata) {
@@ -259,12 +259,12 @@ int save_hi_aae(int start, int size, int image)
 	return 0;
 }
 
-int verify_rom(const char* archname, const struct RomModule *p, int romnum)
+int verify_rom(const char* archname, const struct RomModule* p, int romnum)
 {
 	return 1;
 }
 
-int verify_sample(const char **p, int num)
+int verify_sample(const char** p, int num)
 {
 	return 1;
 }

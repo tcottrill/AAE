@@ -9,6 +9,8 @@ int testvol;
 int game_voice[MAX_VOICE]; //Global Voice For Samples
 int sample_vol[MAX_VOICE];
 
+SAMPLE* game_sounds[60];
+
 AUDIOSTREAM* stream[12]; //Global Streaming Sound
 
 void voice_init(int num)

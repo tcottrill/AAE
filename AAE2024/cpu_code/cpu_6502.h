@@ -77,6 +77,7 @@ public:
 	uint8_t m6502_get_reg(int regnum);
 	//Set Register Values
 	void m6502_set_reg(int regnum, uint8_t val);
+	void m6502clearpendingint();
 	//Get the PC
 	uint16_t get_pc();
 	//Force a jump to a different PC
@@ -248,6 +249,7 @@ private:
 	void phy6502();
 	void ply6502();
 	void stz6502();
+	void isb6502();
 	void tsb6502();
 	void trb6502();
 };

@@ -805,7 +805,7 @@ struct AAEDriver driver[] =
 		{0,1024,0,812},
 		0,0,
 	    0x4000, 0x1000,
-	    atari_vg_earom_handler
+		mhavoc_nvram_handler
 		},
 					{
 		"mhavoc2", "Major Havoc (Revision 2)", rom_mhavoc2,
@@ -822,7 +822,7 @@ struct AAEDriver driver[] =
 		{0,1024,0,812},
 		0,0,
 		0x4000, 0x1000,
-		atari_vg_earom_handler
+		mhavoc_nvram_handler
 		},
 		{
 		"mhavocrv", "Major Havoc (Return To VAX - Mod by Jeff Askey)", rom_mhavocrv,
@@ -839,7 +839,24 @@ struct AAEDriver driver[] =
 		{0,1024,0,812},
 		0,0,
 		0x4000, 0x1000,
-		atari_vg_earom_handler
+		mhavoc_nvram_handler
+		},
+		{
+		"mhavocpe", "Major Havoc (The Promised End 1.01 adpcm)", rom_mhavocpe,
+		&init_mhavoc,0,&run_mhavoc,&end_mhavoc,
+		input_ports_mhavoc,
+		mhavocpe_samples, noart,
+		{CPU_NONE,CPU_NONE,CPU_NONE,CPU_NONE},
+		{2500000,1250000,0,0},
+		{400,400,0,0},
+		{31,31,0,0},
+		{INT_TYPE_INT,INT_TYPE_INT,0,0},
+		{0,0,0,0},
+		50,VEC_COLOR,0,
+		{0,1024,0,812},
+		0,0,
+		0x4000, 0x1000,
+		mhavoc_nvram_handler
 		},
 		{
 		"mhavocp", "Major Havoc (Prototype)", rom_mhavocp,
@@ -856,7 +873,7 @@ struct AAEDriver driver[] =
 		{0,1024,0,812},
 		0,0,
 		0x4000, 0x1000,
-		atari_vg_earom_handler
+		mhavoc_nvram_handler
 		},
 		{
 		"alphaone", " Alpha One (Major Havoc Prototype - 3 Lives)", rom_alphaone,

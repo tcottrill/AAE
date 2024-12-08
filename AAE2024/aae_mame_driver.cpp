@@ -35,16 +35,6 @@ int bezely;
 float overalpha;
 //struct game_rect GameRect;
 
-//GLOBAL AUDIO VARIABLES
-int gammaticks; //Needed for Pokey Sound for Major Havoc
-SAMPLE* game_sounds[60]; //Global Samples
-int chip;  //FOR POKEY
-int gain;  //FOR POKEY
-int BUFFER_SIZE;  //FOR POKEY
-AUDIOSTREAM* stream1; //Global Streaming Sound 1
-//AUDIOSTREAM* stream2; //Global Streaming Sound 2
-unsigned char* soundbuffer;
-signed char* aybuffer;
 
 int in_gui;
 unsigned int frames; //Global Framecounter
@@ -77,7 +67,7 @@ int total_length;
 
 
 settings config;
-int index;	/* avoid a common "shadows global declaration" warning in the DOS build */
+int index;	
 
 //GAMEKEYS* MK;
 //GAMEKEYS* GK;

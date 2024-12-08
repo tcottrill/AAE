@@ -224,16 +224,6 @@ extern int bezely;
 extern float overalpha;
 extern struct game_rect GameRect;
 
-//GLOBAL AUDIO VARIABLES , should be in generic.cpp
-extern int gammaticks; //Needed for Pokey Sound for Major Havoc
-extern SAMPLE* game_sounds[60]; //Global Samples
-extern int chip;  //FOR POKEY
-extern int gain;  //FOR POKEY
-extern int BUFFER_SIZE;  //FOR POKEY
-extern AUDIOSTREAM* stream1; //Global Streaming Sound 1
-//extern AUDIOSTREAM* stream2; //Global Streaming Sound 2
-extern unsigned char* soundbuffer;
-extern signed char* aybuffer;
 
 extern int in_gui;
 extern unsigned int frames; //Global Framecounter
@@ -427,9 +417,11 @@ enum GameDef {
 	MHAVOC,
 	MHAVOC2,
 	MHAVOCRV,
+	MHAVOCPE,
 	MHAVOCP,
 	ALPHAONE,
 	ALPHAONA,
+
 
 	//Cinematronics Hardware
 	SOLARQ,

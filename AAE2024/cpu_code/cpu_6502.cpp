@@ -596,7 +596,7 @@ void cpu_6502::lsra6502()
 void cpu_6502::nop6502()
 {
 	if (opcode != 0xea) {
-		wrlog("!!!!WARNING UNHANDLED NO - OP CALLED: %x", opcode);
+		wrlog("!!!!WARNING UNHANDLED NO - OP CALLED: %x CPU: %x", opcode, cpu_num);
 	}
 	switch (opcode) {
 	case 0x1C:
@@ -845,6 +845,15 @@ void cpu_6502::stz6502()
 }
 
 //65C02 OPS, need work.
+
+void cpu_6502::isb6502()
+{
+	inc6502();
+	sbc6502();
+	//if (penaltyop && penaltyaddr) clockticks6502--;
+}
+
+
 void cpu_6502::tsb6502()
 {
 	MEM[savepc] |= A;
@@ -1094,11 +1103,11 @@ void cpu_6502::init6502(uint16_t addrmaskval)
 	instruction[0xe0] = &cpu_6502::cpx6502; adrmode[0xe0] = &cpu_6502::immediate6502;
 	instruction[0xe1] = &cpu_6502::sbc6502; adrmode[0xe1] = &cpu_6502::indx6502;
 	instruction[0xe2] = &cpu_6502::nop6502; adrmode[0xe2] = &cpu_6502::implied6502;
-	instruction[0xe3] = &cpu_6502::nop6502; adrmode[0xe3] = &cpu_6502::implied6502;
+	instruction[0xe3] = &cpu_6502::isb6502; adrmode[0xe3] = &cpu_6502::indx6502;
 	instruction[0xe4] = &cpu_6502::cpx6502; adrmode[0xe4] = &cpu_6502::zp6502;
 	instruction[0xe5] = &cpu_6502::sbc6502; adrmode[0xe5] = &cpu_6502::zp6502;
 	instruction[0xe6] = &cpu_6502::inc6502; adrmode[0xe6] = &cpu_6502::zp6502;
-	instruction[0xe7] = &cpu_6502::nop6502; adrmode[0xe7] = &cpu_6502::implied6502;
+	instruction[0xe7] = &cpu_6502::isb6502; adrmode[0xe7] = &cpu_6502::zp6502;
 	instruction[0xe8] = &cpu_6502::inx6502; adrmode[0xe8] = &cpu_6502::implied6502;
 	instruction[0xe9] = &cpu_6502::sbc6502; adrmode[0xe9] = &cpu_6502::immediate6502;
 	instruction[0xea] = &cpu_6502::nop6502; adrmode[0xea] = &cpu_6502::implied6502;  //Real NOP
@@ -1106,23 +1115,23 @@ void cpu_6502::init6502(uint16_t addrmaskval)
 	instruction[0xec] = &cpu_6502::cpx6502; adrmode[0xec] = &cpu_6502::abs6502;
 	instruction[0xed] = &cpu_6502::sbc6502; adrmode[0xed] = &cpu_6502::abs6502;
 	instruction[0xee] = &cpu_6502::inc6502; adrmode[0xee] = &cpu_6502::abs6502;
-	instruction[0xef] = &cpu_6502::nop6502; adrmode[0xef] = &cpu_6502::implied6502;
+	instruction[0xef] = &cpu_6502::isb6502; adrmode[0xef] = &cpu_6502::abs6502;
 	instruction[0xf0] = &cpu_6502::beq6502; adrmode[0xf0] = &cpu_6502::relative6502;
 	instruction[0xf1] = &cpu_6502::sbc6502; adrmode[0xf1] = &cpu_6502::indy6502;
 	instruction[0xf2] = &cpu_6502::sbc6502; adrmode[0xf2] = &cpu_6502::indzp6502;
-	instruction[0xf3] = &cpu_6502::nop6502; adrmode[0xf3] = &cpu_6502::implied6502;
+	instruction[0xf3] = &cpu_6502::isb6502; adrmode[0xf3] = &cpu_6502::indy6502;
 	instruction[0xf4] = &cpu_6502::nop6502; adrmode[0xf4] = &cpu_6502::implied6502;
 	instruction[0xf5] = &cpu_6502::sbc6502; adrmode[0xf5] = &cpu_6502::zpx6502;
 	instruction[0xf6] = &cpu_6502::inc6502; adrmode[0xf6] = &cpu_6502::zpx6502;
-	instruction[0xf7] = &cpu_6502::nop6502; adrmode[0xf7] = &cpu_6502::implied6502;
+	instruction[0xf7] = &cpu_6502::isb6502; adrmode[0xf7] = &cpu_6502::zpx6502;
 	instruction[0xf8] = &cpu_6502::sed6502; adrmode[0xf8] = &cpu_6502::implied6502;
 	instruction[0xf9] = &cpu_6502::sbc6502; adrmode[0xf9] = &cpu_6502::absy6502;
 	instruction[0xfa] = &cpu_6502::plx6502; adrmode[0xfa] = &cpu_6502::implied6502;
-	instruction[0xfb] = &cpu_6502::nop6502; adrmode[0xfb] = &cpu_6502::implied6502;
-	instruction[0xfc] = &cpu_6502::nop6502; adrmode[0xfc] = &cpu_6502::implied6502;
+	instruction[0xfb] = &cpu_6502::isb6502; adrmode[0xfb] = &cpu_6502::absy6502;
+	instruction[0xfc] = &cpu_6502::nop6502; adrmode[0xfc] = &cpu_6502::absx6502;
 	instruction[0xfd] = &cpu_6502::sbc6502; adrmode[0xfd] = &cpu_6502::absx6502;
 	instruction[0xfe] = &cpu_6502::inc6502; adrmode[0xfe] = &cpu_6502::absx6502;
-	instruction[0xff] = &cpu_6502::nop6502; adrmode[0xff] = &cpu_6502::implied6502;
+	instruction[0xff] = &cpu_6502::isb6502; adrmode[0xff] = &cpu_6502::absx6502;
 }
 //Register Operations, need refinement
 uint8_t cpu_6502::m6502_get_reg(int regnum)
@@ -1164,6 +1173,11 @@ uint16_t cpu_6502::get_ppc()
 void cpu_6502::set_pc(uint16_t pc)
 {
 	PC = pc;
+}
+
+void cpu_6502::m6502clearpendingint()
+{
+	if (_irqPending) _irqPending = 0;
 }
 
 // Reset MyCpu

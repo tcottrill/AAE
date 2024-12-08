@@ -120,7 +120,7 @@ unsigned char* load_zip_file(const char* filename, const char* archname)
 
 end:
 	// Close the archive
-	wrlog("Closing Archive");
+	//wrlog("Closing Archive");
 	mz_zip_reader_end(&zip_archive);
 
 	if (ret) { wrlog("Zip file loaded Successfully: %d from archive %s", filename, archname); }
