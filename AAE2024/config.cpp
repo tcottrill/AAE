@@ -287,8 +287,8 @@ void setup_game_config(void)
 	set_window_title(tempname);
 	setup_config();
 
-	// setup_video_menu();
-	// setup_sound_menu();
+	 setup_video_menu();
+	 setup_sound_menu();
 	// setup_mouse_menu();
-	// set_points_lines();
+	 set_points_lines();
 }

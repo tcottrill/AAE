@@ -228,8 +228,6 @@ int init_gl(void)
 		if (allegro_gl_extensions_GL.EXT_framebuffer_object) { wrlog("EXT_Frambuffer Object Supported (Required)"); }
 		else { allegro_message("I'm sorry, but you need EXT_framebuffer_object support to \n run this program. Update your card or drivers."); exit(1); }
 
-		wglSwapIntervalEXT(1);
-
 		//////////// THESE MAY NEED TO BE REINSTANCIATED /////////////////////////////////////////////////////////////////////
 		make_single_bitmap(&error_tex[0], "error.png", "aae.zip", 0); //This has to be loaded before any driver init.
 		make_single_bitmap(&error_tex[1], "info.png", "aae.zip", 0);
@@ -421,7 +419,34 @@ void RendertoTarget() //Downsample part 1
 	glUseProgram(0);
 }
 
-void ping_pong() //Downsample part 2
+
+void RendertoTarget2() //Downsample part 23
+{
+	GLint loc = 0;
+
+	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo3);
+
+	//Clear buffers between frames......
+	glDrawBuffer(GL_COLOR_ATTACHMENT1_EXT);
+	glClearColor(0.0, 0.0, 0.0, 0.0);
+	glClear(GL_COLOR_BUFFER_BIT);
+	glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT);
+
+	set_ortho(256, 256);
+
+	glUseProgram(fragBlur);
+
+	loc = glGetUniformLocation(fragBlur, "colormap"); glUniform1i(loc, 0);
+	loc = glGetUniformLocation(fragBlur, "width");    glUniform1f(loc, 256.0);
+	loc = glGetUniformLocation(fragBlur, "height");   glUniform1f(loc, 256.0);
+
+	glDisable(GL_BLEND);
+	set_texture(&img2a, 1, 0, 0, 1);
+	FS_Rect(0, 256);
+	glUseProgram(0);
+}
+
+void ping_pong() //Downsample part 3
 {
 	static constexpr auto v1 = 1.5f;  //1.7 //1.0
 	static constexpr auto v2 = 2.5f;    //2.7 //2.0
@@ -490,31 +515,6 @@ void ping_pong() //Downsample part 2
 }
 
 
-void RendertoTarget2() //Downsample part 3
-{
-	GLint loc = 0;
-
-	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo3);
-
-	//Clear buffers between frames......
-	glDrawBuffer(GL_COLOR_ATTACHMENT1_EXT);
-	glClearColor(0.0, 0.0, 0.0, 0.0);
-	glClear(GL_COLOR_BUFFER_BIT);
-	glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT);
-
-	set_ortho(256, 256);
-
-	glUseProgram(fragBlur);
-
-	loc = glGetUniformLocation(fragBlur, "colormap"); glUniform1i(loc, 0);
-	loc = glGetUniformLocation(fragBlur, "width");    glUniform1f(loc, 256.0);
-	loc = glGetUniformLocation(fragBlur, "height");   glUniform1f(loc, 256.0);
-
-	glDisable(GL_BLEND);
-	set_texture(&img2a, 1, 0, 0, 1);
-	FS_Rect(0, 256);
-	glUseProgram(0);
-}
 ////////////////////////////////////////////////////////////////////////////////
 // END  FBO / SHADER DOWNSAMPLING and COMPOSITING CODE  /////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////

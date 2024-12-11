@@ -147,6 +147,34 @@ void draw_a_quad(int tleft, int bleft, int tright, int bright, int r, int g, int
 		//glPopMatrix();
 }
 
+
+void quad_from_center(float x, float y, float width, float height, int r, int g, int b, int alpha)
+{
+	float minx = 0.0f;
+	float miny = 0.0f;
+	float maxx = 0.0f;
+	float maxy = 0.0f;
+
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glEnable(GL_BLEND);
+	glColor4ub(r, g, b, alpha);
+
+	//Set Origin to Center of Texture
+	minx = x - (width / 2.0f);
+	miny = y - (height / 2.0f);
+	maxx = x + (width / 2.0f);
+	maxy = y + (height / 2.0f);
+
+	glBegin(GL_QUADS);
+	glVertex2f(minx, miny);
+	glVertex2f(maxx, miny);
+	glVertex2f(maxx, maxy);
+	glVertex2f(minx, maxy);
+	glEnd();
+}
+
+
+
 // Rectangle Drawing. Way too many.
 void Bezel_Rect(int facing, int xmin, int xmax, int ymin, int ymax)
 {

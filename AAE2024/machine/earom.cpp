@@ -25,17 +25,13 @@ static int earom[EAROM_SIZE];
 
 UINT8 EaromRead(UINT32 address, struct MemoryReadByte* psMemRead)
 {
-	//wrlog("Earom Read? address %x data %d", address,earom_data);
 	return (earom_data);
 }
 
-//Fix this with the new 6502 code, remove the offset.
 void EaromWrite(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite)
 {
 	 wrlog("Earom write? address %x data %d", earom_offset,data);
 	earom_offset = (address & 0x00ff);
-	//if (gamenum == REDBARON) { earom_offset -= 0x20; }
-	//if (gamenum == GRAVITAR || gamenum == BWIDOW) { earom_offset -= 0x40; }
 
 	earom_data = data;
 }
@@ -60,56 +56,7 @@ void EaromCtrl(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite)
 	}
 	//if (debug) wrlog("Earom Control Write: address %x data %d", address,data);
 }
-/*
-void LoadEarom()
-{
-	FILE* fp;
-	char c;
-	int i = 0;
-	char fullpath[180];
 
-	strcpy(fullpath, "hi\\");
-	strcat(fullpath, driver[gamenum].name);
-	strcat(fullpath, ".aae");
-
-	//allegro_message(" OK, fullpath is %s",fullpath);
-	fp = fopen(fullpath, "rb");
-
-	if (!fp) { return; }
-	else {
-		do {
-			c = getc(fp);   
-			earom[i] = c;      
-			i++;
-			//wrlog("Earom Read for %x",c);
-		} while (i < 62);    // repeat until EOF (end of file)
-	}
-	fclose(fp);
-	wrlog("Loaded Earom Data for %s", driver[gamenum].name);
-}
-
-void SaveEarom(void)
-{
-	FILE* fp;
-	int i;
-	char fullpath[180];
-
-	strcpy(fullpath, "hi\\");
-	strcat(fullpath, driver[gamenum].name);
-	strcat(fullpath, ".aae");
-	//allegro_message(" OK, fullpath is %s",fullpath);
-	fp = fopen(fullpath, "wb");
-	if (fp == NULL) { return; }
-	for (i = 0; i < 62; i++)
-
-	{
-		fprintf(fp, "%c", earom[i]);
-	}//allegro_message("Writing %x",earom[i&0xff]);
-
-	fclose(fp);
-	wrlog("Saved Earom Data for %s", driver[gamenum].name);
-}
-*/
 int atari_vg_earom_load()
 {
 	/* We read the EAROM contents from disk */

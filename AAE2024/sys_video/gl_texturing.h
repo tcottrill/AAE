@@ -6,7 +6,6 @@
 #include <allegro.h>
 #include "alleggl.h"
 
-
 extern GLuint error_tex[2];
 extern GLuint pause_tex[2];
 extern GLuint fun_tex[4];
@@ -19,6 +18,7 @@ extern GLuint menu_tex[7];
 extern float wideadj;
 extern int errorsound;
 
+void quad_from_center(float x, float y, float width, float height, int r, int g, int b, int alpha);
 void set_texture(GLuint* texture, GLboolean linear, GLboolean mipmapping, GLboolean blending, GLboolean set_color);
 void draw_center_tex(GLuint* texture, int size, int x, int y, int rotation, int facing, int r, int g, int b, int alpha, int blend);
 void draw_a_quad(int tleft, int bleft, int tright, int bright, int r, int g, int b, int alpha, int blend);

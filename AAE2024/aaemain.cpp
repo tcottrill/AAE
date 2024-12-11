@@ -541,7 +541,7 @@ void run_game(void)
 		auto diff = end - start;
 		wrlog("CPU Time: %f ", chrono::duration <double, milli>(diff).count());
 
-
+		/*
 		if (get_menu_status())
 		{
 			fontmode_start();
@@ -549,7 +549,7 @@ void run_game(void)
 			do_the_menu();
 			fontmode_end();
 		}
-
+		*/
 
 		render();
 		

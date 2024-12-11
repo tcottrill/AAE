@@ -22,4 +22,12 @@ Reorganized all the OpenGl code in an attempt to make some sense of it. Added th
 
 Corrected the artwork sizing issues, this is the first build I would consider "mostly working" since 2007.
 
- 
+12/08/24
+
+Made "major" changes to the Major Havoc driver, fixed nvram saving, added Major Havoc - The Promised End v1.01 to the driver. Will further split out everything and refine at a later date. Going back to graphics fixes.
+
+12/11/24
+
+Corrected the Menu System, first pass. Sound and Graphics Menus are working again, more or less. Still nore work to do here with individual game configuration saves. Moved everything around to make it look at least a little bit better. 
+
+

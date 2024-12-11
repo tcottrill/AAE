@@ -1350,6 +1350,7 @@ void run_mhavoc()
 	gammaticks = 0;
 
 	//wrlog("------------FRAME START --------------");
+	update_input_ports();
 
 	for (x = 0; x < (passes + 1); x++)
 	{

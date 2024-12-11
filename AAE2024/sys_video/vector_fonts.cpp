@@ -272,13 +272,15 @@ void fontmode_start()
 	glLoadIdentity();
 	// Reset The Projection Matrix
 	glViewport(0, 0, 1024, 768);//Machine->drv->vector_width, Machine->drv->vector_height);
-	glOrtho(1024, 0,768, 0, -1.0f, 1.0f);
-
+	glOrtho(1024, 0,768,0, -1.0f, 1.0f);
 	glMatrixMode(GL_MODELVIEW);								// Select The Modelview Matrix
 	glLoadIdentity();
 	*/
+	glDisable(GL_TEXTURE_2D);
+	glEnable(GL_BLEND);
+	glDisable(GL_ALPHA_TEST);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
+	
 	//
 	// To Be fixed with driver changes/updates
 	//
@@ -290,7 +292,7 @@ void fontmode_start()
 	//case 3: fangle = 180; break;
 	//case 6: fangle = 270; break;
 	//}
-	fangle = 90;
+	fangle = 0;
 	/* compute the min/max values */
 	int xmin = Machine->gamedrv->visible_area.min_x;
 	int ymin = Machine->gamedrv->visible_area.min_y;
@@ -352,8 +354,6 @@ void fprint(float x, int y, unsigned int color, float scale, const char* fmt, ..
 	lastscale = scale;
 	spoint center = { 580 , 325 }; // { xcenter, ycenter };/
 	
-	x = x + 256;
-
 	if (fangle)
 	{
 		radians = _dtorad[fangle];
@@ -386,13 +386,13 @@ void fprint(float x, int y, unsigned int color, float scale, const char* fmt, ..
 			//TODO: Change this to proper rendering.
 
 			glBegin(GL_LINES);
-			glVertex2f(p0.y, p0.x);// Top Left
-			glVertex2f(p1.y, p1.x);// Top Left
+			glVertex2f(p0.x, p0.y);// Top Left
+			glVertex2f(p1.x, p1.y);// Top Left
 			glEnd();
 
 			glBegin(GL_POINTS);
-			glVertex2f(p0.y, p0.x);// Top Left
-			glVertex2f(p1.y, p1.x);// Top Left
+			glVertex2f(p0.x, p0.y);// Top Left
+			glVertex2f(p1.x, p1.y);// Top Left
 			glEnd();
 
 			a += 4; b += 4;

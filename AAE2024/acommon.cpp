@@ -122,7 +122,7 @@ void video_loop(void)
 	//show_info();
 
 	//If were displaying the menu, go ahead and show it.
-	/*
+	
 	if (get_menu_status())
 	{
 		fontmode_start();
@@ -130,7 +130,7 @@ void video_loop(void)
 		do_the_menu();
 		fontmode_end();
 	}
-	*/
+	
 	show_error(); //If there is currently an error condition, show it.
 
 	if (show_fps)
