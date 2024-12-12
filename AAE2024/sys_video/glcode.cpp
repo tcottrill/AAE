@@ -25,7 +25,7 @@
 
 // New 2024
 #include "os_basic.h"
-#include "texrect.h"
+
 #include "newfbo.h"
 #include "MathUtils.h"
 #include <chrono> // For code profiling
@@ -33,11 +33,15 @@
 using namespace std;
 using namespace chrono;
 
+Rect2 screen_rect;
+
+
 //NEW CODE 2024 ////////////////////////////////////////////
 // Rendering Screen Variables
 enum RotationDir { NONE, RIGHT, LEFT, OVER } rotation;
 multifbo* fbo;
-Rect2 screen_rect;
+int adj_horiz = 0;
+int adj_vert = 0;
 //
 //
 //
@@ -251,6 +255,8 @@ int init_gl(void)
 		wrlog("Finished configuration of OpenGl sucessfully");
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		init_one++;
+
+		wrlog("GL Scale: Xscaled %f, Yscaled %f", get_scalew(), get_scaleh());
 	}
 
 	allegro_gl_flip();
@@ -390,6 +396,36 @@ void GLCheckError(const char* call)
 	errcode -= GL_INVALID_ENUM;
 	wrlog("OpenGL %s in '%s'", enums[errcode], call);
 }
+
+
+void set_render_fbo4()
+{
+	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo4);
+	//Write To Texture img1a
+	glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT);
+	set_ortho(SCREEN_W, SCREEN_H);
+	// Then render as normal
+	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+	glClear(GL_COLOR_BUFFER_BIT);	// Clear Screen And Depth Buffer
+	glEnable(GL_BLEND);
+	glDisable(GL_LIGHTING);
+	glDisable(GL_DEPTH_TEST); //Disable depth testing
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glEnable(GL_LINE_SMOOTH);
+	glEnable(GL_POINT_SMOOTH);
+	//Required for some older cards.
+	glDisable(GL_DITHER);
+}
+
+void end_render_fbo4()
+{
+	//Set Ortho to 1024, and drawing to backbuffer
+	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);
+	glDrawBuffer(GL_BACK);
+	set_texture(&img4a, 1, 0, 1, 0);
+	screen_rect.Render(1.33);
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 // FBO / SHADER DOWNSAMPLING and COMPOSITING CODE  /////////////////////////////
@@ -877,16 +913,22 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 	*/
 
 	glLoadIdentity();
+
+	set_render_fbo4();
 	video_loop();
+	end_render_fbo4();
+	
 	glDisable(GL_TEXTURE_2D);
 
 
 	auto end = chrono::steady_clock::now();
 	auto diff = end - start;
 	wrlog("Profiler: Render Time after final compositing %f ", chrono::duration <double, milli>(diff).count());
-
-
 }
+
+
+
+
 ////////////////////////////////////////////////////////////////////////////////
 // FINAL COMPOSITING AND RENDERING CODE ENDS HERE  ///////////////////////////
 ////////////////////////////////////////////////////////////////////////////////

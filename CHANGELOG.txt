@@ -30,4 +30,5 @@ Made "major" changes to the Major Havoc driver, fixed nvram saving, added Major 
 
 Corrected the Menu System, first pass. Sound and Graphics Menus are working again, more or less. Still nore work to do here with individual game configuration saves. Moved everything around to make it look at least a little bit better. 
 
+12/12/14 Increased rendering time with another FBO, but it worked around a major rendering flaw allowing me to composite the menu and FPS onto the screen without doing any crazy scaling everywhere to compensate for screen sizes.
 

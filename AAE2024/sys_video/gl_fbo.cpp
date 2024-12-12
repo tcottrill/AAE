@@ -17,6 +17,7 @@ GLuint img2b;
 GLuint img3a;
 GLuint img3b;
 
+GLuint img4a;
 //Unused Depth Buffer Handles
 //GLuint dep1;             // Our handle to the FBO
 //GLuint dep2;
@@ -184,4 +185,19 @@ void fbo_init()
 	glFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT, GL_COLOR_ATTACHMENT1_EXT, GL_TEXTURE_2D, img3b, 0);
 	CHECK_FRAMEBUFFER_STATUS(); //Check Framebuffer Status
 	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);	// Unbind the FBO for now
+
+	// Setup our FBO 4
+	glGenFramebuffersEXT(1, &fbo4);
+	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo4);
+
+	glGenTextures(1, &img4a); glBindTexture(GL_TEXTURE_2D, img4a);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	// And attach it to the FBO so we can render to it
+	glFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT, GL_COLOR_ATTACHMENT0_EXT, GL_TEXTURE_2D, img4a, 0);
+
+	CHECK_FRAMEBUFFER_STATUS(); //Check Framebuffer Status
+	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);	// Unbind the FBO for now
+
 }

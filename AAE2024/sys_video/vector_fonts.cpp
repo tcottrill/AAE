@@ -235,6 +235,7 @@ float get_scalew()
 }
 */
 
+
 void font_init(void)
 {
 	int a = 0;
@@ -353,7 +354,7 @@ void fprint(float x, int y, unsigned int color, float scale, const char* fmt, ..
 	len = strnlen(text, 255);
 	lastscale = scale;
 	spoint center = { 580 , 325 }; // { xcenter, ycenter };/
-	
+
 	if (fangle)
 	{
 		radians = _dtorad[fangle];

@@ -415,12 +415,10 @@ void run_game(void)
 	//////////////////////////////////////////////////////////////INITIAL VARIABLES SETUP ///////////////////////////////////////////////////
 	options.cheat = 1;
 	set_aae_leds(0, 0, 0);  //Reset LEDS
-	//config.mainvol *= 12.75;
-	//config.pokeyvol *= 12.75; //Adjust from menu values
-	//config.noisevol *= 12.75;
-	config.mainvol = 150;
-	config.pokeyvol = 250; //Adjust from menu values
-	config.noisevol = 200;
+	
+	//config.mainvol = 255;
+	//config.pokeyvol = 250; //Adjust from menu values
+	//config.noisevol = 200;
 	
 	//Check;
 	if (config.noisevol > 255) config.noisevol = 254;
@@ -431,7 +429,7 @@ void run_game(void)
 	if (config.pokeyvol <= 0) config.pokeyvol = 1;
 
 	set_volume(config.mainvol, 0);
-	/*
+
 	SetThreadPriority(GetCurrentThread(), ABOVE_NORMAL_PRIORITY_CLASS);
 	switch (config.priority)
 	{
@@ -442,7 +440,7 @@ void run_game(void)
 	case 0: SetPriorityClass(GetCurrentProcess(), IDLE_PRIORITY_CLASS); break;
 	}
 	LimitThreadAffinityToCurrentProc();
-	*/
+
 	art_loaded[0] = 0;
 	art_loaded[1] = 0;
 	art_loaded[2] = 0;
@@ -533,23 +531,11 @@ void run_game(void)
 			if (!paused && have_error == 0) { run_cpus_to_cycles(); }
 		}
 		
-		
-
 		if (!paused && have_error == 0) { driver[gamenum].run_game(); }
 
 		auto end = chrono::steady_clock::now();
 		auto diff = end - start;
 		wrlog("CPU Time: %f ", chrono::duration <double, milli>(diff).count());
-
-		/*
-		if (get_menu_status())
-		{
-			fontmode_start();
-			glColor4f(1, 1, 1, 1);
-			do_the_menu();
-			fontmode_end();
-		}
-		*/
 
 		render();
 		
@@ -561,8 +547,6 @@ void run_game(void)
 		//timer_clear_all_eof();
 
 		gametime = TimerGetTimeMS();
-
-		
 
 		//if (driver[gamenum].fps !=60){
 		while (((double)(gametime)-(double)starttime) < (double)millsec)

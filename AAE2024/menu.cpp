@@ -310,9 +310,7 @@ void change_menu()
 
 void do_the_menu()
 {
-	//fprint(140, 10, RGB_PINK, 2.0, "currentval %d val_high %d", currentval , val_high);
-	//fprint(10, 30, RGB_PINK, 2.0, "Sound item is %d currentval is %d changed %d", menuitem, soundmenu[menuitem].current, soundmenu[menuitem].Changed);
-	//fprint(40, 60, RGB_PINK, 2.0, "cur video item %s numopt %d", soundmenu[menuitem].heading, soundmenu[menuitem].NumOptions);
+
 	switch (menulevel)
 	{
 	case ROOTMENU:   do_root_menu(); break;
@@ -332,14 +330,12 @@ void do_root_menu()
 {
 	int x;
 	unsigned int C;
-	int top = 650;
-	int LFT = 250;
-	int SPC = 35;
+	float top = 650.0;
+	float LFT = 250.0;
+	float SPC = 35;
 	num_this_menu = 7;
 
-	// if (menuitem > num_this_menu) menuitem =  num_this_menu;
-	// if (menuitem < 1) menuitem = 1;
-	quad_from_center(520, 525, 580, 350, 20, 20, 80, 255);
+	quad_from_center(520.0, 525.0, 580.0, 350.0, 20, 20, 80, 255);
 
 	for (x = 0; x < num_this_menu + 1; x++)
 	{
@@ -349,15 +345,15 @@ void do_root_menu()
 		switch (x)
 		{
 		case 0: fprint(LFT, top - (SPC * x), C, 2.6, "KEY CONFIG (GLOBAL)"); break;
-		case 1: fprint(LFT, top - (SPC * x), C, 2.6, "KEY CONFIG (THIS GAME)"); break;
-		case 2: fprint(LFT, top - (SPC * x), C, 2.6, "JOY CONFIG (GLOBAL)"); break;
-		case 3: fprint(LFT, top - (SPC * x), C, 2.6, "JOY CONFIG (THIS GAME)"); break;
-		case 4: fprint(LFT, top - (SPC * x), C, 2.6, "ANALOG CONFIG"); break;
-		case 5: fprint(LFT, top - (SPC * x), C, 2.6, "DIPSWITCHES"); break;
-		case 6: fprint(LFT, top - (SPC * x), C, 2.6, "VIDEO SETUP"); break;
-		case 7: fprint(LFT, top - (SPC * x), C, 2.6, "SOUND SETUP"); break;
+		case 1: fprint(LFT, top - (SPC * x), C, 2.6,  "KEY CONFIG (THIS GAME)"); break;
+		case 2: fprint(LFT, top - (SPC * x), C, 2.6,  "JOY CONFIG (GLOBAL)"); break;
+		case 3: fprint(LFT, top - (SPC * x), C, 2.6,  "JOY CONFIG (THIS GAME)"); break;
+		case 4: fprint(LFT, top - (SPC * x), C, 2.6,  "ANALOG CONFIG"); break;
+		case 5: fprint(LFT, top - (SPC * x), C, 2.6,  "DIPSWITCHES"); break;
+		case 6: fprint(LFT, top - (SPC * x), C, 2.6,  "VIDEO SETUP"); break;
+		case 7: fprint(LFT, top - (SPC * x), C, 2.6,  "SOUND SETUP"); break;
 		}
-		// draw_center_tex(&menu_tex[x], 32, 335,580-(74*x), 0, NORMAL, RGB_WHITE, 2);
+		// draw_center_tex(&menu_tex[x], 32, 335,580-(74*x), 0, NORMAL, 255,255,255,255, 2);
 	}
 }
 

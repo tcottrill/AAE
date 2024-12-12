@@ -147,7 +147,7 @@ void draw_a_quad(int tleft, int bleft, int tright, int bright, int r, int g, int
 		//glPopMatrix();
 }
 
-
+// This is only used by the menu system
 void quad_from_center(float x, float y, float width, float height, int r, int g, int b, int alpha)
 {
 	float minx = 0.0f;

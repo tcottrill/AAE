@@ -18,6 +18,7 @@ extern GLuint img2a;
 extern GLuint img2b;
 extern GLuint img3a;
 extern GLuint img3b;
+extern GLuint img4a;
 
 extern float width;		// The hight of the texture we'll be rendering to
 extern float height;		// The width of the texture we'll be rendering to

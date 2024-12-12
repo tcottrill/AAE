@@ -3,7 +3,7 @@
 
 #include <allegro.h>
 #include "alleggl.h"
-
+#include "texrect.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -18,7 +18,9 @@ extern "C" {
 	void set_render();
 	void render();
 	void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty);
-	
+	void set_render_fbo4();
+	void end_render_fbo4();
+
 	void free_game_textures();
 	int init_gl(void);
 	void end_gl();

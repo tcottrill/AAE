@@ -25,6 +25,7 @@
 #include "aae_mame_driver.h"
 #include "vector_fonts.h"
 #include "gl_texturing.h"
+#include "colordefs.h"
 
 extern int errorsound;
 extern int show_fps;
@@ -123,24 +124,31 @@ void video_loop(void)
 
 	//If were displaying the menu, go ahead and show it.
 	
+	// Note to self: Please add aspect/size correction here to the vector font print. 
+	fontmode_start();
 	if (get_menu_status())
 	{
-		fontmode_start();
+		
 		glColor4f(1, 1, 1, 1);
 		do_the_menu();
-		fontmode_end();
+		
 	}
-	
-	show_error(); //If there is currently an error condition, show it.
+
 
 	if (show_fps)
 	{
-		glPrint(535, 740, 255, 255, 175, 255, .8, 0, 0, " Speed: %2.0f %% %2.0f out of %d frames per second", ((fps_count / frameavg) / driver[gamenum].fps) * 100, fps_count / frameavg, driver[gamenum].fps);
+		//fontmode_start();
+		fprint(400.00, 750.0, RGB_WHITE, 2.0, " Speed: %2.0f%% %2.0f out of %d FPS", ((fps_count / frameavg) / driver[gamenum].fps) * 100, fps_count / frameavg, driver[gamenum].fps);
+		//fontmode_end();
 	}
 	if (config.debug)
 	{
-		glPrint(300, 330, 255, 255, 255, 255, 1, 0, 0, "sx:%d sy:%d ex:%d ey:%d", msx, msy, esx, esy);
+		//fontmode_start();
+		fprint(300, 330, RGB_WHITE, 2.0, "sx:%d sy:%d ex:%d ey:%d", msx, msy, esx, esy);
+		//fontmode_end();
 	}
+	show_error(); //If there is currently an error condition, show it.
+	fontmode_end();
 }
 
 void return_to_menu(void)
