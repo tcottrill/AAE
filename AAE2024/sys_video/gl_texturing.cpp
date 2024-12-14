@@ -181,6 +181,7 @@ void Bezel_Rect(int facing, int xmin, int xmax, int ymin, int ymax)
 	float x = 0;
 
 	x = (1.00 - wideadj) / 2;
+	wrlog("Bezel Rect here is %d", x);
 	glTranslatef(x * xmax, 0, 0);
 	glBegin(GL_QUADS);
 	glTexCoord2f(0, 1); glVertex2f(xmin, ymin);
@@ -193,6 +194,7 @@ void Bezel_Rect(int facing, int xmin, int xmax, int ymin, int ymax)
 
 void Any_Rect(int facing, int xmin, int xmax, int ymin, int ymax)
 {
+	//wrlog("AnyRect here is xmin:%d xmax:%d ymin:%d ymax:%d", xmin, xmax, ymin, ymax);
 	glBegin(GL_QUADS);
 	glTexCoord2f(0, 1); glVertex2f(xmin, ymin);
 	glTexCoord2f(0, 0); glVertex2f(xmin, ymax);
@@ -286,6 +288,7 @@ void Centered_Rect(int facing, int size)
 void Resize_Rect(int facing, int size)
 {
 	//Hack, please find and fix. This one was frustrating. 
+	/*
 	if (gamenum == ARMORA) 
 	{
 		glBegin(GL_QUADS);
@@ -296,7 +299,7 @@ void Resize_Rect(int facing, int size)
 		glEnd();
 	}
 	else
-	{
+	{*/
 		glBegin(GL_QUADS);
 		glTexCoord2f(0, 1); glVertex2f(0, size * .75);
 		glTexCoord2f(0, 0); glVertex2f(0, 0);
@@ -304,7 +307,7 @@ void Resize_Rect(int facing, int size)
 		glTexCoord2f(1, 1); glVertex2f(size, size * .75);
 		glEnd();
 	
-	}
+	//}
 }
 
 // This code should never have to be ran.

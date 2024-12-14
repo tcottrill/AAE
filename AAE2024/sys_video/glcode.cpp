@@ -35,6 +35,17 @@ using namespace chrono;
 
 Rect2 screen_rect;
 
+// Notes for reference:
+// 
+// config.artwork
+// config.overlay
+// config.bezel
+// Artwork Setting.
+// Backdrop : layer 0	 art_tex[0]
+// Overlay : layer 1		 art_tex[1]
+// Bezel Mask : layer 2  art_tex[2] Only used for the tempest and tacscan bezel mask, please fix with a shader or different blending
+// Bezel : layer 3		 art_tex[3]
+// Screen burn layer 4:   art_tex[4] (Not currently used)
 
 //NEW CODE 2024 ////////////////////////////////////////////
 // Rendering Screen Variables
@@ -106,7 +117,6 @@ void calc_screen_rect(int screen_width, int screen_height, char* aspect, int rot
 
 	int v = 8 * rotated; //0,16,24
 	//Now set the points
-
 	screen_rect.BottomLeft(xadj, yadj, indices[v], indices[v + 1]);
 	wrlog("Bottom Left %f %f", xadj, yadj);
 	screen_rect.TopLeft(xadj, screen_height + yadj, indices[v + 2], indices[v + 3]);
@@ -241,9 +251,9 @@ int init_gl(void)
 		make_single_bitmap(&menu_tex[3], "video.png", "aae.zip", 0);
 		make_single_bitmap(&menu_tex[4], "sound.png", "aae.zip", 0);
 		make_single_bitmap(&menu_tex[5], "gamma.png", "aae.zip", 0);
-		make_single_bitmap(&menu_tex[6],"buttons.png", "aae.zip",0);
-	    ////////////////////////////////////////////////////////////////////////////////
-		
+		make_single_bitmap(&menu_tex[6], "buttons.png", "aae.zip", 0);
+		////////////////////////////////////////////////////////////////////////////////
+
 		wrlog("Initalizing FBO's");
 		fbo_init();
 		// NEW CODE
@@ -255,8 +265,6 @@ int init_gl(void)
 		wrlog("Finished configuration of OpenGl sucessfully");
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		init_one++;
-
-		wrlog("GL Scale: Xscaled %f, Yscaled %f", get_scalew(), get_scaleh());
 	}
 
 	allegro_gl_flip();
@@ -397,7 +405,6 @@ void GLCheckError(const char* call)
 	wrlog("OpenGL %s in '%s'", enums[errcode], call);
 }
 
-
 void set_render_fbo4()
 {
 	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo4);
@@ -430,19 +437,18 @@ void end_render_fbo4()
 ////////////////////////////////////////////////////////////////////////////////
 // FBO / SHADER DOWNSAMPLING and COMPOSITING CODE  /////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
-void RendertoTarget() //Downsample part 1
+//Downsample part 1
+// This copies fbo1, img1b to fbo2, img2a at 512x512
+void copy_main_img_to_fbo2() 
 {
 	GLint loc = 0;
 
 	glLoadIdentity();
 	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo2);
 	glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT);
-	// Save the view port and set it to the size of the texture
-	//glPushAttrib(GL_VIEWPORT_BIT | GL_COLOR_BUFFER_BIT);
 	set_ortho(512, 512);
-    //glEnable(GL_TEXTURE_2D);
 	glDisable(GL_BLEND);
-	set_texture(&img1b, 1, 0, 0, 0);
+	set_texture(&img1b, 1, 0, 0, 0); 
 
 	glActiveTexture(GL_TEXTURE0);
 	glUseProgram(fragBlur);
@@ -455,8 +461,9 @@ void RendertoTarget() //Downsample part 1
 	glUseProgram(0);
 }
 
-
-void RendertoTarget2() //Downsample part 23
+// Downsample part 2
+// This copies the 512x512 texture at fbo2, img1a to fbo3 img1a/
+void copy_fbo2_to_fbo3()
 {
 	GLint loc = 0;
 
@@ -482,7 +489,7 @@ void RendertoTarget2() //Downsample part 23
 	glUseProgram(0);
 }
 
-void ping_pong() //Downsample part 3
+void render_blur_image_fbo3() //Downsample part 3
 {
 	static constexpr auto v1 = 1.5f;  //1.7 //1.0
 	static constexpr auto v2 = 2.5f;    //2.7 //2.0
@@ -544,18 +551,10 @@ void ping_pong() //Downsample part 3
 		i += 4;
 	}
 	glUseProgram(0);
-
-	//glDisable(GL_TEXTURE_2D);
-	//glDisable(GL_BLEND);
-	//glBindTexture(GL_TEXTURE_2D, 0);
 }
-
-
 ////////////////////////////////////////////////////////////////////////////////
 // END  FBO / SHADER DOWNSAMPLING and COMPOSITING CODE  /////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
-
-
 
 ////////////////////////////////////////////////////////////////////////////////
 // FINAL COMPOSITING AND RENDERING CODE STARTS HERE  ///////////////////////////
@@ -570,8 +569,7 @@ void set_render()
 	GLint viewport[4];
 	glGetIntegerv(GL_VIEWPORT, viewport);
 	//Viewport here is : 0, 0, 1023, 767
-
-	// viewport[0] = x coordinate of the lower-left corner
+    // viewport[0] = x coordinate of the lower-left corner
     // viewport[1] = y coordinate of the lower-left corner
     // viewport[2] = width of the viewport
     // viewport[3] = height of the viewport
@@ -583,7 +581,6 @@ void set_render()
 	glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT); 
 
 	// Set the projection to 1024x1024
-	//set_ortho(width - 1, height - 1);
 	set_ortho(1024, 1024);
 
 	// Then render as normal
@@ -601,7 +598,6 @@ void set_render()
 	// Required for some older cards.
 	glDisable(GL_DITHER);
 }
-
 
 // Rendering Continued, this is STEP 2, this is where the vectors are drawn to our 1024x1024 texture.
 void render()
@@ -632,59 +628,58 @@ void render()
 	else { final_render(sx, sy, ex, ey, 0, 0); }
 }
 
-
-//FINAL RENDERING and COMPOSITING HERE:
+// Note:
+// art_tex[0] is always Backdrop
+// art_tex[1] is always Overlay
+// art_tex[3] is always Bezel
+// GUI is always gamenum 0, so gamenum has to be > 0 for all games
+// FINAL RENDERING and COMPOSITING HERE:
 // Rendering Continued, this is STEP 3
 void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty)
 {
 	GLint bleh = 0;
-	GLfloat glowamt = 0.0; //Glow Shader variable
+	// Glow Shader variable
+	GLfloat glowamt = 0.0; 
+	// Glow enabled variable
 	int useglow = 0;
-	//GLint trail = 0;    //feedback texture enable;
-	//GLfloat bval = 0.6f; //Art Blend variable
-
+	// Used for code profiling disable in final release.
 	auto start = chrono::steady_clock::now();
 
+	/////////////////////////////	//SWITCH TO FBO1/TEX 2 HERE FOR FINAL COMPOSITING!!!!////////////////
 	glEnable(GL_TEXTURE_2D);
-	/////////////////////////////	//SWITCH TO FBO1/TEX 2 HERE FOR FINAL COMPOSITING!!!!//////////////////////////////
+	// This creates the feedback texture used for the blur texture in the next segment.
 	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo1);
 	glDrawBuffer(GL_COLOR_ATTACHMENT1_EXT);
 	glClearColor(0.0f, 0.0f, 0.0f, 0.0f); //THIS IS FOR THE VARIOUS MONITOR TYPES???
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	set_texture(&img1a, 1, 0, 0, 1);
-	//glTranslated(shiftx, shifty, 0);
 	glTranslatef(.25, .25, 0);  // This may need to go.
 	glBlendFunc(GL_ONE, GL_ONE);
     // Draw the vecture texture to fbo1, img1b 
 	Any_Rect(0, xmin, xmax, ymin, ymax);
-	//wrlog("Final Render coords : %d %d %d %d. ",xmin, xmax, ymin, ymax);
-	
+	//////////////////////////////////////////////////////////////////////////////////////////////////////
 	if (gamenum)
 	{
-		// art_tex[1] is always overlay.
 		// DRAW OVERLAY to FBO1, Image img1b from image1a Ortho 1024x1014, Viewport 1024x1024
-		// Rotated overlays for tempest and tacscan are handled as bezels down below, ugh.
+		// Rotated overlays for tempest and tacscan are handled as bezels down below, fix.
 		if (driver[gamenum].rotation < 2 && config.overlay && art_loaded[1]) {
 			set_texture(&art_tex[1], 1, 0, 0, 0);
-			//glViewport(0, 0, 1023, 1023);
 			//Normal Overlay
-			glBlendFunc(GL_DST_COLOR, GL_SRC_COLOR); //GOOD
+			glBlendFunc(GL_DST_COLOR, GL_SRC_COLOR); 
 			//glColor4f(.7f, .7f, .7f, 1.0f);
 			glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
 			FS_Rect(0, 1024);
-			//Any_Rect(0, xmin, xmax, ymin, ymax);
 		}
 		
 	}
+	//// Render to fbo2, attachment2 (img1b) from img1b.  //////////////////////////////////////////////////
 
-	//// Render to feedback texture FBO1 Image img1b  //////////////////////////////////////////////////
 	if (config.vectrail && gamenum)
 	{
-		// glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo1);
+		// FBO1 is still bound at this point, switching to drawing the feedback texture blending on top of itself, frame additive
 		glDrawBuffer(GL_COLOR_ATTACHMENT2_EXT);
 		glDisable(GL_DITHER);
 		set_texture(&img1b, 1, 0, 1, 0);
-		//glEnable(GL_BLEND);
 		//glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 		glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_SRC_ALPHA);
 
@@ -696,18 +691,16 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 		case 3:  glColor4f(1.0f, 1.0f, 1.0f, .93f); break;//glColor4f(.7f,.7f,.7f,.93); break;
 		default:  glColor4f(.95f, .95f, .95f, 1.0f); break;
 		}
-		//glColor4f(1.0f,1.0f,1.0f,.925f);
 		FS_Rect(0, 1024);
-		// glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo1);
-		// glDrawBuffer(GL_COLOR_ATTACHMENT1_EXT);
 	}
 
 	/////// RENDER the blur texture to FBO2 and FBO3, using Image img1b and img2a
 	if (config.vecglow && gamenum)
 	{
-		RendertoTarget(); //Bind FBO2 only.
-		RendertoTarget2(); // Bind FBO3 and set target to img3a
-		ping_pong(); // RENDER final blur texture to FBO3, using Image img3a and img3b
+		//Bind FBO2.
+		copy_main_img_to_fbo2(); 
+		copy_fbo2_to_fbo3(); // Bind FBO3 and set target to img3a
+		render_blur_image_fbo3(); // RENDER final blur texture to FBO3, using Image img3a and img3b to blend
 	}
 
 	//Set Ortho to 1024, and drawing to backbuffer
@@ -725,25 +718,23 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 
 	//Render combined texture
 	if (config.vecglow && gamenum) { useglow = 1; }
-	
-	
 	glUseProgram(fragMulti);
-
+	// Get the variables for the shader.
 	bleh = glGetUniformLocation(fragMulti, "mytex1"); glUniform1i(bleh, 0);
 	bleh = glGetUniformLocation(fragMulti, "mytex2"); glUniform1i(bleh, 1);
 	bleh = glGetUniformLocation(fragMulti, "mytex3"); glUniform1i(bleh, 2);
 	bleh = glGetUniformLocation(fragMulti, "mytex4"); glUniform1i(bleh, 3);
-
-	bleh = glGetUniformLocation(fragMulti, "useart"); if (gamenum && art_loaded[0]) {
-		glUniform1i(bleh, config.artwork);
-	}
+	bleh = glGetUniformLocation(fragMulti, "useart"); 
+	// If artwork is loaded, check to see if backdrop artwork shouly be used. 
+	if (gamenum && art_loaded[0]) {	glUniform1i(bleh, config.artwork);}
 	else { glUniform1i(bleh, 0); }
+
 	bleh = glGetUniformLocation(fragMulti, "usefb");  glUniform1i(bleh, config.vectrail);
 	bleh = glGetUniformLocation(fragMulti, "useglow"); glUniform1i(bleh, useglow);
 	bleh = glGetUniformLocation(fragMulti, "glowamt"); glUniform1f(bleh, config.vecglow * .01);
 	bleh = glGetUniformLocation(fragMulti, "brighten"); glUniform1i(bleh, gamenum);
 
-	//Activate all 4 texture units
+	//Activate all 3 texture units
 	glActiveTexture(GL_TEXTURE0);
 	set_texture(&art_tex[0], 1, 0, 0, 0);
 	glActiveTexture(GL_TEXTURE1);
@@ -751,49 +742,36 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 	glActiveTexture(GL_TEXTURE2);
 	glBindTexture(GL_TEXTURE_2D, img3a);
 	set_texture(&img3b, 1, 0, 0, 0);
-	glActiveTexture(GL_TEXTURE3);
-	set_texture(&img1c, 1, 0, 0, 0); // I don't see where this texture is being modified anywhere?
-	// NEW RENDERING CODE
-		//fbo->Use();
-		//glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	//
-		//FINAL RENDERING TO SCREEN IS RIGHT HERE
+	// I don't see where this texture is being modified anywhere?
+	//glActiveTexture(GL_TEXTURE3);
+	//set_texture(&img1c, 1, 0, 0, 0); 
 
+	// FINAL RENDERING TO SCREEN IS RIGHT HERE
+	// Enable fbo4, and render everything below to it, then render to the screen with the correct size and aspect.
+	set_render_fbo4();
 	if (config.bezel && gamenum && art_loaded[3])
 	{
 		glColor4f(1.0, 1.0, 1.0, 1.0);
-		if (config.debug)
-		{
-			Any_Rect(0, msx, msy, esy, esx);
-		}
-		else
-		{
-			if (config.widescreen && config.windowed == 0)
-			{
-				Bezel_Rect(0, b1sx, b1sy, b2sy, b2sx);
-			}
-			else {
+		//if (config.debug)	//{	Any_Rect(0, msx, msy, esy, esx);}
+		//else
+		//{
+		//	if (config.widescreen && config.windowed == 0)
+		//	{
+		//		Bezel_Rect(0, b1sx, b1sy, b2sy, b2sx);
+		//	}
+		//	else {
 				Any_Rect(0, b1sx, b1sy, b2sy, b2sx);
-			}
-		}
+			//}
+		//}
 	}
 	else
 	{
 		glColor4f(1.0, 1.0, 1.0, 1.0);
-		//Screen_Rect(0, 1024);  // THIS LOOKS LIKE IT
-		glLoadIdentity();
 		set_ortho(config.screenw, config.screenh);
 		glDisable(GL_BLEND);
-
-		/*
-		glBegin(GL_QUADS);
-		glTexCoord2f(0, 1); glVertex2f(240, 1080*1.33);
-		glTexCoord2f(0, 0); glVertex2f(240, 0);
-		glTexCoord2f(1, 0); glVertex2f(1680, 0);
-		glTexCoord2f(1, 1); glVertex2f(1680, 1080*1.33);
-		glEnd();
-		*/
-		screen_rect.Render(1.33);
+		// Render the main combined image to the back buffer.
+		//screen_rect.Render(1.33);
+		Screen_Rect(0, 1024);
 	}
 
 	//// Turn off the Shader /////////////////////////////////
@@ -802,17 +780,14 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 	glActiveTextureARB(GL_TEXTURE1_ARB);
 	glBindTexture(GL_TEXTURE_2D, 0);
 	glDisable(GL_TEXTURE_2D);
-
 	glActiveTextureARB(GL_TEXTURE2_ARB);
 	glBindTexture(GL_TEXTURE_2D, 0);
 	glDisable(GL_TEXTURE_2D);
-
 	glActiveTextureARB(GL_TEXTURE3_ARB);
 	glBindTexture(GL_TEXTURE_2D, 0);
 	glDisable(GL_TEXTURE_2D);
-
 	glActiveTextureARB(GL_TEXTURE0_ARB);
-	glBindTexture(GL_TEXTURE_2D, 0);
+	glBindTexture(GL_TEXTURE_2D, 0); // Don't disable GL_TEXTURE_2D on the main texture unit?
 
 	//POST COMBINING OVERLAY FOR CINEMATRONICS GAMES WITH MONITOR COVERS & NO BACKGROUND ARTWORK
 
@@ -832,14 +807,8 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 			else
 			{
 				glEnable(GL_BLEND);
-				//glBegin(GL_QUADS);
-				//glTexCoord2f(0, 1); glVertex2f(240, 1080);
-				//glTexCoord2f(0, 0); glVertex2f(240, 0);
-				//glTexCoord2f(1, 0); glVertex2f(1680, 0);
-				//glTexCoord2f(1, 1); glVertex2f(1680, 1080);
-				//glEnd();
-				//FS_Rect(0, 1024);
-				screen_rect.Render(1.0);
+				FS_Rect(0, 1024);
+				//screen_rect.Render(1.0);
 			}
 		}
 		else {
@@ -857,27 +826,20 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 			}
 		}
 	}
-	//HACKY WAY TO ADD BEZEL TO VERTICAL GAMES
-
+	// HACKY WAY TO ADD BEZEL TO VERTICAL GAMES
+	// This is for the tempest and tacscan vertical bezels. 
+	// This needs to be reinplemented as well. 
 	if (driver[gamenum].rotation == 1 && config.bezel == 0 && gamenum)
 	{
 		set_texture(&art_tex[2], 1, 0, 0, 1);
 		glEnable(GL_ALPHA_TEST);
 		glAlphaFunc(GL_GREATER, 0.99f);
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-		//glLoadIdentity();
-		// Tempest Overlay Here
-		//Centered_Rect(0, 1024); // 1080 height on 1080 screen
-		//glBegin(GL_QUADS);
-		//glTexCoord2f(0, 1); glVertex2f(302, 1080);
-		//glTexCoord2f(0, 0); glVertex2f(302, 0);
-		//glTexCoord2f(1, 0); glVertex2f(1618, 0);
-		//glTexCoord2f(1, 1); glVertex2f(1618, 1080);
-		//glEnd();
-		screen_rect.Render(1.0);
+		Centered_Rect(0, 1024);
+		//screen_rect.Render(1.0);
 		glDisable(GL_ALPHA_TEST);
 	}
-
+	
 	if (config.bezel && art_loaded[3] && gamenum) {
 		if (config.artcrop)
 		{
@@ -895,26 +857,10 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 		glDisable(GL_DEPTH_TEST);
 		glDisable(GL_ALPHA_TEST);
 	}
-
-	//fbo->UnUse();
-	//fbo->Bind(0, 0);
-
-	// screenRect2->Render();
-	//FS_Rect(0, 1024);
-	/*
-	glDisable(GL_BLEND);
-
-	glBegin(GL_QUADS);
-	glTexCoord2f(0, 1); glVertex2f(0, 768);
-	glTexCoord2f(0, 0); glVertex2f(0, 0);
-	glTexCoord2f(1, 0); glVertex2f(1024, 0);
-	glTexCoord2f(1, 1); glVertex2f(1024, 768);
-	glEnd();
-	*/
-
+	
 	glLoadIdentity();
 
-	set_render_fbo4();
+	
 	video_loop();
 	end_render_fbo4();
 	

@@ -92,7 +92,7 @@ void cpu_run_mame(void);
 extern void watchdog_reset_w(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite);
 extern UINT8 watchdog_reset_r(UINT32 address, struct MemoryReadByte* psMemRead);
 extern void watchdog_callback(int param);
-
+extern void NoWrite(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite);
 extern UINT8 MRA_RAM(UINT32 address, struct MemoryReadByte* psMemRead);
 extern UINT8 MRA_ROM(UINT32 address, struct MemoryReadByte* psMemRead);
 extern void MWA_ROM(UINT32 address, UINT8 data, struct MemoryWriteByte* pMemWrite);

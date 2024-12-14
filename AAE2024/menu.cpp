@@ -1550,8 +1550,8 @@ void save_video_menu()
 	if (glmenu[7].Changed != glmenu[7].current)   my_set_config_int("main", "widescreen", glmenu[7].Value[glmenu[7].current], gamenum);
 	if (glmenu[8].Changed != glmenu[8].current)   my_set_config_int("main", "vectortrail", glmenu[8].Value[glmenu[8].current], gamenum);
 	if (glmenu[9].Changed != glmenu[9].current)   my_set_config_int("main", "vectorglow", glmenu[9].current, gamenum);
-	if (glmenu[10].Changed != glmenu[10].current) my_set_config_int("main", "m_line", glmenu[10].current, gamenum);
-	if (glmenu[11].Changed != glmenu[11].current) my_set_config_int("main", "m_point", glmenu[11].current, gamenum);
+	if (glmenu[10].Changed != glmenu[10].current) my_set_config_int("main", "m_line", glmenu[10].current * glmenu[10].step, gamenum);
+	if (glmenu[11].Changed != glmenu[11].current) my_set_config_int("main", "m_point", glmenu[11].current * glmenu[11].step, gamenum);
 	if (glmenu[12].Changed != glmenu[12].current) my_set_config_int("main", "gain", glmenu[12].current, gamenum);
 	if (glmenu[13].Changed != glmenu[13].current) my_set_config_int("main", "artwork", glmenu[13].current, gamenum);
 	if (glmenu[14].Changed != glmenu[14].current) my_set_config_int("main", "overlay", glmenu[14].current, gamenum);

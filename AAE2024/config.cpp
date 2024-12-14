@@ -91,10 +91,10 @@ void setup_video_config()
 	is_override = 0;
 
 	//int b1sx,b1sy,b2sx,b2sy;
-//final_render(sx,sy,ex,ey,0,0);
-//int xmin, int xmax, int ymin, int ymax
+	//final_render(sx,sy,ex,ey,0,0);
+	//int xmin, int xmax, int ymin, int ymax
 
-						  //For main texture rendering
+							  //For main texture rendering
 	sx = my_get_config_int((char*)driver[gamenum].name, "fullsx", 0);
 	sy = my_get_config_int((char*)driver[gamenum].name, "fullsy", 900);
 	ex = my_get_config_int((char*)driver[gamenum].name, "fullex", 900);
@@ -124,7 +124,7 @@ void setup_video_config()
 		//bezely=-50;
 		//overalpha=1.0;
 		//overbright=0;
-	//bezelx=-100;
+	    //bezelx=-100;
 	}
 	strcpy(aaepath, buffer);
 	strcat(aaepath, "\\aae.ini");
@@ -171,10 +171,8 @@ void setup_config(void)
 	config.colordepth = my_get_config_int("main", "colordepth", 32);
 	config.m_line = my_get_config_int("main", "m_line", 20);
 	config.m_point = my_get_config_int("main", "m_point", 16);
-	config.linewidth = my_get_config_float("main", "linewidth", 2);
-	//allegro_message("linewidth %f",config.linewidth);
+	config.linewidth = my_get_config_float("main", "linewidth", 2.0);
 	config.pointsize = my_get_config_float("main", "pointsize", 1.6);
-	//allegro_message("pointsize %f",config.pointsize);
 	config.forcesync = my_get_config_int("main", "force_vsync", 1);
 	config.drawzero = my_get_config_int("main", "drawzero", 0);
 	config.widescreen = my_get_config_int("main", "widescreen", 0);
@@ -201,72 +199,6 @@ void setup_config(void)
 	//config.ktest = my_get_config_int("main","ktest", 75);
 	//config.kpause = my_get_config_int("main","kpause", 16);
 	//config.ksnap = my_get_config_int("main","ksnap", 59);
-/*
-	config.kstart1 = get_config_int(NULL,"kstart1", 28);
-	config.kstart2 = get_config_int(NULL,"kstart2", 29);
-	config.kcoin1 = get_config_int(NULL,"kcoin1", 32);
-	config.kcoin2 = get_config_int(NULL,"kcoin2", 33);
-	config.kp1up = get_config_int(NULL,"kp1up", 84);
-	config.kp1down = get_config_int(NULL,"kp1down", 85);
-	config.kp1left = get_config_int(NULL,"kp1left", 82);
-	config.kp1right = get_config_int(NULL,"kp1right", 83);
-	config.kp1but1 = get_config_int(NULL,"kp1but1", 117);
-	config.kp1but2 = get_config_int(NULL,"kp1but2",119);
-	config.kp1but3 = get_config_int(NULL,"kp1but3", 75);
-	config.kp1but4 = get_config_int(NULL,"kp1but4", 83);
-	config.kp1but5 = get_config_int(NULL,"kp1but5", 82);
-	config.kp1but6 = get_config_int(NULL,"kp1but6", 83);
-//	config.kp1but7 = get_config_int(NULL,"kp1but7", 44);
-//	config.kp1but8 = get_config_int(NULL,"kp1but8", 45);
-//	config.kp1but9 = get_config_int(NULL,"kp1but9", 46);
-
-	config.kp2up = get_config_int(NULL,"kp2up", 84);
-	config.kp2down = get_config_int(NULL,"kp2down", 85);
-	config.kp2left = get_config_int(NULL,"kp2left", 82);
-	config.kp2right = get_config_int(NULL,"kp2right", 83);
-	config.kp2but1 = get_config_int(NULL,"kp2but1", 117);
-	config.kp2but2 = get_config_int(NULL,"kp2but2",119);
-	config.kp2but3 = get_config_int(NULL,"kp2but3", 75);
-	config.kp2but4 = get_config_int(NULL,"kp2but4", 83);
-	config.kp2but5 = get_config_int(NULL,"kp2but5", 82);
-	config.kp2but6 = get_config_int(NULL,"kp2but6", 83);
-//	config.kp2but7 = get_config_int(NULL,"kp2but7", 68);
-//	config.kp2but8 = get_config_int(NULL,"kp2but8", 69);
-//	config.kp2but9 = get_config_int(NULL,"kp2but9", 70);
-
-	config.j1up =   get_config_int("main","jp1up", 2);
-	config.j1down = get_config_int("main","jp1down", 3);
-	config.j1left = get_config_int("main","jp1left", 0);
-	config.j1right = get_config_int("main","jp1right", 1);
-	config.j1but1 = get_config_int("main","jp1but1", 32);
-	config.j1but2 = get_config_int("main","jp1but2", 33);
-	config.j1but3 = get_config_int("main","jp1but3", 34);
-	config.j1but4 = get_config_int("main","jp1but4", 35);
-	config.j1but5 = get_config_int("main","jp1but5", 36);
-	config.j1but6 = get_config_int("main","jp1but6", 37);
-	config.j1but7 = get_config_int("main","jp1but7", 38);
-	config.j1but8 = get_config_int("main","jp1but8", 39);
-
-	config.j2up = get_config_int("main","jp2up", 66);
-	config.j2down = get_config_int("main","jp2down", 67);
-	config.j2left = get_config_int("main","jp2left", 64);
-	config.j2right = get_config_int("main","jp2right", 65);
-	config.j2but1 = get_config_int("main","jp2but1", 96);
-	config.j2but2 = get_config_int("main","jp2but2", 97);
-	config.j2but3 = get_config_int("main","jp2but3", 98);
-	config.j2but4 = get_config_int("main","jp2but4", 99);
-	config.j2but5 = get_config_int("main","jp2but5", 100);
-	config.j2but6 = get_config_int("main","jp2but6", 101);
-	config.j2but7 = get_config_int("main","jp2but7", 102);
-	config.j2but8 = get_config_int("main","jp2but8", 103);
-	*/
-	////MOUSE//////////////////
-	//config.mouse1xs= my_get_config_int("main","mouse1xs", 5);
-	//config.mouse1ys= my_get_config_int("main","mouse1ys", 5);
-	//config.mouse1x_invert= my_get_config_int("main","mouse1x_invert", 0);
-	//config.mouse1y_invert= my_get_config_int("main","mouse1y_invert", 0);
-	//config.mouse1b1= my_get_config_int("main","mouse1b1", 41);
-	//config.mouse1b2= my_get_config_int("main","mouse1b2", 42);
 
 	config.psnoise = my_get_config_int("main", "psnoise", 0);
 	config.hvnoise = my_get_config_int("main", "hvnoise", 0);
@@ -278,6 +210,7 @@ void setup_config(void)
 	config.showinfo = my_get_config_int("main", "showinfo", 0);
 	config.kbleds = my_get_config_int("main", "kbleds", 1);
 }
+
 void setup_game_config(void)
 {
 	char tempname[255];
@@ -287,8 +220,7 @@ void setup_game_config(void)
 	set_window_title(tempname);
 	setup_config();
 
-	 setup_video_menu();
-	 setup_sound_menu();
-	// setup_mouse_menu();
-	 set_points_lines();
+	setup_video_menu();
+	setup_sound_menu();
+	// set_points_lines();
 }

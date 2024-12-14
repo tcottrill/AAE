@@ -86,13 +86,6 @@ UINT8 randRead(unsigned int address, struct MemoryReadByte* psMemRead)
 	return randintmm(0, 255);
 }
 
-//Please Move this
-void NoWrite(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite)
-{
-	;
-}
-
-
 void sanity_check_config(void)
 {
 	//SANITY CHECKS GO HERE
@@ -120,36 +113,28 @@ void sanity_check_config(void)
 
 void video_loop(void)
 {
-	//show_info();
-
 	//If were displaying the menu, go ahead and show it.
-	
-	// Note to self: Please add aspect/size correction here to the vector font print. 
+		
 	fontmode_start();
 	if (get_menu_status())
 	{
-		
 		glColor4f(1, 1, 1, 1);
 		do_the_menu();
-		
 	}
-
 
 	if (show_fps)
 	{
-		//fontmode_start();
 		fprint(400.00, 750.0, RGB_WHITE, 2.0, " Speed: %2.0f%% %2.0f out of %d FPS", ((fps_count / frameavg) / driver[gamenum].fps) * 100, fps_count / frameavg, driver[gamenum].fps);
-		//fontmode_end();
 	}
 	if (config.debug)
 	{
-		//fontmode_start();
 		fprint(300, 330, RGB_WHITE, 2.0, "sx:%d sy:%d ex:%d ey:%d", msx, msy, esx, esy);
-		//fontmode_end();
 	}
 	show_error(); //If there is currently an error condition, show it.
 	fontmode_end();
 }
+
+// Note to self: Move this to the GL code. 
 
 void return_to_menu(void)
 {
@@ -159,11 +144,9 @@ void return_to_menu(void)
 	gamenum = 0; //Set gamenum to zero (menu)
 	done = 0; //Set done false
 }
-
 //
 // Code below is currently disabled with a return. Why?
 //
-
 void setup_ambient(int style)
 {
 	return;

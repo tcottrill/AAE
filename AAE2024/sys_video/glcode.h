@@ -26,9 +26,6 @@ extern "C" {
 	void end_gl();
 	int init_shader();
 	void WriteShaderError(GLhandleARB obj, const char* shaderName);
-	void RendertoTarget();
-	void RendertoTarget2();
-	
 	void Widescreen_calc();
 	
 

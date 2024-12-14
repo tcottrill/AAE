@@ -866,6 +866,11 @@ READ_HANDLER(watchdog_reset_r)
 	return 0;
 }
 
+void NoWrite(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite)
+{
+	;
+}
+
 //Read Ram
 UINT8 MRA_RAM(UINT32 address, struct MemoryReadByte* psMemRead)
 {

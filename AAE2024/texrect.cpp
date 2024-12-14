@@ -95,7 +95,7 @@ void Rect2::BottomRight (float x, float y )
 
 void Rect2::Render (float scaley)
 {
-	// I feel like I am going backwards here, but this will get the job done. 
+	// I feel like I am going backwards here, but this will get the job done for now.
 
 	glBegin(GL_QUADS);
 	glTexCoord2f(0, 0); glVertex2f(vertices[0].x, vertices[0].y);

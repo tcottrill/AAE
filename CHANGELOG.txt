@@ -4,7 +4,7 @@ Changelog:
 
 Major Fix: found and corrected a serious memory leak in the graphics core, this has been plaguing the emulator for so many years, fixes many small and (large) crashes and issues. error_tex[2], not error_tex[1]! 
 
-Redid the PPC code on the Z80 core, invalidated the PPC on Interrupt, this fixed all the decryption on the SegaG80 games. So that's what "Spurious Interrupts" means in the M.A.M.E(tm) driver. :(
+Redid the PPC code on the Retrocade CMZ80 core, invalidated the PPC on Interrupt, this fixed all the decryption on the SegaG80 games. So that's what "Spurious Interrupts" means in the M.A.M.E(tm) driver. :(
 Redid most of the SegaG80 driver, all games should be working correctly. 
 More Z80 changes, they are in their own changelog.
 Changed the 6502 cpu core back to mame style address handling, had to touch most of the drivers to fix issues. Fixed a pokey addressing issue with Black Widow, did a lot of cleanup on Major Havoc. 
@@ -28,7 +28,9 @@ Made "major" changes to the Major Havoc driver, fixed nvram saving, added Major 
 
 12/11/24
 
-Corrected the Menu System, first pass. Sound and Graphics Menus are working again, more or less. Still nore work to do here with individual game configuration saves. Moved everything around to make it look at least a little bit better. 
+Corrected the Menu System, first pass. Sound and Graphics Menus are working again, more or less. Still more work to do here with individual game configuration saves. Moved everything around to make it look at least a little bit better. 
 
 12/12/14 Increased rendering time with another FBO, but it worked around a major rendering flaw allowing me to composite the menu and FPS onto the screen without doing any crazy scaling everywhere to compensate for screen sizes.
+The menu system still needs work, I recommend not touching it except on the gui screen.
+
 

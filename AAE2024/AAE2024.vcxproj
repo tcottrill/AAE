@@ -88,7 +88,7 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;_CRT_SECURE_NO_WARNINGS;WIN10BUILD;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <AdditionalIncludeDirectories>./cpu_code;./sndhrdw;./vidhrdwr;./sys_video;./fileio;./shaders;./osfiles;./machine;./gui;./drivers;./;C:\allegro\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>/Zc:strictStrings %(AdditionalOptions)</AdditionalOptions>
@@ -207,6 +207,7 @@
     <ClCompile Include="vidhrdwr\dvg.cpp" />
     <ClCompile Include="vidhrdwr\SegaG80vid.cpp" />
     <ClCompile Include="vidhrdwr\vector.cpp" />
+    <ClCompile Include="win10_win11_required_code.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="aaemain.h" />
@@ -300,6 +301,7 @@
     <ClInclude Include="vidhrdwr\dvg.h" />
     <ClInclude Include="vidhrdwr\SegaG80vid.h" />
     <ClInclude Include="vidhrdwr\vector.h" />
+    <ClInclude Include="win10_win11_required_code.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="video.ini" />

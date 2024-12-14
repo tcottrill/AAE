@@ -42,10 +42,13 @@
 
 //New 2024
 #include "os_basic.h"
-#include "dwmapi.h" // Windows 10 rendering code
 #include <chrono>
 
-#pragma comment (lib,"dwmapi.lib")
+#ifdef WIN10BUILD
+#include "win10_win11_required_code.h"
+#endif // WIN10BUILD
+
+
 
 using namespace std;
 using namespace chrono;
@@ -57,13 +60,11 @@ static int x_override;
 static int y_override;
 static int win_override = 0;
 
-
 int previous_game = 0;
 int hiscoreloaded;
 int sys_paused = 0;
 int show_fps = 0;
 FpsClass* m_frame; //For frame counting. Prob needs moved out of here really.
-//int RUNNING = 1;
 
 // M.A.M.E. (TM) Variables for testing
 static struct RunningMachine machine;
@@ -168,9 +169,7 @@ void reset_for_new_game(int new_gamenum, int in_giu)
 {
 
 //	if (!in_gui) { driver[gamenum].end_game(); }
-
-
-	cache_end();
+    cache_end();
 	cache_clear();
 
 	if (driver[gamenum].end_game)
@@ -192,8 +191,7 @@ void reset_for_new_game(int new_gamenum, int in_giu)
 		}
 		
 	}
-
-
+	
 	wrlog("restarting");
 	free_samples();//Free any allocated Samples
 	wrlog("Finished Freeing Samples");
@@ -301,7 +299,6 @@ void msg_loop(void)
 			{
 				in_gui = 1;
 			}
-
 			done = 1;
 		}
 	}
@@ -357,10 +354,6 @@ void run_game(void)
 	double starttime = 0;
 	double gametime = 0;
 	double millsec = 0;
-
-	//int c = 0;
-	//static int framemiss = 0;
-	
 
 	num_samples = 0;
 	errorlog = 0;
@@ -446,6 +439,8 @@ void run_game(void)
 	art_loaded[2] = 0;
 	art_loaded[3] = 0;
 
+	wrlog("Config.linewidth 2: %f", config.linewidth);
+
 	run_a_game(gamenum);
 	init_machine();
 
@@ -507,7 +502,7 @@ void run_game(void)
 	}
 
 	wrlog("\n\n----END OF INIT -----!\n\n");
-
+	wrlog("Config.linewidth 3: %f", config.linewidth);
 	while (!done && !close_button_pressed)
 	{
     	wrlog("STARTING FRAME");
@@ -720,27 +715,6 @@ void gameparse(int argc, char* argv[])
 }
 
 
-HRESULT DisableNCRendering(HWND hWnd)
-{
-	HRESULT hr = S_OK;
-
-	DWMNCRENDERINGPOLICY ncrp = DWMNCRP_DISABLED;
-
-	// Disable non-client area rendering on the window.
-	hr = ::DwmSetWindowAttribute(hWnd,
-		DWMWA_NCRENDERING_POLICY,
-		&ncrp,
-		sizeof(ncrp));
-
-	if (SUCCEEDED(hr))
-	{
-		// ...
-	}
-
-	return hr;
-}
-
-
 int main(int argc, char* argv[])
 {
 	int i;
@@ -897,11 +871,6 @@ int main(int argc, char* argv[])
 	frames = 0; //init frame counter
 	testsw = 0; //init testswitch off , had to make common for all
 	config.hack = 0; //Just to set, used for some games with hacks.
-	//showfps = 0;
-
-	//show_menu = 0;
-	//menulevel = 100;//Top Level
-	//menuitem = 1; //TOP VAL
 	showinfo = 0;
 	done = 0;
 	//////////////////////////////////////////////////////
@@ -913,21 +882,13 @@ int main(int argc, char* argv[])
 	fillstars(stars);
 	have_error = 0;
 
-
-
-#if WINVER > 0x502// Windows Vista or better required for DWM
-	DisableNCRendering(win_get_window()); 
-	SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_SYSTEM_AWARE);
-	SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_SYSTEM_AWARE);
-#endif
+#ifdef WIN10BUILD
+	disable_windows10_window_scaling();
+#endif // WIN10BUILD
 
 	//key_set_flag = 0;
-
 	//ListDisplaySettings();
-
-	/*
-	SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);
-	SetThreadPriority(GetCurrentThread(), ABOVE_NORMAL_PRIORITY_CLASS);
+	
 	switch (config.priority)
 	{
 	case 4: SetPriorityClass(GetCurrentProcess(), REALTIME_PRIORITY_CLASS);break;
@@ -936,8 +897,10 @@ int main(int argc, char* argv[])
 	case 1: SetPriorityClass(GetCurrentProcess(), NORMAL_PRIORITY_CLASS);break;
 	case 0: SetPriorityClass(GetCurrentProcess(),IDLE_PRIORITY_CLASS);break;
 	}
-	*/
-
+	//Override the above for now. 
+	SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);
+	SetThreadPriority(GetCurrentThread(), ABOVE_NORMAL_PRIORITY_CLASS);
+	
 	//set_window_title("AAE BETA 2");
    // set_window_close_button(0);
    /////
@@ -954,13 +917,12 @@ int main(int argc, char* argv[])
 	// Main run point moves to Run Game, which takes care of jumping back and forth into the GUI as well as cleaning up after each game. 
 	// Unfortunately, it does neither very well. 
 	//
-	
+	wrlog("Config.linewidth 1: %f", config.linewidth);
 
 	run_game();
 	wrlog("Shutting down program");
 	//END-----------------------------------------------------
-	//This save input port settings shouldn't be here
-	//save_input_port_settings();
+	
 	timeEndPeriod(caps.wPeriodMin);
 	KillFont();
 	//SetGammaRamp(0, 0, 0);

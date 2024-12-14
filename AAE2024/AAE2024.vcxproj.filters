@@ -255,6 +255,9 @@
     <ClCompile Include="sndhrdw\ay8910.cpp">
       <Filter>Source Files\sndhrdwr</Filter>
     </ClCompile>
+    <ClCompile Include="win10_win11_required_code.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="aaemain.h">
@@ -511,6 +514,9 @@
     </ClInclude>
     <ClInclude Include="sndhrdw\ay8910.h">
       <Filter>Source Files\sndhrdwr</Filter>
+    </ClInclude>
+    <ClInclude Include="win10_win11_required_code.h">
+      <Filter>Source Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
