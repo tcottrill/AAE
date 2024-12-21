@@ -354,7 +354,7 @@ static void switch_game()
 	INMENU = 0;
 	oldgamenum = gamenum;
 	a = (GI[CPU0][0x51]) + 1;
-	wrlog("A here is %d", a);
+	//wrlog("A here is %d", a);
 	switch (a)
 	{
 	case 1: b = 0x10000; gamenum = ALIENST; break;

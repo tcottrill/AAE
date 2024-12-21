@@ -63,6 +63,9 @@ static int curr_item = 0;
 // For savecall when exiting.
 static int last_menu_setting = 0;
 
+
+// TODO: Add another value here to differentiate settings that should NOT be saved into a "game" ini file like screen size!
+
 typedef struct
 {
 	const char* heading;
@@ -83,7 +86,7 @@ const char* mouse_names[] =
   "(none)",  "MB1","MB2","MB3","MB4"
 };
 
-const char* key_names[] =
+static const char* key_names[] =
 {
    "(none)",     "A",          "B",          "C",
    "D",          "E",          "F",          "G",
@@ -122,8 +125,8 @@ const char* key_names[] =
 static MENUS glmenu[] = {
    { "WINDOWED ", {"YES", "YES"},
    1, 100,1,1,{1,1},MENU_INT,0,0,0},
-   { "RESOLUTION ", {"640x480", "800x600","1024x768","1152x864","1280x1024","1600x1200","1920x1080","","",""},
-   6, 200,1,1,{0,1,2,3,4,5,6,0,0,0},MENU_INT,0,0,0},
+   { "RESOLUTION ", {"1024x768","1152x864","1280x1024","1600x1200","1920x1080","","",""},
+   4, 200,1,1,{0,1,2,3,4,0,0,0,0,0},MENU_INT,0,0,0},
    // Note to self: These are not currently doing anything.
    { "GAMMA ADJUST ", {"-8%","-5%","-3%","0%","+3%","+5%","+8%","+12%","+15","+18"},
    9, 300,0,0,{157,147,137,127,117,107,100,97,94,90},MENU_FLOAT,.5,-20,20},
@@ -177,7 +180,7 @@ static MENUS soundmenu[] = {
    { "PS NOISE",{"NO", "YES",},
    1,500,0,0,{0,1,},MENU_INT,0,0,0},
    { "NONE", {"NONE", " ", " ", " "}, 0,0, 0,0,{0,0,0,0,0,0,0,0,0,0},0,0,0,0},
-   { "NONE", {"NONE", " ", " ", " "}, 0,0, 0,0,{0,0,0,0,0,0,0,0,0,0},0,0,0,0} // Todo: understand buffer overflow here and resolve.
+   //{ "NONE", {"NONE", " ", " ", " "}, 0,0, 0,0,{0,0,0,0,0,0,0,0,0,0},0,0,0,0} // Todo: understand buffer overflow here and resolve.
 };
 
 static MENUS mousemenu[] = {
@@ -218,6 +221,8 @@ void set_menu_level_top()
 	menuitem = 0;
 	sublevel = 0;
 	key_set_flag = 0;
+	// Super important.
+	number = 0;
 }
 
 void change_menu_level(int dir) //This is up and down
@@ -269,7 +274,7 @@ void select_menu_item() //This is enter
 	switch (menulevel)
 	{
 	case ROOTMENU: {
-		menulevel = menulevel * (menuitem + 2);	// if (menulevel == DIPMENU && gamenum==0){menulevel=ROOTMENU;} //GUI has no dips
+		menulevel = menulevel * (menuitem + 2);	
 		menuitem = 0;
 		break;
 	}
@@ -283,6 +288,8 @@ void select_menu_item() //This is enter
 	}
 }
 
+//This is no longer being used
+/*
 void change_menu()
 {
 	//This is menu exit;
@@ -307,7 +314,7 @@ void change_menu()
 	if (menulevel == GLOBALKEYS) { number = 0; }//save_keys();}
 	if (menulevel > ROOTMENU) { menulevel = 100; menuitem = 1; number = 0; }
 }
-
+*/
 void do_the_menu()
 {
 
@@ -353,7 +360,6 @@ void do_root_menu()
 		case 6: fprint(LFT, top - (SPC * x), C, 2.6,  "VIDEO SETUP"); break;
 		case 7: fprint(LFT, top - (SPC * x), C, 2.6,  "SOUND SETUP"); break;
 		}
-		// draw_center_tex(&menu_tex[x], 32, 335,580-(74*x), 0, NORMAL, 255,255,255,255, 2);
 	}
 }
 
@@ -1008,6 +1014,7 @@ int do_mouse_menu()
 	int total, total2;
 	int arrowize;
 	int yval = 500;
+	int left = 225;
 	int color = 0;
 	int start = 600;
 	int top = 0;
@@ -1098,6 +1105,8 @@ int do_mouse_menu()
 		else menu_subitem[i] = 0;	/* no subitem */
 	}
 
+	quad_from_center(520, 575, 680, 200, 20, 20, 80, 255);
+
 	fprint(285, 700, RGB_WHITE, 2.0, "ANALOG SETTINGS");
 	menu_item[total] = "Return to Main Menu";
 	menu_subitem[total] = nullptr;
@@ -1109,15 +1118,15 @@ int do_mouse_menu()
 		if (menuitem == x)
 		{
 			color = 0;
-			fprint(145, start, MAKE_RGBA(255, color, 255, 255), 2.0, menu_item[menuitem]);
+			fprint(left, start, MAKE_RGBA(255, color, 255, 255), 2.0, menu_item[menuitem]);
 		}
 		else
 		{
 			color = 255;
-			fprint(145, start, MAKE_RGBA(255, color, 255, 255), 2.0, menu_item[x]);
+			fprint(left, start, MAKE_RGBA(255, color, 255, 255), 2.0, menu_item[x]);
 		}
 
-		fprint(545, start, MAKE_RGBA(255, color, 255, 255), 2.0, menu_subitem[x]);
+		fprint(left + 400, start, MAKE_RGBA(255, color, 255, 255), 2.0, menu_subitem[x]);
 
 		start -= 8 * 2.5;
 	}
@@ -1221,7 +1230,6 @@ int do_mouse_menu()
 	}
 
 	return sel + 1;
-
 	//	it=1;
 }
 
@@ -1335,6 +1343,7 @@ void save_sound_menu()
 	if (soundmenu[5].Changed != soundmenu[5].current) my_set_config_int("main", "pshiss", soundmenu[5].current, gamenum);
 }
 
+/*
 void setup_mouse_menu()
 {
 	int x = 0;
@@ -1348,22 +1357,22 @@ void setup_mouse_menu()
 
 void save_mouse_menu()
 {
-	/*
+	
 	 if (mousemenu[0].Changed != mousemenu[0].current) my_set_config_int("main", "mouse1xs", mousemenu[0].current, gamenum);
 	 if (mousemenu[1].Changed != mousemenu[1].current) my_set_config_int("main", "mouse1ys", mousemenu[1].current, gamenum);
 	 if (mousemenu[2].Changed != mousemenu[2].current) my_set_config_int("main", "mouse1x_invert", mousemenu[2].current, gamenum);
 	 if (mousemenu[3].Changed != mousemenu[3].current) my_set_config_int("main", "mouse1y_invert",  mousemenu[3].current, gamenum);
-	 */
+	 
 }
-
+*/
 void set_points_lines()
 {
-	config.linewidth = glmenu[10].step * (glmenu[10].current);
-	config.pointsize = glmenu[11].step * (glmenu[11].current);
+	//config.linewidth = glmenu[10].step * (glmenu[10].current);
+	//config.pointsize = glmenu[11].step * (glmenu[11].current);
 
 	//Change this to be set in the gl code.
-	glLineWidth(config.linewidth);//linewidth
-	glPointSize(config.pointsize);//pointsize
+	//glLineWidth(config.linewidth);//linewidth
+	//glPointSize(config.pointsize);//pointsize
 }
 
 void setup_video_menu()
@@ -1375,13 +1384,11 @@ void setup_video_menu()
 
 	switch (config.screenw) //RESOLUTION
 	{
-	case 640: glmenu[1].current = 0; break;
-	case 800: glmenu[1].current = 1; break;
-	case 1024: glmenu[1].current = 2; break;
-	case 1152: glmenu[1].current = 3; break;
-	case 1280: glmenu[1].current = 4; break;
-	case 1600: glmenu[1].current = 5; break;
-	case 1920: glmenu[1].current = 6; break;
+	case 1024: glmenu[1].current = 0; break;
+	case 1152: glmenu[1].current = 1; break;
+	case 1280: glmenu[1].current = 2; break;
+	case 1600: glmenu[1].current = 3; break;
+	case 1920: glmenu[1].current = 4; break;
 	default: glmenu[1].current = 0; break;
 	}
 	glmenu[2].current = (config.gamma - 127) / 2;
@@ -1440,6 +1447,7 @@ void do_video_menu()
 	it = 0;
 	int x = 0;
 
+	
 	if (number == 0)
 	{
 		while (glmenu[number].NumOptions) { number++; }
@@ -1531,13 +1539,11 @@ void save_video_menu()
 	{
 		switch (glmenu[1].current) //RESOLUTION
 		{
-		case 0: x = 640; y = 480; break;
-		case 1: x = 800; y = 600; break;
-		case 2: x = 1024; y = 768; break;
-		case 3: x = 1152; y = 864; break;
-		case 4: x = 1280; y = 1024; break;
-		case 5: x = 1600; y = 1200; break;
-		case 6: x = 1920; y = 1080; break;
+		case 0: x = 1024; y = 768; break;
+		case 1: x = 1152; y = 864; break;
+		case 2: x = 1280; y = 1024; break;
+		case 3: x = 1600; y = 1200; break;
+		case 4: x = 1920; y = 1080; break;
 		default:x = 1024; y = 768; break;
 		}
 
@@ -1550,8 +1556,8 @@ void save_video_menu()
 	if (glmenu[7].Changed != glmenu[7].current)   my_set_config_int("main", "widescreen", glmenu[7].Value[glmenu[7].current], gamenum);
 	if (glmenu[8].Changed != glmenu[8].current)   my_set_config_int("main", "vectortrail", glmenu[8].Value[glmenu[8].current], gamenum);
 	if (glmenu[9].Changed != glmenu[9].current)   my_set_config_int("main", "vectorglow", glmenu[9].current, gamenum);
-	if (glmenu[10].Changed != glmenu[10].current) my_set_config_int("main", "m_line", glmenu[10].current * glmenu[10].step, gamenum);
-	if (glmenu[11].Changed != glmenu[11].current) my_set_config_int("main", "m_point", glmenu[11].current * glmenu[11].step, gamenum);
+	if (glmenu[10].Changed != glmenu[10].current) my_set_config_int("main", "m_line", glmenu[10].current, gamenum);
+	if (glmenu[11].Changed != glmenu[11].current) my_set_config_int("main", "m_point", glmenu[11].current, gamenum);
 	if (glmenu[12].Changed != glmenu[12].current) my_set_config_int("main", "gain", glmenu[12].current, gamenum);
 	if (glmenu[13].Changed != glmenu[13].current) my_set_config_int("main", "artwork", glmenu[13].current, gamenum);
 	if (glmenu[14].Changed != glmenu[14].current) my_set_config_int("main", "overlay", glmenu[14].current, gamenum);

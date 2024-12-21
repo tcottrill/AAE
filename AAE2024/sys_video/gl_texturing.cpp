@@ -260,29 +260,14 @@ void Centered_Rect(int facing, int size)
 {
 	float x;
 	float sizeC = size * .75;
-	/*
-	if (config.widescreen && config.windowed == 0)
-	{
-		x = (1.00 - wideadj) / 2;
-		glTranslatef(x * size, 0, 0);
-		glBegin(GL_QUADS);
-		glTexCoord2f(0, 1); glVertex2f(0, sizeC);
-		glTexCoord2f(0, 0); glVertex2f(0, 0);
-		glTexCoord2f(1, 0); glVertex2f(size * wideadj, 0); //x
-		glTexCoord2f(1, 1); glVertex2f(size * wideadj, sizeC); //x,size
-		glEnd();
-		glTranslatef(x * size, 0, 0);
-	}
-	else
-	{
-	*/
+	
 	glBegin(GL_QUADS);
 	glTexCoord2f(0, 1); glVertex2f(0, sizeC);
 	glTexCoord2f(0, 0); glVertex2f(0, 0);
 	glTexCoord2f(1, 0); glVertex2f(size, 0);
 	glTexCoord2f(1, 1); glVertex2f(size, sizeC);
 	glEnd();
-	//}
+	
 }
 
 void Resize_Rect(int facing, int size)

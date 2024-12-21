@@ -1,9 +1,8 @@
-// This is an insane mess, working on a rewrite, or switch to modern AVG drawing code. 
+// This is an insane mess, working on a rewrite, or switch to modern AVG drawing code.
 
 #include "aae_avg.h"
 #include "vector.h"
 #include "aae_mame_driver.h"
-
 
 static int vector_type = 0;
 
@@ -28,7 +27,6 @@ static int NO_CACHE = 0;
 #define TIME_IN_NSEC(us)      ((double)(us) * (1.0 / 1000000000.0))
 
 
-//PLease Move this
 int vector_timer(int deltax, int deltay)
 {
 	deltax = abs(deltax);
@@ -48,7 +46,6 @@ static void calc_sweep()
 	sweep = (TIME_IN_NSEC(1600) * total_length) * 1512000;
 }
 
-
 static void set_bw_colors()
 {
 	int i = 0;
@@ -67,11 +64,11 @@ static void set_bw_colors()
 
 static void BZ_DRAW(int currentx, int currenty, int deltax, int deltay, int z, int color)
 {
-	float sy = 0;
-	float ey = 0;
-	float sx = 0;
-	float ex = 0;
-	int nocache = 0;
+	int sy = 0;
+	int ey = 0;
+	int sx = 0;
+	int ex = 0;
+	int noline = 0;
 	int gc = 16;
 	int BZ_CLIP = 726;
 
@@ -79,18 +76,19 @@ static void BZ_DRAW(int currentx, int currenty, int deltax, int deltay, int z, i
 	sy = currenty >> VEC_SHIFT;
 	sx = (currentx >> VEC_SHIFT);
 	ex = (currentx + deltax) >> VEC_SHIFT;
-
+	
 	if (!testsw && gamenum != REDBARON)
 	{
 		//Line color 0 clipping
-		if (sy > BZ_CLIP && ey > BZ_CLIP && color == 0) { nocache = 1; }
+		if (sy > BZ_CLIP && ey > BZ_CLIP && color == 0) { noline = 1; }
 		if (sy > BZ_CLIP && sy > ey && color == 0) { sx = ((BZ_CLIP - sy) * ((ex - sx) / (ey - sy))) + sx; sy = BZ_CLIP; }
 		if (ey > BZ_CLIP && ey > sy && color == 0) { ex = ((BZ_CLIP - ey) * ((sx - ex) / (sy - ey))) + ex; ey = BZ_CLIP; }
 	}
+	
 	//	wrlog("X %d Y %d end X %d Y %d" ,sx,sy,ex,ey);
 	gc = z + 1;
 	gc = z / 16;
-	if (nocache == 0) {
+	if (noline == 0) {
 		cache_line(sx, sy, ex, ey, gc, config.gain, 0);
 		cache_point(sx, sy, gc, config.gain, 0, 0);
 		cache_point(ex, ey, gc, config.gain, 0, 0);
@@ -122,6 +120,15 @@ void AVG_RUN(void)
 	int ywindow = 1;
 	int clip = 0;
 	int oldscale = 0;
+	int intensity = 0;
+
+	int TEMP_CLIP = 240;
+	int sy = 0;
+	int ey = 0;
+	int sx = 0;
+	int ex = 0;
+
+	int draw = 1;
 
 	pc = driver[gamenum].vectorram;
 
@@ -157,12 +164,12 @@ void AVG_RUN(void)
 		{
 		case VCTR: x = twos_comp_val(secondwd, COMPSHFT);
 			y = twos_comp_val(firstwd, COMPSHFT);
-			z = (secondwd >> 12) & ~0x01;
+			z = (secondwd >> 12) & 0x0e;//~0x01;
 
 			goto DRAWCODE;
 			break;
 
-		case SVEC: 
+		case SVEC:
 			x = twos_comp_val(firstwd, 5) << 1;
 			y = twos_comp_val(firstwd >> 8, 5) << 1;
 			z = ((firstwd >> 4) & 0x0e);
@@ -171,14 +178,14 @@ void AVG_RUN(void)
 
 			if (TYPE_SW)
 			{
-				z = (z * statz) /  8; // Brightness / Translucency here
+				z = (z * statz) / 8; // Brightness / Translucency here
 				if (z > 0xff)
 					z = 0xff;
 			}
 			else
 			{
 				if (z == 2) { z = statz; }
-				if (z) { z = (z << 4) | 0x1f; }
+				if (z) {z = (z << 4) | 0x1f;}
 			}
 			total_length += vector_timer(x * oldscale, y * oldscale);
 
@@ -189,21 +196,28 @@ void AVG_RUN(void)
 			if (YFLIP) deltay = -deltay;
 			if (XFLIP) deltax = -deltax;
 
+			sx = (currentx >> VEC_SHIFT);
+			sy = currenty >> VEC_SHIFT;
+			ex = (currentx + deltax) >> VEC_SHIFT;
+			ey = ((currenty - deltay) >> VEC_SHIFT);
+
 			if (z)
 			{
 				if (TYPE_BZ) BZ_DRAW(currentx, currenty, deltax, deltay, z, color);
-				else {
-					if (sparkle && TYPE_MH) {
-						color = 0xf + (((spkl_shift & 1) << 3) | (spkl_shift & 4)
-							| ((spkl_shift & 0x10) >> 3) | ((spkl_shift & 0x40) >> 6));
+				else 
+				{
+					if (sparkle && TYPE_MH)
+					{
+						color = 0xf + (((spkl_shift & 1) << 3) | (spkl_shift & 4) | ((spkl_shift & 0x10) >> 3) | ((spkl_shift & 0x40) >> 6));
 					}
 
 					//Gravitar, Space Duel, Black Widow and Star Wars
 					if (color & 0x04) red = z; else red = 0;
 					if (color & 0x02) green = z; else green = 0;
 					if (color & 0x01) blue = z; else blue = 0;
+					
 					if (TYPE_GV && testsw) { if (color == 0) { green = z; blue = z; } } //Gravitar Test Mode Fix
-
+					
 					if (TYPE_TEMP)
 					{
 						if (sparkle) { color = rand() & 0x07; }
@@ -211,43 +225,51 @@ void AVG_RUN(void)
 						red = vec_colors[color].r;
 						green = vec_colors[color].g;
 						blue = vec_colors[color].b;
+
+						if (sy < TEMP_CLIP && ey < TEMP_CLIP) { draw = 0; }
+						else { draw = 1; }
+						if (ey < TEMP_CLIP && ey < sy) { ex = ((TEMP_CLIP - ey) * ((ex - sx) / (ey - sy))) + ex; ey = TEMP_CLIP; }
+				  	    if (sy < TEMP_CLIP && sy < ey) { sx = ((TEMP_CLIP - sy) * ((sx - ex) / (sy - ey))) + sx; sy = TEMP_CLIP; }
 					}
 
-					if (TYPE_QU )
+					if (TYPE_QU)
 					{
 						red = vec_colors[color].r;
 						green = vec_colors[color].g;
 						blue = vec_colors[color].b;
 					}
-
-						if ((currentx == (currentx)+deltax) && (currenty == (currenty)-deltay))
-						{
-							add_color_point((currentx >> VEC_SHIFT), currenty >> VEC_SHIFT, red, green, blue);
-						}
-
-						else {
-							add_color_line((currentx >> VEC_SHIFT), (currenty >> VEC_SHIFT), (currentx + deltax) >> VEC_SHIFT, (currenty - deltay) >> VEC_SHIFT, red, green, blue);
-							add_color_point((currentx >> VEC_SHIFT), currenty >> VEC_SHIFT, red, green, blue);
-							add_color_point((currentx + deltax) >> VEC_SHIFT, (currenty - deltay) >> VEC_SHIFT, red, green, blue);
-						}
 					
+					if ((currentx == (currentx)+deltax) && (currenty == (currenty)-deltay))
+					{
+						if (draw) {
+							add_color_point(sx, sy, red, green, blue);
+						}
+					}
+
+					else {
+						if (draw) {
+							add_color_line(sx, sy, ex, ey, red, green, blue);
+							add_color_point(sx, sy, red, green, blue);
+							add_color_point(ex, ey, red, green, blue);
+						}
+					}
 				}
 			}
 			currentx += deltax; currenty -= deltay;
 
 			break;
 
-		case STAT: 
-			
+		case STAT:
+
 			if (TYPE_SW)
 			{
 				color = (char)((firstwd & 0x0700) >> 8);
 				statz = (firstwd) & 0xff;
 			}
 			else {
-				statz = (firstwd >> 4) & 0x000f;
+				statz = (firstwd >> 4) & 0x000f; // This is intensity
 				color = (firstwd) & 0x000f;
-			}
+				}
 			if (TYPE_TEMP) { sparkle = !(firstwd & 0x0800); }
 			if (TYPE_MH)
 			{
@@ -368,23 +390,25 @@ void avg_init()
 		gamenum == BZONEP ||
 		gamenum == BZONEC ||
 		gamenum == BRADLEY ||
-		gamenum == REDBARON) 
-	  {
+		gamenum == REDBARON)
+	{
 		TYPE_BZ = 1;
-		pc = 0x2000;
 		set_bw_colors();
 		YFLIP = 1;
 		AVG_BUSY = 1;
+		SCALEADJ = 2;
 		PCTOP = driver[gamenum].vectorram;
 	}
 
 	else if (gamenum == SPACDUEL ||
 		gamenum == BWIDOW ||
 		gamenum == LUNARBAT ||
-		gamenum == LUNARBA1) {
-		TYPE_SD = 1; 
-		PCTOP = 0x2000;  
+		gamenum == LUNARBA1)
+	{
+		TYPE_SD = 1;
+		PCTOP = 0x2000;
 		NO_CACHE = 1;
+		SCALEADJ = 2;
 	}
 	else if (gamenum == GRAVITAR ||
 		gamenum == GRAVITR2 ||
@@ -409,19 +433,20 @@ void avg_init()
 		gamenum == ALPHAONA ||
 		gamenum == ALPHAONE) {
 		TYPE_MH = 1; PCTOP = 0x4000;
+		SCALEADJ = 2;
 	}
 
 	else if (gamenum == QUANTUM ||
 		gamenum == QUANTUM1 ||
 		gamenum == QUANTUMP) {
-		TYPE_QU = 1; 
-		PCTOP = 0; 
-		NO_CACHE = 1; 
+		TYPE_QU = 1;
+		PCTOP = 0;
+		NO_CACHE = 1;
 		SCALEADJ = 1;
 	}
 	else if (gamenum == STARWARS || gamenum == STARWAR1)
 	{
-		TYPE_SW = 1; 
+		TYPE_SW = 1;
 		PCTOP = 0;
 		YFLIP = 1;
 		NO_CACHE = 1;
@@ -430,7 +455,6 @@ void avg_init()
 
 	//TYPE_SD=1;PCTOP=0x2000;set_sd_colors();NO_CACHE=1;
 }
-
 
 /*************************************
  *
@@ -475,7 +499,6 @@ int avg_start_alphaone(void)
 
 int avg_start_bzone(void)
 {
-
 	//return avgdvg_init(USE_AVG_BZONE);
 }
 
@@ -500,4 +523,3 @@ void dvg_stop(void)
 	//busy = 0;
 	//vector_clear_list();
 }
-

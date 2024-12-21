@@ -100,7 +100,12 @@ void close_button_handler(void)
 }
 END_OF_FUNCTION(close_button_handler)
 
-
+static int clamp(int value)
+{
+	if (value < 0) return 0;
+	if (value > 255) return 255;
+	return value;
+}
 int mystrcmp(const char* s1, const char* s2)
 {
 	while (*s1 && *s2 && *s1 == *s2) {
@@ -409,18 +414,23 @@ void run_game(void)
 	options.cheat = 1;
 	set_aae_leds(0, 0, 0);  //Reset LEDS
 	
-	//config.mainvol = 255;
-	//config.pokeyvol = 250; //Adjust from menu values
-	//config.noisevol = 200;
+	config.mainvol *= 12.75;
+	config.pokeyvol *= 12.75; //Adjust from menu values
+	config.noisevol *= 12.75;
 	
+	clamp(config.mainvol);
+	clamp(config.pokeyvol);
+	clamp(config.noisevol);
+
 	//Check;
+	/*
 	if (config.noisevol > 255) config.noisevol = 254;
 	if (config.pokeyvol > 255) config.pokeyvol = 254;
 	if (config.mainvol > 255) config.mainvol = 254;
 	if (config.noisevol <= 0) config.noisevol = 1;
 	if (config.mainvol <= 0) config.mainvol = 1;
 	if (config.pokeyvol <= 0) config.pokeyvol = 1;
-
+	*/
 	set_volume(config.mainvol, 0);
 
 	SetThreadPriority(GetCurrentThread(), ABOVE_NORMAL_PRIORITY_CLASS);

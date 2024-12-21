@@ -67,9 +67,6 @@ int total_length;
 
 
 settings config;
-int index;	
+//int index;	
 
-//GAMEKEYS* MK;
-//GAMEKEYS* GK;
-//GAMEKEYS* FOO;
 glist gamelist[256];

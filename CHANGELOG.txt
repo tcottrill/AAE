@@ -33,4 +33,7 @@ Corrected the Menu System, first pass. Sound and Graphics Menus are working agai
 12/12/14 Increased rendering time with another FBO, but it worked around a major rendering flaw allowing me to composite the menu and FPS onto the screen without doing any crazy scaling everywhere to compensate for screen sizes.
 The menu system still needs work, I recommend not touching it except on the gui screen.
 
+12/17/24 Many config and Menu changes, hopefully all the menu issues are resolved. 
 
+12/21/24 Fixed main volume being too low, made too many changes to the menu system to list. More config changes to fix sound and graphics setting issues. Now the screen resolution can only be set in the gui, or by manually editing the config file.
+Adjusted sound in asteroids and asteroids deluxe. Added clipping to tempest to stop the lines from going around the bezel in certain resolutions. Made a few graphic code changes to prep for more changes. Moved the game specific INI files to their own folder. 

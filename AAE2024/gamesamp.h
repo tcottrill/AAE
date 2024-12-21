@@ -28,6 +28,37 @@ static const char* guisamples[] = {
 	"fire.wav",
 	 0 };
 
+
+static const char* asteroidsamples[] =
+{
+	"asteroid.zip",
+	"explode1.wav",
+	"explode2.wav",
+	"explode3.wav",
+	"explode4.wav",
+	"thrust.wav",
+	"thumphi.wav",
+	"thumplo.wav",
+	"fire.wav",
+	"lsaucer.wav",
+	"ssaucer.wav",
+	"sfire.wav",
+	"life.wav",
+	0	/* end of array */
+};
+
+static const char* deluxesamples[] =
+{
+	"astdelux.zip",
+	"explode1.wav",
+	"explode2.wav",
+	"explode3.wav",
+	"explode4.wav",
+	"thrust.wav",
+	0
+};
+/*
+
 static const char* asteroidsamples[] = { 
 	"asteroid.zip",
 	"fire.wav",
@@ -51,6 +82,7 @@ static const char* deluxesamples[] = {
 	"explode3.wav",
 	 0 };
 
+	 */
 static const char* bzonesamples[] = { 
 	"bzone.zip",
 	"fire1.wav",

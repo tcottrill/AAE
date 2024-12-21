@@ -679,7 +679,7 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 		// FBO1 is still bound at this point, switching to drawing the feedback texture blending on top of itself, frame additive
 		glDrawBuffer(GL_COLOR_ATTACHMENT2_EXT);
 		glDisable(GL_DITHER);
-		set_texture(&img1b, 1, 0, 1, 0);
+		set_texture(&img1b, 1, 0, 0, 0);
 		//glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 		glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_SRC_ALPHA);
 
@@ -743,26 +743,18 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 	glBindTexture(GL_TEXTURE_2D, img3a);
 	set_texture(&img3b, 1, 0, 0, 0);
 	// I don't see where this texture is being modified anywhere?
-	//glActiveTexture(GL_TEXTURE3);
-	//set_texture(&img1c, 1, 0, 0, 0); 
+	glActiveTexture(GL_TEXTURE3);
+	set_texture(&img1c, 1, 0, 0, 0); 
 
 	// FINAL RENDERING TO SCREEN IS RIGHT HERE
 	// Enable fbo4, and render everything below to it, then render to the screen with the correct size and aspect.
 	set_render_fbo4();
-	if (config.bezel && gamenum && art_loaded[3])
+	
+if (config.bezel && gamenum && art_loaded[3])
 	{
 		glColor4f(1.0, 1.0, 1.0, 1.0);
 		//if (config.debug)	//{	Any_Rect(0, msx, msy, esy, esx);}
-		//else
-		//{
-		//	if (config.widescreen && config.windowed == 0)
-		//	{
-		//		Bezel_Rect(0, b1sx, b1sy, b2sy, b2sx);
-		//	}
-		//	else {
-				Any_Rect(0, b1sx, b1sy, b2sy, b2sx);
-			//}
-		//}
+		Any_Rect(0, b1sx, b1sy, b2sy, b2sx);
 	}
 	else
 	{
@@ -770,7 +762,6 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 		set_ortho(config.screenw, config.screenh);
 		glDisable(GL_BLEND);
 		// Render the main combined image to the back buffer.
-		//screen_rect.Render(1.33);
 		Screen_Rect(0, 1024);
 	}
 
@@ -791,8 +782,7 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 
 	//POST COMBINING OVERLAY FOR CINEMATRONICS GAMES WITH MONITOR COVERS & NO BACKGROUND ARTWORK
 
-	//Note to Self, this is why Armor Attack overly isn't scaling correctly. FIX!!!!
-
+	
 	if (driver[gamenum].rotation == 2 && config.overlay && art_loaded[1] && gamenum)
 	{
 		set_texture(&art_tex[1], 1, 0, 0, 0);
@@ -808,7 +798,6 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 			{
 				glEnable(GL_BLEND);
 				FS_Rect(0, 1024);
-				//screen_rect.Render(1.0);
 			}
 		}
 		else {
@@ -835,9 +824,8 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 		glEnable(GL_ALPHA_TEST);
 		glAlphaFunc(GL_GREATER, 0.99f);
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-		Centered_Rect(0, 1024);
-		//screen_rect.Render(1.0);
-		glDisable(GL_ALPHA_TEST);
+		Centered_Rect(0, 1024); //Tempest
+ 		glDisable(GL_ALPHA_TEST);
 	}
 	
 	if (config.bezel && art_loaded[3] && gamenum) {

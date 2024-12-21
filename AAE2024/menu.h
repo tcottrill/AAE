@@ -27,7 +27,7 @@ void save_mouse_menu();
 void change_menu_level(int dir);
 void change_menu_item(int dir);
 void select_menu_item();
-void change_menu();
+//void change_menu();
 int change_key();
 void do_sound_menu();
 void reset_menu();

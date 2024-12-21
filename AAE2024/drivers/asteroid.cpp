@@ -1,15 +1,14 @@
-
 //============================================================================
-// AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME 
-// code, 0.29 through .90 mixed with code of my own. This emulator was 
-// created solely for my amusement and learning and is provided only 
-// as an archival experience. 
-// 
-// All MAME code used and abused in this emulator remains the copyright 
+// AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME
+// code, 0.29 through .90 mixed with code of my own. This emulator was
+// created solely for my amusement and learning and is provided only
+// as an archival experience.
+//
+// All MAME code used and abused in this emulator remains the copyright
 // of the dedicated people who spend countless hours creating it. All
 // MAME code should be annotated as belonging to the MAME TEAM.
-// 
-// SOME CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.  
+//
+// SOME CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.
 //============================================================================
 /* Asteroid Emu */
 #include "asteroid.h"
@@ -21,13 +20,40 @@
 #include "pokyintf.h"
 #include "acommon.h"
 #include "loaders.h"
-
 #include "timer.h"
+
+/*
+	Asteroids Voice breakdown:
+	0 - thump
+	1 - saucer
+	2 - player fire
+	3 - saucer fire
+	4 - player thrust
+	5 - extra life
+	6 - explosions
+*/
+
+/* Constants for the sound names in the asteroid sample array */
+/* Move the sounds Astdelux and Asteroid have in common to the */
+/* beginning. BW */
+/* Swapped High and Low thump. Corrected saucer sound stop */
+
+#define kExplode1    0
+#define kExplode2    1
+#define kExplode3    2
+#define kExplode4    3
+#define kThrust      4
+#define kHighThump   5
+#define kLowThump    6
+#define kFire        7
+#define kLargeSaucer 8
+#define kSmallSaucer 9
+#define kSaucerFire	 10
+#define kLife        11
 
 int SCRFLIP;
 int dvggo = 0;
 UINT8 buffer[0x100];
-
 
 int psound = 0;
 int vec_done = 0;
@@ -77,79 +103,117 @@ void set_ast_colors()
 	}
 }
 
-////////////   SOUND ROUTINE FOR FIRST SET OF SOUNDS  /////////////////////////
+/*************************************
+*
+*	Sound Handlers
+*
+*************************************/
 
-// Note: Please come back and fix this later 
-
-WRITE_HANDLER(Sounds2)
+WRITE_HANDLER(asteroid_noise_reset_w)
 {
-	static int mfire = 0;
-	static int vsfire = 0;
-	static int saucer = 0;
-	static int lastsaucer = 0;
+	//sample_stop (2);
+}
+
+WRITE_HANDLER(astdelux_sounds_w)
+{
 	static int lastthrust = 0;
-	static int saucertoggle = 0;
 
-	//int sound;
-	int mfire2;
-	int vsfire2;
-
-	GI[CPU0][address+ 0x3c00] = data;
-
-	switch (address + 0x3c00)
+	if (!(data & 0x80) && (lastthrust & 0x80))
 	{
-	case 0x3c00:
-		if (data & 0x80 && saucertoggle == 0)
-		{
-			if (GI[CPU0][0x3c02] & 0x80)
-				sample_start(4, 9, 1);
-			else
-				sample_start(4, 8, 1);
-			saucertoggle = 1; break;
-		}
-		if (!(data & 0x80) && saucertoggle == 1)
-		{
-			saucertoggle = 0;
-			sample_stop(4);
-		}
-		break;
-	case 0x3c01:
-		vsfire2 = data & 0x80;
-		if (vsfire2 != vsfire)
-		{
-			sample_stop(3);
-			if (vsfire2) sample_start(3, 1, 0);
-		}
-		vsfire = vsfire2;
-		break;
+		voice_ramp_volume(kThrust, 30, 0);
+	}
+	if ((data & 0x80) && !(lastthrust & 0x80))
+	{
+		voice_ramp_volume(kThrust, 30, config.mainvol);
+	}
 
-	case 0x3c03:  if ((data & 0x80) && !(lastthrust & 0x80)) sample_start(5, 2, 1);
-		if (!(data & 0x80) && (lastthrust & 0x80)) { sample_end(5); }
-		lastthrust = data;
-		break;
+	lastthrust = data;
+}
 
-	case 0x3c04:    mfire2 = data & 0x80;
-		if (mfire2 != mfire)
-		{
-			sample_stop(2);
-			if (mfire2) sample_start(2, 0, 0);
-		}
-		mfire = mfire2;
-		break;
-	case 0x3c05:
-		if (data & 0x80)
-		{
-			if (sample_playing(6) == 0) {
-				sample_start(6, 10, 0);
-			}   break;
-		}
-	default: break;
+WRITE_HANDLER(asteroid_thump_w)
+{
+	/* is the volume bit on? */
+	if (data & 0x10)
+	{
+		int sound;
+
+		if (data & 0x0f)
+			sound = kLowThump;
+		else
+			sound = kHighThump;
+		sample_start(7, sound, 0);
 	}
 }
 
-////////////////// END SOUND ROUTINE FOR SECOND SET OF SOUNDS ////////////////////////
+WRITE_HANDLER(asteroid_sounds_w)
+{
+	static int fire = 0;
+	static int sfire = 0;
+	static int saucer = 0;
+	static int lastsaucer = 0;
+	static int lastthrust = 0;
+	int sound;
+	int fire2;
+	int sfire2;
 
-WRITE_HANDLER(Explosions)
+	switch (address & 0xf)
+	{
+	case 0: // Saucer sounds
+		if ((data & 0x80) && !(lastsaucer & 0x80))
+		{
+			if (saucer)
+				sound = kLargeSaucer;
+			else
+				sound = kSmallSaucer;
+			sample_start(2, sound, 1);
+		}
+		if (!(data & 0x80) && (lastsaucer & 0x80))
+			sample_stop(2);
+		lastsaucer = data;
+		break;
+	case 1: // Saucer fire
+		sfire2 = data & 0x80;
+		if (sfire2 != sfire)
+		{
+			sample_stop(3);
+			if (sfire2) sample_start(3, kSaucerFire, 0);
+		}
+		sfire = sfire2;
+		break;
+	case 2: // Saucer sound select
+		saucer = data & 0x80;
+		break;
+	case 3:
+		if ((data & 0x80) && !(lastthrust & 0x80))
+		{
+			//sample_start(4, kThrust, 1);
+			//sample_set_volume(kThrust, config.mainvol);
+			voice_ramp_volume(kThrust, 30, config.mainvol);
+		}
+		if (!(data & 0x80) && (lastthrust & 0x80))
+		{
+			//sample_stop(4);
+			//sample_set_volume(kThrust, 0);
+			voice_ramp_volume(kThrust, 30, 0);
+		}
+		lastthrust = data;
+		break;
+	case 4: // Player fire
+		fire2 = data & 0x80;
+		if (fire2 != fire)
+		{
+			sample_stop(5);
+			if (fire2) sample_start(5, kFire, 0);
+		}
+		fire = fire2;
+		break;
+	case 5: // life sound
+		if (data & 0x80) sample_start(6, kLife, 0);
+		break;
+	}
+}
+
+WRITE_HANDLER(asteroid_explode_w)
 {
 	static int explosion = -1;
 	int explosion2;
@@ -160,36 +224,27 @@ WRITE_HANDLER(Explosions)
 		explosion2 = data >> 6;
 		if (explosion2 != explosion)
 		{
+			//sample_stop(7); //Not Needed, done for us with reallocate in allegro code
 			switch (explosion2)
 			{
 			case 0:
 			case 1:
-				sample_start(7, 3, 0);
+				sound = kExplode1;
 				break;
 			case 2:
-				sample_start(7, 4, 0);
+				sound = kExplode2;
 				break;
 			case 3:
-				sample_start(7, 5, 0);
+				sound = kExplode3;
 				break;
-
-			default: sample_start(7, 4, 0);
 			}
+
+			sample_start(1, sound, 0);
 		}
 		explosion = explosion2;
 	}
 	else explosion = -1;
 }
-
-WRITE_HANDLER(Heartbeat)
-{
-	if (data & 0x10)
-	{
-		if (data & 0x0f) { sample_start(8, 7, 0); }
-		else { sample_start(8, 6, 0); }
-	}
-}
-
 ///////////////////////////////////////////////////////////////////////////////
 WRITE_HANDLER(DeluxeLedWrite)
 {  //From M.A.M.E. (TM)
@@ -240,25 +295,6 @@ WRITE_HANDLER(AsteroidsSwapRam)
 	set_aae_leds((~data & 0x02), (~data & 0x01), 0);
 }
 
-WRITE_HANDLER(Thrust)
-{
-	static int lastthrust = 0;
-	if (!(data & 0x80) && (lastthrust & 0x80))
-	{
-		sample_adjust(4, PLAYMODE_PLAY);
-	}
-	//{sample_end(0);}
-	if ((data & 0x80) && !(lastthrust & 0x80)) { sample_start(4, 0, 1); }
-	lastthrust = data;
-}
-
-WRITE_HANDLER(DxExplosions)
-{
-	if (data == 0x3d) { sample_start(1, 1, 0); }
-	if (data == 0xfd) { sample_start(2, 2, 0); }
-	if (data == 0xbd) { sample_start(3, 3, 0); }
-}
-
 static void dvg_vector_timer(int scale)
 {
 	total_length += scale;
@@ -281,15 +317,13 @@ void dvg_generate_vector_list(void)
 	int a;
 	int  deltax, deltay; //float
 	int  currentx, currenty = 0; //float
-	//int div = 0;
-	//int bright = 0;
 	total_length = 0;
-	
+
 	while (!done)
 	{
-		firstwd = memrdwd(pc); 
-		opcode = firstwd & 0xf000; 
-		pc++; 
+		firstwd = memrdwd(pc);
+		opcode = firstwd & 0xf000;
+		pc++;
 		pc++;
 
 		switch (opcode)
@@ -300,7 +334,7 @@ void dvg_generate_vector_list(void)
 			z = (firstwd & 0xf0) >> 4;
 			y = firstwd & 0x0300;
 			x = (firstwd & 0x03) << 8;
-			
+
 			//Check Sign Values and adjust as necessary
 			if (firstwd & 0x0400) { y = -y; }
 			if (firstwd & 0x04) { x = -x; }
@@ -308,7 +342,7 @@ void dvg_generate_vector_list(void)
 			if (!testsw) {
 				if (SCRFLIP && config.cocktail)
 				{
-					x = -x; 
+					x = -x;
 					y = -y;
 				}
 			}
@@ -355,7 +389,7 @@ void dvg_generate_vector_list(void)
 			z = secondwd >> 12;
 			y = firstwd & 0x03ff;
 			x = secondwd & 0x03ff;
-				
+
 			//Check Sign Values and adjust as necessary
 			if (firstwd & 0x0400)
 			{
@@ -376,20 +410,21 @@ void dvg_generate_vector_list(void)
 			temp = scale + (opcode >> 12); temp = temp & 0x0f;
 			if (temp > 9) { temp = -1; }
 			dvg_vector_timer(temp);
-					
+
 			deltax = (x << VEC_SHIFT) >> (9 - temp);
 			deltay = (y << VEC_SHIFT) >> (9 - temp);
 
 			if ((currentx == (currentx)+deltax) && (currenty == (currenty)-deltay))
 			{
-				if (z > 14) cache_txt(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, config.fire_point_size, 255); else cache_point(currentx, currenty, z, 0, 0, 1.0);
+				if (z > 14) cache_txt(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, config.fire_point_size, 255);
+				else cache_point(currentx, currenty, z, 0, 0, 1.0);
 			}
 
-			cache_line(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, (currentx + deltax) >> VEC_SHIFT, (currenty - deltay) >> VEC_SHIFT,  z, config.gain, 0);
+			cache_line(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, (currentx + deltax) >> VEC_SHIFT, (currenty - deltay) >> VEC_SHIFT, z, config.gain, 0);
 			cache_point(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, z, config.gain, 0, 0);
 			cache_point((currentx + deltax) >> VEC_SHIFT, (currenty - deltay) >> VEC_SHIFT, z, config.gain, 0, 0);
 
-			currentx += deltax; 
+			currentx += deltax;
 			currenty -= deltay;
 			break;
 
@@ -400,7 +435,7 @@ void dvg_generate_vector_list(void)
 			pc++;
 			x = twos_comp_val(secondwd, 12);
 			y = twos_comp_val(firstwd, 12);
-			
+
 			//Invert the screen drawing if cocktail and Player 2 selected and we are not in test mode
 			if (!testsw) {
 				if (SCRFLIP && config.cocktail)
@@ -411,7 +446,7 @@ void dvg_generate_vector_list(void)
 			//Do overall draw scaling
 			scale = (secondwd >> 12) & 0x0f;
 			currenty = (1130 - y) << VEC_SHIFT;
-			currentx = x  << VEC_SHIFT;
+			currentx = x << VEC_SHIFT;
 			break;
 
 		case 0xb000: done = 1; break;
@@ -489,10 +524,10 @@ READ_HANDLER(AstPIA1Read)
 	res = readinputportbytag("IN0");
 
 	bitmask = (1 << (address));
-	
+
 	if (get_video_ticks(0) & 0x100)
 		res |= 0x02;
-	if (address == 0x02) 
+	if (address == 0x02)
 	{
 		me = (((4500 * total_length) / 1000000) * 1512);
 		if (get_video_ticks(0) > me && vec_done == 1) { vec_done = 0; res |= 0x04; }
@@ -577,9 +612,9 @@ static struct POKEYinterface pokey_interface =
 MEM_WRITE(AsteroidDeluxeWrite)
 MEM_ADDR(0x2c00, 0x2c0f, pokey_1_w)
 MEM_ADDR(0x3000, 0x3000, BWVectorGeneratorInternal)
-MEM_ADDR(0x3c03, 0x3c03, Thrust)
+MEM_ADDR(0x3c03, 0x3c03, astdelux_sounds_w)
 MEM_ADDR(0x3c04, 0x3c04, DeluxeSwapRam)
-MEM_ADDR(0x3600, 0x3600, DxExplosions)
+MEM_ADDR(0x3600, 0x3600, asteroid_explode_w)
 MEM_ADDR(0x3400, 0x3400, Watchdog_reset_w)
 MEM_ADDR(0x3200, 0x323f, EaromWrite)
 MEM_ADDR(0x3a00, 0x3a00, EaromCtrl)
@@ -610,9 +645,9 @@ MEM_WRITE(AsteroidWrite)
 MEM_ADDR(0x3000, 0x3000, BWVectorGeneratorInternal)
 MEM_ADDR(0x3200, 0x3200, AsteroidsSwapRam)
 MEM_ADDR(0x3400, 0x3400, Watchdog_reset_w)
-MEM_ADDR(0x3600, 0x3600, Explosions)
-MEM_ADDR(0x3a00, 0x3a00, Heartbeat)
-MEM_ADDR(0x3c00, 0x3c05, Sounds2)
+MEM_ADDR(0x3600, 0x3600, asteroid_explode_w)
+MEM_ADDR(0x3a00, 0x3a00, asteroid_thump_w)
+MEM_ADDR(0x3c00, 0x3c05, asteroid_sounds_w)
 MEM_ADDR(0x6800, 0x7fff, NoWrite) //Program Rom
 MEM_ADDR(0x5000, 0x57ff, NoWrite) //Vector Rom
 MEM_END
@@ -620,11 +655,13 @@ MEM_END
 /////////////////// MAIN() for program ///////////////////////////////////////////////////
 void end_asteroids()
 {
+	sample_stop(4);
 	asteroid_save_hi();
 }
 
 void end_astdelux()
 {
+	sample_stop(4);
 	cache_clear();
 	//SaveEarom();
 	pokey_sh_stop();
@@ -651,6 +688,9 @@ int init_asteroid(void)
 	AsteroidsSwapRam(0, 0, 0);
 
 	//timer_set(TIME_IN_HZ(23), 0, watchdog_callback);
+	sample_set_volume(4, 0);
+	sample_start(4, kThrust, 1);
+	sample_set_volume(4, 0);
 
 	wrlog("End init");
 	return 0;
@@ -670,6 +710,10 @@ int init_astdelux(void)
 	dvggo = 0;
 	vec_done = 0;
 	total_length = 0;
+
+	sample_set_volume(4, 0);
+	sample_start(4, kThrust, 1);
+	sample_set_volume(4, 0);
 
 	//timer_set(TIME_IN_HZ(23), 0, watchdog_callback);
 

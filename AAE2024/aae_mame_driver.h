@@ -32,7 +32,6 @@
 
 extern FILE* errorlog;
 
-
 #define MAX_SOUND 4
 #define MAX_MEMORY_REGIONS 10
 
@@ -214,7 +213,10 @@ extern unsigned char* GI[5]; //Global 6502/Z80/6809 GameImage
 
 
 extern int art_loaded[6];
-extern int index;
+//extern int index;
+
+//Video VARS
+extern int sx, ex, sy, ey;
 //TEMPORARY GRAPHICS GLOBALS
 extern int msx, msy, esx, esy; //Main full screen adjustments for debug
 extern int b1sx, b1sy, b2sx, b2sy; //bezel full screen adjustments
@@ -252,9 +254,6 @@ extern int WATCHDOG;
 //extern int menuitem; //TOP VAL
 //extern int key_set_flag;
 extern int total_length;
-
-//Video VARS
-extern int sx, ex, sy, ey;
 
 typedef struct {
 	char rompath[256];

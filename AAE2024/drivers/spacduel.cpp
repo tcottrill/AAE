@@ -68,6 +68,10 @@ READ_HANDLER(IN0read)
 	if (avg_check()) { bitclr(val, 0x40); }
 	else { bitset(val, 0x40); }
 	if (key[config.ktestadv]) { bitclr(val, 0x20); }
+
+	if ((val & 0x10) == 0)  testsw = 1;
+	else testsw = 0;
+
 	return val;
 }
 
