@@ -37,3 +37,6 @@ The menu system still needs work, I recommend not touching it except on the gui 
 
 12/21/24 Fixed main volume being too low, made too many changes to the menu system to list. More config changes to fix sound and graphics setting issues. Now the screen resolution can only be set in the gui, or by manually editing the config file.
 Adjusted sound in asteroids and asteroids deluxe. Added clipping to tempest to stop the lines from going around the bezel in certain resolutions. Made a few graphic code changes to prep for more changes. Moved the game specific INI files to their own folder. 
+
+12/22/24 Squashed the last rendering bug affecting the vertical games and battlezone. At this point, I think all the rendering is fixed, time to add a couple of features before completely changing the cpu and atari vector rendering.
+

@@ -150,9 +150,6 @@
     <ClCompile Include="sndhrdw\cinesnd.cpp">
       <Filter>Source Files\sndhrdwr</Filter>
     </ClCompile>
-    <ClCompile Include="vidhrdwr\cinematvid.cpp">
-      <Filter>Source Files\vidhrdwr</Filter>
-    </ClCompile>
     <ClCompile Include="sys_video\vector_fonts.cpp">
       <Filter>Source Files\sys_video</Filter>
     </ClCompile>
@@ -257,6 +254,9 @@
     </ClCompile>
     <ClCompile Include="win10_win11_required_code.cpp">
       <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="vidhrdwr\cinematvid.cpp">
+      <Filter>Source Files\sys_video</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

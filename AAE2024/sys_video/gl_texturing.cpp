@@ -17,6 +17,13 @@ GLuint art_tex[8];
 GLuint game_tex[10];
 GLuint menu_tex[7];
 
+bool is_texture_resident(GLuint tex_num)
+{
+	GLboolean ok;
+	bool is_it = glAreTexturesResident(1, &tex_num, &ok);
+
+	return(is_it);
+}
 
 //
 //   Texturing and drawing rectangle code Below.
@@ -173,8 +180,6 @@ void quad_from_center(float x, float y, float width, float height, int r, int g,
 	glEnd();
 }
 
-
-
 // Rectangle Drawing. Way too many.
 void Bezel_Rect(int facing, int xmin, int xmax, int ymin, int ymax)
 {
@@ -260,39 +265,23 @@ void Centered_Rect(int facing, int size)
 {
 	float x;
 	float sizeC = size * .75;
-	
+
 	glBegin(GL_QUADS);
 	glTexCoord2f(0, 1); glVertex2f(0, sizeC);
 	glTexCoord2f(0, 0); glVertex2f(0, 0);
 	glTexCoord2f(1, 0); glVertex2f(size, 0);
 	glTexCoord2f(1, 1); glVertex2f(size, sizeC);
 	glEnd();
-	
 }
 
 void Resize_Rect(int facing, int size)
 {
-	//Hack, please find and fix. This one was frustrating. 
-	/*
-	if (gamenum == ARMORA) 
-	{
-		glBegin(GL_QUADS);
-		glTexCoord2f(0, 1); glVertex2f(0, size);
-		glTexCoord2f(0, 0); glVertex2f(0, 0);
-		glTexCoord2f(1, 0); glVertex2f(size, 0);
-		glTexCoord2f(1, 1); glVertex2f(size, size);
-		glEnd();
-	}
-	else
-	{*/
-		glBegin(GL_QUADS);
-		glTexCoord2f(0, 1); glVertex2f(0, size * .75);
-		glTexCoord2f(0, 0); glVertex2f(0, 0);
-		glTexCoord2f(1, 0); glVertex2f(size, 0);
-		glTexCoord2f(1, 1); glVertex2f(size, size * .75);
-		glEnd();
-	
-	//}
+	glBegin(GL_QUADS);
+	glTexCoord2f(0, 1); glVertex2f(0, size * .75);
+	glTexCoord2f(0, 0); glVertex2f(0, 0);
+	glTexCoord2f(1, 0); glVertex2f(size, 0);
+	glTexCoord2f(1, 1); glVertex2f(size, size * .75);
+	glEnd();
 }
 
 // This code should never have to be ran.
@@ -345,9 +334,21 @@ void texture_reinit()
 // This code is needed because of the weird way I loaded textures power of 2.
 // Please fix if you find time in the future.
 
+// Notes for reference:
+//
+// config.artwork
+// config.overlay
+// config.bezel
+// Artwork Setting.
+// Backdrop : layer 0	 art_tex[0]
+// Overlay : layer 1		 art_tex[1]
+// Bezel Mask : layer 2  art_tex[2] Only used for the tempest and tacscan bezel mask, please fix with a shader or different blending
+// Bezel : layer 3		 art_tex[3]
+// Screen burn layer 4:   art_tex[4] (Not currently used)
+
 void resize_art_textures()
 {
-
+	//wrlog("Art loaded here 0:%d 1:%d 2:%d 3:%d", art_loaded[0], art_loaded[1], art_loaded[2], art_loaded[3]);
 	set_render();
 	/*
 		glMatrixMode(GL_PROJECTION);							// Select The Projection Matrix
@@ -357,7 +358,7 @@ void resize_art_textures()
 		glMatrixMode(GL_MODELVIEW);								// Select The Modelview Matrix
 		glLoadIdentity();
 	*/
-	if (config.artwork) {
+	if (art_loaded[0]) {
 		glDrawBuffer(GL_COLOR_ATTACHMENT2_EXT);
 		glReadBuffer(GL_COLOR_ATTACHMENT2_EXT);
 		glClear(GL_COLOR_BUFFER_BIT);
@@ -385,8 +386,8 @@ void resize_art_textures()
 		glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT);
 		glReadBuffer(GL_COLOR_ATTACHMENT0_EXT);
 	}
-	
-	if (config.overlay) {
+
+	if (art_loaded[1]) {
 		glDrawBuffer(GL_COLOR_ATTACHMENT2_EXT);
 		glReadBuffer(GL_COLOR_ATTACHMENT2_EXT);
 		glClear(GL_COLOR_BUFFER_BIT);
@@ -414,6 +415,7 @@ void resize_art_textures()
 		glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT);
 		glReadBuffer(GL_COLOR_ATTACHMENT0_EXT);
 	}
+
 	// Restore old view port and set rendering back to default frame buffer
 	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);
 	glDrawBuffer(GL_BACK);
@@ -422,7 +424,6 @@ void resize_art_textures()
 	set_ortho(1024, 768);
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	
 }
 
 void set_blending2()

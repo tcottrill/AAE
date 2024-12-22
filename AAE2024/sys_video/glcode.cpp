@@ -36,7 +36,7 @@ using namespace chrono;
 Rect2 screen_rect;
 
 // Notes for reference:
-// 
+//
 // config.artwork
 // config.overlay
 // config.bezel
@@ -257,7 +257,7 @@ int init_gl(void)
 		wrlog("Initalizing FBO's");
 		fbo_init();
 		// NEW CODE
-		fbo = new multifbo(1024, 768, 16, 0, fboFilter::FB_NEAREST);
+		//fbo = new multifbo(1024, 768, 16, 0, fboFilter::FB_NEAREST);
 		wrlog("Building Font");
 		BuildFont(); // Note to self: Remove this dependency. Move to using vector font everywhere including gui
 		font_init(); //Build the Vector Font
@@ -284,7 +284,6 @@ void end_gl()
 	glDeleteTextures(1, &menu_tex[5]);
 	glDeleteTextures(1, &menu_tex[6]);
 }
-
 
 int make_single_bitmap(GLuint* texture, const char* filename, const char* archname, int mtype)
 {
@@ -323,31 +322,25 @@ void load_artwork(const struct artworks* p)
 	//Overlay : layer 1
 	// Bezel Mask : layer 2
 	// Bezel : layer 3
-	//Screen burn layer 4: 
+	//Screen burn layer 4:
 
 	for (i = 0; p[i].filename != NULL; i++)
 	{
-		goodload = 0;
+		//goodload = 0;
 		switch (p[i].type)
 		{
 		case FUN_TEX:  goodload = make_single_bitmap(&fun_tex[p[i].target], p[i].filename, p[i].zipfile, 0); break;
 		case ART_TEX: {
-			if (p[i].target > 1) { type = 1; }
 			goodload = make_single_bitmap(&art_tex[p[i].target], p[i].filename, p[i].zipfile, type);
-			switch (p[i].target)
-			{
-			case 0: if (goodload) art_loaded[0] = 1; break;//if (artwork) config.artwork=1;break;
-			case 1: if (goodload) art_loaded[1] = 1; break;//if (overlay) config.overlay=1;break;
-			case 3: if (goodload) art_loaded[3] = 1; break;//if (bezel) config.bezel=1;break;
-			}
+			if (goodload) {	art_loaded[p[i].target] = 1;}	
 		}break;
+					 
 		case GAME_TEX: goodload = make_single_bitmap(&game_tex[p[i].target], p[i].filename, p[i].zipfile, 0); break;
 		default: wrlog("You have defined something wrong in the artwork loading!!!!"); break;
 		}
 		if (goodload == 0) { wrlog("A requested artwork file was not found!"); have_error = 15; }
 	}
 }
-
 
 void free_game_textures()
 {
@@ -357,9 +350,7 @@ void free_game_textures()
 	glDeleteTextures(1, &art_tex[0]);
 	glDeleteTextures(1, &art_tex[1]);
 	glDeleteTextures(1, &art_tex[3]);
-
 }
-
 
 // Code below from https://blog.nobel-joergensen.com/2013/01/29/debugging-opengl-using-glgeterror/
 void CheckGLError(const char* file, int line) {
@@ -433,13 +424,12 @@ void end_render_fbo4()
 	screen_rect.Render(1.33);
 }
 
-
 ////////////////////////////////////////////////////////////////////////////////
 // FBO / SHADER DOWNSAMPLING and COMPOSITING CODE  /////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 //Downsample part 1
 // This copies fbo1, img1b to fbo2, img2a at 512x512
-void copy_main_img_to_fbo2() 
+void copy_main_img_to_fbo2()
 {
 	GLint loc = 0;
 
@@ -448,7 +438,7 @@ void copy_main_img_to_fbo2()
 	glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT);
 	set_ortho(512, 512);
 	glDisable(GL_BLEND);
-	set_texture(&img1b, 1, 0, 0, 0); 
+	set_texture(&img1b, 1, 0, 0, 0);
 
 	glActiveTexture(GL_TEXTURE0);
 	glUseProgram(fragBlur);
@@ -561,24 +551,24 @@ void render_blur_image_fbo3() //Downsample part 3
 ////////////////////////////////////////////////////////////////////////////////
 
 // Rendering Start, this is STEP 1 This sets the screen viewport and projection to 1014x1024 for rendering
-// to FBO1, img1a. 
+// to FBO1, img1a.
 void set_render()
 {
 	//glPushAttrib(GL_VIEWPORT_BIT | GL_COLOR_BUFFER_BIT);
-	
-	GLint viewport[4];
-	glGetIntegerv(GL_VIEWPORT, viewport);
-	//Viewport here is : 0, 0, 1023, 767
-    // viewport[0] = x coordinate of the lower-left corner
-    // viewport[1] = y coordinate of the lower-left corner
-    // viewport[2] = width of the viewport
-    // viewport[3] = height of the viewport
-	//wrlog("Viewport % d, % d, % d, % d", viewport[0], viewport[1], viewport[2], viewport[3]);
+	//glLoadIdentity;
+	//	GLint viewport[4];
+	//	glGetIntegerv(GL_VIEWPORT, viewport);
+		//Viewport here is : 0, 0, 1023, 767
+		// viewport[0] = x coordinate of the lower-left corner
+		// viewport[1] = y coordinate of the lower-left corner
+		// viewport[2] = width of the viewport
+		// viewport[3] = height of the viewport
+		//wrlog("Viewport % d, % d, % d, % d", viewport[0], viewport[1], viewport[2], viewport[3]);
 
-	// First we bind to FBO1 so we can render to it
+		// First we bind to FBO1 so we can render to it
 	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo1);
 	//Write To Texture img1a
-	glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT); 
+	glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT);
 
 	// Set the projection to 1024x1024
 	set_ortho(1024, 1024);
@@ -639,7 +629,7 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 {
 	GLint bleh = 0;
 	// Glow Shader variable
-	GLfloat glowamt = 0.0; 
+	GLfloat glowamt = 0.0;
 	// Glow enabled variable
 	int useglow = 0;
 	// Used for code profiling disable in final release.
@@ -655,7 +645,7 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 	set_texture(&img1a, 1, 0, 0, 1);
 	glTranslatef(.25, .25, 0);  // This may need to go.
 	glBlendFunc(GL_ONE, GL_ONE);
-    // Draw the vecture texture to fbo1, img1b 
+	// Draw the vecture texture to fbo1, img1b
 	Any_Rect(0, xmin, xmax, ymin, ymax);
 	//////////////////////////////////////////////////////////////////////////////////////////////////////
 	if (gamenum)
@@ -665,12 +655,11 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 		if (driver[gamenum].rotation < 2 && config.overlay && art_loaded[1]) {
 			set_texture(&art_tex[1], 1, 0, 0, 0);
 			//Normal Overlay
-			glBlendFunc(GL_DST_COLOR, GL_SRC_COLOR); 
+			glBlendFunc(GL_DST_COLOR, GL_SRC_COLOR);
 			//glColor4f(.7f, .7f, .7f, 1.0f);
 			glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
 			FS_Rect(0, 1024);
 		}
-		
 	}
 	//// Render to fbo2, attachment2 (img1b) from img1b.  //////////////////////////////////////////////////
 
@@ -698,7 +687,7 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 	if (config.vecglow && gamenum)
 	{
 		//Bind FBO2.
-		copy_main_img_to_fbo2(); 
+		copy_main_img_to_fbo2();
 		copy_fbo2_to_fbo3(); // Bind FBO3 and set target to img3a
 		render_blur_image_fbo3(); // RENDER final blur texture to FBO3, using Image img3a and img3b to blend
 	}
@@ -711,7 +700,6 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 	glDisable(GL_BLEND);
 	glDisable(GL_DITHER);
 
-	
 	if (!paused) glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_ONE, GL_ONE);
@@ -724,9 +712,9 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 	bleh = glGetUniformLocation(fragMulti, "mytex2"); glUniform1i(bleh, 1);
 	bleh = glGetUniformLocation(fragMulti, "mytex3"); glUniform1i(bleh, 2);
 	bleh = glGetUniformLocation(fragMulti, "mytex4"); glUniform1i(bleh, 3);
-	bleh = glGetUniformLocation(fragMulti, "useart"); 
-	// If artwork is loaded, check to see if backdrop artwork shouly be used. 
-	if (gamenum && art_loaded[0]) {	glUniform1i(bleh, config.artwork);}
+	bleh = glGetUniformLocation(fragMulti, "useart");
+	// If artwork is loaded, check to see if backdrop artwork shouly be used.
+	if (gamenum && art_loaded[0]) { glUniform1i(bleh, config.artwork); }
 	else { glUniform1i(bleh, 0); }
 
 	bleh = glGetUniformLocation(fragMulti, "usefb");  glUniform1i(bleh, config.vectrail);
@@ -744,13 +732,13 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 	set_texture(&img3b, 1, 0, 0, 0);
 	// I don't see where this texture is being modified anywhere?
 	glActiveTexture(GL_TEXTURE3);
-	set_texture(&img1c, 1, 0, 0, 0); 
+	set_texture(&img1c, 1, 0, 0, 0);
 
 	// FINAL RENDERING TO SCREEN IS RIGHT HERE
 	// Enable fbo4, and render everything below to it, then render to the screen with the correct size and aspect.
 	set_render_fbo4();
-	
-if (config.bezel && gamenum && art_loaded[3])
+
+	if (config.bezel && gamenum && art_loaded[3])
 	{
 		glColor4f(1.0, 1.0, 1.0, 1.0);
 		//if (config.debug)	//{	Any_Rect(0, msx, msy, esy, esx);}
@@ -782,7 +770,6 @@ if (config.bezel && gamenum && art_loaded[3])
 
 	//POST COMBINING OVERLAY FOR CINEMATRONICS GAMES WITH MONITOR COVERS & NO BACKGROUND ARTWORK
 
-	
 	if (driver[gamenum].rotation == 2 && config.overlay && art_loaded[1] && gamenum)
 	{
 		set_texture(&art_tex[1], 1, 0, 0, 0);
@@ -816,8 +803,8 @@ if (config.bezel && gamenum && art_loaded[3])
 		}
 	}
 	// HACKY WAY TO ADD BEZEL TO VERTICAL GAMES
-	// This is for the tempest and tacscan vertical bezels. 
-	// This needs to be reinplemented as well. 
+	// This is for the tempest and tacscan vertical bezels.
+	// This needs to be reinplemented as well.
 	if (driver[gamenum].rotation == 1 && config.bezel == 0 && gamenum)
 	{
 		set_texture(&art_tex[2], 1, 0, 0, 1);
@@ -825,9 +812,9 @@ if (config.bezel && gamenum && art_loaded[3])
 		glAlphaFunc(GL_GREATER, 0.99f);
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 		Centered_Rect(0, 1024); //Tempest
- 		glDisable(GL_ALPHA_TEST);
+		glDisable(GL_ALPHA_TEST);
 	}
-	
+
 	if (config.bezel && art_loaded[3] && gamenum) {
 		if (config.artcrop)
 		{
@@ -845,23 +832,18 @@ if (config.bezel && gamenum && art_loaded[3])
 		glDisable(GL_DEPTH_TEST);
 		glDisable(GL_ALPHA_TEST);
 	}
-	
+
 	glLoadIdentity();
 
-	
 	video_loop();
 	end_render_fbo4();
-	
-	glDisable(GL_TEXTURE_2D);
 
+	glDisable(GL_TEXTURE_2D);
 
 	auto end = chrono::steady_clock::now();
 	auto diff = end - start;
 	wrlog("Profiler: Render Time after final compositing %f ", chrono::duration <double, milli>(diff).count());
 }
-
-
-
 
 ////////////////////////////////////////////////////////////////////////////////
 // FINAL COMPOSITING AND RENDERING CODE ENDS HERE  ///////////////////////////

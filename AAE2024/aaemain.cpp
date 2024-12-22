@@ -462,6 +462,7 @@ void run_game(void)
 			if (!in_gui) { exit(1); }
 		}
 
+		// TODO: Add some error checking here please. 
 		load_artwork(driver[gamenum].artwork);
 		resize_art_textures();
 	}
