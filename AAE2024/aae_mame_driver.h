@@ -210,7 +210,7 @@ extern unsigned char vec_ram[0x4000];
 extern unsigned char* GI[5]; //Global 6502/Z80/6809 GameImage
 
 
-
+extern int in_gui_sentinel;
 
 extern int art_loaded[6];
 //extern int index;

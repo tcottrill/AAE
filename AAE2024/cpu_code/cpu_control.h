@@ -59,11 +59,16 @@ void init6809(struct MemoryReadByte* read, struct MemoryWriteByte* write, int cp
 void init_z80(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum);
 void init8080(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum);
 void init68k(struct STARSCREAM_PROGRAMREGION* fetch, struct STARSCREAM_DATAREGION* readbyte, struct STARSCREAM_DATAREGION* readword, struct STARSCREAM_DATAREGION* writebyte, struct STARSCREAM_DATAREGION* writeword);
+// Used for cycle to time scaling.
 int cpu_scale_by_cycles(int val);
+// CPU Code
 void init_cpu_config();
 void run_cpus_to_cycles();
-int return_tickcount(int reset);
+
+void add_eterna_ticks(int cpunum, int ticks);
+int get_eterna_ticks(int cpunum);
 int get_video_ticks(int val);
+
 void cpu_reset(int cpunum);
 void cpu_reset_all();
 void cpu_resetter(int cpunum);
@@ -74,10 +79,7 @@ void set_pending_interrupt(int int_type, int cpunum);
 void process_pending_interrupts(int cpunum);
 void cpu_do_int_imm(int cpunum, int int_type);
 void cpu_do_interrupt(int int_type, int cpunum);
-void add_eterna_ticks(int cpunum, int ticks);
-int get_eterna_ticks(int cpunum);
-void add_hertz_ticks(int cpunum, int ticks);
-int get_hertz_counter();
+
 int get_current_cpu();
 void set_interrupt_vector(int data);
 void cpu_clear_pending_interrupts(int cpunum);

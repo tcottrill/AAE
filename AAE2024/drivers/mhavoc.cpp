@@ -11,7 +11,10 @@
 // THE CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.
 //============================================================================
 
-// Note: This is pretty much a self contained emulator for Major Havoc. This will eventually get merged into using the proper cpu and video code.
+//
+// Note: This is pretty much a self contained emulator for Major Havoc. 
+// NOTE!!!: This will eventually get merged into using the proper cpu and video code.
+//
 
 // license:BSD - 3 - Clause
 // copyright-holders:Mike Appolo
@@ -372,7 +375,7 @@ int get_vidticks(int reset)
 	if (reset == 0xff) //Reset Tickcount;
 	{
 		vidticks = 0;
-		vidticks -= m_cpu_6502[CPU0]->get6502ticks(0);  //Make vid_tickcount a negative number to check for reset later;
+		//vidticks -= m_cpu_6502[CPU0]->get6502ticks(0);  //Make vid_tickcount a negative number to check for reset later;
 		return 0;
 	}
 
@@ -405,16 +408,26 @@ void playstreamedsample_mhavoc(int channel, unsigned char* data, int len, int vo
 
 int cpu_scale_by_cycles_mh(int val)
 {
-	int k;
 	int current = 0;
-	int max;
-	// Have to use Alpha CPU here.
-	current = m_cpu_6502[CPU1]->get6502ticks(0);
-	current += gammaticks;
-	max = 1250000 / 50;
-
-	k = val * (float)((float)current / (float)max); //BUFFER_SIZE  *
-
+	int max = 0;
+	// This should be CPU1 but we need to be different for alphaone or it crashes.
+	if (gamenum == ALPHAONE || gamenum == ALPHAONA) 
+	{
+		current = gammaticks + m_cpu_6502[CPU0]->get6502ticks(0);
+		max = driver[gamenum].cpu_freq[CPU0] / driver[gamenum].fps;
+	}
+	else
+	{
+		current = gammaticks + m_cpu_6502[CPU1]->get6502ticks(0);
+		max = driver[gamenum].cpu_freq[CPU1] / driver[gamenum].fps;
+	
+	}
+	// Make sure we don't have a buffer overflow since we tend to run past the requested cycles.
+	float temp = ((float)current / (float)max);
+	
+	if (temp > 1) {	temp = (float).95; }
+	temp = val * temp;
+	int k = (int)temp;
 	return k;
 }
 
@@ -505,8 +518,7 @@ void mhavoc_interrupt()
 WRITE_HANDLER(mhavoc_alpha_irq_ack_w)
 {
 	/* clear the line and reset the clock */
-	//cpu_set_irq_line(0, 0, CLEAR_LINE);
-	//m_cpu_6502[CPU0]->m6502clearpendingint();
+	m_cpu_6502[CPU0]->m6502clearpendingint();
 	//wrlog("Alpha IRQ ACK!", data);
 	alpha_irq_clock = 0;
 	alpha_irq_clock_enable = 1;
@@ -515,9 +527,8 @@ WRITE_HANDLER(mhavoc_alpha_irq_ack_w)
 WRITE_HANDLER(mhavoc_gamma_irq_ack_w)
 {
 	/* clear the line and reset the clock */
-	//cpu_set_irq_line(1, 0, CLEAR_LINE);
 	//wrlog("Gamma IRQ ACK!", data);
-	//m_cpu_6502[CPU1]->m6502clearpendingint();
+	m_cpu_6502[CPU1]->m6502clearpendingint();
 	gamma_irq_clock = 0;
 }
 
@@ -626,7 +637,8 @@ void mhavoc_sh_update()
 
 WRITE_HANDLER(avgdvg_reset_w)
 {
-	wrlog("---------------------------AVGDVG RESET ------------------------"); total_length = 0;
+	wrlog("---------------------------AVGDVG RESET ------------------------"); 
+	total_length = 0;
 }
 
 WRITE_HANDLER(avg_mgo)
@@ -635,8 +647,10 @@ WRITE_HANDLER(avg_mgo)
 
 	MH_generate_vector_list();
 	//wrlog("Total Frame list length %d" ,total_length );
-	if (total_length > 1) {
-		MHAVGDONE = 0; get_vidticks(0xff);
+	if (total_length > 10) 
+	{
+		MHAVGDONE = 0; 
+		get_vidticks(0xff);
 		//wrlog("Total LENGTH HERE %d ", total_length);
 	}
 	else { MHAVGDONE = 1; }
@@ -692,8 +706,7 @@ READ_HANDLER(mhavoc_port_0_r)
 		res = readinputport(0) & 0xf0;
 
 	// Emulate the 2.4Khz source on bit 2 (divide 2.5Mhz by 1024)  (EVERY 120 CYCLES)
-	 // if (bigticks & 0x400) //0x400
-	if (bitflip) { res &= ~0x02; }
+	if (bigticks & 0x400) { res &= ~0x02; }
 	else { res |= 0x02; }
 
 	if (MHAVGDONE)
@@ -750,7 +763,9 @@ READ_HANDLER(alphaone_port_0_r)
 	//else res = 0xf0;
 
 	/* Emulate the 2.4Khz source on bit 2 (divide 2.5Mhz by 1024) */
-	if (bitflip) { res &= ~0x02; }
+	//if (bitflip) { res &= ~0x02; }
+	//else { res |= 0x02; }
+	if (bigticks & 0x400) { res &= ~0x02; }
 	else { res |= 0x02; }
 
 	if (MHAVGDONE)
@@ -1332,58 +1347,41 @@ MEM_END
 
 void run_mhavoc()
 {
-	int x;
 	int cycles1 = (MHAVOC_CLOCK_2_5M / 50);
 	int cycles2 = (MHAVOC_CLOCK_1_25M / 50);
 	int passes = 400;
 	int cpunum = 0;
 	int cycles = 0;
-	int cyclesgamma = 0;
 	int cpu1ticks = 0;
 	int cpu2ticks = 0;
-
-	UINT32 m6502NmiTicks = 0;
-	UINT32 dwElapsedTicks = 0;
-	UINT32 dwResult = 0;
-	dwElapsedTicks = m_cpu_6502[CPU0]->get6502ticks(0xff);
+    UINT32 dwResult = 0;
 
 	gammaticks = 0;
 
 	//wrlog("------------FRAME START --------------");
 	update_input_ports();
-
-	for (x = 0; x < (passes + 1); x++)
+	// In order to get the counting tighter, 1 cycle is removed from each run. 125=124, 63 = 62;
+	// This code is still going to be over each frame, but not as much. 
+	// Will perm fix with cpu code update.
+	for (int x = 0; x < passes; x++)
 	{
-		cycles = m_cpu_6502[CPU0]->get6502ticks(0xff);
-
-		dwResult = m_cpu_6502[CPU0]->exec6502(125);
+		dwResult = m_cpu_6502[CPU0]->exec6502(124);
 		if (0x80000000 != dwResult)
 		{
-			x = 3000; done = 1;
-			allegro_message("Invalid instruction at %.2x on CPU 0", m_cpu_6502[CPU0]->get_pc());
+			x = 3000; done = 1; end_mhavoc();
+			allegro_message("Invalid instruction at %.2x on CPU 2", m_cpu_6502[CPU0]->get_pc());
 		}
-
 		cycles = m_cpu_6502[CPU0]->get6502ticks(0xff);
 
 		cpu1ticks += cycles;
 		bigticks += cycles;
-
-		if (bigticks > 0xffff) { bigticks = 0; }
-
-		if (vidticks < 1) vidticks = cycles - vidticks; //Play catchup after reset
-		else 	 vidticks += cycles;
-
-		twokticks += cycles;
-		//wrlog("HRTZ Counter %d",hrzcounter);
-		if (twokticks > 120) { twokticks -= 120; bitflip ^= 1; }
-
+		vidticks += cycles;
+		if (bigticks > 0xfffffff) { bigticks = 0; }
+				
 		if (has_gamma_cpu)
 		{
-			//----------------------------------------------------------------------------------------------------------------------
-
 			if (reset1) { m_cpu_6502[CPU1]->reset6502(); reset1 = 0; wrlog("Reset, Gamma CPU"); }
 
-			// This really isn't a 250ms delay, but it seems to work ok?
 			// ToDo: Correct with more accurate timing.
 			if (nmicpu1)
 			{
@@ -1395,25 +1393,21 @@ void run_mhavoc()
 				//wrlog("NMI Taken, Gamma CPU");
 			}
 
-			cyclesgamma = m_cpu_6502[CPU1]->get6502ticks(0xff);
-			cyclesgamma = 0;
-			dwResult = m_cpu_6502[CPU1]->exec6502(63); //(cycles2 / passes) This should be 64 cycles with 400 passes.
+			dwResult = m_cpu_6502[CPU1]->exec6502(62); //(cycles2 / passes)
 			if (0x80000000 != dwResult)
 			{
 				x = 3000; done = 1; end_mhavoc();
 				allegro_message("Invalid instruction at %.2x on CPU 2", m_cpu_6502[CPU1]->get_pc());
 			}
-
-			cyclesgamma = m_cpu_6502[CPU1]->get6502ticks(0xff);
-			gammaticks += cyclesgamma;
+			gammaticks += m_cpu_6502[CPU1]->get6502ticks(0xff);
 		}
 		mhavoc_interrupt();
 	}
 	pokey_do_update();
 	if (gamenum == MHAVOCRV || gamenum == MHAVOCPE) { tms5220_sh_update(); }
 
-	//wrlog("Alpha cycles ran this frame %d - Wanted to run %d", cpu1ticks, cycles1);
-	//wrlog("Gamma cycles ran this frame %d - wanted to run %d", gammaticks, cycles2);
+	wrlog("Alpha cycles ran this frame %d - Wanted to run %d", cpu1ticks, cycles1);
+	wrlog("Gamma cycles ran this frame %d - wanted to run %d", gammaticks, cycles2);
 }
 /////////////////// MAIN() for program ///////////////////////////////////////////////////
 int init_mhavoc(void)
@@ -1488,3 +1482,10 @@ int init_mhavoc(void)
 }
 
 //////////////////  END OF MAIN PROGRAM /////////////////////////////////////////////
+/*
+if (0x80000000 != dwResult)
+{
+	x = 3000; done = 1; end_mhavoc();
+	allegro_message("Invalid instruction at %.2x on CPU 2", m_cpu_6502[CPU1]->get_pc());
+}
+*/

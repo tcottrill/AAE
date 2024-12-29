@@ -890,7 +890,7 @@ struct AAEDriver driver[] =
 		{0,1024,0,812},
 		0,0,
 		0x4000, 0x1000,
-		0
+		mhavoc_nvram_handler
 		},
 		{
 		"alphaona", " Alpha One (Major Havoc Prototype - 5 Lives)", rom_alphaona,
@@ -907,7 +907,7 @@ struct AAEDriver driver[] =
 		{0,1024,0,812},
 		0,0,
 		0x4000, 0x1000,
-		0
+		mhavoc_nvram_handler
 		},
 
 	///////////////////////////////////////CINEMATRONICS////////////////////////////////////////////////

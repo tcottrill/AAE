@@ -161,7 +161,8 @@ ROM_END
 ROM_START(mhavocpe)
 ROM_REGION(0x22000, CPU0)
 // Vector Generator ROM 
-ROM_LOAD("mhpe101.6kl", 0x05000, 0x2000)
+// This works because the second half of this rom from 0x0CC4 to 0x2000 is EMPTY
+ROM_LOAD("mhpe101.6kl", 0x05000, 0x2000) 
 // Program ROM 
 ROM_LOAD("mhpe101.1mn", 0x08000, 0x4000)
 ROM_LOAD("mhpe101.1l",  0x0c000, 0x4000)

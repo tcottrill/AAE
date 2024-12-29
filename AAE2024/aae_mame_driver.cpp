@@ -35,6 +35,7 @@ int bezely;
 float overalpha;
 //struct game_rect GameRect;
 
+int in_gui_sentinel;
 
 int in_gui;
 unsigned int frames; //Global Framecounter

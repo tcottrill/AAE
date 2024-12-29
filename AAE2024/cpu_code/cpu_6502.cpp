@@ -1,11 +1,13 @@
 // 6502 CPU Core, based on code by Neil Bradley, with many changes from sources across the web.
 // ADC and SBC code from M.A.M.E. (tm)  Copyright (c) 1998,1999,2000, etc Juergen Buchmueller
 // Timing table and debug code from FakeNes
-// Code rewritten to c++ and updated by Tim Cottrill 2015-2024 explicitly written to work with with older M.A.M.E. source code for my testing.
+// Code rewritten to c++ and updated by TC 2015-2024 explicitly written to work with with older M.A.M.E. source code for my testing.
 // Currently does not handle IRQ after CLI correctly.
 // TODO, fix issues with incorrect operand display in the debug code.
 
-// Note this is a custom version with non-mame function addressing until I can get things cleaned up.
+// Notes
+// 11/22/24 added undoucumented isb opcode, will work to add the rest later.
+// 12/28/24 Rewrote the main loop to resolve an issue with the cycle counting being consistently undereported.
 
 #include <stdio.h>
 #include "cpu_6502.h"
@@ -84,7 +86,7 @@ uint8_t cpu_6502::get6502memory(uint16_t addr)
 			else
 			{
 				//Note the MAME style addressing here!
-				temp = *((uint8_t*)MemRead->pUserArea + (addr - MemRead->lowAddr)); 
+				temp = *((uint8_t*)MemRead->pUserArea + (addr - MemRead->lowAddr));
 				//temp = *((uint8_t*)MemRead->pUserArea + (addr )); //Note the addressing here!
 			}
 			MemRead = nullptr;
@@ -116,13 +118,13 @@ void cpu_6502::put6502memory(uint16_t addr, uint8_t byte)
 		{
 			if (MemWrite->memoryCall)
 			{
+				//Note the MAME style addressing here!
 				MemWrite->memoryCall(addr - MemWrite->lowAddr, byte, MemWrite);
-				//MemWrite->memoryCall(addr, byte, MemWrite);
 			}
 			else
 			{
-				*((uint8_t*)MemWrite->pUserArea + (addr - MemWrite->lowAddr)) = byte; //Note the addressing here!
-				//*((uint8_t*)MemWrite->pUserArea + (addr)) = byte; //Note the addressing here!
+				//Note the MAME style addressing here!
+				*((uint8_t*)MemWrite->pUserArea + (addr - MemWrite->lowAddr)) = byte;
 			}
 			MemWrite = nullptr;
 			break;
@@ -140,7 +142,7 @@ void cpu_6502::put6502memory(uint16_t addr, uint8_t byte)
 	}
 }
 
-// Adressing modes
+// ================================================= Addressing Modes ========================================================
 
 //Accumulator opcodes are handled with their own separate functions.
 //{}
@@ -258,25 +260,30 @@ void cpu_6502::indzp6502()
 	savepc = get6502memory(value) + (get6502memory(value + 1) << 8);
 }
 
-//Stack handler operations. It would be faster not doing zero page and stack access through handles, but Major Havoc requires this.
-void cpu_6502::push16(uint16_t pushval) {
+// ================================================= Stack Operations========================================================
+// It would be faster not doing zero page and stack access through handles, but Major Havoc requires this.
+void cpu_6502::push16(uint16_t pushval)
+{
 	put6502memory(BASE_STACK + S, (pushval >> 8) & 0xFF);
 	put6502memory(BASE_STACK + ((S - 1) & 0xFF), pushval & 0xFF);
 	S -= 2;
 }
 
-void cpu_6502::push8(uint8_t pushval) {
+void cpu_6502::push8(uint8_t pushval)
+{
 	put6502memory(BASE_STACK + S--, pushval);
 }
 
-uint16_t cpu_6502::pull16() {
+uint16_t cpu_6502::pull16()
+{
 	uint16_t temp16;
 	temp16 = get6502memory(BASE_STACK + ((S + 1) & 0xFF)) | ((uint16_t)get6502memory(BASE_STACK + ((S + 2) & 0xFF)) << 8);
 	S += 2;
 	return(temp16);
 }
 
-uint8_t cpu_6502::pull8() {
+uint8_t cpu_6502::pull8()
+{
 	return (get6502memory(BASE_STACK + ++S));
 }
 
@@ -853,7 +860,6 @@ void cpu_6502::isb6502()
 	//if (penaltyop && penaltyaddr) clockticks6502--;
 }
 
-
 void cpu_6502::tsb6502()
 {
 	MEM[savepc] |= A;
@@ -1226,71 +1232,24 @@ void cpu_6502::irq6502()
 	}
 }
 
-// Execute Instruction
-
-int cpu_6502::exec6502(int timerTicks)
-{
-	clockticks6502 = 0;
-	
-	while (clockticks6502 < timerTicks)
-	{
-		P |= F_T;
-		int lastticks = clockticks6502;
-
-		if (_irqPending) irq6502();
-
-		// fetch instruction
-		opcode = get6502memory(PC++);
-		if (opcode > 0xff)
-		{
-			wrlog("Invalid Opcode called!!!: opcode %x  Memory %X ", opcode, PC);
-			return 0x80000000;
-		}
-
-		if (debug)
-		{
-			std::string op = disam(opcode);
-
-			int c = bget(P, F_C) ? 1 : 0;
-			int z = bget(P, F_Z) ? 1 : 0;
-			int i = bget(P, F_I) ? 1 : 0;
-			int d = bget(P, F_D) ? 1 : 0;
-			int b = bget(P, F_B) ? 1 : 0;
-			int t = bget(P, F_T) ? 1 : 0;
-			int v = bget(P, F_V) ? 1 : 0;
-			int n = bget(P, F_N) ? 1 : 0;
-			wrlog("%x: OP:%s DATA:%02x%02x F: C:%d Z:%d I:%d D:%d B:%d V:%d N:%d REG A:%x X:%x Y:%x S:%x ", PC - 1, op.c_str(), MEM[PC - 1], MEM[PC], c, z, i, d, b, v, n, A, X, Y, S);
-		}
-
-		//Backup PC
-		PPC = PC;
-		//set addressing mode
-		(this->*(adrmode[opcode]))();
-		// execute instruction
-		(this->*(instruction[opcode]))();
-		// update clock cycles
-		clockticks6502 += ticks[opcode];
-		clocktickstotal += ticks[opcode];
-		//timer_update(ticks[opcode], cpu_num);
-		if (clocktickstotal > 0xfffffff) clocktickstotal = 0;
-	}
-	//return clockticks6502;
-	return (0x80000000);
-}
-
+// Execute a Single Instruction.
 int cpu_6502::step6502()
 {
+	// Set the current number of cycles to zero.
 	clockticks6502 = 0;
+	// Make sure the flag is set.
 	P |= F_T;
-
+	// If there is an IRQ pending, take it.
+	if (_irqPending) irq6502();
 	// fetch instruction
 	opcode = get6502memory(PC++);
+	// Trap any Opcode errors.
 	if (opcode > 0xff)
 	{
 		wrlog("Invalid Opcode called!!!: opcode %x  Memory %X ", opcode, PC);
-		return 0x80000000;
+		return 0x00000000;
 	}
-
+	// Debug Logging if needed. This code needs lots of help.
 	if (debug)
 	{
 		std::string op = disam(opcode);
@@ -1303,23 +1262,36 @@ int cpu_6502::step6502()
 		int t = bget(P, F_T) ? 1 : 0;
 		int v = bget(P, F_V) ? 1 : 0;
 		int n = bget(P, F_N) ? 1 : 0;
-		wrlog("%x: OP:%s DATA:%02x%02x Flags: C:%d Z:%d I:%d D:%d B:%d T: %d V:%d N:%d  REG A:%x X:%x Y:%x S:%x ", PC - 1, op.c_str(), MEM[PC - 1], MEM[PC], c, z, i, d, b, t, v, n, A, X, Y, S);
+		wrlog("%x: OP:%s DATA:%02x%02x F: C:%d Z:%d I:%d D:%d B:%d V:%d N:%d REG A:%x X:%x Y:%x S:%x ", PC - 1, op.c_str(), MEM[PC - 1], MEM[PC], c, z, i, d, b, v, n, A, X, Y, S);
 	}
-
 	//Backup PC
 	PPC = PC;
-
 	//set addressing mode
 	(this->*(adrmode[opcode]))();
 	// execute instruction
 	(this->*(instruction[opcode]))();
 	// update clock cycles
 	clockticks6502 += ticks[opcode];
-	clocktickstotal += ticks[opcode];
+	// Update the running counter for clock cycles executed.
+	clocktickstotal += clockticks6502;
+	// Update Timer if being used
+	//timer_update(clockticks6502, cpu_num);
+	// Keep the total # of ticks from exceeding the limit.
 	if (clocktickstotal > 0xfffffff) clocktickstotal = 0;
+	return clockticks6502;
+}
 
-	//return clockticks6502;
-	return (0x80000000);
+// Execute Multiple Instructions
+int cpu_6502::exec6502(int timerTicks)
+{
+	int  cyc = 0;
+
+	while (cyc < timerTicks) 
+	{
+		cyc += step6502();
+	}
+
+	return 0x80000000;
 }
 
 std::string cpu_6502::disam(uint8_t opcode)

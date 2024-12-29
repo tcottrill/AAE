@@ -1,15 +1,14 @@
-
 //============================================================================
-// AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME 
-// code, 0.29 through .90 mixed with code of my own. This emulator was 
-// created solely for my amusement and learning and is provided only 
-// as an archival experience. 
-// 
-// All MAME code used and abused in this emulator remains the copyright 
+// AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME
+// code, 0.29 through .90 mixed with code of my own. This emulator was
+// created solely for my amusement and learning and is provided only
+// as an archival experience.
+//
+// All MAME code used and abused in this emulator remains the copyright
 // of the dedicated people who spend countless hours creating it. All
 // MAME code should be annotated as belonging to the MAME TEAM.
-// 
-// SOME CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.  
+//
+// SOME CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.
 //============================================================================
 //Note to self, replace this abomination with correct from other emulator next.
 
@@ -21,10 +20,7 @@
 #include "ccpu.h"
 #include "timer.h"
 
-
 static int cpu_configured = 0;
-//static int num_cpus = 0;
-//static int running_cpu = 0;
 static int cyclecount[4];
 static int addcycles[4];
 static int reset_cpu_status[4];
@@ -66,10 +62,8 @@ cpu_i8080* m_cpu_i8080[MAX_CPU];
 cpu_z80* m_cpu_z80[MAX_CPU];
 cpu_6502* m_cpu_6502[MAX_CPU];
 
-
 // CPU Context
 struct S68000CONTEXT c68k[MAX_CPU];
-
 
 void init_z80(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum)
 {
@@ -78,7 +72,6 @@ void init_z80(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct
 	m_cpu_z80[cpunum]->mz80reset();
 	wrlog("Z80 Init Ended");
 }
-
 
 void init_6809(struct MemoryReadByte* read, struct MemoryWriteByte* write, int cpunum)
 {
@@ -135,43 +128,9 @@ void init68k(struct STARSCREAM_PROGRAMREGION* fetch, struct STARSCREAM_DATAREGIO
 	wrlog("68000 Initialized: Initial PC is %06X\n", s68000context.pc);
 }
 
-int return_tickcount(int reset)
-{
-	int val;
 
-	switch (driver[gamenum].cpu_type[active_cpu])
-	{
-	case CPU_MZ80:
-		m_cpu_z80[active_cpu]->mz80GetElapsedTicks(0xff);
-		break;
-
-	case CPU_M6502:
-		if (reset) val = m_cpu_6502[active_cpu]->get6502ticks(0xff);
-		else val = m_cpu_6502[active_cpu]->get6502ticks(0);
-		break;
-
-
-	case CPU_M6809:
-		if (reset) val = m_cpu_6809[active_cpu]->get6809ticks(0xff);
-		val = m_cpu_6809[active_cpu]->get6809ticks(0);
-		break;
-	}
-	return val;
-}
-
-void add_hertz_ticks(int cpunum, int ticks)
-{
-	if (cpunum > 0) return;
-	hrzcounter += ticks;
-	//wrlog("HRTZ COunter %d",hrzcounter);
-	if (hrzcounter > 100) { hrzcounter -= 100; hertzflip ^= 1; }
-}
-
-int get_hertz_counter()
-{
-	return hertzflip;
-}
-
+// **************************************************************************
+// Only used By Battlezone, tempest and spaceduel
 void add_eterna_ticks(int cpunum, int ticks)
 {
 	eternaticks[cpunum] += ticks;
@@ -182,46 +141,38 @@ int get_eterna_ticks(int cpunum)
 {
 	return eternaticks[cpunum];
 }
+// *************************************************************************
 
+// THis one is needed, OmegaRace, AVG Code. 
 int get_elapsed_ticks(int cpunum)
 {
 	return tickcount[cpunum];
 }
 
+// I think the code below is really crazy, and I don't understand it. Simplifying to see if this affects anything.
+// This one is needed, OmegaRace, AVG Code and Asteroids. 
 int get_video_ticks(int reset)
 {
-	int v = 0;
 	int temp = 0;
-	static int startnumber = 0;
+	int v = vid_tickcount;
 
-	if (reset == 0xff) //Reset Tickcount;
+	if (reset)
 	{
 		vid_tickcount = 0;
+	}
+	else
+	{   // I am not sure if these 0 to 500 cycles extra are worth adding on per check, but doing it anyways.
 		switch (driver[gamenum].cpu_type[0])
 		{
-		case CPU_MZ80:  vid_tickcount -=  m_cpu_z80[active_cpu]->mz80GetElapsedTicks(0); break;  //Make vid_tickcount a negative number to check for reset later;
-		case CPU_M6502: vid_tickcount -= m_cpu_6502[active_cpu]->get6502ticks(0); break;
-		case CPU_68000: vid_tickcount -= s68000controlOdometer(0); break;
-		case CPU_M6809: vid_tickcount -= m_cpu_6809[get_current_cpu()]->get6809ticks(0); break;
+		case CPU_MZ80:  temp = m_cpu_z80[active_cpu]->mz80GetElapsedTicks(0); break;  //Make vid_tickcount a negative number to check for reset later;
+		case CPU_M6502: temp = m_cpu_6502[active_cpu]->get6502ticks(0); break;
+		case CPU_68000: temp = s68000readOdometer(); break;
+		case CPU_M6809: temp = m_cpu_6809[get_current_cpu()]->get6809ticks(0); break;
 		}
-		return 0;
 	}
 
-	v = vid_tickcount;
-	switch (driver[gamenum].cpu_type[0])
-	{
-	case CPU_MZ80:  temp = m_cpu_z80[active_cpu]->mz80GetElapsedTicks(0); break;  //Make vid_tickcount a negative number to check for reset later;
-	case CPU_M6502: temp = m_cpu_6502[active_cpu]->get6502ticks(0); break;
-	case CPU_68000: temp = s68000readOdometer(); break;
-	case CPU_M6809: temp = m_cpu_6809[get_current_cpu()]->get6809ticks(0); break;
-	}
-
-	//if (temp <= cyclecount[running_cpu]) temp = cyclecount[running_cpu]-m6502zpGetElapsedTicks(0);
-	//else wrlog("Video CYCLE Count ERROR occured, check code.");
-	v += temp;
-	return v;
+	return v + temp;
 }
-
 
 int cpu_getpc()
 {
@@ -250,7 +201,6 @@ int cpu_getpc()
 	return 0;
 }
 
-
 int get_current_cpu()
 {
 	return active_cpu;
@@ -274,10 +224,7 @@ void cpu_setcontext(int cpunum)
 {
 	switch (driver[gamenum].cpu_type[cpunum])
 	{
-	//case CPU_MZ80:  mz80SetContext(&cMZ80[active_cpu]); break;
-	//case CPU_M6502: m6502zpSetContext(c6502[cpunum]); break;
 	case CPU_68000: s68000SetContext(&c68k[active_cpu]); break;
-	case CPU_M6809: break;
 	}
 }
 
@@ -285,19 +232,14 @@ void cpu_getcontext(int cpunum)
 {
 	switch (driver[gamenum].cpu_type[cpunum])
 	{
-	//case CPU_MZ80:  mz80GetContext(&cMZ80[active_cpu]); break;
-	//case CPU_M6502: m6502zpGetContext(c6502[cpunum]); break;
 	case CPU_68000: s68000GetContext(&c68k[active_cpu]); break;
-	case CPU_M6809: break;
 	}
 }
-
 
 void cpu_disable_interrupts(int cpunum, int val)
 {
 	enable_interrupt[cpunum] = val;
 }
-
 
 void cpu_clear_pending_interrupts(int cpunum)
 {
@@ -315,7 +257,6 @@ void set_interrupt_vector(int data)
 		cpu_clear_pending_interrupts(cpunum);
 	}
 }
-
 
 void cpu_do_int_imm(int cpunum, int int_type)
 {
@@ -366,7 +307,6 @@ void cpu_do_int_imm(int cpunum, int int_type)
 	}
 }
 
-
 void cpu_do_interrupt(int int_type, int cpunum)
 {
 	if (enable_interrupt[cpunum] == 0) { wrlog("Interrupts Disabled"); return; }
@@ -393,12 +333,10 @@ void cpu_do_interrupt(int int_type, int cpunum)
 		case CPU_M6502:
 			if (int_type == INT_TYPE_NMI) {
 				m_cpu_6502[cpunum]->nmi6502();
-				//m6502zpnmi();
 				//wrlog("NMI Taken");
 			}
 			else {
 				m_cpu_6502[cpunum]->irq6502();
-				//m6502zpint(1);
 				//wrlog("INT Taken");
 			}
 			break;
@@ -412,7 +350,7 @@ void cpu_do_interrupt(int int_type, int cpunum)
 				//wrlog("INT Taken 6809");
 			}
 			break;
-	
+
 		case CPU_68000: s68000interrupt(driver[gamenum].cpu_int_type[active_cpu], -1);
 			s68000flushInterrupts();
 			//wrlog("INT Taken 68000");
@@ -432,11 +370,11 @@ void exec_cpu()
 	{
 	case CPU_MZ80:   dwResult = m_cpu_z80[active_cpu]->mz80exec(cyclecount[active_cpu]); break;
 	case CPU_M6502:  dwResult = m_cpu_6502[active_cpu]->exec6502(cyclecount[active_cpu]); break;
-	case CPU_68000:  dwResult = s68000exec(cyclecount[active_cpu]); 
+	case CPU_68000:  dwResult = s68000exec(cyclecount[active_cpu]);
 		//wrlog("68000 exec called");
-		              break;
+		break;
 	case CPU_M6809:
-			{   dwResult = m_cpu_6809[active_cpu]->exec6809(cyclecount[active_cpu]); break;	}
+	{ dwResult = m_cpu_6809[active_cpu]->exec6809(cyclecount[active_cpu]); break; }
 	}
 
 	if (0x80000000 != dwResult)
@@ -444,22 +382,23 @@ void exec_cpu()
 		wrlog("Invalid instruction at %.2x\n");
 		exit(1);
 	}
+
+	//wrlog("Executed %d cycles but really ran %d", cyclecount[active_cpu], m_cpu_6502[active_cpu]->get6502ticks(0));
 }
 
-void run_cpus_to_cycles() // This is the jankiest code ever.
+// This is the jankiest code ever.
+// And it does not guarantee that the amount of cycles ran reaches the requested number. 
+void run_cpus_to_cycles() 
 {
 	UINT32 dwElapsedTicks = 0;
-	UINT32 dwResult = 0;
 	int  x;
 	int cycles_ran = 0;
-	
+
 	tickcount[0] = 0;
 	tickcount[1] = 0;
 	tickcount[2] = 0;
 	tickcount[3] = 0;
 
-	//wrlog("Starting cpu run %d",cyclecount[active_cpu]);
-	
 	for (x = 0; x < driver[gamenum].cpu_divisions[0]; x++)
 	{
 		for (int i = 0; i < totalcpu; i++)
@@ -468,23 +407,20 @@ void run_cpus_to_cycles() // This is the jankiest code ever.
 
 			if (totalcpu > 1) { cpu_setcontext(i); }
 
+			// Why? I am not using dwElapsedTicks for anything!
 			dwElapsedTicks = cpu_getcycles(0xff);
-
+			
 			cpu_resetter(i); //Check for CPU Reset
 			process_pending_interrupts(i); //Check and see if there is a pending interrupt request outstanding
 			exec_cpu();
 			cycles_ran = cpu_getcycles(0);
+			//wrlog("Cycles ran here is %d", cycles_ran);
 			//timer_update(cycles_ran, active_cpu);
 
 			tickcount[i] += cycles_ran; //Add cycles this pass to frame cycle counter;
 			add_eterna_ticks(i, cycles_ran);
-
-			if (i == 0)
-			{
-				if (vid_tickcount < 1) vid_tickcount = cycles_ran - vid_tickcount; //Play catchup after reset
-				vid_tickcount += cycles_ran;
-				add_hertz_ticks(0, cycles_ran);
-			}
+			// Only do this for CPU0
+			if (i == CPU0) 	{vid_tickcount += cycles_ran;}
 
 			if (driver[gamenum].int_cpu[i]) { driver[gamenum].int_cpu[i](); }
 			else {
@@ -502,14 +438,15 @@ void run_cpus_to_cycles() // This is the jankiest code ever.
 	if (framecnt == driver[gamenum].fps)
 	{
 		//wrlog("-------------------------------------------------INTERRUPTS PER FRAME %d",intcnt);
-		framecnt = 0; intcnt = 0;
+		framecnt = 0; 
+		intcnt = 0;
 	}
 
-	 wrlog("CPU CYCLES RAN %d CPU CYCLES REQUESTED %d", tickcount[0],driver[gamenum].cpu_freq[0]/driver[gamenum].fps);
+	wrlog("CPU CYCLES RAN %d CPU CYCLES REQUESTED %d", tickcount[0], driver[gamenum].cpu_freq[0] / driver[gamenum].fps);
 }
 
 ///////////////////////
-// 
+//
 // DUPLICATE CPU CODE ADDED FOR MULTICPU SUPPORT BELOW
 //
 ///////////////////////
@@ -611,7 +548,7 @@ void cpu_run_mame(void)
 
 					target = (driver[gamenum].cpu_freq[active_cpu] / driver[gamenum].fps) * (current_slice + 1)
 						/ driver[gamenum].cpu_divisions[active_cpu];
-					
+
 					//wrlog("Target is %d", target);
 
 					next_interrupt = (driver[gamenum].cpu_freq[active_cpu]
@@ -627,17 +564,12 @@ void cpu_run_mame(void)
 							running = next_interrupt - ran_this_frame[active_cpu];
 
 						ran = cpu_exec_now(active_cpu, running);
-						
+
 						// For temp compatibility  ////////////////////////////////////////////
 						// I still don't have a good idea of what all these timers are doing :(
 						tickcount[active_cpu] += ran;
 						add_eterna_ticks(active_cpu, ran);
-						if (active_cpu == 0)
-						{
-							if (vid_tickcount < 1) vid_tickcount = ran - vid_tickcount; //Play catchup after reset
-							vid_tickcount += ran;
-							add_hertz_ticks(0, ran);
-						}
+						if (active_cpu == 0) {vid_tickcount += ran;	}
 						/////////////////////////////////////////////////////////////////////////
 						ran_this_frame[active_cpu] += ran;
 						totalcycles[active_cpu] += ran;
@@ -645,10 +577,10 @@ void cpu_run_mame(void)
 						if (ran_this_frame[active_cpu] >= next_interrupt)
 						{
 							// Call the interrupt handler.
-							 if (driver[gamenum].int_cpu[active_cpu]) 
-							 { 
-								 driver[gamenum].int_cpu[active_cpu](); 
-							 }
+							if (driver[gamenum].int_cpu[active_cpu])
+							{
+								driver[gamenum].int_cpu[active_cpu]();
+							}
 							//(*Machine->drv->cpu[active_cpu].interrupt)(0);
 							//cpu_cause_interrupt(active_cpu, 0); // Original Code
 							iloops[active_cpu]--;
@@ -667,7 +599,7 @@ void cpu_run_mame(void)
 }
 
 ///////////////////////
-// 
+//
 // END OF DUPLICATE CPU CODE
 //
 ///////////////////////
@@ -699,7 +631,6 @@ void cpu_reset(int cpunum)
 	wrlog("CPU RESET CALLED!!!!!!!!!!!!!!!!!!!!!!___________________________________!!!!!!!!!!!!!!!");
 	reset_cpu_status[cpunum] = 1;
 }
-
 
 void cpu_reset_all()
 {
@@ -779,14 +710,14 @@ void set_pending_interrupt(int int_type, int cpunum) //Interrrupt to execute on 
 int cpu_scale_by_cycles(int val)
 {
 	float temp;
-	int k;            
+	int k;
 	int sclock = driver[gamenum].cpu_freq[active_cpu]; //Why not active_cpu?
-	
+
 	//int current = cyclecount[active_cpu];  //totalcpu-1]; activecpu was last
 	int current = tickcount[active_cpu];
 	//wrlog(" Sound Update called, clock value: %d ", current);
 	int max = sclock / driver[gamenum].fps;
-	
+
 	temp = ((float)current / (float)max);
 	if (temp > 1) temp = (float).99;
 
@@ -796,7 +727,6 @@ int cpu_scale_by_cycles(int val)
 	//wrlog("Sound position %d",k);
 	return k;
 }
-
 
 void init_cpu_config()
 {
@@ -826,17 +756,14 @@ void init_cpu_config()
 		enable_interrupt[x] = 1;
 		interrupt_vector[x] = 0xff;
 	}
-
-	
 	vid_tickcount = 0;//Initalize video tickcount;
 	hertzflip = 0;
 
 	timer_init();
 	//watchdog_timer = timer_set(TIME_IN_HZ(24), 0, watchdog_callback);
-	wrlog("NUMBER OF CPU'S to RUN: %d ", totalcpu );
+	wrlog("NUMBER OF CPU'S to RUN: %d ", totalcpu);
 	wrlog("Finished starting up cpu settings, defaults");
 }
-
 
 /***************************************************************************
 
@@ -900,4 +827,3 @@ void MWA_NOP(UINT32 address, UINT8 data, struct MemoryWriteByte* pMemWrite)
 {
 	//If logging add here
 }
-

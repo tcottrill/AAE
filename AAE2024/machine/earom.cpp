@@ -30,7 +30,7 @@ UINT8 EaromRead(UINT32 address, struct MemoryReadByte* psMemRead)
 
 void EaromWrite(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite)
 {
-	 wrlog("Earom write? address %x data %d", earom_offset,data);
+	//wrlog("Earom write? address %x data %d", earom_offset,data);
 	earom_offset = (address & 0x00ff);
 
 	earom_data = data;

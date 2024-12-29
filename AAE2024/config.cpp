@@ -35,18 +35,18 @@ char* my_get_config_string(const char* section, const char* name, const char* de
 	DWORD size = 0;
 
 	if (is_override) { // Check game file for value if file exists
-		wrlog("Returning string value from game file %s", name);
+		//wrlog("Returning string value from game file %s", name);
 		size = GetPrivateProfileString(section, name, def, buffer, MAX_PATH, gamepath);
 		if (strcmp(buffer, def) == 0) 
 		{ 
-			wrlog("Returning string value from aae.ini %s", name);
+			//wrlog("Returning string value from aae.ini %s", name);
 			GetPrivateProfileString(section, name, def, buffer, MAX_PATH, aaepath); 
 			return buffer;
 		}
 		else { return buffer; }
 	}
 	else {
-		wrlog("Game file doesn't exist, Returning string value from aae.ini %s", name);
+		//wrlog("Game file doesn't exist, Returning string value from aae.ini %s", name);
 		size = GetPrivateProfileString(section, name, def, buffer, MAX_PATH, aaepath);
 		if ( strcmp(buffer, def) == 0) return (char*)def;
 		else return buffer;
@@ -62,18 +62,18 @@ int my_get_config_int(const char* section, const char* name, int def)
 
 		if (val == -1)
 		{
-			LOG_DEBUG("Returning int value from aae.ini file %s val %d", name, val);
+			//LOG_DEBUG("Returning int value from aae.ini file %s val %d", name, val);
 			return GetPrivateProfileInt(section, name, def, aaepath); // Value does not exist in game file, get from aae.ini
 		}
 		else
 		{
-			LOG_DEBUG("Returning int value from game file %s", name);
+			//LOG_DEBUG("Returning int value from game file %s", name);
 			return val;  // Return value from Game file
 		}
 	}
 	else 
 	{
-		LOG_DEBUG("Returning int value from aae.ini file since the game file does not exist. %s val %d", name, val);
+		//LOG_DEBUG("Returning int value from aae.ini file since the game file does not exist. %s val %d", name, val);
 		return GetPrivateProfileInt(section, name, def, aaepath); // Value does not exist in game file, get from aae.ini
 	}
 }
@@ -173,29 +173,21 @@ void setup_config(void)
 	char buffer[MAX_PATH];
 
 	GetCurrentDirectory(MAX_PATH, buffer);
-
+	// aae.ini
 	strcpy(aaepath, buffer);
 	strcat(aaepath, "\\aae.ini");
+	// gamename.ini
 	strcpy(gamepath, buffer);
 	strcat(gamepath, "\\ini\\");
-	
-	// NOTE to Self: Temporary Fix until I get this nailed down. 
-	// Change: For each individual setting, check if it exists in a game specific file, 
-	// and only load those settings from that file, loading all others from the main aae.ini
-
 	strcat(gamepath, driver[gamenum].name);
 	strcat(gamepath, ".ini");
-
+	// If game file exists, and it's not the gui, try to pull values from it. 
 	is_override = file_exists(gamepath);
 	if (gamenum == 0) { is_override = 0; }
 	wrlog("Main AAE Path: %s", aaepath);
 	if (gamenum > 0) { wrlog("Game Config Path: %s", gamepath); }
-	wrlog("Path Override Value: %d", is_override);
-	//wrlog("Starting");
-
+	//wrlog("Path Override Value: %d", is_override);
 	wrlog("Loading configuration information for %s", driver[gamenum].desc);
-
-	
 	//////VIDEO///////////
 	
 	config.prescale = my_get_config_int("main", "prescale", 1);
@@ -252,14 +244,7 @@ void setup_config(void)
 	config.screenh = my_get_config_int("main", "screenh", 768);
 	config.exrompath = my_get_config_string("main", "mame_rom_path", "NONE");
 	wrlog("Configured Mame Rom Path is %s", config.exrompath);
-	
-	wrlog("Config.mainvol loaded here is %d", config.mainvol);
-	
-	//clampU8(config.mainvol *= 12.75);
-	//clampU8(config.pokeyvol *= 12.75);
-	//clampU8(config.noisevol *= 12.75);
-	//set_volume(config.mainvol, 0);
-
+	//wrlog("Config.mainvol loaded here is %d", config.mainvol);
 	config.linewidth = config.m_line * .1f;
 	config.pointsize = config.m_point * .1f;
 }

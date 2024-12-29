@@ -40,3 +40,14 @@ Adjusted sound in asteroids and asteroids deluxe. Added clipping to tempest to s
 
 12/22/24 Squashed the last rendering bug affecting the vertical games and battlezone. At this point, I think all the rendering is fixed, time to add a couple of features before completely changing the cpu and atari vector rendering.
 
+12/26/24
+Cleaned up video tick counting Code, adjusted AVG timing code for Major Havoc, this seems to clear up the issue with not being able to put in the secret code in mhavocpe. Or i'm way off base and I've made things worse, I don't have a real major havoc pcb to test with.
+
+12/27/24
+Found a ridiclous bug with counting the total cycles executed in the 6502 core. It was consistently underreporting the number of executed cycles, throwing everything off. Corrected.  
+
+12/28/24 More Major Havoc cleanups. At this point I'll call it "Meh". It works pretty well, it's only a couple of percent off now as far as cycle emulation compared to the real board. To get it near perfect is going to require a complete rewrite, working on it. 
+Cleaned up and removed dead code from cpu_control.h, trying to narrow down requirements for said rewrite.
+
+
+

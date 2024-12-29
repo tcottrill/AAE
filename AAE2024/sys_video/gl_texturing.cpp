@@ -219,7 +219,7 @@ void FS_Rect(int facing, int size)
 	glEnd();
 }
 void Screen_Rect(int facing, int size)
-{
+{/*
 	float x;
 	if (config.widescreen)
 	{
@@ -235,14 +235,14 @@ void Screen_Rect(int facing, int size)
 		glTranslatef(x * size, 0, 0);
 	}
 	else
-	{
+	{*/
 		glBegin(GL_QUADS);
 		glTexCoord2f(0, 1); glVertex2f(0, size);
 		glTexCoord2f(0, 0); glVertex2f(0, 0);
 		glTexCoord2f(1, 0); glVertex2f(size, 0); //x
 		glTexCoord2f(1, 1); glVertex2f(size, size); //x,size
 		glEnd();
-	}
+	//}
 }
 
 void Special_Rect(int facing, int size)
@@ -348,16 +348,8 @@ void texture_reinit()
 
 void resize_art_textures()
 {
-	//wrlog("Art loaded here 0:%d 1:%d 2:%d 3:%d", art_loaded[0], art_loaded[1], art_loaded[2], art_loaded[3]);
 	set_render();
-	/*
-		glMatrixMode(GL_PROJECTION);							// Select The Projection Matrix
-		glLoadIdentity();										// Reset The Projection Matrix
-		glViewport(0, 0,1023, 1023);
-		glOrtho(0, 1023, 1023,0, -1.0f, 1.0f);
-		glMatrixMode(GL_MODELVIEW);								// Select The Modelview Matrix
-		glLoadIdentity();
-	*/
+	
 	if (art_loaded[0]) {
 		glDrawBuffer(GL_COLOR_ATTACHMENT2_EXT);
 		glReadBuffer(GL_COLOR_ATTACHMENT2_EXT);

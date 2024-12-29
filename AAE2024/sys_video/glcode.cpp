@@ -230,13 +230,20 @@ int init_gl(void)
 
 		if (config.forcesync)
 		{
-			if (allegro_gl_extensions_WGL.EXT_swap_control) { wglSwapIntervalEXT(1); wrlog("Your video card supports vysnc, good."); }
-			else wrlog("Your video card does not support vsync! Either your drivers suck, or your card does.\nPlease \
-		       update your video drivers and run this again!!");
+			if (allegro_gl_extensions_WGL.EXT_swap_control) 
+			{ 
+				wglSwapIntervalEXT(1); 
+				wrlog("Enabling vSync per the config.forcesync setting."); 
+			}
+			
+			else wrlog("Your video card does not support vsync. Please check and update your video drivers.");
 		}
 		else {
-			if (allegro_gl_extensions_WGL.EXT_swap_control) { wglSwapIntervalEXT(0); wrlog("Setting vsync off"); }
-			else wrlog("Problem turning off vsync?");
+			if (allegro_gl_extensions_WGL.EXT_swap_control) 
+			{
+				wglSwapIntervalEXT(0); 
+				wrlog("Disabling vSync"); }
+			else wrlog("There was a problem disabling vSync, please check your video card drivers.");
 		}
 
 		if (allegro_gl_extensions_GL.EXT_framebuffer_object) { wrlog("EXT_Frambuffer Object Supported (Required)"); }
@@ -287,7 +294,7 @@ void end_gl()
 
 int make_single_bitmap(GLuint* texture, const char* filename, const char* archname, int mtype)
 {
-	char temppath[255] = { 0 };
+	char temppath[MAX_PATH] = { 0 };
 	int test = 0;
 	int ret = 0;
 	unsigned char* zipdata = 0;

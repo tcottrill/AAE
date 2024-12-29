@@ -141,7 +141,7 @@ int load_roms(const char* archname, const struct RomModule* p)
 
 int load_samples(const char** p, int val)
 {
-	char temppath[255];
+	char temppath[MAX_PATH];
 	unsigned char* zipdata = 0;
 	int ret = 0;
 	int i = 1;
@@ -152,7 +152,6 @@ int load_samples(const char** p, int val)
 	strcpy(temppath, "samples\\");//if it's not there, try sample dir
 	strcat(temppath, p[0]);
 	strcat(temppath, "\0");
-	//wrlog("Opening, %s", temppath); // Redundant logging. 
 	do
 	{
 		wrlog("Loading Sample %s", p[i]);

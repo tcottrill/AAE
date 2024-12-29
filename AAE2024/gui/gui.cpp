@@ -1,5 +1,3 @@
-
-
 #include "gui.h"
 #include "aae_mame_driver.h"
 #include "samples.h"
@@ -130,34 +128,34 @@ void gui_animate(int reset)
 		{
 			//start rotating back down
 			rotation1 -= 2;
-			if (rotation1 < 60)rotation1 = 60;
+			if (rotation1 < 60) rotation1 = 60;
 			rotation2 += 2;
-			if (rotation2 > -60)rotation2 = -60;
+			if (rotation2 > -60) rotation2 = -60;
 			//texnum = 1;
 		}
 		if (rotation1 < 90)
 		{
 			rotation1 += 2;//start rotating back up
-			if (rotation1 > 120)rotation1 = 120;
+			if (rotation1 > 120) rotation1 = 120;
 			rotation2 -= 2;
-			if (rotation2 < -120)rotation2 = -120;
+			if (rotation2 < -120) rotation2 = -120;
 			//texnum = 1;
 		}
 	}
 	if (readinputportbytag("IN1") & 0x01)
 	{
 		rotation1 -= 2;
-		if (rotation1 < 60)rotation1 = 60;
+		if (rotation1 < 60) rotation1 = 60;
 		rotation2 += 2;
-		if (rotation2 > -60)rotation2 = -60;
+		if (rotation2 > -60) rotation2 = -60;
 		rotationcount = 0; //reset
 	}
 	if (readinputportbytag("IN1") & 0x02)
 	{
 		rotation1 += 2;
-		if (rotation1 > 120)rotation1 = 120;
+		if (rotation1 > 120) rotation1 = 120;
 		rotation2 -= 2;
-		if (rotation2 < -120)rotation2 = -120;
+		if (rotation2 < -120) rotation2 = -120;
 		rotationcount = 0; //reset
 	}
 
@@ -168,7 +166,7 @@ void gui_animate(int reset)
 	draw_center_tex(&fun_tex[texnum], 32, 992, 392, rotation1, NORMAL, 255, 255, 255, 255, 2);
 }
 
-//All the code below is dependent on the framerate being 60fps
+//All the code below is dependent on the monitor framerate being 60fps TODO:, add real timing
 void shot_animate(int i)
 {
 	static int w = 255;
@@ -218,7 +216,7 @@ void shot_animate(int i)
 	}                            //*17
 
 	if (scale > 40)
-		//END GUI PROCESSING and do the selected game processing
+		//END GUI PROCESSING and do the selected game processing when the animation gets to a certain point off screen.
 	{
 		sample_stop(1);
 		s_animate = 0;
@@ -260,7 +258,7 @@ int init_gui()
 	//Is this the first time through?? Then init the GUI textures
 	if (!mtime) { sample_start(2, 1, 0); mtime++; }
 
-	set_window_title("AAE GUI (Build 10182024)");
+	set_window_title("AAE GUI (Build xxxxxxxxx)");
 
 	make_single_bitmap(&fun_tex[0], "ship.png", "aae.zip", 0);
 	make_single_bitmap(&fun_tex[1], "shipeng.png", "aae.zip", 0);
