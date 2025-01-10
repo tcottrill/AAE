@@ -3,13 +3,11 @@
 
 #include "aaemain.h"
 
-//extern char *gamename[];
-
+void mhavoc_interrupt();
+void run_mhavoc();
 extern int cpu_scale_by_cycles_mh(int val);
 //int MHscale_by_cycles(int val, int clock);
 int init_mhavoc();
-void run_mhavoc();
-void run_alphaone();
 void end_mhavoc();
 void mhavoc_interrupt();
 void MH_generate_vector_list(void);

@@ -8,6 +8,8 @@
 // Notes
 // 11/22/24 added undoucumented isb opcode, will work to add the rest later.
 // 12/28/24 Rewrote the main loop to resolve an issue with the cycle counting being consistently undereported.
+// 01/03/25 Discovered an edge case where clocktickstotal was not being set to zero at init, causing an immediate crash. 
+// 01/09/25 Changed clocktickstotal again to be set to zero at init, not reset. When a cpu was reset mid-frame, it was throwing the timing count off. 
 
 #include <stdio.h>
 #include "cpu_6502.h"
@@ -15,7 +17,7 @@
 #include <string>
 #include "timer.h"
 
-//Version 2024.7.14
+//Version 2025.1.09
 
 #define bget(p,m) ((p) & (m))
 
@@ -584,7 +586,6 @@ void cpu_6502::ldy6502()
 void cpu_6502::lsr6502()
 {
 	value = get6502memory(savepc);
-
 	// set carry flag if shifting right causes a bit to be lost
 	P = (P & ~F_C) | (value & F_C);
 	//zero and negative Flag Calculations
@@ -881,7 +882,8 @@ void cpu_6502::init6502(uint16_t addrmaskval)
 	PPC = 0;
 	addrmask = addrmaskval;
 	_irqPending = 0;
-
+	clocktickstotal = 0;
+	
 	instruction[0x00] = &cpu_6502::brk6502; adrmode[0x00] = &cpu_6502::implied6502;
 	instruction[0x01] = &cpu_6502::ora6502; adrmode[0x01] = &cpu_6502::indx6502;
 	instruction[0x02] = &cpu_6502::nop6502; adrmode[0x02] = &cpu_6502::implied6502;

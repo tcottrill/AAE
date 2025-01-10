@@ -48,11 +48,8 @@
 #include "win10_win11_required_code.h"
 #endif // WIN10BUILD
 
-
-
 using namespace std;
 using namespace chrono;
-
 
 //TEST VARIABLES
 static int res_reset;
@@ -60,7 +57,7 @@ static int x_override;
 static int y_override;
 static int win_override = 0;
 
-int previous_game = 0;
+static int started_from_command_line = 0;
 int hiscoreloaded;
 int sys_paused = 0;
 int show_fps = 0;
@@ -202,19 +199,19 @@ void reset_for_new_game(int new_gamenum, int in_giu)
 	wrlog("Finished Freeing Samples");
 	free_game_textures(); //Free textures
 	wrlog("Finished Freeing Textures");
-	//If Using GUI and resolution change, or not in gui
-	//if (in_gui && res_reset==0)
-	wrlog("Done Freeing All"); //Log it.
+		
 	wrlog("Saving Input Port Settings");
 	save_input_port_settings();
 	config.artwork = 0;
 	config.bezel = 0;
 	config.overlay = 0;
+	// Wait, what is going on here????
 	if (in_gui == 0) { gamenum = 0; }
 	else 	gamenum = new_gamenum;
 	wrlog("DONE here is %d, exiting", done);
 	//Catch
-	if (done == 1) { exit(1); }
+	if (started_from_command_line) { return; }
+	if (done == 1) { return; }
 	if (done == 2) { done = 0; run_game(); }
 	if (done == 3) { done = 0; gamenum = 0; run_game(); }
 }
@@ -304,7 +301,7 @@ void msg_loop(void)
 			{
 				in_gui = 1;
 			}
-			done = 1;
+			done = 1; // Done == 1 means we are exiting?
 		}
 	}
 	int a = get_menu_level();
@@ -317,40 +314,16 @@ void msg_loop(void)
 		if (osd_key_pressed_memory(OSD_KEY_UI_SELECT)) { select_menu_item(); }
 	}
 
-	/*
-		if (have_error == 0  && show_menu==0 )
-
-		 if ( (gamenum > 0) && in_gui){done=3;}else {done=1;} log_it("Quitting, code %d",showinfo);
-
-		 if (have_error != 0){have_error=0;Sleep(150);clear_keybuf();errorsound=0;}
-
-		 if (config.debug){
-		 k=(key_shifts & KB_SHIFT_FLAG);
-		 if (k&&key[KEY_RIGHT]){msy--;}
-		 else if (k&&key[KEY_LEFT]){msx++;}
-		 else if (k&&key[KEY_DOWN]){esx++;}
-		 else if (k&&key[KEY_UP]){esy--;}
-		 else if (key[KEY_RIGHT]){msy++;}
-		 else if (key[KEY_LEFT]) {msx--;}
-		 else if (key[KEY_DOWN]) {esx--;}
-		 else if (key[KEY_UP])   {esy++;}
-		 }
-
-		 if (getport(15) & 0x40) {if (paused==0) {paused=1;mute_sound(); }else if (paused==1){paused=0;restore_sound();}}//pause_loop();KeyCheck(KEY_P)
-		 //if (key[config.ksstate]) {Sleep(150);save_state6502();}
-		 //if (key[config.klstate]) {Sleep(150);}
-
-		*/
+	
 }
 
 void run_game(void)
 {
-	DEVMODE dvmd;
+	DEVMODE dvmd = { 0 };
 	int cx = GetSystemMetrics(SM_CXSCREEN);
 	// height
 	int cy = GetSystemMetrics(SM_CYSCREEN);
 	//width
-	int game0 = 0;
 	int retval = 0;
 	int goodload = 99;
 	int testwidth = 0;
@@ -364,41 +337,16 @@ void run_game(void)
 	errorlog = 0;
 
 	EnumDisplaySettings(NULL, ENUM_CURRENT_SETTINGS, &dvmd);
-
-	//Check for same resolution or need to switch.
-	//res_reset = 1;
-	//testwidth = config.screenw; testheight = config.screenh; testwindow = config.windowed;
-
-	//GameRect.min_x = driver[gamenum].gamerect[0];
-	//GameRect.max_x = driver[gamenum].gamerect[1];
-	//GameRect.min_y = driver[gamenum].gamerect[2];
-	//GameRect.max_y = driver[gamenum].gamerect[3];
-
-	//wrlog("Game Main Texture rect: X: %d Y: %d EX: %d EY: %d", driver[gamenum].gamerect[0], driver[gamenum].gamerect[1], driver[gamenum].gamerect[2], driver[gamenum].gamerect[3]);
+			
 	setup_game_config();
 	sanity_check_config();
 	wrlog("Running game %s", driver[gamenum].desc);
-	
-	if (in_gui) {
-		//if (config.windowed == testwindow && config.screenh == testheight && config.screenw == testwidth) { res_reset = 0; }
-		//else { res_reset = 1; }
-	}
-	if (x_override || y_override)
-	{
-		//res_reset = 1;
-	//	config.screenh = y_override;
-		//config.screenw = x_override;
-	}
-	if (win_override)
-
-	//	config.windowed = win_override - 2;
-	
+		
 	//Check for setting greater then screen availability
 	if ( config.screenh > cy || config.screenw > cx)
 	{
-		allegro_message("Overriding config screen settings, \nphysical size smaller then config setting");
-	//	config.screenh = cy; config.screenw=cx; res_reset=1;
-	}
+		allegro_message("Warning: \nphysical size smaller then config setting");
+    }
 
 	//if (res_reset)
 	//{
@@ -421,16 +369,6 @@ void run_game(void)
 	clamp(config.mainvol);
 	clamp(config.pokeyvol);
 	clamp(config.noisevol);
-
-	//Check;
-	/*
-	if (config.noisevol > 255) config.noisevol = 254;
-	if (config.pokeyvol > 255) config.pokeyvol = 254;
-	if (config.mainvol > 255) config.mainvol = 254;
-	if (config.noisevol <= 0) config.noisevol = 1;
-	if (config.mainvol <= 0) config.mainvol = 1;
-	if (config.pokeyvol <= 0) config.pokeyvol = 1;
-	*/
 	set_volume(config.mainvol, 0);
 
 	SetThreadPriority(GetCurrentThread(), ABOVE_NORMAL_PRIORITY_CLASS);
@@ -443,15 +381,14 @@ void run_game(void)
 	case 0: SetPriorityClass(GetCurrentProcess(), IDLE_PRIORITY_CLASS); break;
 	}
 	LimitThreadAffinityToCurrentProc();
-
+	// Reset are settings. 
 	art_loaded[0] = 0;
 	art_loaded[1] = 0;
 	art_loaded[2] = 0;
 	art_loaded[3] = 0;
-
-	wrlog("Config.linewidth 2: %f", config.linewidth);
-
+	
 	run_a_game(gamenum);
+	// Wait, what? We are reloading, now????
 	init_machine();
 
 	//////////////////////////////////////////////////////////////END VARIABLES SETUP ///////////////////////////////////////////////////
@@ -473,7 +410,6 @@ void run_game(void)
 
 	frameavg = 0; fps_count = 0; frames = 0;
 	//////////////////////////
-	
 
 	millsec = (double)1000 / (double)driver[gamenum].fps;
 	
@@ -485,21 +421,20 @@ void run_game(void)
 	}
 	
 	//Now load the Ambient and menu samples
+	// NOTE: This has been disabled for now. !!!
 	goodload = load_samples(noise_samples, 1);
 	if (!goodload) { wrlog("Noise Samples loading failure, not critical, continuing."); }
 	voice_init(num_samples); //INITIALIZE SAMPLE VOICES
 	wrlog("Number of samples for this game is %d", num_samples);
 
 	//setup_ambient(VECTOR);
-
+	// Setup for the first game. 
 	wrlog("Initializing Game");
-
-	wrlog("Loading InputPort Settings");
+    wrlog("Loading InputPort Settings");
 	load_input_port_settings();
 	init_cpu_config(); ////////////////////-----------
 	driver[gamenum].init_game();
-	if (gamenum) game0 = 1; else game0 = 0;
-	previous_game = gamenum;
+		
 	WATCHDOG = 0;
 
 	//If the game uses NVRAM, initalize/load it. . This code is from M.A.M.E. (TM)
@@ -513,17 +448,21 @@ void run_game(void)
 	}
 
 	wrlog("\n\n----END OF INIT -----!\n\n");
-	wrlog("Config.linewidth 3: %f", config.linewidth);
+	
+	//
+	// PROGRAM MAIN LOOP STARTS HERE:
+	//
 	while (!done && !close_button_pressed)
 	{
-    	wrlog("STARTING FRAME");
-		//set_new_frame(); //This is for the AVG Games.
+    	wrlog("START OF FRAME HERE");
 		
-		
-
+		// Setup for rendering a frame. 
 		set_render();
 	
 		auto start = chrono::steady_clock::now();
+		//
+		// This is a mess of what cpu code to run for what cpu. This will get fixed with a full rewrite. 
+		//
 		if (driver[gamenum].cpu_type[0] == CPU_M6809 || driver[gamenum].cpu_type[0] == CPU_MZ80)
 		{
 			if (!paused && have_error == 0) { if (driver[gamenum].pre_run) driver[gamenum].pre_run(); }
@@ -536,22 +475,23 @@ void run_game(void)
 			if (!paused && have_error == 0) { if (driver[gamenum].pre_run) driver[gamenum].pre_run(); }
 			if (!paused && have_error == 0) { run_cpus_to_cycles(); }
 		}
-		
+		//
+		// Check if game is paused. This prob needs to be around the entire cpu code now. TODO: Fix!
 		if (!paused && have_error == 0) { driver[gamenum].run_game(); }
 
 		auto end = chrono::steady_clock::now();
 		auto diff = end - start;
-		wrlog("CPU Time: %f ", chrono::duration <double, milli>(diff).count());
-
+		wrlog("Profiler: CPU Time: %f ", chrono::duration <double, milli>(diff).count());
+		// Complete and display the rendered frame.  
 		render();
 		
 		msg_loop();
 
 		inputport_vblank_end();
 		update_input_ports();
-
 		//timer_clear_all_eof();
 
+		// Code to sleep for the rest of the frame. 
 		gametime = TimerGetTimeMS();
 
 		//if (driver[gamenum].fps !=60){
@@ -581,12 +521,14 @@ void run_game(void)
 
 		allegro_gl_flip();
 		wrlog("END OF FRAME");
-		//wrlog("FRAME %d", frames);
 	}
+	//
+	// PROGRAM MAIN LOOP ENDS HERE
+	//
 	wrlog("------- Calling game end and reset to GUI -----------");
+	// This is a mess, fix. 
 	if (gamenum == 0) { done = 1; } //Roll off to exit
 	else { done = 3; }
-
 	
 	reset_for_new_game(gamenum, 0);
 }
@@ -738,10 +680,7 @@ int main(int argc, char* argv[])
 	//For resolution
 	int horizontal;
 	int vertical;
-
-
-	// int goodload;
-	 //set_cpu();
+		
 	LogOpen("aae.log");
 	allegro_init();
 	install_allegro_gl();
@@ -760,9 +699,11 @@ int main(int argc, char* argv[])
 	LOCK_FUNCTION(close_button_handler);
 	set_close_button_callback(close_button_handler);
 
-	gamenum = 0; //Clear to make sure!
+	// We start with the running game being the gui, unless overridden by the command line.  
+	gamenum = 0; 
 	x_override = 0;
 	y_override = 0;
+	// Build the supported game list.
 	while (driver[loop].name != 0) { num_games++; loop++; }
 	wrlog("Number of supported games is: %d", num_games);
 	num_games++;
@@ -777,10 +718,9 @@ int main(int argc, char* argv[])
 		if (loop > 1) { gamelist[loop].prev = (loop - 1); }
 		else { gamelist[loop].prev = (num_games - 2); }
 	}
+	// Sort the supported game list since they are not in alphabetical order. 
 	wrlog("Sorting games");
 	sort_games();
-	loop2 = 0;
-	loop = 1;
 
 	//Move this after command line processing is re-added
 	GetDesktopResolution(horizontal, vertical);
@@ -791,10 +731,11 @@ int main(int argc, char* argv[])
 		config.screenh = vertical;
 	//}
 
-
 	// Disable ShortCut Keys
 	AllowAccessibilityShortcutKeys(0);
-
+	
+	loop2 = 0;
+	loop = 1;
 	for (i = 1; i < argc; i++) {
 		if (strcmp(argv[i], "-listromstotext") == 0)
 		{
@@ -850,13 +791,14 @@ int main(int argc, char* argv[])
 			if (strcmp(argv[1], driver[loop].name) == 0)
 			{
 				gamenum = loop;
+				started_from_command_line = 1;
 			}
 		}
 		if (argc > 2) gameparse(argc, argv);
 	}
 
 	//THIS IS WHERE THE CODING STARTS
-
+	// Decide if we are still starting with the gui or not. ? Why do this twice? We already have gamenum=0 or a game?
 	if (gamenum) in_gui = 0; else in_gui = 1;
 
 	timeGetDevCaps(&caps, sizeof(TIMECAPS));
@@ -881,11 +823,10 @@ int main(int argc, char* argv[])
 
 	frames = 0; //init frame counter
 	testsw = 0; //init testswitch off , had to make common for all
-	config.hack = 0; //Just to set, used for some games with hacks.
+	config.hack = 0; //Just to set, used for tempest only.
 	showinfo = 0;
 	done = 0;
 	//////////////////////////////////////////////////////
-	//set_display_switch_mode(SWITCH_PAUSE);
 	TimerInit(); //Start timer
 	wrlog("Number of supported games in this release: %d", num_games);
 
@@ -897,9 +838,6 @@ int main(int argc, char* argv[])
 	disable_windows10_window_scaling();
 #endif // WIN10BUILD
 
-	//key_set_flag = 0;
-	//ListDisplaySettings();
-	
 	switch (config.priority)
 	{
 	case 4: SetPriorityClass(GetCurrentProcess(), REALTIME_PRIORITY_CLASS);break;
@@ -908,39 +846,30 @@ int main(int argc, char* argv[])
 	case 1: SetPriorityClass(GetCurrentProcess(), NORMAL_PRIORITY_CLASS);break;
 	case 0: SetPriorityClass(GetCurrentProcess(),IDLE_PRIORITY_CLASS);break;
 	}
-	//Override the above for now. 
-	SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);
-	SetThreadPriority(GetCurrentThread(), ABOVE_NORMAL_PRIORITY_CLASS);
-	
-	//set_window_title("AAE BETA 2");
-   // set_window_close_button(0);
-   /////
-	//AllocConsole();
-   // SetConsoleTitle("Alert Window");
 
+	//AllocConsole();
+    // SetConsoleTitle("Alert Window");
 	//freopen("CONIN$","rb",stdin);   // reopen stdin handle as console window input
 	//freopen("CONOUT$","wb",stdout);  // reopen stout handle as console window output
 	//freopen("CONOUT$","wb",stderr); // reopen stderr handle as console window output
-
 	//printf("This is a console output test");
 	//wrlog("CPU TYPE FOR THIS GAME is %d %d %d %d", driver[gamenum].cputype[0],driver[gamenum].cputype[1],driver[gamenum].cputype[2],driver[gamenum].cputype[3]);
 	
 	// Main run point moves to Run Game, which takes care of jumping back and forth into the GUI as well as cleaning up after each game. 
 	// Unfortunately, it does neither very well. 
 	//
-	wrlog("Config.linewidth 1: %f", config.linewidth);
-
+	
 	run_game();
+
 	wrlog("Shutting down program");
 	//END-----------------------------------------------------
-	
+
+
 	timeEndPeriod(caps.wPeriodMin);
 	KillFont();
-	//SetGammaRamp(0, 0, 0);
 	set_aae_leds(0, 0, 0);
 	AllowAccessibilityShortcutKeys(1);
 	//FreeConsole( );
-
 	LogClose();
 	return 0;
 }
@@ -987,3 +916,24 @@ void ListDisplaySettings(void) {
 	if (vidmodes[51].curvid==0)wrlog("Crap, no video mode matched, interesting..?");
 }
 */
+//From Msg Loop
+/*
+		if (have_error == 0  && show_menu==0 )
+
+		 if ( (gamenum > 0) && in_gui){done=3;}else {done=1;} log_it("Quitting, code %d",showinfo);
+
+		 if (have_error != 0){have_error=0;Sleep(150);clear_keybuf();errorsound=0;}
+
+		 if (config.debug){
+		 k=(key_shifts & KB_SHIFT_FLAG);
+		 if (k&&key[KEY_RIGHT]){msy--;}
+		 else if (k&&key[KEY_LEFT]){msx++;}
+		 else if (k&&key[KEY_DOWN]){esx++;}
+		 else if (k&&key[KEY_UP]){esy--;}
+		 else if (key[KEY_RIGHT]){msy++;}
+		 else if (key[KEY_LEFT]) {msx--;}
+		 else if (key[KEY_DOWN]) {esx--;}
+		 else if (key[KEY_UP])   {esy++;}
+		 }
+
+		*/

@@ -12,7 +12,7 @@
 //============================================================================
 
 //
-// Note: This is pretty much a self contained emulator for Major Havoc. 
+// Note: This is pretty much a self contained emulator for Major Havoc.
 // NOTE!!!: This will eventually get merged into using the proper cpu and video code.
 //
 
@@ -198,7 +198,9 @@
 #include "rand.h"
 #include "5220intf.h"
 #include "loaders.h"
+#include "timer.h"
 
+#define mh_debug 0
 #define MHAVOC_CLOCK		10000000
 #define MHAVOC_CLOCK_2_5M	(MHAVOC_CLOCK/4)
 #define MHAVOC_CLOCK_1_25M	(MHAVOC_CLOCK/8)
@@ -288,10 +290,15 @@ unsigned char* cur_bank;
 static int reset1 = 0;
 static int MHAVGDONE = 1;
 static int vidticks;
-static int totalticks;
 static int bigticks;
-static int twokticks = 0;
 static int bitflip = 0;
+float sweep;
+
+// CPU VARS
+int alphaticks = 0;
+int gammaticks = 0;
+
+// ***************************************  AUDIO CODE BELOW ************************************************
 
 // Pokey Variables.
 int pkenable[4];
@@ -299,7 +306,6 @@ static int sample_pos = 0;
 int BUFFER_SIZE;  //FOR POKEY
 AUDIOSTREAM* stream1;
 unsigned char* soundbuffer;
-int gammaticks = 0;
 static int last_sample = 0;
 
 WRITE_HANDLER(speech_strobe_w)
@@ -367,27 +373,6 @@ WRITE_HANDLER(speech_strobe_w)
 	}
 }
 
-int get_vidticks(int reset)
-{
-	int v = 0;
-	int temp;
-
-	if (reset == 0xff) //Reset Tickcount;
-	{
-		vidticks = 0;
-		//vidticks -= m_cpu_6502[CPU0]->get6502ticks(0);  //Make vid_tickcount a negative number to check for reset later;
-		return 0;
-	}
-
-	v = vidticks;
-	temp = m_cpu_6502[CPU0]->get6502ticks(0);
-	//wrlog("Vid ticks here is ------------------------- %d", temp);
-	//if (temp <= cyclecount[running_cpu]) temp = cyclecount[running_cpu]-m6502zpGetElapsedTicks(0);
-	//else wrlog("Video CYCLE Count ERROR occured, check code.");
-	v += temp;
-	return v;
-}
-
 void playstreamedsample_mhavoc(int channel, unsigned char* data, int len, int vol)
 {
 	unsigned char* p;
@@ -411,7 +396,7 @@ int cpu_scale_by_cycles_mh(int val)
 	int current = 0;
 	int max = 0;
 	// This should be CPU1 but we need to be different for alphaone or it crashes.
-	if (gamenum == ALPHAONE || gamenum == ALPHAONA) 
+	if (gamenum == ALPHAONE || gamenum == ALPHAONA)
 	{
 		current = gammaticks + m_cpu_6502[CPU0]->get6502ticks(0);
 		max = driver[gamenum].cpu_freq[CPU0] / driver[gamenum].fps;
@@ -420,12 +405,11 @@ int cpu_scale_by_cycles_mh(int val)
 	{
 		current = gammaticks + m_cpu_6502[CPU1]->get6502ticks(0);
 		max = driver[gamenum].cpu_freq[CPU1] / driver[gamenum].fps;
-	
 	}
 	// Make sure we don't have a buffer overflow since we tend to run past the requested cycles.
 	float temp = ((float)current / (float)max);
-	
-	if (temp > 1) {	temp = (float).95; }
+
+	if (temp > 1) { temp = (float).95; }
 	temp = val * temp;
 	int k = (int)temp;
 	return k;
@@ -447,89 +431,6 @@ static void pokey_do_update(void)
 	if (sample_pos < BUFFER_SIZE) { Pokey_process(soundbuffer + sample_pos, BUFFER_SIZE - sample_pos); }
 	playstreamedsample_mhavoc(0, soundbuffer, BUFFER_SIZE, 200);
 	sample_pos = 0;
-}
-
-void end_mhavoc()
-{
-	wrlog("End Major Havoc Called");
-	free_audio_stream_buffer(stream1);
-	stop_audio_stream(stream1);
-	free(soundbuffer);
-	if (gamenum == MHAVOCRV || gamenum == MHAVOCPE) { tms5220_sh_stop(); }
-	if (has_gamma_cpu == 0) { save_hi_aae(0x1800, 0x100, 0); }
-}
-
-void run_reset()
-{
-	alpha_irq_clock = 0;
-	alpha_irq_clock_enable = 1;
-	gamma_irq_clock = 0;
-	MHAVGDONE = 0;
-	alpha_data = 0;
-	alpha_rcvd = 0;
-	alpha_xmtd = 0;
-	gamma_data = 0;
-	gamma_rcvd = 0;
-	gamma_xmtd = 0;
-	player_1 = 0;
-	cache_clear();
-	m_cpu_6502[CPU0]->reset6502();
-
-	if (has_gamma_cpu)
-	{
-		m_cpu_6502[CPU1]->reset6502();
-		Pokey_sound_init(1250000, 44100, 4, 6);
-	}
-	else { Pokey_sound_init(1250000, 44100, 2, 6); }
-}
-
-/*************************************
- *
- *  Interrupt handling
- *
- *************************************/
- //We are running this at 250mhz/4, so each of the clock number have to be multiplied by 4. (400 passes, 125 cycles)
-void mhavoc_interrupt()
-{
-	/* clock the LS161 driving the alpha CPU IRQ */
-	if (alpha_irq_clock_enable)
-	{
-		alpha_irq_clock++;
-		if ((alpha_irq_clock & (0x30)) == (0x30)) //0x0c //0x30
-		{
-			//wrlog("IRQ ALPHA CPU");
-			m_cpu_6502[CPU0]->irq6502();
-			alpha_irq_clock_enable = 0;
-		}
-	}
-
-	/* clock the LS161 driving the gamma CPU IRQ */
-	if (has_gamma_cpu)
-	{
-		gamma_irq_clock++;
-		if ((gamma_irq_clock & (0x20)) == (0x20))//08 //0x20
-		{
-			//wrlog("IRQ GAMMA CPU");
-			m_cpu_6502[CPU1]->irq6502();
-		}
-	}
-}
-
-WRITE_HANDLER(mhavoc_alpha_irq_ack_w)
-{
-	/* clear the line and reset the clock */
-	m_cpu_6502[CPU0]->m6502clearpendingint();
-	//wrlog("Alpha IRQ ACK!", data);
-	alpha_irq_clock = 0;
-	alpha_irq_clock_enable = 1;
-}
-
-WRITE_HANDLER(mhavoc_gamma_irq_ack_w)
-{
-	/* clear the line and reset the clock */
-	//wrlog("Gamma IRQ ACK!", data);
-	m_cpu_6502[CPU1]->m6502clearpendingint();
-	gamma_irq_clock = 0;
 }
 
 READ_HANDLER(mh_quad_pokey_read)
@@ -635,9 +536,109 @@ void mhavoc_sh_update()
 	// tms5220_sh_update();
 }
 
+// ***************************************  END AUDIO CODE ************************************************
+
+void end_mhavoc()
+{
+	wrlog("End Major Havoc Called");
+	free_audio_stream_buffer(stream1);
+	stop_audio_stream(stream1);
+	free(soundbuffer);
+	if (gamenum == MHAVOCRV || gamenum == MHAVOCPE) { tms5220_sh_stop(); }
+	if (has_gamma_cpu == 0) { save_hi_aae(0x1800, 0x100, 0); }
+}
+
+void run_reset()
+{
+	alpha_irq_clock = 0;
+	alpha_irq_clock_enable = 1;
+	gamma_irq_clock = 0;
+	MHAVGDONE = 0;
+	alpha_data = 0;
+	alpha_rcvd = 0;
+	alpha_xmtd = 0;
+	gamma_data = 0;
+	gamma_rcvd = 0;
+	gamma_xmtd = 0;
+	player_1 = 0;
+	cache_clear();
+	m_cpu_6502[CPU0]->reset6502();
+
+	if (has_gamma_cpu)
+	{
+		m_cpu_6502[CPU1]->reset6502();
+		Pokey_sound_init(1250000, 44100, 4, 6);
+	}
+	else { Pokey_sound_init(1250000, 44100, 2, 6); }
+}
+
+int get_vidticks(int reset)
+{
+	int v = 0;
+
+	if (reset == 0xff) //Reset Tickcount;
+	{
+		vidticks = 0;
+		return 0;
+	}
+
+	v = vidticks + m_cpu_6502[CPU0]->get6502ticks(0);
+
+	return v;
+}
+
+/*************************************
+ *
+ *  Interrupt handling
+ *
+ *************************************/
+ //We are running this at 250mhz/4, so each of the clock number have to be multiplied by 4. (400 passes, 125 cycles)
+void mhavoc_interrupt()
+{
+	/* clock the LS161 driving the alpha CPU IRQ */
+	if (alpha_irq_clock_enable)
+	{
+		alpha_irq_clock++;
+		if ((alpha_irq_clock & (0x30)) == (0x30)) //0x0c //0x30
+		{
+			//wrlog("IRQ ALPHA CPU");
+			m_cpu_6502[CPU0]->irq6502();
+			alpha_irq_clock_enable = 0;
+		}
+	}
+
+	/* clock the LS161 driving the gamma CPU IRQ */
+	if (has_gamma_cpu)
+	{
+		gamma_irq_clock++;
+		if ((gamma_irq_clock & (0x20)) == (0x20))//08 //0x20
+		{
+			//wrlog("IRQ GAMMA CPU");
+			m_cpu_6502[CPU1]->irq6502();
+		}
+	}
+}
+
+WRITE_HANDLER(mhavoc_alpha_irq_ack_w)
+{
+	/* clear the line and reset the clock */
+	m_cpu_6502[CPU0]->m6502clearpendingint();
+	//wrlog("Alpha IRQ ACK!", data);
+	alpha_irq_clock = 0;
+	alpha_irq_clock_enable = 1;
+}
+
+WRITE_HANDLER(mhavoc_gamma_irq_ack_w)
+{
+	/* clear the line and reset the clock */
+	//wrlog("Gamma IRQ ACK!", data);
+	m_cpu_6502[CPU1]->m6502clearpendingint();
+	gamma_irq_clock = 0;
+}
+
 WRITE_HANDLER(avgdvg_reset_w)
 {
-	wrlog("---------------------------AVGDVG RESET ------------------------"); 
+	wrlog("---------------------------AVGDVG RESET ------------------------");
 	total_length = 0;
 }
 
@@ -647,14 +648,18 @@ WRITE_HANDLER(avg_mgo)
 
 	MH_generate_vector_list();
 	//wrlog("Total Frame list length %d" ,total_length );
-	if (total_length > 10) 
+	if (total_length > 10)
 	{
-		MHAVGDONE = 0; 
+		MHAVGDONE = 0;
+		// Clear the video tick count.
 		get_vidticks(0xff);
-		//wrlog("Total LENGTH HERE %d ", total_length);
+		// sweep = 3.75 * total_length;
+		sweep = 2.268 * total_length;
+		//sweep = (float)(TIME_IN_NSEC(1500) * total_length) * 1250000;//1512000;// driver[gamenum].cpu_freq[CPU0];
+		//wrlog("Total Time in cycles for video  %f, total_length %d", sweep, total_length);
+		//wrlog("Sweep Timer %f", (TIME_IN_NSEC(1500) * total_length));
 	}
 	else { MHAVGDONE = 1; }
-	//wrlog("AVG RUN CALLED.");
 }
 
 WRITE_HANDLER(mhavoc_out_0_w)
@@ -686,45 +691,41 @@ WRITE_HANDLER(mhavoc_out_1_w)
 	set_aae_leds(-1, -1, (data & 0x02) >> 1);
 }
 
-/* Simulates frequency and vector halt */
+// Simulates frequency and vector halt
 READ_HANDLER(mhavoc_port_0_r)
 {
-	int res;
-	int ticks;
-	float me;
+	UINT8 res;
 
-	me = 3.75 * total_length;//(((1780 * total_length)/ 1000000) * 1512);//* 1512);
-	ticks = m_cpu_6502[CPU0]->get6502ticks(0);
-	//if (MHAVGDONE == 0)wrlog("Total LENGTH HERE %f and TOTAL TICKS %d", me, ticks);
-	if (get_vidticks(0) > me && MHAVGDONE == 0) { MHAVGDONE = 1; total_length = 0; }
+	if (!MHAVGDONE)
+	{
+		if ((get_vidticks(0) > sweep) && MHAVGDONE == 0)
+		{
+			MHAVGDONE = 1;
+			total_length = 0;
+		}
+	}
 
-	/* Bits 7-6 = selected based on Player 1 */
-		/* Bits 5-4 = common */
+	// Bits 7-6 = selected based on Player 1
+		// Bits 5-4 = common
 	if (player_1)
 		res = (readinputport(0) & 0x30) | (readinputport(5) & 0xc0);
 	else
 		res = readinputport(0) & 0xf0;
 
 	// Emulate the 2.4Khz source on bit 2 (divide 2.5Mhz by 1024)  (EVERY 120 CYCLES)
-	if (bigticks & 0x400) { res &= ~0x02; }
-	else { res |= 0x02; }
+	// Note: Bigticks that was being used previously may actually be better and help the timing.
+	if (!(alphaticks & 0x400)) { res |= 0x02; }
 
 	if (MHAVGDONE)
 		res |= 0x01;
-	else
-		res &= ~0x01;
 
-	if (gamma_rcvd == 1)
+	if (gamma_rcvd)
 		res |= 0x08;
-	else
-		res &= ~0x08;
 
-	if (gamma_xmtd == 1)
+	if (gamma_xmtd)
 		res |= 0x04;
-	else
-		res &= ~0x04;
 
-	return (res & 0xff);
+	return res;
 }
 
 READ_HANDLER(mhavoc_port_1_r)
@@ -750,21 +751,19 @@ READ_HANDLER(mhavoc_port_1_r)
 READ_HANDLER(alphaone_port_0_r)
 {
 	int res;
-	//    int ticks;
-	float me;
-	static int service = 0;
+
 	res = readinputport(0) & 0xfc;
 
-	me = (((1780 * total_length) / 1000000) * 1512);
-	//ticks=m6502zpGetElapsedTicks(0);
-	if (get_vidticks(0) > me && MHAVGDONE == 0) { MHAVGDONE = 1; total_length = 0; }
-
-	//if (player_1) res = 0xff;
-	//else res = 0xf0;
-
+	if (!MHAVGDONE)
+	{
+		if ((get_vidticks(0) > sweep) && MHAVGDONE == 0)
+		{
+			MHAVGDONE = 1;
+			total_length = 0;
+		}
+	}
+	
 	/* Emulate the 2.4Khz source on bit 2 (divide 2.5Mhz by 1024) */
-	//if (bitflip) { res &= ~0x02; }
-	//else { res |= 0x02; }
 	if (bigticks & 0x400) { res &= ~0x02; }
 	else { res |= 0x02; }
 
@@ -783,7 +782,7 @@ READ_HANDLER(alphaone_port_1_r)
 
 	res = readinputportbytag("IN1");
 
-	if (service)     bitclr(res, 0x10);
+	if (service)   bitclr(res, 0x10);
 
 	return res;
 }
@@ -832,6 +831,8 @@ READ_HANDLER(MRA_BANK1_R)
 
 	return GI[CPU0][bank];
 }
+
+// ***************************************  VIDEO CODE BELOW ************************************************
 
 WRITE_HANDLER(mhavoc_colorram_w)
 {
@@ -895,8 +896,6 @@ static void MH_generate_vector_list(void)
 	int sparkle = 0;
 	int xflip = 0;
 	int color = 0;
-	int myx = 0;
-	int myy = 0;
 	int currentx, currenty = 0;
 	int done = 0;
 	int firstwd, secondwd;
@@ -924,6 +923,7 @@ static void MH_generate_vector_list(void)
 	statz = 0;
 	color = 0;
 	scale = 0;
+	int ar, ag, ab;
 
 	firstwd = memrdwd(pc);
 	pc++; pc++;
@@ -970,21 +970,16 @@ static void MH_generate_vector_list(void)
 			y = twos_comp_val(firstwd >> 8, 5) << 1;
 			z = ((firstwd >> 4) & 0x0e);
 
-		DRAWCODE:	if (z == 2) { z = statz; }if (z) { z = (z << 4) | 0x1f; }
-
+		DRAWCODE:
+			if (z == 2) { z = statz; }if (z) { z = (z << 4) | 0x1f; }
 			deltax = x * scale;
 			if (xflip) deltax = -deltax;
 			deltay = y * scale;
-			myx = x * scalef;///2
-			myy = y * scalef;///2
-			total_length += vector_timer(myx, myy);
 
-			if (z > 0)
+			total_length += vector_timer(deltax, deltay);
+			//	wrlog("Total length here is %d ---------------->", vector_timer(deltax, deltay));
+			if (z)
 			{
-				if (sparkle) {
-					color = 0xf + (((spkl_shift & 1) << 3) | (spkl_shift & 4)
-						| ((spkl_shift & 0x10) >> 3) | ((spkl_shift & 0x40) >> 6));
-				}
 				if (vec_colors[color].r) red = z;   else red = 0;
 				if (vec_colors[color].g) green = z; else green = 0;
 				if (vec_colors[color].b) blue = z;  else blue = 0;
@@ -1002,26 +997,39 @@ static void MH_generate_vector_list(void)
 					if (ex > sx) one = 1;
 					if (ey > sy) two = 1;
 
-					//add_color_point(ex, ey, red, green, blue);
-					avg_add_point(ex, ey, 0, 0, red, green, blue, 0);
-
 					color = 0xf + (((spkl_shift & 1) << 3) | (spkl_shift & 4)
 						| ((spkl_shift & 0x10) >> 3) | ((spkl_shift & 0x40) >> 6));
-
 					if (vec_colors[color].r) red = z; else red = 0;
 					if (vec_colors[color].g) green = z; else green = 0;
 					if (vec_colors[color].b) blue = z; else blue = 0;
-
-					//add_color_point(sx, sy, red, green, blue);
-					avg_add_point(sx, sy, 0, 0, red, green, blue, 0);
+					red = red * 2;
+					green = green * 2;
+					blue = blue * 2;
+					// Add the line start point
+					avg_add_point(ex, ey, 0, 0, red, green, blue, 0);
 
 					while (ex != sx || ey != sy)
 					{
 						color = 0xf + (((spkl_shift & 1) << 3) | (spkl_shift & 4)
 							| ((spkl_shift & 0x10) >> 3) | ((spkl_shift & 0x40) >> 6));
+
+						/*
+						int bit3 = (~color >> 3) & 1;
+						int bit2 = (~color >> 2) & 1;
+						int bit1 = (~color >> 1) & 1;
+						int bit0 = (~color >> 0) & 1;
+						ar = bit3 * 0xcb + bit2 * 0x34;
+						ag = bit1 * 0xcb;
+						ab = bit0 * 0xcb;
+						wrlog("Red %d Green %d BLUE %d", ar, ag, ab);
+						*/
 						if (vec_colors[color].r) red = z; else red = 0;
 						if (vec_colors[color].g) green = z; else green = 0;
 						if (vec_colors[color].b) blue = z; else blue = 0;
+						red = red * 2;
+						green = green * 2;
+						blue = blue * 2;
+						//wrlog("ALTRed %d ALTGreen %d ALTBLUE %d", red, green, blue);
 
 						if (sx != ex) {
 							if (one) { sx += 1; }
@@ -1032,39 +1040,37 @@ static void MH_generate_vector_list(void)
 							if (two) { sy += 1; }
 							else { sy -= 1; }
 						}
-
-						//add_color_point(sx, sy, red, green, blue);
+						// Add the point for the line
 						avg_add_point(sx, sy, 0, 0, red, green, blue, 0);
 
 						spkl_shift = (((spkl_shift & 0x40) >> 6) ^ ((spkl_shift & 0x20) >> 5) ^ 1) | (spkl_shift << 1);
-
 						if ((spkl_shift & 0x7f) == 0x7f) spkl_shift = 0;
 					}
-					//add_color_line(sx, sy, ex, ey, red, green, blue);
+					// Add the line endpoint
 					avg_add_point(sx, sy, ex, ey, red, green, blue, 1);
 				}
-				if (ywindow == 1)
+				else
 				{
-					//Y-Window clipping
-					if (sy < clip && ey < clip) { draw = 0; }
-					else { draw = 1; }
-					if (ey < clip && ey < sy) { ex = ((clip - ey) * ((ex - sx) / (ey - sy))) + ex; ey = clip; }
-					if (sy < clip && sy < ey) { sx = ((clip - sy) * ((sx - ex) / (sy - ey))) + sx; sy = clip; }
-				}
+					draw = 1;
+					if (ywindow)
+					{
+						//Y-Window clipping
+						if (sy < clip && ey < clip) { draw = 0; }
+						if (ey < clip && ey < sy) { ex = ((clip - ey) * ((ex - sx) / (ey - sy))) + ex; ey = clip; }
+						if (sy < clip && sy < ey) { sx = ((clip - sy) * ((sx - ex) / (sy - ey))) + sx; sy = clip; }
+					}
 
-				if (draw && sparkle == 0)
-				{
-					//add_color_line(sx, sy, ex, ey, red, green, blue);
-					//add_color_point(sx, sy, red, green, blue);
-					//add_color_point(ex, ey, red, green, blue);
-					avg_add_point(sx, sy, ex, ey, red, green, blue, 1);
-					avg_add_point(sx, sy, 0, 0, red, green, blue, 0);
-					avg_add_point(ex, ey, 0, 0, red, green, blue, 0);
+					if (draw)
+					{
+						avg_add_point(sx, sy, ex, ey, red, green, blue, 1);
+						avg_add_point(sx, sy, 0, 0, red, green, blue, 0);
+						avg_add_point(ex, ey, 0, 0, red, green, blue, 0);
+					}
 				}
 			}
 			currentx += deltax;
 			currenty -= deltay;
-			total_length += vector_timer(myx, myy);
+
 			break;
 
 		case STAT:
@@ -1101,7 +1107,6 @@ static void MH_generate_vector_list(void)
 					ywindow = 0;
 				}
 			}
-
 			break;
 
 		case CNTR:
@@ -1172,6 +1177,8 @@ static void MH_generate_vector_list(void)
 	}
 }
 
+// ***************************************  END CODE BELOW ************************************************
+
 /////////////////////////////////////////GAMMA CPU ///////////////////////////////////////////
 
 /* Read from the gamma processor */
@@ -1223,7 +1230,7 @@ WRITE_HANDLER(mhavoc_gammaram_w)
 
 WRITE_HANDLER(watchdog_w)
 {
-	//if (data !=0x50 && data !=0) wrlog("WatchDog Barking!!!!!!!!!!!!!!!! ------x data:%x",data);
+
 }
 
 WRITE_HANDLER(nvram_w)
@@ -1252,9 +1259,7 @@ void MHAVOC_MWA_ROM(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWri
 
 WRITE_HANDLER(speech_data_w)
 {
-	if (data != 255) {
-		wrlog("Speech Data Write %x", data);
-	}
+	//if (data != 255) { wrlog("Speech Data Write %x", data);	}
 	speech_write_buffer = data;
 }
 
@@ -1350,34 +1355,38 @@ void run_mhavoc()
 	int cycles1 = (MHAVOC_CLOCK_2_5M / 50);
 	int cycles2 = (MHAVOC_CLOCK_1_25M / 50);
 	int passes = 400;
-	int cpunum = 0;
 	int cycles = 0;
-	int cpu1ticks = 0;
-	int cpu2ticks = 0;
-    UINT32 dwResult = 0;
+	UINT32 dwResult = 0;
 
 	gammaticks = 0;
+	alphaticks = 0;
+
+	int ran, target;
+	static int running;
 
 	//wrlog("------------FRAME START --------------");
 	update_input_ports();
-	// In order to get the counting tighter, 1 cycle is removed from each run. 125=124, 63 = 62;
-	// This code is still going to be over each frame, but not as much. 
-	// Will perm fix with cpu code update.
+	// Will perm fix with cpu code update. everything here is hand coded to 400 divisions per frame.
 	for (int x = 0; x < passes; x++)
 	{
-		dwResult = m_cpu_6502[CPU0]->exec6502(124);
-		if (0x80000000 != dwResult)
-		{
-			x = 3000; done = 1; end_mhavoc();
-			allegro_message("Invalid instruction at %.2x on CPU 2", m_cpu_6502[CPU0]->get_pc());
-		}
-		cycles = m_cpu_6502[CPU0]->get6502ticks(0xff);
+		target = (50000) * (x + 1) / 400;
 
-		cpu1ticks += cycles;
-		bigticks += cycles;
-		vidticks += cycles;
-		if (bigticks > 0xfffffff) { bigticks = 0; }
-				
+		while (alphaticks < target)
+		{
+			running = target - alphaticks;
+			dwResult = m_cpu_6502[CPU0]->exec6502(running);
+			if (0x80000000 != dwResult)
+			{
+				x = 405; done = 1; end_mhavoc();
+				allegro_message("Invalid instruction at %.2x on CPU 2", m_cpu_6502[CPU0]->get_pc());
+			}
+			cycles = m_cpu_6502[CPU0]->get6502ticks(0xff);
+
+			alphaticks += cycles;
+			bigticks += cycles;
+			vidticks += cycles;
+			if (bigticks > 0xfffffff) { bigticks = 0; }
+		}
 		if (has_gamma_cpu)
 		{
 			if (reset1) { m_cpu_6502[CPU1]->reset6502(); reset1 = 0; wrlog("Reset, Gamma CPU"); }
@@ -1392,22 +1401,29 @@ void run_mhavoc()
 				alpha_data = delayed_data;
 				//wrlog("NMI Taken, Gamma CPU");
 			}
-
-			dwResult = m_cpu_6502[CPU1]->exec6502(62); //(cycles2 / passes)
-			if (0x80000000 != dwResult)
+			target = (25000) * (x + 1) / 400;
+			while (gammaticks < target)
 			{
-				x = 3000; done = 1; end_mhavoc();
-				allegro_message("Invalid instruction at %.2x on CPU 2", m_cpu_6502[CPU1]->get_pc());
+				running = target - gammaticks;
+				dwResult = m_cpu_6502[CPU1]->exec6502(running); 
+				if (0x80000000 != dwResult)
+				{
+					x = 405; done = 1; end_mhavoc();
+					allegro_message("Invalid instruction at %.2x on CPU 2", m_cpu_6502[CPU1]->get_pc());
+				}
+				gammaticks += m_cpu_6502[CPU1]->get6502ticks(0xff);
 			}
-			gammaticks += m_cpu_6502[CPU1]->get6502ticks(0xff);
 		}
 		mhavoc_interrupt();
 	}
 	pokey_do_update();
 	if (gamenum == MHAVOCRV || gamenum == MHAVOCPE) { tms5220_sh_update(); }
 
-	wrlog("Alpha cycles ran this frame %d - Wanted to run %d", cpu1ticks, cycles1);
-	wrlog("Gamma cycles ran this frame %d - wanted to run %d", gammaticks, cycles2);
+	if (mh_debug)
+	{
+		wrlog("Alpha cycles ran this frame %d - Wanted to run %d", alphaticks, cycles1);
+		wrlog("Gamma cycles ran this frame %d - wanted to run %d", gammaticks, cycles2);
+	}
 }
 /////////////////// MAIN() for program ///////////////////////////////////////////////////
 int init_mhavoc(void)
@@ -1445,8 +1461,6 @@ int init_mhavoc(void)
 		memset(GI[CPU0] + 0x1800, 0xff, 0xff);
 	}
 
-	// Copy the vector rom to the paged rom area
-	memcpy(GI[CPU0] + 0x6000, GI[CPU2], 0x2000);
 	wrlog("MHAVOC CPU init complete");
 
 	//Load High Score table for Alpha One

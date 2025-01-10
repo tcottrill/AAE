@@ -40,10 +40,9 @@ int vector_timer(int deltax, int deltay)
 
 static void calc_sweep()
 {
-	//sweep = 2.35 * total_length; // 2.25 = 1500 us * 1.512 (freq)
-	//sweep = (((1775 * total_length)/ 1000000) * 1512); //1775
-	//sweep = (double) (1512 * total_length) * (1512000 / 1000000000.0f);
-	sweep = (TIME_IN_NSEC(1600) * total_length) * 1512000;
+	sweep = 2.268 * total_length;
+	//sweep = (TIME_IN_NSEC(1600) * total_length) * 1512000; //was 1600NS, changed back to 1500 driver[gamenum].cpu_freq[get_current_cpu()];
+	//wrlog("SWEEP CALC HERE is %f", (TIME_IN_NSEC(1600) * total_length));
 }
 
 static void set_bw_colors()
@@ -191,10 +190,11 @@ void AVG_RUN(void)
 
 			deltax = x * scale;
 			deltay = y * scale;
-
+			//total_length += vector_timer(deltax, deltay);
 			if (xflip) deltax = -deltax;
 			if (YFLIP) deltay = -deltay;
 			if (XFLIP) deltax = -deltax;
+			
 
 			sx = (currentx >> VEC_SHIFT);
 			sy = currenty >> VEC_SHIFT;
@@ -347,11 +347,25 @@ int avg_go()
 {
 	wrlog("AVG GO CALLED");
 
-	if (AVG_BUSY) { return 1; }
+	if (AVG_BUSY) 
+	{ 
+		wrlog("AVG call with AVG Busy, returning and doing nothing.");
+		return 1; 
+	}
 	else {
 		AVG_RUN();
-		if (total_length > 1) { AVG_BUSY = 1; get_video_ticks(0xff); calc_sweep(); }
-		else { AVG_BUSY = 0; }
+		if (total_length > 1) 
+		{
+			wrlog("Total AVG Draw Length here is %d at cpu0 cycles ran: %d", total_length, get_elapsed_ticks(CPU0));
+			AVG_BUSY = 1; 
+			get_video_ticks(0xff); 
+			calc_sweep(); 
+		}
+		else 
+		{
+			wrlog("Erronious AVG Busy Clear, this should never happen.");
+			AVG_BUSY = 0;
+		}
 	}
 
 	return 0;
@@ -365,9 +379,7 @@ int avg_clear()
 
 int avg_check()
 {
-	//wrlog("Total LENGTH HERE %f and TOTAL TICKS %d",me,ticks );
 	if ((get_video_ticks(0) > sweep) && AVG_BUSY) { avg_clear(); }
-
 	return AVG_BUSY;
 }
 

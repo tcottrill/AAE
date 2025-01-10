@@ -53,10 +53,18 @@ void timer_remove(int timer_num)
 
 void timer_init(void)
 {
-				
-	for (int x = 0; x < MAX_TIMERS; x++)
+	int x = 0;
+	
+	//Add count for all cpu's here with driver structure
+
+	while (driver[gamenum].cpu_freq[x] && x < MAX_CPU)
 	{
-		timer_remove(x);
+		sec_to_cycles[x] = driver[gamenum].cpu_freq[x];
+		cycles_to_sec[x] = 1.0 / sec_to_cycles[x];
+		if (VERBOSE) {
+			wrlog("Init timing for CPU #%d CPUClock Value %d", x, driver[gamenum].cpu_freq[x]);
+		}
+		x++;
 	}
 }
 

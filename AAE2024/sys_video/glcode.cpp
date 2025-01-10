@@ -25,7 +25,6 @@
 
 // New 2024
 #include "os_basic.h"
-
 #include "newfbo.h"
 #include "MathUtils.h"
 #include <chrono> // For code profiling
@@ -488,8 +487,8 @@ void copy_fbo2_to_fbo3()
 
 void render_blur_image_fbo3() //Downsample part 3
 {
-	static constexpr auto v1 = 1.5f;  //1.7 //1.0
-	static constexpr auto v2 = 2.5f;    //2.7 //2.0
+	static constexpr auto v1 = 1.0f;  //1.7 //1.0 // 1.5
+	static constexpr auto v2 = 2.0f;    //2.7 //2.0 //2.5
 	GLint loc = 0;
 	int i = 0;
 	float fshifta[] = { v1,0,-v1,0,//RIGHT

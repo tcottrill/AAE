@@ -398,6 +398,8 @@ void run_cpus_to_cycles()
 	tickcount[1] = 0;
 	tickcount[2] = 0;
 	tickcount[3] = 0;
+	// Start with all timers at zero;
+	timer_clear_all_eof();
 
 	for (x = 0; x < driver[gamenum].cpu_divisions[0]; x++)
 	{
@@ -471,8 +473,6 @@ int cpu_exec_now(int cpu, int cycles)
 		break;
 
 	case CPU_M6502:
-		//m_cpu_6502[cpu]->exec6502(cycles);
-		//ticks = m_cpu_6502[cpu]->get6502ticks(0xff);
 		m_cpu_6502[cpu]->exec6502(cyclecount[cpu]);
 		ticks = m_cpu_6502[active_cpu]->get6502ticks(0xff);
 		break;
@@ -509,7 +509,8 @@ void cpu_run_mame(void)
 	tickcount[1] = 0;
 	tickcount[2] = 0;
 	tickcount[3] = 0;
-
+	// Start with all timers at zero;
+	timer_clear_all_eof();
 	//wrlog("CPU RUN MAME CALLED");
 	update_input_ports();	/* read keyboard & update the status of the input ports */
 
@@ -581,8 +582,6 @@ void cpu_run_mame(void)
 							{
 								driver[gamenum].int_cpu[active_cpu]();
 							}
-							//(*Machine->drv->cpu[active_cpu].interrupt)(0);
-							//cpu_cause_interrupt(active_cpu, 0); // Original Code
 							iloops[active_cpu]--;
 
 							next_interrupt = (driver[gamenum].cpu_freq[active_cpu]

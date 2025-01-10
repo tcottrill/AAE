@@ -785,7 +785,7 @@ void do_dipswitch_menu()
 	int total;
 	int arrowize;
 	int color = 255;
-	int left = 225;
+	int left = 175;
 	int spacing = 21;
 	int start = 600;
 	int top = 0;
@@ -876,7 +876,7 @@ void do_dipswitch_menu()
 		}
 	}
 
-	quad_from_center(520, 525, 680, 280, 20, 20, 80, 255);
+	quad_from_center(520, 525, 850, 325, 20, 20, 80, 255);
 
 	for (x = 0; x < total; x++)
 	{
@@ -891,7 +891,7 @@ void do_dipswitch_menu()
 			fprint(left, start, MAKE_RGB(255, color, 255), 2.0, menu_item[x]);
 		}
 
-		fprint(545, start, MAKE_RGB(255, color, 255), 2.0, menu_subitem[x]);
+		fprint(580, start, MAKE_RGB(255, color, 255), 2.0, menu_subitem[x]);
 
 		if (arrowize == 2 && menuitem == x)
 		{
@@ -899,7 +899,7 @@ void do_dipswitch_menu()
 		}
 		if (arrowize == 1 && menuitem == x)
 		{
-			fprint(520, start, RGB_WHITE, 2.0, "<");
+			fprint(555, start, RGB_WHITE, 2.0, "<");
 		}
 
 		start -= 8 * 2.5;

@@ -28,8 +28,6 @@
 #include <string>
 #include "deftypes.h"
 
-
-
 class cpu_6502
 {
 
@@ -146,7 +144,7 @@ private:
 	// internal registers 
 	uint8_t opcode;
 	int clockticks6502;
-	int clocktickstotal; //Runnning, resetable total of clockticks
+	int clocktickstotal; //Runnning, resetable total of clockticks. This needs to be set to zero at init.
 	uint16_t reladdr;
 
 	// help variables, could be refined.
