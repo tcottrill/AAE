@@ -6,7 +6,7 @@
 #include "earom.h"
 #include "mathbox.h"
 #include "samples.h"
-#include "pokyintf.h"
+#include "aae_mame_pokey_2.4.h"
 
 #define IN0_3KHZ (1<<7)
 #define IN0_VG_HALT (1<<6)

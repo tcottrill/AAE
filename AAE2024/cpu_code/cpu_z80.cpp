@@ -21,6 +21,7 @@
 #include <assert.h>
 #include "log.h"
 #include <stdlib.h>
+#include "timer.h"
 
 #pragma warning( disable : 4244) //16 bit to 8 bit port return
 
@@ -103,7 +104,7 @@ void cpu_z80::mz80reset()
 	z80pc = 0;
 	z80ppc = 0;
 	cCycles = 0;
-	Rbit7 = 0x0;
+	//Rbit7 = 0x0;
 	dwElapsedTicks = 0;
 }
 
@@ -287,6 +288,13 @@ UINT16 cpu_z80::MemReadWord(UINT16 wAddr)
 	op1 = MemReadByte(wAddr++);
 	op2 = MemReadByte(wAddr);
 	return  (op1 | (op2 << 8));//   (MAKEWORD(op1, op2));
+}
+
+// increments R, keeping the highest byte intact
+// Taken from Superzazu
+void cpu_z80::IncR()
+{
+	m_regR = (m_regR & 0x80) | ((m_regR + 1) & 0x7f);
 }
 
 /* ***************************************************************************
@@ -668,6 +676,8 @@ unsigned cpu_z80::mz80step()
 
 	dwElapsedTicks += cyc;
 	if (dwElapsedTicks > 0xfffffff) dwElapsedTicks = 0;
+	// Update the various timers.
+	timer_update(cyc, cpu_num);
 
 	return cyc;
 }
@@ -675,7 +685,7 @@ unsigned cpu_z80::mz80step()
 unsigned cpu_z80::exec_opcode(uint8_t bOpcode)
 {
 	cCycles = 0;
-	m_regR++;
+	IncR();
 
 	switch (bOpcode)
 	{
@@ -2011,6 +2021,7 @@ UINT32 cpu_z80::mz80int(UINT32 bVal)
 		m_iff1 = 0;
 		m_fHalt = false;
 		z80ppc = -1;
+		IncR();
 		switch (m_nIM)
 		{
 		case 0:
@@ -2055,6 +2066,7 @@ UINT32 cpu_z80::mz80nmi()
 {
 	z80ppc = -1;
 	m_iff1 = 0;
+	IncR();
 	m_fHalt = false;
 	cCycles += 11;
 	Rst(z80nmiAddr);
@@ -2173,7 +2185,7 @@ void cpu_z80::Rst(uint16_t wAddr)
 
 int cpu_z80::HandleCB() {
 	const uint8_t bOpcode = ImmedByte();
-	m_regR++;
+	IncR();
 
 	switch (bOpcode)
 	{
@@ -3230,7 +3242,7 @@ int cpu_z80::HandleDD()
 
 	const uint8_t bOpcode = ImmedByte();
 
-	m_regR++;
+	IncR();
 
 	switch (bOpcode)
 	{
@@ -4274,7 +4286,7 @@ int cpu_z80::HandleDD()
  */
 void cpu_z80::HandleED() {
 	const uint8_t bOpcode = ImmedByte();
-	m_regR++;
+	IncR();
 
 	switch (bOpcode)
 	{
@@ -4621,7 +4633,7 @@ void cpu_z80::HandleED() {
 	case 0x4F: // ld_r_a
 		cCycles += 9;
 		m_regR = m_regA;
-		Rbit7 = (m_regA & 0x80); // save R bit 7.
+		//Rbit7 = (m_regA & 0x80); // save R bit 7.
 		break;
 
 	case 0x50: // in_d_c
@@ -4711,7 +4723,7 @@ void cpu_z80::HandleED() {
 
 	case 0x5F: // ld_a_r
 		cCycles += 9;
-		m_regA = ((m_regR & 0x7F) | Rbit7); /////////////////////////////////////// | (m_regR2 & 0x80);
+		m_regA = m_regR; 
 		m_regF = (m_regF & C_FLAG) | ZSTable[m_regA] | (m_iff2 << 2);
 		break;
 
@@ -5609,7 +5621,7 @@ int cpu_z80::HandleFD() {
 	uint16_t wTemp;
 	const uint8_t bOpcode = ImmedByte();
 
-	m_regR++;
+	IncR();
 
 	switch (bOpcode)
 	{

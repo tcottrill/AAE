@@ -43,6 +43,7 @@
 // 110424 Updated the Previous PC code and verified. Rewrote the Program Counter handler code, first pass. 
 // 110524 Invalidating the Previous Program counter after an interrupt, setting it to -1; and trapping it like in M.A.M.E (tm) fixed the decryption issue in Tacscan. 
 // 110524 LD A,nn Instructions after an interrupt are not decrypted. 
+// 011024 Corrected R Register handling ala Superzazu
 // 
 //Most of my code verification is with:
 //[superzazu / z80](https://github.com/superzazu/z80)
@@ -101,7 +102,6 @@ enum
 class cpu_z80
 {
 public:
-
 
 	//Pointer to the handler structures
 	MemoryReadByte* z80MemoryRead = nullptr;
@@ -234,7 +234,7 @@ private:
 	// Contains the irq vector. 
 	uint16_t irq_vector; 
 	/* Use to store bit 7 of R  */
-	uint8_t Rbit7;
+	//uint8_t Rbit7;
 
 	uint16_t m_regAF2;
 	uint16_t m_regBC2;
@@ -313,6 +313,7 @@ private:
 	void Exx();
 	int HandleCB();
 	void Daa();
+	void IncR();
 };
 
 #endif	// _MZ80_H_

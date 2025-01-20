@@ -1,6 +1,6 @@
 
 #include "cpu_i8080.h"
-#include "..//log.h"
+#include "log.h"
 
 
 

@@ -89,6 +89,8 @@ int cpu_getiloops(void);
 int cpu_exec_now(int cpu, int cycles);
 void cpu_run_mame(void);
 
+void free_cpu_memory();
+
 
 //Watchdog Defines from cpu_handler.cpp
 extern void watchdog_reset_w(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite);

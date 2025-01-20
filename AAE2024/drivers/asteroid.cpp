@@ -17,7 +17,7 @@
 #include "vector.h"
 #include "earom.h"
 #include "aae_avg.h"
-#include "pokyintf.h"
+#include "aae_mame_pokey_2.4.h"
 #include "acommon.h"
 #include "loaders.h"
 #include "timer.h"
@@ -687,6 +687,8 @@ int init_asteroid(void)
 	total_length = 0;
 	AsteroidsSwapRam(0, 0, 0);
 
+	SCRFLIP = 0;
+
 	//timer_set(TIME_IN_HZ(23), 0, watchdog_callback);
 	sample_set_volume(4, 0);
 	sample_start(4, kThrust, 1);
@@ -704,8 +706,7 @@ int init_astdelux(void)
 
 	cache_clear();
 	set_ast_colors();
-	//LoadEarom();
-
+	
 	psound = 1; //Enable Pokey Sound Processing
 	dvggo = 0;
 	vec_done = 0;

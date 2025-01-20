@@ -3,9 +3,6 @@
 #define ACOMMON_H
 
 void set_aae_leds(int a, int b, int c);
-
-unsigned char randRead(unsigned int address, struct MemoryReadByte* psMemRead);
-
 void video_loop(void);
 void return_to_menu(void);
 void sanity_check_config(void);

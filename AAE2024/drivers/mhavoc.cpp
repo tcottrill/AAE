@@ -193,7 +193,7 @@
 #include "samples.h"
 #include "vector.h"
 #include "aae_avg.h"
-#include "pokyintf.h"
+#include "aae_mame_pokey_2.4.h"
 #include "earom.h"
 #include "rand.h"
 #include "5220intf.h"
@@ -273,8 +273,6 @@ static UINT8 gamma_xmtd = 0;
 static UINT8 speech_write_buffer;
 static UINT8 player_1;
 int has_gamma_cpu = 1;
-
-int nmicpu1 = 0;
 int delayed_data = 0;
 
 static UINT8 alpha_irq_clock;
@@ -647,7 +645,7 @@ WRITE_HANDLER(avg_mgo)
 	if (MHAVGDONE == 0) { return; }
 
 	MH_generate_vector_list();
-	//wrlog("Total Frame list length %d" ,total_length );
+
 	if (total_length > 10)
 	{
 		MHAVGDONE = 0;
@@ -657,7 +655,7 @@ WRITE_HANDLER(avg_mgo)
 		sweep = 2.268 * total_length;
 		//sweep = (float)(TIME_IN_NSEC(1500) * total_length) * 1250000;//1512000;// driver[gamenum].cpu_freq[CPU0];
 		//wrlog("Total Time in cycles for video  %f, total_length %d", sweep, total_length);
-		//wrlog("Sweep Timer %f", (TIME_IN_NSEC(1500) * total_length));
+		wrlog("Sweep Timer %f", sweep);
 	}
 	else { MHAVGDONE = 1; }
 }
@@ -1184,7 +1182,6 @@ static void MH_generate_vector_list(void)
 /* Read from the gamma processor */
 READ_HANDLER(mhavoc_gamma_r)
 {
-	//wrlog(  "Gamma: Now reading Alpha Data: %02x", gamma_data);
 	alpha_rcvd = 1;
 	gamma_xmtd = 0;
 	return gamma_data;
@@ -1193,7 +1190,6 @@ READ_HANDLER(mhavoc_gamma_r)
 /* Read from the alpha processor */
 READ_HANDLER(mhavoc_alpha_r)
 {
-	//wrlog(  "Now Reading from data from Gamma Processor: %02x", alpha_data);
 	gamma_rcvd = 1;
 	alpha_xmtd = 0;
 	return alpha_data;
@@ -1201,7 +1197,6 @@ READ_HANDLER(mhavoc_alpha_r)
 /* Write to the alpha processor */
 WRITE_HANDLER(mhavoc_alpha_w)
 {
-	//wrlog( "Now Writing to Gamma Processor: %02x", data);
 	alpha_rcvd = 0;
 	gamma_xmtd = 1;
 	gamma_data = data;
@@ -1210,9 +1205,10 @@ WRITE_HANDLER(mhavoc_alpha_w)
 /* Write to the gamma processor */
 WRITE_HANDLER(mhavoc_gamma_w)
 {
-	//wrlog(  "Gamma: Writing to Alpha: %02x", data);
-	delayed_data = data;
-	nmicpu1 = 1;
+	gamma_rcvd = 0;
+	alpha_xmtd = 1;
+	alpha_data = data;
+	m_cpu_6502[CPU1]->nmi6502();
 }
 
 READ_HANDLER(mhavoc_gammaram_r)
@@ -1391,16 +1387,6 @@ void run_mhavoc()
 		{
 			if (reset1) { m_cpu_6502[CPU1]->reset6502(); reset1 = 0; wrlog("Reset, Gamma CPU"); }
 
-			// ToDo: Correct with more accurate timing.
-			if (nmicpu1)
-			{
-				m_cpu_6502[CPU1]->nmi6502();
-				nmicpu1 = 0;
-				gamma_rcvd = 0;
-				alpha_xmtd = 1;
-				alpha_data = delayed_data;
-				//wrlog("NMI Taken, Gamma CPU");
-			}
 			target = (25000) * (x + 1) / 400;
 			while (gammaticks < target)
 			{

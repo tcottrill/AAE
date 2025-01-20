@@ -19,7 +19,7 @@
 #include "vector.h"
 #include "aae_avg.h"
 #include "earom.h"
-#include "pokyintf.h"
+#include "aae_mame_pokey_2.4.h"
 #include "math.h"
 
 

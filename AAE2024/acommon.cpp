@@ -17,8 +17,6 @@
 #include "winalleg.h"
 #include "osd_cpu.h"
 #include "glcode.h"
-#include "pokey.h"
-#include "rand.h"
 #include "fonts.h"
 #include "samples.h"
 #include "menu.h"
@@ -79,12 +77,6 @@ void set_aae_leds(int a, int b, int c)
 }
 
 //TODO: None of below belongs in here
-
-//PLease get rid of this
-UINT8 randRead(unsigned int address, struct MemoryReadByte* psMemRead)
-{
-	return randintmm(0, 255);
-}
 
 void sanity_check_config(void)
 {

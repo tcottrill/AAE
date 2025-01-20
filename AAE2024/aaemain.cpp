@@ -199,9 +199,13 @@ void reset_for_new_game(int new_gamenum, int in_giu)
 	wrlog("Finished Freeing Samples");
 	free_game_textures(); //Free textures
 	wrlog("Finished Freeing Textures");
-		
-	wrlog("Saving Input Port Settings");
 	save_input_port_settings();
+	wrlog("Finished saving Input Port Settings");
+	timer_clear_end_of_game();
+	wrlog("Finished freeing all timers");
+	// I can't do this until all CPU's are handled by the CPU init code. 
+	//free_cpu_memory();
+	//wrlog("Finished freeing Allocated CPU MEM");
 	config.artwork = 0;
 	config.bezel = 0;
 	config.overlay = 0;

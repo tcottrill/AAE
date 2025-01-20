@@ -84,13 +84,7 @@
     <ClCompile Include="sndhrdw\5220intf.cpp">
       <Filter>Source Files\sndhrdwr</Filter>
     </ClCompile>
-    <ClCompile Include="sndhrdw\pokyintf.cpp">
-      <Filter>Source Files\sndhrdwr</Filter>
-    </ClCompile>
     <ClCompile Include="sndhrdw\tms5220.cpp">
-      <Filter>Source Files\sndhrdwr</Filter>
-    </ClCompile>
-    <ClCompile Include="sndhrdw\pokey.cpp">
       <Filter>Source Files\sndhrdwr</Filter>
     </ClCompile>
     <ClCompile Include="sndhrdw\samples.cpp">
@@ -258,6 +252,9 @@
     <ClCompile Include="vidhrdwr\cinematvid.cpp">
       <Filter>Source Files\sys_video</Filter>
     </ClCompile>
+    <ClCompile Include="sndhrdw\aae_mame_pokey_2.4.cpp">
+      <Filter>Source Files\sndhrdwr</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="aaemain.h">
@@ -317,17 +314,11 @@
     <ClInclude Include="sndhrdw\5220intf.h">
       <Filter>Source Files\sndhrdwr</Filter>
     </ClInclude>
-    <ClInclude Include="sndhrdw\pokyintf.h">
-      <Filter>Source Files\sndhrdwr</Filter>
-    </ClInclude>
     <ClInclude Include="sndhrdw\tms5220.h">
       <Filter>Source Files\sndhrdwr</Filter>
     </ClInclude>
     <ClInclude Include="targetver.h">
       <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="sndhrdw\pokey.h">
-      <Filter>Source Files\sndhrdwr</Filter>
     </ClInclude>
     <ClInclude Include="sndhrdw\samples.h">
       <Filter>Source Files\sndhrdwr</Filter>
@@ -517,6 +508,9 @@
     </ClInclude>
     <ClInclude Include="win10_win11_required_code.h">
       <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="sndhrdw\aae_mame_pokey_2.4.h">
+      <Filter>Source Files\sndhrdwr</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

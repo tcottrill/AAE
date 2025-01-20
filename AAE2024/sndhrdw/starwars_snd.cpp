@@ -24,8 +24,8 @@ See drivers\starwars.c for notes
 
 ***************************************************************************/
 
-#include "../aae_mame_driver.h"
-#include "../sndhrdw/pokyintf.h"
+#include "aae_mame_driver.h"
+#include "aae_mame_pokey_2.4.h"
 #include "starwars_snd.h"
 #include "5220intf.h"
 

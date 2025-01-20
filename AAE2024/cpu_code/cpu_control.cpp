@@ -480,6 +480,7 @@ int cpu_exec_now(int cpu, int cycles)
 	case CPU_8080:
 		m_cpu_i8080[cpu]->exec(cycles);
 		ticks = m_cpu_i8080[cpu]->get_ticks(0xff);
+		timer_update(ticks, active_cpu);
 		break;
 
 	case CPU_M6809:
@@ -489,7 +490,8 @@ int cpu_exec_now(int cpu, int cycles)
 
 	case CPU_68000:
 		s68000exec(cycles);
-		ticks = s68000controlOdometer(0xff); break;
+		ticks = s68000controlOdometer(0xff);
+		timer_update(ticks, active_cpu);
 		break;
 
 		//case CPU_CCPU: if (cpu_spinning) return;
@@ -498,7 +500,8 @@ int cpu_exec_now(int cpu, int cycles)
 	}
 	// Update the cyclecount and the interrupt timers.
 	cyclecount[cpu] += ticks;
-	timer_update(ticks, active_cpu);
+	// NOTE THE CPU CODE ITSELF IS UPDATING THE TIMERS NOW, except for the 68000 and the 8080
+	//timer_update(ticks, active_cpu);
 	return ticks;
 }
 
@@ -727,6 +730,42 @@ int cpu_scale_by_cycles(int val)
 	return k;
 }
 
+
+void free_cpu_memory()
+{
+	wrlog("Totalcpu = %d", totalcpu);
+
+	for (int x = 0; x < totalcpu; x++)
+	{
+		switch (driver[gamenum].cpu_type[x])
+		{
+		case CPU_MZ80:
+			free (m_cpu_z80[x]);
+			free(GI[x]);
+			break;
+
+		case CPU_M6502:
+			free(m_cpu_6502[x]);
+			free(GI[x]);
+			break;
+
+		case CPU_8080:
+			free (m_cpu_i8080[x]);
+			free(GI[x]);
+			break;
+
+		case CPU_M6809:
+			free (m_cpu_6809[x]);
+			free(GI[x]);
+			break;
+
+		case CPU_68000:
+			free(GI[x]);
+			break;
+		}
+	}
+}
+
 void init_cpu_config()
 {
 	int x;
@@ -759,7 +798,7 @@ void init_cpu_config()
 	hertzflip = 0;
 
 	timer_init();
-	//watchdog_timer = timer_set(TIME_IN_HZ(24), 0, watchdog_callback);
+	watchdog_timer = timer_set(TIME_IN_HZ(24), 0, watchdog_callback);
 	wrlog("NUMBER OF CPU'S to RUN: %d ", totalcpu);
 	wrlog("Finished starting up cpu settings, defaults");
 }

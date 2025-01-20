@@ -134,7 +134,7 @@ void timer_update(int cycles, int cpunum)
 			if (timer[x].cpu == cpunum)
 			{
 				timer[x].count += cycles;
-				 wrlog("Timer %d update to %f cycles", x,timer[x].count);
+				// wrlog("Timer %d update to %f cycles", x,timer[x].count);
 
 				if (timer[x].count >= timer[x].period)
 				{
@@ -203,4 +203,14 @@ void timer_clear_all_eof()
 			timer[x].count = 0;
 		}
 	}
+}
+
+void timer_clear_end_of_game()
+{
+	int x;
+	for (x = 0; x < MAX_TIMERS; x++)
+	{
+		timer_remove(x);
+	}
+
 }

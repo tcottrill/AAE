@@ -23,8 +23,8 @@
 
 #include <cstdint>
 #include "cpu_6809.h"
-#include "../log.h"
-//#include "timer.h"
+#include "log.h"
+#include "timer.h"
 
 
 static unsigned char haspostbyte[] = {
@@ -581,7 +581,7 @@ void cpu_6809::sync()
 {
 	/* SYNC should stop processing instructions until an interrupt occurs.
 	   A decent fake is probably to force an immediate IRQ. */
-	clockticks6809 = 0;
+	clockticks6809 = 20000000;
 }
 
 /* $14 ILLEGAL */
@@ -678,8 +678,6 @@ void cpu_6809::bra()
 	uint8_t t = 0;
 	//BRANCH(1);
 	t = (rd_slow)(pcreg); pcreg++; if (1)pcreg += SIGNED(t);
-	/* JB 970823 - speed up busy loops */
-	if (t == 0xfe) clockticks6809 = 0;
 }
 
 /* $21 BRN relative ----- */
@@ -3831,7 +3829,7 @@ int cpu_6809::exec6809(int timerTicks)
 		}
 
 		clocktickstotal += (clockticks6809 - lastticks);
-		//timer_update(clockticks6809 - lastticks, cpu_num);
+		timer_update(clockticks6809 - lastticks, cpu_num);
 		//wrlog("Cycles diff %d", clockticks6809-lastticks);
 
 		if (clocktickstotal > 0xfffffff) clocktickstotal = 0;
