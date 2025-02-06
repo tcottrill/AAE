@@ -26,6 +26,8 @@ unsigned int vectorram_size;
 static int ASTEROID_DVG = 0;
 static int yval = 1130;
 
+static int dvg_timer_val = -1;
+
 #define vecmemrdwd(address) ((vectorram[pc]) | (vectorram[pc+1]<<8))
 
 
@@ -44,7 +46,6 @@ static void set_color_palette()
 		vec_colors[i].b = i * 16;
 	}
 }
-
 
 int dvg_done(void)
 {
@@ -109,8 +110,6 @@ int dvg_generate_vector_list(void)
 		case 7:
 		case 8:
 		case 9:
-			// Get Second Word
-
 			// compute raw X and Y values and intensity //
 			z = secondwd >> 12;
 			y = firstwd & 0x03ff;
@@ -191,7 +190,7 @@ int dvg_generate_vector_list(void)
 			deltax = (x << VEC_SHIFT) >> (9 - temp);
 			deltay = (y << VEC_SHIFT) >> (9 - temp);
 			total_length += dvg_vector_timer(temp);
-
+			
 			if ((currentx == (currentx)+deltax) && (currenty == (currenty)-deltay))
 			{
 				if (ASTEROID_DVG) {
@@ -203,6 +202,7 @@ int dvg_generate_vector_list(void)
 
 			else
 			{
+				if (ASTEROID_DVG) { if (z < 2)  z = 0; }
 				cache_line(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, (currentx + deltax) >> VEC_SHIFT, (currenty - deltay) >> VEC_SHIFT, z, config.gain, 0);
 				cache_point(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, z, config.gain, 0, 0);
 				cache_point((currentx + deltax) >> VEC_SHIFT, (currenty - deltay) >> VEC_SHIFT, z, config.gain, 0, 0);
@@ -213,6 +213,7 @@ int dvg_generate_vector_list(void)
 			break;
 		}
 	}
+	//wrlog("AVG DUPDATE END");
 	return total_length;
 }
 
@@ -220,10 +221,10 @@ void dvg_go(int offset, int data)
 {
 	int total_length;
 
-	wrlog("DVG GO CALLED --------------");
+	//wrlog("DVG GO CALLED --------------");
 
 	/* skip if already busy */
-	if (busy) { wrlog("Vector Busy"); return; } //wrlog("Vector Busy");
+	if (busy) { return; } //wrlog("Vector Busy");
 
 	/* count vector updates and mark ourselves busy */
 	vector_updates++;
@@ -233,7 +234,8 @@ void dvg_go(int offset, int data)
 	if (vector_engine == USE_DVG)
 	{
 		total_length = dvg_generate_vector_list();
-		timer_pulse(TIME_IN_NSEC(4500) * total_length, CPU0, dvg_clr_busy);
+		dvg_timer_val=timer_pulse(TIME_IN_NSEC(4500) * total_length, CPU0, dvg_clr_busy);
+		//wrlog("Setting time at %f on timer %d", 1512000 * (TIME_IN_NSEC(4500) * total_length), dvg_timer_val);
 	}
 
 	/* AVG case
@@ -270,6 +272,7 @@ int dvg_init()
 	vector_engine = USE_DVG;
 	busy = 0;
 	vector_updates = 0;
+	dvg_timer_val = -1;
 	return 1;
 }
 
@@ -295,3 +298,8 @@ int dvg_end()
 	return 1;
 }
 
+void test_clear_busy()
+{
+	busy = 0;
+	vector_updates = 0;
+}

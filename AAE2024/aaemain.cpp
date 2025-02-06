@@ -463,30 +463,26 @@ void run_game(void)
 	//
 	while (!done && !close_button_pressed)
 	{
-    	wrlog("START OF FRAME HERE");
+    	//wrlog("START OF FRAME HERE");
 		
 		// Setup for rendering a frame. 
 		set_render();
 	
 		auto start = chrono::steady_clock::now();
 		//
-		// This is a mess of what cpu code to run for what cpu. This will get fixed with a full rewrite. 
-		//
-		//if (driver[gamenum].cpu_type[0] == CPU_M6502 || driver[gamenum].cpu_type[0] == CPU_M6809 || driver[gamenum].cpu_type[0] == CPU_MZ80 || driver[gamenum].cpu_type[0] == CPU_68000 || driver[gamenum].cpu_type[0] == CPU_CCPU)
-		//{
+		
 			if (!paused && have_error == 0) 
 			{
+				update_input_ports();
+
 				if (driver[gamenum].pre_run) driver[gamenum].pre_run(); 
+				
 				cpu_run_mame();
+
+				if (driver[gamenum].run_game)driver[gamenum].run_game();
 			}
-	//	}
-		
-		//
-		// Check if game is paused. This prob needs to be around the entire cpu code now. TODO: Fix!
-		if (!paused && have_error == 0) 
-		{
-			driver[gamenum].run_game(); 
-		}
+			
+	
 		if (hiscoreloaded == 0 && driver[gamenum].hiscore_load) 
 			hiscoreloaded = (*driver[gamenum].hiscore_load)();
 		
@@ -499,7 +495,7 @@ void run_game(void)
 		msg_loop();
 
 		inputport_vblank_end();
-		update_input_ports();
+		//update_input_ports();
 		//timer_clear_all_eof();
 		cpu_clear_cyclecount_eof();
 

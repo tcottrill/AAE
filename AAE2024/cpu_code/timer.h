@@ -52,5 +52,6 @@ int timer_pulse(double duration, int param, int data, void(*callback)(int));
 void timer_cpu_reset(int cpunum);
 void timer_clear_all_eof();
 void timer_clear_end_of_game();
+int  timer_is_timer_enabled(int timer_number);
 
 #endif

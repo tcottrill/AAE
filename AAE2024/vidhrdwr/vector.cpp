@@ -304,8 +304,22 @@ void cache_end(void)
 	if (lpntr < MIN_LINES) { lpntr = oldlpntr; glines[lpntr].sx = LINE_END; }
 	else { glines[lpntr].sx = LINE_END; lpntr = 0; }
 
-	if (dvglnptr < MIN_LINES && olddvglnptr > MIN_LINES) { dvglnptr = olddvglnptr; dvgpntptr = olddvgpntptr; dvgtexptr = olddvgtexptr; olddvglnptr = 0; olddvgpntptr = 0; olddvgtexptr = 0; wrlog("DRAW FROM CACHE!!!!!!!!!!!!!!!!!!!!!"); } //Is there no lines this frame?
-	else { olddvglnptr = dvglnptr; olddvgtexptr = dvgtexptr; olddvgpntptr = dvgpntptr; }
+	if (dvglnptr < MIN_LINES && olddvglnptr > MIN_LINES) 
+	{ 
+		dvglnptr = olddvglnptr; 
+		dvgpntptr = olddvgpntptr; 
+		dvgtexptr = olddvgtexptr; 
+		olddvglnptr = 0; 
+		olddvgpntptr = 0; 
+		olddvgtexptr = 0; 
+		wrlog("DRAW FROM CACHE!!!!!!!!!!!!!!!!!!!!!"); 
+	} //Is there no lines this frame?
+	else 
+	{ 
+		olddvglnptr = dvglnptr; 
+		olddvgtexptr = dvgtexptr; 
+		olddvgpntptr = dvgpntptr; 
+	}
 
 	linecache[dvglnptr] = LINE_END;
 	pointcache[dvgpntptr] = LINE_END;

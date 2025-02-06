@@ -40,7 +40,7 @@ timer_entry timer[MAX_TIMERS];
 void timer_remove(int timer_num)
 {
 	if (VERBOSE) {
-		wrlog("timer %d removed", timer_num);
+		wrlog("timer %d removed from list", timer_num);
 	}
 	timer[timer_num].cpu = 0;
 	timer[timer_num].period = 0;
@@ -87,7 +87,7 @@ int timer_set(double duration, int param, int data, void (*callback)(int))
 			//timer[x].period = (Machine->drv->cpu[(int8_t)param & 0x0f].cpu_clock * duration); 
 			timer[x].period = driver[gamenum].cpu_freq[(int8_t)param & 0x0f] * duration;
 
-			if (VERBOSE) { wrlog("Timer %d duration %f cpuclock %d", x, timer[x].period, driver[gamenum].cpu_freq[(int8_t)param & 0x0f]); }
+			if (VERBOSE) { wrlog("Timer %d duration %f + Current: %d  cpuclock %d", x, timer[x].period, cpu_getcycles(timer[x].cpu), driver[gamenum].cpu_freq[(int8_t)param & 0x0f] ); }
 			timer[x].enabled = 1;
 			// If it's a one-shot timer, make sure to set that.
 			if (param > 0xff)
@@ -125,7 +125,6 @@ void timer_update(int cycles, int cpunum)
 {
 	int x;
 
-	
 	for (x = 0; x < MAX_TIMERS; x++)
 	{
 		if (timer[x].enabled)
@@ -134,11 +133,11 @@ void timer_update(int cycles, int cpunum)
 			if (timer[x].cpu == cpunum)
 			{
 				timer[x].count += cycles;
-				// wrlog("Timer %d update to %f cycles", x,timer[x].count);
+				 //if (x > 1) wrlog("Timer %d update to %f cycles", x,timer[x].count);
 
 				if (timer[x].count >= timer[x].period)
 				{
-					if (VERBOSE) { wrlog("Timer %d fired at %f on cpu %d", x, timer[x].count, timer[x].cpu); }
+					if (VERBOSE) { wrlog("Timer %d fired at %f + %d on cpu %d", x, timer[x].count, cpu_getcycles(timer[x].cpu), timer[x].cpu); }
 					timer[x].count = 0;// timer[x].count - timer[x].period; //Count leftover cycles as passed
 					if (timer[x].callback) { (timer[x].callback)(timer[x].callback_param); }
 
@@ -164,6 +163,11 @@ void timer_cpu_reset(int cpunum)
 			timer[x].count = 0;
 		}
 	}
+}
+
+int  timer_is_timer_enabled(int timer_number)
+{
+	return timer[timer_number].enabled;
 }
 
 //This was written specifically for the watchdog, to reset it every frame.

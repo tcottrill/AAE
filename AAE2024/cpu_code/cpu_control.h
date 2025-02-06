@@ -82,6 +82,7 @@ void cpu_do_interrupt(int int_type, int cpunum);
 void cpu_clear_cyclecount(int cpunum);
 void cpu_clear_cyclecount_eof();
 int cpu_getcycles_cpu(int cpu);
+int cpu_getcycles(int reset);
 int cpu_getcycles_remaining_cpu(int cpu);
 
 int get_current_cpu();

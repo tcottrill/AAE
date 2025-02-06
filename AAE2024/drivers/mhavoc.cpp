@@ -1361,7 +1361,8 @@ void run_mhavoc()
 	static int running;
 
 	//wrlog("------------FRAME START --------------");
-	update_input_ports();
+	//update_input_ports();
+	watchdog_reset_w(0, 0, 0);
 	// Will perm fix with cpu code update. everything here is hand coded to 400 divisions per frame.
 	for (int x = 0; x < passes; x++)
 	{

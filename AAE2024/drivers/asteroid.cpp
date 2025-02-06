@@ -20,6 +20,10 @@
 #include "loaders.h"
 #include "old_mame_vecsim_dvg.h"
 
+#define MASTER_CLOCK (12096000)
+#define CLOCK_3KHZ   (MASTER_CLOCK / 4096)
+
+static int THREEKHZ_CLOCK = 0;
 /*
 	Asteroids Voice breakdown:
 	0 - thump
@@ -49,9 +53,11 @@
 #define kSaucerFire	 10
 #define kLife        11
 
-// Should be in avg/dvg code
+void clock3k_update()
+{
 
-
+	THREEKHZ_CLOCK ^= 1;
+}
 void asteroid_interrupt()
 {
 	// Turn off interrupts if self-test is enabled
@@ -275,6 +281,9 @@ WRITE_HANDLER(asteroid_bank_switch_w)
 	static int asteroid_bank = 0;
 	int asteroid_newbank;
 	asteroid_newbank = (data >> 2) & 1;
+	
+	wrlog("Asteroid Bankswitch write %x", data);
+
 	//SCRFLIP = GI[CPU0][0x18];
 	if (asteroid_bank != asteroid_newbank) {
 		/* Perform bankswitching on page 2 and page 3 */
@@ -285,10 +294,6 @@ WRITE_HANDLER(asteroid_bank_switch_w)
 	}
 	set_aae_leds((~data & 0x02), (~data & 0x01), 0);
 }
-
-
-//////////////// VECTOR GENERATOR TRIGGER ///////////////////////////////////////
-
 
 READ_HANDLER(asteroid_IN0_r)
 {
@@ -303,8 +308,10 @@ READ_HANDLER(asteroid_IN0_r)
 		res |= 0x02;
 
 	if (!dvg_done())
+	{
+		//wrlog("DVG returning IN0 BUSY? Cycles %d", cpu_getcycles(0));
 		res |= 0x04;
-
+	}
 	if (res & bitmask)
 		res = 0x80;
 	else
@@ -373,6 +380,14 @@ static struct POKEYinterface pokey_interface =
 	{ input_port_3_r }, //Dip here
 };
 
+MEM_READ(AsteroidDeluxeRead)
+MEM_ADDR(0x2000, 0x2007, asteroid_IN0_r)
+MEM_ADDR(0x2400, 0x2407, asteroid_IN1_r)
+MEM_ADDR(0x2800, 0x2803, asteroid_DSW1_r)
+MEM_ADDR(0x2c00, 0x2c0f, pokey_1_r)
+MEM_ADDR(0x2c40, 0x2c7f, EaromRead)
+MEM_END
+
 MEM_WRITE(AsteroidDeluxeWrite)
 MEM_ADDR(0x2c00, 0x2c0f, pokey_1_w)
 MEM_ADDR(0x3000, 0x3000, dvg_go_w)
@@ -384,14 +399,6 @@ MEM_ADDR(0x3200, 0x323f, EaromWrite)
 MEM_ADDR(0x3a00, 0x3a00, EaromCtrl)
 MEM_ADDR(0x3c00, 0x3c01, astdelux_led_w)
 MEM_ADDR(0x4800, 0x7fff, MWA_ROM)
-MEM_END
-
-MEM_READ(AsteroidDeluxeRead)
-MEM_ADDR(0x2000, 0x2007, asteroid_IN0_r)
-MEM_ADDR(0x2400, 0x2407, asteroid_IN1_r)
-MEM_ADDR(0x2800, 0x2803, asteroid_DSW1_r)
-MEM_ADDR(0x2c00, 0x2c0f, pokey_1_r)
-MEM_ADDR(0x2c40, 0x2c7f, EaromRead)
 MEM_END
 
 MEM_READ(AsteroidRead)
@@ -432,6 +439,8 @@ int init_asteroid(void)
 	sample_set_volume(4, 0);
 	sample_start(4, kThrust, 1);
 	sample_set_volume(4, 0);
+
+	//timer_set(TIME_IN_HZ(MASTER_CLOCK / 4096), 0, clock3k_update);
 
 	wrlog("End init");
 	return 0;

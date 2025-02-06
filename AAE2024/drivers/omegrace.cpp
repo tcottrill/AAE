@@ -320,6 +320,7 @@ PORT_WRITE_HANDLER(omega_reset)
 
 PORT_READ_HANDLER(omegrace_watchdog_r)
 {
+	watchdog_reset_w(0, 0, 0);
 	return 0;
 }
 
@@ -392,6 +393,7 @@ PORT_WRITE_HANDLER(omegrace_leds_w)
 ///////////////////////  MAIN LOOP /////////////////////////////////////
 void run_omega()
 {
+
 	AY8910_sh_update();
 }
 

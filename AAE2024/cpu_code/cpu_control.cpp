@@ -55,6 +55,7 @@ static int iloops[MAX_CPU];
 static int active_cpu = 0;
 static int totalcpu = 0;
 static int watchdog_timer = 0;
+static int watchdog_counter = 0;
 
 // New CPU Contexts
 cpu_6809* m_cpu_6809[MAX_CPU];
@@ -202,6 +203,10 @@ int cpu_getpc()
 	return 0;
 }
 
+int cpu_getcycles(int reset) //Only returns cycles from current context cpu
+{
+	return cyclecount[active_cpu];
+}
 
 int cpu_getcycles_cpu(int cpu) //Only returns cycles from current context cpu
 {
@@ -234,7 +239,7 @@ int get_current_cpu()
 {
 	return active_cpu;
 }
-
+/*
 int cpu_getcycles(int reset) //Only returns cycles from current context cpu
 {
 	int ticks = 0;
@@ -248,7 +253,7 @@ int cpu_getcycles(int reset) //Only returns cycles from current context cpu
 	}
 	return ticks;
 }
-
+*/
 void cpu_setcontext(int cpunum)
 {
 	switch (driver[gamenum].cpu_type[cpunum])
@@ -397,6 +402,22 @@ int cpu_getiloops(void)
 	return iloops[active_cpu];
 }
 
+/***************************************************************************
+
+  Use this function to cause an interrupt immediately (don't have to wait
+  until the next call to the interrupt handler)
+
+***************************************************************************/
+
+void cpu_cause_interrupt(int cpu, int type)
+{
+	// If there is an interrupt handler here, use it.
+	if (driver[gamenum].int_cpu[active_cpu])
+	{
+		driver[gamenum].int_cpu[active_cpu]();
+	}
+}
+
 //TBD SOON AS POSSIBLE, add a check to make sure every scheduled interrupt per pass per cpu has been taken, if not take it at the end of the run.
 int cpu_exec_now(int cpu, int cycles)
 {
@@ -452,7 +473,8 @@ void cpu_run_mame(void)
 	tickcount[3] = 0;
 	// Start with all timers at zero; This will need to change. 
 	//timer_clear_all_eof();
-	wrlog("CPU RUN MAME CALLED");
+	
+    //wrlog("CPU RUN MAME CALLED");
 	//update_input_ports();	/* read keyboard & update the status of the input ports */
 
 	for (active_cpu = 0; active_cpu < totalcpu; active_cpu++)
@@ -467,7 +489,7 @@ void cpu_run_mame(void)
 			iloops[active_cpu] = -1;
 
 		int cycles = (driver[gamenum].cpu_freq[active_cpu] / driver[gamenum].fps) / driver[gamenum].cpu_intpass_per_frame[active_cpu];
-		wrlog("Cycles are %d, iloops are %d", cycles, iloops[active_cpu]);
+		//wrlog("Cycles are %d, iloops are %d", cycles, iloops[active_cpu]);
 	}
 
 	for (current_slice = 0; current_slice < driver[gamenum].cpu_divisions[0]; current_slice++)
@@ -690,8 +712,12 @@ machine will be reset.
 *************************************************************************/
 void watchdog_callback(int param)
 {
-	wrlog("warning: reset caused by the watchdog\n");
-    cpu_reset_all();
+	watchdog_counter++;
+	if (watchdog_counter > 2) {
+		wrlog("warning: reset caused by the watchdog\n");
+		cpu_reset_all();
+		watchdog_counter = 0;
+	}
 }
 
 void watchdog_reset_w(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite)

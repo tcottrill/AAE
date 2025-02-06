@@ -24,3 +24,4 @@ void dvg_go_w(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite);
 int dvg_start_asteroid(void);
 int dvg_start(void);
 int dvg_end();
+void test_clear_busy();
