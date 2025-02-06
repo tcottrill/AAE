@@ -9,6 +9,6 @@ extern int gamenum;
 int init_tempest();
 void run_tempest();
 void end_tempest();
-void set_tempest_video();
+void tempest_interrupt();
 
 #endif

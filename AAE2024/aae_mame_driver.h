@@ -29,6 +29,7 @@
 #include "acommon.h"
 #include "osdepend.h"
 #include "config.h"
+#include "memory.h"
 
 extern FILE* errorlog;
 
@@ -185,10 +186,10 @@ extern struct AAEDriver driver[];
 struct RunningMachine
 {
 	unsigned char* memory_region[MAX_MEMORY_REGIONS]; //TBD
-	//unsigned int memory_region_length[MAX_MEMORY_REGIONS];	/* some drivers might find this useful */
+	unsigned int memory_region_length[MAX_MEMORY_REGIONS];	/* some drivers might find this useful */
 	//struct GfxElement *gfx[MAX_GFX_ELEMENTS];	/* graphic sets (chars, sprites) */
 	const struct AAEDriver* gamedrv;	/* contains the definition of the game machine */
-	//const struct MachineDriver* drv;	/* same as gamedrv->drv */
+	const struct MachineDriver* drv;	/* same as gamedrv->drv */
 
 	//struct GameSamples* samples;	/* samples loaded from disk */
 	struct InputPort* input_ports;	/* the input ports definition from the driver */
@@ -207,7 +208,7 @@ extern struct RunningMachine* Machine;
 //RAM Variables
 extern unsigned char* membuffer;
 extern unsigned char vec_ram[0x4000];
-extern unsigned char* GI[5]; //Global 6502/Z80/6809 GameImage
+extern unsigned char* GI[8]; //Global 6502/Z80/6809 GameImage
 
 
 extern int in_gui_sentinel;
@@ -365,7 +366,7 @@ enum GameDef {
 	LLANDER,
 	//Asteroids Hardware
 	METEORTS,
-	ASTEROCK,
+	//ASTEROCK,
 	ASTEROIB,
 	ASTEROI1,
 	ASTEROID,
@@ -397,8 +398,8 @@ enum GameDef {
 	TEMPEST2,
 	TEMPEST1,
 	TEMPTUBE,
-	ALIENST,
-	VBREAK,
+	ALIENSV,
+	VBRAKOUT,
 	VORTEX,
 	//Sega G80 Vector Hardware
 	ZEKTOR,

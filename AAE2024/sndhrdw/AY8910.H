@@ -14,6 +14,18 @@
 // THE CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.  
 //==========================================================================
 
+/***************************************************************************
+
+  ay8910.h/c
+
+
+  Emulation of the AY-3-8910 sound chip.
+
+  Based on various code snippets by Ville Hallik, Michael Cuddy,
+  Tatsuyuki Satoh, Fabrice Frances, Nicola Salmoria.
+
+***************************************************************************/
+
 #include "aae_mame_driver.h"
 
 #define MAX_8910 4

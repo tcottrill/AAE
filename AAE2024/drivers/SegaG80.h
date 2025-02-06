@@ -23,6 +23,15 @@ int init_segag80(void);
 void run_segag80(void);
 void sega_interrupt();
 
+int init_spacfury();
+int init_tacscan();
+int init_zektor();
+int init_startrek();
+int init_elim2();
+int init_elim4();
+
+
+
 
 
 #endif

@@ -181,6 +181,10 @@ void reset_for_new_game(int new_gamenum, int in_giu)
 
 	wrlog("@@@RESETTING for NEW GAME CALLED@#@@@@");
 
+	// If we're using high scores, write them to disk.
+	if (hiscoreloaded != 0 && driver[gamenum].hiscore_save)
+		(*driver[gamenum].hiscore_save)();
+
 	//If the game uses NVRAM, save it. This code is from M.A.M.E. (TM)
 	if (driver[gamenum].nvram_handler)
 	{
@@ -438,8 +442,9 @@ void run_game(void)
 	load_input_port_settings();
 	init_cpu_config(); ////////////////////-----------
 	driver[gamenum].init_game();
-		
+	
 	WATCHDOG = 0;
+	hiscoreloaded = 0;
 
 	//If the game uses NVRAM, initalize/load it. . This code is from M.A.M.E. (TM)
 	if (driver[gamenum].nvram_handler)
@@ -467,22 +472,24 @@ void run_game(void)
 		//
 		// This is a mess of what cpu code to run for what cpu. This will get fixed with a full rewrite. 
 		//
-		if (driver[gamenum].cpu_type[0] == CPU_M6809 || driver[gamenum].cpu_type[0] == CPU_MZ80)
-		{
-			if (!paused && have_error == 0) { if (driver[gamenum].pre_run) driver[gamenum].pre_run(); }
-			if (!paused && have_error == 0) { cpu_run_mame(); }
-			
-		}
+		//if (driver[gamenum].cpu_type[0] == CPU_M6502 || driver[gamenum].cpu_type[0] == CPU_M6809 || driver[gamenum].cpu_type[0] == CPU_MZ80 || driver[gamenum].cpu_type[0] == CPU_68000 || driver[gamenum].cpu_type[0] == CPU_CCPU)
+		//{
+			if (!paused && have_error == 0) 
+			{
+				if (driver[gamenum].pre_run) driver[gamenum].pre_run(); 
+				cpu_run_mame();
+			}
+	//	}
 		
-		if (driver[gamenum].cpu_type[0] == CPU_M6502 || driver[gamenum].cpu_type[0] == CPU_68000)
-		{
-			if (!paused && have_error == 0) { if (driver[gamenum].pre_run) driver[gamenum].pre_run(); }
-			if (!paused && have_error == 0) { run_cpus_to_cycles(); }
-		}
 		//
 		// Check if game is paused. This prob needs to be around the entire cpu code now. TODO: Fix!
-		if (!paused && have_error == 0) { driver[gamenum].run_game(); }
-
+		if (!paused && have_error == 0) 
+		{
+			driver[gamenum].run_game(); 
+		}
+		if (hiscoreloaded == 0 && driver[gamenum].hiscore_load) 
+			hiscoreloaded = (*driver[gamenum].hiscore_load)();
+		
 		auto end = chrono::steady_clock::now();
 		auto diff = end - start;
 		wrlog("Profiler: CPU Time: %f ", chrono::duration <double, milli>(diff).count());
@@ -494,6 +501,7 @@ void run_game(void)
 		inputport_vblank_end();
 		update_input_ports();
 		//timer_clear_all_eof();
+		cpu_clear_cyclecount_eof();
 
 		// Code to sleep for the rest of the frame. 
 		gametime = TimerGetTimeMS();

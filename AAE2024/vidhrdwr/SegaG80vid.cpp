@@ -55,9 +55,7 @@ static int min_x, min_y;
 
 int sega_vh_start(int r)
 {
-	wrlog("Sega Video Init");
-
-	//vector_set_shift(VEC_SHIFT);
+	//wrlog("Sega Video Init");
 	sega_rotate = r;
 
 	min_x = 512;
@@ -161,7 +159,7 @@ int adjust_xy(int rawx, int rawy, int* outx, int* outy)
 
 void sega_vh_update(void)
 {
-	wrlog("Starting Sega Video Update");
+	//wrlog("Starting Sega Video Update");
 	UINT8* sintable = GI[1];
 	double total_time = 1.0 / (double)IRQ_CLOCK;
 	UINT16 symaddr = 0;
@@ -401,5 +399,5 @@ void sega_vh_update(void)
 		if (draw & 0x80)
 			break;
 	}
-	wrlog("End Sega Video Update");
+	//wrlog("End Sega Video Update");
 }

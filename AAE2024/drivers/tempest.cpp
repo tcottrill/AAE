@@ -19,7 +19,7 @@
 #include "aae_mame_pokey_2.4.h"
 #include "earom.h"
 #include "mathbox.h"
-
+#include "timer.h"
 
 //
 // Tempest Multigame Notes:
@@ -316,6 +316,13 @@ static int INMENU = 0;
 static int tempprot = 1;
 static char* tbuffer = nullptr;
 
+
+void tempest_interrupt()
+{
+	cpu_do_int_imm(CPU0, INT_TYPE_INT);
+}
+
+
 static struct POKEYinterface pokey_interface =
 {
 	2,			/* 4 chips */
@@ -357,8 +364,8 @@ static void switch_game()
 	//wrlog("A here is %d", a);
 	switch (a)
 	{
-	case 1: b = 0x10000; gamenum = ALIENST; break;
-	case 2: b = 0x20000; gamenum = VBREAK; break;
+	case 1: b = 0x10000; gamenum = ALIENSV; break;
+	case 2: b = 0x20000; gamenum = VBRAKOUT; break;
 	case 3: b = 0x30000; gamenum = VORTEX; break;
 	case 4: b = 0x40000; gamenum = TEMPTUBE; break;
 	case 5: b = 0x50000; gamenum = TEMPEST1; break;
@@ -390,15 +397,6 @@ READ_HANDLER(pokey_2_tempest_read)
 	return val;
 }
 
-WRITE_HANDLER(TempGo)
-{
-	avg_go();
-}
-
-WRITE_HANDLER(watchdog_reset_w)
-{
-	WATCHDOG = data;
-}
 
 READ_HANDLER(TempestIN0read)
 {
@@ -406,10 +404,11 @@ READ_HANDLER(TempestIN0read)
 
 	res = readinputportbytag("IN0");
 
-	res = res | ((get_eterna_ticks(0) >> 1) & 0x80); //3Khz clock
+	 if (get_eterna_ticks(0) & 0x100); //3Khz clock
+	 res |= 0x80;
 
-	if (avg_check()) { bitclr(res, 0x40); }
-	else { bitset(res, 0x40); }
+	if (avg_check()) res |= 0x40;
+	
 
 	return res;
 }
@@ -462,11 +461,6 @@ WRITE_HANDLER(prot_w_3)
 	GI[CPU0][0x0455] = 0;
 }
 
-///////////////////////  MAIN LOOP /////////////////////////////////////
-void set_tempest_video()
-{
-	//if (gamenum != VBREAK) avg_clear();
-}
 
 //////////////////////////////////////////////////////////////////////////
 
@@ -491,19 +485,20 @@ MEM_ADDR(0x60c0, 0x60cf, pokey_1_w)
 MEM_ADDR(0x60d0, 0x60df, pokey_2_w)
 MEM_ADDR(0x6080, 0x609f, MathboxGo)
 MEM_ADDR(0x4000, 0x4000, coin_write)
-MEM_ADDR(0x4800, 0x4800, TempGo)
-MEM_ADDR(0x3000, 0x3fff, NoWrite)
+MEM_ADDR(0x4800, 0x4800, advdvg_go_w)
+MEM_ADDR(0x3000, 0x3fff, MWA_ROM)
 MEM_ADDR(0x6000, 0x603f, EaromWrite)
 MEM_ADDR(0x6040, 0x6040, EaromCtrl)
 MEM_ADDR(0x5000, 0x5000, watchdog_reset_w)
 MEM_ADDR(0x5800, 0x5800, avg_reset_w)
 MEM_ADDR(0x60e0, 0x60e0, tempest_led_w)
-MEM_ADDR(0x9000, 0xffff, NoWrite)
-MEM_ADDR(0x3000, 0x57ff, NoWrite)
+MEM_ADDR(0x9000, 0xffff, MWA_ROM)
+MEM_ADDR(0x3000, 0x57ff, MWA_ROM)
 MEM_END
 
 void run_tempest()
 {
+	watchdog_reset_w(0, 0, 0); // Required for protos.
 	pokey_sh_update();
 }
 /////////////////// MAIN() for program ///////////////////////////////////////////////////
@@ -512,7 +507,7 @@ int init_tempest(void)
 	init6502(TempestRead, TempestWrite, 0);
 
 	cache_clear();
-	\
+	
 		if (gamenum == TEMPESTM)
 		{
 			tbuffer = (char*)malloc(0x10000);
@@ -524,7 +519,7 @@ int init_tempest(void)
 		gamenum == TEMPEST1 ||
 		gamenum == TEMPEST2 ||
 		gamenum == TEMPEST3 ||
-		gamenum == VBREAK ||
+		gamenum == VBRAKOUT ||
 		gamenum == TEMPEST)
 	{
 		
@@ -534,20 +529,13 @@ int init_tempest(void)
 
 	pokey_sh_start(&pokey_interface);
 	avg_init();
+
+	//timer_set(TIME_IN_HZ(240), CPU0, tempest_interrupt);
+
 	return 0;
 }
 
 void end_tempest()
 {
-	if (gamenum == TEMPTUBE ||
-		gamenum == TEMPEST1 ||
-		gamenum == TEMPEST2 ||
-		gamenum == TEMPEST3 ||
-		gamenum == VBREAK ||
-		gamenum == TEMPEST)
-	{
-		
-	}
-
 	pokey_sh_stop();
 }

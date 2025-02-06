@@ -204,9 +204,8 @@ Sound Commands:
 #include "omegrace.h"
 #include "aae_mame_driver.h"
 #include "samples.h"
-#include "vector.h"
-#include "aae_avg.h"
 #include "AY8910.H"
+#include "old_mame_vecsim_dvg.h"
 
 static struct AY8910interface ay8910_interface =
 {
@@ -224,9 +223,9 @@ static unsigned char orace_nvram[256];
 int scrflip = 0;
 int angle = 1;
 int angle2 = 1;
-int vecwrite1 = 0x80;// Vector Processor Flag, 0=busy
+
 int soundlatch = 0;
-int vec_total = 0;
+
 
 /*
  * Encoder bit mappings
@@ -250,16 +249,26 @@ static unsigned char spinnerTable[64] = {
 	0xa0, 0xa4, 0xb4, 0xb0, 0xb8, 0xbc, 0x3c, 0x38,
 	0x30, 0x34, 0x24, 0x20, 0x28, 0x2c, 0x0c, 0x08 };
 
+
+static int cpu1_counter = 0;
+static int cpu2_counter = 0;
+
 void  omega_interrupt()
 {
-	cpu_do_int_imm(CPU0, INT_TYPE_INT);
+	cpu1_counter++; if ((cpu1_counter & 4) == 4) {
+		cpu_do_int_imm(CPU0, INT_TYPE_INT); cpu1_counter = 0;
+		//wrlog("Omega Race Interrupt");
+	}
 }
+
 
 void  omega_nmi_interrupt()
 {
-	cpu_do_int_imm(CPU1, INT_TYPE_NMI);
+	cpu2_counter++; if ((cpu2_counter & 4) == 4) {
+		cpu_do_int_imm(CPU1, INT_TYPE_NMI); cpu2_counter = 0; 
+		//wrlog("Omega Race NMI Interrupt");
+	}
 }
-
 void nvram_handler(void* file, int read_or_write)
 {
 	if (read_or_write)
@@ -282,166 +291,6 @@ void nvram_handler(void* file, int read_or_write)
 	}
 }
 
-static void set_omega_colors(void)
-{
-	int i = 0;
-
-	vec_colors[0].r = 0;
-	vec_colors[0].g = 0;
-	vec_colors[0].b = 0;
-
-	for (i = 1; i < 17; i++)
-	{
-		vec_colors[i].r = i * 16;
-		vec_colors[i].g = i * 16;
-		vec_colors[i].b = i * 16;
-	}
-}
-
-static void dvg_vector_timer(int scale)
-{
-	vec_total += scale;
-}
-
-static void Odvg_generate_vector_list(void)
-{
-	int pc = 0x8000;
-	int  sp = 0;
-	int stack[4];
-	int scale = 0;
-	//float gc = 0;
-	int done = 0;
-	int firstwd, secondwd;
-	int opcode;
-	int  x, y;
-	int temp;
-	int z = 0;
-	int deltax, deltay = 0;
-	int currentx = 0;
-	int currenty = 0;
-
-	while (!done)
-	{
-		firstwd = memrdwd(pc);
-		opcode = firstwd & 0xf000;
-		pc++;
-		pc++;
-		switch (opcode)
-		{
-		case 0:
-		case 0x1000:
-		case 0x2000:
-		case 0x3000:
-		case 0x4000:
-		case 0x5000:
-		case 0x6000:
-		case 0x7000:
-		case 0x8000:
-		case 0x9000:
-
-			// compute raw X and Y values //
-
-			secondwd = memrdwd(pc); pc++; pc++;
-			z = secondwd >> 12;
-			y = firstwd & 0x03ff;
-			x = secondwd & 0x03ff;
-
-			// Check for Sign and Adjust
-			if (firstwd & 0x0400)
-			{
-				y = -y;
-			}
-			if (secondwd & 0x400)
-			{
-				x = -x;
-			}
-			if (scrflip)
-			{
-				x = -x;
-				y = -y;
-			}
-			temp = ((scale + (opcode >> 12)) & 0x0f);
-			dvg_vector_timer(temp);
-			deltax = (x << VEC_SHIFT) >> (9 - temp);
-			deltay = (y << VEC_SHIFT) >> (9 - temp);
-
-		DRAWCODE:
-			if (z)
-			{
-				if ((currentx == (currentx)+deltax) && (currenty == (currenty)-deltay))
-				{
-					cache_point(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, z, config.gain, 0, 1);
-				}
-				else
-				{
-					cache_line(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, (currentx + deltax) >> VEC_SHIFT, (currenty - deltay) >> VEC_SHIFT, z, config.gain, 0);
-					cache_point(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, z, config.gain, 0, 0);
-					cache_point((currentx + deltax) >> VEC_SHIFT, (currenty - deltay) >> VEC_SHIFT, z, config.gain, 0, 0);
-				}
-			}
-			currentx += deltax;
-			currenty -= deltay;
-			break;
-
-		case 0xa000: // Set start of drawing
-
-			secondwd = memrdwd(pc);
-			pc++;
-			pc++;
-			x = twos_comp_val(secondwd, 12);
-			y = twos_comp_val(firstwd, 12);
-			//Do overall draw scaling
-			if (scrflip) { x = 1024 - x; y = 1024 - y; }
-
-			scale = (secondwd >> 12) & 0x0f; //This doesn't seem to matter for LL
-			y = 1024 - y;
-			currenty = (y) << VEC_SHIFT;
-			currentx = x << VEC_SHIFT;
-			break;
-
-		case 0xb000: //Halt
-			done = 1;
-			break;
-
-		case 0xc000:
-			stack[sp] = pc; //save current address
-			pc = 0x8000 + ((firstwd & 0x1fff) * 2); // Set new adress
-			sp = sp++; //Increment Stack
-			break;
-
-		case 0xd000:
-			sp = sp--; //Decrement Stack
-			pc = stack[sp]; //Load Program Counter
-			break;
-
-		case 0xe000: // Jump
-
-			pc = 0x8000 + ((firstwd & 0x1fff) * 2);
-			break;
-
-		case 0xf000:
-
-			// compute raw X and Y values //
-			y = firstwd & 0x0300;
-			x = (firstwd & 0x03) << 8;
-			z = (firstwd >> 4) & 0x0f;
-			//Check Sign Values and adjust as necessary
-			if (firstwd & 0x0400) { y = -y; }
-			if (firstwd & 0x04) { x = -x; }
-			if (scrflip) { x = -x; y = -y; }
-
-			temp = 2 + ((firstwd >> 2) & 0x02) + ((firstwd >> 11) & 0x01);
-			temp = ((scale + temp) & 0x0f);
-			dvg_vector_timer(temp);
-			//Compute Deltas
-			deltax = (x << VEC_SHIFT) >> (9 - temp);
-			deltay = (y << VEC_SHIFT) >> (9 - temp);
-
-			goto DRAWCODE;
-			break;
-		}
-	}
-}
 
 PORT_WRITE_HANDLER(omegrace_soundlatch_w)
 {
@@ -453,24 +302,6 @@ PORT_READ_HANDLER(omegrace_soundlatch_r)
 	return soundlatch;
 }
 
-PORT_READ_HANDLER(BWVG)
-{
-	static int lastframe;
-
-	//wrlog("----AVG GO Check CALLED");
-
-	if (frames != lastframe)
-	{
-		cache_clear();
-		Odvg_generate_vector_list();
-		vecwrite1 = 0x80;
-		//wrlog("----AVG GO ACTUALLY RAN");
-		lastframe = frames;
-	}
-
-	if (vecwrite1) { return 0x80; }
-	else return 0x0;
-}
 
 WRITE_HANDLER(nvram_w)
 {
@@ -492,23 +323,20 @@ PORT_READ_HANDLER(omegrace_watchdog_r)
 	return 0;
 }
 
+
+PORT_READ_HANDLER(omegrace_vg_go)
+{
+	dvg_go_w(0, 0, 0);
+	return 0;
+}
+
+
 PORT_READ_HANDLER(omegrace_vg_status_r)
 {
-	//float me;
-
-	//me = (((10 * vec_total) / 1000000) * 1512); //4500
-
-	//wrlog("Total LENGTH HERE %f and TOTAL TICKS %d",me,ticks );
-
-	//wrlog("VG Status Read, Cycles are %d", get_elapsed_ticks(0));
-
-	if (get_elapsed_ticks(0) > 54000)
-	{
-		vecwrite1 = 0;
-	}
-
-	//	if (get_video_ticks(0) > me && vecwrite1 == 0x80) { vecwrite1 = 0; vec_total = 0; }
-	return vecwrite1;
+	if (dvg_done())
+		return 0;
+	else
+		return 0x80;
 }
 
 int oomegrace_spinner1_r(int offset)
@@ -591,7 +419,7 @@ MEM_ADDR(0x0000, 0x07ff, MWA_ROM)
 MEM_END
 
 PORT_READ(OmegaPortRead)
-PORT_ADDR(0x08, 0x08, BWVG)
+PORT_ADDR(0x08, 0x08, omegrace_vg_go)
 PORT_ADDR(0x09, 0x09, omegrace_watchdog_r)
 PORT_ADDR(0x0b, 0x0b, omegrace_vg_status_r) /* vg_halt */
 PORT_ADDR(0x10, 0x10, o_input_port_0_r) /* DIP SW C4 */
@@ -624,11 +452,9 @@ int init_omega()
 {
 	init_z80(OmegaRead, OmegaWrite, OmegaPortRead, OmegaPortWrite, 0);
 	init_z80(SoundMemRead, SoundMemWrite, SoundPortRead, SoundPortWrite, 1);
-	vecwrite1 = 0;
-	set_omega_colors();
-	cache_clear();
+	dvg_start();
 	AY8910_sh_start(&ay8910_interface);
-	//nvram = &GI[0][0x5c00];
+
 	wrlog("End of Omega Race Driver Init");
 	return 0;
 }

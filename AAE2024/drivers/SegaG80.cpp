@@ -223,6 +223,7 @@ PORT_WRITE_HANDLER(sega_coin_counter_w)
 ///////////////////////  MAIN LOOP /////////////////////////////////////
 void run_segag80(void)
 {
+	watchdog_reset_w(0, 0, 0);
 	//Update Video
 	sega_vh_update();
 
@@ -234,20 +235,16 @@ void run_segag80(void)
 	else sega_sh_update();
 }
 
-struct MemoryWriteByte SegaWrite[] =
-{
-	{ 0x0000,  0xc7ff, MWA_ROM },
-	{ 0x0000,  0xffff, sega_mem_w },
-	{(UINT32)-1,	(UINT32)-1,		NULL}
-};
+MEM_WRITE(SegaWrite)
+MEM_ADDR( 0x0000,  0xc7ff, MWA_ROM )
+MEM_ADDR( 0x0000,  0xffff, sega_mem_w )
+MEM_END
 
-struct MemoryReadByte SegaRead[] =
-{
-	{ 0xe000, 0xefff, MRA_RAM },
-	{ 0xd000, 0xdfff, SoundRam },
-	{ 0xf000, 0xffff, SoundRam },
-	{(UINT32)-1,	(UINT32)-1,		NULL}
-};
+MEM_READ(SegaRead)
+MEM_ADDR( 0xe000, 0xefff, MRA_RAM )
+MEM_ADDR( 0xd000, 0xdfff, SoundRam )
+MEM_ADDR( 0xf000, 0xffff, SoundRam )
+MEM_END
 
 PORT_READ(SpacfuryPortRead)
 PORT_ADDR(0x3f, 0x3f, sega_sh_r)
@@ -326,75 +323,67 @@ PORT_ADDR(0xf8, 0xf8, sega_switch_w)
 PORT_ADDR(0xf9, 0xf9, sega_coin_counter_w) /* 0x80 = enable, 0x00 = disable */
 PORT_END
 
+//Init Functions for driver
+
+int init_spacfury()
+{
+	init_z80(SegaRead, SegaWrite, SpacfuryPortRead, SpacfuryPortWrite, 0);
+	NUM_SPEECH_SAMPLES = NUM_SPACFURY_SPEECH;
+	sega_security(64);
+	sega_vh_start(0);
+	init_segag80();
+	return 0;
+}
+
+int init_tacscan()
+{
+	init_z80(SegaRead, SegaWrite, G80SpinPortRead, TacScanPortWrite, CPU0);
+	sega_vh_start(1);
+	sega_security(76);
+	init_segag80();
+	return 0;
+}
+
+int init_zektor()
+{
+	init_z80(SegaRead, SegaWrite, G80SpinPortRead, ZektorPortWrite, CPU0);
+	NUM_SPEECH_SAMPLES = NUM_ZEKTOR_SPEECH;
+	sega_security(82);
+	sega_vh_start(0);
+	init_segag80();
+	return 0;
+}
+int init_startrek()
+{
+	init_z80(SegaRead, SegaWrite, G80SpinPortRead, StarTrekPortWrite, 0);
+	NUM_SPEECH_SAMPLES = NUM_STARTREK_SPEECH;
+	sega_security(64);
+	sega_vh_start(0);
+	init_segag80();
+	return 0;
+}
+
+int init_elim2()
+{
+	init_z80(SegaRead, SegaWrite, Elim2PortRead, ElimPortWrite, 0);
+	sega_security(70);
+	sega_vh_start(0);
+	init_segag80();
+	return 0;
+}
+
+int init_elim4()
+{
+	init_z80(SegaRead, SegaWrite, Elim4PortRead, ElimPortWrite, 0);
+	sega_security(76);
+	sega_vh_start(0);
+	init_segag80();
+	return 0;
+}
 
 int init_segag80(void)
 {
 	sega_vectorram = &GI[0][0xe000];
-
-	switch (gamenum)
-	{
-	case ZEKTOR:
-		init_z80(SegaRead, SegaWrite, G80SpinPortRead, ZektorPortWrite, CPU0);
-		NUM_SPEECH_SAMPLES = NUM_ZEKTOR_SPEECH; 
-		sega_security(82); 
-		sega_vh_start(0);
-		break;
-	case TACSCAN:
-		init_z80(SegaRead, SegaWrite, G80SpinPortRead, TacScanPortWrite, CPU0); 
-		sega_vh_start(1);
-		sega_security(76); 
-		break;
-	case STARTREK:
-		init_z80(SegaRead, SegaWrite, G80SpinPortRead, StarTrekPortWrite, 0); 
-		NUM_SPEECH_SAMPLES = NUM_STARTREK_SPEECH; 
-		sega_security(64); 
-		sega_vh_start(0);
-		break;
-	case SPACFURY:
-		init_z80(SegaRead, SegaWrite, SpacfuryPortRead, SpacfuryPortWrite, 0); 
-		NUM_SPEECH_SAMPLES = NUM_SPACFURY_SPEECH; 
-		sega_security(64); 
-		sega_vh_start(0);
-		break;
-	case SPACFURA:
-		init_z80(SegaRead, SegaWrite, SpacfuryPortRead, SpacfuryPortWrite, 0); 
-		NUM_SPEECH_SAMPLES = NUM_SPACFURY_SPEECH; 
-		sega_security(64); 
-		sega_vh_start(0);
-		break;
-	case SPACFURB:
-		init_z80(SegaRead, SegaWrite, SpacfuryPortRead, SpacfuryPortWrite, 0); 
-		NUM_SPEECH_SAMPLES = NUM_SPACFURY_SPEECH; 
-		sega_security(64);  
-		sega_vh_start(0);
-		break;
-	case ELIM2:
-		init_z80(SegaRead, SegaWrite, Elim2PortRead, ElimPortWrite, 0); 
-		sega_security(70); 
-		sega_vh_start(0);
-		break;
-	case ELIM2A:
-		init_z80(SegaRead, SegaWrite, Elim2PortRead, ElimPortWrite, 0); 
-		sega_security(70); 
-		sega_vh_start(0);
-		break;
-	case ELIM2C:
-		init_z80(SegaRead, SegaWrite, Elim2PortRead, ElimPortWrite, 0); 
-		sega_security(70); 
-		sega_vh_start(0);
-		break;
-	case ELIM4:
-		init_z80(SegaRead, SegaWrite, Elim4PortRead, ElimPortWrite, 0); 
-		sega_security(76); 
-		sega_vh_start(0);
-		break;
-	case ELIM4P:
-		init_z80(SegaRead, SegaWrite, Elim4PortRead, ElimPortWrite, 0); 
-		sega_security(76); 
-		sega_vh_start(0);
-		break;
-	}
-
 	sega_sh_start();
 	return 0;
 }

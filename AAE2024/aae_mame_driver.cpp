@@ -22,7 +22,7 @@ FILE* errorlog;
 //RAM Variables
 unsigned char* membuffer;
 unsigned char vec_ram[0x4000];
-unsigned char* GI[5]; //Global 6502/Z80/6809 GameImage
+unsigned char *GI[8]; //Global 6502/Z80/6809 GameImage
 
 int art_loaded[6];
 

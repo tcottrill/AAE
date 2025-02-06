@@ -63,6 +63,38 @@ Cleaned up and added a new AY8910 core, added it to Omega Race and added nvram h
 Reorganized all the OpenGl code in an attempt to make some sense of it. Added the Mushai 68000 core to maybe use with Quantum.
 
 
+12/08/24
+
+Made "major" changes to the Major Havoc driver, fixed nvram saving, added Major Havoc - The Promised End v1.01 to the driver. Will further split out everything and refine at a later date. Going back to graphics fixes.
+
+12/11/24
+
+Corrected the Menu System, first pass. Sound and Graphics Menus are working again, more or less. Still more work to do here with individual game configuration saves. Moved everything around to make it look at least a little bit better. 
+
+12/12/14 Increased rendering time with another FBO, but it worked around a major rendering flaw allowing me to composite the menu and FPS onto the screen without doing any crazy scaling everywhere to compensate for screen sizes.
+The menu system still needs work, I recommend not touching it except on the gui screen.
+
+12/17/24 Many config and Menu changes, hopefully all the menu issues are resolved. 
+
+12/21/24 Fixed main volume being too low, made too many changes to the menu system to list. More config changes to fix sound and graphics setting issues. Now the screen resolution can only be set in the gui, or by manually editing the config file.
+Adjusted sound in asteroids and asteroids deluxe. Added clipping to tempest to stop the lines from going around the bezel in certain resolutions. Made a few graphic code changes to prep for more changes. Moved the game specific INI files to their own folder. 
+
+12/22/24 Squashed the last rendering bug affecting the vertical games and battlezone. At this point, I think all the rendering is fixed, time to add a couple of features before completely changing the cpu and atari vector rendering.
+
+12/26/24
+Cleaned up video tick counting Code, adjusted AVG timing code for Major Havoc, this seems to clear up the issue with not being able to put in the secret code in mhavocpe. Or i'm way off base and I've made things worse, I don't have a real major havoc pcb to test with.
+
+12/27/24
+Found a ridiclous bug with counting the total cycles executed in the 6502 core. It was consistently underreporting the number of executed cycles, throwing everything off. Corrected.  
+
+12/28/24 More Major Havoc cleanups. At this point I'll call it "Meh". It works pretty well, it's only a couple of percent off now as far as cycle emulation compared to the real board. To get it near perfect is going to require a complete rewrite, working on it. 
+Cleaned up and removed dead code from cpu_control.h, trying to narrow down requirements for said rewrite.
+
+2/5/24
+Major Rewrite phase 1. Consolidated DVG code, moved everything to the mame timing code, added mostly cycle accurate timing to most drivers. 
+Started adding code to forklift to a complete newer core codeset. 
+
+
 
 
 

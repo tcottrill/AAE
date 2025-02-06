@@ -7,11 +7,20 @@ extern char* gamename[];
 
 int init_asteroid(void);
 int init_astdelux(void);
-void run_asteroids();
-void end_asteroids();
+void run_asteroid();
+void run_astdelux();
+void end_asteroid();
 void end_astdelux();
-int asteroid_load_hi();
-void  asteroid_save_hi();
-void asteroid_interrupt();
+
+int asteroid1_hiload();
+void  asteroid1_hisave();
+
+int asteroid_hiload();
+void  asteroid_hisave();
+extern void asteroid_interrupt();
+
+// Should be in avg_dvg.h
+
+
 
 #endif

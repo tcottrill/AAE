@@ -1,13 +1,10 @@
 #include "stdio.h"
 #include "loaders.h"
 #include <time.h>
-#include <allegro.h>
-#include "alleggl.h"
-#include "winalleg.h"
 #include "gameroms.h"
 #include "aae_mame_driver.h"
 #include "samples.h"
-//#include "acommon.h"
+
 
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION

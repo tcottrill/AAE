@@ -4,9 +4,11 @@
 #include "aae_mame_driver.h"
 #include "aae_avg.h"
 #include "earom.h"
+#include "vector.h"
 #include "mathbox.h"
 #include "samples.h"
 #include "aae_mame_pokey_2.4.h"
+#include "timer.h"
 
 #define IN0_3KHZ (1<<7)
 #define IN0_VG_HALT (1<<6)
@@ -15,6 +17,14 @@ static int soundEnable = 1;
 int rb_input_select; 	// 0 is roll_data, 1 is pitch_data
 
 static UINT8 analog_data;
+
+int bzone_timer = -1;
+
+void bzone_interrupt(int dummy)
+{
+	if (readinputport(0) & 0x10)
+		cpu_do_int_imm(CPU0, INT_TYPE_NMI);
+}
 
 // Translation table for one-joystick emulation
 static int one_joy_trans[32] = {
@@ -73,47 +83,6 @@ WRITE_HANDLER(bzone_pokey_w)
 		pokey1_w(address, data);
 }
 
-void BZSaveScore(void)
-{
-	FILE* fp;
-	int i;
-
-	fp = fopen("hi\\bzone.aae", "w");
-	if (fp == NULL) {
-		wrlog("Error - I couldn't write Battlezone High Score");
-	}
-	for (i = 0; i < 60; i++)
-
-	{
-		fprintf(fp, "%c", GI[CPU0][(0x300 + i)]);
-	}
-	fclose(fp);
-}
-int BZLoadScore(void)
-{
-	FILE* fp;
-	char c;
-	int i = 0;
-	fp = fopen("hi\\bzone.aae", "r");
-	// check if the hi score table has already been initialized
-	if (memcmp(&GI[CPU0][0x0300], "\x05\x00\x00", 3) == 0 &&
-		memcmp(&GI[CPU0][0x0339], "\x22\x28\x38", 3) == 0)
-	{
-		if (fp != NULL)
-		{
-			do {
-				c = getc(fp);    /* get one character from the file */
-				GI[CPU0][(0x300 + i)] = c;         /* display it on the monitor       */
-				i++;
-			} while (i < 60);    /* repeat until EOF (end of file)  */
-			fclose(fp);
-		}
-
-		return 1;
-	}
-	else return 0;
-}
-
 READ_HANDLER(BzoneIN0read)
 {
 	int res;
@@ -123,7 +92,7 @@ READ_HANDLER(BzoneIN0read)
 	if (get_eterna_ticks(0) & 0x100) res |= IN0_3KHZ;
 	else res &= ~IN0_3KHZ;
 
-	if (!avg_check())	res |= IN0_VG_HALT;
+	if (avg_check())	res |= IN0_VG_HALT;
 	else res &= ~IN0_VG_HALT;
 
 	return res;
@@ -135,11 +104,6 @@ READ_HANDLER(BzoneControls)
 	return (res);
 }
 
-WRITE_HANDLER(watchdog_reset_w)
-{
-	WATCHDOG = data;
-	wrlog("Watchdog write %d", data);
-}
 
 WRITE_HANDLER(RedBaronSoundsWrite)
 {
@@ -173,11 +137,6 @@ WRITE_HANDLER(RedBaronSoundsWrite)
 	{
 		if (sample_playing(1) == 0) { sample_start(1, 1, 0); }
 	}
-}
-
-WRITE_HANDLER(BZgo)
-{
-	avg_go();
 }
 
 WRITE_HANDLER(BzoneSounds)
@@ -235,17 +194,6 @@ WRITE_HANDLER(analog_select_w)
 ///////////////////////  MAIN LOOP /////////////////////////////////////
 void run_bzone()
 {
-	static int k = 0;
-
-	if (!(readinputport(0) & 0x10)) 
-	{
-		cpu_disable_interrupts(CPU0, 0); 
-	}
-	else 
-	{ 
-		cpu_disable_interrupts(CPU0, 1); 
-	}
-
 	if (!paused && soundEnable) { pokey_sh_update(); }
 }
 
@@ -262,15 +210,15 @@ MEM_ADDR(0x1828, 0x1828, BzoneControls)
 MEM_END
 
 MEM_WRITE(BradleyWrite)
-MEM_ADDR(0x1000, 0x1000, NoWrite)
-MEM_ADDR(0x1200, 0x1200, BZgo)
-MEM_ADDR(0x1400, 0x1400, NoWrite)
-MEM_ADDR(0x1600, 0x1600, NoWrite)
+MEM_ADDR(0x1000, 0x1000, MWA_ROM)
+MEM_ADDR(0x1200, 0x1200, advdvg_go_w)
+MEM_ADDR(0x1400, 0x1400, MWA_ROM)
+MEM_ADDR(0x1600, 0x1600, MWA_ROM)
 MEM_ADDR(0x1820, 0x182f, pokey_1_w)
 MEM_ADDR(0x1840, 0x1840, BzoneSounds)
 MEM_ADDR(0x1848, 0x1850, analog_select_w)
 MEM_ADDR(0x1860, 0x187f, MathboxGo)
-MEM_ADDR(0x3000, 0xffff, NoWrite)
+MEM_ADDR(0x3000, 0xffff, MWA_ROM)
 MEM_END
 
 MEM_READ(BzoneRead)
@@ -284,14 +232,14 @@ MEM_ADDR(0x1820, 0x182f, pokey_1_r)
 MEM_END
 
 MEM_WRITE(BzoneWrite)
-MEM_ADDR(0x1000, 0x1000, NoWrite)
-MEM_ADDR(0x1200, 0x1200, BZgo)
+MEM_ADDR(0x1000, 0x1000, MWA_ROM)
+MEM_ADDR(0x1200, 0x1200, advdvg_go_w)
 MEM_ADDR(0x1400, 0x1400, watchdog_reset_w)
-MEM_ADDR(0x1600, 0x1600, NoWrite)
+MEM_ADDR(0x1600, 0x1600, avgdvg_reset_w)
 MEM_ADDR(0x1820, 0x182f, bzone_pokey_w)
 MEM_ADDR(0x1860, 0x187f, MathboxGo)
 MEM_ADDR(0x1840, 0x1840, BzoneSounds)
-MEM_ADDR(0x3000, 0xffff, NoWrite)
+MEM_ADDR(0x3000, 0xffff, MWA_ROM)
 MEM_END
 
 MEM_READ(RedBaronRead)
@@ -307,43 +255,53 @@ MEM_ADDR(0x1820, 0x185f, EaromRead)
 MEM_END
 
 MEM_WRITE(RedBaronWrite)
-//MEM_ADDR( 0x0a00, 0x0a00, NoWrite)
-//MEM_ADDR( 0x0c00, 0x0c00, NoWrite)
+//MEM_ADDR( 0x0a00, 0x0a00, MWA_ROM)
+//MEM_ADDR( 0x0c00, 0x0c00, MWA_ROM)
+MEM_ADDR(0x1200, 0x1200, advdvg_go_w)
+MEM_ADDR(0x1600, 0x1600, avgdvg_reset_w)
 MEM_ADDR(0x1400, 0x1400, watchdog_reset_w)
 MEM_ADDR(0x1808, 0x1808, RedBaronSoundsWrite)
 MEM_ADDR(0x1810, 0x181f, bzone_pokey_w)
 MEM_ADDR(0x180c, 0x180c, EaromCtrl)
 MEM_ADDR(0x1820, 0x185f, EaromWrite)
 MEM_ADDR(0x1860, 0x187f, MathboxGo)
-MEM_ADDR(0x1200, 0x1200, BZgo)
-MEM_ADDR(0x3000, 0x37ff, NoWrite)
-MEM_ADDR(0x5000, 0x7fff, NoWrite)
+
+MEM_ADDR(0x3000, 0x37ff, MWA_ROM)
+MEM_ADDR(0x5000, 0x7fff, MWA_ROM)
 MEM_END
 
 //////////////////// MAIN() for program ///////////////////////////////////////////////////
+int init_redbaron()
+{
+	
+	init6502(RedBaronRead, RedBaronWrite, 0);
+	pokey_sh_start(&rb_pokey_interface);
+	avg_init();
+	avg_clear();
+	timer_set(TIME_IN_HZ(240), CPU0, bzone_interrupt);
+
+	return 0;
+}
+
 int init_bzone()
 {
-	if (gamenum == REDBARON)
-	{
-		init6502(RedBaronRead, RedBaronWrite, 0);
-		pokey_sh_start(&rb_pokey_interface);
-		//LoadEarom();
-	}
-	else
-	{
-		init6502(BzoneRead, BzoneWrite, 0);
-		pokey_sh_start(&bzone_pokey_interface);
-	}
-
+	init6502(BzoneRead, BzoneWrite, 0);
+	pokey_sh_start(&bzone_pokey_interface);
+	
 	avg_init();
+	avg_clear();
+    timer_set(TIME_IN_HZ(240), CPU0, bzone_interrupt);
 
 	return 0;
 }
 void end_bzone()
 {
-	pokey_sh_stop();
+	if (bzone_timer)
+	{
+		timer_remove(bzone_timer);
+	}
 
-//	if (gamenum == REDBARON) SaveEarom();
+	pokey_sh_stop();
 }
 
 //////////////////  END OF MAIN PROGRAM /////////////////////////////////////////////

@@ -21,7 +21,7 @@ double sec_to_cycles[MAX_CPU + 1];
 //We are starting all timers at 1!!!!
 // All timers must be positive!
 
-#define VERBOSE 1
+#define VERBOSE 0
 #define MAX_TIMERS 8
 
 typedef struct timer_entry
@@ -97,15 +97,15 @@ int timer_set(double duration, int param, int data, void (*callback)(int))
 				// This isn't how tempest works in the real world, but we need a frame to end somewhere.
 				// This should be cycles reemaining??? Like, get_cycles_remaining();
 				//int cycles = (Machine->drv->cpu[timer[x].cpu].cpu_clock / Machine->drv->frames_per_second);
-				int cycles = (driver[gamenum].cpu_freq [timer[x].cpu] / driver[gamenum].fps);
-				if (timer[x].period > cycles)
-				{
-					timer[x].period = cycles; // 20 picked randomly!
-					if (VERBOSE) 
-					{
-						wrlog("New timer with Cycles at %f on cpu: %d out of total cycles: %d ", timer[x].period, timer[x].cpu,cycles); 
-					}
-				}
+				//int cycles = (driver[gamenum].cpu_freq [timer[x].cpu] / driver[gamenum].fps);
+				//if (timer[x].period > cycles)
+			//	{
+				//	timer[x].period = cycles; // 20 picked randomly!
+				//	if (VERBOSE) 
+				//	{
+					//	wrlog("New timer with Cycles at %f on cpu: %d out of total cycles: %d ", timer[x].period, timer[x].cpu,cycles); 
+				//	}
+				//}
 				timer[x].expire = 1;
 				if (VERBOSE) { wrlog("Previous timer was a oneshot."); }
 			}

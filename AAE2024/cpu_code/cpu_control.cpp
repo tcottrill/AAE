@@ -22,7 +22,7 @@
 
 static int cpu_configured = 0;
 static int cyclecount[4];
-static int addcycles[4];
+//static int addcycles[4];
 static int reset_cpu_status[4];
 //Time counters (To Be Removed)
 static int hrzcounter = 0; //Only on CPU 0
@@ -91,6 +91,7 @@ void init8080(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct
 		0xffff);
 	m_cpu_i8080[cpunum]->reset();
 }
+
 
 void init6502(struct MemoryReadByte* read, struct MemoryWriteByte* write, int cpunum)
 {
@@ -199,6 +200,34 @@ int cpu_getpc()
 		break;
 	}
 	return 0;
+}
+
+
+int cpu_getcycles_cpu(int cpu) //Only returns cycles from current context cpu
+{
+	return cyclecount[cpu];
+}
+
+int cpu_getcycles_remaining_cpu(int cpu) //Only returns cycles from current context cpu
+{
+	int cycles = driver[gamenum].cpu_freq[active_cpu] / driver[gamenum].fps;
+	return cycles - cyclecount[cpu];
+}
+
+void cpu_clear_cyclecount(int cpunum)
+{
+	cyclecount[cpunum] = 0;
+}
+
+void cpu_clear_cyclecount_eof()
+{
+	int x;
+
+	for (x = 0; x < totalcpu; x++)
+	{
+		wrlog("Clear CPU#: %d count at clear is: %d", x, cyclecount[x]);
+		cyclecount[x] = 0;
+	}
 }
 
 int get_current_cpu()
@@ -362,97 +391,6 @@ void cpu_do_interrupt(int int_type, int cpunum)
 	}
 }
 
-void exec_cpu()
-{
-	UINT32 dwResult = 0;
-
-	switch (driver[gamenum].cpu_type[get_current_cpu()])
-	{
-	case CPU_MZ80:   dwResult = m_cpu_z80[active_cpu]->mz80exec(cyclecount[active_cpu]); break;
-	case CPU_M6502:  dwResult = m_cpu_6502[active_cpu]->exec6502(cyclecount[active_cpu]); break;
-	case CPU_68000:  dwResult = s68000exec(cyclecount[active_cpu]);
-		//wrlog("68000 exec called");
-		break;
-	case CPU_M6809:
-	{ dwResult = m_cpu_6809[active_cpu]->exec6809(cyclecount[active_cpu]); break; }
-	}
-
-	if (0x80000000 != dwResult)
-	{
-		wrlog("Invalid instruction at %.2x\n");
-		exit(1);
-	}
-
-	//wrlog("Executed %d cycles but really ran %d", cyclecount[active_cpu], m_cpu_6502[active_cpu]->get6502ticks(0));
-}
-
-// This is the jankiest code ever.
-// And it does not guarantee that the amount of cycles ran reaches the requested number. 
-void run_cpus_to_cycles() 
-{
-	UINT32 dwElapsedTicks = 0;
-	int  x;
-	int cycles_ran = 0;
-
-	tickcount[0] = 0;
-	tickcount[1] = 0;
-	tickcount[2] = 0;
-	tickcount[3] = 0;
-	// Start with all timers at zero;
-	timer_clear_all_eof();
-
-	for (x = 0; x < driver[gamenum].cpu_divisions[0]; x++)
-	{
-		for (int i = 0; i < totalcpu; i++)
-		{
-			active_cpu = i;
-
-			if (totalcpu > 1) { cpu_setcontext(i); }
-
-			// Why? I am not using dwElapsedTicks for anything!
-			dwElapsedTicks = cpu_getcycles(0xff);
-			
-			cpu_resetter(i); //Check for CPU Reset
-			process_pending_interrupts(i); //Check and see if there is a pending interrupt request outstanding
-			exec_cpu();
-			cycles_ran = cpu_getcycles(0);
-			//wrlog("Cycles ran here is %d", cycles_ran);
-			//timer_update(cycles_ran, active_cpu);
-
-			tickcount[i] += cycles_ran; //Add cycles this pass to frame cycle counter;
-			add_eterna_ticks(i, cycles_ran);
-			// Only do this for CPU0
-			if (i == CPU0) 	{vid_tickcount += cycles_ran;}
-
-			if (driver[gamenum].int_cpu[i]) { driver[gamenum].int_cpu[i](); }
-			else {
-				if (driver[gamenum].cpu_int_type[i])//Is there an int to run?
-				{
-					// wrlog("WARNING --- CALLING STANDARD INTERRUPT HANDLER!!!!");
-					cpu_do_interrupt(driver[gamenum].cpu_int_type[i], i);
-				}
-			}
-			if (totalcpu > 1) { cpu_getcontext(i); }
-		}
-	}
-
-	framecnt++;
-	if (framecnt == driver[gamenum].fps)
-	{
-		//wrlog("-------------------------------------------------INTERRUPTS PER FRAME %d",intcnt);
-		framecnt = 0; 
-		intcnt = 0;
-	}
-
-	wrlog("CPU CYCLES RAN %d CPU CYCLES REQUESTED %d", tickcount[0], driver[gamenum].cpu_freq[0] / driver[gamenum].fps);
-}
-
-///////////////////////
-//
-// DUPLICATE CPU CODE ADDED FOR MULTICPU SUPPORT BELOW
-//
-///////////////////////
-
 //***************************************************************************
 int cpu_getiloops(void)
 {
@@ -473,7 +411,7 @@ int cpu_exec_now(int cpu, int cycles)
 		break;
 
 	case CPU_M6502:
-		m_cpu_6502[cpu]->exec6502(cyclecount[cpu]);
+		m_cpu_6502[cpu]->exec6502(cycles);
 		ticks = m_cpu_6502[active_cpu]->get6502ticks(0xff);
 		break;
 
@@ -494,9 +432,9 @@ int cpu_exec_now(int cpu, int cycles)
 		timer_update(ticks, active_cpu);
 		break;
 
-		//case CPU_CCPU: if (cpu_spinning) return;
-		  //	ccpu_cycles = ccpu_execute(100);
-		  //	break;
+	case CPU_CCPU:
+		  	ticks = run_ccpu(cycles);
+		  	break;
 	}
 	// Update the cyclecount and the interrupt timers.
 	cyclecount[cpu] += ticks;
@@ -512,10 +450,10 @@ void cpu_run_mame(void)
 	tickcount[1] = 0;
 	tickcount[2] = 0;
 	tickcount[3] = 0;
-	// Start with all timers at zero;
-	timer_clear_all_eof();
-	//wrlog("CPU RUN MAME CALLED");
-	update_input_ports();	/* read keyboard & update the status of the input ports */
+	// Start with all timers at zero; This will need to change. 
+	//timer_clear_all_eof();
+	wrlog("CPU RUN MAME CALLED");
+	//update_input_ports();	/* read keyboard & update the status of the input ports */
 
 	for (active_cpu = 0; active_cpu < totalcpu; active_cpu++)
 	{
@@ -529,7 +467,7 @@ void cpu_run_mame(void)
 			iloops[active_cpu] = -1;
 
 		int cycles = (driver[gamenum].cpu_freq[active_cpu] / driver[gamenum].fps) / driver[gamenum].cpu_intpass_per_frame[active_cpu];
-		//wrlog("Cycles are %d, iloops are %d", cycles, iloops[active_cpu]);
+		wrlog("Cycles are %d, iloops are %d", cycles, iloops[active_cpu]);
 	}
 
 	for (current_slice = 0; current_slice < driver[gamenum].cpu_divisions[0]; current_slice++)
@@ -600,45 +538,49 @@ void cpu_run_mame(void)
 	}
 }
 
-///////////////////////
-//
-// END OF DUPLICATE CPU CODE
-//
-///////////////////////
-
-void cpu_resetter(int cpunum)
-{
-	if (reset_cpu_status[cpunum])
-	{
-		wrlog("RESETTING CPU %d NOW --------------------------------------", cpunum);
-		switch (driver[gamenum].cpu_type[get_current_cpu()])
-		{
-		case CPU_MZ80:  m_cpu_z80[cpunum]->mz80reset(); break;
-		case CPU_M6502: m_cpu_6502[cpunum]->reset6502(); break;
-		case CPU_68000: s68000reset(); break;
-		case CPU_M6809: m_cpu_6809[cpunum]->reset6809(); break;
-		case CPU_CCPU: ccpu_reset(); break;
-		}
-
-		tickcount[cpunum] = 0;
-		interrupt_count[cpunum] = 0;
-		reset_cpu_status[cpunum] = 0;
-		if (cpunum == 0)vid_tickcount = 0;
-		wrlog("RESETTING CPU %d NOW ------------------Reset CPU Status is %d--------------------", cpunum, reset_cpu_status[cpunum]);
-	}
-}
-
 void cpu_reset(int cpunum)
 {
-	wrlog("CPU RESET CALLED!!!!!!!!!!!!!!!!!!!!!!___________________________________!!!!!!!!!!!!!!!");
-	reset_cpu_status[cpunum] = 1;
+	wrlog("CPU RESET CALLED!!----------");
+
+	switch (driver[gamenum].cpu_type[cpunum])
+	{
+	case CPU_MZ80:  
+		m_cpu_z80[cpunum]->mz80reset(); 
+		break;
+
+	case CPU_M6502: 
+		m_cpu_6502[cpunum]->reset6502(); 
+		break;
+
+	case CPU_8080:
+		m_cpu_i8080[cpunum]->reset();
+		break;
+
+	case CPU_68000: s68000reset(); 
+		break;
+
+	case CPU_M6809:
+		m_cpu_6809[cpunum]->reset6809();
+		break;
+
+	case CPU_CCPU:
+		ccpu_reset();
+		break;
+	}
+	//Clear CPU Cyclecount.
+	cyclecount[cpunum] = 0;
+	//Clear CPU Reset Status
+	reset_cpu_status[cpunum] = 0;
+	if (cpunum == 0)vid_tickcount = 0;
+	//Reset any timers on that CPU.
+	timer_cpu_reset(cpunum);
 }
 
 void cpu_reset_all()
 {
 	for (int x = 0; x < totalcpu; x++)
 	{
-		reset_cpu_status[x] = 1;
+		cpu_reset(x);
 	}
 }
 
@@ -651,75 +593,16 @@ void cpu_clear_pending_int(int int_type, int cpunum)
 	}
 }
 
-void process_pending_interrupts(int cpunum)
-{
-	if (interrupt_pending[cpunum])
-	{
-		switch (driver[gamenum].cpu_type[cpunum])
-		{
-		case CPU_MZ80:
-			if (interrupt_pending[cpunum] == INT_TYPE_NMI) {
-				m_cpu_z80[cpunum]->mz80nmi();
-				wrlog("NMI Taken");
-			}
-			else {
-				m_cpu_z80[cpunum]->mz80int(interrupt_vector[cpunum]);
-				wrlog("INT Taken");
-			}
-			break;
-
-		case CPU_M6502:
-			if (interrupt_pending[cpunum] == INT_TYPE_NMI) {
-				m_cpu_6502[cpunum]->nmi6502();
-				// wrlog("Delayed NMI SET CPU #%d",cpunum);
-			}
-			else {
-				m_cpu_6502[cpunum]->irq6502();
-				//wrlog("Delayed INT SET CPU #%d",cpunum);
-			}
-			break;
-
-		case CPU_M6809:
-			if (interrupt_pending[cpunum] == INT_TYPE_NMI) {
-				m_cpu_6809[cpunum]->nmi6809();
-				//wrlog("NMI Taken");
-			}
-			else {
-				m_cpu_6809[cpunum]->irq6809();
-				//wrlog("INT Taken");
-			}
-			break;
-
-		case CPU_68000:
-			if (interrupt_pending[cpunum])
-			{
-				s68000interrupt(interrupt_pending[cpunum], -1); //add interrupt num here
-				s68000flushInterrupts();
-				break;
-			}
-			break;
-		}
-		interrupt_pending[cpunum] = 0;
-	}
-}
-
-void set_pending_interrupt(int int_type, int cpunum) //Interrrupt to execute on next cpu cycle
-{
-	interrupt_pending[cpunum] = int_type;
-}
-
-//TO DO - ADD CPU SPEED TO MAIN DRIVER and below. Also Multiple CPUs
 int cpu_scale_by_cycles(int val)
 {
 	float temp;
 	int k;
-	int sclock = driver[gamenum].cpu_freq[active_cpu]; //Why not active_cpu?
+	int sclock = driver[gamenum].cpu_freq[active_cpu];
+	int current = cyclecount[active_cpu];  //totalcpu-1]; active_cpu was last
 
-	//int current = cyclecount[active_cpu];  //totalcpu-1]; activecpu was last
-	int current = tickcount[active_cpu];
 	//wrlog(" Sound Update called, clock value: %d ", current);
 	int max = sclock / driver[gamenum].fps;
-
+	//wrlog(" Clock  %d divided by FPS: %d is equal to value: %d",sclock,driver[gamenum].fps,max);
 	temp = ((float)current / (float)max);
 	if (temp > 1) temp = (float).99;
 
@@ -730,11 +613,10 @@ int cpu_scale_by_cycles(int val)
 	return k;
 }
 
-
 void free_cpu_memory()
 {
 	wrlog("Totalcpu = %d", totalcpu);
-
+	
 	for (int x = 0; x < totalcpu; x++)
 	{
 		switch (driver[gamenum].cpu_type[x])
@@ -779,26 +661,20 @@ void init_cpu_config()
 
 	for (x = 0; x < 4; x++)
 	{
-		if (driver[gamenum].cpu_type[x])  totalcpu++;
-	}
-	for (x = 0; x < totalcpu; x++)
-	{
-		cyclecount[x] = ((int)driver[gamenum].cpu_freq[x] / (int)driver[gamenum].fps) / (int)driver[gamenum].cpu_divisions[x];
-		wrlog("Calculated Cycle count for CPU %d is %d", x, cyclecount[x]);
-	}
-	for (x = 0; x < 4; x++)
-	{
-		addcycles[x] = 0;
 		interrupt_count[x] = 0;
 		interrupt_pending[x] = 0;
 		enable_interrupt[x] = 1;
 		interrupt_vector[x] = 0xff;
+		cyclecount[x] = 0;
+		if (driver[gamenum].cpu_type[x])  totalcpu++;
 	}
+	
+
 	vid_tickcount = 0;//Initalize video tickcount;
 	hertzflip = 0;
 
 	timer_init();
-	watchdog_timer = timer_set(TIME_IN_HZ(24), 0, watchdog_callback);
+	watchdog_timer = timer_set(TIME_IN_HZ(4), 0, watchdog_callback);
 	wrlog("NUMBER OF CPU'S to RUN: %d ", totalcpu);
 	wrlog("Finished starting up cpu settings, defaults");
 }
@@ -814,26 +690,19 @@ machine will be reset.
 *************************************************************************/
 void watchdog_callback(int param)
 {
-	//watchdog_timer = 0; Hmm, what to do, what to do. Right now I'm auto restarting.
-
 	wrlog("warning: reset caused by the watchdog\n");
-	cpu_reset_all();
+    cpu_reset_all();
 }
 
 void watchdog_reset_w(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite)
 {
-	timer_reset(watchdog_timer, TIME_IN_HZ(24));
+	timer_reset(watchdog_timer, TIME_IN_HZ(4));
 }
 
 READ_HANDLER(watchdog_reset_r)
 {
-	timer_reset(watchdog_timer, TIME_IN_HZ(24));
+	timer_reset(watchdog_timer, TIME_IN_HZ(4));
 	return 0;
-}
-
-void NoWrite(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite)
-{
-	;
 }
 
 //Read Ram

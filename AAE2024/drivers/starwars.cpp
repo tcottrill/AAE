@@ -264,7 +264,7 @@ MEM_ADDR(0x4400, 0x4400, main_wr_w)  //Sound
 //	{ 0x4500, 0x45ff, MWA_RAM }, // nov_ram 
 MEM_ADDR(0x4600, 0x461f, avgdvg_go_w)  // evggo(mine) or vg2_go 
 MEM_ADDR(0x4620, 0x463f, avgdvg_reset_w) // evgres(mine) or vg_reset 
-MEM_ADDR(0x4640, 0x465f, MWA_NOP) //  (wdclr) Watchdog clear 
+MEM_ADDR(0x4640, 0x465f, watchdog_reset_w) //  (wdclr) Watchdog clear 
 MEM_ADDR(0x4660, 0x467f, irqclr)  // clear periodic interrupt 
 //  { 0x4680, 0x4680, MWA_NOP },  (coin_ctr2) Coin counter 1 
 //  { 0x4681, 0x4681, MWA_NOP },  (coin_ctr1) Coin counter 2 
@@ -284,20 +284,19 @@ MEM_END
 
 // Star Wars Sound READ memory map 
 MEM_READ(starwars_audio_readmem)
-{
- 0x0800, 0x0fff, sin_r}, // SIN Read 
+MEM_ADDR( 0x0800, 0x0fff, sin_r ) // SIN Read 
 //{ 0x1000, 0x107f, MRA_RAM },  // 6532 RAM 
-{ 0x1080, 0x109f, m6532_r },
+MEM_ADDR(0x1080, 0x109f, m6532_r )
 //{ 0x4000, 0x7fff, MRA_ROM }, // sound roms 
 //{ 0xc000, 0xffff, MRA_ROM }, // load last rom twice 
 MEM_END
 
 // Star Wars sound WRITE memory map 
 MEM_WRITE(starwars_audio_writemem)
-{0x0000, 0x07ff, sout_w	},
+MEM_ADDR( 0x0000, 0x07ff, sout_w )
 //{ 0x1000, 0x107f, MWA_RAM }, // 6532 ram 
-{ 0x1080, 0x109f, m6532_w },
-{ 0x1800, 0x183f, quadpokey_w },//starwars_pokey_sound_w },
+MEM_ADDR( 0x1080, 0x109f, m6532_w )
+MEM_ADDR( 0x1800, 0x183f, quadpokey_w )//starwars_pokey_sound_w },
 //{ 0x2000, 0x27ff, MWA_RAM }, // program RAM 
 //{ 0x4000, 0x7fff, MWA_ROM }, // sound rom 
 //{ 0xc000, 0xffff, MWA_ROM }, // sound rom again, for intvecs 
@@ -306,7 +305,6 @@ MEM_END
 /////////////////// MAIN() for program ///////////////////////////////////////////////////
 int init_starwars(void)
 {
-	
 	init6809(starwars_readmem, starwars_writemem, 0);
 	init6809(starwars_audio_readmem, starwars_audio_writemem, 1);
 	translate_proms();

@@ -73,4 +73,22 @@ void demon_sound(UINT8 sound_val, UINT8 bits_changed);
 void boxingb_sound(UINT8 sound_val, UINT8 bits_changed);
 void wotwc_sound(UINT8 sound_val, UINT8 bits_changed);
 
+
+int init_starhawk();
+int init_ripoff();
+int init_solarq();
+int init_starcas();
+int init_armora();
+int init_barrier();
+int init_sundance();
+int init_warrior();
+int init_tailg();
+int init_spacewar();
+int init_speedfrk();
+int init_demon();
+int init_boxingb();
+int init_wotw();
+
+
+
 #endif

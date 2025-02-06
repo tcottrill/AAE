@@ -93,9 +93,6 @@
     <ClCompile Include="machine\earom.cpp">
       <Filter>Source Files\machine</Filter>
     </ClCompile>
-    <ClCompile Include="drivers\spacduel.cpp">
-      <Filter>Source Files\drivers</Filter>
-    </ClCompile>
     <ClCompile Include="drivers\quantum.cpp">
       <Filter>Source Files\drivers</Filter>
     </ClCompile>
@@ -192,9 +189,6 @@
     <ClCompile Include="cpu_code\cpu_z80.cpp">
       <Filter>Source Files\cpu_code</Filter>
     </ClCompile>
-    <ClCompile Include="vidhrdwr\dvg.cpp">
-      <Filter>Source Files\vidhrdwr</Filter>
-    </ClCompile>
     <ClCompile Include="sndhrdw\starwars_snd.cpp">
       <Filter>Source Files\sndhrdwr</Filter>
     </ClCompile>
@@ -254,6 +248,15 @@
     </ClCompile>
     <ClCompile Include="sndhrdw\aae_mame_pokey_2.4.cpp">
       <Filter>Source Files\sndhrdwr</Filter>
+    </ClCompile>
+    <ClCompile Include="vidhrdwr\old_mame_vecsim_dvg.cpp">
+      <Filter>Source Files\vidhrdwr</Filter>
+    </ClCompile>
+    <ClCompile Include="drivers\bwidow.cpp">
+      <Filter>Source Files\drivers</Filter>
+    </ClCompile>
+    <ClCompile Include="memory.cpp">
+      <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -325,9 +328,6 @@
     </ClInclude>
     <ClInclude Include="machine\earom.h">
       <Filter>Source Files\machine</Filter>
-    </ClInclude>
-    <ClInclude Include="drivers\spacduel.h">
-      <Filter>Source Files\drivers</Filter>
     </ClInclude>
     <ClInclude Include="drivers\quantum.h">
       <Filter>Source Files\drivers</Filter>
@@ -431,9 +431,6 @@
     <ClInclude Include="cpu_code\cpu_z80.h">
       <Filter>Source Files\cpu_code</Filter>
     </ClInclude>
-    <ClInclude Include="vidhrdwr\dvg.h">
-      <Filter>Source Files\vidhrdwr</Filter>
-    </ClInclude>
     <ClInclude Include="sndhrdw\starwars_snd.h">
       <Filter>Source Files\sndhrdwr</Filter>
     </ClInclude>
@@ -511,6 +508,21 @@
     </ClInclude>
     <ClInclude Include="sndhrdw\aae_mame_pokey_2.4.h">
       <Filter>Source Files\sndhrdwr</Filter>
+    </ClInclude>
+    <ClInclude Include="vidhrdwr\old_mame_vecsim_dvg.h">
+      <Filter>Source Files\vidhrdwr</Filter>
+    </ClInclude>
+    <ClInclude Include="drivers\bwidow.h">
+      <Filter>Source Files\drivers</Filter>
+    </ClInclude>
+    <ClInclude Include="memory.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="fileio\sha-1.h">
+      <Filter>Source Files\fileio</Filter>
+    </ClInclude>
+    <ClInclude Include="gameroms_new.h">
+      <Filter>Source Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

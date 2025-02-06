@@ -321,17 +321,157 @@ static struct CCPUConfig config_jmi =
 
 void run_cinemat(void)
 {
-	//Note: What the crap is this, get it in the CPU code and proper reset and testswitch 
-
-	int b = 1;
-
-	b = run_ccpu(19923000 / 4 / 38);//131072);19923000
 	cinevid_up();
 }
 
+int init_starhawk()
+{
+	init_cinemat();
+	sound_write = &starhawk_sound;
+	video_type_set(COLOR_BILEVEL);
+	// ccpu_Config(1, CCPU_MEMSIZE_4K, CCPU_MONITOR_BILEV);
+	CCPUROMSIZE = 4;
+	init_ccpu(0);
+	return 1;
+}
+
+int init_ripoff()
+{
+	init_cinemat();
+	sound_write = &ripoff_sound;
+	video_type_set(COLOR_BILEVEL);
+	//ccpu_Config(1, CCPU_MEMSIZE_8K, CCPU_MONITOR_BILEV);
+	CCPUROMSIZE = 8;
+	init_ccpu(0);
+	return 1;
+}
+
+int init_solarq()
+{
+	init_cinemat();
+	sound_write = &solarq_sound;
+	// ccpu_Config(1, CCPU_MEMSIZE_16K, CCPU_MONITOR_64LEV);
+	video_type_set(COLOR_64LEVEL);
+	CCPUROMSIZE = 16;
+	init_ccpu(0);
+	return 1;
+}
+
+int init_starcas()
+{
+	init_cinemat();
+	sound_write = &starcas_sound;
+	//ccpu_Config(1, CCPU_MEMSIZE_8K, CCPU_MONITOR_BILEV);
+	CCPUROMSIZE = 8;
+	video_type_set(COLOR_BILEVEL);
+	init_ccpu(0);
+	return 1;
+}
+
+int init_armora()
+{
+	init_cinemat();
+	sound_write = &armora_sound;
+	//ccpu_Config(1, CCPU_MEMSIZE_16K, CCPU_MONITOR_BILEV);
+	CCPUROMSIZE = 16;
+	video_type_set(COLOR_BILEVEL);
+	init_ccpu(0);
+	return 1;
+}
+
+int init_barrier()
+{
+	init_cinemat();
+	bSwapXY = 1; sound_write = &barrier_sound;
+	video_type_set(COLOR_BILEVEL);
+	CCPUROMSIZE = 8;
+	init_ccpu(0);
+	return 1;
+}
+
+int init_sundance()
+{
+	init_cinemat();
+	bSwapXY = 1; sound_write = &sundance_sound;
+	video_type_set(COLOR_16LEVEL);
+	CCPUROMSIZE = 8;
+	init_ccpu(0);
+	return 1;
+}
+
+int init_warrior()
+{
+	init_cinemat();
+	sound_write = &warrior_sound;
+	video_type_set(COLOR_BILEVEL);
+	CCPUROMSIZE = 8;
+	init_ccpu(0);
+	return 1;
+}
+
+int init_tailg()
+{
+	init_cinemat();
+	sound_write = &tailg_sound;
+	video_type_set(COLOR_BILEVEL);
+	CCPUROMSIZE = 8;
+	init_ccpu(1);
+	return 1;
+}
+
+int init_spacewar()
+{
+	init_cinemat();
+	sound_write = &spacewar_sound;
+	video_type_set(COLOR_BILEVEL);
+	CCPUROMSIZE = 4;
+	init_ccpu(1);
+	return 1;
+}
+
+int init_speedfrk()
+{
+	init_cinemat();
+	sound_write = &null_sound;
+	video_type_set(COLOR_BILEVEL);
+	CCPUROMSIZE = 8;
+	init_ccpu(1);
+	return 1;
+}
+
+int init_demon()
+{
+	init_cinemat();
+	sound_write = &demon_sound;
+	video_type_set(COLOR_BILEVEL);
+	CCPUROMSIZE = 16;
+	init_ccpu(0);
+	return 1;
+}
+
+int init_boxingb()
+{
+	init_cinemat();
+	sound_write = &boxingb_sound;
+	video_type_set(COLOR_RGB);
+	CCPUROMSIZE = 32;
+	init_ccpu(0);
+	return 1;
+}
+
+int init_wotw()
+{
+	init_cinemat();
+	sound_write = &wotwc_sound;
+	video_type_set(COLOR_RGB);
+	CCPUROMSIZE = 16;
+	init_ccpu(0);
+	return 1;
+}
+
+
 int init_cinemat(void)
 {
-	wrlog("Cinemat init started, gamenum is %d", gamenum);
 	//SET DEFAULTS
 	bSwapXY = 0;    // (for vector generation)
 	cache_clear();
@@ -353,100 +493,13 @@ int init_cinemat(void)
 	CCPUROMSIZE = 4;
 	//init_ccpu(0);
 	video_type_set(COLOR_BILEVEL);
-
-	switch (gamenum)
-	{
-	case STARHAWK: sound_write = &starhawk_sound;
-		video_type_set(COLOR_BILEVEL);
-		// ccpu_Config(1, CCPU_MEMSIZE_4K, CCPU_MONITOR_BILEV);
-		CCPUROMSIZE = 4;
-		init_ccpu(0);
-		break;
-	case RIPOFF:   sound_write = &ripoff_sound;
-		video_type_set(COLOR_BILEVEL);
-		//ccpu_Config(1, CCPU_MEMSIZE_8K, CCPU_MONITOR_BILEV);
-		CCPUROMSIZE = 8;
-		init_ccpu(0);
-		break;
-
-	case SOLARQ: sound_write = &solarq_sound;
-		// ccpu_Config(1, CCPU_MEMSIZE_16K, CCPU_MONITOR_64LEV);
-		video_type_set(COLOR_64LEVEL);
-		CCPUROMSIZE = 16;
-		init_ccpu(0);
-		break;
-	case STARCAS: sound_write = &starcas_sound;
-		//ccpu_Config(1, CCPU_MEMSIZE_8K, CCPU_MONITOR_BILEV);
-		CCPUROMSIZE = 8;
-		video_type_set(COLOR_BILEVEL);
-		init_ccpu(0);
-		break;
-	case ARMORA: sound_write = &armora_sound;
-		//ccpu_Config(1, CCPU_MEMSIZE_16K, CCPU_MONITOR_BILEV);
-		CCPUROMSIZE = 16;
-		video_type_set(COLOR_BILEVEL);
-		init_ccpu(0);
-		break;
-	case BARRIER: bSwapXY = 1; sound_write = &barrier_sound;
-		video_type_set(COLOR_BILEVEL);
-		init_ccpu(0);
-		CCPUROMSIZE = 8;
-		break;
-	case SUNDANCE: bSwapXY = 1; sound_write = &sundance_sound;
-		video_type_set(COLOR_16LEVEL);
-		CCPUROMSIZE = 8;
-		init_ccpu(0);
-		break;
-	case WARRIOR: sound_write = &warrior_sound;
-		video_type_set(COLOR_BILEVEL);
-		CCPUROMSIZE = 8;
-		init_ccpu(0);
-		break;
-
-	case TAILG: sound_write = &tailg_sound;
-		video_type_set(COLOR_BILEVEL);
-		CCPUROMSIZE = 8;
-		init_ccpu(1);
-		break;
-
-	case SPACEWAR: sound_write = &spacewar_sound;
-		video_type_set(COLOR_BILEVEL);
-		CCPUROMSIZE = 4;
-		init_ccpu(1);
-		break;
-
-	case SPEEDFRK: sound_write = &null_sound;
-		video_type_set(COLOR_BILEVEL);
-		CCPUROMSIZE = 8;
-		init_ccpu(1);
-		break;
-
-	case DEMON:    sound_write = &demon_sound;
-		video_type_set(COLOR_BILEVEL);
-		CCPUROMSIZE = 16;
-		init_ccpu(0);
-		break;
-
-	case BOXINGB:  sound_write = &boxingb_sound;
-		video_type_set(COLOR_RGB);
-		CCPUROMSIZE = 32;
-		init_ccpu(0);
-		break;
-
-	case WOTW:     sound_write = &wotwc_sound;
-		video_type_set(COLOR_RGB);
-		CCPUROMSIZE = 16;
-		init_ccpu(0);
-		break;
-	}
-
+	
 	return 0;
 }
 
 void end_cinemat()
 {
-	//cineReset();
-
+	ccpu_reset();
 	cache_clear();
 }
 

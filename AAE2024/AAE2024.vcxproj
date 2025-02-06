@@ -152,6 +152,7 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="drivers\asteroid.cpp" />
+    <ClCompile Include="drivers\bwidow.cpp" />
     <ClCompile Include="drivers\bzone.cpp" />
     <ClCompile Include="drivers\cinemat.cpp" />
     <ClCompile Include="drivers\llander.cpp" />
@@ -159,7 +160,6 @@
     <ClCompile Include="drivers\omegrace.cpp" />
     <ClCompile Include="drivers\quantum.cpp" />
     <ClCompile Include="drivers\SegaG80.cpp" />
-    <ClCompile Include="drivers\spacduel.cpp" />
     <ClCompile Include="drivers\starwars.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</ExcludedFromBuild>
     </ClCompile>
@@ -179,6 +179,9 @@
     <ClCompile Include="machine\SegaG80crypt.cpp" />
     <ClCompile Include="machine\swmathbx.cpp" />
     <ClCompile Include="mem68k.c" />
+    <ClCompile Include="memory.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</ExcludedFromBuild>
+    </ClCompile>
     <ClCompile Include="menu.cpp" />
     <ClCompile Include="newfbo.cpp" />
     <ClCompile Include="os_basic.cpp" />
@@ -203,7 +206,7 @@
     <ClCompile Include="texrect2dvbo.cpp" />
     <ClCompile Include="vidhrdwr\aae_avg.cpp" />
     <ClCompile Include="vidhrdwr\cinematvid.cpp" />
-    <ClCompile Include="vidhrdwr\dvg.cpp" />
+    <ClCompile Include="vidhrdwr\old_mame_vecsim_dvg.cpp" />
     <ClCompile Include="vidhrdwr\SegaG80vid.cpp" />
     <ClCompile Include="vidhrdwr\vector.cpp" />
     <ClCompile Include="win10_win11_required_code.cpp" />
@@ -235,6 +238,7 @@
     </ClInclude>
     <ClInclude Include="deftypes.h" />
     <ClInclude Include="drivers\asteroid.h" />
+    <ClInclude Include="drivers\bwidow.h" />
     <ClInclude Include="drivers\bzone.h" />
     <ClInclude Include="drivers\cinemat.h" />
     <ClInclude Include="drivers\llander.h" />
@@ -242,7 +246,6 @@
     <ClInclude Include="drivers\omegrace.h" />
     <ClInclude Include="drivers\quantum.h" />
     <ClInclude Include="drivers\SegaG80.h" />
-    <ClInclude Include="drivers\spacduel.h" />
     <ClInclude Include="drivers\starwars.h">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</ExcludedFromBuild>
     </ClInclude>
@@ -251,11 +254,15 @@
     <ClInclude Include="fileio\loaders.h" />
     <ClInclude Include="fileio\mame_fileio.h" />
     <ClInclude Include="fileio\miniz.h" />
+    <ClInclude Include="fileio\sha-1.h" />
     <ClInclude Include="fpsclass.h" />
     <ClInclude Include="gameart.h" />
     <ClInclude Include="gamedriver.h" />
     <ClInclude Include="gamekeys.h" />
     <ClInclude Include="gameroms.h" />
+    <ClInclude Include="gameroms_new.h">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+    </ClInclude>
     <ClInclude Include="gamesamp.h" />
     <ClInclude Include="aae_mame_driver.h" />
     <ClInclude Include="gui\animation.h" />
@@ -268,6 +275,7 @@
     <ClInclude Include="machine\swmathbx.h" />
     <ClInclude Include="MathUtils.h" />
     <ClInclude Include="mem68k.h" />
+    <ClInclude Include="memory.h" />
     <ClInclude Include="menu.h" />
     <ClInclude Include="newfbo.h" />
     <ClInclude Include="osdepend.h" />
@@ -296,7 +304,7 @@
     <ClInclude Include="texrect.h" />
     <ClInclude Include="texrect2dvbo.h" />
     <ClInclude Include="vidhrdwr\aae_avg.h" />
-    <ClInclude Include="vidhrdwr\dvg.h" />
+    <ClInclude Include="vidhrdwr\old_mame_vecsim_dvg.h" />
     <ClInclude Include="vidhrdwr\SegaG80vid.h" />
     <ClInclude Include="vidhrdwr\vector.h" />
     <ClInclude Include="win10_win11_required_code.h" />

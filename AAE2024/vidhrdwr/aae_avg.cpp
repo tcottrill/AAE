@@ -2,7 +2,7 @@
 
 #include "aae_avg.h"
 #include "vector.h"
-#include "aae_mame_driver.h"
+#include "timer.h"
 
 static int vector_type = 0;
 
@@ -25,7 +25,7 @@ static int PCTOP = 0x2000;
 static int NO_CACHE = 0;
 
 #define TIME_IN_NSEC(us)      ((double)(us) * (1.0 / 1000000000.0))
-
+static UINT8 busy;
 
 int vector_timer(int deltax, int deltay)
 {
@@ -38,10 +38,17 @@ int vector_timer(int deltax, int deltay)
 		return deltay >> VEC_SHIFT;
 }
 
+
+static void avg_clr_busy(int dummy)
+{
+	AVG_BUSY = 0;
+}
+
+
 static void calc_sweep()
 {
-	sweep = 2.268 * total_length;
-	//sweep = (TIME_IN_NSEC(1600) * total_length) * 1512000; //was 1600NS, changed back to 1500 driver[gamenum].cpu_freq[get_current_cpu()];
+	//sweep = 3.268 * total_length;
+	sweep = (TIME_IN_NSEC(1600) * total_length) * 1512000; //was 1600NS, changed back to 1500 driver[gamenum].cpu_freq[get_current_cpu()];
 	//wrlog("SWEEP CALC HERE is %f", (TIME_IN_NSEC(1600) * total_length));
 }
 
@@ -83,8 +90,7 @@ static void BZ_DRAW(int currentx, int currenty, int deltax, int deltay, int z, i
 		if (sy > BZ_CLIP && sy > ey && color == 0) { sx = ((BZ_CLIP - sy) * ((ex - sx) / (ey - sy))) + sx; sy = BZ_CLIP; }
 		if (ey > BZ_CLIP && ey > sy && color == 0) { ex = ((BZ_CLIP - ey) * ((sx - ex) / (sy - ey))) + ex; ey = BZ_CLIP; }
 	}
-	
-	//	wrlog("X %d Y %d end X %d Y %d" ,sx,sy,ex,ey);
+
 	gc = z + 1;
 	gc = z / 16;
 	if (noline == 0) {
@@ -356,10 +362,11 @@ int avg_go()
 		AVG_RUN();
 		if (total_length > 1) 
 		{
-			wrlog("Total AVG Draw Length here is %d at cpu0 cycles ran: %d", total_length, get_elapsed_ticks(CPU0));
+			wrlog("Total AVG Draw Length here is %d at cpu0 cycles ran: %d, video_ticks %d", total_length, get_elapsed_ticks(CPU0), get_video_ticks(0));
 			AVG_BUSY = 1; 
 			get_video_ticks(0xff); 
 			calc_sweep(); 
+			timer_pulse(TIME_IN_NSEC(1500) * total_length, CPU0, avg_clr_busy);
 		}
 		else 
 		{
@@ -379,8 +386,28 @@ int avg_clear()
 
 int avg_check()
 {
-	if ((get_video_ticks(0) > sweep) && AVG_BUSY) { avg_clear(); }
-	return AVG_BUSY;
+	//if ((get_video_ticks(0) > sweep) && AVG_BUSY) { avg_clear(); wrlog("Clearing Busy Flag"); }
+	//wrlog("Returning %d for AVG BUSY", AVG_BUSY);
+	return {!AVG_BUSY};
+}
+
+
+void avgdvg_go_word_w(unsigned int offset, unsigned int data)
+{
+	avg_go();
+}
+
+
+void advdvg_go_w(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite)
+{
+	avg_go();
+}
+
+void avgdvg_reset_w(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite)
+{
+	//wrlog("AVG Reset 1 Called");
+	//avgdvg_reset(0, 0);
+	avg_clear();
 }
 
 void avg_init()
@@ -433,9 +460,9 @@ void avg_init()
 		gamenum == TEMPEST2 ||
 		gamenum == TEMPEST3 ||
 		gamenum == TEMPTUBE ||
-		gamenum == VBREAK ||
+		gamenum == VBRAKOUT ||
 		gamenum == VORTEX ||
-		gamenum == ALIENST) {
+		gamenum == ALIENSV) {
 		TYPE_TEMP = 1; PCTOP = 0x2000; SCALEADJ = 1; NO_CACHE = 1;
 	}
 	else if (gamenum == MHAVOC ||
@@ -473,7 +500,7 @@ void avg_init()
  *	Video startup
  *
  ************************************/
-
+/*
 int dvg_start(void)
 {
 	//return avgdvg_init(USE_DVG);
@@ -483,7 +510,7 @@ int dvg_start_asteroid(void)
 {
 	//return avgdvg_init(USE_DVG_ASTEROID);
 }
-
+*/
 int avg_start(void)
 {
 	//return avgdvg_init(USE_AVG);
@@ -529,9 +556,10 @@ void avg_stop(void)
 	//busy = 0;
 	//vector_clear_list();
 }
-
+/*
 void dvg_stop(void)
 {
 	//busy = 0;
 	//vector_clear_list();
 }
+*/

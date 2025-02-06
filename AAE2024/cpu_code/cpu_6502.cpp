@@ -1277,7 +1277,7 @@ int cpu_6502::step6502()
 	// Update the running counter for clock cycles executed.
 	clocktickstotal += clockticks6502;
 	// Update Timer if being used
-	//timer_update(clockticks6502, cpu_num);
+	timer_update(clockticks6502, cpu_num);
 	// Keep the total # of ticks from exceeding the limit.
 	if (clocktickstotal > 0xfffffff) clocktickstotal = 0;
 	return clockticks6502;

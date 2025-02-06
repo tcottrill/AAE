@@ -21,7 +21,7 @@
 #include "earom.h"
 #include "aae_mame_pokey_2.4.h"
 #include "math.h"
-
+#include "timer.h"
 
 #pragma warning(disable : 4838)
 
@@ -57,6 +57,13 @@ QUANTUM MEMORY MAP (per schem):
 static unsigned char program_rom[0x14000];
 static unsigned char main_ram[0x4fff];
 unsigned char nv_ram[0x200];
+
+
+void  quantum_interrupt()
+{
+	wrlog("Quantum Interrupt");
+	cpu_do_int_imm(CPU0, INT_TYPE_68K1);
+}
 
 void QSaveScore(void)
 {
@@ -179,9 +186,9 @@ unsigned QMRA_NOP(unsigned address)
 	return 0x00;
 }//wrlog("WATCHDOG read");
 
-void watchdog_reset_w(unsigned address, unsigned data)
+void watchdog_reset_wQ(unsigned address, unsigned data)
 {
-	;
+	watchdog_reset_w(0, 0, 0);
 }//wrlog("watchdog reset WRITE");
 
 unsigned quantum_snd_read(unsigned address)
@@ -233,6 +240,7 @@ void quantum_colorram_w(unsigned address, unsigned data)
 	vec_colors[address].b = b;
 }
 
+
 void avgdvg_resetQ(unsigned address, unsigned data)
 {
 	wrlog("AVG Reset");
@@ -240,7 +248,7 @@ void avgdvg_resetQ(unsigned address, unsigned data)
 
 void avgdvg_goQ(unsigned address, unsigned data)
 {
-	//avg_go();
+	avg_go();
 }
 
 static struct POKEYinterface pokey_interface =
@@ -335,7 +343,7 @@ struct STARSCREAM_DATAREGION quantum_writeword[] =
 	{ 0x960000, 0x960001, QMWA_NOP,NULL },	// enable NVRAM?
 	{ 0x968000, 0x968001, avgdvg_resetQ,NULL },
 	//{ 0x970000, 0x970001,  avgdvg_goQ,NULL },
-	//{ 0x978000, 0x978001, watchdog_reset_w,NULL },
+	{ 0x978000, 0x978001, watchdog_reset_wQ,NULL },
 	// the following is wrong, but it's the only way I found to fix the service mode
 	{ 0x978000, 0x978001,  avgdvg_goQ,NULL },
 	{ 0x000000, 0xfffff, UN_WRITE, NULL },
@@ -371,16 +379,16 @@ void m68k_write_memory_16(unsigned int address, unsigned int value)
 
 void run_quantum()
 {
-	static int j = 0;
+//	static int j = 0;
 
 	avg_clear();
 	//Delay the AVG Start by 1 second to give the vector memory time to be initalized. (Not the correct way to do things!)!!
-	j++; if (j > 60)
-	{
+//	j++; if (j > 60)
+//	{
 		avg_go();
-		j = 70;
-	}
-
+//		j = 70;
+//	}
+	watchdog_reset_w(0, 0, 0);
 	pokey_sh_update();
 }
 
@@ -401,7 +409,7 @@ int init_quantum()
 
 	init68k(quantum_fetch, quantum_readbyte, quantum_readword, quantum_writebyte, quantum_writeword);
 	avg_init();
-
+	//timer_set(TIME_IN_HZ(246), 0, quantum_interrupt);
 	pokey_sh_start(&pokey_interface);
 	QLoadScore();
 	wrlog("End Quantum Init");

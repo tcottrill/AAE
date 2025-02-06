@@ -1280,7 +1280,7 @@ MEM_WRITE(AlphaWrite)
 //MEM_ADDR(0x0000, 0x01ff, MWA_RAM )			 /* 0.5K Program Ram */
 MEM_ADDR(0x0200, 0x07ff, MWA_BANK1_W)			 /* 3K Paged Program RAM */
 //MEM_ADDR(0x0800, 0x09ff, MWA_RAM )			 /* 0.5K Program RAM */
-MEM_ADDR(0x1200, 0x1200, NoWrite)			     /* don't care */
+MEM_ADDR(0x1200, 0x1200, MWA_ROM)			     /* don't care */
 MEM_ADDR(0x1400, 0x141f, mhavoc_colorram_w)		 /* ColorRAM */
 MEM_ADDR(0x1600, 0x1600, mhavoc_out_0_w)		 /* Control Signals */
 MEM_ADDR(0x1640, 0x1640, avg_mgo)			     /* Vector Generator GO */
@@ -1291,9 +1291,9 @@ MEM_ADDR(0x1740, 0x1740, mhavoc_rom_banksel_w)	 /* Program ROM Page Select */
 MEM_ADDR(0x1780, 0x1780, mhavoc_ram_banksel_w)	 /* Program RAM Page Select */
 MEM_ADDR(0x17c0, 0x17c0, mhavoc_gamma_w)		 /* Gamma Communication Write Port */
 //MEM_ADDR( 0x1800, 0x1fff, MWA_RAM )			 /* Shared Beta Ram (Not Used)*/
-MEM_ADDR(0x2000, 0x3fff, NoWrite)			     /* (ROM)Major Havoc writes here.*/
+MEM_ADDR(0x2000, 0x3fff, MWA_ROM)			     /* (ROM)Major Havoc writes here.*/
 //MEM_ADDR( 0x4000, 0x4fff, MWA_RAM,             /* Vector Generator RAM	*/
-MEM_ADDR(0x6000, 0x7fff, NoWrite)				 /* ROM */
+MEM_ADDR(0x6000, 0x7fff, MWA_ROM)				 /* ROM */
 MEM_END
 
 MEM_READ(GammaRead)

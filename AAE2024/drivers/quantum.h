@@ -6,4 +6,6 @@ int init_quantum();
 void end_quantum();
 void run_quantum();
 
+void  quantum_interrupt();
+
 #endif

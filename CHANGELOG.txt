@@ -49,5 +49,7 @@ Found a ridiclous bug with counting the total cycles executed in the 6502 core. 
 12/28/24 More Major Havoc cleanups. At this point I'll call it "Meh". It works pretty well, it's only a couple of percent off now as far as cycle emulation compared to the real board. To get it near perfect is going to require a complete rewrite, working on it. 
 Cleaned up and removed dead code from cpu_control.h, trying to narrow down requirements for said rewrite.
 
-
+2/5/24
+Major Rewrite phase 1. Consolidated DVG code, moved everything to the mame timing code, added mostly cycle accurate timing to most drivers. 
+Started adding code to forklift to a complete newer core codeset. 
 

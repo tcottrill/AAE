@@ -1,3 +1,6 @@
+#include "aae_mame_driver.h"
+#include "deftypes.h"
+
 #ifndef AAE_AVG_H
 #define AAE_AVG_H
 
@@ -40,9 +43,12 @@ int avg_clear();
 int avg_check();
 void set_bw_colors();
 
+void advdvg_go_w(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite);
+void avgdvg_go_word_w(unsigned int offset, unsigned int data);
+void avgdvg_reset_w(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite);
 
-int dvg_start(void);
-int dvg_start_asteroid(void);
+//int dvg_start(void);
+//int dvg_start_asteroid(void);
 int avg_start(void);
 int avg_start_tempest(void);
 int avg_start_mhavoc(void);
@@ -51,7 +57,7 @@ int avg_start_starwars(void);
 int avg_start_quantum(void);
 int avg_start_bzone(void);
 int avg_start_redbaron(void);
-void dvg_stop(void);
+//void dvg_stop(void);
 void avg_stop(void);
 
 

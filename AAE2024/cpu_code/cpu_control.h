@@ -63,7 +63,7 @@ void init68k(struct STARSCREAM_PROGRAMREGION* fetch, struct STARSCREAM_DATAREGIO
 int cpu_scale_by_cycles(int val);
 // CPU Code
 void init_cpu_config();
-void run_cpus_to_cycles();
+//void run_cpus_to_cycles();
 
 void add_eterna_ticks(int cpunum, int ticks);
 int get_eterna_ticks(int cpunum);
@@ -71,20 +71,23 @@ int get_video_ticks(int val);
 
 void cpu_reset(int cpunum);
 void cpu_reset_all();
-void cpu_resetter(int cpunum);
+
 int cpu_getpc();
 int get_elapsed_ticks(int cpunum);
 void cpu_disable_interrupts(int cpunum, int val);
-void set_pending_interrupt(int int_type, int cpunum);
-void process_pending_interrupts(int cpunum);
+
 void cpu_do_int_imm(int cpunum, int int_type);
 void cpu_do_interrupt(int int_type, int cpunum);
+
+void cpu_clear_cyclecount(int cpunum);
+void cpu_clear_cyclecount_eof();
+int cpu_getcycles_cpu(int cpu);
+int cpu_getcycles_remaining_cpu(int cpu);
 
 int get_current_cpu();
 void set_interrupt_vector(int data);
 void cpu_clear_pending_interrupts(int cpunum);
 
-// NEW CODE ADDED FOR MULTICPU SUPPORT , OLD CODE TO BE AMENDED OR REMOVED
 int cpu_getiloops(void);
 int cpu_exec_now(int cpu, int cycles);
 void cpu_run_mame(void);
@@ -96,7 +99,6 @@ void free_cpu_memory();
 extern void watchdog_reset_w(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite);
 extern UINT8 watchdog_reset_r(UINT32 address, struct MemoryReadByte* psMemRead);
 extern void watchdog_callback(int param);
-extern void NoWrite(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite);
 extern UINT8 MRA_RAM(UINT32 address, struct MemoryReadByte* psMemRead);
 extern UINT8 MRA_ROM(UINT32 address, struct MemoryReadByte* psMemRead);
 extern void MWA_ROM(UINT32 address, UINT8 data, struct MemoryWriteByte* pMemWrite);
