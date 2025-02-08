@@ -309,9 +309,6 @@
     <ClInclude Include="vidhrdwr\vector.h" />
     <ClInclude Include="win10_win11_required_code.h" />
   </ItemGroup>
-  <ItemGroup>
-    <None Include="video.ini" />
-  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

@@ -59,7 +59,7 @@ static int win_override = 0;
 
 static int started_from_command_line = 0;
 int hiscoreloaded;
-int sys_paused = 0;
+//int sys_paused = 0;
 int show_fps = 0;
 FpsClass* m_frame; //For frame counting. Prob needs moved out of here really.
 
@@ -69,8 +69,6 @@ struct RunningMachine* Machine = &machine;
 static const struct AAEDriver* gamedrv;
 //static const struct MachineDriver* drv;
 struct GameOptions	options;
-
-
 
 struct { const char* desc; int x, y; } gfx_res[] = {
 	{ "-320x240"	, 320, 240 },
@@ -88,13 +86,14 @@ struct { const char* desc; int x, y; } gfx_res[] = {
 	{ "-1920x1200"	, 1920, 1200 },
 	{ NULL		, 0, 0 }
 };
-
+/*
 volatile int close_button_pressed = FALSE;
 
 void close_button_handler(void)
 {
 	close_button_pressed = TRUE;
 }
+*/
 END_OF_FUNCTION(close_button_handler)
 
 static int clamp(int value)
@@ -267,8 +266,8 @@ void msg_loop(void)
 
 	if (osd_key_pressed_memory(OSD_KEY_P))
 	{
-		sys_paused ^= 1;
-		if (sys_paused) mute_sound();
+		paused ^= 1;
+		if (paused) mute_sound();
 		else restore_sound();
 	}
 
@@ -434,7 +433,7 @@ void run_game(void)
 	if (!goodload) { wrlog("Noise Samples loading failure, not critical, continuing."); }
 	voice_init(num_samples); //INITIALIZE SAMPLE VOICES
 	wrlog("Number of samples for this game is %d", num_samples);
-
+	// RE-ADD WHEN ALLEGRO REMOVED AND SOUND ENGINE CHANGED.
 	//setup_ambient(VECTOR);
 	// Setup for the first game. 
 	wrlog("Initializing Game");
@@ -461,7 +460,7 @@ void run_game(void)
 	//
 	// PROGRAM MAIN LOOP STARTS HERE:
 	//
-	while (!done && !close_button_pressed)
+	while (!done)// && !close_button_pressed)
 	{
     	//wrlog("START OF FRAME HERE");
 		
@@ -469,20 +468,15 @@ void run_game(void)
 		set_render();
 	
 		auto start = chrono::steady_clock::now();
-		//
-		
-			if (!paused && have_error == 0) 
+	
+		if (!paused && have_error == 0) 
 			{
 				update_input_ports();
-
 				if (driver[gamenum].pre_run) driver[gamenum].pre_run(); 
-				
 				cpu_run_mame();
-
 				if (driver[gamenum].run_game)driver[gamenum].run_game();
 			}
-			
-	
+		// Load High Score
 		if (hiscoreloaded == 0 && driver[gamenum].hiscore_load) 
 			hiscoreloaded = (*driver[gamenum].hiscore_load)();
 		
@@ -675,7 +669,6 @@ void gameparse(int argc, char* argv[])
 	}
 }
 
-
 int main(int argc, char* argv[])
 {
 	int i;
@@ -690,11 +683,10 @@ int main(int argc, char* argv[])
 	int vertical;
 		
 	LogOpen("aae.log");
+	// ALLEGRO START
 	allegro_init();
 	install_allegro_gl();
 	install_timer();
-	msdos_init_input();
-
 	reserve_voices(16, -1);
 	set_volume_per_voice(3);
 	//AUTODETECT
@@ -704,9 +696,10 @@ int main(int argc, char* argv[])
 	}
 	set_volume_per_voice(3);
 
-	LOCK_FUNCTION(close_button_handler);
-	set_close_button_callback(close_button_handler);
-
+	// ALLEGRO_END
+	//LOCK_FUNCTION(close_button_handler);
+	//set_close_button_callback(close_button_handler);
+	msdos_init_input();
 	// We start with the running game being the gui, unless overridden by the command line.  
 	gamenum = 0; 
 	x_override = 0;
@@ -811,10 +804,12 @@ int main(int argc, char* argv[])
 
 	timeGetDevCaps(&caps, sizeof(TIMECAPS));
 	timeBeginPeriod(caps.wPeriodMin);
+	TimerInit(); //Start timer
 
 	wrlog("Setting timer resolution to Min Supported: %d (ms)", caps.wPeriodMin);
 
 	wrlog("Number of supported joysticks: %d ", num_joysticks);
+	/*
 	if (num_joysticks)
 	{
 		poll_joystick();
@@ -828,16 +823,14 @@ int main(int argc, char* argv[])
 			}
 		}
 	}
-
+	*/
 	frames = 0; //init frame counter
 	testsw = 0; //init testswitch off , had to make common for all
 	config.hack = 0; //Just to set, used for tempest only.
 	showinfo = 0;
 	done = 0;
 	//////////////////////////////////////////////////////
-	TimerInit(); //Start timer
 	wrlog("Number of supported games in this release: %d", num_games);
-
 	initrand();
 	fillstars(stars);
 	have_error = 0;
@@ -866,13 +859,11 @@ int main(int argc, char* argv[])
 	// Main run point moves to Run Game, which takes care of jumping back and forth into the GUI as well as cleaning up after each game. 
 	// Unfortunately, it does neither very well. 
 	//
-	
 	run_game();
-
+	
 	wrlog("Shutting down program");
+
 	//END-----------------------------------------------------
-
-
 	timeEndPeriod(caps.wPeriodMin);
 	KillFont();
 	set_aae_leds(0, 0, 0);

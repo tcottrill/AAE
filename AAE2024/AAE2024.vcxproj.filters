@@ -525,9 +525,4 @@
       <Filter>Source Files</Filter>
     </ClInclude>
   </ItemGroup>
-  <ItemGroup>
-    <None Include="video.ini">
-      <Filter>Source Files</Filter>
-    </None>
-  </ItemGroup>
 </Project>

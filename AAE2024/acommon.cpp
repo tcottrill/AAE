@@ -89,7 +89,7 @@ void sanity_check_config(void)
 
 	if (config.anisfilter < 2 || config.anisfilter > 16 || (config.anisfilter % 2 != 0))
 	{
-		if (config.anisfilter != 0) { //FINAl CHECK
+		if (config.anisfilter != 0) { //FINAL CHECK
 			wrlog("!!!!!Ansitropic Filterings set to unsupported value, supported values are 2,4,8,16 !!!!!");
 			have_error = 3;
 			config.anisfilter = 0; //RESET TIL FIXED
@@ -123,6 +123,7 @@ void video_loop(void)
 		fprint(300, 330, RGB_WHITE, 2.0, "sx:%d sy:%d ex:%d ey:%d", msx, msy, esx, esy);
 	}
 	show_error(); //If there is currently an error condition, show it.
+	
 	fontmode_end();
 }
 

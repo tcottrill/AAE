@@ -48,17 +48,6 @@ m0_c1.bin Size: 800 Load Addr: 6800
 m1_f1.bin Size: 800 Load Addr: 7000
 m2_j1.bin Size: 800 Load Addr: 7800
 
-Game Name: Asterock (Asteroids Bootleg):
-Rom Name: asterock.zip
-sidamas.0 Size: 400 Load Addr: 5000
-sidamas.1 Size: 400 Load Addr: 5400
-sidamas.2 Size: 400 Load Addr: 6800
-sidamas.3 Size: 400 Load Addr: 6c00
-sidamas.4 Size: 400 Load Addr: 7000
-sidamas.5 Size: 400 Load Addr: 7400
-sidamas.6 Size: 400 Load Addr: 7800
-sidamas.7 Size: 400 Load Addr: 7c00
-
 Game Name: Asteroids (Bootleg on Lunar Lander Hardware):
 Rom Name: asteroib.zip
 035127.02 Size: 800 Load Addr: 5000
@@ -451,7 +440,7 @@ tube-118.k1 Size: 800 Load Addr: b800
 136002-124.r3 Size: 800 Load Addr: 3800
 
 Game Name: Aliens (Tempest Alpha):
-Rom Name: alienst.zip
+Rom Name: aliensv.zip
 aliens_d1.bin Size: 800 Load Addr: 9000
 aliens_e1.bin Size: 800 Load Addr: 9800
 aliens_f1.bin Size: 800 Load Addr: a000
@@ -466,17 +455,17 @@ aliens_n3.bin Size: 800 Load Addr: 3000
 aliens_r3.bin Size: 800 Load Addr: 3800
 
 Game Name: Vector Breakout (1999 Clay Cowgill):
-Rom Name: vbreak.zip
-vb_d1.bin Size: 800 Load Addr: 9000
-vb_e1.bin Size: 800 Load Addr: 9800
-vb_f1.bin Size: 800 Load Addr: a000
-vb_h1.bin Size: 800 Load Addr: a800
-vb_r1.bin Size: 800 Load Addr: d800
-vb_n3.bin Size: 800 Load Addr: 3000
-vb_r3.bin Size: 800 Load Addr: 3800
+Rom Name: vbrakout.zip
+136002-123.np3 Size: 800 Load Addr: 3000
+136002-124.r3 Size: 800 Load Addr: 3800
+vbrakout.113 Size: 800 Load Addr: 9000
+vbrakout.114 Size: 800 Load Addr: 9800
+vbrakout.115 Size: 800 Load Addr: a000
+vbrakout.116 Size: 800 Load Addr: a800
+vbrakout.122 Size: 800 Load Addr: d800
 
 Game Name: Vortex (Tempest Beta):
-Rom Name: vortex.zip
+Rom Name: tvortex.zip
 d1.bin Size: 800 Load Addr: 9000
 e1.bin Size: 800 Load Addr: 9800
 f1.bin Size: 800 Load Addr: a000

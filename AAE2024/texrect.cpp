@@ -96,14 +96,23 @@ void Rect2::BottomRight (float x, float y )
 void Rect2::Render (float scaley)
 {
 	// I feel like I am going backwards here, but this will get the job done for now.
-
+	
 	glBegin(GL_QUADS);
 	glTexCoord2f(0, 0); glVertex2f(vertices[0].x, vertices[0].y);
 	glTexCoord2f(0, 1); glVertex2f(vertices[1].x, vertices[1].y * scaley);
 	glTexCoord2f(1, 1); glVertex2f(vertices[2].x, vertices[2].y * scaley);
 	glTexCoord2f(1, 0); glVertex2f(vertices[3].x, vertices[3].y);
 	glEnd();
-
+	
+	// Remember to rotate in the aspect ration calc.
+	/*
+	glBegin(GL_QUADS);
+	glTexCoord2f(0, 1); glVertex2f(vertices[2].x * 1.33, vertices[2].y);// *scaley);
+	glTexCoord2f(0, 0);  glVertex2f(vertices[1].x, vertices[1].y);// *scaley);
+	glTexCoord2f(1, 0); glVertex2f(vertices[0].x, vertices[0].y);
+	glTexCoord2f(1, 1); glVertex2f(vertices[3].x * 1.33, vertices[3].y);
+	glEnd();
+	*/
 
 }
 

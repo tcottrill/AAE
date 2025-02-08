@@ -6,6 +6,9 @@
 #include "glcode.h"
 #include "gl_fbo.h"
 #include "fonts.h"
+// For Vector Fonts.
+#include "vector_fonts.h"
+#include "colordefs.h"
 
 float wideadj = 1;
 int errorsound = 0;
@@ -614,7 +617,15 @@ void fadeit(void)
 
 void pause_loop()
 {
-	glColor4f(.5f, .5f, .5f, .5f);
+	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);
+	glDrawBuffer(GL_BACK);
+	set_ortho(1024, 768);
+	glEnable(GL_TEXTURE_2D);
 	glDisable(GL_BLEND);
-	glPrint(440, 50, 255, 128, 128, 255, 1.3, 0, 0, "PAUSED");
+	glDisable(GL_DITHER);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	fontmode_start();
+	fprint(420, 450, RGB_WHITE, 4.0, "PAUSED");
+	fontmode_end();
+	
 }

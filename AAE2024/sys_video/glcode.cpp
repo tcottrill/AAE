@@ -162,29 +162,58 @@ int init_gl(void)
 
 	if (!init_one)
 	{
+		// START - ALLEGRO GL TO REMOVE
 		allegro_gl_clear_settings();
-		allegro_gl_set(AGL_COLOR_DEPTH, 32); //bpp
-		allegro_gl_set(AGL_DOUBLEBUFFER, config.dblbuffer);//config.dblbuffer
+		allegro_gl_set(AGL_COLOR_DEPTH, 32); 
+		allegro_gl_set(AGL_DOUBLEBUFFER, config.dblbuffer);
 		allegro_gl_set(AGL_Z_DEPTH, 24);
-		allegro_gl_set(AGL_WINDOWED, 1); //windowed
+		allegro_gl_set(AGL_WINDOWED, 1);
 		allegro_gl_set(AGL_RENDERMETHOD, 1);
-		//allegro_gl_set(AGL_FLOAT_COLOR    ,1);
-		//allegro_gl_set(AGL_SAMPLE_BUFFERS,1);//sample_enable);
-		//allegro_gl_set(AGL_SAMPLES,16);//config.drawzero);
-		//allegro_gl_set(AGL_SUGGEST, AGL_COLOR_DEPTH | AGL_DOUBLEBUFFER | AGL_RENDERMETHOD
-		//	| AGL_Z_DEPTH | AGL_WINDOWED );//| AGL_FLOAT_COLOR);
-		allegro_gl_set(AGL_SUGGEST, AGL_COLOR_DEPTH | AGL_DOUBLEBUFFER | AGL_RENDERMETHOD
-			| AGL_Z_DEPTH | AGL_WINDOWED);//|AGL_SAMPLES |AGL_SAMPLE_BUFFERS);
+		allegro_gl_set(AGL_SUGGEST, AGL_COLOR_DEPTH | AGL_DOUBLEBUFFER | AGL_RENDERMETHOD | AGL_Z_DEPTH | AGL_WINDOWED);
 		set_color_depth(32);
-		request_refresh_rate(60); //config.screenw  config.screenh
+		request_refresh_rate(60); 
 		if (set_gfx_mode(GFX_OPENGL, config.screenw, config.screenh, 0, 0)) {
 			allegro_message("Unable to set screen mode: %s", allegro_error);
 			return 0;
 		}
 		allegro_gl_use_alpha_channel(TRUE);
+		//Check for texture support
+#if defined AGL_VERSION_2_0
+		wrlog("OpenGL 2.0 support detected, good.");
+#endif
+		glGetIntegerv(GL_MAX_TEXTURE_SIZE, &texSize);
+		wrlog("Max Texture Size supported by this card: %dx%d", texSize, texSize);
+		if (texSize < 1024)  wrlog("Warning!! Your card does not support a large enough texture size to run this emulator!!!!");
+		glGetIntegerv(GL_MAX_COLOR_ATTACHMENTS_EXT, &texSize);
+		wrlog("Max number of color buffers per fbo supported on this card: %d", texSize);
+		//Extensions Check
+		if (allegro_gl_extensions_GL.ARB_multisample) { glEnable(GL_MULTISAMPLE_ARB); wrlog("ARB_Multisample Extension Supported"); }
+		if (allegro_gl_extensions_GL.EXT_texture_filter_anisotropic) { wrlog("Anisotropic Filtering Supported"); }
 
+		if (config.forcesync)
+		{
+			if (allegro_gl_extensions_WGL.EXT_swap_control)
+			{
+				wglSwapIntervalEXT(1);
+				wrlog("Enabling vSync per the config.forcesync setting.");
+			}
+			else wrlog("Your video card does not support vsync. Please check and update your video drivers.");
+		}
+		else {
+			if (allegro_gl_extensions_WGL.EXT_swap_control)
+			{
+				wglSwapIntervalEXT(0);
+				wrlog("Disabling vSync");
+			}
+			else wrlog("There was a problem disabling vSync, please check your video card drivers.");
+		}
+
+		if (allegro_gl_extensions_GL.EXT_framebuffer_object) { wrlog("EXT_Frambuffer Object Supported (Required)"); }
+		else { allegro_message("I'm sorry, but you need EXT_framebuffer_object support to \n run this program. Update your card or drivers."); exit(1); }
+
+		// EMD - ALLEGRO GL TO REMOVE
+		
 		// Reset The Current Viewport
-
 		set_ortho(1024, 768);
 		glClearColor(0.0f, 0.0f, 0.0f, 0.0f);					// Black Background
 
@@ -213,42 +242,7 @@ int init_gl(void)
 		SetTopMost(TRUE);
 		center_window();
 
-		//Check for texture support
-#if defined AGL_VERSION_2_0
-		wrlog("OpenGL 2.0 support detected, good.");
-#endif
-		glGetIntegerv(GL_MAX_TEXTURE_SIZE, &texSize);
-		wrlog("Max Texture Size supported by this card: %dx%d", texSize, texSize);
-		if (texSize < 1024)  wrlog("Warning!! Your card does not support a large enough texture size to run this emulator!!!!");
-		glGetIntegerv(GL_MAX_COLOR_ATTACHMENTS_EXT, &texSize);
-		wrlog("Max number of color buffers per fbo supported on this card: %d", texSize);
-		//Extensions Check
-
-		if (allegro_gl_extensions_GL.ARB_multisample) { glEnable(GL_MULTISAMPLE_ARB); wrlog("ARB_Multisample Extension Supported"); }
-		if (allegro_gl_extensions_GL.EXT_texture_filter_anisotropic) { wrlog("Anisotropic Filtering Supported"); }
-
-		if (config.forcesync)
-		{
-			if (allegro_gl_extensions_WGL.EXT_swap_control) 
-			{ 
-				wglSwapIntervalEXT(1); 
-				wrlog("Enabling vSync per the config.forcesync setting."); 
-			}
-			
-			else wrlog("Your video card does not support vsync. Please check and update your video drivers.");
-		}
-		else {
-			if (allegro_gl_extensions_WGL.EXT_swap_control) 
-			{
-				wglSwapIntervalEXT(0); 
-				wrlog("Disabling vSync"); }
-			else wrlog("There was a problem disabling vSync, please check your video card drivers.");
-		}
-
-		if (allegro_gl_extensions_GL.EXT_framebuffer_object) { wrlog("EXT_Frambuffer Object Supported (Required)"); }
-		else { allegro_message("I'm sorry, but you need EXT_framebuffer_object support to \n run this program. Update your card or drivers."); exit(1); }
-
-		//////////// THESE MAY NEED TO BE REINSTANCIATED /////////////////////////////////////////////////////////////////////
+		// TODO:  Reevaluate
 		make_single_bitmap(&error_tex[0], "error.png", "aae.zip", 0); //This has to be loaded before any driver init.
 		make_single_bitmap(&error_tex[1], "info.png", "aae.zip", 0);
 		make_single_bitmap(&menu_tex[0], "joystick.png", "aae.zip", 0);
@@ -616,12 +610,14 @@ void render()
 		glColor4f(1, 1, 1, 1);
 		draw_texs();
 	}
-
+	
 	if (config.debug) {
 		if (config.bezel == 0) { final_render(msx, msy, esx, esy, 0, 0); } //ignore if bezel is enabled
 		else { final_render(sx, sy, ex, ey, 0, 0); }
 	}
-	else { final_render(sx, sy, ex, ey, 0, 0); }
+	else {
+		final_render(sx, sy, ex, ey, 0, 0); 
+	}
 }
 
 // Note:
@@ -850,6 +846,7 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 	auto diff = end - start;
 	wrlog("Profiler: Render Time after final compositing %f ", chrono::duration <double, milli>(diff).count());
 }
+
 
 ////////////////////////////////////////////////////////////////////////////////
 // FINAL COMPOSITING AND RENDERING CODE ENDS HERE  ///////////////////////////
