@@ -351,18 +351,20 @@ void AVG_RUN(void)
 
 int avg_go()
 {
-	wrlog("AVG GO CALLED");
+	//wrlog("AVG GO CALLED");
 
 	if (AVG_BUSY) 
 	{ 
-		wrlog("AVG call with AVG Busy, returning and doing nothing.");
+		//wrlog("AVG call with AVG Busy, returning and doing nothing.");
 		return 1; 
 	}
 	else {
 		AVG_RUN();
 		if (total_length > 1) 
 		{
-			wrlog("Total AVG Draw Length here is %d at cpu0 cycles ran: %d, video_ticks %d", total_length, get_elapsed_ticks(CPU0), get_video_ticks(0));
+			if (config.debug_profile_code) {
+				wrlog("Total AVG Draw Length here is %d at cpu0 cycles ran: %d, video_ticks %d", total_length, get_elapsed_ticks(CPU0), get_video_ticks(0));
+			}
 			AVG_BUSY = 1; 
 			get_video_ticks(0xff); 
 			calc_sweep(); 
@@ -370,7 +372,7 @@ int avg_go()
 		}
 		else 
 		{
-			wrlog("Erronious AVG Busy Clear, this should never happen.");
+			//wrlog("Erronious AVG Busy Clear, this should never happen.");
 			AVG_BUSY = 0;
 		}
 	}
@@ -464,6 +466,7 @@ void avg_init()
 		gamenum == VORTEX ||
 		gamenum == ALIENSV) {
 		TYPE_TEMP = 1; PCTOP = 0x2000; SCALEADJ = 1; NO_CACHE = 1;
+		
 	}
 	else if (gamenum == MHAVOC ||
 		gamenum == MHAVOC2 ||

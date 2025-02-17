@@ -89,7 +89,7 @@ void free_samples(void)
 	for (i = 0; i < num_samples; i++)
 	{
 		destroy_sample(game_sounds[i]);
-		wrlog("Freed sample %d num_samples is %d", i, num_samples);
+		wrlog("Freed sample %d out of %d", i, num_samples);
 	}
 }
 

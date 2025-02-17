@@ -328,8 +328,8 @@ static struct POKEYinterface pokey_interface =
 	2,			/* 4 chips */
 	1512000,
 	255,	/* volume */
-	6, //POKEY_DEFAULT_GAIN/2
-	USE_CLIP,
+	POKEY_DEFAULT_GAIN/2,
+	NO_CLIP,//USE_CLIP,
 	/* The 8 pot handlers */
 	{ 0, 0 },
 	{ 0, 0 },
@@ -404,7 +404,7 @@ READ_HANDLER(TempestIN0read)
 
 	res = readinputportbytag("IN0");
 
-	 if (get_eterna_ticks(0) & 0x100); //3Khz clock
+	 if (get_eterna_ticks(0) & 0x100) //3Khz clock
 	 res |= 0x80;
 
 	if (avg_check()) res |= 0x40;

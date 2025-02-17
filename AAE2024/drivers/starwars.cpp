@@ -309,7 +309,7 @@ int init_starwars(void)
 	init6809(starwars_audio_readmem, starwars_audio_writemem, 1);
 	translate_proms();
 	starwars_sh_start();
-	tms5220_sh_start(&tms5220_interface); 
+	//tms5220_sh_start(&tms5220_interface); 
 	avg_init();
 	cache_clear();
 

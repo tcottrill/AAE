@@ -670,7 +670,7 @@ void AY8910partupdate(int chip)
 	//if(soundcard==0)     return;
 
 	//get ticks this frame
-	work = cpu_scale_by_cycles(aysamples);// , ayintf->baseclock); // get current position based on the timer
+	work = cpu_scale_by_cycles(aysamples, ayintf->baseclock); // get current position based on the timer
 
  //update since last
 	updlen = work - updlast[chip];

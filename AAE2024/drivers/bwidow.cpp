@@ -32,17 +32,15 @@
 
 void bwidow_interrupt(int dummy)
 {
-	WRLOG("BWidow Interrupt");
 	cpu_do_int_imm(CPU0, INT_TYPE_INT);
 }
-
 
 static struct POKEYinterface pokey_interface =
 {
 	2,			/* 2 chips */
 	1512000,
 	255,	/* volume */
-	6, //POKEY_DEFAULT_GAIN/2
+	POKEY_DEFAULT_GAIN/2,
 	USE_CLIP,
 	/* The 8 pot handlers */
 	{ 0, 0 },
@@ -128,7 +126,7 @@ WRITE_HANDLER(irq_ack_w)
 
 WRITE_HANDLER(avgdvg_reset_w)
 {
-	wrlog("AVG RESET");
+	//wrlog("AVG RESET");
 }
 
 
@@ -143,8 +141,8 @@ void run_bwidow()
 }
 
 MEM_READ(BwidowRead)
-MEM_ADDR(0x6000, 0x67ff, pokey_1_r)
-MEM_ADDR(0x6800, 0x6fff, pokey_2_r)
+MEM_ADDR(0x6000, 0x600f, pokey_1_r)
+MEM_ADDR(0x6800, 0x680f, pokey_2_r)
 MEM_ADDR(0x7000, 0x7000, EaromRead)
 MEM_ADDR(0x7800, 0x7800, IN0read)
 MEM_ADDR(0x8000, 0x8000, ip_port_3_r)
@@ -202,8 +200,6 @@ int init_spacduel()
 	avg_init();
 	pokey_sh_start(&pokey_interface);
 	timer_set(TIME_IN_HZ(246), CPU0, bwidow_interrupt);
-	
-	
 	return 1;
 }
 void end_bwidow()

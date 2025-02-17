@@ -60,7 +60,7 @@ void init_z80(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct
 void init8080(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum);
 void init68k(struct STARSCREAM_PROGRAMREGION* fetch, struct STARSCREAM_DATAREGION* readbyte, struct STARSCREAM_DATAREGION* readword, struct STARSCREAM_DATAREGION* writebyte, struct STARSCREAM_DATAREGION* writeword);
 // Used for cycle to time scaling.
-int cpu_scale_by_cycles(int val);
+int cpu_scale_by_cycles(int val, int clock);
 // CPU Code
 void init_cpu_config();
 //void run_cpus_to_cycles();
@@ -88,6 +88,7 @@ int cpu_getcycles_remaining_cpu(int cpu);
 int get_current_cpu();
 void set_interrupt_vector(int data);
 void cpu_clear_pending_interrupts(int cpunum);
+void cpu_clear_pending_int(int int_type, int cpunum);
 
 int cpu_getiloops(void);
 int cpu_exec_now(int cpu, int cycles);

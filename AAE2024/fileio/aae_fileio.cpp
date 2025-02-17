@@ -258,7 +258,7 @@ BOOL DirectoryExists(const char* dirName) {
 }
 */
 // ToDo: Add a debug clause in front of the logging to disable it
-unsigned char* load_zip_file(const char* filename, const char* archname)
+unsigned char* load_zip_file(const char* archname, const char* filename)
 {
 	mz_bool status;
 	mz_uint file_index = -1;
@@ -305,7 +305,7 @@ end:
 }
 
 // ToDo: Add a debug clause in front of the logging to disable it
-bool save_zip_file(const char* filename, const char* archname, unsigned char* data)
+bool save_zip_file(const char* archname, const char* filename, unsigned char* data)
 {
 	bool status;
 

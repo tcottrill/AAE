@@ -53,6 +53,14 @@ Cleaned up and removed dead code from cpu_control.h, trying to narrow down requi
 Major Rewrite phase 1. Consolidated DVG code, moved everything to the mame style cpu/timing code, added mostly cycle accurate timing to most drivers. 
 Started adding code to forklift to a complete newer core codeset. 
 
-2/6
+2/6/25
 Fixed DVG issues. Fixed remaining watchdog issues. Hacked back in pause function.
+
+2/12/25 Minor tweak to black widow size. Changed the zip loader to match other code I have written.
+
+2/27/25
+Merged the last of the old code out and cleaned up the Major Havoc driver. 
+Misc code updates and bug fixes. Added a flag to disable the code profiling to keep the log from filling up. 
+Input bugfix will require some tweaking on the analog sensitivity. This is an issue I am still battling in the new allegro free version with Rawinput.
+Fixed most remaining volume issues. 
 

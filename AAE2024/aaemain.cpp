@@ -468,7 +468,7 @@ void run_game(void)
 		set_render();
 	
 		auto start = chrono::steady_clock::now();
-	
+			
 		if (!paused && have_error == 0) 
 			{
 				update_input_ports();
@@ -480,9 +480,12 @@ void run_game(void)
 		if (hiscoreloaded == 0 && driver[gamenum].hiscore_load) 
 			hiscoreloaded = (*driver[gamenum].hiscore_load)();
 		
-		auto end = chrono::steady_clock::now();
-		auto diff = end - start;
-		wrlog("Profiler: CPU Time: %f ", chrono::duration <double, milli>(diff).count());
+		if (config.debug_profile_code) {
+			auto end = chrono::steady_clock::now();
+			auto diff = end - start;
+			wrlog("Profiler: CPU Time: %f ", chrono::duration <double, milli>(diff).count());
+			cpu_clear_cyclecount_eof();
+		}
 		// Complete and display the rendered frame.  
 		render();
 		
@@ -491,8 +494,7 @@ void run_game(void)
 		inputport_vblank_end();
 		//update_input_ports();
 		//timer_clear_all_eof();
-		cpu_clear_cyclecount_eof();
-
+		
 		// Code to sleep for the rest of the frame. 
 		gametime = TimerGetTimeMS();
 
@@ -522,7 +524,9 @@ void run_game(void)
 		starttime = TimerGetTimeMS();
 
 		allegro_gl_flip();
-		wrlog("END OF FRAME");
+		if (config.debug_profile_code) {
+			wrlog("END OF FRAME");
+		}
 	}
 	//
 	// PROGRAM MAIN LOOP ENDS HERE

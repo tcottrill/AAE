@@ -205,12 +205,33 @@
 #define MHAVOC_CLOCK_2_5M	(MHAVOC_CLOCK/4)
 #define MHAVOC_CLOCK_1_25M	(MHAVOC_CLOCK/8)
 
+static struct POKEYinterface pokey_interface_alphaone =
+{
+	2,			/* 4 chips */
+	1250000,
+	255,	/* volume */
+	POKEY_DEFAULT_GAIN / 2,
+	NO_CLIP,
+	/* The 8 pot handlers */
+	{ 0, 0, 0, 0 },
+	{ 0, 0, 0, 0 },
+	{ 0, 0, 0, 0 },
+	{ 0, 0, 0, 0 },
+	{ 0, 0, 0, 0 },
+	{ 0, 0, 0, 0 },
+	{ 0, 0, 0, 0 },
+	{ 0, 0, 0, 0 },
+	/* The allpot handler */
+	{ 0, 0, 0, 0 },
+};
+
+
 static struct POKEYinterface pokey_interface =
 {
 	4,			/* 4 chips */
-	1,			/* 1 update per video frame (low quality) */
 	1250000,
-	128,	/* volume */
+	255,	/* volume */
+	POKEY_DEFAULT_GAIN / 4,
 	NO_CLIP,
 	/* The 8 pot handlers */
 	{ 0, 0, 0, 0 },
@@ -292,18 +313,43 @@ static int bigticks;
 static int bitflip = 0;
 float sweep;
 
-// CPU VARS
-int alphaticks = 0;
-int gammaticks = 0;
+
+
+/*************************************
+*
+*	Alpha One: Dual Pokey.
+*
+*************************************/
+
+READ_HANDLER(dual_pokey_r)
+{
+	int offset = address;
+	int pokey_num = (offset >> 3) & 0x01;
+	int control = (offset & 0x10) >> 1;
+	int pokey_reg = (offset % 8) | control;
+
+	if (pokey_num == 0)
+		return pokey1_r(pokey_reg);
+	else
+		return pokey2_r(pokey_reg);
+}
+
+
+WRITE_HANDLER(dual_pokey_w)
+{
+	int offset = address;
+	int pokey_num = (offset >> 3) & 0x01;
+	int control = (offset & 0x10) >> 1;
+	int pokey_reg = (offset % 8) | control;
+
+	if (pokey_num == 0)
+		pokey1_w(pokey_reg, data);
+	else
+		pokey2_w(pokey_reg, data);
+}
 
 // ***************************************  AUDIO CODE BELOW ************************************************
 
-// Pokey Variables.
-int pkenable[4];
-static int sample_pos = 0;
-int BUFFER_SIZE;  //FOR POKEY
-AUDIOSTREAM* stream1;
-unsigned char* soundbuffer;
 static int last_sample = 0;
 
 WRITE_HANDLER(speech_strobe_w)
@@ -371,178 +417,37 @@ WRITE_HANDLER(speech_strobe_w)
 	}
 }
 
-void playstreamedsample_mhavoc(int channel, unsigned char* data, int len, int vol)
-{
-	unsigned char* p;
-
-	p = (unsigned char*)get_audio_stream_buffer(stream1);
-
-	if (p)
-	{
-		for (int i = 0; i < len; i++)
-		{
-			p[i] = data[i];
-			p[i] ^= 0x80;
-		}
-
-		free_audio_stream_buffer(stream1);
-	}
-}
-
-int cpu_scale_by_cycles_mh(int val)
-{
-	int current = 0;
-	int max = 0;
-	// This should be CPU1 but we need to be different for alphaone or it crashes.
-	if (gamenum == ALPHAONE || gamenum == ALPHAONA)
-	{
-		current = gammaticks + m_cpu_6502[CPU0]->get6502ticks(0);
-		max = driver[gamenum].cpu_freq[CPU0] / driver[gamenum].fps;
-	}
-	else
-	{
-		current = gammaticks + m_cpu_6502[CPU1]->get6502ticks(0);
-		max = driver[gamenum].cpu_freq[CPU1] / driver[gamenum].fps;
-	}
-	// Make sure we don't have a buffer overflow since we tend to run past the requested cycles.
-	float temp = ((float)current / (float)max);
-
-	if (temp > 1) { temp = (float).95; }
-	temp = val * temp;
-	int k = (int)temp;
-	return k;
-}
-
-static void mh_pokey_update()
-{
-	int newpos = 0;
-
-	newpos = cpu_scale_by_cycles_mh(BUFFER_SIZE);
-
-	if (newpos - sample_pos < 10) 	return;
-	Pokey_process(soundbuffer + sample_pos, newpos - sample_pos);
-	sample_pos = newpos;
-}
-
-static void pokey_do_update(void)
-{
-	if (sample_pos < BUFFER_SIZE) { Pokey_process(soundbuffer + sample_pos, BUFFER_SIZE - sample_pos); }
-	playstreamedsample_mhavoc(0, soundbuffer, BUFFER_SIZE, 200);
-	sample_pos = 0;
-}
-
-READ_HANDLER(mh_quad_pokey_read)
-{
-	static int rng = 0;
-	int pokey_reg[4];
-
-	int offset = address;
-	int pokey_num = (offset >> 3) & ~0x04;
-	int control = (offset & 0x20) >> 2;
-	pokey_reg[pokey_num] = (offset % 8) | control;
-	//wrlog("Pokey # Read # %x  Reg %x", pokey_num, pokey_reg[pokey_num]);
-	if (pokey_reg[pokey_num] == 0x08) return input_port_3_r(0); //Dipswitch Read
-
-	if (pokey_reg[pokey_num] == 0x0a)
-	{
-		if (pkenable[pokey_num] != 0x00)
-		{
-			rng = randintm(0xff);
-			return rng;
-		}
-		else return rng ^ 0xff;
-	}
-
-	return 0;
-}
-
-WRITE_HANDLER(mh_quad_pokey_write)
-{
-	int pokey_reg[4];
-	int offset = address & 0xff;
-	int pokey_num = (offset >> 3) & ~0x04;
-	int control = (offset & 0x20) >> 2;
-	pokey_reg[pokey_num] = (offset % 8) | control;
-	//wrlog("Pokey # Write # %x  Reg %x, data %x", pokey_num, pokey_reg[pokey_num], data);
-	if (pokey_reg[pokey_num] == 0x0f) { pkenable[pokey_num] = data; }
-	switch (pokey_num) {
-	case 0:
-		mh_pokey_update();
-		Update_pokey_sound(pokey_reg[0], data, 0, 6);
-		break;
-	case 1:
-		mh_pokey_update();
-		Update_pokey_sound(pokey_reg[1], data, 1, 6);
-		break;
-	case 2:
-		mh_pokey_update();
-		Update_pokey_sound(pokey_reg[2], data, 2, 6);
-		break;
-	case 3:
-		mh_pokey_update();
-		Update_pokey_sound(pokey_reg[3], data, 3, 6);
-		break;
-	}
-}
-
-READ_HANDLER(dual_pokey_r)
-{
-	int offset = address;
-	int pokey_num = (offset >> 3) & 0x01;
-	int control = (offset & 0x10) >> 1;
-	int pokey_reg = (offset % 8) | control;
-
-	if (pokey_num == 0) {
-		if (pokey_reg == 0x0a) return rand();
-		return 0;
-	}
-	else { return 0; }
-}
-
-WRITE_HANDLER(dual_pokey_w)
-{
-	int offset = address;
-	int pokey_reg[4];
-	int pokey_num = (offset >> 3) & 0x01;
-	int control = (offset & 0x10) >> 1;
-	pokey_reg[pokey_num] = (offset % 8) | control;
-
-	if (pokey_reg[pokey_num] == 0x0f) { pkenable[pokey_num] = data; }
-	switch (pokey_num) {
-	case 0:	mh_pokey_update(); Update_pokey_sound(pokey_reg[0], data, 0, 6); break;
-	case 1:	mh_pokey_update(); Update_pokey_sound(pokey_reg[1], data, 1, 6); break;
-	}
-}
 
 int mhavoc_sh_start(void)
 {
 	int rv;
-	rv = pokey_sh_start(&pokey_interface);
+	
+	if (has_gamma_cpu) rv = pokey_sh_start(&pokey_interface);
+	else rv = pokey_sh_start(&pokey_interface_alphaone);
+	
+	if (gamenum == MHAVOCRV) { tms5220_sh_start(&tms5220_interface); }
+	
 	return rv;
-	//return(tms5220_sh_start (&tms5220_interface));
 }
 
 void mhavoc_sh_stop(void)
 {
 	pokey_sh_stop();
-	// tms5220_sh_stop ();
+	if (gamenum == MHAVOCRV)
+	tms5220_sh_stop();
 }
 
 void mhavoc_sh_update()
 {
 	pokey_sh_update();
-	// tms5220_sh_update();
+	if (gamenum == MHAVOCRV) 
+	 tms5220_sh_update();
 }
 
-// ***************************************  END AUDIO CODE ************************************************
 
 void end_mhavoc()
 {
 	wrlog("End Major Havoc Called");
-	free_audio_stream_buffer(stream1);
-	stop_audio_stream(stream1);
-	free(soundbuffer);
-	if (gamenum == MHAVOCRV || gamenum == MHAVOCPE) { tms5220_sh_stop(); }
 	if (has_gamma_cpu == 0) { save_hi_aae(0x1800, 0x100, 0); }
 }
 
@@ -560,30 +465,17 @@ void run_reset()
 	gamma_xmtd = 0;
 	player_1 = 0;
 	cache_clear();
-	m_cpu_6502[CPU0]->reset6502();
+	//cpu_reset(0);
+	m_cpu_6502[0]->reset6502();
 
 	if (has_gamma_cpu)
 	{
-		m_cpu_6502[CPU1]->reset6502();
-		Pokey_sound_init(1250000, 44100, 4, 6);
+		//cpu_reset(1);
+		m_cpu_6502[1]->reset6502();
 	}
-	else { Pokey_sound_init(1250000, 44100, 2, 6); }
 }
 
-int get_vidticks(int reset)
-{
-	int v = 0;
 
-	if (reset == 0xff) //Reset Tickcount;
-	{
-		vidticks = 0;
-		return 0;
-	}
-
-	v = vidticks + m_cpu_6502[CPU0]->get6502ticks(0);
-
-	return v;
-}
 
 /*************************************
  *
@@ -597,11 +489,12 @@ void mhavoc_interrupt()
 	if (alpha_irq_clock_enable)
 	{
 		alpha_irq_clock++;
-		if ((alpha_irq_clock & (0x30)) == (0x30)) //0x0c //0x30
+		if ((alpha_irq_clock & (0x0c)) == (0x0c)) //0x0c //0x30
 		{
 			//wrlog("IRQ ALPHA CPU");
-			m_cpu_6502[CPU0]->irq6502();
+			cpu_do_int_imm(CPU0, INT_TYPE_INT);
 			alpha_irq_clock_enable = 0;
+			alpha_irq_clock = 0;
 		}
 	}
 
@@ -609,10 +502,10 @@ void mhavoc_interrupt()
 	if (has_gamma_cpu)
 	{
 		gamma_irq_clock++;
-		if ((gamma_irq_clock & (0x20)) == (0x20))//08 //0x20
+		if ((gamma_irq_clock & (0x08)) == (0x08))//08 //0x20
 		{
 			//wrlog("IRQ GAMMA CPU");
-			m_cpu_6502[CPU1]->irq6502();
+			cpu_do_int_imm(CPU1, INT_TYPE_INT);
 		}
 	}
 }
@@ -621,6 +514,8 @@ WRITE_HANDLER(mhavoc_alpha_irq_ack_w)
 {
 	/* clear the line and reset the clock */
 	m_cpu_6502[CPU0]->m6502clearpendingint();
+	cpu_clear_pending_int(INT_TYPE_INT, CPU0);
+
 	//wrlog("Alpha IRQ ACK!", data);
 	alpha_irq_clock = 0;
 	alpha_irq_clock_enable = 1;
@@ -631,6 +526,7 @@ WRITE_HANDLER(mhavoc_gamma_irq_ack_w)
 	/* clear the line and reset the clock */
 	//wrlog("Gamma IRQ ACK!", data);
 	m_cpu_6502[CPU1]->m6502clearpendingint();
+	cpu_clear_pending_int(INT_TYPE_INT, CPU1);
 	gamma_irq_clock = 0;
 }
 
@@ -650,12 +546,15 @@ WRITE_HANDLER(avg_mgo)
 	{
 		MHAVGDONE = 0;
 		// Clear the video tick count.
-		get_vidticks(0xff);
+		get_video_ticks(0xff);
 		// sweep = 3.75 * total_length;
 		sweep = 2.268 * total_length;
 		//sweep = (float)(TIME_IN_NSEC(1500) * total_length) * 1250000;//1512000;// driver[gamenum].cpu_freq[CPU0];
 		//wrlog("Total Time in cycles for video  %f, total_length %d", sweep, total_length);
-		wrlog("Sweep Timer %f", sweep);
+		
+		if (config.debug_profile_code) {
+			wrlog("Sweep Timer %f", sweep);
+		}
 	}
 	else { MHAVGDONE = 1; }
 }
@@ -696,7 +595,7 @@ READ_HANDLER(mhavoc_port_0_r)
 
 	if (!MHAVGDONE)
 	{
-		if ((get_vidticks(0) > sweep) && MHAVGDONE == 0)
+		if ((get_video_ticks(0) > sweep) && MHAVGDONE == 0)
 		{
 			MHAVGDONE = 1;
 			total_length = 0;
@@ -712,7 +611,8 @@ READ_HANDLER(mhavoc_port_0_r)
 
 	// Emulate the 2.4Khz source on bit 2 (divide 2.5Mhz by 1024)  (EVERY 120 CYCLES)
 	// Note: Bigticks that was being used previously may actually be better and help the timing.
-	if (!(alphaticks & 0x400)) { res |= 0x02; }
+	if (!(get_eterna_ticks(0) & 0x400)) 
+	 res |= 0x02; 
 
 	if (MHAVGDONE)
 		res |= 0x01;
@@ -740,10 +640,15 @@ READ_HANDLER(mhavoc_port_1_r)
 			res &= ~0x04;
 		//wrlog("TMS Ready Data %d", tms5220_ready_r());
 	}
-	if (alpha_rcvd == 1)	res |= 0x02;	else res &= ~0x02;
-	if (alpha_xmtd == 1)	res |= 0x01; else	res &= ~0x01;
+	/* Bit 1 = Alpha rcvd flag */
+	if (has_gamma_cpu && alpha_rcvd)
+		res |= 0x02;
 
-	return (res & 0xff);
+	/* Bit 0 = Alpha xmtd flag */
+	if (has_gamma_cpu && alpha_xmtd)
+		res |= 0x01;
+
+	return res;
 }
 
 READ_HANDLER(alphaone_port_0_r)
@@ -754,7 +659,7 @@ READ_HANDLER(alphaone_port_0_r)
 
 	if (!MHAVGDONE)
 	{
-		if ((get_vidticks(0) > sweep) && MHAVGDONE == 0)
+		if ((get_video_ticks(0) > sweep) && MHAVGDONE == 0)
 		{
 			MHAVGDONE = 1;
 			total_length = 0;
@@ -762,25 +667,12 @@ READ_HANDLER(alphaone_port_0_r)
 	}
 	
 	/* Emulate the 2.4Khz source on bit 2 (divide 2.5Mhz by 1024) */
-	if (bigticks & 0x400) { res &= ~0x02; }
-	else { res |= 0x02; }
+	if (!(get_eterna_ticks(0) & 0x400)) 
+	 res |= 0x02; 
 
 	if (MHAVGDONE)
 		res |= 0x01;
-	else
-		res &= ~0x01;
-
-	return (res & 0xff);
-}
-
-READ_HANDLER(alphaone_port_1_r)
-{
-	static int service = 0;
-	int res;
-
-	res = readinputportbytag("IN1");
-
-	if (service)   bitclr(res, 0x10);
+	
 
 	return res;
 }
@@ -1208,7 +1100,7 @@ WRITE_HANDLER(mhavoc_gamma_w)
 	gamma_rcvd = 0;
 	alpha_xmtd = 1;
 	alpha_data = data;
-	m_cpu_6502[CPU1]->nmi6502();
+	cpu_do_int_imm(CPU1, INT_TYPE_NMI);
 }
 
 READ_HANDLER(mhavoc_gammaram_r)
@@ -1224,11 +1116,6 @@ WRITE_HANDLER(mhavoc_gammaram_w)
 	GI[CPU1][address] = data;
 }
 
-WRITE_HANDLER(watchdog_w)
-{
-
-}
-
 WRITE_HANDLER(nvram_w)
 {
 	mhavoc_nvram[address] = data;
@@ -1239,24 +1126,24 @@ READ_HANDLER(nvram_r)
 	return mhavoc_nvram[address];
 }
 
-// Read Rom
-UINT8 MHAVOC_MRA_ROM(UINT32 address, struct MemoryReadByte* psMemRead)
-{
-	//wrlog("Address here is %x Lowaddr %x data %x", address, psMemRead->lowAddr, Machine->memory_region[active_cpu][address + psMemRead->lowAddr]);
-	return GI[CPU1][address + psMemRead->lowAddr];
-}
-
-// Write Rom
-void MHAVOC_MWA_ROM(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite)
-{
-	wrlog("Attempted ROM Write Address here is %x Lowaddr %x data %x", address, psMemWrite->lowAddr, data);
-	//If logging add here
-}
-
 WRITE_HANDLER(speech_data_w)
 {
 	//if (data != 255) { wrlog("Speech Data Write %x", data);	}
 	speech_write_buffer = data;
+}
+
+
+void run_mhavoc()
+{
+	//if (!has_gamma_cpu) 
+//	{
+		watchdog_reset_w(0, 0, 0);	
+//	}
+		
+	mhavoc_sh_update();
+	
+	if (gamenum == MHAVOCRV) 
+	 tms5220_sh_update(); 
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1284,7 +1171,7 @@ MEM_ADDR(0x1200, 0x1200, MWA_ROM)			     /* don't care */
 MEM_ADDR(0x1400, 0x141f, mhavoc_colorram_w)		 /* ColorRAM */
 MEM_ADDR(0x1600, 0x1600, mhavoc_out_0_w)		 /* Control Signals */
 MEM_ADDR(0x1640, 0x1640, avg_mgo)			     /* Vector Generator GO */
-MEM_ADDR(0x1680, 0x1680, watchdog_w)			 /* Watchdog Clear */
+MEM_ADDR(0x1680, 0x1680, watchdog_reset_w)			 /* Watchdog Clear */
 MEM_ADDR(0x16c0, 0x16c0, avgdvg_reset_w)		 /* Vector Generator Reset */
 MEM_ADDR(0x1700, 0x1700, mhavoc_alpha_irq_ack_w) /* IRQ ack */
 MEM_ADDR(0x1740, 0x1740, mhavoc_rom_banksel_w)	 /* Program ROM Page Select */
@@ -1299,33 +1186,33 @@ MEM_END
 MEM_READ(GammaRead)
 //MEM_ADDR(0x0000, 0x07ff, MRA_RAM)				/* Program RAM (2K)	*/
 MEM_ADDR(0x0800, 0x1fff, mhavoc_gammaram_r)		/* wraps to 0x000-0x7ff */
-MEM_ADDR(0x2000, 0x203f, mh_quad_pokey_read)	/* Quad Pokey read	*/
+MEM_ADDR(0x2000, 0x203f, quadpokey_r)	/* Quad Pokey read	*/
 MEM_ADDR(0x2800, 0x2800, mhavoc_port_1_r)	    /* Gamma Input Port	*/
 MEM_ADDR(0x3000, 0x3000, mhavoc_alpha_r)		/* Alpha Comm. Read Port*/
 MEM_ADDR(0x3800, 0x3803, ip_port_2_r)			/* Roller Controller Input*/
 MEM_ADDR(0x4000, 0x4000, ip_port_4_r)			/* DSW at 8S */
 MEM_ADDR(0x6000, 0x61ff, nvram_r)				/* EEROM	*/
-MEM_ADDR(0x8000, 0xffff, MHAVOC_MRA_ROM)			    /* Program ROM (16K)	*/
+//MEM_ADDR(0x8000, 0xffff, MRA_ROM)			    /* Program ROM (16K)	*/
 MEM_END
 
 MEM_WRITE(GammaWrite)
 //MEM_ADDR(0x0000, 0x07ff, MWA_RAM )			 /* Program RAM (2K)	*/
 MEM_ADDR(0x0800, 0x1fff, mhavoc_gammaram_w)		 /* wraps to 0x000-0x7ff */
-MEM_ADDR(0x2000, 0x203f, mh_quad_pokey_write)	 /* Quad Pokey write	*/
+MEM_ADDR(0x2000, 0x203f, quadpokey_w)	 /* Quad Pokey write	*/
 MEM_ADDR(0x4000, 0x4000, mhavoc_gamma_irq_ack_w)/* IRQ Acknowledge	*/
 MEM_ADDR(0x4800, 0x4800, mhavoc_out_1_w)		 /* Coin Counters 	*/
 MEM_ADDR(0x5000, 0x5000, mhavoc_alpha_w)		 /* Alpha Comm. Write Port */
 MEM_ADDR(0x5800, 0x5800, speech_data_w)		     /* Alpha Comm. Write Port */
 MEM_ADDR(0x5900, 0x5900, speech_strobe_w)		 /* Alpha Comm. Write Port */
 MEM_ADDR(0x6000, 0x61ff, nvram_w)   	         /* EEROM		*/
-MEM_ADDR(0x8000, 0xffff, MHAVOC_MWA_ROM)
+MEM_ADDR(0x8000, 0xffff, MWA_ROM)
 MEM_END
 //----------------------------ALPHAONE DEFINITIONS-----------------------------------------------------------------------
 MEM_READ(AlphaOneRead)
 MEM_ADDR(0x0200, 0x07ff, MRA_BANK1_R)				/* 3K Paged Program RAM	*/
 MEM_ADDR(0x1020, 0x103f, dual_pokey_r)
 MEM_ADDR(0x1040, 0x1040, alphaone_port_0_r)         /* Alpha Input Port 0 */
-MEM_ADDR(0x1060, 0x1060, alphaone_port_1_r)     	/* Gamma Input Port	*/
+MEM_ADDR(0x1060, 0x1060, ip_port_1_r)				/* Gamma Input Port	*/
 MEM_ADDR(0x1080, 0x1080, ip_port_2_r)				/* Roller Controller Input*/
 MEM_ADDR(0x2000, 0x3fff, MRA_BANK2_R)			    /* Paged Program ROM (32K) */
 MEM_END
@@ -1346,73 +1233,8 @@ MEM_ADDR(0x2000, 0x3fff, MWA_ROM)					/* Major Havoc writes here.*/
 MEM_ADDR(0x6000, 0xffff, MWA_ROM)
 MEM_END
 
-void run_mhavoc()
-{
-	int cycles1 = (MHAVOC_CLOCK_2_5M / 50);
-	int cycles2 = (MHAVOC_CLOCK_1_25M / 50);
-	int passes = 400;
-	int cycles = 0;
-	UINT32 dwResult = 0;
-
-	gammaticks = 0;
-	alphaticks = 0;
-
-	int ran, target;
-	static int running;
-
-	//wrlog("------------FRAME START --------------");
-	//update_input_ports();
-	watchdog_reset_w(0, 0, 0);
-	// Will perm fix with cpu code update. everything here is hand coded to 400 divisions per frame.
-	for (int x = 0; x < passes; x++)
-	{
-		target = (50000) * (x + 1) / 400;
-
-		while (alphaticks < target)
-		{
-			running = target - alphaticks;
-			dwResult = m_cpu_6502[CPU0]->exec6502(running);
-			if (0x80000000 != dwResult)
-			{
-				x = 405; done = 1; end_mhavoc();
-				allegro_message("Invalid instruction at %.2x on CPU 2", m_cpu_6502[CPU0]->get_pc());
-			}
-			cycles = m_cpu_6502[CPU0]->get6502ticks(0xff);
-
-			alphaticks += cycles;
-			bigticks += cycles;
-			vidticks += cycles;
-			if (bigticks > 0xfffffff) { bigticks = 0; }
-		}
-		if (has_gamma_cpu)
-		{
-			if (reset1) { m_cpu_6502[CPU1]->reset6502(); reset1 = 0; wrlog("Reset, Gamma CPU"); }
-
-			target = (25000) * (x + 1) / 400;
-			while (gammaticks < target)
-			{
-				running = target - gammaticks;
-				dwResult = m_cpu_6502[CPU1]->exec6502(running); 
-				if (0x80000000 != dwResult)
-				{
-					x = 405; done = 1; end_mhavoc();
-					allegro_message("Invalid instruction at %.2x on CPU 2", m_cpu_6502[CPU1]->get_pc());
-				}
-				gammaticks += m_cpu_6502[CPU1]->get6502ticks(0xff);
-			}
-		}
-		mhavoc_interrupt();
-	}
-	pokey_do_update();
-	if (gamenum == MHAVOCRV || gamenum == MHAVOCPE) { tms5220_sh_update(); }
-
-	if (mh_debug)
-	{
-		wrlog("Alpha cycles ran this frame %d - Wanted to run %d", alphaticks, cycles1);
-		wrlog("Gamma cycles ran this frame %d - wanted to run %d", gammaticks, cycles2);
-	}
-}
 /////////////////// MAIN() for program ///////////////////////////////////////////////////
+
 int init_mhavoc(void)
 {
 	if (gamenum == ALPHAONE || gamenum == ALPHAONA) has_gamma_cpu = 0; else has_gamma_cpu = 1;
@@ -1421,7 +1243,7 @@ int init_mhavoc(void)
 	alpha_irq_clock = 0;
 	alpha_irq_clock_enable = 1;
 	gamma_irq_clock = 0;
-	MHAVGDONE = 1;
+	MHAVGDONE = 0;
 	alpha_data = 0;
 	alpha_rcvd = 0;
 	alpha_xmtd = 0;
@@ -1429,37 +1251,26 @@ int init_mhavoc(void)
 	gamma_rcvd = 0;
 	gamma_xmtd = 0;
 	player_1 = 0;
-	// Start with all pokeys enabled.
-	pkenable[0] = 1;
-	pkenable[1] = 1;
-	pkenable[2] = 1;
-	pkenable[3] = 1;
-	sample_pos = 0;
-	gammaticks = 0;
-
-	if (has_gamma_cpu) {
+	
+	if (has_gamma_cpu) 
+	{
 		init6502(AlphaRead, AlphaWrite, 0);
 		init6502(GammaRead, GammaWrite, 1);
-		Pokey_sound_init(1250000, 44100, 4, 6);
+
 	}
 	else {
+		
 		init6502(AlphaOneRead, AlphaOneWrite, 0);
-		Pokey_sound_init(1250000, 44100, 2, 6);
 		memset(GI[CPU0] + 0x1800, 0xff, 0xff);
 	}
 
 	wrlog("MHAVOC CPU init complete");
 
 	//Load High Score table for Alpha One
-	if (has_gamma_cpu == 0) { load_hi_aae(0x1800, 0x100, 0); }
+	//if (has_gamma_cpu == 0) { load_hi_aae(0x1800, 0x100, 0); }
 
-	// Sound Config to move.
-	BUFFER_SIZE = 44100 / driver[gamenum].fps;// / 2;
-	soundbuffer = (unsigned char*)malloc(BUFFER_SIZE);
-	memset(soundbuffer, 0, BUFFER_SIZE);
-	stream1 = play_audio_stream(BUFFER_SIZE, 8, FALSE, 44100, 125, 128); //config.pokeyvol
-	//mhavoc_sh_start();
-	if (gamenum == MHAVOCRV || gamenum == MHAVOCPE) { tms5220_sh_start(&tms5220_interface); }
+	mhavoc_sh_start();
+	
 	// Start with clear video cache
 	cache_clear();
 
@@ -1482,11 +1293,3 @@ int init_mhavoc(void)
 	return 0;
 }
 
-//////////////////  END OF MAIN PROGRAM /////////////////////////////////////////////
-/*
-if (0x80000000 != dwResult)
-{
-	x = 3000; done = 1; end_mhavoc();
-	allegro_message("Invalid instruction at %.2x on CPU 2", m_cpu_6502[CPU1]->get_pc());
-}
-*/

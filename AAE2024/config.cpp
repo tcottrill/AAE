@@ -212,6 +212,8 @@ void setup_config(void)
 	config.vectrail = my_get_config_int("main", "vectortrail", 1);
 	config.gain = my_get_config_int("main", "gain", 1);
 	config.debug = my_get_config_int("main", "debug", 0);
+	// Added for code profiling and timing
+	config.debug_profile_code = my_get_config_int("main", "debug_profile_code", 0);
 	
 	// Game.ini available - SOUND
 	config.psnoise = my_get_config_int("main", "psnoise", 0);

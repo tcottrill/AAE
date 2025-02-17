@@ -545,7 +545,7 @@ int load_input_port_settings(void)
 	//Update the input port tags regardless if there is a save file or not.
 	memset(&input_port_tag, 0, sizeof(input_port_tag));
 	struct InputPort* in = Machine->input_ports;
-	wrlog("Gamenum here in input ports is %d", gamenum);
+	//wrlog("Gamenum here in input ports is %d", gamenum);
 	//struct InputPort* in = driver[gamenum].input_ports;
 	int temp = 0;
 
@@ -555,7 +555,7 @@ int load_input_port_settings(void)
 		if (in->tag)
 		{
 			input_port_tag[temp] = in->tag;
-			wrlog("Tag %s :: Num %d", in->tag, temp);
+			//wrlog("Tag %s :: Num %d", in->tag, temp);
 			temp++;
 		}
 
@@ -928,7 +928,7 @@ void scale_analog_port(int port)
 	in = input_analog[port];
 	sensitivity = IP_GET_SENSITIVITY(in);
 
-	delta = 0;//cpu_scale_by_cycles(input_analog_current_value[port] - input_analog_previous_value[port], Machine->cpu[0].cpu_clock);
+	delta = cpu_scale_by_cycles(input_analog_current_value[port] - input_analog_previous_value[port], driver[gamenum].cpu_freq[0]);  // Machine->cpu[0].cpu_clock);
 
 	current = input_analog_previous_value[port] + delta;
 

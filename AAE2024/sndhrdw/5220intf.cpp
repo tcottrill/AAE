@@ -162,11 +162,7 @@ static void tms5220_update(int force)
 
 	//newpos = cpu_scale_by_cycles(buffer_len, intfa->clock);
 	
-	if (gamenum == MHAVOCRV || gamenum == MHAVOCPE) {
-		newpos = cpu_scale_by_cycles_mh(buffer_len);
-	}
-	else
-		newpos = cpu_scale_by_cycles(buffer_len);
+	newpos = cpu_scale_by_cycles(buffer_len, intfa->clock);
 	//WRLOG("NEW TMS Position here is %d", newpos);
 	if (newpos - sample_pos < MIN_SLICE && !force)
 		return;

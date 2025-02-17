@@ -323,6 +323,7 @@ typedef struct {
 	char* exrompath; //optional path for roms
 	int hack;
 	int debug;
+	int debug_profile_code;
 	int kbleds;
 }settings;
 

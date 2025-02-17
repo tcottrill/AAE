@@ -57,7 +57,7 @@ static int totalcpu = 0;
 static int watchdog_timer = 0;
 static int watchdog_counter = 0;
 
-// New CPU Contexts
+// CPU Contexts
 cpu_6809* m_cpu_6809[MAX_CPU];
 cpu_i8080* m_cpu_i8080[MAX_CPU];
 cpu_z80* m_cpu_z80[MAX_CPU];
@@ -69,7 +69,13 @@ struct S68000CONTEXT c68k[MAX_CPU];
 void init_z80(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum)
 {
 	wrlog("Z80 Init Started");
-	m_cpu_z80[cpunum] = new cpu_z80(GI[cpunum], read, write, portread, portwrite, 0xffff, cpunum);
+	m_cpu_z80[cpunum] = new cpu_z80(GI[cpunum], 
+		read, 
+		write, 
+		portread, 
+		portwrite, 
+		0xffff, 
+		cpunum);
 	m_cpu_z80[cpunum]->mz80reset();
 	wrlog("Z80 Init Ended");
 }
@@ -89,7 +95,7 @@ void init8080(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct
 		write,
 		portread,
 		portwrite,
-		0xffff);
+		0);
 	m_cpu_i8080[cpunum]->reset();
 }
 
@@ -611,11 +617,11 @@ void cpu_clear_pending_int(int int_type, int cpunum)
 	switch (driver[gamenum].cpu_type[get_current_cpu()])
 	{
 	case CPU_MZ80:  m_cpu_z80[cpunum]->mz80ClearPendingInterrupt(); break;
-	case CPU_M6502: m_cpu_6502[cpunum]->reset6502(); break;
+	case CPU_M6502: m_cpu_6502[cpunum]->m6502clearpendingint();	break;
 	}
 }
 
-int cpu_scale_by_cycles(int val)
+int cpu_scale_by_cycles(int val, int clock)
 {
 	float temp;
 	int k;

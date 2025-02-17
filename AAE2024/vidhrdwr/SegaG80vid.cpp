@@ -56,7 +56,7 @@ static int min_x, min_y;
 int sega_vh_start(int r)
 {
 	//wrlog("Sega Video Init");
-	sega_rotate = r;
+	sega_rotate = 0;
 
 	min_x = 512;
 	min_y = 512;

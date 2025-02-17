@@ -269,7 +269,7 @@ static void update_pokeys(void)
 {
 	int newpos;
 
-	newpos = cpu_scale_by_cycles(buffer_len); // get current position based on the timer 
+	newpos = cpu_scale_by_cycles(buffer_len, intf->clock); // get current position based on the timer 
 
 	if (newpos - sample_pos < MIN_SLICE)
 		return;

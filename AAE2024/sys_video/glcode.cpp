@@ -842,9 +842,11 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 
 	glDisable(GL_TEXTURE_2D);
 
-	auto end = chrono::steady_clock::now();
-	auto diff = end - start;
-	wrlog("Profiler: Render Time after final compositing %f ", chrono::duration <double, milli>(diff).count());
+	if (config.debug_profile_code) {
+		auto end = chrono::steady_clock::now();
+		auto diff = end - start;
+		wrlog("Profiler: Render Time after final compositing %f ", chrono::duration <double, milli>(diff).count());
+	}
 }
 
 

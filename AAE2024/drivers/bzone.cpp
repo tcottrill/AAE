@@ -15,10 +15,10 @@
 
 static int soundEnable = 1;
 int rb_input_select; 	// 0 is roll_data, 1 is pitch_data
-
 static UINT8 analog_data;
-
 int bzone_timer = -1;
+
+
 
 void bzone_interrupt(int dummy)
 {
@@ -50,32 +50,6 @@ static int redbaron_joy_r(int offset)
 	else
 		return readinputport(6);
 }
-
-static struct POKEYinterface bzone_pokey_interface =
-{
-	1,			/* 4 chips */
-	1512000,
-	255,	/* volume */
-	6,
-	NO_CLIP,
-	/* The 8 pot handlers */
-	{0},{0},{0},{0},{0},{0},{0},{0},
-	/* The allpot handler */
-	{ bzone_IN3_r }, //Dip here
-};
-
-static struct POKEYinterface rb_pokey_interface =
-{
-	1,			/* 4 chips */
-	1512000,
-	255,	/* volume */
-	6,
-	NO_CLIP,
-	/* The 8 pot handlers */
-	{0},{0},{0},{0},{0},{0},{0},{0},
-	/* The allpot handler */
-	{ redbaron_joy_r }, //Dip here
-};
 
 WRITE_HANDLER(bzone_pokey_w)
 {
@@ -190,6 +164,33 @@ WRITE_HANDLER(analog_select_w)
 	if ((address & 0x0f) <= 2)
 		analog_data = readinputport(5 + (address & 0x0f)); //6
 }
+
+
+static struct POKEYinterface bzone_pokey_interface =
+{
+	1,			/* 4 chips */
+	1512000,
+	255,	/* volume */
+	POKEY_DEFAULT_GAIN,
+	NO_CLIP,
+	/* The 8 pot handlers */
+	{0},{0},{0},{0},{0},{0},{0},{0},
+	/* The allpot handler */
+	{ bzone_IN3_r }, //Dip here
+};
+
+static struct POKEYinterface rb_pokey_interface =
+{
+	1,			/* 4 chips */
+	1512000,
+	255,	/* volume */
+	POKEY_DEFAULT_GAIN,
+	NO_CLIP,
+	/* The 8 pot handlers */
+	{0},{0},{0},{0},{0},{0},{0},{0},
+	/* The allpot handler */
+	{ redbaron_joy_r }, //Dip here
+};
 
 ///////////////////////  MAIN LOOP /////////////////////////////////////
 void run_bzone()

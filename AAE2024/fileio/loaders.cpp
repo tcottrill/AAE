@@ -88,12 +88,12 @@ int load_roms(const char* archname, const struct RomModule* p)
 			if (p[i].filename == (char*)-1)
 			{
 				wrlog("Loading Rom: %s", p[i - 1].filename);
-				zipdata = load_zip_file(p[i - 1].filename, temppath);
+				zipdata = load_zip_file(temppath, p[i - 1].filename);
 			}
 			else
 			{
 				wrlog("Loading Rom: %s", p[i].filename);
-				zipdata = load_zip_file(p[i].filename, temppath);
+				zipdata = load_zip_file(temppath, p[i].filename);
 			}
 			if (!zipdata)
 			{
@@ -152,7 +152,7 @@ int load_samples(const char** p, int val)
 	do
 	{
 		wrlog("Loading Sample %s", p[i]);
-		zipdata = load_zip_file((const char*)p[i], temppath);
+		zipdata = load_zip_file(temppath, (const char*)p[i]);
 
 		if (!zipdata) {
 			wrlog("Couldn't find the sound %s.\n Will use silence for that sample.", p[i]);
@@ -384,7 +384,7 @@ GLuint load_texture(const char* filename, const char* archname, int numcomponent
 	else
 	{
 		//Otherwise load with our generic zip functionality
-		raw_data = load_zip_file(filename, archname);
+		raw_data = load_zip_file(archname, filename);
 		image_data = stbi_load_from_memory(raw_data, (int)(get_last_zip_file_size()), &width, &height, &comp, STBI_rgb_alpha);
 	}
 	if (!image_data) {

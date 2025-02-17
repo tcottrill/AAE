@@ -1252,6 +1252,7 @@ int cpu_6502::step6502()
 		return 0x00000000;
 	}
 	// Debug Logging if needed. This code needs lots of help.
+	debug = 0;
 	if (debug)
 	{
 		std::string op = disam(opcode);
