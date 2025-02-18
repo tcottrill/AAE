@@ -504,7 +504,7 @@ void run_tempest()
 /////////////////// MAIN() for program ///////////////////////////////////////////////////
 int init_tempest(void)
 {
-	init6502(TempestRead, TempestWrite, 0);
+	init6502(TempestRead, TempestWrite, 0xdfff, CPU0);
 
 	cache_clear();
 	

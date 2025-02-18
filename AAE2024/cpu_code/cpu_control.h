@@ -53,7 +53,7 @@ enum
 #define INT_TYPE_68K6 6
 #define INT_TYPE_68K7 7
 
-void init6502(struct MemoryReadByte* read, struct MemoryWriteByte* write, int cpunum);
+void init6502(struct MemoryReadByte* read, struct MemoryWriteByte* write, int mem_top, int cpunum);
 void init8080(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum);
 void init6809(struct MemoryReadByte* read, struct MemoryWriteByte* write, int cpunum);
 void init_z80(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum);

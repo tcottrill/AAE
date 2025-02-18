@@ -217,7 +217,7 @@ void run_llander()
 /////////////////// MAIN() for program ///////////////////////////////////////////////////
 int init_llander()
 {
-	init6502(LlanderRead, LlanderWrite, 0);
+	init6502(LlanderRead, LlanderWrite, 0x7fff, CPU0);
 
 	/*
 	if (config.artwork){

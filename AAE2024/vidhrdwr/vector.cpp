@@ -312,7 +312,7 @@ void cache_end(void)
 		olddvglnptr = 0; 
 		olddvgpntptr = 0; 
 		olddvgtexptr = 0; 
-		wrlog("DRAW FROM CACHE!!!!!!!!!!!!!!!!!!!!!"); 
+		//wrlog("DRAW FROM CACHE!!!!!!!!!!!!!!!!!!!!!"); 
 	} //Is there no lines this frame?
 	else 
 	{ 

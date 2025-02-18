@@ -100,9 +100,9 @@ void init8080(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct
 }
 
 
-void init6502(struct MemoryReadByte* read, struct MemoryWriteByte* write, int cpunum)
+void init6502(struct MemoryReadByte* read, struct MemoryWriteByte* write, int mem_top, int cpunum)
 {
-	m_cpu_6502[cpunum] = new cpu_6502(GI[cpunum], read, write, 0xffff, cpunum);
+	m_cpu_6502[cpunum] = new cpu_6502(GI[cpunum], read, write, mem_top, cpunum);
 	m_cpu_6502[cpunum]->reset6502();
 	wrlog("Finished Configuring CPU");
 }
@@ -626,7 +626,7 @@ int cpu_scale_by_cycles(int val, int clock)
 	float temp;
 	int k;
 	int sclock = driver[gamenum].cpu_freq[active_cpu];
-	int current = cyclecount[active_cpu];  //totalcpu-1]; active_cpu was last
+	int current = tickcount[active_cpu];//cyclecount[active_cpu];  //totalcpu-1]; active_cpu was last
 
 	//wrlog(" Sound Update called, clock value: %d ", current);
 	int max = sclock / driver[gamenum].fps;

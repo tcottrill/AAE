@@ -183,6 +183,7 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="menu.cpp" />
+    <ClCompile Include="mhavoc_custom_video.cpp" />
     <ClCompile Include="newfbo.cpp" />
     <ClCompile Include="os_basic.cpp" />
     <ClCompile Include="os_input.cpp" />
@@ -277,6 +278,7 @@
     <ClInclude Include="mem68k.h" />
     <ClInclude Include="memory.h" />
     <ClInclude Include="menu.h" />
+    <ClInclude Include="mhavoc_custom_video.h" />
     <ClInclude Include="newfbo.h" />
     <ClInclude Include="osdepend.h" />
     <ClInclude Include="osd_cpu.h" />

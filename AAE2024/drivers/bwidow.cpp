@@ -187,7 +187,7 @@ MEM_END
 
 int init_bwidow()
 {
-	init6502(BwidowRead, BwidowWrite, 0);
+	init6502(BwidowRead, BwidowWrite, 0xefff, CPU0);
 	avg_init();
 	pokey_sh_start(&pokey_interface);
 	timer_set(TIME_IN_HZ(246), CPU0, bwidow_interrupt);
@@ -196,7 +196,7 @@ int init_bwidow()
 /////////////////// MAIN() for program ///////////////////////////////////////////////////
 int init_spacduel()
 {
-	init6502(SpaceDuelRead, SpaceDuelWrite, 0);
+	init6502(SpaceDuelRead, SpaceDuelWrite, 0xefff, CPU0);
 	avg_init();
 	pokey_sh_start(&pokey_interface);
 	timer_set(TIME_IN_HZ(246), CPU0, bwidow_interrupt);

@@ -106,7 +106,7 @@ void gui_loop()
 	}
 	glPrint_centered(30, "Press Start 1 to Select Game", 20, 20, 255, 255, 1.3, 0, 0);
 	glPrint_centered(33, "Press Start 1 to Select Game", 255, 255, 255, 255, 1.3, 0, 0);
-	glPrint_centered(7, "2024 Rebuild C Version - Press <TAB> for Menu", 168, 40, 40, 255, .6, 0, 0);
+	glPrint_centered(7,  "2025 Rebuild Version - Press <TAB> for Menu", 168, 40, 40, 255, .6, 0, 0);
 	shot_animate(pi);
 }
 

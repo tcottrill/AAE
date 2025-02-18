@@ -258,6 +258,9 @@
     <ClCompile Include="memory.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="mhavoc_custom_video.cpp">
+      <Filter>Source Files\vidhrdwr</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="aaemain.h">
@@ -523,6 +526,9 @@
     </ClInclude>
     <ClInclude Include="gameroms_new.h">
       <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="mhavoc_custom_video.h">
+      <Filter>Source Files\vidhrdwr</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

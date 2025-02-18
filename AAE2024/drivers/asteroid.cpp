@@ -432,7 +432,7 @@ void end_astdelux()
 }
 int init_asteroid(void)
 {
-	init6502(AsteroidRead, AsteroidWrite, 0);
+	init6502(AsteroidRead, AsteroidWrite, 0x7fff, CPU0);
 	
 	dvg_start_asteroid();
 
@@ -450,7 +450,7 @@ int init_astdelux(void)
 {
 	int k;
 
-	init6502(AsteroidDeluxeRead, AsteroidDeluxeWrite, 0);
+	init6502(AsteroidDeluxeRead, AsteroidDeluxeWrite, 0x7fff, CPU0);
 
 	dvg_start_asteroid();
 

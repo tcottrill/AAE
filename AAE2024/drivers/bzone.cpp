@@ -275,7 +275,7 @@ MEM_END
 int init_redbaron()
 {
 	
-	init6502(RedBaronRead, RedBaronWrite, 0);
+	init6502(RedBaronRead, RedBaronWrite, 0x7fff, CPU0);
 	pokey_sh_start(&rb_pokey_interface);
 	avg_init();
 	avg_clear();
@@ -286,7 +286,7 @@ int init_redbaron()
 
 int init_bzone()
 {
-	init6502(BzoneRead, BzoneWrite, 0);
+	init6502(BzoneRead, BzoneWrite, 0x7fff, CPU0);
 	pokey_sh_start(&bzone_pokey_interface);
 	
 	avg_init();
