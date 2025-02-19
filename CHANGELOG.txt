@@ -58,9 +58,13 @@ Fixed DVG issues. Fixed remaining watchdog issues. Hacked back in pause function
 
 2/12/25 Minor tweak to black widow size. Changed the zip loader to match other code I have written.
 
-2/27/25
+2/17/25
 Merged the last of the old code out and cleaned up the Major Havoc driver. 
 Misc code updates and bug fixes. Added a flag to disable the code profiling to keep the log from filling up. 
 Input bugfix will require some tweaking on the analog sensitivity. This is an issue I am still battling in the new allegro free version with Rawinput.
 Fixed most remaining volume issues. 
+
+2/18/25
+Changed the sampling in BattleZone to work better with my new sound code. 
+
 

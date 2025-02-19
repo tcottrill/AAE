@@ -28,7 +28,6 @@
 #include "gui/gui.h"
 #include "gui/animation.h"
 #include "gamedriver.h"
-#include "rand.h"
 #include "glcode.h"
 #include "samples.h"
 #include "menu.h"
@@ -835,7 +834,6 @@ int main(int argc, char* argv[])
 	done = 0;
 	//////////////////////////////////////////////////////
 	wrlog("Number of supported games in this release: %d", num_games);
-	initrand();
 	fillstars(stars);
 	have_error = 0;
 

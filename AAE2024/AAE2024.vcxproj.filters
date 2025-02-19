@@ -75,9 +75,6 @@
     <ClCompile Include="os_input.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="rand.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="sys_timer.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -258,7 +255,7 @@
     <ClCompile Include="memory.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="mhavoc_custom_video.cpp">
+    <ClCompile Include="vidhrdwr\mhavoc_custom_video.cpp">
       <Filter>Source Files\vidhrdwr</Filter>
     </ClCompile>
   </ItemGroup>
@@ -306,12 +303,6 @@
       <Filter>Source Files</Filter>
     </ClInclude>
     <ClInclude Include="osdepend.h">
-      <Filter>Source Files</Filter>
-    </ClInclude>
-    <ClInclude Include="rand.h">
-      <Filter>Source Files</Filter>
-    </ClInclude>
-    <ClInclude Include="rotation_table.h">
       <Filter>Source Files</Filter>
     </ClInclude>
     <ClInclude Include="sys_timer.h">
@@ -527,8 +518,11 @@
     <ClInclude Include="gameroms_new.h">
       <Filter>Source Files</Filter>
     </ClInclude>
-    <ClInclude Include="mhavoc_custom_video.h">
+    <ClInclude Include="vidhrdwr\mhavoc_custom_video.h">
       <Filter>Source Files\vidhrdwr</Filter>
+    </ClInclude>
+    <ClInclude Include="sys_video\rotation_table.h">
+      <Filter>Source Files\sys_video</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

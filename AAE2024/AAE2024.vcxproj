@@ -183,11 +183,9 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="menu.cpp" />
-    <ClCompile Include="mhavoc_custom_video.cpp" />
     <ClCompile Include="newfbo.cpp" />
     <ClCompile Include="os_basic.cpp" />
     <ClCompile Include="os_input.cpp" />
-    <ClCompile Include="rand.cpp" />
     <ClCompile Include="sndhrdw\5220intf.cpp" />
     <ClCompile Include="sndhrdw\aae_mame_pokey_2.4.cpp" />
     <ClCompile Include="sndhrdw\ay8910.cpp" />
@@ -207,6 +205,7 @@
     <ClCompile Include="texrect2dvbo.cpp" />
     <ClCompile Include="vidhrdwr\aae_avg.cpp" />
     <ClCompile Include="vidhrdwr\cinematvid.cpp" />
+    <ClCompile Include="vidhrdwr\mhavoc_custom_video.cpp" />
     <ClCompile Include="vidhrdwr\old_mame_vecsim_dvg.cpp" />
     <ClCompile Include="vidhrdwr\SegaG80vid.cpp" />
     <ClCompile Include="vidhrdwr\vector.cpp" />
@@ -278,14 +277,11 @@
     <ClInclude Include="mem68k.h" />
     <ClInclude Include="memory.h" />
     <ClInclude Include="menu.h" />
-    <ClInclude Include="mhavoc_custom_video.h" />
     <ClInclude Include="newfbo.h" />
     <ClInclude Include="osdepend.h" />
     <ClInclude Include="osd_cpu.h" />
     <ClInclude Include="os_basic.h" />
     <ClInclude Include="os_input.h" />
-    <ClInclude Include="rand.h" />
-    <ClInclude Include="rotation_table.h" />
     <ClInclude Include="sndhrdw\5220intf.h" />
     <ClInclude Include="sndhrdw\aae_mame_pokey_2.4.h" />
     <ClInclude Include="sndhrdw\ay8910.h" />
@@ -299,6 +295,7 @@
     <ClInclude Include="sys_video\gl_fbo.h" />
     <ClInclude Include="sys_video\gl_shader.h" />
     <ClInclude Include="sys_video\gl_texturing.h" />
+    <ClInclude Include="sys_video\rotation_table.h" />
     <ClInclude Include="sys_video\stb_image.h" />
     <ClInclude Include="sys_video\stb_image_write.h" />
     <ClInclude Include="sys_video\vector_fonts.h" />
@@ -306,6 +303,7 @@
     <ClInclude Include="texrect.h" />
     <ClInclude Include="texrect2dvbo.h" />
     <ClInclude Include="vidhrdwr\aae_avg.h" />
+    <ClInclude Include="vidhrdwr\mhavoc_custom_video.h" />
     <ClInclude Include="vidhrdwr\old_mame_vecsim_dvg.h" />
     <ClInclude Include="vidhrdwr\SegaG80vid.h" />
     <ClInclude Include="vidhrdwr\vector.h" />

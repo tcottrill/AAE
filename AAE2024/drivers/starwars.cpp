@@ -19,10 +19,8 @@
 #include "aae_avg.h"
 #include "aae_mame_pokey_2.4.h"
 #include "earom.h"
-#include "rand.h"
 #include "5220intf.h"
 #include "loaders.h"
-#include "earom.h"
 #include "sndhrdw/starwars_snd.h"
 #include "swmathbx.h"
 

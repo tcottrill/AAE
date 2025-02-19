@@ -17,9 +17,9 @@
 
 ***************************************************************************/
 
-#include "../vidhrdwr/vector.h"
-#include "../cpu_code/ccpu.h"
-#include "../drivers/cinemat.h"
+#include "vector.h"
+#include "ccpu.h"
+#include "cinemat.h"
 
 #define SWAPV(x,y) {int t;t=x;x=y;y=t;}
 /* an rgb_t is a single combined R,G,B (and optionally alpha) value */

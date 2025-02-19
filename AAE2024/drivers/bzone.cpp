@@ -19,6 +19,14 @@ static UINT8 analog_data;
 int bzone_timer = -1;
 
 
+/* Constants for the sound names in the bzone sample array */
+#define kFire1			0
+#define kFire2			1
+#define kEngine1		2
+#define kEngine2		3
+#define kExplode1		4
+#define kExplode2		5
+
 
 void bzone_interrupt(int dummy)
 {
@@ -121,36 +129,57 @@ WRITE_HANDLER(BzoneSounds)
 
 	// Enable/disable all sound output
 	if (data & 0x20)
-	{
-		soundEnable = 1; if (!sample_playing(3)) { sample_start(3, 2, 1); }
-	}
-	else { soundEnable = 0; }
+		soundEnable = 1;
+	else soundEnable = 0;
 
 	// If sound is off, don't bother playing samples
-	if (!soundEnable) { sample_stop(3); return; }
+	if (!soundEnable)
+	{
+		sample_stop(0); // Turn off explosion 
+		sample_stop(1); // Turn off engine noise 
+		return;
+	}
 
 	if (lastValue == data) return;
 	lastValue = data;
 
-	// Enable explosion output
+	// Enable explosion output 
 	if (data & 0x01)
 	{
-		if (data & 0x02) { sample_start(1, 4, 0); }
-		else { sample_start(1, 5, 0); }
+		if (data & 0x02)
+			sample_start(2, kExplode1, 0);
+		else
+			sample_start(2, kExplode2, 0);
 	}
 
-	// Enable shell output
+	// Enable shell output 
 	if (data & 0x04)
 	{
-		if (data & 0x08) { sample_start(2, 0, 0); } // loud shell
-		else { sample_start(2, 1, 0); } // soft shell
+		if (data & 0x08)
+		{
+			// loud shell
+			sample_start(2, kFire1, 0);
+		}
+		else
+		{
+			// soft shell 
+			sample_start(2, kFire2, 0);
+		}
 	}
 
-	// Enable engine output
+	// Enable engine output 
 	if (data & 0x80)
 	{
-		if (data & 0x10) sample_set_freq(3, 33000); // Fast rumble
-		else sample_set_freq(3, 22050); // Slow rumble
+		if (data & 0x10)
+		{
+			// Fast rumble 
+			sample_start(1, kEngine2, 1);
+		}
+		else
+		{
+			// Slow rumble 
+			sample_start(1, kEngine1, 1);
+		}
 	}
 }
 
@@ -279,7 +308,7 @@ int init_redbaron()
 	pokey_sh_start(&rb_pokey_interface);
 	avg_init();
 	avg_clear();
-	timer_set(TIME_IN_HZ(240), CPU0, bzone_interrupt);
+	bzone_timer = timer_set(TIME_IN_HZ(240), CPU0, bzone_interrupt);
 
 	return 0;
 }
@@ -291,7 +320,7 @@ int init_bzone()
 	
 	avg_init();
 	avg_clear();
-    timer_set(TIME_IN_HZ(240), CPU0, bzone_interrupt);
+	bzone_timer = timer_set(TIME_IN_HZ(240), CPU0, bzone_interrupt);
 
 	return 0;
 }

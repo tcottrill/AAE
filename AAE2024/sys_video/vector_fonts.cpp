@@ -313,15 +313,6 @@ void fontmode_end()
 	glLoadIdentity();
 }
 
-spoint RotateAroundPoint(float x, float y, float cx, float cy, float cosTheta, float sinTheta)
-{
-	spoint p;
-	p.x = ((((x)-(cx)) * (cosTheta)) - (((y)-(cy)) * (sinTheta))) + (cx);
-	p.y = ((((x)-(cx)) * (sinTheta)) + (((y)-(cy)) * (cosTheta))) + (cy);
-	return p;
-}
-
-
 //Note to self:
 // All of the printing and rotation is a complete test hack, please fix
 
@@ -332,8 +323,8 @@ void fprint(float x, int y, unsigned int color, float scale, const char* fmt, ..
 	int i = 0;
 	int len;
 
-	spoint p0;
-	spoint p1;
+	Vec2 p0;
+	Vec2 p1;
 
 	float radians;
 	float cosTheta;
@@ -353,7 +344,7 @@ void fprint(float x, int y, unsigned int color, float scale, const char* fmt, ..
 
 	len = strnlen(text, 255);
 	lastscale = scale;
-	spoint center = { 580 , 325 }; // { xcenter, ycenter };/
+	Vec2 center = { 580 , 325 }; // { xcenter, ycenter };/
 
 	if (fangle)
 	{
