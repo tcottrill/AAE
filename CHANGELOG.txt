@@ -67,4 +67,7 @@ Fixed most remaining volume issues.
 2/18/25
 Changed the sampling in BattleZone to work better with my new sound code. 
 
+2/22/25
+Started updating the Cinematronics Driver, fixed drone sounds for star castle and others. Major re-org of the code.
+
 

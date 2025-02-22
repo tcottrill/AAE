@@ -3,9 +3,6 @@
 
 #include "aaemain.h"
 
-extern char* gamename[];
-extern int gamenum;
-
 int init_tempest();
 void run_tempest();
 void end_tempest();

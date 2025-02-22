@@ -22,7 +22,7 @@
 
 UINT8 MUX_VAL;
 UINT8 SOUNDBITS;
-UINT8 CCPUROMSIZE;
+UINT8 CCPUROMSIZE = 16;
 
 extern  void cinemat_vector_callback(INT16 sx, INT16 sy, INT16 ex, INT16 ey, UINT8 shift);
 extern  void cini_sound_control_w(int offset, int data);
@@ -169,14 +169,16 @@ void ccpu_wdt_timer_trigger(void)
 	//}
 }
 
+/*
 static void ccpu_init(int index, int clock, const void* _config, int (*irqcallback)(int))
 {
 	const struct CCPUConfig* config = (const CCPUConfig*)_config;
 
-	/* copy input params */
+	// copy input params 
 	ccpu.external_input = config->external_input ? config->external_input : read_jmi;
 	ccpu.vector_callback = config->vector_callback;
 }
+*/
 
 void ccpu_reset(void)
 {
@@ -205,14 +207,14 @@ void ccpu_reset(void)
 	ccpu.watchdog = 0;
 }
 
-void init_ccpu(int val)
+void init_ccpu(int val, int romsize)
 {
-	wrlog("CCPU Init called");
+	wrlog("Debug:: CCPU Init called");
 	ccpu_reset();
 	/* copy input params */
 	if (val) ccpu.external_input = joystick_read; else ccpu.external_input = read_jmi;//config->external_input ? config->external_input : read_jmi;
-
 	ccpu.vector_callback = cinemat_vector_callback;
+	CCPUROMSIZE = romsize;
 }
 
 /***************************************************************************

@@ -27,7 +27,7 @@
 #include "bzone.h"
 #include "starwars.h"
 #include "starwars_snd.h"
-#include "cinemat.h"
+#include "cinematronics_driver.h"
 #include "omegrace.h"
 #include "quantum.h"
 #include "llander.h"

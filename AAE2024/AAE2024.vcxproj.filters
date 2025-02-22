@@ -132,12 +132,6 @@
     <ClCompile Include="sndhrdw\SegaG80snd.cpp">
       <Filter>Source Files\sndhrdwr</Filter>
     </ClCompile>
-    <ClCompile Include="drivers\cinemat.cpp">
-      <Filter>Source Files\drivers</Filter>
-    </ClCompile>
-    <ClCompile Include="sndhrdw\cinesnd.cpp">
-      <Filter>Source Files\sndhrdwr</Filter>
-    </ClCompile>
     <ClCompile Include="sys_video\vector_fonts.cpp">
       <Filter>Source Files\sys_video</Filter>
     </ClCompile>
@@ -240,9 +234,6 @@
     <ClCompile Include="win10_win11_required_code.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="vidhrdwr\cinematvid.cpp">
-      <Filter>Source Files\sys_video</Filter>
-    </ClCompile>
     <ClCompile Include="sndhrdw\aae_mame_pokey_2.4.cpp">
       <Filter>Source Files\sndhrdwr</Filter>
     </ClCompile>
@@ -257,6 +248,15 @@
     </ClCompile>
     <ClCompile Include="vidhrdwr\mhavoc_custom_video.cpp">
       <Filter>Source Files\vidhrdwr</Filter>
+    </ClCompile>
+    <ClCompile Include="vidhrdwr\cinematronics_video.cpp">
+      <Filter>Source Files\vidhrdwr</Filter>
+    </ClCompile>
+    <ClCompile Include="sndhrdw\cinematronics_sound.cpp">
+      <Filter>Source Files\sndhrdwr</Filter>
+    </ClCompile>
+    <ClCompile Include="drivers\cinematronics_driver.cpp">
+      <Filter>Source Files\drivers</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -360,9 +360,6 @@
       <Filter>Source Files\cpu_code</Filter>
     </ClInclude>
     <ClInclude Include="drivers\SegaG80.h">
-      <Filter>Source Files\drivers</Filter>
-    </ClInclude>
-    <ClInclude Include="drivers\cinemat.h">
       <Filter>Source Files\drivers</Filter>
     </ClInclude>
     <ClInclude Include="sys_video\vector_fonts.h">
@@ -523,6 +520,15 @@
     </ClInclude>
     <ClInclude Include="sys_video\rotation_table.h">
       <Filter>Source Files\sys_video</Filter>
+    </ClInclude>
+    <ClInclude Include="vidhrdwr\cinematronics_video.h">
+      <Filter>Source Files\vidhrdwr</Filter>
+    </ClInclude>
+    <ClInclude Include="sndhrdw\cinematronics_sound.h">
+      <Filter>Source Files\sndhrdwr</Filter>
+    </ClInclude>
+    <ClInclude Include="drivers\cinematronics_driver.h">
+      <Filter>Source Files\drivers</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

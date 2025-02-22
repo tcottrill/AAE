@@ -75,6 +75,8 @@ void cpu_reset_all();
 int cpu_getpc();
 int get_elapsed_ticks(int cpunum);
 void cpu_disable_interrupts(int cpunum, int val);
+//Get the current cpu frame number
+int cpu_getcurrentframe();
 
 void cpu_do_int_imm(int cpunum, int int_type);
 void cpu_do_interrupt(int int_type, int cpunum);

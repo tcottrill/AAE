@@ -3,10 +3,6 @@
 
 #include "aaemain.h"
 
-extern char* gamename[];
-extern int gamenum;
-
-                            /* just a guess */
 int init_redbaron();
 int init_bzone();
 void run_bzone();

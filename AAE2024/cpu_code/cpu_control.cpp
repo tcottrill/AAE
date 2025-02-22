@@ -35,8 +35,11 @@ static int enable_interrupt[4];
 static int interrupt_vector[4] = { 0xff,0xff,0xff,0xff };
 static int interrupt_count[4];
 static int interrupt_pending[4];
-static int framecnt = 0;
+//static int framecnt = 0;
 static int intcnt = 0;
+
+static int cpu_framecounter = 0; //This is strictly for the cinematronics games.
+// We currently don't use this anywhere else.
 
 //New for the antique style mame cpu scheduling that I added for Multicore CPU games.
 //
@@ -207,6 +210,11 @@ int cpu_getpc()
 		break;
 	}
 	return 0;
+}
+
+int cpu_getcurrentframe()
+{
+	return cpu_framecounter;
 }
 
 int cpu_getcycles(int reset) //Only returns cycles from current context cpu
@@ -564,6 +572,9 @@ void cpu_run_mame(void)
 			}
 		}
 	}
+	//End of CPU Update, update and check frame counter
+	cpu_framecounter++;
+	if (cpu_framecounter > 0xffff) { cpu_framecounter = 0; }
 }
 
 void cpu_reset(int cpunum)
@@ -697,7 +708,7 @@ void init_cpu_config()
 		if (driver[gamenum].cpu_type[x])  totalcpu++;
 	}
 	
-
+	cpu_framecounter = 0;
 	vid_tickcount = 0;//Initalize video tickcount;
 	hertzflip = 0;
 

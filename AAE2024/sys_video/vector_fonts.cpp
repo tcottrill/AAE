@@ -309,8 +309,8 @@ void fontmode_end()
 {
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE);
 	glColor4ub(255, 255, 255, 255);
-	glPopMatrix();
-	glLoadIdentity();
+	//glPopMatrix();
+	//glLoadIdentity();
 }
 
 //Note to self:

@@ -44,8 +44,8 @@ struct CCPUConfig
 	PUBLIC VARS
 **************************************************************************/
 extern UINT8 MUX_VAL;
-extern UINT8 SOUNDBITS;
-extern UINT8 CCPUROMSIZE;
+//extern UINT8 SOUNDBITS;
+//extern UINT8 CCPUROMSIZE;
 
 /***************************************************************************
 	PUBLIC FUNCTIONS
@@ -58,7 +58,7 @@ int cpunum_get_reg(int cpunum, int reg);
 int cpunum_set_reg(int cpunum, int reg, INT16 val);
 void vec_control_write(int data);
 void coin_handler(int data);
-void init_ccpu(int val);
+void init_ccpu(int val, int romsize);
 void ccpu_reset();
 UINT8 joystick_read(void);
 UINT16 get_ccpu_inputs(int offset);

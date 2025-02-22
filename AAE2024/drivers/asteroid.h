@@ -3,8 +3,6 @@
 
 #include "aaemain.h"
 
-extern char* gamename[];
-
 int init_asteroid(void);
 int init_astdelux(void);
 void run_asteroid();

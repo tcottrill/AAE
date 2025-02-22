@@ -32,6 +32,8 @@
 #include "memory.h"
 
 extern FILE* errorlog;
+extern char* gamename[];
+extern int gamenum;
 
 #define MAX_SOUND 4
 #define MAX_MEMORY_REGIONS 10
