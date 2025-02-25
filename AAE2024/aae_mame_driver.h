@@ -30,6 +30,8 @@
 #include "osdepend.h"
 #include "config.h"
 #include "memory.h"
+#include "emu_vector_draw.h"
+
 
 extern FILE* errorlog;
 extern char* gamename[];

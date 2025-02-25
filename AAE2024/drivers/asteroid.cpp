@@ -282,7 +282,7 @@ WRITE_HANDLER(asteroid_bank_switch_w)
 	int asteroid_newbank;
 	asteroid_newbank = (data >> 2) & 1;
 	
-	wrlog("Asteroid Bankswitch write %x", data);
+	//wrlog("Asteroid Bankswitch write %x", data);
 
 	//SCRFLIP = GI[CPU0][0x18];
 	if (asteroid_bank != asteroid_newbank) {

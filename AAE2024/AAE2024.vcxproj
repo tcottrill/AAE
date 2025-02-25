@@ -205,10 +205,10 @@
     <ClCompile Include="texrect2dvbo.cpp" />
     <ClCompile Include="vidhrdwr\aae_avg.cpp" />
     <ClCompile Include="vidhrdwr\cinematronics_video.cpp" />
+    <ClCompile Include="vidhrdwr\emu_vector_draw.cpp" />
     <ClCompile Include="vidhrdwr\mhavoc_custom_video.cpp" />
     <ClCompile Include="vidhrdwr\old_mame_vecsim_dvg.cpp" />
     <ClCompile Include="vidhrdwr\SegaG80vid.cpp" />
-    <ClCompile Include="vidhrdwr\vector.cpp" />
     <ClCompile Include="win10_win11_required_code.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -305,10 +305,10 @@
     <ClInclude Include="texrect2dvbo.h" />
     <ClInclude Include="vidhrdwr\aae_avg.h" />
     <ClInclude Include="vidhrdwr\cinematronics_video.h" />
+    <ClInclude Include="vidhrdwr\emu_vector_draw.h" />
     <ClInclude Include="vidhrdwr\mhavoc_custom_video.h" />
     <ClInclude Include="vidhrdwr\old_mame_vecsim_dvg.h" />
     <ClInclude Include="vidhrdwr\SegaG80vid.h" />
-    <ClInclude Include="vidhrdwr\vector.h" />
     <ClInclude Include="win10_win11_required_code.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

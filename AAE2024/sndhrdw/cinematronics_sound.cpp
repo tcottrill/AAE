@@ -254,6 +254,38 @@ void starcas_sound(UINT8 sound_val, UINT8 bits_changed)
 		sample_start(0, 0, 0);			// Loud explosion
 }
 
+
+
+/*************************************
+ *
+ *	Speed Freak
+ *
+ *************************************/
+
+
+void speedfrk_sound(UINT8 sound_val, UINT8 bits_changed)
+{
+	/* on the falling edge of bit 0x08, clock the inverse of bit 0x04 into the top of the shiftreg */
+	if ((0x08))
+	{
+		current_shift = ((current_shift >> 1) & 0x7fff) | ((~sound_val << 13) & 1);
+		/* high 12 bits control the frequency - counts from value to $FFF, carry triggers */
+		/* another counter */
+
+		/* low 4 bits control the volume of the noise output (explosion?) */
+	}
+
+	/* off-road - 1=on, 0=off */
+	if (SOUNDVAL_RISING_EDGE(0x10))
+		sample_start(0, 0, 1);
+	if (SOUNDVAL_FALLING_EDGE(0x10))
+		sample_stop(0);
+
+	/* start LED is controlled by bit 0x02 */
+	set_aae_leds(0 , ~sound_val & 0x02, 0); 
+}
+
+
 /*************************************
  *
  *	Armor Attack

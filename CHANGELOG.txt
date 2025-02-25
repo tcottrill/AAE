@@ -70,4 +70,9 @@ Changed the sampling in BattleZone to work better with my new sound code.
 2/22/25
 Started updating the Cinematronics Driver, fixed drone sounds for star castle and others. Major re-org of the code.
 
+2/25/25
+Replaced some of the horribly depricated opengl rendering code with slightly less depricated rendering code. No increase in rendering speed though. Bummer.
+ 
+
+
 

@@ -4,10 +4,11 @@
 
 
 void init_cinemat_snd(void (*snd_pointer)(UINT8, UINT8));
+void cinemat_shift(UINT8 sound_val, UINT8 bits_changed, UINT8 A1, UINT8 CLK);
 
 void cini_sound_control_w(int offset, int data);
+void speedfrk_sound(UINT8 sound_val, UINT8 bits_changed);
 void ripoff_sound(UINT8 sound_val, UINT8 bits_changed);
-void cinemat_shift(UINT8 sound_val, UINT8 bits_changed, UINT8 A1, UINT8 CLK);
 void ripoff_sound(UINT8 sound_val, UINT8 bits_changed);
 void armora_sound(UINT8 sound_val, UINT8 bits_changed);
 void null_sound(UINT8 sound_val, UINT8 bits_changed);

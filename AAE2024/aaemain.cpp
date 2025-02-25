@@ -33,7 +33,6 @@
 #include "menu.h"
 #include "aae_avg.h"
 #include "fpsclass.h"
-#include "vector.h"
 #include "os_input.h"
 #include "timer.h"
 #include "vector_fonts.h"
@@ -66,7 +65,7 @@ FpsClass* m_frame; //For frame counting. Prob needs moved out of here really.
 static struct RunningMachine machine;
 struct RunningMachine* Machine = &machine;
 static const struct AAEDriver* gamedrv;
-//static const struct MachineDriver* drv;
+static const struct MachineDriver* drv;
 struct GameOptions	options;
 
 struct { const char* desc; int x, y; } gfx_res[] = {
@@ -169,8 +168,8 @@ void reset_for_new_game(int new_gamenum, int in_giu)
 {
 
 //	if (!in_gui) { driver[gamenum].end_game(); }
-    cache_end();
-	cache_clear();
+    //cache_end();
+    cache_clear();
 
 	if (driver[gamenum].end_game)
 	{

@@ -1,7 +1,8 @@
 #include "old_mame_vecsim_dvg.h"
-#include "vector.h"
 #include "timer.h"
 #include "aae_avg.h"
+#include "emu_vector_draw.h"
+#include "gl_texturing.h"
 //============================================================================
 // AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME 
 // code, 0.29 through .90 mixed with code of my own. This emulator was 
@@ -27,6 +28,7 @@ static int ASTEROID_DVG = 0;
 static int yval = 1130;
 
 static int dvg_timer_val = -1;
+
 
 #define vecmemrdwd(address) ((vectorram[pc]) | (vectorram[pc+1]<<8))
 
@@ -127,6 +129,32 @@ int dvg_generate_vector_list(void)
 			deltay = (y << VEC_SHIFT) >> (9 - temp);
 			total_length += dvg_vector_timer(temp);
 
+			if (z)
+			{
+
+				if ((currentx == currentx + deltax) && (currenty == currenty - deltay))
+				{
+					//wrlog("This is a dot");
+
+					if (z != 4)
+					{
+						z = (z << 4) | 0x0f;
+						add_tex(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, MAKE_RGB(z, z, z), MAKE_RGB(z, z, z));
+					}
+					else
+					{
+						z = (z << 4) | 0x0f;
+						add_line(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, MAKE_RGB(z, z, z), MAKE_RGB(z, z, z));
+					}
+				}
+				else
+				{
+					z = (z << 4) | 0x0f;
+					add_line(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, (currentx + deltax) >> VEC_SHIFT, (currenty - deltay) >> VEC_SHIFT, MAKE_RGB(z, z, z), MAKE_RGB(z, z, z));
+				}
+
+			}
+			/*
 			if ((currentx == (currentx)+deltax) && (currenty == (currenty)-deltay))
 			{
 				if (ASTEROID_DVG) {
@@ -140,7 +168,7 @@ int dvg_generate_vector_list(void)
 			cache_line(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, (currentx + deltax) >> VEC_SHIFT, (currenty - deltay) >> VEC_SHIFT, z, config.gain, 0);
 			cache_point(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, z, config.gain, 0, 0);
 			cache_point((currentx + deltax) >> VEC_SHIFT, (currenty - deltay) >> VEC_SHIFT, z, config.gain, 0, 0);
-
+			*/
 			currentx += deltax;
 			currenty -= deltay;
 			break;
@@ -190,7 +218,7 @@ int dvg_generate_vector_list(void)
 			deltax = (x << VEC_SHIFT) >> (9 - temp);
 			deltay = (y << VEC_SHIFT) >> (9 - temp);
 			total_length += dvg_vector_timer(temp);
-			
+			/*
 			if ((currentx == (currentx)+deltax) && (currenty == (currenty)-deltay))
 			{
 				if (ASTEROID_DVG) {
@@ -206,6 +234,39 @@ int dvg_generate_vector_list(void)
 				cache_line(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, (currentx + deltax) >> VEC_SHIFT, (currenty - deltay) >> VEC_SHIFT, z, config.gain, 0);
 				cache_point(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, z, config.gain, 0, 0);
 				cache_point((currentx + deltax) >> VEC_SHIFT, (currenty - deltay) >> VEC_SHIFT, z, config.gain, 0, 0);
+			}
+			*/
+
+			if (z)
+			{
+
+				if ((currentx == currentx + deltax) && (currenty == currenty - deltay))
+				{
+					//wrlog("This is a dot");
+
+					if (z != 4)
+					{
+						z = (z << 4) | 0x0f;
+						if (ASTEROID_DVG) {
+							add_tex(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, MAKE_RGB(z, z, z), MAKE_RGB(z, z, z));
+						}
+						else
+						{
+							add_line(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, MAKE_RGB(z, z, z), MAKE_RGB(z, z, z));
+						}
+					}
+					else
+					{
+						z = (z << 4) | 0x0f;
+						add_line(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, MAKE_RGB(z, z, z), MAKE_RGB(z, z, z));
+					}
+				}
+				else
+				{
+					z = (z << 4) | 0x0f;
+					add_line(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, (currentx + deltax) >> VEC_SHIFT, (currenty - deltay) >> VEC_SHIFT, MAKE_RGB(z, z, z), MAKE_RGB(z, z, z));
+				}
+
 			}
 
 			currentx += deltax;
@@ -278,6 +339,7 @@ int dvg_init()
 
 int dvg_start_asteroid(void)
 {
+	set_texture_id(&game_tex[0]);
 	ASTEROID_DVG = 1;
 	yval = 1130;
 	return dvg_init();

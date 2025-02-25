@@ -4,7 +4,6 @@
 #include "aae_mame_driver.h"
 #include "aae_avg.h"
 #include "earom.h"
-#include "vector.h"
 #include "mathbox.h"
 #include "samples.h"
 #include "aae_mame_pokey_2.4.h"

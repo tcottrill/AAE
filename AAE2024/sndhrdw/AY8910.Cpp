@@ -13,7 +13,7 @@
 
 //Note to me: Mix the AY Channels to 16 bit so we don't have to support multiple streams per device emulated. 
 
-#include "sndhrdw/ay8910.h"
+#include "ay8910.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -649,7 +649,7 @@ void AY8910_sh_update(void)
 	int i, ch;
 
 	//if(soundcard==0)     return;
-	//wrlog("AY8910 Update ----------->");
+	wrlog("AY8910 Update Numchips %d----------->", numchips);
 
 	for (i = 0; i < numchips; i++)
 	{
@@ -657,10 +657,11 @@ void AY8910_sh_update(void)
 		for (ch = 0; ch < 3; ch++)
 			//  playstreamedsample((i*3)+ch,buf[i][ch],aysamples,ayvol[i]);
 			aae_play_streamed_sample((i * 3) + ch, buf[i][ch], aysamples, 44100, ayvol[i]);
-
+		wrlog("Ay Play Channel %d, Buffer %d Vol %d", (i*3)+ch, i, ayvol[i]);
 		updpos[i] = 0;
 		updlast[i] = 0;
 	}
+	wrlog("AY8910 Update Complete---------->", numchips);
 }
 
 void AY8910partupdate(int chip)

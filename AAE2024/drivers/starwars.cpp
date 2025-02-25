@@ -15,7 +15,6 @@
 #include "starwars.h"
 #include "aae_mame_driver.h"
 #include "samples.h"
-#include "vector.h"
 #include "aae_avg.h"
 #include "aae_mame_pokey_2.4.h"
 #include "earom.h"
@@ -23,6 +22,10 @@
 #include "loaders.h"
 #include "sndhrdw/starwars_snd.h"
 #include "swmathbx.h"
+
+
+
+#include "glcode.h"
 
 #define MASTER_CLOCK (12096000)
 #define CLOCK_3KHZ  (MASTER_CLOCK / 4096)
@@ -309,7 +312,7 @@ int init_starwars(void)
 	starwars_sh_start();
 	//tms5220_sh_start(&tms5220_interface); 
 	avg_init();
-	cache_clear();
+   cache_clear();
 
 	return 0;
 }

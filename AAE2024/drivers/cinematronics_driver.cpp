@@ -94,18 +94,22 @@ static int speedfrk_wheel_r(int offset)
 	static const UINT8 speedfrk_steer[] = { 0xe, 0x6, 0x2, 0x0, 0x3, 0x7, 0xf };
 
 	static int last_wheel = 0, last_frame = 0;
-	int delta_wheel = 3;
+	int delta_wheel = 0;
 
+	
 	// the shift register is cleared once per 'frame'
-	delta_wheel = (INT8)readinputportbytag("WHEEL") / 8;
-	//delta_wheel = delta_wheel / 4;
-	//wrlog("DELTA WHEEL is %d", delta_wheel);
+	if (cpu_getcurrentframe() > last_frame)
+	{
+		delta_wheel = (INT8)readinputportbytag("WHEEL") / 8;
+		//wrlog("DELTA WHEEL is %d", delta_wheel);
 
-	if (delta_wheel > 3)
-		delta_wheel = 3;
-	else if (delta_wheel < -3)
-		delta_wheel = -3;
-
+		if (delta_wheel > 3)
+			delta_wheel = 3;
+		else if (delta_wheel < -3)
+			delta_wheel = -3;
+	}
+	last_frame = cpu_getcurrentframe();
+	//wrlog("Return %x for speedfreak", (speedfrk_steer[delta_wheel + 3] >> offset) & 1);
 	return (speedfrk_steer[delta_wheel + 3] >> offset) & 1;
 }
 
@@ -174,7 +178,7 @@ static int sundance_read(int offset)
  *
  *************************************/
 
-static  int boxingb_dial_r(int offset)
+static int boxingb_dial_r(int offset)
 {
 	UINT16 value = readinputportbytag("DIAL");
 	offset -= 0x0b;
@@ -241,22 +245,21 @@ UINT16 get_ccpu_switches(int offset)
 
 void coin_handler(int data)//coin_reset_w
 {
-	//wrlog("Coin handler write %x",data);
 	/* on the rising edge of a coin reset, clear the coin_detected flag */
 	if (coin_last_reset != data && data != 0)
 	{
 		coin_detected = 0;
-		//wrlog("CLEARING COIN DETECTED");
 	}
 	coin_last_reset = data;
-	// wrlog("Coin_detected value HERE %d ",coin_detected);
 }
 
+/*
 static int mux_set(int data) // mux_select_w
 {
 	mux_select = data;
 	wrlog("MUX SELECT");
 }
+*/
 
 UINT8 joystick_read(void)
 {
@@ -270,7 +273,8 @@ UINT8 joystick_read(void)
 
 void run_cinemat(void)
 {
-	cinevid_up();
+	cinevid_update();
+
 }
 
 int init_starhawk()
@@ -367,7 +371,7 @@ int init_spacewar()
 int init_speedfrk()
 {
 	init_cinemat();
-	init_cinemat_snd(null_sound);
+	init_cinemat_snd(speedfrk_sound);
 	video_type_set(COLOR_BILEVEL, 0);
 	init_ccpu(1, CCPU_MEMSIZE_8K);
 	return 1;

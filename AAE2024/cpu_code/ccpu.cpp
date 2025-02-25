@@ -20,6 +20,9 @@
 #include "ccpu.h"
 #include "aae_mame_driver.h"
 
+#include "glcode.h"
+
+
 UINT8 MUX_VAL;
 UINT8 SOUNDBITS;
 UINT8 CCPUROMSIZE = 16;
@@ -263,9 +266,11 @@ static int ccpu_execute(int cycles)
 			if (ccpu.acc == &ccpu.A)
 			{
 				tempval = get_ccpu_inputs(opcode & 0x0f) & 1;        //READPORT(opcode & 0x0f) & 1; //Read inputs
+				//wrlog("Debug:: ccpu input %x", tempval);
 			}
 			else {
 				tempval = get_ccpu_switches((opcode & 0x07)) & 1; //wrlog("Switch offset %x",opcode & 0x07);//READPORT(16 + (opcode & 0x07)) & 1; //Read Dip Switches
+				//wrlog("Debug: ccpu input switches %x", tempval);
 			}
 			STANDARD_ACC_OP(tempval, tempval);
 			NEXT_ACC_A(); CYCLES(1);
@@ -742,5 +747,6 @@ static int ccpu_execute(int cycles)
 
 int run_ccpu(int cycles)
 {
+	cache_clear();
 	return ccpu_execute(cycles);
 }

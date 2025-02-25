@@ -14,9 +14,9 @@
 #include "segag80.h"
 #include <math.h>
 #include "aae_mame_driver.h"
-#include "vector.h"
 
-// This is the very old, inacurate video from the old version of M.A.M.E. (TM)
+
+// This was the very old, inacurate video from the old version of M.A.M.E. (TM)
 /***************************************************************************
   Generic functions used by the Sega Vector games
 ***************************************************************************/
@@ -35,7 +35,7 @@
 static int sega_rotate = 0;
 extern unsigned char* sega_vectorram;
 
-#define MAKE_RGB(r,g,b) ((((r) & 0xff) << 16) | (((g) & 0xff) << 8) | ((b) & 0xff))
+#define MAKE_RGB(r,g,b) ((((b) & 0xff) << 16) | (((g) & 0xff) << 8) | ((r) & 0xff))
 
 uint8_t pal2bit(UINT8 bits)
 {
@@ -56,7 +56,7 @@ static int min_x, min_y;
 int sega_vh_start(int r)
 {
 	//wrlog("Sega Video Init");
-	sega_rotate = 0;
+	sega_rotate = r;
 
 	min_x = 512;
 	min_y = 512;
@@ -349,15 +349,17 @@ void sega_vh_update(void)
 							{
 								if (sega_rotate)
 								{
-									add_color_line((sy >> 16), (sx >> 16), (adjy >> 16), (adjx >> 16), color);
-									add_color_point((sy >> 16), (sx >> 16), color);
-									add_color_point((adjy >> 16), (adjx >> 16), color);
+									add_line((sy >> 16), (sx >> 16), (adjy >> 16), (adjx >> 16), color,color);
+									//add_color_line((sy >> 16), (sx >> 16), (adjy >> 16), (adjx >> 16), color);
+									//add_color_point((sy >> 16), (sx >> 16), color);
+									//add_color_point((adjy >> 16), (adjx >> 16), color);
 								}
 
 								else {
-									add_color_line((sx >> 16), (sy >> 16), (adjx >> 16), (adjy >> 16), color);
-									add_color_point((sx >> 16), (sy >> 16), color);
-									add_color_point((adjx >> 16), (adjy >> 16), color);
+									add_line((sx >> 16), (sy >> 16), (adjx >> 16), (adjy >> 16), color, color);
+									//add_color_line((sx >> 16), (sy >> 16), (adjx >> 16), (adjy >> 16), color);
+									//add_color_point((sx >> 16), (sy >> 16), color);
+									//add_color_point((adjx >> 16), (adjy >> 16), color);
 								}
 							}
 						}
@@ -374,15 +376,17 @@ void sega_vh_update(void)
 					{
 						if (sega_rotate)
 						{
-							add_color_line((sy >> 16), (sx >> 16), (adjy >> 16), (adjx >> 16), color);
-							add_color_point((sy >> 16), (sx >> 16), color);
-							add_color_point((adjy >> 16), (adjx >> 16), color);
+							add_line((sy >> 16), (sx >> 16), (adjy >> 16), (adjx >> 16), color, color);
+							//add_color_line((sy >> 16), (sx >> 16), (adjy >> 16), (adjx >> 16), color);
+							//add_color_point((sy >> 16), (sx >> 16), color);
+							//add_color_point((adjy >> 16), (adjx >> 16), color);
 						}
 
 						else {
-							add_color_line((sx >> 16), (sy >> 16), (adjx >> 16), (adjy >> 16), color);
-							add_color_point((sx >> 16), (sy >> 16), color);
-							add_color_point((adjx >> 16), (adjy >> 16), color);
+							add_line((sx >> 16), (sy >> 16), (adjx >> 16), (adjy >> 16), color, color);
+							//add_color_line((sx >> 16), (sy >> 16), (adjx >> 16), (adjy >> 16), color);
+							//add_color_point((sx >> 16), (sy >> 16), color);
+							//add_color_point((adjx >> 16), (adjy >> 16), color);
 						}
 					}
 				}

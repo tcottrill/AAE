@@ -1867,7 +1867,7 @@ PORT_BIT(0xff, IP_ACTIVE_HIGH, IPT_UNKNOWN)
 	PORT_BIT(0x000f, IP_ACTIVE_LOW, IPT_UNUSED) /* steering wheel, fake below */
 
 	PORT_START("WHEEL")/* fake - steering wheel (in4) */
-	PORT_ANALOG(0xff, 0x00, IPT_DIAL, 100, 1, 0, 0x00, 0xff)
+	PORT_ANALOG(0xff, 0x00, IPT_DIAL, 100, 10, 0, 0x00, 0xff)
 
 	PORT_START("GEAR") /* fake - gear shift (in5) */
 	PORT_BIT(0x0f, IP_ACTIVE_HIGH, IPT_UNUSED)

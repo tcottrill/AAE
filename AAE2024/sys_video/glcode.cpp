@@ -11,17 +11,15 @@
 //
 //==========================================================================
 
-#include <chrono>
-
 #include "glcode.h"
 #include "aae_mame_driver.h"
 #include "fonts.h"
 #include "vector_fonts.h"
-#include "vector.h"
 #include "loaders.h"
 #include "gl_fbo.h"
 #include "gl_texturing.h"
 #include "gl_shader.h"
+#include "emu_vector_draw.h"
 
 // New 2024
 #include "os_basic.h"
@@ -33,6 +31,7 @@ using namespace std;
 using namespace chrono;
 
 Rect2 screen_rect;
+
 
 // Notes for reference:
 //
@@ -262,6 +261,8 @@ int init_gl(void)
 		BuildFont(); // Note to self: Remove this dependency. Move to using vector font everywhere including gui
 		font_init(); //Build the Vector Font
 		init_shader();
+		
+		// Move this
 		wrlog("Finished configuration of OpenGl sucessfully");
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		init_one++;
@@ -592,32 +593,13 @@ void set_render()
 // Rendering Continued, this is STEP 2, this is where the vectors are drawn to our 1024x1024 texture.
 void render()
 {
-	cache_end();
-
 	if (paused) { pause_loop(); return; }
-
+	
 	if (gamenum)
 	{
-		if (driver[gamenum].vid_type == VEC_COLOR)
-		{
-			glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-			draw_color_vectors();
-		}
-		else if (driver[gamenum].vid_type == VEC_BW_16) { glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); draw_lines(); }
-		else if (driver[gamenum].vid_type == VEC_BW_64) { glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); draw_color_vectors(); }
-		//glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-		glBlendFunc(GL_ONE, GL_ONE);
-		glColor4f(1, 1, 1, 1);
-		draw_texs();
+		draw_all();
 	}
-	
-	if (config.debug) {
-		if (config.bezel == 0) { final_render(msx, msy, esx, esy, 0, 0); } //ignore if bezel is enabled
-		else { final_render(sx, sy, ex, ey, 0, 0); }
-	}
-	else {
 		final_render(sx, sy, ex, ey, 0, 0); 
-	}
 }
 
 // Note:

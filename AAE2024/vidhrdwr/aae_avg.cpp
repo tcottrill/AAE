@@ -1,8 +1,8 @@
 // This is an insane mess, working on a rewrite, or switch to modern AVG drawing code.
 
 #include "aae_avg.h"
-#include "vector.h"
 #include "timer.h"
+
 
 static int vector_type = 0;
 
@@ -75,7 +75,6 @@ static void BZ_DRAW(int currentx, int currenty, int deltax, int deltay, int z, i
 	int sx = 0;
 	int ex = 0;
 	int noline = 0;
-	int gc = 16;
 	int BZ_CLIP = 726;
 
 	ey = ((currenty - deltay) >> VEC_SHIFT);
@@ -91,12 +90,9 @@ static void BZ_DRAW(int currentx, int currenty, int deltax, int deltay, int z, i
 		if (ey > BZ_CLIP && ey > sy && color == 0) { ex = ((BZ_CLIP - ey) * ((sx - ex) / (sy - ey))) + ex; ey = BZ_CLIP; }
 	}
 
-	gc = z + 1;
-	gc = z / 16;
 	if (noline == 0) {
-		cache_line(sx, sy, ex, ey, gc, config.gain, 0);
-		cache_point(sx, sy, gc, config.gain, 0, 0);
-		cache_point(ex, ey, gc, config.gain, 0, 0);
+		//cache_line(sx, sy, ex, ey, gc, config.gain, 0);
+		add_line(sx, sy, ex, ey, MAKE_BGR(z, z, z), MAKE_BGR(z, z, z));
 	}
 }
 
@@ -248,15 +244,15 @@ void AVG_RUN(void)
 					if ((currentx == (currentx)+deltax) && (currenty == (currenty)-deltay))
 					{
 						if (draw) {
-							add_color_point(sx, sy, red, green, blue);
+							//add_color_point(sx, sy, red, green, blue);
+							add_line(sx, sy, ex, ey, MAKE_BGR(red, green, blue), MAKE_BGR(red, green, blue));
 						}
 					}
 
 					else {
 						if (draw) {
-							add_color_line(sx, sy, ex, ey, red, green, blue);
-							add_color_point(sx, sy, red, green, blue);
-							add_color_point(ex, ey, red, green, blue);
+							add_line(sx, sy, ex, ey, MAKE_BGR(red, green, blue), MAKE_BGR(red, green, blue));
+							//add_color_line(sx, sy, ex, ey, red, green, blue);
 						}
 					}
 				}
@@ -438,6 +434,7 @@ void avg_init()
 		YFLIP = 1;
 		AVG_BUSY = 1;
 		SCALEADJ = 2;
+		NO_CACHE = 1;
 		PCTOP = driver[gamenum].vectorram;
 	}
 

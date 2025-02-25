@@ -14,13 +14,15 @@
 
 #include "tempest.h"
 #include "aae_mame_driver.h"
-#include "vector.h"
 #include "aae_avg.h"
 #include "aae_mame_pokey_2.4.h"
 #include "earom.h"
 #include "mathbox.h"
 #include "timer.h"
 
+
+
+#include "glcode.h"
 //
 // Tempest Multigame Notes:
 // Tempest Multigame is Copyright 1999 Clay Cowgill, and provides a very nice menu system to run

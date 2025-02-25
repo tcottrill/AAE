@@ -487,15 +487,18 @@ static const char* starhawk_samples[] =
 	 0
 };
 
-static const char* speedfrk_samples[] = { 
-	"starhawk.zip",
-	"explode.wav",
-	"rlaser.wav",
-	"llaser.wav",
-	"k.wav",
-	"master.wav",
-	"kexit.wav",
-	 0 };
+
+
+static const char* speedfrk_samples[] =
+{
+	"speedfrk.zip",
+	"offroad.wav",
+	"engine.wav",
+	"horn.wav",
+	"crash.wav",
+	0
+};
+	 
 
 static const char* demon_samples[] = { 
 	"starhawk.zip",

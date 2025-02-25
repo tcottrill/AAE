@@ -17,11 +17,9 @@
 
 ***************************************************************************/
 
-#include "vector.h"
+#include "aae_mame_driver.h"
 #include "ccpu.h"
 #include "cinematronics_video.h"
-
-
 
 UINT8 bSwapXY=0;
 UINT8 bFlipX=0;
@@ -52,8 +50,6 @@ typedef UINT16 rgb15_t;
 /* common colors */
 #define RGB_BLACK			(MAKE_RGB(0,0,0))
 #define RGB_WHITE			(MAKE_RGB(255,255,255))
-
-//#define MAKE_RGB(r,g,b) 	((((r) & 0xff) << 16) | (((g) & 0xff) << 8) | ((b) & 0xff))
 
 /*************************************
  *
@@ -114,12 +110,12 @@ void cinemat_vector_callback(INT16 sx, INT16 sy, INT16 ex, INT16 ey, UINT8 shift
 
 	if (sx == ex && sy == ey) {
 		intensity = 0x1ff * shift / 8;
-		cache_txt(sx, sy, 4, 0xff); //Keep constant intensity for now
+		//cache_txt(sx, sy, 4, 0xff); //Keep constant intensity for now
+		//add_tex(sx, sy, 0xff, 0xff);
 	}  //fake intensity
 
-	add_color_line(sx, sy, ex, ey, r, g, b);
-	add_color_point(sx, sy, r, g, b);
-	add_color_point(ex, ey, r, g, b);
+	//add_color_line(sx, sy, ex, ey, r, g, b);
+	add_line(sx, sy, ex, ey, MAKE_BGR(r, g, b), MAKE_BGR(r, g, b));
 
 	lastx = ex;
 	lasty = ey;
@@ -272,15 +268,13 @@ VIDEO_START( cinemat_qb3color )
  *
  *************************************/
 
-int cinevid_up()
+int cinevid_update()
 {
 	//VIDEO_UPDATE_CALL(vector);
 	//vector_clear_list();
-
 	//cpuintrf_push_context(0);
 	ccpu_wdt_timer_trigger();
 	//cpuintrf_pop_context();
-
 	return 0;
 }
 

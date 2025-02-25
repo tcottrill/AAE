@@ -144,9 +144,6 @@
     <ClCompile Include="vidhrdwr\aae_avg.cpp">
       <Filter>Source Files\vidhrdwr</Filter>
     </ClCompile>
-    <ClCompile Include="vidhrdwr\vector.cpp">
-      <Filter>Source Files\vidhrdwr</Filter>
-    </ClCompile>
     <ClCompile Include="fileio\loaders.cpp">
       <Filter>Source Files\fileio</Filter>
     </ClCompile>
@@ -257,6 +254,9 @@
     </ClCompile>
     <ClCompile Include="drivers\cinematronics_driver.cpp">
       <Filter>Source Files\drivers</Filter>
+    </ClCompile>
+    <ClCompile Include="vidhrdwr\emu_vector_draw.cpp">
+      <Filter>Source Files\vidhrdwr</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -372,9 +372,6 @@
       <Filter>Source Files\fileio</Filter>
     </ClInclude>
     <ClInclude Include="vidhrdwr\aae_avg.h">
-      <Filter>Source Files\vidhrdwr</Filter>
-    </ClInclude>
-    <ClInclude Include="vidhrdwr\vector.h">
       <Filter>Source Files\vidhrdwr</Filter>
     </ClInclude>
     <ClInclude Include="fileio\loaders.h">
@@ -529,6 +526,9 @@
     </ClInclude>
     <ClInclude Include="drivers\cinematronics_driver.h">
       <Filter>Source Files\drivers</Filter>
+    </ClInclude>
+    <ClInclude Include="vidhrdwr\emu_vector_draw.h">
+      <Filter>Source Files\vidhrdwr</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

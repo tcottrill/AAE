@@ -1,9 +1,8 @@
-
 #include "mhavoc.h"
 #include "aae_mame_driver.h"
-#include "vector.h"
 #include "aae_avg.h"
 #include "loaders.h"
+#include "emu_vector_draw.h"
 
 // Video Variables
 static int width, height;
@@ -58,12 +57,18 @@ void avg_apply_flipping_and_swapping(int* x, int* y)
 void avg_add_point(int x, int y, int ex, int ey, int r, int g, int b, int p)
 {
 	avg_apply_flipping_and_swapping(&x, &y);
+
+	r = (r << 4) | 0x0f;
+	g = (g << 4) | 0x0f;
+	b = (b << 4) | 0x0f;
+
 	if (p)
 	{
 		avg_apply_flipping_and_swapping(&ex, &ey);
-		add_color_line(x, y, ex, ey, r, g, b);
+		//add_color_line(x, y, ex, ey, r, g, b);
+		add_line(x, y, ex, ey, MAKE_BGR(r, g, b), MAKE_BGR(r, g, b));
 	}
-	else add_color_point(x, y, r, g, b);
+	else add_line(x, y, x, y, MAKE_BGR(r, g, b), MAKE_BGR(r, g, b));
 }
 
 /////////////////////////////VECTOR GENERATOR//////////////////////////////////
@@ -82,7 +87,6 @@ void mhavoc_video_update(void)
 	int done = 0;
 	int firstwd, secondwd;
 	int opcode;
-
 	int x, y, z = 0, b, l, d, a;
 	int deltax, deltay = 0;
 
@@ -97,7 +101,6 @@ void mhavoc_video_update(void)
 	float ex = 0;
 	int nocache = 0;
 	int draw = 1;
-	int scalef = 0;
 	int one = 0;
 	int two = 0;
 	static int spkl_shift = 0;
@@ -105,7 +108,6 @@ void mhavoc_video_update(void)
 	statz = 0;
 	color = 0;
 	scale = 0;
-	int ar, ag, ab;
 
 	firstwd = memrdwd(pc);
 	pc++; pc++;
@@ -184,11 +186,6 @@ void mhavoc_video_update(void)
 					if (vec_colors[color].r) red = z; else red = 0;
 					if (vec_colors[color].g) green = z; else green = 0;
 					if (vec_colors[color].b) blue = z; else blue = 0;
-					red = red * 2;
-					green = green * 2;
-					blue = blue * 2;
-					// Add the line start point
-					avg_add_point(ex, ey, 0, 0, red, green, blue, 0);
 
 					while (ex != sx || ey != sy)
 					{
@@ -208,10 +205,6 @@ void mhavoc_video_update(void)
 						if (vec_colors[color].r) red = z; else red = 0;
 						if (vec_colors[color].g) green = z; else green = 0;
 						if (vec_colors[color].b) blue = z; else blue = 0;
-						red = red * 2;
-						green = green * 2;
-						blue = blue * 2;
-						//wrlog("ALTRed %d ALTGreen %d ALTBLUE %d", red, green, blue);
 
 						if (sx != ex) {
 							if (one) { sx += 1; }
@@ -228,8 +221,6 @@ void mhavoc_video_update(void)
 						spkl_shift = (((spkl_shift & 0x40) >> 6) ^ ((spkl_shift & 0x20) >> 5) ^ 1) | (spkl_shift << 1);
 						if ((spkl_shift & 0x7f) == 0x7f) spkl_shift = 0;
 					}
-					// Add the line endpoint
-					avg_add_point(sx, sy, ex, ey, red, green, blue, 1);
 				}
 				else
 				{
@@ -245,8 +236,6 @@ void mhavoc_video_update(void)
 					if (draw)
 					{
 						avg_add_point(sx, sy, ex, ey, red, green, blue, 1);
-						avg_add_point(sx, sy, 0, 0, red, green, blue, 0);
-						avg_add_point(ex, ey, 0, 0, red, green, blue, 0);
 					}
 				}
 			}
@@ -273,10 +262,10 @@ void mhavoc_video_update(void)
 			b = ((firstwd >> 8) & 0x07) + 8;
 			l = (~firstwd) & 0xff;
 			scale = (l << VEC_SHIFT) >> b;
-			scalef = scale;
+			//scalef = scale;
 			//Triple the scale for 1024x768 resolution, double for AlphaOne
 			scale = scale * scale_factor;
-			
+
 			if (firstwd & 0x0800)
 			{
 				if (ywindow == 0)
@@ -382,6 +371,4 @@ void mhavoc_video_init(int scale)
 	/* initialize to no avg flipping */
 	flip_x = flip_y = 0;
 	swap_xy = 0;
-
-
 }

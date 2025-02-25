@@ -20,4 +20,4 @@ enum
 void vec_control_write(int data);
 void cinemat_vector_callback(INT16 sx, INT16 sy, INT16 ex, INT16 ey, UINT8 shift);
 void video_type_set(int type, int swap_xy);
-int cinevid_up();
+int cinevid_update();

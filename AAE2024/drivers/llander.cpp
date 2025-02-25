@@ -16,7 +16,6 @@
 #include "llander.h"
 #include "aae_mame_driver.h"
 #include "samples.h"
-#include "vector.h"
 #include "old_mame_vecsim_dvg.h"
 
 static int ldvggo = 0;

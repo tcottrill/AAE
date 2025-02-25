@@ -15,7 +15,6 @@
 #include "mhavoc.h"
 #include "aae_mame_driver.h"
 #include "samples.h"
-#include "vector.h"
 #include "aae_avg.h"
 #include "aae_mame_pokey_2.4.h"
 #include "earom.h"
@@ -23,6 +22,8 @@
 #include "loaders.h"
 #include "timer.h"
 #include "mhavoc_custom_video.h"
+
+#include "glcode.h"
 
 #define mh_debug 0
 #define MHAVOC_CLOCK		10000000
