@@ -131,7 +131,7 @@ void setup_video_config()
 	sy = my_get_config_int((char*)driver[gamenum].name, "fullsy", 900);
 	ex = my_get_config_int((char*)driver[gamenum].name, "fullex", 900);
 	ey = my_get_config_int((char*)driver[gamenum].name, "fulley", 0);
-	overalpha = my_get_config_float((char*)driver[gamenum].name, "overalpha", 1.0);
+	//overalpha = my_get_config_float((char*)driver[gamenum].name, "overalpha", 1.0);
 
 	if (config.bezel && gamenum && config.artcrop == 0) {
 		b1sx = my_get_config_int((char*)driver[gamenum].name, "bezelsx", 0);
@@ -141,7 +141,7 @@ void setup_video_config()
 		bezelzoom = 1.0;
 		bezelx = 0;
 		bezely = 0;
-		overalpha = my_get_config_float((char*)driver[gamenum].name, "overalpha", 1.0);
+		//overalpha = my_get_config_float((char*)driver[gamenum].name, "overalpha", 1.0);
 	}
 
 	if (config.bezel && config.artcrop && gamenum) {
@@ -152,7 +152,7 @@ void setup_video_config()
 		bezelzoom = my_get_config_float((char*)driver[gamenum].name, "bezcropzoom", 1.0);
 		bezelx = my_get_config_int((char*)driver[gamenum].name, "bezcropx", 0);
 		bezely = my_get_config_int((char*)driver[gamenum].name, "bezcropy", 0);
-		overalpha = my_get_config_float((char*)driver[gamenum].name, "overalpha", 1.0);
+		//overalpha = my_get_config_float((char*)driver[gamenum].name, "overalpha", 1.0);
 		//bezely=-50;
 		//overalpha=1.0;
 		//overbright=0;

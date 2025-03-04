@@ -37,7 +37,7 @@ rgb_t cache_tex_color(int intensity, rgb_t col)
 	test[0] = clip((test[0] & intensity) + config.gain, 0, 0xff);
 	test[1] = clip((test[1] & intensity) + config.gain, 0, 0xff);
 	test[2] = clip((test[2] & intensity) + config.gain, 0, 0xff);
-	test[3] = 0x7f;
+	test[3] = intensity;
 
 	return col;
 }
@@ -46,7 +46,7 @@ rgb_t cache_color(int intensity, rgb_t col)
 {
 	UINT8* test = (UINT8*)&col;
 	
-	if (driver[gamenum].vid_type == VEC_COLOR)
+	if (Machine->gamedrv->video_attributes & VECTOR_USES_COLOR)
 	{
 		test[0] = clip((test[0]) + config.gain / 3, 0, 0xff);
 		test[1] = clip((test[1]) + config.gain / 3, 0, 0xff);
@@ -110,7 +110,7 @@ void draw_all()
 {
 	//cache_override++;
 
-	if (driver[gamenum].vid_type == VEC_COLOR)
+	if (Machine->gamedrv->video_attributes & VECTOR_USES_COLOR)
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE);
 	else
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);

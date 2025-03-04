@@ -254,7 +254,7 @@ void mhavoc_video_update(void)
 			if (lastbank != vectorbank) {
 				lastbank = vectorbank;
 				//wrlog("Vector Bank Switch %x", ((firstwd >> 8) & 3) * 0x2000);
-				memcpy(GI[CPU0] + 0x6000, GI[CPU2] + vectorbank, 0x2000);
+				memcpy(Machine->memory_region[CPU0] + 0x6000, Machine->memory_region[CPU2] + vectorbank, 0x2000);
 			}
 			break;
 

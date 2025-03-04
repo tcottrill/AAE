@@ -38,6 +38,9 @@
 #include "vector_fonts.h"
 #include "gl_texturing.h"
 
+#include "raster.h"
+#include "fast_poly.h"
+
 //New 2024
 #include "os_basic.h"
 #include <chrono>
@@ -57,9 +60,15 @@ static int win_override = 0;
 
 static int started_from_command_line = 0;
 int hiscoreloaded;
-//int sys_paused = 0;
+float vid_scale = 3.0;
 int show_fps = 0;
 FpsClass* m_frame; //For frame counting. Prob needs moved out of here really.
+//Move
+Fpoly* sc;
+
+//To Be moved
+static int vector_game=0; //This needs to be available extern?
+static int use_dirty=0;
 
 // M.A.M.E. (TM) Variables for testing
 static struct RunningMachine machine;
@@ -84,15 +93,6 @@ struct { const char* desc; int x, y; } gfx_res[] = {
 	{ "-1920x1200"	, 1920, 1200 },
 	{ NULL		, 0, 0 }
 };
-/*
-volatile int close_button_pressed = FALSE;
-
-void close_button_handler(void)
-{
-	close_button_pressed = TRUE;
-}
-*/
-END_OF_FUNCTION(close_button_handler)
 
 static int clamp(int value)
 {
@@ -109,6 +109,270 @@ int mystrcmp(const char* s1, const char* s2)
 
 	return *s1 - *s2;
 }
+
+//////////////////////////// RASTER GAME CODE ///////////////////////////////////
+
+
+//static PALETTE adjusted_palette;
+//From MAME .30 for VH Hardware
+#define MAX_COLOR_TUPLE 16      /* no more than 4 bits per pixel, for now */
+#define MAX_COLOR_CODES 256     /* no more than 256 color codes, for now */
+unsigned char current_palette[640][3];
+static unsigned char remappedtable[MAX_GFX_ELEMENTS * MAX_COLOR_TUPLE * MAX_COLOR_CODES];
+
+//Move to Raster
+void osd_modify_pen(int pen, unsigned char red, unsigned char green, unsigned char blue)
+{
+	if (current_palette[pen][0] != red || current_palette[pen][1] != green || current_palette[pen][2] != blue)
+	{
+		current_palette[pen][0] = red;
+		current_palette[pen][1] = green;
+		current_palette[pen][2] = blue;
+	//dirtycolor[pen] = 1;
+    }
+}
+
+//Move to Raster
+void osd_get_pen(int pen, unsigned char* red, unsigned char* green, unsigned char* blue)
+{
+	*red = current_palette[pen][0];
+	*green = current_palette[pen][1];
+	*blue = current_palette[pen][2];
+}
+
+void update_gl_screen(void)
+{
+	//wrlog("Update Screen Called");
+	int x, y;
+	unsigned char  c = 0;
+	float a, b;
+	
+	int t = 2;
+	unsigned char r1, g1, b1;
+	
+	for (x = Machine->gamedrv->visible_area.min_y; x < Machine->gamedrv->visible_area.max_y + 1; x++) //288
+	{
+		for (y = Machine->gamedrv->visible_area.min_x; y < Machine->gamedrv->visible_area.max_x + 1; y++)//224
+		{
+			c = main_bitmap->line[x][y];
+			//Only update if it is non black?
+			if (c)
+			{
+				a = x * t;
+				b = y * t;
+
+				osd_get_pen(Machine->pens[c], &r1, &g1, &b1);
+				sc->addPoly(y, x, vid_scale, MAKE_RGBA(r1, g1, b1, 0xff));
+				//Any_Rect( b, b + t, a, a + t);
+			}
+		}
+	}
+}
+
+// Create a display screen, or window, large enough to accomodate a bitmap 
+// of the given dimensions. Attributes are the ones defined in driver.h. 
+// palette is an array of 'totalcolors' R,G,B triplets. The function returns 
+// in *pens the pen values corresponding to the requested colors. 
+//* Return a osd_bitmap pointer or 0 in case of error. 
+struct osd_bitmap* osd_create_display(int width, int height, unsigned int totalcolors,
+	const unsigned char* palette, unsigned char* pens, int attributes)
+{
+	//	int i;
+
+		//if (errorlog)
+	wrlog("New Display width %d, height %d", width, height);
+
+	// Look if this is a vector game 
+	if (Machine->gamedrv->video_attributes & VIDEO_TYPE_VECTOR)
+	{
+		wrlog("Init: Vector game starting");
+		vector_game = 1;
+		//VECTOR_START();
+	}
+	else
+		vector_game = 0;
+
+	// Is the game using a dirty system? 
+	if ((Machine->gamedrv->video_attributes & VIDEO_SUPPORTS_DIRTY))
+		use_dirty = 1;
+	else
+		use_dirty = 0;
+
+	//select_display_mode(); //I need to add this
+
+
+	struct rectangle vis = Machine->gamedrv->visible_area;
+	
+
+	//Create the main bitmap screen
+	main_bitmap = osd_create_bitmap(width + 2, height + 2);
+	wrlog("Main Bitmap Created");
+
+	if (!main_bitmap)
+	{
+		wrlog("Bitmap create failed, whh?");
+		return 0;
+	}
+	wrlog("exiting create display");
+	return main_bitmap;
+}
+
+static void vh_close(void)
+{
+	int i;
+
+	for (i = 0; i < MAX_GFX_ELEMENTS; i++) freegfx(Machine->gfx[i]);
+	free(Machine->pens);
+	//osd_close_display();
+}
+
+static int vh_open(void)
+{
+	int i;
+	unsigned char* palette;
+	unsigned char* colortable = nullptr;
+	unsigned char convpalette[3 * MAX_PENS];
+	unsigned char* convtable;
+
+	wrlog("Running VH_Open");
+
+	if (Machine->gamedrv->video_attributes & VIDEO_TYPE_VECTOR)
+	{
+		if ((Machine->scrbitmap = osd_create_display(
+			gamedrv->screen_width, gamedrv->screen_height, gamedrv->total_colors,
+			0, Machine->pens, gamedrv->video_attributes)) == 0)
+		{
+			wrlog("Why is this returning?");
+
+			exit(1);
+		}
+		else
+		{
+			wrlog("Vector Game, skipping pallette init");
+			return(1);
+		}
+	}
+
+	wrlog("MIN Y:%d ", Machine->gamedrv->visible_area.min_y);
+	wrlog("MIN X:%d ", Machine->gamedrv->visible_area.min_x);
+	wrlog("MAX Y:%d ", Machine->gamedrv->visible_area.max_y);
+	wrlog("MAX x:%d ", Machine->gamedrv->visible_area.max_x);
+
+	wrlog("1");
+	convtable = (unsigned char*)malloc(MAX_GFX_ELEMENTS * MAX_COLOR_TUPLE * MAX_COLOR_CODES);
+	if (!convtable) return 1;
+
+	for (i = 0; i < MAX_GFX_ELEMENTS; i++) Machine->gfx[i] = 0;
+
+	wrlog("2");
+	// convert the gfx ROMs into character sets. This is done BEFORE calling the driver's 
+	// convert_color_prom() routine because it might need to check the Machine->gfx[] data 
+	if (gamedrv->gfxdecodeinfo)
+	{
+		for (i = 0; i < MAX_GFX_ELEMENTS && gamedrv->gfxdecodeinfo[i].memory_region != -1; i++)
+		{
+			if ((Machine->gfx[i] = decodegfx(Machine->memory_region[gamedrv->gfxdecodeinfo[i].memory_region]
+				+ gamedrv->gfxdecodeinfo[i].start,
+				gamedrv->gfxdecodeinfo[i].gfxlayout)) == 0)
+			{
+				vh_close();
+				free(convtable);
+				return 1;
+			}
+			wrlog("I here at gfx convert is %d, memregion is %d", i, gamedrv->gfxdecodeinfo[i].memory_region);
+			Machine->gfx[i]->colortable = &remappedtable[gamedrv->gfxdecodeinfo[i].color_codes_start];
+			Machine->gfx[i]->total_colors = gamedrv->gfxdecodeinfo[i].total_color_codes;
+			wrlog("Colortable here is remap table at is %d,total color codes is %d", gamedrv->gfxdecodeinfo[i].color_codes_start, gamedrv->gfxdecodeinfo[i].total_color_codes);
+		}
+	}
+	wrlog("3");
+	//Create a default pallet
+	palette = (unsigned char*)malloc(MAX_GFX_ELEMENTS * MAX_COLOR_TUPLE * MAX_COLOR_CODES);
+
+	for (int x = 0; x < (MAX_GFX_ELEMENTS * MAX_COLOR_TUPLE * MAX_COLOR_CODES); x++)
+	{
+		palette[x] = 1;
+	}
+	// convert the palette 
+	// now the driver can modify the default values if it wants to. 
+	if (Machine->gamedrv->vh_convert_color_prom)
+	{
+		(*Machine->gamedrv->vh_convert_color_prom)(convpalette, convtable, memory_region(REGION_PROMS));
+		palette = convpalette;
+		colortable = convtable;
+	}
+	
+	// create the display bitmap, and allocate the palette 
+	if ((Machine->scrbitmap = osd_create_display(
+		gamedrv->screen_width, gamedrv->screen_height, gamedrv->total_colors,
+		palette, Machine->pens, gamedrv->video_attributes)) == 0)
+	{
+		wrlog("Why is this returning?");
+		free(convtable);
+		exit(1);
+	}
+	else
+	{
+
+		wrlog("Created Display surface, Width: %d Height: %d", gamedrv->screen_width, gamedrv->screen_height);
+	}
+	// initialize the palette 
+	for (i = 0; i < MAX_COLOR_CODES; i++)
+	{
+		current_palette[i][0] = current_palette[i][1] = current_palette[i][2] = 0;
+	}
+	// fill the palette starting from the end, so we mess up badly written 
+	// drivers which don't go through Machine->pens[]
+	// NOT DOING THIS, I need to be able to access the palette directly!!
+	
+	for (i = 0; i < MAX_PENS; i++) //totalcolors
+	{
+		Machine->pens[i] = i;// 255 - i;
+	}
+
+	wrlog("TotalColors here is %d", gamedrv->total_colors);
+	for (i = 0; i < gamedrv->total_colors; i++)
+	{
+		current_palette[Machine->pens[i]][0] = palette[3 * i];
+		current_palette[Machine->pens[i]][1] = palette[3 * i + 1];
+		current_palette[Machine->pens[i]][2] = palette[3 * i + 2];
+
+	}
+
+	wrlog("Color Table Len %d", gamedrv->color_table_len);
+	for (i = 0; i < gamedrv->color_table_len; i++)
+		remappedtable[i] = Machine->pens[colortable[i]];
+
+	//Fix code below so it works
+	/*
+	// free memory regions allocated with REGIONFLAG_DISPOSE (typically gfx roms)
+	for (region = 0; region < MAX_MEMORY_REGIONS; region++)
+	{
+		if (Machine->memory_region_type[region] & REGIONFLAG_DISPOSE)
+		{
+			int i;
+
+			// invalidate contents to avoid subtle bugs
+			for (i = 0; i < memory_region_length(region); i++)
+				memory_region(region)[i] = rand();
+			free(Machine->memory_region[region]);
+			Machine->memory_region[region] = 0;
+		}
+	}
+	*/
+	// free the graphics ROMs, they are no longer needed 
+
+	//free(Machine->memory_region[REGION_GFX1]);
+	//Machine->memory_region[REGION_GFX1] = 0;
+
+	free(convtable);
+	wrlog("Returning:");
+	return 0;
+}
+
+
+/////////////////////////////////////////////////////////////////////////////////
+
 
 void sort_games(void)
 {
@@ -439,8 +703,6 @@ void run_game(void)
 	load_input_port_settings();
 	init_cpu_config(); ////////////////////-----------
 	driver[gamenum].init_game();
-	
-	WATCHDOG = 0;
 	hiscoreloaded = 0;
 
 	//If the game uses NVRAM, initalize/load it. . This code is from M.A.M.E. (TM)
@@ -470,7 +732,7 @@ void run_game(void)
 		if (!paused && have_error == 0) 
 			{
 				update_input_ports();
-				if (driver[gamenum].pre_run) driver[gamenum].pre_run(); 
+				//if (driver[gamenum].pre_run) driver[gamenum].pre_run(); 
 				cpu_run_mame();
 				if (driver[gamenum].run_game)driver[gamenum].run_game();
 			}
@@ -827,7 +1089,6 @@ int main(int argc, char* argv[])
 	}
 	*/
 	frames = 0; //init frame counter
-	testsw = 0; //init testswitch off , had to make common for all
 	config.hack = 0; //Just to set, used for tempest only.
 	showinfo = 0;
 	done = 0;

@@ -36,7 +36,7 @@ const struct RomModule
 #define ROM_REGION_START 999
 
 #define ROM_START(name) static struct RomModule rom_##name[] = {
-#define ROM_REGION( romSize, loadtype) { NULL, 0x999, romSize, loadtype },
+#define ROM_REGION( romSize, loadtype) { NULL, ROM_REGION_START, romSize, loadtype },
 #define ROM_LOAD(filename,loadAddr,romSize) { filename,loadAddr,romSize, ROM_LOAD_NORMAL },
 
 #define ROM_LOAD_16B(filename,loadAddr,romSize) { filename,loadAddr,romSize, ROM_LOAD_16BYTE },
@@ -412,7 +412,7 @@ ROM_LOAD("aliens_l1.bin", 0xc000, 0x0800)
 ROM_LOAD("aliens_n1.bin", 0xc800, 0x0800)
 ROM_LOAD("aliens_p1.bin", 0xd000, 0x0800)
 ROM_LOAD("aliens_r1.bin", 0xd800, 0x0800)
-//ROM_RELOAD(0xf800, 0x0800) //Reload
+ROM_RELOAD(0xf800, 0x0800) //Reload
 //Vector Rom
 ROM_LOAD("aliens_n3.bin", 0x3000, 0x0800)
 ROM_LOAD("aliens_r3.bin", 0x3800, 0x0800)
@@ -430,7 +430,7 @@ ROM_LOAD("lm1.bin", 0xc000, 0x0800)
 ROM_LOAD("mn1.bin", 0xc800, 0x0800)
 ROM_LOAD("p1.bin", 0xd000, 0x0800)
 ROM_LOAD("r1.bin", 0xd800, 0x0800)
-//ROM_RELOAD(0xf800, 0x0800)//Reload
+ROM_RELOAD(0xf800, 0x0800)//Reload
 //Vector Rom
 ROM_LOAD("n3.bin", 0x3000, 0x0800)
 ROM_LOAD("r3.bin", 0x3800, 0x0800)
@@ -463,7 +463,7 @@ ROM_LOAD("vbrakout.114", 0x9800, 0x0800)
 ROM_LOAD("vbrakout.115", 0xa000, 0x0800)
 ROM_LOAD("vbrakout.116", 0xa800, 0x0800)
 ROM_LOAD("vbrakout.122", 0xd800, 0x0800) 
-//ROM_RELOAD(0xf800, 0x0800) /* for reset/interrupt vectors */
+ROM_RELOAD(0xf800, 0x0800) /* for reset/interrupt vectors */
 /* AVG PROM */
 //ROM_REGION(0x100, REGION_PROMS)
 //ROM_LOAD("136002-125.d7", 0x0000, 0x0100, CRC(5903af03) SHA1(24bc0366f394ad0ec486919212e38be0f08d0239))
@@ -499,7 +499,7 @@ ROM_LOAD("136002-119.lm1", 0xc000, 0x0800)
 ROM_LOAD("136002-120.mn1", 0xc800, 0x0800)
 ROM_LOAD("136002-121.p1", 0xd000, 0x0800)
 ROM_LOAD("136002-222.r1", 0xd800, 0x0800)
-//ROM_RELOAD(0xf800, 0x0800)//Reload
+ROM_RELOAD(0xf800, 0x0800)//Reload
 // Vector ROM
 ROM_LOAD("136002-123.np3", 0x3000, 0x0800)
 ROM_LOAD("136002-124.r3", 0x3800, 0x0800)
@@ -519,7 +519,7 @@ ROM_LOAD("136002-119.lm1", 0xc000, 0x0800)
 ROM_LOAD("136002-120.mn1", 0xc800, 0x0800)
 ROM_LOAD("136002-121.p1", 0xd000, 0x0800)
 ROM_LOAD("136002-222.r1", 0xd800, 0x0800)
-//ROM_RELOAD(0xf800, 0x0800)//Reload
+ROM_RELOAD(0xf800, 0x0800)//Reload
 // Vector ROM
 ROM_LOAD("136002-123.np3", 0x3000, 0x0800)
 ROM_LOAD("136002-124.r3", 0x3800, 0x0800)
@@ -538,7 +538,7 @@ ROM_LOAD("136002-119.lm1", 0xc000, 0x0800)
 ROM_LOAD("136002-120.mn1", 0xc800, 0x0800)
 ROM_LOAD("136002-121.p1", 0xd000, 0x0800)
 ROM_LOAD("136002-122.r1", 0xd800, 0x0800)
-//ROM_RELOAD(0xf800, 0x0800) //Reload
+ROM_RELOAD(0xf800, 0x0800) //Reload
 // Vector ROM
 ROM_LOAD("136002-123.np3", 0x3000, 0x0800)
 ROM_LOAD("136002-124.r3", 0x3800, 0x0800)
@@ -556,7 +556,7 @@ ROM_LOAD("136002-119.lm1", 0xc000, 0x0800)
 ROM_LOAD("136002-120.mn1", 0xc800, 0x0800)
 ROM_LOAD("136002-121.p1", 0xd000, 0x0800)
 ROM_LOAD("136002-222.r1", 0xd800, 0x0800)
-//ROM_RELOAD(0xf800, 0x0800)//Reload
+ROM_RELOAD(0xf800, 0x0800)//Reload
 // Vector ROM
 ROM_LOAD("136002-123.np3", 0x3000, 0x0800)
 ROM_LOAD("136002-124.r3", 0x3800, 0x0800)
@@ -570,7 +570,7 @@ ROM_LOAD("136002-136.lm1", 0xa000, 0x1000)
 ROM_LOAD("136002-235.j1", 0xb000, 0x1000)
 ROM_LOAD("136002-134.f1", 0xc000, 0x1000)
 ROM_LOAD("136002-133.d1", 0xd000, 0x1000)
-//ROM_RELOAD(0xf000, 0x1000)//Reload
+ROM_RELOAD(0xf000, 0x1000)//Reload
 // Vector ROM
 ROM_LOAD("136002-138.np3", 0x3000, 0x1000)
 ROM_END
@@ -1112,7 +1112,7 @@ ROM_LOAD("136002.116", 0xc000, 0x0800)
 ROM_LOAD("136002.117", 0xc800, 0x0800)
 ROM_LOAD("136002.118", 0xd000, 0x0800)
 ROM_LOAD("menu_R1.bin", 0xd800, 0x0800)
-//ROM_RELOAD(0xf800, 0x0800) //Reload
+ROM_RELOAD(0xf800, 0x0800) //Reload
 //Vector Rom
 ROM_LOAD("menu_N3.bin", 0x3000, 0x0800)
 ROM_LOAD("menu_R3.bin", 0x3800, 0x0800)
@@ -1127,7 +1127,7 @@ ROM_LOAD("alienst/aliens_l1.bin", 0x1c000, 0x0800)
 ROM_LOAD("alienst/aliens_n1.bin", 0x1c800, 0x0800)
 ROM_LOAD("alienst/aliens_p1.bin", 0x1d000, 0x0800)
 ROM_LOAD("alienst/aliens_r1.bin", 0x1d800, 0x0800)
-//ROM_RELOAD(0x1f800, 0x0800) //Reload
+ROM_RELOAD(0x1f800, 0x0800) //Reload
 ROM_LOAD("alienst/aliens_n3.bin", 0x13000, 0x0800)
 ROM_LOAD("alienst/aliens_r3.bin", 0x13800, 0x0800)
 
@@ -1142,7 +1142,7 @@ ROM_LOAD("vbreak/136002.116", 0x2c000, 0x0800)
 ROM_LOAD("vbreak/136002.117", 0x2c800, 0x0800)
 ROM_LOAD("vbreak/136002.118", 0x2d000, 0x0800)
 ROM_LOAD("vbreak/vb_r1.bin", 0x2d800, 0x0800)
-//ROM_RELOAD(0x2f800, 0x0800)//Reload
+ROM_RELOAD(0x2f800, 0x0800)//Reload
 //Vector Rom
 ROM_LOAD("vbreak/vb_n3.bin", 0x23000, 0x0800)
 ROM_LOAD("vbreak/vb_r3.bin", 0x23800, 0x0800)
@@ -1158,7 +1158,7 @@ ROM_LOAD("vortex/lm1.bin", 0x3c000, 0x0800)
 ROM_LOAD("vortex/mn1.bin", 0x3c800, 0x0800)
 ROM_LOAD("vortex/p1.bin", 0x3d000, 0x0800)
 ROM_LOAD("vortex/r1.bin", 0x3d800, 0x0800)
-//ROM_RELOAD(0x3f800, 0x0800)//Reload
+ROM_RELOAD(0x3f800, 0x0800)//Reload
 //Vector Rom
 ROM_LOAD("vortex/n3.bin", 0x33000, 0x0800)
 ROM_LOAD("vortex/r3.bin", 0x33800, 0x0800)
@@ -1173,7 +1173,7 @@ ROM_LOAD("temptube/136002-119.lm1", 0x4c000, 0x0800)
 ROM_LOAD("temptube/136002-120.mn1", 0x4c800, 0x0800)
 ROM_LOAD("temptube/136002-121.p1", 0x4d000, 0x0800)
 ROM_LOAD("temptube/136002-222.r1", 0x4d800, 0x0800)
-//ROM_RELOAD(0x4f800, 0x0800)//Reload
+ROM_RELOAD(0x4f800, 0x0800)//Reload
 // Vector ROM
 ROM_LOAD("temptube/136002-123.np3", 0x43000, 0x0800)
 ROM_LOAD("temptube/136002-124.r3", 0x43800, 0x0800)
@@ -1188,7 +1188,7 @@ ROM_LOAD("tempest1/136002-119.lm1", 0x5c000, 0x0800)
 ROM_LOAD("tempest1/136002-120.mn1", 0x5c800, 0x0800)
 ROM_LOAD("tempest1/136002-121.p1", 0x5d000, 0x0800)
 ROM_LOAD("tempest1/136002-122.r1", 0x5d800, 0x0800)
-//ROM_RELOAD(0x5f800, 0x0800) //Reload
+ROM_RELOAD(0x5f800, 0x0800) //Reload
 // Vector ROM
 ROM_LOAD("tempest1/136002-123.np3", 0x53000, 0x0800)
 ROM_LOAD("tempest1/136002-124.r3", 0x53800, 0x0800)
@@ -1203,7 +1203,7 @@ ROM_LOAD("tempest2/136002-119.lm1", 0x6c000, 0x0800)
 ROM_LOAD("tempest2/136002-120.mn1", 0x6c800, 0x0800)
 ROM_LOAD("tempest2/136002-121.p1", 0x6d000, 0x0800)
 ROM_LOAD("tempest2/136002-222.r1", 0x6d800, 0x0800)
-//ROM_RELOAD(0x6f800, 0x0800)//Reload
+ROM_RELOAD(0x6f800, 0x0800)//Reload
 ROM_LOAD("tempest2/136002-123.np3", 0x63000, 0x0800)
 ROM_LOAD("tempest2/136002-124.r3", 0x63800, 0x0800)
 // rev 3
@@ -1217,7 +1217,7 @@ ROM_LOAD("tempest/136002-119.lm1", 0x7c000, 0x0800)
 ROM_LOAD("tempest/136002-120.mn1", 0x7c800, 0x0800)
 ROM_LOAD("tempest/136002-121.p1", 0x7d000, 0x0800)
 ROM_LOAD("tempest/136002-222.r1", 0x7d800, 0x0800)
-//ROM_RELOAD(0x7f800, 0x0800)//Reload
+ROM_RELOAD(0x7f800, 0x0800)//Reload
 ROM_LOAD("tempest/136002-123.np3", 0x73000, 0x0800)
 ROM_LOAD("tempest/136002-124.r3", 0x73800, 0x0800)
 ROM_END

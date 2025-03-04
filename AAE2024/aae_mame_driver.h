@@ -37,6 +37,14 @@ extern FILE* errorlog;
 extern char* gamename[];
 extern int gamenum;
 
+// Raster Defines, new. 
+#define MAX_GFX_ELEMENTS 10
+#define MAX_MEMORY_REGIONS 32
+#define MAX_PENS 256	/* can't handle more than 256 colors on screen */
+#define MAX_LAYERS 4	/* MAX_LAYERS is the maximum number of gfx layers */
+/* which we can handle. Currently, 4 is enough. */
+
+
 #define MAX_SOUND 4
 #define MAX_MEMORY_REGIONS 10
 
@@ -94,6 +102,17 @@ extern int gamenum;
 #define PORT_ADDR(start,end,routine) {start,end,routine},
 #define PORT_END {(UINT16) -1, (UINT16) -1,NULL}};
 
+/* flags for video_attributes */
+
+/* bit 0 of the video attributes indicates raster or vector video hardware */
+#define	VIDEO_TYPE_RASTER			0x0000
+#define	VIDEO_TYPE_VECTOR			0x0001
+
+/* bit 1 of the video attributes indicates whether or not dirty rectangles will work */
+#define	VIDEO_SUPPORTS_DIRTY		0x0002
+
+/* bit 2 of the video attributes indicates whether or not the driver modifies the palette */
+#define	VIDEO_MODIFIES_PALETTE	0x0004
 ////////////////////////////////
 //PALETTE SETTINGS
 #define VEC_BW_BI  0
@@ -102,6 +121,43 @@ extern int gamenum;
 #define VEC_BW_256 3
 #define VEC_COLOR  4
 #define RASTER_32  5
+
+/* values for the flags field */
+#define NOT_A_DRIVER			0x4000	/* set by the fake "root" driver_ and by "containers" */
+#define GAME_NOT_WORKING		0x0001
+#define GAME_WRONG_COLORS		0x0002	/* colors are totally wrong */
+#define GAME_IMPERFECT_COLORS	0x0004	/* colors are not 100% accurate, but close */
+#define GAME_NO_SOUND			0x0008	/* sound is missing */
+#define GAME_IMPERFECT_SOUND	0x0010	/* sound is known to be wrong */
+#define VECTOR_USES_OVERLAY1	0x0100  // Blending type 1 overlay
+#define VECTOR_USES_OVERLAY2	0x0400  // An overlay that is visible like a gel. 
+#define VECTOR_USES_BW				0x1000
+#define VECTOR_USES_COLOR			0x2000
+#define VECTOR_DEFAULT_SCALE_2		0x4000
+#define VECTOR_DEFAULT_SCALE_3		0x8000
+
+#define ORIENTATION_MASK        	0x0007
+#define	ORIENTATION_FLIP_X			0x0001	// mirror everything in the X direction 
+#define	ORIENTATION_FLIP_Y			0x0002	// mirror everything in the Y direction 
+#define ORIENTATION_SWAP_XY			0x0004	// mirror along the top-left/bottom-right diagonal 
+//#define VECTOR_USES_COLOR           0x0008
+
+#define	ROT0	0
+#define	ROT90	(ORIENTATION_SWAP_XY|ORIENTATION_FLIP_X)	/* rotate clockwise 90 degrees */
+#define	ROT180	(ORIENTATION_FLIP_X|ORIENTATION_FLIP_Y)		/* rotate 180 degrees */
+#define	ROT270	(ORIENTATION_SWAP_XY|ORIENTATION_FLIP_Y)	/* rotate counter-clockwise 90 degrees */
+
+#define	ORIENTATION_DEFAULT		0x00
+#define	ORIENTATION_FLIP_X		0x01	/* mirror everything in the X direction */
+#define	ORIENTATION_FLIP_Y		0x02	/* mirror everything in the Y direction */
+#define ORIENTATION_SWAP_XY		0x04	/* mirror along the top-left/bottom-right diagonal */
+#define	ORIENTATION_ROTATE_90	(ORIENTATION_SWAP_XY|ORIENTATION_FLIP_X)	/* rotate clockwise 90 degrees */
+#define	ORIENTATION_ROTATE_180	(ORIENTATION_FLIP_X|ORIENTATION_FLIP_Y)	/* rotate 180 degrees */
+#define	ORIENTATION_ROTATE_270	(ORIENTATION_SWAP_XY|ORIENTATION_FLIP_Y)	/* rotate counter-clockwise 90 degrees */
+/* IMPORTANT: to perform more than one transformation, DO NOT USE |, use ^ instead. */
+/* For example, to rotate 90 degrees counterclockwise and flip horizontally, use: */
+/* ORIENTATION_ROTATE_270 ^ ORIENTATION_FLIP_X*/
+/* Always remember that FLIP is performed *after* SWAP_XY. */
 
 // STRUCTS AND GLOBAL VARIABLES START HERE
 
@@ -112,7 +168,7 @@ void swap(int* x, int* y) {
 	*y = temp;
 }
 */
-struct gamerect
+struct rectangle
 {
 	int min_x, max_x;
 	int min_y, max_y;
@@ -157,7 +213,7 @@ struct AAEDriver
 	const struct RomModule* rom;
 
 	int (*init_game)();
-	void (*pre_run) (); //Things to set before each CPU run.
+	//void (*pre_run) (); //Things to set before each CPU run.
 	void (*run_game)();
 	void (*end_game)();
 
@@ -174,10 +230,16 @@ struct AAEDriver
 	void (*int_cpu[4])(); //Interrupt Handler CPU 0/4
 
 	const int fps;
-	const int vid_type;
+	const int video_attributes;
 	const int rotation;
-	struct gamerect visible_area;
-
+	int screen_width, screen_height;
+	struct rectangle visible_area;
+	// Raster code requirements are below.
+	struct GfxDecodeInfo* gfxdecodeinfo;
+	unsigned int total_colors;	/* palette is 3*total_colors bytes long */
+	unsigned int color_table_len;	/* length in shorts of the color lookup table */
+	void (*vh_convert_color_prom)(unsigned char* palette, unsigned char* colortable, const unsigned char* color_prom);
+	//
 	int (*hiscore_load)();	// will be called every vblank until it returns nonzero
 	void (*hiscore_save)();	// will not be called if hiscore_load() hasn't yet
 	// returned nonzero, to avoid saving an invalid table
@@ -191,17 +253,26 @@ struct RunningMachine
 {
 	unsigned char* memory_region[MAX_MEMORY_REGIONS]; //TBD
 	unsigned int memory_region_length[MAX_MEMORY_REGIONS];	/* some drivers might find this useful */
-	//struct GfxElement *gfx[MAX_GFX_ELEMENTS];	/* graphic sets (chars, sprites) */
+	
+	struct GfxElement* gfx[MAX_GFX_ELEMENTS];	/* graphic sets (chars, sprites) */
+	struct osd_bitmap* scrbitmap;	/* bitmap to draw into */
+	unsigned char pens[MAX_PENS];	/* remapped palette pen numbers. When you write */
+	/* directly to a bitmap, never use absolute values, */
+	/* use this array to get the pen number. For example, */
+	/* if you want to use color #6 in the palette, use */
+	/* pens[6] instead of just 6. */
+	unsigned short* colortable;	/* lookup table used to map gfx pen numbers */
+	/* to color numbers */
+	unsigned short* remapped_colortable;	/* the above, already remapped through */
+
 	const struct AAEDriver* gamedrv;	/* contains the definition of the game machine */
-	const struct MachineDriver* drv;	/* same as gamedrv->drv */
+	const struct MachineDriver *drv;	/* same as gamedrv->drv */
 
 	//struct GameSamples* samples;	/* samples loaded from disk */
 	struct InputPort* input_ports;	/* the input ports definition from the driver */
 	/* is copied here and modified (load settings from disk, */
 	/* remove cheat commands, and so on) */
 	int orientation;	/* see #defines in driver.h */
-	//int vector_width;
-	//int vector_height;
 	int vectortype;
 	//struct myrectangle absolute_visible_area;
 	int video_attributes;
@@ -212,7 +283,7 @@ extern struct RunningMachine* Machine;
 //RAM Variables
 extern unsigned char* membuffer;
 extern unsigned char vec_ram[0x4000];
-extern unsigned char* GI[8]; //Global 6502/Z80/6809 GameImage
+//extern unsigned char* GI[8]; //Global 6502/Z80/6809 GameImage
 
 
 extern int in_gui_sentinel;
@@ -228,15 +299,11 @@ extern int b1sx, b1sy, b2sx, b2sy; //bezel full screen adjustments
 extern float bezelzoom;
 extern int bezelx;
 extern int bezely;
-extern float overalpha;
 extern struct game_rect GameRect;
-
 
 extern int in_gui;
 extern unsigned int frames; //Global Framecounter
 extern int frameavg;
-extern int testsw; //testswitch for many games
-
 //Shared variable for GUI
 
 extern int gamenum; //Global Gamenumber (really need this one)
@@ -245,8 +312,6 @@ extern int showinfo; //Global info handler
 extern int done; //End of emulation indicator
 extern int paused; //Paused indicator
 extern double fps_count; //FPS Counter
-//extern int showfps;   //ShowFPS Toggle
-//extern int show_menu; //ShowMenu Toggle
 
 //extern int gamefps; //GAME REQUIRED FPS
 extern int num_games; //Total number of games ?? needed?
@@ -254,10 +319,6 @@ extern int num_samples; //Total number of samples for selected game
 
 //KEY VARIABLES
 extern int mouseb[5];
-extern int WATCHDOG;
-//extern int menulevel;//Top Level
-//extern int menuitem; //TOP VAL
-//extern int key_set_flag;
 extern int total_length;
 
 typedef struct {
@@ -452,6 +513,11 @@ enum GameDef {
 	STARWAR1,
 	GALAGA
 };
+
+/* this allows to leave the INIT field empty in the GAME() macro call */
+#define init_0 0
+
+extern const struct GameDriver* drivers[];
 
 
 #endif

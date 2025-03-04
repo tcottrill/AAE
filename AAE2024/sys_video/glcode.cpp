@@ -636,13 +636,22 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 	{
 		// DRAW OVERLAY to FBO1, Image img1b from image1a Ortho 1024x1014, Viewport 1024x1024
 		// Rotated overlays for tempest and tacscan are handled as bezels down below, fix.
-		if (driver[gamenum].rotation < 2 && config.overlay && art_loaded[1]) {
-			set_texture(&art_tex[1], 1, 0, 0, 0);
-			//Normal Overlay
+		if (config.overlay && art_loaded[1]) {
+			
+		if (Machine->gamedrv->video_attributes & VECTOR_USES_OVERLAY1)
+
+		{
 			glBlendFunc(GL_DST_COLOR, GL_SRC_COLOR);
-			//glColor4f(.7f, .7f, .7f, 1.0f);
 			glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-			FS_Rect(0, 1024);
+		}
+		else
+		{
+			glBlendFunc(GL_ONE_MINUS_SRC_ALPHA, GL_SRC_COLOR);
+			glColor4f(1.0f, 1.0f, 1.0f, .5f);
+		}
+		
+		 set_texture(&art_tex[1], 1, 0, 0, 0);
+		 FS_Rect(0, 1024);
 		}
 	}
 	//// Render to fbo2, attachment2 (img1b) from img1b.  //////////////////////////////////////////////////
@@ -753,8 +762,8 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 	glBindTexture(GL_TEXTURE_2D, 0); // Don't disable GL_TEXTURE_2D on the main texture unit?
 
 	//POST COMBINING OVERLAY FOR CINEMATRONICS GAMES WITH MONITOR COVERS & NO BACKGROUND ARTWORK
-
-	if (driver[gamenum].rotation == 2 && config.overlay && art_loaded[1] && gamenum)
+	/*
+	if (driver[gamenum].rotation == 2 && config.overlay && art_loaded[1] && gamenum) // This should be armor attack
 	{
 		set_texture(&art_tex[1], 1, 0, 0, 0);
 		glBlendFunc(GL_ONE_MINUS_SRC_ALPHA, GL_SRC_COLOR);
@@ -786,10 +795,12 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 			}
 		}
 	}
+	*/
 	// HACKY WAY TO ADD BEZEL TO VERTICAL GAMES
 	// This is for the tempest and tacscan vertical bezels.
-	// This needs to be reinplemented as well.
-	if (driver[gamenum].rotation == 1 && config.bezel == 0 && gamenum)
+	// This needs to be reinplemented/removed with clipping/rotation.
+	
+	if (Machine->gamedrv->rotation & ORIENTATION_ROTATE_270 && config.bezel == 0 && gamenum)
 	{
 		set_texture(&art_tex[2], 1, 0, 0, 1);
 		glEnable(GL_ALPHA_TEST);
@@ -798,6 +809,7 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 		Centered_Rect(0, 1024); //Tempest
 		glDisable(GL_ALPHA_TEST);
 	}
+	
 
 	if (config.bezel && art_loaded[3] && gamenum) {
 		if (config.artcrop)
@@ -816,11 +828,14 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 		glDisable(GL_DEPTH_TEST);
 		glDisable(GL_ALPHA_TEST);
 	}
-
 	glLoadIdentity();
 
 	video_loop();
 	end_render_fbo4();
+
+	//glColor4f(1, 1, 1, 1);
+	//set_texture(&game_tex[0], 1, 0, 0, 1);
+	//FS_Rect(0, 512);
 
 	glDisable(GL_TEXTURE_2D);
 

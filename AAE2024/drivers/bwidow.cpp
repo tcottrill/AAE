@@ -120,7 +120,7 @@ READ_HANDLER(SDControls)
 WRITE_HANDLER(irq_ack_w)
 {
 	;//write_to_log("irq_ack_w this frame");
-	GI[CPU0][0x88c0] = data;
+	Machine->memory_region[CPU0][0x88c0] = data;
 }
 
 WRITE_HANDLER(avgdvg_reset_w)

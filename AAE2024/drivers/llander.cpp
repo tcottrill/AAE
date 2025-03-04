@@ -36,7 +36,7 @@ void llander_interrupt()
 
 READ_HANDLER(llander_zeropage_r)
 {
-	return GI[CPU0][address];
+	return Machine->memory_region[CPU0][address];
 }
 
 READ_HANDLER(llander_DSW1_r)
@@ -52,8 +52,8 @@ READ_HANDLER(llander_DSW1_r)
 
 WRITE_HANDLER(llander_zeropage_w)
 {
-	GI[CPU0][address] = data;
-	GI[CPU0][0x0100 + address] = data;
+	Machine->memory_region[CPU0][address] = data;
+	Machine->memory_region[CPU0][0x0100 + address] = data;
 }
 
 READ_HANDLER(llander_IN0_r)
@@ -101,7 +101,7 @@ WRITE_HANDLER(llander_sounds_w)
 	if (data == 1) { sample_set_volume(1, 10); }
 	if (data & 0x07)
 	{
-		tvol = GI[CPU0][0x01] << 4;
+		tvol = Machine->memory_region[CPU0][0x01] << 4;
 		if (tvol < 10) { tvol = 10; }
 
 		sample_set_volume(1, tvol);

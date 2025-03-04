@@ -9,7 +9,7 @@ extern "C" {
 	{
 		int width, height;       /* width and height of the bitmap */
 		int depth;		/* bits per pixel - ASG 980209 */
-		void* _private; /* don't touch! - reserved for osdepend use */
+		void* privatebm; /* don't touch! - reserved for osdepend use */
 		unsigned char** line; /* pointers to the start of each line */
 	};
 

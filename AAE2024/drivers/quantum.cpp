@@ -399,7 +399,7 @@ int init_quantum()
 	memset(program_rom, 0x00, 0x13fff);
 	memset(nv_ram, 0xff, 0x200);
 
-	memcpy(program_rom, GI[CPU0], 0x14000);//0x14000
+	memcpy(program_rom, Machine->memory_region[CPU0], 0x14000);//0x14000
 	//Memory Leak Data issue, why does freeing this crash the program?
 	//
 	//free(GI);

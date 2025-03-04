@@ -258,6 +258,18 @@
     <ClCompile Include="vidhrdwr\emu_vector_draw.cpp">
       <Filter>Source Files\vidhrdwr</Filter>
     </ClCompile>
+    <ClCompile Include="vidhrdwr\raster.cpp">
+      <Filter>Source Files\vidhrdwr</Filter>
+    </ClCompile>
+    <ClCompile Include="vidhrdwr\fast_poly.cpp">
+      <Filter>Source Files\vidhrdwr</Filter>
+    </ClCompile>
+    <ClCompile Include="vidhrdwr\avgdvg.cpp">
+      <Filter>Source Files\vidhrdwr</Filter>
+    </ClCompile>
+    <ClCompile Include="vidhrdwr\vector.cpp">
+      <Filter>Source Files\vidhrdwr</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="aaemain.h">
@@ -528,6 +540,18 @@
       <Filter>Source Files\drivers</Filter>
     </ClInclude>
     <ClInclude Include="vidhrdwr\emu_vector_draw.h">
+      <Filter>Source Files\vidhrdwr</Filter>
+    </ClInclude>
+    <ClInclude Include="vidhrdwr\raster.h">
+      <Filter>Source Files\vidhrdwr</Filter>
+    </ClInclude>
+    <ClInclude Include="vidhrdwr\fast_poly.h">
+      <Filter>Source Files\vidhrdwr</Filter>
+    </ClInclude>
+    <ClInclude Include="vidhrdwr\avgdvg.h">
+      <Filter>Source Files\vidhrdwr</Filter>
+    </ClInclude>
+    <ClInclude Include="vidhrdwr\vector.h">
       <Filter>Source Files\vidhrdwr</Filter>
     </ClInclude>
   </ItemGroup>

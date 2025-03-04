@@ -72,7 +72,7 @@ struct S68000CONTEXT c68k[MAX_CPU];
 void init_z80(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum)
 {
 	wrlog("Z80 Init Started");
-	m_cpu_z80[cpunum] = new cpu_z80(GI[cpunum], 
+	m_cpu_z80[cpunum] = new cpu_z80(Machine->memory_region[cpunum],
 		read, 
 		write, 
 		portread, 
@@ -86,14 +86,14 @@ void init_z80(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct
 void init_6809(struct MemoryReadByte* read, struct MemoryWriteByte* write, int cpunum)
 {
 	wrlog("Start Configuring CPU %d", cpunum);
-	m_cpu_6809[cpunum] = new cpu_6809(GI[cpunum], read, write, 0xffff, cpunum);
+	m_cpu_6809[cpunum] = new cpu_6809(Machine->memory_region[cpunum], read, write, 0xffff, cpunum);
 	m_cpu_6809[cpunum]->reset6809();
 	wrlog("Finished Configuring CPU %d", cpunum);
 }
 
 void init8080(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum)
 {
-	m_cpu_i8080[cpunum] = new cpu_i8080(GI[cpunum],
+	m_cpu_i8080[cpunum] = new cpu_i8080(Machine->memory_region[cpunum],
 		read,
 		write,
 		portread,
@@ -105,7 +105,7 @@ void init8080(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct
 
 void init6502(struct MemoryReadByte* read, struct MemoryWriteByte* write, int mem_top, int cpunum)
 {
-	m_cpu_6502[cpunum] = new cpu_6502(GI[cpunum], read, write, mem_top, cpunum);
+	m_cpu_6502[cpunum] = new cpu_6502(Machine->memory_region[cpunum], read, write, mem_top, cpunum);
 	m_cpu_6502[cpunum]->reset6502();
 	wrlog("Finished Configuring CPU");
 }
@@ -113,7 +113,7 @@ void init6502(struct MemoryReadByte* read, struct MemoryWriteByte* write, int me
 void init6809(struct MemoryReadByte* read, struct MemoryWriteByte* write, int cpunum)
 {
 	wrlog("Start Configuring CPU %d", cpunum);
-	m_cpu_6809[cpunum] = new cpu_6809(GI[cpunum], read, write, 0xffff, cpunum);
+	m_cpu_6809[cpunum] = new cpu_6809(Machine->memory_region[cpunum], read, write, 0xffff, cpunum);
 	m_cpu_6809[cpunum]->reset6809();
 	wrlog("Finished Configuring CPU %d", cpunum);
 }
@@ -609,6 +609,7 @@ void cpu_reset(int cpunum)
 	//Clear CPU Cyclecount.
 	cyclecount[cpunum] = 0;
 	//Clear CPU Reset Status
+	wrlog("Cpu reset status is %d", reset_cpu_status[cpunum]);
 	reset_cpu_status[cpunum] = 0;
 	if (cpunum == 0)vid_tickcount = 0;
 	//Reset any timers on that CPU.
@@ -662,26 +663,26 @@ void free_cpu_memory()
 		{
 		case CPU_MZ80:
 			free (m_cpu_z80[x]);
-			free(GI[x]);
+			free(Machine->memory_region[x]);
 			break;
 
 		case CPU_M6502:
 			free(m_cpu_6502[x]);
-			free(GI[x]);
+			free(Machine->memory_region[x]);
 			break;
 
 		case CPU_8080:
 			free (m_cpu_i8080[x]);
-			free(GI[x]);
+			free(Machine->memory_region[x]);
 			break;
 
 		case CPU_M6809:
 			free (m_cpu_6809[x]);
-			free(GI[x]);
+			free(Machine->memory_region[x]);
 			break;
 
 		case CPU_68000:
-			free(GI[x]);
+			free(Machine->memory_region[x]);
 			break;
 		}
 	}
@@ -751,20 +752,20 @@ READ_HANDLER(watchdog_reset_r)
 //Read Ram
 UINT8 MRA_RAM(UINT32 address, struct MemoryReadByte* psMemRead)
 {
-	return GI[active_cpu][address + psMemRead->lowAddr];
+	return Machine->memory_region[active_cpu][address + psMemRead->lowAddr];
 }
 
 //Write Ram
 void MWA_RAM(UINT32 address, UINT8 data, struct MemoryWriteByte* pMemWrite)
 {
-	GI[active_cpu][address + pMemWrite->lowAddr] = data;
+	Machine->memory_region[active_cpu][address + pMemWrite->lowAddr] = data;
 }
 
 // Read Rom
 UINT8 MRA_ROM(UINT32 address, struct MemoryReadByte* psMemRead)
 {
 	//wrlog("Address here is %x Lowaddr %x data %x", address, psMemRead->lowAddr, Machine->memory_region[active_cpu][address + psMemRead->lowAddr]);
-	return GI[active_cpu][address + psMemRead->lowAddr];
+	return Machine->memory_region[active_cpu][address + psMemRead->lowAddr];
 }
 
 // Write Rom

@@ -117,7 +117,7 @@ void free_memory_region(int num)
 	
 }
 
-/*
+
 void cpu_mem(int cpunum, int size)
 {
 	wrlog("Made it here, %d %d",cpunum,size);
@@ -141,5 +141,5 @@ void cpu_mem(int cpunum, int size)
 
 	wrlog("Memory Allocation Completed for Rom Region %d",cpunum);
 }
-*/
+
 

@@ -28,8 +28,8 @@
 
 
 //Please fix this. 
-#define memrdwd_flip(address) ((GI[CPU0][pc+1]) | (GI[CPU0][pc]<<8))
-#define memrdwd(address) ((GI[CPU0][pc]) | (GI[CPU0][pc+1]<<8)) /* LBO 062797 */
+#define memrdwd_flip(address) ((Machine->memory_region[CPU0][pc+1]) | (Machine->memory_region[CPU0][pc]<<8))
+#define memrdwd(address) ((Machine->memory_region[CPU0][pc]) | (Machine->memory_region[CPU0][pc+1]<<8)) /* LBO 062797 */
 #define memrdwdf(address) ((vec_ram[pc+1]) | (vec_ram[pc]<<8))
 #define MAXSTACK 8
 #define VEC_SHIFT  16

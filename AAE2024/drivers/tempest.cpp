@@ -1,16 +1,15 @@
 //==========================================================================
-// AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME 
-// code, 0.29 through .90 mixed with code of my own. This emulator was 
-// created solely for my amusement and learning and is provided only 
-// as an archival experience. 
-// 
-// All MAME code used and abused in this emulator remains the copyright 
+// AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME
+// code, 0.29 through .90 mixed with code of my own. This emulator was
+// created solely for my amusement and learning and is provided only
+// as an archival experience.
+//
+// All MAME code used and abused in this emulator remains the copyright
 // of the dedicated people who spend countless hours creating it. All
 // MAME code should be annotated as belonging to the MAME TEAM.
-// 
-// THE CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.  
+//
+// THE CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.
 //==========================================================================
-
 
 #include "tempest.h"
 #include "aae_mame_driver.h"
@@ -19,8 +18,6 @@
 #include "earom.h"
 #include "mathbox.h"
 #include "timer.h"
-
-
 
 #include "glcode.h"
 //
@@ -313,24 +310,25 @@ Note: Roms for Tempest Analog Vector-Generator PCB Assembly A037383-03 or A03738
 
 ***************************************************************************/
 
+#define MASTER_CLOCK (12096000)
+#define CLOCK_3KHZ  (MASTER_CLOCK / 4096)
+
 static int flipscreen = 0;
 static int INMENU = 0;
 static int tempprot = 1;
 static char* tbuffer = nullptr;
-
 
 void tempest_interrupt()
 {
 	cpu_do_int_imm(CPU0, INT_TYPE_INT);
 }
 
-
 static struct POKEYinterface pokey_interface =
 {
 	2,			/* 4 chips */
 	1512000,
 	255,	/* volume */
-	POKEY_DEFAULT_GAIN/2,
+	POKEY_DEFAULT_GAIN / 2,
 	NO_CLIP,//USE_CLIP,
 	/* The 8 pot handlers */
 	{ 0, 0 },
@@ -347,8 +345,9 @@ static struct POKEYinterface pokey_interface =
 
 void tempm_reset()
 {
-	memcpy(GI[CPU0], tbuffer, 0x10000);
-	m_cpu_6502[0]->reset6502();
+	unsigned char* RAM = Machine->memory_region[CPU0];
+	memcpy(RAM, tbuffer, 0x10000);
+	cpu_reset(CPU0);
 	INMENU = 1;
 }
 
@@ -356,49 +355,50 @@ static void switch_game()
 {
 	int a = 0;
 	int b = 0;
-	int oldgamenum = TEMPESTM;
 
-	if (!INMENU) { return; }
+	if (INMENU == 0) { return; }
 
-	INMENU = 0;
-	oldgamenum = gamenum;
-	a = (GI[CPU0][0x51]) + 1;
-	//wrlog("A here is %d", a);
+	a = (Machine->memory_region[CPU0][0x51]) + 1;
+	//	wrlog("A here is %d", a);
 	switch (a)
 	{
-	case 1: b = 0x10000; gamenum = ALIENSV; break;
-	case 2: b = 0x20000; gamenum = VBRAKOUT; break;
-	case 3: b = 0x30000; gamenum = VORTEX; break;
-	case 4: b = 0x40000; gamenum = TEMPTUBE; break;
-	case 5: b = 0x50000; gamenum = TEMPEST1; break;
-	case 6: b = 0x60000; gamenum = TEMPEST2; break;
-	case 7: b = 0x70000; gamenum = TEMPEST; break;
+	case 1: b = 0x10000;  break;
+	case 2: b = 0x20000;  break;
+	case 3: b = 0x30000;  break;
+	case 4: b = 0x40000;  break;
+	case 5: b = 0x50000;  break;
+	case 6: b = 0x60000;  break;
+	case 7: b = 0x70000;  break;
 	default: wrlog("Tempest Multigame - unhandled game number?");
 	}
 
 	setup_video_config();
-	gamenum = oldgamenum; //Reset back
-	memset(GI[CPU0], 0x10000, 0);
-	memcpy(GI[CPU0], GI[CPU0] + b, 0x10000);
+	INMENU = 0;
+
+	memset(&Machine->memory_region[REGION_CPU1], 0x10000, 0);
+	unsigned char* RAM = Machine->memory_region[CPU0];
+	memcpy(RAM, Machine->memory_region[REGION_CPU1] + b, 0x10000);
+
 	cache_clear();
-	m_cpu_6502[0]->reset6502();
+	cpu_reset(CPU0);
 }
 
 READ_HANDLER(pokey_2_tempest_read)
 {
 	int val = Read_pokey_regs(address, 1);
-	if (gamenum == TEMPESTM && (val & 0x10))  //Fire
+
+	if ((val & 0x10))  //Fire
 	{
 		switch_game();
 	}
 
-	if (gamenum == TEMPESTM && ((val & 0x20) && val & 0x40)) // Start 1 and Start 2 together
+	if (((val & 0x20) && val & 0x40)) // Start 1 and Start 2 together
 	{
-		tempm_reset();
+		if (val != 0xe7) tempm_reset();
 	}
+
 	return val;
 }
-
 
 READ_HANDLER(TempestIN0read)
 {
@@ -406,11 +406,10 @@ READ_HANDLER(TempestIN0read)
 
 	res = readinputportbytag("IN0");
 
-	 if (get_eterna_ticks(0) & 0x100) //3Khz clock
-	 res |= 0x80;
+	if (get_eterna_ticks(0) & 0x100) //3Khz clock
+		res |= 0x80;
 
 	if (avg_check()) res |= 0x40;
-	
 
 	return res;
 }
@@ -450,28 +449,59 @@ WRITE_HANDLER(coin_write)
 
 WRITE_HANDLER(prot_w_1)
 {
-	GI[CPU0][0x011b] = 0;
+	Machine->memory_region[CPU0][0x011b] = 0;
 }
 
 WRITE_HANDLER(prot_w_2)
 {
-	GI[CPU0][0x011f] = 0;
+	Machine->memory_region[CPU0][0x011f] = 0;
 }
 
 WRITE_HANDLER(prot_w_3)
 {
-	GI[CPU0][0x0455] = 0;
+	Machine->memory_region[CPU0][0x0455] = 0;
 }
 
-
 //////////////////////////////////////////////////////////////////////////
+
+MEM_READ(TempestMenuRead)
+MEM_ADDR(0x0c00, 0x0c00, TempestIN0read)
+MEM_ADDR(0x0d00, 0x0d00, ip_port_3_r)
+MEM_ADDR(0x0e00, 0x0e00, ip_port_4_r)
+MEM_ADDR(0x60c0, 0x60cf, pokey_1_r)
+MEM_ADDR(0x60d0, 0x60df, pokey_2_tempest_read)
+MEM_ADDR(0x6040, 0x6040, MathboxStatusRead)
+MEM_ADDR(0x6050, 0x6050, EaromRead)
+MEM_ADDR(0x6060, 0x6060, MathboxLowbitRead)
+MEM_ADDR(0x6070, 0x6070, MathboxHighbitRead)
+MEM_END
+
+MEM_WRITE(TempestMenuWrite)
+//MEM_ADDR(0x011b, 0x011b, prot_w_1)
+//MEM_ADDR(0x011f, 0x011f, prot_w_2)
+//MEM_ADDR(0x0455, 0x0455, prot_w_3)
+MEM_ADDR(0x0800, 0x080f, colorram_w)
+MEM_ADDR(0x60c0, 0x60cf, pokey_1_w)
+MEM_ADDR(0x60d0, 0x60df, pokey_2_w)
+MEM_ADDR(0x6080, 0x609f, MathboxGo)
+MEM_ADDR(0x4000, 0x4000, coin_write)
+MEM_ADDR(0x4800, 0x4800, advdvg_go_w)
+MEM_ADDR(0x3000, 0x3fff, MWA_ROM)
+MEM_ADDR(0x6000, 0x603f, EaromWrite)
+MEM_ADDR(0x6040, 0x6040, EaromCtrl)
+MEM_ADDR(0x5000, 0x5000, watchdog_reset_w)
+MEM_ADDR(0x5800, 0x5800, avg_reset_w)
+MEM_ADDR(0x60e0, 0x60e0, tempest_led_w)
+MEM_ADDR(0x9000, 0xffff, MWA_ROM)
+MEM_ADDR(0x3000, 0x57ff, MWA_ROM)
+MEM_END
 
 MEM_READ(TempestRead)
 MEM_ADDR(0x0c00, 0x0c00, TempestIN0read)
 MEM_ADDR(0x0d00, 0x0d00, ip_port_3_r)
 MEM_ADDR(0x0e00, 0x0e00, ip_port_4_r)
 MEM_ADDR(0x60c0, 0x60cf, pokey_1_r)
-MEM_ADDR(0x60d0, 0x60df, pokey_2_tempest_read)
+MEM_ADDR(0x60d0, 0x60df, pokey_2_r)
 MEM_ADDR(0x6040, 0x6040, MathboxStatusRead)
 MEM_ADDR(0x6050, 0x6050, EaromRead)
 MEM_ADDR(0x6060, 0x6060, MathboxLowbitRead)
@@ -503,19 +533,30 @@ void run_tempest()
 	watchdog_reset_w(0, 0, 0); // Required for protos.
 	pokey_sh_update();
 }
+
+int init_tempestm()
+{
+	init6502(TempestMenuRead, TempestMenuWrite, 0xffff, CPU0);
+
+	cache_clear();
+
+	wrlog("TEMPMG INIT CALLED");
+	tbuffer = (char*)malloc(0x10000);
+	memcpy(tbuffer, Machine->memory_region[REGION_CPU1], 0x10000);
+	INMENU = 1;
+
+	pokey_sh_start(&pokey_interface);
+	avg_init();
+
+	return 0;
+}
+
 /////////////////// MAIN() for program ///////////////////////////////////////////////////
 int init_tempest(void)
 {
-	init6502(TempestRead, TempestWrite, 0xdfff, CPU0);
+	init6502(TempestRead, TempestWrite, 0xffff, CPU0);
 
 	cache_clear();
-	
-		if (gamenum == TEMPESTM)
-		{
-			tbuffer = (char*)malloc(0x10000);
-			memcpy(tbuffer, GI[CPU0], 0x10000);
-			INMENU = 1;
-		} //Save the menu code so we can overwrite it.
 
 	if (gamenum == TEMPTUBE ||
 		gamenum == TEMPEST1 ||
@@ -524,9 +565,8 @@ int init_tempest(void)
 		gamenum == VBRAKOUT ||
 		gamenum == TEMPEST)
 	{
-		
 		//LEVEL SELECTION HACK   (Does NOT Work on Protos)
-		if (config.hack) { GI[CPU0][0x90cd] = 0xea; GI[CPU0][0x90ce] = 0xea; }
+		if (config.hack) { Machine->memory_region[CPU0][0x90cd] = 0xea; Machine->memory_region[CPU0][0x90ce] = 0xea; }
 	}
 
 	pokey_sh_start(&pokey_interface);

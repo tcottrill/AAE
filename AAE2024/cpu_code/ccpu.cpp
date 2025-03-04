@@ -74,7 +74,7 @@ UINT8 outport[16];
 	MACROS
 ***************************************************************************/
 
-#define READOP(a) 			(GI[CPU0][a])
+#define READOP(a) 			(Machine->memory_region[CPU0][a])
 
 #define RDMEM(a)			(CCPURAM[a])       //(data_read_word_16be((a) * 2) & 0xfff)
 #define WRMEM(a,v)			(CCPURAM[a] = v )     //(data_write_word_16be((a) * 2, (v)))

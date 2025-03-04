@@ -69,8 +69,8 @@ void asteroid_interrupt()
 
 int asteroid1_hiload()
 {
-	if (memcmp(&GI[CPU0][0x001c], "\x00\x00", 2) == 0 && memcmp(&GI[CPU0][0x0050], "\x00\x00", 2) == 0 &&
-		memcmp(&GI[CPU0][0x0000], "\x10", 1) == 0) {
+	if (memcmp(&Machine->memory_region[CPU0][0x001c], "\x00\x00", 2) == 0 && memcmp(&Machine->memory_region[CPU0][0x0050], "\x00\x00", 2) == 0 &&
+		memcmp(&Machine->memory_region[CPU0][0x0000], "\x10", 1) == 0) {
 		load_hi_aae(0x1c, 0x35, 0);
 
 		return 1;
@@ -85,8 +85,8 @@ void asteroid1_hisave()
 
 int asteroid_hiload()
 {
-	if (memcmp(&GI[CPU0][0x001d], "\x00\x00", 2) == 0 && memcmp(&GI[CPU0][0x0050], "\x00\x00", 2) == 0 &&
-		memcmp(&GI[CPU0][0x0000], "\x10", 1) == 0) {
+	if (memcmp(&Machine->memory_region[CPU0][0x001d], "\x00\x00", 2) == 0 && memcmp(&Machine->memory_region[CPU0][0x0050], "\x00\x00", 2) == 0 &&
+		memcmp(&Machine->memory_region[CPU0][0x0000], "\x10", 1) == 0) {
 		load_hi_aae(0x1d, 0x35, 0);
 
 		return 1;
@@ -257,7 +257,7 @@ WRITE_HANDLER(astdelux_bank_switch_w)
 {
 	static int astdelux_bank = 0;
 	int astdelux_newbank;
-	unsigned char* RAM = GI[CPU0];
+	unsigned char* RAM = Machine->memory_region[CPU0];
 
 	astdelux_newbank = (data >> 7) & 1;
 	//SCRFLIP = GI[CPU0][0x1e];
@@ -288,9 +288,9 @@ WRITE_HANDLER(asteroid_bank_switch_w)
 	if (asteroid_bank != asteroid_newbank) {
 		/* Perform bankswitching on page 2 and page 3 */
 		asteroid_bank = asteroid_newbank;
-		memcpy(buffer, GI[CPU0] + 0x200, 0x100);
-		memcpy(GI[CPU0] + 0x200, GI[CPU0] + 0x300, 0x100);
-		memcpy(GI[CPU0] + 0x300, buffer, 0x100);
+		memcpy(buffer, Machine->memory_region[CPU0] + 0x200, 0x100);
+		memcpy(Machine->memory_region[CPU0] + 0x200, Machine->memory_region[CPU0] + 0x300, 0x100);
+		memcpy(Machine->memory_region[CPU0] + 0x300, buffer, 0x100);
 	}
 	set_aae_leds((~data & 0x02), (~data & 0x01), 0);
 }

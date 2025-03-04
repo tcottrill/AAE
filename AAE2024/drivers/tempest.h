@@ -3,6 +3,7 @@
 
 #include "aaemain.h"
 
+int init_tempestm();
 int init_tempest();
 void run_tempest();
 void end_tempest();

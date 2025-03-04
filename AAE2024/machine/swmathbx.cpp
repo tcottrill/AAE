@@ -71,7 +71,7 @@ static int PROM_AM[1024]; /* Storage for address mode select only */
 void translate_proms(void)
 {
 	int cnt, val;
-	unsigned char* RAM = GI[0];//Machine->memory_region[0];
+	unsigned char* RAM = Machine->memory_region[0];
 	for (cnt = 0; cnt < 1024; cnt++)
 	{
 		/* Translate PROMS into 16 bit code */
@@ -102,7 +102,7 @@ void run_mbox(void)
 	int MA;
 	int IP15_8, IP7, IP6_0; /* Instruction PROM values */
 
-	unsigned char* RAM = GI[0];//Machine->memory_region[0];
+	unsigned char* RAM = Machine->memory_region[0];
 
 	while (M_STOP > 0)
 	{

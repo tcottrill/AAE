@@ -160,7 +160,7 @@ int adjust_xy(int rawx, int rawy, int* outx, int* outy)
 void sega_vh_update(void)
 {
 	//wrlog("Starting Sega Video Update");
-	UINT8* sintable = GI[1];
+	UINT8* sintable = Machine->memory_region[1];
 	double total_time = 1.0 / (double)IRQ_CLOCK;
 	UINT16 symaddr = 0;
 	int sx = 0;

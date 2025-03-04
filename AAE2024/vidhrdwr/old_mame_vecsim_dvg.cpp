@@ -26,8 +26,15 @@ unsigned char* vectorram;
 unsigned int vectorram_size;
 static int ASTEROID_DVG = 0;
 static int yval = 1130;
-
 static int dvg_timer_val = -1;
+
+
+static int width, height;
+static int xcenter, ycenter;
+static int xmin, xmax;
+static int ymin, ymax;
+
+static int flip_x, flip_y, swap_xy;
 
 
 #define vecmemrdwd(address) ((vectorram[pc]) | (vectorram[pc+1]<<8))
@@ -154,34 +161,22 @@ int dvg_generate_vector_list(void)
 				}
 
 			}
-			/*
-			if ((currentx == (currentx)+deltax) && (currenty == (currenty)-deltay))
-			{
-				if (ASTEROID_DVG) {
-					if (z > 14) cache_txt(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, config.fire_point_size, 255);
-					else cache_point(currentx, currenty, z, 0, 0, 1.0);
-				}
-				else {
-					cache_point(currentx, currenty, z, 0, 0, 1.0);
-				}
-			}
-			cache_line(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, (currentx + deltax) >> VEC_SHIFT, (currenty - deltay) >> VEC_SHIFT, z, config.gain, 0);
-			cache_point(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, z, config.gain, 0, 0);
-			cache_point((currentx + deltax) >> VEC_SHIFT, (currenty - deltay) >> VEC_SHIFT, z, config.gain, 0, 0);
-			*/
+			
 			currentx += deltax;
 			currenty -= deltay;
 			break;
 
 		case 0xa:
-			//secondwd = memrdwd(pc); pc += 2;
 			x = twos_comp_val(secondwd, 12);
 			y = twos_comp_val(firstwd, 12);
 
 			//Do overall draw scaling
 			scale = (secondwd >> 12) & 0x0f;
-			currenty = (yval - y) << VEC_SHIFT;
+			currenty = (yval - y) << VEC_SHIFT;          // TODO: FIX THIS
 			currentx = x << VEC_SHIFT;
+			// set the current X,Y
+			//currentx = (x - xmin) << 16;
+			//currenty = (ymax - y) << 16;
 			break;
 
 		case 0xb: done = 1; break;
@@ -218,25 +213,7 @@ int dvg_generate_vector_list(void)
 			deltax = (x << VEC_SHIFT) >> (9 - temp);
 			deltay = (y << VEC_SHIFT) >> (9 - temp);
 			total_length += dvg_vector_timer(temp);
-			/*
-			if ((currentx == (currentx)+deltax) && (currenty == (currenty)-deltay))
-			{
-				if (ASTEROID_DVG) {
-					if (z == 7) { cache_txt(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, config.explode_point_size, 255); }
-					else { cache_point(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, z, config.gain, 0, 1.0); }
-				}
-				else { cache_point(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, z, config.gain, 0, 1.0); }
-			}
-
-			else
-			{
-				if (ASTEROID_DVG) { if (z < 2)  z = 0; }
-				cache_line(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, (currentx + deltax) >> VEC_SHIFT, (currenty - deltay) >> VEC_SHIFT, z, config.gain, 0);
-				cache_point(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, z, config.gain, 0, 0);
-				cache_point((currentx + deltax) >> VEC_SHIFT, (currenty - deltay) >> VEC_SHIFT, z, config.gain, 0, 0);
-			}
-			*/
-
+			
 			if (z)
 			{
 
@@ -326,14 +303,29 @@ void dvg_go_w(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite)
 int dvg_init()
 {
 	// Move these to avg_dvg init						// TBD
-	vectorram = &GI[CPU0][driver[gamenum].vectorram];   //&memory_region(REGION_CPU1)[Machine->drv->vectorram];
-	vectorram_size = driver[gamenum].vectorram_size;    //Machine->drv->vectorram_size;
+	vectorram = &memory_region(REGION_CPU1)[Machine->gamedrv->vectorram];
+	vectorram_size = Machine->gamedrv->vectorram_size;
 	//
 	set_color_palette();
 	vector_engine = USE_DVG;
 	busy = 0;
 	vector_updates = 0;
 	dvg_timer_val = -1;
+	
+
+	/* compute the min/max values */
+	xmin = Machine->gamedrv->visible_area.min_x;
+	ymin = Machine->gamedrv->visible_area.min_y;
+	xmax = Machine->gamedrv->visible_area.max_x;
+	ymax = Machine->gamedrv->visible_area.max_y;
+	width = xmax - xmin;
+	height = ymax - ymin;
+
+	/* determine the center points */
+	xcenter = ((xmax + xmin) / 2) << 16;
+	ycenter = ((ymax + ymin) / 2) << 16;
+
+	
 	return 1;
 }
 

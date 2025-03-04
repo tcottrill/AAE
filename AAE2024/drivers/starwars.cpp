@@ -94,7 +94,7 @@ READ_HANDLER(starwars_control_r)
 /* Read from ROM 0. Use bankaddress as base address */
 READ_HANDLER(banked_rom_r)
 {
-	unsigned char* RAM = GI[0];
+	unsigned char* RAM = Machine->memory_region[0];
 	return RAM[bankaddress + address];
 }
 

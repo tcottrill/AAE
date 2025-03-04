@@ -30,7 +30,7 @@ enum {
 
 #define PROM_MEMORY_REGION(region) ((const unsigned char *)((-(region))-1))
 
-//unsigned char *memory_region(int num);
+unsigned char *memory_region(int num);
 int new_memory_region(int num, int length);
 void free_memory_region(int num);
 void cpu_mem(int cpunum, int size);

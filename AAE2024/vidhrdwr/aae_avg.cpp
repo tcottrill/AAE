@@ -82,7 +82,7 @@ static void BZ_DRAW(int currentx, int currenty, int deltax, int deltay, int z, i
 	sx = (currentx >> VEC_SHIFT);
 	ex = (currentx + deltax) >> VEC_SHIFT;
 	
-	if (!testsw && gamenum != REDBARON)
+	if (gamenum != REDBARON)
 	{
 		//Line color 0 clipping
 		if (sy > BZ_CLIP && ey > BZ_CLIP && color == 0) { noline = 1; }
@@ -218,7 +218,7 @@ void AVG_RUN(void)
 					if (color & 0x02) green = z; else green = 0;
 					if (color & 0x01) blue = z; else blue = 0;
 					
-					if (TYPE_GV && testsw) { if (color == 0) { green = z; blue = z; } } //Gravitar Test Mode Fix
+					//if (TYPE_GV && testsw) { if (color == 0) { green = z; blue = z; } } //Gravitar Test Mode Fix
 					
 					if (TYPE_TEMP)
 					{
@@ -282,7 +282,7 @@ void AVG_RUN(void)
 				{
 					lastbank = vectorbank;
 					//wrlog("Vector Bank Switch %x",0x18000 + ((firstwd >> 8) & 3) * 0x2000);
-					memcpy(GI[CPU0] + 0x6000, GI[CPU0] + vectorbank, 0x2000);
+					memcpy(Machine->memory_region[CPU0] + 0x6000, Machine->memory_region[CPU0] + vectorbank, 0x2000);
 				}
 			}
 			break;

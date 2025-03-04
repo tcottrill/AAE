@@ -72,25 +72,27 @@ WRITE_HANDLER(sega_mem_w)
 	int offset = 0;
 	unsigned int bad = 0;
 
+	uint8_t *MEM = Machine->memory_region[CPU0];
+
+
 	val = m_cpu_z80[CPU0]->GetPPC();
 
 	if (val != -1)
 	{
-		op = GI[0][val] & 0xff;
+		op = MEM[val] & 0xff;
 		if (op == 0x32)
 		{
-			bad = GI[0][(val + 1)] & 0xFF;
-			page = (GI[0][(val + 2)] & 0xFF) << 8;
+			bad = MEM[(val + 1)] & 0xFF;
+			page = (MEM[(val + 2)] & 0xFF) << 8;
 			(*sega_decrypt)(val, &bad);
 
 			offset = (page & 0xFF00) | (bad & 0x00FF);
-			//wrlog("VAL %x, OP %x BAD %x PAGE %x ADDRESS %x OFFSET %x",val,op,bad,page,address,offset);
+			wrlog("VAL %x, OP %x BAD %x PAGE %x ADDRESS %x OFFSET %x", val, op, bad, page, address, offset);
 			address = offset;
 		}
 	}
 	if ((address >= 0x0000) && (address <= 0xbfff)) { ; }
-	else if (address >= 0xc800 && address <= 0xefff) { GI[0][address] = data; }
-	
+	else if (address >= 0xc800 && address <= 0xefff) { MEM[address] = data; }
 }
 
 
@@ -383,7 +385,7 @@ int init_elim4()
 
 int init_segag80(void)
 {
-	sega_vectorram = &GI[0][0xe000];
+	sega_vectorram = &Machine->memory_region[0][0xe000];
 	sega_sh_start();
 	return 0;
 }

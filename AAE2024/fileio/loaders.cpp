@@ -4,7 +4,7 @@
 #include "gameroms.h"
 #include "aae_mame_driver.h"
 #include "samples.h"
-
+#include "memory.h"
 
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -19,6 +19,7 @@
 const char* artpath = "artwork\\";
 const char* samplepath = "samples\\";
 
+/*
 void cpu_mem(int cpunum, int size)
 {
 	wrlog("Allocating Game Memory, Cpu# %d Amount 0x%x", cpunum, size);
@@ -28,6 +29,7 @@ void cpu_mem(int cpunum, int size)
 	memset(GI[cpunum], 0, size);
 	//wrlog("Memory Allocation Completed");
 }
+*/
 
 void swap(unsigned char* src, unsigned char* dst, int length, int odd)
 {
@@ -80,7 +82,12 @@ int load_roms(const char* archname, const struct RomModule* p)
 	for (i = 0; p[i].romSize > 0; i += 1)
 	{
 		//   Check for ROM_REGION: IF SO, decode and skip, also reset the even/odd counter:
-		if (p[i].loadAddr == 0x999) { cpu_mem(p[i].loadtype, p[i].romSize); cpunum = p[i].loadtype; flipnum = 0; }
+		if (p[i].loadAddr == ROM_REGION_START) 
+		{
+			cpu_mem(p[i].loadtype, p[i].romSize); 
+			cpunum = p[i].loadtype; 
+			flipnum = 0; 
+		}
 		// else load a rom
 		else {
 			// Find the requested file, ignore case
@@ -108,19 +115,22 @@ int load_roms(const char* archname, const struct RomModule* p)
 			if (p[i].filename == (char*)-2) { skip = p[i - 1].romSize; }
 			else skip = 0;
 
+			//Get the memory region for the current CPU number
+			int region = cpunum;// Machine->drv->cpu[cpunum].memory_region;
+
 			switch (p[i].loadtype)
 			{
-			case 0:
+			case ROM_LOAD_NORMAL:
 				for (j = skip; j < p[i].romSize; j++)
 				{
-					GI[cpunum][j + p[i].loadAddr] = zipdata[j];
+					Machine->memory_region[region][j + p[i].loadAddr] = zipdata[j];
 				}
 				break;
 
-			case 1:
+			case ROM_LOAD_16BYTE:
 				for (j = 0; j < p[i].romSize; j += 1) //Even odd based on flipword
 				{
-					GI[cpunum][(j * 2 + flipnum) + p[i].loadAddr] = zipdata[j];
+					Machine->memory_region[region][(j * 2 + flipnum) + p[i].loadAddr] = zipdata[j];
 				}
 				break;
 
@@ -231,7 +241,7 @@ int load_hi_aae(int start, int size, int image)
 	wrlog("Loading Hiscore table / nvram");
 	fread(membuffer, 1, size, fd);
 
-	memcpy((GI[image] + start), membuffer, size);
+	memcpy((Machine->memory_region[CPU0] + start), membuffer, size);
 	fclose(fd);
 	free(membuffer);
 	return 0;
@@ -249,7 +259,7 @@ int save_hi_aae(int start, int size, int image)
 	strcat(fullpath, driver[gamenum].name);
 	strcat(fullpath, ".aae");
 	wrlog("Saving Hiscore table / nvram");
-	memcpy(membuffer, (GI[image] + start), size);
+	memcpy(membuffer, (Machine->memory_region[CPU0] + start), size);
 	save_file(fullpath, membuffer, size);
 	free(membuffer);
 	return 0;
@@ -417,8 +427,8 @@ GLuint load_texture(const char* filename, const char* archname, int numcomponent
 
 	//glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, width, height);
 	//glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, image_data);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);

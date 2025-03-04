@@ -492,7 +492,7 @@ WRITE_HANDLER(mhavoc_rom_banksel_w)
 		data = ((data & 1) | ((data & 2) << 1) | ((data & 4) >> 1));
 	}
 	else { data = data & 0x03; }
-	cur_bank = &GI[CPU0][bank[data]];
+	cur_bank = &Machine->memory_region[CPU0][bank[data]];
 }
 
 READ_HANDLER(MRA_BANK2_R)
@@ -509,7 +509,7 @@ WRITE_HANDLER(MWA_BANK1_W)
 	else { bank = 0x20800; }
 	bank = bank + address;
 
-	GI[CPU0][bank] = data;
+	Machine->memory_region[CPU0][bank] = data;
 }
 
 READ_HANDLER(MRA_BANK1_R)
@@ -520,7 +520,7 @@ READ_HANDLER(MRA_BANK1_R)
 	else { bank = 0x20800; }
 	bank = bank + (address);
 
-	return GI[CPU0][bank];
+	return Machine->memory_region[CPU0][bank];
 }
 
 /* Read from the gamma processor */
@@ -557,15 +557,15 @@ WRITE_HANDLER(mhavoc_gamma_w)
 
 READ_HANDLER(mhavoc_gammaram_r)
 {
-	return GI[CPU1][address & 0x7ff];
+	return Machine->memory_region[CPU1][address & 0x7ff];
 }
 
 WRITE_HANDLER(mhavoc_gammaram_w)
 {
 	//wrlog("Ram write from Gamma CPU address:%x data:%x",address,data);
 	// Note: Writing to both addresses seems to cure the nvram saving issue.
-	GI[CPU1][address & 0x7ff] = data;
-	GI[CPU1][address] = data;
+	Machine->memory_region[CPU1][address & 0x7ff] = data;
+	Machine->memory_region[CPU1][address] = data;
 }
 
 WRITE_HANDLER(nvram_w)
@@ -710,7 +710,7 @@ int init_mhavoc(void)
 	else 
 	{
 		init6502(AlphaOneRead, AlphaOneWrite, 0xffff, CPU0);
-		memset(GI[CPU0] + 0x1800, 0xff, 0xff);
+		memset(Machine->memory_region[CPU0] + 0x1800, 0xff, 0xff);
 		//Load High Score table for Alpha One
 		if (has_gamma_cpu == 0) { load_hi_aae(0x1800, 0x100, 0); }
 	}
