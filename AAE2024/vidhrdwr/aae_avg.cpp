@@ -177,17 +177,7 @@ void AVG_RUN(void)
 
 		DRAWCODE:
 
-			if (TYPE_SW)
-			{
-				z = (z * statz) / 8; // Brightness / Translucency here
-				if (z > 0xff)
-					z = 0xff;
-			}
-			else
-			{
-				if (z == 2) { z = statz; }
-				if (z) {z = (z << 4) | 0x1f;}
-			}
+			
 			total_length += vector_timer(x * oldscale, y * oldscale);
 
 			deltax = x * scale;
@@ -205,6 +195,18 @@ void AVG_RUN(void)
 
 			if (z)
 			{
+				if (TYPE_SW)
+				{
+					z = (z * statz) / 8; // Brightness / Translucency here
+					if (z > 0xff)	z = 0xff;
+				}
+				else
+				{
+					if (z == 2) { z = statz; }
+					 z = (z << 4) | 0x1f; 
+					 if (z > 0xff)	z = 0xff;
+				}
+
 				if (TYPE_BZ) BZ_DRAW(currentx, currenty, deltax, deltay, z, color);
 				else 
 				{

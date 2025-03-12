@@ -254,6 +254,7 @@ void end_mhavoc()
 {
 	wrlog("End Major Havoc Called");
 	if (has_gamma_cpu == 0) { save_hi_aae(0x1800, 0x100, 0); }
+	mhavoc_sh_stop();
 }
 
 void run_reset()

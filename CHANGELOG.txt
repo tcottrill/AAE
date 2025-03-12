@@ -72,7 +72,13 @@ Started updating the Cinematronics Driver, fixed drone sounds for star castle an
 
 2/25/25
 Replaced some of the horribly depricated opengl rendering code with slightly less depricated rendering code. No increase in rendering speed though. Bummer.
- 
+
+2/28/25 
+Updated rendering code, added newer M.A.M.E. Rendering code as a placeholder 
+
+3/10/25 
+Minor fix to Major Havoc, added missing mhavoc_sh_stop to the end code to fix audio issue.
+
 
 
 

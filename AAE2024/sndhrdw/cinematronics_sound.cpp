@@ -238,6 +238,7 @@ void starcas_sound(UINT8 sound_val, UINT8 bits_changed)
 			if (current_pitch < target_pitch)
 				current_pitch += 200;
 			sample_set_freq(4, current_pitch);
+		
 			last_frame = cpu_getcurrentframe();
 		}
 
