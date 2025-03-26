@@ -475,7 +475,7 @@ int load_input_port_settings(void)
 	wrlog("Setting Default Keys");
 
 	load_default_keys();
-	wrlog("opening File");
+	wrlog("opening input port settings file");
 
 	if ((f = osd_fopen(Machine->gamedrv->name, 0, OSD_FILETYPE_CONFIG, 0)) != 0)
 		//if ((f = osd_fopen(driver[gamenum].name, 0, OSD_FILETYPE_CONFIG, 0)) != 0)
@@ -542,6 +542,10 @@ int load_input_port_settings(void)
 		osd_fclose(f);
 	}
 
+	else
+	{
+		wrlog("Note: Could not find saved input port settings file");
+	}
 	//Update the input port tags regardless if there is a save file or not.
 	memset(&input_port_tag, 0, sizeof(input_port_tag));
 	struct InputPort* in = Machine->input_ports;

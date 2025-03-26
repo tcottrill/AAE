@@ -186,6 +186,7 @@
     <ClCompile Include="newfbo.cpp" />
     <ClCompile Include="os_basic.cpp" />
     <ClCompile Include="os_input.cpp" />
+    <ClCompile Include="path_helper.cpp" />
     <ClCompile Include="sndhrdw\5220intf.cpp" />
     <ClCompile Include="sndhrdw\aae_mame_pokey_2.4.cpp" />
     <ClCompile Include="sndhrdw\ay8910.cpp" />
@@ -290,6 +291,7 @@
     <ClInclude Include="osd_cpu.h" />
     <ClInclude Include="os_basic.h" />
     <ClInclude Include="os_input.h" />
+    <ClInclude Include="path_helper.h" />
     <ClInclude Include="sndhrdw\5220intf.h" />
     <ClInclude Include="sndhrdw\aae_mame_pokey_2.4.h" />
     <ClInclude Include="sndhrdw\ay8910.h" />
@@ -311,6 +313,7 @@
     <ClInclude Include="targetver.h" />
     <ClInclude Include="texrect.h" />
     <ClInclude Include="texrect2dvbo.h" />
+    <ClInclude Include="utf8conv.h" />
     <ClInclude Include="vidhrdwr\aae_avg.h" />
     <ClInclude Include="vidhrdwr\avgdvg.h">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>

@@ -44,6 +44,7 @@
 //New 2024
 #include "os_basic.h"
 #include <chrono>
+#include "path_helper.h"
 
 #ifdef WIN10BUILD
 #include "win10_win11_required_code.h"
@@ -664,7 +665,7 @@ void run_game(void)
 	if (gamenum) {
 		goodload = load_roms(driver[gamenum].name, driver[gamenum].rom);
 		if (goodload == 0) {
-			wrlog("Rom loading failure, exiting..."); have_error = 10; gamenum = 0;
+			allegro_message("Rom loading failure, exiting..."); have_error = 10; gamenum = 0;
 			if (!in_gui) { exit(1); }
 		}
 
@@ -941,12 +942,13 @@ int main(int argc, char* argv[])
 	char str[20];
 	char* mylist;
 	TIMECAPS caps;
+	std::string temppath;
+	
 
 	//For resolution
 	int horizontal;
 	int vertical;
 		
-	LogOpen("aae.log");
 	// ALLEGRO START
 	allegro_init();
 	install_allegro_gl();
@@ -959,6 +961,16 @@ int main(int argc, char* argv[])
 		return -1;
 	}
 	set_volume_per_voice(3);
+
+	// Set the current working directory to the location of the executable. 
+	// This solves any issues with running from a front end in a different folder. 
+	temppath = getpathM(0, 0);
+	if (!SetCurrentDirectory(temppath.c_str()))
+	{
+		wrlog("SetCurrentDirectory failed (%d)\n", GetLastError());
+	}
+
+	LogOpen("aae.log");
 
 	// ALLEGRO_END
 	//LOCK_FUNCTION(close_button_handler);

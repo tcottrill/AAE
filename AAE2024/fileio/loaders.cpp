@@ -5,6 +5,7 @@
 #include "aae_mame_driver.h"
 #include "samples.h"
 #include "memory.h"
+#include "path_helper.h"
 
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -53,30 +54,29 @@ int load_roms(const char* archname, const struct RomModule* p)
 {
 	int test = 0;
 	int skip = 0;
-	char temppath[255];
-	const char* rompath = "roms\\";
+	std::string temppath;
 	unsigned char* zipdata = 0;
 	int ret = 0;
 	int i, j = 0;
-
 	int size = 0;
 	int cpunum = 0;
 	int flipnum = 0;
 
-	strcpy(temppath, config.exrompath);
-	put_backslash(temppath);
-	strcat(temppath, archname);
-	strcat(temppath, ".zip");
+	temppath=config.exrompath;
+	temppath.append("\\");
+	temppath.append(archname);
+	temppath.append(".zip");
 
-	test = file_exist(temppath);
+	test = file_exist(temppath.c_str());
 	if (test == 0)
 	{
-		strcpy(temppath, rompath);
-		strcat(temppath, archname);
-		strcat(temppath, ".zip\0");
+	    temppath = getpathM("roms", 0);
+		temppath.append("\\");
+		temppath.append(archname);
+		temppath.append(".zip");
 	}
-	//wrlog("Opening, %s", temppath);
-
+	wrlog("Rom Path: %s", temppath.c_str());
+		
 	/// Start Loading ROMS HERE ///
 
 	for (i = 0; p[i].romSize > 0; i += 1)
@@ -95,12 +95,12 @@ int load_roms(const char* archname, const struct RomModule* p)
 			if (p[i].filename == (char*)-1)
 			{
 				wrlog("Loading Rom: %s", p[i - 1].filename);
-				zipdata = load_zip_file(temppath, p[i - 1].filename);
+				zipdata = load_zip_file(temppath.c_str(), p[i - 1].filename);
 			}
 			else
 			{
 				wrlog("Loading Rom: %s", p[i].filename);
-				zipdata = load_zip_file(temppath, p[i].filename);
+				zipdata = load_zip_file(temppath.c_str(), p[i].filename);
 			}
 			if (!zipdata)
 			{
@@ -148,7 +148,7 @@ int load_roms(const char* archname, const struct RomModule* p)
 
 int load_samples(const char** p, int val)
 {
-	char temppath[MAX_PATH];
+	std::string temppath;
 	unsigned char* zipdata = 0;
 	int ret = 0;
 	int i = 1;
@@ -156,13 +156,17 @@ int load_samples(const char** p, int val)
 
 	//if (strcmp(p[0], "nosamples.zip") == 0) { return 1; } //No samples, bye!
 
-	strcpy(temppath, "samples\\");//if it's not there, try sample dir
-	strcat(temppath, p[0]);
-	strcat(temppath, "\0");
+	temppath = getpathM("samples", 0);
+	temppath.append("\\");
+	temppath.append(p[0]);
+	temppath.append("\0");
+
+	wrlog("Loading samples, path: %s", temppath.c_str());
+
 	do
 	{
 		wrlog("Loading Sample %s", p[i]);
-		zipdata = load_zip_file(temppath, (const char*)p[i]);
+		zipdata = load_zip_file(temppath.c_str(), (const char*)p[i]);
 
 		if (!zipdata) {
 			wrlog("Couldn't find the sound %s.\n Will use silence for that sample.", p[i]);
@@ -226,17 +230,18 @@ int load_ambient()
 int load_hi_aae(int start, int size, int image)
 {
 	int num = 0;
-	char fullpath[180];
+	std::string fullpath;
 	FILE* fd;
 	membuffer = (unsigned char*)malloc(size);
 	memset(membuffer, 0, size);
 
-	strcpy(fullpath, "hi");
-	strcat(fullpath, "\\");
-	strcat(fullpath, driver[gamenum].name);
-	strcat(fullpath, ".aae");
+	fullpath = getpathM("hi", 0);
+	fullpath.append("\\");
+	fullpath.append(driver[gamenum].name);
+	fullpath.append(".aae");
 
-	fd = fopen(fullpath, "rb");
+
+	fd = fopen(fullpath.c_str(), "rb");
 	if (!fd) { wrlog("Hiscore / nvram file for this game not found"); return 1; }
 	wrlog("Loading Hiscore table / nvram");
 	fread(membuffer, 1, size, fd);
@@ -250,17 +255,17 @@ int load_hi_aae(int start, int size, int image)
 int save_hi_aae(int start, int size, int image)
 {
 	int num = 0;
-	char fullpath[180];
-	membuffer = (unsigned char*)malloc(size + 3);
-
-	memset(membuffer, 0, size);
-	strcpy(fullpath, "hi");
-	strcat(fullpath, "\\");
-	strcat(fullpath, driver[gamenum].name);
-	strcat(fullpath, ".aae");
+	std::string fullpath;
+	fullpath = getpathM("hi", 0);
+	fullpath.append("\\");
+	fullpath.append(driver[gamenum].name);
+	fullpath.append(".aae");
+		
 	wrlog("Saving Hiscore table / nvram");
+	membuffer = (unsigned char*)malloc(size + 3);
+	memset(membuffer, 0, size);
 	memcpy(membuffer, (Machine->memory_region[CPU0] + start), size);
-	save_file(fullpath, membuffer, size);
+	save_file(fullpath.c_str(), membuffer, size);
 	free(membuffer);
 	return 0;
 }
@@ -275,7 +280,7 @@ int verify_sample(const char** p, int num)
 	return 1;
 }
 
-int file_exist(char* filename)
+int file_exist(const char* filename)
 {
 	FILE* fd = fopen(filename, "rb");
 	if (!fd) return (0);

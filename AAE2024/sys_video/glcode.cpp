@@ -26,6 +26,7 @@
 #include "newfbo.h"
 #include "MathUtils.h"
 #include <chrono> // For code profiling
+#include "path_helper.h"
 
 using namespace std;
 using namespace chrono;
@@ -288,16 +289,21 @@ void end_gl()
 
 int make_single_bitmap(GLuint* texture, const char* filename, const char* archname, int mtype)
 {
-	char temppath[MAX_PATH] = { 0 };
-	int test = 0;
-	int ret = 0;
-	unsigned char* zipdata = 0;
+	//char temppath[MAX_PATH] = { 0 };
+	//int test = 0;
+	//int ret = 0;
+	//unsigned char* zipdata = 0;
+	std::string temppath;
 
-	strcpy(temppath, "artwork\\");
-	strcat(temppath, archname);
-	strcat(temppath, "\0");
+	temppath = getpathM("artwork", archname);
 
-	*texture = load_texture(filename, temppath, 4, 1);
+	//strcpy(temppath, "artwork\\");
+	//strcat(temppath, archname);
+	//strcat(temppath, "\0");
+
+	wrlog("Artwork Path: %s", temppath.c_str());
+
+	*texture = load_texture(filename, temppath.c_str(), 4, 1);
 
 	if (texture) return 1;
 	else return 0;

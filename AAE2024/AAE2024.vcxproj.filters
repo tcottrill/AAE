@@ -270,6 +270,9 @@
     <ClCompile Include="vidhrdwr\vector.cpp">
       <Filter>Source Files\vidhrdwr</Filter>
     </ClCompile>
+    <ClCompile Include="path_helper.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="aaemain.h">
@@ -553,6 +556,12 @@
     </ClInclude>
     <ClInclude Include="vidhrdwr\vector.h">
       <Filter>Source Files\vidhrdwr</Filter>
+    </ClInclude>
+    <ClInclude Include="path_helper.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="utf8conv.h">
+      <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

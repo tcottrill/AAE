@@ -5,8 +5,7 @@
 #include "aae_mame_driver.h"
 #include "menu.h"
 #include "log.h"
-
-
+#include "path_helper.h"
 
 extern int gamenum;
 
@@ -25,7 +24,6 @@ static int file_exists(const char* filename)
 	return 0;
 }
 
-
 // If return size is 0, value is empty:  DWORD size = GetPrivateProfileString("SectionName", "KeyName", "", buffer, 256, "path/to/your/ini.ini");
 char* my_get_config_string(const char* section, const char* name, const char* def)
 {
@@ -37,10 +35,10 @@ char* my_get_config_string(const char* section, const char* name, const char* de
 	if (is_override) { // Check game file for value if file exists
 		//wrlog("Returning string value from game file %s", name);
 		size = GetPrivateProfileString(section, name, def, buffer, MAX_PATH, gamepath);
-		if (strcmp(buffer, def) == 0) 
-		{ 
+		if (strcmp(buffer, def) == 0)
+		{
 			//wrlog("Returning string value from aae.ini %s", name);
-			GetPrivateProfileString(section, name, def, buffer, MAX_PATH, aaepath); 
+			GetPrivateProfileString(section, name, def, buffer, MAX_PATH, aaepath);
 			return buffer;
 		}
 		else { return buffer; }
@@ -48,7 +46,7 @@ char* my_get_config_string(const char* section, const char* name, const char* de
 	else {
 		//wrlog("Game file doesn't exist, Returning string value from aae.ini %s", name);
 		size = GetPrivateProfileString(section, name, def, buffer, MAX_PATH, aaepath);
-		if ( strcmp(buffer, def) == 0) return (char*)def;
+		if (strcmp(buffer, def) == 0) return (char*)def;
 		else return buffer;
 	}
 }
@@ -71,7 +69,7 @@ int my_get_config_int(const char* section, const char* name, int def)
 			return val;  // Return value from Game file
 		}
 	}
-	else 
+	else
 	{
 		//LOG_DEBUG("Returning int value from aae.ini file since the game file does not exist. %s val %d", name, val);
 		return GetPrivateProfileInt(section, name, def, aaepath); // Value does not exist in game file, get from aae.ini
@@ -114,12 +112,17 @@ void my_set_config_float(char* section, char* name, float val, int path)
 // This sets the global variables sx, sy, ex, ey, reset every game. as well as b1sx, b1sy, b2sx, b2sy for bezel rendering.
 void setup_video_config()
 {
-	char buffer[MAX_PATH];
+	//char buffer[MAX_PATH];
+	//GetCurrentDirectory(MAX_PATH, buffer);
 
-	GetCurrentDirectory(MAX_PATH, buffer);
+	//strcpy(aaepath, buffer);
+	//strcat(aaepath, "\\video.ini");
 
-	strcpy(aaepath, buffer);
-	strcat(aaepath, "\\video.ini");
+	std::string temppath;
+	temppath = getpathM(0, "video.ini");
+	strcpy(aaepath, temppath.c_str());
+	
+
 	is_override = 0;
 
 	//int b1sx,b1sy,b2sx,b2sy;
@@ -156,32 +159,44 @@ void setup_video_config()
 		//bezely=-50;
 		//overalpha=1.0;
 		//overbright=0;
-	    //bezelx=-100;
+		//bezelx=-100;
 	}
-	strcpy(aaepath, buffer);
-	strcat(aaepath, "\\aae.ini");
+	//strcpy(aaepath, buffer);
+	//strcat(aaepath, "\\aae.ini");
+	temppath = getpathM(0, "aae.ini");
+	strcpy(aaepath, temppath.c_str());
+	
 }
 
 //SETUP CONFIGURATION DATA
 
-// New way of doing things: 
-// So, for a very small subset of items, check if an item exists in a game.ini file, then load it. if not, load from the default aae.ini file. 
+// New way of doing things:
+// So, for a very small subset of items, check if an item exists in a game.ini file, then load it. if not, load from the default aae.ini file.
 // If changed from the aae.ini file and you are not int he gui, save the changes to the game.ini file.
 
 void setup_config(void)
 {
-	char buffer[MAX_PATH];
-
-	GetCurrentDirectory(MAX_PATH, buffer);
+	//char buffer[MAX_PATH];
+	//GetCurrentDirectory(MAX_PATH, buffer);
+	
 	// aae.ini
-	strcpy(aaepath, buffer);
-	strcat(aaepath, "\\aae.ini");
+	std::string temppath;
+	temppath = getpathM(0, "aae.ini");
+	strcpy(aaepath, temppath.c_str());
+		
 	// gamename.ini
-	strcpy(gamepath, buffer);
-	strcat(gamepath, "\\ini\\");
-	strcat(gamepath, driver[gamenum].name);
-	strcat(gamepath, ".ini");
-	// If game file exists, and it's not the gui, try to pull values from it. 
+	//strcpy(gamepath, buffer);
+	//strcat(gamepath, "\\ini\\");
+	//strcat(gamepath, driver[gamenum].name);
+	//strcat(gamepath, ".ini");
+	
+	temppath = getpathM("ini", 0);
+	temppath.append("\\");
+	temppath.append(driver[gamenum].name);
+	temppath.append(".ini");
+	strcpy(gamepath, temppath.c_str());
+
+	// If game file exists, and it's not the gui, try to pull values from it.
 	is_override = file_exists(gamepath);
 	if (gamenum == 0) { is_override = 0; }
 	wrlog("Main AAE Path: %s", aaepath);
@@ -189,14 +204,14 @@ void setup_config(void)
 	//wrlog("Path Override Value: %d", is_override);
 	wrlog("Loading configuration information for %s", driver[gamenum].desc);
 	//////VIDEO///////////
-	
+
 	config.prescale = my_get_config_int("main", "prescale", 1);
-	
+
 	// Not currently used
 	config.vid_rotate = my_get_config_int("main", "vid_rotate", 1);
 	config.anisfilter = my_get_config_int("main", "anisfilter", 0);
 	config.translucent = my_get_config_int("main", "translucent", 0);
-	
+
 	// Game.ini available - video
 	config.m_line = my_get_config_int("main", "m_line", 20);
 	config.m_point = my_get_config_int("main", "m_point", 16);
@@ -214,7 +229,7 @@ void setup_config(void)
 	config.debug = my_get_config_int("main", "debug", 0);
 	// Added for code profiling and timing
 	config.debug_profile_code = my_get_config_int("main", "debug_profile_code", 0);
-	
+
 	// Game.ini available - SOUND
 	config.psnoise = my_get_config_int("main", "psnoise", 0);
 	config.hvnoise = my_get_config_int("main", "hvnoise", 0);
@@ -239,7 +254,7 @@ void setup_config(void)
 	config.showinfo = my_get_config_int("main", "showinfo", 0);
 	config.windowed = my_get_config_int("main", "windowed", 0);
 	//////////////////////////////////////////////////////////////////
-	
+
 	//Putting these last so we can override any game settings. These will only ever come from the main aae.ini file!!!
 	is_override = 0;
 	config.aspect = my_get_config_string("main", "aspect_ratio", "4:3");
