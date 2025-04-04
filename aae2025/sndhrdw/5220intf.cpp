@@ -14,7 +14,6 @@
 #include "tms5220.h"
 #include "5220intf.h"
 #include "aae_mame_driver.h"
-#include "samples.h"
 #include "wav_resample.h"
 
 /* these describe the current state of the output buffer */

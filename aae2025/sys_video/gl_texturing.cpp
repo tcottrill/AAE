@@ -1,7 +1,6 @@
 #include "aae_mame_driver.h"
 #include "gl_texturing.h"
 #include "config.h"
-#include "samples.h"
 #include "log.h"
 #include "glcode.h"
 #include "gl_fbo.h"

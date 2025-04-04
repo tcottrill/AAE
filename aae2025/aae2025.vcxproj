@@ -194,9 +194,6 @@
     <ClInclude Include="sndhrdw\cinematronics_sound.h" />
     <ClInclude Include="sndhrdw\pokey.h" />
     <ClInclude Include="sndhrdw\pokyintf.h" />
-    <ClInclude Include="sndhrdw\samples.h">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
-    </ClInclude>
     <ClInclude Include="sndhrdw\segag80snd.h" />
     <ClInclude Include="sndhrdw\starwars_snd.h" />
     <ClInclude Include="sndhrdw\tms5220.h" />
@@ -300,9 +297,6 @@
     <ClCompile Include="sndhrdw\cinematronics_sound.cpp" />
     <ClCompile Include="sndhrdw\pokey.cpp" />
     <ClCompile Include="sndhrdw\pokyintf.cpp" />
-    <ClCompile Include="sndhrdw\samples.cpp">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
-    </ClCompile>
     <ClCompile Include="sndhrdw\segag80snd.cpp" />
     <ClCompile Include="sndhrdw\starwars_snd.cpp" />
     <ClCompile Include="sndhrdw\tms5220.cpp" />

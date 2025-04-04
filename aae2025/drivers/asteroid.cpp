@@ -13,7 +13,6 @@
 /* Asteroid Emu */
 #include "asteroid.h"
 #include "aae_mame_driver.h"
-#include "samples.h"
 #include "earom.h"
 #include "pokyintf.h"
 #include "acommon.h"

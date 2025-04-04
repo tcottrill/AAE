@@ -18,7 +18,6 @@
 #include "SegaG80crypt.h"
 #include "segag80snd.h"
 #include "aae_mame_driver.h"
-#include "samples.h"
 
 void sega_interrupt() {
 	if (input_port_5_r(0) & 0x01)

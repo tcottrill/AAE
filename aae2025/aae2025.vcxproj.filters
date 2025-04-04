@@ -189,9 +189,6 @@
     <ClInclude Include="sndhrdw\ay8910.h">
       <Filter>Source Files\sndhrdw</Filter>
     </ClInclude>
-    <ClInclude Include="sndhrdw\samples.h">
-      <Filter>Source Files\sndhrdw</Filter>
-    </ClInclude>
     <ClInclude Include="sndhrdw\segag80snd.h">
       <Filter>Source Files\sndhrdw</Filter>
     </ClInclude>
@@ -480,9 +477,6 @@
       <Filter>Source Files\sndhrdw</Filter>
     </ClCompile>
     <ClCompile Include="sndhrdw\ay8910.cpp">
-      <Filter>Source Files\sndhrdw</Filter>
-    </ClCompile>
-    <ClCompile Include="sndhrdw\samples.cpp">
       <Filter>Source Files\sndhrdw</Filter>
     </ClCompile>
     <ClCompile Include="sndhrdw\segag80snd.cpp">

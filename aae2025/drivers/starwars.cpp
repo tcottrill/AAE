@@ -14,7 +14,6 @@
 
 #include "starwars.h"
 #include "aae_mame_driver.h"
-#include "samples.h"
 #include "vector.h"
 #include "aae_avg.h"
 #include "pokey.h"

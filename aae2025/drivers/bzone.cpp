@@ -6,7 +6,6 @@
 #include "earom.h"
 #include "vector.h"
 #include "mathbox.h"
-#include "samples.h"
 #include "pokyintf.h"
 #include "timer.h"
 

@@ -29,7 +29,6 @@
 #include "gamedriver.h"
 #include "rand.h"
 #include "glcode.h"
-#include "samples.h"
 #include "menu.h"
 #include "aae_avg.h"
 #include "fpsclass.h"

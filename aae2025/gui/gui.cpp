@@ -1,6 +1,5 @@
 #include "gui.h"
 #include "aae_mame_driver.h"
-#include "samples.h"
 #include "vector.h"
 #include "glcode.h"
 #include "gl_texturing.h"

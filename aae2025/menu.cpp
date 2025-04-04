@@ -26,7 +26,6 @@
 #include "config.h"
 #include "colordefs.h"
 #include <stdio.h>
-#include "samples.h"
 
 #pragma warning( disable : 4305 4244 )
 

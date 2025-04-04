@@ -17,7 +17,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "samples.h"
 
 #pragma warning( disable : 4305 4244 )
 

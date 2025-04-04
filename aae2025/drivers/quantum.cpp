@@ -15,7 +15,6 @@
 //#include "aaemain.h"
 #include "starcpu.h"
 #include "aae_mame_driver.h"
-#include "samples.h"
 #include "vector.h"
 #include "aae_avg.h"
 #include "earom.h"
