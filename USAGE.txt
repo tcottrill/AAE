@@ -1,0 +1,5 @@
+Usage:
+
+aae gamename -modifiers
+
+Modifiers are in flux and will be readded soon

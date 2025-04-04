@@ -1,0 +1,4 @@
+Requires Visual Studio 2022 and the Microsoft.XAudio2.Redist.1.2.11 installed to build correctly. 
+
+How to install the NuGet package:
+https://learn.microsoft.com/en-us/windows/win32/xaudio2/xaudio2-redistributable
