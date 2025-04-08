@@ -169,24 +169,50 @@ READ_HANDLER(adc_r)
 
 WRITE_HANDLER(irqclr)
 {}
-WRITE_HANDLER(led1)
-{}
-WRITE_HANDLER(led2)
-{}
-WRITE_HANDLER(led3)
-{}
-
-/* Switch bank of ROM 0 */
-WRITE_HANDLER(mpage) /* MSB toggles bank */
+WRITE_HANDLER(starwars_out_w)
 {
-	if ((data & 0x80) == 0)
-		bankaddress = 0x10000; /* First half of ROM */
-	else
-		bankaddress = 0x12000; /* Second half of ROM */
+	//unsigned char* RAM = memory_region(REGION_CPU1);
+
+	switch (address)
+	{
+	case 0:		/* Coin counter 1 */
+		//coin_counter_w(0, data);
+		break;
+
+	case 1:		/* Coin counter 2 */
+		//coin_counter_w(1, data);
+		break;
+
+	case 2:		/* LED 3 */
+		set_led_status(2, ~data & 0x80);
+		break;
+
+	case 3:		/* LED 2 */
+		set_led_status(1, ~data & 0x80);
+		break;
+
+	case 4:		/* bank switch */
+		if ((data & 0x80) == 0)
+			bankaddress = 0x10000; /* First half of ROM */
+		else
+			bankaddress = 0x12000; /* Second half of ROM */
+		break;
+
+	case 5:		/* reset PRNG */
+		prngclr();
+		break;
+
+	case 6:		/* LED 1 */
+		set_led_status(0, ~data & 0x80);
+		break;
+
+	case 7:
+		wrlog("sw recall"); /* what's that? */
+		break;
+	}
+
 }
 
-WRITE_HANDLER(recall)
-{}
 
 WRITE_HANDLER(nstore)
 {}
@@ -272,13 +298,14 @@ MEM_ADDR(0x4640, 0x465f, watchdog_reset_w) //  (wdclr) Watchdog clear
 MEM_ADDR(0x4660, 0x467f, irqclr)  // clear periodic interrupt 
 //  { 0x4680, 0x4680, MWA_NOP },  (coin_ctr2) Coin counter 1 
 //  { 0x4681, 0x4681, MWA_NOP },  (coin_ctr1) Coin counter 2 
-MEM_ADDR(0x4680, 0x4681, MWA_NOP)  //  Coin counters 
-MEM_ADDR(0x4682, 0x4682, led3) // led3 
-MEM_ADDR(0x4683, 0x4683, led2) // led2 
-MEM_ADDR(0x4684, 0x4684, mpage)  // Page select for ROM0 
-MEM_ADDR(0x4685, 0x4685, prngclr) // Reset PRNG 
-MEM_ADDR(0x4686, 0x4686, led1)    // led1 
-MEM_ADDR(0x4687, 0x4687, recall)
+//MEM_ADDR(0x4680, 0x4681, MWA_NOP)  //  Coin counters 
+//MEM_ADDR(0x4682, 0x4682, led3) // led3 
+//MEM_ADDR(0x4683, 0x4683, led2) // led2 
+//MEM_ADDR(0x4684, 0x4684, mpage)  // Page select for ROM0 
+//MEM_ADDR(0x4685, 0x4685, prngclr) // Reset PRNG 
+//MEM_ADDR(0x4686, 0x4686, led1)    // led1 
+//MEM_ADDR(0x4687, 0x4687, recall)
+MEM_ADDR(0x4680, 0x4687, starwars_out_w)
 MEM_ADDR(0x46a0, 0x46bf, nstore)
 MEM_ADDR(0x46c0, 0x46c2, starwars_control_w)	// Selects which a-d control port (0-3) will be read 
 MEM_ADDR(0x46e0, 0x46e0, soundrst) //Sound

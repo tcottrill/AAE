@@ -159,7 +159,8 @@ void quantum_led_write(unsigned address, unsigned data)
 		/* bit 3 = select second trackball for cocktail mode? */
 
 		/* bits 4 and 5 are LED controls */
-		set_aae_leds(data & 0x10, data & 0x20, 0);
+		set_led_status(0, data & 0x10);
+		set_led_status(1, data & 0x20);
 		/* bits 6 and 7 flip screen */
 		//vector_set_flip_x (data & 0x40);
 		//vector_set_flip_y (data & 0x80);

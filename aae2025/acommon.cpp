@@ -27,12 +27,31 @@ extern int show_fps;
 extern int menulevel;
 extern int gamenum;
 
+int leds_status=0;
+static int last_led_status=0;
+
 //For stickykeys
 TOGGLEKEYS g_StartupToggleKeys = { sizeof(TOGGLEKEYS), 0 };
 FILTERKEYS g_StartupFilterKeys = { sizeof(FILTERKEYS), 0 };
 STICKYKEYS g_StartupStickyKeys = { sizeof(STICKYKEYS), 0 };
 
 #pragma warning( disable : 4244 )
+
+
+/*-------------------------------------------------
+	set_led_status - set the state of a given LED
+-------------------------------------------------*/
+
+void set_led_status(int num, int on)
+{
+	if (on)
+		leds_status |= (1 << num);
+	else
+		leds_status &= ~(1 << num);
+}
+
+
+/*
 
 void set_aae_leds(int a, int b, int c)
 {
@@ -72,6 +91,7 @@ void set_aae_leds(int a, int b, int c)
 		}
 	}
 }
+*/
 
 //TODO: None of below belongs in here
 
@@ -130,26 +150,39 @@ void video_loop(void)
 		fprint(300, 330, RGB_WHITE, 2.0, "sx:%d sy:%d ex:%d ey:%d", msx, msy, esx, esy);
 	}
 
-	//fprint(200.00, 200.0, RGB_WHITE, 2.0, " Menu Level: %d", get_menu_level());
+	if (leds_status != last_led_status)
+	{
+		last_led_status = leds_status;
+		osd_set_leds(leds_status);
+	}
 
+
+
+	//fprint(200.00, 200.0, RGB_WHITE, 2.0, " Menu Level: %d", get_menu_level());
+	/*
     err = glGetError();
 	if (err != 0)
 	{
 		wrlog("openglerror in video loop 3: %d", err);
 	}
+	*/
 	show_error(); //If there is currently an error condition, show it.
+	/*
 	err = glGetError();
 	if (err != 0)
 	{
 		wrlog("openglerror in video loop 4: %d", err);
 	}
+	*/
 	fontmode_end();
-
+	/*
 	err = glGetError();
 	if (err != 0)
 	{
 		wrlog("openglerror in video loop 5: %d", err);
 	}
+	*/
+
 }
 
 // Note to self: Move this to the GL code. 

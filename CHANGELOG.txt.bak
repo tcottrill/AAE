@@ -124,13 +124,7 @@ The only thing keeping this emulator 32 bit is the 68000 series asm core, and th
 Made multiple audio corrections and biugfixes to the changes in the audio2 mixercode, it still needs quite a bit of work but it's functional.
 Corrected and verified that I can build for Windows 7-11 with no issues. Define WIN7BUILD to build for Windows 7 32/64 bit.
  
-4/4/25
-Removed unneeded sample code. Created a popup error message if you try to run the program without specifying a rom name. 
-
-4/8/25
-Discovered the LED code for the Atari games was completedly our of wack. 
-Cleaned up, updated and tested all led code. Switched to later M.A.M.E (TM) code and added code to guarantee all leds are off when starting or exiting a game. 
-
+ 
 
 
 

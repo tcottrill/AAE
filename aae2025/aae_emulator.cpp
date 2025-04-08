@@ -64,6 +64,8 @@ int hiscoreloaded;
 int show_fps = 0;
 FpsClass* m_frame; //For frame counting. Prob needs moved out of here really.
 
+extern int leds_status;
+
 // M.A.M.E. (TM) Variables for testing
 static struct RunningMachine machine;
 struct RunningMachine* Machine = &machine;
@@ -90,6 +92,13 @@ struct { const char* desc; int x, y; } gfx_res[] = {
 
 double gametime = 0;// = TimerGetTimeMS();
 double starttime = 0;
+
+void toLowerCase(char* str) {
+	while (*str) {
+		*str = tolower((unsigned char)*str); // Convert each character to lowercase
+		str++;
+	}
+}
 
 int run_a_game(int game)
 {
@@ -457,7 +466,9 @@ void run_game(void)
 
 	//////////////////////////////////////////////////////////////INITIAL VARIABLES SETUP ///////////////////////////////////////////////////
 	options.cheat = 1;
-	set_aae_leds(0, 0, 0);  //Reset LEDS
+	//set_aae_leds(0, 0, 0);  //Reset LEDS
+	leds_status = 0;
+	force_all_kbdleds_off();
 
 	config.mainvol *= 12.75;
 	config.pokeyvol *= 12.75; //Adjust from menu values
@@ -655,6 +666,8 @@ void emulator_init(int argc, char** argv)
 	// Here is where we are checking command line for a supported game name.
 		// If not, it jumps straight into the GUI, bleh.
 
+	toLowerCase(argv[1]);
+
 	for (loop = 1; loop < (num_games - 1); loop++)
 	{
 		if (strcmp(argv[1], driver[loop].name) == 0)
@@ -715,6 +728,8 @@ void emulator_init(int argc, char** argv)
 
 void emulator_end()
 {
+	wrlog("Emulator End Called.");
+
 	// If we're using high scores, write them to disk.
 	if (hiscoreloaded != 0 && driver[gamenum].hiscore_save)
 		(*driver[gamenum].hiscore_save)();
@@ -738,7 +753,8 @@ void emulator_end()
 	//END-----------------------------------------------------
 	save_input_port_settings();
 	KillFont();
-	set_aae_leds(0, 0, 0);
+	
 	AllowAccessibilityShortcutKeys(1);
 	mixer_end();
+	force_all_kbdleds_off();
 }

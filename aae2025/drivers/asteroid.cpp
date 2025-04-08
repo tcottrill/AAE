@@ -231,7 +231,7 @@ WRITE_HANDLER(asteroid_explode_w)
 				break;
 			}
 		
-			wrlog("Calling sample start explode");
+			//wrlog("Calling sample start explode");
 			sample_start(8, sound, 0);
 		}
 		explosion = explosion2;
@@ -244,10 +244,17 @@ WRITE_HANDLER(astdelux_led_w)
 	static int led0 = 0;
 	static int led1 = 0;
 
-	if (address & 0xff) { led1 = (data & 0x80) ? 0 : 1; }
-	else { led0 = (data & 0x80) ? 0 : 1; }
-
-	set_aae_leds(led0, led1, 0);
+	if (address & 0xff) 
+	{
+		led1 = (data & 0x80) ? 0 : 1; 
+	}
+	else 
+	{
+		led0 = (data & 0x80) ? 0 : 1; 
+	}
+		
+	set_led_status(0,led0);
+	set_led_status(1, led1);
 }
 
 WRITE_HANDLER(astdelux_bank_switch_w)
@@ -289,7 +296,9 @@ WRITE_HANDLER(asteroid_bank_switch_w)
 		memcpy(Machine->memory_region[CPU0] + 0x200, Machine->memory_region[CPU0] + 0x300, 0x100);
 		memcpy(Machine->memory_region[CPU0] + 0x300, buffer, 0x100);
 	}
-	set_aae_leds((~data & 0x02), (~data & 0x01), 0);
+	
+	set_led_status(0, ~data & 0x02);
+	set_led_status(1, ~data & 0x01);
 }
 
 READ_HANDLER(asteroid_IN0_r)

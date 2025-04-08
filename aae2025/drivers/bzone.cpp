@@ -133,7 +133,8 @@ WRITE_HANDLER(RedBaronSoundsWrite)
 		if (sample_playing(2) == 0) { sample_start(2, 0, 0); }
 	}
 
-	set_aae_leds(~data & 0x08, 0, 0);
+	//set_aae_leds(~data & 0x08, 0, 0);
+	set_led_status(0, ~data & 0x08);
 
 	/* Enable nosedive output */
 	if (data & 0x02)
@@ -152,7 +153,8 @@ WRITE_HANDLER(BzoneSounds)
 {
 	static int lastValue = 0;
 
-	set_aae_leds(~data & 0x40, 0, 0);
+	//set_aae_leds(~data & 0x40, 0, 0);
+	set_led_status(0, ~data & 0x40);
 
 	// Enable/disable all sound output
 	if (data & 0x20)

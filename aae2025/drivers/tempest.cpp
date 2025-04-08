@@ -417,7 +417,8 @@ READ_HANDLER(TempestIN0read)
 
 WRITE_HANDLER(tempest_led_w)
 {
-	set_aae_leds(~data & 0x02, ~data & 0x01, 0);
+	set_led_status(0, ~data & 0x02);
+	set_led_status(1, ~data & 0x01);
 	/* FLIP is bit 0x04 */
 }
 

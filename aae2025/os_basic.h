@@ -1,7 +1,7 @@
 #ifndef __OSSTUFF__
 #define __OSSTUFF__
 
-
+void force_all_kbdleds_off();
 void ClientResize( int nWidth, int nHeight);
 void GetDesktopResolution(int &horizontal, int &vertical);
 void GetRefresh();

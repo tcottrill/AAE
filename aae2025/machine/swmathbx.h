@@ -34,5 +34,5 @@ UINT8 prng(UINT32 address, struct MemoryReadByte* psMemRead);
 
 /* Write handlers */
 
-void prngclr(UINT32 address, UINT8 data, struct MemoryWriteByte* pMemWrite);
+void prngclr();
 void swmathbx(UINT32 address, UINT8 data, struct MemoryWriteByte* pMemWrite);

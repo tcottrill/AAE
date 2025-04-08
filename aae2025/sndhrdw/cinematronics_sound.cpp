@@ -291,7 +291,7 @@ void speedfrk_sound(UINT8 sound_val, UINT8 bits_changed)
 		sample_stop(0);
 
 	/* start LED is controlled by bit 0x02 */
-	set_aae_leds(0 , ~sound_val & 0x02, 0); 
+	set_led_status(0 , ~sound_val & 0x02);
 }
 
 

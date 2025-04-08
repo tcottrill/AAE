@@ -266,7 +266,7 @@ UINT8 prng(UINT32 address, struct MemoryReadByte* psMemRead)
 	return (PRN & 0xff);
 }
 /********************************************************/
-void prngclr(UINT32 address, UINT8 data, struct MemoryWriteByte* pMemWrite)
+void prngclr()
 {
 	PRN = 0;
 }

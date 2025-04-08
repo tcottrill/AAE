@@ -195,6 +195,31 @@ void LimitThreadAffinityToCurrentProc()
 }
 
 
+static void toggleKey(int key) 
+{
+	// Simulate a key press
+	keybd_event(key, 0, 0, 0);
+	// Simulate a key release
+	keybd_event(key, 0, KEYEVENTF_KEYUP, 0);
+}
+
+
+void force_all_kbdleds_off()
+{
+	// Check Caps Lock state
+	SHORT capsLockState = GetKeyState(VK_CAPITAL);
+	if (capsLockState & 0x0001)	toggleKey(VK_CAPITAL);
+
+	// Check Num Lock state
+	SHORT numLockState = GetKeyState(VK_NUMLOCK);
+	if (numLockState & 0x0001)	toggleKey(VK_NUMLOCK);
+
+	// Check Scroll Lock state
+	SHORT scrollLockState = GetKeyState(VK_SCROLL);
+	if (scrollLockState & 0x0001)	toggleKey(VK_SCROLL);
+
+}
+
 //============================================================
 //	osd_get_leds
 //============================================================

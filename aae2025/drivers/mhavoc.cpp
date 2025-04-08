@@ -379,15 +379,16 @@ WRITE_HANDLER(mhavoc_out_0_w)
 		cpu_reset(1);   //RESET GAMMA CPU
 	}
 	player_1 = (data >> 5) & 1;
-	// Emulate the roller light (Blinks on fatal errors) //
-	set_aae_leds(data & 0x01, -1, -1);
+	
+	// Bit 0 = Roller light (Blinks on fatal errors) //
+	set_led_status(0, data & 0x01);
 }
 
 WRITE_HANDLER(mhavoc_out_1_w)
 {
 	// wrlog("LED OUT WRITE");
-	set_aae_leds(-1, data & 0x01, -1);
-	set_aae_leds(-1, -1, (data & 0x02) >> 1);
+	set_led_status(0, data & 0x01);
+	set_led_status(1, (data & 0x02) >> 1);
 }
 
 // Simulates frequency and vector halt

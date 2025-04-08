@@ -1,16 +1,15 @@
 //==========================================================================
-// AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME 
-// code, 0.29 through .90 mixed with code of my own. This emulator was 
-// created solely for my amusement and learning and is provided only 
-// as an archival experience. 
-// 
-// All MAME code used and abused in this emulator remains the copyright 
+// AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME
+// code, 0.29 through .90 mixed with code of my own. This emulator was
+// created solely for my amusement and learning and is provided only
+// as an archival experience.
+//
+// All MAME code used and abused in this emulator remains the copyright
 // of the dedicated people who spend countless hours creating it. All
 // MAME code should be annotated as belonging to the MAME TEAM.
-// 
-// THE CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.  
+//
+// THE CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.
 //==========================================================================
-
 
 #include "bwidow.h"
 #include "vector.h"
@@ -19,7 +18,6 @@
 #include "pokyintf.h"
 #include "aae_mame_driver.h"
 #include "timer.h"
-
 
 #define IN_LEFT	(1 << 0)
 #define IN_RIGHT (1 << 1)
@@ -34,7 +32,6 @@ void bwidow_interrupt(int dummy)
 	WRLOG("BWidow Interrupt");
 	cpu_do_int_imm(CPU0, INT_TYPE_INT);
 }
-
 
 static struct POKEYinterface pokey_interface =
 {
@@ -56,19 +53,21 @@ static struct POKEYinterface pokey_interface =
 	{ input_port_1_r, input_port_2_r },
 };
 
-
 READ_HANDLER(IN0read)
 {
 	int val = readinputport(0);
 
 	//Fix this mess below later
 	if (get_eterna_ticks(0) & 0x100) { bitset(val, 0x80); }
-//	else { bitclr(val, 0x80); }
-	if (!avg_check()) 
-	{ bitclr(val, 0x40); }
-	else 
-	{ bitset(val, 0x40); }
-	
+	//	else { bitclr(val, 0x80); }
+	if (!avg_check())
+	{
+		bitclr(val, 0x40);
+	}
+	else
+	{
+		bitset(val, 0x40);
+	}
 
 	return val;
 }
@@ -127,13 +126,35 @@ WRITE_HANDLER(irq_ack_w)
 
 WRITE_HANDLER(avgdvg_reset_w)
 {
-	wrlog("AVG RESET");
+//	wrlog("AVG RESET");
 }
 
-
-WRITE_HANDLER(led_write)
+WRITE_HANDLER(bwidow_misc_w)
 {
-	set_aae_leds(~data & 0x10, ~data & 0x20, 0);
+	/*
+		0x10 = p1 led
+		0x20 = p2 led
+		0x01 = coin counter 1
+		0x02 = coin counter 2
+	*/
+	static int lastdata;
+
+	if (data == lastdata) return;
+	set_led_status(0, ~data & 0x10);
+	set_led_status(1, ~data & 0x20);
+	//coin_counter_w(0, data & 0x01);
+	//coin_counter_w(1, data & 0x02);
+	lastdata = data;
+}
+
+WRITE_HANDLER(spacduel_misc_w)
+{
+	static int lastdata;
+
+	if (data == lastdata) return;
+	set_led_status(1, ~data & 0x10);
+	set_led_status(0, ~data & 0x20);
+	lastdata = data;
 }
 
 void run_bwidow()
@@ -153,7 +174,7 @@ MEM_END
 MEM_WRITE(BwidowWrite)
 MEM_ADDR(0x6000, 0x67ff, pokey_1_w)
 MEM_ADDR(0x6800, 0x6fff, pokey_2_w)
-MEM_ADDR(0x8800, 0x8800, led_write)
+MEM_ADDR(0x8800, 0x8800, bwidow_misc_w)
 MEM_ADDR(0x8840, 0x8840, advdvg_go_w)
 MEM_ADDR(0x88c0, 0x88c0, irq_ack_w)
 MEM_ADDR(0x8900, 0x8900, EaromCtrl)
@@ -161,7 +182,6 @@ MEM_ADDR(0x8940, 0x897f, EaromWrite)
 MEM_ADDR(0x8980, 0x89ed, watchdog_reset_w)
 MEM_ADDR(0x9000, 0xffff, MWA_ROM)
 MEM_END
-
 
 MEM_READ(SpaceDuelRead)
 MEM_ADDR(0x800, 0x800, IN0read)
@@ -175,7 +195,7 @@ MEM_WRITE(SpaceDuelWrite)
 MEM_ADDR(0x1000, 0x100f, pokey_1_w)
 MEM_ADDR(0x1400, 0x140f, pokey_2_w)
 MEM_ADDR(0x0c80, 0x0c80, advdvg_go_w)
-MEM_ADDR(0x0c00, 0x0c00, led_write)
+MEM_ADDR(0x0c00, 0x0c00, spacduel_misc_w)
 MEM_ADDR(0x0d00, 0x0d00, watchdog_reset_w)
 MEM_ADDR(0x0d80, 0x0d80, avgdvg_reset_w)
 MEM_ADDR(0x0e00, 0x0e00, irq_ack_w)
@@ -189,7 +209,7 @@ MEM_END
 int init_bwidow()
 {
 	pokey_sh_start(&pokey_interface);
-	init6502(BwidowRead, BwidowWrite,0xffff, CPU0);
+	init6502(BwidowRead, BwidowWrite, 0xffff, CPU0);
 	avg_init();
 	timer_set(TIME_IN_HZ(246), CPU0, bwidow_interrupt);
 	return 1;

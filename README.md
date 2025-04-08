@@ -18,6 +18,7 @@ Old Build:
 To Build, add the included allegro include, lib and dll files and compile with Visual Studio 2022. See the project Include and Library folders for details.
 
 New Build:
+
 Requires Visual Studio 2022 and the Xaudio2, version 2.9 Microsoft.XAudio2.Redist.1.2.11 nuget package installed to build correctly. 
 
 How to install the NuGet package:

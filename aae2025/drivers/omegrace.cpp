@@ -374,15 +374,13 @@ PORT_WRITE_HANDLER(omegrace_leds_w)
 	/* bits 0 and 1 are coin counters */
 	//coin_counter_w(0,data & 1);
 	//coin_counter_w(1,data & 2);
-	/*
-	bits 2 to 5 are the start leds (4 and 5 cocktail only)
+	
+	//bits 2 to 5 are the start leds (4 and 5 cocktail only)
 	set_led_status(0, ~data & 0x04);
 	set_led_status(1, ~data & 0x08);
 	set_led_status(2, ~data & 0x10);
 	set_led_status(3, ~data & 0x20);
-	*/
-	// I have only 3 LEDS to work with
-	set_aae_leds(~data & 0x04, ~data & 0x08, ~data & 0x10);
+	
 	// Flip Screen in cocktail mode
 	if (!(data & 0x40)) scrflip = 1; else scrflip = 0;
 }

@@ -309,9 +309,6 @@
     <ClInclude Include="aae_mame_driver.h">
       <Filter>Source Files</Filter>
     </ClInclude>
-    <ClInclude Include="joystick.h">
-      <Filter>Source Files</Filter>
-    </ClInclude>
     <ClInclude Include="gui\animation.h">
       <Filter>Source Files\gui</Filter>
     </ClInclude>
@@ -359,6 +356,9 @@
     </ClInclude>
     <ClInclude Include="drivers\mhavoc.h">
       <Filter>Source Files\drivers</Filter>
+    </ClInclude>
+    <ClInclude Include="joystick.h">
+      <Filter>Source Files\sys_window</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -563,9 +563,6 @@
     <ClCompile Include="aae_mame_driver.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="Joystick.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="gui\animation.cpp">
       <Filter>Source Files\gui</Filter>
     </ClCompile>
@@ -610,6 +607,9 @@
     </ClCompile>
     <ClCompile Include="drivers\mhavoc.cpp">
       <Filter>Source Files\drivers</Filter>
+    </ClCompile>
+    <ClCompile Include="Joystick.cpp">
+      <Filter>Source Files\sys_window</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
