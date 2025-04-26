@@ -20,7 +20,6 @@
 
 //Note: Move these to cpu_control.h
 
-#include "starcpu.h"
 #include "log.h"
 #include "inptport.h"
 #include "cpu_control.h"
@@ -269,8 +268,8 @@ struct RunningMachine
 	unsigned short* remapped_colortable;	/* the above, already remapped through */
 
 	const struct AAEDriver* gamedrv;	/* contains the definition of the game machine */
-	const struct MachineDriver *drv;	/* same as gamedrv->drv */
-
+	const struct AAEDriver*drv;	/* same as gamedrv->drv */
+	//const struct MachineDriver* drv;	/* same as gamedrv->drv */
 	//struct GameSamples* samples;	/* samples loaded from disk */
 	struct InputPort* input_ports;	/* the input ports definition from the driver */
 	/* is copied here and modified (load settings from disk, */

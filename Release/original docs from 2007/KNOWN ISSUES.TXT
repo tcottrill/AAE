@@ -1,9 +1,0 @@
-Mouse and support is spotty at best. A rewrite is required, and in progress.
-
-Joystick Code is currently non existent.
-
-Contrast/Brightness Control needs reworked. Currenly it does not save settings, by design.
-
-Save states and most high score saving is broken.
-
-

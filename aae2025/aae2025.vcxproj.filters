@@ -43,7 +43,7 @@
     <Filter Include="Source Files\gui">
       <UniqueIdentifier>{14cd736d-efed-4789-9b06-73632ef19fec}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Source Files\68000test">
+    <Filter Include="Source Files\cpu_code\68000">
       <UniqueIdentifier>{ea8e125f-41d6-414c-9b71-7c2169869d10}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
@@ -157,9 +157,6 @@
       <Filter>Source Files\cpu_code</Filter>
     </ClInclude>
     <ClInclude Include="cpu_code\cpu_z80.h">
-      <Filter>Source Files\cpu_code</Filter>
-    </ClInclude>
-    <ClInclude Include="cpu_code\starcpu.h">
       <Filter>Source Files\cpu_code</Filter>
     </ClInclude>
     <ClInclude Include="cpu_code\timer.h">
@@ -359,6 +356,21 @@
     </ClInclude>
     <ClInclude Include="joystick.h">
       <Filter>Source Files\sys_window</Filter>
+    </ClInclude>
+    <ClInclude Include="cpu_code\68000\m68kcpu.h">
+      <Filter>Source Files\cpu_code\68000</Filter>
+    </ClInclude>
+    <ClInclude Include="cpu_code\68000\m68kops.h">
+      <Filter>Source Files\cpu_code\68000</Filter>
+    </ClInclude>
+    <ClInclude Include="cpu_code\68000\m68k.h">
+      <Filter>Source Files\cpu_code\68000</Filter>
+    </ClInclude>
+    <ClInclude Include="cpu_code\68000\m68kconf.h">
+      <Filter>Source Files\cpu_code\68000</Filter>
+    </ClInclude>
+    <ClInclude Include="cpu_code\68000\mem68k.h">
+      <Filter>Source Files\cpu_code\68000</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -610,6 +622,21 @@
     </ClCompile>
     <ClCompile Include="Joystick.cpp">
       <Filter>Source Files\sys_window</Filter>
+    </ClCompile>
+    <ClCompile Include="cpu_code\68000\m68kopac.cpp">
+      <Filter>Source Files\cpu_code\68000</Filter>
+    </ClCompile>
+    <ClCompile Include="cpu_code\68000\m68kopdm.cpp">
+      <Filter>Source Files\cpu_code\68000</Filter>
+    </ClCompile>
+    <ClCompile Include="cpu_code\68000\m68kopnz.cpp">
+      <Filter>Source Files\cpu_code\68000</Filter>
+    </ClCompile>
+    <ClCompile Include="cpu_code\68000\m68kops.cpp">
+      <Filter>Source Files\cpu_code\68000</Filter>
+    </ClCompile>
+    <ClCompile Include="cpu_code\68000\m68kcpu.cpp">
+      <Filter>Source Files\cpu_code\68000</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

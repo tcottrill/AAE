@@ -43,9 +43,10 @@
 #include "os_basic.h"
 #include <chrono>
 
-#ifdef WIN10BUILD
+#ifndef WIN7BUILD
 #include "win10_win11_required_code.h"
-#endif // WIN10BUILD
+#endif // WIN7BUILD
+
 
 using namespace std;
 using namespace chrono;
@@ -70,6 +71,7 @@ extern int leds_status;
 static struct RunningMachine machine;
 struct RunningMachine* Machine = &machine;
 static const struct AAEDriver* gamedrv;
+static const struct AAEDriver* drv;
 //static const struct MachineDriver* drv;
 struct GameOptions	options;
 
@@ -103,6 +105,7 @@ void toLowerCase(char* str) {
 int run_a_game(int game)
 {
 	Machine->gamedrv = gamedrv = &driver[game];
+	Machine->drv = gamedrv;
 	wrlog("Starting game, Driver name now is %s", Machine->gamedrv->name);
 	//Machine->drv = drv = gamedrv->drv;
 
@@ -578,6 +581,7 @@ void emulator_run()
 		osd_poll_joysticks();
 
 		//if (driver[gamenum].pre_run) driver[gamenum].pre_run();
+		wrlog("Calling CPU Run Mame");
 		cpu_run_mame();
 		if (driver[gamenum].run_game)driver[gamenum].run_game();
 	}
@@ -680,7 +684,6 @@ void emulator_init(int argc, char** argv)
 	//	if (argc > 2) gameparse(argc, argv);
 	//}
 
-	wrlog("Made it past here 3");
 	//THIS IS WHERE THE CODING STARTS
 	// Decide if we are still starting with the gui or not. ? Why do this twice? We already have gamenum=0 or a game?
 	//if (gamenum) in_gui = 0; else in_gui = 1;

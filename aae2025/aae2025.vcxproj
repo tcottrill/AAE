@@ -91,7 +91,7 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;GLEW_STATIC;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;GLEW_STATIC;_CRT_SECURE_NO_WARNINGS;WIN7BUILD;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <AdditionalIncludeDirectories>./cpu_code/68000test;./sys_audio;./vidhrdwr;./sndhrdw;./sndhrdwr;./sys_video;./sys_window;./machine;./fileio;./drivers;./;./cpu_code;./gui;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
@@ -100,7 +100,7 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>winmm.lib;68000.obj;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <ImageHasSafeExceptionHandlers>false</ImageHasSafeExceptionHandlers>
       <StackReserveSize>8048576</StackReserveSize>
     </Link>
@@ -125,7 +125,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;GLEW_STATIC;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>./fileio;./;./sys_window;./gui;./cpu_code;./drivers;./machine;./sys_video;./sndhrdwr;./sndhrdw;./vidhrdwr;./sys_audio;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\SourceTest\aae2025_68000\aae2025\cpu_code\68000;./cpu_code/68000;./fileio;./;./sys_window;./gui;./cpu_code;./drivers;./machine;./sys_video;./sndhrdwr;./sndhrdw;./vidhrdwr;./sys_audio;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -139,13 +139,17 @@
     <ClInclude Include="aae_mame_driver.h" />
     <ClInclude Include="acommon.h" />
     <ClInclude Include="config.h" />
+    <ClInclude Include="cpu_code\68000\m68k.h" />
+    <ClInclude Include="cpu_code\68000\m68kconf.h" />
+    <ClInclude Include="cpu_code\68000\m68kcpu.h" />
+    <ClInclude Include="cpu_code\68000\m68kops.h" />
+    <ClInclude Include="cpu_code\68000\mem68k.h" />
     <ClInclude Include="cpu_code\ccpu.h" />
     <ClInclude Include="cpu_code\cpu_6502.h" />
     <ClInclude Include="cpu_code\cpu_6809.h" />
     <ClInclude Include="cpu_code\cpu_control.h" />
     <ClInclude Include="cpu_code\cpu_i8080.h" />
     <ClInclude Include="cpu_code\cpu_z80.h" />
-    <ClInclude Include="cpu_code\starcpu.h" />
     <ClInclude Include="cpu_code\timer.h" />
     <ClInclude Include="deftypes.h" />
     <ClInclude Include="drivers\asteroid.h" />
@@ -243,7 +247,7 @@
     <ClInclude Include="vidhrdwr\SegaG80vid.h" />
     <ClInclude Include="vidhrdwr\vector.h">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
     </ClInclude>
     <ClInclude Include="win10_win11_required_code.h">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</ExcludedFromBuild>
@@ -253,6 +257,11 @@
     <ClCompile Include="aae_mame_driver.cpp" />
     <ClCompile Include="acommon.cpp" />
     <ClCompile Include="config.cpp" />
+    <ClCompile Include="cpu_code\68000\m68kcpu.cpp" />
+    <ClCompile Include="cpu_code\68000\m68kopac.cpp" />
+    <ClCompile Include="cpu_code\68000\m68kopdm.cpp" />
+    <ClCompile Include="cpu_code\68000\m68kopnz.cpp" />
+    <ClCompile Include="cpu_code\68000\m68kops.cpp" />
     <ClCompile Include="cpu_code\ccpu.cpp" />
     <ClCompile Include="cpu_code\cpu_6502.cpp" />
     <ClCompile Include="cpu_code\cpu_6809.cpp" />
@@ -336,7 +345,7 @@
     <ClCompile Include="vidhrdwr\SegaG80vid.cpp" />
     <ClCompile Include="vidhrdwr\vector.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="win10_win11_required_code.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</ExcludedFromBuild>

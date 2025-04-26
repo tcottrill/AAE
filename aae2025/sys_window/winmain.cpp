@@ -19,7 +19,7 @@
 
 #ifndef WIN7BUILD
 #include "win10_win11_required_code.h"
-#endif // WIN10BUILD
+#endif // WIN7BUILD
 
 
 
@@ -458,7 +458,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 
 #ifndef WIN7BUILD
 	disable_windows10_window_scaling();
-#endif // WIN10BUILD
+#endif // WIN7BUILD
 
 	///////////////// Initialize everything here //////////////////////////////
 	// Get the actual screen area for OpenGL.
@@ -530,7 +530,8 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 	
 	scare_mouse();
 	SetFocus(hWnd);
-	// Init Emulator Here.
+
+		// Init Emulator Here.
 	emulator_init(__argc, __argv);
 
 	//
@@ -558,19 +559,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 			// Run Emulator Here.
 			wrlog("starting emulator run");
 			emulator_run();
-			/*
-			glLineWidth(5.0f);
-			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-			glDisable(GL_TEXTURE_2D);
-
-			glColor4ub(255, 10, 10, 255);
-			glLine(0, 0, (float)SCREEN_W, (float)SCREEN_H); //one
-			glLine(0, (float)SCREEN_H, (float)SCREEN_W, 0); // tweo
-			glLine(0, 0, 0, (float)SCREEN_H); // Left
-			glLine(0, (float)SCREEN_H, (float)SCREEN_W, (float)SCREEN_H); // Top
-			glLine(0, 0, (float)SCREEN_W, 0); // bottom
-			glLine((float)SCREEN_W, 0, (float)SCREEN_W, (float)SCREEN_H); // bottom
-			*/
+		
 			int err = glGetError();
 			if (err != 0)
 			{

@@ -1,4 +1,5 @@
-// This is an insane mess, working on a rewrite, or switch to modern AVG drawing code.
+// TODO: This is an insane mess, working on a rewrite, or switch to the MAME modern AVG drawing code.
+// Update: Will switch over to the MAME code in the next big release.All this will go away. 
 
 #include "aae_avg.h"
 #include "timer.h"
@@ -216,8 +217,9 @@ void AVG_RUN(void)
 					{
 						color = 0xf + (((spkl_shift & 1) << 3) | (spkl_shift & 4) | ((spkl_shift & 0x10) >> 3) | ((spkl_shift & 0x40) >> 6));
 					}
-
+					
 					//Gravitar, Space Duel, Black Widow and Star Wars
+					
 					if (color & 0x04) red = z; else red = 0;
 					if (color & 0x02) green = z; else green = 0;
 					if (color & 0x01) blue = z; else blue = 0;
@@ -244,21 +246,27 @@ void AVG_RUN(void)
 						green = vec_colors[color].g;
 						blue = vec_colors[color].b;
 					}
-					
+					/*
 					if ((currentx == (currentx)+deltax) && (currenty == (currenty)-deltay))
 					{
-						if (draw) {
-							//add_color_point(sx, sy, red, green, blue);
+						if (TYPE_QU) { add_line(sx, sy, ex, ey, MAKE_BGR(red, green, blue), MAKE_BGR(red, green, blue)); }
+						else
+						if (draw && color ) 
+						{
 							add_line(sx, sy, ex, ey, MAKE_BGR(red, green, blue), MAKE_BGR(red, green, blue));
 						}
 					}
 
-					else {
-						if (draw) {
+					else 
+					{
+					*/
+						if (TYPE_QU) { add_line(sx, sy, ex, ey, MAKE_BGR(red, green, blue), MAKE_BGR(red, green, blue)); }
+						else
+						if (draw && color)
+						{
 							add_line(sx, sy, ex, ey, MAKE_BGR(red, green, blue), MAKE_BGR(red, green, blue));
-							//add_color_line(sx, sy, ex, ey, red, green, blue);
 						}
-					}
+					//}
 				}
 			}
 			currentx += deltax; currenty -= deltay;

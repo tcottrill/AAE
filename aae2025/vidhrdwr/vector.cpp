@@ -324,11 +324,11 @@ int VECTOR_UPDATE()
 
 					if (curpoint->status == VTEX)
 					{
-						screen_add_tex(coords.x0, coords.y0, coords.x1, coords.y1, curpoint->intensity, curpoint->col);
+						//add_tex(coords.x0, coords.y0, coords.x1, coords.y1, curpoint->intensity, curpoint->col);
 					}
 					else {
 						//screen_add_line(coords.x0, coords.y0,coords.x1, coords.y1 , curpoint->intensity, curpoint->col );
-						screen_add_line(coords.x0, coords.y0, coords.x1 + .00001, coords.y1 + .00001, curpoint->intensity, curpoint->col);
+						add_line(coords.x0, coords.y0, coords.x1 + .00001, coords.y1 + .00001, curpoint->intensity, curpoint->col);
 						// wrlog("Line from: %f %f to %f %f intensity %d",coords.x0,coords.y0,coords.x1,coords.y1,curpoint->intensity);
 					}
 			}
@@ -337,7 +337,7 @@ int VECTOR_UPDATE()
 		}
 		curpoint++;
 	}
-	screen_draw_all();
+	draw_all();
 	return 0;
 }
 

@@ -1,0 +1,30 @@
+CREDITS
+ 
+Cinematronics Core:
+
+Copyight 1997/1998 Jeff Mitchell and the Retrocade Alliance
+ * copyright 1997 Zonn Moore
+
+Multi-6502 & Multi Z80 CPU emulator by Neil Bradley (neil@synthcom.com)
+
+StarScream 68000 emu by Neil Cortlett
+
+DVG Vector Code - Retrocade Team
+
+AVG Code - Vecsim team.
+
+Pokey code (modified) Ron Fries.
+
+SEGA Vector Games - Al Kossow, Brad Oliver and Aaron Giles
+
+Star Wars - Steve Baines, with the help of Frank Palazzolo and Brad Oliver
+
+TMS5220 Core - Aaron Giles
+
+Artwork and sound samples - LOTS of very talented people!
+
+Various SNIPPITS, DOCUMENTATION and UNIQUE WAYS OF DOING THINGS: Mame and the Mame Team of course! Without it most of what I have dome would be impossible.
+
+
+
+

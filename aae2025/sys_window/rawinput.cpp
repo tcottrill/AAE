@@ -37,7 +37,6 @@ enum DXTI_MOUSE_BUTTON_STATE //named state of mouse buttons
 struct DXTI_MOUSE_STATE m_mouseStateRaw;
 
 
-
 HRESULT RawInput_Initialize(HWND hWnd)
 {
 	RAWINPUTDEVICE Rid[2];

@@ -22,13 +22,11 @@
 
 #define MAX_CPU 4
 
-//CPU Contexts
-#ifdef  _M_IX86
-extern struct S68000CONTEXT c68k[MAX_CPU];
-#endif
-
 extern cpu_z80* m_cpu_z80[4];
 extern cpu_6502* m_cpu_6502[4];
+
+extern int cpu_context_size;
+extern uint8_t* cpu_context[2];
 
 enum
 {
@@ -44,6 +42,22 @@ enum
 };
 
 
+
+#define READ_BYTE(BASE, ADDR) (BASE)[(ADDR)^1]
+#define READ_WORD(BASE, ADDR) (((BASE)[(ADDR)+1]<<8) |          \
+                              (BASE)[(ADDR)])
+#define READ_LONG(BASE, ADDR) (((BASE)[(ADDR)+1]<<24) |         \
+                               ((BASE)[(ADDR)+0]<<16) |      \
+                               ((BASE)[(ADDR)+3]<<8) |       \
+                                (BASE)[(ADDR)+2])
+
+#define WRITE_BYTE(BASE, ADDR, VAL) (BASE)[(ADDR)^1] = (VAL)&0xff
+#define WRITE_WORD(BASE, ADDR, VAL) (BASE)[(ADDR)+1] = ((VAL)>>8) & 0xff;       \
+                                    (BASE)[ADDR] = (VAL)&0xff
+#define WRITE_LONG(BASE, ADDR, VAL) (BASE)[(ADDR)+1] = ((VAL)>>24) & 0xff;      \
+                                    (BASE)[(ADDR)+0] = ((VAL)>>16)&0xff;    \
+                                    (BASE)[(ADDR)+3] = ((VAL)>>8)&0xff;     \
+                                    (BASE)[(ADDR)+2] = (VAL)&0xff
 
 #define INT_TYPE_NONE 0
 #define INT_TYPE_NMI  5
@@ -61,7 +75,7 @@ void init8080(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct
 void init6809(struct MemoryReadByte* read, struct MemoryWriteByte* write, int cpunum);
 void init_z80(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum);
 void init8080(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum);
-void init68k(struct STARSCREAM_PROGRAMREGION* fetch, struct STARSCREAM_DATAREGION* readbyte, struct STARSCREAM_DATAREGION* readword, struct STARSCREAM_DATAREGION* writebyte, struct STARSCREAM_DATAREGION* writeword);
+void init68k();
 // Used for cycle to time scaling.
 int cpu_scale_by_cycles(int val, int clock);
 // CPU Code

@@ -13,9 +13,7 @@
 //Note to self, replace this abomination with correct from other emulator next.
 
 #include "cpu_control.h"
-#ifdef  _M_IX86
-#include "starcpu.h"
-#endif
+#include "./68000/m68k.h"
 #include "aae_mame_driver.h"
 #include "cpu_6809.h"
 #include "cpu_i8080.h"
@@ -63,15 +61,15 @@ static int watchdog_timer = 0;
 static int watchdog_counter = 0;
 
 // CPU Contexts
+
+int cpu_context_size;
+uint8_t* cpu_context[2];
+
 cpu_6809* m_cpu_6809[MAX_CPU];
 cpu_i8080* m_cpu_i8080[MAX_CPU];
 cpu_z80* m_cpu_z80[MAX_CPU];
 cpu_6502* m_cpu_6502[MAX_CPU];
 
-// CPU Context
-#ifdef  _M_IX86
-struct S68000CONTEXT c68k[MAX_CPU];
-#endif
 
 void init_z80(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum)
 {
@@ -122,28 +120,16 @@ void init6809(struct MemoryReadByte* read, struct MemoryWriteByte* write, int cp
 	wrlog("Finished Configuring CPU %d", cpunum);
 }
 
-void init68k(struct STARSCREAM_PROGRAMREGION* fetch, struct STARSCREAM_DATAREGION* readbyte, struct STARSCREAM_DATAREGION* readword, struct STARSCREAM_DATAREGION* writebyte, struct STARSCREAM_DATAREGION* writeword)
+void init68k()
 {
-#ifdef  _M_IX86
-	s68000init();
-	s68000context.fetch = fetch;
-	s68000context.s_fetch = fetch;
-	s68000context.u_fetch = fetch;
-	s68000context.s_readbyte = readbyte;
-	s68000context.u_readbyte = readbyte;
-	s68000context.s_readword = readword;
-	s68000context.u_readword = readword;
-	s68000context.s_writebyte = writebyte;
-	s68000context.u_writebyte = writebyte;
-	s68000context.s_writeword = writeword;
-	s68000context.u_writeword = writeword;
-	s68000SetContext(&s68000context);
-	s68000reset();
-	s68000exec(100);
-	s68000reset();
-	wrlog("68000 Initialized: Initial PC is %06X\n", s68000context.pc);
-#endif
-	
+	m68k_set_cpu_type(M68K_CPU_TYPE_68000);
+
+	cpu_context_size = m68k_context_size();
+	cpu_context[0] = (unsigned char*)malloc(cpu_context_size);
+	m68k_pulse_reset();
+	m68k_get_context(cpu_context[0]);
+	m68k_set_context(cpu_context[0]);
+	wrlog("PC:%08X\tSP:%08X\n", m68k_get_reg(NULL, M68K_REG_PC), m68k_get_reg(NULL, M68K_REG_SP));
 }
 
 
@@ -184,9 +170,7 @@ int get_video_ticks(int reset)
 		{
 		case CPU_MZ80:  temp = m_cpu_z80[active_cpu]->mz80GetElapsedTicks(0); break;  //Make vid_tickcount a negative number to check for reset later;
 		case CPU_M6502: temp = m_cpu_6502[active_cpu]->get6502ticks(0); break;
-#ifdef  _M_IX86
-		case CPU_68000: temp = s68000readOdometer(); break;
-#endif
+		case CPU_68000: temp = m68k_cycles_run(); break;
 		case CPU_M6809: temp = m_cpu_6809[get_current_cpu()]->get6809ticks(0); break;
 		}
 	}
@@ -214,10 +198,9 @@ int cpu_getpc()
 	case CPU_M6809:
 		return m_cpu_6809[active_cpu]->get_pc();
 		break;
-#ifdef  _M_IX86
+
 	case CPU_68000:
 		break;
-#endif
 	}
 	return 0;
 }
@@ -282,9 +265,7 @@ void cpu_setcontext(int cpunum)
 {
 	switch (driver[gamenum].cpu_type[cpunum])
 	{
-#ifdef  _M_IX86
-	case CPU_68000: s68000SetContext(&c68k[active_cpu]); break;
-#endif
+	case CPU_68000: m68k_set_context(cpu_context[0]); break;
 	}
 }
 
@@ -292,9 +273,7 @@ void cpu_getcontext(int cpunum)
 {
 	switch (driver[gamenum].cpu_type[cpunum])
 	{
-#ifdef  _M_IX86
-	case CPU_68000: s68000GetContext(&c68k[active_cpu]); break;
-#endif
+	case CPU_68000: m68k_get_context(cpu_context[0]); break;
 	}
 }
 
@@ -361,12 +340,11 @@ void cpu_do_int_imm(int cpunum, int int_type)
 			//if (debug) wrlog("6809 IRQ Called on CPU %d", cpunum);
 		}
 		break;
-#ifdef  _M_IX86
-	case CPU_68000: s68000interrupt(int_type, -1); //add interrupt num here
-		s68000flushInterrupts();
+
+	case CPU_68000: m68k_set_irq(1); //add interrupt num here
 		//wrlog("68000 IRQ Called on CPU %d", cpunum);
+		wrlog("INT Taken 68000, type: %d", int_type);
 		break;
-#endif
 	}
 }
 
@@ -413,11 +391,8 @@ void cpu_do_interrupt(int int_type, int cpunum)
 				//wrlog("INT Taken 6809");
 			}
 			break;
-#ifdef  _M_IX86
-		case CPU_68000: s68000interrupt(driver[gamenum].cpu_int_type[active_cpu], -1);
-			s68000flushInterrupts();
-			//wrlog("INT Taken 68000");
-#endif
+		case CPU_68000: m68k_set_irq(1);
+				wrlog("INT Taken 68000, type: %d", driver[gamenum].cpu_int_type[active_cpu]);
 			break;
 		}
 
@@ -475,13 +450,10 @@ int cpu_exec_now(int cpu, int cycles)
 		m_cpu_6809[cpu]->exec6809(cycles);
 		ticks = m_cpu_6809[cpu]->get6809ticks(0xff);
 		break;
-#ifdef  _M_IX86
 	case CPU_68000:
-		s68000exec(cycles);
-		ticks = s68000controlOdometer(0xff);
+			ticks = m68k_execute(cycles);
 		timer_update(ticks, active_cpu);
 		break;
-#endif
 	case CPU_CCPU:
 		  	ticks = run_ccpu(cycles);
 		  	break;
@@ -609,10 +581,8 @@ void cpu_reset(int cpunum)
 	case CPU_8080:
 		m_cpu_i8080[cpunum]->reset();
 		break;
-#ifdef  _M_IX86
-	case CPU_68000: s68000reset(); 
+	case CPU_68000:  m68k_pulse_reset(); 
 		break;
-#endif
 	case CPU_M6809:
 		m_cpu_6809[cpunum]->reset6809();
 		break;
@@ -695,11 +665,10 @@ void free_cpu_memory()
 			free (m_cpu_6809[x]);
 			free(Machine->memory_region[x]);
 			break;
-#ifdef  _M_IX86
+
 		case CPU_68000:
 			free(Machine->memory_region[x]);
 			break;
-#endif
 		}
 	}
 }
