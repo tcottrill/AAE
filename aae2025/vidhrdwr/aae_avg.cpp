@@ -402,7 +402,7 @@ int avg_check()
 }
 
 
-void avgdvg_go_word_w(unsigned int offset, unsigned int data)
+void avgdvg_go_word_w(UINT32 address, UINT16 data, struct MemoryWriteWord* psMemWrite)
 {
 	avg_go();
 }

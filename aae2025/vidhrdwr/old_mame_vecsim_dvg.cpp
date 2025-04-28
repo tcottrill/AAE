@@ -22,8 +22,8 @@
 int vector_updates;
 static int busy;
 static UINT8 vector_engine;
-unsigned char* vectorram;
-unsigned int vectorram_size;
+unsigned char* dvg_vectorram;
+unsigned int dvg_vectorram_size;
 static int ASTEROID_DVG = 0;
 static int yval = 1130;
 static int dvg_timer_val = -1;
@@ -38,7 +38,7 @@ static int flip_x, flip_y, swap_xy;
 
 #pragma warning( disable : 4244)
 
-#define vecmemrdwd(address) ((vectorram[pc]) | (vectorram[pc+1]<<8))
+#define vecmemrdwd(address) ((dvg_vectorram[pc]) | (dvg_vectorram[pc+1]<<8))
 
 
 static void set_color_palette()
@@ -106,7 +106,11 @@ int dvg_generate_vector_list(void)
 	{
 		firstwd = vecmemrdwd(pc); pc += 2;
 		opcode = firstwd >> 12;
-		if (opcode < 0x0b) { secondwd = vecmemrdwd(pc); pc += 2; }
+		if (opcode < 0x0b) 
+		{ 
+			secondwd = vecmemrdwd(pc); 
+			pc += 2; 
+		}
 
 		switch (opcode)
 		{
@@ -304,8 +308,8 @@ void dvg_go_w(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite)
 int dvg_init()
 {
 	// Move these to avg_dvg init						// TBD
-	vectorram = &memory_region(REGION_CPU1)[Machine->gamedrv->vectorram];
-	vectorram_size = Machine->gamedrv->vectorram_size;
+	dvg_vectorram = &memory_region(REGION_CPU1)[Machine->gamedrv->vectorram];
+	dvg_vectorram_size = Machine->gamedrv->vectorram_size;
 	//
 	set_color_palette();
 	vector_engine = USE_DVG;

@@ -131,9 +131,12 @@ Removed unneeded sample code. Created a popup error message if you try to run th
 Discovered the LED code for the Atari games was completedly our of wack. 
 Cleaned up, updated and tested all led code. Switched to later M.A.M.E (TM) code and added code to guarantee all leds are off when starting or exiting a game. 
 
-4/26/25 64Bit!!!!!!!
+4/26/25
 Removed the Starscream 68000 core and switched to a VERY old version of MUSASHI with the help of some code from Charles McDonald. This has been implemented for Quantum, I'll add aztarac in a future release once I refactor the memory handlers into something decent. 
-Now all code releases from this point will be a 64 bit build. This was my biggest milestone for this code, and I'm very happy to have reached it. 
+Now all code releases from this point will be a 64 bit build. This was my biggest milestone for this code, and I'm very happy to have reached it.
+
+4/27/25
+Cleaned up and rewrote the quantum driver. Completed the 68000 integration and wrote handler code like the rest of the cpu's and added it in. Ready to write and add a Aztarac driver now.  
 
 
 

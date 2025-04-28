@@ -66,11 +66,27 @@ extern "C" {
 		void* pUserArea;
 	};
 
+	struct MemoryWriteWord
+	{
+		UINT32 lowAddr;
+		UINT32 highAddr;
+		void (*memoryCall)(UINT32, UINT16, struct MemoryWriteWord*);
+		void* pUserArea;
+	};
+
 	struct MemoryReadByte
 	{
 		UINT32 lowAddr;
 		UINT32 highAddr;
 		UINT8(*memoryCall)(UINT32, struct MemoryReadByte*);
+		void* pUserArea;
+	};
+
+	struct MemoryReadWord
+	{
+		UINT32 lowAddr;
+		UINT32 highAddr;
+		UINT16(*memoryCall)(UINT32, struct MemoryReadWord*);
 		void* pUserArea;
 	};
 

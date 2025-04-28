@@ -30,7 +30,7 @@
 //Please fix this. 
 #define memrdwd_flip(address) ((Machine->memory_region[CPU0][pc+1]) | (Machine->memory_region[CPU0][pc]<<8))
 #define memrdwd(address) ((Machine->memory_region[CPU0][pc]) | (Machine->memory_region[CPU0][pc+1]<<8)) /* LBO 062797 */
-#define memrdwdf(address) ((vec_ram[pc+1]) | (vec_ram[pc]<<8))
+#define memrdwdf(address) ((vec_ram[pc]) | (vec_ram[pc+1]<<8))
 #define MAXSTACK 8
 #define VEC_SHIFT  16
 
@@ -44,7 +44,7 @@ int avg_check();
 void set_bw_colors();
 
 void advdvg_go_w(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite);
-void avgdvg_go_word_w(unsigned int offset, unsigned int data);
+void avgdvg_go_word_w(UINT32 address, UINT16 data, struct MemoryWriteWord* psMemWrite);
 void avgdvg_reset_w(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite);
 
 //int dvg_start(void);

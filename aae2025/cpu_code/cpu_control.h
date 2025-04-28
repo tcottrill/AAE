@@ -75,7 +75,7 @@ void init8080(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct
 void init6809(struct MemoryReadByte* read, struct MemoryWriteByte* write, int cpunum);
 void init_z80(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum);
 void init8080(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum);
-void init68k();
+void init68k(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct MemoryReadWord* read16, struct MemoryWriteWord* write16, int cpunum);
 // Used for cycle to time scaling.
 int cpu_scale_by_cycles(int val, int clock);
 // CPU Code
@@ -123,7 +123,11 @@ extern void watchdog_callback(int param);
 extern UINT8 MRA_RAM(UINT32 address, struct MemoryReadByte* psMemRead);
 extern UINT8 MRA_ROM(UINT32 address, struct MemoryReadByte* psMemRead);
 extern void MWA_ROM(UINT32 address, UINT8 data, struct MemoryWriteByte* pMemWrite);
+extern void MWA_ROM16(UINT32 address, UINT16 data, struct MemoryWriteWord* pMemWrite);
 extern void MWA_RAM(UINT32 address, UINT8 data, struct MemoryWriteByte* pMemWrite);
 extern void MWA_NOP(UINT32 address, UINT8 data, struct MemoryWriteByte* pMemWrite);
+
+//16bit memory handlers for the 68000 cpu
+
 
 #endif

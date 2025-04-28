@@ -10,7 +10,9 @@
 //
 // SOME CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.
 //============================================================================
-//Note to self, replace this abomination with correct from other emulator next.
+
+// Note, thanks to Charles McDonald for the skeleton code and how to for the 68000 emulation
+// I haven't added code for interrupt callbacks yet, hopefully I won't need it for Aztarac.
 
 #include "cpu_control.h"
 #include "./68000/m68k.h"
@@ -70,6 +72,14 @@ cpu_i8080* m_cpu_i8080[MAX_CPU];
 cpu_z80* m_cpu_z80[MAX_CPU];
 cpu_6502* m_cpu_6502[MAX_CPU];
 
+//68000 Memory Constructs
+// 8 bit
+MemoryReadByte* M_MemoryRead8 = nullptr;
+MemoryWriteByte* M_MemoryWrite8 = nullptr;
+// 16 bit
+MemoryReadWord* M_MemoryRead16 = nullptr;
+MemoryWriteWord* M_MemoryWrite16 = nullptr;
+//32 bit is handled 
 
 void init_z80(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum)
 {
@@ -120,10 +130,14 @@ void init6809(struct MemoryReadByte* read, struct MemoryWriteByte* write, int cp
 	wrlog("Finished Configuring CPU %d", cpunum);
 }
 
-void init68k()
+void init68k(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct MemoryReadWord* read16, struct MemoryWriteWord* write16, int cpunum)
 {
+	M_MemoryRead8 = read;
+	M_MemoryWrite8 = write;
+	M_MemoryRead16 = read16;
+	M_MemoryWrite16 = write16;
+	
 	m68k_set_cpu_type(M68K_CPU_TYPE_68000);
-
 	cpu_context_size = m68k_context_size();
 	cpu_context[0] = (unsigned char*)malloc(cpu_context_size);
 	m68k_pulse_reset();
@@ -754,6 +768,12 @@ UINT8 MRA_ROM(UINT32 address, struct MemoryReadByte* psMemRead)
 }
 
 // Write Rom
+void MWA_ROM16(UINT32 address, UINT16 data, struct MemoryWriteWord* pMemWrite)
+{
+	//If logging add here
+}
+
+// Write Rom
 void MWA_ROM(UINT32 address, UINT8 data, struct MemoryWriteByte* pMemWrite)
 {
 	//If logging add here
@@ -762,4 +782,174 @@ void MWA_ROM(UINT32 address, UINT8 data, struct MemoryWriteByte* pMemWrite)
 void MWA_NOP(UINT32 address, UINT8 data, struct MemoryWriteByte* pMemWrite)
 {
 	//If logging add here
+}
+
+
+/*--------------------------------------------------------------------------*/
+/* 68000 Memory handlers                                                          */
+/*--------------------------------------------------------------------------*/
+
+unsigned int m68k_read_bus_8(unsigned int address)
+{
+	return 0;
+}
+
+unsigned int m68k_read_bus_16(unsigned int address)
+{
+	return 0;
+}
+
+void m68k_unused_w(unsigned int address, unsigned int value)
+{
+	//error("Unused %08X = %08X (%08X)\n", address, value, Turbo68KReadPC());
+}
+
+void m68k_unused_8_w(unsigned int address, unsigned int value)
+{
+	//error("Unused %08X = %02X (%08X)\n", address, value, Turbo68KReadPC());
+}
+
+void m68k_unused_16_w(unsigned int address, unsigned int value)
+{
+	//error("Unused %08X = %04X (%08X)\n", address, value, Turbo68KReadPC());
+}
+
+void m68k_lockup_w_8(unsigned int address, unsigned int value)
+{
+	m68k_end_timeslice();
+}
+
+void m68k_lockup_w_16(unsigned int address, unsigned int value)
+{
+	m68k_end_timeslice();
+}
+
+unsigned int m68k_lockup_r_8(unsigned int address)
+{
+	m68k_end_timeslice();
+	return -1;
+}
+
+unsigned int m68k_lockup_r_16(unsigned int address)
+{
+	m68k_end_timeslice();
+	return -1;
+}
+
+/*--------------------------------------------------------------------------*/
+/* 68000 memory handlers                                                    */
+/*--------------------------------------------------------------------------*/
+
+unsigned int m68k_read_memory_8(unsigned int address)
+{
+	MemoryReadByte* MemRead = M_MemoryRead8;
+
+	while (MemRead->lowAddr != 0xffffffff)
+	{
+		if (address >= MemRead->lowAddr && address <= MemRead->highAddr)
+		{
+			if (MemRead->memoryCall)
+			{
+				return (MemRead->memoryCall(address - MemRead->lowAddr, MemRead));
+			}
+			else
+			{
+				return READ_BYTE((unsigned char*)MemRead->pUserArea, address - MemRead->lowAddr);
+			}
+		}
+		++MemRead;
+	}
+
+	wrlog("Unhandled Memory 8 Read: addr: %x", address);
+	return 0;
+}
+
+void m68k_write_memory_8(unsigned int address, unsigned int value)
+{
+	MemoryWriteByte* MemWrite = M_MemoryWrite8;
+
+	while (MemWrite->lowAddr != 0xffffffff)
+	{
+		if (address >= MemWrite->lowAddr && address <= MemWrite->highAddr)
+		{
+			if (MemWrite->memoryCall)
+			{
+				MemWrite->memoryCall(address - MemWrite->lowAddr, value, MemWrite);
+			}
+			else
+			{
+				WRITE_BYTE((unsigned char*)MemWrite->pUserArea, address - MemWrite->lowAddr, value);
+			}
+
+		}
+		MemWrite++;
+	}
+	wrlog("Unhandled Memory 8 Read: addr: %x", address);
+}
+
+unsigned int m68k_read_memory_16(unsigned int address)
+{
+	MemoryReadWord* MemRead = M_MemoryRead16;
+
+	while (MemRead->lowAddr != 0xffffffff)
+	{
+		if (address >= MemRead->lowAddr && address <= MemRead->highAddr)
+		{
+			if (MemRead->memoryCall)
+			{
+				//wrlog("Handler 16 Read: addr: %x", address);
+				return (MemRead->memoryCall(address - MemRead->lowAddr, MemRead));
+			}
+			else
+			{
+				//wrlog("MEM 16 Read: addr: %x", address);
+				return READ_WORD((unsigned char*)MemRead->pUserArea, address - MemRead->lowAddr);
+			}
+		}
+
+		++MemRead;
+	}
+
+	wrlog("Unhandled Read 16: %x ", address);
+	return 0;
+}
+
+void m68k_write_memory_16(unsigned int address, unsigned int value)
+{
+	//wrlog("Write Memory 16, addr: %x, data %x", address, value);
+
+	MemoryWriteWord* MemWrite = M_MemoryWrite16;
+
+	while (MemWrite->lowAddr != 0xffffffff)
+	{
+		if (address >= MemWrite->lowAddr && address <= MemWrite->highAddr)
+		{
+			if (MemWrite->memoryCall)
+			{
+				//wrlog("Write Handler 16, addr: %x, data %x", address, value);
+				MemWrite->memoryCall(address - MemWrite->lowAddr, value, MemWrite);
+			}
+			else {
+				//wrlog("Write Memory 16, addr: %x, data %x", address, value);
+				WRITE_WORD((unsigned char*)MemWrite->pUserArea, address - MemWrite->lowAddr, value);
+			}
+		}
+		MemWrite++;
+	}
+}
+
+unsigned int m68k_read_memory_32(unsigned int address)
+{
+	//wrlog("Reading Memory 32, addr: %x", address);
+
+	/* Split into 2 reads */
+	return (m68k_read_memory_16(address + 0) << 16 | m68k_read_memory_16(address + 2));
+}
+
+void m68k_write_memory_32(unsigned int address, unsigned int value)
+{
+	//wrlog("Write Memory 32, addr: %x, data %x\n", address, value);
+	/* Split into 2 writes */
+	m68k_write_memory_16(address, (value >> 16) & 0xFFFF);
+	m68k_write_memory_16(address + 2, value & 0xFFFF);
 }

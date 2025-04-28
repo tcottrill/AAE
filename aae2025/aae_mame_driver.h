@@ -90,8 +90,16 @@ extern int gamenum;
 //CPU and WRITE READ HANDLERS WHY ARE THESE HERE!!!!
 #define READ_HANDLER(name)  static UINT8 name(UINT32 address, struct MemoryReadByte *psMemRead)
 #define WRITE_HANDLER(name)  static void name(UINT32 address, UINT8 data, struct MemoryWriteByte *psMemWrite)
+
+#define READ_HANDLER16(name)  static UINT16 name(UINT32 address, struct MemoryReadWord *psMemRead)
+#define WRITE_HANDLER16(name)  static void name(UINT32 address, UINT16 data, struct MemoryWriteWord *psMemWrite)
+
 #define MEM_WRITE(name) struct MemoryWriteByte name[] = {
 #define MEM_READ(name)  struct MemoryReadByte name[] = {
+
+#define MEM_WRITE16(name) struct MemoryWriteWord name[] = {
+#define MEM_READ16(name)  struct MemoryReadWord name[] = {
+
 #define MEM_ADDR(start,end,routine) {start,end,routine},
 #define MEM_END {(UINT32) -1,(UINT32) -1,NULL}};
 

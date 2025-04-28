@@ -117,6 +117,16 @@ void free_memory_region(int num)
 	
 }
 
+void byteswap(unsigned char* mem, int length)
+{
+	int i, j;
+	for (i = 0; i < (length / 2); i += 1)
+	{
+		j = mem[i * 2 + 0];
+		mem[i * 2 + 0] = mem[i * 2 + 1];
+		mem[i * 2 + 1] = j;
+	}
+}
 
 void cpu_mem(int cpunum, int size)
 {

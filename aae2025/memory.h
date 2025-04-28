@@ -33,6 +33,7 @@ enum {
 unsigned char *memory_region(int num);
 int new_memory_region(int num, int length);
 void free_memory_region(int num);
+void byteswap(unsigned char* mem, int length);
 void cpu_mem(int cpunum, int size);
 
 

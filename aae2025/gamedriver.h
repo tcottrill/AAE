@@ -1255,8 +1255,7 @@ struct AAEDriver driver[] =
 		1024, 768, 	{ 0, 900, 0, 620 },
 		0,0,0,0,
 		0, 0,
-		0x0, 0x2000
-		,0
+		0x0, 0x2000,quantum_nvram_handler
 		},
 		{
 		"quantum", "Quantum (Revision 2)", rom_quantum,
@@ -1273,8 +1272,7 @@ struct AAEDriver driver[] =
 		1024, 768, 	{ 0, 900, 0, 620 },
 		0,0,0,0,
 		0, 0,
-		0x0, 0x2000
-		,0
+		0x0, 0x2000,quantum_nvram_handler
 		},
 		{
 		"quantump", "Quantum (Prototype)", rom_quantump,
@@ -1291,8 +1289,7 @@ struct AAEDriver driver[] =
 		1024, 768, 	{ 0, 900, 0, 620 },
 		0,0,0,0,
 		0, 0,
-		0x0, 0x2000,
-		0
+		0x0, 0x2000,quantum_nvram_handler
 		},
 		{
 		"starwars", "Star Wars (Revision 2)", rom_starwars,

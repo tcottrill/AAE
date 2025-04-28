@@ -5,7 +5,6 @@
 #include "gl_texturing.h" // For game_tex[0]
 
 #pragma warning( disable :  4244)
-//static int cache_override = 0;
 
 #define clip(a, b, c) min(max((a), (b)), (c))
 
@@ -17,8 +16,6 @@ colors vec_colors[1024];
 
 std::vector<fpoint> linelist;
 std::vector<txdata> texlist;
-//	tex = 0;
-//	set_blendmode(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
 
 void set_texture_id(GLuint* id)
@@ -109,8 +106,6 @@ void cache_clear()
 
 void draw_all()
 {
-	//cache_override++;
-
 	if (Machine->gamedrv->video_attributes & VECTOR_USES_COLOR)
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE);
 	else
@@ -132,7 +127,7 @@ void draw_all()
 
 	if (!texlist.empty())
 	{
-		//Draw Textured Shots for Asteroids. This code is only used when running Asteroids/Asteroids Deluxe or one of it's clones.
+		//Draw Textured Shots for Asteroids. This code is only currently used when running Asteroids/Asteroids Deluxe or one of it's clones.
 		glEnable(GL_TEXTURE_2D);
 		glBindTexture(GL_TEXTURE_2D, *tex);
 		glBlendFunc(GL_ONE, GL_ONE);
@@ -159,13 +154,4 @@ void draw_all()
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	}
 
-	//if (cache_override == 500) 
-	//{
-	//	texlist.clear();
-	//	linelist.clear();
-	//	cache_override = 0;
-	//}
-	// Removed reset pointers from here
-//	texlist.clear();
-//	linelist.clear();
 }
