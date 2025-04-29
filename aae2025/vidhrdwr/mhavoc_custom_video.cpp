@@ -1,10 +1,13 @@
 #include "mhavoc.h"
 #include "aae_mame_driver.h"
-#include "aae_avg.h"
 #include "loaders.h"
 #include "emu_vector_draw.h"
 
+UINT8* mhavoc_colorram;
+
 #pragma warning( disable : 4996 4244)
+
+#define memrdwd_mh(address) ((Machine->memory_region[CPU0][pc]) | (Machine->memory_region[CPU0][pc+1]<<8)) /* LBO 062797 */
 
 // Video Variables
 static int width, height;
@@ -15,27 +18,34 @@ static int flip_x;
 static int flip_y;
 static int swap_xy;
 
-static int scale_factor = 2;
+static int scale_factor = 3;
+
+int vector_timer_mh(int deltax, int deltay)
+{
+	deltax = abs(deltax);
+	deltay = abs(deltay);
+
+	if (deltax > deltay)
+		return deltax >> 16;
+	else
+		return deltay >> 16;
+}
 
 void mhavoc_colorram_w(UINT32 address, UINT8 data, struct MemoryWriteByte* pMemWrite)
 {
-	int i = (data & 4) ? 0x0f : 0x08;
-	int r = (data & 8) ? 0x00 : i;
-	int g = (data & 2) ? 0x00 : i;
-	int b = (data & 1) ? 0x00 : i;
-
-	vec_colors[address].r = r;
-	vec_colors[address].g = g;
-	vec_colors[address].b = b;
+	if (scale_factor == 3)
+		Machine->memory_region[CPU0][address + 0x1400] = data;
+	else
+		Machine->memory_region[CPU0][address + 0x10e0] = data;
 }
 
-void avg_set_flip_x(int flip)
+void avg_set_flip_x_mh(int flip)
 {
 	if (flip)
 		flip_x = 1;
 }
 
-void avg_set_flip_y(int flip)
+void avg_set_flip_y_mh(int flip)
 {
 	if (flip)
 		flip_y = 1;
@@ -56,21 +66,16 @@ void avg_apply_flipping_and_swapping(int* x, int* y)
 	}
 }
 
-void avg_add_point(int x, int y, int ex, int ey, int r, int g, int b, int p)
+void avg_add_point_mh(int x, int y, int ex, int ey, int intensity, int color, int p)
 {
 	avg_apply_flipping_and_swapping(&x, &y);
-
-	r = (r << 4) | 0x0f;
-	g = (g << 4) | 0x0f;
-	b = (b << 4) | 0x0f;
 
 	if (p)
 	{
 		avg_apply_flipping_and_swapping(&ex, &ey);
-		//add_color_line(x, y, ex, ey, r, g, b);
-		add_line(x, y, ex, ey, MAKE_BGR(r, g, b), MAKE_BGR(r, g, b));
+		add_line(x, y, ex, ey, intensity, color);
 	}
-	else add_line(x, y, x, y, MAKE_BGR(r, g, b), MAKE_BGR(r, g, b));
+	else add_line(x, y, x, y, intensity, color);
 }
 
 /////////////////////////////VECTOR GENERATOR//////////////////////////////////
@@ -94,7 +99,7 @@ void mhavoc_video_update(void)
 
 	int vectorbank = 0;
 	static int lastbank = 0;
-	int red, green, blue;
+	
 	int ywindow = 1;
 	int clip = 0;
 	float sy = 0;
@@ -110,10 +115,19 @@ void mhavoc_video_update(void)
 	statz = 0;
 	color = 0;
 	scale = 0;
+	int data = 0;
 
-	firstwd = memrdwd(pc);
+	int bit3;
+	int bit2;
+	int bit1;
+	int bit0;
+	int ar;
+	int ag;
+	int ab;
+
+	firstwd = memrdwd_mh(pc);
 	pc++; pc++;
-	secondwd = memrdwd(pc);
+	secondwd = memrdwd_mh(pc);
 	total_length = 0;
 	if ((firstwd == 0) && (secondwd == 0))
 	{
@@ -128,21 +142,21 @@ void mhavoc_video_update(void)
 	cache_clear();
 	while (!done)
 	{
-		firstwd = memrdwd(pc);
+		firstwd = memrdwd_mh(pc);
 		opcode = firstwd >> 13;
 		pc++; pc++;
 
-		if (opcode == VCTR) //Get the second word if it's a draw command
+		if (opcode == 0) //Get the second word if it's a draw command
 		{
-			secondwd = memrdwd(pc); pc++; pc++;
+			secondwd = memrdwd_mh(pc); pc++; pc++;
 		}
 
-		if ((opcode == STAT) && ((firstwd & 0x1000) != 0))
-			opcode = SCAL;
+		if ((opcode == 3) && ((firstwd & 0x1000) != 0))
+			opcode = 8;
 
 		switch (opcode)
 		{
-		case VCTR:
+		case 0:
 
 			x = twos_comp_val(secondwd, 13);
 			y = twos_comp_val(firstwd, 13);
@@ -151,29 +165,26 @@ void mhavoc_video_update(void)
 
 			break;
 
-		case SVEC:
+		case 2:
 			x = twos_comp_val(firstwd, 5) << 1;
 			y = twos_comp_val(firstwd >> 8, 5) << 1;
 			z = ((firstwd >> 4) & 0x0e);
 
 		DRAWCODE:
-			if (z == 2) { z = statz; }if (z) { z = (z << 4) | 0x1f; }
+			if (z == 2) { z = statz; }if (z) { z = z << 4; }
+ 
 			deltax = x * scale;
 			if (xflip) deltax = -deltax;
 			deltay = y * scale;
 
-			total_length += vector_timer(deltax, deltay);
-			//	wrlog("Total length here is %d ---------------->", vector_timer(deltax, deltay));
+			total_length += vector_timer_mh(deltax, deltay);
+			//	wrlog("Total length here is %d ---------------->", vector_timer_mh(deltax, deltay));
 			if (z)
 			{
-				if (vec_colors[color].r) red = z;   else red = 0;
-				if (vec_colors[color].g) green = z; else green = 0;
-				if (vec_colors[color].b) blue = z;  else blue = 0;
-
-				ey = ((currenty - deltay) >> VEC_SHIFT);
-				sy = currenty >> VEC_SHIFT;
-				sx = (currentx >> VEC_SHIFT);
-				ex = (currentx + deltax) >> VEC_SHIFT;
+				ey = ((currenty - deltay) >> 16);
+				sy = currenty >> 16;
+				sx = (currentx >> 16);
+				ex = (currentx + deltax) >> 16;
 
 				if (sparkle)
 				{
@@ -183,30 +194,20 @@ void mhavoc_video_update(void)
 					if (ex > sx) one = 1;
 					if (ey > sy) two = 1;
 
-					color = 0xf + (((spkl_shift & 1) << 3) | (spkl_shift & 4)
-						| ((spkl_shift & 0x10) >> 3) | ((spkl_shift & 0x40) >> 6));
-					if (vec_colors[color].r) red = z; else red = 0;
-					if (vec_colors[color].g) green = z; else green = 0;
-					if (vec_colors[color].b) blue = z; else blue = 0;
-
 					while (ex != sx || ey != sy)
 					{
-						color = 0xf + (((spkl_shift & 1) << 3) | (spkl_shift & 4)
-							| ((spkl_shift & 0x10) >> 3) | ((spkl_shift & 0x40) >> 6));
-
-						/*
-						int bit3 = (~color >> 3) & 1;
-						int bit2 = (~color >> 2) & 1;
-						int bit1 = (~color >> 1) & 1;
-						int bit0 = (~color >> 0) & 1;
+						data = mhavoc_colorram[0xf +
+							(((spkl_shift & 1) << 3)
+								| (spkl_shift & 4)
+								| ((spkl_shift & 0x10) >> 3)
+								| ((spkl_shift & 0x40) >> 6))];
+						bit3 = (~data >> 3) & 1;
+						bit2 = (~data >> 2) & 1;
+						bit1 = (~data >> 1) & 1;
+						bit0 = (~data >> 0) & 1;
 						ar = bit3 * 0xcb + bit2 * 0x34;
 						ag = bit1 * 0xcb;
 						ab = bit0 * 0xcb;
-						wrlog("Red %d Green %d BLUE %d", ar, ag, ab);
-						*/
-						if (vec_colors[color].r) red = z; else red = 0;
-						if (vec_colors[color].g) green = z; else green = 0;
-						if (vec_colors[color].b) blue = z; else blue = 0;
 
 						if (sx != ex) {
 							if (one) { sx += 1; }
@@ -218,7 +219,7 @@ void mhavoc_video_update(void)
 							else { sy -= 1; }
 						}
 						// Add the point for the line
-						avg_add_point(sx, sy, 0, 0, red, green, blue, 0);
+						avg_add_point_mh(sx, sy, ex, ey, z,MAKE_BGR(ar, ag, ab), 0);
 
 						spkl_shift = (((spkl_shift & 0x40) >> 6) ^ ((spkl_shift & 0x20) >> 5) ^ 1) | (spkl_shift << 1);
 						if ((spkl_shift & 0x7f) == 0x7f) spkl_shift = 0;
@@ -237,7 +238,17 @@ void mhavoc_video_update(void)
 
 					if (draw)
 					{
-						avg_add_point(sx, sy, ex, ey, red, green, blue, 1);
+						data = mhavoc_colorram[color];
+
+						bit3 = (~data >> 3) & 1;
+						bit2 = (~data >> 2) & 1;
+						bit1 = (~data >> 1) & 1;
+						bit0 = (~data >> 0) & 1;
+						ar = bit3 * 0xcb + bit2 * 0x34;
+						ag = bit1 * 0xcb;
+						ab = bit0 * 0xcb;
+
+						avg_add_point_mh(sx, sy, ex, ey, z,MAKE_BGR(ar, ag, ab), 1);
 					}
 				}
 			}
@@ -246,10 +257,20 @@ void mhavoc_video_update(void)
 
 			break;
 
-		case STAT:
+		case 3: // STROBE2
 			color = firstwd & 0x0f;
-			statz = (firstwd >> 4) & 0x0f;
+			statz = (firstwd >> 4) & 0x0f; // Intensity
 			sparkle = firstwd & 0x0800;
+			
+			if (sparkle)
+			{
+				spkl_shift = ((firstwd >> 3) & 1)
+					| ((firstwd >> 1) & 2)
+					| ((firstwd << 1) & 4)
+					| ((firstwd << 2) & 8)
+					| ((rand() & 0x7) << 4);
+			}
+
 			xflip = firstwd & 0x0400;
 			vectorbank = ((firstwd >> 8) & 3) * 0x2000;
 
@@ -260,10 +281,10 @@ void mhavoc_video_update(void)
 			}
 			break;
 
-		case SCAL:
+		case 8:
 			b = ((firstwd >> 8) & 0x07) + 8;
 			l = (~firstwd) & 0xff;
-			scale = (l << VEC_SHIFT) >> b;
+			scale = (l << 16) >> b;
 			//scalef = scale;
 			//Triple the scale for 1024x768 resolution, double for AlphaOne
 			scale = scale * scale_factor;
@@ -273,7 +294,7 @@ void mhavoc_video_update(void)
 				if (ywindow == 0)
 				{
 					ywindow = 1;
-					clip = currenty >> VEC_SHIFT;
+					clip = currenty >> 16;
 				}
 				else
 				{
@@ -282,20 +303,20 @@ void mhavoc_video_update(void)
 			}
 			break;
 
-		case CNTR:
+		case 4:
 			d = firstwd & 0xff;
-			currentx = 500 << VEC_SHIFT;
-			currenty = 512 << VEC_SHIFT;
+			currentx = 500 << 16;
+			currenty = 512 << 16;
 
 			break;
 
-		case RTSL:
+		case 6:
 
 			if (sp == 0)
 			{
 				wrlog("*** Vector generator stack underflow! ***");
 				done = 1;
-				sp = MAXSTACK - 1;
+				sp = 8 - 1;
 			}
 			else
 			{
@@ -304,11 +325,11 @@ void mhavoc_video_update(void)
 			}
 			break;
 
-		case HALT:
+		case 1:
 			done = 1;
 			break;
 
-		case JMPL:
+		case 7:
 			a = 0x4000 + ((firstwd & 0x1fff) << 1);
 			/* if a = 0x0000, treat as HALT */
 			if (a == 0x4000)
@@ -321,7 +342,7 @@ void mhavoc_video_update(void)
 			}
 			break;
 
-		case JSRL:
+		case 5:
 			a = 0x4000 + ((firstwd & 0x1fff) << 1);
 			/* if a = 0x0000, treat as HALT */
 			if (a == 0x4000)
@@ -331,7 +352,7 @@ void mhavoc_video_update(void)
 			else
 			{
 				stack[sp] = pc;
-				if (sp == (MAXSTACK - 1))
+				if (sp == (8 - 1))
 				{
 					wrlog("--- Passed MAX STACK (BAD!!) ---");
 					done = 1;
@@ -373,4 +394,6 @@ void mhavoc_video_init(int scale)
 	/* initialize to no avg flipping */
 	flip_x = flip_y = 0;
 	swap_xy = 0;
+	mhavoc_colorram = &memory_region(REGION_CPU1)[0x1400];
+	if (scale_factor == 2) { mhavoc_colorram = &memory_region(REGION_CPU1)[0x10e0]; }
 }

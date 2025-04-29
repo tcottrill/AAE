@@ -326,6 +326,13 @@ UINT8 ip_port_3_r(UINT32 address, struct MemoryReadByte* psMemRead);
 UINT8 ip_port_4_r(UINT32 address, struct MemoryReadByte* psMemRead);
 UINT8 ip_port_5_r(UINT32 address, struct MemoryReadByte* psMemRead);
 
+UINT16 ip_port_0_word_r(UINT32 address, struct MemoryReadWord* psMemRead);
+UINT16 ip_port_1_word_r(UINT32 address, struct MemoryReadWord* psMemRead);
+UINT16 ip_port_2_word_r(UINT32 address, struct MemoryReadWord* psMemRead);
+UINT16 ip_port_3_word_r(UINT32 address, struct MemoryReadWord* psMemRead);
+UINT16 ip_port_4_word_r(UINT32 address, struct MemoryReadWord* psMemRead);
+UINT16 ip_port_5_word_r(UINT32 address, struct MemoryReadWord* psMemRead);
+
 int readinputport(int port);
 int input_port_0_r(int offset);
 int input_port_1_r(int offset);

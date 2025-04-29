@@ -31,6 +31,7 @@
 #include "omegrace.h"
 #include "quantum.h"
 #include "llander.h"
+#include "aztarac.h"
 #include "earom.h"
 
 
@@ -1325,6 +1326,23 @@ struct AAEDriver driver[] =
 		0,0,0,0,
 		0, 0,
 		0x0, 0x3000,0
+		},
+		{
+		"aztarac", "Aztarac", rom_quantum,
+		&init_aztarac,&run_aztarac, &end_aztarac,
+		input_ports_aztarac,
+		0,noart,
+		{CPU_68000,CPU_NONE,CPU_NONE,CPU_NONE},
+		{8000000,2000000,0,0},
+		{100,100,0,0},
+		{1,100,0,0},
+		{INT_TYPE_68K4,INT_TYPE_INT,0,0},
+		{&aztarac_interrupt,&aztarac_sound_interrupt,0,0},
+		40,VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT,
+		1024, 768, 	{ 0, 400, 0, 300 },
+		0,0,0,0,
+		0, 0,
+		0x0, 0x2000,0
 		},
 
 		{ 0,0,0,0,0,0,0,0,0,0}// end of array

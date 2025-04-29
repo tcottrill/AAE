@@ -153,6 +153,7 @@
     <ClInclude Include="cpu_code\timer.h" />
     <ClInclude Include="deftypes.h" />
     <ClInclude Include="drivers\asteroid.h" />
+    <ClInclude Include="drivers\aztarac.h" />
     <ClInclude Include="drivers\bwidow.h" />
     <ClInclude Include="drivers\bzone.h" />
     <ClInclude Include="drivers\cinematronics_driver.h" />
@@ -270,6 +271,7 @@
     <ClCompile Include="cpu_code\cpu_z80.cpp" />
     <ClCompile Include="cpu_code\timer.cpp" />
     <ClCompile Include="drivers\asteroid.cpp" />
+    <ClCompile Include="drivers\aztarac.cpp" />
     <ClCompile Include="drivers\bwidow.cpp" />
     <ClCompile Include="drivers\bzone.cpp" />
     <ClCompile Include="drivers\cinematronics_driver.cpp" />

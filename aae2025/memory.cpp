@@ -78,15 +78,22 @@ void init_cinemat_ports()
 	region
 -------------------------------------------------*/
 
-unsigned char *memory_region(int num)
+unsigned char* memory_region(int num)
 {
 	int i;
 
 	if (num < MAX_MEMORY_REGIONS)
-
+		
 		return Machine->memory_region[num];
 	else
-	
+	{
+		for (i = 0; i < MAX_MEMORY_REGIONS; i++)
+		{
+			//if (Machine->memory_region[i].type == num)
+				//return Machine->memory_region[i].base;
+		}
+	}
+
 	return 0;
 }
 

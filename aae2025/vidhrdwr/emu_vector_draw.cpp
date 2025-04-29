@@ -12,7 +12,7 @@ float xoffset;
 float yoffset;
 GLuint* tex;
 
-colors vec_colors[1024];
+colors vec_colors[256];
 
 std::vector<fpoint> linelist;
 std::vector<txdata> texlist;
@@ -44,19 +44,21 @@ rgb_t cache_color(int intensity, rgb_t col)
 {
 	UINT8* test = (UINT8*)&col;
 	
+	//wrlog("intensity here is %x", intensity);
+
 	if (Machine->gamedrv->video_attributes & VECTOR_USES_COLOR)
 	{
 		test[0] = clip((test[0]) + config.gain / 3, 0, 0xff);
 		test[1] = clip((test[1]) + config.gain / 3, 0, 0xff);
 		test[2] = clip((test[2]) + config.gain / 3, 0, 0xff);
-		test[3] = 0xff;
+		test[3] = clip(intensity/2 + config.gain / 3, 0, 0xff);
 	
 	}
 	else
 	test[0] = clip((test[0]) + config.gain, 0, 0xff);
 	test[1] = clip((test[1]) + config.gain, 0, 0xff);
 	test[2] = clip((test[2]) + config.gain, 0, 0xff);
-	test[3] = 0xff;
+	test[3] = clip(intensity + config.gain, 0, 0xff);
 
 	return col;
 }

@@ -522,7 +522,7 @@ enum GameDef {
 	//Star Wars Hardware
 	STARWARS,
 	STARWAR1,
-	GALAGA
+	AZTARAC
 };
 
 /* this allows to leave the INIT field empty in the GAME() macro call */

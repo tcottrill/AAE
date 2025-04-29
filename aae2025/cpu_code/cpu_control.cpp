@@ -355,7 +355,7 @@ void cpu_do_int_imm(int cpunum, int int_type)
 		}
 		break;
 
-	case CPU_68000: m68k_set_irq(1); //add interrupt num here
+	case CPU_68000: m68k_set_irq(int_type); //add interrupt num here
 		//wrlog("68000 IRQ Called on CPU %d", cpunum);
 		wrlog("INT Taken 68000, type: %d", int_type);
 		break;
@@ -405,7 +405,7 @@ void cpu_do_interrupt(int int_type, int cpunum)
 				//wrlog("INT Taken 6809");
 			}
 			break;
-		case CPU_68000: m68k_set_irq(1);
+		case CPU_68000: m68k_set_irq(int_type);
 				wrlog("INT Taken 68000, type: %d", driver[gamenum].cpu_int_type[active_cpu]);
 			break;
 		}

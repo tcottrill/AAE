@@ -14,7 +14,6 @@
 
 #include "mhavoc.h"
 #include "aae_mame_driver.h"
-#include "aae_avg.h"
 #include "pokyintf.h"
 #include "earom.h"
 #include "5220intf.h"
@@ -365,8 +364,8 @@ WRITE_HANDLER(mhavoc_out_0_w)
 {
 	if (gamenum == MHAVOCPE)
 	{
-		avg_set_flip_x(data & 0x40);
-		avg_set_flip_y(data & 0x80);
+		avg_set_flip_x_mh(data & 0x40);
+		avg_set_flip_y_mh(data & 0x80);
 	}
 
 	if (!(data & 0x08))

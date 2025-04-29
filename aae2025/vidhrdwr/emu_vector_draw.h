@@ -22,7 +22,7 @@
 
 
 typedef struct colorsarray { int r, g, b; } colors;
-extern colors vec_colors[1024];
+extern colors vec_colors[256];
 
 
 class fpoint

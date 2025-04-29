@@ -1450,3 +1450,29 @@ UINT8 ip_port_12_r(UINT32 address, struct MemoryReadByte* psMemRead) { return re
 UINT8 ip_port_13_r(UINT32 address, struct MemoryReadByte* psMemRead) { return readinputport(13); }
 UINT8 ip_port_14_r(UINT32 address, struct MemoryReadByte* psMemRead) { return readinputport(14); }
 UINT8 ip_port_15_r(UINT32 address, struct MemoryReadByte* psMemRead) { return readinputport(15); }
+
+UINT16 ip_port_0_word_r(UINT32 address, struct MemoryReadWord* psMemRead)
+{
+	return readinputport(0);
+}
+
+UINT16 ip_port_1_word_r(UINT32 address, struct MemoryReadWord* psMemRead)
+{
+	return readinputport(1);
+}
+UINT16 ip_port_2_word_r(UINT32 address, struct MemoryReadWord* psMemRead)
+{
+	return readinputport(2);
+}
+UINT16 ip_port_3_word_r(UINT32 address, struct MemoryReadWord* psMemRead)
+{
+	return readinputport(3);
+}
+UINT16 ip_port_4_word_r(UINT32 address, struct MemoryReadWord* psMemRead)
+{
+	return readinputport(4);
+}
+UINT16 ip_port_5_word_r(UINT32 address, struct MemoryReadWord* psMemRead)
+{
+	return readinputport(5);
+}
