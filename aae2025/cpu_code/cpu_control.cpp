@@ -748,6 +748,14 @@ READ_HANDLER(watchdog_reset_r)
 	return 0;
 }
 
+
+// Write Rom
+void watchdog_reset_w16(UINT32 address, UINT16 data, struct MemoryWriteWord* pMemWrite)
+{
+	timer_reset(watchdog_timer, TIME_IN_HZ(4));
+}
+
+
 //Read Ram
 UINT8 MRA_RAM(UINT32 address, struct MemoryReadByte* psMemRead)
 {
@@ -765,6 +773,12 @@ UINT8 MRA_ROM(UINT32 address, struct MemoryReadByte* psMemRead)
 {
 	//wrlog("Address here is %x Lowaddr %x data %x", address, psMemRead->lowAddr, Machine->memory_region[active_cpu][address + psMemRead->lowAddr]);
 	return Machine->memory_region[active_cpu][address + psMemRead->lowAddr];
+}
+
+// Write Rom
+void MWA_NOP16(UINT32 address, UINT16 data, struct MemoryWriteWord* pMemWrite)
+{
+	//If logging add here
 }
 
 // Write Rom

@@ -120,31 +120,13 @@ WRITE_HANDLER16(quantum_led_write)
 		//vector_set_swap_xy(1);	/* vertical game */
 	}
 }
-WRITE_HANDLER16(QMWA_NOP)
-{
-	wrlog("NOOP Write Address: %x Data: %x", address, data);
-}
 
-READ_HANDLER16 (UN_READ)
+READ_HANDLER16(MRA_NOP16)
 {
-	wrlog("--------------------Unhandled Read, %x data: %x", address);
+	//wrlog("--------------------Unhandled Read, %x data: %x", address);
 	return 0;
 }
 
-WRITE_HANDLER16(UN_WRITE)
-{
-	wrlog("--------------------Unhandled Read, %x data: %x", address, data);
-}
-
-READ_HANDLER16(QMRA_NOP)
-{
-	return 0x00;
-}
-
-WRITE_HANDLER16( watchdog_reset_wQ)
-{
-	watchdog_reset_w(0, 0, 0);
-}
 
 READ_HANDLER16(quantum_snd_read)
 {
@@ -168,35 +150,6 @@ WRITE_HANDLER16(quantum_snd_write)
 	else {
 		pokey2_w((address >> 1) & 0xf, data2 & 0xff);
 	}
-}
-
-WRITE_HANDLER16(quantum_colorram_w)
-{
-	int r, g, b;
-	int bit0, bit1, bit2, bit3;
-
-	address = (address & 0xff) >> 1;
-	data = data & 0x00ff;
-
-	bit3 = (~data >> 3) & 1;
-	bit2 = (~data >> 2) & 1;
-	bit1 = (~data >> 1) & 1;
-	bit0 = (~data >> 0) & 1;
-
-	g = bit1 * 0xaa + bit0 * 0x54; //54
-	b = bit2 * 0xdf;
-	r = bit3 * 0xe9; //ce
-
-	if (r > 255)r = 255;
-	// wrlog("vec color set R %d G %d B %d",r,g,b);
-	vec_colors[address].r = r;
-	vec_colors[address].g = g;
-	vec_colors[address].b = b;
-}
-
-WRITE_HANDLER16(avgdvg_resetQ)
-{
-	wrlog("AVG Reset");
 }
 
 
@@ -240,9 +193,9 @@ MEM_READ16(QuantumReadWord)
 { 0x900000, 0x9001ff,  NULL, nv_ram},
 { 0x940000, 0x940001,  quantum_trackball_r, NULL},
 { 0x948000, 0x948001,  quantum_switches_r, NULL },
-//{ 0x950000, 0x95001f,  NULL, color_ram},
-{ 0x960000, 0x9601ff,  UN_READ,NULL },
-{ 0x978000, 0x978001,  QMRA_NOP,NULL },
+{ 0x950000, 0x95001f, NULL, quantum_colorram },
+{ 0x960000, 0x9601ff,  MRA_NOP16,NULL },
+{ 0x978000, 0x978001,  MRA_NOP16,NULL },
 MEM_END
 
 MEM_WRITE16(QuantumWriteWord)
@@ -251,10 +204,10 @@ MEM_WRITE16(QuantumWriteWord)
 { 0x800000, 0x801fff,  NULL,vec_ram},
 { 0x840000, 0x84003f,  quantum_snd_write,NULL },
 { 0x900000, 0x9001ff, NULL, nv_ram },
-{ 0x950000, 0x95001f, quantum_colorram_w, NULL},
+{ 0x950000, 0x95001f, NULL, quantum_colorram},
 { 0x958000, 0x958001, quantum_led_write,NULL },
-{ 0x960000, 0x960001, QMWA_NOP,NULL },	// enable NVRAM?
-{ 0x968000, 0x968001, avgdvg_resetQ,NULL },
+{ 0x960000, 0x960001, MWA_NOP16,NULL },	// enable NVRAM?
+{ 0x968000, 0x968001, avgdvg_reset_word_w,NULL },
 //{ 0x970000, 0x970001,  avgdvg_go_word_w,NULL },
 //{ 0x978000, 0x978001, watchdog_reset_wQ,NULL },
 // the following is wrong, but it's the only way I found to fix the service mode
@@ -279,7 +232,7 @@ int init_quantum()
 	byteswap(program_rom, 0x14000);
 
 	init68k(QuantumReadByte, QuantumWriteByte, QuantumReadWord, QuantumWriteWord,CPU0);
-	avg_init();
+	avg_start_quantum();
 
 	//timer_set(TIME_IN_HZ(246), 0, quantum_interrupt);
 	pokey_sh_start(&pokey_interface);

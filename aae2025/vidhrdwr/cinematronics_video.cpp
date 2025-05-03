@@ -69,53 +69,28 @@ static UINT8 last_control;
 
 void cinemat_vector_callback(INT16 sx, INT16 sy, INT16 ex, INT16 ey, UINT8 shift)
 {
-	/*
+	sx = sx - Machine->drv->visible_area.min_x;
+	ex = ex - Machine->drv->visible_area.min_x;
+	sy = sy - Machine->drv->visible_area.min_y;
+	ey = ey - Machine->drv->visible_area.min_y;
 
-	// adjust for slop
-	sx = sx - visarea->min_x;
-	ex = ex - visarea->min_x;
-	sy = sy - visarea->min_y;
-	ey = ey - visarea->min_y;
-   */
-
-	int r, g, b;
-	int intensity = 0;
-	//if (fromx < MinX) MinX = fromx;
-	//if (tox < MinX) MinX = tox;
-	//if (fromy < MinY) MinY = fromy;
-	//if (toy < MinY) MinY = toy;
-	//if (fromx > MaxX) MaxX = fromx;
-	//if (tox > MaxX) MaxX = tox;
-	//if (fromy > MaxY) MaxY = fromy;
-	//if (toy > MaxY) MaxY = toy;
-
-	  //temp_word = toy;
-	  //toy = tox;
-	  //tox = temp_word;
-
-	  //temp_word = fromy;
-	  //fromy = fromx;
-	  //fromx = temp_word;
-   // wrlog("SX %x SY %x EX %x EY %x",sx,sy,ex,ey);
-
+	int intensity = 0xff;
+	
 	if (bSwapXY)
 	{
 		SWAPV(sx, sy);
 		SWAPV(ex, ey);
 	}
 
-	r = RGB_RED(vector_color);
-	g = RGB_GREEN(vector_color);
-	b = RGB_BLUE(vector_color);
-
-	if (sx == ex && sy == ey) {
+	if (sx == ex && sy == ey) 
+	{
 		intensity = 0x1ff * shift / 8;
-		//cache_txt(sx, sy, 4, 0xff); //Keep constant intensity for now
-		//add_tex(sx, sy, 0xff, 0xff);
-	}  //fake intensity
+	} 
 
-	//add_color_line(sx, sy, ex, ey, r, g, b);
-	add_line(sx, sy, ex, ey, MAKE_BGR(r, g, b), MAKE_BGR(r, g, b));
+	if (sx != lastx || sy != lasty)
+		add_line(sx, sy, ex, ey, intensity, vector_color);
+
+	add_line(sx, sy, ex, ey, intensity, vector_color);
 
 	lastx = ex;
 	lasty = ey;

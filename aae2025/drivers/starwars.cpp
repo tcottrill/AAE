@@ -340,8 +340,7 @@ int init_starwars(void)
 	init6809(starwars_readmem, starwars_writemem, 0);
 	init6809(starwars_audio_readmem, starwars_audio_writemem, 1);
 	translate_proms();
-	avg_init();
-	cache_clear();
+	avg_start_starwars();
 
 	return 0;
 }

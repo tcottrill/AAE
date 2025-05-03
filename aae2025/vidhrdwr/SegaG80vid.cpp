@@ -14,6 +14,7 @@
 #include "segag80.h"
 #include <math.h>
 #include "aae_mame_driver.h"
+#include "cohen_sutherland_clipping.h"
 
 #pragma warning( disable : 4996 4244)
 
@@ -53,6 +54,12 @@ uint8_t pal2bit(UINT8 bits)
 #define IRQ_CLOCK			(U34_CLOCK/0x1f788)	/* 40Hz interrupt */
 
 static int min_x, min_y;
+
+
+static int s1x;
+static int s1y;
+static int e1x;
+static int e1y;
 
 int sega_vh_start(int r)
 {
@@ -228,7 +235,8 @@ void sega_vh_update(void)
 
 			/* Add a starting point to the vector list. */
 			clipped = adjust_xy(curx, cury, &adjx, &adjy);
-			if (!clipped) sx = adjx; sy = adjy;
+			if (!clipped) 
+              sx = adjx; sy = adjy;
 			//vector_add_point(adjx, adjy, 0, 0);
 
 		/* Loop until we run out of time. */
@@ -336,6 +344,7 @@ void sega_vh_update(void)
 					/* the beam is turned off, but the computations continue right */
 					/* on going. */
 					newclip = adjust_xy(curx, cury, &adjx, &adjy);
+					set_clip_rect(0, 100, 1536, 900); // bottom, right, top, left
 					if (newclip != clipped)
 					{
 						/* if we're just becoming unclipped, add an empty point */
@@ -350,17 +359,20 @@ void sega_vh_update(void)
 							{
 								if (sega_rotate)
 								{
-									add_line((sy >> 16), (sx >> 16), (adjy >> 16), (adjx >> 16), color,color);
-									//add_color_line((sy >> 16), (sx >> 16), (adjy >> 16), (adjx >> 16), color);
-									//add_color_point((sy >> 16), (sx >> 16), color);
-									//add_color_point((adjy >> 16), (adjx >> 16), color);
+									s1x = sx >> 16;
+									s1y = sy >> 16;
+									e1x = adjx >> 16;
+									e1y = adjy >> 16;
+									//set_clip_rect(230, 240, 780, 1030);
+									int clip = ClipLine(&s1x, &s1y, &e1x, &e1y);
+									if (clip) add_line(s1y, s1x, e1y, e1x, (intensity << 4) | 0x0f, color);
+
+									//add_line((sy >> 16), (sx >> 16), (adjy >> 16), (adjx >> 16), (intensity << 4) | 0x0f,color);
 								}
 
-								else {
-									add_line((sx >> 16), (sy >> 16), (adjx >> 16), (adjy >> 16), color, color);
-									//add_color_line((sx >> 16), (sy >> 16), (adjx >> 16), (adjy >> 16), color);
-									//add_color_point((sx >> 16), (sy >> 16), color);
-									//add_color_point((adjx >> 16), (adjy >> 16), color);
+								else 
+								{
+								add_line((sx >> 16), (sy >> 16), (adjx >> 16), (adjy >> 16), (intensity << 4) | 0x0f, color);
 								}
 							}
 						}
@@ -377,17 +389,21 @@ void sega_vh_update(void)
 					{
 						if (sega_rotate)
 						{
-							add_line((sy >> 16), (sx >> 16), (adjy >> 16), (adjx >> 16), color, color);
-							//add_color_line((sy >> 16), (sx >> 16), (adjy >> 16), (adjx >> 16), color);
-							//add_color_point((sy >> 16), (sx >> 16), color);
-							//add_color_point((adjy >> 16), (adjx >> 16), color);
+							s1x = sx >> 16;
+							s1y = sy >> 16;
+							e1x = adjx >> 16;
+							e1y = adjy >> 16; 
+							//set_clip_rect(0, 100, 1500, 900);
+							int clip = ClipLine(&s1x, &s1y, &e1x, &e1y);
+							if (clip) add_line(s1y, s1x, e1y, e1x, (intensity << 4) | 0x0f, color);
+
+							//add_line((sy >> 16), (sx >> 16), (adjy >> 16), (adjx >> 16), (intensity << 4) | 0x0f, color);
+							
 						}
 
 						else {
-							add_line((sx >> 16), (sy >> 16), (adjx >> 16), (adjy >> 16), color, color);
-							//add_color_line((sx >> 16), (sy >> 16), (adjx >> 16), (adjy >> 16), color);
-							//add_color_point((sx >> 16), (sy >> 16), color);
-							//add_color_point((adjx >> 16), (adjy >> 16), color);
+							add_line((sx >> 16), (sy >> 16), (adjx >> 16), (adjy >> 16), (intensity << 4) | 0x0f, color);
+							
 						}
 					}
 				}

@@ -40,29 +40,6 @@ rgb_t cache_tex_color(int intensity, rgb_t col)
 	return col;
 }
 
-rgb_t cache_color(int intensity, rgb_t col)
-{
-	UINT8* test = (UINT8*)&col;
-	
-	//wrlog("intensity here is %x", intensity);
-
-	if (Machine->gamedrv->video_attributes & VECTOR_USES_COLOR)
-	{
-		test[0] = clip((test[0]) + config.gain / 3, 0, 0xff);
-		test[1] = clip((test[1]) + config.gain / 3, 0, 0xff);
-		test[2] = clip((test[2]) + config.gain / 3, 0, 0xff);
-		test[3] = clip(intensity/2 + config.gain / 3, 0, 0xff);
-	
-	}
-	else
-	test[0] = clip((test[0]) + config.gain, 0, 0xff);
-	test[1] = clip((test[1]) + config.gain, 0, 0xff);
-	test[2] = clip((test[2]) + config.gain, 0, 0xff);
-	test[3] = clip(intensity + config.gain, 0, 0xff);
-
-	return col;
-}
-
 void cache_texpoint(float ex, float ey, float tx, float ty, int intensity, rgb_t col)
 {
 	texlist.emplace_back(ex - xoffset, ey - yoffset, tx, ty, cache_tex_color(intensity, col));
@@ -70,8 +47,29 @@ void cache_texpoint(float ex, float ey, float tx, float ty, int intensity, rgb_t
 
 void add_line(float sx, float sy, float ex, float ey, int intensity, rgb_t col)
 {
-	linelist.emplace_back(sx, sy, (cache_color(intensity, col)));
-	linelist.emplace_back(ex, ey, (cache_color(intensity, col)));
+
+	UINT8* test = (UINT8*)&col;
+	rgb_t temp_col;
+	rgb_t temp_half_col;
+
+	test[0] = clip((test[0] & intensity) + config.gain, 0, 0xff);
+	test[1] = clip((test[1] & intensity) + config.gain, 0, 0xff);
+	test[2] = clip((test[2] & intensity) + config.gain, 0, 0xff);
+	test[3] = 0xff;
+	//test[3] = clip(intensity + config.gain, 0, 0xff);
+	temp_col = col;
+
+	if (Machine->drv->video_attributes & VECTOR_USES_COLOR)
+	{
+		test[0] = clip((test[0] & intensity) + config.gain / 2, 0, 0xff);
+		test[1] = clip((test[1] & intensity) + config.gain / 2, 0, 0xff);
+		test[2] = clip((test[2] & intensity) + config.gain / 2, 0, 0xff);
+		test[3] = 0x7f;
+		temp_half_col = col;
+	}
+
+	linelist.emplace_back(sx, sy, temp_col, temp_half_col);
+	linelist.emplace_back(ex, ey, temp_col, temp_half_col);
 }
 
 void add_tex(float ex, float ey, int intensity, rgb_t col)
@@ -120,9 +118,16 @@ void draw_all()
 
 	glColorPointer(4, GL_UNSIGNED_BYTE, sizeof(fpoint), &linelist[0].color);
 	glVertexPointer(2, GL_FLOAT, sizeof(fpoint), &linelist[0].x);
-
-	glDrawArrays(GL_POINTS, 0, (GLsizei)linelist.size());
+	// Draw Our Lines
 	glDrawArrays(GL_LINES, 0, (GLsizei)linelist.size());
+	// Change our color array
+	if (Machine->drv->video_attributes & VECTOR_USES_COLOR)
+	{
+		glColorPointer(3, GL_UNSIGNED_BYTE, sizeof(fpoint), &linelist[0].colorshalf);
+	}
+	glDrawArrays(GL_POINTS, 0, (GLsizei)linelist.size());
+
+	
 
 	glDisableClientState(GL_VERTEX_ARRAY);
 	glDisableClientState(GL_COLOR_ARRAY);

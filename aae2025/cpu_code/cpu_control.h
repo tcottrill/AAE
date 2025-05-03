@@ -118,6 +118,7 @@ void free_cpu_memory();
 
 //Watchdog Defines from cpu_handler.cpp
 extern void watchdog_reset_w(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite);
+void watchdog_reset_w16(UINT32 address, UINT16 data, struct MemoryWriteWord* pMemWrite);
 extern UINT8 watchdog_reset_r(UINT32 address, struct MemoryReadByte* psMemRead);
 extern void watchdog_callback(int param);
 extern UINT8 MRA_RAM(UINT32 address, struct MemoryReadByte* psMemRead);
@@ -126,8 +127,7 @@ extern void MWA_ROM(UINT32 address, UINT8 data, struct MemoryWriteByte* pMemWrit
 extern void MWA_ROM16(UINT32 address, UINT16 data, struct MemoryWriteWord* pMemWrite);
 extern void MWA_RAM(UINT32 address, UINT8 data, struct MemoryWriteByte* pMemWrite);
 extern void MWA_NOP(UINT32 address, UINT8 data, struct MemoryWriteByte* pMemWrite);
-
-//16bit memory handlers for the 68000 cpu
+extern void MWA_NOP16(UINT32 address, UINT16 data, struct MemoryWriteWord* pMemWrite);
 
 
 #endif

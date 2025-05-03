@@ -166,7 +166,7 @@ WRITE_HANDLER(BzoneSounds)
 	else { soundEnable = 0; }
 
 	// If sound is off, don't bother playing samples
-	if (!soundEnable) { sample_stop(3); return; }
+	if (!soundEnable) { sample_stop(3); sample_stop(7); return; }
 
 	if (lastValue == data) return;
 	lastValue = data;
@@ -188,8 +188,12 @@ WRITE_HANDLER(BzoneSounds)
 	// Enable engine output
 	if (data & 0x80)
 	{
-		if (data & 0x10) sample_set_freq(3, 33000); // Fast rumble
-		else sample_set_freq(3, 22050); // Slow rumble
+		if (data & 0x10)
+		{ sample_set_freq(3, config.samplerate * 1.66); }// Fast rumble
+		else
+		{
+		 sample_set_freq(3, config.samplerate); // Slow rumble  
+		}	
 	}
 }
 
@@ -289,8 +293,7 @@ int init_redbaron()
 	
 	init6502(RedBaronRead, RedBaronWrite, 0x7fff, CPU0);
 	pokey_sh_start(&rb_pokey_interface);
-	avg_init();
-	avg_clear();
+	avg_start_redbaron();
 	bzone_timer = timer_set(TIME_IN_HZ(240), CPU0, bzone_interrupt);
 
 	return 0;
@@ -300,9 +303,7 @@ int init_bzone()
 {
 	init6502(BzoneRead, BzoneWrite, 0x7fff, CPU0);
 	pokey_sh_start(&bzone_pokey_interface);
-	
-	avg_init();
-	avg_clear();
+	avg_start_bzone();
 	bzone_timer = timer_set(TIME_IN_HZ(240), CPU0, bzone_interrupt);
 
 	return 0;

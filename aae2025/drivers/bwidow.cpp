@@ -210,7 +210,7 @@ int init_bwidow()
 {
 	pokey_sh_start(&pokey_interface);
 	init6502(BwidowRead, BwidowWrite, 0xffff, CPU0);
-	avg_init();
+	avg_start();
 	timer_set(TIME_IN_HZ(246), CPU0, bwidow_interrupt);
 	return 1;
 }
@@ -219,7 +219,7 @@ int init_spacduel()
 {
 	pokey_sh_start(&pokey_interface);
 	init6502(SpaceDuelRead, SpaceDuelWrite, 0xffff, CPU0);
-	avg_init();
+	avg_start();
 	timer_set(TIME_IN_HZ(246), CPU0, bwidow_interrupt);
 
 	sample_set_volume(1, 5);

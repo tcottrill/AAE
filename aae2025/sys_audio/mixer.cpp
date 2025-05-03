@@ -451,9 +451,15 @@ int sample_get_position(int chanid)
 }
 
 // This goes from 0 to 100, with 100 being the original level.
+// Changed back to 255 for AAE
 void sample_set_volume(int chanid, int volume)
 {
 	channel[chanid].vol = db_volume[volume];
+	
+	if (channel[chanid].voice)
+	{
+		channel[chanid].voice->SetVolume(volume / 255.0f);
+	}
 	//wrlog("Setting channel %i to with volume %i setting bvolume %f", chanid, volume, channel[chanid].vol);
 };
 

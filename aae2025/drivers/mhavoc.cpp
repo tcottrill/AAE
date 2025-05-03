@@ -349,9 +349,13 @@ WRITE_HANDLER(avg_mgo)
 		// Clear the video tick count.
 		get_video_ticks(0xff);
 		// sweep = 3.75 * total_length;
-		sweep = 2.268 * total_length;
-		//sweep = (float)(TIME_IN_NSEC(1500) * total_length) * 1250000;//1512000;// driver[gamenum].cpu_freq[CPU0];
-		//wrlog("Total Time in cycles for video  %f, total_length %d", sweep, total_length);
+		//sweep = 2.268 * total_length;
+
+		// There is a method to this madness, the time for the sweep is what it should be if the game was running 30FPS instead of 50. 
+		//That's why the multiplication by 1.666
+		sweep = (float)(TIME_IN_NSEC(1500) * total_length) * driver[gamenum].cpu_freq[CPU0]; // This is the rough time for 50fps.
+		sweep = sweep * 1.666;
+		wrlog("Total Time in cycles for video  %f, total_length %d", sweep, total_length);
 		
 		if (config.debug_profile_code) {
 			wrlog("Sweep Timer %f", sweep);

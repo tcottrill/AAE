@@ -18,7 +18,7 @@ static int flip_x;
 static int flip_y;
 static int swap_xy;
 
-static int scale_factor = 3;
+static int scale_adj = 3;
 
 int vector_timer_mh(int deltax, int deltay)
 {
@@ -33,7 +33,7 @@ int vector_timer_mh(int deltax, int deltay)
 
 void mhavoc_colorram_w(UINT32 address, UINT8 data, struct MemoryWriteByte* pMemWrite)
 {
-	if (scale_factor == 3)
+	if (scale_adj == 3)
 		Machine->memory_region[CPU0][address + 0x1400] = data;
 	else
 		Machine->memory_region[CPU0][address + 0x10e0] = data;
@@ -116,7 +116,7 @@ void mhavoc_video_update(void)
 	color = 0;
 	scale = 0;
 	int data = 0;
-
+	int oldscale = 0;
 	int bit3;
 	int bit2;
 	int bit1;
@@ -177,7 +177,8 @@ void mhavoc_video_update(void)
 			if (xflip) deltax = -deltax;
 			deltay = y * scale;
 
-			total_length += vector_timer_mh(deltax, deltay);
+			//total_length += vector_timer_mh(deltax, deltay);
+			total_length += vector_timer(x * oldscale, y * oldscale);
 			//	wrlog("Total length here is %d ---------------->", vector_timer_mh(deltax, deltay));
 			if (z)
 			{
@@ -287,7 +288,8 @@ void mhavoc_video_update(void)
 			scale = (l << 16) >> b;
 			//scalef = scale;
 			//Triple the scale for 1024x768 resolution, double for AlphaOne
-			scale = scale * scale_factor;
+			oldscale = scale;
+			scale = scale * scale_adj;
 
 			if (firstwd & 0x0800)
 			{
@@ -305,8 +307,8 @@ void mhavoc_video_update(void)
 
 		case 4:
 			d = firstwd & 0xff;
-			currentx = 500 << 16;
-			currenty = 512 << 16;
+			currentx = xcenter;
+			currenty = ycenter;
 
 			break;
 
@@ -375,25 +377,22 @@ void mhavoc_video_update(void)
 
 void mhavoc_video_init(int scale)
 {
-	scale_factor = scale;
+	scale_adj = scale;
 	// Start with clear video cache
 	cache_clear();
 
-	/* compute the min/max values */
-	xmin = 0;
-	ymin = 0;
-	xmax = 1024;
-	ymax = 812;
-	width = xmax - xmin;
-	height = ymax - ymin;
+	xmin = Machine->drv->visible_area.min_x;
+	ymin = Machine->drv->visible_area.min_y;
+	xmax = Machine->drv->visible_area.max_x * scale;
+	ymax = (Machine->drv->visible_area.max_y * scale) * 1.3;
 
-	/* determine the center points */
-	xcenter = ((xmax + xmin) / 2);// << 16;
-	ycenter = ((ymax + ymin) / 2);// << 16;
+	xcenter = ((xmax + xmin) / 2) << 16;
+	ycenter = ((ymax + ymin) / 2) << 16;
+
 
 	/* initialize to no avg flipping */
 	flip_x = flip_y = 0;
 	swap_xy = 0;
 	mhavoc_colorram = &memory_region(REGION_CPU1)[0x1400];
-	if (scale_factor == 2) { mhavoc_colorram = &memory_region(REGION_CPU1)[0x10e0]; }
+	if (scale_adj == 2) { mhavoc_colorram = &memory_region(REGION_CPU1)[0x10e0]; }
 }

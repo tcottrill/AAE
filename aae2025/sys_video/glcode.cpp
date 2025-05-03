@@ -851,7 +851,7 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 	// HACKY WAY TO ADD BEZEL TO VERTICAL GAMES
 	// This is for the tempest and tacscan vertical bezels.
 	// This needs to be reinplemented/removed with clipping/rotation.
-
+	/*
 	if (Machine->gamedrv->rotation & ORIENTATION_ROTATE_270 && config.bezel == 0 && gamenum)
 	{
 		set_texture(&art_tex[2], 1, 0, 0, 1);
@@ -861,8 +861,8 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 		Centered_Rect(0, 1024); //Tempest
 		glDisable(GL_ALPHA_TEST);
 	}
-
-
+	*/
+	
 	if (config.bezel && art_loaded[3] && gamenum) {
 		if (config.artcrop)
 		{
@@ -880,6 +880,7 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 		glDisable(GL_DEPTH_TEST);
 		glDisable(GL_ALPHA_TEST);
 	}
+	
 	glLoadIdentity();
 
 	video_loop();

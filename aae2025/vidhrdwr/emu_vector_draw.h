@@ -31,9 +31,10 @@ public:
 	float x;
 	float y;
 	rgb_t color;
+	rgb_t colorshalf;
 	
-	fpoint(float x, float y, rgb_t color ) : x(x), y(y), color(color) {}
-	fpoint() : x(0), y(0), color(0) {}
+	fpoint(float x, float y, rgb_t color, rgb_t colorshalf) : x(x), y(y), color(color), colorshalf(colorshalf) {}
+	fpoint() : x(0), y(0), color(0), colorshalf(0) {}
 	~fpoint() {};
 };
 
@@ -45,6 +46,7 @@ public:
 	float x, y;
 	float tx, ty;
 	rgb_t color;
+	
 
 	txdata() : x(0), y(0), tx(0), ty(0), color(0) { }
 	txdata(float x, float y, float tx, float ty, rgb_t color) : x(x), y(y), tx(tx), ty(ty), color(color) {}
@@ -60,7 +62,7 @@ void draw_all();
 void set_texture_id(GLuint *id);
 void set_blendmode(GLenum sfactor, GLenum dfactor);
 void cache_clear();
-rgb_t cache_color(int intensity, rgb_t col);
+//rgb_t cache_color(int intensity, rgb_t col);
 rgb_t cache_tex_color(int intensity, rgb_t col);
 void cache_texpoint(float ex, float ey, float tx, float ty, int intensity, rgb_t col);
 

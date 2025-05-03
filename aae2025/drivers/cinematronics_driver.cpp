@@ -391,7 +391,7 @@ int init_boxingb()
 	init_cinemat();
 	init_cinemat_snd(boxingb_sound);
 	video_type_set(COLOR_RGB, 0);
-	init_ccpu(0, 32);
+	init_ccpu(0, CCPU_MEMSIZE_32K);
 	return 1;
 }
 
@@ -400,7 +400,7 @@ int init_wotw()
 	init_cinemat();
 	init_cinemat_snd(wotwc_sound);
 	video_type_set(COLOR_RGB, 0);
-	init_ccpu(0, 16);
+	init_ccpu(0, CCPU_MEMSIZE_16K);
 	return 1;
 }
 

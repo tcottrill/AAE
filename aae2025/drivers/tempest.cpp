@@ -436,6 +436,7 @@ WRITE_HANDLER(colorram_w)
 	vec_colors[address].r = r;
 	vec_colors[address].g = g;
 	vec_colors[address].b = b;
+	Machine->memory_region[CPU0][address + 0x800] = data;
 }
 
 WRITE_HANDLER(avg_reset_w)
@@ -549,7 +550,7 @@ int init_tempestm()
 	INMENU = 1;
 
 	pokey_sh_start(&pokey_interface);
-	avg_init();
+	avg_start_tempest();
 
 	return 0;
 }
@@ -575,7 +576,7 @@ int init_tempest(void)
 	}
 
 	pokey_sh_start(&pokey_interface);
-	avg_init();
+	avg_start_tempest();
 
 	//timer_set(TIME_IN_HZ(240), CPU0, tempest_interrupt);
 

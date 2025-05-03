@@ -138,8 +138,10 @@ void ripoff_sound(UINT8 sound_val, UINT8 bits_changed)
 			if (current_shift & 0x08)
 				sample_stop(5);
 			else
+			{
 				sample_start(5, 5 + last_bg_sound, 1);	// Background
-			sample_set_volume(5, 65);
+				sample_set_volume(5, 150);
+			}
 		}
 
 		if ((shift_diff & 0x10) && (0 == (current_shift & 0x10)))
@@ -771,8 +773,9 @@ void boxingb_sound(UINT8 sound_val, UINT8 bits_changed)
 
 		/* set the volume */
 		vol = (~current_shift >> 12) & 3;
-		sample_set_volume(8, vol / 3.0);
-
+		if (vol) sample_set_volume(8, 255);
+		else  sample_set_volume(8, 0);
+		
 		/* cannon - falling edge */
 		if (SHIFTREG2_RISING_EDGE(0x4000))
 			sample_start(9, 9, 0);

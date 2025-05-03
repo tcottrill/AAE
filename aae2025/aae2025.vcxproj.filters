@@ -375,6 +375,9 @@
     <ClInclude Include="drivers\aztarac.h">
       <Filter>Source Files\drivers</Filter>
     </ClInclude>
+    <ClInclude Include="vidhrdwr\cohen_sutherland_clipping.h">
+      <Filter>Source Files\vidhrdwr</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="sys_window\rawinput.cpp">
@@ -643,6 +646,9 @@
     </ClCompile>
     <ClCompile Include="drivers\aztarac.cpp">
       <Filter>Source Files\drivers</Filter>
+    </ClCompile>
+    <ClCompile Include="vidhrdwr\cohen_sutherland_clipping.cpp">
+      <Filter>Source Files\vidhrdwr</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

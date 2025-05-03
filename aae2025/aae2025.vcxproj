@@ -240,6 +240,7 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClInclude>
     <ClInclude Include="vidhrdwr\cinematronics_video.h" />
+    <ClInclude Include="vidhrdwr\cohen_sutherland_clipping.h" />
     <ClInclude Include="vidhrdwr\emu_vector_draw.h" />
     <ClInclude Include="vidhrdwr\fast_poly.h" />
     <ClInclude Include="vidhrdwr\mhavoc_custom_video.h" />
@@ -339,6 +340,7 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="vidhrdwr\cinematronics_video.cpp" />
+    <ClCompile Include="vidhrdwr\cohen_sutherland_clipping.cpp" />
     <ClCompile Include="vidhrdwr\emu_vector_draw.cpp" />
     <ClCompile Include="vidhrdwr\fast_poly.cpp" />
     <ClCompile Include="vidhrdwr\mhavoc_custom_video.cpp" />
