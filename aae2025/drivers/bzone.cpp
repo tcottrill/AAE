@@ -1,5 +1,18 @@
 /* Battlezone Emu */
 
+//============================================================================
+// AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME
+// code, 0.29 through .90 mixed with code of my own. This emulator was
+// created solely for my amusement and learning and is provided only
+// as an archival experience.
+//
+// All MAME code used and abused in this emulator remains the copyright
+// of the dedicated people who spend countless hours creating it. All
+// MAME code should be annotated as belonging to the MAME TEAM.
+//
+// THE CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.
+//============================================================================
+
 #include "bzone.h"
 #include "aae_mame_driver.h"
 #include "aae_avg.h"
@@ -185,13 +198,15 @@ WRITE_HANDLER(BzoneSounds)
 		else { sample_start(2, 1, 0); } // soft shell
 	}
 
-	// Enable engine output
+	// Enable engine output, really missing the volume ramp here. 
 	if (data & 0x80)
 	{
 		if (data & 0x10)
-		{ sample_set_freq(3, config.samplerate * 1.66); }// Fast rumble
+		{ 	//Data is 0xb0
+			sample_set_freq(3, config.samplerate * 1.66); 
+		}// Fast rumble
 		else
-		{
+		{//data is 0xa0
 		 sample_set_freq(3, config.samplerate); // Slow rumble  
 		}	
 	}

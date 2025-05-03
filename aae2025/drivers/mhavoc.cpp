@@ -261,7 +261,7 @@ void run_reset()
 	alpha_irq_clock = 0;
 	alpha_irq_clock_enable = 1;
 	gamma_irq_clock = 0;
-	MHAVGDONE = 0;
+	MHAVGDONE = 1;
 	alpha_data = 0;
 	alpha_rcvd = 0;
 	alpha_xmtd = 0;
@@ -331,6 +331,11 @@ WRITE_HANDLER(mhavoc_gamma_irq_ack_w)
 	gamma_irq_clock = 0;
 }
 
+static void mhavoc_clr_busy(int dummy)
+{
+    MHAVGDONE = 1;
+}
+
 WRITE_HANDLER(avgdvg_reset_w)
 {
 	wrlog("---------------------------AVGDVG RESET ------------------------");
@@ -339,7 +344,7 @@ WRITE_HANDLER(avgdvg_reset_w)
 
 WRITE_HANDLER(avg_mgo)
 {
-	if (MHAVGDONE == 0) { return; }
+	if (!MHAVGDONE) { return; }
 
 	mhavoc_video_update();
 
@@ -348,14 +353,11 @@ WRITE_HANDLER(avg_mgo)
 		MHAVGDONE = 0;
 		// Clear the video tick count.
 		get_video_ticks(0xff);
-		// sweep = 3.75 * total_length;
-		//sweep = 2.268 * total_length;
-
+	
 		// There is a method to this madness, the time for the sweep is what it should be if the game was running 30FPS instead of 50. 
 		//That's why the multiplication by 1.666
 		sweep = (float)(TIME_IN_NSEC(1500) * total_length) * driver[gamenum].cpu_freq[CPU0]; // This is the rough time for 50fps.
 		sweep = sweep * 1.666;
-		wrlog("Total Time in cycles for video  %f, total_length %d", sweep, total_length);
 		
 		if (config.debug_profile_code) {
 			wrlog("Sweep Timer %f", sweep);
@@ -398,16 +400,16 @@ WRITE_HANDLER(mhavoc_out_1_w)
 READ_HANDLER(mhavoc_port_0_r)
 {
 	UINT8 res;
-
+	
 	if (!MHAVGDONE)
 	{
-		if ((get_video_ticks(0) > sweep) && MHAVGDONE == 0)
+		if (get_video_ticks(0) > sweep)
 		{
-			MHAVGDONE = 1;
-			total_length = 0;
+			mhavoc_clr_busy(0);
+			//wrlog("Mhavoc DONE Set HERE %x at Frame %d Cycles %d", MHAVGDONE, cpu_getcurrentframe(), cpu_getcycles_cpu(0));
 		}
 	}
-
+	
 	// Bits 7-6 = selected based on Player 1
 		// Bits 5-4 = common
 	if (player_1)
@@ -465,7 +467,7 @@ READ_HANDLER(alphaone_port_0_r)
 
 	if (!MHAVGDONE)
 	{
-		if ((get_video_ticks(0) > sweep) && MHAVGDONE == 0)
+		if (get_video_ticks(0) > sweep) 
 		{
 			MHAVGDONE = 1;
 			total_length = 0;
@@ -697,7 +699,7 @@ int init_mhavoc(void)
 	alpha_irq_clock = 0;
 	alpha_irq_clock_enable = 1;
 	gamma_irq_clock = 0;
-	MHAVGDONE = 0;
+	MHAVGDONE = 1;
 	alpha_data = 0;
 	alpha_rcvd = 0;
 	alpha_xmtd = 0;

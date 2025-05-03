@@ -84,7 +84,6 @@ int timer_set(double duration, int param, int data, void (*callback)(int))
 		if (timer[x].enabled == 0)
 		{
 			timer[x].cpu = (int8_t)param & 0x0f;
-			//timer[x].period = (Machine->drv->cpu[(int8_t)param & 0x0f].cpu_clock * duration); 
 			timer[x].period = driver[gamenum].cpu_freq[(int8_t)param & 0x0f] * duration;
 
 			if (VERBOSE) { wrlog("Timer %d duration %f + Current: %d  cpuclock %d", x, timer[x].period, cpu_getcycles(timer[x].cpu), driver[gamenum].cpu_freq[(int8_t)param & 0x0f] ); }

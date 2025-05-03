@@ -566,6 +566,9 @@ void run_game(void)
 
 void emulator_run()
 {
+	if (config.debug_profile_code) {
+		wrlog("Start of Frame");
+	}
 	// Load High Score
 	if (hiscoreloaded == 0 && driver[gamenum].hiscore_load)
 		hiscoreloaded = (*driver[gamenum].hiscore_load)();
@@ -581,14 +584,18 @@ void emulator_run()
 		osd_poll_joysticks();
 
 		//if (driver[gamenum].pre_run) driver[gamenum].pre_run();
-		wrlog("Calling CPU Run Mame");
+		if (config.debug_profile_code) {
+			wrlog("Calling CPU Run Mame");
+		}
 		cpu_run_mame();
 		if (driver[gamenum].run_game)driver[gamenum].run_game();
 	}
 
 	auto end = chrono::steady_clock::now();
 	auto diff = end - start;
-	wrlog("Profiler: CPU Time: %f ", chrono::duration <double, milli>(diff).count());
+	if (config.debug_profile_code) {
+		wrlog("Profiler: CPU Time: %f ", chrono::duration <double, milli>(diff).count());
+	}
 	// Complete and display the rendered frame.
 	render();
 
@@ -602,9 +609,11 @@ void emulator_run()
 
 	frames++;
 	if (frames > 0xfffffff) { frames = 0; }
-	wrlog("Debug Remove: Mixer Update Start");
+	//wrlog("Debug Remove: Mixer Update Start");
 	mixer_update();
-	wrlog("END OF FRAME");
+	if (config.debug_profile_code) {
+		wrlog("End of Frame");
+	}
 }
 
 void emulator_init(int argc, char** argv)

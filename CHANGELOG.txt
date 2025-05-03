@@ -142,6 +142,8 @@ Cleaned up and rewrote the quantum driver. Completed the 68000 integration and w
 Biggest re-write of the vector code to date. Completely rewrote the Atari AVG code, finished cleanup of the 68000 code, fixes to sound and video in all cinematronics games, fixed audio in Lunar Lander and Battlezone. Added skeleton Aztarac driver. Added vector clipping, removed the bezels from the vertical games, improving the video quality. Changed the color vector rendering, should be a slight improvement. 
 Fixed volume handling in my mixer code. 
 
+5/3/25 Small cleanups. TODO: Massive starwars rewrite to add ESB support., Finish adding Aztarac, fix broken menu items, fix command line arguments, add vertical game screen rotation. 
+
 
 
 

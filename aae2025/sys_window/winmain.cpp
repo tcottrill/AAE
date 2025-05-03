@@ -557,7 +557,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 		else
 		{
 			// Run Emulator Here.
-			wrlog("starting emulator run");
+			if (config.debug_profile_code) { wrlog("starting emulator run"); }
 			emulator_run();
 		
 			int err = glGetError();
@@ -565,7 +565,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 			{
 				wrlog("openglerror in before swap buffer: %d", err);
 			}
-			wrlog("Swapping Buffers");
+			if (config.debug_profile_code) { wrlog("Swapping Buffers"); }
 			GLSwapBuffers();
 			err = glGetError();
 			if (err != 0)

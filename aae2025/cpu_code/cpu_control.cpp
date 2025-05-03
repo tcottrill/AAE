@@ -148,7 +148,7 @@ void init68k(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct 
 
 
 // **************************************************************************
-// Only used By Battlezone, tempest and spaceduel
+// Used by several games
 void add_eterna_ticks(int cpunum, int ticks)
 {
 	eternaticks[cpunum] += ticks;
@@ -251,7 +251,9 @@ void cpu_clear_cyclecount_eof()
 
 	for (x = 0; x < totalcpu; x++)
 	{
-		wrlog("Clear CPU#: %d count at clear is: %d", x, cyclecount[x]);
+		if (config.debug_profile_code) {
+			wrlog("Clear CPU#: %d count at clear is: %d", x, cyclecount[x]);
+		}
 		cyclecount[x] = 0;
 	}
 }
@@ -260,21 +262,7 @@ int get_current_cpu()
 {
 	return active_cpu;
 }
-/*
-int cpu_getcycles(int reset) //Only returns cycles from current context cpu
-{
-	int ticks = 0;
 
-	switch (driver[gamenum].cpu_type[active_cpu])
-	{
-	case CPU_MZ80:  ticks = m_cpu_z80[active_cpu]->mz80GetElapsedTicks(reset); break;
-	case CPU_M6502: ticks = m_cpu_6502[active_cpu]->get6502ticks(reset); break;
-	case CPU_68000: ticks = s68000controlOdometer(reset); break;
-	case CPU_M6809: ticks = m_cpu_6809[active_cpu]->get6809ticks(reset); break;
-	}
-	return ticks;
-}
-*/
 void cpu_setcontext(int cpunum)
 {
 	switch (driver[gamenum].cpu_type[cpunum])
@@ -748,13 +736,11 @@ READ_HANDLER(watchdog_reset_r)
 	return 0;
 }
 
-
 // Write Rom
 void watchdog_reset_w16(UINT32 address, UINT16 data, struct MemoryWriteWord* pMemWrite)
 {
 	timer_reset(watchdog_timer, TIME_IN_HZ(4));
 }
-
 
 //Read Ram
 UINT8 MRA_RAM(UINT32 address, struct MemoryReadByte* psMemRead)
@@ -898,7 +884,7 @@ void m68k_write_memory_8(unsigned int address, unsigned int value)
 		}
 		MemWrite++;
 	}
-	wrlog("Unhandled Memory 8 Read: addr: %x", address);
+	//wrlog("Unhandled Memory 8 Write: addr: %x", address);
 }
 
 unsigned int m68k_read_memory_16(unsigned int address)

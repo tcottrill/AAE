@@ -235,10 +235,6 @@
     <ClInclude Include="texrect.h" />
     <ClInclude Include="texrect2dvbo.h" />
     <ClInclude Include="vidhrdwr\aae_avg.h" />
-    <ClInclude Include="vidhrdwr\avgdvg.h">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
-    </ClInclude>
     <ClInclude Include="vidhrdwr\cinematronics_video.h" />
     <ClInclude Include="vidhrdwr\cohen_sutherland_clipping.h" />
     <ClInclude Include="vidhrdwr\emu_vector_draw.h" />
@@ -335,10 +331,6 @@
     <ClCompile Include="texrect.cpp" />
     <ClCompile Include="texrect2dvbo.cpp" />
     <ClCompile Include="vidhrdwr\aae_avg.cpp" />
-    <ClCompile Include="vidhrdwr\avgdvg.cpp">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
-    </ClCompile>
     <ClCompile Include="vidhrdwr\cinematronics_video.cpp" />
     <ClCompile Include="vidhrdwr\cohen_sutherland_clipping.cpp" />
     <ClCompile Include="vidhrdwr\emu_vector_draw.cpp" />

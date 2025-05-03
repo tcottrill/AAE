@@ -1,17 +1,16 @@
-// TODO: This is an insane mess, working on a rewrite, or switch to the MAME modern AVG drawing code.
-// Update: Will switch over to the MAME code in the next big release.All this will go away.
+//============================================================================
+// AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME
+// code, 0.29 through .90 mixed with code of my own. This emulator was
+// created solely for my amusement and learning and is provided only
+// as an archival experience.
+//
+// All MAME code used and abused in this emulator remains the copyright
+// of the dedicated people who spend countless hours creating it. All
+// MAME code should be annotated as belonging to the MAME TEAM.
+//
+// THE CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.
+//============================================================================
 
-/*
-Black Widow memory map(preliminary)
-
-0000 - 04ff RAM
-0800      COIN_IN
-0a00      IN1
-0c00      IN2
-
-2000 - 27ff Vector generator RAM
-5000 - 7fff ROM
-*/
 
 #include "aae_avg.h"
 #include "timer.h"
@@ -75,12 +74,6 @@ static void avg_clr_busy(int dummy)
 	AVG_BUSY = 0;
 }
 
-static void calc_sweep()
-{
-	//sweep = 3.268 * total_length;
-	sweep = (TIME_IN_NSEC(1600) * total_length) * 1512000; 
-	//wrlog("SWEEP CALC HERE is %f", (TIME_IN_NSEC(1600) * total_length));
-}
 
 //
 //
@@ -416,8 +409,7 @@ int avg_go()
 				wrlog("Total AVG Draw Length here is %d at cpu0 cycles ran: %d, video_ticks %d", total_length, get_elapsed_ticks(CPU0), get_video_ticks(0));
 			}
 			AVG_BUSY = 1;
-			get_video_ticks(0xff);
-			calc_sweep();
+		
 			timer_pulse(TIME_IN_NSEC(1500) * total_length, CPU0, avg_clr_busy);
 		}
 		else

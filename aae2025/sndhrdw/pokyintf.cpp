@@ -42,15 +42,14 @@ int pokey_sh_start(struct POKEYinterface* intfa)
 
 	intf = intfa;
 
-	buffer_len = config.samplerate / driver[gamenum].fps;// Machine->sample_rate / Machine->drv->frames_per_second;
+	buffer_len = config.samplerate / driver[gamenum].fps;
 	emulation_rate = buffer_len * driver[gamenum].fps;
 	sample_pos = 0;
 
 	//channel = get_play_channels(1);
 	wrlog("Pokey Stream Size start %d", (16 / 8) * buffer_len);
-	wrlog("Pokey Stream Size that I am creating %d", 2 * buffer_len);
+	
 	if ((buffer = (short *)malloc(buffer_len * 2 )) == 0)
-		//malloc((sample_bits/8)*stream_buffer_len[channel])) == 0)
 	{
 		wrlog("Pokey Buffer Error");
 		return 1;

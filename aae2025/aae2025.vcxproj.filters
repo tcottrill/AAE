@@ -333,9 +333,6 @@
     <ClInclude Include="sndhrdw\cinematronics_sound.h">
       <Filter>Source Files\sndhrdw</Filter>
     </ClInclude>
-    <ClInclude Include="vidhrdwr\avgdvg.h">
-      <Filter>Source Files\vidhrdwr</Filter>
-    </ClInclude>
     <ClInclude Include="vidhrdwr\cinematronics_video.h">
       <Filter>Source Files\vidhrdwr</Filter>
     </ClInclude>
@@ -604,9 +601,6 @@
     </ClCompile>
     <ClCompile Include="sndhrdw\cinematronics_sound.cpp">
       <Filter>Source Files\sndhrdw</Filter>
-    </ClCompile>
-    <ClCompile Include="vidhrdwr\avgdvg.cpp">
-      <Filter>Source Files\vidhrdwr</Filter>
     </ClCompile>
     <ClCompile Include="vidhrdwr\cinematronics_video.cpp">
       <Filter>Source Files\vidhrdwr</Filter>

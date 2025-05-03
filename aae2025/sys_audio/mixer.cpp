@@ -493,16 +493,16 @@ int sample_playing(int chanid)
 
 		if (state.BuffersQueued == 0)
 		{
-			wrlog("Check sample #%d playing, returning false", chanid);
+			//wrlog("Check sample #%d playing, returning false", chanid);
 			return 0;
 		}
 		else
 		{
-			wrlog("Check sample #%d playing, returning true", chanid);
+			//wrlog("Check sample #%d playing, returning true", chanid);
 			return 1;
 		}
 	}
-	wrlog("Check sample #%d playing, returning false, not allocated", chanid);
+	//wrlog("Check sample #%d playing, returning false, not allocated", chanid);
 	return 0;
 }
 
