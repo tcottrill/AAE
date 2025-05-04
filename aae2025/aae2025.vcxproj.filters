@@ -228,9 +228,6 @@
     <ClInclude Include="vidhrdwr\SegaG80vid.h">
       <Filter>Source Files\vidhrdwr</Filter>
     </ClInclude>
-    <ClInclude Include="vidhrdwr\vector.h">
-      <Filter>Source Files\vidhrdwr</Filter>
-    </ClInclude>
     <ClInclude Include="acommon.h">
       <Filter>Source Files</Filter>
     </ClInclude>
@@ -528,9 +525,6 @@
       <Filter>Source Files\vidhrdwr</Filter>
     </ClCompile>
     <ClCompile Include="vidhrdwr\SegaG80vid.cpp">
-      <Filter>Source Files\vidhrdwr</Filter>
-    </ClCompile>
-    <ClCompile Include="vidhrdwr\vector.cpp">
       <Filter>Source Files\vidhrdwr</Filter>
     </ClCompile>
     <ClCompile Include="acommon.cpp">

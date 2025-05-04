@@ -177,20 +177,12 @@ void setup_video_config()
 
 void setup_config(void)
 {
-	//char buffer[MAX_PATH];
-	//GetCurrentDirectory(MAX_PATH, buffer);
-	
 	// aae.ini
 	std::string temppath;
 	temppath = getpathM(0, "aae.ini");
 	strcpy(aaepath, temppath.c_str());
 		
-	// gamename.ini
-	//strcpy(gamepath, buffer);
-	//strcat(gamepath, "\\ini\\");
-	//strcat(gamepath, driver[gamenum].name);
-	//strcat(gamepath, ".ini");
-	
+	// game.ini
 	temppath = getpathM("ini", 0);
 	temppath.append("\\");
 	temppath.append(driver[gamenum].name);
@@ -230,6 +222,8 @@ void setup_config(void)
 	config.debug = my_get_config_int("main", "debug", 0);
 	// Added for code profiling and timing
 	config.debug_profile_code = my_get_config_int("main", "debug_profile_code", 0);
+	// Added for mixer
+	config.audio_force_resample = my_get_config_int("main", "audio_force_resample", 0);
 
 	// Game.ini available - SOUND
 	config.psnoise = my_get_config_int("main", "psnoise", 0);

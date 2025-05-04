@@ -132,6 +132,7 @@ HRESULT xaudio2_update(BYTE* buffera, DWORD bufferLength)
 
         pSourceVoice->FlushSourceBuffers();
         wrlog("Panic, some odd error submitting the XAudio2 source buffer: %#X\n", hr);
+        exit(1);
               
     }
 

@@ -15,7 +15,6 @@
 #include "./68000/m68k.h"
 #include "aae_mame_driver.h"
 #include "cpu_control.h"
-#include "vector.h"
 #include "aae_avg.h"
 #include "earom.h"
 #include "pokyintf.h"

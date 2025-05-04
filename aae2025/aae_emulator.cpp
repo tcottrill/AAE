@@ -32,7 +32,6 @@
 #include "menu.h"
 #include "aae_avg.h"
 #include "fpsclass.h"
-#include "vector.h"
 #include "os_input.h"
 #include "timer.h"
 #include "vector_fonts.h"

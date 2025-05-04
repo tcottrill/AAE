@@ -292,7 +292,7 @@ extern struct RunningMachine* Machine;
 
 //RAM Variables
 extern unsigned char* membuffer;
-extern unsigned char vec_ram[0x4000];
+extern unsigned char vec_ram[0x8000];
 //extern unsigned char* GI[8]; //Global 6502/Z80/6809 GameImage
 
 
@@ -399,6 +399,7 @@ typedef struct {
 	int hack;
 	int debug;
 	int debug_profile_code;
+	int audio_force_resample;
 	int kbleds;
 	int samplerate;
 }settings;
@@ -522,7 +523,8 @@ enum GameDef {
 	//Star Wars Hardware
 	STARWARS,
 	STARWAR1,
-	AZTARAC
+	AZTARAC,
+	GALAGA
 };
 
 /* this allows to leave the INIT field empty in the GAME() macro call */

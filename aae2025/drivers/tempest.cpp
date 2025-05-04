@@ -14,13 +14,11 @@
 
 #include "tempest.h"
 #include "aae_mame_driver.h"
-#include "vector.h"
 #include "aae_avg.h"
 #include "pokyintf.h"
 #include "earom.h"
 #include "mathbox.h"
 #include "timer.h"
-
 #include "glcode.h"
 //
 // Tempest Multigame Notes:

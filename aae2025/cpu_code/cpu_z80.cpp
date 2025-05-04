@@ -666,6 +666,7 @@ unsigned cpu_z80::mz80step()
 	{
 		z80ppc = z80pc;
 		const uint8_t bOpcode = ImmedByte();
+		//wrlog("OPcode %x, PC %x", bOpcode, z80pc);
 		cyc += exec_opcode(bOpcode);
 	}
 

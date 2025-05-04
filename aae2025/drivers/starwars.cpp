@@ -14,7 +14,6 @@
 
 #include "starwars.h"
 #include "aae_mame_driver.h"
-#include "vector.h"
 #include "aae_avg.h"
 #include "pokey.h"
 #include "pokyintf.h"
@@ -22,7 +21,6 @@
 #include "rand.h"
 #include "5220intf.h"
 #include "loaders.h"
-#include "earom.h"
 #include "sndhrdw/starwars_snd.h"
 #include "swmathbx.h"
 

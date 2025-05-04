@@ -12,7 +12,6 @@
 //==========================================================================
 
 #include "bwidow.h"
-#include "vector.h"
 #include "aae_avg.h"
 #include "earom.h"
 #include "pokyintf.h"
@@ -29,7 +28,7 @@
 
 void bwidow_interrupt(int dummy)
 {
-	WRLOG("BWidow Interrupt");
+	//WRLOG("BWidow Interrupt");
 	cpu_do_int_imm(CPU0, INT_TYPE_INT);
 }
 

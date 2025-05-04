@@ -15,7 +15,6 @@
 #include "aae_mame_driver.h"
 #include "fonts.h"
 #include "vector_fonts.h"
-#include "vector.h"
 #include "loaders.h"
 #include "gl_fbo.h"
 #include "gl_texturing.h"
@@ -135,9 +134,9 @@ void Widescreen_calc()
 {
 	float val = 0;
 
-	if (config.widescreen == 0) val = 1.3333;
-	if (config.widescreen == 1) val = 1.77;
-	if (config.widescreen == 2) val = 1.6;
+	if (config.widescreen == 0) val = 1.3333f;
+	if (config.widescreen == 1) val = 1.77f;
+	if (config.widescreen == 2) val = 1.6f;
 
 	wideadj = 1.3333 / val;//val;  1.6
 }
@@ -383,7 +382,7 @@ void CheckGLError(const char* file, int line) {
 */
 void GLCheckError(const char* call)
 {
-	GLenum errCode;
+	GLenum errcode = glGetError();
 
 	char enums[][20] =
 	{
@@ -394,8 +393,7 @@ void GLCheckError(const char* call)
 		"stack underflow",     // GL_STACK_UNDERFLOW
 		"out of memory"        // GL_OUT_OF_MEMORY
 	};
-
-	GLenum errcode = glGetError();
+		
 	if (errcode == GL_NO_ERROR)
 		return;
 
@@ -435,7 +433,7 @@ void end_render_fbo4()
 	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);
 	glDrawBuffer(GL_BACK);
 	set_texture(&img4a, 1, 0, 1, 0);
-	screen_rect.Render(1.33);
+	screen_rect.Render(1.33f);
 	err = glGetError();
 	if (err != 0)
 	{

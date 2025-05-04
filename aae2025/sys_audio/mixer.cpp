@@ -248,6 +248,7 @@ void mixer_init(int rate, int fps)
 		channel[i].looping = 0;
 		channel[i].pos = 0;
 		channel[i].vol = 1.0;
+		channel[i].frequency = SYS_FREQ;
 	}
 	//Set all samples to empty for start
 	for (i = 0; i < MAX_SOUNDS; i++)
@@ -372,31 +373,7 @@ void sample_start(int chanid, int samplenum, int loop)
 		return;
 	}
 
-
-	/*
-	if (channel[chanid].state == SOUND_PLAYING)
-	{
-		wrlog("error, sound already playing on this channel %d state: %d", chanid, channel[chanid].state);
-		return;
-	}
-	
-	lock_guard<mutex> lock(audioMutex);
-
-	if (channel[chanid].isAllocated && channel[chanid].isReleased)
-	{
-		XAUDIO2_VOICE_STATE state;
-
-		channel[chanid].voice->GetState(&state);//, XAUDIO2_VOICE_NOSAMPLESPLAYED);
-
-		if (state.BuffersQueued == 0)
-		{
-			sample_stop(chanid);
-
-			channel[chanid].isAllocated = false;
-		}
-	}
-	*/
-	// Start the sample playing
+     //Start the sample playing
 	
 	if (channel[chanid].voice)
 	{
@@ -409,7 +386,7 @@ void sample_start(int chanid, int samplenum, int loop)
 
 	if (!channel[chanid].voice)
 	{
-		if (FAILED(pXAudio2->CreateSourceVoice(&channel[chanid].voice, &sound[samplenum].fx, 0, 16.0f)))
+		if (FAILED(pXAudio2->CreateSourceVoice(&channel[chanid].voice, &sound[samplenum].fx, 0, 16.0f)))// the 16 is really important here. 
 		{
 			CoUninitialize();
 			wrlog("FAILED to create source voice %d");
@@ -433,8 +410,6 @@ void sample_start(int chanid, int samplenum, int loop)
 	channel[chanid].buffer.pAudioData = (BYTE*)sound[samplenum].data.buffer;
 	channel[chanid].buffer.LoopCount = v.looping ? XAUDIO2_LOOP_INFINITE : 0;
 	channel[chanid].voice->SubmitSourceBuffer(&channel[chanid].buffer);
-	float frequencyRatio = static_cast<float>((float) channel[chanid].frequency / (float) sound[samplenum].sampleRate);
-	channel[chanid].voice->SetFrequencyRatio(frequencyRatio);
 	channel[chanid].voice->SetVolume((float)channel[chanid].volume / 255.0f);
 	SetPan(channel[chanid].voice, (float)(channel[chanid].pan - 128) / 128.0f);
 
@@ -442,7 +417,7 @@ void sample_start(int chanid, int samplenum, int loop)
 
 	channel[chanid].isPlaying = true;
 
-	wrlog("Playing Sample #%d :%s", samplenum, sound[samplenum].name.c_str());
+	wrlog("Playing Sample #%d  on channel %d, name:%s", samplenum,  chanid, sound[samplenum].name.c_str());
 }
 
 int sample_get_position(int chanid)
@@ -475,6 +450,8 @@ void sample_set_position(int chanid, int pos)
 
 void sample_set_freq(int chanid, int freq)
 {
+	float calc_freq = 0;
+
 	if (channel[chanid].isPlaying)
 	{
 		float frequencyRatio = static_cast<float>( (float) freq/(float)channel[chanid].frequency);

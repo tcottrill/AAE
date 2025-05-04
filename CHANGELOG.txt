@@ -144,6 +144,8 @@ Fixed volume handling in my mixer code.
 
 5/3/25 Small cleanups. TODO: Massive starwars rewrite to add ESB support., Finish adding Aztarac, fix broken menu items, fix command line arguments, add vertical game screen rotation. 
 
+5/4/25. Misc cleanups, Freq fixes for my Mixercode, added a debug option, added a finished Aztarac Driver. 
+
 
 
 

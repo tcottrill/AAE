@@ -273,7 +273,7 @@ int AY8910Read(int chip)
 	return AYReadReg(chip, PSG->register_latch);
 }
 
-/* AY8910 interface */
+/* AY8910 Port interfaces */
 UINT16 AY8910_read_port_0_r(UINT16 offset, struct z80PortRead* zpr) { return AY8910Read(0); }
 UINT16 AY8910_read_port_1_r(UINT16 offset, struct z80PortRead* zpr) { return AY8910Read(1); }
 UINT16 AY8910_read_port_2_r(UINT16 offset, struct z80PortRead* zpr) { return AY8910Read(2); }
@@ -674,7 +674,7 @@ void AY8910partupdate(int chip)
 
 	//get ticks this frame
 	work = cpu_scale_by_cycles(aysamples, ayintf->baseclock); // get current position based on the timer
-
+	
  //update since last
 	updlen = work - updlast[chip];
 	if (updlen > 32)
@@ -713,12 +713,19 @@ int AY8910_sh_start(struct AY8910interface* intf)
 		build_mixer_table(chip);
 	}
 
+	// TODO: PLEASE FIX THIS!!!!!
 	stream_start(0, 0, 16, driver[gamenum].fps);
 	stream_start(1, 1, 16, driver[gamenum].fps);
 	stream_start(2, 2, 16, driver[gamenum].fps);
 	stream_start(3, 3, 16, driver[gamenum].fps);
 	stream_start(4, 4, 16, driver[gamenum].fps);
 	stream_start(5, 5, 16, driver[gamenum].fps);
+	stream_start(6, 6, 16, driver[gamenum].fps);
+	stream_start(7, 7, 16, driver[gamenum].fps);
+	stream_start(8, 8, 16, driver[gamenum].fps);
+	stream_start(9, 9, 16, driver[gamenum].fps);
+	stream_start(10, 10, 16, driver[gamenum].fps);
+	stream_start(11, 11, 16, driver[gamenum].fps);
 	//aae_stream_init(0, emulation_rate, aysamples, 128);
 	//aae_stream_init(1, emulation_rate, aysamples, 128);
 	//aae_stream_init(2, emulation_rate, aysamples, 128);
@@ -739,6 +746,12 @@ void AY8910clear(void)
 	stream_stop(3,3);
 	stream_stop(4,4);
 	stream_stop(5,5);
+	stream_stop(6, 6);
+	stream_stop(7, 7);
+	stream_stop(8, 8);
+	stream_stop(9, 9);
+	stream_stop(10, 10);
+	stream_stop(11, 11);
 
 	for (chip = 0; chip < numchips; chip++)
 	{
@@ -748,22 +761,17 @@ void AY8910clear(void)
 	}
 }
 
-void memAY8910_control_port_0_w(UINT32 offset, UINT8 value, struct MemoryWriteByte* mwb)
-{
-	AY8910Write(0, 0, value);
-}
+UINT8 AY8910_read_port_0_r(UINT32 address, struct MemoryReadByte* psMemRead) { return AY8910Read(0); }
+UINT8 AY8910_read_port_1_r(UINT32 address, struct MemoryReadByte* psMemRead) { return AY8910Read(1); }
+UINT8 AY8910_read_port_2_r(UINT32 address, struct MemoryReadByte* psMemRead) { return AY8910Read(2); }
+UINT8 AY8910_read_port_3_r(UINT32 address, struct MemoryReadByte* psMemRead) { return AY8910Read(3); }
+UINT8 AY8910_read_port_4_r(UINT32 address, struct MemoryReadByte* psMemRead) { return AY8910Read(4); }
 
-void memAY8910_write_port_0_w(UINT32 offset, UINT8 value, struct MemoryWriteByte* mwb)
-{
-	AY8910Write(0, 1, value);
-}
-
-void memAY8910_control_port_1_w(UINT32 offset, UINT8 value, struct MemoryWriteByte* mwb)
-{
-	AY8910Write(1, 0, value);
-}
-
-void memAY8910_write_port_1_w(UINT32 offset, UINT8 value, struct MemoryWriteByte* mwb)
-{
-	AY8910Write(1, 1, value);
-}
+void AY8910_control_port_0_w(UINT32 offset, UINT8 value, struct MemoryWriteByte* mwb){AY8910Write(0, 0, value);}
+void AY8910_control_port_1_w(UINT32 offset, UINT8 value, struct MemoryWriteByte* mwb){AY8910Write(1, 0, value);}
+void AY8910_control_port_2_w(UINT32 offset, UINT8 value, struct MemoryWriteByte* mwb){AY8910Write(2, 0, value);}
+void AY8910_control_port_3_w(UINT32 offset, UINT8 value, struct MemoryWriteByte* mwb){AY8910Write(3, 0, value);}
+void AY8910_write_port_0_w(UINT32 offset, UINT8 value, struct MemoryWriteByte* mwb){AY8910Write(0, 1, value);}
+void AY8910_write_port_1_w(UINT32 offset, UINT8 value, struct MemoryWriteByte* mwb){AY8910Write(1, 1, value);}
+void AY8910_write_port_2_w(UINT32 offset, UINT8 value, struct MemoryWriteByte* mwb){AY8910Write(2, 1, value);}
+void AY8910_write_port_3_w(UINT32 offset, UINT8 value, struct MemoryWriteByte* mwb){AY8910Write(3, 1, value);}

@@ -24,11 +24,8 @@
 
 static int cpu_configured = 0;
 static int cyclecount[4];
-//static int addcycles[4];
 static int reset_cpu_status[4];
 //Time counters (To Be Removed)
-static int hrzcounter = 0; //Only on CPU 0
-static int hertzflip = 0;
 static int tickcount[4];
 static int eternaticks[4];
 static int vid_tickcount;
@@ -37,7 +34,6 @@ static int enable_interrupt[4];
 static int interrupt_vector[4] = { 0xff,0xff,0xff,0xff };
 static int interrupt_count[4];
 static int interrupt_pending[4];
-//static int framecnt = 0;
 static int intcnt = 0;
 
 static int cpu_framecounter = 0; //This is strictly for the cinematronics games.
@@ -65,8 +61,7 @@ static int watchdog_counter = 0;
 // CPU Contexts
 
 int cpu_context_size;
-uint8_t* cpu_context[2];
-
+uint8_t* cpu_context[2]; // 68000 cpu
 cpu_6809* m_cpu_6809[MAX_CPU];
 cpu_i8080* m_cpu_i8080[MAX_CPU];
 cpu_z80* m_cpu_z80[MAX_CPU];
@@ -214,6 +209,7 @@ int cpu_getpc()
 		break;
 
 	case CPU_68000:
+		wrlog("PC:%08X\tSP:%08X\n", m68k_get_reg(NULL, M68K_REG_PC), m68k_get_reg(NULL, M68K_REG_SP));
 		break;
 	}
 	return 0;
@@ -265,18 +261,20 @@ int get_current_cpu()
 
 void cpu_setcontext(int cpunum)
 {
-	switch (driver[gamenum].cpu_type[cpunum])
-	{
-	case CPU_68000: m68k_set_context(cpu_context[0]); break;
-	}
+	// Disabled for now, I have only single CPU 68000 games, and this was causing issues. 
+	//switch (driver[gamenum].cpu_type[cpunum])
+	//{
+	//case CPU_68000: m68k_set_context(cpu_context[0]); break;
+	//}
 }
 
 void cpu_getcontext(int cpunum)
 {
-	switch (driver[gamenum].cpu_type[cpunum])
-	{
-	case CPU_68000: m68k_get_context(cpu_context[0]); break;
-	}
+// Disabled for now, I have only single CPU 68000 games, and this was causing issues. 
+//	switch (driver[gamenum].cpu_type[cpunum])
+//	{
+//	case CPU_68000: m68k_get_context(cpu_context[0]); break;
+//	}
 }
 
 void cpu_disable_interrupts(int cpunum, int val)
@@ -345,7 +343,8 @@ void cpu_do_int_imm(int cpunum, int int_type)
 
 	case CPU_68000: m68k_set_irq(int_type); //add interrupt num here
 		//wrlog("68000 IRQ Called on CPU %d", cpunum);
-		wrlog("INT Taken 68000, type: %d", int_type);
+		//wrlog("PC:%08X\tSP:%08X", m68k_get_reg(NULL, M68K_REG_PC), m68k_get_reg(NULL, M68K_REG_SP));
+		//wrlog("INT Taken 68000, type: %d", int_type);
 		break;
 	}
 }
@@ -394,7 +393,7 @@ void cpu_do_interrupt(int int_type, int cpunum)
 			}
 			break;
 		case CPU_68000: m68k_set_irq(int_type);
-				wrlog("INT Taken 68000, type: %d", driver[gamenum].cpu_int_type[active_cpu]);
+				//wrlog("INT Taken 68000, type: %d", driver[gamenum].cpu_int_type[active_cpu]);
 			break;
 		}
 
@@ -454,6 +453,8 @@ int cpu_exec_now(int cpu, int cycles)
 		break;
 	case CPU_68000:
 			ticks = m68k_execute(cycles);
+			//wrlog("Cycles Executed here %d", cycles);
+			//wrlog("PC:%08X\tSP:%08X\n", m68k_get_reg(NULL, M68K_REG_PC), m68k_get_reg(NULL, M68K_REG_SP));
 		timer_update(ticks, active_cpu);
 		break;
 	case CPU_CCPU:
@@ -698,8 +699,7 @@ void init_cpu_config()
 	
 	cpu_framecounter = 0;
 	vid_tickcount = 0;//Initalize video tickcount;
-	hertzflip = 0;
-
+	
 	timer_init();
 	watchdog_timer = timer_set(TIME_IN_HZ(4), 0, watchdog_callback);
 	wrlog("NUMBER OF CPU'S to RUN: %d ", totalcpu);
@@ -751,13 +751,17 @@ UINT8 MRA_RAM(UINT32 address, struct MemoryReadByte* psMemRead)
 //Write Ram
 void MWA_RAM(UINT32 address, UINT8 data, struct MemoryWriteByte* pMemWrite)
 {
+	//wrlog("Address here is %x Writing address %x ", address, address + pMemWrite->lowAddr);
+	
 	Machine->memory_region[active_cpu][address + pMemWrite->lowAddr] = data;
+	//wrlog("Active CPU here is %d", active_cpu);
 }
 
 // Read Rom
 UINT8 MRA_ROM(UINT32 address, struct MemoryReadByte* psMemRead)
 {
-	//wrlog("Address here is %x Lowaddr %x data %x", address, psMemRead->lowAddr, Machine->memory_region[active_cpu][address + psMemRead->lowAddr]);
+	//wrlog("Active CPU here is %d", active_cpu);
+//	wrlog("Address here is %x reading address %x data %x", address, address + psMemRead->lowAddr, Machine->memory_region[active_cpu][address + psMemRead->lowAddr]);
 	return Machine->memory_region[active_cpu][address + psMemRead->lowAddr];
 }
 
@@ -777,6 +781,7 @@ void MWA_ROM16(UINT32 address, UINT16 data, struct MemoryWriteWord* pMemWrite)
 void MWA_ROM(UINT32 address, UINT8 data, struct MemoryWriteByte* pMemWrite)
 {
 	//If logging add here
+	wrlog("Attempted Rom Write? ");
 }
 
 void MWA_NOP(UINT32 address, UINT8 data, struct MemoryWriteByte* pMemWrite)
@@ -850,41 +855,44 @@ unsigned int m68k_read_memory_8(unsigned int address)
 		{
 			if (MemRead->memoryCall)
 			{
-				return (MemRead->memoryCall(address - MemRead->lowAddr, MemRead));
+				return (UINT8)(MemRead->memoryCall(address - MemRead->lowAddr, MemRead));
 			}
 			else
 			{
-				return READ_BYTE((unsigned char*)MemRead->pUserArea, address - MemRead->lowAddr);
+				return (UINT8)READ_BYTE((unsigned char*)MemRead->pUserArea, address - MemRead->lowAddr);
 			}
 		}
 		++MemRead;
 	}
 
-	wrlog("Unhandled Memory 8 Read: addr: %x", address);
+	wrlog("Unhandled Memory 8 Read: addr: %x", address); 
 	return 0;
 }
 
 void m68k_write_memory_8(unsigned int address, unsigned int value)
 {
+	//int k=0;
 	MemoryWriteByte* MemWrite = M_MemoryWrite8;
-
+	//wrlog("Memory 8 Write: addr: %x value %x", address, value);
 	while (MemWrite->lowAddr != 0xffffffff)
 	{
 		if (address >= MemWrite->lowAddr && address <= MemWrite->highAddr)
 		{
 			if (MemWrite->memoryCall)
 			{
-				MemWrite->memoryCall(address - MemWrite->lowAddr, value, MemWrite);
+				//k = 1;
+				MemWrite->memoryCall(address - MemWrite->lowAddr, (UINT8)value, MemWrite);
 			}
 			else
 			{
-				WRITE_BYTE((unsigned char*)MemWrite->pUserArea, address - MemWrite->lowAddr, value);
+				//k = 1;
+				WRITE_BYTE((unsigned char*)MemWrite->pUserArea, address - MemWrite->lowAddr, (UINT8) value);
 			}
 
 		}
 		MemWrite++;
 	}
-	//wrlog("Unhandled Memory 8 Write: addr: %x", address);
+	//if (!k) { wrlog("Unhandled Memory 8 Write: addr: %x value %x", address, value); }
 }
 
 unsigned int m68k_read_memory_16(unsigned int address)
@@ -898,26 +906,26 @@ unsigned int m68k_read_memory_16(unsigned int address)
 			if (MemRead->memoryCall)
 			{
 				//wrlog("Handler 16 Read: addr: %x", address);
-				return (MemRead->memoryCall(address - MemRead->lowAddr, MemRead));
+				return (UINT16) (MemRead->memoryCall(address - MemRead->lowAddr, MemRead));
 			}
 			else
 			{
 				//wrlog("MEM 16 Read: addr: %x", address);
-				return READ_WORD((unsigned char*)MemRead->pUserArea, address - MemRead->lowAddr);
+				return (UINT16) READ_WORD((unsigned char*)MemRead->pUserArea, address - MemRead->lowAddr);
 			}
 		}
 
 		++MemRead;
 	}
 
-	wrlog("Unhandled Read 16: %x ", address);
+	wrlog("Unhandled Read 16: %x ", address); //exit(1);
 	return 0;
 }
 
 void m68k_write_memory_16(unsigned int address, unsigned int value)
 {
 	//wrlog("Write Memory 16, addr: %x, data %x", address, value);
-
+//	int k = 0;
 	MemoryWriteWord* MemWrite = M_MemoryWrite16;
 
 	while (MemWrite->lowAddr != 0xffffffff)
@@ -926,16 +934,23 @@ void m68k_write_memory_16(unsigned int address, unsigned int value)
 		{
 			if (MemWrite->memoryCall)
 			{
+			//	k = 1;
 				//wrlog("Write Handler 16, addr: %x, data %x", address, value);
-				MemWrite->memoryCall(address - MemWrite->lowAddr, value, MemWrite);
+				MemWrite->memoryCall(address - MemWrite->lowAddr, (UINT16) value, MemWrite);
 			}
 			else {
+				//k = 1;
 				//wrlog("Write Memory 16, addr: %x, data %x", address, value);
-				WRITE_WORD((unsigned char*)MemWrite->pUserArea, address - MemWrite->lowAddr, value);
+				WRITE_WORD((unsigned char*)MemWrite->pUserArea, address - MemWrite->lowAddr, (UINT16) value);
 			}
 		}
 		MemWrite++;
 	}
+	//if (!k)
+	//{
+	//	wrlog("Unhandled Memory 16 Write: addr: %x data: %x", address, value);
+		//exit(1); 
+	//}
 }
 
 unsigned int m68k_read_memory_32(unsigned int address)
@@ -943,7 +958,7 @@ unsigned int m68k_read_memory_32(unsigned int address)
 	//wrlog("Reading Memory 32, addr: %x", address);
 
 	/* Split into 2 reads */
-	return (m68k_read_memory_16(address + 0) << 16 | m68k_read_memory_16(address + 2));
+	return (UINT32) (m68k_read_memory_16(address + 0) << 16 | m68k_read_memory_16(address + 2));
 }
 
 void m68k_write_memory_32(unsigned int address, unsigned int value)

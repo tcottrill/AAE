@@ -243,10 +243,6 @@
     <ClInclude Include="vidhrdwr\old_mame_vecsim_dvg.h" />
     <ClInclude Include="vidhrdwr\raster.h" />
     <ClInclude Include="vidhrdwr\SegaG80vid.h" />
-    <ClInclude Include="vidhrdwr\vector.h">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
-    </ClInclude>
     <ClInclude Include="win10_win11_required_code.h">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</ExcludedFromBuild>
     </ClInclude>
@@ -339,10 +335,6 @@
     <ClCompile Include="vidhrdwr\old_mame_vecsim_dvg.cpp" />
     <ClCompile Include="vidhrdwr\raster.cpp" />
     <ClCompile Include="vidhrdwr\SegaG80vid.cpp" />
-    <ClCompile Include="vidhrdwr\vector.cpp">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
-    </ClCompile>
     <ClCompile Include="win10_win11_required_code.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</ExcludedFromBuild>
     </ClCompile>

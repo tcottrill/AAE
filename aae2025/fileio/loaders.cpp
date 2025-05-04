@@ -61,8 +61,7 @@ int load_roms(const char* archname, const struct RomModule* p)
 	int i, j = 0;
 	int size = 0;
 	int cpunum = 0;
-	int flipnum = 0;
-
+	
 	temppath=config.exrompath;
 	temppath.append("\\");
 	temppath.append(archname);
@@ -87,7 +86,6 @@ int load_roms(const char* archname, const struct RomModule* p)
 		{
 			cpu_mem(p[i].loadtype, p[i].romSize); 
 			cpunum = p[i].loadtype; 
-			flipnum = 0; 
 		}
 		// else load a rom
 		else {
@@ -129,9 +127,9 @@ int load_roms(const char* archname, const struct RomModule* p)
 				break;
 
 			case ROM_LOAD_16BYTE:
-				for (j = 0; j < p[i].romSize; j += 1) //Even odd based on flipword
+				for (j = 0; j < p[i].romSize; j++) 
 				{
-					Machine->memory_region[region][(j * 2 + flipnum) + p[i].loadAddr] = zipdata[j];
+					Machine->memory_region[region][p[i].loadAddr + (j * 2) ] = zipdata[j];
 				}
 				break;
 
@@ -140,7 +138,6 @@ int load_roms(const char* archname, const struct RomModule* p)
 			//Finished loading Rom
 			free(zipdata);
 		}
-		if (p[i].loadtype) flipnum ^= 1;
 	} // Close the archive
 
 	wrlog("Finished loading roms");
@@ -173,7 +170,7 @@ int read_samples(const char** samplenames, int val)
 	for (i = 1; i < total; i++)
 	{
 		wrlog("Path: %s Sample name: %s ", temppath, samplenames[i]);
-		load_sample(temppath, (char*)samplenames[i]);
+		load_sample(temppath, (char*)samplenames[i], config.audio_force_resample ? 1:0);
 	}
 	num_samples = total - 2;
 	if (num_samples == 0) { wrlog("Samples loading failure, bad with no sound..."); }
