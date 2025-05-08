@@ -2,7 +2,7 @@
 
 //#include "aaemain.h"
 
-
+int init_esb();
 int init_starwars();
 void run_starwars();
 void end_starwars();

@@ -6,6 +6,8 @@
 #include "memory.h"
 #include "path_helper.h"
 
+#include "miniz.h"
+
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "../sys_video/stb_image.h"
@@ -16,22 +18,13 @@
 #define ROMWRONGSIZE 3
 #define ROMOKAY 1
 #define ROMERROR 0
+
 const char* artpath = "artwork\\";
 const char* samplepath = "samples\\";
+//CSHA1 sha1;
 
-// TODO: Nope. I don't like this. Move everything back to aae_fileio, and add the newer rom loading code from aae2016
+// TODO: Nope. I don't like this. TODO: Move everything back to aae_fileio, and add the newer rom loading code from aae2016
 
-/*
-void cpu_mem(int cpunum, int size)
-{
-	wrlog("Allocating Game Memory, Cpu# %d Amount 0x%x", cpunum, size);
-	if (GI[cpunum]) { free(GI[cpunum]); GI[cpunum] = NULL; }
-	GI[cpunum] = (unsigned char*)malloc(size);
-	if (GI[cpunum] == NULL) { wrlog("Can't allocate system ram for Cpu Emulation! - This is bad."); exit(1); }
-	memset(GI[cpunum], 0, size);
-	//wrlog("Memory Allocation Completed");
-}
-*/
 
 void swap(unsigned char* src, unsigned char* dst, int length, int odd)
 {
@@ -51,100 +44,7 @@ void bswap(char* mem, int length)
 	}
 }
 
-int load_roms(const char* archname, const struct RomModule* p)
-{
-	int test = 0;
-	int skip = 0;
-	std::string temppath;
-	unsigned char* zipdata = 0;
-	int ret = 0;
-	int i, j = 0;
-	int size = 0;
-	int cpunum = 0;
-	
-	temppath=config.exrompath;
-	temppath.append("\\");
-	temppath.append(archname);
-	temppath.append(".zip");
-
-	test = file_exist(temppath.c_str());
-	if (test == 0)
-	{
-	    temppath = getpathM("roms", 0);
-		temppath.append("\\");
-		temppath.append(archname);
-		temppath.append(".zip");
-	}
-	wrlog("Rom Path: %s", temppath.c_str());
-		
-	/// Start Loading ROMS HERE ///
-
-	for (i = 0; p[i].romSize > 0; i += 1)
-	{
-		//   Check for ROM_REGION: IF SO, decode and skip, also reset the even/odd counter:
-		if (p[i].loadAddr == ROM_REGION_START) 
-		{
-			cpu_mem(p[i].loadtype, p[i].romSize); 
-			cpunum = p[i].loadtype; 
-		}
-		// else load a rom
-		else {
-			// Find the requested file, ignore case
-			//Is it a ROM_RELOAD? Then use previous filename (there better be one, no checking here)
-			if (p[i].filename == (char*)-1)
-			{
-				wrlog("Loading Rom: %s", p[i - 1].filename);
-				zipdata = load_zip_file(temppath.c_str(), p[i - 1].filename);
-			}
-			else
-			{
-				wrlog("Loading Rom: %s", p[i].filename);
-				zipdata = load_zip_file(temppath.c_str(), p[i].filename);
-			}
-			if (!zipdata)
-			{
-				wrlog("file not found in zip,%s", p[i].filename);
-				if (!in_gui)
-				{
-					wrlog("A required Rom was not found in zip.\nUse aae gamename -verifyroms to audit your romset.");
-				}
-				return (0);
-			}
-			//This is for ROM CONTINUE Support
-			if (p[i].filename == (char*)-2) { skip = p[i - 1].romSize; }
-			else skip = 0;
-
-			//Get the memory region for the current CPU number
-			int region = cpunum;// Machine->drv->cpu[cpunum].memory_region;
-
-			switch (p[i].loadtype)
-			{
-			case ROM_LOAD_NORMAL:
-				for (j = skip; j < p[i].romSize; j++)
-				{
-					Machine->memory_region[region][j + p[i].loadAddr] = zipdata[j];
-				}
-				break;
-
-			case ROM_LOAD_16BYTE:
-				for (j = 0; j < p[i].romSize; j++) 
-				{
-					Machine->memory_region[region][p[i].loadAddr + (j * 2) ] = zipdata[j];
-				}
-				break;
-
-			default: wrlog("Something bad happened in the ROM Loading Routine"); break;
-			}
-			//Finished loading Rom
-			free(zipdata);
-		}
-	} // Close the archive
-
-	wrlog("Finished loading roms");
-	return (1);
-}
-
-
+// TODO: Fix Alternate path for Sample Loading from MAME or other dir.
 int read_samples(const char** samplenames, int val)
 {
 	char temppath[MAX_PATH];
@@ -176,62 +76,10 @@ int read_samples(const char** samplenames, int val)
 	if (num_samples == 0) { wrlog("Samples loading failure, bad with no sound..."); }
 	wrlog("Completed Loading Samples: Num %d", num_samples);
 
-	return 1;
-	/*
-	char temppath[MAX_PATH];
-	unsigned char* zipdata = 0;
-	int ret = 0;
-	int i = 1;
-	int size = 0;
-
-	//if (strcmp(p[0], "nosamples.zip") == 0) { return 1; } //No samples, bye!
-
-	strcpy(temppath, "samples\\");//if it's not there, try sample dir
-	strcat(temppath, p[0]);
-	strcat(temppath, "\0");
-	do
-	{
-		wrlog("Loading Sample %s", p[i]);
-		zipdata = load_zip_file(temppath, (const char*)p[i]);
-
-		if (!zipdata) {
-			wrlog("Couldn't find the sound %s.\n Will use silence for that sample.", p[i]);
-			if (val == 0)
-			{
-				game_sounds[i - 1] = create_sample(8, 1, 22000, 220);
-				memset((short*)game_sounds[(i - 1)]->data, 0, 220);
-			}
-			else
-			{
-				game_sounds[(num_samples + i)] = create_sample(8, 1, 22000, 220);
-				memset((short*)game_sounds[(num_samples + i)]->data, 0, 220);
-			}
-		}
-		else {
-			//write out temp file
-			if (zipdata)
-			{
-				save_file("temp.wav", zipdata, get_last_zip_file_size());
-				free(zipdata);
-			}
-
-			if (val == 0) { game_sounds[(i - 1)] = load_sample("temp.wav"); }
-			else { game_sounds[(num_samples + (i - 1))] = load_sample("temp.wav"); }
-			remove("temp.wav");
-		}
-		i++;
-	} while (p[i]);
-
-	// Close the archive
-
-	if (val == 0) { num_samples = (i - 1); }
-	else { num_samples = ((num_samples + i) - 1); }
-
-	return (i - 1);
-	*/
-	return 0;
+	return EXIT_SUCCESS;
 }
 
+// TODO: Add this back in
 int load_ambient()
 {
 /*
@@ -299,16 +147,17 @@ int save_hi_aae(int start, int size, int image)
 	return 0;
 }
 
+// TODO: Add this back in
 int verify_rom(const char* archname, const struct RomModule* p, int romnum)
 {
 	return 1;
 }
-
+// TODO: Add this back in
 int verify_sample(const char** p, int num)
 {
 	return 1;
 }
-
+// TODO: MOVE THIS
 int file_exist(const char* filename)
 {
 	FILE* fd = fopen(filename, "rb");
@@ -416,6 +265,7 @@ GLuint load_texture(const char* filename, const char* archname, int numcomponent
 	int comp = 0;
 	unsigned char* image_data = 0;
 	unsigned char* raw_data = 0;
+	mz_zip_archive_file_stat* file_stat = 0;
 
 	//Stupid
 	stbi_set_flip_vertically_on_load(1);

@@ -1,948 +1,1206 @@
 AAE All Games RomList
 
-Game Name: Asteroids (Revision 1):
-Rom Name: asteroi1.zip
-035127.01 Size: 800 Load Addr: 5000
-035145.01 Size: 800 Load Addr: 6800
-035144.01 Size: 800 Load Addr: 7000
-035143.01 Size: 800 Load Addr: 7800
-
 Game Name: Asteroids (Revision 2):
-Rom Name: asteroid.zip
-035127.02 Size: 800 Load Addr: 5000
-035145.02 Size: 800 Load Addr: 6800
-035144.02 Size: 800 Load Addr: 7000
-035143.02 Size: 800 Load Addr: 7800
+Rom  Name: asteroid.zip
+ROM_REGION(0x8000, REGION_CPU1)
+035145-04e.ef2 Size: 0x0800 Load Addr: 0x6800 CRC: 0xb503eaf7 SHA1: 5369dcfe01c0b9e48b15a96a0de8d23ee8ef9145
+035144-04e.h2 Size: 0x0800 Load Addr: 0x7000 CRC: 0x25233192 SHA1: 51b2865fa897cdaa84ac6500c4b4833a80827019
+035143-02.j2 Size: 0x0800 Load Addr: 0x7800 CRC: 0x312caa02 SHA1: 1ce2eac1ab90b972e3f1fc3d250908f26328d6cb
+035127-02.np3 Size: 0x0800 Load Addr: 0x5000 CRC: 0x8b71fd9e SHA1: 8cd5005e531eafa361d6b7e9eed159d164776c70
+ROM_REGION(0x0100, REGION_PROMS)
+034602-01.c8 Size: 0x0100 Load Addr: 0x0000 CRC: 0x97953db8 SHA1: 8cbded64d1dd35b18c4d5cece00f77e7b2cab2ad
 
 Game Name: Asteroids Deluxe (Revision 1):
-Rom Name: astdelu1.zip
-036800.01 Size: 800 Load Addr: 4800
-036799.01 Size: 800 Load Addr: 5000
-036430.01 Size: 800 Load Addr: 6000
-036431.01 Size: 800 Load Addr: 6800
-036432.01 Size: 800 Load Addr: 7000
-036433.01 Size: 800 Load Addr: 7800
+Rom  Name: astdelux1.zip
+ROM_REGION(0x10000, REGION_CPU1)
+036800-01.r2 Size: 0x0800 Load Addr: 0x4800 CRC: 0x3b597407 SHA1: 344fea2e5d84acce365d76daed61e96b9b6b37cc
+036799-01.np2 Size: 0x0800 Load Addr: 0x5000 CRC: 0x7d511572 SHA1: 1956a12bccb5d3a84ce0c1cc10c6ad7f64e30b40
+036430-01.d1 Size: 0x0800 Load Addr: 0x6000 CRC: 0x8f5dabc6 SHA1: 5d7543e19acab99ddb63c0ffd60f54d7a0f267f5
+036431-01.ef1 Size: 0x0800 Load Addr: 0x6800 CRC: 0x157a8516 SHA1: 9041d8c2369d004f198681e02b59a923fa8f70c9
+036432-01.fh1 Size: 0x0800 Load Addr: 0x7000 CRC: 0xfdea913c SHA1: ded0138a20d80317d67add5bb2a64e6274e0e409
+036433-01.j1 Size: 0x0800 Load Addr: 0x7800 CRC: 0xef09bac7 SHA1: 6a4b37dbfe4e6badc4e81036b1430da2e9cb8ca4
+ROM_REGION(0x0100, REGION_PROMS)
+034602-01.c8 Size: 0x0100 Load Addr: 0x0000 CRC: 0x97953db8 SHA1: 8cbded64d1dd35b18c4d5cece00f77e7b2cab2ad
 
 Game Name: Asteroids Deluxe (Revision 2):
-Rom Name: astdelu2.zip
-036430.01 Size: 800 Load Addr: 6000
-036431.01 Size: 800 Load Addr: 6800
-036432.01 Size: 800 Load Addr: 7000
-036433.02 Size: 800 Load Addr: 7800
-036800.01 Size: 800 Load Addr: 4800
-036799.01 Size: 800 Load Addr: 5000
+Rom  Name: astdelux2.zip
+ROM_REGION(0x10000, REGION_CPU1)
+036800-01.r2 Size: 0x0800 Load Addr: 0x4800 CRC: 0x3b597407 SHA1: 344fea2e5d84acce365d76daed61e96b9b6b37cc
+036799-01.np2 Size: 0x0800 Load Addr: 0x5000 CRC: 0x7d511572 SHA1: 1956a12bccb5d3a84ce0c1cc10c6ad7f64e30b40
+036430-01.d1 Size: 0x0800 Load Addr: 0x6000 CRC: 0x8f5dabc6 SHA1: 5d7543e19acab99ddb63c0ffd60f54d7a0f267f5
+036431-01.ef1 Size: 0x0800 Load Addr: 0x6800 CRC: 0x157a8516 SHA1: 9041d8c2369d004f198681e02b59a923fa8f70c9
+036432-01.fh1 Size: 0x0800 Load Addr: 0x7000 CRC: 0xfdea913c SHA1: ded0138a20d80317d67add5bb2a64e6274e0e409
+036433-02.j1 Size: 0x0800 Load Addr: 0x7800 CRC: 0xd8db74e3 SHA1: 52b64e867df98d14742eb1817b59931bb7f941d9
+ROM_REGION(0x0100, REGION_PROMS)
+034602-01.c8 Size: 0x0100 Load Addr: 0x0000 CRC: 0x97953db8 SHA1: 8cbded64d1dd35b18c4d5cece00f77e7b2cab2ad
 
 Game Name: Asteroids Deluxe (Revision 3):
-Rom Name: astdelux.zip
-036430.02 Size: 800 Load Addr: 6000
-036431.02 Size: 800 Load Addr: 6800
-036432.02 Size: 800 Load Addr: 7000
-036433.03 Size: 800 Load Addr: 7800
-036800.02 Size: 800 Load Addr: 4800
-036799.01 Size: 800 Load Addr: 5000
+Rom  Name: astdelux.zip
+ROM_REGION(0x8000, REGION_CPU1)
+036430-02.d1 Size: 0x0800 Load Addr: 0x6000 CRC: 0xa4d7a525 SHA1: abe262193ec8e1981be36928e9a89a8ac95cd0ad
+036431-02.ef1 Size: 0x0800 Load Addr: 0x6800 CRC: 0xd4004aae SHA1: aa2099b8fc62a79879efeea70ea1e9ed77e3e6f0
+036432-02.fh1 Size: 0x0800 Load Addr: 0x7000 CRC: 0x6d720c41 SHA1: 198218cd2f43f8b83e4463b1f3a8aa49da5015e4
+036433-03.j1 Size: 0x0800 Load Addr: 0x7800 CRC: 0xdcc0be6 SHA1: bf10ffb0c4870e777d6b509cbede35db8bb6b0b8
+036800-02.r2 Size: 0x0800 Load Addr: 0x4800 CRC: 0xbb8cabe1 SHA1: cebaa1b91b96e8b80f2b2c17c6fd31fa9f156386
+036799-01.np2 Size: 0x0800 Load Addr: 0x5000 CRC: 0x7d511572 SHA1: 1956a12bccb5d3a84ce0c1cc10c6ad7f64e30b40
+ROM_REGION(0x0100, REGION_PROMS)
+034602-01.c8 Size: 0x0100 Load Addr: 0x0000 CRC: 0x97953db8 SHA1: 8cbded64d1dd35b18c4d5cece00f77e7b2cab2ad
 
 Game Name: Meteorites (Asteroids Bootleg):
-Rom Name: meteorts.zip
-mv_np3.bin Size: 800 Load Addr: 5000
-m0_c1.bin Size: 800 Load Addr: 6800
-m1_f1.bin Size: 800 Load Addr: 7000
-m2_j1.bin Size: 800 Load Addr: 7800
+Rom  Name: meteorts.zip
+ROM_REGION(0x10000, REGION_CPU1)
+mv_np3.bin Size: 0x0800 Load Addr: 0x5000 CRC: 0x11d1c4ae SHA1: 433c2c05b92094bbe102c356d7f1a907db13da67
+m0_c1.bin Size: 0x0800 Load Addr: 0x6800 CRC: 0xdff88688 SHA1: 7f4148a580fb6f605499c99e7dde7068eca1651a
+m1_f1.bin Size: 0x0800 Load Addr: 0x7000 CRC: 0xe53c28a9 SHA1: d9f081e73511ec43377f0c6457747f15a470d4dc
+m2_j1.bin Size: 0x0800 Load Addr: 0x7800 CRC: 0x64bd0408 SHA1: 141d053cb4cce3fece98293136928b527d3ade0f
+ROM_REGION(0x0100, REGION_PROMS)
+034602-01.c8 Size: 0x0100 Load Addr: 0x0000 CRC: 0x97953db8 SHA1: 8cbded64d1dd35b18c4d5cece00f77e7b2cab2ad
+
+Game Name: Asterock (Asteroids Bootleg):
+Rom  Name: asterock.zip
+ROM_REGION(0x8000, REGION_CPU1)
+10505.2 Size: 0x0400 Load Addr: 0x6800 CRC: 0xcdf720c6 SHA1: 85fe748096478e28a06bd98ff3aad73ab21b22a4
+10505.3 Size: 0x0400 Load Addr: 0x6c00 CRC: 0xee58bdf0 SHA1: 80094cb5dafd327aff6658ede33106f0493a809d
+10505.4 Size: 0x0400 Load Addr: 0x7000 CRC: 0x8d3e421e SHA1: 5f5719ab84d4755e69bef205d313b455bc59c413
+10505.5 Size: 0x0400 Load Addr: 0x7400 CRC: 0xd2ce7672 SHA1: b6012e09b2439a614a55bcf23be0692c42830e21
+10505.6 Size: 0x0400 Load Addr: 0x7800 CRC: 0x74103c87 SHA1: e568b5ac573a6d0474cf672b3c62abfbd3320799
+10505.7 Size: 0x0400 Load Addr: 0x7c00 CRC: 0x75a39768 SHA1: bf22998fd692fb01964d8894e421435c55d746a0
+10505.0 Size: 0x0400 Load Addr: 0x5000 CRC: 0x6bd2053f SHA1: 790f2858f44bbb1854e2d9d549e29f4815c4665b
+10505.1 Size: 0x0400 Load Addr: 0x5400 CRC: 0x231ce201 SHA1: 710f4c19864d725ba1c9ea447a97e84001a679f7
+ROM_REGION(0x0100, REGION_PROMS)
+034602-01.c8 Size: 0x0100 Load Addr: 0x0000 CRC: 0x97953db8 SHA1: 8cbded64d1dd35b18c4d5cece00f77e7b2cab2ad
 
 Game Name: Asteroids (Bootleg on Lunar Lander Hardware):
-Rom Name: asteroib.zip
-035127.02 Size: 800 Load Addr: 5000
-035145ll.bin Size: 800 Load Addr: 6800
-035144ll.bin Size: 800 Load Addr: 7000
-035143ll.bin Size: 800 Load Addr: 7800
+Rom  Name: asteroidb.zip
+ROM_REGION(0x10000, REGION_CPU1)
+035127-02.np3 Size: 0x0800 Load Addr: 0x5000 CRC: 0x8b71fd9e SHA1: 8cd5005e531eafa361d6b7e9eed159d164776c70
+035145ll.de1 Size: 0x0800 Load Addr: 0x6800 CRC: 0x605fc0f2 SHA1: 8d897a3b75bd1f2537470f0a34a97a8c0853ee08
+035144ll.c1 Size: 0x0800 Load Addr: 0x7000 CRC: 0xe106de77 SHA1: 003e99d095bd4df6fae243ea1dd5b12f3eb974f1
+035143ll.b1 Size: 0x0800 Load Addr: 0x7800 CRC: 0x6b1d8594 SHA1: ff3cd93f1bc5734bface285e442125b395602d7d
+ROM_REGION(0x0100, REGION_PROMS)
+034602-01.c8 Size: 0x0100 Load Addr: 0x0000 CRC: 0x97953db8 SHA1: 8cbded64d1dd35b18c4d5cece00f77e7b2cab2ad
 
 Game Name: Lunar Lander (Revision 1):
-Rom Name: llander1.zip
-034599.01 Size: 800 Load Addr: 4800
-034598.01 Size: 800 Load Addr: 5000
-034597.01 Size: 800 Load Addr: 5800
-034572.02 Size: 800 Load Addr: 6000
-034571.02 Size: 800 Load Addr: 6800
-034570.01 Size: 800 Load Addr: 7000
-034569.02 Size: 800 Load Addr: 7800
-034569.02 Size: 800 Load Addr: f800
+Rom  Name: llander1.zip
+ROM_REGION(0x8000, REGION_CPU1)
+034572-01.f1 Size: 0x0800 Load Addr: 0x6000 CRC: 0x2aff3140 SHA1: 4fc8aae640ce655417c11d9a3121aae9a1238e7c
+034571-01.de1 Size: 0x0800 Load Addr: 0x6800 CRC: 0x493e24b7 SHA1: 125a2c335338ccabababef12fd7096ef4b605a31
+034570-01.c1 Size: 0x0800 Load Addr: 0x7000 CRC: 0x2724e591 SHA1: ecf4430a0040c227c896aa2cd81ee03960b4d641
+034569-01.b1 Size: 0x0800 Load Addr: 0x7800 CRC: 0xb11a7d01 SHA1: 8f2935dbe04ee68815d69ea9e71853b5a145d7c3
+034599-01.r3 Size: 0x0800 Load Addr: 0x4800 CRC: 0x355a9371 SHA1: 6ecb40169b797d9eb623bcb17872f745b1bf20fa
+034598-01.np3 Size: 0x0800 Load Addr: 0x5000 CRC: 0x9c4ffa68 SHA1: eb4ffc289d254f699f821df3146aa2c6cd78597f
+034597-01.m3 Size: 0x0800 Load Addr: 0x5800 CRC: 0xebb744f2 SHA1: e685b094c1261a351e4e82dfb487462163f136a4
+ROM_REGION(0x0100, REGION_PROMS)
+034602-01.c8 Size: 0x0100 Load Addr: 0x0000 CRC: 0x97953db8 SHA1: 8cbded64d1dd35b18c4d5cece00f77e7b2cab2ad
 
 Game Name: Lunar Lander (Revision 2):
-Rom Name: llander.zip
-034599.01 Size: 800 Load Addr: 4800
-034598.01 Size: 800 Load Addr: 5000
-034597.01 Size: 800 Load Addr: 5800
-034572.02 Size: 800 Load Addr: 6000
-034571.02 Size: 800 Load Addr: 6800
-034570.01 Size: 800 Load Addr: 7000
-034569.02 Size: 800 Load Addr: 7800
-034569.02 Size: 800 Load Addr: f800
+Rom  Name: llander.zip
+ROM_REGION(0x8000, REGION_CPU1)
+034572-02.f1 Size: 0x0800 Load Addr: 0x6000 CRC: 0xb8763eea SHA1: 5a15eaeaf825ccdf9ce013a6789cf51da20f785c
+034571-02.de1 Size: 0x0800 Load Addr: 0x6800 CRC: 0x77da4b2f SHA1: 4be6cef5af38734d580cbfb7e4070fe7981ddfd6
+034570-01.c1 Size: 0x0800 Load Addr: 0x7000 CRC: 0x2724e591 SHA1: ecf4430a0040c227c896aa2cd81ee03960b4d641
+034569-02.b1 Size: 0x0800 Load Addr: 0x7800 CRC: 0x72837a4e SHA1: 9b21ba5e1518079c326ca6e15b9993e6c4483caa
+034599-01.r3 Size: 0x0800 Load Addr: 0x4800 CRC: 0x355a9371 SHA1: 6ecb40169b797d9eb623bcb17872f745b1bf20fa
+034598-01.np3 Size: 0x0800 Load Addr: 0x5000 CRC: 0x9c4ffa68 SHA1: eb4ffc289d254f699f821df3146aa2c6cd78597f
+034597-01.m3 Size: 0x0800 Load Addr: 0x5800 CRC: 0xebb744f2 SHA1: e685b094c1261a351e4e82dfb487462163f136a4
+ROM_REGION(0x0100, REGION_PROMS)
+034602-01.c8 Size: 0x0100 Load Addr: 0x0000 CRC: 0x97953db8 SHA1: 8cbded64d1dd35b18c4d5cece00f77e7b2cab2ad
 
 Game Name: Omega Race:
-Rom Name: omegrace.zip
-omega.m7 Size: 1000 Load Addr: 0
-omega.l7 Size: 1000 Load Addr: 1000
-omega.k7 Size: 1000 Load Addr: 2000
-omega.j7 Size: 1000 Load Addr: 3000
-omega.e1 Size: 800 Load Addr: 9000
-omega.f1 Size: 800 Load Addr: 9800
-sound.k5 Size: 800 Load Addr: 0
+Rom  Name: omegrace.zip
+ROM_REGION(0x10000, REGION_CPU1)
+omega.m7 Size: 0x1000 Load Addr: 0x0000 CRC: 0x424d46e SHA1: cc1ac6c06ba6f6e8466fa08286a0c70b5335af33
+omega.l7 Size: 0x1000 Load Addr: 0x1000 CRC: 0xedcd7a7d SHA1: 5d142de2f48b01d563578a54fd5540e5d0ac8f4c
+omega.k7 Size: 0x1000 Load Addr: 0x2000 CRC: 0x6d10f197 SHA1: 9609a0cbeeef2efa10d49cde9f0afdca96e9c2f8
+omega.j7 Size: 0x1000 Load Addr: 0x3000 CRC: 0x8e8d4b54 SHA1: 944192c0f6f0cdb25d492ee9f33959d38a1062f2
+omega.e1 Size: 0x0800 Load Addr: 0x9000 CRC: 0x1d0fdf3a SHA1: 3333397a9745874cea1dd6a1bda783cc59393b55
+omega.f1 Size: 0x0800 Load Addr: 0x9800 CRC: 0xd44c0814 SHA1: 2f216ee6de88bbe09775619003aee2d5aa8c554d
+ROM_REGION(0x10000, REGION_CPU2)
+sound.k5 Size: 0x0800 Load Addr: 0x0000 CRC: 0x0000 SHA1: (null)
+ROM_REGION(0x0100, REGION_PROMS)
+dvgprom.bin Size: 0x0100 Load Addr: 0x0000 CRC: 0xd481e958 SHA1: d8790547dc539e25984807573097b61ec3ffe614
 
 Game Name: Delta Race (Omega Race Bootleg):
-Rom Name: deltrace.zip
-omega.m7 Size: 1000 Load Addr: 0
-omega.l7 Size: 1000 Load Addr: 1000
-omega.k7 Size: 1000 Load Addr: 2000
-delta.j7 Size: 1000 Load Addr: 3000
-omega.e1 Size: 800 Load Addr: 9000
-omega.f1 Size: 800 Load Addr: 9800
-sound.k5 Size: 800 Load Addr: 0
+Rom  Name: deltrace.zip
+ROM_REGION(0x10000, REGION_CPU1)
+omega.m7 Size: 0x1000 Load Addr: 0x0000 CRC: 0x424d46e SHA1: cc1ac6c06ba6f6e8466fa08286a0c70b5335af33
+omega.l7 Size: 0x1000 Load Addr: 0x1000 CRC: 0xedcd7a7d SHA1: 5d142de2f48b01d563578a54fd5540e5d0ac8f4c
+omega.k7 Size: 0x1000 Load Addr: 0x2000 CRC: 0x6d10f197 SHA1: 9609a0cbeeef2efa10d49cde9f0afdca96e9c2f8
+delta.j7 Size: 0x1000 Load Addr: 0x3000 CRC: 0x8ef9541e SHA1: 89e34f50a958ac60c5f223bcb6c1c14796b903c7
+omega.e1 Size: 0x0800 Load Addr: 0x9000 CRC: 0x1d0fdf3a SHA1: 3333397a9745874cea1dd6a1bda783cc59393b55
+omega.f1 Size: 0x0800 Load Addr: 0x9800 CRC: 0xd44c0814 SHA1: 2f216ee6de88bbe09775619003aee2d5aa8c554d
+ROM_REGION(0x10000, REGION_CPU2)
+sound.k5 Size: 0x0800 Load Addr: 0x0000 CRC: 0x0000 SHA1: (null)
+ROM_REGION(0x0100, REGION_PROMS)
+dvgprom.bin Size: 0x0100 Load Addr: 0x0000 CRC: 0xd481e958 SHA1: d8790547dc539e25984807573097b61ec3ffe614
 
 Game Name: Battlezone (Revision 1):
-Rom Name: bzone.zip
-036422.01 Size: 800 Load Addr: 3000
-036421.01 Size: 800 Load Addr: 3800
-036414.01 Size: 800 Load Addr: 5000
-036413.01 Size: 800 Load Addr: 5800
-036412.01 Size: 800 Load Addr: 6000
-036411.01 Size: 800 Load Addr: 6800
-036410.01 Size: 800 Load Addr: 7000
-036409.01 Size: 800 Load Addr: 7800
-036409.01 Size: 800 Load Addr: f800
+Rom  Name: bzone.zip
+ROM_REGION(0x10000, REGION_CPU1)
+036422-01.bc3 Size: 0x0800 Load Addr: 0x3000 CRC: 0x7414177b SHA1: 147d97a3b475e738ce00b1a7909bbd787ad06eda
+036421-01.a3 Size: 0x0800 Load Addr: 0x3800 CRC: 0x8ea8f939 SHA1: b71e0ab0e220c3e64dc2b094c701fb1a960b64e4
+036414-02.e1 Size: 0x0800 Load Addr: 0x5000 CRC: 0x13de36d5 SHA1: 40e356ddc5c042bc1ce0b71f51e8b6de72daf1e4
+036413-01.h1 Size: 0x0800 Load Addr: 0x5800 CRC: 0x5d9d9111 SHA1: 42638cff53a9791a0f18d316f62a0ea8eea4e194
+036412-01.j1 Size: 0x0800 Load Addr: 0x6000 CRC: 0xab55cbd2 SHA1: 6bbb8316d9f8588ea0893932f9174788292b8edc
+036411-01.k1 Size: 0x0800 Load Addr: 0x6800 CRC: 0xad281297 SHA1: 54c5e06b2e69eb731a6c9b1704e4340f493e7ea5
+036410-01.lm1 Size: 0x0800 Load Addr: 0x7000 CRC: 0xb7bfaa4 SHA1: 33ae0f68b4e2eae9f3aecbee2d0b29003ce460b2
+036409-01.n1 Size: 0x0800 Load Addr: 0x7800 CRC: 0x1e14e919 SHA1: 448fab30535e6fad7e0ab4427bc06bbbe075e797
+ROM_REGION(0x0100, REGION_PROMS)
+036408-01.k7 Size: 0x0100 Load Addr: 0x0000 CRC: 0x5903af03 SHA1: 24bc0366f394ad0ec486919212e38be0f08d0239
 
-Game Name: Battlezone (Revision 2):
-Rom Name: bzone2.zip
-036414a.01 Size: 800 Load Addr: 5000
-036413.01 Size: 800 Load Addr: 5800
-036412.01 Size: 800 Load Addr: 6000
-036411.01 Size: 800 Load Addr: 6800
-036410.01 Size: 800 Load Addr: 7000
-036409.01 Size: 800 Load Addr: 7800
-036409.01 Size: 800 Load Addr: f800
-036422.01 Size: 800 Load Addr: 3000
-036421.01 Size: 800 Load Addr: 3800
+Game Name: Battlezone (Revision A):
+Rom  Name: bzonea.zip
+ROM_REGION(0x10000, REGION_CPU1)
+036414-01.e1 Size: 0x0800 Load Addr: 0x5000 CRC: 0xefbc3fa0 SHA1: 6d284fab34b09dde8aa0df7088711d4723f07970
+036413-01.h1 Size: 0x0800 Load Addr: 0x5800 CRC: 0x5d9d9111 SHA1: 42638cff53a9791a0f18d316f62a0ea8eea4e194
+036412-01.j1 Size: 0x0800 Load Addr: 0x6000 CRC: 0xab55cbd2 SHA1: 6bbb8316d9f8588ea0893932f9174788292b8edc
+036411-01.k1 Size: 0x0800 Load Addr: 0x6800 CRC: 0xad281297 SHA1: 54c5e06b2e69eb731a6c9b1704e4340f493e7ea5
+036410-01.lm1 Size: 0x0800 Load Addr: 0x7000 CRC: 0xb7bfaa4 SHA1: 33ae0f68b4e2eae9f3aecbee2d0b29003ce460b2
+036409-01.n1 Size: 0x0800 Load Addr: 0x7800 CRC: 0x1e14e919 SHA1: 448fab30535e6fad7e0ab4427bc06bbbe075e797
+036422-01.bc3 Size: 0x0800 Load Addr: 0x3000 CRC: 0x7414177b SHA1: 147d97a3b475e738ce00b1a7909bbd787ad06eda
+036421-01.a3 Size: 0x0800 Load Addr: 0x3800 CRC: 0x8ea8f939 SHA1: b71e0ab0e220c3e64dc2b094c701fb1a960b64e4
+ROM_REGION(0x0100, REGION_PROMS)
+036408-01.k7 Size: 0x0100 Load Addr: 0x0000 CRC: 0x5903af03 SHA1: 24bc0366f394ad0ec486919212e38be0f08d0239
 
 Game Name: Battlezone Cocktail Proto:
-Rom Name: bzonec.zip
-bz1g4800 Size: 800 Load Addr: 4800
-bz1f5000 Size: 800 Load Addr: 5000
-bz1e5800 Size: 800 Load Addr: 5800
-bz1d6000 Size: 800 Load Addr: 6000
-bz1c6800 Size: 800 Load Addr: 6800
-bz1b7000 Size: 800 Load Addr: 7000
-bz1a7800 Size: 800 Load Addr: 7800
-bz1a7800 Size: 800 Load Addr: f800
-036422.01 Size: 800 Load Addr: 3000
-bz3b3800 Size: 800 Load Addr: 3800
+Rom  Name: bzonec.zip
+ROM_REGION(0x10000, REGION_CPU1)
+bz1g4800 Size: 0x0800 Load Addr: 0x4800 CRC: 0xe228dd64 SHA1: 247c788b4ccadf6c1e9201ad4f31d55c0036ff0f
+bz1f5000 Size: 0x0800 Load Addr: 0x5000 CRC: 0xdddfac9a SHA1: e6f2761902e1ffafba437a1117e9ba40f116087d
+bz1e5800 Size: 0x0800 Load Addr: 0x5800 CRC: 0x7e00e823 SHA1: 008e491a8074dac16e56c3aedec32d4b340158ce
+bz1d6000 Size: 0x0800 Load Addr: 0x6000 CRC: 0xc0f8c068 SHA1: 66fff6b493371f0015c21b06b94637db12deced2
+bz1c6800 Size: 0x0800 Load Addr: 0x6800 CRC: 0x5adc64bd SHA1: 4574e4fe375d4ab3151a988235efa11e8744e2c6
+bz1b7000 Size: 0x0800 Load Addr: 0x7000 CRC: 0xed8a860e SHA1: 316a3c4870ba44bb3e9cb9fc5200eb081318facf
+bz1a7800 Size: 0x0800 Load Addr: 0x7800 CRC: 0x4babf45 SHA1: a59da5ff49fc398ca4a948e28f05250af776b898
+036422-01.bc3 Size: 0x0800 Load Addr: 0x3000 CRC: 0x7414177b SHA1: 147d97a3b475e738ce00b1a7909bbd787ad06eda
+bz3b3800 Size: 0x0800 Load Addr: 0x3800 CRC: 0x76cf57f6 SHA1: 1b8f3fcd664ed04ce60d94fdf27e56b20d52bdbd
+ROM_REGION(0x0100, REGION_PROMS)
+036408-01.k7 Size: 0x0100 Load Addr: 0x0000 CRC: 0x5903af03 SHA1: 24bc0366f394ad0ec486919212e38be0f08d0239
 
 Game Name: Battlezone Plus (Clay Cowgill):
-Rom Name: bzonep.zip
-036414.01.bin Size: 800 Load Addr: 5000
-036413.01.bin Size: 800 Load Addr: 5800
-036412.01.bin Size: 800 Load Addr: 6000
-036411.01.bin Size: 800 Load Addr: 6800
-036410.01.bin Size: 800 Load Addr: 7000
-036409.01.bin Size: 800 Load Addr: 7800
-036408.01.bin Size: 800 Load Addr: 8000
-036408.01.bin Size: 800 Load Addr: f800
-036422.01.bin Size: 800 Load Addr: 3000
-036421.01.bin Size: 800 Load Addr: 3800
+Rom  Name: bzonep.zip
+ROM_REGION(0x10000, REGION_CPU1)
+036414.01.bin Size: 0x0800 Load Addr: 0x5000 CRC: 0x55e0b5d5 SHA1: 88cbf5c98b41cde5524e9bef537a03db9e783f17
+036413.01.bin Size: 0x0800 Load Addr: 0x5800 CRC: 0x5d9d9111 SHA1: 42638cff53a9791a0f18d316f62a0ea8eea4e194
+036412.01.bin Size: 0x0800 Load Addr: 0x6000 CRC: 0x3e0931d7 SHA1: 1366a8e9b18a5b2d3f23d9069845403b5d65d32d
+036411.01.bin Size: 0x0800 Load Addr: 0x6800 CRC: 0xad281297 SHA1: 54c5e06b2e69eb731a6c9b1704e4340f493e7ea5
+036410.01.bin Size: 0x0800 Load Addr: 0x7000 CRC: 0xb7bfaa4 SHA1: 33ae0f68b4e2eae9f3aecbee2d0b29003ce460b2
+036409.01.bin Size: 0x0800 Load Addr: 0x7800 CRC: 0xdebaea12 SHA1: d23cf62182e76562f4d4e9023a8be6243183da00
+036408.01.bin Size: 0x0800 Load Addr: 0x8000 CRC: 0x7513fc40 SHA1: c01c8959df2c24435a50caa46104a88a9fb7f7fd
+036408.01.bin Size: 0x0800 Load Addr: 0xf800 CRC: 0x7513fc40 SHA1: c01c8959df2c24435a50caa46104a88a9fb7f7fd
+036422.01.bin Size: 0x0800 Load Addr: 0x3000 CRC: 0x7414177b SHA1: 147d97a3b475e738ce00b1a7909bbd787ad06eda
+036421.01.bin Size: 0x0800 Load Addr: 0x3800 CRC: 0x8ea8f939 SHA1: b71e0ab0e220c3e64dc2b094c701fb1a960b64e4
+ROM_REGION(0x0100, REGION_PROMS)
+036408-01.k7 Size: 0x0100 Load Addr: 0x0000 CRC: 0x5903af03 SHA1: 24bc0366f394ad0ec486919212e38be0f08d0239
 
 Game Name: Red Baron:
-Rom Name: redbaron.zip
-037006.01e Size: 800 Load Addr: 3000
-037007.01e Size: 800 Load Addr: 3800
-037587.01 Size: 1000 Load Addr: 4800
-037587.01 Size: 1000 Load Addr: 5000
-037000.01e Size: 800 Load Addr: 5000
-036998.01e Size: 800 Load Addr: 6000
-036997.01e Size: 800 Load Addr: 6800
-036996.01e Size: 800 Load Addr: 7000
-036995.01e Size: 800 Load Addr: 7800
-036995.01e Size: 800 Load Addr: f800
+Rom  Name: redbaron.zip
+ROM_REGION(0x10000, REGION_CPU1)
+037006-01.bc3 Size: 0x0800 Load Addr: 0x3000 CRC: 0x9fcffea0 SHA1: 69b76655ee75742fcaa0f39a4a1cf3aa58088343
+037007-01.a3 Size: 0x0800 Load Addr: 0x3800 CRC: 0x60250ede SHA1: 9c48952bd69863bee0c6dce09f3613149e0151ef
+037587-01.fh1 Size: 0x1000 Load Addr: 0x4800 CRC: 0x60f23983 SHA1: 7a9e5380bf49bf50a2d8ab0e0bd1ba3ac8efde24
+037587-01.fh1 Size: 0x1000 Load Addr: 0x5000 CRC: 0x60f23983 SHA1: 7a9e5380bf49bf50a2d8ab0e0bd1ba3ac8efde24
+037000-01.e1 Size: 0x0800 Load Addr: 0x5000 CRC: 0x69bed808 SHA1: 27d99efc74113cdcbbf021734b8a5a5fdb78c04c
+036998-01.j1 Size: 0x0800 Load Addr: 0x6000 CRC: 0xd1104dd7 SHA1: 0eab47cb45ede9dcc4dd7498dcf3a8d8194460b4
+036997-01.k1 Size: 0x0800 Load Addr: 0x6800 CRC: 0x7434acb4 SHA1: c950c4c12ab556b5051ad356ab4a0ed6b779ba1f
+036996-01.lm1 Size: 0x0800 Load Addr: 0x7000 CRC: 0xc0e7589e SHA1: c1aedc95966afffd860d7e0009d5a43e8b292036
+036995-01.n1 Size: 0x0800 Load Addr: 0x7800 CRC: 0xad81d1da SHA1: 8bd66e5f34fc1c75f31eb6b168607e52aa3aa4df
+ROM_REGION(0x0100, REGION_PROMS)
+036408-01.k7 Size: 0x0100 Load Addr: 0x0000 CRC: 0x5903af03 SHA1: 24bc0366f394ad0ec486919212e38be0f08d0239
 
 Game Name: Bradley Trainer:
-Rom Name: bradley.zip
-btb3.bin Size: 800 Load Addr: 3000
-bta3.bin Size: 800 Load Addr: 3800
-btc1.bin Size: 800 Load Addr: 4000
-btd1.bin Size: 800 Load Addr: 4800
-bte1.bin Size: 800 Load Addr: 5000
-bth1.bin Size: 800 Load Addr: 5800
-btj1.bin Size: 800 Load Addr: 6000
-btk1.bin Size: 800 Load Addr: 6800
-btlm.bin Size: 800 Load Addr: 7000
-btn1.bin Size: 800 Load Addr: 7800
-btn1.bin Size: 800 Load Addr: f800
+Rom  Name: bradley.zip
+ROM_REGION(0x10000, REGION_CPU1)
+btb3.bin Size: 0x0800 Load Addr: 0x3000 CRC: 0x88206304 SHA1: 6a2e2ff35a929acf460f244db7968f3978b1d239
+bta3.bin Size: 0x0800 Load Addr: 0x3800 CRC: 0xd669d796 SHA1: ad606882320cd13612c7962d4718680fe5a35dd3
+btc1.bin Size: 0x0800 Load Addr: 0x4000 CRC: 0xbb8e049 SHA1: 158517ff9a4e8ae7270ccf7eab87bf77427a4a8c
+btd1.bin Size: 0x0800 Load Addr: 0x4800 CRC: 0x9e0566d4 SHA1: f14aa5c3d14136c5e9a317004f82d44a8d5d6815
+bte1.bin Size: 0x0800 Load Addr: 0x5000 CRC: 0x64ee6a42 SHA1: 33d0713ed2a1f4c1c443dce1f053321f2c279293
+bth1.bin Size: 0x0800 Load Addr: 0x5800 CRC: 0xbaab67be SHA1: 77ad1935bf252b401bb6bbb57bd2ed66a85f0a6d
+btj1.bin Size: 0x0800 Load Addr: 0x6000 CRC: 0x36adde4 SHA1: 16a9fcf98a2aa287e0b7a665b88c9c67377a1203
+btk1.bin Size: 0x0800 Load Addr: 0x6800 CRC: 0xf5c2904e SHA1: f2cbf720c4f5ce0fc912dbc2f0445cb2c51ffac1
+btlm.bin Size: 0x0800 Load Addr: 0x7000 CRC: 0x7d0313bf SHA1: 17e3d8df62b332cf889133f1943c8f27308df027
+btn1.bin Size: 0x0800 Load Addr: 0x7800 CRC: 0x182c8c64 SHA1: 511af60d86551291d2dc28442970b4863c62624a
+ROM_REGION(0x0100, REGION_PROMS)
+036408-01.k7 Size: 0x0100 Load Addr: 0x0000 CRC: 0x5903af03 SHA1: 24bc0366f394ad0ec486919212e38be0f08d0239
 
 Game Name: Space Duel:
-Rom Name: spacduel.zip
-136006.106 Size: 800 Load Addr: 2800
-136006.107 Size: 1000 Load Addr: 3000
-136006.201 Size: 1000 Load Addr: 4000
-136006.102 Size: 1000 Load Addr: 5000
-136006.103 Size: 1000 Load Addr: 6000
-136006.104 Size: 1000 Load Addr: 7000
-136006.105 Size: 1000 Load Addr: 8000
-136006.105 Size: 1000 Load Addr: 9000
-136006.105 Size: 1000 Load Addr: a000
-136006.105 Size: 1000 Load Addr: b000
-136006.105 Size: 1000 Load Addr: c000
-136006.105 Size: 1000 Load Addr: d000
-136006.105 Size: 1000 Load Addr: e000
+Rom  Name: spacduel.zip
+ROM_REGION(0x10000, REGION_CPU1)
+136006-106.r7 Size: 0x0800 Load Addr: 0x2800 CRC: 0x691122fe SHA1: f53be76a49dba319050ca7767de3441521910e83
+136006-107.np7 Size: 0x1000 Load Addr: 0x3000 CRC: 0xd8dd0461 SHA1: 58060b20b2511d30d2ec06479d21840bdd0b53c6
+136006-201.r1 Size: 0x1000 Load Addr: 0x4000 CRC: 0xf4037b6e SHA1: 9bacb64d257edd31f53db878477604f50681d78f
+136006-102.np1 Size: 0x1000 Load Addr: 0x5000 CRC: 0x4c451e8a SHA1: c05c52bb08acccb60950a15f05c960c3bc163d3e
+136006-103.m1 Size: 0x1000 Load Addr: 0x6000 CRC: 0xee72da63 SHA1: d36d62cdf7fe76ee9cdbfc2e76ac5d90f22986ba
+136006-104.kl1 Size: 0x1000 Load Addr: 0x7000 CRC: 0xe41b38a3 SHA1: 9e8773e78d65d74db824cfd7108e7038f26757db
+136006-105.j1 Size: 0x1000 Load Addr: 0x8000 CRC: 0x5652710f SHA1: b15891d22a47ac3448d2ced40c04d0ab80606c7d
+ROM_REGION(0x0100, REGION_PROMS)
+136002-125.n4 Size: 0x0100 Load Addr: 0x0000 CRC: 0x5903af03 SHA1: 24bc0366f394ad0ec486919212e38be0f08d0239
+
+Game Name: Space Duel (prototype):
+Rom  Name: spacduel0.zip
+ROM_REGION(0x10000, REGION_CPU1)
+136006-006.r7 Size: 0x0800 Load Addr: 0x2800 CRC: 0x691122fe SHA1: f53be76a49dba319050ca7767de3441521910e83
+136006-007.np7 Size: 0x1000 Load Addr: 0x3000 CRC: 0xd8dd0461 SHA1: 58060b20b2511d30d2ec06479d21840bdd0b53c6
+136006-001.r1 Size: 0x1000 Load Addr: 0x4000 CRC: 0x8f993ac8 SHA1: 38b6d1ee3f19bb77b8aca24fbbae38684f194796
+136006-002.np1 Size: 0x1000 Load Addr: 0x5000 CRC: 0x32cca051 SHA1: a01982e4362ba3dcdafd02d5403f8a190042e314
+136006-003.m1 Size: 0x1000 Load Addr: 0x6000 CRC: 0x36624d57 SHA1: e66cbd747c2a298f402b91c2cf042a0697ff8296
+136006-004.kl1 Size: 0x1000 Load Addr: 0x7000 CRC: 0xb322bf0b SHA1: d67bf4e1e9b5b14b0455f37f9be11167aa3575c2
+136006-005.j1 Size: 0x1000 Load Addr: 0x8000 CRC: 0xedb1242 SHA1: 5ec62e48d15c5baf0fb583e014cae2ec4bd5f5e4
+ROM_REGION(0x0100, REGION_PROMS)
+136002-125.n4 Size: 0x0100 Load Addr: 0x0000 CRC: 0x5903af03 SHA1: 24bc0366f394ad0ec486919212e38be0f08d0239
+
+Game Name: Space Duel Revision 1:
+Rom  Name: spacduel1.zip
+ROM_REGION(0x10000, REGION_CPU1)
+136006-106.r7 Size: 0x0800 Load Addr: 0x2800 CRC: 0x691122fe SHA1: f53be76a49dba319050ca7767de3441521910e83
+136006-107.np7 Size: 0x1000 Load Addr: 0x3000 CRC: 0xd8dd0461 SHA1: 58060b20b2511d30d2ec06479d21840bdd0b53c6
+136006-101.r1 Size: 0x1000 Load Addr: 0x4000 CRC: 0xcd239e6c SHA1: b6143d979dd35a46bcb783bb0ac02d4dca30f0c2
+136006-102.np1 Size: 0x1000 Load Addr: 0x5000 CRC: 0x4c451e8a SHA1: c05c52bb08acccb60950a15f05c960c3bc163d3e
+136006-103.m1 Size: 0x1000 Load Addr: 0x6000 CRC: 0xee72da63 SHA1: d36d62cdf7fe76ee9cdbfc2e76ac5d90f22986ba
+136006-104.kl1 Size: 0x1000 Load Addr: 0x7000 CRC: 0xe41b38a3 SHA1: 9e8773e78d65d74db824cfd7108e7038f26757db
+136006-105.j1 Size: 0x1000 Load Addr: 0x8000 CRC: 0x5652710f SHA1: b15891d22a47ac3448d2ced40c04d0ab80606c7d
+ROM_REGION(0x0100, REGION_PROMS)
+136002-125.n4 Size: 0x0100 Load Addr: 0x0000 CRC: 0x5903af03 SHA1: 24bc0366f394ad0ec486919212e38be0f08d0239
 
 Game Name: Black Widow:
-Rom Name: bwidow.zip
-136017.107 Size: 800 Load Addr: 2800
-136017.108 Size: 1000 Load Addr: 3000
-136017.109 Size: 1000 Load Addr: 4000
-136017.110 Size: 1000 Load Addr: 5000
-136017.101 Size: 1000 Load Addr: 9000
-136017.102 Size: 1000 Load Addr: a000
-136017.103 Size: 1000 Load Addr: b000
-136017.104 Size: 1000 Load Addr: c000
-136017.105 Size: 1000 Load Addr: d000
-136017.106 Size: 1000 Load Addr: e000
+Rom  Name: bwidow.zip
+ROM_REGION(0x10000, REGION_CPU1)
+136017-107.l7 Size: 0x0800 Load Addr: 0x2800 CRC: 0x97f6000c SHA1: bbae93058228820ee67b05f23e45fb54ee0963ff
+136017-108.mn7 Size: 0x1000 Load Addr: 0x3000 CRC: 0x3da354ed SHA1: 935295d66ad40ad702eb7a694296e836f53d22ec
+136017-109.np7 Size: 0x1000 Load Addr: 0x4000 CRC: 0x2fc4ce79 SHA1: 2b324877bf55151747eaacd9a58f846712bfbc14
+136017-110.r7 Size: 0x1000 Load Addr: 0x5000 CRC: 0xdd52987 SHA1: 72aa1d24f20cc86701189df486488edc434b1be1
+136017-101.d1 Size: 0x1000 Load Addr: 0x9000 CRC: 0xfe3febb7 SHA1: b62f7622ca60248e1b8376ee135ae3d94d0b4437
+136017-102.ef1 Size: 0x1000 Load Addr: 0xa000 CRC: 0x10ad0376 SHA1: 614c74daa468a7430ed965a3a9d07b6ad846016c
+136017-103.h1 Size: 0x1000 Load Addr: 0xb000 CRC: 0x8a1430ee SHA1: 3aa6c40721a4289c1cf01f37c89b6b0a96336c68
+136017-104.j1 Size: 0x1000 Load Addr: 0xc000 CRC: 0x44f9943f SHA1: e83d8242e4592149719be6a68cf3aba46116072f
+136017-105.kl1 Size: 0x1000 Load Addr: 0xd000 CRC: 0x1fdf801c SHA1: 33da2ba3cefa3d0dddc8647f9b6caf5d5bfe9b3b
+136017-106.m1 Size: 0x1000 Load Addr: 0xe000 CRC: 0xccc9b26c SHA1: f1398e3ff2b62af1509bc117028845b671ff1ca2
+ROM_REGION(0x0100, REGION_PROMS)
+136002-125.n4 Size: 0x0100 Load Addr: 0x0000 CRC: 0x5903af03 SHA1: 24bc0366f394ad0ec486919212e38be0f08d0239
 
 Game Name: Gravitar (Revision 3):
-Rom Name: gravitar.zip
-136010.210 Size: 800 Load Addr: 2800
-136010.207 Size: 1000 Load Addr: 3000
-136010.208 Size: 1000 Load Addr: 4000
-136010.309 Size: 1000 Load Addr: 5000
-136010.301 Size: 1000 Load Addr: 9000
-136010.302 Size: 1000 Load Addr: a000
-136010.303 Size: 1000 Load Addr: b000
-136010.304 Size: 1000 Load Addr: c000
-136010.305 Size: 1000 Load Addr: d000
-136010.306 Size: 1000 Load Addr: e000
+Rom  Name: gravitar.zip
+ROM_REGION(0x10000, REGION_CPU1)
+136010-210.l7 Size: 0x0800 Load Addr: 0x2800 CRC: 0xdebcb243 SHA1: 2c50cd38d60739c126f1d0d8e7fbd46a0bde6e1c
+136010-207.mn7 Size: 0x1000 Load Addr: 0x3000 CRC: 0x4135629a SHA1: 301ddb7a34b38140a1fdffc060cb08ff57f10cf1
+136010-208.np7 Size: 0x1000 Load Addr: 0x4000 CRC: 0x358f25d9 SHA1: 9c2920cf2b73a93ac2808be654b08505037f53b1
+136010-309.r7 Size: 0x1000 Load Addr: 0x5000 CRC: 0x4ac78df4 SHA1: 5164f2a54244ce1e863d1ec0dd29bc9da7103a85
+136010-301.d1 Size: 0x1000 Load Addr: 0x9000 CRC: 0xa2a55013 SHA1: 800b52ead9f56a3e372797fbc698c8fc791398da
+136010-302.ef1 Size: 0x1000 Load Addr: 0xa000 CRC: 0xd3700b3c SHA1: b9e846db14fa23f8d2def97030d8b072b2bbc0be
+136010-303.h1 Size: 0x1000 Load Addr: 0xb000 CRC: 0x8e12e3e0 SHA1: e09f58f6f36de6bf6724a1ab14ab35acbb0b3876
+136010-304.j1 Size: 0x1000 Load Addr: 0xc000 CRC: 0x467ad5da SHA1: 822b06be6f2d6298b2b10161fbabbb2caa74b2ef
+136010-305.kl1 Size: 0x1000 Load Addr: 0xd000 CRC: 0x840603af SHA1: 4a7124f91d3ee940686c51374a861efe6cb5d282
+136010-306.m1 Size: 0x1000 Load Addr: 0xe000 CRC: 0x3f3805ad SHA1: baf080deaa8eea43af2f3be71dacc63e4666c453
+ROM_REGION(0x0100, REGION_PROMS)
+136002-125.n4 Size: 0x0100 Load Addr: 0x0000 CRC: 0x5903af03 SHA1: 24bc0366f394ad0ec486919212e38be0f08d0239
 
 Game Name: Gravitar (Revision 2):
-Rom Name: gravitr2.zip
-136010.210 Size: 800 Load Addr: 2800
-136010.207 Size: 1000 Load Addr: 3000
-136010.208 Size: 1000 Load Addr: 4000
-136010.209 Size: 1000 Load Addr: 5000
-136010.201 Size: 1000 Load Addr: 9000
-136010.202 Size: 1000 Load Addr: a000
-136010.203 Size: 1000 Load Addr: b000
-136010.204 Size: 1000 Load Addr: c000
-136010.205 Size: 1000 Load Addr: d000
-136010.206 Size: 1000 Load Addr: e000
+Rom  Name: gravitar2.zip
+ROM_REGION(0x10000, REGION_CPU1)
+136010-210.l7 Size: 0x0800 Load Addr: 0x2800 CRC: 0xdebcb243 SHA1: 2c50cd38d60739c126f1d0d8e7fbd46a0bde6e1c
+136010-207.mn7 Size: 0x1000 Load Addr: 0x3000 CRC: 0x4135629a SHA1: 301ddb7a34b38140a1fdffc060cb08ff57f10cf1
+136010-208.np7 Size: 0x1000 Load Addr: 0x4000 CRC: 0x358f25d9 SHA1: 9c2920cf2b73a93ac2808be654b08505037f53b1
+136010-209.r7 Size: 0x1000 Load Addr: 0x5000 CRC: 0x37034287 SHA1: 4de7478fb566fd75f99533507228611cecb1f11a
+136010-201.d1 Size: 0x1000 Load Addr: 0x9000 CRC: 0x167315e4 SHA1: 35613e5a503fac7f451c201675669f417e15241b
+136010-202.ef1 Size: 0x1000 Load Addr: 0xa000 CRC: 0xaaa9e62c SHA1: 87fc660adb22f812a764efc46ffcf5f934d5e333
+136010-203.h1 Size: 0x1000 Load Addr: 0xb000 CRC: 0xae437253 SHA1: e2402dc5fa755a05fa1d531a31b78e39e67f5cbe
+136010-204.j1 Size: 0x1000 Load Addr: 0xc000 CRC: 0x5d6bc29e SHA1: fdd442644209ab858eb4ed1b4cdeb1db26f80108
+136010-205.kl1 Size: 0x1000 Load Addr: 0xd000 CRC: 0xdb1ff34 SHA1: 288d9ffff9d18025621be249ea25a7444f58f3a9
+136010-206.m1 Size: 0x1000 Load Addr: 0xe000 CRC: 0x4521ca48 SHA1: 5770cb46c4ac28d632ad5910723a9edda8283ce5
+ROM_REGION(0x0100, REGION_PROMS)
+136002-125.n4 Size: 0x0100 Load Addr: 0x0000 CRC: 0x5903af03 SHA1: 24bc0366f394ad0ec486919212e38be0f08d0239
 
 Game Name: Gravitar (Prototype):
-Rom Name: gravp.zip
-l7.bin Size: 800 Load Addr: 2800
-mn7.bin Size: 1000 Load Addr: 3000
-np7.bin Size: 1000 Load Addr: 4000
-r7.bin Size: 1000 Load Addr: 5000
-d1.bin Size: 1000 Load Addr: 9000
-ef1.bin Size: 1000 Load Addr: a000
-h1.bin Size: 1000 Load Addr: b000
-j1.bin Size: 1000 Load Addr: c000
-kl1.bin Size: 1000 Load Addr: d000
-m1.bin Size: 1000 Load Addr: e000
+Rom  Name: gravp.zip
+ROM_REGION(0x10000, REGION_CPU1)
+l7.bin Size: 0x0800 Load Addr: 0x2800 CRC: 0x1da0d845 SHA1: 99bccae0521c105388784175c475035bf19270a7
+mn7.bin Size: 0x1000 Load Addr: 0x3000 CRC: 0x650ba31e SHA1: 7f855ea13e2041a87b64fdff4b7ee0d7d97e4401
+np7.bin Size: 0x1000 Load Addr: 0x4000 CRC: 0x5119c0b2 SHA1: ec8a7072d2b8e2626a19c0451ea5ddb27ad80594
+r7.bin Size: 0x1000 Load Addr: 0x5000 CRC: 0xdefa8cbc SHA1: ffd618d846c219fb641311f1d95ffc9f6fb5a240
+d1.bin Size: 0x1000 Load Addr: 0x9000 CRC: 0xacbc0e2c SHA1: 2e0ff3b7ac9c0813e71942492146372bba382f1f
+ef1.bin Size: 0x1000 Load Addr: 0xa000 CRC: 0x88f98f8f SHA1: c2174deed61ae8519a02c2ac8e2969f357733cfd
+h1.bin Size: 0x1000 Load Addr: 0xb000 CRC: 0x68a85703 SHA1: 8a7956578cb6ebbeb74facedcbcb46f86ec92000
+j1.bin Size: 0x1000 Load Addr: 0xc000 CRC: 0x33d19ef6 SHA1: 68f95e237427959d6ef64a5b4dd1e03db7389271
+kl1.bin Size: 0x1000 Load Addr: 0xd000 CRC: 0x32b5806 SHA1: b719792a177e74ec49e6952e445b9cdeaca7505f
+m1.bin Size: 0x1000 Load Addr: 0xe000 CRC: 0x47fe97a0 SHA1: 7cbde4b59abde679c28d7547700b342f25762e4a
+ROM_REGION(0x0100, REGION_PROMS)
+136002-125.n4 Size: 0x0100 Load Addr: 0x0000 CRC: 0x5903af03 SHA1: 24bc0366f394ad0ec486919212e38be0f08d0239
 
 Game Name: Lunar Battle (Prototype, Late):
-Rom Name: lunarbat.zip
-010.010 Size: 800 Load Addr: 2800
-007.010 Size: 1000 Load Addr: 3000
-008.010 Size: 1000 Load Addr: 4000
-001.010 Size: 1000 Load Addr: 9000
-002.010 Size: 1000 Load Addr: a000
-003.010 Size: 1000 Load Addr: b000
-004.010 Size: 1000 Load Addr: c000
-005.010 Size: 1000 Load Addr: d000
-006.010 Size: 1000 Load Addr: e000
+Rom  Name: lunarbat.zip
+ROM_REGION(0x10000, REGION_CPU1)
+136010-010.l7 Size: 0x0800 Load Addr: 0x2800 CRC: 0x48fd38aa SHA1: e6ec31e784c2965369161c33d00903ba027f7f20
+136010-007.mn7 Size: 0x1000 Load Addr: 0x3000 CRC: 0x9754830e SHA1: 2e6885155a93d4eaf9a405f3eb740f2f4b30bc23
+136010-008.np7 Size: 0x1000 Load Addr: 0x4000 CRC: 0x84aa8db SHA1: 80050f981b9a673d336bbcf712faf21b7be7e042
+136010-001.d1 Size: 0x1000 Load Addr: 0x9000 CRC: 0xcd7e1780 SHA1: 92265a548485d140b73ef542ad66dc32cb52d42b
+136010-002.ef1 Size: 0x1000 Load Addr: 0xa000 CRC: 0xdc813a54 SHA1: c543cae3a3ba5b00e5a8714a42b2557bc6e730cf
+136010-003.h1 Size: 0x1000 Load Addr: 0xb000 CRC: 0x8e1fecd3 SHA1: a43cb4ea77e095227590fcefa778688093dcf135
+136010-004.j1 Size: 0x1000 Load Addr: 0xc000 CRC: 0xc407764f SHA1: f202a9fe6c10975bb124b4b1e902341da578da8f
+136010-005.kl1 Size: 0x1000 Load Addr: 0xd000 CRC: 0x4feb6f81 SHA1: b852f1093e56343225c1b2b2554a93c88fc58637
+136010-006.m1 Size: 0x1000 Load Addr: 0xe000 CRC: 0xf8ad139d SHA1: e9e0dcb0872b19af09825a979f8b3747c9632091
+ROM_REGION(0x0100, REGION_PROMS)
+136002-125.n4 Size: 0x0100 Load Addr: 0x0000 CRC: 0x5903af03 SHA1: 24bc0366f394ad0ec486919212e38be0f08d0239
 
 Game Name: Lunar Battle (Prototype, Early):
-Rom Name: lunarba1.zip
-vrom1.bin Size: 800 Load Addr: 2800
-vrom2.bin Size: 1000 Load Addr: 3000
-rom0.bin Size: 1000 Load Addr: 4000
-rom1.bin Size: 1000 Load Addr: 5000
-rom2.bin Size: 1000 Load Addr: 6000
-rom3.bin Size: 1000 Load Addr: 7000
-rom4.bin Size: 1000 Load Addr: 8000
-rom5.bin Size: 1000 Load Addr: 9000
-rom5.bin Size: 1000 Load Addr: a000
-rom5.bin Size: 1000 Load Addr: b000
-rom5.bin Size: 1000 Load Addr: c000
-rom5.bin Size: 1000 Load Addr: d000
-rom5.bin Size: 1000 Load Addr: e000
-rom5.bin Size: 1000 Load Addr: f000
+Rom  Name: lunarba1.zip
+ROM_REGION(0x10000, REGION_CPU1)
+vrom1.bin Size: 0x0800 Load Addr: 0x2800 CRC: 0xc60634d9 SHA1: b94f056b5e73a2e015ba9a4be66dc2abee325016
+vrom2.bin Size: 0x1000 Load Addr: 0x3000 CRC: 0x53d9a8a2 SHA1: c33766658dd3523e99e664ef42a4ba4ab884fa80
+rom0.bin Size: 0x1000 Load Addr: 0x4000 CRC: 0xcc4691c6 SHA1: 72f75c75ec3f36c5c455c82593659961b5882f9f
+rom1.bin Size: 0x1000 Load Addr: 0x5000 CRC: 0x4df71d07 SHA1: 5d71750594885641fb347bf4106b3b6ace822fb9
+rom2.bin Size: 0x1000 Load Addr: 0x6000 CRC: 0xc6ff04cb SHA1: 33477abacb9dfeadca20f9b9c1c2840cf31be7c3
+rom3.bin Size: 0x1000 Load Addr: 0x7000 CRC: 0xa7dc9d1b SHA1: 991f5b943f5c82027deadda0c4230b70f2a8ca10
+rom4.bin Size: 0x1000 Load Addr: 0x8000 CRC: 0x788bf976 SHA1: 4dc2d92bbd232625fd8e828c876c4182ddde125d
+rom5.bin Size: 0x1000 Load Addr: 0x9000 CRC: 0x16121e13 SHA1: 9ef59f4ffc22d5f9457b57d2f3a67d883995be98
+rom5.bin Size: 0x1000 Load Addr: 0x9000 CRC: 0x16121e13 SHA1: 9ef59f4ffc22d5f9457b57d2f3a67d883995be98
+rom5.bin Size: 0x1000 Load Addr: 0xa000 CRC: 0x16121e13 SHA1: 9ef59f4ffc22d5f9457b57d2f3a67d883995be98
+rom5.bin Size: 0x1000 Load Addr: 0xb000 CRC: 0x16121e13 SHA1: 9ef59f4ffc22d5f9457b57d2f3a67d883995be98
+rom5.bin Size: 0x1000 Load Addr: 0xc000 CRC: 0x16121e13 SHA1: 9ef59f4ffc22d5f9457b57d2f3a67d883995be98
+rom5.bin Size: 0x1000 Load Addr: 0xd000 CRC: 0x16121e13 SHA1: 9ef59f4ffc22d5f9457b57d2f3a67d883995be98
+rom5.bin Size: 0x1000 Load Addr: 0xe000 CRC: 0x16121e13 SHA1: 9ef59f4ffc22d5f9457b57d2f3a67d883995be98
+ROM_REGION(0x0100, REGION_PROMS)
+136002-125.n4 Size: 0x0100 Load Addr: 0x0000 CRC: 0x5903af03 SHA1: 24bc0366f394ad0ec486919212e38be0f08d0239
 
 Game Name: Tempest Multigame (1999 Clay Cowgill):
-Rom Name: tempestm.zip
-menu_D1.bin Size: 800 Load Addr: 9000
-menu_E1.bin Size: 800 Load Addr: 9800
-menu_F1.bin Size: 800 Load Addr: a000
-136002.113 Size: 800 Load Addr: a800
-136002.114 Size: 800 Load Addr: b000
-136002.115 Size: 800 Load Addr: b800
-136002.116 Size: 800 Load Addr: c000
-136002.117 Size: 800 Load Addr: c800
-136002.118 Size: 800 Load Addr: d000
-menu_R1.bin Size: 800 Load Addr: d800
-menu_N3.bin Size: 800 Load Addr: 3000
-menu_R3.bin Size: 800 Load Addr: 3800
-alienst/aliens_d1.bin Size: 800 Load Addr: 19000
-alienst/aliens_e1.bin Size: 800 Load Addr: 19800
-alienst/aliens_f1.bin Size: 800 Load Addr: 1a000
-alienst/aliens_h1.bin Size: 800 Load Addr: 1a800
-alienst/aliens_j1.bin Size: 800 Load Addr: 1b000
-alienst/aliens_k1.bin Size: 800 Load Addr: 1b800
-alienst/aliens_l1.bin Size: 800 Load Addr: 1c000
-alienst/aliens_n1.bin Size: 800 Load Addr: 1c800
-alienst/aliens_p1.bin Size: 800 Load Addr: 1d000
-alienst/aliens_r1.bin Size: 800 Load Addr: 1d800
-alienst/aliens_n3.bin Size: 800 Load Addr: 13000
-alienst/aliens_r3.bin Size: 800 Load Addr: 13800
-vbreak/vb_d1.bin Size: 800 Load Addr: 29000
-vbreak/vb_e1.bin Size: 800 Load Addr: 29800
-vbreak/vb_f1.bin Size: 800 Load Addr: 2a000
-vbreak/vb_h1.bin Size: 800 Load Addr: 2a800
-vbreak/136002.114 Size: 800 Load Addr: 2b000
-vbreak/136002.115 Size: 800 Load Addr: 2b800
-vbreak/136002.116 Size: 800 Load Addr: 2c000
-vbreak/136002.117 Size: 800 Load Addr: 2c800
-vbreak/136002.118 Size: 800 Load Addr: 2d000
-vbreak/vb_r1.bin Size: 800 Load Addr: 2d800
-vbreak/vb_n3.bin Size: 800 Load Addr: 23000
-vbreak/vb_r3.bin Size: 800 Load Addr: 23800
-vortex/d1.bin Size: 800 Load Addr: 39000
-vortex/e1.bin Size: 800 Load Addr: 39800
-vortex/f1.bin Size: 800 Load Addr: 3a000
-vortex/h1.bin Size: 800 Load Addr: 3a800
-vortex/j1.bin Size: 800 Load Addr: 3b000
-vortex/k1.bin Size: 800 Load Addr: 3b800
-vortex/lm1.bin Size: 800 Load Addr: 3c000
-vortex/mn1.bin Size: 800 Load Addr: 3c800
-vortex/p1.bin Size: 800 Load Addr: 3d000
-vortex/r1.bin Size: 800 Load Addr: 3d800
-vortex/n3.bin Size: 800 Load Addr: 33000
-vortex/r3.bin Size: 800 Load Addr: 33800
-temptube/136002-113.d1 Size: 800 Load Addr: 49000
-temptube/136002-114.e1 Size: 800 Load Addr: 49800
-temptube/136002-115.f1 Size: 800 Load Addr: 4a000
-temptube/136002-316.h1 Size: 800 Load Addr: 4a800
-temptube/136002-217.j1 Size: 800 Load Addr: 4b000
-temptube/tube-118.k1 Size: 800 Load Addr: 4b800
-temptube/136002-119.lm1 Size: 800 Load Addr: 4c000
-temptube/136002-120.mn1 Size: 800 Load Addr: 4c800
-temptube/136002-121.p1 Size: 800 Load Addr: 4d000
-temptube/136002-222.r1 Size: 800 Load Addr: 4d800
-temptube/136002-123.np3 Size: 800 Load Addr: 43000
-temptube/136002-124.r3 Size: 800 Load Addr: 43800
-tempest1/136002-113.d1 Size: 800 Load Addr: 59000
-tempest1/136002-114.e1 Size: 800 Load Addr: 59800
-tempest1/136002-115.f1 Size: 800 Load Addr: 5a000
-tempest1/136002-116.h1 Size: 800 Load Addr: 5a800
-tempest1/136002-117.j1 Size: 800 Load Addr: 5b000
-tempest1/136002-118.k1 Size: 800 Load Addr: 5b800
-tempest1/136002-119.lm1 Size: 800 Load Addr: 5c000
-tempest1/136002-120.mn1 Size: 800 Load Addr: 5c800
-tempest1/136002-121.p1 Size: 800 Load Addr: 5d000
-tempest1/136002-122.r1 Size: 800 Load Addr: 5d800
-tempest1/136002-123.np3 Size: 800 Load Addr: 53000
-tempest1/136002-124.r3 Size: 800 Load Addr: 53800
-tempest2/136002-113.d1 Size: 800 Load Addr: 69000
-tempest2/136002-114.e1 Size: 800 Load Addr: 69800
-tempest2/136002-115.f1 Size: 800 Load Addr: 6a000
-tempest2/136002-116.h1 Size: 800 Load Addr: 6a800
-tempest2/136002-217.j1 Size: 800 Load Addr: 6b000
-tempest2/136002-118.k1 Size: 800 Load Addr: 6b800
-tempest2/136002-119.lm1 Size: 800 Load Addr: 6c000
-tempest2/136002-120.mn1 Size: 800 Load Addr: 6c800
-tempest2/136002-121.p1 Size: 800 Load Addr: 6d000
-tempest2/136002-222.r1 Size: 800 Load Addr: 6d800
-tempest2/136002-123.np3 Size: 800 Load Addr: 63000
-tempest2/136002-124.r3 Size: 800 Load Addr: 63800
-tempest/136002-113.d1 Size: 800 Load Addr: 79000
-tempest/136002-114.e1 Size: 800 Load Addr: 79800
-tempest/136002-115.f1 Size: 800 Load Addr: 7a000
-tempest/136002-316.h1 Size: 800 Load Addr: 7a800
-tempest/136002-217.j1 Size: 800 Load Addr: 7b000
-tempest/136002-118.k1 Size: 800 Load Addr: 7b800
-tempest/136002-119.lm1 Size: 800 Load Addr: 7c000
-tempest/136002-120.mn1 Size: 800 Load Addr: 7c800
-tempest/136002-121.p1 Size: 800 Load Addr: 7d000
-tempest/136002-222.r1 Size: 800 Load Addr: 7d800
-tempest/136002-123.np3 Size: 800 Load Addr: 73000
-tempest/136002-124.r3 Size: 800 Load Addr: 73800
+Rom  Name: tempestm.zip
+ROM_REGION(0x90000, REGION_CPU1)
+menu_D1.bin Size: 0x0800 Load Addr: 0x9000 CRC: 0x8a6633fb SHA1: b143a5d2019f24666b350b40b0dab2924bb9c7c0
+menu_E1.bin Size: 0x0800 Load Addr: 0x9800 CRC: 0x2eedfdf6 SHA1: 2ed494bd8610bebd07284289ca8b7059fd805300
+menu_F1.bin Size: 0x0800 Load Addr: 0xa000 CRC: 0x12f62746 SHA1: 37356b5738c27ffe4c38f1b6cf99ae21441d8e8e
+136002.113 Size: 0x0800 Load Addr: 0xa800 CRC: 0x65d61fe7 SHA1: 38a1e8a8f65b7887cf3e190269fe4ce2c6f818aa
+136002.114 Size: 0x0800 Load Addr: 0xb000 CRC: 0x11077375 SHA1: ed8ff0ca969da6672a7683b93d4fcf2935a0d903
+136002.115 Size: 0x0800 Load Addr: 0xb800 CRC: 0xf3e2827a SHA1: bd04fcfbbba995e08c3144c1474fcddaaeb1c700
+136002.116 Size: 0x0800 Load Addr: 0xc000 CRC: 0x7356896c SHA1: a013ede292189a8f5a907de882ee1a573d784b3c
+136002.117 Size: 0x0800 Load Addr: 0xc800 CRC: 0x55952119 SHA1: 470d914fa52fce3786cb6330889876d3547dca65
+136002.118 Size: 0x0800 Load Addr: 0xd000 CRC: 0xbeb352ab SHA1: f213166d3970e0bd0f29d8dea8d6afa6990cce38
+menu_R1.bin Size: 0x0800 Load Addr: 0xd800 CRC: 0x1d8f194a SHA1: c77f6b83f5c498c0f2d5372089a4604913a4aad5
+menu_N3.bin Size: 0x0800 Load Addr: 0x3000 CRC: 0x29f7e937 SHA1: 686c8b9b8901262e743497cee7f2f7dd5cb3af7e
+menu_R3.bin Size: 0x0800 Load Addr: 0x3800 CRC: 0xc16ec351 SHA1: a30a3662c740810c0f20e3712679606921b8ca06
+alienst/aliens_d1.bin Size: 0x0800 Load Addr: 0x19000 CRC: 0x337e21f6 SHA1: 7adadeaa975e22f0b20e8f1fb6ad68b5c3934133
+alienst/aliens_e1.bin Size: 0x0800 Load Addr: 0x19800 CRC: 0x337e21f6 SHA1: 7adadeaa975e22f0b20e8f1fb6ad68b5c3934133
+alienst/aliens_f1.bin Size: 0x0800 Load Addr: 0x1a000 CRC: 0x4d2aabb0 SHA1: 31106a1fc22d2a19866f07b8d6c6f4bf76007909
+alienst/aliens_h1.bin Size: 0x0800 Load Addr: 0x1a800 CRC: 0xa503f54a SHA1: 91ebf9f69a183a04a5bf55fcdd9e191523bb66bb
+alienst/aliens_j1.bin Size: 0x0800 Load Addr: 0x1b000 CRC: 0x5487d531 SHA1: c95f037151b824345af03f27a6c3c7eb8a899b2c
+alienst/aliens_k1.bin Size: 0x0800 Load Addr: 0x1b800 CRC: 0xac96e87 SHA1: 37461e84e6f46516c25dbf4ddb2ffd65877445c0
+alienst/aliens_l1.bin Size: 0x0800 Load Addr: 0x1c000 CRC: 0xcd246ac2 SHA1: de2e6fe2e72c092c3874e797fc302a71dbf57710
+alienst/aliens_n1.bin Size: 0x0800 Load Addr: 0x1c800 CRC: 0xbd98c5f3 SHA1: 268487d9cf46b4b7b49eab7420d078bf676e636c
+alienst/aliens_p1.bin Size: 0x0800 Load Addr: 0x1d000 CRC: 0x7c10adbd SHA1: 38579128a90bff4a7a4ae46d6aaa42118b8bc218
+alienst/aliens_r1.bin Size: 0x0800 Load Addr: 0x1d800 CRC: 0x555c3070 SHA1: 032f03af23c7ccac8a2bf50c3c646e141921ffee
+alienst/aliens_n3.bin Size: 0x0800 Load Addr: 0x13000 CRC: 0x5c8fd38b SHA1: bb0d6bd062eba53b5d64b3f444d5ce0a34728bf5
+alienst/aliens_r3.bin Size: 0x0800 Load Addr: 0x13800 CRC: 0x6cabcd08 SHA1: e3950de50f3dfbc4d4d2f4fe26625d8ef94c0819
+vbreak/vb_d1.bin Size: 0x0800 Load Addr: 0x29000 CRC: 0x6fd3efe5 SHA1: d195d08984ad8797607bc1989e8a606d51547c68
+vbreak/vb_e1.bin Size: 0x0800 Load Addr: 0x29800 CRC: 0x9974b9a5 SHA1: 6ecc6f72070895bb15992977348f58835233911f
+vbreak/vb_f1.bin Size: 0x0800 Load Addr: 0x2a000 CRC: 0x44d611d8 SHA1: 82cd63fc9067ea1f00feeffbee66e7d750cab7e5
+vbreak/vb_h1.bin Size: 0x0800 Load Addr: 0x2a800 CRC: 0xcd58fc11 SHA1: 060e31e55183ccef67a1adc91fb48c22424a4ba5
+vbreak/136002.114 Size: 0x0800 Load Addr: 0x2b000 CRC: 0x11077375 SHA1: ed8ff0ca969da6672a7683b93d4fcf2935a0d903
+vbreak/136002.115 Size: 0x0800 Load Addr: 0x2b800 CRC: 0xf3e2827a SHA1: bd04fcfbbba995e08c3144c1474fcddaaeb1c700
+vbreak/136002.116 Size: 0x0800 Load Addr: 0x2c000 CRC: 0x7356896c SHA1: a013ede292189a8f5a907de882ee1a573d784b3c
+vbreak/136002.117 Size: 0x0800 Load Addr: 0x2c800 CRC: 0x55952119 SHA1: 470d914fa52fce3786cb6330889876d3547dca65
+vbreak/136002.118 Size: 0x0800 Load Addr: 0x2d000 CRC: 0xbeb352ab SHA1: f213166d3970e0bd0f29d8dea8d6afa6990cce38
+vbreak/vb_r1.bin Size: 0x0800 Load Addr: 0x2d800 CRC: 0x1ae2dd53 SHA1: b908ba6b59195aea853380a56a243aa8fa2fba71
+vbreak/vb_n3.bin Size: 0x0800 Load Addr: 0x23000 CRC: 0x29f7e937 SHA1: 686c8b9b8901262e743497cee7f2f7dd5cb3af7e
+vbreak/vb_r3.bin Size: 0x0800 Load Addr: 0x23800 CRC: 0xc16ec351 SHA1: a30a3662c740810c0f20e3712679606921b8ca06
+vortex/d1.bin Size: 0x0800 Load Addr: 0x39000 CRC: 0x3aff3417 SHA1: 3b7c31f01b7467757ec85e98a17038e5df5720bb
+vortex/e1.bin Size: 0x0800 Load Addr: 0x39800 CRC: 0x11861be3 SHA1: a35797c649e8286c844cee6dac86ac50f4fbd669
+vortex/f1.bin Size: 0x0800 Load Addr: 0x3a000 CRC: 0x1d251111 SHA1: 2912a21dc708231e28d6164e54e593a8300b9c4a
+vortex/h1.bin Size: 0x0800 Load Addr: 0x3a800 CRC: 0x937a9859 SHA1: 336b25291533d19294f1ced730bbf20971849adf
+vortex/j1.bin Size: 0x0800 Load Addr: 0x3b000 CRC: 0x79481246 SHA1: c5362670fd29ef1432f8e626323da395d6e8a675
+vortex/k1.bin Size: 0x0800 Load Addr: 0x3b800 CRC: 0x390f872a SHA1: c5463ea2d2307e21c941b5b459e3652c12154609
+vortex/lm1.bin Size: 0x0800 Load Addr: 0x3c000 CRC: 0x515760dd SHA1: 773f06c9a64e72f9d3d8a5c622bf3ec2b4ba678d
+vortex/mn1.bin Size: 0x0800 Load Addr: 0x3c800 CRC: 0xc6c41c68 SHA1: 9323c07fc80a947142dde008c53f5e8c0b0c572d
+vortex/p1.bin Size: 0x0800 Load Addr: 0x3d000 CRC: 0x3c2ff130 SHA1: 32ebabcb2cbd7aab5e29de2b873f02ed78776ae6
+vortex/r1.bin Size: 0x0800 Load Addr: 0x3d800 CRC: 0x67cafbb1 SHA1: 467515733d843398e6fe29661002536a1e6c8fc9
+vortex/n3.bin Size: 0x0800 Load Addr: 0x33000 CRC: 0x29c6a1cb SHA1: 290702a1c0942a68e288b37963e51eba02177a3f
+vortex/r3.bin Size: 0x0800 Load Addr: 0x33800 CRC: 0x7fbe5e21 SHA1: e5de6c3af82e64444b0ddcda559e9cb4fbf6c1da
+temptube/136002-113.d1 Size: 0x0800 Load Addr: 0x49000 CRC: 0x65d61fe7 SHA1: 38a1e8a8f65b7887cf3e190269fe4ce2c6f818aa
+temptube/136002-114.e1 Size: 0x0800 Load Addr: 0x49800 CRC: 0x11077375 SHA1: ed8ff0ca969da6672a7683b93d4fcf2935a0d903
+temptube/136002-115.f1 Size: 0x0800 Load Addr: 0x4a000 CRC: 0xf3e2827a SHA1: bd04fcfbbba995e08c3144c1474fcddaaeb1c700
+temptube/136002-316.h1 Size: 0x0800 Load Addr: 0x4a800 CRC: 0xaeb0f7e9 SHA1: a5cc25015b98692673cfc1c7c2e9634efd750870
+temptube/136002-217.j1 Size: 0x0800 Load Addr: 0x4b000 CRC: 0xef2eb645 SHA1: b1a2c969e8897e335d5354de6ae04a65d4b2a1e4
+temptube/tube-118.k1 Size: 0x0800 Load Addr: 0x4b800 CRC: 0xcefb03f0 SHA1: 41ddfa4991fa49a31d4740a04551556acca66196
+temptube/136002-119.lm1 Size: 0x0800 Load Addr: 0x4c000 CRC: 0xa4de050f SHA1: ea302e43a313a5a18115e74ddbaaedde0fbecda7
+temptube/136002-120.mn1 Size: 0x0800 Load Addr: 0x4c800 CRC: 0x35619648 SHA1: 48f1e8bed7ec6afa0b4c549a30e5ec331c071e40
+temptube/136002-121.p1 Size: 0x0800 Load Addr: 0x4d000 CRC: 0x73d38e47 SHA1: 9980606376a79ba94f8e2a325871a6c8d10d83fc
+temptube/136002-222.r1 Size: 0x0800 Load Addr: 0x4d800 CRC: 0x707bd5c3 SHA1: 2f0af6fb7154c244c794f7247e5c16a1e06ddf7d
+temptube/136002-123.np3 Size: 0x0800 Load Addr: 0x43000 CRC: 0x29f7e937 SHA1: 686c8b9b8901262e743497cee7f2f7dd5cb3af7e
+temptube/136002-124.r3 Size: 0x0800 Load Addr: 0x43800 CRC: 0xc16ec351 SHA1: a30a3662c740810c0f20e3712679606921b8ca06
+tempest1/136002-113.d1 Size: 0x0800 Load Addr: 0x59000 CRC: 0x65d61fe7 SHA1: 38a1e8a8f65b7887cf3e190269fe4ce2c6f818aa
+tempest1/136002-114.e1 Size: 0x0800 Load Addr: 0x59800 CRC: 0x11077375 SHA1: ed8ff0ca969da6672a7683b93d4fcf2935a0d903
+tempest1/136002-115.f1 Size: 0x0800 Load Addr: 0x5a000 CRC: 0xf3e2827a SHA1: bd04fcfbbba995e08c3144c1474fcddaaeb1c700
+tempest1/136002-116.h1 Size: 0x0800 Load Addr: 0x5a800 CRC: 0x7356896c SHA1: a013ede292189a8f5a907de882ee1a573d784b3c
+tempest1/136002-117.j1 Size: 0x0800 Load Addr: 0x5b000 CRC: 0x55952119 SHA1: 470d914fa52fce3786cb6330889876d3547dca65
+tempest1/136002-118.k1 Size: 0x0800 Load Addr: 0x5b800 CRC: 0xbeb352ab SHA1: f213166d3970e0bd0f29d8dea8d6afa6990cce38
+tempest1/136002-119.lm1 Size: 0x0800 Load Addr: 0x5c000 CRC: 0xa4de050f SHA1: ea302e43a313a5a18115e74ddbaaedde0fbecda7
+tempest1/136002-120.mn1 Size: 0x0800 Load Addr: 0x5c800 CRC: 0x35619648 SHA1: 48f1e8bed7ec6afa0b4c549a30e5ec331c071e40
+tempest1/136002-121.p1 Size: 0x0800 Load Addr: 0x5d000 CRC: 0x73d38e47 SHA1: 9980606376a79ba94f8e2a325871a6c8d10d83fc
+tempest1/136002-122.r1 Size: 0x0800 Load Addr: 0x5d800 CRC: 0x796a9918 SHA1: c862a0d4ea330161e4c3cc8e5e9ad38893fffbd4
+tempest1/136002-123.np3 Size: 0x0800 Load Addr: 0x53000 CRC: 0x29f7e937 SHA1: 686c8b9b8901262e743497cee7f2f7dd5cb3af7e
+tempest1/136002-124.r3 Size: 0x0800 Load Addr: 0x53800 CRC: 0xc16ec351 SHA1: a30a3662c740810c0f20e3712679606921b8ca06
+tempest2/136002-113.d1 Size: 0x0800 Load Addr: 0x69000 CRC: 0x65d61fe7 SHA1: 38a1e8a8f65b7887cf3e190269fe4ce2c6f818aa
+tempest2/136002-114.e1 Size: 0x0800 Load Addr: 0x69800 CRC: 0x11077375 SHA1: ed8ff0ca969da6672a7683b93d4fcf2935a0d903
+tempest2/136002-115.f1 Size: 0x0800 Load Addr: 0x6a000 CRC: 0xf3e2827a SHA1: bd04fcfbbba995e08c3144c1474fcddaaeb1c700
+tempest2/136002-116.h1 Size: 0x0800 Load Addr: 0x6a800 CRC: 0x7356896c SHA1: a013ede292189a8f5a907de882ee1a573d784b3c
+tempest2/136002-217.j1 Size: 0x0800 Load Addr: 0x6b000 CRC: 0xef2eb645 SHA1: b1a2c969e8897e335d5354de6ae04a65d4b2a1e4
+tempest2/136002-118.k1 Size: 0x0800 Load Addr: 0x6b800 CRC: 0xbeb352ab SHA1: f213166d3970e0bd0f29d8dea8d6afa6990cce38
+tempest2/136002-119.lm1 Size: 0x0800 Load Addr: 0x6c000 CRC: 0xa4de050f SHA1: ea302e43a313a5a18115e74ddbaaedde0fbecda7
+tempest2/136002-120.mn1 Size: 0x0800 Load Addr: 0x6c800 CRC: 0x35619648 SHA1: 48f1e8bed7ec6afa0b4c549a30e5ec331c071e40
+tempest2/136002-121.p1 Size: 0x0800 Load Addr: 0x6d000 CRC: 0x73d38e47 SHA1: 9980606376a79ba94f8e2a325871a6c8d10d83fc
+tempest2/136002-222.r1 Size: 0x0800 Load Addr: 0x6d800 CRC: 0x707bd5c3 SHA1: 2f0af6fb7154c244c794f7247e5c16a1e06ddf7d
+tempest2/136002-123.np3 Size: 0x0800 Load Addr: 0x63000 CRC: 0x29f7e937 SHA1: 686c8b9b8901262e743497cee7f2f7dd5cb3af7e
+tempest2/136002-124.r3 Size: 0x0800 Load Addr: 0x63800 CRC: 0xc16ec351 SHA1: a30a3662c740810c0f20e3712679606921b8ca06
+tempest/136002-113.d1 Size: 0x0800 Load Addr: 0x79000 CRC: 0x65d61fe7 SHA1: 38a1e8a8f65b7887cf3e190269fe4ce2c6f818aa
+tempest/136002-114.e1 Size: 0x0800 Load Addr: 0x79800 CRC: 0x11077375 SHA1: ed8ff0ca969da6672a7683b93d4fcf2935a0d903
+tempest/136002-115.f1 Size: 0x0800 Load Addr: 0x7a000 CRC: 0xf3e2827a SHA1: bd04fcfbbba995e08c3144c1474fcddaaeb1c700
+tempest/136002-316.h1 Size: 0x0800 Load Addr: 0x7a800 CRC: 0xaeb0f7e9 SHA1: a5cc25015b98692673cfc1c7c2e9634efd750870
+tempest/136002-217.j1 Size: 0x0800 Load Addr: 0x7b000 CRC: 0xef2eb645 SHA1: b1a2c969e8897e335d5354de6ae04a65d4b2a1e4
+tempest/136002-118.k1 Size: 0x0800 Load Addr: 0x7b800 CRC: 0xbeb352ab SHA1: f213166d3970e0bd0f29d8dea8d6afa6990cce38
+tempest/136002-119.lm1 Size: 0x0800 Load Addr: 0x7c000 CRC: 0xa4de050f SHA1: ea302e43a313a5a18115e74ddbaaedde0fbecda7
+tempest/136002-120.mn1 Size: 0x0800 Load Addr: 0x7c800 CRC: 0x35619648 SHA1: 48f1e8bed7ec6afa0b4c549a30e5ec331c071e40
+tempest/136002-121.p1 Size: 0x0800 Load Addr: 0x7d000 CRC: 0x73d38e47 SHA1: 9980606376a79ba94f8e2a325871a6c8d10d83fc
+tempest/136002-222.r1 Size: 0x0800 Load Addr: 0x7d800 CRC: 0x707bd5c3 SHA1: 2f0af6fb7154c244c794f7247e5c16a1e06ddf7d
+tempest/136002-123.np3 Size: 0x0800 Load Addr: 0x73000 CRC: 0x29f7e937 SHA1: 686c8b9b8901262e743497cee7f2f7dd5cb3af7e
+tempest/136002-124.r3 Size: 0x0800 Load Addr: 0x73800 CRC: 0xc16ec351 SHA1: a30a3662c740810c0f20e3712679606921b8ca06
 
 Game Name: Tempest (Revision 3):
-Rom Name: tempest.zip
-136002-113.d1 Size: 800 Load Addr: 9000
-136002-114.e1 Size: 800 Load Addr: 9800
-136002-115.f1 Size: 800 Load Addr: a000
-136002-316.h1 Size: 800 Load Addr: a800
-136002-217.j1 Size: 800 Load Addr: b000
-136002-118.k1 Size: 800 Load Addr: b800
-136002-119.lm1 Size: 800 Load Addr: c000
-136002-120.mn1 Size: 800 Load Addr: c800
-136002-121.p1 Size: 800 Load Addr: d000
-136002-222.r1 Size: 800 Load Addr: d800
-136002-123.np3 Size: 800 Load Addr: 3000
-136002-124.r3 Size: 800 Load Addr: 3800
+Rom  Name: tempest.zip
+ROM_REGION(0x10000, REGION_CPU1)
+136002-133.d1 Size: 0x1000 Load Addr: 0x9000 CRC: 0x1d0cc503 SHA1: 7bef95db9b1102d6b1166bda0ccb276ef4cc3764
+136002-134.f1 Size: 0x1000 Load Addr: 0xa000 CRC: 0xc88e3524 SHA1: 89144baf1efc703b2336774793ce345b37829ee7
+136002-235.j1 Size: 0x1000 Load Addr: 0xb000 CRC: 0xa4b2ce3f SHA1: a5f5fb630a48c5d25346f90d4c13aaa98f60b228
+136002-136.lm1 Size: 0x1000 Load Addr: 0xc000 CRC: 0x65a9a9f9 SHA1: 73aa7d6f4e7093ccb2d97f6344f354872bcfd72a
+136002-237.p1 Size: 0x1000 Load Addr: 0xd000 CRC: 0xde4e9e34 SHA1: 04be074e45bf5cd95a852af97cd04e35b7f27fc4
+136002-138.np3 Size: 0x1000 Load Addr: 0x3000 CRC: 0x9995256d SHA1: 2b725ee1a57d423c7d7377a1744f48412e0f2f69
+ROM_REGION(0x0100, REGION_PROMS)
+136002-125.d7 Size: 0x0100 Load Addr: 0x0000 CRC: 0x5903af03 SHA1: 24bc0366f394ad0ec486919212e38be0f08d0239
 
 Game Name: Tempest (Revision 2B):
-Rom Name: tempest3.zip
-136002-237.p1 Size: 1000 Load Addr: 9000
-136002-136.lm1 Size: 1000 Load Addr: a000
-136002-235.j1 Size: 1000 Load Addr: b000
-136002-134.f1 Size: 1000 Load Addr: c000
-136002-133.d1 Size: 1000 Load Addr: d000
-136002-138.np3 Size: 1000 Load Addr: 3000
+Rom  Name: tempest3.zip
+ROM_REGION(0x10000, REGION_CPU1)
+136002-113.d1 Size: 0x0800 Load Addr: 0x9000 CRC: 0x0000 SHA1: (null)
+136002-114.e1 Size: 0x0800 Load Addr: 0x9800 CRC: 0x0000 SHA1: (null)
+136002-115.f1 Size: 0x0800 Load Addr: 0xa000 CRC: 0x0000 SHA1: (null)
+136002-316.h1 Size: 0x0800 Load Addr: 0xa800 CRC: 0x0000 SHA1: (null)
+136002-217.j1 Size: 0x0800 Load Addr: 0xb000 CRC: 0x0000 SHA1: (null)
+136002-118.k1 Size: 0x0800 Load Addr: 0xb800 CRC: 0x0000 SHA1: (null)
+136002-119.lm1 Size: 0x0800 Load Addr: 0xc000 CRC: 0x0000 SHA1: (null)
+136002-120.mn1 Size: 0x0800 Load Addr: 0xc800 CRC: 0x0000 SHA1: (null)
+136002-121.p1 Size: 0x0800 Load Addr: 0xd000 CRC: 0x0000 SHA1: (null)
+136002-222.r1 Size: 0x0800 Load Addr: 0xd800 CRC: 0x0000 SHA1: (null)
+136002-123.np3 Size: 0x0800 Load Addr: 0x3000 CRC: 0x0000 SHA1: (null)
+136002-124.r3 Size: 0x0800 Load Addr: 0x3800 CRC: 0x0000 SHA1: (null)
+ROM_REGION(0x0100, REGION_PROMS)
+136002-125.d7 Size: 0x0100 Load Addr: 0x0000 CRC: 0x5903af03 SHA1: 24bc0366f394ad0ec486919212e38be0f08d0239
 
 Game Name: Tempest (Revision 2A):
-Rom Name: tempest2.zip
-136002-113.d1 Size: 800 Load Addr: 9000
-136002-114.e1 Size: 800 Load Addr: 9800
-136002-115.f1 Size: 800 Load Addr: a000
-136002-116.h1 Size: 800 Load Addr: a800
-136002-217.j1 Size: 800 Load Addr: b000
-136002-118.k1 Size: 800 Load Addr: b800
-136002-119.lm1 Size: 800 Load Addr: c000
-136002-120.mn1 Size: 800 Load Addr: c800
-136002-121.p1 Size: 800 Load Addr: d000
-136002-222.r1 Size: 800 Load Addr: d800
-136002-123.np3 Size: 800 Load Addr: 3000
-136002-124.r3 Size: 800 Load Addr: 3800
+Rom  Name: tempest2.zip
+ROM_REGION(0x10000, REGION_CPU1)
+136002-113.d1 Size: 0x0800 Load Addr: 0x9000 CRC: 0x65d61fe7 SHA1: 38a1e8a8f65b7887cf3e190269fe4ce2c6f818aa
+136002-114.e1 Size: 0x0800 Load Addr: 0x9800 CRC: 0x11077375 SHA1: ed8ff0ca969da6672a7683b93d4fcf2935a0d903
+136002-115.f1 Size: 0x0800 Load Addr: 0xa000 CRC: 0xf3e2827a SHA1: bd04fcfbbba995e08c3144c1474fcddaaeb1c700
+136002-116.h1 Size: 0x0800 Load Addr: 0xa800 CRC: 0x7356896c SHA1: a013ede292189a8f5a907de882ee1a573d784b3c
+136002-217.j1 Size: 0x0800 Load Addr: 0xb000 CRC: 0xef2eb645 SHA1: b1a2c969e8897e335d5354de6ae04a65d4b2a1e4
+136002-118.k1 Size: 0x0800 Load Addr: 0xb800 CRC: 0xbeb352ab SHA1: f213166d3970e0bd0f29d8dea8d6afa6990cce38
+136002-119.lm1 Size: 0x0800 Load Addr: 0xc000 CRC: 0xa4de050f SHA1: ea302e43a313a5a18115e74ddbaaedde0fbecda7
+136002-120.mn1 Size: 0x0800 Load Addr: 0xc800 CRC: 0x35619648 SHA1: 48f1e8bed7ec6afa0b4c549a30e5ec331c071e40
+136002-121.p1 Size: 0x0800 Load Addr: 0xd000 CRC: 0x73d38e47 SHA1: 9980606376a79ba94f8e2a325871a6c8d10d83fc
+136002-222.r1 Size: 0x0800 Load Addr: 0xd800 CRC: 0x707bd5c3 SHA1: 2f0af6fb7154c244c794f7247e5c16a1e06ddf7d
+136002-123.np3 Size: 0x0800 Load Addr: 0x3000 CRC: 0x29f7e937 SHA1: 686c8b9b8901262e743497cee7f2f7dd5cb3af7e
+136002-124.r3 Size: 0x0800 Load Addr: 0x3800 CRC: 0xc16ec351 SHA1: a30a3662c740810c0f20e3712679606921b8ca06
+ROM_REGION(0x0100, REGION_PROMS)
+136002-125.d7 Size: 0x0100 Load Addr: 0x0000 CRC: 0x5903af03 SHA1: 24bc0366f394ad0ec486919212e38be0f08d0239
 
 Game Name: Tempest (Revision 1):
-Rom Name: tempest1.zip
-136002-113.d1 Size: 800 Load Addr: 9000
-136002-114.e1 Size: 800 Load Addr: 9800
-136002-115.f1 Size: 800 Load Addr: a000
-136002-116.h1 Size: 800 Load Addr: a800
-136002-117.j1 Size: 800 Load Addr: b000
-136002-118.k1 Size: 800 Load Addr: b800
-136002-119.lm1 Size: 800 Load Addr: c000
-136002-120.mn1 Size: 800 Load Addr: c800
-136002-121.p1 Size: 800 Load Addr: d000
-136002-122.r1 Size: 800 Load Addr: d800
-136002-123.np3 Size: 800 Load Addr: 3000
-136002-124.r3 Size: 800 Load Addr: 3800
+Rom  Name: tempest1.zip
+ROM_REGION(0x10000, REGION_CPU1)
+136002-123.np3 Size: 0x0800 Load Addr: 0x3000 CRC: 0x29f7e937 SHA1: 686c8b9b8901262e743497cee7f2f7dd5cb3af7e
+136002-124.r3 Size: 0x0800 Load Addr: 0x3800 CRC: 0xc16ec351 SHA1: a30a3662c740810c0f20e3712679606921b8ca06
+136002-113.d1 Size: 0x0800 Load Addr: 0x9000 CRC: 0x65d61fe7 SHA1: 38a1e8a8f65b7887cf3e190269fe4ce2c6f818aa
+136002-114.e1 Size: 0x0800 Load Addr: 0x9800 CRC: 0x11077375 SHA1: ed8ff0ca969da6672a7683b93d4fcf2935a0d903
+136002-115.f1 Size: 0x0800 Load Addr: 0xa000 CRC: 0xf3e2827a SHA1: bd04fcfbbba995e08c3144c1474fcddaaeb1c700
+136002-116.h1 Size: 0x0800 Load Addr: 0xa800 CRC: 0x7356896c SHA1: a013ede292189a8f5a907de882ee1a573d784b3c
+136002-117.j1 Size: 0x0800 Load Addr: 0xb000 CRC: 0x55952119 SHA1: 470d914fa52fce3786cb6330889876d3547dca65
+136002-118.k1 Size: 0x0800 Load Addr: 0xb800 CRC: 0xbeb352ab SHA1: f213166d3970e0bd0f29d8dea8d6afa6990cce38
+136002-119.lm1 Size: 0x0800 Load Addr: 0xc000 CRC: 0xa4de050f SHA1: ea302e43a313a5a18115e74ddbaaedde0fbecda7
+136002-120.mn1 Size: 0x0800 Load Addr: 0xc800 CRC: 0x35619648 SHA1: 48f1e8bed7ec6afa0b4c549a30e5ec331c071e40
+136002-121.p1 Size: 0x0800 Load Addr: 0xd000 CRC: 0x73d38e47 SHA1: 9980606376a79ba94f8e2a325871a6c8d10d83fc
+136002-122.r1 Size: 0x0800 Load Addr: 0xd800 CRC: 0x796a9918 SHA1: c862a0d4ea330161e4c3cc8e5e9ad38893fffbd4
+ROM_REGION(0x0100, REGION_PROMS)
+136002-125.d7 Size: 0x0100 Load Addr: 0x0000 CRC: 0x5903af03 SHA1: 24bc0366f394ad0ec486919212e38be0f08d0239
 
-Game Name: Tempest (Revision 1):
-Rom Name: temptube.zip
-136002-113.d1 Size: 800 Load Addr: 9000
-136002-114.e1 Size: 800 Load Addr: 9800
-136002-115.f1 Size: 800 Load Addr: a000
-136002-316.h1 Size: 800 Load Addr: a800
-136002-217.j1 Size: 800 Load Addr: b000
-tube-118.k1 Size: 800 Load Addr: b800
-136002-119.lm1 Size: 800 Load Addr: c000
-136002-120.mn1 Size: 800 Load Addr: c800
-136002-121.p1 Size: 800 Load Addr: d000
-136002-222.r1 Size: 800 Load Addr: d800
-136002-123.np3 Size: 800 Load Addr: 3000
-136002-124.r3 Size: 800 Load Addr: 3800
+Game Name: Tempest Tubes:
+Rom  Name: temptube.zip
+ROM_REGION(0x10000, REGION_CPU1)
+136002-113.d1 Size: 0x0800 Load Addr: 0x9000 CRC: 0x65d61fe7 SHA1: 38a1e8a8f65b7887cf3e190269fe4ce2c6f818aa
+136002-114.e1 Size: 0x0800 Load Addr: 0x9800 CRC: 0x11077375 SHA1: ed8ff0ca969da6672a7683b93d4fcf2935a0d903
+136002-115.f1 Size: 0x0800 Load Addr: 0xa000 CRC: 0xf3e2827a SHA1: bd04fcfbbba995e08c3144c1474fcddaaeb1c700
+136002-316.h1 Size: 0x0800 Load Addr: 0xa800 CRC: 0xaeb0f7e9 SHA1: a5cc25015b98692673cfc1c7c2e9634efd750870
+136002-217.j1 Size: 0x0800 Load Addr: 0xb000 CRC: 0xef2eb645 SHA1: b1a2c969e8897e335d5354de6ae04a65d4b2a1e4
+tube-118.k1 Size: 0x0800 Load Addr: 0xb800 CRC: 0xcefb03f0 SHA1: 41ddfa4991fa49a31d4740a04551556acca66196
+136002-119.lm1 Size: 0x0800 Load Addr: 0xc000 CRC: 0xa4de050f SHA1: ea302e43a313a5a18115e74ddbaaedde0fbecda7
+136002-120.mn1 Size: 0x0800 Load Addr: 0xc800 CRC: 0x35619648 SHA1: 48f1e8bed7ec6afa0b4c549a30e5ec331c071e40
+136002-121.p1 Size: 0x0800 Load Addr: 0xd000 CRC: 0x73d38e47 SHA1: 9980606376a79ba94f8e2a325871a6c8d10d83fc
+136002-222.r1 Size: 0x0800 Load Addr: 0xd800 CRC: 0x707bd5c3 SHA1: 2f0af6fb7154c244c794f7247e5c16a1e06ddf7d
+136002-123.np3 Size: 0x0800 Load Addr: 0x3000 CRC: 0x29f7e937 SHA1: 686c8b9b8901262e743497cee7f2f7dd5cb3af7e
+136002-124.r3 Size: 0x0800 Load Addr: 0x3800 CRC: 0xc16ec351 SHA1: a30a3662c740810c0f20e3712679606921b8ca06
+ROM_REGION(0x0100, REGION_PROMS)
+136002-125.d7 Size: 0x0100 Load Addr: 0x0000 CRC: 0x5903af03 SHA1: 24bc0366f394ad0ec486919212e38be0f08d0239
 
 Game Name: Aliens (Tempest Alpha):
-Rom Name: aliensv.zip
-aliens_d1.bin Size: 800 Load Addr: 9000
-aliens_e1.bin Size: 800 Load Addr: 9800
-aliens_f1.bin Size: 800 Load Addr: a000
-aliens_h1.bin Size: 800 Load Addr: a800
-aliens_j1.bin Size: 800 Load Addr: b000
-aliens_k1.bin Size: 800 Load Addr: b800
-aliens_l1.bin Size: 800 Load Addr: c000
-aliens_n1.bin Size: 800 Load Addr: c800
-aliens_p1.bin Size: 800 Load Addr: d000
-aliens_r1.bin Size: 800 Load Addr: d800
-aliens_n3.bin Size: 800 Load Addr: 3000
-aliens_r3.bin Size: 800 Load Addr: 3800
+Rom  Name: aliensv.zip
+ROM_REGION(0x10000, REGION_CPU1)
+aliens_d1.bin Size: 0x0800 Load Addr: 0x9000 CRC: 0x337e21f6 SHA1: 7adadeaa975e22f0b20e8f1fb6ad68b5c3934133
+aliens_e1.bin Size: 0x0800 Load Addr: 0x9800 CRC: 0x337e21f6 SHA1: 7adadeaa975e22f0b20e8f1fb6ad68b5c3934133
+aliens_f1.bin Size: 0x0800 Load Addr: 0xa000 CRC: 0x4d2aabb0 SHA1: 31106a1fc22d2a19866f07b8d6c6f4bf76007909
+aliens_h1.bin Size: 0x0800 Load Addr: 0xa800 CRC: 0xa503f54a SHA1: 91ebf9f69a183a04a5bf55fcdd9e191523bb66bb
+aliens_j1.bin Size: 0x0800 Load Addr: 0xb000 CRC: 0x5487d531 SHA1: c95f037151b824345af03f27a6c3c7eb8a899b2c
+aliens_k1.bin Size: 0x0800 Load Addr: 0xb800 CRC: 0xac96e87 SHA1: 37461e84e6f46516c25dbf4ddb2ffd65877445c0
+aliens_l1.bin Size: 0x0800 Load Addr: 0xc000 CRC: 0xcd246ac2 SHA1: de2e6fe2e72c092c3874e797fc302a71dbf57710
+aliens_n1.bin Size: 0x0800 Load Addr: 0xc800 CRC: 0xbd98c5f3 SHA1: 268487d9cf46b4b7b49eab7420d078bf676e636c
+aliens_p1.bin Size: 0x0800 Load Addr: 0xd000 CRC: 0x7c10adbd SHA1: 38579128a90bff4a7a4ae46d6aaa42118b8bc218
+aliens_r1.bin Size: 0x0800 Load Addr: 0xd800 CRC: 0x555c3070 SHA1: 032f03af23c7ccac8a2bf50c3c646e141921ffee
+aliens_n3.bin Size: 0x0800 Load Addr: 0x3000 CRC: 0x5c8fd38b SHA1: bb0d6bd062eba53b5d64b3f444d5ce0a34728bf5
+aliens_r3.bin Size: 0x0800 Load Addr: 0x3800 CRC: 0x6cabcd08 SHA1: e3950de50f3dfbc4d4d2f4fe26625d8ef94c0819
+ROM_REGION(0x0100, REGION_PROMS)
+136002-125.d7 Size: 0x0100 Load Addr: 0x0000 CRC: 0x5903af03 SHA1: 24bc0366f394ad0ec486919212e38be0f08d0239
 
 Game Name: Vector Breakout (1999 Clay Cowgill):
-Rom Name: vbrakout.zip
-136002-123.np3 Size: 800 Load Addr: 3000
-136002-124.r3 Size: 800 Load Addr: 3800
-vbrakout.113 Size: 800 Load Addr: 9000
-vbrakout.114 Size: 800 Load Addr: 9800
-vbrakout.115 Size: 800 Load Addr: a000
-vbrakout.116 Size: 800 Load Addr: a800
-vbrakout.122 Size: 800 Load Addr: d800
+Rom  Name: vbrakout.zip
+ROM_REGION(0x10000, REGION_CPU1)
+136002-123.np3 Size: 0x0800 Load Addr: 0x3000 CRC: 0x29f7e937 SHA1: 686c8b9b8901262e743497cee7f2f7dd5cb3af7e
+136002-124.r3 Size: 0x0800 Load Addr: 0x3800 CRC: 0xc16ec351 SHA1: a30a3662c740810c0f20e3712679606921b8ca06
+vbrakout.113 Size: 0x0800 Load Addr: 0x9000 CRC: 0x6fd3efe5 SHA1: d195d08984ad8797607bc1989e8a606d51547c68
+vbrakout.114 Size: 0x0800 Load Addr: 0x9800 CRC: 0x9974b9a5 SHA1: 6ecc6f72070895bb15992977348f58835233911f
+vbrakout.115 Size: 0x0800 Load Addr: 0xa000 CRC: 0x44d611d8 SHA1: 82cd63fc9067ea1f00feeffbee66e7d750cab7e5
+vbrakout.116 Size: 0x0800 Load Addr: 0xa800 CRC: 0xcd58fc11 SHA1: 060e31e55183ccef67a1adc91fb48c22424a4ba5
+vbrakout.122 Size: 0x0800 Load Addr: 0xd800 CRC: 0x1ae2dd53 SHA1: b908ba6b59195aea853380a56a243aa8fa2fba71
+ROM_REGION(0x0100, REGION_PROMS)
+136002-125.d7 Size: 0x0100 Load Addr: 0x0000 CRC: 0x5903af03 SHA1: 24bc0366f394ad0ec486919212e38be0f08d0239
 
 Game Name: Vortex (Tempest Beta):
-Rom Name: tvortex.zip
-d1.bin Size: 800 Load Addr: 9000
-e1.bin Size: 800 Load Addr: 9800
-f1.bin Size: 800 Load Addr: a000
-h1.bin Size: 800 Load Addr: a800
-j1.bin Size: 800 Load Addr: b000
-k1.bin Size: 800 Load Addr: b800
-lm1.bin Size: 800 Load Addr: c000
-mn1.bin Size: 800 Load Addr: c800
-p1.bin Size: 800 Load Addr: d000
-r1.bin Size: 800 Load Addr: d800
-n3.bin Size: 800 Load Addr: 3000
-r3.bin Size: 800 Load Addr: 3800
+Rom  Name: vortex.zip
+ROM_REGION(0x10000, REGION_CPU1)
+d1.bin Size: 0x0800 Load Addr: 0x9000 CRC: 0x3aff3417 SHA1: 3b7c31f01b7467757ec85e98a17038e5df5720bb
+e1.bin Size: 0x0800 Load Addr: 0x9800 CRC: 0x11861be3 SHA1: a35797c649e8286c844cee6dac86ac50f4fbd669
+f1.bin Size: 0x0800 Load Addr: 0xa000 CRC: 0x1d251111 SHA1: 2912a21dc708231e28d6164e54e593a8300b9c4a
+h1.bin Size: 0x0800 Load Addr: 0xa800 CRC: 0x937a9859 SHA1: 336b25291533d19294f1ced730bbf20971849adf
+j1.bin Size: 0x0800 Load Addr: 0xb000 CRC: 0x79481246 SHA1: c5362670fd29ef1432f8e626323da395d6e8a675
+k1.bin Size: 0x0800 Load Addr: 0xb800 CRC: 0x390f872a SHA1: c5463ea2d2307e21c941b5b459e3652c12154609
+lm1.bin Size: 0x0800 Load Addr: 0xc000 CRC: 0x515760dd SHA1: 773f06c9a64e72f9d3d8a5c622bf3ec2b4ba678d
+mn1.bin Size: 0x0800 Load Addr: 0xc800 CRC: 0xc6c41c68 SHA1: 9323c07fc80a947142dde008c53f5e8c0b0c572d
+p1.bin Size: 0x0800 Load Addr: 0xd000 CRC: 0x3c2ff130 SHA1: 32ebabcb2cbd7aab5e29de2b873f02ed78776ae6
+r1.bin Size: 0x0800 Load Addr: 0xd800 CRC: 0x67cafbb1 SHA1: 467515733d843398e6fe29661002536a1e6c8fc9
+n3.bin Size: 0x0800 Load Addr: 0x3000 CRC: 0x29c6a1cb SHA1: 290702a1c0942a68e288b37963e51eba02177a3f
+r3.bin Size: 0x0800 Load Addr: 0x3800 CRC: 0x7fbe5e21 SHA1: e5de6c3af82e64444b0ddcda559e9cb4fbf6c1da
+ROM_REGION(0x0100, REGION_PROMS)
+136002-125.d7 Size: 0x0100 Load Addr: 0x0000 CRC: 0x5903af03 SHA1: 24bc0366f394ad0ec486919212e38be0f08d0239
 
 Game Name: Zektor:
-Rom Name: zektor.zip
-1611.cpu-u25 Size: 800 Load Addr: 0
-1586.prom-u1 Size: 800 Load Addr: 800
-1587.prom-u2 Size: 800 Load Addr: 1000
-1588.prom-u3 Size: 800 Load Addr: 1800
-1589.prom-u4 Size: 800 Load Addr: 2000
-1590.prom-u5 Size: 800 Load Addr: 2800
-1591.prom-u6 Size: 800 Load Addr: 3000
-1592.prom-u7 Size: 800 Load Addr: 3800
-1593.prom-u8 Size: 800 Load Addr: 4000
-1594.prom-u9 Size: 800 Load Addr: 4800
-1595.prom-u10 Size: 800 Load Addr: 5000
-1596.prom-u11 Size: 800 Load Addr: 5800
-1597.prom-u12 Size: 800 Load Addr: 6000
-1598.prom-u13 Size: 800 Load Addr: 6800
-1599.prom-u14 Size: 800 Load Addr: 7000
-1600.prom-u15 Size: 800 Load Addr: 7800
-1601.prom-u16 Size: 800 Load Addr: 8000
-1602.prom-u17 Size: 800 Load Addr: 8800
-1603.prom-u18 Size: 800 Load Addr: 9000
-1604.prom-u19 Size: 800 Load Addr: 9800
-1605.prom-u20 Size: 800 Load Addr: a000
-1606.prom-u21 Size: 800 Load Addr: a800
-s-c.xyt-u39 Size: 400 Load Addr: 0
+Rom  Name: zektor.zip
+ROM_REGION(0x10000, REGION_CPU1)
+1611.cpu-u25 Size: 0x0800 Load Addr: 0x0000 CRC: 0x6245aa23 SHA1: 815f3c7edad9c290b719a60964085e90e7268112
+1586.prom-u1 Size: 0x0800 Load Addr: 0x0800 CRC: 0xefeb4fb5 SHA1: b337179c01870c953b8d38c20263802e9a7936d3
+1587.prom-u2 Size: 0x0800 Load Addr: 0x1000 CRC: 0xdaa6c25c SHA1: 061e390775b6dd24f85d51951267bca4339a3845
+1588.prom-u3 Size: 0x0800 Load Addr: 0x1800 CRC: 0x62b67dde SHA1: 831bad0f5a601d6859f69c70d0962c970d92db0e
+1589.prom-u4 Size: 0x0800 Load Addr: 0x2000 CRC: 0xc2db0ba4 SHA1: 658773f2b56ea805d7d678e300f9bbc896fbf176
+1590.prom-u5 Size: 0x0800 Load Addr: 0x2800 CRC: 0x4d948414 SHA1: f60d295b0f8f798126dbfdc197943d8511238390
+1591.prom-u6 Size: 0x0800 Load Addr: 0x3000 CRC: 0xb0556a6c SHA1: 84b481cc60dc3df3a1cf18b1ece4c70bcc7bb5a1
+1592.prom-u7 Size: 0x0800 Load Addr: 0x3800 CRC: 0x750ecadf SHA1: 83ddd482230fbf6cf78a054fb4abd5bc8aec3ec8
+1593.prom-u8 Size: 0x0800 Load Addr: 0x4000 CRC: 0x34f8850f SHA1: d93594e529aca8d847c9f1e9055f1840f6069fb2
+1594.prom-u9 Size: 0x0800 Load Addr: 0x4800 CRC: 0x52b22ab2 SHA1: c8f822a1a54081cfc88149c97b4dc19aa745a8d5
+1595.prom-u10 Size: 0x0800 Load Addr: 0x5000 CRC: 0xa704d142 SHA1: 95c1249a8efd1a69972ffd7a4da76a0bca5095d9
+1596.prom-u11 Size: 0x0800 Load Addr: 0x5800 CRC: 0x6975e33d SHA1: 3f12037edd6f1b803b5f864789f4b88958ac9578
+1597.prom-u12 Size: 0x0800 Load Addr: 0x6000 CRC: 0xd48ab5c2 SHA1: 3f4faf4b131b120b30cd4e73ff34d5cd7ef6c47a
+1598.prom-u13 Size: 0x0800 Load Addr: 0x6800 CRC: 0xab54a94c SHA1: 9dd57b4b6e46d46922933128d9786df011c6133d
+1599.prom-u14 Size: 0x0800 Load Addr: 0x7000 CRC: 0xc9d4f3a5 SHA1: 8516914b49fad85222cbdd9a43609834f5d0f13d
+1600.prom-u15 Size: 0x0800 Load Addr: 0x7800 CRC: 0x893b7dbc SHA1: 136135f0be2e8dddfa0d21a5f4119ee4685c4866
+1601.prom-u16 Size: 0x0800 Load Addr: 0x8000 CRC: 0x867bdf4f SHA1: 5974d32d878206abd113f74ba20fa5276cf21a6f
+1602.prom-u17 Size: 0x0800 Load Addr: 0x8800 CRC: 0xbd447623 SHA1: b8d255aeb32096891379330c5b8adf1d151d70c2
+1603.prom-u18 Size: 0x0800 Load Addr: 0x9000 CRC: 0x9f8f10e8 SHA1: ffe9d872d9011b3233cb06d966852319f9e4cd01
+1604.prom-u19 Size: 0x0800 Load Addr: 0x9800 CRC: 0xad2f0f6c SHA1: 494a224905b1dac58b3b50f65a8be986b68b06f2
+1605.prom-u20 Size: 0x0800 Load Addr: 0xa000 CRC: 0xe27d7144 SHA1: 5b82fda797d86e11882d1f9738a59092c5e3e7d8
+1606.prom-u21 Size: 0x0800 Load Addr: 0xa800 CRC: 0x7965f636 SHA1: 5c8720beedab4979a813ce7f0e8961c863973ff7
+ROM_REGION(0x0420, REGION_PROMS)
+s-c.xyt-u39 Size: 0x0400 Load Addr: 0x0000 CRC: 0x56484d19 SHA1: 61f43126fdcfc230638ed47085ae037a098e6781
+pr-82.cpu-u15 Size: 0x0020 Load Addr: 0x0400 CRC: 0xc609b79e SHA1: 49dbcbb607079a182d7eb396c0da097166ea91c9
 
 Game Name: Tac/Scan:
-Rom Name: tacscan.zip
-1711a.cpu-u25 Size: 800 Load Addr: 0
-1670c.prom-u1 Size: 800 Load Addr: 800
-1671a.prom-u2 Size: 800 Load Addr: 1000
-1672a.prom-u3 Size: 800 Load Addr: 1800
-1673a.prom-u4 Size: 800 Load Addr: 2000
-1674a.prom-u5 Size: 800 Load Addr: 2800
-1675a.prom-u6 Size: 800 Load Addr: 3000
-1676a.prom-u7 Size: 800 Load Addr: 3800
-1677a.prom-u8 Size: 800 Load Addr: 4000
-1678b.prom-u9 Size: 800 Load Addr: 4800
-1679a.prom-u10 Size: 800 Load Addr: 5000
-1680a.prom-u11 Size: 800 Load Addr: 5800
-1681a.prom-u12 Size: 800 Load Addr: 6000
-1682a.prom-u13 Size: 800 Load Addr: 6800
-1683a.prom-u14 Size: 800 Load Addr: 7000
-1684a.prom-u15 Size: 800 Load Addr: 7800
-1685a.prom-u16 Size: 800 Load Addr: 8000
-1686a.prom-u17 Size: 800 Load Addr: 8800
-1687a.prom-u18 Size: 800 Load Addr: 9000
-1688a.prom-u19 Size: 800 Load Addr: 9800
-1709a.prom-u20 Size: 800 Load Addr: a000
-1710a.prom-u21 Size: 800 Load Addr: a800
-s-c.xyt-u39 Size: 400 Load Addr: 0
+Rom  Name: tacscan.zip
+ROM_REGION(0x10000, REGION_CPU1)
+1711a.cpu-u25 Size: 0x0800 Load Addr: 0x0000 CRC: 0xda13158 SHA1: 256c5441a4841441501c9b7bcf09e0e99e8dd671
+1670c.prom-u1 Size: 0x0800 Load Addr: 0x0800 CRC: 0x98de6fd5 SHA1: f22c215d7558e00366fec5092abb51c670468f8c
+1671a.prom-u2 Size: 0x0800 Load Addr: 0x1000 CRC: 0xdc400074 SHA1: 70093ef56e0784173a06da1ac781bb9d8c4e7fc5
+1672a.prom-u3 Size: 0x0800 Load Addr: 0x1800 CRC: 0x2caf6f7e SHA1: 200119260f78bb1c5389707b3ceedfbc1ae43549
+1673a.prom-u4 Size: 0x0800 Load Addr: 0x2000 CRC: 0x1495ce3d SHA1: 3189f8061961d90a52339c855c06e81f4537fb2b
+1674a.prom-u5 Size: 0x0800 Load Addr: 0x2800 CRC: 0xab7fc5d9 SHA1: b2d9241d83d175ead4da36d7311a41a5f972e06a
+1675a.prom-u6 Size: 0x0800 Load Addr: 0x3000 CRC: 0xcf5e5016 SHA1: 78a3f1e4a905515330d4737ac38576ac6e0d8611
+1676a.prom-u7 Size: 0x0800 Load Addr: 0x3800 CRC: 0xb61a3ab3 SHA1: 0f4ef5c7fe299ad20fa4637260282a733f1cf461
+1677a.prom-u8 Size: 0x0800 Load Addr: 0x4000 CRC: 0xbc0273b1 SHA1: 8e8d8830f17b9fa6d45d98108ca02d90c29de574
+1678b.prom-u9 Size: 0x0800 Load Addr: 0x4800 CRC: 0x7894da98 SHA1: 2de7c121ad847e51a10cb1b81aec84cc44a3d04c
+1679a.prom-u10 Size: 0x0800 Load Addr: 0x5000 CRC: 0xdb865654 SHA1: db4d5675b53ff2bbaf70090fd064e98862f4ad33
+1680a.prom-u11 Size: 0x0800 Load Addr: 0x5800 CRC: 0x2c2454de SHA1: 74101806439c9faeba88ffe573fa4f93ffa0ba3c
+1681a.prom-u12 Size: 0x0800 Load Addr: 0x6000 CRC: 0x77028885 SHA1: bc981620ebbfbe4e32b3b4d00504475634454c57
+1682a.prom-u13 Size: 0x0800 Load Addr: 0x6800 CRC: 0xbabe5cf1 SHA1: 26219b7a26f818fee2fe579ec6fb0b16c6bf056f
+1683a.prom-u14 Size: 0x0800 Load Addr: 0x7000 CRC: 0x1b98b618 SHA1: 19854cb2741ba37c11ae6d429fa6c17ff930f5e5
+1684a.prom-u15 Size: 0x0800 Load Addr: 0x7800 CRC: 0xcb3ded3b SHA1: f1e886f4f71b0f6f2c11fb8b4921c3452fc9b2c0
+1685a.prom-u16 Size: 0x0800 Load Addr: 0x8000 CRC: 0x43016a79 SHA1: ee22c1fe0c8df90d9215175104f8a796c3d2aed3
+1686a.prom-u17 Size: 0x0800 Load Addr: 0x8800 CRC: 0xa4397772 SHA1: cadc95b869f5bf5dba7f03dfe5ae64a50899cced
+1687a.prom-u18 Size: 0x0800 Load Addr: 0x9000 CRC: 0x2f3bc4 SHA1: 7f3795a05d5651c90cdcd4d00c46d05178b433ea
+1688a.prom-u19 Size: 0x0800 Load Addr: 0x9800 CRC: 0x326d87a SHA1: 3a5ea4526db417b9e00b24b019c1c6016773c9e7
+1709a.prom-u20 Size: 0x0800 Load Addr: 0xa000 CRC: 0xf35ed1ec SHA1: dce95a862af0c6b67fb76b99fee0523d53b7551c
+1710a.prom-u21 Size: 0x0800 Load Addr: 0xa800 CRC: 0x6203be22 SHA1: 89731c7c88d0125a11368d707f566eb53c783266
+ROM_REGION(0x0420, REGION_PROMS)
+s-c.xyt-u39 Size: 0x0400 Load Addr: 0x0000 CRC: 0x56484d19 SHA1: 61f43126fdcfc230638ed47085ae037a098e6781
+pr-82.cpu-u15 Size: 0x0020 Load Addr: 0x0400 CRC: 0xc609b79e SHA1: 49dbcbb607079a182d7eb396c0da097166ea91c9
 
 Game Name: Star Trek:
-Rom Name: startrek.zip
-1873.cpu-u25 Size: 800 Load Addr: 0
-1848.prom-u1 Size: 800 Load Addr: 800
-1849.prom-u2 Size: 800 Load Addr: 1000
-1850.prom-u3 Size: 800 Load Addr: 1800
-1851.prom-u4 Size: 800 Load Addr: 2000
-1852.prom-u5 Size: 800 Load Addr: 2800
-1853.prom-u6 Size: 800 Load Addr: 3000
-1854.prom-u7 Size: 800 Load Addr: 3800
-1855.prom-u8 Size: 800 Load Addr: 4000
-1856.prom-u9 Size: 800 Load Addr: 4800
-1857.prom-u10 Size: 800 Load Addr: 5000
-1858.prom-u11 Size: 800 Load Addr: 5800
-1859.prom-u12 Size: 800 Load Addr: 6000
-1860.prom-u13 Size: 800 Load Addr: 6800
-1861.prom-u14 Size: 800 Load Addr: 7000
-1862.prom-u15 Size: 800 Load Addr: 7800
-1863.prom-u16 Size: 800 Load Addr: 8000
-1864.prom-u17 Size: 800 Load Addr: 8800
-1865.prom-u18 Size: 800 Load Addr: 9000
-1866.prom-u19 Size: 800 Load Addr: 9800
-1867.prom-u20 Size: 800 Load Addr: a000
-1868.prom-u21 Size: 800 Load Addr: a800
-1869.prom-u22 Size: 800 Load Addr: b000
-1870.prom-u23 Size: 800 Load Addr: b800
-s-c.xyt-u39 Size: 400 Load Addr: 0
+Rom  Name: startrek.zip
+ROM_REGION(0x10000, REGION_CPU1)
+1873.cpu-u25 Size: 0x0800 Load Addr: 0x0000 CRC: 0xbe46f5d9 SHA1: fadf13042d31b0dacf02a3166545c946f6fd3f33
+1848.prom-u1 Size: 0x0800 Load Addr: 0x0800 CRC: 0x65e3baf3 SHA1: 0c081ed6c8be0bb5eb3d5769ac1f0b8fe4735d11
+1849.prom-u2 Size: 0x0800 Load Addr: 0x1000 CRC: 0x8169fd3d SHA1: 439d4b857083ae40df7d7f53c36ec13b05d86a86
+1850.prom-u3 Size: 0x0800 Load Addr: 0x1800 CRC: 0x78fd68dc SHA1: fb56567458807d9becaacac11091931af9889620
+1851.prom-u4 Size: 0x0800 Load Addr: 0x2000 CRC: 0x3f55ab86 SHA1: f75ce0c56e22e8758dd1f5ce9ac00f5f41b13465
+1852.prom-u5 Size: 0x0800 Load Addr: 0x2800 CRC: 0x2542ecfb SHA1: 7cacee44670768e9fae1024f172b867193d2ea4a
+1853.prom-u6 Size: 0x0800 Load Addr: 0x3000 CRC: 0x75c2526a SHA1: 6e86b30fcdbe7622ab873092e7a7a46d8bad790f
+1854.prom-u7 Size: 0x0800 Load Addr: 0x3800 CRC: 0x96d75d0 SHA1: 26e90c296b00239a6cde4ec5e80cccd7bb36bcbd
+1855.prom-u8 Size: 0x0800 Load Addr: 0x4000 CRC: 0xbc7b9a12 SHA1: 6dc60e380dc5790cd345b06c064ea7d69570aadb
+1856.prom-u9 Size: 0x0800 Load Addr: 0x4800 CRC: 0xed9fe2fb SHA1: 5d56e8499cb4f54c5e76a9231c53d95777777e05
+1857.prom-u10 Size: 0x0800 Load Addr: 0x5000 CRC: 0x28699d45 SHA1: c133eb4fc13987e634d3789bfeaf9e03196f8fd3
+1858.prom-u11 Size: 0x0800 Load Addr: 0x5800 CRC: 0x3a7593cb SHA1: 7504f960507579d043b7ee20fb8fd2610399ff4b
+1859.prom-u12 Size: 0x0800 Load Addr: 0x6000 CRC: 0x5b11886b SHA1: b0fb6e912953822242501943f7214e4af6ab7891
+1860.prom-u13 Size: 0x0800 Load Addr: 0x6800 CRC: 0x62eb96e6 SHA1: 51d1f5e48e3e21147584ace61b8832ad892cb6e2
+1861.prom-u14 Size: 0x0800 Load Addr: 0x7000 CRC: 0x99852d1d SHA1: eaea6a99f0a7f0292db3ea19649b5c1be45b9507
+1862.prom-u15 Size: 0x0800 Load Addr: 0x7800 CRC: 0x76ce27b2 SHA1: 8fa8d73aa4dcf3709ecd057bad3278fac605988c
+1863.prom-u16 Size: 0x0800 Load Addr: 0x8000 CRC: 0xdd92d187 SHA1: 5a11cdc91bb7b36ea98503892847d8dbcedfe95a
+1864.prom-u17 Size: 0x0800 Load Addr: 0x8800 CRC: 0xe37d3a1e SHA1: 15d949989431dcf1e0406f1e3745f3ee91012ff5
+1865.prom-u18 Size: 0x0800 Load Addr: 0x9000 CRC: 0xb2ec8125 SHA1: 70982c614471614f6b490ae2d65faec0eff2ac37
+1866.prom-u19 Size: 0x0800 Load Addr: 0x9800 CRC: 0x6f188354 SHA1: e99946467090b68559c2b54ad2e85204b71a459f
+1867.prom-u20 Size: 0x0800 Load Addr: 0xa000 CRC: 0xb0a3eae8 SHA1: 51a0855753dc2d4fe1a05bd54fa958beeab35299
+1868.prom-u21 Size: 0x0800 Load Addr: 0xa800 CRC: 0x8b4e2e07 SHA1: 11f7de6327abf88012854417224b38a2352a9dc7
+1869.prom-u22 Size: 0x0800 Load Addr: 0xb000 CRC: 0xe5663070 SHA1: 735944c2b924964f72f3bb3d251a35ea2aef3d15
+1870.prom-u23 Size: 0x0800 Load Addr: 0xb800 CRC: 0x4340616d SHA1: e93686a29377933332523425532d102e30211111
+ROM_REGION(0x0420, REGION_PROMS)
+s-c.xyt-u39 Size: 0x0400 Load Addr: 0x0000 CRC: 0x56484d19 SHA1: 61f43126fdcfc230638ed47085ae037a098e6781
+pr-82.cpu-u15 Size: 0x0020 Load Addr: 0x0400 CRC: 0xc609b79e SHA1: 49dbcbb607079a182d7eb396c0da097166ea91c9
 
 Game Name: Space Fury (Revision C):
-Rom Name: spacfury.zip
-969c.cpu-u25 Size: 800 Load Addr: 0
-960c.prom-u1 Size: 800 Load Addr: 800
-961c.prom-u2 Size: 800 Load Addr: 1000
-962c.prom-u3 Size: 800 Load Addr: 1800
-963c.prom-u4 Size: 800 Load Addr: 2000
-964c.prom-u5 Size: 800 Load Addr: 2800
-965c.prom-u6 Size: 800 Load Addr: 3000
-966c.prom-u7 Size: 800 Load Addr: 3800
-967c.prom-u8 Size: 800 Load Addr: 4000
-968c.prom-u9 Size: 800 Load Addr: 4800
-s-c.xyt-u39 Size: 400 Load Addr: 0
+Rom  Name: spacfury.zip
+ROM_REGION(0x10000, REGION_CPU1)
+969c.cpu-u25 Size: 0x0800 Load Addr: 0x0000 CRC: 0x411207f2 SHA1: 2a082be4052b5d8f365abd0a51ea805d270d1189
+960c.prom-u1 Size: 0x0800 Load Addr: 0x0800 CRC: 0xd071ab7e SHA1: c7d2429e4fa77988d7ac62bc68f876ffb7467838
+961c.prom-u2 Size: 0x0800 Load Addr: 0x1000 CRC: 0xaebc7b97 SHA1: d0a0328ed34de9bd2c83da4ddc2d017e2b5a8bdc
+962c.prom-u3 Size: 0x0800 Load Addr: 0x1800 CRC: 0xdbbba35e SHA1: 0400d1ba09199d19f5b8aa5bb1a85ed27930822d
+963c.prom-u4 Size: 0x0800 Load Addr: 0x2000 CRC: 0xd9e9eadc SHA1: 1ad228d65dca48d084bbac358af80882886e7a40
+964c.prom-u5 Size: 0x0800 Load Addr: 0x2800 CRC: 0x7ed947b6 SHA1: c0fd7ed74a87cc422a42e2a4f9eb947f5d5d9fed
+965c.prom-u6 Size: 0x0800 Load Addr: 0x3000 CRC: 0xd2443a22 SHA1: 45e5d43eae89e25370bb8e8db2b664642a238eb9
+966c.prom-u7 Size: 0x0800 Load Addr: 0x3800 CRC: 0x1985ccfc SHA1: 8c5931519b976c82a94d17279cc919b4baad5bb7
+967c.prom-u8 Size: 0x0800 Load Addr: 0x4000 CRC: 0x330f0751 SHA1: 07ae52fdbfa2cc326f88dc76c3dc8e145b592863
+968c.prom-u9 Size: 0x0800 Load Addr: 0x4800 CRC: 0x8366eadb SHA1: 8e4cb30a730237da2e933370faf5eaa1a41cacbf
+ROM_REGION(0x0420, REGION_PROMS)
+s-c.xyt-u39 Size: 0x0400 Load Addr: 0x0000 CRC: 0x56484d19 SHA1: 61f43126fdcfc230638ed47085ae037a098e6781
+pr-82.cpu-u15 Size: 0x0020 Load Addr: 0x0400 CRC: 0xc609b79e SHA1: 49dbcbb607079a182d7eb396c0da097166ea91c9
 
 Game Name: Space Fury (Revision A):
-Rom Name: spacfura.zip
-969a.cpu-u25 Size: 800 Load Addr: 0
-960a.prom-u1 Size: 800 Load Addr: 800
-961a.prom-u2 Size: 800 Load Addr: 1000
-962a.prom-u3 Size: 800 Load Addr: 1800
-963a.prom-u4 Size: 800 Load Addr: 2000
-964a.prom-u5 Size: 800 Load Addr: 2800
-965a.prom-u6 Size: 800 Load Addr: 3000
-966a.prom-u7 Size: 800 Load Addr: 3800
-967a.prom-u8 Size: 800 Load Addr: 4000
-968a.prom-u9 Size: 800 Load Addr: 4800
-s-c.xyt-u39 Size: 400 Load Addr: 0
+Rom  Name: spacfura.zip
+ROM_REGION(0x10000, REGION_CPU1)
+969a.cpu-u25 Size: 0x0800 Load Addr: 0x0000 CRC: 0x896a615c SHA1: 542386196eca9fd822e36508e173201ee8a962ed
+960a.prom-u1 Size: 0x0800 Load Addr: 0x0800 CRC: 0xe1ea7964 SHA1: 9c84c525973fcf1437b062d98195272723249d02
+961a.prom-u2 Size: 0x0800 Load Addr: 0x1000 CRC: 0xcdb04233 SHA1: 6f8d2fe6d46d04ebe94b7943006d63b24c88ed5a
+962a.prom-u3 Size: 0x0800 Load Addr: 0x1800 CRC: 0x5f03e632 SHA1: c6e8d72ba13ab05ec01a78502948a73c21e0fd69
+963a.prom-u4 Size: 0x0800 Load Addr: 0x2000 CRC: 0x45a77b44 SHA1: 91f4822b89ec9c16c67c781a11fabfa4b9914660
+964a.prom-u5 Size: 0x0800 Load Addr: 0x2800 CRC: 0xba008f8b SHA1: 24f5bef240ae2bcfd5b1d95f51b3599f79518b56
+965a.prom-u6 Size: 0x0800 Load Addr: 0x3000 CRC: 0x78677d31 SHA1: ed5810aa4bddbfe36a6ff9992dd0cb58cce66836
+966a.prom-u7 Size: 0x0800 Load Addr: 0x3800 CRC: 0xa8a51105 SHA1: f5e0fa662552f50fa6905f579d4c678b790ffa96
+967a.prom-u8 Size: 0x0800 Load Addr: 0x4000 CRC: 0xd60f667d SHA1: 821271ec1918e22ed29a5b1f4b0182765ef5ba10
+968a.prom-u9 Size: 0x0800 Load Addr: 0x4800 CRC: 0xaea85b6a SHA1: 8778ff0be34cd4fd5b8f6f76c64bfca68d4d240e
+ROM_REGION(0x0420, REGION_PROMS)
+s-c.xyt-u39 Size: 0x0400 Load Addr: 0x0000 CRC: 0x56484d19 SHA1: 61f43126fdcfc230638ed47085ae037a098e6781
+pr-82.cpu-u15 Size: 0x0020 Load Addr: 0x0400 CRC: 0xc609b79e SHA1: 49dbcbb607079a182d7eb396c0da097166ea91c9
 
 Game Name: Space Fury (Revision B):
-Rom Name: spacfurb.zip
-969a.cpu-u25 Size: 800 Load Addr: 0
-960b.prom-u1 Size: 800 Load Addr: 800
-961b.prom-u2 Size: 800 Load Addr: 1000
-962b.prom-u3 Size: 800 Load Addr: 1800
-963b.prom-u4 Size: 800 Load Addr: 2000
-964b.prom-u5 Size: 800 Load Addr: 2800
-965b.prom-u6 Size: 800 Load Addr: 3000
-966b.prom-u7 Size: 800 Load Addr: 3800
-967b.prom-u8 Size: 800 Load Addr: 4000
-968b.prom-u9 Size: 800 Load Addr: 4800
-s-c.xyt-u39 Size: 400 Load Addr: 0
+Rom  Name: spacfurb.zip
+ROM_REGION(0x10000, REGION_CPU1)
+969a.cpu-u25 Size: 0x0800 Load Addr: 0x0000 CRC: 0x896a615c SHA1: 542386196eca9fd822e36508e173201ee8a962ed
+960b.prom-u1 Size: 0x0800 Load Addr: 0x0800 CRC: 0x8a99b63f SHA1: 4b9ec152e0fad50afeea11f5d61331f3211da606
+961b.prom-u2 Size: 0x0800 Load Addr: 0x1000 CRC: 0xc72c1609 SHA1: b489423b52a15275b63f6b01b9aa75ad1ce777b5
+962b.prom-u3 Size: 0x0800 Load Addr: 0x1800 CRC: 0x7ffc338d SHA1: 2c37049657305c465e3a5301e0be9f1afc9333c0
+963b.prom-u4 Size: 0x0800 Load Addr: 0x2000 CRC: 0x4fe0bd88 SHA1: d1902c8b2c2577fb49894aeac4c9d6b8cf38f2f6
+964b.prom-u5 Size: 0x0800 Load Addr: 0x2800 CRC: 0x9b359db SHA1: e1d6af48680dc0f34068ee6e916650dac738e280
+965b.prom-u6 Size: 0x0800 Load Addr: 0x3000 CRC: 0x7c1f9b71 SHA1: ebe29a558e7239b4f0bc49a1fe92e5f1903edce3
+966b.prom-u7 Size: 0x0800 Load Addr: 0x3800 CRC: 0x8933b852 SHA1: dabb219195a668893c82ccc80ed09989f7fd83af
+967b.prom-u8 Size: 0x0800 Load Addr: 0x4000 CRC: 0x82b5768d SHA1: 823d8c0a537bad62e8186f88f8d02a0f3dc6da0f
+968b.prom-u9 Size: 0x0800 Load Addr: 0x4800 CRC: 0xfea68f02 SHA1: 83bef40dfaac014b7929239d81075335ff8fd506
+ROM_REGION(0x0420, REGION_PROMS)
+s-c.xyt-u39 Size: 0x0400 Load Addr: 0x0000 CRC: 0x56484d19 SHA1: 61f43126fdcfc230638ed47085ae037a098e6781
+pr-82.cpu-u15 Size: 0x0020 Load Addr: 0x0400 CRC: 0xc609b79e SHA1: 49dbcbb607079a182d7eb396c0da097166ea91c9
 
 Game Name: Eliminator (2 Player Set 1):
-Rom Name: elim2.zip
-969.cpu-u25 Size: 800 Load Addr: 0
-1333.prom-u1 Size: 800 Load Addr: 800
-1334.prom-u2 Size: 800 Load Addr: 1000
-1335.prom-u3 Size: 800 Load Addr: 1800
-1336.prom-u4 Size: 800 Load Addr: 2000
-1337.prom-u5 Size: 800 Load Addr: 2800
-1338.prom-u6 Size: 800 Load Addr: 3000
-1339.prom-u7 Size: 800 Load Addr: 3800
-1340.prom-u8 Size: 800 Load Addr: 4000
-1341.prom-u9 Size: 800 Load Addr: 4800
-1342.prom-u10 Size: 800 Load Addr: 5000
-1343.prom-u11 Size: 800 Load Addr: 5800
-1344.prom-u12 Size: 800 Load Addr: 6000
-1345.prom-u13 Size: 800 Load Addr: 6800
-s-c.xyt-u39 Size: 400 Load Addr: 0
+Rom  Name: elim2.zip
+ROM_REGION(0x10000, REGION_CPU1)
+969.cpu-u25 Size: 0x0800 Load Addr: 0x0000 CRC: 0x411207f2 SHA1: 2a082be4052b5d8f365abd0a51ea805d270d1189
+1333.prom-u1 Size: 0x0800 Load Addr: 0x0800 CRC: 0xfd2a2916 SHA1: 431d340c0c9257d66f5851a591861bcefb600cec
+1334.prom-u2 Size: 0x0800 Load Addr: 0x1000 CRC: 0x79eb5548 SHA1: d951de5c0ab94fdb6e58207ee9a147674dd74220
+1335.prom-u3 Size: 0x0800 Load Addr: 0x1800 CRC: 0x3944972e SHA1: 59c84cf23898adb7e434c5802dbb821c79099890
+1336.prom-u4 Size: 0x0800 Load Addr: 0x2000 CRC: 0x852f7b4d SHA1: 6db45b9d11374f4cadf185aec81f33c0040bc001
+1337.prom-u5 Size: 0x0800 Load Addr: 0x2800 CRC: 0xcf932b08 SHA1: f0b61ca8266fd3de7522244c9b1587eecd24a4f1
+1338.prom-u6 Size: 0x0800 Load Addr: 0x3000 CRC: 0x99a3f3c9 SHA1: aa7d4805c70311ebe24ff70fcc32c0e2a7c4488a
+1339.prom-u7 Size: 0x0800 Load Addr: 0x3800 CRC: 0xd35f0fa3 SHA1: 752f14b298604a9b91e94cd6d5d291ef33f27ec0
+1340.prom-u8 Size: 0x0800 Load Addr: 0x4000 CRC: 0x8fd4da21 SHA1: f30627dd1fbcc12bb587742a9072bbf38ba48401
+1341.prom-u9 Size: 0x0800 Load Addr: 0x4800 CRC: 0x629c9a28 SHA1: cb7df14ea1bb2d7997bfae1ca70b47763c73298a
+1342.prom-u10 Size: 0x0800 Load Addr: 0x5000 CRC: 0x643df651 SHA1: 80c5da44b5d2a7d97c7ba0067f773eb645a9d432
+1343.prom-u11 Size: 0x0800 Load Addr: 0x5800 CRC: 0xd29d70d2 SHA1: ee2cd752b99ebd522eccf5e71d02c31479acfdf5
+1344.prom-u12 Size: 0x0800 Load Addr: 0x6000 CRC: 0xc5e153a3 SHA1: 7e805573aeed01e3d4ed477870800dd7ecad7a1b
+1345.prom-u13 Size: 0x0800 Load Addr: 0x6800 CRC: 0x40597a92 SHA1: ee1ae2b424c38b40d2cbeda4aba3328e6d3f9c81
+ROM_REGION(0x0420, REGION_PROMS)
+s-c.xyt-u39 Size: 0x0400 Load Addr: 0x0000 CRC: 0x56484d19 SHA1: 61f43126fdcfc230638ed47085ae037a098e6781
+pr-82.cpu-u15 Size: 0x0020 Load Addr: 0x0400 CRC: 0xc609b79e SHA1: 49dbcbb607079a182d7eb396c0da097166ea91c9
 
 Game Name: Eliminator (2 Player Set 2A):
-Rom Name: elim2a.zip
-969.cpu-u25 Size: 800 Load Addr: 0
-1333.prom-u1 Size: 800 Load Addr: 800
-1334.prom-u2 Size: 800 Load Addr: 1000
-1335.prom-u3 Size: 800 Load Addr: 1800
-1336.prom-u4 Size: 800 Load Addr: 2000
-1337.prom-u5 Size: 800 Load Addr: 2800
-1338.prom-u6 Size: 800 Load Addr: 3000
-1339.prom-u7 Size: 800 Load Addr: 3800
-1340.prom-u8 Size: 800 Load Addr: 4000
-1341.prom-u9 Size: 800 Load Addr: 4800
-1342.prom-u10 Size: 800 Load Addr: 5000
-1343.prom-u11 Size: 800 Load Addr: 5800
-1344.prom-u12 Size: 800 Load Addr: 6000
-1345.prom-u13 Size: 800 Load Addr: 6800
-s-c.xyt-u39 Size: 400 Load Addr: 0
+Rom  Name: elim2a.zip
+ROM_REGION(0xc000, REGION_CPU1)
+969.cpu-u25 Size: 0x0800 Load Addr: 0x0000 CRC: 0x411207f2 SHA1: 2a082be4052b5d8f365abd0a51ea805d270d1189
+1158.prom-u1 Size: 0x0800 Load Addr: 0x0800 CRC: 0xa40ac3a5 SHA1: 9cf707e3439def17390ae16b49552fb1996a6335
+1159.prom-u2 Size: 0x0800 Load Addr: 0x1000 CRC: 0xff100604 SHA1: 1636337c702473b5a567832a622b0c09bd1e2aba
+1160a.prom-u3 Size: 0x0800 Load Addr: 0x1800 CRC: 0xebfe33bd SHA1: 226da36becd278d34030f564fef61851819d2324
+1161a.prom-u4 Size: 0x0800 Load Addr: 0x2000 CRC: 0x3d41db3 SHA1: da9e618314c01b56b9d66abd14f1e5bf928fff54
+1162a.prom-u5 Size: 0x0800 Load Addr: 0x2800 CRC: 0xf2c7ece3 SHA1: 86a9099ce97439cd849dc32ed2c164a1be14e4e7
+1163a.prom-u6 Size: 0x0800 Load Addr: 0x3000 CRC: 0x1fc58b00 SHA1: 732c57781cd45cd301b2337b6879ff811d9692f3
+1164a.prom-u7 Size: 0x0800 Load Addr: 0x3800 CRC: 0xf37480d1 SHA1: 3d7fac05d60083ddcd51c0190078c89a39f79a91
+1165a.prom-u8 Size: 0x0800 Load Addr: 0x4000 CRC: 0x328819f8 SHA1: ed5e3488399b4481e69f623404a28515524af60a
+1166a.prom-u9 Size: 0x0800 Load Addr: 0x4800 CRC: 0x1b8e8380 SHA1: d56ccc4fac9c8149ebef4939ba401372d69bf022
+1167a.prom-u10 Size: 0x0800 Load Addr: 0x5000 CRC: 0x16aa3156 SHA1: 652a547ff1cb4ede507418b392e28f30a3cc179c
+1168a.prom-u11 Size: 0x0800 Load Addr: 0x5800 CRC: 0x3c7c893a SHA1: 73d2835833a6d40f6a9b0a87364af48a449d9674
+1169a.prom-u12 Size: 0x0800 Load Addr: 0x6000 CRC: 0x5cee23b1 SHA1: 66f6fc6163148608296e3d25abb194559a2f5179
+1170a.prom-u13 Size: 0x0800 Load Addr: 0x6800 CRC: 0x8cdacd35 SHA1: f24f8a74cb4b8452ddbd42e61d3b0366bbee7f98
+ROM_REGION(0x0420, REGION_PROMS)
+s-c.xyt-u39 Size: 0x0400 Load Addr: 0x0000 CRC: 0x56484d19 SHA1: 61f43126fdcfc230638ed47085ae037a098e6781
+pr-82.cpu-u15 Size: 0x0020 Load Addr: 0x0400 CRC: 0xc609b79e SHA1: 49dbcbb607079a182d7eb396c0da097166ea91c9
 
 Game Name: Eliminator (2 Player Set 2C):
-Rom Name: elim2c.zip
-969t.cpu-u25 Size: 800 Load Addr: 0
-1200.prom-u1 Size: 800 Load Addr: 800
-1200.prom-u2 Size: 800 Load Addr: 1000
-1200.prom-u3 Size: 800 Load Addr: 1800
-1200.prom-u4 Size: 800 Load Addr: 2000
-1200.prom-u5 Size: 800 Load Addr: 2800
-1200.prom-u6 Size: 800 Load Addr: 3000
-1200.prom-u7 Size: 800 Load Addr: 3800
-1200.prom-u8 Size: 800 Load Addr: 4000
-1200.prom-u9 Size: 800 Load Addr: 4800
-1200.prom-u10 Size: 800 Load Addr: 5000
-1200.prom-u11 Size: 800 Load Addr: 5800
-1200.prom-u12 Size: 800 Load Addr: 6000
-1200.prom-u13 Size: 800 Load Addr: 6800
-s-c.xyt-u39 Size: 400 Load Addr: 0
+Rom  Name: elim2c.zip
+ROM_REGION(0xc000, REGION_CPU1)
+969t.cpu-u25 Size: 0x0800 Load Addr: 0x0000 CRC: 0x896a615c SHA1: 542386196eca9fd822e36508e173201ee8a962ed
+1200.prom-u1 Size: 0x0800 Load Addr: 0x0800 CRC: 0x590beb6a SHA1: 307c33cbc0b90f290aac302366e3ce4f70e5265e
+1201.prom-u2 Size: 0x0800 Load Addr: 0x1000 CRC: 0xfed32b30 SHA1: 51fba99d3bf543318ebe70ee1aa91e3171767d6f
+1202.prom-u3 Size: 0x0800 Load Addr: 0x1800 CRC: 0xa2068d0 SHA1: 90acf1e78f5c3266d1fbc31470ad4d6a8cb43fe8
+1203.prom-u4 Size: 0x0800 Load Addr: 0x2000 CRC: 0x1f593aa2 SHA1: aaad927174fa806d2c602b5672b1396eb9ec50fa
+1204.prom-u5 Size: 0x0800 Load Addr: 0x2800 CRC: 0x46f1030 SHA1: 632ac37b84007f169ce72877d8089538413ba20b
+1205.prom-u6 Size: 0x0800 Load Addr: 0x3000 CRC: 0x8d10b870 SHA1: cc91a06c6b0e1697c399700bc351384360ecd5a3
+1206.prom-u7 Size: 0x0800 Load Addr: 0x3800 CRC: 0x7f6c5afa SHA1: 0e684c654cfe2365e7d21e7bccb25f1ddb883770
+1207.prom-u8 Size: 0x0800 Load Addr: 0x4000 CRC: 0x6cc74d62 SHA1: 3392e5cd177885be7391a2699164f39302554d26
+1208.prom-u9 Size: 0x0800 Load Addr: 0x4800 CRC: 0xcc37a631 SHA1: 084ecc6b0179fe4f984131d057d5de5382443911
+1209.prom-u10 Size: 0x0800 Load Addr: 0x5000 CRC: 0x844922f8 SHA1: 0ad201fce2eaa7dde77d8694d226aad8b9a46ea7
+1210.prom-u11 Size: 0x0800 Load Addr: 0x5800 CRC: 0x7b289783 SHA1: 5326ca94b5197ef99db4ea3b28051090f0d7a9ce
+1211.prom-u12 Size: 0x0800 Load Addr: 0x6000 CRC: 0x17349db7 SHA1: 8e7ee1fbf153a36a13f3252ca4c588df531b56ec
+1212.prom-u13 Size: 0x0800 Load Addr: 0x6800 CRC: 0x152cf376 SHA1: 56c3141598b8bac81e85b1fc7052fdd19cd95609
+ROM_REGION(0x0420, REGION_PROMS)
+s-c.xyt-u39 Size: 0x0400 Load Addr: 0x0000 CRC: 0x56484d19 SHA1: 61f43126fdcfc230638ed47085ae037a098e6781
+pr-82.cpu-u15 Size: 0x0020 Load Addr: 0x0400 CRC: 0xc609b79e SHA1: 49dbcbb607079a182d7eb396c0da097166ea91c9
 
 Game Name: Eliminator (4 Player):
-Rom Name: elim4.zip
-1390.cpu-u25 Size: 800 Load Addr: 0
-1347.prom-u1 Size: 800 Load Addr: 800
-1348.prom-u2 Size: 800 Load Addr: 1000
-1349.prom-u3 Size: 800 Load Addr: 1800
-1350.prom-u4 Size: 800 Load Addr: 2000
-1351.prom-u5 Size: 800 Load Addr: 2800
-1352.prom-u6 Size: 800 Load Addr: 3000
-1353.prom-u7 Size: 800 Load Addr: 3800
-1354.prom-u8 Size: 800 Load Addr: 4000
-1355.prom-u9 Size: 800 Load Addr: 4800
-1356.prom-u10 Size: 800 Load Addr: 5000
-1357.prom-u11 Size: 800 Load Addr: 5800
-1358.prom-u12 Size: 800 Load Addr: 6000
-1359.prom-u13 Size: 800 Load Addr: 6800
-1360.prom-u14 Size: 800 Load Addr: 7000
-s-c.xyt-u39 Size: 400 Load Addr: 0
+Rom  Name: elim4.zip
+ROM_REGION(0xc000, REGION_CPU1)
+1390.cpu-u25 Size: 0x0800 Load Addr: 0x0000 CRC: 0x97010c3e SHA1: b07db05abf48461b633bbabe359a973a5bc6da13
+1347.prom-u1 Size: 0x0800 Load Addr: 0x0800 CRC: 0x657d7320 SHA1: ef8a637d94dfa8b9dfa600269d914d635e597a9c
+1348.prom-u2 Size: 0x0800 Load Addr: 0x1000 CRC: 0xb15fe578 SHA1: d53773a5f7ec3c130d4ff75a5348a9f37c82c7c8
+1349.prom-u3 Size: 0x0800 Load Addr: 0x1800 CRC: 0x702b586 SHA1: 9847172872419c475d474ff09612c38b867e15af
+1350.prom-u4 Size: 0x0800 Load Addr: 0x2000 CRC: 0x4168dd3b SHA1: 1f26877c63cd7983dfa9a869e0442e8a213f382f
+1351.prom-u5 Size: 0x0800 Load Addr: 0x2800 CRC: 0xc950f24c SHA1: 497a9aa7b9d040a4ff7b3f938093edec2218120d
+1352.prom-u6 Size: 0x0800 Load Addr: 0x3000 CRC: 0xdc8c91cc SHA1: c99224c7e57dfce9440771f78ce90ea576feed2a
+1353.prom-u7 Size: 0x0800 Load Addr: 0x3800 CRC: 0x11eda631 SHA1: 8ba926268762d491d28d5629d5a310b1accca47d
+1354.prom-u8 Size: 0x0800 Load Addr: 0x4000 CRC: 0xb9dd6e7a SHA1: ab6780f0abe99a5ef76746d45384e80399c6d611
+1355.prom-u9 Size: 0x0800 Load Addr: 0x4800 CRC: 0xc92c7237 SHA1: 18aad6618df51a1980775a3aaa4447205453a8af
+1356.prom-u10 Size: 0x0800 Load Addr: 0x5000 CRC: 0x889b98e3 SHA1: 23661149e7ffbdbc2c95920d13e9b8b24f86cd9a
+1357.prom-u11 Size: 0x0800 Load Addr: 0x5800 CRC: 0xd79248a5 SHA1: e58062d5c4e5f6fe8d70dd9b55d46a57137c9a64
+1358.prom-u12 Size: 0x0800 Load Addr: 0x6000 CRC: 0xc5dabc77 SHA1: 2dc59e627f40fefefc206f2e9d070a62606e44fc
+1359.prom-u13 Size: 0x0800 Load Addr: 0x6800 CRC: 0x24c8e5d8 SHA1: d0ae6e1dfd05d170c49837760369f04df4eaa14f
+1360.prom-u14 Size: 0x0800 Load Addr: 0x7000 CRC: 0x96d48238 SHA1: 76a7b49081cd2d0dd1976077aa66b6d5ae5b2b43
+ROM_REGION(0x0420, REGION_PROMS)
+s-c.xyt-u39 Size: 0x0400 Load Addr: 0x0000 CRC: 0x56484d19 SHA1: 61f43126fdcfc230638ed47085ae037a098e6781
+pr-82.cpu-u15 Size: 0x0020 Load Addr: 0x0400 CRC: 0xc609b79e SHA1: 49dbcbb607079a182d7eb396c0da097166ea91c9
 
 Game Name: Eliminator (4 Player Prototype):
-Rom Name: elim4p.zip
-1390.cpu-u25 Size: 800 Load Addr: 0
-sw1.prom-u1 Size: 800 Load Addr: 800
-sw1.prom-u2 Size: 800 Load Addr: 1000
-sw1.prom-u3 Size: 800 Load Addr: 1800
-sw1.prom-u4 Size: 800 Load Addr: 2000
-sw1.prom-u5 Size: 800 Load Addr: 2800
-sw1.prom-u6 Size: 800 Load Addr: 3000
-sw1.prom-u7 Size: 800 Load Addr: 3800
-sw1.prom-u8 Size: 800 Load Addr: 4000
-sw1.prom-u9 Size: 800 Load Addr: 4800
-sw1.prom-u10 Size: 800 Load Addr: 5000
-sw1.prom-u11 Size: 800 Load Addr: 5800
-sw1.prom-u12 Size: 800 Load Addr: 6000
-sw1.prom-u13 Size: 800 Load Addr: 6800
-sw1.prom-u14 Size: 800 Load Addr: 7000
-s-c.xyt-u39 Size: 400 Load Addr: 0
+Rom  Name: elim4p.zip
+ROM_REGION(0xc000, REGION_CPU1)
+1390.cpu-u25 Size: 0x0800 Load Addr: 0x0000 CRC: 0x97010c3e SHA1: b07db05abf48461b633bbabe359a973a5bc6da13
+sw1.prom-u1 Size: 0x0800 Load Addr: 0x0800 CRC: 0x5350b8eb SHA1: def9192971d1943e45cea1845b1d8c8e2a01bc38
+sw2.prom-u2 Size: 0x0800 Load Addr: 0x1000 CRC: 0x44f45465 SHA1: e3139878602864509803dabc0f9c278e4b856431
+sw3.prom-u3 Size: 0x0800 Load Addr: 0x1800 CRC: 0x5b692c3c SHA1: 6cd1361e9f063af1f175baed466cc2667b776a52
+sw4.prom-u4 Size: 0x0800 Load Addr: 0x2000 CRC: 0xb78dd00 SHA1: f48c4bdd5fc2e818107b036aa6eddebf46a0e964
+sw5.prom-u5 Size: 0x0800 Load Addr: 0x2800 CRC: 0x8b3795f1 SHA1: 1bcd12791e45dd14c7541e6fe3798a8159b6c11b
+sw6.prom-u6 Size: 0x0800 Load Addr: 0x3000 CRC: 0x4304b503 SHA1: 2bc7a702d43092818ecb713fa0bac476c272e3a0
+sw7.prom-u7 Size: 0x0800 Load Addr: 0x3800 CRC: 0x3cb4a604 SHA1: 868c3c1bead99c2e6857d1c2eef02d84e0e87f29
+sw8.prom-u8 Size: 0x0800 Load Addr: 0x4000 CRC: 0xbdc55223 SHA1: 47ca7485c9e2878cbcb92d93a022f7d74a6d13df
+sw9.prom-u9 Size: 0x0800 Load Addr: 0x4800 CRC: 0xf6ca1bf1 SHA1: e4dc6bd6486dff2d0e8a93e5c7649093107cde46
+swa.prom-u10 Size: 0x0800 Load Addr: 0x5000 CRC: 0x12373f7f SHA1: 685c1202345ae8ef53fa61b7254ce04efd94a12b
+swb.prom-u11 Size: 0x0800 Load Addr: 0x5800 CRC: 0xd1effc6b SHA1: b72cd14642f26ac50fbe6199d121b0278588ca22
+swc.prom-u12 Size: 0x0800 Load Addr: 0x6000 CRC: 0xbf361ab3 SHA1: 23e3396dc937c0a19d0d312d1de3443b43807d91
+swd.prom-u13 Size: 0x0800 Load Addr: 0x6800 CRC: 0xae2c88e5 SHA1: b0833051f543529502e05fb183effa9f817757fb
+swe.prom-u14 Size: 0x0800 Load Addr: 0x7000 CRC: 0xec4cc343 SHA1: 00e107eaf530ce6bec2afffd7d7bedd7763cfb17
+ROM_REGION(0x0420, REGION_PROMS)
+s-c.xyt-u39 Size: 0x0400 Load Addr: 0x0000 CRC: 0x56484d19 SHA1: 61f43126fdcfc230638ed47085ae037a098e6781
+pr-82.cpu-u15 Size: 0x0020 Load Addr: 0x0400 CRC: 0xc609b79e SHA1: 49dbcbb607079a182d7eb396c0da097166ea91c9
 
 Game Name: Major Havoc (Revision 3):
-Rom Name: mhavoc.zip
-136025.210 Size: 2000 Load Addr: 5000
-136025.216 Size: 4000 Load Addr: 8000
-136025.217 Size: 4000 Load Addr: c000
-136025.215 Size: 4000 Load Addr: 10000
-136025.318 Size: 4000 Load Addr: 14000
-136025.106 Size: 4000 Load Addr: 0
-136025.107 Size: 4000 Load Addr: 4000
-136025.108 Size: 4000 Load Addr: 8000
-136025.108 Size: 4000 Load Addr: c000
+Rom  Name: mhavoc.zip
+ROM_REGION(0x22000, REGION_CPU1)
+136025.210 Size: 0x2000 Load Addr: 0x5000 CRC: 0xc67284ca SHA1: d9adad80c266d36429444f483cac4ebcf1fec7b8
+136025.216 Size: 0x4000 Load Addr: 0x8000 CRC: 0x522a9cc0 SHA1: bbd75e01c45220e1c87bd1e013cf2c2fb9f376b2
+136025.217 Size: 0x4000 Load Addr: 0xc000 CRC: 0xea3d6877 SHA1: 27823c1b546c073b37ff11a8cb25312ea71673c2
+136025.215 Size: 0x4000 Load Addr: 0x10000 CRC: 0xa4d380ca SHA1: c3cdc76054be2f904b1fb6f28c3c027eba5c3a70
+136025.318 Size: 0x4000 Load Addr: 0x14000 CRC: 0xba935067 SHA1: 05ad81e7a1982b9d8fddb48502546f48b5dc21b7
+ROM_REGION(0x10000, REGION_CPU3)
+136025.106 Size: 0x4000 Load Addr: 0x0000 CRC: 0x2ca83c76 SHA1: cc1adca32f70af30c4590e9fd6b056b051ccdb38
+136025.107 Size: 0x4000 Load Addr: 0x4000 CRC: 0x5f81c5f3 SHA1: be4055727a2d4536e37ec20150deffdb5af5b01f
+ROM_REGION(0x10000, REGION_CPU2)
+136025.108 Size: 0x4000 Load Addr: 0x8000 CRC: 0x93faf210 SHA1: 7744368a1d520f986d1c4246113a7e24fcdd6d04
+ROM_REGION(0x0100, REGION_PROMS)
+136002-125.6c Size: 0x0100 Load Addr: 0x0000 CRC: 0x5903af03 SHA1: 24bc0366f394ad0ec486919212e38be0f08d0239
 
 Game Name: Major Havoc (Revision 2):
-Rom Name: mhavoc2.zip
-136025.110 Size: 2000 Load Addr: 5000
-136025.103 Size: 4000 Load Addr: 8000
-136025.104 Size: 4000 Load Addr: c000
-136025.101 Size: 4000 Load Addr: 10000
-136025.109 Size: 4000 Load Addr: 14000
-136025.106 Size: 4000 Load Addr: 0
-136025.107 Size: 4000 Load Addr: 4000
-136025.108 Size: 4000 Load Addr: 8000
-136025.108 Size: 4000 Load Addr: c000
+Rom  Name: mhavoc2.zip
+ROM_REGION(0x22000, REGION_CPU1)
+136025.110 Size: 0x2000 Load Addr: 0x5000 CRC: 0x16eef583 SHA1: 277252bd716dd96d5b98ec5e33a3a6a3bc1a9abf
+136025.103 Size: 0x4000 Load Addr: 0x8000 CRC: 0xbf192284 SHA1: 4c2dc3ba75122e521ebf2c42f89b31737613c2df
+136025.104 Size: 0x4000 Load Addr: 0xc000 CRC: 0x833c5d4e SHA1: 932861b2a329172247c1a5d0a6498a00a1fce814
+136025.101 Size: 0x4000 Load Addr: 0x10000 CRC: 0x2b3b591f SHA1: 39fd6fdd14367906bc0102bde15d509d3289206b
+136025.109 Size: 0x4000 Load Addr: 0x14000 CRC: 0x4d766827 SHA1: 7697bf6f92bff0e62850ed75ff66008a08583ef7
+ROM_REGION(0x10000, REGION_CPU3)
+136025.106 Size: 0x4000 Load Addr: 0x0000 CRC: 0x2ca83c76 SHA1: cc1adca32f70af30c4590e9fd6b056b051ccdb38
+136025.107 Size: 0x4000 Load Addr: 0x4000 CRC: 0x5f81c5f3 SHA1: be4055727a2d4536e37ec20150deffdb5af5b01f
+ROM_REGION(0x10000, REGION_CPU2)
+136025.108 Size: 0x4000 Load Addr: 0x8000 CRC: 0x93faf210 SHA1: 7744368a1d520f986d1c4246113a7e24fcdd6d04
+ROM_REGION(0x0100, REGION_PROMS)
+136002-125.6c Size: 0x0100 Load Addr: 0x0000 CRC: 0x5903af03 SHA1: 24bc0366f394ad0ec486919212e38be0f08d0239
 
 Game Name: Major Havoc (Return To VAX - Mod by Jeff Askey):
-Rom Name: mhavocrv.zip
-136025.210 Size: 2000 Load Addr: 5000
-136025.916 Size: 4000 Load Addr: 8000
-136025.917 Size: 4000 Load Addr: c000
-136025.915 Size: 4000 Load Addr: 10000
-136025.918 Size: 4000 Load Addr: 14000
-136025.106 Size: 4000 Load Addr: 0
-136025.907 Size: 4000 Load Addr: 4000
-136025.908 Size: 4000 Load Addr: 8000
-136025.908 Size: 4000 Load Addr: c000
+Rom  Name: mhavocrv.zip
+ROM_REGION(0x22000, REGION_CPU1)
+136025.210 Size: 0x2000 Load Addr: 0x5000 CRC: 0xc67284ca SHA1: d9adad80c266d36429444f483cac4ebcf1fec7b8
+136025.916 Size: 0x4000 Load Addr: 0x8000 CRC: 0x1255bd7f SHA1: e277fe7b23ce8cf1294b6bfa5548b24a6c8952ce
+136025.917 Size: 0x4000 Load Addr: 0xc000 CRC: 0x21889079 SHA1: d1ad6d9fa1432912e376bca50ceeefac2bfd6ac3
+136025.915 Size: 0x4000 Load Addr: 0x10000 CRC: 0x4c7235dc SHA1: 67cafc2ce438ec389550efb46c554a7fe7b45efc
+136025.918 Size: 0x4000 Load Addr: 0x14000 CRC: 0x84735445 SHA1: 21aacd862ce8911d257c6f48ead119ee5bb0b60d
+ROM_REGION(0x10000, REGION_CPU3)
+136025.106 Size: 0x4000 Load Addr: 0x0000 CRC: 0x2ca83c76 SHA1: cc1adca32f70af30c4590e9fd6b056b051ccdb38
+136025.907 Size: 0x4000 Load Addr: 0x4000 CRC: 0x4deea2c9 SHA1: c4107581748a3f2d2084de2a4f120abd67a52189
+ROM_REGION(0x10000, REGION_CPU2)
+136025.908 Size: 0x4000 Load Addr: 0x8000 CRC: 0xc52ec664 SHA1: 08120a385f71b17ec02a3c2ef856ff835a91773e
+ROM_REGION(0x0100, REGION_PROMS)
+136002-125.6c Size: 0x0100 Load Addr: 0x0000 CRC: 0x5903af03 SHA1: 24bc0366f394ad0ec486919212e38be0f08d0239
 
 Game Name: Major Havoc (The Promised End 1.01 adpcm):
-Rom Name: mhavocpe.zip
-mhpe101.6kl Size: 2000 Load Addr: 5000
-mhpe101.1mn Size: 4000 Load Addr: 8000
-mhpe101.1l Size: 4000 Load Addr: c000
-mhpe101.1q Size: 8000 Load Addr: 10000
-mhpe101.1np Size: 8000 Load Addr: 18000
-mhpe101.9s Size: 4000 Load Addr: 8000
-mhpe101.9s Size: 4000 Load Addr: c000
-mhpe101.6h Size: 4000 Load Addr: 0
-mhpe101.6jk Size: 4000 Load Addr: 4000
-mhpe101.x1 Size: 40000 Load Addr: 0
+Rom  Name: mhavocpe.zip
+ROM_REGION(0x22000, REGION_CPU1)
+mhpe101.6kl Size: 0x2000 Load Addr: 0x5000 CRC: 0xddcaab40 SHA1: d70b91137204ebbf2685fe22a3498cb6014a7bef
+mhpe101.1mn Size: 0x4000 Load Addr: 0x8000 CRC: 0x8b4b1c7c SHA1: 9840532b78f5ca7e9785d35883f191b46d0e1436
+mhpe101.1l Size: 0x4000 Load Addr: 0xc000 CRC: 0x90348169 SHA1: 58227bd56d123aa76c8f287f75b83a3a7cc6d1d2
+mhpe101.1q Size: 0x8000 Load Addr: 0x10000 CRC: 0xd5d86868 SHA1: ddc6330a55106dadefa356b55f1562affb9ebc00
+mhpe101.1np Size: 0x8000 Load Addr: 0x18000 CRC: 0x6f7b38a9 SHA1: 0107cc88a54780c6bca97afbf0e99adf1f4ceba1
+ROM_REGION(0x10000, REGION_CPU2)
+mhpe101.9s Size: 0x4000 Load Addr: 0x8000 CRC: 0x46cdd0fa SHA1: f6c75333311279b15cb42ce3ed8a40e54a508869
+ROM_REGION(0x10000, REGION_CPU3)
+mhpe101.6h Size: 0x4000 Load Addr: 0x0000 CRC: 0x6b380183 SHA1: 2fad9dc301aa5622195e3acac2865339406ccc38
+mhpe101.6jk Size: 0x4000 Load Addr: 0x4000 CRC: 0x7ecfd43b SHA1: 7f99fde09062bc4ca4bbbf06f1b11dc3f5203541
+ROM_REGION(0x40000, REGION_CPU4)
+mhpe101.x1 Size: 0x40000 Load Addr: 0x0000 CRC: 0xaade65d1 SHA1: 7e379ee84ee36395095ce68d1c1da4fcf907a07e
+ROM_REGION(0x0100, REGION_PROMS)
+136002-125.6c Size: 0x0100 Load Addr: 0x0000 CRC: 0x5903af03 SHA1: 24bc0366f394ad0ec486919212e38be0f08d0239
 
 Game Name: Major Havoc (Prototype):
-Rom Name: mhavocp.zip
-136025.010 Size: 2000 Load Addr: 5000
-136025.016 Size: 4000 Load Addr: 8000
-136025.017 Size: 4000 Load Addr: c000
-136025.015 Size: 4000 Load Addr: 10000
-136025.018 Size: 4000 Load Addr: 14000
-136025.006 Size: 4000 Load Addr: 0
-136025.007 Size: 4000 Load Addr: 4000
-136025.008 Size: 4000 Load Addr: 8000
-136025.008 Size: 4000 Load Addr: c000
+Rom  Name: mhavocp.zip
+ROM_REGION(0x22000, REGION_CPU1)
+136025.010 Size: 0x2000 Load Addr: 0x5000 CRC: 0x3050c0e6 SHA1: f19a9538996d949cdca7e6abd4f04e8ff6e0e2c1
+136025.016 Size: 0x4000 Load Addr: 0x8000 CRC: 0x94caf6c0 SHA1: 8734411280bd0484c99a59231b97ad64d6e787e8
+136025.017 Size: 0x4000 Load Addr: 0xc000 CRC: 0x5cba70a SHA1: c069e6dec3e5bc278103156d0908ab93f3784be1
+136025.015 Size: 0x4000 Load Addr: 0x10000 CRC: 0xc567c11b SHA1: 23b89389f59bb6a040342adfe583818a91ce5bff
+136025.018 Size: 0x4000 Load Addr: 0x14000 CRC: 0xa8c35ccd SHA1: c243a5407557390a64c6560d857f5031f839973f
+ROM_REGION(0x10000, REGION_CPU3)
+136025.006 Size: 0x4000 Load Addr: 0x0000 CRC: 0xe272ed41 SHA1: 0de395d1c4300a64da7f45746d7b550779e36a21
+136025.007 Size: 0x4000 Load Addr: 0x4000 CRC: 0xe152c9d8 SHA1: 79d0938fa9ad262c7f28c5a8ad21004a4dec9ed8
+ROM_REGION(0x10000, REGION_CPU2)
+136025.008 Size: 0x4000 Load Addr: 0x8000 CRC: 0x22ea7399 SHA1: eeda8cc40089506063835a62c3273e7dd3918fd5
+ROM_REGION(0x0100, REGION_PROMS)
+136002-125.6c Size: 0x0100 Load Addr: 0x0000 CRC: 0x5903af03 SHA1: 24bc0366f394ad0ec486919212e38be0f08d0239
 
 Game Name:  Alpha One (Major Havoc Prototype - 3 Lives):
-Rom Name: alphaone.zip
-vec5000.tw Size: 1000 Load Addr: 5000
-8000.tw Size: 2000 Load Addr: 8000
-a000.tw Size: 2000 Load Addr: a000
-twjk1.bin Size: 2000 Load Addr: c000
-e000.tw Size: 1000 Load Addr: e000
-e000.tw Size: 1000 Load Addr: f000
-page01.tw Size: 4000 Load Addr: 10000
-vec_pg01.tw Size: 4000 Load Addr: 0
-vec_pg23.tw Size: 4000 Load Addr: 4000
+Rom  Name: alphaone.zip
+ROM_REGION(0x22000, REGION_CPU1)
+vec5000.tw Size: 0x1000 Load Addr: 0x5000 CRC: 0x2a4c149f SHA1: b60a0b29958bee9b5f7c1d88163680b626bb76dd
+8000.tw Size: 0x2000 Load Addr: 0x8000 CRC: 0x962d4da2 SHA1: 2299f850aed7470a80a21526143f7b412a879cb1
+a000.tw Size: 0x2000 Load Addr: 0xa000 CRC: 0xf739a791 SHA1: 1e70e446fc7dd27683ad71e768ebb2bc1d4fedd3
+twjk1.bin Size: 0x2000 Load Addr: 0xc000 CRC: 0x1ead0b34 SHA1: 085e05526d029bcff7c8ae050cde73f52ee13846
+e000.tw Size: 0x1000 Load Addr: 0xe000 CRC: 0x6b1d7d2b SHA1: 36ac8b53e2fe01ed281c94afec02484ef676ddad
+e000.tw Size: 0x1000 Load Addr: 0xf000 CRC: 0x6b1d7d2b SHA1: 36ac8b53e2fe01ed281c94afec02484ef676ddad
+page01.tw Size: 0x4000 Load Addr: 0x10000 CRC: 0xcbf3b05a SHA1: 1dfaf9300a252c9c921f06167160a59cdf329726
+ROM_REGION(0x10000, REGION_CPU3)
+vec_pg01.tw Size: 0x4000 Load Addr: 0x0000 CRC: 0xe392a94d SHA1: b5843da97d7aa5767c87c29660115efc5ad9ad54
+vec_pg23.tw Size: 0x4000 Load Addr: 0x4000 CRC: 0x1ff74292 SHA1: 90e61c48544c62d905e207bba5c67ae7694e86a5
+ROM_REGION(0x0100, REGION_PROMS)
+136002-125.6c Size: 0x0100 Load Addr: 0x0000 CRC: 0x5903af03 SHA1: 24bc0366f394ad0ec486919212e38be0f08d0239
 
 Game Name:  Alpha One (Major Havoc Prototype - 5 Lives):
-Rom Name: alphaona.zip
-vec5000.tw Size: 1000 Load Addr: 5000
-8000.tw Size: 2000 Load Addr: 8000
-a000.tw Size: 2000 Load Addr: a000
-c000.tw Size: 2000 Load Addr: c000
-e000.tw Size: 1000 Load Addr: e000
-e000.tw Size: 1000 Load Addr: f000
-page01.tw Size: 4000 Load Addr: 10000
-vec_pg01.tw Size: 4000 Load Addr: 0
-vec_pg23.tw Size: 4000 Load Addr: 4000
+Rom  Name: alphaonea.zip
+ROM_REGION(0x22000, REGION_CPU1)
+ROM_REGION(0x22000, REGION_CPU1)
+vec5000.tw Size: 0x1000 Load Addr: 0x5000 CRC: 0x2a4c149f SHA1: b60a0b29958bee9b5f7c1d88163680b626bb76dd
+8000.tw Size: 0x2000 Load Addr: 0x8000 CRC: 0x962d4da2 SHA1: 2299f850aed7470a80a21526143f7b412a879cb1
+a000.tw Size: 0x2000 Load Addr: 0xa000 CRC: 0xf739a791 SHA1: 1e70e446fc7dd27683ad71e768ebb2bc1d4fedd3
+c000.tw Size: 0x2000 Load Addr: 0xc000 CRC: 0xf21fb1ac SHA1: 2590147e75611a3f87397e7b0baa7020e7528ac8
+e000.tw Size: 0x1000 Load Addr: 0xe000 CRC: 0x6b1d7d2b SHA1: 36ac8b53e2fe01ed281c94afec02484ef676ddad
+e000.tw Size: 0x1000 Load Addr: 0xf000 CRC: 0x6b1d7d2b SHA1: 36ac8b53e2fe01ed281c94afec02484ef676ddad
+page01.tw Size: 0x4000 Load Addr: 0x10000 CRC: 0xcbf3b05a SHA1: 1dfaf9300a252c9c921f06167160a59cdf329726
+ROM_REGION(0x10000, REGION_CPU3)
+vec_pg01.tw Size: 0x4000 Load Addr: 0x0000 CRC: 0xe392a94d SHA1: b5843da97d7aa5767c87c29660115efc5ad9ad54
+vec_pg23.tw Size: 0x4000 Load Addr: 0x4000 CRC: 0x1ff74292 SHA1: 90e61c48544c62d905e207bba5c67ae7694e86a5
+ROM_REGION(0x0100, REGION_PROMS)
+136002-125.6c Size: 0x0100 Load Addr: 0x0000 CRC: 0x5903af03 SHA1: 24bc0366f394ad0ec486919212e38be0f08d0239
 
 Game Name: Solar Quest:
-Rom Name: solarq.zip
-solar.6t Size: 1000 Load Addr: 0
-solar.6p Size: 1000 Load Addr: 0
-solar.6u Size: 1000 Load Addr: 2000
-solar.6r Size: 1000 Load Addr: 2000
+Rom  Name: solarq.zip
+ROM_REGION(0x4000, REGION_CPU1)
+solar.6t Size: 0x1000 Load Addr: 0x0000 CRC: 0x1f3c5333 SHA1: 58d847b5f009a0363ae116768b22d0bcfb3d60a4
+solar.6p Size: 0x1000 Load Addr: 0x0001 CRC: 0xd6c16bcc SHA1: 6953bdc698da060d37f6bc33a810ba44595b1257
+solar.6u Size: 0x1000 Load Addr: 0x2000 CRC: 0xa5970e5c SHA1: 9ac07924ca86d003964022cffdd6a0436dde5624
+solar.6r Size: 0x1000 Load Addr: 0x2001 CRC: 0xb763fff2 SHA1: af1fd978e46a4aee3048e6e36c409821d986f7ee
 
 Game Name: Star Castle:
-Rom Name: starcas.zip
-starcas3.t7 Size: 800 Load Addr: 0
-starcas3.p7 Size: 800 Load Addr: 0
-starcas3.u7 Size: 800 Load Addr: 1000
-starcas3.r7 Size: 800 Load Addr: 1000
+Rom  Name: starcas.zip
+ROM_REGION(0x2000, REGION_CPU1)
+starcas3.t7 Size: 0x0800 Load Addr: 0x0000 CRC: 0xb5838b5d SHA1: 6ac30be55514cba55180c85af69072b5056d1d4c
+starcas3.p7 Size: 0x0800 Load Addr: 0x0001 CRC: 0xf6bc2f4d SHA1: ef6f01556b154cfb3e37b2a99d6ea6292e5ec844
+starcas3.u7 Size: 0x0800 Load Addr: 0x1000 CRC: 0x188cd97c SHA1: c021e93a01e9c65013073de551a8c24fd1a68bde
+starcas3.r7 Size: 0x0800 Load Addr: 0x1001 CRC: 0xc367b69d SHA1: 98354d34ceb03e080b1846611d533be7bdff01cc
 
 Game Name: RipOff:
-Rom Name: ripoff.zip
-ripoff.t7 Size: 800 Load Addr: 0
-ripoff.p7 Size: 800 Load Addr: 0
-ripoff.u7 Size: 800 Load Addr: 1000
-ripoff.r7 Size: 800 Load Addr: 1000
+Rom  Name: ripoff.zip
+ROM_REGION(0x2000, REGION_CPU1)
+ripoff.t7 Size: 0x0800 Load Addr: 0x0000 CRC: 0x40c2c5b8 SHA1: bc1f3b540475c9868443a72790a959b1f36b93c6
+ripoff.p7 Size: 0x0800 Load Addr: 0x0001 CRC: 0xa9208afb SHA1: ea362494855be27a07014832b01e65c1645385d0
+ripoff.u7 Size: 0x0800 Load Addr: 0x1000 CRC: 0x29c13701 SHA1: 5e7672deffac1fa8f289686a5527adf7e51eb0bb
+ripoff.r7 Size: 0x0800 Load Addr: 0x1001 CRC: 0x150bd4c8 SHA1: e1e2f0dfec4f53d8ff67b0e990514c304f496b3a
 
 Game Name: Armor Attack:
-Rom Name: armora.zip
-ar414le.t6 Size: 1000 Load Addr: 0
-ar414lo.p6 Size: 1000 Load Addr: 0
-ar414ue.u6 Size: 1000 Load Addr: 2000
-ar414uo.r6 Size: 1000 Load Addr: 2000
+Rom  Name: armora.zip
+ROM_REGION(0x4000, REGION_CPU1)
+ar414le.t6 Size: 0x1000 Load Addr: 0x0000 CRC: 0xd7e71f84 SHA1: 0b29278a6a698f07eae597bc0a8650e91eaabffa
+ar414lo.p6 Size: 0x1000 Load Addr: 0x0001 CRC: 0xdf1c2370 SHA1: b74834d1a591a741892ec41269a831d3590ff766
+ar414ue.u6 Size: 0x1000 Load Addr: 0x2000 CRC: 0xb0276118 SHA1: 88f33cb2f46a89819c85f810c7cff812e918391e
+ar414uo.r6 Size: 0x1000 Load Addr: 0x2001 CRC: 0x229d779f SHA1: 0cbdd83eb224146944049346f30d9c72d3ad5f52
 
 Game Name: Barrier:
-Rom Name: barrier.zip
-barrier.t7 Size: 800 Load Addr: 0
-barrier.p7 Size: 800 Load Addr: 0
+Rom  Name: barrier.zip
+ROM_REGION(0x1000, REGION_CPU1)
+barrier.t7 Size: 0x0800 Load Addr: 0x0000 CRC: 0x7c3d68c8 SHA1: 1138029552b73e94522b3b48096befc057d603c7
+barrier.p7 Size: 0x0800 Load Addr: 0x0001 CRC: 0xaec142b5 SHA1: b268936b82e072f38f1f1dd54e0bc88bcdf19925
 
 Game Name: Sundance:
-Rom Name: sundance.zip
-sundance.t7 Size: 800 Load Addr: 0
-sundance.p7 Size: 800 Load Addr: 0
-sundance.u7 Size: 800 Load Addr: 1000
-sundance.r7 Size: 800 Load Addr: 1000
+Rom  Name: sundance.zip
+ROM_REGION(0x2000, REGION_CPU1)
+sundance.t7 Size: 0x0800 Load Addr: 0x0000 CRC: 0xd5b9cb19 SHA1: 72dca386b48a582186898c32123d61b4fd58632e
+sundance.p7 Size: 0x0800 Load Addr: 0x0001 CRC: 0x445c4f20 SHA1: 972d0b0613f154ee3347206cae05ee8c36796f84
+sundance.u7 Size: 0x0800 Load Addr: 0x1000 CRC: 0x67887d48 SHA1: be225dbd3508fad2711286834880065a4fc0a2fc
+sundance.r7 Size: 0x0800 Load Addr: 0x1001 CRC: 0x10b77ebd SHA1: 3d43bd47c498d5ea74a7322f8d25dbc0c0187534
 
 Game Name: Warrior:
-Rom Name: warrior.zip
-warrior.t7 Size: 800 Load Addr: 0
-warrior.p7 Size: 800 Load Addr: 0
-warrior.u7 Size: 800 Load Addr: 1000
-warrior.r7 Size: 800 Load Addr: 1000
+Rom  Name: warrior.zip
+ROM_REGION(0x2000, REGION_CPU1)
+warrior.t7 Size: 0x0800 Load Addr: 0x0000 CRC: 0xac3646f9 SHA1: 515c3acb638fad27fa57f6b438c8ec0b5b76f319
+warrior.p7 Size: 0x0800 Load Addr: 0x0001 CRC: 0x517d3021 SHA1: 0483dcaf92c336a07d2c535823348ee886567e85
+warrior.u7 Size: 0x0800 Load Addr: 0x1000 CRC: 0x2e39340f SHA1: 4b3cfb3674dd2a668d4d65e28cb37d7ad20f118d
+warrior.r7 Size: 0x0800 Load Addr: 0x1001 CRC: 0x8e91b502 SHA1: 27614c3a8613f49187039cfb05ee96303caf72ba
 
 Game Name: TailGunner:
-Rom Name: tailg.zip
-tgunner.t70 Size: 800 Load Addr: 0
-tgunner.p70 Size: 800 Load Addr: 0
-tgunner.t71 Size: 800 Load Addr: 1000
-tgunner.p71 Size: 800 Load Addr: 1000
+Rom  Name: tailg.zip
+ROM_REGION(0x2000, REGION_CPU1)
+tgunner.t70 Size: 0x0800 Load Addr: 0x0000 CRC: 0x21ec9a04 SHA1: b442f34360d1d4769e7bca73a2d79ce97d335460
+tgunner.p70 Size: 0x0800 Load Addr: 0x0001 CRC: 0x8d7410b3 SHA1: 59ead49bd229a873f15334d0999c872d3d6581d4
+tgunner.t71 Size: 0x0800 Load Addr: 0x1000 CRC: 0x2c954ab6 SHA1: 9edf189a19b50a9abf458d4ef8ba25b53934385e
+tgunner.p71 Size: 0x0800 Load Addr: 0x1001 CRC: 0x8e2c8494 SHA1: 65e461ec4938f9895e5ac31442193e06c8731dc1
 
 Game Name: StarHawk:
-Rom Name: starhawk.zip
-starhawk.u7 Size: 800 Load Addr: 0
-starhawk.r7 Size: 800 Load Addr: 0
+Rom  Name: starhawk.zip
+ROM_REGION(0x1000, REGION_CPU1)
+u7 Size: 0x0800 Load Addr: 0x0000 CRC: 0x376e6c5c SHA1: 7d9530ed2e75464578b541f61408ba64ee9d2a95
+r7 Size: 0x0800 Load Addr: 0x0001 CRC: 0xbb71144f SHA1: 79591cd3ef8df78ec26e158f7e82ca0dcd72260d
 
 Game Name: SpaceWar:
-Rom Name: spacewar.zip
-spacewar.1l Size: 800 Load Addr: 0
-spacewar.2r Size: 800 Load Addr: 0
+Rom  Name: spacewar.zip
+ROM_REGION(0x1000, REGION_CPU1)
+spacewar.1l Size: 0x0800 Load Addr: 0x0000 CRC: 0xedf0fd53 SHA1: a543d8b95bc77ec061c6b10161a6f3e07401e251
+spacewar.2r Size: 0x0800 Load Addr: 0x0001 CRC: 0x4f21328b SHA1: 8889f1a9353d6bb1e1078829c1ba77557853739b
 
 Game Name: Speed Freak:
-Rom Name: speedfrk.zip
-speedfrk.t7 Size: 800 Load Addr: 0
-speedfrk.p7 Size: 800 Load Addr: 0
-speedfrk.u7 Size: 800 Load Addr: 1000
-speedfrk.r7 Size: 800 Load Addr: 1000
+Rom  Name: speedfrk.zip
+ROM_REGION(0x2000, REGION_CPU1)
+speedfrk.t7 Size: 0x0800 Load Addr: 0x0000 CRC: 0x3552c03f SHA1: c233dd064195b336556d7405b51065389b228c78
+speedfrk.p7 Size: 0x0800 Load Addr: 0x0001 CRC: 0x4b90cdec SHA1: 69e2312acdc22ef52236b1c4dfee9f51fcdcaa52
+speedfrk.u7 Size: 0x0800 Load Addr: 0x1000 CRC: 0x616c7cf9 SHA1: 3c5bf59a09d85261f69e4b9d499cb7a93d79fb57
+speedfrk.r7 Size: 0x0800 Load Addr: 0x1001 CRC: 0xfbe90d63 SHA1: e42b17133464ae48c90263bba01a7d041e938a05
 
 Game Name: Demon:
-Rom Name: demon.zip
-demon.7t Size: 1000 Load Addr: 0
-demon.7p Size: 1000 Load Addr: 0
-demon.7u Size: 1000 Load Addr: 2000
-demon.7r Size: 1000 Load Addr: 2000
+Rom  Name: demon.zip
+ROM_REGION(0x4000, REGION_CPU1)
+demon.7t Size: 0x1000 Load Addr: 0x0000 CRC: 0x866596c1 SHA1: 65202dcd5c6bf6c11fe76a89682a1505b1870cc9
+demon.7p Size: 0x1000 Load Addr: 0x0001 CRC: 0x1109e2f1 SHA1: c779b6af1ca09e2e295fc9a0e221ddf283b683ed
+demon.7u Size: 0x1000 Load Addr: 0x2000 CRC: 0xd447a3c3 SHA1: 32f6fb01231aa4f3d93e32d639a89f0cf9624a71
+demon.7r Size: 0x1000 Load Addr: 0x2001 CRC: 0x64b515f0 SHA1: 2dd9a6d784ec1baf31e8c6797ddfdc1423c69470
 
 Game Name: Boxing Bugs:
-Rom Name: boxingb.zip
-u1a Size: 1000 Load Addr: 0
-u1b Size: 1000 Load Addr: 0
-u2a Size: 1000 Load Addr: 2000
-u2b Size: 1000 Load Addr: 2000
-u3a Size: 1000 Load Addr: 4000
-u3b Size: 1000 Load Addr: 4000
-u4a Size: 1000 Load Addr: 6000
-u4b Size: 1000 Load Addr: 6000
+Rom  Name: boxingb.zip
+ROM_REGION(0x8000, REGION_CPU1)
+u1a Size: 0x1000 Load Addr: 0x0000 CRC: 0xd3115b0f SHA1: 9448e7ac1cdb5c7e0739623151be230ab630c4ea
+u1b Size: 0x1000 Load Addr: 0x0001 CRC: 0x3a44268d SHA1: 876ebe942ded787cfe357563a33d3e26a1483c5a
+u2a Size: 0x1000 Load Addr: 0x2000 CRC: 0xc97a9cbb SHA1: 8bdeb9ee6b24c0a4554bbf4532a43481a0360019
+u2b Size: 0x1000 Load Addr: 0x2001 CRC: 0x98d34ff5 SHA1: 6767a02a99a01712383300f9acb96cdeffbc9c69
+u3a Size: 0x1000 Load Addr: 0x4000 CRC: 0x5bb3269b SHA1: a9dbc91b1455760f10bad0d2ccf540e040a00d4e
+u3b Size: 0x1000 Load Addr: 0x4001 CRC: 0x85bf83ad SHA1: 9229042e39c53fae56dc93f8996bf3a3fcd35cb8
+u4a Size: 0x1000 Load Addr: 0x6000 CRC: 0x25b51799 SHA1: 46465fe62907ae66a0ce730581e4e9ba330d4369
+u4b Size: 0x1000 Load Addr: 0x6001 CRC: 0x7f41de6a SHA1: d01dffad3cb6e76c535a034ea0277dce5801c5f1
 
 Game Name: War of the Worlds:
-Rom Name: wotw.zip
-wow_le.t7 Size: 1000 Load Addr: 0
-wow_lo.p7 Size: 1000 Load Addr: 0
-wow_ue.u7 Size: 1000 Load Addr: 2000
-wow_uo.r7 Size: 1000 Load Addr: 2000
+Rom  Name: wotw.zip
+ROM_REGION(0x4000, REGION_CPU1)
+wow_le.t7 Size: 0x1000 Load Addr: 0x0000 CRC: 0xb16440f9 SHA1: 9656a26814736f8ff73575063b5ebbb2e8aa7dd0
+wow_lo.p7 Size: 0x1000 Load Addr: 0x0001 CRC: 0xbfdf4a5a SHA1: db4eceb68e17020d0a597ba105ec3b91ce48b7c1
+wow_ue.u7 Size: 0x1000 Load Addr: 0x2000 CRC: 0x9b5cea48 SHA1: c2bc002e550a0d36e713d07f6aefa79c70b8e284
+wow_uo.r7 Size: 0x1000 Load Addr: 0x2001 CRC: 0xc9d3c866 SHA1: 57a47bf06838fe562981321249fe5ae585316f22
 
 Game Name: Quantum (Revision 1):
-Rom Name: quantum1.zip
-136016.101 Size: 2000 Load Addr: 0
-136016.106 Size: 2000 Load Addr: 0
-136016.102 Size: 2000 Load Addr: 4000
-136016.107 Size: 2000 Load Addr: 4000
-136016.103 Size: 2000 Load Addr: 8000
-136016.108 Size: 2000 Load Addr: 8000
-136016.104 Size: 2000 Load Addr: c000
-136016.109 Size: 2000 Load Addr: c000
-136016.105 Size: 2000 Load Addr: 10000
-136016.110 Size: 2000 Load Addr: 10000
+Rom  Name: quantum1.zip
+ROM_REGION(0x14000, REGION_CPU1)
+136016-101.2e Size: 0x2000 Load Addr: 0x0000 CRC: 0x5af0bd5b SHA1: f6e46fbebbf52294e78ae240fe2628c6b29b8dea
+136016-106.3e Size: 0x2000 Load Addr: 0x0001 CRC: 0xf9724666 SHA1: 1bb073135029c92bef9afc9ccd910e0ab3302c8a
+136016-102.2f Size: 0x2000 Load Addr: 0x4000 CRC: 0x408d34f4 SHA1: 9a30debd1240b9c103134701943c94d6b48b926d
+136016-107.3f Size: 0x2000 Load Addr: 0x4001 CRC: 0x63154484 SHA1: c098cdbc339c9ea291c4c4fb203c60b3284e894a
+136016-103.2hj Size: 0x2000 Load Addr: 0x8000 CRC: 0x948f228b SHA1: 878ac96173a793997cc88be469ec1ccdf833a7e8
+136016-108.3hj Size: 0x2000 Load Addr: 0x8001 CRC: 0xe4c48e4e SHA1: caaf9d20741fcb961d590b634250a44a166cc33a
+136016-104.2k Size: 0x2000 Load Addr: 0xc000 CRC: 0xbf271e5c SHA1: 012edb947f1437932b9283e49d025a7794c45669
+136016-109.3k Size: 0x2000 Load Addr: 0xc001 CRC: 0xd2894424 SHA1: 5390025136b677b66d948c8cf6ea5e20203a4bae
+136016-105.2l Size: 0x2000 Load Addr: 0x10000 CRC: 0x13ec512c SHA1: 22a0395135b83ba47eacb5129f34fc97aa1b70a1
+136016-110.3l Size: 0x2000 Load Addr: 0x10001 CRC: 0xacb50363 SHA1: 9efa9ca88efdd2d5e212bd537903892b67b4fe53
+ROM_REGION(0x0100, REGION_PROMS)
+136002-125.6h Size: 0x0100 Load Addr: 0x0000 CRC: 0x5903af03 SHA1: 24bc0366f394ad0ec486919212e38be0f08d0239
 
 Game Name: Quantum (Revision 2):
-Rom Name: quantum.zip
-136016.201 Size: 2000 Load Addr: 0
-136016.206 Size: 2000 Load Addr: 0
-136016.102 Size: 2000 Load Addr: 4000
-136016.107 Size: 2000 Load Addr: 4000
-136016.203 Size: 2000 Load Addr: 8000
-136016.208 Size: 2000 Load Addr: 8000
-136016.104 Size: 2000 Load Addr: c000
-136016.109 Size: 2000 Load Addr: c000
-136016.105 Size: 2000 Load Addr: 10000
-136016.110 Size: 2000 Load Addr: 10000
+Rom  Name: quantum.zip
+ROM_REGION(0x14000, REGION_CPU1)
+136016-201.2e Size: 0x2000 Load Addr: 0x0000 CRC: 0x7e7be63a SHA1: 11b2d0168cdbaa7a48656b77abc0bcbe9408fe84
+136016-206.3e Size: 0x2000 Load Addr: 0x0001 CRC: 0x2d8f5759 SHA1: 54b0388ef44b5d34e621b48b465566aa16887e8f
+136016-102.2f Size: 0x2000 Load Addr: 0x4000 CRC: 0x408d34f4 SHA1: 9a30debd1240b9c103134701943c94d6b48b926d
+136016-107.3f Size: 0x2000 Load Addr: 0x4001 CRC: 0x63154484 SHA1: c098cdbc339c9ea291c4c4fb203c60b3284e894a
+136016-203.2hj Size: 0x2000 Load Addr: 0x8000 CRC: 0xbdc52fad SHA1: c8ede54a4f7f555adffa5b4bfea6bf646a0d02d4
+136016-208.3hj Size: 0x2000 Load Addr: 0x8001 CRC: 0xdab4066b SHA1: dbb82df8e6de4e0f9f6e7ddd5f07618864fce8f9
+136016-104.2k Size: 0x2000 Load Addr: 0xc000 CRC: 0xbf271e5c SHA1: 012edb947f1437932b9283e49d025a7794c45669
+136016-109.3k Size: 0x2000 Load Addr: 0xc001 CRC: 0xd2894424 SHA1: 5390025136b677b66d948c8cf6ea5e20203a4bae
+136016-105.2l Size: 0x2000 Load Addr: 0x10000 CRC: 0x13ec512c SHA1: 22a0395135b83ba47eacb5129f34fc97aa1b70a1
+136016-110.3l Size: 0x2000 Load Addr: 0x10001 CRC: 0xacb50363 SHA1: 9efa9ca88efdd2d5e212bd537903892b67b4fe53
+ROM_REGION(0x0100, REGION_PROMS)
+136002-125.6h Size: 0x0100 Load Addr: 0x0000 CRC: 0x5903af03 SHA1: 24bc0366f394ad0ec486919212e38be0f08d0239
 
 Game Name: Quantum (Prototype):
-Rom Name: quantump.zip
-quantump.2e Size: 2000 Load Addr: 0
-quantump.3e Size: 2000 Load Addr: 0
-quantump.2f Size: 2000 Load Addr: 4000
-quantump.3f Size: 2000 Load Addr: 4000
-quantump.2h Size: 2000 Load Addr: 8000
-quantump.3h Size: 2000 Load Addr: 8000
-quantump.2k Size: 2000 Load Addr: c000
-quantump.3k Size: 2000 Load Addr: c000
-quantump.2l Size: 2000 Load Addr: 10000
-quantump.3l Size: 2000 Load Addr: 10000
+Rom  Name: quantump.zip
+ROM_REGION(0x14000, REGION_CPU1)
+quantump.2e Size: 0x2000 Load Addr: 0x0000 CRC: 0x176d73d3 SHA1: b887ee50af5db6f6d43cc6ba57451173f996dedc
+quantump.3e Size: 0x2000 Load Addr: 0x0001 CRC: 0x12fc631f SHA1: 327a44da897199536f43e5f792cb4a18d9055ac4
+quantump.2f Size: 0x2000 Load Addr: 0x4000 CRC: 0xb64fab48 SHA1: d5a77a367d4f652261c381e6bdd55c2175ace857
+quantump.3f Size: 0x2000 Load Addr: 0x4001 CRC: 0xa52a9433 SHA1: 33787adb04864efebb04483353bbc96c966ec607
+quantump.2h Size: 0x2000 Load Addr: 0x8000 CRC: 0x5b29cba3 SHA1: e83b68907bc397994ed51a39dfa241430a0adb0c
+quantump.3h Size: 0x2000 Load Addr: 0x8001 CRC: 0xc64fc03a SHA1: ab6cd710d01bc85432cc52021f27fd8f2a5e3168
+quantump.2k Size: 0x2000 Load Addr: 0xc000 CRC: 0x854f9c09 SHA1: d908b8c7f6837e511004cbd45a8883c6c7b155dd
+quantump.3k Size: 0x2000 Load Addr: 0xc001 CRC: 0x1aac576c SHA1: 28bdb5fcbd8cccc657d6e00ace3c083c21015564
+quantump.2l Size: 0x2000 Load Addr: 0x10000 CRC: 0x1285b5e7 SHA1: 0e01e361da2d9cf1fac1896f8f44c4c2e75a3061
+quantump.3l Size: 0x2000 Load Addr: 0x10001 CRC: 0xe19de844 SHA1: cb4f9d80807b26d6b95405b2d830799984667f54
+ROM_REGION(0x0100, REGION_PROMS)
+136002-125.6h Size: 0x0100 Load Addr: 0x0000 CRC: 0x5903af03 SHA1: 24bc0366f394ad0ec486919212e38be0f08d0239
 
 Game Name: Star Wars (Revision 2):
-Rom Name: starwars.zip
-136021.105 Size: 1000 Load Addr: 3000
-136021.102 Size: 2000 Load Addr: 8000
-136021.203 Size: 2000 Load Addr: a000
-136021.104 Size: 2000 Load Addr: c000
-136021.206 Size: 2000 Load Addr: e000
-136021.110 Size: 400 Load Addr: 0
-136021.111 Size: 400 Load Addr: 400
-136021.112 Size: 400 Load Addr: 800
-136021.113 Size: 400 Load Addr: c00
-136021.214 Size: 4000 Load Addr: 10000
-136021.107 Size: 2000 Load Addr: 4000
-136021.107 Size: 2000 Load Addr: c000
-136021.208 Size: 2000 Load Addr: 6000
-136021.208 Size: 2000 Load Addr: e000
+Rom  Name: starwars.zip
+ROM_REGION(0x14000, REGION_CPU1)
+136021-105.1l Size: 0x1000 Load Addr: 0x3000 CRC: 0x538e7d2f SHA1: 032c933fd94a6b0b294beee29159a24494ae969b
+136021.214.1f Size: 0x2000 Load Addr: 0x6000 CRC: 0x4f1876e SHA1: c1d3637cb31ece0890c25f6122d6bcd27e6ffe0c
+ROM_CONTINUE Size: 0x2000 Load Addr: 0x10000 CRC: 0x0000 SHA1: (null)
+136021.102.1hj Size: 0x2000 Load Addr: 0x8000 CRC: 0xf725e344 SHA1: f8943b67f2ea032ab9538084756ba86f892be5ca
+136021.203.1jk Size: 0x2000 Load Addr: 0xa000 CRC: 0xf6da0a00 SHA1: dd53b643be856787bbc4da63e5eb132f98f623c3
+136021.104.1kl Size: 0x2000 Load Addr: 0xc000 CRC: 0x7e406703 SHA1: 981b505d6e06d7149f8bcb3e81e4d0c790f2fc86
+136021.206.1m Size: 0x2000 Load Addr: 0xe000 CRC: 0xc7e51237 SHA1: 4960f4446271316e3f730eeb2531dbc702947395
+136021-110.7h Size: 0x0400 Load Addr: 0x0000 CRC: 0x810e040e SHA1: d247cbb0afb4538d5161f8ce9eab337cdb3f2da4
+136021-111.7j Size: 0x0400 Load Addr: 0x0400 CRC: 0xae69881c SHA1: f3420c6e15602956fd94982a5d8d4ddd015ed977
+136021-112.7k Size: 0x0400 Load Addr: 0x0800 CRC: 0xecf22628 SHA1: 4dcf5153221feca329b8e8d199bd4fc00b151d9c
+136021-113.7l Size: 0x0400 Load Addr: 0x0c00 CRC: 0x83febfde SHA1: e13541b09d1724204fdb171528e9a1c83c799c1c
+ROM_REGION(0x10000, REGION_CPU2)
+136021-107.1jk Size: 0x2000 Load Addr: 0x4000 CRC: 0xdbf3aea2 SHA1: c38661b2b846fe93487eef09ca3cda19c44f08a0
+136021-107.1jk Size: 0x2000 Load Addr: 0xc000 CRC: 0xdbf3aea2 SHA1: c38661b2b846fe93487eef09ca3cda19c44f08a0
+136021-208.1h Size: 0x2000 Load Addr: 0x6000 CRC: 0xe38070a8 SHA1: c858ae1702efdd48615453ab46e488848891d139
+136021-208.1h Size: 0x2000 Load Addr: 0xe000 CRC: 0xe38070a8 SHA1: c858ae1702efdd48615453ab46e488848891d139
+ROM_REGION(0x0100, REGION_PROMS)
+136021-109.4b Size: 0x0100 Load Addr: 0x0000 CRC: 0x82fc3eb2 SHA1: 184231c7baef598294860a7d2b8a23798c5c7da6
 
 Game Name: Star Wars (Revision 1):
-Rom Name: starwar1.zip
-136021.105 Size: 1000 Load Addr: 3000
-136021.102 Size: 2000 Load Addr: 8000
-136021.203 Size: 2000 Load Addr: a000
-136021.104 Size: 2000 Load Addr: c000
-136021.206 Size: 2000 Load Addr: e000
-136021.110 Size: 400 Load Addr: 0
-136021.111 Size: 400 Load Addr: 400
-136021.112 Size: 400 Load Addr: 800
-136021.113 Size: 400 Load Addr: c00
-136021.114 Size: 4000 Load Addr: 10000
-136021.107 Size: 2000 Load Addr: 4000
-136021.107 Size: 2000 Load Addr: c000
-136021.208 Size: 2000 Load Addr: 6000
-136021.208 Size: 2000 Load Addr: e000
+Rom  Name: starwars1.zip
+ROM_REGION(0x14000, REGION_CPU1)
+136021-105.1l Size: 0x1000 Load Addr: 0x3000 CRC: 0x538e7d2f SHA1: 032c933fd94a6b0b294beee29159a24494ae969b
+136021.214.1f Size: 0x2000 Load Addr: 0x6000 CRC: 0x4f1876e SHA1: c1d3637cb31ece0890c25f6122d6bcd27e6ffe0c
+ROM_CONTINUE Size: 0x2000 Load Addr: 0x10000 CRC: 0x0000 SHA1: (null)
+136021.102.1hj Size: 0x2000 Load Addr: 0x8000 CRC: 0xf725e344 SHA1: f8943b67f2ea032ab9538084756ba86f892be5ca
+136021.203.1jk Size: 0x2000 Load Addr: 0xa000 CRC: 0xf6da0a00 SHA1: dd53b643be856787bbc4da63e5eb132f98f623c3
+136021.104.1kl Size: 0x2000 Load Addr: 0xc000 CRC: 0x7e406703 SHA1: 981b505d6e06d7149f8bcb3e81e4d0c790f2fc86
+136021.206.1m Size: 0x2000 Load Addr: 0xe000 CRC: 0xc7e51237 SHA1: 4960f4446271316e3f730eeb2531dbc702947395
+136021-110.7h Size: 0x0400 Load Addr: 0x0000 CRC: 0x810e040e SHA1: d247cbb0afb4538d5161f8ce9eab337cdb3f2da4
+136021-111.7j Size: 0x0400 Load Addr: 0x0400 CRC: 0xae69881c SHA1: f3420c6e15602956fd94982a5d8d4ddd015ed977
+136021-112.7k Size: 0x0400 Load Addr: 0x0800 CRC: 0xecf22628 SHA1: 4dcf5153221feca329b8e8d199bd4fc00b151d9c
+136021-113.7l Size: 0x0400 Load Addr: 0x0c00 CRC: 0x83febfde SHA1: e13541b09d1724204fdb171528e9a1c83c799c1c
+ROM_REGION(0x10000, REGION_CPU2)
+136021-107.1jk Size: 0x2000 Load Addr: 0x4000 CRC: 0xdbf3aea2 SHA1: c38661b2b846fe93487eef09ca3cda19c44f08a0
+136021-107.1jk Size: 0x2000 Load Addr: 0xc000 CRC: 0xdbf3aea2 SHA1: c38661b2b846fe93487eef09ca3cda19c44f08a0
+136021-208.1h Size: 0x2000 Load Addr: 0x6000 CRC: 0xe38070a8 SHA1: c858ae1702efdd48615453ab46e488848891d139
+136021-208.1h Size: 0x2000 Load Addr: 0xe000 CRC: 0xe38070a8 SHA1: c858ae1702efdd48615453ab46e488848891d139
+ROM_REGION(0x0100, REGION_PROMS)
+136021-109.4b Size: 0x0100 Load Addr: 0x0000 CRC: 0x82fc3eb2 SHA1: 184231c7baef598294860a7d2b8a23798c5c7da6
+
+Game Name: Star Wars: Empire Strike Back:
+Rom  Name: esb.zip
+ROM_REGION(0x22000, REGION_CPU1)
+136031.111 Size: 0x1000 Load Addr: 0x3000 CRC: 0xb1f9bd12 SHA1: 76f15395c9fdcd80dd241307a377031a1f44e150
+136031.101 Size: 0x2000 Load Addr: 0x6000 CRC: 0xef1e3ae5 SHA1: d228ff076faa7f9605badeee3b827adb62593e0a
+ROM_CONTINUE Size: 0x2000 Load Addr: 0x10000 CRC: 0x0000 SHA1: (null)
+136031.102 Size: 0x2000 Load Addr: 0xa000 CRC: 0x62ce5c12 SHA1: 976256acf4499dc396542a117910009a8808f448
+ROM_CONTINUE Size: 0x2000 Load Addr: 0x1c000 CRC: 0x0000 SHA1: (null)
+136031.203 Size: 0x2000 Load Addr: 0xc000 CRC: 0x27b0889b SHA1: a13074e83f0f57d65096d7f49ae78f33ab00c479
+ROM_CONTINUE Size: 0x2000 Load Addr: 0x1e000 CRC: 0x0000 SHA1: (null)
+136031.104 Size: 0x2000 Load Addr: 0xe000 CRC: 0xfd5c725e SHA1: 541cfd004b1736b6cec13836dfa813f00eedeed0
+ROM_CONTINUE Size: 0x2000 Load Addr: 0x12000 CRC: 0x0000 SHA1: (null)
+136031.105 Size: 0x4000 Load Addr: 0x14000 CRC: 0xea9e4dce SHA1: 9363fd5b1fce62c2306b448a7766eaf7ec97cdf5
+136031.106 Size: 0x4000 Load Addr: 0x18000 CRC: 0x76d07f59 SHA1: 44dd018b406f95e1512ce92923c2c87f1458844f
+136031.110 Size: 0x0400 Load Addr: 0x0000 CRC: 0xb8d0f69d SHA1: c196f1a592bd1ac482a81e23efa224d9dfaefc0a
+136031.109 Size: 0x0400 Load Addr: 0x0400 CRC: 0x6a2a4d98 SHA1: cefca71f025f92a193c5a7d8b5ab8be10db2fd44
+136031.108 Size: 0x0400 Load Addr: 0x0800 CRC: 0x6a76138f SHA1: 9ef7af898a3e29d03f35045901023615a6a55205
+136031.107 Size: 0x0400 Load Addr: 0x0c00 CRC: 0xafbf6e01 SHA1: 0a6438e6c106d98e5d67a019751e1584324f5e5c
+ROM_REGION(0x10000, REGION_CPU2)
+136031.113 Size: 0x2000 Load Addr: 0x4000 CRC: 0x24ae3815 SHA1: b1a93af76de79b902317eebbc50b400b1f8c1e3c
+ROM_CONTINUE Size: 0x2000 Load Addr: 0xc000 CRC: 0x0000 SHA1: (null)
+136031.112 Size: 0x2000 Load Addr: 0x6000 CRC: 0xca72d341 SHA1: 52de5b82bb85d7c9caad2047e540d0748aa93ba5
+ROM_CONTINUE Size: 0x2000 Load Addr: 0xe000 CRC: 0x0000 SHA1: (null)
+
+Game Name: Aztarac:
+Rom  Name: aztarac.zip
+ROM_REGION(0xc000, REGION_CPU1)
+6.l8 Size: 0x1000 Load Addr: 0x0000 CRC: 0x25f8da18 SHA1: e8179ba3683e39c8225b549ead74c8af2d0a0b3e
+0.n8 Size: 0x1000 Load Addr: 0x0001 CRC: 0x4e20626 SHA1: 2b6a04992037257830df2c01a6da748fb4449f79
+7.l7 Size: 0x1000 Load Addr: 0x2000 CRC: 0x230e244c SHA1: 42283a368144acf2aad2ef390e312e0951c3ea64
+1.n7 Size: 0x1000 Load Addr: 0x2001 CRC: 0x37b12697 SHA1: da288b077902e3205600a021c3fac5730f9fb832
+8.l6 Size: 0x1000 Load Addr: 0x4000 CRC: 0x1293fb9d SHA1: 5a8d512372fd38f1a55f990f5c3eb51833c463d8
+2.n6 Size: 0x1000 Load Addr: 0x4001 CRC: 0x712c206a SHA1: eb29f161189c14d84896502940e3ab6cc3bd1cd0
+9.l5 Size: 0x1000 Load Addr: 0x6000 CRC: 0x743a6501 SHA1: da83a8f756466bcd94d4b0cc28a1a1858e9532f3
+3.n5 Size: 0x1000 Load Addr: 0x6001 CRC: 0xa65cbf99 SHA1: dd06f98c0989604bd4ac6317e545e1fcf6722e75
+a.l4 Size: 0x1000 Load Addr: 0x8000 CRC: 0x9cf1b0a1 SHA1: dd644026f49d8430c0b4cf4c750dc33c013c19fc
+4.n4 Size: 0x1000 Load Addr: 0x8001 CRC: 0x5f0080d5 SHA1: fb1303f9a02067faea2ac4d523051c416de9cf35
+b.l3 Size: 0x1000 Load Addr: 0xa000 CRC: 0x8cc7f7fa SHA1: fefb9a4fdd63878bc5d8138e3e8456cb6638425a
+5.n3 Size: 0x1000 Load Addr: 0xa001 CRC: 0x40452376 SHA1: 1d058b7ecd2bbff3393950aab9215b262908475b
+ROM_REGION(0x10000, REGION_CPU2)
+c.j4 Size: 0x1000 Load Addr: 0x0000 CRC: 0xe897dfcd SHA1: 750df3d08512d8098a13ec62677831efa164c126
+d.j3 Size: 0x1000 Load Addr: 0x1000 CRC: 0x4016de77 SHA1: 7232ec003f1b9d3623d762f3270108a1d1837846
+
+
+Number of Games/Clones supported: 76

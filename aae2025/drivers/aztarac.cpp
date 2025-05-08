@@ -98,7 +98,7 @@ void read_vectorram(int addr, int* x, int* y, int* c)
  *
  *************************************/
 
-READ_HANDLER16(nvram_r)
+READ16_HANDLER(nvram_r)
 {
 	return ((int16_t*)generic_nvram)[address] | 0xfff0;
 }
@@ -128,7 +128,7 @@ void aztarac_nvram_handler(void* file, int read_or_write)
  *
  *************************************/
 
-READ_HANDLER16(joystick_r)
+READ16_HANDLER(joystick_r)
 {
 	return (((input_port_0_r(address) - 0xf) << 8) |
 		((input_port_1_r(address) - 0xf) & 0xff));
@@ -140,7 +140,7 @@ READ_HANDLER(joystick_rb)
 		((input_port_1_r(address) - 0xf) & 0xff));
 }
 
-WRITE_HANDLER16(aztarac_ubr_w)
+WRITE16_HANDLER(aztarac_ubr_w)
 {
 	int x, y, c, intensity, xoffset, yoffset, color;
 	int defaddr, objaddr = 0, ndefs;
@@ -200,12 +200,12 @@ WRITE_HANDLER(aztarac_ubr_wb)
 	aztarac_ubr_w(address, (UINT16)data, 0);
 }
 
-READ_HANDLER16(watchdog_reset16_r)
+READ16_HANDLER(watchdog_reset16_r)
 {
 	return 0;
 }
 
-WRITE_HANDLER16(aztarac_sound_w)
+WRITE16_HANDLER(aztarac_sound_w)
 {
 	if (data & 0xff)
 	{
@@ -238,7 +238,7 @@ READ_HANDLER(aztarac_snd_status_r)
 	return sound_status & ~0x01;
 }
 
-READ_HANDLER16(aztarac_sound_r)
+READ16_HANDLER(aztarac_sound_r)
 {
 	return sound_status & 0x01;
 }
@@ -339,6 +339,8 @@ int init_aztarac()
 	AY8910_sh_start(&ay8910_interface);
 	m68k_set_int_ack_callback(aztarac_irq_callback);
 	aztarac_vectorram = vec_ram;
+	// Required for now until I can change the rendering back end again. 
+	config.gain = 0;
 
 	wrlog("End aztarac Init");
 	return 0;

@@ -8,7 +8,7 @@
 // of the dedicated people who spend countless hours creating it. All
 // MAME code should be annotated as belonging to the MAME TEAM.
 //
-// THE CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.
+// THE CODE BELOW IS DERIVED FROM MAME and COPYRIGHT the MAME TEAM.
 //============================================================================
 
 
@@ -142,7 +142,7 @@ static void draw_tempest(int sx, int sy, int ex, int ey, int z, int color)
 	g = bit3 * 0xf3;
 	b = bit2 * 0xf3;
 
-	set_clip_rect(230, 240, 780, 830);
+	set_clip_rect(230, 240, 785, 830);
 	int clip = ClipLine(&sx, &sy, &ex, &ey);
 	if (clip)
 	{
@@ -267,7 +267,7 @@ void AVG_RUN(void)
 
 			deltax = x * scale;
 			deltay = y * scale;
-			//total_length += vector_timer(deltax, deltay);
+			
 			if (xflip) deltax = -deltax;
 			if (YFLIP) deltay = -deltay;
 			if (XFLIP) deltax = -deltax;
@@ -291,7 +291,6 @@ void AVG_RUN(void)
 			}
 
 			currentx += deltax; currenty -= deltay;
-
 			break;
 
 		case STAT: //(AVG STROBE2)

@@ -2,20 +2,32 @@
 #include <stdlib.h>
 #include "aae_fileio.h"
 #include "log.h"
-#include "sha-1.h"
-
 //For zip file loading
 #include "miniz.h"
+#include <string>
+#include "aae_mame_driver.h"
+#include "memory.h"
+#include "path_helper.h"
+#include "loaders.h"
+#include "gameroms.h"
+#include "sha-1.h"
 
-CSHA1 sha1;
+
 
 /*
 const char* artpath = "artwork\\";
 const char* samplepath = "samples\\";
 const char* rompath = "roms\\";
 */
+CSHA1 sha1;
 unsigned int filesz = 0;
 unsigned int uncomp_size = 0;
+uint32_t last_zip_crc = 0;
+
+int get_last_crc()
+{
+	return last_zip_crc;
+}
 
 unsigned int get_last_file_size()
 {
@@ -53,7 +65,7 @@ unsigned char* load_file(const char* filename)
 	return buf;
 }
 
-int save_file_char(const char* filename, unsigned char* buf, int size)
+int save_file_char(const char* filename, char* buf, int size)
 {
 	FILE* fd = NULL;
 	if (!(fd = fopen(filename, "w"))) { wrlog("Saving Ram failed!"); return (0); }
@@ -73,71 +85,88 @@ int save_file(const char* filename, unsigned char* buf, int size)
 }
 
 
-/*
-int load_roms(const struct RomModule* p, const char* basename)
-{
-	int test = 0;
-	int skip = 0;
+// 5/6/25 - 5/8/25:
+//  Added ROM_CONTINUE support
+//  Added better ROM_RELOAD support
+//  Added NON-MAME crc and SHA-1 checking. 
+//  Not the cleanest code, but it's working. 
 
+int load_roms(const char* archname, const struct RomModule* p)
+{
 	mz_bool status;
 	mz_uint file_index = -1;
 	mz_zip_archive zip_archive;
 	mz_zip_archive_file_stat file_stat;
-
+	std::string temppath;
 	unsigned char* zipdata = 0;
 	const char* shatest = 0;
+	const char* last_reload_filename = nullptr;
+	int test = 0;
+	int skip = 0;
 	int ret = 0;
 	int i, j = 0;
 	int crc = 0;
 	int size = 0;
 	int cpunum = 0;
-	int flipnum = 0;
 	int region = 0;
-	char temppath[255];
 
-	strcpy(temppath, config.exrompath);
-	put_backslash(temppath);
-	strcat(temppath, archname);
-	strcat(temppath, ".zip");
+	temppath = config.exrompath;
+	temppath.append("\\");
+	temppath.append(archname);
+	temppath.append(".zip");
 
-	test = file_exist(temppath);
+	test = file_exist(temppath.c_str());
 	if (test == 0)
 	{
-		strcpy(temppath, rompath);
-		strcat(temppath, archname);
-		strcat(temppath, ".zip\0");
+		wrlog("Rom not found in config directory");
+		temppath = getpathM("roms", 0);
+		temppath.append("\\");
+		temppath.append(archname);
+		temppath.append(".zip");
 	}
-	wrlog("Opening Romset at:, %s", temppath);
+	wrlog("Rom Path: %s", temppath.c_str());
 
 	memset(&zip_archive, 0, sizeof(zip_archive));
-	status = mz_zip_reader_init_file(&zip_archive, temppath, 0);
+	status = mz_zip_reader_init_file(&zip_archive, temppath.c_str(), 0);
 	if (!status)
 	{
-		wrlog("Zip File %s failed. %d(Archive not found?)", basename, EXIT_FAILURE);
+		wrlog("Zip File %s failed. %d(Archive not found?)", archname, EXIT_FAILURE);
 		ret = EXIT_FAILURE;
 		goto end;
 	}
 	//Start Loading ROMS HERE////
+	wrlog("ROM_START(%s)", archname);
 	//wrlog("starting with romsize = %d romsize 1 = %d",p[0].romSize,p[1].romSize);
 	for (i = 0; p[i].romSize > 0; i += 1)
 	{
-		//   Check for ROM_REGION: IF SO, decode and skip, also reset the even/odd counter:
+		//   Check for ROM_REGION: IF SO, decode and skip
 		if (p[i].loadAddr == ROM_REGION_START)
 		{
+			// This is temporary, to help me build romsets with the correct SHA without typing
+			//wrlog("ROM_REGION(0x%04x, %s)", p[i].romSize, rom_regions[p[i].loadtype]);
 			//Allocate Memory for this region
-			cpu_mem(p[i].loadtype, p[i].romSize);
+			new_memory_region(p[i].loadtype, p[i].romSize);
 			cpunum = p[i].loadtype;
-			flipnum = 0;
 		}
 		else {
 			// Find the requested file, ignore case
-			//Is it a ROM_RELOAD? Then use previous filename.
+			// Is this ROM_CONTINUE, then skip to bottom.
+			if (p[i].filename == (char*)-2) { goto gohere; }
+			//Is it a ROM_RELOAD? Then use previous stored filename. Here we go!
 			if (p[i].filename == (char*)-1)
 			{
-				file_index = mz_zip_reader_locate_file(&zip_archive, p[i - 1].filename, 0, 0);
+				if (last_reload_filename == 0) // No Previously stored filename?
+				{
+					last_reload_filename = p[i - 1].filename; // Set it!
+				}
+				file_index = mz_zip_reader_locate_file(&zip_archive, last_reload_filename, 0, 0);
+				////// TEMP PRINTING
+				//wrlog("ROM_RELOAD(0x%04x, 0x%04x)", p[i].loadAddr, p[i].romSize);
 			}
 			else
 			{
+				// Were loading normally, so lets take this opportunity to reset the rom reload filename for reuse. 
+				last_reload_filename = nullptr;
 				file_index = mz_zip_reader_locate_file(&zip_archive, p[i].filename, 0, 0);
 			}
 
@@ -147,116 +176,117 @@ int load_roms(const struct RomModule* p, const char* basename)
 				ret = EXIT_FAILURE;
 				goto end;
 			}
-			else
-			{
-				wrlog("File found, continuing");
-			}
-			//We have a valid file, lets tell everyone.
-			if (p[i].filename == (char*)-1) { wrlog("Loading Rom: %s", p[i - 1].filename); }
-			else { wrlog("Loading Rom: %s", p[i].filename); }
 
+			//We have a valid file, lets tell everyone.
+			if (config.debug_profile_code) {
+				if (p[i].filename == (char*)-1)
+					wrlog("Loading Rom: %s", p[i - 1].filename);
+				else
+					wrlog("Loading Rom: %s", p[i].filename);
+			}
 			// Get information on the current file
 			status = mz_zip_reader_file_stat(&zip_archive, file_index, &file_stat);
-			if (status != MZ_TRUE) { ret = EXIT_FAILURE; goto end; }
-			wrlog("getting file size");
+			if (status != MZ_TRUE) { wrlog("Could not read file in Zip, corrupt?"); ret = EXIT_FAILURE; goto end; }
+
 			//Get File Size
-			uncomp_size = (size_t)file_stat.m_uncomp_size;
+			uncomp_size = (unsigned int)file_stat.m_uncomp_size;
 
 			// Size mismatch?
-			if (p[i].romSize != file_stat.m_uncomp_size) { ret = EXIT_FAILURE; goto end; }
-			wrlog("Passed size check");
+			if (p[i].romSize != file_stat.m_uncomp_size) 
+			{
+				// Check if ROM_CONTINUE is screwing things up
+				if (p[i + 1].filename != (char*)-2)
+				{
+					wrlog("Warning: File Size Mismatch, check your rom definition and romset.");
+					ret = EXIT_FAILURE; goto end; 
+				}
+			}
 
-			zipdata = (unsigned char*)malloc(p[i].romSize);
-
+			zipdata = (unsigned char*)malloc(uncomp_size);//p[i].romSize); // We don't use romSize here because of ROM_CONTINUE
 			// Read (decompress) the file
 			status = mz_zip_reader_extract_to_mem(&zip_archive, file_index, zipdata, uncomp_size, 0);
-			if (status != MZ_TRUE) { ret = EXIT_FAILURE; goto end; }
-			wrlog("Passed file extract");
+			if (status != MZ_TRUE) { wrlog("File Failed to Extract"); ret = EXIT_FAILURE; goto end; }
+			//wrlog("Passed file extract");
 			if (p[i].filename != (char*)-1 && p[i].filename != (char*)-2)
 			{
-				//Print the SHA1 Checksum of the data
+				//SHA-1 Check
 				shatest = sha1.CalculateHash(zipdata, uncomp_size);
-				if (strcmp(shatest, p[i].sha) != 0) { wrlog("File SHA-1 Check Mismatch. This file may not work."); }
-				wrlog("SHA %s", shatest);
+				if (p[i].sha)
+				{
+					if (strcmp(shatest, p[i].sha) != 0)
+					{
+						wrlog("File SHA-1 Check Mismatch. This file may not work.\nSHA: %x File: %x", shatest, p[i].sha);
+					}
+				}
+				else
+				{   // Temporarily print out the rom replacement.
+					//wrlog("ROM_LOAD(\"%s\", 0x%04x, 0x%04x, CRC(%x) SHA1(%s))", p[i].filename, p[i].loadAddr, p[i].romSize, (int)file_stat.m_crc32, shatest);
+				}
 				//CRC Check
 				crc = (int)file_stat.m_crc32;
-				if (crc != p[i].crc) { wrlog("CRC error on rom file. It may be corrupt."); }
-				wrlog("CRC %x and %x", crc, p[i].crc);
-				//This is just to display the ROM LOADING Message
+				if (crc != p[i].crc)
+				{
+					if (p[i].crc) wrlog("CRC error on rom file. It may be corrupt.\nCRC %x and %x", crc, p[i].crc);
+				}
 			}
+
+			region = cpunum;// Machine->drv->cpu[cpunum].memory_region;
+
+		gohere:
 			//This is for ROM CONTINUE Support
 			if (p[i].filename == (char*)-2) { skip = p[i - 1].romSize; }
 			else skip = 0;
-
 			//Get the memory region for the current CPU number
-			int region = cpunum;// Machine->drv->cpu[cpunum].memory_region;
 
 			switch (p[i].loadtype)
 			{
 			case ROM_LOAD_NORMAL:
 			{
-				for (j = skip; j < p[i].romSize; j++)
+				for (j = 0; j < p[i].romSize; j++)
 				{
-					Machine->memory_region[region][j + p[i].loadAddr] = zipdata[j];
+					Machine->memory_region[region][j + p[i].loadAddr] = zipdata[j + skip];
 				}
 				break;
 			}
-			case ROM_LOAD_16B:
+			case ROM_LOAD_16:
 			{
-				for (j = 0; j < p[i].romSize; j += 1) //Even odd based on flipnum
+				for (j = 0; j < p[i].romSize; j++)
 				{
-					Machine->memory_region[region][(j * 2 + flipnum) + p[i].loadAddr] = zipdata[j];
+					Machine->memory_region[region][(j * 2) + p[i].loadAddr] = zipdata[j];
 				}
 				break;
 			}
 
 			default: wrlog("Something bad happened in the ROM Loading Routine"); break;
 			}
-			//Finished loading Roms
-			free(zipdata);
+			//Finished loading Rom
+			//wrlog("ROM Loaded");
+			if (p[i + 1].filename != (char*)-2)
+			{
+				free(zipdata);
+			}
 		}
-		if (p[i].loadtype) flipnum ^= 1; //If it's ROM_LOAD_16B, flip the value
 	}
 
 end:
 	// Close the archive
 	mz_zip_reader_end(&zip_archive);
-
+	//	wrlog("ROM_END");                   //// TEMPORARY FOR BUILDING ROMSETS
 	wrlog("Finished loading roms");
 
 	if (ret == EXIT_SUCCESS)
 	{
-		wrlog("Zip file loaded Successfully");
-		return 0;
+		if (config.debug_profile_code) { wrlog("Zip file loaded Successfully"); }
+		return EXIT_SUCCESS;
 	}
 	else
 	{
 		wrlog("Zip file failed to load!");
-		return 1;
+		return EXIT_FAILURE;
 	}
-
-	return 1;
+	return EXIT_FAILURE;
 }
 
-*/
-
-
-/*
-
-bool file_exists(const char * filename) {
-	struct stat fileinfo;
-
-	return !stat(filename, &fileinfo);
-}
-
-BOOL DirectoryExists(const char* dirName) {
-	DWORD attribs = ::GetFileAttributesA(dirName);
-	if (attribs == INVALID_FILE_ATTRIBUTES) {
-		return false;
-	}
-	return (attribs & FILE_ATTRIBUTE_DIRECTORY);
-}
-*/
 // ToDo: Add a debug clause in front of the logging to disable it
 unsigned char* load_zip_file(const char* archname, const char* filename)
 {

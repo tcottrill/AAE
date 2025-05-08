@@ -225,7 +225,8 @@ WRITE_HANDLER(analog_select_w)
 ///////////////////////  MAIN LOOP /////////////////////////////////////
 void run_bzone()
 {
-	if (!paused && soundEnable) { pokey_sh_update(); }
+	//if (!paused && soundEnable) { pokey_sh_update(); }
+	pokey_sh_update();
 }
 
 MEM_READ(BradleyRead)

@@ -104,7 +104,7 @@ WRITE_HANDLER(llander_sounds_w)
 		if (tvol < 10) { tvol = 10; }
 
 		sample_set_volume(1, tvol);
-		wrlog("tvol here %d", tvol);
+		//wrlog("tvol here %d", tvol);
 	}
 
 	if (data & 0x10)

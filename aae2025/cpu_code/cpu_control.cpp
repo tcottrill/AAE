@@ -67,6 +67,9 @@ cpu_i8080* m_cpu_i8080[MAX_CPU];
 cpu_z80* m_cpu_z80[MAX_CPU];
 cpu_6502* m_cpu_6502[MAX_CPU];
 
+/* override OP base handler */
+static int (*setOPbasefunc)(int);
+
 //68000 Memory Constructs
 // 8 bit
 MemoryReadByte* M_MemoryRead8 = nullptr;
@@ -121,6 +124,8 @@ void init6809(struct MemoryReadByte* read, struct MemoryWriteByte* write, int cp
 {
 	wrlog("Start Configuring CPU %d", cpunum);
 	m_cpu_6809[cpunum] = new cpu_6809(Machine->memory_region[cpunum], read, write, 0xffff, cpunum);
+
+	wrlog("RESET");
 	m_cpu_6809[cpunum]->reset6809();
 	wrlog("Finished Configuring CPU %d", cpunum);
 }
@@ -186,6 +191,84 @@ int get_video_ticks(int reset)
 
 	return v + temp;
 }
+
+
+/* cpu change op-code memory base */
+void cpu_setOPbaseoverride(int (*f)(int))
+{
+	setOPbasefunc = f;
+}
+
+
+/* Need to called after CPU or PC changed (JP,JR,BRA,CALL,RET) */
+void cpu_setOPbase16(int apc)
+{
+	
+	//wrlog("we're here CPU %d PC %x", 0, apc);
+	/* ASG 970206 -- allow overrides */
+	if (setOPbasefunc)
+	{
+		
+		if (apc == -1)
+			return;
+
+		uint16_t something = setOPbasefunc(apc);
+		//wrlog("Something is %x", something);
+
+	m_cpu_6809[active_cpu]->set_pc(something);
+	}
+
+	/* 1st element link */
+	//hw = cur_mrhard[pc >> (ABITS2_16 + ABITS_MIN_16)];
+	//if (hw >= MH_HARDMAX)
+	//{
+		/* 2nd element link */
+	//	hw = readhardware[((hw - MH_HARDMAX) << MH_SBITS) + ((pc >> ABITS_MIN_16) & MHMASK(ABITS2_16))];
+	//}
+	//ophw = hw;
+
+	//if (!hw)
+	//{
+		/* memory direct */
+	//	OP_RAM = RAM;
+	///	OP_ROM = ROM;
+	//	return;
+	//}
+
+	//if (hw <= HT_BANKMAX)
+	//{
+		/* banked memory select */
+		//OP_RAM = cpu_bankbase[hw] - memoryreadoffset[hw];
+		//if (RAM == ROM) OP_ROM = OP_RAM;
+		//return;
+	//}
+
+	/* do not support on callbank memory reasion */
+	//if (errorlog) fprintf(errorlog, "CPU #%d PC %04x: warning - op-code execute on mapped i/o\n", cpu_getactivecpu(), cpu_getpc());
+}
+
+
+int cpu_getppc()
+{
+	//Run cycles depending on which cpu
+	switch (driver[gamenum].cpu_type[active_cpu])
+	{
+	case CPU_MZ80:
+		return m_cpu_z80[active_cpu]->GetPPC();
+		break;
+
+
+	case CPU_M6502:
+		return m_cpu_6502[active_cpu]->get_ppc();
+		break;
+
+	case CPU_M6809:
+		return m_cpu_6809[active_cpu]->get_ppc();
+		break;
+	}
+		return 0;
+}
+
 
 int cpu_getpc()
 {
@@ -333,10 +416,12 @@ void cpu_do_int_imm(int cpunum, int int_type)
 
 	case CPU_M6809:
 		if (int_type == INT_TYPE_NMI) {
-			m_cpu_6809[cpunum]->nmi6809();
+			m_cpu_6809[cpunum]->m6809_Cause_Interrupt(M6809_INT_NMI);
+			//m_cpu_6809[cpunum]->nmi6809();
 		}
 		else {
-			m_cpu_6809[cpunum]->irq6809();
+			m_cpu_6809[cpunum]->m6809_Cause_Interrupt(M6809_INT_IRQ);
+			// m_cpu_6809[cpunum]->irq6809();
 			//if (debug) wrlog("6809 IRQ Called on CPU %d", cpunum);
 		}
 		break;
@@ -384,12 +469,12 @@ void cpu_do_interrupt(int int_type, int cpunum)
 			break;
 		case CPU_M6809:
 			if (int_type == INT_TYPE_NMI) {
-				m_cpu_6809[cpunum]->nmi6809();
-				//wrlog("NMI Taken");
+				m_cpu_6809[cpunum]->m6809_Cause_Interrupt(M6809_INT_NMI);
+				//m_cpu_6809[cpunum]->nmi6809();
 			}
 			else {
-				m_cpu_6809[cpunum]->irq6809();
-				//wrlog("INT Taken 6809");
+				m_cpu_6809[cpunum]->m6809_Cause_Interrupt(M6809_INT_IRQ);
+				//m_cpu_6809[cpunum]->irq6809();
 			}
 			break;
 		case CPU_68000: m68k_set_irq(int_type);
@@ -468,7 +553,7 @@ int cpu_exec_now(int cpu, int cycles)
 	return ticks;
 }
 
-void cpu_run_mame(void)
+void cpu_run(void)
 {
 	int ran, target;
 	tickcount[0] = 0;

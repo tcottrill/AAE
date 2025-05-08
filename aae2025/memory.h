@@ -1,6 +1,7 @@
 #ifndef MEMORY_H
 #define MEMORY_H
 
+extern const char* rom_regions[];
 
 
 enum {
@@ -31,10 +32,10 @@ enum {
 #define PROM_MEMORY_REGION(region) ((const unsigned char *)((-(region))-1))
 
 unsigned char *memory_region(int num);
-int new_memory_region(int num, int length);
+void new_memory_region(int num, int size);
 void free_memory_region(int num);
 void byteswap(unsigned char* mem, int length);
-void cpu_mem(int cpunum, int size);
+
 
 
 

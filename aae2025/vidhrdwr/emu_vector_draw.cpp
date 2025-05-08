@@ -127,8 +127,6 @@ void draw_all()
 	}
 	glDrawArrays(GL_POINTS, 0, (GLsizei)linelist.size());
 
-	
-
 	glDisableClientState(GL_VERTEX_ARRAY);
 	glDisableClientState(GL_COLOR_ARRAY);
 

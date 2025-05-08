@@ -34,13 +34,18 @@
 #include "..\\deftypes.h"
 #include <cstdint>
 
-//#include <string>
+
+#define M6809_INT_NONE  0			/* No interrupt required */
+#define M6809_INT_IRQ	  1 		/* Standard IRQ interrupt */
+#define M6809_INT_FIRQ  2			/* Fast IRQ */
+#define M6809_INT_NMI   4			/* NMI */	/* NS 970909 */
+#define M6809_CWAI   8				/* set when CWAI is waiting for an interrupt */	/* NS 980101 */
+#define M6809_SYNC   16				/* set when SYNC is waiting for an interrupt */
 
 
-
-#define INT_NONE  0			/* No interrupt required */
-#define INT_IRQ	  1 		/* Standard IRQ interrupt */
-#define INT_FIRQ  2			/* Fast IRQ */
+//#define INT_NONE  0			/* No interrupt required */
+//#define INT_IRQ	  1 		/* Standard IRQ interrupt */
+#//define INT_FIRQ  2			/* Fast IRQ */
 
 
 class cpu_6809
@@ -57,6 +62,7 @@ public:
 		uint8_t		dp;		/* Direct Page register */
 		uint8_t		a, b;	/* Accumulator */
 		uint8_t		cc;     //Flags
+		int pending_interrupts;
 	} m6809_Regs;
 
 	uint16_t ppc;
@@ -72,14 +78,15 @@ public:
 
 	//Destructor
 	~cpu_6809() {};
-
 	
+	void m6809_Cause_Interrupt(int type);	/* NS 970908 */
+	void m6809_Clear_Pending_Interrupts();	/* NS 970908 */
 	//Irq Handler
-	void irq6809();
+	//void irq6809();
 	//Int Handler
-	void firq6809();
+	//void firq6809();
 	//NMI Handler
-	void nmi6809();
+	//void nmi6809();
 	// Sets all of the 6809 registers. 
 	void reset6809();
 	// Run the 6502 engine for specified number of clock cycles 
@@ -96,6 +103,8 @@ public:
 	void set_pc(uint16_t newpc);
 	//Get the previous PC
 	uint16_t get_ppc();
+	// Set the new PC on a bank change
+	void change_pc(uint16_t pcreg);
 	//Return the string value of the last instruction
 	//std::string disam(uint8_t opcode);
 
@@ -112,7 +121,7 @@ public:
 	/* public globals */
 	//int	m6809_IPeriod = 50000;
 	//int	m6809_ICount = 50000;
-	int	m6809_IRequest = INT_NONE;
+	//int	m6809_IRequest = INT_NONE;
 	
 private:
 	
@@ -147,7 +156,7 @@ private:
 	//uint32_t dwElapsedTicks;
 
 	// help variables 
-
+	int pending_interrupts;	/* NS 970908 */
 	int clocktickstotal; //Runnning, resetable total of clockticks
 	bool debug = 0;
 	bool mmem = 0; //Use mame style memory handling, reject unhandled read/writes
@@ -157,7 +166,7 @@ private:
 	uint8_t cc, dpreg, areg, breg;
 	uint16_t xreg, yreg, ureg, sreg, pcreg;
 	uint16_t eaddr; /* effective address */
-
+	void Interrupt();
 	void fetch_effective_address();
 
 	 void abx(void);

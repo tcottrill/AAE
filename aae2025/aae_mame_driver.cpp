@@ -22,7 +22,7 @@ FILE* errorlog;
 //RAM Variables
 unsigned char* membuffer;
 unsigned char vec_ram[0x8000];
-//unsigned char *GI[8]; //Global 6502/Z80/6809 GameImage
+
 
 int art_loaded[6];
 
@@ -33,7 +33,7 @@ float bezelzoom;
 int bezelx;
 int bezely;
 
-int in_gui_sentinel;
+
 int in_gui;
 unsigned int frames; //Global Framecounter
 int frameavg;
@@ -48,10 +48,10 @@ int num_games; //Total number of games ?? needed?
 int num_samples; //Total number of samples for selected game
 
 //KEY VARIABLES
-int mouseb[5];
+int mouseb[5]; // Only used by the gui
+// Currrently only used by Major Havoc.
 int total_length;
 
 settings config;
-//int index;	
 
 glist gamelist[256];

@@ -146,6 +146,13 @@ Fixed volume handling in my mixer code.
 
 5/4/25. Misc cleanups, Freq fixes for my Mixercode, added a debug option, added a finished Aztarac Driver. 
 
+5/5/25. Started ROM loading cleanup and code move and rewrite. Added MAME style CRC and SHA-1 handling, just for kicks. Started adding current MAME rom definitions to bring the games up to date.
+
+5/6/25 Finished updating all roms, rewrote the rom loader, added sha-1 and crc checksum, not using MAME code. Checked every single game, updated the video and inputs on all games. I never want to play asterock again. 
+
+5/8/25 Added ROM_CONTINUE Support to the load_roms function, updated ROM_RELOAD to allow for multiples, Updated the 6809, added MAME slapstic code, added an Empire Strikes Back driver to the Starwars driver but it's not working quite yet. 
+Added support for a couple of more alternate romsets to the Black Widow driver. 
+Readded the command line option -listromstotext to write a file of all supported games and romsets
 
 
 

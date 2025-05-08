@@ -1,3 +1,16 @@
+//============================================================================
+// AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME
+// code, 0.29 through .90 mixed with code of my own. This emulator was
+// created solely for my amusement and learning and is provided only
+// as an archival experience.
+//
+// All MAME code used and abused in this emulator remains the copyright
+// of the dedicated people who spend countless hours creating it. All
+// MAME code should be annotated as belonging to the MAME TEAM.
+//
+// SOME CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.
+//============================================================================
+
 #ifndef OSDEPEND_H
 #define OSDEPEND_H
 
@@ -251,108 +264,7 @@ struct osd_bitmap
 #define NUMVOICES 16 //SOUND - PUT SOMEWHERE ELSE
 
 
-
-/*
-extern int video_sync;
-
-
-int osd_init(int argc,char **argv);
-void osd_exit(void);
-struct osd_bitmap *osd_create_bitmap(int width,int height);
-void osd_clearbitmap(struct osd_bitmap *bitmap);
-void osd_free_bitmap(struct osd_bitmap *bitmap);
-*/
-/* Create a display screen, or window, large enough to accomodate a bitmap */
-/* of the given dimensions. Attributes are the ones defined in driver.h. */
-/* palette is an array of 'totalcolors' R,G,B triplets. The function returns */
-/* in *pens the pen values corresponding to the requested colors. */
-/* Return a osd_bitmap pointer or 0 in case of error. */
-/*
-struct osd_bitmap *osd_create_display(int width,int height,int totalcolors,
-		const unsigned char *palette,unsigned char *pens,int attributes);
-int osd_set_display(int width,int height,int attributes);
-void osd_close_display(void);
-void osd_modify_pen(int pen,unsigned char red, unsigned char green, unsigned char blue);
-void osd_get_pen(int pen,unsigned char *red, unsigned char *green, unsigned char *blue);
-void osd_mark_dirty(int x1, int y1, int x2, int y2, int ui);    
-void osd_update_display(void);
-*/
-//void osd_update_audio(void);
-//#define osd_fread_msbfirst osd_fread_swap
-//#define osd_fwrite_msbfirst osd_fwrite_swap
-//#define osd_fread_lsbfirst osd_fread
-//#define osd_fwrite_lsbfirst osd_fwrite
-
-//void osd_play_sample(int channel,signed char *data,int len,int freq,int volume,int loop);
-//void osd_play_sample_16(int channel,signed short *data,int len,int freq,int volume,int loop);
-//void osd_play_streamed_sample(int channel,signed char *data,int len,int freq,int volume);
-//void osd_play_streamed_sample_16(int channel,signed short *data,int len,int freq,int volume);
-//void osd_adjust_sample(int channel,int freq,int volume);
-//void osd_stop_sample(int channel);
-//void osd_restart_sample(int channel);
-//int osd_get_sample_status(int channel);
-//void osd_ym2203_write(int n, int r, int v);
-//void osd_ym2203_update(void);
-//void osd_set_mastervolume(int volume);
-//int scale_by_cycles(int val, int clock);
-
-//int osd_key_pressed(int keycode);
-//int osd_key_pressed_memory(int keycode);
-//int osd_key_pressed_memory_repeat(int keycode,int speed);
-//int osd_read_key_immediate(void);
-/* the following two should return pseudo key codes if translate != 0 */
-//int osd_read_keyrepeat(void);
-//int osd_key_invalid(int keycode);
-//const char *osd_joy_name(int joycode);
-//const char *osd_key_name(int keycode);
-//void osd_poll_joysticks(void);
-//int osd_joy_pressed(int joycode);
-//void msdos_init_input (void);
-
-//void osd_trak_read(int player,int *deltax,int *deltay);
-
-/* return values in the range -128 .. 128 (yes, 128, not 127) */
-//void osd_analogjoy_read(int player,int *analog_x, int *analog_y);
-
-//int osd_update_vectors(int *x_res, int *y_res, int step);
-//void osd_draw_to(int x, int y, int col);
-
-
-
-/* file handling routines 
-#define OSD_FILETYPE_ROM 1
-#define OSD_FILETYPE_SAMPLE 2
-#define OSD_FILETYPE_HIGHSCORE 3
-#define OSD_FILETYPE_CONFIG 4
-#define OSD_FILETYPE_INPUTLOG 5
-#define OSD_FILETYPE_STATE 6
-#define OSD_FILETYPE_ARTWORK 7
-#define OSD_FILETYPE_MEMCARD 8
-#define OSD_FILETYPE_SCREENSHOT 9
-*/
-
-/* gamename holds the driver name, filename is only used for ROMs and samples. */
-/* if 'write' is not 0, the file is opened for write. Otherwise it is opened */
-/* for read. */
-//void *osd_fopen (const char *gamename,const char *filename,int filetype,int write);
-//int osd_fread (void *file,void *buffer,int length);
-//int osd_fread_swap(void *file,void *buffer,int length);
-//int osd_fread_scatter(void *file,void *buffer,int length,int increment);
-//int osd_fwrite (void *file,const void *buffer,int length);
-//int osd_fseek (void *file,int offset,int whence);
-//unsigned int osd_fcrc (void *file);
-//void osd_fclose (void *file);
-
-
-/* control keyboard leds or other indicators */
-//void osd_led_w(int led,int on);
 int osd_get_leds(void);
 void osd_set_leds(int state);
-/* config */
-//void osd_set_config(int def_samplerate, int def_samplebits);
-//void osd_save_config(int frameskip, int samplerate, int samplebits);
-//int osd_get_config_samplerate(int def_samplerate);
-//int osd_get_config_samplebits(int def_samplebits);
-//int osd_get_config_frameskip(int def_frameskip);
 
 #endif

@@ -54,13 +54,22 @@ static int THREEKHZ_CLOCK = 0;
 
 void clock3k_update()
 {
-
 	THREEKHZ_CLOCK ^= 1;
 }
+
 void asteroid_interrupt()
 {
 	// Turn off interrupts if self-test is enabled
 	if (!(readinputport(0) & 0x80))
+	{
+		cpu_do_int_imm(CPU0, INT_TYPE_NMI);
+	}
+}
+
+void asterock_interrupt()
+{
+	// Turn off interrupts if self-test is enabled
+	if ((readinputport(0) & 0x80))
 	{
 		cpu_do_int_imm(CPU0, INT_TYPE_NMI);
 	}
@@ -326,6 +335,28 @@ READ_HANDLER(asteroid_IN0_r)
 	return res;
 }
 
+READ_HANDLER(asterock_IN0_r)
+{
+	int res;
+	int bitmask;
+
+	res = readinputport(0);
+	bitmask = (1 << address);
+	
+	if (get_eterna_ticks(0) & 0x100)
+		res |= 0x04;
+	if (!dvg_done())
+		res |= 0x1;
+
+	if (res & bitmask)
+		res = ~0x80;
+	else
+		res = 0x80;
+	if (address == 7) return 0;
+	return res;
+	
+}
+
 READ_HANDLER(asteroid_IN1_r)
 {
 	int res;
@@ -413,6 +444,12 @@ MEM_ADDR(0x2400, 0x2407, asteroid_IN1_r)
 MEM_ADDR(0x2800, 0x2803, asteroid_DSW1_r) /* DSW1 */
 MEM_END
 
+MEM_READ(AsterockRead)
+MEM_ADDR(0x2000, 0x2007, asterock_IN0_r)
+MEM_ADDR(0x2400, 0x2407, asteroid_IN1_r)
+MEM_ADDR(0x2800, 0x2803, asteroid_DSW1_r) /* DSW1 */
+MEM_END
+
 MEM_WRITE(AsteroidWrite)
 MEM_ADDR(0x3000, 0x3000, dvg_go_w)
 MEM_ADDR(0x3200, 0x3200, asteroid_bank_switch_w)
@@ -436,6 +473,7 @@ void end_astdelux()
 	sample_stop(4);
 	pokey_sh_stop();
 }
+
 int init_asteroid(void)
 {
 	init6502(AsteroidRead, AsteroidWrite, 0x7fff, CPU0);
@@ -444,6 +482,17 @@ int init_asteroid(void)
 	//timer_set(TIME_IN_HZ(MASTER_CLOCK / 4096), 0, clock3k_update);
 
 	wrlog("End init");
+	return 0;
+}
+
+int init_asterock(void)
+{
+	init6502(AsterockRead, AsteroidWrite, 0x7fff, CPU0);
+
+	dvg_start_asteroid();
+	//timer_set(TIME_IN_HZ(MASTER_CLOCK / 4096), 0, clock3k_update);
+
+	wrlog("End Asterock init");
 	return 0;
 }
 

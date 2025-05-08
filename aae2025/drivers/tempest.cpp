@@ -576,6 +576,8 @@ int init_tempest(void)
 	pokey_sh_start(&pokey_interface);
 	avg_start_tempest();
 
+	if (gamenum == VBRAKOUT) config.gain = 0;
+
 	//timer_set(TIME_IN_HZ(240), CPU0, tempest_interrupt);
 
 	return 0;

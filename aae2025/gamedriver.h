@@ -56,7 +56,7 @@ struct AAEDriver driver[] =
 		},
 
 		{
-		"asteroi1", "Asteroids (Revision 1)", rom_asteroi1,
+		"asteroid1", "Asteroids (Revision 1)", rom_asteroid1,
 		&init_asteroid,&run_asteroid,&end_asteroid,
 		input_ports_asteroid,
 		asteroidsamples,asteroidsart,
@@ -89,7 +89,7 @@ struct AAEDriver driver[] =
 		0x4000, 0x800,0
 		},
 		{
-		"astdelu1", "Asteroids Deluxe (Revision 1)", rom_astdelu1,
+		"astdelux1", "Asteroids Deluxe (Revision 1)", rom_astdelux1,
 		&init_astdelux, &run_astdelux,&end_astdelux,
 		input_ports_astdelux,
 		deluxesamples, astdelu1art,
@@ -107,7 +107,7 @@ struct AAEDriver driver[] =
 		atari_vg_earom_handler
 		},
 		{
-		"astdelu2", "Asteroids Deluxe (Revision 2)", rom_astdelu2,
+		"astdelux2", "Asteroids Deluxe (Revision 2)", rom_astdelux2,
 		&init_astdelux, &run_astdelux,&end_astdelux,
 		input_ports_astdelux,
 		deluxesamples, astdeluxart,
@@ -160,26 +160,25 @@ struct AAEDriver driver[] =
 		0, 0,
 		0x4000, 0x800,0
 		},
-			/*
 		{
 		"asterock", "Asterock (Asteroids Bootleg)", rom_asterock,
-		&init_asteroid,&run_asteroids, &end_asteroids,
-		input_ports_asteroid,
+		&init_asterock,&run_asteroid, &end_asteroid,
+		input_ports_asterock,
 		asteroidsamples, asteroidsart,
 		{CPU_M6502,CPU_NONE,CPU_NONE,CPU_NONE},
 		{1512000,0,0,0},
+		{100,0,0,0},
 		{4,0,0,0},
-		{1,0,0,0},
 		{INT_TYPE_NMI,0,0,0},
 		{&asteroid_interrupt,0,0,0},
-		60,VEC_BW_16,0,
-		{0,1024,0,812},
-		asteroid_load_hi, asteroid_save_hi,
+		60,VIDEO_TYPE_VECTOR | VECTOR_USES_BW, ORIENTATION_DEFAULT,
+		1024 , 768, {0, 1040, 0, 820},
+		0,0,0,0,
+		asteroid_hiload, asteroid_hisave,
 		0x4000, 0x800,0
 		},
-		*/
 		{
-		"asteroib", "Asteroids (Bootleg on Lunar Lander Hardware)",  rom_asteroib,
+		"asteroidb", "Asteroids (Bootleg on Lunar Lander Hardware)",  rom_asteroidb,
 		&init_asteroid,&run_asteroid,&end_asteroid,
 		input_ports_asteroid,
 		asteroidsamples,asteroidsart,
@@ -196,7 +195,7 @@ struct AAEDriver driver[] =
 		0x4000, 0x800,0
 		},
 		{
-		"llander1", "Lunar Lander (Revision 1)", rom_llander,
+		"llander1", "Lunar Lander (Revision 1)", rom_llander1,
 		&init_llander, &run_llander,&end_llander,
 		input_ports_llander,
 		llander_samples, noart,
@@ -282,7 +281,7 @@ struct AAEDriver driver[] =
 		atari_vg_earom_handler
 		},
 		{
-		"bzone2", "Battlezone (Revision 2)", rom_bzone2,
+		"bzonea", "Battlezone (Revision A)", rom_bzonea,
 		&init_bzone,&run_bzone, &end_bzone,
 		input_ports_bzone,
 		bzonesamples, bzoneart,
@@ -390,6 +389,42 @@ struct AAEDriver driver[] =
 		atari_vg_earom_handler
 		},
 		{
+		"spacduel0", "Space Duel (prototype)", rom_spacduel0,
+		&init_spacduel,&run_bwidow,&end_bwidow,//&set_sd
+		input_ports_spacduel,
+		0, noart,
+		{CPU_M6502,CPU_NONE,CPU_NONE,CPU_NONE},
+		{1512000,0,0,0},
+		{100,0,0,0},
+		{1,0,0,0},
+		{INT_TYPE_INT,0,0,0},
+		{0,0,0,0},
+		45,VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT,
+		1024,768, {0, 520, 0, 395},
+		0,0,0,0,
+		0, 0,
+		0x2000, 0x800,
+		atari_vg_earom_handler
+		},
+		{
+		"spacduel1", "Space Duel Revision 1", rom_spacduel1,
+		&init_spacduel,&run_bwidow,&end_bwidow,//&set_sd
+		input_ports_spacduel,
+		0, noart,
+		{CPU_M6502,CPU_NONE,CPU_NONE,CPU_NONE},
+		{1512000,0,0,0},
+		{100,0,0,0},
+		{1,0,0,0},
+		{INT_TYPE_INT,0,0,0},
+		{0,0,0,0},
+		45,VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT,
+		1024,768, {0, 520, 0, 395},
+		0,0,0,0,
+		0, 0,
+		0x2000, 0x800,
+		atari_vg_earom_handler
+		},
+		{
 		"bwidow",   "Black Widow", rom_bwidow,
 		& init_bwidow,& run_bwidow,&end_bwidow,
 		input_ports_bwidow,
@@ -426,7 +461,7 @@ struct AAEDriver driver[] =
 		atari_vg_earom_handler
 		},
 		{
-		"gravitr2", "Gravitar (Revision 2)", rom_gravitr2,
+		"gravitar2", "Gravitar (Revision 2)", rom_gravitar2,
 		& init_bwidow,& run_bwidow,&end_bwidow,
 		input_ports_gravitar,
 		0, noart,
@@ -464,7 +499,7 @@ struct AAEDriver driver[] =
 		{
 		"lunarbat", "Lunar Battle (Prototype, Late)", rom_lunarbat,
 		& init_bwidow,& run_bwidow,&end_bwidow,
-		input_ports_gravitar,
+		input_ports_lunarbat,
 		0, noart,
 		{CPU_M6502,CPU_NONE,CPU_NONE,CPU_NONE},
 		{1512000,0,0,0},
@@ -482,7 +517,7 @@ struct AAEDriver driver[] =
 		{
 		"lunarba1", "Lunar Battle (Prototype, Early)", rom_lunarba1,
 		&init_spacduel,& run_bwidow,&end_bwidow,
-		input_ports_gravitar,
+		input_ports_lunarba1,
 		0, noart,
 		{CPU_M6502,CPU_NONE,CPU_NONE,CPU_NONE},
 		{1512000,0,0,0},
@@ -643,7 +678,7 @@ struct AAEDriver driver[] =
 		atari_vg_earom_handler
 		},
 		{
-		"tvortex", "Vortex (Tempest Beta)", rom_vortex,
+		"vortex", "Vortex (Tempest Beta)", rom_vortex,
 		&init_tempest,&run_tempest,&end_tempest,
 		input_ports_tempest,
 		0, tempestart,
@@ -970,7 +1005,7 @@ struct AAEDriver driver[] =
 		mhavoc_nvram_handler
 		},
 		{
-		"alphaona", " Alpha One (Major Havoc Prototype - 5 Lives)", rom_alphaona,
+		"alphaonea", " Alpha One (Major Havoc Prototype - 5 Lives)", rom_alphaonea,
 		&init_mhavoc,&run_mhavoc,&end_mhavoc,
 		input_ports_alphaone,
 		0, noart,
@@ -1312,7 +1347,7 @@ struct AAEDriver driver[] =
 		0
 		},
 		{
-		"starwar1", "Star Wars (Revision 1)", rom_starwar1,
+		"starwars1", "Star Wars (Revision 1)", rom_starwars1,
 		& init_starwars,& run_starwars,& end_starwars,
 		input_ports_starwars,
 		0, noart,
@@ -1328,6 +1363,25 @@ struct AAEDriver driver[] =
 		0, 0,
 		0x0, 0x3000,0
 		},
+		{
+		"esb", "Star Wars: Empire Strike Back", rom_esb,
+		&init_esb, &run_starwars, &end_starwars,
+		input_ports_starwars,
+		0, noart,
+		{ CPU_M6809,CPU_M6809,CPU_NONE,CPU_NONE },
+		{ 1512000,1512000,0,0 },
+		{ 100,100,0,0 }, //168
+		{ 6,24,0,0 },  //31
+		{ INT_TYPE_INT,INT_TYPE_INT,0,0 },
+		{ &starwars_interrupt,&starwars_snd_interrupt,0,0 },
+		30, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT,
+		1024, 768, { 0, 240, 0, 280 },
+		0, 0, 0, 0,
+		0, 0,
+		0x000, 0x3000,
+		0
+		},
+
 		{
 		"aztarac", "Aztarac", rom_aztarac,
 		&init_aztarac,&run_aztarac, &end_aztarac,

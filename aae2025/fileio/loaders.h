@@ -4,8 +4,6 @@
 #include "aae_mame_driver.h"
 
 GLuint load_texture(const char* filename, const char* archname, int numcomponents, int filter);
-
-int load_roms(const char* archname, const struct RomModule *p);
 int verify_rom(const char* archname, const struct RomModule *p, int romnum);
 int verify_sample(const char** p, int num);
 int read_samples(const char** p, int val);

@@ -14,7 +14,6 @@
 #include "framework.h"
 #include "aae_emulator.h"
 #include "aae_mame_driver.h"
-//#include "aaemain.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <malloc.h>
@@ -24,8 +23,8 @@
 #include "config.h"
 #include <mmsystem.h>
 #include "fonts.h"
-#include "gui/gui.h"
-#include "gui/animation.h"
+//#include "gui/gui.h"
+//#include "gui/animation.h"
 #include "gamedriver.h"
 #include "rand.h"
 #include "glcode.h"
@@ -37,6 +36,7 @@
 #include "vector_fonts.h"
 #include "gl_texturing.h"
 #include "mixer.h"
+#include <string>
 
 //New 2024
 #include "os_basic.h"
@@ -45,7 +45,6 @@
 #ifndef WIN7BUILD
 #include "win10_win11_required_code.h"
 #endif // WIN7BUILD
-
 
 using namespace std;
 using namespace chrono;
@@ -94,6 +93,12 @@ struct { const char* desc; int x, y; } gfx_res[] = {
 double gametime = 0;// = TimerGetTimeMS();
 double starttime = 0;
 
+/*************************************
+ *
+ *	To lower: helper function.
+ *
+ *************************************/
+
 void toLowerCase(char* str) {
 	while (*str) {
 		*str = tolower((unsigned char)*str); // Convert each character to lowercase
@@ -101,15 +106,26 @@ void toLowerCase(char* str) {
 	}
 }
 
+/*************************************
+ *
+ *	Set's up the pointers to
+ *  link to MAME Code.
+ *
+ *************************************/
+
 int run_a_game(int game)
 {
 	Machine->gamedrv = gamedrv = &driver[game];
 	Machine->drv = gamedrv;
 	wrlog("Starting game, Driver name now is %s", Machine->gamedrv->name);
-	//Machine->drv = drv = gamedrv->drv;
-
 	return 0;
 }
+
+/*************************************
+ *
+ *	Clamp to 255, not used?
+ *
+ *************************************/
 
 static int clamp(int value)
 {
@@ -117,6 +133,13 @@ static int clamp(int value)
 	if (value > 255) return 255;
 	return value;
 }
+
+/*************************************
+ *
+ *	Compare Helper function
+ *
+ *************************************/
+
 int mystrcmp(const char* s1, const char* s2)
 {
 	while (*s1 && *s2 && *s1 == *s2) {
@@ -126,6 +149,89 @@ int mystrcmp(const char* s1, const char* s2)
 
 	return *s1 - *s2;
 }
+
+/****************************************
+ *
+ *	Output a full romlist as a text file
+ * TODO: Clean this up with strings later.
+ ****************************************/
+void list_all_roms()
+{
+	int loop = 2;
+	int loop2 = 0;
+	char* mylist;
+	char str[128];
+
+	mylist = (char*)malloc(0x150000);
+	strcpy(mylist, "AAE All Games RomList\n");
+
+	while (loop < (num_games - 1))
+	{
+		strcat(mylist, "\n");
+		strcat(mylist, "Game Name: ");
+		strcat(mylist, driver[loop].desc);
+		strcat(mylist, ":\n");
+		strcat(mylist, "Rom  Name: ");
+		strcat(mylist, driver[loop].name);
+		strcat(mylist, ".zip\n");
+		wrlog("gamename %s", driver[loop].name);
+		wrlog("gamename %s", driver[loop].desc);
+		while (driver[loop].rom[loop2].romSize > 0)
+		{
+			if (driver[loop].rom[loop2].loadAddr == 999)
+			{
+				sprintf(str, "ROM_REGION(0x%04x, %s)\n", driver[loop].rom[loop2].romSize, rom_regions[driver[loop].rom[loop2].loadtype]);
+				strcat(mylist, str);
+			}
+			else
+				if (driver[loop].rom[loop2].loadAddr != 999)
+				{
+					if (driver[loop].rom[loop2].filename != (char*)-1)
+					{
+						if (driver[loop].rom[loop2].filename == (char*)-2)
+							strcat(mylist, "ROM_CONTINUE");
+						else
+							strcat(mylist, driver[loop].rom[loop2].filename);
+
+						strcat(mylist, " Size: ");
+						sprintf(str, "0x%04x", driver[loop].rom[loop2].romSize);
+						strcat(mylist, str);
+
+						strcat(mylist, " Load Addr: ");
+						sprintf(str, "0x%04x", driver[loop].rom[loop2].loadAddr);
+						strcat(mylist, str);
+						
+						strcat(mylist, " CRC: ");
+						sprintf(str, "0x%04x", driver[loop].rom[loop2].crc);
+						strcat(mylist, str);
+
+						strcat(mylist, " SHA1: ");
+						sprintf(str, "%s", driver[loop].rom[loop2].sha);
+						strcat(mylist, str);
+						strcat(mylist, "\n");
+					}
+				}
+			loop2++;
+		}
+		loop2 = 0; //reset!!
+		loop++;
+	}
+
+	strcat(mylist, "\n\nNumber of Games/Clones supported: ");
+	sprintf(str, "%d", num_games - 1);
+	strcat(mylist, str);
+	strcat(mylist, "\n");
+	strcat(mylist, "\0");
+	wrlog("SAVING Romlist");
+	save_file_char("AAE All Game Roms List.txt", mylist, strlen(mylist));
+	free(mylist);
+}
+
+/*************************************
+ *
+ *	Command Line Parsing Function
+ *
+ *************************************/
 
 void gameparse(int argc, char* argv[])
 {
@@ -261,6 +367,12 @@ void gameparse(int argc, char* argv[])
 	}
 }
 
+/*************************************
+ *
+ *	Sort the game list for the GUI
+ *
+ *************************************/
+
 void sort_games(void)
 {
 	int go = 0;
@@ -291,6 +403,13 @@ void sort_games(void)
 		}
 	}
 }
+
+/*************************************
+ *
+ *	Shadow input port creation for
+ * the Menu system and save
+ *
+ *************************************/
 
 int init_machine(void)
 {
@@ -325,6 +444,13 @@ int init_machine(void)
 	}
 	return 0;
 }
+
+/*************************************
+ *
+ *	Main Message Loop to handle other
+ * input during the emulation loop
+ *
+ *************************************/
 
 void msg_loop(void)
 {
@@ -392,6 +518,13 @@ void msg_loop(void)
 	}
 }
 
+/*************************************
+ *
+ *	Speed Throttling:
+ * from really of MAME code.
+ *
+ *************************************/
+
 static void throttle_speed(void)
 {
 	double millsec = (double)1000 / (double)driver[gamenum].fps;
@@ -423,6 +556,13 @@ static void throttle_speed(void)
 
 	starttime = TimerGetTimeMS();
 }
+
+/*************************************
+ *
+ *	Main Game load and
+ *  configuration function.
+ *
+ *************************************/
 
 void run_game(void)
 {
@@ -504,7 +644,7 @@ void run_game(void)
 	//////////////////////////////////////////////////////////////END VARIABLES SETUP ///////////////////////////////////////////////////
 	if (gamenum) {
 		goodload = load_roms(driver[gamenum].name, driver[gamenum].rom);
-		if (goodload == 0) {
+		if (goodload == EXIT_FAILURE) {
 			wrlog("Rom loading failure, exiting..."); have_error = 10; gamenum = 0;
 			if (!in_gui) { exit(1); }
 		}
@@ -529,7 +669,7 @@ void run_game(void)
 	if (driver[gamenum].game_samples)
 	{
 		goodload = read_samples(driver[gamenum].game_samples, 0);
-		if (!goodload) { wrlog("Samples loading failure, please check error output for details..."); }
+		if (goodload == EXIT_FAILURE) { wrlog("Samples loading failure, please check error output for details..."); }
 	}
 
 	//Now load the Ambient and menu samples
@@ -563,6 +703,12 @@ void run_game(void)
 	//reset_for_new_game(gamenum, 0);
 }
 
+/*************************************
+ *
+ *	Main Emulation Loop
+ *
+ *************************************/
+
 void emulator_run()
 {
 	if (config.debug_profile_code) {
@@ -584,9 +730,9 @@ void emulator_run()
 
 		//if (driver[gamenum].pre_run) driver[gamenum].pre_run();
 		if (config.debug_profile_code) {
-			wrlog("Calling CPU Run Mame");
+			wrlog("Calling CPU Run");
 		}
-		cpu_run_mame();
+		cpu_run();
 		if (driver[gamenum].run_game)driver[gamenum].run_game();
 	}
 
@@ -614,6 +760,13 @@ void emulator_run()
 		wrlog("End of Frame");
 	}
 }
+
+/*************************************
+ *
+ *	Init Code - Called from WinMain,
+	command line arguments are passed.
+ *
+ *************************************/
 
 void emulator_init(int argc, char** argv)
 {
@@ -680,6 +833,17 @@ void emulator_init(int argc, char** argv)
 
 	toLowerCase(argv[1]);
 
+	// Handle List all roms
+	for (int i = 1; i < argc; i++)
+	{
+		if (strcmp(argv[i], "-listromstotext") == 0)
+		{
+			wrlog("Listing all roms");
+			list_all_roms();
+			exit(1);
+		}
+	}
+
 	for (loop = 1; loop < (num_games - 1); loop++)
 	{
 		if (strcmp(argv[1], driver[loop].name) == 0)
@@ -721,7 +885,7 @@ void emulator_init(int argc, char** argv)
 	//////////////////////////////////////////////////////
 	wrlog("Number of supported games in this release: %d", num_games);
 	initrand();
-	fillstars(stars);
+	//fillstars(stars);
 	have_error = 0;
 
 	switch (config.priority)
@@ -736,6 +900,12 @@ void emulator_init(int argc, char** argv)
 	run_game();
 	wrlog("Starting Run Game");
 }
+
+/*************************************
+ *
+ *	End of emulation, cleanup and get out.
+ *
+ *************************************/
 
 void emulator_end()
 {
@@ -764,7 +934,7 @@ void emulator_end()
 	//END-----------------------------------------------------
 	save_input_port_settings();
 	KillFont();
-	
+
 	AllowAccessibilityShortcutKeys(1);
 	mixer_end();
 	force_all_kbdleds_off();

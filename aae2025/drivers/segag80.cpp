@@ -73,7 +73,7 @@ WRITE_HANDLER(sega_mem_w)
 
 	uint8_t *MEM = Machine->memory_region[CPU0];
 
-	val = m_cpu_z80[CPU0]->GetPPC();
+	val = cpu_getppc();
 
 	if (val != -1)
 	{

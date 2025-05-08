@@ -91,8 +91,8 @@ extern int gamenum;
 #define READ_HANDLER(name)  static UINT8 name(UINT32 address, struct MemoryReadByte *psMemRead)
 #define WRITE_HANDLER(name)  static void name(UINT32 address, UINT8 data, struct MemoryWriteByte *psMemWrite)
 
-#define READ_HANDLER16(name)  static UINT16 name(UINT32 address, struct MemoryReadWord *psMemRead)
-#define WRITE_HANDLER16(name)  static void name(UINT32 address, UINT16 data, struct MemoryWriteWord *psMemWrite)
+#define READ16_HANDLER(name)  static UINT16 name(UINT32 address, struct MemoryReadWord *psMemRead)
+#define WRITE16_HANDLER(name)  static void name(UINT32 address, UINT16 data, struct MemoryWriteWord *psMemWrite)
 
 #define MEM_WRITE(name) struct MemoryWriteByte name[] = {
 #define MEM_READ(name)  struct MemoryReadByte name[] = {
@@ -293,10 +293,6 @@ extern struct RunningMachine* Machine;
 //RAM Variables
 extern unsigned char* membuffer;
 extern unsigned char vec_ram[0x8000];
-//extern unsigned char* GI[8]; //Global 6502/Z80/6809 GameImage
-
-
-extern int in_gui_sentinel;
 
 extern int art_loaded[6];
 //extern int index;
@@ -339,8 +335,6 @@ typedef struct {
 	int kreset;
 	int ktest;
 	int ktestadv;
-	//int kmenu;
-
 	int kpause;
 	int ksnap;
 
@@ -445,27 +439,29 @@ enum GameDef {
 	//Asteroids Hardware
 	METEORTS,
 	//ASTEROCK,
-	ASTEROIB,
-	ASTEROI1,
+	ASTEROIDB,
+	ASTEROID1,
 	ASTEROID,
-	ASTDELU1,
-	ASTDELU2,
+	ASTDELUX1,
+	ASTDELUX2,
 	ASTDELUX,
 	//Midway Omega Race Hardware
 	OMEGRACE,
 	DELTRACE,
 	//BattleZone Hardware
 	BZONE,
-	BZONE2,
+	BZONEA,
 	BZONEC,
 	BZONEP,
 	REDBARON,
 	BRADLEY,
 	//Spacduel Hardware
 	SPACDUEL,
+	SPACDUEL0,
+	SPACDUEL1,
 	BWIDOW,
 	GRAVITAR,
-	GRAVITR2,
+	GRAVITAR2,
 	GRAVP,
 	LUNARBAT,
 	LUNARBA1,
@@ -498,9 +494,7 @@ enum GameDef {
 	MHAVOCPE,
 	MHAVOCP,
 	ALPHAONE,
-	ALPHAONA,
-
-
+	ALPHAONEA,
 	//Cinematronics Hardware
 	SOLARQ,
 	STARCAS,
@@ -522,8 +516,10 @@ enum GameDef {
 	QUANTUMP,
 	//Star Wars Hardware
 	STARWARS,
-	STARWAR1,
+	STARWARS1,
+	ESB,
 	AZTARAC,
+	// Extra
 	GALAGA
 };
 

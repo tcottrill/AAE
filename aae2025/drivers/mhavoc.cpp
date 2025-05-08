@@ -693,7 +693,7 @@ MEM_END
 
 int init_mhavoc(void)
 {
-	if (gamenum == ALPHAONE || gamenum == ALPHAONA) has_gamma_cpu = 0; else has_gamma_cpu = 1;
+	if (gamenum == ALPHAONE || gamenum == ALPHAONEA) has_gamma_cpu = 0; else has_gamma_cpu = 1;
 
 	total_length = 1;
 	alpha_irq_clock = 0;

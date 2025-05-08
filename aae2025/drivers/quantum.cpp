@@ -82,12 +82,12 @@ void quantum_nvram_handler(void* file, int read_or_write)
 	}
 }
 
-READ_HANDLER16(quantum_trackball_r)
+READ16_HANDLER(quantum_trackball_r)
 {
 	return (readinputportbytag("IN2") << 4) | readinputportbytag("IN3");
 }
 
-READ_HANDLER16(quantum_switches_r)
+READ16_HANDLER(quantum_switches_r)
 {
 	return (input_port_0_r(0) | (avg_check() ? 1 : 0));
 }
@@ -101,7 +101,7 @@ static int quantum_input_2_r(int offset)
 	return (readinputportbytag("DSW1") << (7 - (offset - POT0_C))) & 0x80;
 }
 
-WRITE_HANDLER16(quantum_led_write)
+WRITE16_HANDLER(quantum_led_write)
 {
 	if (data & 0xff)
 	{
@@ -120,14 +120,14 @@ WRITE_HANDLER16(quantum_led_write)
 	}
 }
 
-READ_HANDLER16(MRA_NOP16)
+READ16_HANDLER(MRA_NOP16)
 {
 	//wrlog("--------------------Unhandled Read, %x data: %x", address);
 	return 0;
 }
 
 
-READ_HANDLER16(quantum_snd_read)
+READ16_HANDLER(quantum_snd_read)
 {
 	if (address & 0x20)
 		return pokey2_r((address >> 1) % 0x10);
@@ -135,7 +135,7 @@ READ_HANDLER16(quantum_snd_read)
 		return pokey1_r((address >> 1) % 0x10);
 }
 
-WRITE_HANDLER16(quantum_snd_write)
+WRITE16_HANDLER(quantum_snd_write)
 {
 	unsigned int data1;
 	unsigned int data2;

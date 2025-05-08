@@ -76,6 +76,10 @@ void init6809(struct MemoryReadByte* read, struct MemoryWriteByte* write, int cp
 void init_z80(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum);
 void init8080(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum);
 void init68k(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct MemoryReadWord* read16, struct MemoryWriteWord* write16, int cpunum);
+
+void cpu_setOPbaseoverride(int (*f)(int));
+void cpu_setOPbase16(int apc);
+
 // Used for cycle to time scaling.
 int cpu_scale_by_cycles(int val, int clock);
 // CPU Code
@@ -90,6 +94,7 @@ void cpu_reset(int cpunum);
 void cpu_reset_all();
 
 int cpu_getpc();
+int cpu_getppc();
 int get_elapsed_ticks(int cpunum);
 void cpu_disable_interrupts(int cpunum, int val);
 //Get the current cpu frame number
@@ -111,7 +116,7 @@ void cpu_clear_pending_int(int int_type, int cpunum);
 
 int cpu_getiloops(void);
 int cpu_exec_now(int cpu, int cycles);
-void cpu_run_mame(void);
+void cpu_run(void);
 
 void free_cpu_memory();
 

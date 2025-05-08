@@ -18,6 +18,26 @@
 #include <string.h>
 #include "log.h"
 
+//TEMP
+const char* rom_regions[] = {
+	"REGION_CPU1",
+	"REGION_CPU2",
+	"REGION_CPU3",
+	"REGION_CPU4",
+	"REGION_GFX1",
+	"REGION_GFX2",
+	"REGION_GFX3",
+	"REGION_GFX4",
+	"REGION_PROMS",
+	"REGION_SOUND1",
+	"REGION_SOUND2",
+	"REGION_SOUND3",
+	"REGION_SOUND4",
+	"REGION_USER1",
+	"REGION_USER2",
+	"REGION_USER3"
+};
+
 //Pretty much directly cribbed from mame(tm) mostly for use with the ccpu code.
 
 
@@ -98,20 +118,6 @@ unsigned char* memory_region(int num)
 }
 
 
-int new_memory_region(int num, int length)
-{
-	int i;
-
-	if (num < MAX_MEMORY_REGIONS)
-	{
-		Machine->memory_region_length[num] = length;
-		Machine->memory_region[num] = (unsigned char*) malloc(length);
-		return (Machine->memory_region[num] == NULL) ? 1 : 0;
-	}
-	
-	return 1;
-}
-
 void free_memory_region(int num)
 {
 	int i;
@@ -135,28 +141,37 @@ void byteswap(unsigned char* mem, int length)
 	}
 }
 
-void cpu_mem(int cpunum, int size)
+void new_memory_region(int num, int size)
 {
-	wrlog("Made it here, %d %d",cpunum,size);
-	
-	if (Machine->memory_region[cpunum])
+	if (num < MAX_MEMORY_REGIONS)
 	{
-		free(Machine->memory_region[cpunum]);
-		Machine->memory_region[cpunum] = nullptr;
+		// If there is already one allocated, please delete
+		if (Machine->memory_region[num])
+		{
+			LOG_DEBUG("Warning, overwriting already allocated memory space in CPU_MEM");
+			free(Machine->memory_region[num]);
+			Machine->memory_region[num] = nullptr;
+		}
+
+		if (config.debug_profile_code) {
+			wrlog("Allocating Game Memory, Region# %d Amount 0x%x", num, size);
+		}
+
+		Machine->memory_region[num] = (unsigned char*)malloc(size);
+
+		if (Machine->memory_region[num] == nullptr)
+		{
+			wrlog("Can't allocate system ram for Cpu Emulation! - This is bad. Exiting System!"); exit(1);
+		}
+
+		memset(Machine->memory_region[num], 0, size);
+
+		if (config.debug_profile_code) {
+			wrlog("Memory Allocation Completed for Rom Region %d", num);
+		}
 	}
-	
-	wrlog("Allocating Game Memory, Cpu# %d Amount 0x%x", cpunum, size);
-
-	Machine->memory_region[cpunum] = (unsigned char *)malloc(size);
-
-	if (Machine->memory_region[cpunum] == nullptr)
-	{
-		wrlog("Can't allocate system ram for Cpu Emulation! - This is bad. Exiting System!"); exit(1);
-	}
-
-	memset(Machine->memory_region[cpunum], 0, size);
-
-	wrlog("Memory Allocation Completed for Rom Region %d",cpunum);
+	else
+	LOG_ERROR("Error, your'trying to allocate a memory space num that does not exist: ", num);
 }
 
 

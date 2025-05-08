@@ -26,6 +26,8 @@
 #include "log.h"
 #include "timer.h"
 
+int m6809_slapstic = 0;
+
 #pragma warning( disable : 4305 4244 )
 
 static unsigned char haspostbyte[] = {
@@ -216,9 +218,23 @@ uint16_t cpu_6809::get_ppc()
 
 void cpu_6809::set_pc(uint16_t newpc)
 {
+	//wrlog(" Current PCREG %X Setting new PC %x", pcreg, newpc);
 	pcreg = newpc;
 }
 
+void cpu_6809::change_pc(uint16_t pcreg)
+{
+	//wrlog("PC at ChangePC is %x", pcreg);
+	if (m6809_slapstic)		
+		cpu_setOPbase16(pcreg);	
+	// I don't have any other reason to change the PC? No banking?
+	//else						
+	//	change_pc16(pcreg);		
+	
+	// Placeholder
+	// This is just for the slapstic code. 
+	// Since all I care about is ESB, I'll just hard code the banks and switch between them here based on the slapstic
+}
 
 uint8_t cpu_6809::M_RDMEM(uint16_t A)
 {
@@ -583,6 +599,7 @@ void cpu_6809::sync()
 	/* SYNC should stop processing instructions until an interrupt occurs.
 	   A decent fake is probably to force an immediate IRQ. */
 	clockticks6809 = 20000000;
+	pending_interrupts |= M6809_SYNC;
 }
 
 /* $14 ILLEGAL */
@@ -594,6 +611,7 @@ void cpu_6809::lbra()
 {
 	eaddr = rd_slow_wd(pcreg); pcreg += 2;
 	pcreg += eaddr;
+	change_pc(pcreg);
 }
 
 /* $17 LBSR relative ----- */
@@ -601,6 +619,7 @@ void cpu_6809::lbsr()
 {
 	eaddr = rd_slow_wd(pcreg); pcreg += 2;
 	PUSHWORD(pcreg); pcreg += eaddr;
+	change_pc(pcreg);
 }
 
 /* $18 ILLEGAL */
@@ -679,6 +698,7 @@ void cpu_6809::bra()
 	uint8_t t = 0;
 	//BRANCH(1);
 	t = (rd_slow)(pcreg); pcreg++; if (1)pcreg += SIGNED(t);
+	change_pc(pcreg);
 }
 
 /* $21 BRN relative ----- */
@@ -687,6 +707,7 @@ void cpu_6809::brn()
 	uint8_t t = 0;
 	//BRANCH(0);
 	t = (rd_slow)(pcreg); pcreg++; if (0)pcreg += SIGNED(t);
+	change_pc(pcreg);
 }
 
 /* $1021 LBRN relative ----- */
@@ -695,6 +716,7 @@ void cpu_6809::lbrn()
 	uint16_t t;
 	//LBRANCH(0);
 	t = (rd_slow_wd)(pcreg); pcreg += 2; if (0)pcreg += t;
+	change_pc(pcreg);
 }
 
 /* $22 BHI relative ----- */
@@ -703,6 +725,7 @@ void cpu_6809::bhi()
 	uint8_t t = 0;
 	//BRANCH(!(cc & 0x05));
 	t = (rd_slow)(pcreg); pcreg++; if (!(cc & 0x05))pcreg += SIGNED(t);
+	change_pc(pcreg);
 }
 
 /* $1022 LBHI relative ----- */
@@ -711,6 +734,7 @@ void cpu_6809::lbhi()
 	uint16_t t;
 	//LBRANCH(!(cc & 0x05));
 	t = (rd_slow_wd)(pcreg); pcreg += 2; if (!(cc & 0x05))pcreg += t;
+	change_pc(pcreg);
 }
 
 /* $23 BLS relative ----- */
@@ -719,6 +743,7 @@ void cpu_6809::bls()
 	uint8_t t = 0;
 	//BRANCH(cc & 0x05);
 	t = (rd_slow)(pcreg); pcreg++; if (cc & 0x05) pcreg += SIGNED(t);
+	change_pc(pcreg);
 }
 
 /* $1023 LBLS relative ----- */
@@ -727,6 +752,7 @@ void cpu_6809::lbls()
 	uint16_t t;
 	//LBRANCH(cc & 0x05);
 	t = (rd_slow_wd)(pcreg); pcreg += 2; if (cc & 0x05) pcreg += t;
+	change_pc(pcreg);
 }
 
 /* $24 BCC relative ----- */
@@ -735,6 +761,7 @@ void cpu_6809::bcc()
 	uint8_t t = 0;
 	//BRANCH(!(cc & 0x01));
 	t = (rd_slow)(pcreg); pcreg++; if (!(cc & 0x01))pcreg += SIGNED(t);
+	change_pc(pcreg);
 }
 
 /* $1024 LBCC relative ----- */
@@ -743,6 +770,7 @@ void cpu_6809::lbcc()
 	uint16_t t;
 	//LBRANCH(!(cc & 0x01));
 	t = (rd_slow_wd)(pcreg); pcreg += 2; if (!(cc & 0x01)) pcreg += t;
+	change_pc(pcreg);
 }
 
 /* $25 BCS relative ----- */
@@ -752,6 +780,7 @@ void cpu_6809::bcs()
 	//BRANCH(cc & 0x01);
 	t = (rd_slow)(pcreg); pcreg++;
 	if (cc & 0x01)pcreg += SIGNED(t);
+	change_pc(pcreg);
 }
 
 /* $1025 LBCS relative ----- */
@@ -760,6 +789,7 @@ void cpu_6809::lbcs()
 	uint16_t t;
 	//LBRANCH(cc & 0x01);
 	t = (rd_slow_wd)(pcreg); pcreg += 2; if (cc & 0x01) pcreg += t;
+	change_pc(pcreg);
 }
 
 /* $26 BNE relative ----- */
@@ -768,6 +798,7 @@ void cpu_6809::bne()
 	uint8_t t = 0;
 	//BRANCH(!(cc & 0x04));
 	t = (rd_slow)(pcreg); pcreg++; if (!(cc & 0x04))pcreg += SIGNED(t);
+	change_pc(pcreg);
 }
 
 /* $1026 LBNE relative ----- */
@@ -776,6 +807,7 @@ void cpu_6809::lbne()
 	uint16_t t;
 	//LBRANCH(!(cc & 0x04));
 	t = (rd_slow_wd)(pcreg); pcreg += 2; if (!(cc & 0x04)) pcreg += t;
+	change_pc(pcreg);
 }
 
 /* $27 BEQ relative ----- */
@@ -784,6 +816,7 @@ void cpu_6809::beq()
 	uint8_t t = 0;
 	//BRANCH(cc & 0x04);
 	t = (rd_slow)(pcreg); pcreg++; if (cc & 0x04)pcreg += SIGNED(t);
+	change_pc(pcreg);
 }
 
 /* $1027 LBEQ relative ----- */
@@ -792,6 +825,7 @@ void cpu_6809::lbeq()
 	uint16_t t;
 	//LBRANCH(cc & 0x04);
 	t = (rd_slow_wd)(pcreg); pcreg += 2; if (cc & 0x04) pcreg += t;
+	change_pc(pcreg);
 }
 
 /* $28 BVC relative ----- */
@@ -800,6 +834,7 @@ void cpu_6809::bvc()
 	uint8_t t = 0;
 	//BRANCH(!(cc & 0x02));
 	t = (rd_slow)(pcreg); pcreg++; if (!(cc & 0x02))pcreg += SIGNED(t);
+	change_pc(pcreg);
 }
 
 /* $1028 LBVC relative ----- */
@@ -808,6 +843,7 @@ void cpu_6809::lbvc()
 	uint16_t t;
 	//LBRANCH(!(cc & 0x02));
 	t = (rd_slow_wd)(pcreg); pcreg += 2; if (!(cc & 0x02)) pcreg += t;
+	change_pc(pcreg);
 }
 
 /* $29 BVS relative ----- */
@@ -816,6 +852,7 @@ void cpu_6809::bvs()
 	uint8_t t = 0;
 	//BRANCH(cc & 0x02);
 	t = (rd_slow)(pcreg); pcreg++; if (cc & 0x02) pcreg += SIGNED(t);
+	change_pc(pcreg);
 }
 
 /* $1029 LBVS relative ----- */
@@ -824,6 +861,7 @@ void cpu_6809::lbvs()
 	uint16_t t;
 	//LBRANCH(cc & 0x02);
 	t = (rd_slow_wd)(pcreg); pcreg += 2; if (cc & 0x02) pcreg += t;
+	change_pc(pcreg);
 }
 
 /* $2A BPL relative ----- */
@@ -832,6 +870,7 @@ void cpu_6809::bpl()
 	uint8_t t = 0;
 	//BRANCH(!(cc & 0x08));
 	t = (rd_slow)(pcreg); pcreg++; if (!(cc & 0x08))pcreg += SIGNED(t);
+	change_pc(pcreg);
 }
 
 /* $102A LBPL relative ----- */
@@ -840,6 +879,7 @@ void cpu_6809::lbpl()
 	uint16_t t;
 	//LBRANCH(!(cc & 0x08));
 	t = (rd_slow_wd)(pcreg); pcreg += 2; if (!(cc & 0x08)) pcreg += t;
+	change_pc(pcreg);
 }
 
 /* $2B BMI relative ----- */
@@ -848,6 +888,7 @@ void cpu_6809::bmi()
 	uint8_t t = 0;
 	//BRANCH(cc & 0x08);
 	t = (rd_slow)(pcreg); pcreg++; if (cc & 0x08)pcreg += SIGNED(t);
+	change_pc(pcreg);
 }
 
 /* $102B LBMI relative ----- */
@@ -856,6 +897,7 @@ void cpu_6809::lbmi()
 	uint16_t t;
 	//LBRANCH(cc & 0x08);
 	t = (rd_slow_wd)(pcreg); pcreg += 2; if (cc & 0x08) pcreg += t;
+	change_pc(pcreg);
 }
 
 /* $2C BGE relative ----- */
@@ -864,6 +906,7 @@ void cpu_6809::bge()
 	uint8_t t = 0;
 	//BRANCH(!((cc & 0x08) ^ ((cc & 0x02) << 2)));
 	t = (rd_slow)(pcreg); pcreg++; if (!((cc & 0x08) ^ ((cc & 0x02) << 2))) pcreg += SIGNED(t);
+	change_pc(pcreg);
 }
 
 /* $102C LBGE relative ----- */
@@ -872,6 +915,7 @@ void cpu_6809::lbge()
 	uint16_t t;
 	//LBRANCH(!((cc & 0x08) ^ ((cc & 0x02) << 2)));
 	t = (rd_slow_wd)(pcreg); pcreg += 2; if (!((cc & 0x08) ^ ((cc & 0x02) << 2))) pcreg += t;
+	change_pc(pcreg);
 }
 
 /* $2D BLT relative ----- */
@@ -880,6 +924,7 @@ void cpu_6809::blt()
 	uint8_t t = 0;
 	//BRANCH(((cc & 0x08) ^ ((cc & 0x02) << 2)));
 	t = (rd_slow)(pcreg); pcreg++; if ((cc & 0x08) ^ ((cc & 0x02) << 2)) pcreg += SIGNED(t);
+	change_pc(pcreg);
 }
 
 /* $102D LBLT relative ----- */
@@ -888,6 +933,7 @@ void cpu_6809::lblt()
 	uint16_t t;
 	//LBRANCH(((cc & 0x08) ^ ((cc & 0x02) << 2)));
 	t = (rd_slow_wd)(pcreg); pcreg += 2; if (((cc & 0x08) ^ ((cc & 0x02) << 2))) pcreg += t;
+	change_pc(pcreg);
 }
 
 /* $2E BGT relative ----- */
@@ -896,6 +942,7 @@ void cpu_6809::bgt()
 	uint8_t t = 0;
 	//BRANCH(!(((cc & 0x08) ^ ((cc & 0x02) << 2)) || cc & 0x04));
 	t = (rd_slow)(pcreg); pcreg++; if (!(((cc & 0x08) ^ ((cc & 0x02) << 2)) || cc & 0x04)) pcreg += SIGNED(t);
+	change_pc(pcreg);
 }
 
 /* $102E LBGT relative ----- */
@@ -904,6 +951,7 @@ void cpu_6809::lbgt()
 	uint16_t t;
 	//LBRANCH(!(((cc & 0x08) ^ ((cc & 0x02) << 2)) || cc & 0x04));
 	t = (rd_slow_wd)(pcreg); pcreg += 2; if (!(((cc & 0x08) ^ ((cc & 0x02) << 2)) || cc & 0x04)) pcreg += t;
+	change_pc(pcreg);
 }
 
 /* $2F BLE relative ----- */
@@ -912,6 +960,7 @@ void cpu_6809::ble()
 	uint8_t t = 0;
 	//BRANCH(((cc & 0x08) ^ ((cc & 0x02) << 2)) || cc & 0x04);
 	t = (rd_slow)(pcreg); pcreg++; if (((cc & 0x08) ^ ((cc & 0x02) << 2)) || cc & 0x04) pcreg += SIGNED(t);
+	change_pc(pcreg);
 }
 
 /* $102F LBLE relative ----- */
@@ -920,6 +969,7 @@ void cpu_6809::lble()
 	uint16_t t;
 	//LBRANCH(((cc & 0x08) ^ ((cc & 0x02) << 2)) || cc & 0x04);
 	t = (rd_slow_wd)(pcreg); pcreg += 2; if (((cc & 0x08) ^ ((cc & 0x02) << 2)) || cc & 0x04) pcreg += t;
+	change_pc(pcreg);
 }
 
 /* $30 LEAX indexed --*-- */
@@ -976,6 +1026,7 @@ void cpu_6809::puls()
 	if (t & 0x20) PULLWORD(yreg);
 	if (t & 0x40) PULLWORD(ureg);
 	if (t & 0x80) PULLWORD(pcreg);
+	change_pc(pcreg);
 }
 
 /* $36 PSHU inherent ----- */
@@ -1008,6 +1059,7 @@ void cpu_6809::pulu()
 	if (t & 0x20) PULUWORD(yreg);
 	if (t & 0x40) PULUWORD(sreg);
 	if (t & 0x80) PULUWORD(pcreg);
+	change_pc(pcreg);
 }
 
 /* $38 ILLEGAL */
@@ -1016,6 +1068,7 @@ void cpu_6809::pulu()
 void cpu_6809::rts()
 {
 	PULLWORD(pcreg);
+	change_pc(pcreg);
 }
 
 /* $3A ABX inherent ----- */
@@ -1041,6 +1094,7 @@ void cpu_6809::rti()
 		PULLWORD(ureg);
 	}
 	PULLWORD(pcreg);
+	change_pc(pcreg);
 }
 
 /* $3C CWAI inherent ----1 */
@@ -1080,6 +1134,7 @@ void cpu_6809::swi()
 	PUSHBYTE(cc);
 	cc |= 0x50;
 	pcreg = M_RDMEM_WORD(0xfffa);
+	change_pc(pcreg);
 }
 
 /* $103F SWI2 absolute indirect ----- */
@@ -1095,6 +1150,7 @@ void cpu_6809::swi2()
 	PUSHBYTE(areg);
 	PUSHBYTE(cc);
 	pcreg = M_RDMEM_WORD(0xfff4);
+	change_pc(pcreg);
 }
 
 /* $113F SWI3 absolute indirect ----- */
@@ -1110,6 +1166,7 @@ void cpu_6809::swi3()
 	PUSHBYTE(areg);
 	PUSHBYTE(cc);
 	pcreg = M_RDMEM_WORD(0xfff2);
+	change_pc(pcreg);
 }
 
 /* $40 NEGA inherent ?**** */
@@ -1406,6 +1463,7 @@ void cpu_6809::tst_ix()
 void cpu_6809::jmp_ix()
 {
 	pcreg = eaddr;
+	change_pc(pcreg);
 }
 
 /* $6F CLR indexed -0100 */
@@ -1548,6 +1606,7 @@ void cpu_6809::jmp_ex()
 {
 	eaddr = (rd_slow_wd)(pcreg); pcreg += 2;
 	pcreg = eaddr;
+	change_pc(pcreg);
 }
 
 /* $7F CLR extended -0100 */
@@ -1733,6 +1792,7 @@ void cpu_6809::bsr()
 	//immuint8_t(t);
 	t = (rd_slow)(pcreg); pcreg++;
 	PUSHWORD(pcreg); pcreg += SIGNED(t);
+	change_pc(pcreg);
 }
 
 /* $8E LDX (LDY) immediate -**0- */
@@ -1960,6 +2020,7 @@ void cpu_6809::jsr_di()
 	eaddr = (rd_slow)(pcreg); pcreg++; eaddr |= (dpreg << 8);
 	PUSHWORD(pcreg);
 	pcreg = eaddr;
+	change_pc(pcreg);
 }
 
 /* $9E LDX (LDY) direct -**0- */
@@ -2136,6 +2197,7 @@ void cpu_6809::jsr_ix()
 {
 	PUSHWORD(pcreg);
 	pcreg = eaddr;
+	change_pc(pcreg);
 }
 
 /* $aE LDX (LDY) indexed -**0- */
@@ -2359,6 +2421,7 @@ void cpu_6809::jsr_ex()
 	eaddr = (rd_slow_wd)(pcreg); pcreg += 2;
 	PUSHWORD(pcreg);
 	pcreg = eaddr;
+	change_pc(pcreg);
 }
 
 /* $bE LDX (LDY) extended -**0- */
@@ -3107,7 +3170,7 @@ void cpu_6809::sts_ex()
 /****************************************************************************/
 void cpu_6809::m6809_SetRegs(m6809_Regs* Regs)
 {
-	pcreg = Regs->pc;
+	pcreg = Regs->pc; change_pc(pcreg);
 	ureg = Regs->u;
 	sreg = Regs->s;
 	xreg = Regs->x;
@@ -3116,6 +3179,7 @@ void cpu_6809::m6809_SetRegs(m6809_Regs* Regs)
 	areg = Regs->a;
 	breg = Regs->b;
 	cc = Regs->cc;
+	pending_interrupts = Regs->pending_interrupts;
 }
 
 /****************************************************************************/
@@ -3132,12 +3196,16 @@ void cpu_6809::m6809_GetRegs(m6809_Regs* Regs)
 	Regs->a = areg;
 	Regs->b = breg;
 	Regs->cc = cc;
+	Regs->pending_interrupts = pending_interrupts;
 }
 
 // Reset MyCpu 
 void cpu_6809::reset6809()
 {
-	pcreg = M_RDMEM_WORD(0xfffe);
+	ppc = -1;
+	pcreg = M_RDMEM_WORD(0xfffe); 
+	//pcreg = rd_slow_wd(0xfffe);
+	change_pc(pcreg);
 
 	dpreg = 0x00;		/* Direct page register = 0x00 */
 	cc = 0x00;			/* Clear all flags */
@@ -3146,16 +3214,92 @@ void cpu_6809::reset6809()
 	areg = 0x00;		/* clear accumulator a */
 	breg = 0x00;		/* clear accumulator b */
 	clockticks6809 = 0;// m6809_IPeriod;
-	m6809_IRequest = INT_NONE;
+	m6809_Clear_Pending_Interrupts();	/* NS 970908 */
+	//m6809_IRequest = INT_NONE;
 }
 
-// FIRQ
+
+void cpu_6809::m6809_Cause_Interrupt(int type)	/* NS 970908 */
+{
+	pending_interrupts |= type;
+	if (type & (M6809_INT_NMI | M6809_INT_IRQ | M6809_INT_FIRQ))
+	{
+		pending_interrupts &= ~M6809_SYNC;
+		if (pending_interrupts & M6809_CWAI)
+		{
+			if ((pending_interrupts & M6809_INT_NMI) != 0)
+				pending_interrupts &= ~M6809_CWAI;
+			else if ((pending_interrupts & M6809_INT_IRQ) != 0 && (cc & 0x10) == 0)
+				pending_interrupts &= ~M6809_CWAI;
+			else if ((pending_interrupts & M6809_INT_FIRQ) != 0 && (cc & 0x40) == 0)
+				pending_interrupts &= ~M6809_CWAI;
+		}
+	}
+}
+void cpu_6809::m6809_Clear_Pending_Interrupts()	/* NS 970908 */
+{
+	pending_interrupts &= ~(M6809_INT_IRQ | M6809_INT_FIRQ | M6809_INT_NMI);
+}
+
+/* Generate interrupts */
+void cpu_6809::Interrupt()	/* NS 970909 */
+{
+	if ((pending_interrupts & M6809_INT_NMI) != 0)
+	{
+		pending_interrupts &= ~M6809_INT_NMI;
+
+		/* NMI */
+		cc |= 0x80;	/* ASG 971016 */
+		PUSHWORD(pcreg);
+		PUSHWORD(ureg);
+		PUSHWORD(yreg);
+		PUSHWORD(xreg);
+		PUSHBYTE(dpreg);
+		PUSHBYTE(breg);
+		PUSHBYTE(areg);
+		PUSHBYTE(cc);
+		cc |= 0xd0;
+		pcreg = M_RDMEM_WORD(0xfffc);change_pc(pcreg);	/* TS 971002 */
+		clockticks6809 += 19;
+	}
+	else if ((pending_interrupts & M6809_INT_IRQ) != 0 && (cc & 0x10) == 0)
+	{
+		pending_interrupts &= ~M6809_INT_IRQ;
+
+		/* standard IRQ */
+		cc |= 0x80;	/* ASG 971016 */
+		PUSHWORD(pcreg);
+		PUSHWORD(ureg);
+		PUSHWORD(yreg);
+		PUSHWORD(xreg);
+		PUSHBYTE(dpreg);
+		PUSHBYTE(breg);
+		PUSHBYTE(areg);
+		PUSHBYTE(cc);
+		cc |= 0x90;
+		pcreg = M_RDMEM_WORD(0xfff8); change_pc(pcreg);	/* TS 971002 */
+		clockticks6809 += 19;
+	}
+	else if ((pending_interrupts & M6809_INT_FIRQ) != 0 && (cc & 0x40) == 0)
+	{
+		pending_interrupts &= ~M6809_INT_FIRQ;
+
+		/* fast IRQ */
+		PUSHWORD(pcreg);
+		cc &= 0x7f;	/* ASG 971016 */
+		PUSHBYTE(cc);
+		cc |= 0x50;
+		pcreg = M_RDMEM_WORD(0xfff6); change_pc(pcreg);	/* TS 971002 */
+		clockticks6809 += 10;
+	}
+}
+
+/*
 void cpu_6809::firq6809()
 {
-	/* FIRQ */
-	if (!(cc & 0x40))
+		if (!(cc & 0x40))
 	{
-		/* fast IRQ */
+		
 		PUSHWORD(pcreg);
 		PUSHBYTE(cc);
 		cc &= 0x7f;
@@ -3165,12 +3309,12 @@ void cpu_6809::firq6809()
 	}
 }
 
-// Maskerable Interrupt 
+
 void cpu_6809::irq6809()
 {
 	if (!(cc & 0x10))
 	{
-		/* standard IRQ */
+		
 		PUSHWORD(pcreg);
 		PUSHWORD(ureg);
 		PUSHWORD(yreg);
@@ -3193,8 +3337,8 @@ void cpu_6809::irq6809()
 // NonMaskerable Interrupt 
 void cpu_6809::nmi6809()
 {
-	/* NMI */
-	cc |= 0x80;	/* ASG 971016 */
+	
+	cc |= 0x80;
 	PUSHWORD(pcreg);
 	PUSHWORD(ureg);
 	PUSHWORD(yreg);
@@ -3204,10 +3348,10 @@ void cpu_6809::nmi6809()
 	PUSHBYTE(areg);
 	PUSHBYTE(cc);
 	cc |= 0xd0;
-	pcreg = M_RDMEM_WORD(0xfffc); //change_pc(pcreg);	/* TS 971002 */
+	pcreg = M_RDMEM_WORD(0xfffc); //change_pc(pcreg);	
 	clockticks6809 += 19;
 }
-
+*/
 void cpu_6809::fetch_effective_address()
 {
 	uint8_t postbyte = M_RDMEM(pcreg++);
@@ -3485,13 +3629,21 @@ void cpu_6809::fetch_effective_address()
 int cpu_6809::exec6809(int timerTicks)
 {
 	uint8_t ireg;
-
 	static int count = 0;
-
 	clockticks6809 = 0;
+	
+	if (pending_interrupts & (M6809_CWAI | M6809_SYNC))
+	{
+		count = 0;
+		goto getout;
+	}
+
 	while (clockticks6809 < timerTicks)
 	{
 		int lastticks = clockticks6809;
+
+		if (pending_interrupts != 0)
+			Interrupt();	/* NS 970908 */
 
 		ppc = pcreg;
 		ireg = M_RDMEM(pcreg++);
@@ -3836,7 +3988,7 @@ int cpu_6809::exec6809(int timerTicks)
 		if (clocktickstotal > 0xfffffff) clocktickstotal = 0;
 
 	}
-
+getout:
 	/* Interrupt if needed  */
 	//if (cpu_interrupt() == INT_IRQ) m6809_Interrupt();
 	return 0x80000000;

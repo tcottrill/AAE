@@ -36,6 +36,7 @@
 
 static int sega_rotate = 0;
 extern unsigned char* sega_vectorram;
+UINT8* sintable = nullptr;
 
 #define MAKE_RGB(r,g,b) ((((b) & 0xff) << 16) | (((g) & 0xff) << 8) | ((r) & 0xff))
 
@@ -168,7 +169,8 @@ int adjust_xy(int rawx, int rawy, int* outx, int* outy)
 void sega_vh_update(void)
 {
 	//wrlog("Starting Sega Video Update");
-	UINT8* sintable = Machine->memory_region[1];
+	//sintable = Machine->memory_region[REGION_PROMS];
+	sintable = memory_region(REGION_PROMS);
 	double total_time = 1.0 / (double)IRQ_CLOCK;
 	UINT16 symaddr = 0;
 	int sx = 0;
@@ -352,7 +354,6 @@ void sega_vh_update(void)
 						{
 							//vector_add_point(adjx, adjy, 0, 0);
 						}
-
 						/* otherwise, add a colored point */
 						else { //vector_add_point(adjx, adjy, color, intensity);
 							if (intensity)
@@ -363,13 +364,9 @@ void sega_vh_update(void)
 									s1y = sy >> 16;
 									e1x = adjx >> 16;
 									e1y = adjy >> 16;
-									//set_clip_rect(230, 240, 780, 1030);
 									int clip = ClipLine(&s1x, &s1y, &e1x, &e1y);
 									if (clip) add_line(s1y, s1x, e1y, e1x, (intensity << 4) | 0x0f, color);
-
-									//add_line((sy >> 16), (sx >> 16), (adjy >> 16), (adjx >> 16), (intensity << 4) | 0x0f,color);
 								}
-
 								else 
 								{
 								add_line((sx >> 16), (sy >> 16), (adjx >> 16), (adjy >> 16), (intensity << 4) | 0x0f, color);
@@ -396,11 +393,7 @@ void sega_vh_update(void)
 							//set_clip_rect(0, 100, 1500, 900);
 							int clip = ClipLine(&s1x, &s1y, &e1x, &e1y);
 							if (clip) add_line(s1y, s1x, e1y, e1x, (intensity << 4) | 0x0f, color);
-
-							//add_line((sy >> 16), (sx >> 16), (adjy >> 16), (adjx >> 16), (intensity << 4) | 0x0f, color);
-							
-						}
-
+                        }
 						else {
 							add_line((sx >> 16), (sy >> 16), (adjx >> 16), (adjy >> 16), (intensity << 4) | 0x0f, color);
 							
@@ -420,5 +413,4 @@ void sega_vh_update(void)
 		if (draw & 0x80)
 			break;
 	}
-	//wrlog("End Sega Video Update");
 }

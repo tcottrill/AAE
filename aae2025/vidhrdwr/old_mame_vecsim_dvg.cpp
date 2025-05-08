@@ -18,6 +18,8 @@
 
 // Some Code Also from Eric Smith's VECSIM Emulator.
 
+// I prefer this to what is currently in MAME. 
+
 // Variables
 int vector_updates;
 static int busy;
