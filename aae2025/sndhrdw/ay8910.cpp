@@ -739,7 +739,7 @@ int AY8910_sh_start(struct AY8910interface* intf)
 void AY8910clear(void)
 {
 	int chip;
-
+	
 	stream_stop(0,0);
 	stream_stop(1,1);
 	stream_stop(2,2);
@@ -752,13 +752,13 @@ void AY8910clear(void)
 	stream_stop(9, 9);
 	stream_stop(10, 10);
 	stream_stop(11, 11);
-
 	for (chip = 0; chip < numchips; chip++)
 	{
-		free(buf[chip][0]);
-		free(buf[chip][1]);
-		free(buf[chip][2]);
+		if (buf[chip][0]) free(buf[chip][0]);
+		if (buf[chip][1]) free(buf[chip][1]);
+		if (buf[chip][2]) free(buf[chip][2]);
 	}
+	wrlog("Ay8910 Memory Freed");
 }
 
 UINT8 AY8910_read_port_0_r(UINT32 address, struct MemoryReadByte* psMemRead) { return AY8910Read(0); }

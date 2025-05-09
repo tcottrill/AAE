@@ -728,7 +728,7 @@ int cpu_scale_by_cycles(int val, int clock)
 
 void free_cpu_memory()
 {
-	wrlog("Totalcpu = %d", totalcpu);
+	wrlog("Freeing allocated CPU Cores. Totalcpu = %d", totalcpu);
 	
 	for (int x = 0; x < totalcpu; x++)
 	{
@@ -736,26 +736,26 @@ void free_cpu_memory()
 		{
 		case CPU_MZ80:
 			free (m_cpu_z80[x]);
-			free(Machine->memory_region[x]);
+			//free(Machine->memory_region[x]);
 			break;
 
 		case CPU_M6502:
 			free(m_cpu_6502[x]);
-			free(Machine->memory_region[x]);
+			//free(Machine->memory_region[x]);
 			break;
 
 		case CPU_8080:
 			free (m_cpu_i8080[x]);
-			free(Machine->memory_region[x]);
+			//free(Machine->memory_region[x]);
 			break;
 
 		case CPU_M6809:
 			free (m_cpu_6809[x]);
-			free(Machine->memory_region[x]);
+			//free(Machine->memory_region[x]);
 			break;
 
 		case CPU_68000:
-			free(Machine->memory_region[x]);
+			//free(Machine->memory_region[x]);
 			break;
 		}
 	}
@@ -771,6 +771,11 @@ void init_cpu_config()
 	active_cpu = 0;
 
 	//wrlog("Starting up cpu settings, defaults");
+	// For each memory region, make sure they are all pointing to NUll.
+	//for (int i = 0; i < MAX_MEMORY_REGIONS; i++)
+	//{
+	//	Machine->memory_region[i] = nullptr;
+	//}
 
 	for (x = 0; x < 4; x++)
 	{
@@ -866,7 +871,7 @@ void MWA_ROM16(UINT32 address, UINT16 data, struct MemoryWriteWord* pMemWrite)
 void MWA_ROM(UINT32 address, UINT8 data, struct MemoryWriteByte* pMemWrite)
 {
 	//If logging add here
-	wrlog("Attempted Rom Write? ");
+	//wrlog("Attempted Rom Write? ");
 }
 
 void MWA_NOP(UINT32 address, UINT8 data, struct MemoryWriteByte* pMemWrite)

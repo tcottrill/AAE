@@ -459,5 +459,6 @@ int init_omega()
 
 void end_omega()
 {
+	wrlog("OMEGA RACE END CALLED");
 	AY8910clear();
 }

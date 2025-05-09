@@ -348,6 +348,7 @@ int init_aztarac()
 
 void end_aztarac()
 {
+	AY8910clear();
 }
 
 void aztarac_video_init(int scale)

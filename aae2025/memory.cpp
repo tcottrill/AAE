@@ -117,6 +117,17 @@ unsigned char* memory_region(int num)
 	return 0;
 }
 
+void free_all_memory_regions()
+{
+	for (int i = 0; i < MAX_MEMORY_REGIONS; i++)
+	{
+		if (Machine->memory_region[i])
+			free(Machine->memory_region[i]);
+		Machine->memory_region[i] = nullptr;
+
+	}
+	wrlog("Freed the memory for all allocated memory spaces.");
+}
 
 void free_memory_region(int num)
 {
@@ -124,6 +135,7 @@ void free_memory_region(int num)
 
 	if (num < MAX_MEMORY_REGIONS)
 	{
+		wrlog("Freeing Memory Region %d", num);
 		free(Machine->memory_region[num]);
 		Machine->memory_region[num] = 0;
 	}

@@ -59,6 +59,7 @@ void sample_start(int chanid, int samplenum, int loop);
 void sample_set_position(int chanid, int pos);
 void sample_set_volume(int chanid, int volume);
 void sample_set_freq(int chanid, int freq);
+int sample_get_freq(int chanid);
 int sample_playing(int chanid);
 void sample_end(int chanid);
 void sample_remove(int samplenum);

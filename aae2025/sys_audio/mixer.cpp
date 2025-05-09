@@ -448,10 +448,16 @@ void sample_set_position(int chanid, int pos)
 	// Not needed with this code. ?
 };
 
+int sample_get_freq(int chanid)
+{
+	if (channel[chanid].isPlaying)
+	{
+		return channel[chanid].frequency;
+	}
+}
+
 void sample_set_freq(int chanid, int freq)
 {
-	float calc_freq = 0;
-
 	if (channel[chanid].isPlaying)
 	{
 		float frequencyRatio = static_cast<float>( (float) freq/(float)channel[chanid].frequency);

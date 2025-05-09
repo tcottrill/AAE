@@ -40,14 +40,12 @@ extern int gamenum;
 
 // Raster Defines, new. 
 #define MAX_GFX_ELEMENTS 10
-#define MAX_MEMORY_REGIONS 32
+#define MAX_MEMORY_REGIONS 16
 #define MAX_PENS 256	/* can't handle more than 256 colors on screen */
 #define MAX_LAYERS 4	/* MAX_LAYERS is the maximum number of gfx layers */
 /* which we can handle. Currently, 4 is enough. */
-
-
 #define MAX_SOUND 4
-#define MAX_MEMORY_REGIONS 10
+
 
 #define str_eq(s1,s2)  (!strcmp ((s1),(s2))); //Equate string1 and sring2 true is equal
 

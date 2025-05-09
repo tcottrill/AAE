@@ -78,6 +78,7 @@ void pokey_sh_stop(void)
 	pokey_sound_stop();
 	stream_stop(0, 0);
 	free(buffer);
+	wrlog("Pokey Buffer Memory Freed");
 }
 
 static void update_pokeys(void)

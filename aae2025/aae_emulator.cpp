@@ -932,7 +932,13 @@ void emulator_end()
 	// Free samples??
 	// Free textures??
 	//END-----------------------------------------------------
+	if (driver[gamenum].end_game)driver[gamenum].end_game();
 	save_input_port_settings();
+	if (Machine->input_ports) { free(Machine->input_ports); wrlog("Machine Input Ports Freed."); }
+	free_cpu_memory();
+	free_all_memory_regions();
+
+
 	KillFont();
 
 	AllowAccessibilityShortcutKeys(1);

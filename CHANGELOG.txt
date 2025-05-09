@@ -153,6 +153,10 @@ Fixed volume handling in my mixer code.
 5/8/25 Added ROM_CONTINUE Support to the load_roms function, updated ROM_RELOAD to allow for multiples, Updated the 6809, added MAME slapstic code, added an Empire Strikes Back driver to the Starwars driver but it's not working quite yet. 
 Added support for a couple of more alternate romsets to the Black Widow driver. 
 Readded the command line option -listromstotext to write a file of all supported games and romsets
+Fixed missing freeing of CPU instances and allocated memory regions, as well as sound memory.
+Added sample_get_freq(int chanid) to fix battlezone motor speed when using multiple emulator sound frequencies. 
+
+
 
 
 

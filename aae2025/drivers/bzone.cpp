@@ -202,11 +202,11 @@ WRITE_HANDLER(BzoneSounds)
 	{
 		if (data & 0x10)
 		{ 	//Data is 0xb0
-			sample_set_freq(3, config.samplerate * 1.66); 
+			sample_set_freq(3, sample_get_freq(3) * 1.66);
 		}// Fast rumble
 		else
 		{//data is 0xa0
-		 sample_set_freq(3, config.samplerate); // Slow rumble  
+		 sample_set_freq(3, sample_get_freq(3) ); // Slow rumble  
 		}	
 	}
 }
