@@ -19,11 +19,40 @@
 #include "deftypes.h"
 #include "cpu_6502.h"
 #include "cpu_z80.h"
+#include "cpu_6809.h"
+
+
+#define NEW_INTERRUPT_SYSTEM    1
+#define MAX_IRQ_LINES   8       /* maximum number of IRQ lines per CPU */
+
+#define CLEAR_LINE		0		/* clear (a fired, held or pulsed) line */
+#define ASSERT_LINE     1       /* assert an interrupt immediately */
+#define HOLD_LINE       2       /* hold interrupt line until enable is true */
+#define PULSE_LINE		3		/* pulse interrupt line for one instruction */
+/*
+*This value is passed to cpu_get_reg to retrieve the previous
+* program counter value, ie.before a CPU emulation started
+* to fetch opcodes and arguments for the current instrution.
+*/
+#define REG_PREVIOUSPC	-1
+
+/*
+ * This value is passed to cpu_get_reg/cpu_set_reg, instead of one of
+ * the names from the enum a CPU core defines for it's registers,
+ * to get or set the contents of the memory pointed to by a stack pointer.
+ * You can specify the n'th element on the stack by (REG_SP_CONTENTS-n),
+ * ie. lower negative values. The actual element size (UINT16 or UINT32)
+ * depends on the CPU core.
+ * This is also used to replace the cpu_geturnpc() function.
+ */
+#define REG_SP_CONTENTS -2
+
 
 #define MAX_CPU 4
 
-extern cpu_z80* m_cpu_z80[4];
-extern cpu_6502* m_cpu_6502[4];
+extern cpu_z80* m_cpu_z80[MAX_CPU];
+extern cpu_6502* m_cpu_6502[MAX_CPU];
+extern cpu_6809* m_cpu_6809[MAX_CPU];
 
 extern int cpu_context_size;
 extern uint8_t* cpu_context[2];
@@ -92,7 +121,7 @@ int get_video_ticks(int val);
 
 void cpu_reset(int cpunum);
 void cpu_reset_all();
-
+int get_active_cpu();
 int cpu_getpc();
 int cpu_getppc();
 int get_elapsed_ticks(int cpunum);
@@ -133,6 +162,7 @@ extern void MWA_ROM16(UINT32 address, UINT16 data, struct MemoryWriteWord* pMemW
 extern void MWA_RAM(UINT32 address, UINT8 data, struct MemoryWriteByte* pMemWrite);
 extern void MWA_NOP(UINT32 address, UINT8 data, struct MemoryWriteByte* pMemWrite);
 extern void MWA_NOP16(UINT32 address, UINT16 data, struct MemoryWriteWord* pMemWrite);
+extern UINT8 MRA_NOP(UINT32 address, struct MemoryReadByte* psMemRead);
 
 
 #endif

@@ -32,7 +32,7 @@
 #include "mixer.h"
 #include "emu_vector_draw.h"
 
-
+extern int logging;
 
 extern FILE* errorlog;
 extern char* gamename[];
@@ -84,6 +84,11 @@ extern int gamenum;
 #define bit_write(c,p,m) (c ? bit_set(p,m) : bit_clear(p,m))
 #define BIT(x) (0x01 << (x))
 #define LONGBIT(x) ((unsigned long)0x00000001 << (x))
+
+// These are for different translation units. Maybe bite the bullet and make them all non-static, or wrap in namespaces?
+// This is a temporary solution.
+#define READ_HANDLER_NS(name)   UINT8 name(UINT32 address, struct MemoryReadByte *psMemRead)
+#define WRITE_HANDLER_NS(name)   void name(UINT32 address, UINT8 data, struct MemoryWriteByte *psMemWrite)
 
 //CPU and WRITE READ HANDLERS WHY ARE THESE HERE!!!!
 #define READ_HANDLER(name)  static UINT8 name(UINT32 address, struct MemoryReadByte *psMemRead)

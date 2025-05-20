@@ -117,7 +117,7 @@ void starwars_sh_stop(void)
 void starwars_sh_update()
 {
     pokey_sh_update();
-    wrlog("Calling TMS Update");
+   // wrlog("Calling TMS Update");
     tms5220_sh_update();
 }
 
@@ -140,7 +140,7 @@ void starwars_snd_interrupt()
             //cpu_set_pending_interrupt(INT_TYPE_INT, 1);
             cpu_do_int_imm(1, INT_TYPE_INT);
             //cpu_do_interrupt(INT_TYPE_INT, 1);
-            wrlog("Sound Interrupt Taken");
+            //wrlog("Sound Interrupt Taken");
         }
     }
 }

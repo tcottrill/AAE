@@ -1344,7 +1344,7 @@ struct AAEDriver driver[] =
 		0,0,0,0,
 		0,0,
 		0x000, 0x3000,
-		0
+		starwars_nvram_handler
 		},
 		{
 		"starwars1", "Star Wars (Revision 1)", rom_starwars1,
@@ -1361,12 +1361,12 @@ struct AAEDriver driver[] =
 		1024, 768, { 0, 240, 0, 280 },
 		0,0,0,0,
 		0, 0,
-		0x0, 0x3000,0
+		0x0, 0x3000,starwars_nvram_handler
 		},
 		{
 		"esb", "Star Wars: Empire Strike Back", rom_esb,
 		&init_esb, &run_starwars, &end_starwars,
-		input_ports_starwars,
+		input_ports_esb,
 		0, noart,
 		{ CPU_M6809,CPU_M6809,CPU_NONE,CPU_NONE },
 		{ 1512000,1512000,0,0 },

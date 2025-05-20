@@ -36,6 +36,7 @@ void new_memory_region(int num, int size);
 void free_memory_region(int num);
 void byteswap(unsigned char* mem, int length);
 void free_all_memory_regions();
+void reset_memory_tracking();
 
 
 

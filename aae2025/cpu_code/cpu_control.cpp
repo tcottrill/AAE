@@ -17,7 +17,6 @@
 #include "cpu_control.h"
 #include "./68000/m68k.h"
 #include "aae_mame_driver.h"
-#include "cpu_6809.h"
 #include "cpu_i8080.h"
 #include "ccpu.h"
 #include "timer.h"
@@ -82,6 +81,7 @@ MemoryWriteWord* M_MemoryWrite16 = nullptr;
 void init_z80(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum)
 {
 	wrlog("Z80 Init Started");
+	active_cpu = cpunum;
 	m_cpu_z80[cpunum] = new cpu_z80(Machine->memory_region[cpunum],
 		read, 
 		write, 
@@ -95,6 +95,7 @@ void init_z80(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct
 
 void init_6809(struct MemoryReadByte* read, struct MemoryWriteByte* write, int cpunum)
 {
+	active_cpu = cpunum;
 	wrlog("Start Configuring CPU %d", cpunum);
 	m_cpu_6809[cpunum] = new cpu_6809(Machine->memory_region[cpunum], read, write, 0xffff, cpunum);
 	m_cpu_6809[cpunum]->reset6809();
@@ -103,6 +104,7 @@ void init_6809(struct MemoryReadByte* read, struct MemoryWriteByte* write, int c
 
 void init8080(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum)
 {
+	active_cpu = cpunum;
 	m_cpu_i8080[cpunum] = new cpu_i8080(Machine->memory_region[cpunum],
 		read,
 		write,
@@ -115,6 +117,7 @@ void init8080(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct
 
 void init6502(struct MemoryReadByte* read, struct MemoryWriteByte* write, int mem_top, int cpunum)
 {
+	active_cpu = cpunum;
 	m_cpu_6502[cpunum] = new cpu_6502(Machine->memory_region[cpunum], read, write, mem_top, cpunum);
 	m_cpu_6502[cpunum]->reset6502();
 	wrlog("Finished Configuring CPU");
@@ -122,6 +125,7 @@ void init6502(struct MemoryReadByte* read, struct MemoryWriteByte* write, int me
 
 void init6809(struct MemoryReadByte* read, struct MemoryWriteByte* write, int cpunum)
 {
+	active_cpu = cpunum;
 	wrlog("Start Configuring CPU %d", cpunum);
 	m_cpu_6809[cpunum] = new cpu_6809(Machine->memory_region[cpunum], read, write, 0xffff, cpunum);
 
@@ -136,7 +140,7 @@ void init68k(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct 
 	M_MemoryWrite8 = write;
 	M_MemoryRead16 = read16;
 	M_MemoryWrite16 = write16;
-	
+	active_cpu = cpunum;
 	m68k_set_cpu_type(M68K_CPU_TYPE_68000);
 	cpu_context_size = m68k_context_size();
 	cpu_context[0] = (unsigned char*)malloc(cpu_context_size);
@@ -204,47 +208,17 @@ void cpu_setOPbaseoverride(int (*f)(int))
 void cpu_setOPbase16(int apc)
 {
 	
-	//wrlog("we're here CPU %d PC %x", 0, apc);
+	//wrlog("we're here PC before %x", apc);
 	/* ASG 970206 -- allow overrides */
 	if (setOPbasefunc)
 	{
-		
-		if (apc == -1)
+			if (apc == -1)
 			return;
-
+	
 		uint16_t something = setOPbasefunc(apc);
-		//wrlog("Something is %x", something);
 
-	m_cpu_6809[active_cpu]->set_pc(something);
+	//	uint16_t retpc = Machine->memory_region[0][something];
 	}
-
-	/* 1st element link */
-	//hw = cur_mrhard[pc >> (ABITS2_16 + ABITS_MIN_16)];
-	//if (hw >= MH_HARDMAX)
-	//{
-		/* 2nd element link */
-	//	hw = readhardware[((hw - MH_HARDMAX) << MH_SBITS) + ((pc >> ABITS_MIN_16) & MHMASK(ABITS2_16))];
-	//}
-	//ophw = hw;
-
-	//if (!hw)
-	//{
-		/* memory direct */
-	//	OP_RAM = RAM;
-	///	OP_ROM = ROM;
-	//	return;
-	//}
-
-	//if (hw <= HT_BANKMAX)
-	//{
-		/* banked memory select */
-		//OP_RAM = cpu_bankbase[hw] - memoryreadoffset[hw];
-		//if (RAM == ROM) OP_ROM = OP_RAM;
-		//return;
-	//}
-
-	/* do not support on callbank memory reasion */
-	//if (errorlog) fprintf(errorlog, "CPU #%d PC %04x: warning - op-code execute on mapped i/o\n", cpu_getactivecpu(), cpu_getpc());
 }
 
 
@@ -257,13 +231,12 @@ int cpu_getppc()
 		return m_cpu_z80[active_cpu]->GetPPC();
 		break;
 
-
 	case CPU_M6502:
 		return m_cpu_6502[active_cpu]->get_ppc();
 		break;
 
 	case CPU_M6809:
-		return m_cpu_6809[active_cpu]->get_ppc();
+		return m_cpu_6809[0]->get_ppc();
 		break;
 	}
 		return 0;
@@ -296,6 +269,11 @@ int cpu_getpc()
 		break;
 	}
 	return 0;
+}
+
+int get_active_cpu()
+{
+	return active_cpu;
 }
 
 int cpu_getcurrentframe()
@@ -767,15 +745,7 @@ void init_cpu_config()
 
 	totalcpu = 0;
 	cpu_configured = 0;
-	//running_cpu = 0;
 	active_cpu = 0;
-
-	//wrlog("Starting up cpu settings, defaults");
-	// For each memory region, make sure they are all pointing to NUll.
-	//for (int i = 0; i < MAX_MEMORY_REGIONS; i++)
-	//{
-	//	Machine->memory_region[i] = nullptr;
-	//}
 
 	for (x = 0; x < 4; x++)
 	{
@@ -851,8 +821,14 @@ void MWA_RAM(UINT32 address, UINT8 data, struct MemoryWriteByte* pMemWrite)
 UINT8 MRA_ROM(UINT32 address, struct MemoryReadByte* psMemRead)
 {
 	//wrlog("Active CPU here is %d", active_cpu);
-//	wrlog("Address here is %x reading address %x data %x", address, address + psMemRead->lowAddr, Machine->memory_region[active_cpu][address + psMemRead->lowAddr]);
+    //wrlog("Address here is %x reading address %x data %x", address, address + psMemRead->lowAddr, Machine->memory_region[active_cpu][address + psMemRead->lowAddr]);
 	return Machine->memory_region[active_cpu][address + psMemRead->lowAddr];
+}
+
+UINT8 MRA_NOP(UINT32 address, struct MemoryReadByte* psMemRead)
+{
+	//If logging add here
+	return 0;
 }
 
 // Write Rom

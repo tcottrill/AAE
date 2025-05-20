@@ -18,6 +18,7 @@
 int sx, ex, sy, ey;
 
 FILE* errorlog;
+int logging;
 
 //RAM Variables
 unsigned char* membuffer;

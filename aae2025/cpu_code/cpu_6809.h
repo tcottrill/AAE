@@ -63,6 +63,7 @@ public:
 		uint8_t		a, b;	/* Accumulator */
 		uint8_t		cc;     //Flags
 		int pending_interrupts;
+		int extra_cycles;
 	} m6809_Regs;
 
 	uint16_t ppc;
@@ -71,7 +72,7 @@ public:
 	//Pointer to the handler structures
 	MemoryReadByte  *memory_read = nullptr;
 	MemoryWriteByte *memory_write = nullptr;
-
+	m6809_Regs m6809;
 	//Constructors
 	cpu_6809(uint8_t *mem, MemoryReadByte *read_mem, MemoryWriteByte *write_mem, uint16_t addr, int cpu_num);
 	cpu_6809() {};
@@ -91,7 +92,8 @@ public:
 	void reset6809();
 	// Run the 6502 engine for specified number of clock cycles 
 	int  exec6809(int timerTicks);
-	
+	uint8_t get_last_ireg();
+	uint8_t get_last_ireg2();
 	//Get elapsed ticks / reset to zero
 	int  get6809ticks(int reset);
 	//Get /Set Register values
@@ -107,7 +109,7 @@ public:
 	void change_pc(uint16_t pcreg);
 	//Return the string value of the last instruction
 	//std::string disam(uint8_t opcode);
-
+	int Dasm6809(char* buffer, int pc);
 	//For multicpu use
 	int cpu_num;
 
@@ -158,13 +160,16 @@ private:
 	// help variables 
 	int pending_interrupts;	/* NS 970908 */
 	int clocktickstotal; //Runnning, resetable total of clockticks
+	int m6809_ICount;
 	bool debug = 0;
 	bool mmem = 0; //Use mame style memory handling, reject unhandled read/writes
 	bool log_debug_rw = 0; //Log unhandled reads and writes
 	bool irg_pending = 0;
-
+	/////////////////////////////////////////////////////
 	uint8_t cc, dpreg, areg, breg;
 	uint16_t xreg, yreg, ureg, sreg, pcreg;
+	uint8_t ireg;
+	uint8_t ireg2;
 	uint16_t eaddr; /* effective address */
 	void Interrupt();
 	void fetch_effective_address();
@@ -370,6 +375,8 @@ private:
 	 void orb_im(void);
 	 void orb_ix(void);
 	 void orcc(void);
+	 void pref11();
+	 void pref10();
 	 void pshs(void);
 	 void pshu(void);
 	 void puls(void);
@@ -445,7 +452,6 @@ private:
 	 void tst_ix(void);
 	 void tsta(void);
 	 void tstb(void);
-
 };
 
 #endif 

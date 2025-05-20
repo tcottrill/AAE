@@ -180,11 +180,12 @@
     <ClInclude Include="gui\gui.h" />
     <ClInclude Include="inptport.h" />
     <ClInclude Include="joystick.h" />
+    <ClInclude Include="machine\atarigen.h" />
     <ClInclude Include="machine\earom.h" />
     <ClInclude Include="machine\mathbox.h" />
     <ClInclude Include="machine\SegaG80crypt.h" />
     <ClInclude Include="machine\slapstic.h" />
-    <ClInclude Include="machine\swmathbx.h" />
+    <ClInclude Include="machine\starwars_machine.h" />
     <ClInclude Include="MathUtils.h" />
     <ClInclude Include="memory.h" />
     <ClInclude Include="menu.h" />
@@ -286,11 +287,12 @@
     <ClCompile Include="gui\gui.cpp" />
     <ClCompile Include="inptport.cpp" />
     <ClCompile Include="Joystick.cpp" />
+    <ClCompile Include="machine\atarigen.cpp" />
     <ClCompile Include="machine\earom.cpp" />
     <ClCompile Include="machine\mathbox.cpp" />
     <ClCompile Include="machine\SegaG80crypt.cpp" />
     <ClCompile Include="machine\slapstic.cpp" />
-    <ClCompile Include="machine\swmathbx.cpp" />
+    <ClCompile Include="machine\starwars_machine.cpp" />
     <ClCompile Include="memory.cpp" />
     <ClCompile Include="menu.cpp" />
     <ClCompile Include="newfbo.cpp" />

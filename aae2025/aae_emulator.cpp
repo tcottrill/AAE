@@ -153,7 +153,8 @@ int mystrcmp(const char* s1, const char* s2)
 /****************************************
  *
  *	Output a full romlist as a text file
- * TODO: Clean this up with strings later.
+ *  TODO: Clean this up with strings later.
+ * 
  ****************************************/
 void list_all_roms()
 {
@@ -476,6 +477,11 @@ void msg_loop(void)
 		snapshot();
 	}
 
+	if (osd_key_pressed_memory(OSD_KEY_F6))
+	{
+		logging ^= 1;
+	}
+
 	if (osd_key_pressed_memory(OSD_KEY_CONFIGURE))
 	{
 		int m = get_menu_status();
@@ -639,8 +645,9 @@ void run_game(void)
 
 	run_a_game(gamenum);
 	// Wait, what? We are reloading, now????
-	init_machine();
 
+	init_machine();
+	reset_memory_tracking(); // Before loading Anything!!!
 	//////////////////////////////////////////////////////////////END VARIABLES SETUP ///////////////////////////////////////////////////
 	if (gamenum) {
 		goodload = load_roms(driver[gamenum].name, driver[gamenum].rom);

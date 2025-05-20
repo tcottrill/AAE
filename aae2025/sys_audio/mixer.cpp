@@ -454,6 +454,7 @@ int sample_get_freq(int chanid)
 	{
 		return channel[chanid].frequency;
 	}
+	return 0;
 }
 
 void sample_set_freq(int chanid, int freq)

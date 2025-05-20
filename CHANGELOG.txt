@@ -156,7 +156,8 @@ Readded the command line option -listromstotext to write a file of all supported
 Fixed missing freeing of CPU instances and allocated memory regions, as well as sound memory.
 Added sample_get_freq(int chanid) to fix battlezone motor speed when using multiple emulator sound frequencies. 
 
-
+5/19/25. Spent way to many days working out the slapstic encryption in ESB, and I still don't understand MAME rom banking. 
+Rewrote the starwars driver, rewrote the 6809 cpu code from John Butler, twice. Figured out how the slapstic encryption works, but I still don't know how MAME figures out what to send to the slapstic code, but I worked around it. I'll clean it up on the next release, but it's finally working. 
 
 
 

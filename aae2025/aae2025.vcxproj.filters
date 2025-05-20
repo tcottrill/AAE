@@ -177,9 +177,6 @@
     <ClInclude Include="machine\SegaG80crypt.h">
       <Filter>Source Files\machine</Filter>
     </ClInclude>
-    <ClInclude Include="machine\swmathbx.h">
-      <Filter>Source Files\machine</Filter>
-    </ClInclude>
     <ClInclude Include="sndhrdw\5220intf.h">
       <Filter>Source Files\sndhrdw</Filter>
     </ClInclude>
@@ -375,6 +372,12 @@
     <ClInclude Include="machine\slapstic.h">
       <Filter>Source Files\machine</Filter>
     </ClInclude>
+    <ClInclude Include="machine\atarigen.h">
+      <Filter>Source Files\machine</Filter>
+    </ClInclude>
+    <ClInclude Include="machine\starwars_machine.h">
+      <Filter>Source Files\machine</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="sys_window\rawinput.cpp">
@@ -485,9 +488,6 @@
     <ClCompile Include="machine\SegaG80crypt.cpp">
       <Filter>Source Files\machine</Filter>
     </ClCompile>
-    <ClCompile Include="machine\swmathbx.cpp">
-      <Filter>Source Files\machine</Filter>
-    </ClCompile>
     <ClCompile Include="sndhrdw\5220intf.cpp">
       <Filter>Source Files\sndhrdw</Filter>
     </ClCompile>
@@ -531,9 +531,6 @@
       <Filter>Source Files\vidhrdwr</Filter>
     </ClCompile>
     <ClCompile Include="acommon.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="config.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="fpsclass.cpp">
@@ -643,6 +640,15 @@
     </ClCompile>
     <ClCompile Include="machine\slapstic.cpp">
       <Filter>Source Files\machine</Filter>
+    </ClCompile>
+    <ClCompile Include="machine\atarigen.cpp">
+      <Filter>Source Files\machine</Filter>
+    </ClCompile>
+    <ClCompile Include="machine\starwars_machine.cpp">
+      <Filter>Source Files\machine</Filter>
+    </ClCompile>
+    <ClCompile Include="config.cpp">
+      <Filter>Source Files\sys_window</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

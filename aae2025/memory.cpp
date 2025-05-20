@@ -17,6 +17,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "log.h"
+#include <vector>
 
 //TEMP
 const char* rom_regions[] = {
@@ -35,16 +36,19 @@ const char* rom_regions[] = {
 	"REGION_SOUND4",
 	"REGION_USER1",
 	"REGION_USER2",
-	"REGION_USER3"
+	"REGION_USER3",
+	"REGION_MAX"
 };
 
 //Pretty much directly cribbed from mame(tm) mostly for use with the ccpu code.
 
 
+std::vector<int>memory_allocation_tracker;
+
 static void(*read8_functions[0xF])(int) = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 static void(*write8_functions[0xF])(int) = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
-
+/*
 
 int io_read_byte_8(unsigned int port)
 {
@@ -92,6 +96,16 @@ void init_cinemat_ports()
 //	memcpy(read8_functions, 0, sizeof(read8_functions));
 }
 
+*/
+/*-------------------------------------------------
+	Clear memory tracker, in preperation to keep 
+	track of system memory allocations 
+-------------------------------------------------*/
+void reset_memory_tracking()
+{
+	//memory_allocation_tracker.clear();
+
+}
 
 /*-------------------------------------------------
 	memory_region - returns pointer to a memory
@@ -119,6 +133,15 @@ unsigned char* memory_region(int num)
 
 void free_all_memory_regions()
 {
+	for (std::vector<int>::iterator it = memory_allocation_tracker.begin(); it != memory_allocation_tracker.end(); ++it) 
+	{
+		wrlog("Freeing Memory Region %s", rom_regions[*it]);
+		if (Machine->memory_region[*it])
+			free(Machine->memory_region[*it]);
+		Machine->memory_region[*it] = nullptr;
+
+	}
+	/*
 	for (int i = 0; i < MAX_MEMORY_REGIONS; i++)
 	{
 		if (Machine->memory_region[i])
@@ -126,7 +149,7 @@ void free_all_memory_regions()
 		Machine->memory_region[i] = nullptr;
 
 	}
-	wrlog("Freed the memory for all allocated memory spaces.");
+	*/
 }
 
 void free_memory_region(int num)
@@ -177,6 +200,8 @@ void new_memory_region(int num, int size)
 		}
 
 		memset(Machine->memory_region[num], 0, size);
+		memory_allocation_tracker.push_back(num);
+
 
 		if (config.debug_profile_code) {
 			wrlog("Memory Allocation Completed for Rom Region %d", num);

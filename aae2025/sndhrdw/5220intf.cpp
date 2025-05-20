@@ -86,12 +86,15 @@ int tms5220_sh_start(struct TMS5220interface* iinterface)
 
 void tms5220_sh_stop(void)
 {
+	wrlog("Stopping and cleaning up TMS5220 Audio");
+
 	stream_stop(2, 2);
 	if (buffer)
 		free(buffer);
 	buffer = 0;
 	if (stream_buffer)
 		free(stream_buffer);
+	stream_buffer = 0;
 }
 
 
