@@ -159,6 +159,11 @@ Added sample_get_freq(int chanid) to fix battlezone motor speed when using multi
 5/19/25. Spent way to many days working out the slapstic encryption in ESB, and I still don't understand MAME rom banking. 
 Rewrote the starwars driver, rewrote the 6809 cpu code from John Butler, twice. Figured out how the slapstic encryption works, but I still don't know how MAME figures out what to send to the slapstic code, but I worked around it. I'll clean it up on the next release, but it's finally working. 
 
+5/20/25
+ESB was the last game I ever wanted to emulate, and I am super happy to have finally made it here. It seems like a very small accomplishment, but having rewritten both the z80 and 6502 cpus, figured out all the games, written all my own window, graphic, sound and (mostly) input code, I feel like I've accomplished a lot, even with riding on the back of all the work done by so many people for MAME.
+What's next? Back to working on other things, then maybe a major rendering upgrade to newer technology, we'll see. That's after re-adding the gui and fixing all the missing command line functionality and various remaing bugs.! 
+
+
 
 
 

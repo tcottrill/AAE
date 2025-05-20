@@ -123,7 +123,7 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;GLEW_STATIC;_CRT_SECURE_NO_WARNINGS;WIN7BUILD;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;GLEW_STATIC;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <AdditionalIncludeDirectories>C:\SourceTest\aae2025_68000\aae2025\cpu_code\68000;./cpu_code/68000;./fileio;./;./sys_window;./gui;./cpu_code;./drivers;./machine;./sys_video;./sndhrdwr;./sndhrdw;./vidhrdwr;./sys_audio;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>

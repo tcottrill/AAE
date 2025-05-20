@@ -35,7 +35,6 @@ static size_t nvram_size = 0x100;
 int bank1 = 0x06000;
 int bank2 = 0x0a000;
 
-
 enum slapstic_states
 {
 	DISABLED,
@@ -50,7 +49,6 @@ enum slapstic_states
 	ADDITIVE2,
 	ADDITIVE3
 };
-
 
 /*************************************
  *
@@ -112,8 +110,12 @@ static UINT8* slapstic_base;
 static UINT8 current_bank;
 
 static UINT8 is_esb;
-int slapstic_en=0;
+int slapstic_en = 0;
 
+// The slapstic encryption took me forever to figure out, even using a custom compiled MAME version. I guess I am just dense, it took me a week to
+// understand that only the last memory read and the change_cpu function should be sent to these routines. Not the opcode reads, not any imtermediate reads,
+// Just the final memory reads for each opcode Thank you RTS (0x39) for helping drive this home.
+// Not understanding how MAME does it's banking really hurt me here.
 
 void bank_switch_read(int address, int result)
 {
@@ -139,17 +141,16 @@ READ_HANDLER(esb_slapstic_r)
 	//wrlog("Slapstic Read Called, CPU %x, PC: %04x, PPC %04x, OPCODE: %02X", get_active_cpu(),m_cpu_6809[0]->get_pc(), m_cpu_6809[0]->ppc, this_opcode);
 
 	if (slapstic_en) bank_switch_read(address, result);
-		
+
 	return result;
 }
 
-
 WRITE_HANDLER(esb_slapstic_w)
 {
-	int new_bank=0;
+	int new_bank = 0;
 
-	if (slapstic_en) 
-		new_bank= slapstic_tweak(address);
+	if (slapstic_en)
+		new_bank = slapstic_tweak(address);
 
 	/* update for the new bank */
 	if (new_bank != current_bank)
@@ -160,14 +161,13 @@ WRITE_HANDLER(esb_slapstic_w)
 	}
 	//else wrlog("Slapstic Write without Bank Switch %d bank\n", current_bank);
 }
-		
 
 static int esb_setopbase(int address)
 {
 	static int counter = 0;
 	static int last_opcode;
 	int prevpc = cpu_getppc();
-	
+
 	/*
 	 *	This is a slightly ugly kludge for Empire Strikes Back because it jumps
 	 *	directly to code in the slapstic.
@@ -177,7 +177,7 @@ static int esb_setopbase(int address)
 	if ((address & 0xe000) == 0x8000)
 	{
 		esb_slapstic_r(address & 0x1fff, 0);
-		
+
 		//wrlog("Slapstick in: PrevPC: %04x, address: %04x address adj: %04x, bank %d opcode %x", prevpc, address, (address & 0x1fff), current_bank, m_cpu_6809[0]->get_last_ireg());
 		/* make sure we catch the next branch as well */
 		//catch_nextBranch = 1;
@@ -228,7 +228,8 @@ READ_HANDLER(BANK2_R)
 /**********************************************************/
 
 WRITE_HANDLER(irqclr)
-{}
+{
+}
 
 /********************************************************/
 
@@ -244,7 +245,6 @@ void end_starwars()
 
 void run_starwars()
 {
-	//wrlog("Made it to run");
 	starwars_sh_update();
 }
 
@@ -362,6 +362,8 @@ int init_esb()
 	init6809(starwars_audio_readmem, starwars_audio_writemem, 1);
 	swmathbox_init();
 	avg_start_starwars();
+	// TODO: This is temporary, figure it out.
+	config.gain = 0;
 
 	return 0;
 }

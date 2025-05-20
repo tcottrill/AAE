@@ -556,7 +556,7 @@ int load_input_port_settings(void)
 		if (in->tag)
 		{
 			input_port_tag[temp] = in->tag;
-			wrlog("Tag %s :: Num %d", in->tag, temp);
+			//wrlog("Tag %s :: Num %d", in->tag, temp);
 			temp++;
 		}
 

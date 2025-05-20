@@ -441,7 +441,7 @@ READ_HANDLER(mhavoc_port_1_r)
 	res = readinputport(1) & 0xfc;
 
 	// Bit 2 = TMS5220 ready flag
-	if (gamenum == MHAVOCRV || gamenum == MHAVOCPE)
+	if (gamenum == MHAVOCRV )
 	{
 		if (!tms5220_ready_r())	res |= 0x04;
 		else
@@ -596,7 +596,6 @@ void run_mhavoc()
 	{
 		watchdog_reset_w(0, 0, 0);	
 	}
-		
 	mhavoc_sh_update();
 	
 	if (gamenum == MHAVOCRV)  tms5220_sh_update(); 

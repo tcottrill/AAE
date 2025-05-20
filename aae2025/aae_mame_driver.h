@@ -436,19 +436,19 @@ extern struct GameOptions options;
 ////////////////////////////////
 enum GameDef {
 	AAEGUI,
-	//Lunar Lander Hardware
-	LLANDER1,
-	LLANDER,
 	//Asteroids Hardware
 	METEORTS,
-	//ASTEROCK,
+	ASTEROCK,
 	ASTEROIDB,
 	ASTEROID1,
 	ASTEROID,
 	ASTDELUX1,
 	ASTDELUX2,
 	ASTDELUX,
-	//Midway Omega Race Hardware
+	//Lunar Lander Hardware
+	LLANDER1,
+	LLANDER,
+   //Midway Omega Race Hardware
 	OMEGRACE,
 	DELTRACE,
 	//BattleZone Hardware
@@ -458,6 +458,7 @@ enum GameDef {
 	BZONEP,
 	REDBARON,
 	BRADLEY,
+	
 	//Spacduel Hardware
 	SPACDUEL,
 	SPACDUEL0,
@@ -523,7 +524,7 @@ enum GameDef {
 	ESB,
 	AZTARAC,
 	// Extra
-	GALAGA
+	//GALAGA
 };
 
 /* this allows to leave the INIT field empty in the GAME() macro call */
