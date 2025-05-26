@@ -65,6 +65,10 @@ static UINT8 coin_detected;
 static UINT8 coin_last_reset;
 static UINT8 mux_select;
 
+namespace CCPU_INPUTS {
+	enum input_handler { CCPUIN, BOXINGB, SUNDANCE, SPEEDFRK };
+}
+static int ccpuinput_type = 0;
 
 /*************************************
  *
@@ -195,27 +199,33 @@ static int boxingb_dial_r(int offset)
 
 UINT16 get_ccpu_inputs(int offset)
 {
-	switch (gamenum)
+	switch (ccpuinput_type)
 	{
-	case BOXINGB: {
+	case CCPU_INPUTS::CCPUIN:
+	{
+		return (readinputport(1) >> offset) & 1;
+		break;
+	}
+
+	case CCPU_INPUTS::BOXINGB: {
 		if (offset > 0xb)  return  boxingb_dial_r(offset);
 		else
 			return (readinputport(1) >> offset) & 1;
 		break;
 	}
 
-	case SUNDANCE:
+	case CCPU_INPUTS::SUNDANCE:
 		return sundance_read(offset);
 		break;
 
-	case SPEEDFRK: {
+	case CCPU_INPUTS::SPEEDFRK: {
 		if (offset < 0x04)  return  speedfrk_wheel_r(offset);
 		else if (offset > 0x03 && offset < 0x07)  return  speedfrk_gear_r(offset);
 		else if (offset > 0x06) return (readinputport(1) >> offset) & 1;
 		break;
 	}
 
-	default: return (readinputport(1) >> offset) & 1;
+	default: wrlog("Somehting is wrong with the CCPU Input config.!");
 	}
 
 	return 0;
@@ -337,6 +347,7 @@ int init_sundance()
 	init_cinemat_snd(sundance_sound);
 	video_type_set(COLOR_16LEVEL, 1);
 	init_ccpu(0, CCPU_MEMSIZE_8K);
+	ccpuinput_type = CCPU_INPUTS::SUNDANCE;
 	return 1;
 }
 
@@ -374,6 +385,7 @@ int init_speedfrk()
 	init_cinemat_snd(speedfrk_sound);
 	video_type_set(COLOR_BILEVEL, 0);
 	init_ccpu(1, CCPU_MEMSIZE_8K);
+	ccpuinput_type = CCPU_INPUTS::SPEEDFRK;
 	return 1;
 }
 
@@ -392,6 +404,7 @@ int init_boxingb()
 	init_cinemat_snd(boxingb_sound);
 	video_type_set(COLOR_RGB, 0);
 	init_ccpu(0, CCPU_MEMSIZE_32K);
+	ccpuinput_type = CCPU_INPUTS::BOXINGB;
 	return 1;
 }
 
@@ -413,7 +426,8 @@ int init_cinemat()
 	mux_select = 0;
 	MUX_VAL = 0;
 	video_type_set(COLOR_BILEVEL, 0);
-	return 0;
+	ccpuinput_type = CCPU_INPUTS::CCPUIN;
+	return 1;
 }
 
 void end_cinemat()

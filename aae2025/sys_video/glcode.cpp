@@ -20,6 +20,7 @@
 #include "gl_texturing.h"
 #include "gl_shader.h"
 #include "emu_vector_draw.h"
+#include "fast_poly.h"
 
 // New 2024
 #include "os_basic.h"
@@ -27,11 +28,19 @@
 #include "MathUtils.h"
 #include <chrono> // For code profiling
 #include "path_helper.h"
+#include "old_mame_raster.h"
 
 using namespace std;
 using namespace chrono;
 
+//Please fix this
+extern void osd_get_pen(int pen, unsigned char* red, unsigned char* green, unsigned char* blue);
+
+// Main screen rect calc
 Rect2 screen_rect;
+//Raster rendering
+Fpoly* sc;
+extern float vid_scale;
 
 // Notes for reference:
 //
@@ -125,6 +134,38 @@ void calc_screen_rect(int screen_width, int screen_height, char* aspect, int rot
 	wrlog("Bottom Right %f %f", target_width + xadj, yadj);
 }
 
+
+void raster_poly_update(void)
+{
+	wrlog("Update Screen Called");
+	int x, y;
+	unsigned char  c = 0;
+	float a, b;
+	int t = 2;
+	unsigned char r1, g1, b1;
+	
+	vid_scale = 3;
+
+	for (x = Machine->drv->visible_area.min_y; x < Machine->drv->visible_area.max_y + 1; x++) 
+	{
+		for (y = Machine->drv->visible_area.min_x; y < Machine->drv->visible_area.max_x + 1; y++)
+		{
+			c = main_bitmap->line[x][y];
+			//Only update if it is non black?
+			if (c)
+			{
+				a = x * t;
+				b = y * t;
+
+				osd_get_pen(Machine->pens[c], &r1, &g1, &b1);
+				sc->addPoly(y, x, vid_scale, MAKE_RGBA(r1, g1, b1, 0xff));
+				//Any_Rect( b, b + t, a, a + t);
+			}
+		}
+	}
+}
+
+
 //
 //
 //
@@ -140,6 +181,18 @@ void Widescreen_calc()
 
 	wideadj = 1.3333 / val;//val;  1.6
 }
+
+void set_ortho_proper()
+{
+	glViewport(0, 0, Machine->gamedrv->screen_width*3, Machine->gamedrv->screen_height*3);
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+	glOrtho(0, Machine->gamedrv->screen_width*3, Machine->gamedrv->screen_height*3, 0, -1, 1); // Define a 2D orthographic view
+	glMatrixMode(GL_MODELVIEW);
+
+
+}
+
 
 void set_ortho(GLint width, GLint height)
 {
@@ -161,37 +214,21 @@ int init_gl(void)
 
 	if (!init_one)
 	{
-		// START - ALLEGRO GL TO REMOVE
-		//allegro_gl_clear_settings();
-		//allegro_gl_set(AGL_COLOR_DEPTH, 32); 
-		//allegro_gl_set(AGL_DOUBLEBUFFER, config.dblbuffer);
-		//allegro_gl_set(AGL_Z_DEPTH, 24);
-		//allegro_gl_set(AGL_WINDOWED, 1);
-		//allegro_gl_set(AGL_RENDERMETHOD, 1);
-		//allegro_gl_set(AGL_SUGGEST, AGL_COLOR_DEPTH | AGL_DOUBLEBUFFER | AGL_RENDERMETHOD | AGL_Z_DEPTH | AGL_WINDOWED);
-		//set_color_depth(32);
-		//request_refresh_rate(60); 
-		//if (set_gfx_mode(GFX_OPENGL, config.screenw, config.screenh, 0, 0)) {
-		//	allegro_message("Unable to set screen mode: %s", allegro_error);
-		//	return 0;
-		//}
-		//allegro_gl_use_alpha_channel(TRUE);
-		//Check for texture support
-#if defined AGL_VERSION_2_0
-		wrlog("OpenGL 2.0 support detected, good.");
-#endif
+		
 		glGetIntegerv(GL_MAX_TEXTURE_SIZE, &texSize);
 		wrlog("Max Texture Size supported by this card: %dx%d", texSize, texSize);
 		if (texSize < 1024)  wrlog("Warning!! Your card does not support a large enough texture size to run this emulator!!!!");
 		glGetIntegerv(GL_MAX_COLOR_ATTACHMENTS_EXT, &texSize);
 		wrlog("Max number of color buffers per fbo supported on this card: %d", texSize);
 		//Extensions Check
-		//if (allegro_gl_extensions_GL.ARB_multisample) { glEnable(GL_MULTISAMPLE_ARB); wrlog("ARB_Multisample Extension Supported"); }
-		//if (allegro_gl_extensions_GL.EXT_texture_filter_anisotropic) { wrlog("Anisotropic Filtering Supported"); }
-		/*
+		
+		if (wglewIsSupported("GL_ARB_texture_filter_anisotropic")) { wrlog("Anisotropic Filtering Supported"); }
+
+		if (wglewIsSupported("WGL_ARB_multisample")) 	{ wrlog("ARB_Multisample Extension Supported"); }
+				
 		if (config.forcesync)
 		{
-			if (allegro_gl_extensions_WGL.EXT_swap_control)
+			if (wglewIsSupported("WGL_EXT_swap_control"))
 			{
 				wglSwapIntervalEXT(1);
 				wrlog("Enabling vSync per the config.forcesync setting.");
@@ -199,18 +236,13 @@ int init_gl(void)
 			else wrlog("Your video card does not support vsync. Please check and update your video drivers.");
 		}
 		else {
-			if (allegro_gl_extensions_WGL.EXT_swap_control)
+			if (wglewIsSupported("WGL_EXT_swap_control"))
 			{
 				wglSwapIntervalEXT(0);
 				wrlog("Disabling vSync");
 			}
 			else wrlog("There was a problem disabling vSync, please check your video card drivers.");
 		}
-
-		if (allegro_gl_extensions_GL.EXT_framebuffer_object) { wrlog("EXT_Frambuffer Object Supported (Required)"); }
-		else { allegro_message("I'm sorry, but you need EXT_framebuffer_object support to \n run this program. Update your card or drivers."); exit(1); }
-		*/
-		// EMD - ALLEGRO GL TO REMOVE
 		
 		// Reset The Current Viewport
 		set_ortho(1024, 768);
@@ -265,6 +297,9 @@ int init_gl(void)
 		init_shader();
 		wrlog("Finished configuration of OpenGl sucessfully");
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+		sc = new Fpoly();
+
 		init_one++;
 	}
 
@@ -357,29 +392,7 @@ void free_game_textures()
 	glDeleteTextures(1, &art_tex[1]);
 	glDeleteTextures(1, &art_tex[3]);
 }
-/*
-// Code below from https://blog.nobel-joergensen.com/2013/01/29/debugging-opengl-using-glgeterror/
-void CheckGLError(const char* file, int line) {
-	GLenum err(glGetError());
 
-	while (err != GL_NO_ERROR) {
-		std::string error;
-
-		switch (err) {
-		case GL_INVALID_OPERATION:      error = "INVALID_OPERATION";      break;
-		case GL_INVALID_ENUM:           error = "INVALID_ENUM";           break;
-		case GL_INVALID_VALUE:          error = "INVALID_VALUE";          break;
-		case GL_OUT_OF_MEMORY:          error = "OUT_OF_MEMORY";          break;
-		case GL_STACK_OVERFLOW:         error = "GL_STACK_OVERFLOW";      break;
-		case GL_STACK_UNDERFLOW:        error = "GL_STACK_UNDERFLOW";     break;
-		case GL_INVALID_FRAMEBUFFER_OPERATION:  error = "INVALID_FRAMEBUFFER_OPERATION";  break;
-		}
-
-		wrlog("OpenGL Error: %s in %s file at line %d ", error.c_str(), file, line);
-		err = glGetError();
-	}
-}
-*/
 void GLCheckError(const char* call)
 {
 	GLenum errcode = glGetError();
@@ -444,8 +457,11 @@ void end_render_fbo4()
 ////////////////////////////////////////////////////////////////////////////////
 // FBO / SHADER DOWNSAMPLING and COMPOSITING CODE  /////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
-//Downsample part 1
-// This copies fbo1, img1b to fbo2, img2a at 512x512
+
+//
+//	Downsample Part 1,                                   
+//  This copies fbo1, img1b to fbo2, img2a at 512x512	
+//
 void copy_main_img_to_fbo2()
 {
 	GLuint fbo2_tex = 0;
@@ -483,8 +499,10 @@ void copy_main_img_to_fbo2()
 	//wrlog("Debug Remove : img_copy to FBO2 4.0");
 }
 
-// Downsample part 2
-// This copies the 512x512 texture at fbo2, img1a to fbo3 img1a/
+//
+//	Downsample Part 2                                   
+//  This copies the 512x512 texture at fbo2, img1a to fbo3 img1a	
+//
 void copy_fbo2_to_fbo3()
 {
 	GLuint loc = 0;
@@ -519,7 +537,11 @@ void copy_fbo2_to_fbo3()
 	glUseProgram(0);
 }
 
-void render_blur_image_fbo3() //Downsample part 3
+//
+//	Downsample Part 3                                  
+//  This copies img2a to the 256x256 blur texture at fbo3, img3a to img1b back and forth to blur	
+//
+void render_blur_image_fbo3() 
 {
 	static constexpr auto v1 = 1.0f;  //1.7 //1.0 // 1.5
 	static constexpr auto v2 = 2.0f;    //2.7 //2.0 //2.5
@@ -588,11 +610,11 @@ void render_blur_image_fbo3() //Downsample part 3
 	glUseProgram(0);
 }
 ////////////////////////////////////////////////////////////////////////////////
-// END  FBO / SHADER DOWNSAMPLING and COMPOSITING CODE  /////////////////////////////
+// END  FBO / SHADER DOWNSAMPLING and COMPOSITING CODE						  //
 ////////////////////////////////////////////////////////////////////////////////
 
 ////////////////////////////////////////////////////////////////////////////////
-// FINAL COMPOSITING AND RENDERING CODE STARTS HERE  ///////////////////////////
+//			 FINAL COMPOSITING AND RENDERING CODE STARTS HERE				  //
 ////////////////////////////////////////////////////////////////////////////////
 
 // Rendering Start, this is STEP 1 This sets the screen viewport and projection to 1014x1024 for rendering
@@ -617,17 +639,19 @@ void set_render()
 
 	// Set the projection to 1024x1024
 	set_ortho(1024, 1024);
-
+	
 	// Then render as normal
 	//glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 	glClear(GL_COLOR_BUFFER_BIT);// | GL_DEPTH_BUFFER_BIT);	// Clear Screen And Depth Buffer
 	glEnable(GL_BLEND);
-	//glDisable(GL_LIGHTING);
-	//glDisable(GL_DEPTH_TEST); //Disable depth testing
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	
+	// Leaving these here for review
+	//glDisable(GL_LIGHTING);
+	//glDisable(GL_DEPTH_TEST); 
 	// wrlog("Setting FBO renderer");
-	 //glEnable(GL_MULTISAMPLE_ARB);
-	 //glEnable(GL_SAMPLE_COVERAGE);
+	//glEnable(GL_MULTISAMPLE_ARB);
+	//glEnable(GL_SAMPLE_COVERAGE);
 	//glEnable(GL_LINE_SMOOTH);
 	//glEnable(GL_POINT_SMOOTH);
 	// Required for some older cards.
@@ -645,11 +669,21 @@ void render()
 {
 	if (paused) { pause_loop(); return; }
 
-	if (gamenum)
+	if (Machine->drv->video_attributes & VIDEO_TYPE_VECTOR)
 	{
 		draw_all();
+		final_render(sx, sy, ex, ey, 0, 0);
 	}
-	final_render(sx, sy, ex, ey, 0, 0);
+	else
+	{
+		raster_poly_update();
+		sc->Render();
+		//final_render_raster();
+		final_render(sx, sy, ex, ey, 0, 0);
+		
+	}
+	
+	
 }
 
 // Note:
@@ -811,55 +845,6 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 	glActiveTextureARB(GL_TEXTURE0_ARB);
 	glBindTexture(GL_TEXTURE_2D, 0); // Don't disable GL_TEXTURE_2D on the main texture unit?
 
-	//POST COMBINING OVERLAY FOR CINEMATRONICS GAMES WITH MONITOR COVERS & NO BACKGROUND ARTWORK
-	/*
-	if (driver[gamenum].rotation == 2 && config.overlay && art_loaded[1] && gamenum) // This should be armor attack
-	{
-		set_texture(&art_tex[1], 1, 0, 0, 0);
-		glBlendFunc(GL_ONE_MINUS_SRC_ALPHA, GL_SRC_COLOR);
-		glColor4f(1.0f, 1.0f, 1.0f, .5f);
-		if (config.bezel == 0)
-		{
-			if (config.widescreen && config.windowed == 0)
-			{
-				Special_Rect(0, 1024);
-			}
-			else
-			{
-				glEnable(GL_BLEND);
-				FS_Rect(0, 1024);
-			}
-		}
-		else {
-			if (config.debug) { Any_Rect(0, msx, msy, esy, esx); }
-			else
-			{
-				if (config.widescreen && config.windowed == 0)
-				{
-					Bezel_Rect(0, b1sx, b1sy, b2sy, b2sx);
-				}
-				else
-				{
-					Any_Rect(0, b1sx, b1sy, b2sy, b2sx);
-				}
-			}
-		}
-	}
-	*/
-	// HACKY WAY TO ADD BEZEL TO VERTICAL GAMES
-	// This is for the tempest and tacscan vertical bezels.
-	// This needs to be reinplemented/removed with clipping/rotation.
-	/*
-	if (Machine->gamedrv->rotation & ORIENTATION_ROTATE_270 && config.bezel == 0 && gamenum)
-	{
-		set_texture(&art_tex[2], 1, 0, 0, 1);
-		glEnable(GL_ALPHA_TEST);
-		glAlphaFunc(GL_GREATER, 0.99f);
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-		Centered_Rect(0, 1024); //Tempest
-		glDisable(GL_ALPHA_TEST);
-	}
-	*/
 	
 	if (config.bezel && art_loaded[3] && gamenum) {
 		if (config.artcrop)
@@ -884,9 +869,6 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 	video_loop();
 	end_render_fbo4();
 
-	//glColor4f(1, 1, 1, 1);
-	//set_texture(&game_tex[0], 1, 0, 0, 1);
-	//FS_Rect(0, 512);
 
 	glDisable(GL_TEXTURE_2D);
 
@@ -901,3 +883,55 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 ////////////////////////////////////////////////////////////////////////////////
 // FINAL COMPOSITING AND RENDERING CODE ENDS HERE  ///////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
+
+void set_render_raster()
+{
+	wrlog("Set Render Raster Called");
+		// First we bind to FBO1 so we can render to it
+	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo_raster);
+	//Write To Texture img1a
+	glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT);
+
+	set_ortho_proper();
+
+	// Then render as normal
+	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+	glClear(GL_COLOR_BUFFER_BIT);// | GL_DEPTH_BUFFER_BIT);	// Clear Screen And Depth Buffer
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glDisable(GL_TEXTURE_2D);
+
+	int err = glGetError();
+	if (err != 0)
+	{
+		wrlog("openglerror in set_render: %d", err);
+	}
+}
+
+void final_render_raster()
+{
+	wrlog("Final Render Raster Called");
+	int err = glGetError();
+	if (err != 0)
+	{
+		wrlog("openglerror in final_render_fbo_raster: %d", err);
+	}
+	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);
+	glDrawBuffer(GL_BACK);
+
+	glEnable(GL_TEXTURE_2D);
+	glEnable(GL_BLEND);
+
+	glColor4f(1.0, 1.0, 1.0, 1.0);
+	set_texture(&img5a, 1, 0, 1, 0);
+	screen_rect.Render(1.0f);
+
+	//Centered_Rect(0, 1024);
+
+	err = glGetError();
+	if (err != 0)
+	{
+		wrlog("openglerror in end_render_fbo_b: %d", err);
+	}
+
+}

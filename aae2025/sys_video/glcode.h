@@ -28,8 +28,8 @@ extern "C" {
 	void WriteShaderError(GLhandleARB obj, const char* shaderName);
 	void Widescreen_calc();
 	
-
-	
+	void set_render_raster();
+	void final_render_raster();
 
 #ifdef __cplusplus
 }

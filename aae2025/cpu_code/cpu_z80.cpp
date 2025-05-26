@@ -666,7 +666,7 @@ unsigned cpu_z80::mz80step()
 	{
 		z80ppc = z80pc;
 		const uint8_t bOpcode = ImmedByte();
-		//wrlog("OPcode %x, PC %x", bOpcode, z80pc);
+		//wrlog("OPCode here %x %x pc:%x", m_rgbMemory[z80pc + 1], m_rgbMemory[z80pc + 2], z80pc);
 		cyc += exec_opcode(bOpcode);
 	}
 
@@ -2031,7 +2031,7 @@ UINT32 cpu_z80::mz80int(UINT32 bVal)
 			// Or fancy shifting as seen below, the fancy way.
 			//Rst(irq_vector - 0xC7);
 			Rst(((irq_vector >> 3) & 7) << 3);
-			//wrlog("Interrupt Mode 0 Taken");
+			//wrlog("Interrupt Mode 0 Taken, Vector %x or %x", irq_vector, ((irq_vector >> 3) & 7) << 3);
 			pending_int = 0;
 			break;
 

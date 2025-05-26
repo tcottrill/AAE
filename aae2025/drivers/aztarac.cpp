@@ -20,6 +20,7 @@
 #include "math.h"
 #include "timer.h"
 #include "emu_vector_draw.h"
+#include "aae_avg.h"
 
 #define READ_WORD16(a)    (*(UINT16 *)(a))
 #define WRITE_WORD16(a,d) (*(UINT16 *)(a) = (d))
@@ -41,7 +42,7 @@ static void add_vector(int x, int y, int color, int intensity)
 	int new_y = (((ycenter - (y << 16)) >> 16) + YC);
 
 	//add_line(last_x+512, last_y+512, ((xcenter + (x << 16)) >> 16) +512, ((ycenter - (y << 16)) >> 16) + 512, intensity, color);
-	add_line(last_x + 512, 1024 - (last_y + YC), new_x, 1024 - new_y, intensity, color);
+	add_line((float) (last_x + 512), (float) (1024 - (last_y + YC)),(float)(new_x),(float)(1024 - new_y), intensity, color);
 
 	last_x = (xcenter + (x << 16)) >> 16;
 	last_y =  (ycenter - (y << 16)) >> 16;

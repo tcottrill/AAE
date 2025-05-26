@@ -3,8 +3,8 @@
 
 static const char* noise_samples[] = { 
 	"aae.zip",
-	"key.wav",
-	"error.wav",
+	//"key.wav",
+	//"error.wav",
 	"hiss.wav",
 	"psnoise.wav",
 	"flyback.wav",
@@ -27,6 +27,7 @@ static const char* guisamples[] = {
 	"explode1.wav",
 	"fire.wav",
 	 0 };
+
 
 
 static const char* asteroidsamples[] =
@@ -526,6 +527,25 @@ static const char* sundance_samples[] =
 	"ping2.wav",
 	"hatch.wav",
 	 0
+};
+
+
+/////////////// RASTER //////////////////
+
+static const char* invaders_samples[] =
+{
+	"invaders.zip",
+	"0.wav",	/* Shot/Missle */
+	"1.wav",	/* Shot/Missle */
+	"2.wav",	/* Base Hit/Explosion */
+	"3.wav",	/* Invader Hit */
+	"4.wav",	/* Fleet move 1 */
+	"5.wav",	/* Fleet move 2 */
+	"6.wav",	/* Fleet move 3 */
+	"7.wav",	/* Fleet move 4 */
+	"8.wav",	/* UFO/Saucer Hit */
+	"9.wav",	/* Bonus Base */
+	0       /* end of array */
 };
 
 #endif

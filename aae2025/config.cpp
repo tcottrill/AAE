@@ -113,12 +113,6 @@ void my_set_config_float(char* section, char* name, float val, int path)
 // This sets the global variables sx, sy, ex, ey, reset every game. as well as b1sx, b1sy, b2sx, b2sy for bezel rendering.
 void setup_video_config()
 {
-	//char buffer[MAX_PATH];
-	//GetCurrentDirectory(MAX_PATH, buffer);
-
-	//strcpy(aaepath, buffer);
-	//strcat(aaepath, "\\video.ini");
-
 	std::string temppath;
 	temppath = getpathM(0, "video.ini");
 	strcpy(aaepath, temppath.c_str());
@@ -130,37 +124,35 @@ void setup_video_config()
 	//final_render(sx,sy,ex,ey,0,0);
 	//int xmin, int xmax, int ymin, int ymax
 
-							  //For main texture rendering
-	sx = my_get_config_int((char*)driver[gamenum].name, "fullsx", 0);
-	sy = my_get_config_int((char*)driver[gamenum].name, "fullsy", 900);
-	ex = my_get_config_int((char*)driver[gamenum].name, "fullex", 900);
-	ey = my_get_config_int((char*)driver[gamenum].name, "fulley", 0);
-	//overalpha = my_get_config_float((char*)driver[gamenum].name, "overalpha", 1.0);
+	//For main texture rendering
+	sx = my_get_config_int((char*)Machine->gamedrv->name, "fullsx", 0);
+	sy = my_get_config_int((char*)Machine->gamedrv->name, "fullsy", 900);
+	ex = my_get_config_int((char*)Machine->gamedrv->name, "fullex", 900);
+	ey = my_get_config_int((char*)Machine->gamedrv->name, "fulley", 0);
+	//overalpha = my_get_config_float((char*)Machine->gamedrv->name, "overalpha", 1.0);
 
-	if (config.bezel && gamenum && config.artcrop == 0) {
-		b1sx = my_get_config_int((char*)driver[gamenum].name, "bezelsx", 0);
-		b1sy = my_get_config_int((char*)driver[gamenum].name, "bezelsy", 900);
-		b2sx = my_get_config_int((char*)driver[gamenum].name, "bezelex", 900);
-		b2sy = my_get_config_int((char*)driver[gamenum].name, "bezeley", 0);
+	if (config.bezel && gamenum && config.artcrop == 0) 
+	{
+		b1sx = my_get_config_int((char*)Machine->gamedrv->name, "bezelsx", 0);
+		b1sy = my_get_config_int((char*)Machine->gamedrv->name, "bezelsy", 900);
+		b2sx = my_get_config_int((char*)Machine->gamedrv->name, "bezelex", 900);
+		b2sy = my_get_config_int((char*)Machine->gamedrv->name, "bezeley", 0);
 		bezelzoom = 1.0;
 		bezelx = 0;
 		bezely = 0;
-		//overalpha = my_get_config_float((char*)driver[gamenum].name, "overalpha", 1.0);
+		//overalpha = my_get_config_float((char*)Machine->gamedrv->name, "overalpha", 1.0);
 	}
 
-	if (config.bezel && config.artcrop && gamenum) {
-		b1sx = my_get_config_int((char*)driver[gamenum].name, "cropsx", 0);
-		b1sy = my_get_config_int((char*)driver[gamenum].name, "cropsy", 900);
-		b2sx = my_get_config_int((char*)driver[gamenum].name, "cropex", 900);
-		b2sy = my_get_config_int((char*)driver[gamenum].name, "cropey", 0);
-		bezelzoom = my_get_config_float((char*)driver[gamenum].name, "bezcropzoom", 1.0);
-		bezelx = my_get_config_int((char*)driver[gamenum].name, "bezcropx", 0);
-		bezely = my_get_config_int((char*)driver[gamenum].name, "bezcropy", 0);
-		//overalpha = my_get_config_float((char*)driver[gamenum].name, "overalpha", 1.0);
-		//bezely=-50;
-		//overalpha=1.0;
-		//overbright=0;
-		//bezelx=-100;
+	if (config.bezel && config.artcrop && gamenum) 
+	{
+		b1sx = my_get_config_int((char*)Machine->gamedrv->name, "cropsx", 0);
+		b1sy = my_get_config_int((char*)Machine->gamedrv->name, "cropsy", 900);
+		b2sx = my_get_config_int((char*)Machine->gamedrv->name, "cropex", 900);
+		b2sy = my_get_config_int((char*)Machine->gamedrv->name, "cropey", 0);
+		bezelzoom = my_get_config_float((char*)Machine->gamedrv->name, "bezcropzoom", 1.0);
+		bezelx = my_get_config_int((char*)Machine->gamedrv->name, "bezcropx", 0);
+		bezely = my_get_config_int((char*)Machine->gamedrv->name, "bezcropy", 0);
+		//overalpha = my_get_config_float((char*)Machine->gamedrv->name, "overalpha", 1.0);
 	}
 	//strcpy(aaepath, buffer);
 	//strcat(aaepath, "\\aae.ini");
@@ -172,8 +164,8 @@ void setup_video_config()
 //SETUP CONFIGURATION DATA
 
 // New way of doing things:
-// So, for a very small subset of items, check if an item exists in a game.ini file, then load it. if not, load from the default aae.ini file.
-// If changed from the aae.ini file and you are not int he gui, save the changes to the game.ini file.
+// So, for a subset of items, check if an item exists in a game.ini file, then load it. if not, load from the default aae.ini file.
+// If changed from the aae.ini file and you are not in the gui, save the changes to the game.ini file.
 
 void setup_config(void)
 {
@@ -185,7 +177,7 @@ void setup_config(void)
 	// game.ini
 	temppath = getpathM("ini", 0);
 	temppath.append("\\");
-	temppath.append(driver[gamenum].name);
+	temppath.append(Machine->gamedrv->name);
 	temppath.append(".ini");
 	strcpy(gamepath, temppath.c_str());
 
@@ -195,7 +187,7 @@ void setup_config(void)
 	wrlog("Main AAE Path: %s", aaepath);
 	if (gamenum > 0) { wrlog("Game Config Path: %s", gamepath); }
 	//wrlog("Path Override Value: %d", is_override);
-	wrlog("Loading configuration information for %s", driver[gamenum].desc);
+	wrlog("Loading configuration information for %s", Machine->gamedrv->desc);
 	//////VIDEO///////////
 	config.samplerate = my_get_config_int("main", "samplerate", 22050);
 	config.prescale = my_get_config_int("main", "prescale", 1);
@@ -231,7 +223,7 @@ void setup_config(void)
 	config.pshiss = my_get_config_int("main", "pshiss", 0);
 	config.pokeyvol = my_get_config_int("main", "pokeyvol", 200);
 	config.mainvol = my_get_config_int("main", "mainvol", 220);
-	config.noisevol = my_get_config_int("main", "noisevol", 200);
+	config.noisevol = my_get_config_int("main", "noisevol", 50);
 	///// END OF GAME.INI AVAILABLE
 
 	config.drawzero = my_get_config_int("main", "drawzero", 0);
@@ -264,11 +256,6 @@ void setup_config(void)
 
 void setup_game_config(void)
 {
-	char tempname[255];
-	strcpy(tempname, "AAE Alpha Running ");
-	strcat(tempname, driver[gamenum].desc);
-
-	//set_window_title(tempname);
 	setup_config();
 
 	setup_video_menu();

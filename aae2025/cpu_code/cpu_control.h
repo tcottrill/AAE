@@ -20,6 +20,7 @@
 #include "cpu_6502.h"
 #include "cpu_z80.h"
 #include "cpu_6809.h"
+#include "cpu_i8080.h"
 
 
 #define NEW_INTERRUPT_SYSTEM    1
@@ -53,7 +54,7 @@
 extern cpu_z80* m_cpu_z80[MAX_CPU];
 extern cpu_6502* m_cpu_6502[MAX_CPU];
 extern cpu_6809* m_cpu_6809[MAX_CPU];
-
+extern cpu_i8080* m_cpu_i8080[MAX_CPU];
 extern int cpu_context_size;
 extern uint8_t* cpu_context[2];
 

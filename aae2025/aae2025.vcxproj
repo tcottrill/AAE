@@ -157,6 +157,7 @@
     <ClInclude Include="drivers\bwidow.h" />
     <ClInclude Include="drivers\bzone.h" />
     <ClInclude Include="drivers\cinematronics_driver.h" />
+    <ClInclude Include="drivers\invaders.h" />
     <ClInclude Include="drivers\llander.h" />
     <ClInclude Include="drivers\mhavoc.h" />
     <ClInclude Include="drivers\omegrace.h" />
@@ -180,7 +181,6 @@
     <ClInclude Include="gui\gui.h" />
     <ClInclude Include="inptport.h" />
     <ClInclude Include="joystick.h" />
-    <ClInclude Include="machine\atarigen.h" />
     <ClInclude Include="machine\earom.h" />
     <ClInclude Include="machine\mathbox.h" />
     <ClInclude Include="machine\SegaG80crypt.h" />
@@ -243,7 +243,7 @@
     <ClInclude Include="vidhrdwr\fast_poly.h" />
     <ClInclude Include="vidhrdwr\mhavoc_custom_video.h" />
     <ClInclude Include="vidhrdwr\old_mame_vecsim_dvg.h" />
-    <ClInclude Include="vidhrdwr\raster.h" />
+    <ClInclude Include="vidhrdwr\old_mame_raster.h" />
     <ClInclude Include="vidhrdwr\SegaG80vid.h" />
     <ClInclude Include="win10_win11_required_code.h">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</ExcludedFromBuild>
@@ -270,6 +270,7 @@
     <ClCompile Include="drivers\bwidow.cpp" />
     <ClCompile Include="drivers\bzone.cpp" />
     <ClCompile Include="drivers\cinematronics_driver.cpp" />
+    <ClCompile Include="drivers\invaders.cpp" />
     <ClCompile Include="drivers\llander.cpp" />
     <ClCompile Include="drivers\mhavoc.cpp" />
     <ClCompile Include="drivers\omegrace.cpp" />
@@ -287,7 +288,6 @@
     <ClCompile Include="gui\gui.cpp" />
     <ClCompile Include="inptport.cpp" />
     <ClCompile Include="Joystick.cpp" />
-    <ClCompile Include="machine\atarigen.cpp" />
     <ClCompile Include="machine\earom.cpp" />
     <ClCompile Include="machine\mathbox.cpp" />
     <ClCompile Include="machine\SegaG80crypt.cpp" />
@@ -337,7 +337,7 @@
     <ClCompile Include="vidhrdwr\fast_poly.cpp" />
     <ClCompile Include="vidhrdwr\mhavoc_custom_video.cpp" />
     <ClCompile Include="vidhrdwr\old_mame_vecsim_dvg.cpp" />
-    <ClCompile Include="vidhrdwr\raster.cpp" />
+    <ClCompile Include="vidhrdwr\old_mame_raster.cpp" />
     <ClCompile Include="vidhrdwr\SegaG80vid.cpp" />
     <ClCompile Include="win10_win11_required_code.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</ExcludedFromBuild>

@@ -80,6 +80,10 @@ void resample_wav_8(int sound_num, int new_freq);
 void resample_wav_16(int sound_num, int new_freq);
 int create_sample(int bits, bool is_stereo, int freq, int len);
 
+// Extras
+int nameToNum(const std::string name);
+std::string numToName(int num);
+int snumlookup(int snum);
 
 
 

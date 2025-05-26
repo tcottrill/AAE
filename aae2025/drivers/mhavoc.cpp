@@ -107,7 +107,11 @@ static UINT8 gamma_xmtd = 0;
 
 static UINT8 speech_write_buffer;
 static UINT8 player_1;
-int has_gamma_cpu = 1;
+
+// Version specific variables 
+int is_mhavocpe = 0;
+int has_gamma_cpu = 0;
+int has_tms5220 = 0;
 
 // Clock Variables
 static UINT8 alpha_irq_clock;
@@ -160,7 +164,7 @@ static int last_sample = 0;
 
 WRITE_HANDLER(speech_strobe_w)
 {
-	if (gamenum == MHAVOCRV)
+	if (has_tms5220)
 	{
 		tms5220_data_w(0, speech_write_buffer);
 	}
@@ -230,7 +234,7 @@ int mhavoc_sh_start(void)
 	if (has_gamma_cpu) rv = pokey_sh_start(&pokey_interface);
 	else rv = pokey_sh_start(&pokey_interface_alphaone);
 	
-	if (gamenum == MHAVOCRV) { tms5220_sh_start(&tms5220_interface); }
+	if (has_tms5220) { tms5220_sh_start(&tms5220_interface); }
 	
 	return rv;
 }
@@ -238,22 +242,27 @@ int mhavoc_sh_start(void)
 void mhavoc_sh_stop(void)
 {
 	pokey_sh_stop();
-	if (gamenum == MHAVOCRV)
+	if (has_tms5220)
 	tms5220_sh_stop();
 }
 
 void mhavoc_sh_update()
 {
 	pokey_sh_update();
-	if (gamenum == MHAVOCRV) 
+	if (has_tms5220)
 	 tms5220_sh_update();
 }
 
 void end_mhavoc()
 {
 	wrlog("End Major Havoc Called");
-	if (has_gamma_cpu == 0) { save_hi_aae(0x1800, 0x100, 0); }
+
 	mhavoc_sh_stop();
+	if (!has_gamma_cpu) { save_hi_aae(0x1800, 0x100, 0); }
+	//Reset all game specific variables.
+	is_mhavocpe = 0;
+	has_gamma_cpu = 0;
+	has_tms5220 = 0;
 }
 
 void run_reset()
@@ -356,8 +365,9 @@ WRITE_HANDLER(avg_mgo)
 	
 		// There is a method to this madness, the time for the sweep is what it should be if the game was running 30FPS instead of 50. 
 		//That's why the multiplication by 1.666
-		sweep = (float)(TIME_IN_NSEC(1500) * total_length) * driver[gamenum].cpu_freq[CPU0]; // This is the rough time for 50fps.
-		sweep = sweep * 1.666;
+		sweep = (float)(TIME_IN_NSEC(1500) * total_length) * Machine->gamedrv->cpu_freq[CPU0]; // This is the rough time for 50fps.
+		if (has_gamma_cpu)
+		sweep = sweep * 1.666; // Alpha One is slower, it actually seems to run 30fps.
 		
 		if (config.debug_profile_code) {
 			wrlog("Sweep Timer %f", sweep);
@@ -368,7 +378,7 @@ WRITE_HANDLER(avg_mgo)
 
 WRITE_HANDLER(mhavoc_out_0_w)
 {
-	if (gamenum == MHAVOCPE)
+	if (is_mhavocpe)
 	{
 		avg_set_flip_x_mh(data & 0x40);
 		avg_set_flip_y_mh(data & 0x80);
@@ -441,7 +451,7 @@ READ_HANDLER(mhavoc_port_1_r)
 	res = readinputport(1) & 0xfc;
 
 	// Bit 2 = TMS5220 ready flag
-	if (gamenum == MHAVOCRV )
+	if (has_tms5220)
 	{
 		if (!tms5220_ready_r())	res |= 0x04;
 		else
@@ -494,7 +504,7 @@ WRITE_HANDLER(mhavoc_ram_banksel_w)
 WRITE_HANDLER(mhavoc_rom_banksel_w)
 {
 	int bank[8] = { 0x10000, 0x12000, 0x14000, 0x16000, 0x18000, 0x1A000, 0x1C000, 0x1E000 };
-	if (gamenum == MHAVOCPE)
+	if (is_mhavocpe)
 	{
 		data = ((data & 1) | ((data & 2) << 1) | ((data & 4) >> 1));
 	}
@@ -597,8 +607,6 @@ void run_mhavoc()
 		watchdog_reset_w(0, 0, 0);	
 	}
 	mhavoc_sh_update();
-	
-	if (gamenum == MHAVOCRV)  tms5220_sh_update(); 
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -690,42 +698,52 @@ MEM_END
 
 /////////////////// MAIN() for program ///////////////////////////////////////////////////
 
+
+int init_mhavocpe()
+{
+	is_mhavocpe = 1;
+	init_mhavoc();
+	return 0;
+}
+
+int init_mhavoccrv()
+{
+	has_tms5220 = 1;
+	init_mhavoc();
+	return 0;
+}
+
+int init_alphone()
+{
+	has_gamma_cpu = 0;
+
+	init6502(AlphaOneRead, AlphaOneWrite, 0xffff, CPU0);
+	memset(Machine->memory_region[CPU0] + 0x1800, 0xff, 0xff);
+	//Load High Score table for Alpha One
+	load_hi_aae(0x1800, 0x100, 0);
+	// Reset app variables to start
+	run_reset();
+	//Init the Sound
+	mhavoc_sh_start();
+	//Init the video
+	mhavoc_video_init(2);
+	return 0;
+}
+
 int init_mhavoc(void)
 {
-	if (gamenum == ALPHAONE || gamenum == ALPHAONEA) has_gamma_cpu = 0; else has_gamma_cpu = 1;
+	has_gamma_cpu = 1;
 
-	total_length = 1;
-	alpha_irq_clock = 0;
-	alpha_irq_clock_enable = 1;
-	gamma_irq_clock = 0;
-	MHAVGDONE = 1;
-	alpha_data = 0;
-	alpha_rcvd = 0;
-	alpha_xmtd = 0;
-	gamma_data = 0;
-	gamma_rcvd = 0;
-	gamma_xmtd = 0;
-	player_1 = 0;
-	
-	if (has_gamma_cpu) 
-	{
-		init6502(AlphaRead, AlphaWrite, 0xffff, CPU0);
-		init6502(GammaRead, GammaWrite, 0xbfff, CPU1);
+	init6502(AlphaRead, AlphaWrite, 0xffff, CPU0);
+	init6502(GammaRead, GammaWrite, 0xbfff, CPU1);
 
-	}
-	else 
-	{
-		init6502(AlphaOneRead, AlphaOneWrite, 0xffff, CPU0);
-		memset(Machine->memory_region[CPU0] + 0x1800, 0xff, 0xff);
-		//Load High Score table for Alpha One
-		if (has_gamma_cpu == 0) { load_hi_aae(0x1800, 0x100, 0); }
-	}
+	run_reset();
+	//Init the Sound
 	mhavoc_sh_start();
-	if (has_gamma_cpu)
-		mhavoc_video_init(3);
-	else
-		mhavoc_video_init(2);
-	wrlog("MHAVOC CPU init complete");
+	//Init the video
+	mhavoc_video_init(3);
+	
+	wrlog("MHAVOC Init complete");
 	return 0;
 }
 

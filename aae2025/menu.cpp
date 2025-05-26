@@ -397,13 +397,13 @@ static MENUS soundmenu[] = {
    { "POKEY/AY VOLUME", {"NO", "YES"},
    1, 200,0,0,{0,0},MENU_FLOAT,5,0,20},
    { "AMBIENT VOLUME", {"NO", "YES"},
-   1, 200,0,0,{0,0},MENU_FLOAT,5,0,20},
+   1, 300,0,0,{0,0},MENU_FLOAT,5,0,20},
    { "HV CHATTER", {"NO", "YES"},
-   1, 300,0,0,{0,1},MENU_INT,0,0,0},
+   1, 400,1,1,{0,1},MENU_INT,0,0,1},
    { "PS HISS", {"NO", "YES"},
-   1, 400,0,0,{0,1},MENU_INT,0,0,0},
+   1, 500,1,1,{0,1},MENU_INT,0,0,1},
    { "PS NOISE",{"NO", "YES",},
-   1,500,0,0,{0,1,},MENU_INT,0,0,0},
+   1, 600,1,1,{0,1},MENU_INT,0,0,1},
    { "NONE", {"NONE", " ", " ", " "}, 0,0, 0,0,{0,0,0,0,0,0,0,0,0,0},0,0,0,0},
    //{ "NONE", {"NONE", " ", " ", " "}, 0,0, 0,0,{0,0,0,0,0,0,0,0,0,0},0,0,0,0} // Todo: understand buffer overflow here and resolve.
 };
@@ -613,8 +613,6 @@ int do_joystick_menu(int type)
 
 	if (Machine->input_ports == 0)
 		return 0;
-	//if (driver[gamenum].input_ports == 0)
-	//	return 0;
 	in = inputport_defaults;
 
 	total = 0;
@@ -733,12 +731,10 @@ int do_gamejoy_menu(int type)
 	int joyindex;
 
 	if (Machine->input_ports == 0)
-		//if (driver[gamenum].input_ports == 0)
-		return 0;
+			return 0;
 
 	in = Machine->input_ports;
-	//in = driver[gamenum].input_ports;
-
+	
 	total = 0;
 	while (in->type != IPT_END)
 	{
@@ -934,8 +930,7 @@ void do_gamekey_menu(int type)
 	wrlog("---------------CALLING show game keys");
 
 	in = Machine->input_ports;
-	//in = driver[gamenum].input_ports;
-	total = 0;
+    total = 0;
 	while (in->type != IPT_END)
 	{
 		if (input_port_name(in) != 0 && input_port_key(in) != IP_KEY_NONE)
@@ -1025,8 +1020,7 @@ void do_dipswitch_menu()
 
 	sel = menuitem;//selected - 1;
 	in = Machine->input_ports;
-	//in = driver[gamenum].input_ports;
-
+	
 	total = 0;
 	while (in->type != IPT_END)
 	{
@@ -1255,12 +1249,10 @@ int do_mouse_menu()
 	sel = menuitem;//selected - 1;
 
 	if (Machine->input_ports == 0)
-		//if (driver[gamenum].input_ports == 0)
 		return 0;
 
 	in = Machine->input_ports;
-	//in = driver[gamenum].input_ports;
-
+	
 	/* Count the total number of analog controls */
 	total = 0;
 	while (in->type != IPT_END)
@@ -1530,25 +1522,26 @@ void check_sound_menu()
 {
 	if ((soundmenu[menuitem].current) != currentval) { soundmenu[menuitem].current = currentval; }
 
-	if ((menuitem - 1) == 0)
+	if ((menuitem) == 0)
 	{
 		config.mainvol = (currentval * 12.75);
 		//set_volume((int)(currentval * 12.75), 0);
 		//play_sample(game_sounds[num_samples-5],currentval,128,1000,0);
 	} //Main Vol
-	if ((menuitem - 1) == 1)
+	if ((menuitem ) == 1)
 	{
 		config.pokeyvol = (currentval * 12.75);
 		//play_sample(game_sounds[num_samples-5],currentval,128,1000,0);
 	} //Pokey Vol
-	if ((menuitem - 1) == 2)
+	if ((menuitem) == 2)
 	{
 		config.noisevol = (currentval * 12.75);
 		//play_sample(game_sounds[num_samples-5],currentval,128,1000,0);
 	}//Noise Vol
-	if ((menuitem - 1) == 3) { config.hvnoise = currentval; }//setup_ambient(VECTOR);}
-	if ((menuitem - 1) == 4) { config.psnoise = currentval; }//setup_ambient(VECTOR);}
-	if ((menuitem - 1) == 5) { config.pshiss = currentval; }//setup_ambient(VECTOR);}
+
+	if ((menuitem ) == 3) { config.hvnoise = currentval; setup_ambient(VECTOR);}
+	if ((menuitem) == 4) { config.psnoise = currentval; setup_ambient(VECTOR); }
+	if ((menuitem) == 5) { config.pshiss = currentval; setup_ambient(VECTOR);}
 }
 
 void setup_sound_menu()
@@ -1561,6 +1554,7 @@ void setup_sound_menu()
 	soundmenu[3].current = config.hvnoise;
 	soundmenu[4].current = config.psnoise;
 	soundmenu[5].current = config.pshiss;
+
 	while (soundmenu[x].NumOptions != 0) { soundmenu[x].Changed = soundmenu[x].current; x++; }//SET TO DETECT CHANGED VALUES
 }
 
@@ -1598,12 +1592,12 @@ void save_mouse_menu()
 */
 void set_points_lines()
 {
-	//config.linewidth = glmenu[10].step * (glmenu[10].current);
-	//config.pointsize = glmenu[11].step * (glmenu[11].current);
+	config.linewidth = glmenu[10].step * (glmenu[10].current);
+	config.pointsize = glmenu[11].step * (glmenu[11].current);
 
 	//Change this to be set in the gl code.
-	//glLineWidth(config.linewidth);//linewidth
-	//glPointSize(config.pointsize);//pointsize
+	glLineWidth(config.linewidth);//linewidth
+	glPointSize(config.pointsize);//pointsize
 }
 
 void setup_video_menu()
@@ -1744,8 +1738,8 @@ void check_video_menu()
 	if ((menuitem - 1) == 6) { config.widescreen = currentval; } //Widescreen_calc(); //Recalculate Widescreen value
 	if ((menuitem - 1) == 7) { config.vectrail = currentval; }
 	if ((menuitem - 1) == 8) { config.vecglow = currentval; }
-	if ((menuitem - 1) == 9) { config.linewidth = glmenu[10].step * currentval; }
-	if ((menuitem - 1) == 10) { config.pointsize = glmenu[11].step * currentval; }
+	if ((menuitem - 1) == 9) { config.linewidth = glmenu[10].step * currentval; set_points_lines();	}
+	if ((menuitem - 1) == 10) { config.pointsize = glmenu[11].step * currentval; set_points_lines(); }
 	if ((menuitem - 1) == 11) { config.gain = currentval; }
 	if ((menuitem - 1) == 12) { if (art_loaded[0]) config.artwork = currentval; }
 	if ((menuitem - 1) == 13) { if (art_loaded[1])config.overlay = currentval; }

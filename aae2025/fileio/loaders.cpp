@@ -21,7 +21,9 @@
 
 const char* artpath = "artwork\\";
 const char* samplepath = "samples\\";
-//CSHA1 sha1;
+
+unsigned char* membuffer;
+
 
 // TODO: Nope. I don't like this. TODO: Move everything back to aae_fileio, and add the newer rom loading code from aae2016
 
@@ -114,7 +116,7 @@ int load_hi_aae(int start, int size, int image)
 
 	fullpath = getpathM("hi", 0);
 	fullpath.append("\\");
-	fullpath.append(driver[gamenum].name);
+	fullpath.append(Machine->gamedrv->name);
 	fullpath.append(".aae");
 
 
@@ -135,7 +137,7 @@ int save_hi_aae(int start, int size, int image)
 	std::string fullpath;
 	fullpath = getpathM("hi", 0);
 	fullpath.append("\\");
-	fullpath.append(driver[gamenum].name);
+	fullpath.append(Machine->gamedrv->name);
 	fullpath.append(".aae");
 		
 	wrlog("Saving Hiscore table / nvram");
@@ -246,7 +248,7 @@ void snapshot()
 	//Make Full PATH
 	// Add test here to make sure the SNAP Directory exists.
 	strcat(temppath, "snap\\");
-	strcat(temppath, driver[gamenum].name);
+	strcat(temppath, Machine->gamedrv->name);
 	strcat(temppath, "_");
 	strcat(temppath, buf);
 	strcat(temppath, ".png");

@@ -18,6 +18,8 @@
 
 #pragma warning( disable : 4996 4244)
 
+
+unsigned char vec_ram[0x8000]; // Only used by aztarac and quantum, review. 
 UINT8* tempest_colorram;
 UINT16 quantum_colorram[0x20];
 UINT16* quantum_vectorram;

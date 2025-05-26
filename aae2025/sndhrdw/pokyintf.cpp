@@ -42,8 +42,8 @@ int pokey_sh_start(struct POKEYinterface* intfa)
 
 	intf = intfa;
 
-	buffer_len = config.samplerate / driver[gamenum].fps;
-	emulation_rate = buffer_len * driver[gamenum].fps;
+	buffer_len = config.samplerate / Machine->gamedrv->fps;
+	emulation_rate = buffer_len * Machine->gamedrv->fps;
 	sample_pos = 0;
 
 	//channel = get_play_channels(1);
@@ -68,7 +68,7 @@ int pokey_sh_start(struct POKEYinterface* intfa)
 		/* Seed the values */
 		pokey_random[i] = rand();
 
-	stream_start(0, 0, 16, driver[gamenum].fps);
+	stream_start(0, 0, 16, Machine->gamedrv->fps);
 	
 	return 0;
 }

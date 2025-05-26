@@ -162,6 +162,7 @@ int OpenGL2Enable()
 	wglMakeCurrent(hDC, hRC);
 
 	//Enable GLEW
+	glewExperimental = true;
 	GLenum error = glewInit(); // Enable GLEW
 	if (error != GLEW_OK) // If GLEW fails
 	{

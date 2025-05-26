@@ -57,12 +57,12 @@ void timer_init(void)
 	
 	//Add count for all cpu's here with driver structure
 
-	while (driver[gamenum].cpu_freq[x] && x < MAX_CPU)
+	while (Machine->gamedrv->cpu_freq[x] && x < MAX_CPU)
 	{
-		sec_to_cycles[x] = driver[gamenum].cpu_freq[x];
+		sec_to_cycles[x] = Machine->gamedrv->cpu_freq[x];
 		cycles_to_sec[x] = 1.0 / sec_to_cycles[x];
 		if (VERBOSE) {
-			wrlog("Init timing for CPU #%d CPUClock Value %d", x, driver[gamenum].cpu_freq[x]);
+			wrlog("Init timing for CPU #%d CPUClock Value %d", x, Machine->gamedrv->cpu_freq[x]);
 		}
 		x++;
 	}
@@ -84,9 +84,9 @@ int timer_set(double duration, int param, int data, void (*callback)(int))
 		if (timer[x].enabled == 0)
 		{
 			timer[x].cpu = (int8_t)param & 0x0f;
-			timer[x].period = driver[gamenum].cpu_freq[(int8_t)param & 0x0f] * duration;
+			timer[x].period = Machine->gamedrv->cpu_freq[(int8_t)param & 0x0f] * duration;
 
-			if (VERBOSE) { wrlog("Timer %d duration %f + Current: %d  cpuclock %d", x, timer[x].period, cpu_getcycles(timer[x].cpu), driver[gamenum].cpu_freq[(int8_t)param & 0x0f] ); }
+			if (VERBOSE) { wrlog("Timer %d duration %f + Current: %d  cpuclock %d", x, timer[x].period, cpu_getcycles(timer[x].cpu), Machine->gamedrv->cpu_freq[(int8_t)param & 0x0f] ); }
 			timer[x].enabled = 1;
 			// If it's a one-shot timer, make sure to set that.
 			if (param > 0xff)
@@ -96,7 +96,7 @@ int timer_set(double duration, int param, int data, void (*callback)(int))
 				// This isn't how tempest works in the real world, but we need a frame to end somewhere.
 				// This should be cycles reemaining??? Like, get_cycles_remaining();
 				//int cycles = (Machine->drv->cpu[timer[x].cpu].cpu_clock / Machine->drv->frames_per_second);
-				//int cycles = (driver[gamenum].cpu_freq [timer[x].cpu] / driver[gamenum].fps);
+				//int cycles = (Machine->gamedrv->cpu_freq [timer[x].cpu] / Machine->gamedrv->fps);
 				//if (timer[x].period > cycles)
 			//	{
 				//	timer[x].period = cycles; // 20 picked randomly!

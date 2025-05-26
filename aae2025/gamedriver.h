@@ -32,13 +32,14 @@
 #include "quantum.h"
 #include "llander.h"
 #include "aztarac.h"
+#include "invaders.h"
 #include "earom.h"
 
 
 struct AAEDriver driver[] =
 {
 		{
-		"aae", "AAE GUI",  rom_asteroid,
+		"aae", "AAE GUI",  0,
 		&init_gui,&run_gui, &end_gui,
 		input_ports_gui,
 		guisamples, noart,
@@ -48,7 +49,7 @@ struct AAEDriver driver[] =
 		{0,0,0,0},
 		{0,0,0,0},
 		{0,0,0,0},
-		60, VIDEO_TYPE_RASTER | VECTOR_USES_COLOR, ORIENTATION_DEFAULT,
+		60, VIDEO_TYPE_RASTER, ORIENTATION_DEFAULT,
 		1024 , 768, {0, 1040, 0, 820},
 		0,0,0,0,
 		0, 0,
@@ -192,8 +193,6 @@ struct AAEDriver driver[] =
 		0x4000, 0x800,
 		atari_vg_earom_handler
 		},
-
-		
 		{
 		"llander1", "Lunar Lander (Revision 1)", rom_llander1,
 		&init_llander, &run_llander,&end_llander,
@@ -934,7 +933,7 @@ struct AAEDriver driver[] =
 		},
 		{
 		"mhavocrv", "Major Havoc (Return To VAX - Mod by Jeff Askey)", rom_mhavocrv,
-		&init_mhavoc,&run_mhavoc,&end_mhavoc,
+		& init_mhavoccrv,&run_mhavoc,&end_mhavoc,
 		input_ports_mhavoc,
 		0, noart,
 		{CPU_M6502,CPU_M6502,CPU_NONE,CPU_NONE},
@@ -952,7 +951,7 @@ struct AAEDriver driver[] =
 		},
 		{
 		"mhavocpe", "Major Havoc (The Promised End 1.01 adpcm)", rom_mhavocpe,
-		&init_mhavoc,&run_mhavoc,&end_mhavoc,
+		& init_mhavocpe,&run_mhavoc,&end_mhavoc,
 		input_ports_mhavoc,
 		mhavocpe_samples, noart,
 		{CPU_M6502,CPU_M6502,CPU_NONE,CPU_NONE},
@@ -988,7 +987,7 @@ struct AAEDriver driver[] =
 		},
 		{
 		"alphaone", " Alpha One (Major Havoc Prototype - 3 Lives)", rom_alphaone,
-		&init_mhavoc,&run_mhavoc,&end_mhavoc,
+		& init_alphone,&run_mhavoc,&end_mhavoc,
 		input_ports_alphaone,
 		0, noart,
 		{CPU_M6502,CPU_NONE,CPU_NONE,CPU_NONE},
@@ -1006,7 +1005,7 @@ struct AAEDriver driver[] =
 		},
 		{
 		"alphaonea", " Alpha One (Major Havoc Prototype - 5 Lives)", rom_alphaonea,
-		&init_mhavoc,&run_mhavoc,&end_mhavoc,
+		& init_alphone,&run_mhavoc,&end_mhavoc,
 		input_ports_alphaone,
 		0, noart,
 		{CPU_M6502,CPU_NONE,CPU_NONE,CPU_NONE},
@@ -1398,6 +1397,40 @@ struct AAEDriver driver[] =
 		0,0,0,0,
 		0, 0,
 		0x0, 0x2000,aztarac_nvram_handler
+		},
+		{
+		"invaders", "Space Invaders", rom_invaders,
+		&init_invaders,&run_invaders,&end_invaders,
+		input_ports_invaders,
+		invaders_samples, invaders_art,
+		{CPU_8080,CPU_NONE,CPU_NONE,CPU_NONE},
+		{2000000,0,0,0},
+		{100,0,0,0},
+		{2,0,0,0},
+		{INT_TYPE_INT,0,0,0},
+		{&invaders_interrupt,0,0,0},
+		60,VIDEO_TYPE_RASTER | VECTOR_USES_OVERLAY1, ORIENTATION_ROTATE_270,
+		32 * 8, 32 * 8, { 0 * 8, 32 * 8 - 1, 0 * 8, 28 * 8 - 1 },
+		0, 21 / 3, 0, init_palette,
+		0,0, // HI Score Handling
+		0, 0, 0 // Vector, NVRAM
+		},
+		{
+		"invaddlx", "Space Invaders Deluxe", rom_invaddlx,
+		&init_invaddlx,&run_invaders,&end_invaders,
+		input_ports_invaddlx,
+		invaders_samples, invaddlx_art,
+		{CPU_8080,CPU_NONE,CPU_NONE,CPU_NONE},
+		{2000000,0,0,0},
+		{100,0,0,0},
+		{2,0,0,0},
+		{INT_TYPE_INT,0,0,0},
+		{&invaders_interrupt,0,0,0},
+		60,VIDEO_TYPE_RASTER | VECTOR_USES_OVERLAY1, ORIENTATION_ROTATE_270,
+		32 * 8, 32 * 8, { 0 * 8, 32 * 8 - 1, 0 * 8, 28 * 8 - 1 },
+		0, 21 / 3, 0, init_palette,
+		0,0, // HI Score Handling
+		0, 0, 0 // Vector, NVRAM
 		},
 
 		{ 0,0,0,0,0,0,0,0,0,0}// end of array

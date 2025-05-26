@@ -18,6 +18,7 @@
 
 #define VEC_SHIFT  16
 
+extern unsigned char vec_ram[0x8000];
 extern UINT8* tempest_colorram;
 extern UINT16 quantum_colorram[0x20];
 extern UINT16* quantum_vectorram;

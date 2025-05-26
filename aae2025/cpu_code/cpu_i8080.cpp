@@ -1,6 +1,7 @@
 
 #include "cpu_i8080.h"
 #include "log.h"
+#include <cmath>
 
 #pragma warning( disable : 4244 )
 
@@ -362,10 +363,14 @@ int cpu_i8080::exec(int cycles)
 	uint16_t temp16;
 	uint32_t temp32;
 
-	while (cycles > 0) 	{
+	while (cycles > 0) 	
+	{
+
+		int last_cycles = cycles;
+
 		opcode = i8080_read(reg_PC++);
-		
-		switch (opcode) {
+		switch (opcode) 
+		{
 		case 0x3A: //LDA a - load A from memory
 			temp16 = (uint16_t)i8080_read(reg_PC) | ((uint16_t)i8080_read(reg_PC + 1) << 8);
 			reg8[A] = i8080_read(temp16);
@@ -973,11 +978,11 @@ int cpu_i8080::exec(int cycles)
 			wrlog("UNRECOGNIZED INSTRUCTION @ %04Xh: %02X\n", reg_PC - 1, opcode);
 			exit(0);
 #endif
-			// update clock cycles
-			clocktickstotal += cycles;
-			if (clocktickstotal > 0xfffffff) clocktickstotal = 0;
+			
 		}
-
+		// update clock cycles
+		clocktickstotal += abs((cycles - last_cycles));
+	  if (clocktickstotal > 0xfffffff) clocktickstotal = 0;
 	}
 	//cycles, clockticks, same diff
 	return cycles;

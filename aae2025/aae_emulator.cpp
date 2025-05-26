@@ -38,6 +38,8 @@
 #include "mixer.h"
 #include <string>
 
+#include "old_mame_raster.h"
+
 //New 2024
 #include "os_basic.h"
 #include <chrono>
@@ -63,6 +65,7 @@ int hiscoreloaded;
 int show_fps = 0;
 FpsClass* m_frame; //For frame counting. Prob needs moved out of here really.
 
+glist gamelist[256];
 extern int leds_status;
 
 // M.A.M.E. (TM) Variables for testing
@@ -92,6 +95,248 @@ struct { const char* desc; int x, y; } gfx_res[] = {
 
 double gametime = 0;// = TimerGetTimeMS();
 double starttime = 0;
+
+///////////////////////////////////////  RASTER CODE START  ////////////////////////////////////////////////////
+// This is only a test. Trying out new things. 
+
+int vector_game;
+int use_dirty;
+
+//OSD VIDEO THINGS
+int game_width = 0;
+int game_height = 0;
+int game_attributes = 0;
+float vid_scale = 3.0;
+
+int gfx_mode;
+int gfx_width;
+int gfx_height;
+
+unsigned char current_palette[640][3];
+//static unsigned char current_background_color;
+//static PALETTE adjusted_palette;
+
+//From MAME .30 for VH Hardware
+#define MAX_COLOR_TUPLE 16      /* no more than 4 bits per pixel, for now */
+#define MAX_COLOR_CODES 256     /* no more than 256 color codes, for now */
+static unsigned char remappedtable[MAX_GFX_ELEMENTS * MAX_COLOR_TUPLE * MAX_COLOR_CODES];
+
+//Move to Raster
+void osd_modify_pen(int pen, unsigned char red, unsigned char green, unsigned char blue)
+{
+	if (current_palette[pen][0] != red ||
+			current_palette[pen][1] != green ||
+			current_palette[pen][2] != blue)
+	{
+	 current_palette[pen][0] = red;
+	 current_palette[pen][1] = green;
+	 current_palette[pen][2] = blue;
+
+	//dirtycolor[pen] = 1;
+   }
+}
+
+//Move to Raster
+void osd_get_pen(int pen, unsigned char* red, unsigned char* green, unsigned char* blue)
+{
+	*red = current_palette[pen][0];
+	*green = current_palette[pen][1];
+	*blue = current_palette[pen][2];
+}
+
+/* Create a display screen, or window, large enough to accomodate a bitmap */
+/* of the given dimensions. Attributes are the ones defined in driver.h. */
+/* palette is an array of 'totalcolors' R,G,B triplets. The function returns */
+/* in *pens the pen values corresponding to the requested colors. */
+/* Return a osd_bitmap pointer or 0 in case of error. */
+struct osd_bitmap* osd_create_display(int width, int height, unsigned int totalcolors,
+	const unsigned char* palette, unsigned char* pens, int attributes)
+{
+	//	int i;
+
+		//if (errorlog)
+	wrlog("New Display width %d, height %d", width, height);
+
+	/* Look if this is a vector game */
+	if (Machine->drv->video_attributes & VIDEO_TYPE_VECTOR)
+	{
+		wrlog("Init: Vector game starting");
+		vector_game = 1;
+		//VECTOR_START();
+	}
+	else
+		vector_game = 0;
+
+	/* Is the game using a dirty system? */
+	if ((Machine->drv->video_attributes & VIDEO_SUPPORTS_DIRTY))
+		use_dirty = 1;
+	else
+		use_dirty = 0;
+
+	//select_display_mode(); //I need to add this
+
+	if (vector_game)
+	{
+		//use_double = 1;
+		/* center display */
+	}
+	else /* center display based on visible area */
+	{
+		struct rectangle vis = Machine->drv->visible_area;
+	}
+
+	game_width = width;
+	game_height = height;
+	game_attributes = attributes;
+
+	//Create the main bitmap screen
+	main_bitmap = osd_create_bitmap(width + 2, height + 2);
+	wrlog("Main Bitmap Created");
+	if (!main_bitmap)
+	{
+		wrlog("Bitmap create failed, why?");
+		return 0;
+	}
+	wrlog("exiting create display");
+	return main_bitmap;
+}
+
+static void vh_close(void)
+{
+	int i;
+
+	for (i = 0; i < MAX_GFX_ELEMENTS; i++) freegfx(Machine->gfx[i]);
+	free(Machine->pens);
+	//osd_close_display();
+}
+
+static int vh_open(void)
+{
+	int i;
+	unsigned char* palette;
+	unsigned char* colortable = nullptr;
+	unsigned char convpalette[3 * MAX_PENS];
+	unsigned char* convtable;
+
+	wrlog("Running vh_open");
+
+	wrlog("MIN Y:%d ", Machine->drv->visible_area.min_y);
+	wrlog("MIN X:%d ", Machine->drv->visible_area.min_x);
+	wrlog("MAX Y:%d ", Machine->drv->visible_area.max_y);
+	wrlog("MAX x:%d ", Machine->drv->visible_area.max_x);
+
+	wrlog("1");
+	convtable = (unsigned char*)malloc(MAX_GFX_ELEMENTS * MAX_COLOR_TUPLE * MAX_COLOR_CODES);
+	if (!convtable) return 1;
+
+	for (i = 0; i < MAX_GFX_ELEMENTS; i++) Machine->gfx[i] = 0;
+
+	wrlog("2");
+	/* convert the gfx ROMs into character sets. This is done BEFORE calling the driver's */
+	/* convert_color_prom() routine because it might need to check the Machine->gfx[] data */
+	
+	if (Machine->gamedrv->gfxdecodeinfo)
+	{
+			for (i = 0; i < MAX_GFX_ELEMENTS && Machine->gamedrv->gfxdecodeinfo[i].memory_region != -1; i++)
+		{
+			if ((Machine->gfx[i] = decodegfx(Machine->memory_region[Machine->gamedrv->gfxdecodeinfo[i].memory_region]
+				+ Machine->gamedrv->gfxdecodeinfo[i].start,
+				Machine->gamedrv->gfxdecodeinfo[i].gfxlayout)) == 0)
+			{
+				vh_close();
+				free(convtable);
+				return 1;
+			}
+			wrlog("I here at gfx convert is %d, memregion is %d", i, Machine->gamedrv->gfxdecodeinfo[i].memory_region);
+			Machine->gfx[i]->colortable = &remappedtable[Machine->gamedrv->gfxdecodeinfo[i].color_codes_start];
+			Machine->gfx[i]->total_colors = Machine->gamedrv->gfxdecodeinfo[i].total_color_codes;
+			wrlog("Colortable here is remap table at is %d,total color codes is %d", Machine->gamedrv->gfxdecodeinfo[i].color_codes_start, Machine->gamedrv->gfxdecodeinfo[i].total_color_codes);
+		}
+	}
+	wrlog("3");
+	//Create a default pallet
+	palette = (unsigned char*)malloc(MAX_GFX_ELEMENTS * MAX_COLOR_TUPLE * MAX_COLOR_CODES);
+
+	for (int x = 0; x < (MAX_GFX_ELEMENTS * MAX_COLOR_TUPLE * MAX_COLOR_CODES); x++)
+	{
+		palette[x] = 1;
+	}
+	/* convert the palette */
+	/* now the driver can modify the default values if it wants to. */
+	if (Machine->drv->vh_convert_color_prom)
+	{
+		(*Machine->drv->vh_convert_color_prom)(convpalette, convtable, memory_region(REGION_PROMS));
+		palette = convpalette;
+		colortable = convtable;
+	}
+	
+	wrlog("4");
+	/* create the display bitmap, and allocate the palette */
+	if ((Machine->scrbitmap = osd_create_display(
+		Machine->gamedrv->screen_width, Machine->gamedrv->screen_height, Machine->gamedrv->total_colors,
+		palette, Machine->pens, Machine->gamedrv->video_attributes)) == 0)
+	{
+		wrlog("Why is this returning?");
+		free(convtable);
+		exit(1);
+	}
+	else
+	{
+		wrlog("Created Display surface, Width: %d Height: %d", Machine->gamedrv->screen_width, Machine->gamedrv->screen_height);
+	}
+	/* initialize the palette */
+	for (i = 0; i < MAX_COLOR_CODES; i++)
+	{
+		current_palette[i][0] = current_palette[i][1] = current_palette[i][2] = 0;
+	}
+	/* fill the palette starting from the end, so we mess up badly written */
+	/* drivers which don't go through Machine->pens[]
+	NOT DOING THIS, I need to be able to access the palette directly!!
+	*/
+	for (i = 0; i < MAX_PENS; i++) //totalcolors
+	{
+		Machine->pens[i] = i;// 255 - i;
+	}
+
+	wrlog("TotalColors here is %d", Machine->gamedrv->total_colors);
+	for (i = 0; i < Machine->gamedrv->total_colors; i++)
+	{
+		current_palette[Machine->pens[i]][0] = palette[3 * i];
+		current_palette[Machine->pens[i]][1] = palette[3 * i + 1];
+		current_palette[Machine->pens[i]][2] = palette[3 * i + 2];
+	}
+
+	wrlog("Color Table Len %d", Machine->gamedrv->color_table_len);
+	for (i = 0; i < Machine->gamedrv->color_table_len; i++)
+		remappedtable[i] = Machine->pens[colortable[i]];
+
+	//Fix code below so it works
+	/*
+	// free memory regions allocated with REGIONFLAG_DISPOSE (typically gfx roms)
+	for (region = 0; region < MAX_MEMORY_REGIONS; region++)
+	{
+		if (Machine->memory_region_type[region] & REGIONFLAG_DISPOSE)
+		{
+			int i;
+
+			// invalidate contents to avoid subtle bugs
+			for (i = 0; i < memory_region_length(region); i++)
+				memory_region(region)[i] = rand();
+			free(Machine->memory_region[region]);
+			Machine->memory_region[region] = 0;
+		}
+	}
+	*/
+	/* free the graphics ROMs, they are no longer needed */
+	//free(Machine->memory_region[REGION_GFX1]);
+	//Machine->memory_region[REGION_GFX1] = 0;
+
+	free(convtable);
+	wrlog("Returning from vh_open");
+	return 0;
+}
+
+///////////////////////////////////////  RASTER CODE END    ////////////////////////////////////////////////////
 
 /*************************************
  *
@@ -591,26 +836,18 @@ void run_game(void)
 
 	EnumDisplaySettings(NULL, ENUM_CURRENT_SETTINGS, &dvmd);
 
+	// ------------Setup all the aliases for Machine, gamedrv, drv, etc. -------------
+	run_a_game(gamenum);
+
 	setup_game_config();
 	sanity_check_config();
-	wrlog("Running game %s", driver[gamenum].desc);
+	wrlog("Running game %s", Machine->gamedrv->desc);
 
 	//Check for setting greater then screen availability
 	if (config.screenh > cy || config.screenw > cx)
 	{
 		allegro_message("MESSAGE", "Warning: \nphysical size smaller then config setting");
 	}
-
-	//if (res_reset)
-	//{
-	wrlog("OpenGL Init");
-	init_gl();
-	end_gl();   //Clean up any stray textures
-	//Reinit OpenGl
-//}
-//else
-	// TODO: Revisit THis
-	texture_reinit(); //This cleans up the FBO textures preping them for reuse.
 
 	//////////////////////////////////////////////////////////////INITIAL VARIABLES SETUP ///////////////////////////////////////////////////
 	options.cheat = 1;
@@ -620,7 +857,7 @@ void run_game(void)
 
 	config.mainvol *= 12.75;
 	config.pokeyvol *= 12.75; //Adjust from menu values
-	config.noisevol *= 12.75;
+	//config.noisevol *= 12.75;
 
 	clamp(config.mainvol);
 	clamp(config.pokeyvol);
@@ -643,22 +880,24 @@ void run_game(void)
 	art_loaded[2] = 0;
 	art_loaded[3] = 0;
 
-	run_a_game(gamenum);
-	// Wait, what? We are reloading, now????
-
 	init_machine();
 	reset_memory_tracking(); // Before loading Anything!!!
 	//////////////////////////////////////////////////////////////END VARIABLES SETUP ///////////////////////////////////////////////////
-	if (gamenum) {
-		goodload = load_roms(driver[gamenum].name, driver[gamenum].rom);
+	if (Machine->gamedrv->rom )
+	{
+		goodload = load_roms(Machine->gamedrv->name, Machine->gamedrv->rom);
 		if (goodload == EXIT_FAILURE) {
-			wrlog("Rom loading failure, exiting..."); have_error = 10; gamenum = 0;
+			wrlog("Rom loading failure, exiting..."); 
+			have_error = 10; 
+			gamenum = 0;
 			if (!in_gui) { exit(1); }
-		}
+			}
 
-		// TODO: Add some error checking here please.
-		load_artwork(driver[gamenum].artwork);
-		resize_art_textures();
+		if (Machine->gamedrv->artwork)
+		{
+			load_artwork(Machine->gamedrv->artwork);
+			resize_art_textures();
+		}
 	}
 
 	setup_video_config();
@@ -668,43 +907,62 @@ void run_game(void)
 	frameavg = 0; fps_count = 0; frames = 0;
 	//////////////////////////
 
-	millsec = (double)1000 / (double)driver[gamenum].fps;
+	millsec = (double)1000 / (double) Machine->gamedrv->fps;
 
-	mixer_init(config.samplerate, driver[gamenum].fps);
+	mixer_init(config.samplerate, Machine->gamedrv->fps);
 
 	// Load samples if the game has any. This needs to move!
-	if (driver[gamenum].game_samples)
+	if (Machine->gamedrv->game_samples)
 	{
-		goodload = read_samples(driver[gamenum].game_samples, 0);
+		goodload = read_samples(Machine->gamedrv->game_samples, 0);
 		if (goodload == EXIT_FAILURE) { wrlog("Samples loading failure, please check error output for details..."); }
 	}
 
 	//Now load the Ambient and menu samples
 	// TODO: This has been disabled for now. !!!
-	//goodload = read_samples(noise_samples, 1);
-	//if (!goodload) { wrlog("Noise Samples loading failure, not critical, continuing."); }
-	//voice_init(num_samples); //INITIALIZE SAMPLE VOICES
+	// TODO: Add this back as a separate routine, we can do this now with the new sound engine!!!!!!
+	
+	
+	goodload = read_samples(noise_samples, 1);
+	if (goodload == EXIT_FAILURE) { wrlog("Noise Samples loading failure, not critical, continuing."); }
+
 	wrlog("Number of samples for this game is %d", num_samples);
-	// RE-ADD WHEN ALLEGRO REMOVED AND SOUND ENGINE CHANGED.
-	//setup_ambient(VECTOR);
+	
+	wrlog("Loaded sample number here is %d", nameToNum("flyback"));
+	wrlog("Loaded sample NAME here is %s", numToName(7));
+
+	setup_ambient(VECTOR);
 	// Setup for the first game.
 	wrlog("Initializing Game");
 	wrlog("Loading InputPort Settings");
 	load_input_port_settings();
 	init_cpu_config(); ////////////////////-----------
-	driver[gamenum].init_game();
+
+	//Run this before Driver Init. 
+	if (!(Machine->gamedrv->video_attributes & VIDEO_TYPE_VECTOR))
+	{
+		vh_open();
+	}
+			
+	Machine->gamedrv->init_game();
 
 	hiscoreloaded = 0;
 
 	//If the game uses NVRAM, initalize/load it. . This code is from M.A.M.E. (TM)
-	if (driver[gamenum].nvram_handler)
+	if (Machine->gamedrv->nvram_handler)
 	{
 		void* f;
 
 		f = osd_fopen(Machine->gamedrv->name, 0, OSD_FILETYPE_NVRAM, 0);
-		(*driver[gamenum].nvram_handler)(f, 0);
+		(*Machine->gamedrv->nvram_handler)(f, 0);
 		if (f) osd_fclose(f);
 	}
+
+	wrlog("OpenGL Init");
+	init_gl();
+	end_gl();
+	// TODO: Revisit THis
+	texture_reinit(); //This cleans up the FBO textures preping them for reuse.
 
 	wrlog("\n\n----END OF INIT -----!\n\n");
 	//reset_for_new_game(gamenum, 0);
@@ -722,11 +980,20 @@ void emulator_run()
 		wrlog("Start of Frame");
 	}
 	// Load High Score
-	if (hiscoreloaded == 0 && driver[gamenum].hiscore_load)
-		hiscoreloaded = (*driver[gamenum].hiscore_load)();
+	if (hiscoreloaded == 0 && Machine->gamedrv->hiscore_load)
+		hiscoreloaded = ((*Machine->gamedrv->hiscore_load))();
 
 	// Setup for rendering a frame.
-	set_render();
+	if (Machine->drv->video_attributes & VIDEO_TYPE_VECTOR)
+	{
+		set_render();
+	}
+	else
+	{
+		//set_render_raster();
+		set_render();
+	}
+	
 
 	auto start = chrono::steady_clock::now();
 
@@ -740,7 +1007,7 @@ void emulator_run()
 			wrlog("Calling CPU Run");
 		}
 		cpu_run();
-		if (driver[gamenum].run_game)driver[gamenum].run_game();
+		if (Machine->gamedrv->run_game) Machine->gamedrv->run_game();
 	}
 
 	auto end = chrono::steady_clock::now();
@@ -748,7 +1015,7 @@ void emulator_run()
 	if (config.debug_profile_code) {
 		wrlog("Profiler: CPU Time: %f ", chrono::duration <double, milli>(diff).count());
 	}
-	// Complete and display the rendered frame.
+	// Complete and display the rendered frame after all video updates.
 	render();
 
 	msg_loop();
@@ -919,17 +1186,17 @@ void emulator_end()
 	wrlog("Emulator End Called.");
 
 	// If we're using high scores, write them to disk.
-	if (hiscoreloaded != 0 && driver[gamenum].hiscore_save)
-		(*driver[gamenum].hiscore_save)();
+	if (hiscoreloaded != 0 && Machine->gamedrv->hiscore_save)
+		(*Machine->gamedrv->hiscore_save)();
 
 	//If the game uses NVRAM, save it. This code is from M.A.M.E. (TM)
-	if (driver[gamenum].nvram_handler)
+	if (Machine->gamedrv->nvram_handler)
 	{
 		void* f;
 
 		if ((f = osd_fopen(Machine->gamedrv->name, 0, OSD_FILETYPE_NVRAM, 1)) != 0)
 		{
-			(*driver[gamenum].nvram_handler)(f, 1);
+			(*Machine->gamedrv->nvram_handler)(f, 1);
 			osd_fclose(f);
 		}
 	}
@@ -939,7 +1206,7 @@ void emulator_end()
 	// Free samples??
 	// Free textures??
 	//END-----------------------------------------------------
-	if (driver[gamenum].end_game)driver[gamenum].end_game();
+	if (Machine->gamedrv->end_game) Machine->gamedrv->end_game();
 	save_input_port_settings();
 	if (Machine->input_ports) { free(Machine->input_ports); wrlog("Machine Input Ports Freed."); }
 	free_cpu_memory();

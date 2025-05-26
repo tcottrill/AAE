@@ -118,7 +118,7 @@ int load_roms(const char* archname, const struct RomModule* p)
 	test = file_exist(temppath.c_str());
 	if (test == 0)
 	{
-		wrlog("Rom not found in config directory");
+		wrlog("Rom not found in external path, looking in rom folder");
 		temppath = getpathM("roms", 0);
 		temppath.append("\\");
 		temppath.append(archname);

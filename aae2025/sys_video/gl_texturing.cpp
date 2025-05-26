@@ -537,7 +537,7 @@ void show_error(void)
 	static int dir = 0;
 
 	if (have_error) {
-		if (!errorsound) { sample_start(5, num_samples - 4, 0); errorsound = 1; }
+		//if (!errorsound) { sample_start(5, num_samples - 4, 0); errorsound = 1; }
 		glPushMatrix();
 		glLoadIdentity();
 		glDisable(GL_TEXTURE_2D);

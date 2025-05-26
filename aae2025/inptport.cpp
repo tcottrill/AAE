@@ -479,7 +479,6 @@ int load_input_port_settings(void)
 	wrlog("opening File");
 
 	if ((f = osd_fopen(Machine->gamedrv->name, 0, OSD_FILETYPE_CONFIG, 0)) != 0)
-		//if ((f = osd_fopen(driver[gamenum].name, 0, OSD_FILETYPE_CONFIG, 0)) != 0)
 	{
 		struct InputPort* in;
 		unsigned int total, savedtotal;
@@ -487,8 +486,7 @@ int load_input_port_settings(void)
 		//int i;
 
 		in = Machine->gamedrv->input_ports;
-		//in = driver[gamenum].input_ports;
-
+		
 		/* calculate the size of the array */
 		total = 0;
 		while (in->type != IPT_END)
@@ -511,7 +509,6 @@ int load_input_port_settings(void)
 
 		/* read the original settings and compare them with the ones defined in the driver */
 		in = Machine->gamedrv->input_ports;
-		//in = driver[gamenum].input_ports;
 		while (in->type != IPT_END)
 		{
 			struct InputPort saved;
@@ -531,7 +528,6 @@ int load_input_port_settings(void)
 
 		/* read the current settings */
 		in = Machine->input_ports;
-		//in = driver[gamenum].input_ports;
 		while (in->type != IPT_END)
 		{
 			if (readip(f, in) != 0)
@@ -547,7 +543,6 @@ int load_input_port_settings(void)
 	memset(&input_port_tag, 0, sizeof(input_port_tag));
 	struct InputPort* in = Machine->input_ports;
 	wrlog("Gamenum here in input ports is %d", gamenum);
-	//struct InputPort* in = driver[gamenum].input_ports;
 	int temp = 0;
 
 	while (in->type != IPT_END)
@@ -585,13 +580,11 @@ void save_input_port_settings(void)
 	save_default_keys();
 	wrlog("Saving input port settings (in function)");
 	if ((f = osd_fopen(Machine->gamedrv->name, 0, OSD_FILETYPE_CONFIG, 1)) != 0)
-		//if ((f = osd_fopen((const char*) driver[gamenum].name, 0, OSD_FILETYPE_CONFIG, 1)) != 0)
 	{
 		struct InputPort* in;
 		int total;
 
 		in = Machine->gamedrv->input_ports;
-		//in = driver[gamenum].input_ports;
 		/* calculate the size of the array */
 		total = 0;
 		while (in->type != IPT_END)
@@ -606,7 +599,6 @@ void save_input_port_settings(void)
 		writeint(f, total);
 		/* write the original settings as defined in the driver */
 		in = Machine->gamedrv->input_ports;
-		//in = driver[gamenum].input_ports;
 		while (in->type != IPT_END)
 		{
 			writeip(f, in);
@@ -614,7 +606,6 @@ void save_input_port_settings(void)
 		}
 		/* write the current settings */
 		in = Machine->input_ports;
-		//in = driver[gamenum].input_ports;
 		while (in->type != IPT_END)
 		{
 			writeip(f, in);
@@ -929,7 +920,7 @@ void scale_analog_port(int port)
 	in = input_analog[port];
 	sensitivity = IP_GET_SENSITIVITY(in);
 
-	delta = cpu_scale_by_cycles(input_analog_current_value[port] - input_analog_previous_value[port], driver[gamenum].cpu_freq[0]);// Machine->cpu[0].cpu_clock);
+	delta = cpu_scale_by_cycles(input_analog_current_value[port] - input_analog_previous_value[port], Machine->gamedrv->cpu_freq[0]);// Machine->cpu[0].cpu_clock);
 
 	current = input_analog_previous_value[port] + delta;
 
@@ -1056,7 +1047,6 @@ void update_input_ports(void)
 #endif
 
 	in = Machine->input_ports;
-	//in = driver[gamenum].input_ports;
 
 	if (in->type == IPT_END) return; 	/* nothing to do */
 
@@ -1119,7 +1109,6 @@ void update_input_ports(void)
 	update_serial_number += 1;
 
 	in = Machine->input_ports;
-	//in = driver[gamenum].input_ports;
 
 	/* already made sure the InputPort definition is correct */
 	in++;
@@ -1197,8 +1186,8 @@ void update_input_ports(void)
 						}*/
 
 						/* if IPF_RESET set, reset the first CPU */
-						if ((in->type & IPF_RESETCPU) && waspressed[ib] == 0) { ; }
-						//							cpu_reset(0);
+						if ((in->type & IPF_RESETCPU) && waspressed[ib] == 0) 
+								cpu_reset(0);
 
 						if (in->type & IPF_IMPULSE)
 						{

@@ -14,20 +14,17 @@
 #include "aae_mame_driver.h"
 
 
-//Video VARS
-int sx, ex, sy, ey;
+
 
 FILE* errorlog;
 int logging;
-
-//RAM Variables
-unsigned char* membuffer;
-unsigned char vec_ram[0x8000];
 
 
 int art_loaded[6];
 
 //TEMPORARY GRAPHICS GLOBALS
+//Video VARS
+int sx, ex, sy, ey;
 int msx, msy, esx, esy; //Main full screen adjustments for debug
 int b1sx, b1sy, b2sx, b2sy; //bezel full screen adjustments
 float bezelzoom;
@@ -49,10 +46,9 @@ int num_games; //Total number of games ?? needed?
 int num_samples; //Total number of samples for selected game
 
 //KEY VARIABLES
-int mouseb[5]; // Only used by the gui
-// Currrently only used by Major Havoc.
+int mouseb[5]; // Only used by the gui and Tempest
+// Currrently  used by Major Havoc and Asteroids Video.
 int total_length;
 
 settings config;
 
-glist gamelist[256];

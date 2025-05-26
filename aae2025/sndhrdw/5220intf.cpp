@@ -44,8 +44,8 @@ int tms5220_sh_start(struct TMS5220interface* iinterface)
 {
 	intfa = iinterface;
 
-	buffer_len = intfa->clock / 80 / driver[gamenum].fps;
-	emulation_rate = buffer_len * driver[gamenum].fps;
+	buffer_len = intfa->clock / 80 / Machine->gamedrv->fps;
+	emulation_rate = buffer_len * Machine->gamedrv->fps;
 
 	wrlog("Emulation Rate here is %d, buffer len is %d", emulation_rate, buffer_len);
 	sample_pos = 0;
@@ -54,7 +54,7 @@ int tms5220_sh_start(struct TMS5220interface* iinterface)
 	if ((buffer = (short*)malloc(buffer_len * 2)) == 0)
 		return 1;
 
-	stream_buffer_len = config.samplerate / driver[gamenum].fps;
+	stream_buffer_len = config.samplerate / Machine->gamedrv->fps;
 
 	if ((stream_buffer = (short*)malloc(stream_buffer_len * 2)) == 0)
 	{
@@ -62,7 +62,7 @@ int tms5220_sh_start(struct TMS5220interface* iinterface)
 		return 1;
 	}
 
-	stream_start(2, 2, 16, driver[gamenum].fps);
+	stream_start(2, 2, 16, Machine->gamedrv->fps);
 
 	/* reset the 5220 */
 	tms5220_reset();

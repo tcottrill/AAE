@@ -691,8 +691,8 @@ int AY8910_sh_start(struct AY8910interface* intf)
 {
 	int chip;
 	numchips = intf->num;
-	aysamples = config.samplerate / driver[gamenum].fps;
-	int emulation_rate = aysamples * driver[gamenum].fps;
+	aysamples = config.samplerate / Machine->gamedrv->fps;
+	int emulation_rate = aysamples * Machine->gamedrv->fps;
 	ayintf = intf;
 
 	for (chip = 0; chip < intf->num; chip++)
@@ -714,18 +714,18 @@ int AY8910_sh_start(struct AY8910interface* intf)
 	}
 
 	// TODO: PLEASE FIX THIS!!!!!
-	stream_start(0, 0, 16, driver[gamenum].fps);
-	stream_start(1, 1, 16, driver[gamenum].fps);
-	stream_start(2, 2, 16, driver[gamenum].fps);
-	stream_start(3, 3, 16, driver[gamenum].fps);
-	stream_start(4, 4, 16, driver[gamenum].fps);
-	stream_start(5, 5, 16, driver[gamenum].fps);
-	stream_start(6, 6, 16, driver[gamenum].fps);
-	stream_start(7, 7, 16, driver[gamenum].fps);
-	stream_start(8, 8, 16, driver[gamenum].fps);
-	stream_start(9, 9, 16, driver[gamenum].fps);
-	stream_start(10, 10, 16, driver[gamenum].fps);
-	stream_start(11, 11, 16, driver[gamenum].fps);
+	stream_start(0, 0, 16, Machine->gamedrv->fps);
+	stream_start(1, 1, 16, Machine->gamedrv->fps);
+	stream_start(2, 2, 16, Machine->gamedrv->fps);
+	stream_start(3, 3, 16, Machine->gamedrv->fps);
+	stream_start(4, 4, 16, Machine->gamedrv->fps);
+	stream_start(5, 5, 16, Machine->gamedrv->fps);
+	stream_start(6, 6, 16, Machine->gamedrv->fps);
+	stream_start(7, 7, 16, Machine->gamedrv->fps);
+	stream_start(8, 8, 16, Machine->gamedrv->fps);
+	stream_start(9, 9, 16, Machine->gamedrv->fps);
+	stream_start(10, 10, 16, Machine->gamedrv->fps);
+	stream_start(11, 11, 16, Machine->gamedrv->fps);
 	//aae_stream_init(0, emulation_rate, aysamples, 128);
 	//aae_stream_init(1, emulation_rate, aysamples, 128);
 	//aae_stream_init(2, emulation_rate, aysamples, 128);

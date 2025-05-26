@@ -19,6 +19,9 @@ extern GLuint img3a;
 extern GLuint img3b;
 extern GLuint img4a;
 
+extern GLuint fbo_raster;
+extern GLuint img5a;
+
 extern float width;		// The hight of the texture we'll be rendering to
 extern float height;		// The width of the texture we'll be rendering to
 

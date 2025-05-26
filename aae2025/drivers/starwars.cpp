@@ -30,7 +30,7 @@ int catch_nextBranch;
 extern int m6809_slapstic;
 
 static UINT8 nvram[0x100];
-static size_t nvram_size = 0x100;
+
 
 int bank1 = 0x06000;
 int bank2 = 0x0a000;
@@ -59,11 +59,11 @@ enum slapstic_states
 void starwars_nvram_handler(void* file, int read_or_write)
 {
 	if (read_or_write)
-		osd_fwrite(file, nvram, nvram_size);
+		osd_fwrite(file, nvram, 0x100);
 	else if (file)
-		osd_fread(file, nvram, nvram_size);
+		osd_fread(file, nvram, 0x100);
 	else
-		memset(nvram, 0, nvram_size);
+		memset(nvram, 0, 0x100);
 }
 
 WRITE_HANDLER(nvram_w)
@@ -82,6 +82,7 @@ static struct TMS5220interface tms5220_interface =
 	255,        // volume */
 	0           // IRQ handler */
 };
+
 static struct POKEYinterface pokey_interface =
 {
 	4,			/* 4 chips */
@@ -200,7 +201,7 @@ static int esb_setopbase(int address)
 
 void esb_init_machine(void)
 {
-	/* Reset all the banks */
+  /* Reset all the banks */
   //starwars_out_w(4, 0);
   //init_swmathbox();
 }

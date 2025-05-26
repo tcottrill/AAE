@@ -78,6 +78,8 @@ MemoryReadWord* M_MemoryRead16 = nullptr;
 MemoryWriteWord* M_MemoryWrite16 = nullptr;
 //32 bit is handled 
 
+//Machine->gamedrv->cpu_type[0]
+
 void init_z80(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum)
 {
 	wrlog("Z80 Init Started");
@@ -184,7 +186,7 @@ int get_video_ticks(int reset)
 	}
 	else
 	{   // I am not sure if these 0 to 500 cycles extra are worth adding on per check, but doing it anyways.
-		switch (driver[gamenum].cpu_type[0])
+		switch (Machine->gamedrv->cpu_type[0])
 		{
 		case CPU_MZ80:  temp = m_cpu_z80[active_cpu]->mz80GetElapsedTicks(0); break;  //Make vid_tickcount a negative number to check for reset later;
 		case CPU_M6502: temp = m_cpu_6502[active_cpu]->get6502ticks(0); break;
@@ -195,7 +197,6 @@ int get_video_ticks(int reset)
 
 	return v + temp;
 }
-
 
 /* cpu change op-code memory base */
 void cpu_setOPbaseoverride(int (*f)(int))
@@ -225,7 +226,7 @@ void cpu_setOPbase16(int apc)
 int cpu_getppc()
 {
 	//Run cycles depending on which cpu
-	switch (driver[gamenum].cpu_type[active_cpu])
+	switch (Machine->gamedrv->cpu_type[active_cpu])
 	{
 	case CPU_MZ80:
 		return m_cpu_z80[active_cpu]->GetPPC();
@@ -246,7 +247,7 @@ int cpu_getppc()
 int cpu_getpc()
 {
 	//Run cycles depending on which cpu
-	switch (driver[gamenum].cpu_type[active_cpu])
+	switch (Machine->gamedrv->cpu_type[active_cpu])
 	{
 	case CPU_8080:
 		return m_cpu_i8080[active_cpu]->reg_PC;
@@ -293,7 +294,7 @@ int cpu_getcycles_cpu(int cpu) //Only returns cycles from current context cpu
 
 int cpu_getcycles_remaining_cpu(int cpu) //Only returns cycles from current context cpu
 {
-	int cycles = driver[gamenum].cpu_freq[active_cpu] / driver[gamenum].fps;
+	int cycles = Machine->gamedrv->cpu_freq[active_cpu] / Machine->gamedrv->fps;
 	return cycles - cyclecount[cpu];
 }
 
@@ -323,7 +324,7 @@ int get_current_cpu()
 void cpu_setcontext(int cpunum)
 {
 	// Disabled for now, I have only single CPU 68000 games, and this was causing issues. 
-	//switch (driver[gamenum].cpu_type[cpunum])
+	//switch (Machine->gamedrv->cpu_type[cpunum])
 	//{
 	//case CPU_68000: m68k_set_context(cpu_context[0]); break;
 	//}
@@ -332,7 +333,7 @@ void cpu_setcontext(int cpunum)
 void cpu_getcontext(int cpunum)
 {
 // Disabled for now, I have only single CPU 68000 games, and this was causing issues. 
-//	switch (driver[gamenum].cpu_type[cpunum])
+//	switch (Machine->gamedrv->cpu_type[cpunum])
 //	{
 //	case CPU_68000: m68k_get_context(cpu_context[0]); break;
 //	}
@@ -362,13 +363,12 @@ void set_interrupt_vector(int data)
 
 void cpu_do_int_imm(int cpunum, int int_type)
 {
-	switch (driver[gamenum].cpu_type[cpunum])
+	switch (Machine->gamedrv->cpu_type[cpunum])
 	{
 	case CPU_8080:
-		if (int_type == INT_TYPE_NMI) {
-		}
-		else {
-			m_cpu_i8080[cpunum]->interrupt(interrupt_vector[cpunum]);
+		if (int_type == INT_TYPE_INT) 
+		{
+		    m_cpu_i8080[cpunum]->interrupt(interrupt_vector[cpunum]);
 		}
 		break;
 
@@ -418,11 +418,11 @@ void cpu_do_interrupt(int int_type, int cpunum)
 
 	interrupt_count[cpunum]++;
 	//wrlog("Interrupt count %d", interrupt_count[cpunum]);
-	if (interrupt_count[cpunum] == driver[gamenum].cpu_intpass_per_frame[active_cpu])
+	if (interrupt_count[cpunum] == Machine->gamedrv->cpu_intpass_per_frame[active_cpu])
 	{
 		intcnt++;
 		// wrlog("Interrupt count %d", interrupt_count[cpunum]);
-		switch (driver[gamenum].cpu_type[active_cpu])
+		switch (Machine->gamedrv->cpu_type[active_cpu])
 		{
 		case CPU_MZ80:
 			if (int_type == INT_TYPE_NMI) {
@@ -456,7 +456,7 @@ void cpu_do_interrupt(int int_type, int cpunum)
 			}
 			break;
 		case CPU_68000: m68k_set_irq(int_type);
-				//wrlog("INT Taken 68000, type: %d", driver[gamenum].cpu_int_type[active_cpu]);
+				//wrlog("INT Taken 68000, type: %d", Machine->gamedrv->cpu_int_type[active_cpu]);
 			break;
 		}
 
@@ -480,9 +480,9 @@ int cpu_getiloops(void)
 void cpu_cause_interrupt(int cpu, int type)
 {
 	// If there is an interrupt handler here, use it.
-	if (driver[gamenum].int_cpu[active_cpu])
+	if (Machine->gamedrv->int_cpu[active_cpu])
 	{
-		driver[gamenum].int_cpu[active_cpu]();
+		Machine->gamedrv->int_cpu[active_cpu]();
 	}
 }
 
@@ -492,7 +492,7 @@ int cpu_exec_now(int cpu, int cycles)
 	int ticks = 0;
 
 	//Run cycles depending on which cpu
-	switch (driver[gamenum].cpu_type[cpu])
+	switch (Machine->gamedrv->cpu_type[cpu])
 	{
 	case CPU_MZ80:
 		m_cpu_z80[cpu]->mz80exec(cycles);
@@ -551,15 +551,15 @@ void cpu_run(void)
 		ran_this_frame[active_cpu] = 0;
 
 		if (cpurunning[active_cpu])
-			iloops[active_cpu] = driver[gamenum].cpu_intpass_per_frame[active_cpu] - 1;
+			iloops[active_cpu] = Machine->gamedrv->cpu_intpass_per_frame[active_cpu] - 1;
 		else
 			iloops[active_cpu] = -1;
 
-		int cycles = (driver[gamenum].cpu_freq[active_cpu] / driver[gamenum].fps) / driver[gamenum].cpu_intpass_per_frame[active_cpu];
+		int cycles = (Machine->gamedrv->cpu_freq[active_cpu] / Machine->gamedrv->fps) / Machine->gamedrv->cpu_intpass_per_frame[active_cpu];
 		//wrlog("Cycles are %d, iloops are %d", cycles, iloops[active_cpu]);
 	}
 
-	for (current_slice = 0; current_slice < driver[gamenum].cpu_divisions[0]; current_slice++)
+	for (current_slice = 0; current_slice < Machine->gamedrv->cpu_divisions[0]; current_slice++)
 	{
 		//wrlog("Current slice is %d", current_slice);
 
@@ -577,14 +577,14 @@ void cpu_run(void)
 					//wrlog("Current iloop %d", iloops[active_cpu]);
 					if (totalcpu > 1) { cpu_setcontext(active_cpu); }
 
-					target = (driver[gamenum].cpu_freq[active_cpu] / driver[gamenum].fps) * (current_slice + 1)
-						/ driver[gamenum].cpu_divisions[active_cpu];
+					target = (Machine->gamedrv->cpu_freq[active_cpu] / Machine->gamedrv->fps) * (current_slice + 1)
+						/ Machine->gamedrv->cpu_divisions[active_cpu];
 
 					//wrlog("Target is %d", target);
 
-					next_interrupt = (driver[gamenum].cpu_freq[active_cpu]
-						/ driver[gamenum].fps) * (driver[gamenum].cpu_intpass_per_frame[active_cpu] - iloops[active_cpu])
-						/ driver[gamenum].cpu_intpass_per_frame[active_cpu];
+					next_interrupt = (Machine->gamedrv->cpu_freq[active_cpu]
+						/ Machine->gamedrv->fps) * (Machine->gamedrv->cpu_intpass_per_frame[active_cpu] - iloops[active_cpu])
+						/ Machine->gamedrv->cpu_intpass_per_frame[active_cpu];
 
 					//wrlog("Next Int is %d", next_interrupt);
 					while (ran_this_frame[active_cpu] < target)
@@ -608,15 +608,15 @@ void cpu_run(void)
 						if (ran_this_frame[active_cpu] >= next_interrupt)
 						{
 							// Call the interrupt handler.
-							if (driver[gamenum].int_cpu[active_cpu])
+							if (Machine->gamedrv->int_cpu[active_cpu])
 							{
-								driver[gamenum].int_cpu[active_cpu]();
+								Machine->gamedrv->int_cpu[active_cpu]();
 							}
 							iloops[active_cpu]--;
 
-							next_interrupt = (driver[gamenum].cpu_freq[active_cpu]
-								/ driver[gamenum].fps) * (driver[gamenum].cpu_intpass_per_frame[active_cpu] - iloops[active_cpu])
-								/ driver[gamenum].cpu_intpass_per_frame[active_cpu];
+							next_interrupt = (Machine->gamedrv->cpu_freq[active_cpu]
+								/ Machine->gamedrv->fps) * (Machine->gamedrv->cpu_intpass_per_frame[active_cpu] - iloops[active_cpu])
+								/ Machine->gamedrv->cpu_intpass_per_frame[active_cpu];
 							//wrlog("CPU %d, Next Interrupt: %d", active_cpu, next_interrupt);
 						}
 					}
@@ -634,7 +634,7 @@ void cpu_reset(int cpunum)
 {
 	wrlog("CPU RESET CALLED!!----------");
 
-	switch (driver[gamenum].cpu_type[cpunum])
+	switch (Machine->gamedrv->cpu_type[cpunum])
 	{
 	case CPU_MZ80:  
 		m_cpu_z80[cpunum]->mz80reset(); 
@@ -677,7 +677,7 @@ void cpu_reset_all()
 
 void cpu_clear_pending_int(int int_type, int cpunum)
 {
-	switch (driver[gamenum].cpu_type[get_current_cpu()])
+	switch (Machine->gamedrv->cpu_type[get_current_cpu()])
 	{
 	case CPU_MZ80:  m_cpu_z80[cpunum]->mz80ClearPendingInterrupt(); break;
 	case CPU_M6502: m_cpu_6502[cpunum]->m6502clearpendingint();	break;
@@ -688,12 +688,12 @@ int cpu_scale_by_cycles(int val, int clock)
 {
 	float temp;
 	int k;
-	int sclock = driver[gamenum].cpu_freq[active_cpu];
+	int sclock = Machine->gamedrv->cpu_freq[active_cpu];
 	int current = tickcount[active_cpu];//cyclecount[active_cpu];  //totalcpu-1]; active_cpu was last
 
 	//wrlog(" Sound Update called, clock value: %d ", current);
-	int max = sclock / driver[gamenum].fps;
-	//wrlog(" Clock  %d divided by FPS: %d is equal to value: %d",sclock,driver[gamenum].fps,max);
+	int max = sclock / Machine->gamedrv->fps;
+	//wrlog(" Clock  %d divided by FPS: %d is equal to value: %d",sclock,Machine->gamedrv->fps,max);
 	temp = ((float)current / (float)max);
 	if (temp > 1) temp = (float).99;
 
@@ -710,30 +710,25 @@ void free_cpu_memory()
 	
 	for (int x = 0; x < totalcpu; x++)
 	{
-		switch (driver[gamenum].cpu_type[x])
+		switch (Machine->gamedrv->cpu_type[x])
 		{
 		case CPU_MZ80:
 			free (m_cpu_z80[x]);
-			//free(Machine->memory_region[x]);
 			break;
 
 		case CPU_M6502:
 			free(m_cpu_6502[x]);
-			//free(Machine->memory_region[x]);
 			break;
 
 		case CPU_8080:
 			free (m_cpu_i8080[x]);
-			//free(Machine->memory_region[x]);
 			break;
 
 		case CPU_M6809:
 			free (m_cpu_6809[x]);
-			//free(Machine->memory_region[x]);
 			break;
 
 		case CPU_68000:
-			//free(Machine->memory_region[x]);
 			break;
 		}
 	}
@@ -754,7 +749,7 @@ void init_cpu_config()
 		enable_interrupt[x] = 1;
 		interrupt_vector[x] = 0xff;
 		cyclecount[x] = 0;
-		if (driver[gamenum].cpu_type[x])  totalcpu++;
+		if (Machine->gamedrv->cpu_type[x])  totalcpu++;
 	}
 	
 	cpu_framecounter = 0;

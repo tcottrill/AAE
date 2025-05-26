@@ -32,6 +32,7 @@
 #include "mixer.h"
 #include "emu_vector_draw.h"
 
+
 extern int logging;
 
 extern FILE* errorlog;
@@ -171,6 +172,30 @@ extern int gamenum;
 /* ORIENTATION_ROTATE_270 ^ ORIENTATION_FLIP_X*/
 /* Always remember that FLIP is performed *after* SWAP_XY. */
 
+#define DEFAULT_60HZ_VBLANK_DURATION 0
+#define DEFAULT_30HZ_VBLANK_DURATION 0
+/* If you use IPT_VBLANK, you need a duration different from 0. */
+#define DEFAULT_REAL_60HZ_VBLANK_DURATION 2500
+#define DEFAULT_REAL_30HZ_VBLANK_DURATION 2500
+
+/* flags for video_attributes */
+
+/* bit 0 of the video attributes indicates raster or vector video hardware */
+#define	VIDEO_TYPE_RASTER			0x0000
+#define	VIDEO_TYPE_VECTOR			0x0001
+
+/* bit 1 of the video attributes indicates whether or not dirty rectangles will work */
+#define	VIDEO_SUPPORTS_DIRTY		0x0002
+
+/* bit 2 of the video attributes indicates whether or not the driver modifies the palette */
+#define	VIDEO_MODIFIES_PALETTE	0x0004
+
+/* ASG 980417 - added: */
+/* bit 4 of the video attributes indicates that the driver wants its refresh after */
+/*       the VBLANK instead of before. */
+#define	VIDEO_UPDATE_BEFORE_VBLANK	0x0000
+#define	VIDEO_UPDATE_AFTER_VBLANK	0x0010
+
 // STRUCTS AND GLOBAL VARIABLES START HERE
 
 /*
@@ -194,30 +219,7 @@ const struct artworks
 	int target;
 };
 
-typedef struct {
-	int next; // index of next entry in array
-	int prev; // previous entry (if double-linked)
-	int  gamenum; 		//Short Name of game
-	char glname[128];	    //Display name for Game
-	int extopt;   //Any extra options for each game
-	//int numbertag;
-} glist;                      //Only one gamelist at a time
 
-extern glist gamelist[256];
-/*
-struct MachineCPU
-{
-	int cpu_type;	
-	int cpu_clock;	
-	int memory_region;
-	struct MemoryReadByte* memory_read;
-	struct MemoryWriteByte* memory_write;
-	struct z80PortRead* port_read;
-	struct z80PortWrite* port_write;
-	void (*interrupt)(int); //Special Interrupt handler
-	int interrupts_cycles;	//Number of cycles (hertz) between reocurring interrupts
-};
-*/
 struct AAEDriver
 {
 	const char* name;
@@ -264,7 +266,7 @@ extern struct AAEDriver driver[];
 
 struct RunningMachine
 {
-	unsigned char* memory_region[MAX_MEMORY_REGIONS]; //TBD
+	unsigned char* memory_region[MAX_MEMORY_REGIONS]; 
 	unsigned int memory_region_length[MAX_MEMORY_REGIONS];	/* some drivers might find this useful */
 	
 	struct GfxElement* gfx[MAX_GFX_ELEMENTS];	/* graphic sets (chars, sprites) */
@@ -293,12 +295,8 @@ struct RunningMachine
 
 extern struct RunningMachine* Machine;
 
-//RAM Variables
-extern unsigned char* membuffer;
-extern unsigned char vec_ram[0x8000];
-
 extern int art_loaded[6];
-//extern int index;
+
 
 //Video VARS
 extern int sx, ex, sy, ey;
@@ -308,7 +306,7 @@ extern int b1sx, b1sy, b2sx, b2sy; //bezel full screen adjustments
 extern float bezelzoom;
 extern int bezelx;
 extern int bezely;
-extern struct game_rect GameRect;
+
 
 extern int in_gui;
 extern unsigned int frames; //Global Framecounter
@@ -522,9 +520,11 @@ enum GameDef {
 	STARWARS,
 	STARWARS1,
 	ESB,
+	//Cinematronics Hardware
 	AZTARAC,
-	// Extra
-	//GALAGA
+	//Space Invaders Hardware 
+	INVADERS,
+	INVADDLX
 };
 
 /* this allows to leave the INIT field empty in the GAME() macro call */

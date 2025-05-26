@@ -2,6 +2,7 @@
 #include "sys_gl.h"
 #include "gl_fbo.h"
 #include "log.h"
+#include "aae_mame_driver.h"
 
 #pragma warning( disable : 4305 4244 )
 
@@ -10,6 +11,9 @@ GLuint fbo1;
 GLuint fbo2;
 GLuint fbo3;
 GLuint fbo4;
+
+GLuint fbo_raster;
+GLuint img5a;
 
 // Texture Handles
 GLuint img1a;
@@ -201,5 +205,21 @@ void fbo_init()
 
 	CHECK_FRAMEBUFFER_STATUS(); //Check Framebuffer Status
 	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);	// Unbind the FBO for now
+
+
+	// Setup our FBO for rasterization
+	glGenFramebuffersEXT(1, &fbo_raster);
+	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo_raster);
+
+	glGenTextures(1, &img5a); glBindTexture(GL_TEXTURE_2D, img5a);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, Machine->gamedrv->screen_width*3, Machine->gamedrv->screen_height*3, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	// And attach it to the FBO so we can render to it
+	glFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT, GL_COLOR_ATTACHMENT0_EXT, GL_TEXTURE_2D, img5a, 0);
+
+	CHECK_FRAMEBUFFER_STATUS(); //Check Framebuffer Status
+	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);	// Unbind the FBO for now
+
 
 }

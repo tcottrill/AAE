@@ -228,9 +228,6 @@
     <ClInclude Include="acommon.h">
       <Filter>Source Files</Filter>
     </ClInclude>
-    <ClInclude Include="config.h">
-      <Filter>Source Files</Filter>
-    </ClInclude>
     <ClInclude Include="deftypes.h">
       <Filter>Source Files</Filter>
     </ClInclude>
@@ -339,7 +336,7 @@
     <ClInclude Include="vidhrdwr\mhavoc_custom_video.h">
       <Filter>Source Files\vidhrdwr</Filter>
     </ClInclude>
-    <ClInclude Include="vidhrdwr\raster.h">
+    <ClInclude Include="vidhrdwr\old_mame_raster.h">
       <Filter>Source Files\vidhrdwr</Filter>
     </ClInclude>
     <ClInclude Include="drivers\mhavoc.h">
@@ -372,11 +369,14 @@
     <ClInclude Include="machine\slapstic.h">
       <Filter>Source Files\machine</Filter>
     </ClInclude>
-    <ClInclude Include="machine\atarigen.h">
-      <Filter>Source Files\machine</Filter>
-    </ClInclude>
     <ClInclude Include="machine\starwars_machine.h">
       <Filter>Source Files\machine</Filter>
+    </ClInclude>
+    <ClInclude Include="drivers\invaders.h">
+      <Filter>Source Files\drivers</Filter>
+    </ClInclude>
+    <ClInclude Include="config.h">
+      <Filter>Source Files\sys_window</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -608,7 +608,7 @@
     <ClCompile Include="vidhrdwr\mhavoc_custom_video.cpp">
       <Filter>Source Files\vidhrdwr</Filter>
     </ClCompile>
-    <ClCompile Include="vidhrdwr\raster.cpp">
+    <ClCompile Include="vidhrdwr\old_mame_raster.cpp">
       <Filter>Source Files\vidhrdwr</Filter>
     </ClCompile>
     <ClCompile Include="drivers\mhavoc.cpp">
@@ -641,14 +641,14 @@
     <ClCompile Include="machine\slapstic.cpp">
       <Filter>Source Files\machine</Filter>
     </ClCompile>
-    <ClCompile Include="machine\atarigen.cpp">
-      <Filter>Source Files\machine</Filter>
-    </ClCompile>
     <ClCompile Include="machine\starwars_machine.cpp">
       <Filter>Source Files\machine</Filter>
     </ClCompile>
     <ClCompile Include="config.cpp">
       <Filter>Source Files\sys_window</Filter>
+    </ClCompile>
+    <ClCompile Include="drivers\invaders.cpp">
+      <Filter>Source Files\drivers</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

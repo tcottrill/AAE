@@ -148,4 +148,15 @@ ART_LOAD("warrior.zip", "warrior.png", ART_TEX, 0)
 ART_LOAD("custom.zip", "cineshot.png", GAME_TEX, 0)
 ART_END
 
+ART_START(invaders_art)
+ART_LOAD("invaders.zip", "invaders.png", ART_TEX, 0)
+ART_LOAD("invaders.zip", "tintover2.png", ART_TEX, 1)
+ART_END
+
+ART_START(invaddlx_art)
+ART_LOAD("invaddlx.zip", "invaddlx.png", ART_TEX, 0)
+ART_LOAD("invaddlx.zip", "tintover.png", ART_TEX, 1)
+ART_END
+
+
 #endif

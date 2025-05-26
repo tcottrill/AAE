@@ -142,7 +142,7 @@ void video_loop(void)
 	}
 	if (show_fps)
 	{
-		fprint(400.00, 750.0, RGB_WHITE, 2.0, " Speed: %2.0f%% %2.0f out of %d FPS", ((fps_count / frameavg) / driver[gamenum].fps) * 100, fps_count / frameavg, driver[gamenum].fps);
+		fprint(400.00, 750.0, RGB_WHITE, 2.0, " Speed: %2.0f%% %2.0f out of %d FPS", ((fps_count / frameavg) / Machine->gamedrv->fps) * 100, fps_count / frameavg, Machine->gamedrv->fps);
 	}
 
 	if (config.debug)
@@ -195,61 +195,40 @@ void return_to_menu(void)
 	gamenum = 0; //Set gamenum to zero (menu)
 	done = 0; //Set done false
 }
-//
-// Code below is currently disabled with a return. Why?
-//
+
 void setup_ambient(int style)
 {
-	return;
-
-	if (gamenum == 0) return;
-
+	int samplenum;
+	
 	if (config.hvnoise)
 	{
-		if (num_samples == 5) { sample_start(1, num_samples - 1, 1); sample_set_volume(1, config.noisevol); }
-		else { sample_start(13, num_samples - 1, 1); sample_set_volume(13, config.noisevol); }
-	}
-	if (config.hvnoise == 0)
+		samplenum = nameToNum("flyback");
 
-	{
-		if (num_samples == 5) { sample_stop(1); }
-		else { sample_stop(13); }
+		if (samplenum !=-1) sample_set_volume(17, config.noisevol / 3); sample_start(17, nameToNum("flyback"), 1);
 	}
+	else
+		sample_stop(17);
+
 	if (config.psnoise)
 	{
-		if (num_samples == 5) { sample_start(2, num_samples - 2, 1); sample_set_volume(2, config.noisevol); }
-		else { sample_start(14, num_samples - 2, 1); sample_set_volume(14, config.noisevol); }
-	}
-	if (config.psnoise == 0)
+		samplenum = nameToNum("psnoise");
 
-	{
-		if (num_samples == 5) { sample_stop(2); }
-		else { sample_stop(14); }
+		if (samplenum != -1) { sample_start(18, nameToNum("psnoise"), 1); sample_set_volume(18, config.noisevol); }
 	}
+	else
+		sample_stop(18);
+
 	if (config.pshiss)
 	{
-		if (num_samples == 5) { sample_start(3, num_samples - 3, 1); sample_set_volume(3, config.noisevol); }
-		else { sample_start(15, num_samples - 3, 1); sample_set_volume(15, config.noisevol); }
+		samplenum = nameToNum("hiss");
+
+		if (samplenum != -1) {
+			sample_set_volume(19, config.noisevol); sample_start(19, nameToNum("hiss"), 1);
+		}
 	}
-	if (config.pshiss == 0)
-
-	{
-		if (num_samples == 5) { sample_stop(3); }
-		else { sample_stop(15); }
-	}
-
-	/*
-		if (style==RASTER){
-						   if (config.pshiss)
-						   {play_sample(aae_sounds[1],config.noisevol,128,1000,1);}
-						  }
-
-		if (style==0) {
-					   stop_sample(aae_sounds[1]);
-					   stop_sample(aae_sounds[2]);
-					   stop_sample(aae_sounds[3]);
-					  }
-			*/
+	else
+		sample_stop(19);
+	
 }
 
 

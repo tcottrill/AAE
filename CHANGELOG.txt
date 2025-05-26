@@ -163,7 +163,15 @@ Rewrote the starwars driver, rewrote the 6809 cpu code from John Butler, twice. 
 ESB was the last game I ever wanted to emulate, and I am super happy to have finally made it here. It seems like a very small accomplishment, but having rewritten both the z80 and 6502 cpus, figured out all the games, written all my own window, graphic, sound and (mostly) input code, I feel like I've accomplished a lot, even with riding on the back of all the work done by so many people for MAME.
 What's next? Back to working on other things, then maybe a major rendering upgrade to newer technology, we'll see. That's after re-adding the gui and fixing all the missing command line functionality and various remaing bugs.! 
 
-
+5/20 - 5/26/25
+Added old MAME 3.1 Raster Video code. 
+Added new drivers for Midway Space Invaders and Space Invaders Deluxe just to have something that uses the 8080 Cpu. 
+More code cleanups, tried to remove the use of "gamenum" everywhere. 
+Reintroduced the Ambient Sound sample, fixed multiple Menu bugs in the process.
+You can now see changes again to linewidth and pointsize dynamically. 
+Cleaned up the Major Havoc driver to remove the gamenum use. 
+Started working on a cleanup and rewrite of all the legacy opengl code, working to move OpenGL 4/ shaders only. I've been reviewing Vulcan, but the amount of work right now exceeds my freetime. Maybe someday. 
+I hope to clean up enough eventually to be able to re-add the gui. 
 
 
 

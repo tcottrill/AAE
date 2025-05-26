@@ -16,8 +16,6 @@
 #include "earom.h"
 #include "aae_mame_driver.h"
 
-extern int gamenum;
-
 #define EAROM_SIZE	0x40
 static int earom_offset;
 static int earom_data;

@@ -39,7 +39,7 @@ static int SYS_FREQ = 44100;
 static int BUFFER_SIZE = 0;
 
 //#define SMP_START 0x2c
-#define MAX_CHANNELS   16  //0-8 samples, 9-16 streaming
+#define MAX_CHANNELS   20  //0-8 samples, 9-16 streaming, 17-19 Have been designated special for AAE.
 #define MAX_SOUNDS     255 // max number of sounds loaded in system at once 128 + 2 overloaded for streams
 
 #define SOUND_NULL     0
@@ -429,13 +429,16 @@ int sample_get_position(int chanid)
 // Changed back to 255 for AAE
 void sample_set_volume(int chanid, int volume)
 {
+	float vol;
 	channel[chanid].vol = db_volume[volume];
 	
 	if (channel[chanid].voice)
 	{
-		channel[chanid].voice->SetVolume(volume / 255.0f);
+		vol = (float)(float(volume) / (float) 255.0);
+	//	wrlog("Setting channel %i to with volume %i setting Setvol %f", chanid, volume, vol);
+		channel[chanid].voice->SetVolume( vol);
 	}
-	//wrlog("Setting channel %i to with volume %i setting bvolume %f", chanid, volume, channel[chanid].vol);
+	
 };
 
 int sample_get_volume(int chanid)
@@ -689,16 +692,15 @@ std::string numToName(int num)
 	return ("notfound");
 }
 
-int nameToNum(std::string name)
+int nameToNum(const std::string name)
 {
-	for (auto i = lsamples.begin(); i != lsamples.end(); ++i)
+	for (size_t i = 0; i < lsamples.size(); ++i) 
 	{
-		//if (name == i->name) { return i - lsamples.begin(); }
-
-		if ((name.compare(i->name) == 0)) { return i->num; }
+		if (lsamples[i].name == name)
+		{
+			return static_cast<int>(i); // Return the index if found
+		}
 	}
 
-	wrlog("Sample: %s not found, returning 0\n", name.c_str());
-
-	return -1;
+	return -1; // Return -1 if not found
 }
