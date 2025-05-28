@@ -22,6 +22,10 @@
 #define MASTER_CLOCK (12096000)
 #define CLOCK_3KHZ   (MASTER_CLOCK / 4096)
 
+int get_bit(int num, int bit_position) {
+	return (num >> bit_position) & 1; // Shift right and AND with 1 to isolate the bit
+}
+
 static int THREEKHZ_CLOCK = 0;
 /*
 	Asteroids Voice breakdown:
@@ -273,7 +277,9 @@ WRITE_HANDLER(astdelux_bank_switch_w)
 	unsigned char* RAM = Machine->memory_region[CPU0];
 
 	astdelux_newbank = (data >> 7) & 1;
-	//SCRFLIP = GI[CPU0][0x1e];
+	
+	if (readinputportbytag("COCKTAIL") & 0x01) set_screen_flipping(astdelux_newbank);
+
 	if (astdelux_bank != astdelux_newbank) {
 		/* Perform bankswitching on page 2 and page 3 */
 		int temp;
@@ -287,6 +293,9 @@ WRITE_HANDLER(astdelux_bank_switch_w)
 		}
 	}
 }
+
+
+
 ////////////  CALL ASTEROIDS SWAPRAM  ////////////////////////////////////////////
 WRITE_HANDLER(asteroid_bank_switch_w)
 {
@@ -295,9 +304,8 @@ WRITE_HANDLER(asteroid_bank_switch_w)
 	int asteroid_newbank;
 	asteroid_newbank = (data >> 2) & 1;
 	
-	//wrlog("Asteroid Bankswitch write %x", data); //Needed for Screen flipping.
-
-	//SCRFLIP = GI[CPU0][0x18];
+	if (readinputportbytag("COCKTAIL") & 0x01) set_screen_flipping(asteroid_newbank);
+	 
 	if (asteroid_bank != asteroid_newbank) {
 		/* Perform bankswitching on page 2 and page 3 */
 		asteroid_bank = asteroid_newbank;

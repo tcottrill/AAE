@@ -19,7 +19,7 @@
 FILE* errorlog;
 int logging;
 
-
+glist gamelist[256];
 int art_loaded[6];
 
 //TEMPORARY GRAPHICS GLOBALS

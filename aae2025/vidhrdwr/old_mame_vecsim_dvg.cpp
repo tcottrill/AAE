@@ -38,9 +38,16 @@ static int ymin, ymax;
 
 static int flip_x, flip_y, swap_xy;
 
+
+
 #pragma warning( disable : 4244)
 
 #define vecmemrdwd(address) ((dvg_vectorram[pc]) | (dvg_vectorram[pc+1]<<8))
+
+void set_screen_flipping(int val)
+{
+	swap_xy = val;
+}
 
 
 static void set_color_palette()
@@ -134,6 +141,10 @@ int dvg_generate_vector_list(void)
 			//Check Sign Values and adjust as necessary
 			if (firstwd & 0x0400) { y = -y; }
 			if (secondwd & 0x400) { x = -x; }
+			if (swap_xy)
+			{
+				x = -x; y = -y;
+			}
 
 			// Do overall scaling
 			temp = ((scale + opcode) & 0x0f);
@@ -177,6 +188,12 @@ int dvg_generate_vector_list(void)
 			x = twos_comp_val(secondwd, 12);
 			y = twos_comp_val(firstwd, 12);
 
+			if (swap_xy)
+			{
+				x = 1024 - x; y = 1024 - y;
+			}
+		
+
 			//Do overall draw scaling
 			scale = (secondwd >> 12) & 0x0f;
 			currenty = (yval - y) << VEC_SHIFT;          // TODO: FIX THIS
@@ -214,6 +231,11 @@ int dvg_generate_vector_list(void)
 			if (firstwd & 0x0400) { y = -y; }
 			if (firstwd & 0x04) { x = -x; }
 
+			if (swap_xy)
+			{
+				x = -x; y = -y;
+			}
+
 			temp = 2 + ((firstwd >> 2) & 0x02) + ((firstwd >> 11) & 0x01);
 			temp = ((scale + temp) & 0x0f);
 			if (temp > 9) temp = -1;
@@ -221,7 +243,7 @@ int dvg_generate_vector_list(void)
 			deltay = (y << VEC_SHIFT) >> (9 - temp);
 			total_length += dvg_vector_timer(temp);
 			
-			if (z)
+			if (z > 2)
 			{
 
 				if ((currentx == currentx + deltax) && (currenty == currenty - deltay))
@@ -332,7 +354,7 @@ int dvg_init()
 	xcenter = ((xmax + xmin) / 2) << 16;
 	ycenter = ((ymax + ymin) / 2) << 16;
 
-	
+
 	return 1;
 }
 
@@ -341,6 +363,9 @@ int dvg_start_asteroid(void)
 	set_texture_id(&game_tex[0]);
 	ASTEROID_DVG = 1;
 	yval = 1130;
+
+	swap_xy = 0;
+
 	return dvg_init();
 }
 

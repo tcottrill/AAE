@@ -65,7 +65,7 @@ int hiscoreloaded;
 int show_fps = 0;
 FpsClass* m_frame; //For frame counting. Prob needs moved out of here really.
 
-glist gamelist[256];
+
 extern int leds_status;
 
 // M.A.M.E. (TM) Variables for testing

@@ -33,6 +33,18 @@
 #include "emu_vector_draw.h"
 
 
+typedef struct {
+	int next; // index of next entry in array
+	int prev; // previous entry (if double-linked)
+	int  gamenum; 		//Short Name of game
+	char glname[128];	    //Display name for Game
+	int extopt;   //Any extra options for each game
+	//int numbertag;
+} glist;                      //Only one gamelist at a time
+
+extern glist gamelist[256];
+
+
 extern int logging;
 
 extern FILE* errorlog;

@@ -25,3 +25,4 @@ int dvg_start_asteroid(void);
 int dvg_start(void);
 int dvg_end();
 void test_clear_busy();
+void set_screen_flipping(int val);
