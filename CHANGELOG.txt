@@ -188,6 +188,8 @@ Started cleaning up the main win32 functions.
 I've been fighting with the LEDs on the Ultimarc I-PAC, so I'm also trying out new LED code. 
 Minor cleanup on the ay-8910 emulation. 
 
+6/22/25 Updated to the latest Audio Engine code. Verified against several games, should be ok. Uploaded latest Mixer code to GitHub
+
 
 
 
