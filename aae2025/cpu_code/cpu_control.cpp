@@ -29,7 +29,7 @@ static int tickcount[4];
 static int eternaticks[4];
 static int vid_tickcount;
 //Interrupt Variables
-static int enable_interrupt[4];
+static int interrupt_enable[4];
 static int interrupt_vector[4] = { 0xff,0xff,0xff,0xff };
 static int interrupt_count[4];
 static int interrupt_pending[4];
@@ -40,6 +40,7 @@ static int cpu_framecounter = 0; //This is strictly for the cinematronics games.
 
 //New for the antique style mame cpu scheduling that I added for Multicore CPU games.
 //
+//static int cpu_enabled[MAX_CPU];
 static int cpurunning[MAX_CPU];
 static int totalcycles[MAX_CPU];
 static int ran_this_frame[MAX_CPU];
@@ -82,7 +83,7 @@ MemoryWriteWord* M_MemoryWrite16 = nullptr;
 
 void init_z80(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum)
 {
-	wrlog("Z80 Init Started");
+	LOG_INFO("Z80 Init Started");
 	active_cpu = cpunum;
 	m_cpu_z80[cpunum] = new cpu_z80(Machine->memory_region[cpunum],
 		read, 
@@ -92,16 +93,16 @@ void init_z80(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct
 		0xffff, 
 		cpunum);
 	m_cpu_z80[cpunum]->mz80reset();
-	wrlog("Z80 Init Ended");
+	LOG_INFO("Z80 Init Ended");
 }
 
 void init_6809(struct MemoryReadByte* read, struct MemoryWriteByte* write, int cpunum)
 {
 	active_cpu = cpunum;
-	wrlog("Start Configuring CPU %d", cpunum);
+	LOG_INFO("Start Configuring CPU %d", cpunum);
 	m_cpu_6809[cpunum] = new cpu_6809(Machine->memory_region[cpunum], read, write, 0xffff, cpunum);
 	m_cpu_6809[cpunum]->reset6809();
-	wrlog("Finished Configuring CPU %d", cpunum);
+	LOG_INFO("Finished Configuring CPU %d", cpunum);
 }
 
 void init8080(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum)
@@ -122,18 +123,18 @@ void init6502(struct MemoryReadByte* read, struct MemoryWriteByte* write, int me
 	active_cpu = cpunum;
 	m_cpu_6502[cpunum] = new cpu_6502(Machine->memory_region[cpunum], read, write, mem_top, cpunum);
 	m_cpu_6502[cpunum]->reset6502();
-	wrlog("Finished Configuring CPU");
+	LOG_INFO("Finished Configuring CPU");
 }
 
 void init6809(struct MemoryReadByte* read, struct MemoryWriteByte* write, int cpunum)
 {
 	active_cpu = cpunum;
-	wrlog("Start Configuring CPU %d", cpunum);
+	LOG_INFO("Start Configuring CPU %d", cpunum);
 	m_cpu_6809[cpunum] = new cpu_6809(Machine->memory_region[cpunum], read, write, 0xffff, cpunum);
 
-	wrlog("RESET");
+	LOG_INFO("RESET");
 	m_cpu_6809[cpunum]->reset6809();
-	wrlog("Finished Configuring CPU %d", cpunum);
+	LOG_INFO("Finished Configuring CPU %d", cpunum);
 }
 
 void init68k(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct MemoryReadWord* read16, struct MemoryWriteWord* write16, int cpunum)
@@ -149,7 +150,7 @@ void init68k(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct 
 	m68k_pulse_reset();
 	m68k_get_context(cpu_context[0]);
 	m68k_set_context(cpu_context[0]);
-	wrlog("PC:%08X\tSP:%08X\n", m68k_get_reg(NULL, M68K_REG_PC), m68k_get_reg(NULL, M68K_REG_SP));
+	LOG_INFO("PC:%08X\tSP:%08X\n", m68k_get_reg(NULL, M68K_REG_PC), m68k_get_reg(NULL, M68K_REG_SP));
 }
 
 
@@ -209,7 +210,7 @@ void cpu_setOPbaseoverride(int (*f)(int))
 void cpu_setOPbase16(int apc)
 {
 	
-	//wrlog("we're here PC before %x", apc);
+	//LOG_INFO("we're here PC before %x", apc);
 	/* ASG 970206 -- allow overrides */
 	if (setOPbasefunc)
 	{
@@ -266,10 +267,21 @@ int cpu_getpc()
 		break;
 
 	case CPU_68000:
-		wrlog("PC:%08X\tSP:%08X\n", m68k_get_reg(NULL, M68K_REG_PC), m68k_get_reg(NULL, M68K_REG_SP));
+		LOG_INFO("PC:%08X\tSP:%08X\n", m68k_get_reg(NULL, M68K_REG_PC), m68k_get_reg(NULL, M68K_REG_SP));
 		break;
 	}
 	return 0;
+}
+
+void cpu_needs_reset(int cpunum)
+{
+	reset_cpu_status[cpunum] = 1;
+}
+
+
+void cpu_enable(int cpunum, int val)
+{
+	cpurunning[cpunum] = val;
 }
 
 int get_active_cpu()
@@ -310,7 +322,7 @@ void cpu_clear_cyclecount_eof()
 	for (x = 0; x < totalcpu; x++)
 	{
 		if (config.debug_profile_code) {
-			wrlog("Clear CPU#: %d count at clear is: %d", x, cyclecount[x]);
+			LOG_INFO("Clear CPU#: %d count at clear is: %d", x, cyclecount[x]);
 		}
 		cyclecount[x] = 0;
 	}
@@ -339,9 +351,34 @@ void cpu_getcontext(int cpunum)
 //	}
 }
 
+void interrupt_enable_w(UINT32 address, UINT8 data, struct MemoryWriteByte* pMemWrite)
+{
+	int cpunum = (active_cpu < 0) ? 0 : active_cpu;
+	interrupt_enable[cpunum] = data & 1;
+
+	/* make sure there are no queued interrupts */
+	if (data == 0) cpu_clear_pending_interrupts(cpunum);
+}
+
+
+void interrupt_vector_w(UINT32 address, UINT8 data, struct MemoryWriteByte* pMemWrite)
+{
+	int cpunum = (active_cpu < 0) ? 0 : active_cpu;
+	if (interrupt_vector[cpunum] != data)
+	{
+		//LOG_INFO("CPU#%d interrupt_vector_w $%02x\n", cpunum, data);
+		interrupt_vector[cpunum] = data;
+
+		/* make sure there are no queued interrupts */
+		cpu_clear_pending_interrupts(cpunum);
+	}
+}
+
+
+
 void cpu_disable_interrupts(int cpunum, int val)
 {
-	enable_interrupt[cpunum] = val;
+	interrupt_enable[cpunum] = val;
 }
 
 void cpu_clear_pending_interrupts(int cpunum)
@@ -363,6 +400,8 @@ void set_interrupt_vector(int data)
 
 void cpu_do_int_imm(int cpunum, int int_type)
 {
+	if (interrupt_enable[cpunum] == 0) { LOG_INFO("Interrupts Disabled"); return; }
+
 	switch (Machine->gamedrv->cpu_type[cpunum])
 	{
 	case CPU_8080:
@@ -378,6 +417,7 @@ void cpu_do_int_imm(int cpunum, int int_type)
 		}
 		else {
 			m_cpu_z80[cpunum]->mz80int(interrupt_vector[cpunum]);
+			LOG_INFO("Interrupt Vector here is %x", interrupt_vector[cpunum]);
 		}
 		break;
 
@@ -400,49 +440,49 @@ void cpu_do_int_imm(int cpunum, int int_type)
 		else {
 			m_cpu_6809[cpunum]->m6809_Cause_Interrupt(M6809_INT_IRQ);
 			// m_cpu_6809[cpunum]->irq6809();
-			//if (debug) wrlog("6809 IRQ Called on CPU %d", cpunum);
+			//if (debug) LOG_INFO("6809 IRQ Called on CPU %d", cpunum);
 		}
 		break;
 
 	case CPU_68000: m68k_set_irq(int_type); //add interrupt num here
-		//wrlog("68000 IRQ Called on CPU %d", cpunum);
-		//wrlog("PC:%08X\tSP:%08X", m68k_get_reg(NULL, M68K_REG_PC), m68k_get_reg(NULL, M68K_REG_SP));
-		//wrlog("INT Taken 68000, type: %d", int_type);
+		//LOG_INFO("68000 IRQ Called on CPU %d", cpunum);
+		//LOG_INFO("PC:%08X\tSP:%08X", m68k_get_reg(NULL, M68K_REG_PC), m68k_get_reg(NULL, M68K_REG_SP));
+		//LOG_INFO("INT Taken 68000, type: %d", int_type);
 		break;
 	}
 }
 
 void cpu_do_interrupt(int int_type, int cpunum)
 {
-	if (enable_interrupt[cpunum] == 0) { wrlog("Interrupts Disabled"); return; }
+	if (interrupt_enable[cpunum] == 0) { LOG_INFO("Interrupts Disabled"); return; }
 
 	interrupt_count[cpunum]++;
-	//wrlog("Interrupt count %d", interrupt_count[cpunum]);
+	//LOG_INFO("Interrupt count %d", interrupt_count[cpunum]);
 	if (interrupt_count[cpunum] == Machine->gamedrv->cpu_intpass_per_frame[active_cpu])
 	{
 		intcnt++;
-		// wrlog("Interrupt count %d", interrupt_count[cpunum]);
+		// LOG_INFO("Interrupt count %d", interrupt_count[cpunum]);
 		switch (Machine->gamedrv->cpu_type[active_cpu])
 		{
 		case CPU_MZ80:
 			if (int_type == INT_TYPE_NMI) {
 				m_cpu_z80[cpunum]->mz80nmi();
-				//wrlog("NMI Taken");
+				//LOG_INFO("NMI Taken");
 			}
 			else {
 				m_cpu_z80[cpunum]->mz80int(interrupt_vector[cpunum]);
-				//wrlog("INT Taken");
+				//LOG_INFO("INT Taken");
 			}
 			break;
 
 		case CPU_M6502:
 			if (int_type == INT_TYPE_NMI) {
 				m_cpu_6502[cpunum]->nmi6502();
-				//wrlog("NMI Taken");
+				//LOG_INFO("NMI Taken");
 			}
 			else {
 				m_cpu_6502[cpunum]->irq6502();
-				//wrlog("INT Taken");
+				//LOG_INFO("INT Taken");
 			}
 			break;
 		case CPU_M6809:
@@ -456,7 +496,7 @@ void cpu_do_interrupt(int int_type, int cpunum)
 			}
 			break;
 		case CPU_68000: m68k_set_irq(int_type);
-				//wrlog("INT Taken 68000, type: %d", Machine->gamedrv->cpu_int_type[active_cpu]);
+				//LOG_INFO("INT Taken 68000, type: %d", Machine->gamedrv->cpu_int_type[active_cpu]);
 			break;
 		}
 
@@ -516,8 +556,8 @@ int cpu_exec_now(int cpu, int cycles)
 		break;
 	case CPU_68000:
 			ticks = m68k_execute(cycles);
-			//wrlog("Cycles Executed here %d", cycles);
-			//wrlog("PC:%08X\tSP:%08X\n", m68k_get_reg(NULL, M68K_REG_PC), m68k_get_reg(NULL, M68K_REG_SP));
+			//LOG_INFO("Cycles Executed here %d", cycles);
+			//LOG_INFO("PC:%08X\tSP:%08X\n", m68k_get_reg(NULL, M68K_REG_PC), m68k_get_reg(NULL, M68K_REG_SP));
 		timer_update(ticks, active_cpu);
 		break;
 	case CPU_CCPU:
@@ -541,12 +581,12 @@ void cpu_run(void)
 	// Start with all timers at zero; This will need to change. 
 	//timer_clear_all_eof();
 	
-    //wrlog("CPU RUN MAME CALLED");
+    //LOG_INFO("CPU RUN MAME CALLED");
 	//update_input_ports();	/* read keyboard & update the status of the input ports */
 
 	for (active_cpu = 0; active_cpu < totalcpu; active_cpu++)
 	{
-		cpurunning[active_cpu] = 1;
+		//cpurunning[active_cpu] = 1;
 		totalcycles[active_cpu] = 0;
 		ran_this_frame[active_cpu] = 0;
 
@@ -556,12 +596,12 @@ void cpu_run(void)
 			iloops[active_cpu] = -1;
 
 		int cycles = (Machine->gamedrv->cpu_freq[active_cpu] / Machine->gamedrv->fps) / Machine->gamedrv->cpu_intpass_per_frame[active_cpu];
-		//wrlog("Cycles are %d, iloops are %d", cycles, iloops[active_cpu]);
+		//LOG_INFO("Cycles are %d, iloops are %d", cycles, iloops[active_cpu]);
 	}
 
 	for (current_slice = 0; current_slice < Machine->gamedrv->cpu_divisions[0]; current_slice++)
 	{
-		//wrlog("Current slice is %d", current_slice);
+		//LOG_INFO("Current slice is %d", current_slice);
 
 		for (active_cpu = 0; active_cpu < totalcpu; active_cpu++)
 		{
@@ -569,24 +609,24 @@ void cpu_run(void)
 			{
 				cpu_reset(active_cpu);
 			}
-			//wrlog("Current cpu is %d", active_cpu);
+			//LOG_INFO("Current cpu is %d", active_cpu);
 			if (cpurunning[active_cpu])
 			{
 				if (iloops[active_cpu] >= 0)
 				{
-					//wrlog("Current iloop %d", iloops[active_cpu]);
+					//LOG_INFO("Current iloop %d", iloops[active_cpu]);
 					if (totalcpu > 1) { cpu_setcontext(active_cpu); }
 
 					target = (Machine->gamedrv->cpu_freq[active_cpu] / Machine->gamedrv->fps) * (current_slice + 1)
 						/ Machine->gamedrv->cpu_divisions[active_cpu];
 
-					//wrlog("Target is %d", target);
+					//LOG_INFO("Target is %d", target);
 
 					next_interrupt = (Machine->gamedrv->cpu_freq[active_cpu]
 						/ Machine->gamedrv->fps) * (Machine->gamedrv->cpu_intpass_per_frame[active_cpu] - iloops[active_cpu])
 						/ Machine->gamedrv->cpu_intpass_per_frame[active_cpu];
 
-					//wrlog("Next Int is %d", next_interrupt);
+					//LOG_INFO("Next Int is %d", next_interrupt);
 					while (ran_this_frame[active_cpu] < target)
 					{
 						if (target <= next_interrupt)
@@ -617,7 +657,7 @@ void cpu_run(void)
 							next_interrupt = (Machine->gamedrv->cpu_freq[active_cpu]
 								/ Machine->gamedrv->fps) * (Machine->gamedrv->cpu_intpass_per_frame[active_cpu] - iloops[active_cpu])
 								/ Machine->gamedrv->cpu_intpass_per_frame[active_cpu];
-							//wrlog("CPU %d, Next Interrupt: %d", active_cpu, next_interrupt);
+							//LOG_INFO("CPU %d, Next Interrupt: %d", active_cpu, next_interrupt);
 						}
 					}
 					if (totalcpu > 1) { cpu_getcontext(active_cpu); }
@@ -632,7 +672,7 @@ void cpu_run(void)
 
 void cpu_reset(int cpunum)
 {
-	wrlog("CPU RESET CALLED!!----------");
+	LOG_INFO("CPU RESET CALLED!!----------");
 
 	switch (Machine->gamedrv->cpu_type[cpunum])
 	{
@@ -660,7 +700,7 @@ void cpu_reset(int cpunum)
 	//Clear CPU Cyclecount.
 	cyclecount[cpunum] = 0;
 	//Clear CPU Reset Status
-	wrlog("Cpu reset status is %d", reset_cpu_status[cpunum]);
+	LOG_INFO("Cpu reset status is %d", reset_cpu_status[cpunum]);
 	reset_cpu_status[cpunum] = 0;
 	if (cpunum == 0)vid_tickcount = 0;
 	//Reset any timers on that CPU.
@@ -691,22 +731,22 @@ int cpu_scale_by_cycles(int val, int clock)
 	int sclock = Machine->gamedrv->cpu_freq[active_cpu];
 	int current = tickcount[active_cpu];//cyclecount[active_cpu];  //totalcpu-1]; active_cpu was last
 
-	//wrlog(" Sound Update called, clock value: %d ", current);
+	//LOG_INFO(" Sound Update called, clock value: %d ", current);
 	int max = sclock / Machine->gamedrv->fps;
-	//wrlog(" Clock  %d divided by FPS: %d is equal to value: %d",sclock,Machine->gamedrv->fps,max);
+	//LOG_INFO(" Clock  %d divided by FPS: %d is equal to value: %d",sclock,Machine->gamedrv->fps,max);
 	temp = ((float)current / (float)max);
 	if (temp > 1) temp = (float).99;
 
-	//wrlog(" Current %d divided by MAX: %d is equal to value: %f",current,max,temp);
+	//LOG_INFO(" Current %d divided by MAX: %d is equal to value: %f",current,max,temp);
 	temp = val * temp;
 	k = (int)temp;
-	//wrlog("Sound position %d",k);
+	//LOG_INFO("Sound position %d",k);
 	return k;
 }
 
 void free_cpu_memory()
 {
-	wrlog("Freeing allocated CPU Cores. Totalcpu = %d", totalcpu);
+	LOG_INFO("Freeing allocated CPU Cores. Totalcpu = %d", totalcpu);
 	
 	for (int x = 0; x < totalcpu; x++)
 	{
@@ -744,9 +784,11 @@ void init_cpu_config()
 
 	for (x = 0; x < 4; x++)
 	{
+		reset_cpu_status[x]=0;
+		cpurunning[x] = 1;
 		interrupt_count[x] = 0;
 		interrupt_pending[x] = 0;
-		enable_interrupt[x] = 1;
+		interrupt_enable[x] = 1;
 		interrupt_vector[x] = 0xff;
 		cyclecount[x] = 0;
 		if (Machine->gamedrv->cpu_type[x])  totalcpu++;
@@ -757,8 +799,8 @@ void init_cpu_config()
 	
 	timer_init();
 	watchdog_timer = timer_set(TIME_IN_HZ(4), 0, watchdog_callback);
-	wrlog("NUMBER OF CPU'S to RUN: %d ", totalcpu);
-	wrlog("Finished starting up cpu settings, defaults");
+	LOG_INFO("NUMBER OF CPU'S to RUN: %d ", totalcpu);
+	LOG_INFO("Finished starting up cpu settings, defaults");
 }
 
 /***************************************************************************
@@ -774,7 +816,7 @@ void watchdog_callback(int param)
 {
 	watchdog_counter++;
 	if (watchdog_counter > 2) {
-		wrlog("warning: reset caused by the watchdog\n");
+		LOG_INFO("warning: reset caused by the watchdog\n");
 		cpu_reset_all();
 		watchdog_counter = 0;
 	}
@@ -806,17 +848,17 @@ UINT8 MRA_RAM(UINT32 address, struct MemoryReadByte* psMemRead)
 //Write Ram
 void MWA_RAM(UINT32 address, UINT8 data, struct MemoryWriteByte* pMemWrite)
 {
-	//wrlog("Address here is %x Writing address %x ", address, address + pMemWrite->lowAddr);
+	//LOG_INFO("Address here is %x Writing address %x ", address, address + pMemWrite->lowAddr);
 	
 	Machine->memory_region[active_cpu][address + pMemWrite->lowAddr] = data;
-	//wrlog("Active CPU here is %d", active_cpu);
+	//LOG_INFO("Active CPU here is %d", active_cpu);
 }
 
 // Read Rom
 UINT8 MRA_ROM(UINT32 address, struct MemoryReadByte* psMemRead)
 {
-	//wrlog("Active CPU here is %d", active_cpu);
-    //wrlog("Address here is %x reading address %x data %x", address, address + psMemRead->lowAddr, Machine->memory_region[active_cpu][address + psMemRead->lowAddr]);
+	//LOG_INFO("Active CPU here is %d", active_cpu);
+    //LOG_INFO("Address here is %x reading address %x data %x", address, address + psMemRead->lowAddr, Machine->memory_region[active_cpu][address + psMemRead->lowAddr]);
 	return Machine->memory_region[active_cpu][address + psMemRead->lowAddr];
 }
 
@@ -842,7 +884,7 @@ void MWA_ROM16(UINT32 address, UINT16 data, struct MemoryWriteWord* pMemWrite)
 void MWA_ROM(UINT32 address, UINT8 data, struct MemoryWriteByte* pMemWrite)
 {
 	//If logging add here
-	//wrlog("Attempted Rom Write? ");
+	//LOG_INFO("Attempted Rom Write? ");
 }
 
 void MWA_NOP(UINT32 address, UINT8 data, struct MemoryWriteByte* pMemWrite)
@@ -926,7 +968,7 @@ unsigned int m68k_read_memory_8(unsigned int address)
 		++MemRead;
 	}
 
-	wrlog("Unhandled Memory 8 Read: addr: %x", address); 
+	LOG_INFO("Unhandled Memory 8 Read: addr: %x", address); 
 	return 0;
 }
 
@@ -934,7 +976,7 @@ void m68k_write_memory_8(unsigned int address, unsigned int value)
 {
 	//int k=0;
 	MemoryWriteByte* MemWrite = M_MemoryWrite8;
-	//wrlog("Memory 8 Write: addr: %x value %x", address, value);
+	//LOG_INFO("Memory 8 Write: addr: %x value %x", address, value);
 	while (MemWrite->lowAddr != 0xffffffff)
 	{
 		if (address >= MemWrite->lowAddr && address <= MemWrite->highAddr)
@@ -953,7 +995,7 @@ void m68k_write_memory_8(unsigned int address, unsigned int value)
 		}
 		MemWrite++;
 	}
-	//if (!k) { wrlog("Unhandled Memory 8 Write: addr: %x value %x", address, value); }
+	//if (!k) { LOG_INFO("Unhandled Memory 8 Write: addr: %x value %x", address, value); }
 }
 
 unsigned int m68k_read_memory_16(unsigned int address)
@@ -966,12 +1008,12 @@ unsigned int m68k_read_memory_16(unsigned int address)
 		{
 			if (MemRead->memoryCall)
 			{
-				//wrlog("Handler 16 Read: addr: %x", address);
+				//LOG_INFO("Handler 16 Read: addr: %x", address);
 				return (UINT16) (MemRead->memoryCall(address - MemRead->lowAddr, MemRead));
 			}
 			else
 			{
-				//wrlog("MEM 16 Read: addr: %x", address);
+				//LOG_INFO("MEM 16 Read: addr: %x", address);
 				return (UINT16) READ_WORD((unsigned char*)MemRead->pUserArea, address - MemRead->lowAddr);
 			}
 		}
@@ -979,13 +1021,13 @@ unsigned int m68k_read_memory_16(unsigned int address)
 		++MemRead;
 	}
 
-	wrlog("Unhandled Read 16: %x ", address); //exit(1);
+	LOG_INFO("Unhandled Read 16: %x ", address); //exit(1);
 	return 0;
 }
 
 void m68k_write_memory_16(unsigned int address, unsigned int value)
 {
-	//wrlog("Write Memory 16, addr: %x, data %x", address, value);
+	//LOG_INFO("Write Memory 16, addr: %x, data %x", address, value);
 //	int k = 0;
 	MemoryWriteWord* MemWrite = M_MemoryWrite16;
 
@@ -996,12 +1038,12 @@ void m68k_write_memory_16(unsigned int address, unsigned int value)
 			if (MemWrite->memoryCall)
 			{
 			//	k = 1;
-				//wrlog("Write Handler 16, addr: %x, data %x", address, value);
+				//LOG_INFO("Write Handler 16, addr: %x, data %x", address, value);
 				MemWrite->memoryCall(address - MemWrite->lowAddr, (UINT16) value, MemWrite);
 			}
 			else {
 				//k = 1;
-				//wrlog("Write Memory 16, addr: %x, data %x", address, value);
+				//LOG_INFO("Write Memory 16, addr: %x, data %x", address, value);
 				WRITE_WORD((unsigned char*)MemWrite->pUserArea, address - MemWrite->lowAddr, (UINT16) value);
 			}
 		}
@@ -1009,14 +1051,14 @@ void m68k_write_memory_16(unsigned int address, unsigned int value)
 	}
 	//if (!k)
 	//{
-	//	wrlog("Unhandled Memory 16 Write: addr: %x data: %x", address, value);
+	//	LOG_INFO("Unhandled Memory 16 Write: addr: %x data: %x", address, value);
 		//exit(1); 
 	//}
 }
 
 unsigned int m68k_read_memory_32(unsigned int address)
 {
-	//wrlog("Reading Memory 32, addr: %x", address);
+	//LOG_INFO("Reading Memory 32, addr: %x", address);
 
 	/* Split into 2 reads */
 	return (UINT32) (m68k_read_memory_16(address + 0) << 16 | m68k_read_memory_16(address + 2));
@@ -1024,7 +1066,7 @@ unsigned int m68k_read_memory_32(unsigned int address)
 
 void m68k_write_memory_32(unsigned int address, unsigned int value)
 {
-	//wrlog("Write Memory 32, addr: %x, data %x\n", address, value);
+	//LOG_INFO("Write Memory 32, addr: %x, data %x\n", address, value);
 	/* Split into 2 writes */
 	m68k_write_memory_16(address, (value >> 16) & 0xFFFF);
 	m68k_write_memory_16(address + 2, value & 0xFFFF);

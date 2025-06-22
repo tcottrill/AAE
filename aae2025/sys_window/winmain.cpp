@@ -76,7 +76,24 @@ void show_mouse()
 	ShowCursor(true);
 }
 
+void CaptureMouseToWindow(HWND hwnd) 
+{
+	RECT rc;
+	GetClientRect(hwnd, &rc);
+	POINT pt = { rc.left, rc.top };
+	POINT pt2 = { rc.right, rc.bottom };
+	ClientToScreen(hwnd, &pt);
+	ClientToScreen(hwnd, &pt2);
+	SetRect(&rc, pt.x, pt.y, pt2.x, pt2.y);
+	ClipCursor(&rc);
+	SetCapture(hwnd);
+}
 
+void ReleaseMouseFromWindow() 
+{
+	ClipCursor(nullptr);
+	ReleaseCapture();
+}
 
 int KeyCheck(int keynum)
 {
@@ -95,26 +112,15 @@ int KeyCheck(int keynum)
 	return 0;
 }
 
-void osMessage(int ID, const char* fmt, ...)
-{
-	int mType = MB_ICONERROR;
-	char		text[256] = "";								// Holds Our String
-	va_list		ap;										// Pointer To List Of Arguments
-
-	if (fmt == NULL)									// If There's No Text
-		return;											// Do Nothing
-
-	va_start(ap, fmt);									// Parses The String For Variables
-	vsprintf_s(text, fmt, ap);						// And Converts Symbols To Actual Numbers
-	va_end(ap);
-
-	switch (ID)
-	{
-	case IDCANCEL: mType = MB_ICONERROR; break;
-	case IDOK:mType = MB_ICONASTERISK; break;
-	}
-	MessageBox(hWnd, (const char *)text, "Message ", MB_OK | mType);
+void osMessage(const char* caption, const char* fmt, ...) {
+	char buffer[512];
+	va_list args;
+	va_start(args, fmt);
+	vsprintf_s(buffer, fmt, args);
+	va_end(args);
+	MessageBoxA(hWnd, buffer, caption, MB_ICONERROR | MB_OK);
 }
+
 
 enum WindowsOS {
 	NotFind,
@@ -148,28 +154,28 @@ WindowsOS GetOsVersion()
 	}
 	if (osInfo.dwMajorVersion == 11)
 	{
-		wrlog("this is windows 11\n");
+		LOG_INFO("this is windows 11\n");
 		return Win11;
 	}
 
 	if (osInfo.dwMajorVersion == 10 && osInfo.dwMinorVersion == 0)
 	{
-		wrlog("this is windows 10\n");
+		LOG_INFO("this is windows 10\n");
 		return Win10;
 	}
 	else if (osInfo.dwMajorVersion == 6 && osInfo.dwMinorVersion == 3)
 	{
-		wrlog("this is windows 8.1\n");
+		LOG_INFO("this is windows 8.1\n");
 		return Win8;
 	}
 	else if (osInfo.dwMajorVersion == 6 && osInfo.dwMinorVersion == 2)
 	{
-		wrlog("this is windows 8\n");
+		LOG_INFO("this is windows 8\n");
 		return Win8;
 	}
 	else if (osInfo.dwMajorVersion == 6 && osInfo.dwMinorVersion == 1)
 	{
-		wrlog("this is windows 7 or Windows Server 2008 R2\n");
+		LOG_INFO("this is windows 7 or Windows Server 2008 R2\n");
 		return Win7;
 	}
 
@@ -294,10 +300,10 @@ void AdjustWindowRectForBorders(const int borders, const int x, const int y,
 	r.top = y;
 	r.right = r.left + width;
 	r.bottom = r.top + height;
-	BOOL result = AdjustWindowRect(&r, style, FALSE);
+	bool result = AdjustWindowRect(&r, style, FALSE);
 	if (!result)
 	{
-		wrlog("AdjustWindowRect failed, error: ");
+		LOG_INFO("AdjustWindowRect failed, error: ");
 	}
 }
 
@@ -321,7 +327,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 	RECT WorkArea{};
 	RECT rect;
 	MSG msg;
-	BOOL quit = FALSE;
+	bool quit = FALSE;
 	TIMECAPS caps;
 	std::string temppath;
 
@@ -346,7 +352,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 	if (GetOsVersion() == Win10 || GetOsVersion() == Win11)
 	{
 		//Make the OS DPI Aware for those people with 4K monitors using scaling.
-       //BOOL REZ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE);
+       //bool REZ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE);
 		//DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 // DPI_AWARENESS_CONTEXT_UNAWARE_GDISCALED // DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 //DPI_AWARENESS_CONTEXT_UNAWARE
 		//SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_SYSTEM_AWARE);
 	}
@@ -441,11 +447,12 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 	
 	if (!SetCurrentDirectory(temppath.c_str()))
 	{
-		wrlog("SetCurrentDirectory failed (%d)\n", GetLastError());
+		LOG_INFO("SetCurrentDirectory failed (%d)\n", GetLastError());
 	}
 
-	LogOpen("./aaelog.txt");
-	wrlog("Starting Log");
+	Log::open("./aaelog.txt");
+	Log::setConsoleOutputEnabled(false);
+	LOG_INFO("Starting Log");
 
 	// This has to be done AFTER the window instantiation.
 	// Disable Windows 10 window decorations cause I hates them.
@@ -466,7 +473,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 	GetClientRect(hWnd, &clientRect);
 	int gl_width = clientRect.right - clientRect.left;
 	int gl_height = clientRect.bottom - clientRect.top;
-	wrlog("Actual Screen Width %d, Actual Screen Height %d", gl_width, gl_height);
+	LOG_INFO("Actual Screen Width %d, Actual Screen Height %d", gl_width, gl_height);
 
 	SCREEN_W = gl_width;
 	SCREEN_H = gl_height;
@@ -475,7 +482,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 	timeGetDevCaps(&caps, sizeof(TIMECAPS));
 	timeBeginPeriod(caps.wPeriodMin);
 	TimerInit(); //Start timer
-	wrlog("Setting timer resolution to Min Supported: %d (ms)", caps.wPeriodMin);
+	LOG_INFO("Setting timer resolution to Min Supported: %d (ms)", caps.wPeriodMin);
 
 	//Setup cmd line parsing (Not currently being used, but here so I don't lose it. 
 	int w_argc = 0;
@@ -492,7 +499,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 			s.resize(len);
 			WideCharToMultiByte(CP_ACP, 0, w_argv[i], w_len, &s[0], len, NULL, NULL);
 			my_argv_buf.push_back(toLowerCase(s));
-			wrlog("string here is %s", my_argv_buf[i].c_str());
+			LOG_INFO("string here is %s", my_argv_buf[i].c_str());
 		}
 		
 		my_argv.reserve(my_argv_buf.size());
@@ -505,7 +512,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 	}
 	else
 	{
-		wrlog("NOPENOPENOPENOPEN");
+		LOG_INFO("NOPENOPENOPENOPEN");
 	}
 	// enable OpenGL for the window
 	OpenGL2Enable();
@@ -529,6 +536,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	
 	scare_mouse();
+	CaptureMouseToWindow(hWnd);
 	SetFocus(hWnd);
 
 		// Init Emulator Here.
@@ -536,7 +544,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 
 	//
 	/////////////////// END INITIALIZATION ////////////////////////////////////
-
+	
 	// program main loop
 	while (!done)
 	{
@@ -557,20 +565,21 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 		else
 		{
 			// Run Emulator Here.
-			if (config.debug_profile_code) { wrlog("starting emulator run"); }
+			if (config.debug_profile_code) { LOG_INFO("starting emulator run"); }
+			CaptureMouseToWindow(hWnd);
 			emulator_run();
 		
 			int err = glGetError();
 			if (err != 0)
 			{
-				wrlog("openglerror in before swap buffer: %d", err);
+				LOG_INFO("openglerror in before swap buffer: %d", err);
 			}
-			if (config.debug_profile_code) { wrlog("Swapping Buffers"); }
+			if (config.debug_profile_code) { LOG_INFO("Swapping Buffers"); }
 			GLSwapBuffers();
 			err = glGetError();
 			if (err != 0)
 			{
-				wrlog("openglerror in after swap buffer: %d", err);
+				LOG_INFO("openglerror in after swap buffer: %d", err);
 			}
 		}
 	}
@@ -581,12 +590,9 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 	OpenGLShutDown();
 
 	timeEndPeriod(caps.wPeriodMin);
-	//Stop the Audio Subsystem and release all loaded samples and streams
-	//mixer_end();
-	//End our font
-
+	
 	//Shutdown logging
-	wrlog("Closing Log");
+	LOG_INFO("Closing Log");
 	LogClose();
 
 	// destroy the window explicitly

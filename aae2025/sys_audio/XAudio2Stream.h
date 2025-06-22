@@ -6,6 +6,7 @@
 #include <thread>
 #include <mutex>
 
+float mixer_get_master_volume();
 void mixer_set_master_volume(int volume);
 HRESULT xaudio2_init(int rate, int fps);
 HRESULT xaudio2_update(BYTE* buffera, DWORD bufferLength);

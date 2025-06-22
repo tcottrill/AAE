@@ -130,7 +130,7 @@ WRITE_HANDLER_NS(starwars_out_w)
 		break;
 
 	case 7:
-		wrlog("recall"); /* what's that? */
+		LOG_INFO("recall"); /* what's that? */
 		break;
 	}
 }
@@ -230,7 +230,7 @@ void run_mbox(void)
 	int IP15_8, IP7, IP6_0; /* Instruction PROM values */
 
 
-	//wrlog("Running Mathbox...\n");
+	//LOG_INFO("Running Mathbox...\n");
 
 	/* loop until finished */
 	while (M_STOP > 0)
@@ -257,7 +257,7 @@ void run_mbox(void)
 		MA_byte = 0x5000 + (MA << 1);
 		RAMWORD = (RAM[MA_byte + 1] & 0x00ff) | ((RAM[MA_byte] & 0x00ff) << 8);
 
-		//wrlog("MATH ADDR: %x, CPU ADDR: %x, RAMWORD: %x\n", MA, MA_byte, RAMWORD);
+		//LOG_INFO("MATH ADDR: %x, CPU ADDR: %x, RAMWORD: %x\n", MA, MA_byte, RAMWORD);
 
 		/*
 		 * RAMWORD is the sixteen bit Math RAM value for the selected address

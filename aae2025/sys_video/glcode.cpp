@@ -1,4 +1,4 @@
-//==========================================================================
+﻿//==========================================================================
 // AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME
 // code, 0.29 through .90 mixed with code of my own. This emulator was
 // created solely for my amusement and learning and is provided only
@@ -29,9 +29,6 @@
 #include <chrono> // For code profiling
 #include "path_helper.h"
 #include "old_mame_raster.h"
-
-using namespace std;
-using namespace chrono;
 
 //Please fix this
 extern void osd_get_pen(int pen, unsigned char* red, unsigned char* green, unsigned char* blue);
@@ -89,8 +86,8 @@ void calc_screen_rect(int screen_width, int screen_height, char* aspect, int rot
 
 	if (sscanf(aspect, "%d:%d", &aspectx, &aspecty) != 2 || aspectx == 0 || aspecty == 0)
 	{
-		wrlog("error: invalid value for aspect ratio: %s\n", aspect);
-		wrlog("Setting aspect to 4/3 because of invalid config file setting.");
+		LOG_INFO("error: invalid value for aspect ratio: %s\n", aspect);
+		LOG_INFO("Setting aspect to 4/3 because of invalid config file setting.");
 		aspectx = 4; aspecty = 3;
 	}
 
@@ -109,42 +106,40 @@ void calc_screen_rect(int screen_width, int screen_height, char* aspect, int rot
 	{
 		//Oh no, now we have to adjust the Y value.
 		new_screen_height = (float)screen_width * (float)((float)aspecty / (float)aspectx);
-		wrlog("New Screen Height is %f", new_screen_height);
+		LOG_INFO("New Screen Height is %f", new_screen_height);
 		//Get the new width value that should fit on the screen
 		target_width = (float)new_screen_height * (float)((float)aspectx / (float)aspecty);
 		yadj = ((float)screen_height - (float)new_screen_height) / 2;
-		wrlog("Yadj (Divided by 2) is %f", yadj);
+		LOG_INFO("Yadj (Divided by 2) is %f", yadj);
 		screen_height = new_screen_height;
 	}
-	wrlog("Target width is %f", target_width);
+	LOG_INFO("Target width is %f", target_width);
 
 	//Now adjust to center in the screen
 	xadj = (screen_width - target_width) / 2.0;
-	wrlog("Xadj (Divided by 2) is %f", xadj);
+	LOG_INFO("Xadj (Divided by 2) is %f", xadj);
 
 	int v = 8 * rotated; //0,16,24
 	//Now set the points
 	screen_rect.BottomLeft(xadj, yadj, indices[v], indices[v + 1]);
-	wrlog("Bottom Left %f %f", xadj, yadj);
+	LOG_INFO("Bottom Left %f %f", xadj, yadj);
 	screen_rect.TopLeft(xadj, screen_height + yadj, indices[v + 2], indices[v + 3]);
-	wrlog("Top Left %f %f", xadj, screen_height + yadj);
+	LOG_INFO("Top Left %f %f", xadj, screen_height + yadj);
 	screen_rect.TopRight(target_width + xadj, screen_height + yadj, indices[v + 4], indices[v + 5]);
-	wrlog("Top Right %f %f", target_width + xadj, screen_height + yadj);
+	LOG_INFO("Top Right %f %f", target_width + xadj, screen_height + yadj);
 	screen_rect.BottomRight(target_width + xadj, yadj, indices[v + 6], indices[v + 7]);
-	wrlog("Bottom Right %f %f", target_width + xadj, yadj);
+	LOG_INFO("Bottom Right %f %f", target_width + xadj, yadj);
 }
 
 
 void raster_poly_update(void)
 {
-	wrlog("Update Screen Called");
+	//LOG_INFO("Update Screen Called");
 	int x, y;
 	unsigned char  c = 0;
-	float a, b;
-	int t = 2;
 	unsigned char r1, g1, b1;
 	
-	vid_scale = 3;
+	vid_scale = 3.0;
 
 	for (x = Machine->drv->visible_area.min_y; x < Machine->drv->visible_area.max_y + 1; x++) 
 	{
@@ -152,14 +147,10 @@ void raster_poly_update(void)
 		{
 			c = main_bitmap->line[x][y];
 			//Only update if it is non black?
-			if (c)
+			if (main_bitmap->line[x][y])
 			{
-				a = x * t;
-				b = y * t;
-
 				osd_get_pen(Machine->pens[c], &r1, &g1, &b1);
 				sc->addPoly(y, x, vid_scale, MAKE_RGBA(r1, g1, b1, 0xff));
-				//Any_Rect( b, b + t, a, a + t);
 			}
 		}
 	}
@@ -189,10 +180,7 @@ void set_ortho_proper()
 	glLoadIdentity();
 	glOrtho(0, Machine->gamedrv->screen_width*3, Machine->gamedrv->screen_height*3, 0, -1, 1); // Define a 2D orthographic view
 	glMatrixMode(GL_MODELVIEW);
-
-
 }
-
 
 void set_ortho(GLint width, GLint height)
 {
@@ -216,32 +204,32 @@ int init_gl(void)
 	{
 		
 		glGetIntegerv(GL_MAX_TEXTURE_SIZE, &texSize);
-		wrlog("Max Texture Size supported by this card: %dx%d", texSize, texSize);
-		if (texSize < 1024)  wrlog("Warning!! Your card does not support a large enough texture size to run this emulator!!!!");
+		LOG_INFO("Max Texture Size supported by this card: %dx%d", texSize, texSize);
+		if (texSize < 1024)  LOG_INFO("Warning!! Your card does not support a large enough texture size to run this emulator!!!!");
 		glGetIntegerv(GL_MAX_COLOR_ATTACHMENTS_EXT, &texSize);
-		wrlog("Max number of color buffers per fbo supported on this card: %d", texSize);
+		LOG_INFO("Max number of color buffers per fbo supported on this card: %d", texSize);
 		//Extensions Check
 		
-		if (wglewIsSupported("GL_ARB_texture_filter_anisotropic")) { wrlog("Anisotropic Filtering Supported"); }
+		if (wglewIsSupported("GL_ARB_texture_filter_anisotropic")) { LOG_INFO("Anisotropic Filtering Supported"); }
 
-		if (wglewIsSupported("WGL_ARB_multisample")) 	{ wrlog("ARB_Multisample Extension Supported"); }
+		if (wglewIsSupported("WGL_ARB_multisample")) 	{ LOG_INFO("ARB_Multisample Extension Supported"); }
 				
 		if (config.forcesync)
 		{
 			if (wglewIsSupported("WGL_EXT_swap_control"))
 			{
 				wglSwapIntervalEXT(1);
-				wrlog("Enabling vSync per the config.forcesync setting.");
+				LOG_INFO("Enabling vSync per the config.forcesync setting.");
 			}
-			else wrlog("Your video card does not support vsync. Please check and update your video drivers.");
+			else LOG_INFO("Your video card does not support vsync. Please check and update your video drivers.");
 		}
 		else {
 			if (wglewIsSupported("WGL_EXT_swap_control"))
 			{
 				wglSwapIntervalEXT(0);
-				wrlog("Disabling vSync");
+				LOG_INFO("Disabling vSync");
 			}
-			else wrlog("There was a problem disabling vSync, please check your video card drivers.");
+			else LOG_INFO("There was a problem disabling vSync, please check your video card drivers.");
 		}
 		
 		// Reset The Current Viewport
@@ -287,23 +275,21 @@ int init_gl(void)
 		*/
 		////////////////////////////////////////////////////////////////////////////////
 
-		wrlog("Initalizing FBO's");
+		LOG_INFO("Initalizing FBO's");
 		fbo_init();
 		// NEW CODE
 		//fbo = new multifbo(1024, 768, 16, 0, fboFilter::FB_NEAREST);
-		wrlog("Building Font");
+		LOG_INFO("Building Font");
 		BuildFont(); // Note to self: Remove this dependency. Move to using vector font everywhere including gui
 		font_init(); //Build the Vector Font
 		init_shader();
-		wrlog("Finished configuration of OpenGl sucessfully");
+		LOG_INFO("Finished configuration of OpenGl sucessfully");
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 		sc = new Fpoly();
 
 		init_one++;
 	}
-
-	//allegro_gl_flip();
 	return 1;
 }
 
@@ -335,7 +321,7 @@ int make_single_bitmap(GLuint* texture, const char* filename, const char* archna
 	//strcat(temppath, archname);
 	//strcat(temppath, "\0");
 
-	wrlog("Artwork Path: %s", temppath.c_str());
+	LOG_INFO("Artwork Path: %s", temppath.c_str());
 
 	*texture = load_texture(filename, temppath.c_str(), 4, 1);
 
@@ -377,9 +363,9 @@ void load_artwork(const struct artworks* p)
 		}break;
 					 
 		case GAME_TEX: goodload = make_single_bitmap(&game_tex[p[i].target], p[i].filename, p[i].zipfile, 0); break;
-		default: wrlog("You have defined something wrong in the artwork loading!!!!"); break;
+		default: LOG_ERROR("You have defined something wrong in the artwork loading!!!!"); break;
 		}
-		if (goodload == 0) { wrlog("A requested artwork file was not found!"); have_error = 15; }
+		if (goodload == 0) { LOG_ERROR("A requested artwork file was not found!"); have_error = 15; }
 	}
 }
 
@@ -411,7 +397,7 @@ void GLCheckError(const char* call)
 		return;
 
 	errcode -= GL_INVALID_ENUM;
-	wrlog("OpenGL %s in '%s'", enums[errcode], call);
+	LOG_ERROR("OpenGL %s in '%s'", enums[errcode], call);
 }
 
 void set_render_fbo4()
@@ -440,7 +426,7 @@ void end_render_fbo4()
 	int err = glGetError();
 	if (err != 0)
 	{
-		wrlog("openglerror in end_render_fbo_a: %d", err);
+		LOG_ERROR("openglerror in end_render_fbo_a: %d", err);
 	}
 
 	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);
@@ -450,7 +436,7 @@ void end_render_fbo4()
 	err = glGetError();
 	if (err != 0)
 	{
-		wrlog("openglerror in end_render_fbo_b: %d", err);
+		LOG_ERROR("openglerror in end_render_fbo_b: %d", err);
 	}
 }
 
@@ -465,38 +451,26 @@ void end_render_fbo4()
 void copy_main_img_to_fbo2()
 {
 	GLuint fbo2_tex = 0;
-	GLint loc1 = 0;
-	GLint loc2 = 0;
-	
 	glLoadIdentity();
-	
 	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo2);
-	//wrlog("Debug Remove : img_copy to FBO2 1.0");
+	//LOG_INFO("Debug Remove : img_copy to FBO2 1.0");
 	glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT);
 	set_ortho(512, 512);
 	glDisable(GL_BLEND);
 	set_texture(&img1b, 1, 0, 0, 0);
-	//wrlog("Debug Remove : img_copy to FBO2 2.0");
+	//LOG_INFO("Debug Remove : img_copy to FBO2 2.0");
 	glActiveTexture(GL_TEXTURE0);
-	//wrlog("Debug Remove : img_copy to FBO2 2.5");
-	glUseProgram(fragBlur);
-	//wrlog("Debug Remove : img_copy to FBO2 2.6");
-	
-	int err = glGetError();
-	if (err != 0)
-	{
-		wrlog("openglerror in copy_main_img_to_fbo2: %d", err);
-	}
-	
-	fbo2_tex = glGetUniformLocation(fragBlur, "colorMap"); glUniform1i(fbo2_tex, 0);
-	//wrlog("Debug Remove : img_copy to FBO2 2.6A");
-	loc1 = glGetUniformLocation(fragBlur, "width"); glUniform1f(loc1, 512.0);
-	//wrlog("Debug Remove : img_copy to FBO2 2.6B");
-	loc2 = glGetUniformLocation(fragBlur, "height"); glUniform1f(loc2, 512.0);
-	//wrlog("Debug Remove : img_copy to FBO2 3.0");
+	//LOG_INFO("Debug Remove : img_copy to FBO2 2.5");
+	bind_shader(fragBlur);
+	//LOG_INFO("Debug Remove : img_copy to FBO2 2.6");
+	int err = glGetError();	if (err != 0) 	{ LOG_ERROR("openglerror in copy_main_img_to_fbo2: %d", err);	}
+	set_uniform1i(fragBlur, "colorMap", fbo2_tex);
+	//LOG_INFO("Debug Remove : img_copy to FBO2 2.6A");
+	set_uniform1f(fragBlur, "width", 512.0f);
+	set_uniform1f(fragBlur, "height", 512.0f);
 	FS_Rect(0, 512);
-	glUseProgram(0);
-	//wrlog("Debug Remove : img_copy to FBO2 4.0");
+	unbind_shader();
+	//LOG_INFO("Debug Remove : img_copy to FBO2 4.0");
 }
 
 //
@@ -505,95 +479,84 @@ void copy_main_img_to_fbo2()
 //
 void copy_fbo2_to_fbo3()
 {
-	GLuint loc = 0;
-	GLint loc1 = 0;
-	GLint loc2 = 0;
-
+	GLuint fbo3_tex = 0;
 	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo3);
 
-	//Clear buffers between frames......
+	// Clear buffers between frames. 
+	// This is a requirement
 	glDrawBuffer(GL_COLOR_ATTACHMENT1_EXT);
 	glClearColor(0.0, 0.0, 0.0, 0.0);
 	glClear(GL_COLOR_BUFFER_BIT);
 	glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT);
-
 	set_ortho(256, 256);
-	
-	int err = glGetError();
-	if (err != 0)
-	{
-		wrlog("openglerror in copy_fbo2_to_fbo3: %d", err);
-	}
-
-	glUseProgram(fragBlur);
-
-	loc = glGetUniformLocation(fragBlur, "colorMap"); glUniform1i(loc, 0);
-	loc1 = glGetUniformLocation(fragBlur, "width");    glUniform1f(loc1, 256.0);
-	loc2 = glGetUniformLocation(fragBlur, "height");   glUniform1f(loc2, 256.0);
-
 	glDisable(GL_BLEND);
+	int err = glGetError();	if (err != 0)  { LOG_ERROR("openglerror in copy_fbo2_to_fbo3: %d", err);}
+
+	bind_shader(fragBlur);
+	set_uniform1i(fragBlur, "colorMap", fbo3_tex);
+	set_uniform1f(fragBlur, "width", 256.0f);
+	set_uniform1f(fragBlur, "height", 256.0f);
 	set_texture(&img2a, 1, 0, 0, 1);
 	FS_Rect(0, 256);
-	glUseProgram(0);
+	unbind_shader();
 }
 
 //
 //	Downsample Part 3                                  
-//  This copies img2a to the 256x256 blur texture at fbo3, img3a to img1b back and forth to blur	
+//  This copies img2a to the 256x256 blur texture at fbo3, img3a to img1b pingpong back and forth to blur	
 //
+/*
 void render_blur_image_fbo3() 
 {
-	static constexpr auto v1 = 1.0f;  //1.7 //1.0 // 1.5
-	static constexpr auto v2 = 2.0f;    //2.7 //2.0 //2.5
-	GLint loc = 0;
+	static constexpr auto v1 = 1.0f;  //1.7 //1.0 //1.5
+	static constexpr auto v2 = 2.0f;  //2.7 //2.0 //2.5
+	GLuint fbo3ab_tex = 0;
 	int i = 0;
-	float fshifta[] = { v1,0,-v1,0,//RIGHT
-					  -v1,0,v1,0,//LEFT
-					  0, v1,0,-v1,
-					  0,-v1,0, v1,
-					  v1,v1,-v1,-v1,
-					  -v1,-v1,v1,v1,
-					  -v1,v1,v1,-v1,
-					  v1,-v1,-v1,v1,
+	// Directional float shifts for v1 and v2
+	float fshifta[] = {
+		v1,  0,  -v1,   0, // RIGHT
+	   -v1,  0,   v1,   0, // LEFT
+		 0,  v1,   0, -v1, // UP
+		 0, -v1,   0,  v1, // DOWN
+		v1,  v1, -v1, -v1, // DIAGONAL: UP-RIGHT, DOWN-LEFT
+	   -v1, -v1,  v1,  v1, // DIAGONAL: DOWN-LEFT, UP-RIGHT
+	   -v1,  v1,  v1, -v1, // DIAGONAL: UP-LEFT, DOWN-RIGHT
+		v1, -v1, -v1,  v1  // DIAGONAL: DOWN-RIGHT, UP-LEFT
 	};
 
-	float fshiftb[] = { v2,0,-v2,0,//RIGHT
-					 -v2,0,v2,0,//LEFT
-					 0, v2,0,-v2,
-					 0,-v2,0, v2,
-					 v2,v2,-v2,-v2,
-					 -v2,-v2,v2,v2,
-					 -v2,v2,v2,-v2,
-					 v2,-v2,-v2,v2,
+	float fshiftb[] = {
+		v2,  0,  -v2,   0, // RIGHT
+	   -v2,  0,   v2,   0, // LEFT
+		 0,  v2,   0, -v2, // UP
+		 0, -v2,   0,  v2, // DOWN
+		v2,  v2, -v2, -v2, // DIAGONAL: UP-RIGHT, DOWN-LEFT
+	   -v2, -v2,  v2,  v2, // DIAGONAL: DOWN-LEFT, UP-RIGHT
+	   -v2,  v2,  v2, -v2, // DIAGONAL: UP-LEFT, DOWN-RIGHT
+		v2, -v2, -v2,  v2  // DIAGONAL: DOWN-RIGHT, UP-LEFT
 	};
 
-	glUseProgram(fragBlur);
+	
+	bind_shader(fragBlur);
+	set_uniform1i(fragBlur, "colorMap", fbo3ab_tex);
+	set_uniform1f(fragBlur, "width", 256.0f);
+	set_uniform1f(fragBlur, "height", 256.0f);
 
-	loc = glGetUniformLocation(fragBlur, "colorMap");
-	glUniform1i(loc, 0);
-	loc = glGetUniformLocation(fragBlur, "width");
-	glUniform1f(loc, 256.0);//225
-	loc = glGetUniformLocation(fragBlur, "height");
-	glUniform1f(loc, 256.0);//225
+	glEnable(GL_TEXTURE_2D);
+	glEnable(GL_BLEND);
+	glColor4f(.1f, .1f, .1f, .1f);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE);
 
 	for (int x = 4; x < 8; x++) //4 to 8
 	{
 		glDrawBuffer(GL_COLOR_ATTACHMENT1_EXT);
-		glEnable(GL_TEXTURE_2D);
-		glEnable(GL_BLEND);
-		//glActiveTexture(GL_TEXTURE0);
-		set_blending2();
-
+		glReadBuffer(GL_COLOR_ATTACHMENT0_EXT);
 		set_texture(&img3a, 1, 0, 0, 0);
 		glTranslatef(fshifta[i], fshifta[(i + 1)], 0);
 		FS_Rect(0, height3);
 		glTranslatef(fshifta[(i + 2)], fshifta[(i + 3)], 0);
 
 		glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT);
-		glEnable(GL_TEXTURE_2D);
-		glEnable(GL_BLEND);
-		//glActiveTexture(GL_TEXTURE0);
-		set_blending2();
+		glReadBuffer(GL_COLOR_ATTACHMENT1_EXT);
 		set_texture(&img3b, 1, 0, 0, 0);
 		glBindTexture(GL_TEXTURE_2D, img3b);
 
@@ -602,13 +565,93 @@ void render_blur_image_fbo3()
 		glTranslatef(fshiftb[(i + 2)], fshiftb[(i + 3)], 0);
 		i += 4;
 	}
-	int err = glGetError();
-	if (err != 0)
-	{
-		wrlog("openglerror in render_blur_image_fbo3: %d", err);
-	}
-	glUseProgram(0);
+	int err = glGetError();	if (err != 0)	{LOG_ERROR("openglerror in render_blur_image_fbo3: %d", err);}
+	unbind_shader();
 }
+*/
+
+// This code will be replaced by shader code. 
+void render_blur_image_fbo3()
+{
+	static constexpr float v1 = 1.0f;
+	static constexpr float v2 = 2.0f;
+
+	GLuint fbo3ab_tex = 0; // Texture bound to the shader
+
+	// 8 directional shift pairs (each 4 values = two shifts per pass)
+	// Directional float shifts for v1 and v2
+	float fshifta[] = {
+		v1,  0,  -v1,   0, // RIGHT
+	   -v1,  0,   v1,   0, // LEFT
+		 0,  v1,   0, -v1, // UP
+		 0, -v1,   0,  v1, // DOWN
+		v1,  v1, -v1, -v1, // DIAGONAL: UP-RIGHT, DOWN-LEFT
+	   -v1, -v1,  v1,  v1, // DIAGONAL: DOWN-LEFT, UP-RIGHT
+	   -v1,  v1,  v1, -v1, // DIAGONAL: UP-LEFT, DOWN-RIGHT
+		v1, -v1, -v1,  v1  // DIAGONAL: DOWN-RIGHT, UP-LEFT
+	};
+
+	float fshiftb[] = {
+		v2,  0,  -v2,   0, // RIGHT
+	   -v2,  0,   v2,   0, // LEFT
+		 0,  v2,   0, -v2, // UP
+		 0, -v2,   0,  v2, // DOWN
+		v2,  v2, -v2, -v2, // DIAGONAL: UP-RIGHT, DOWN-LEFT
+	   -v2, -v2,  v2,  v2, // DIAGONAL: DOWN-LEFT, UP-RIGHT
+	   -v2,  v2,  v2, -v2, // DIAGONAL: UP-LEFT, DOWN-RIGHT
+		v2, -v2, -v2,  v2  // DIAGONAL: DOWN-RIGHT, UP-LEFT
+	};
+
+
+	bind_shader(fragBlur);
+	set_uniform1i(fragBlur, "colorMap", fbo3ab_tex);
+	set_uniform1f(fragBlur, "width", 256.0f);
+	set_uniform1f(fragBlur, "height", 256.0f);
+
+	glEnable(GL_TEXTURE_2D); // Compatibility profile
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+	glColor4f(0.1f, 0.1f, 0.1f, 0.1f); // Used by FS_Rect
+
+	int i = 0; // Index into shift arrays
+
+	// Apply a global nudge downward to compensate for drift
+	glTranslatef(0.0f, -0.20f, 0.0f);
+	// Apply a global nudge to the left to compensate for drift as well. 
+	glTranslatef(-0.05f, 0.0f, 0.0f);
+
+	// 4 passes = 8 blur directions (2 shifts per pass)
+	for (int pass = 0; pass < 4; ++pass)
+	{
+		// A → B
+		glDrawBuffer(GL_COLOR_ATTACHMENT1_EXT);
+		glReadBuffer(GL_COLOR_ATTACHMENT0_EXT);
+		set_texture(&img3a, 1, 0, 0, 0);
+		glTranslatef(fshifta[i], fshifta[i + 1], 0.0f);
+		FS_Rect(0, height3);
+		glTranslatef(fshifta[i + 2], fshifta[i + 3], 0.0f);
+
+		// B → A
+		glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT);
+		glReadBuffer(GL_COLOR_ATTACHMENT1_EXT);
+		set_texture(&img3b, 1, 0, 0, 0);
+		glBindTexture(GL_TEXTURE_2D, img3b); // Redundant safety bind
+		glTranslatef(fshiftb[i], fshiftb[i + 1], 0.0f);
+		FS_Rect(0, height3);
+		glTranslatef(fshiftb[i + 2], fshiftb[i + 3], 0.0f);
+
+		i += 4; // Advance to next shift pair
+	}
+
+	int err = glGetError();
+	if (err != 0) {
+		LOG_ERROR("OpenGL error in render_blur_image_fbo3: %d", err);
+	}
+
+	unbind_shader();
+}
+
+
 ////////////////////////////////////////////////////////////////////////////////
 // END  FBO / SHADER DOWNSAMPLING and COMPOSITING CODE						  //
 ////////////////////////////////////////////////////////////////////////////////
@@ -621,18 +664,7 @@ void render_blur_image_fbo3()
 // to FBO1, img1a.
 void set_render()
 {
-	//glPushAttrib(GL_VIEWPORT_BIT | GL_COLOR_BUFFER_BIT);
-	//glLoadIdentity;
-	//	GLint viewport[4];
-	//	glGetIntegerv(GL_VIEWPORT, viewport);
-		//Viewport here is : 0, 0, 1023, 767
-		// viewport[0] = x coordinate of the lower-left corner
-		// viewport[1] = y coordinate of the lower-left corner
-		// viewport[2] = width of the viewport
-		// viewport[3] = height of the viewport
-		//wrlog("Viewport % d, % d, % d, % d", viewport[0], viewport[1], viewport[2], viewport[3]);
-
-		// First we bind to FBO1 so we can render to it
+	// First we bind to FBO1 so we can render to it
 	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo1);
 	//Write To Texture img1a
 	glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT);
@@ -649,7 +681,7 @@ void set_render()
 	// Leaving these here for review
 	//glDisable(GL_LIGHTING);
 	//glDisable(GL_DEPTH_TEST); 
-	// wrlog("Setting FBO renderer");
+	// LOG_INFO("Setting FBO renderer");
 	//glEnable(GL_MULTISAMPLE_ARB);
 	//glEnable(GL_SAMPLE_COVERAGE);
 	//glEnable(GL_LINE_SMOOTH);
@@ -657,11 +689,7 @@ void set_render()
 	// Required for some older cards.
 	//glDisable(GL_DITHER);
 
-	int err = glGetError();
-	if (err != 0)
-	{
-		wrlog("openglerror in set_render: %d", err);
-	}
+	int err = glGetError(); if (err != 0)	{LOG_ERROR("openglerror in set_render: %d", err);}
 }
 
 // Rendering Continued, this is STEP 2, this is where the vectors are drawn to our 1024x1024 texture.
@@ -682,8 +710,6 @@ void render()
 		final_render(sx, sy, ex, ey, 0, 0);
 		
 	}
-	
-	
 }
 
 // Note:
@@ -701,7 +727,7 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 	// Glow enabled variable
 	int useglow = 0;
 	// Used for code profiling disable in final release.
-	auto start = chrono::steady_clock::now();
+	auto start = std::chrono::steady_clock::now();
 
 	/////////////////////////////	//SWITCH TO FBO1/TEX 2 HERE FOR FINAL COMPOSITING!!!!////////////////
 	glEnable(GL_TEXTURE_2D);
@@ -783,21 +809,24 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 
 	//Render combined texture
 	if (config.vecglow && gamenum) { useglow = 1; }
-	glUseProgram(fragMulti);
+	bind_shader(fragMulti);
 	// Get the variables for the shader.
+	
 	bleh = glGetUniformLocation(fragMulti, "mytex1"); glUniform1i(bleh, 0);
 	bleh = glGetUniformLocation(fragMulti, "mytex2"); glUniform1i(bleh, 1);
 	bleh = glGetUniformLocation(fragMulti, "mytex3"); glUniform1i(bleh, 2);
 	bleh = glGetUniformLocation(fragMulti, "mytex4"); glUniform1i(bleh, 3);
 	bleh = glGetUniformLocation(fragMulti, "useart");
-	// If artwork is loaded, check to see if backdrop artwork shouly be used.
+	
+	// If artwork is loaded, check to see if backdrop artwork should be used. How is this working?
 	if (gamenum && art_loaded[0]) { glUniform1i(bleh, config.artwork); }
 	else { glUniform1i(bleh, 0); }
 
-	bleh = glGetUniformLocation(fragMulti, "usefb");  glUniform1i(bleh, config.vectrail);
-	bleh = glGetUniformLocation(fragMulti, "useglow"); glUniform1i(bleh, useglow);
-	bleh = glGetUniformLocation(fragMulti, "glowamt"); glUniform1f(bleh, config.vecglow * .01);
-	bleh = glGetUniformLocation(fragMulti, "brighten"); glUniform1i(bleh, gamenum);
+	set_uniform1i(fragMulti, "usefb", config.vectrail);
+	set_uniform1i(fragMulti, "useglow", useglow);
+	set_uniform1f(fragMulti, "glowamt", config.vecglow * .01);
+	set_uniform1i(fragMulti, "brighten", gamenum);
+
 
 	//Activate all 3 texture units
 	glActiveTexture(GL_TEXTURE0);
@@ -831,7 +860,7 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 	}
 
 	//// Turn off the Shader /////////////////////////////////
-	glUseProgram(0);
+	unbind_shader();
 
 	glActiveTextureARB(GL_TEXTURE1_ARB);
 	glBindTexture(GL_TEXTURE_2D, 0);
@@ -843,7 +872,7 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 	glBindTexture(GL_TEXTURE_2D, 0);
 	glDisable(GL_TEXTURE_2D);
 	glActiveTextureARB(GL_TEXTURE0_ARB);
-	glBindTexture(GL_TEXTURE_2D, 0); // Don't disable GL_TEXTURE_2D on the main texture unit?
+	glBindTexture(GL_TEXTURE_2D, 0); // Don't disable GL_TEXTURE_2D on the main texture unit.
 
 	
 	if (config.bezel && art_loaded[3] && gamenum) {
@@ -868,14 +897,12 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 
 	video_loop();
 	end_render_fbo4();
-
-
 	glDisable(GL_TEXTURE_2D);
 
 	if (config.debug_profile_code) {
-		auto end = chrono::steady_clock::now();
+		auto end = std::chrono::steady_clock::now();
 		auto diff = end - start;
-		wrlog("Profiler: Render Time after final compositing %f ", chrono::duration <double, milli>(diff).count());
+		LOG_INFO("Profiler: Render Time after final compositing %f ", std::chrono::duration <double, std::milli>(diff).count());
 	}
 }
 
@@ -886,7 +913,7 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 
 void set_render_raster()
 {
-	wrlog("Set Render Raster Called");
+	LOG_INFO("Set Render Raster Called");
 		// First we bind to FBO1 so we can render to it
 	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo_raster);
 	//Write To Texture img1a
@@ -904,17 +931,17 @@ void set_render_raster()
 	int err = glGetError();
 	if (err != 0)
 	{
-		wrlog("openglerror in set_render: %d", err);
+		LOG_INFO("openglerror in set_render: %d", err);
 	}
 }
 
 void final_render_raster()
 {
-	wrlog("Final Render Raster Called");
+	LOG_INFO("Final Render Raster Called");
 	int err = glGetError();
 	if (err != 0)
 	{
-		wrlog("openglerror in final_render_fbo_raster: %d", err);
+		LOG_INFO("openglerror in final_render_fbo_raster: %d", err);
 	}
 	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);
 	glDrawBuffer(GL_BACK);
@@ -931,7 +958,7 @@ void final_render_raster()
 	err = glGetError();
 	if (err != 0)
 	{
-		wrlog("openglerror in end_render_fbo_b: %d", err);
+		LOG_INFO("openglerror in end_render_fbo_b: %d", err);
 	}
 
 }

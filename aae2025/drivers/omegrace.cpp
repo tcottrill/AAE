@@ -256,7 +256,7 @@ void  omega_interrupt()
 {
 	cpu1_counter++; if ((cpu1_counter & 4) == 4) {
 		cpu_do_int_imm(CPU0, INT_TYPE_INT); cpu1_counter = 0;
-		//wrlog("Omega Race Interrupt");
+		//LOG_INFO("Omega Race Interrupt");
 	}
 }
 
@@ -265,26 +265,26 @@ void  omega_nmi_interrupt()
 {
 	cpu2_counter++; if ((cpu2_counter & 4) == 4) {
 		cpu_do_int_imm(CPU1, INT_TYPE_NMI); cpu2_counter = 0; 
-		//wrlog("Omega Race NMI Interrupt");
+		//LOG_INFO("Omega Race NMI Interrupt");
 	}
 }
 void nvram_handler(void* file, int read_or_write)
 {
 	if (read_or_write)
 	{
-		wrlog("Writing NVRAM File");
+		LOG_INFO("Writing NVRAM File");
 		osd_fwrite(file, orace_nvram, 0xff);
 	}
 	else
 	{
 		if (file)
 		{
-			wrlog("Reading NVRAM File");
+			LOG_INFO("Reading NVRAM File");
 			osd_fread(file, orace_nvram, 0xff);
 		}
 		else
 		{
-			wrlog("Creating NVRAM File");
+			LOG_INFO("Creating NVRAM File");
 			memset(orace_nvram, 0, 0xff);
 		}
 	}
@@ -314,7 +314,7 @@ READ_HANDLER(nvram_r)
 
 PORT_WRITE_HANDLER(omega_reset)
 {
-	wrlog("DVG reset called");
+	LOG_INFO("DVG reset called");
 }
 
 PORT_READ_HANDLER(omegrace_watchdog_r)
@@ -453,12 +453,12 @@ int init_omega()
 	dvg_start();
 	AY8910_sh_start(&ay8910_interface);
 
-	wrlog("End of Omega Race Driver Init");
+	LOG_INFO("End of Omega Race Driver Init");
 	return 0;
 }
 
 void end_omega()
 {
-	wrlog("OMEGA RACE END CALLED");
+	LOG_INFO("OMEGA RACE END CALLED");
 	AY8910clear();
 }

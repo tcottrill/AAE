@@ -5,8 +5,8 @@
 #include "aae_mame_driver.h"
 #include "memory.h"
 #include "path_helper.h"
-
 #include "miniz.h"
+#include <filesystem>
 
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -60,7 +60,7 @@ int read_samples(const char** samplenames, int val)
 	i = 0;
 	while (samplenames[i] != 0) { i++; }
 	total = i;
-	wrlog("Total number of Samples is %d", total);
+	LOG_INFO("Total number of Samples is %d", total);
 
 	//Build a path
 	strcpy(temppath, def_sample_path);//if it's not there, try sample dir
@@ -71,12 +71,12 @@ int read_samples(const char** samplenames, int val)
 	//Load Samples
 	for (i = 1; i < total; i++)
 	{
-		wrlog("Path: %s Sample name: %s ", temppath, samplenames[i]);
+		LOG_INFO("Path: %s Sample name: %s ", temppath, samplenames[i]);
 		load_sample(temppath, (char*)samplenames[i], config.audio_force_resample ? 1:0);
 	}
 	num_samples = total - 2;
-	if (num_samples == 0) { wrlog("Samples loading failure, bad with no sound..."); }
-	wrlog("Completed Loading Samples: Num %d", num_samples);
+	if (num_samples == 0) { LOG_INFO("Samples loading failure, bad with no sound..."); }
+	LOG_INFO("Completed Loading Samples: Num %d", num_samples);
 
 	return EXIT_SUCCESS;
 }
@@ -108,44 +108,42 @@ int load_ambient()
 
 int load_hi_aae(int start, int size, int image)
 {
-	int num = 0;
-	std::string fullpath;
-	FILE* fd;
-	membuffer = (unsigned char*)malloc(size);
-	memset(membuffer, 0, size);
-
-	fullpath = getpathM("hi", 0);
-	fullpath.append("\\");
+	
+	std::string fullpath = getpathM("hi", 0) + "\\";
 	fullpath.append(Machine->gamedrv->name);
 	fullpath.append(".aae");
+	
+	auto membuffer = std::make_unique<unsigned char[]>(size);
+	std::memset(membuffer.get(), 0, size);
 
+	FILE* fd = nullptr;
+	if (fopen_s(&fd, fullpath.c_str(), "rb") != 0 || !fd) {
+		LOG_INFO("Hiscore / nvram file not found: %s", fullpath.c_str());
+		return 1;
+	}
 
-	fd = fopen(fullpath.c_str(), "rb");
-	if (!fd) { wrlog("Hiscore / nvram file for this game not found"); return 1; }
-	wrlog("Loading Hiscore table / nvram");
-	fread(membuffer, 1, size, fd);
+	LOG_INFO("Loading Hiscore table / nvram from %s", fullpath.c_str());
+	std::fread(membuffer.get(), 1, size, fd);
+	std::fclose(fd);
 
-	memcpy((Machine->memory_region[CPU0] + start), membuffer, size);
-	fclose(fd);
-	free(membuffer);
+	std::memcpy(Machine->memory_region[CPU0] + start, membuffer.get(), size);
 	return 0;
+
 }
 
 int save_hi_aae(int start, int size, int image)
 {
-	int num = 0;
-	std::string fullpath;
-	fullpath = getpathM("hi", 0);
-	fullpath.append("\\");
+	std::string fullpath = getpathM("hi", 0) + "\\";
 	fullpath.append(Machine->gamedrv->name);
 	fullpath.append(".aae");
 		
-	wrlog("Saving Hiscore table / nvram");
-	membuffer = (unsigned char*)malloc(size + 3);
-	memset(membuffer, 0, size);
-	memcpy(membuffer, (Machine->memory_region[CPU0] + start), size);
-	save_file(fullpath.c_str(), membuffer, size);
-	free(membuffer);
+	LOG_INFO("Saving Hiscore table / nvram to %s", fullpath.c_str());
+
+	auto membuffer = std::make_unique<unsigned char[]>(size);
+	std::memset(membuffer.get(), 0, size);
+	std::memcpy(membuffer.get(), Machine->memory_region[CPU0] + start, size);
+
+	save_file(fullpath.c_str(), membuffer.get(), size);
 	return 0;
 }
 
@@ -159,13 +157,10 @@ int verify_sample(const char** p, int num)
 {
 	return 1;
 }
-// TODO: MOVE THIS
-int file_exist(const char* filename)
+
+bool file_exist(const std::string& filename)
 {
-	FILE* fd = fopen(filename, "rb");
-	if (!fd) return (0);
-	fclose(fd);
-	return (1);
+	return std::filesystem::exists(filename);
 }
 
 /*
@@ -214,11 +209,11 @@ void snapshot()
 	puts(buf);
 	//////
 	bmpBuffer = (unsigned char*)malloc(Width * Height * 4);
-	wrlog("Snap width %d , Height %d", Width, Height);
+	LOG_INFO("Snap width %d , Height %d", Width, Height);
 
 	if (!bmpBuffer)
 	{
-		wrlog("Error creating buffer for snapshot");
+		LOG_INFO("Error creating buffer for snapshot");
 		return;
 	}
 
@@ -284,14 +279,14 @@ GLuint load_texture(const char* filename, const char* archname, int numcomponent
 		image_data = stbi_load_from_memory(raw_data, (int)(get_last_zip_file_size()), &width, &height, &comp, STBI_rgb_alpha);
 	}
 	if (!image_data) {
-		wrlog("ERROR: could not load %s\n", filename);
+		LOG_INFO("ERROR: could not load %s\n", filename);
 		//	return 0;
 	}
-	wrlog("Texture x is %d, y is %d, components %d", width, height, comp);
+	LOG_INFO("Texture x is %d, y is %d, components %d", width, height, comp);
 	// NPOT check, we checked the card capabilities beforehand, flag if it's not npot
 
 	if ((width & (width - 1)) != 0 || (height & (height - 1)) != 0) {
-		wrlog("WARNING: texture %s is not power-of-2 dimensions\n", filename);
+		LOG_INFO("WARNING: texture %s is not power-of-2 dimensions\n", filename);
 	}
 
 	//Create Texture
@@ -333,7 +328,7 @@ GLuint load_texture(const char* filename, const char* archname, int numcomponent
 	free(raw_data);
 	//set image data properties
 
-	wrlog("New Texture created:");
-	wrlog("Texture ID: %d", tex);
+	LOG_INFO("New Texture created:");
+	LOG_INFO("Texture ID: %d", tex);
 	return tex;
 }

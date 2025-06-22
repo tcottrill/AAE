@@ -1,13 +1,19 @@
 //RawInput.h
-//by Jay Tennant 6/30/10
+//Original code by Jay Tennant 6/30/10
 //performs initialization on raw input for testing purposes
 //to replace DXTestInput.h, which used DirectInput
 //Modified 2/12 aae:
-// Added: Allergo Compatible KeyCodes
-// Added: Allegro Compatible Mouse Operations
+// Added: Allergo 4 Compatible KeyCodes
+// Added: Allegro 4 Compatible Mouse Operations
 // Added: Advanced key decoding from https://blog.molecular-matters.com/2011/09/05/properly-handling-keyboard-input/
 // This code does not currently handle multiple mice/keyboards.
-
+// Cleaned up and modernized 6/15/2025 - TC
+// Currently the mouse return values are doubled, that is for a special application, you will want to change:
+// *mickeyx = temp_x * 2;
+// *mickeyy = temp_y * 2;
+// to
+// *mickeyx = temp_x;
+// *mickeyy = temp_y;
 #pragma once
 
 #include <windows.h>
@@ -51,7 +57,7 @@
 #define KEY_7                 0x37
 #define KEY_8                 0x38
 #define KEY_9                 0x39
-#define KEY_0_PAD             VK_NUMPAD0  
+#define KEY_0_PAD             VK_NUMPAD0
 #define KEY_1_PAD             VK_NUMPAD1
 #define KEY_2_PAD             VK_NUMPAD2
 #define KEY_3_PAD             VK_NUMPAD3
@@ -61,19 +67,19 @@
 #define KEY_7_PAD             VK_NUMPAD7
 #define KEY_8_PAD             VK_NUMPAD8
 #define KEY_9_PAD             VK_NUMPAD9
-#define KEY_F1                VK_F1  
-#define KEY_F2                VK_F2  
-#define KEY_F3                VK_F3  
-#define KEY_F4                VK_F4  
-#define KEY_F5                VK_F5  
-#define KEY_F6                VK_F6  
-#define KEY_F7                VK_F7  
-#define KEY_F8                VK_F8  
-#define KEY_F9                VK_F9  
-#define KEY_F10               VK_F10  
-#define KEY_F11               VK_F11  
-#define KEY_F12               VK_F12  
-#define KEY_ESC               VK_ESCAPE  
+#define KEY_F1                VK_F1
+#define KEY_F2                VK_F2
+#define KEY_F3                VK_F3
+#define KEY_F4                VK_F4
+#define KEY_F5                VK_F5
+#define KEY_F6                VK_F6
+#define KEY_F7                VK_F7
+#define KEY_F8                VK_F8
+#define KEY_F9                VK_F9
+#define KEY_F10               VK_F10
+#define KEY_F11               VK_F11
+#define KEY_F12               VK_F12
+#define KEY_ESC               VK_ESCAPE
 #define KEY_TILDE             0xc0
 #define KEY_MINUS             0xbd
 #define KEY_EQUALS            0xbb
@@ -137,9 +143,8 @@
 
 #define KEY_MAX               0xEF  //127 Not!
 
-
 #define toUpper(ch) ((ch >= 'a' && ch <='z') ? ch & 0x5f : ch)
-#define RI_MOUSE_HWHEEL 0x0800 
+#define RI_MOUSE_HWHEEL 0x0800
 
 //Allegro compatible C style keystate buffers.
 extern int mouse_b;
@@ -152,14 +157,14 @@ LRESULT RawInput_ProcessInput(HWND hWnd, WPARAM wParam, LPARAM lParam);
 
 //keyboard state checks
 int isKeyHeld(INT vkCode);
-BOOL IsKeyDown(INT vkCode);
-BOOL IsKeyUp(INT vkCode);
+bool IsKeyDown(INT vkCode);
+bool IsKeyUp(INT vkCode);
 
 //summed mouse state checks/sets;
 //use as convenience, ie. keeping track of movements without needing to maintain separate data set
 //Added for Allegro Code Compatibility
-void get_mouse_win(int *mickeyx, int *mickeyy);
-void get_mouse_mickeys(int *mickeyx, int *mickeyy);
+void get_mouse_win(int* mickeyx, int* mickeyy);
+void get_mouse_mickeys(int* mickeyx, int* mickeyy);
 LONG GetMouseX();
 LONG GetMouseY();
 LONG GetMouseWheel();
@@ -173,11 +178,11 @@ LONG GetMouseYChange();
 LONG GetMouseWheelChange();
 
 //mouse button state checks
-BOOL IsMouseLButtonDown();
-BOOL IsMouseLButtonUp();
-BOOL IsMouseRButtonDown();
-BOOL IsMouseRButtonUp();
-BOOL IsMouseMButtonDown();
-BOOL IsMouseMButtonUp();
+bool IsMouseLButtonDown();
+bool IsMouseLButtonUp();
+bool IsMouseRButtonDown();
+bool IsMouseRButtonUp();
+bool IsMouseMButtonDown();
+bool IsMouseMButtonUp();
 
 void test_clr();

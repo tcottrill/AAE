@@ -38,11 +38,11 @@ void *osd_fopen(const char *gamename, const char *filename, int filetype, int wr
 	case OSD_FILETYPE_ROM:
 	case OSD_FILETYPE_SAMPLE:
 		sprintf(name, "%s/%s", gamename, filename);
-		write_to_log("Trying Opening sample  name,%s/%s", gamename, filename);
+		LOG_INFO("Trying Opening sample  name,%s/%s", gamename, filename);
 		f = fopen(name, write ? "wb" : "rb");
 		if (f == 0)
 		{
-			write_to_log("Trying Opening sample zip name,%s/%s", gamename, filename);
+			LOG_INFO("Trying Opening sample zip name,%s/%s", gamename, filename);
 			/* try with a .zip directory (if ZipMagic is installed) */
 			sprintf(name, "%s.zip/%s", gamename, filename);
 			f = fopen(name, write ? "wb" : "rb");
@@ -58,19 +58,19 @@ void *osd_fopen(const char *gamename, const char *filename, int filetype, int wr
 			if (filetype == OSD_FILETYPE_SAMPLE)
 				dirname = my_get_config_string("directory","samplepath","samples");
 
-			write_to_log("Trying Opening sample in dir: %s gamename: %s filename: %s", dirname, gamename, filename);
+			LOG_INFO("Trying Opening sample in dir: %s gamename: %s filename: %s", dirname, gamename, filename);
 			sprintf(name, "%s/%s/%s", dirname, gamename, filename);
 			f = fopen(name, write ? "wb" : "rb");
 			if (f == 0)
 			{
-				write_to_log("Trying Opening sample in dir %s name as zip, last try,%s/%s", dirname, gamename, filename);
+				LOG_INFO("Trying Opening sample in dir %s name as zip, last try,%s/%s", dirname, gamename, filename);
 				/* try with a .zip directory (if ZipMagic is installed) */
 				sprintf(name, "%s/%s.zip/%s", dirname, gamename, filename);
 				f = fopen(name, write ? "wb" : "rb");
 			}
 
 		}
-		if (f) wrlog("Yay found and loaded file!");
+		if (f) LOG_INFO("Yay found and loaded file!");
 		return f;
 		break;
 	case OSD_FILETYPE_HIGHSCORE:
@@ -109,7 +109,7 @@ void *osd_fopen(const char *gamename, const char *filename, int filetype, int wr
 		dirname = my_get_config_string("directory","cfg","cfg");
 
 		sprintf(name, "%s/%s.cfg", dirname, gamename);
-		write_to_log("Trying Opening game config file: %s",  name);
+		LOG_INFO("Trying Opening game config file: %s",  name);
 		f = fopen(name, write ? "wb" : "rb");
 		if (f == 0)
 		{

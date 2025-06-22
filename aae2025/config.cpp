@@ -34,18 +34,18 @@ char* my_get_config_string(const char* section, const char* name, const char* de
 	DWORD size = 0;
 
 	if (is_override) { // Check game file for value if file exists
-		//wrlog("Returning string value from game file %s", name);
+		//LOG_INFO("Returning string value from game file %s", name);
 		size = GetPrivateProfileString(section, name, def, buffer, MAX_PATH, gamepath);
 		if (strcmp(buffer, def) == 0)
 		{
-			//wrlog("Returning string value from aae.ini %s", name);
+			//LOG_INFO("Returning string value from aae.ini %s", name);
 			GetPrivateProfileString(section, name, def, buffer, MAX_PATH, aaepath);
 			return buffer;
 		}
 		else { return buffer; }
 	}
 	else {
-		//wrlog("Game file doesn't exist, Returning string value from aae.ini %s", name);
+		//LOG_INFO("Game file doesn't exist, Returning string value from aae.ini %s", name);
 		size = GetPrivateProfileString(section, name, def, buffer, MAX_PATH, aaepath);
 		if (strcmp(buffer, def) == 0) return (char*)def;
 		else return buffer;
@@ -126,8 +126,8 @@ void setup_video_config()
 
 	//For main texture rendering
 	sx = my_get_config_int((char*)Machine->gamedrv->name, "fullsx", 0);
-	sy = my_get_config_int((char*)Machine->gamedrv->name, "fullsy", 900);
-	ex = my_get_config_int((char*)Machine->gamedrv->name, "fullex", 900);
+	sy = my_get_config_int((char*)Machine->gamedrv->name, "fullsy", 1024);
+	ex = my_get_config_int((char*)Machine->gamedrv->name, "fullex", 1024);
 	ey = my_get_config_int((char*)Machine->gamedrv->name, "fulley", 0);
 	//overalpha = my_get_config_float((char*)Machine->gamedrv->name, "overalpha", 1.0);
 
@@ -167,6 +167,8 @@ void setup_video_config()
 // So, for a subset of items, check if an item exists in a game.ini file, then load it. if not, load from the default aae.ini file.
 // If changed from the aae.ini file and you are not in the gui, save the changes to the game.ini file.
 
+// TODO:, why am I doing it this way again?> Why not load the aae.ini, then override any value with a game specific ini setting? What was I thinking here?
+
 void setup_config(void)
 {
 	// aae.ini
@@ -184,10 +186,10 @@ void setup_config(void)
 	// If game file exists, and it's not the gui, try to pull values from it.
 	is_override = file_exists(gamepath);
 	if (gamenum == 0) { is_override = 0; }
-	wrlog("Main AAE Path: %s", aaepath);
-	if (gamenum > 0) { wrlog("Game Config Path: %s", gamepath); }
-	//wrlog("Path Override Value: %d", is_override);
-	wrlog("Loading configuration information for %s", Machine->gamedrv->desc);
+	LOG_INFO("Main AAE Path: %s", aaepath);
+	if (gamenum > 0) { LOG_INFO("Game Config Path: %s", gamepath); }
+	//LOG_INFO("Path Override Value: %d", is_override);
+	LOG_INFO("Loading configuration information for %s", Machine->gamedrv->desc);
 	//////VIDEO///////////
 	config.samplerate = my_get_config_int("main", "samplerate", 22050);
 	config.prescale = my_get_config_int("main", "prescale", 1);
@@ -248,8 +250,8 @@ void setup_config(void)
 	config.screenw = my_get_config_int("main", "screenw", 1024);
 	config.screenh = my_get_config_int("main", "screenh", 768);
 	config.exrompath = my_get_config_string("main", "mame_rom_path", "NONE");
-	wrlog("Configured Mame Rom Path is %s", config.exrompath);
-	//wrlog("Config.mainvol loaded here is %d", config.mainvol);
+	LOG_INFO("Configured Mame Rom Path is %s", config.exrompath);
+	//LOG_INFO("Config.mainvol loaded here is %d", config.mainvol);
 	config.linewidth = config.m_line * .1f;
 	config.pointsize = config.m_point * .1f;
 }

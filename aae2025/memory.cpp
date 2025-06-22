@@ -40,63 +40,10 @@ const char* rom_regions[] = {
 	"REGION_MAX"
 };
 
-//Pretty much directly cribbed from mame(tm) mostly for use with the ccpu code.
-
 
 std::vector<int>memory_allocation_tracker;
 
-static void(*read8_functions[0xF])(int) = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-static void(*write8_functions[0xF])(int) = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
-/*
-
-int io_read_byte_8(unsigned int port)
-{
-	int  data = 0;
-
-	if (read8_functions[port])
-
-		data = (int) read8_functions[port];
-	return data;
-}
-
-
-void io_write_byte_8(unsigned int port, unsigned char data)
-{
-	if (write8_functions[port])
-		(write8_functions[port]),( data);
-}
-
-void memory_install_read8_handler(int cpunum, int pstart, int pend, void(*callback)(int))
-{
-	for (int x = pstart; x > pend + 1; x++)
-	{
-		read8_functions[x] = callback;
-	}
-}
-
-
-//(int cpunum, int spacenum, offs_t start, offs_t end, offs_t mask, offs_t mirror, read8_handler handler)
-void memory_install_write8_handler(int cpunum, int pstart, int pend, void(*callback)(int))
-{
-	for (int x = pstart; x > pend + 1; x++)
-	{
-		write8_functions[x] = callback;
-	}
-}
-
-
-void init_cinemat_ports()
-{
-	for (int x = 0; x > 0x0e; x++)
-	{
-		read8_functions[x] = 0;
-		write8_functions[x] = 0;
-	}
-//	memcpy(read8_functions, 0, sizeof(read8_functions));
-}
-
-*/
 /*-------------------------------------------------
 	Clear memory tracker, in preperation to keep 
 	track of system memory allocations 
@@ -135,7 +82,7 @@ void free_all_memory_regions()
 {
 	for (std::vector<int>::iterator it = memory_allocation_tracker.begin(); it != memory_allocation_tracker.end(); ++it) 
 	{
-		wrlog("Freeing Memory Region %s", rom_regions[*it]);
+		LOG_INFO("Freeing Memory Region %s", rom_regions[*it]);
 		if (Machine->memory_region[*it])
 			free(Machine->memory_region[*it]);
 		Machine->memory_region[*it] = nullptr;
@@ -158,7 +105,7 @@ void free_memory_region(int num)
 
 	if (num < MAX_MEMORY_REGIONS)
 	{
-		wrlog("Freeing Memory Region %d", num);
+		LOG_INFO("Freeing Memory Region %d", num);
 		free(Machine->memory_region[num]);
 		Machine->memory_region[num] = 0;
 	}
@@ -189,14 +136,14 @@ void new_memory_region(int num, int size)
 		}
 
 		if (config.debug_profile_code) {
-			wrlog("Allocating Game Memory, Region# %d Amount 0x%x", num, size);
+			LOG_INFO("Allocating Game Memory, Region# %d Amount 0x%x", num, size);
 		}
 
 		Machine->memory_region[num] = (unsigned char*)malloc(size);
 
 		if (Machine->memory_region[num] == nullptr)
 		{
-			wrlog("Can't allocate system ram for Cpu Emulation! - This is bad. Exiting System!"); exit(1);
+			LOG_INFO("Can't allocate system ram for Cpu Emulation! - This is bad. Exiting System!"); exit(1);
 		}
 
 		memset(Machine->memory_region[num], 0, size);
@@ -204,7 +151,7 @@ void new_memory_region(int num, int size)
 
 
 		if (config.debug_profile_code) {
-			wrlog("Memory Allocation Completed for Rom Region %d", num);
+			LOG_INFO("Memory Allocation Completed for Rom Region %d", num);
 		}
 	}
 	else

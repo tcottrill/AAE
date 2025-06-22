@@ -548,4 +548,11 @@ static const char* invaders_samples[] =
 	0       /* end of array */
 };
 
+static const char* rallyx_samples[] =
+{
+	"rallyx.zip",
+	"bang.wav",
+	0	/* end of array */
+};
+
 #endif

@@ -358,7 +358,7 @@ static void switch_game()
 	if (INMENU == 0) { return; }
 
 	a = (Machine->memory_region[CPU0][0x51]) + 1;
-	//	wrlog("A here is %d", a);
+	//	LOG_INFO("A here is %d", a);
 	switch (a)
 	{
 	case 1: b = 0x10000;  break;
@@ -368,7 +368,7 @@ static void switch_game()
 	case 5: b = 0x50000;  break;
 	case 6: b = 0x60000;  break;
 	case 7: b = 0x70000;  break;
-	default: wrlog("Tempest Multigame - unhandled game number?");
+	default: LOG_INFO("Tempest Multigame - unhandled game number?");
 	}
 
 	setup_video_config();
@@ -542,7 +542,7 @@ int init_tempestm()
 
 	cache_clear();
 
-	wrlog("TEMPMG INIT CALLED");
+	LOG_INFO("TEMPMG INIT CALLED");
 	tbuffer = (char*)malloc(0x10000);
 	memcpy(tbuffer, Machine->memory_region[REGION_CPU1], 0x10000);
 	INMENU = 1;

@@ -9,9 +9,11 @@
 #include "wglew.h"
 #include "log.h"
 
+void CaptureMouseToWindow(HWND hwnd);
+void ReleaseMouseFromWindow();
 extern void scare_mouse();
 extern void show_mouse();
-extern void osMessage(int ID, const char* fmt, ...);
+void osMessage(const char* caption, const char* fmt, ...);
 extern void allegro_message(const char *title, const char *message);
 extern HWND win_get_window();
 extern int SCREEN_W;

@@ -31,7 +31,6 @@ void Resize_Rect(int facing, int size);
 
 void texture_reinit();
 void resize_art_textures();
-void set_blending2();
 void menu_textureit(GLuint* texture, int x, int y, int xsize, int ysize);
 void blit_any_tex(GLuint* texture, int blending, float alpha, int x, int y, int w, int h);
 void show_error(void);

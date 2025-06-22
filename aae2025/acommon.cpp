@@ -64,7 +64,7 @@ void set_aae_leds(int a, int b, int c)
 
 		if (a > -1) {
 			ks = (GetKeyState(VK_NUMLOCK) & 1);
-			//wrlog("KS VALUE for Numlock is %d",ks);
+			//LOG_INFO("KS VALUE for Numlock is %d",ks);
 			if (a != ks) {
 				keybd_event(VK_NUMLOCK, 0x45, KEYEVENTF_EXTENDEDKEY, 0);
 				keybd_event(VK_NUMLOCK, 0x45, KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP, 0);
@@ -73,7 +73,7 @@ void set_aae_leds(int a, int b, int c)
 
 		if (b > -1) {
 			ks = (GetKeyState(VK_CAPITAL) & 1);
-			//wrlog("KS VALUE for Capital is %d",ks);
+			//LOG_INFO("KS VALUE for Capital is %d",ks);
 			if (b != ks)
 			{
 				keybd_event(VK_CAPITAL, 0x45, KEYEVENTF_EXTENDEDKEY, 0);
@@ -83,7 +83,7 @@ void set_aae_leds(int a, int b, int c)
 
 		if (c > -1) {
 			ks = (GetKeyState(VK_SCROLL) & 1);
-			//wrlog("KS VALUE for Scroll is %d",ks);
+			//LOG_INFO("KS VALUE for Scroll is %d",ks);
 			if (c != ks) {
 				keybd_event(VK_SCROLL, 0x45, KEYEVENTF_EXTENDEDKEY, 0);
 				keybd_event(VK_SCROLL, 0x45, KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP, 0);
@@ -100,14 +100,14 @@ void sanity_check_config(void)
 	//SANITY CHECKS GO HERE
 	if (config.prescale < 1 || config.prescale > 2)
 	{
-		wrlog("!!!!!Raster prescale set to unsupported value, supported values are 1 and 2!!!!!");
+		LOG_INFO("!!!!!Raster prescale set to unsupported value, supported values are 1 and 2!!!!!");
 		config.prescale = 2; have_error = 3;
 	}
 
 	if (config.anisfilter < 2 || config.anisfilter > 16 || (config.anisfilter % 2 != 0))
 	{
 		if (config.anisfilter != 0) { //FINAL CHECK
-			wrlog("!!!!!Ansitropic Filterings set to unsupported value, supported values are 2,4,8,16 !!!!!");
+			LOG_INFO("!!!!!Ansitropic Filterings set to unsupported value, supported values are 2,4,8,16 !!!!!");
 			have_error = 3;
 			config.anisfilter = 0; //RESET TIL FIXED
 		}
@@ -115,7 +115,7 @@ void sanity_check_config(void)
 
 	if (config.priority < 0 || config.priority > 4)
 	{
-		wrlog("!!!!!Priority set to unsupported value, supported values are 0,1,2,3,4 - defaulted to 1!!!!!");
+		LOG_INFO("!!!!!Priority set to unsupported value, supported values are 0,1,2,3,4 - defaulted to 1!!!!!");
 		config.priority = 1;
 	}
 }
@@ -128,7 +128,7 @@ void video_loop(void)
 	int err = glGetError();
 	if (err != 0)
 	{
-		wrlog("openglerror in video loop 1: %d", err);
+		LOG_INFO("openglerror in video loop 1: %d", err);
 	}
 	if (get_menu_status())
 	{
@@ -138,7 +138,7 @@ void video_loop(void)
 	err = glGetError();
 	if (err != 0)
 	{
-		wrlog("openglerror in video loop 2: %d", err);
+		LOG_INFO("openglerror in video loop 2: %d", err);
 	}
 	if (show_fps)
 	{
@@ -163,7 +163,7 @@ void video_loop(void)
     err = glGetError();
 	if (err != 0)
 	{
-		wrlog("openglerror in video loop 3: %d", err);
+		LOG_INFO("openglerror in video loop 3: %d", err);
 	}
 	*/
 	show_error(); //If there is currently an error condition, show it.
@@ -171,7 +171,7 @@ void video_loop(void)
 	err = glGetError();
 	if (err != 0)
 	{
-		wrlog("openglerror in video loop 4: %d", err);
+		LOG_INFO("openglerror in video loop 4: %d", err);
 	}
 	*/
 	fontmode_end();
@@ -179,7 +179,7 @@ void video_loop(void)
 	err = glGetError();
 	if (err != 0)
 	{
-		wrlog("openglerror in video loop 5: %d", err);
+		LOG_INFO("openglerror in video loop 5: %d", err);
 	}
 	*/
 
@@ -191,7 +191,7 @@ void return_to_menu(void)
 {
 	//free_samples(); //Free and allocated Samples
 	free_game_textures(); //Free textures
-	wrlog("Done Freeing All"); //Log it.
+	LOG_INFO("Done Freeing All"); //Log it.
 	gamenum = 0; //Set gamenum to zero (menu)
 	done = 0; //Set done false
 }

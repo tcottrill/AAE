@@ -927,7 +927,7 @@ void do_gamekey_menu(int type)
 	int b = 0;
 	int i;
 
-	wrlog("---------------CALLING show game keys");
+	LOG_INFO("---------------CALLING show game keys");
 
 	in = Machine->input_ports;
     total = 0;
@@ -943,7 +943,7 @@ void do_gamekey_menu(int type)
 		in++;
 	}
 	if (total == 0) return;
-	wrlog("Made it here 1");
+	LOG_INFO("Made it here 1");
 	num_this_menu = (total - 1);
 
 	for (i = 0; i < total; i++)
@@ -951,7 +951,7 @@ void do_gamekey_menu(int type)
 		if (i < total + 1)        //osd_key_name(input_port_key(entry[i]));
 		{
 			menu_subitem[i] = key_names[input_port_key(entry[i])];
-			wrlog("MENU ITEM Key # is %x", input_port_key(entry[i]));
+			LOG_INFO("MENU ITEM Key # is %x", input_port_key(entry[i]));
 			/* If the key isn't the default, flag it */
 			//if (entry[i]->keyboard != IP_KEY_default)
 			//	flag[i] = 1;
@@ -960,7 +960,7 @@ void do_gamekey_menu(int type)
 		}
 		else menu_subitem[i] = 0;	/* no subitem */
 	}
-	wrlog("Made it here 2");
+	LOG_INFO("Made it here 2");
 	quad_from_center(500, 475, 670, 450, 20, 20, 80, 255);
 
 	fprint(left, 650, RGB_WHITE, 2.0, "Input Configuration (This Game)");// %d", num_this_menu);
@@ -979,11 +979,11 @@ void do_gamekey_menu(int type)
 		{
 			color = 255;
 			fprint(left, start, MAKE_RGB(255, color, 255), 2.0, menu_item[x]);
-			//wrlog("Printing menu item %x", menu_item[x]);
+			//LOG_INFO("Printing menu item %x", menu_item[x]);
 		}
 
 		fprint(545, start, MAKE_RGB(255, color, 255), 2.0, "%s", menu_subitem[x]);//key_names[entry[x]->keyboard]);
-		wrlog("Printing menu item key name %x", menu_subitem[x]);
+		LOG_INFO("Printing menu item key name %x", menu_subitem[x]);
 		start -= 8 * 2.5;
 	}
 	if (sublevel == 1)
@@ -1321,7 +1321,7 @@ int do_mouse_menu()
 
 			menu_item[i] = label[i];
 			menu_subitem[i] = setting[i];
-			//wrlog("Menu subitem %s", setting[i]);
+			//LOG_INFO("Menu subitem %s", setting[i]);
 
 			in++;
 		}

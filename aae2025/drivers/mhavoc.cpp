@@ -221,7 +221,7 @@ WRITE_HANDLER(speech_strobe_w)
 			case 0xa9: sample_start(3, 40, 0); break;
 			case 0xaa: sample_start(3, 41, 0); break;
 
-			default: wrlog("!!!! Unhandled sound effect!!!! %x ", data);
+			default: LOG_INFO("!!!! Unhandled sound effect!!!! %x ", data);
 			}
 		}
 	}
@@ -255,7 +255,7 @@ void mhavoc_sh_update()
 
 void end_mhavoc()
 {
-	wrlog("End Major Havoc Called");
+	LOG_INFO("End Major Havoc Called");
 
 	mhavoc_sh_stop();
 	if (!has_gamma_cpu) { save_hi_aae(0x1800, 0x100, 0); }
@@ -301,7 +301,7 @@ void mhavoc_interrupt()
 		alpha_irq_clock++;
 		if ((alpha_irq_clock & (0x0c)) == (0x0c)) //0x0c //0x30
 		{
-			//wrlog("IRQ ALPHA CPU");
+			//LOG_INFO("IRQ ALPHA CPU");
 			cpu_do_int_imm(CPU0, INT_TYPE_INT);
 			alpha_irq_clock_enable = 0;
 			alpha_irq_clock = 0;
@@ -314,7 +314,7 @@ void mhavoc_interrupt()
 		gamma_irq_clock++;
 		if ((gamma_irq_clock & (0x08)) == (0x08))//08 //0x20
 		{
-			//wrlog("IRQ GAMMA CPU");
+			//LOG_INFO("IRQ GAMMA CPU");
 			cpu_do_int_imm(CPU1, INT_TYPE_INT);
 		}
 	}
@@ -326,7 +326,7 @@ WRITE_HANDLER(mhavoc_alpha_irq_ack_w)
 	m_cpu_6502[CPU0]->m6502clearpendingint();
 	cpu_clear_pending_int(INT_TYPE_INT, CPU0);
 
-	//wrlog("Alpha IRQ ACK!", data);
+	//LOG_INFO("Alpha IRQ ACK!", data);
 	alpha_irq_clock = 0;
 	alpha_irq_clock_enable = 1;
 }
@@ -334,7 +334,7 @@ WRITE_HANDLER(mhavoc_alpha_irq_ack_w)
 WRITE_HANDLER(mhavoc_gamma_irq_ack_w)
 {
 	/* clear the line and reset the clock */
-	//wrlog("Gamma IRQ ACK!", data);
+	//LOG_INFO("Gamma IRQ ACK!", data);
 	m_cpu_6502[CPU1]->m6502clearpendingint();
 	cpu_clear_pending_int(INT_TYPE_INT, CPU1);
 	gamma_irq_clock = 0;
@@ -347,7 +347,7 @@ static void mhavoc_clr_busy(int dummy)
 
 WRITE_HANDLER(avgdvg_reset_w)
 {
-	wrlog("---------------------------AVGDVG RESET ------------------------");
+	LOG_INFO("---------------------------AVGDVG RESET ------------------------");
 	total_length = 0;
 }
 
@@ -370,7 +370,7 @@ WRITE_HANDLER(avg_mgo)
 		sweep = sweep * 1.666; // Alpha One is slower, it actually seems to run 30fps.
 		
 		if (config.debug_profile_code) {
-			wrlog("Sweep Timer %f", sweep);
+			LOG_INFO("Sweep Timer %f", sweep);
 		}
 	}
 	else { MHAVGDONE = 1; }
@@ -386,7 +386,7 @@ WRITE_HANDLER(mhavoc_out_0_w)
 
 	if (!(data & 0x08))
 	{
-		//wrlog ("\t\t\t\t*** resetting gamma processor. ***\n");
+		//LOG_INFO ("\t\t\t\t*** resetting gamma processor. ***\n");
 		alpha_rcvd = 0;
 		alpha_xmtd = 0;
 		gamma_rcvd = 0;
@@ -401,7 +401,7 @@ WRITE_HANDLER(mhavoc_out_0_w)
 
 WRITE_HANDLER(mhavoc_out_1_w)
 {
-	// wrlog("LED OUT WRITE");
+	// LOG_INFO("LED OUT WRITE");
 	set_led_status(0, data & 0x01);
 	set_led_status(1, (data & 0x02) >> 1);
 }
@@ -416,7 +416,7 @@ READ_HANDLER(mhavoc_port_0_r)
 		if (get_video_ticks(0) > sweep)
 		{
 			mhavoc_clr_busy(0);
-			//wrlog("Mhavoc DONE Set HERE %x at Frame %d Cycles %d", MHAVGDONE, cpu_getcurrentframe(), cpu_getcycles_cpu(0));
+			//LOG_INFO("Mhavoc DONE Set HERE %x at Frame %d Cycles %d", MHAVGDONE, cpu_getcurrentframe(), cpu_getcycles_cpu(0));
 		}
 	}
 	
@@ -456,7 +456,7 @@ READ_HANDLER(mhavoc_port_1_r)
 		if (!tms5220_ready_r())	res |= 0x04;
 		else
 			res &= ~0x04;
-		//wrlog("TMS Ready Data %d", tms5220_ready_r());
+		//LOG_INFO("TMS Ready Data %d", tms5220_ready_r());
 	}
 	/* Bit 1 = Alpha rcvd flag */
 	if (has_gamma_cpu && alpha_rcvd)
@@ -579,7 +579,7 @@ READ_HANDLER(mhavoc_gammaram_r)
 
 WRITE_HANDLER(mhavoc_gammaram_w)
 {
-	//wrlog("Ram write from Gamma CPU address:%x data:%x",address,data);
+	//LOG_INFO("Ram write from Gamma CPU address:%x data:%x",address,data);
 	// Note: Writing to both addresses seems to cure the nvram saving issue.
 	Machine->memory_region[CPU1][address & 0x7ff] = data;
 	Machine->memory_region[CPU1][address] = data;
@@ -743,7 +743,7 @@ int init_mhavoc(void)
 	//Init the video
 	mhavoc_video_init(3);
 	
-	wrlog("MHAVOC Init complete");
+	LOG_INFO("MHAVOC Init complete");
 	return 0;
 }
 

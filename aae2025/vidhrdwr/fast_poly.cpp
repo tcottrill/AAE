@@ -32,7 +32,7 @@ For more information, please refer to <http://unlicense.org/>
 
 Fpoly::~Fpoly()
 {
-	wrlog("Class Destructor called");
+	LOG_INFO("Class Destructor called");
 }
 
 

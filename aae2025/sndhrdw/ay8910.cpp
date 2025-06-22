@@ -14,14 +14,13 @@
 //Note to me: Mix the AY Channels to 16 bit so we don't have to support multiple streams per device emulated. 
 
 #include "ay8910.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <cstdio>
+#include <cstdlib>
 
 #pragma warning( disable : 4305 4244 )
 
 static struct z80PortWrite fakezpw;
-static struct AY8910interface* ayintf;
+static struct AY8910interface* ayintf = nullptr;
 
 #define MAX_OUTPUT 0x7fff
 #define STEP 0x8000
@@ -637,7 +636,7 @@ static int AY8910_init(int chip,
 	ayvol[chip] = volume;
 	ayvolshift[chip] = volshift;
 
-	wrlog("AY8910 INIT ----------->");
+	LOG_INFO("AY8910 INIT ----------->");
 
 	AY8910_set_clock(chip, clock);
 	AY8910_reset(chip);
@@ -647,20 +646,15 @@ static int AY8910_init(int chip,
 
 void AY8910_sh_update(void)
 {
-	int i, ch;
-
-	//if(soundcard==0)     return;
-	//wrlog("AY8910 Update ----------->");
-
-	for (i = 0; i < numchips; i++)
+	for (int i = 0; i < numchips; ++i)
 	{
 		AY8910Update(i, buf[i], aysamples - updpos[i]);
-		for (ch = 0; ch < 3; ch++)
-			//  playstreamedsample((i*3)+ch,buf[i][ch],aysamples,ayvol[i]);
-		//	aae_play_streamed_sample((i * 3) + ch, buf[i][ch], aysamples, 44100, ayvol[i]);
-		
-		stream_update((i * 3) + ch, buf[i][ch]);
-		
+
+		for (int ch = 0; ch < 3; ++ch)
+		{
+			stream_update((i * 3) + ch, buf[i][ch]);
+		}
+
 		updpos[i] = 0;
 		updlast[i] = 0;
 	}
@@ -668,38 +662,29 @@ void AY8910_sh_update(void)
 
 void AY8910partupdate(int chip)
 {
-	int work, updlen;
+	int work = cpu_scale_by_cycles(aysamples, ayintf->baseclock);
+	int updlen = work - updlast[chip];
 
-	//if(soundcard==0)     return;
-
-	//get ticks this frame
-	work = cpu_scale_by_cycles(aysamples, ayintf->baseclock); // get current position based on the timer
-	
- //update since last
-	updlen = work - updlast[chip];
 	if (updlen > 32)
 	{
 		AY8910Update(chip, buf[chip], updlen);
-		//update position
 		updpos[chip] += updlen;
-		//store this tick
 		updlast[chip] = work;
 	}
 }
 
 int AY8910_sh_start(struct AY8910interface* intf)
 {
-	int chip;
 	numchips = intf->num;
 	aysamples = config.samplerate / Machine->gamedrv->fps;
 	int emulation_rate = aysamples * Machine->gamedrv->fps;
 	ayintf = intf;
 
-	for (chip = 0; chip < intf->num; chip++)
+	for (int chip = 0; chip < intf->num; chip++)
 	{
-		buf[chip][0] = (short*)malloc(aysamples * sizeof(short));
-		buf[chip][1] = (short*)malloc(aysamples * sizeof(short));
-		buf[chip][2] = (short*)malloc(aysamples * sizeof(short));
+		buf[chip][0] = static_cast<short*>(std::malloc(aysamples * sizeof(short)));
+		buf[chip][1] = static_cast<short*>(std::malloc(aysamples * sizeof(short)));
+		buf[chip][2] = static_cast<short*>(std::malloc(aysamples * sizeof(short)));
 
 		updpos[chip] = 0;
 		updlast[chip] = 0;
@@ -709,56 +694,41 @@ int AY8910_sh_start(struct AY8910interface* intf)
 			config.samplerate,
 			intf->portAread[chip], intf->portBread[chip],
 			intf->portAwrite[chip], intf->portBwrite[chip]) != 0)
+		{
 			return 1;
+		}
+
 		build_mixer_table(chip);
 	}
 
-	// TODO: PLEASE FIX THIS!!!!!
-	stream_start(0, 0, 16, Machine->gamedrv->fps);
-	stream_start(1, 1, 16, Machine->gamedrv->fps);
-	stream_start(2, 2, 16, Machine->gamedrv->fps);
-	stream_start(3, 3, 16, Machine->gamedrv->fps);
-	stream_start(4, 4, 16, Machine->gamedrv->fps);
-	stream_start(5, 5, 16, Machine->gamedrv->fps);
-	stream_start(6, 6, 16, Machine->gamedrv->fps);
-	stream_start(7, 7, 16, Machine->gamedrv->fps);
-	stream_start(8, 8, 16, Machine->gamedrv->fps);
-	stream_start(9, 9, 16, Machine->gamedrv->fps);
-	stream_start(10, 10, 16, Machine->gamedrv->fps);
-	stream_start(11, 11, 16, Machine->gamedrv->fps);
-	//aae_stream_init(0, emulation_rate, aysamples, 128);
-	//aae_stream_init(1, emulation_rate, aysamples, 128);
-	//aae_stream_init(2, emulation_rate, aysamples, 128);
-	//aae_stream_init(3, emulation_rate, aysamples, 128);
-	//aae_stream_init(4, emulation_rate, aysamples, 128);
-	//aae_stream_init(5, emulation_rate, aysamples, 128);
+	for (int i = 0; i < numchips * 3; ++i)
+	{
+		stream_start(i, i, 16, Machine->gamedrv->fps);
+	}
 
 	return 0;
 }
 
 void AY8910clear(void)
 {
-	int chip;
-	
-	stream_stop(0,0);
-	stream_stop(1,1);
-	stream_stop(2,2);
-	stream_stop(3,3);
-	stream_stop(4,4);
-	stream_stop(5,5);
-	stream_stop(6, 6);
-	stream_stop(7, 7);
-	stream_stop(8, 8);
-	stream_stop(9, 9);
-	stream_stop(10, 10);
-	stream_stop(11, 11);
-	for (chip = 0; chip < numchips; chip++)
+	for (int chip = 0; chip < numchips; ++chip)
 	{
-		if (buf[chip][0]) free(buf[chip][0]);
-		if (buf[chip][1]) free(buf[chip][1]);
-		if (buf[chip][2]) free(buf[chip][2]);
+		for (int ch = 0; ch < 3; ++ch)
+		{
+			if (buf[chip][ch])
+			{
+				std::free(buf[chip][ch]);
+				buf[chip][ch] = nullptr;
+			}
+		}
 	}
-	wrlog("Ay8910 Memory Freed");
+
+	for (int i = 0; i < numchips * 3; ++i)
+	{
+		stream_stop(i, i);
+	}
+
+	LOG_INFO("AY8910 Memory Freed");
 }
 
 UINT8 AY8910_read_port_0_r(UINT32 address, struct MemoryReadByte* psMemRead) { return AY8910Read(0); }

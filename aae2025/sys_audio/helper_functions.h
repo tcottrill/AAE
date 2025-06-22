@@ -10,6 +10,7 @@ std::string remove_extension(const std::string& filename);
 std::string getFileName(std::string filePath, bool withExtension, char seperator);
 std::string dirnameOf(const std::string& fname);
 std::string base_name(const std::string& path);
+bool ends_with(const std::string& s, const std::string& ending);
 
 
 

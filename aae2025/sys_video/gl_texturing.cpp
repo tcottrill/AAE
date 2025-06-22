@@ -190,7 +190,7 @@ void Bezel_Rect(int facing, int xmin, int xmax, int ymin, int ymax)
 	float x = 0;
 
 	x = (1.00 - wideadj) / 2;
-	wrlog("Bezel Rect here is %d", x);
+	LOG_INFO("Bezel Rect here is %d", x);
 	glTranslatef(x * xmax, 0, 0);
 	glBegin(GL_QUADS);
 	glTexCoord2f(0, 1); glVertex2f(xmin, ymin);
@@ -203,7 +203,7 @@ void Bezel_Rect(int facing, int xmin, int xmax, int ymin, int ymax)
 
 void Any_Rect(int facing, int xmin, int xmax, int ymin, int ymax)
 {
-	//wrlog("AnyRect here is xmin:%d xmax:%d ymin:%d ymax:%d", xmin, xmax, ymin, ymax);
+	//LOG_INFO("AnyRect here is xmin:%d xmax:%d ymin:%d ymax:%d", xmin, xmax, ymin, ymax);
 	glBegin(GL_QUADS);
 	glTexCoord2f(0, 1); glVertex2f(xmin, ymin);
 	glTexCoord2f(0, 0); glVertex2f(xmin, ymax);
@@ -219,7 +219,6 @@ void FS_Rect(int facing, int size)
 	glTexCoord2f(0, 0); glVertex2f(0, 0);
 	glTexCoord2f(1, 0); glVertex2f(size, 0); //x
 	glTexCoord2f(1, 1); glVertex2f(size, size); //x,size
-
 	glEnd();
 }
 void Screen_Rect(int facing, int size)
@@ -424,34 +423,6 @@ void resize_art_textures()
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	
-}
-
-void set_blending2()
-{
-	float k = 1.0 / 10.0;//12
-	glColor4f(k, k, k, k);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-	/*
-	switch (blending)
-	{
-	case 0:glBlendFunc(GL_DST_COLOR, GL_ZERO);break;
-	case 1:glBlendFunc(GL_SRC_COLOR, GL_ONE);break;
-	case 2:glBlendFunc(GL_SRC_ALPHA, GL_ONE);break;
-	case 3:glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);break;
-	case 4:glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_ONE);break;
-	case 5:glBlendFunc(GL_DST_COLOR, GL_SRC_COLOR);break;
-	case 6:glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_SRC_ALPHA);break;
-	case 7:glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_ZERO);break;
-	case 8:glBlendFunc(GL_ONE_MINUS_SRC_ALPHA, GL_SRC_COLOR);break;
-	case 9:glBlendFunc(GL_SRC_ALPHA, GL_DST_COLOR);break;
-	case 10:glBlendFunc(GL_ONE, GL_ONE);break;
-	case 11:glBlendFunc(GL_ONE, GL_ZERO);break;
-	case 12:glBlendFunc(GL_ZERO, GL_ONE);break;
-	case 13:glBlendFunc (GL_ONE, GL_DST_COLOR);break;
-	case 14:glBlendFunc (GL_SRC_ALPHA, GL_DST_COLOR);break;
-	case 15:glBlendFunc(GL_ONE_MINUS_SRC_ALPHA, GL_SRC_COLOR);break;
-	}
-	*/
 }
 
 void menu_textureit(GLuint* texture, int x, int y, int xsize, int ysize)

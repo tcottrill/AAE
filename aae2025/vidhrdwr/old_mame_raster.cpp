@@ -45,7 +45,7 @@ int generic_vh_start(void)
 {
 	if (videoram_size == 0)
 	{
-		wrlog("Error: generic_vh_start() called but videoram_size not initialized\n");
+		LOG_INFO("Error: generic_vh_start() called but videoram_size not initialized\n");
 		return 1;
 	}
 
@@ -55,11 +55,11 @@ int generic_vh_start(void)
 
 	if ((tmpbitmap = osd_create_bitmap(Machine->gamedrv->screen_width, Machine->gamedrv->screen_height)) == 0)
 	{
-		wrlog("ERROR----- tmpbitmap create failed");
+		LOG_INFO("ERROR----- tmpbitmap create failed");
 		free(dirtybuffer);
 		return 1;
 	}
-	wrlog("INIT: Raster Video Init Completed");
+	LOG_INFO("INIT: Raster Video Init Completed");
 	return 0;
 }
 
@@ -171,7 +171,7 @@ struct osd_bitmap* osd_create_bitmap(int width, int height)       // ASG 980209
 
 		osd_clearbitmap(bitmap);
 	}
-	wrlog("INIT:Screen bitmap created");
+	LOG_INFO("INIT:Screen bitmap created");
 	return bitmap;
 }
 
@@ -231,12 +231,12 @@ struct GfxElement* decodegfx(const unsigned char* src, const struct GfxLayout* g
 	// allegro_message("Creating Bitmap, width %d height %d",gl->width,gl->total * gl->height);
 	if ((bm = osd_create_bitmap(gl->width, gl->total * gl->height)) == 0)
 	{
-		wrlog("Error Creating gfx bitmap"); return 0;
+		LOG_INFO("Error Creating gfx bitmap"); return 0;
 	}
 
 	if ((gfx = (struct GfxElement*)malloc(sizeof(struct GfxElement))) == 0)
 	{
-		wrlog("Error Malloc'ing memoey for main bitmap");
+		LOG_INFO("Error Malloc'ing memoey for main bitmap");
 		return 0;
 	}
 
@@ -297,7 +297,7 @@ void drawgfx(struct osd_bitmap* dest, const struct GfxElement* gfx,
 
 		//paldata = &gfx->colortable[(gfx->color_granularity * color) + gfx->pal_start_this];
 		paldata = &gfx->colortable[gfx->color_granularity * (color % gfx->total_colors)];
-		//wrlog("PALDATA START HERE is %d");
+		//LOG_INFO("PALDATA START HERE is %d");
 		switch (transparency)
 		{
 		case TRANSPARENCY_NONE:

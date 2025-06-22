@@ -24,7 +24,7 @@ Rect2::Rect2 ()
 Rect2::~Rect2 ()
 {
 	
-	wrlog("Array Deleted");
+	LOG_INFO("Array Deleted");
 }
 
 
@@ -36,7 +36,7 @@ void Rect2::GenArray()
     indices[ 3 ] = 0;
 	
    
-	wrlog("Array created");
+	LOG_INFO("Array created");
 	done=1;
 
 }

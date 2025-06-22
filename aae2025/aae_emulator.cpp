@@ -65,6 +65,7 @@ int hiscoreloaded;
 int show_fps = 0;
 FpsClass* m_frame; //For frame counting. Prob needs moved out of here really.
 
+static int throttle = 1;
 
 extern int leds_status;
 
@@ -76,7 +77,14 @@ static const struct AAEDriver* drv;
 //static const struct MachineDriver* drv;
 struct GameOptions	options;
 
-struct { const char* desc; int x, y; } gfx_res[] = {
+struct 
+{
+	const char* desc; 
+	int x, y; 
+} 
+
+gfx_res[] = 
+{
 	{ "-320x240"	, 320, 240 },
 	{ "-512x384"	, 512, 384 },
 	{ "-640x480"	, 640, 480 },
@@ -97,7 +105,7 @@ double gametime = 0;// = TimerGetTimeMS();
 double starttime = 0;
 
 ///////////////////////////////////////  RASTER CODE START  ////////////////////////////////////////////////////
-// This is only a test. Trying out new things. 
+// This is only a test. Trying out new things.
 
 int vector_game;
 int use_dirty;
@@ -125,15 +133,13 @@ static unsigned char remappedtable[MAX_GFX_ELEMENTS * MAX_COLOR_TUPLE * MAX_COLO
 void osd_modify_pen(int pen, unsigned char red, unsigned char green, unsigned char blue)
 {
 	if (current_palette[pen][0] != red ||
-			current_palette[pen][1] != green ||
-			current_palette[pen][2] != blue)
+		current_palette[pen][1] != green ||
+		current_palette[pen][2] != blue)
 	{
-	 current_palette[pen][0] = red;
-	 current_palette[pen][1] = green;
-	 current_palette[pen][2] = blue;
-
-	//dirtycolor[pen] = 1;
-   }
+		current_palette[pen][0] = red;
+		current_palette[pen][1] = green;
+		current_palette[pen][2] = blue;
+	}
 }
 
 //Move to Raster
@@ -152,15 +158,13 @@ void osd_get_pen(int pen, unsigned char* red, unsigned char* green, unsigned cha
 struct osd_bitmap* osd_create_display(int width, int height, unsigned int totalcolors,
 	const unsigned char* palette, unsigned char* pens, int attributes)
 {
-	//	int i;
-
-		//if (errorlog)
-	wrlog("New Display width %d, height %d", width, height);
+	
+	LOG_INFO("New Display width %d, height %d", width, height);
 
 	/* Look if this is a vector game */
 	if (Machine->drv->video_attributes & VIDEO_TYPE_VECTOR)
 	{
-		wrlog("Init: Vector game starting");
+		LOG_INFO("Init: Vector game starting");
 		vector_game = 1;
 		//VECTOR_START();
 	}
@@ -191,13 +195,13 @@ struct osd_bitmap* osd_create_display(int width, int height, unsigned int totalc
 
 	//Create the main bitmap screen
 	main_bitmap = osd_create_bitmap(width + 2, height + 2);
-	wrlog("Main Bitmap Created");
+	LOG_INFO("Main Bitmap Created");
 	if (!main_bitmap)
 	{
-		wrlog("Bitmap create failed, why?");
+		LOG_INFO("Bitmap create failed, why?");
 		return 0;
 	}
-	wrlog("exiting create display");
+	LOG_INFO("exiting create display");
 	return main_bitmap;
 }
 
@@ -218,26 +222,26 @@ static int vh_open(void)
 	unsigned char convpalette[3 * MAX_PENS];
 	unsigned char* convtable;
 
-	wrlog("Running vh_open");
+	LOG_INFO("Running vh_open");
 
-	wrlog("MIN Y:%d ", Machine->drv->visible_area.min_y);
-	wrlog("MIN X:%d ", Machine->drv->visible_area.min_x);
-	wrlog("MAX Y:%d ", Machine->drv->visible_area.max_y);
-	wrlog("MAX x:%d ", Machine->drv->visible_area.max_x);
+	LOG_INFO("MIN Y:%d ", Machine->drv->visible_area.min_y);
+	LOG_INFO("MIN X:%d ", Machine->drv->visible_area.min_x);
+	LOG_INFO("MAX Y:%d ", Machine->drv->visible_area.max_y);
+	LOG_INFO("MAX x:%d ", Machine->drv->visible_area.max_x);
 
-	wrlog("1");
+	LOG_INFO("1");
 	convtable = (unsigned char*)malloc(MAX_GFX_ELEMENTS * MAX_COLOR_TUPLE * MAX_COLOR_CODES);
 	if (!convtable) return 1;
 
 	for (i = 0; i < MAX_GFX_ELEMENTS; i++) Machine->gfx[i] = 0;
 
-	wrlog("2");
+	LOG_INFO("2");
 	/* convert the gfx ROMs into character sets. This is done BEFORE calling the driver's */
 	/* convert_color_prom() routine because it might need to check the Machine->gfx[] data */
-	
+
 	if (Machine->gamedrv->gfxdecodeinfo)
 	{
-			for (i = 0; i < MAX_GFX_ELEMENTS && Machine->gamedrv->gfxdecodeinfo[i].memory_region != -1; i++)
+		for (i = 0; i < MAX_GFX_ELEMENTS && Machine->gamedrv->gfxdecodeinfo[i].memory_region != -1; i++)
 		{
 			if ((Machine->gfx[i] = decodegfx(Machine->memory_region[Machine->gamedrv->gfxdecodeinfo[i].memory_region]
 				+ Machine->gamedrv->gfxdecodeinfo[i].start,
@@ -247,13 +251,13 @@ static int vh_open(void)
 				free(convtable);
 				return 1;
 			}
-			wrlog("I here at gfx convert is %d, memregion is %d", i, Machine->gamedrv->gfxdecodeinfo[i].memory_region);
+			LOG_INFO("I here at gfx convert is %d, memregion is %d", i, Machine->gamedrv->gfxdecodeinfo[i].memory_region);
 			Machine->gfx[i]->colortable = &remappedtable[Machine->gamedrv->gfxdecodeinfo[i].color_codes_start];
 			Machine->gfx[i]->total_colors = Machine->gamedrv->gfxdecodeinfo[i].total_color_codes;
-			wrlog("Colortable here is remap table at is %d,total color codes is %d", Machine->gamedrv->gfxdecodeinfo[i].color_codes_start, Machine->gamedrv->gfxdecodeinfo[i].total_color_codes);
+			LOG_INFO("Colortable here is remap table at is %d,total color codes is %d", Machine->gamedrv->gfxdecodeinfo[i].color_codes_start, Machine->gamedrv->gfxdecodeinfo[i].total_color_codes);
 		}
 	}
-	wrlog("3");
+	LOG_INFO("3");
 	//Create a default pallet
 	palette = (unsigned char*)malloc(MAX_GFX_ELEMENTS * MAX_COLOR_TUPLE * MAX_COLOR_CODES);
 
@@ -269,20 +273,20 @@ static int vh_open(void)
 		palette = convpalette;
 		colortable = convtable;
 	}
-	
-	wrlog("4");
+
+	LOG_INFO("4");
 	/* create the display bitmap, and allocate the palette */
 	if ((Machine->scrbitmap = osd_create_display(
 		Machine->gamedrv->screen_width, Machine->gamedrv->screen_height, Machine->gamedrv->total_colors,
 		palette, Machine->pens, Machine->gamedrv->video_attributes)) == 0)
 	{
-		wrlog("Why is this returning?");
+		LOG_INFO("Why is this returning?");
 		free(convtable);
 		exit(1);
 	}
 	else
 	{
-		wrlog("Created Display surface, Width: %d Height: %d", Machine->gamedrv->screen_width, Machine->gamedrv->screen_height);
+		LOG_INFO("Created Display surface, Width: %d Height: %d", Machine->gamedrv->screen_width, Machine->gamedrv->screen_height);
 	}
 	/* initialize the palette */
 	for (i = 0; i < MAX_COLOR_CODES; i++)
@@ -298,7 +302,7 @@ static int vh_open(void)
 		Machine->pens[i] = i;// 255 - i;
 	}
 
-	wrlog("TotalColors here is %d", Machine->gamedrv->total_colors);
+	LOG_INFO("TotalColors here is %d", Machine->gamedrv->total_colors);
 	for (i = 0; i < Machine->gamedrv->total_colors; i++)
 	{
 		current_palette[Machine->pens[i]][0] = palette[3 * i];
@@ -306,7 +310,7 @@ static int vh_open(void)
 		current_palette[Machine->pens[i]][2] = palette[3 * i + 2];
 	}
 
-	wrlog("Color Table Len %d", Machine->gamedrv->color_table_len);
+	LOG_INFO("Color Table Len %d", Machine->gamedrv->color_table_len);
 	for (i = 0; i < Machine->gamedrv->color_table_len; i++)
 		remappedtable[i] = Machine->pens[colortable[i]];
 
@@ -332,7 +336,7 @@ static int vh_open(void)
 	//Machine->memory_region[REGION_GFX1] = 0;
 
 	free(convtable);
-	wrlog("Returning from vh_open");
+	LOG_INFO("Returning from vh_open");
 	return 0;
 }
 
@@ -362,7 +366,7 @@ int run_a_game(int game)
 {
 	Machine->gamedrv = gamedrv = &driver[game];
 	Machine->drv = gamedrv;
-	wrlog("Starting game, Driver name now is %s", Machine->gamedrv->name);
+	LOG_INFO("Starting game, Driver name now is %s", Machine->gamedrv->name);
 	return 0;
 }
 
@@ -399,7 +403,7 @@ int mystrcmp(const char* s1, const char* s2)
  *
  *	Output a full romlist as a text file
  *  TODO: Clean this up with strings later.
- * 
+ *
  ****************************************/
 void list_all_roms()
 {
@@ -420,8 +424,8 @@ void list_all_roms()
 		strcat(mylist, "Rom  Name: ");
 		strcat(mylist, driver[loop].name);
 		strcat(mylist, ".zip\n");
-		wrlog("gamename %s", driver[loop].name);
-		wrlog("gamename %s", driver[loop].desc);
+		LOG_INFO("gamename %s", driver[loop].name);
+		LOG_INFO("gamename %s", driver[loop].desc);
 		while (driver[loop].rom[loop2].romSize > 0)
 		{
 			if (driver[loop].rom[loop2].loadAddr == 999)
@@ -446,7 +450,7 @@ void list_all_roms()
 						strcat(mylist, " Load Addr: ");
 						sprintf(str, "0x%04x", driver[loop].rom[loop2].loadAddr);
 						strcat(mylist, str);
-						
+
 						strcat(mylist, " CRC: ");
 						sprintf(str, "0x%04x", driver[loop].rom[loop2].crc);
 						strcat(mylist, str);
@@ -468,7 +472,7 @@ void list_all_roms()
 	strcat(mylist, str);
 	strcat(mylist, "\n");
 	strcat(mylist, "\0");
-	wrlog("SAVING Romlist");
+	LOG_INFO("SAVING Romlist");
 	save_file_char("AAE All Game Roms List.txt", mylist, strlen(mylist));
 	free(mylist);
 }
@@ -476,6 +480,7 @@ void list_all_roms()
 /*************************************
  *
  *	Command Line Parsing Function
+ *  Most of this still doesn't work
  *
  *************************************/
 
@@ -545,7 +550,7 @@ void gameparse(int argc, char* argv[])
 
 		mylist = (char*)malloc(0x25000);
 		strcpy(mylist, "\n");
-		wrlog("Starting rom verify");
+		LOG_INFO("Starting rom verify");
 		while (driver[gamenum].rom[x].romSize > 0)
 		{
 			if (driver[gamenum].rom[x].loadAddr != 0x999) {
@@ -585,7 +590,7 @@ void gameparse(int argc, char* argv[])
 		break;
 	case 4: mylist = (char*)malloc(0x11000); i = 0;
 		strcpy(mylist, "\n");
-		wrlog("Starting sample verify");
+		LOG_INFO("Starting sample verify");
 		while (strcmp(driver[gamenum].game_samples[i], "NULL"))
 		{
 			strcat(mylist, driver[gamenum].game_samples[i]);
@@ -652,14 +657,14 @@ void sort_games(void)
 
 /*************************************
  *
- *	Shadow input port creation for
+ *	MAME Shadow input port creation for
  * the Menu system and save
  *
  *************************************/
 
 int init_machine(void)
 {
-	wrlog("Calling init machine to build shadow input ports");
+	LOG_INFO("Calling init machine to build shadow input ports");
 
 	if (gamedrv->input_ports)
 	{
@@ -712,7 +717,7 @@ void msg_loop(void)
 		else resume_audio();
 	}
 
-	if (osd_key_pressed_memory(OSD_KEY_SHOW_FPS)) // TODO: Add some sort of on screen message here
+	if (osd_key_pressed_memory(OSD_KEY_SHOW_FPS))
 	{
 		show_fps ^= 1;
 	}
@@ -725,6 +730,13 @@ void msg_loop(void)
 	if (osd_key_pressed_memory(OSD_KEY_F6))
 	{
 		logging ^= 1;
+	}
+
+	if (osd_key_pressed_memory(OSD_KEY_F10))
+	{
+		throttle ^= 1;
+		frameavg = 0; fps_count = 0;
+		osWaitVsync(throttle);
 	}
 
 	if (osd_key_pressed_memory(OSD_KEY_CONFIGURE))
@@ -772,32 +784,29 @@ void msg_loop(void)
 /*************************************
  *
  *	Speed Throttling:
- * from really of MAME code.
- *
+  *
  *************************************/
 
 static void throttle_speed(void)
 {
 	double millsec = (double)1000 / (double)driver[gamenum].fps;
 	gametime = TimerGetTimeMS();
-
-	//if (Machine->drv->frames_per_second != 60) {
-	while (((double)(gametime)-(double)starttime) < (double)millsec)
-	{
-		HANDLE current_thread = GetCurrentThread();
-		int old_priority = GetThreadPriority(current_thread);
-
-		if (((double)gametime - (double)starttime) < (double)(millsec - 4))
+	if (throttle) {
+		while (((double)(gametime)-(double)starttime) < (double)millsec)
 		{
-			SetThreadPriority(current_thread, THREAD_PRIORITY_TIME_CRITICAL);
-			//Sleep(1);
-			SetThreadPriority(current_thread, old_priority);
-		}
-		//else Sleep(0);
-		gametime = TimerGetTimeMS();
-	}
-	//}
+			HANDLE current_thread = GetCurrentThread();
+			int old_priority = GetThreadPriority(current_thread);
 
+			if (((double)gametime - (double)starttime) < (double)(millsec - 4))
+			{
+				SetThreadPriority(current_thread, THREAD_PRIORITY_TIME_CRITICAL);
+				//Sleep(1);
+				SetThreadPriority(current_thread, old_priority);
+			}
+			//else Sleep(0);
+			gametime = TimerGetTimeMS();
+		}
+	}
 	if (frames > 60)
 	{
 		frameavg++;
@@ -841,7 +850,7 @@ void run_game(void)
 
 	setup_game_config();
 	sanity_check_config();
-	wrlog("Running game %s", Machine->gamedrv->desc);
+	LOG_INFO("Running game %s", Machine->gamedrv->desc);
 
 	//Check for setting greater then screen availability
 	if (config.screenh > cy || config.screenw > cx)
@@ -853,7 +862,8 @@ void run_game(void)
 	options.cheat = 1;
 	//set_aae_leds(0, 0, 0);  //Reset LEDS
 	leds_status = 0;
-	force_all_kbdleds_off();
+	osd_set_leds(0);
+	//force_all_kbdleds_off();
 
 	config.mainvol *= 12.75;
 	config.pokeyvol *= 12.75; //Adjust from menu values
@@ -883,23 +893,31 @@ void run_game(void)
 	init_machine();
 	reset_memory_tracking(); // Before loading Anything!!!
 	//////////////////////////////////////////////////////////////END VARIABLES SETUP ///////////////////////////////////////////////////
-	if (Machine->gamedrv->rom )
+	// Load Roms
+	if (Machine->gamedrv->rom)
 	{
 		goodload = load_roms(Machine->gamedrv->name, Machine->gamedrv->rom);
-		if (goodload == EXIT_FAILURE) {
-			wrlog("Rom loading failure, exiting..."); 
-			have_error = 10; 
+		if (goodload == EXIT_FAILURE)
+		{
+			LOG_INFO("Rom loading failure, exiting...");
+			have_error = 10;
 			gamenum = 0;
 			if (!in_gui) { exit(1); }
-			}
-
-		if (Machine->gamedrv->artwork)
-		{
-			load_artwork(Machine->gamedrv->artwork);
-			resize_art_textures();
 		}
 	}
 
+	LOG_INFO("OpenGL Init");
+	init_gl();
+	end_gl();
+	// TODO: Revisit THis
+	texture_reinit(); //This cleans up the FBO textures preping them for reuse.
+	// Load Artwork
+	if (Machine->gamedrv->artwork)
+	{
+		load_artwork(Machine->gamedrv->artwork);
+		resize_art_textures();
+	}
+	// Load configs for Video.
 	setup_video_config();
 	if (config.bezel && gamenum) { msx = b1sx; msy = b1sy; esx = b2sx; esy = b2sy; }
 	else { msx = sx; msy = sy; esx = ex; esy = ey; }
@@ -907,43 +925,38 @@ void run_game(void)
 	frameavg = 0; fps_count = 0; frames = 0;
 	//////////////////////////
 
-	millsec = (double)1000 / (double) Machine->gamedrv->fps;
+	millsec = (double)1000 / (double)Machine->gamedrv->fps;
 
+	//Init the Mixer.
 	mixer_init(config.samplerate, Machine->gamedrv->fps);
 
 	// Load samples if the game has any. This needs to move!
 	if (Machine->gamedrv->game_samples)
 	{
 		goodload = read_samples(Machine->gamedrv->game_samples, 0);
-		if (goodload == EXIT_FAILURE) { wrlog("Samples loading failure, please check error output for details..."); }
+		if (goodload == EXIT_FAILURE) { LOG_INFO("Samples loading failure, please check error output for details..."); }
 	}
 
 	//Now load the Ambient and menu samples
-	// TODO: This has been disabled for now. !!!
-	// TODO: Add this back as a separate routine, we can do this now with the new sound engine!!!!!!
-	
-	
+
 	goodload = read_samples(noise_samples, 1);
-	if (goodload == EXIT_FAILURE) { wrlog("Noise Samples loading failure, not critical, continuing."); }
+	if (goodload == EXIT_FAILURE) { LOG_INFO("Noise Samples loading failure, not critical, continuing."); }
 
-	wrlog("Number of samples for this game is %d", num_samples);
-	
-	wrlog("Loaded sample number here is %d", nameToNum("flyback"));
-	wrlog("Loaded sample NAME here is %s", numToName(7));
-
+	LOG_INFO("Number of samples for this game is %d", num_samples);
+	// Configure the Ambient Sounds.
 	setup_ambient(VECTOR);
 	// Setup for the first game.
-	wrlog("Initializing Game");
-	wrlog("Loading InputPort Settings");
+	LOG_INFO("Initializing Game");
+	LOG_INFO("Loading InputPort Settings");
 	load_input_port_settings();
 	init_cpu_config(); ////////////////////-----------
 
-	//Run this before Driver Init. 
+	//Run this before Driver Init.
 	if (!(Machine->gamedrv->video_attributes & VIDEO_TYPE_VECTOR))
 	{
 		vh_open();
 	}
-			
+
 	Machine->gamedrv->init_game();
 
 	hiscoreloaded = 0;
@@ -958,13 +971,7 @@ void run_game(void)
 		if (f) osd_fclose(f);
 	}
 
-	wrlog("OpenGL Init");
-	init_gl();
-	end_gl();
-	// TODO: Revisit THis
-	texture_reinit(); //This cleans up the FBO textures preping them for reuse.
-
-	wrlog("\n\n----END OF INIT -----!\n\n");
+	LOG_INFO("\n\n----END OF INIT -----!\n\n");
 	//reset_for_new_game(gamenum, 0);
 }
 
@@ -977,7 +984,7 @@ void run_game(void)
 void emulator_run()
 {
 	if (config.debug_profile_code) {
-		wrlog("Start of Frame");
+		LOG_INFO("Start of Frame");
 	}
 	// Load High Score
 	if (hiscoreloaded == 0 && Machine->gamedrv->hiscore_load)
@@ -993,7 +1000,6 @@ void emulator_run()
 		//set_render_raster();
 		set_render();
 	}
-	
 
 	auto start = chrono::steady_clock::now();
 
@@ -1004,7 +1010,7 @@ void emulator_run()
 
 		//if (driver[gamenum].pre_run) driver[gamenum].pre_run();
 		if (config.debug_profile_code) {
-			wrlog("Calling CPU Run");
+			LOG_INFO("Calling CPU Run");
 		}
 		cpu_run();
 		if (Machine->gamedrv->run_game) Machine->gamedrv->run_game();
@@ -1013,7 +1019,7 @@ void emulator_run()
 	auto end = chrono::steady_clock::now();
 	auto diff = end - start;
 	if (config.debug_profile_code) {
-		wrlog("Profiler: CPU Time: %f ", chrono::duration <double, milli>(diff).count());
+		LOG_INFO("Profiler: CPU Time: %f ", chrono::duration <double, milli>(diff).count());
 	}
 	// Complete and display the rendered frame after all video updates.
 	render();
@@ -1026,12 +1032,16 @@ void emulator_run()
 
 	throttle_speed();
 
+	if (throttle)
+	{
+		mixer_update();
+	}
+	
 	frames++;
 	if (frames > 0xfffffff) { frames = 0; }
-	//wrlog("Debug Remove: Mixer Update Start");
-	mixer_update();
+
 	if (config.debug_profile_code) {
-		wrlog("End of Frame");
+		LOG_INFO("End of Frame");
 	}
 }
 
@@ -1063,7 +1073,7 @@ void emulator_init(int argc, char** argv)
 	y_override = 0;
 	// Build the supported game list.
 	while (driver[loop].name != 0) { num_games++; loop++; }
-	wrlog("Number of supported games is: %d", num_games);
+	LOG_INFO("Number of supported games is: %d", num_games);
 	num_games++;
 
 	for (loop = 1; loop < (num_games - 1); loop++) //
@@ -1077,12 +1087,12 @@ void emulator_init(int argc, char** argv)
 		else { gamelist[loop].prev = (num_games - 2); }
 	}
 	// Sort the supported game list since they are not in alphabetical order.
-	wrlog("Sorting games");
+	LOG_INFO("Sorting games");
 	sort_games();
-	wrlog("Made it past here");
+	LOG_INFO("Made it past here");
 	//Move this after command line processing is re-added
 	GetDesktopResolution(horizontal, vertical);
-	wrlog("Actual primary monitor desktop screen size %d  %d", horizontal, vertical);
+	LOG_INFO("Actual primary monitor desktop screen size %d  %d", horizontal, vertical);
 	//if (config.screenw == 0 && config.screenh == 0)
 	//{
 	config.screenw = horizontal;
@@ -1092,11 +1102,11 @@ void emulator_init(int argc, char** argv)
 	// Disable ShortCut Keys
 	AllowAccessibilityShortcutKeys(0);
 
-	//wrlog(" String %s Max Num %d", argv[1], argc);
+	//LOG_INFO(" String %s Max Num %d", argv[1], argc);
 
 	if (argv[1] == NULL)
 	{
-		wrlog("Usage: aae gamename -argument, -argument, etc.");
+		LOG_INFO("Usage: aae gamename -argument, -argument, etc.");
 		show_mouse();
 		allegro_message("Error", "Please run from a command prompt. \nUsage: aae gamename -argument, -argument, etc.");
 		done = 1;
@@ -1112,7 +1122,7 @@ void emulator_init(int argc, char** argv)
 	{
 		if (strcmp(argv[i], "-listromstotext") == 0)
 		{
-			wrlog("Listing all roms");
+			LOG_INFO("Listing all roms");
 			list_all_roms();
 			exit(1);
 		}
@@ -1135,18 +1145,18 @@ void emulator_init(int argc, char** argv)
 	//if (gamenum) in_gui = 0; else in_gui = 1;
 	in_gui = 0;
 
-	//wrlog("Number of supported joysticks: %d ", num_joysticks);
+	//LOG_INFO("Number of supported joysticks: %d ", num_joysticks);
 	/*
 	if (num_joysticks)
 	{
 		poll_joystick();
 		for (loop = 0; loop < num_joysticks; loop++) {
-			wrlog("joy %d number of sticks %d", loop, joy[loop].num_sticks);
+			LOG_INFO("joy %d number of sticks %d", loop, joy[loop].num_sticks);
 			for (loop2 = 0; loop2 < joy[loop].num_sticks; loop2++)
 			{
-				wrlog("stick number  %d flag %d", loop2, joy[loop].stick[loop2].flags);
-				wrlog("stick number  %d axis 0 pos %d", loop2, joy[loop].stick[loop2].axis[0].pos);
-				wrlog("stick number  %d axis 1 pos %d", loop2, joy[loop].stick[loop2].axis[1].pos);
+				LOG_INFO("stick number  %d flag %d", loop2, joy[loop].stick[loop2].flags);
+				LOG_INFO("stick number  %d axis 0 pos %d", loop2, joy[loop].stick[loop2].axis[0].pos);
+				LOG_INFO("stick number  %d axis 1 pos %d", loop2, joy[loop].stick[loop2].axis[1].pos);
 			}
 		}
 	}
@@ -1157,7 +1167,7 @@ void emulator_init(int argc, char** argv)
 	showinfo = 0;
 	done = 0;
 	//////////////////////////////////////////////////////
-	wrlog("Number of supported games in this release: %d", num_games);
+	LOG_INFO("Number of supported games in this release: %d", num_games);
 	initrand();
 	//fillstars(stars);
 	have_error = 0;
@@ -1172,7 +1182,7 @@ void emulator_init(int argc, char** argv)
 	}
 
 	run_game();
-	wrlog("Starting Run Game");
+	LOG_INFO("Starting Run Game");
 }
 
 /*************************************
@@ -1183,7 +1193,7 @@ void emulator_init(int argc, char** argv)
 
 void emulator_end()
 {
-	wrlog("Emulator End Called.");
+	LOG_INFO("Emulator End Called.");
 
 	// If we're using high scores, write them to disk.
 	if (hiscoreloaded != 0 && Machine->gamedrv->hiscore_save)
@@ -1208,14 +1218,14 @@ void emulator_end()
 	//END-----------------------------------------------------
 	if (Machine->gamedrv->end_game) Machine->gamedrv->end_game();
 	save_input_port_settings();
-	if (Machine->input_ports) { free(Machine->input_ports); wrlog("Machine Input Ports Freed."); }
+	if (Machine->input_ports) { free(Machine->input_ports); LOG_INFO("Machine Input Ports Freed."); }
 	free_cpu_memory();
 	free_all_memory_regions();
-
 
 	KillFont();
 
 	AllowAccessibilityShortcutKeys(1);
 	mixer_end();
-	force_all_kbdleds_off();
+	//force_all_kbdleds_off();
+	osd_set_leds(0);
 }

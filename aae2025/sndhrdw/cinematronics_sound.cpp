@@ -382,7 +382,7 @@ void solarq_sound(UINT8 sound_val, UINT8 bits_changed)
 				sample_start(7, 10, 0);	// Enemy fire
 				break;
 			default:
-				wrlog("Unknown sound starting with: %x\n", current_shift & 0xffff);
+				LOG_INFO("Unknown sound starting with: %x\n", current_shift & 0xffff);
 				break;
 			}
 		}
@@ -879,14 +879,14 @@ void demon_sound(UINT8 sound_val, UINT8 bits_changed)
 	int pc = 0;//(register_PC);//activecpu_get_pc();
 
 	pc = pc & 0xffff;
-	//wrlog("Writing Sound Latch %x ", pc & 0xffff);
+	//LOG_INFO("Writing Sound Latch %x ", pc & 0xffff);
 	if (pc == 0x0fbc ||
 		pc == 0x1fed ||
 		pc == 0x2ff1 ||
 		pc == 0x3fd3)
 	{
 		sound_latch[sound_latch_wp] = ((sound_val & 0x07) << 3);
-		//wrlog("Writing Sound Latch 1 %04x data = %x",pc,sound_latch[sound_latch_wp] );
+		//LOG_INFO("Writing Sound Latch 1 %04x data = %x",pc,sound_latch[sound_latch_wp] );
 	}
 	if (pc == 0x0fc8 ||
 		pc == 0x1ff9 ||
@@ -895,7 +895,7 @@ void demon_sound(UINT8 sound_val, UINT8 bits_changed)
 	{
 		sound_latch[sound_latch_wp] |= (sound_val & 0x07);
 
-		//wrlog("Writing Sound Latch 2 %04x data = %x",pc,sound_latch[sound_latch_wp] );
+		//LOG_INFO("Writing Sound Latch 2 %04x data = %x",pc,sound_latch[sound_latch_wp] );
 
 		sound_latch_wp++;
 		if (sound_latch_wp == QUEUE_ENTRY_COUNT)  sound_latch_wp = 0;

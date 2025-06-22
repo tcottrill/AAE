@@ -161,7 +161,7 @@ Rewrote the starwars driver, rewrote the 6809 cpu code from John Butler, twice. 
 
 5/20/25
 ESB was the last game I ever wanted to emulate, and I am super happy to have finally made it here. It seems like a very small accomplishment, but having rewritten both the z80 and 6502 cpus, figured out all the games, written all my own window, graphic, sound and (mostly) input code, I feel like I've accomplished a lot, even with riding on the back of all the work done by so many people for MAME.
-What's next? Back to working on other things, then maybe a major rendering upgrade to newer technology, we'll see. That's after re-adding the gui and fixing all the missing command line functionality and various remaing bugs.! 
+What's next? Back to working on other things, then maybe a major rendering upgrade to newer technology, we'll see. That's after re-adding the gui and fixing all the missing command line functionality and various remaining bugs.! 
 
 5/20 - 5/26/25
 Added old MAME 3.1 Raster Video code. 
@@ -173,6 +173,20 @@ Cleaned up the Major Havoc driver to remove the gamenum use.
 Started working on a cleanup and rewrite of all the legacy opengl code, working to move OpenGL 4/ shaders only. I've been reviewing Vulcan, but the amount of work right now exceeds my freetime. Maybe someday. 
 I hope to clean up enough eventually to be able to re-add the gui. 
 
+5/27/25
+Added cocktail screen flipping support to Asteroids and Asteroids Deluxe.
+
+5/28/25 Fixed the issue where the emulator would crash if the required samples were not found. Added the ability to unthrottle the emulation (F10)
+
+6/21/25 Took a small break. 
+Bought a ChatGPT subscription. 
+Rewrote the logging, ini file and emulation timer code. 
+Made major changes to the RawInput Code. 
+Started reorganizing the legacy rendering code, cleaned up a bit. I have broken up each section of the graphics and are working on upgrading them to modern openGL. The final version will use MAME lay files for artwork. 
+Shader code has been moved to a new header, the old files are no longer required and have been removed. The Shader code has also been updated.
+Started cleaning up the main win32 functions.
+I've been fighting with the LEDs on the Ultimarc I-PAC, so I'm also trying out new LED code. 
+Minor cleanup on the ay-8910 emulation. 
 
 
 

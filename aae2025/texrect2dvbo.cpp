@@ -33,7 +33,7 @@ Rect2DVBO::~Rect2DVBO ()
 {
 	glDeleteBuffers(1, &gVBO);
 	glDeleteBuffers(1, &gIBO);
-	wrlog("Array Deleted");
+	LOG_INFO("Array Deleted");
 }
 
 
@@ -56,7 +56,7 @@ void Rect2DVBO::GenArray()
     glBufferData( GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint)*4 , indices, GL_STATIC_DRAW );
 	//glBindBuffer( GL_ELEMENT_ARRAY_BUFFER,0);
 
-	wrlog("Array created");
+	LOG_INFO("Array created");
 	done=1;
 
 }
@@ -140,7 +140,7 @@ void Rect2DVBO::Render ()
 	int err = glGetError();
     if(err != 0) 
 	  {
-		wrlog("openglerror %d",err);
+		LOG_INFO("openglerror %d",err);
 		exit(1);
 	 }
 			

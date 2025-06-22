@@ -9,7 +9,7 @@ static void byteswap(unsigned char& byte1, unsigned char& byte2)
 	byte1 ^= byte2;
 }
 
-std::string remove_extension2(const std::string& path) 
+std::string remove_extension2(const std::string& path)
 {
 	if (path == "." || path == "..")
 		return path;
@@ -21,7 +21,7 @@ std::string remove_extension2(const std::string& path)
 	return path;
 }
 
-std::string remove_extension(const std::string& filename) 
+std::string remove_extension(const std::string& filename)
 {
 	size_t lastdot = filename.find_last_of(".");
 	if (lastdot == std::string::npos) return filename;
@@ -52,4 +52,9 @@ std::string dirnameOf(const std::string& fname)
 std::string base_name(const std::string& path)
 {
 	return path.substr(path.find_last_of("/\\") + 1);
+}
+
+bool ends_with(const std::string& s, const std::string& ending)
+{
+	return (s.size() >= ending.size()) && equal(ending.rbegin(), ending.rend(), s.rbegin());
 }

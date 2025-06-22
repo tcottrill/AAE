@@ -67,7 +67,8 @@ typedef struct
 static ccpuRegs ccpu;
 static int ccpu_icount;
 
-UINT16 CCPURAM[256];
+UINT16 CCPURAM[0x100];
+UINT16 QB3RAM[0x400];
 
 UINT8 outport[16];
 /***************************************************************************
@@ -185,7 +186,7 @@ static void ccpu_init(int index, int clock, const void* _config, int (*irqcallba
 
 void ccpu_reset(void)
 {
-	wrlog("CCPU Reset Called");
+	LOG_INFO("CCPU Reset Called");
 	/* zero registers */
 	ccpu.PC = 0;
 	ccpu.A = 0;
@@ -212,7 +213,7 @@ void ccpu_reset(void)
 
 void init_ccpu(int val, int romsize)
 {
-	wrlog("Debug:: CCPU Init called");
+	LOG_INFO("Debug:: CCPU Init called");
 	ccpu_reset();
 	/* copy input params */
 	if (val) ccpu.external_input = joystick_read; else ccpu.external_input = read_jmi;//config->external_input ? config->external_input : read_jmi;
@@ -244,7 +245,7 @@ static int ccpu_execute(int cycles)
 
 		opcode = READOP(ccpu.PC++);
 
-		//wrlog("CPU LOOP, opcode %x",opcode);
+		//LOG_INFO("CPU LOOP, opcode %x",opcode);
 		switch (opcode)
 		{
 			/* LDAI */
@@ -262,15 +263,15 @@ static int ccpu_execute(int cycles)
 		case 0x14:	case 0x15:	case 0x16:	case 0x17:
 		case 0x18:	case 0x19:	case 0x1a:	case 0x1b:
 		case 0x1c:	case 0x1d:	case 0x1e:	case 0x1f:
-			//wrlog("CCPU Input called");
+			//LOG_INFO("CCPU Input called");
 			if (ccpu.acc == &ccpu.A)
 			{
 				tempval = get_ccpu_inputs(opcode & 0x0f) & 1;        //READPORT(opcode & 0x0f) & 1; //Read inputs
-				//wrlog("Debug:: ccpu input %x", tempval);
+				//LOG_INFO("Debug:: ccpu input %x", tempval);
 			}
 			else {
-				tempval = get_ccpu_switches((opcode & 0x07)) & 1; //wrlog("Switch offset %x",opcode & 0x07);//READPORT(16 + (opcode & 0x07)) & 1; //Read Dip Switches
-				//wrlog("Debug: ccpu input switches %x", tempval);
+				tempval = get_ccpu_switches((opcode & 0x07)) & 1; //LOG_INFO("Switch offset %x",opcode & 0x07);//READPORT(16 + (opcode & 0x07)) & 1; //Read Dip Switches
+				//LOG_INFO("Debug: ccpu input switches %x", tempval);
 			}
 			STANDARD_ACC_OP(tempval, tempval);
 			NEXT_ACC_A(); CYCLES(1);
@@ -322,7 +323,7 @@ static int ccpu_execute(int cycles)
 
 			/* T4K */
 		case 0x50:
-			//wrlog("PC BEFORE BANKSWITCH %x", ccpu.PC);
+			//LOG_INFO("PC BEFORE BANKSWITCH %x", ccpu.PC);
 			if (CCPUROMSIZE < 32)
 			{
 				tempval = (((ccpu.P & 0x03) - 1) << 12);
@@ -330,7 +331,7 @@ static int ccpu_execute(int cycles)
 				if (CCPUROMSIZE > 8) ccpu.PC += 0x1000;
 			}
 			else ccpu.PC = (ccpu.P << 12) + ccpu.J;
-			//wrlog("PC AFTER BANKSWITCH %x", ccpu.PC);
+			//LOG_INFO("PC AFTER BANKSWITCH %x", ccpu.PC);
 			//change_pc(ccpu.PC);
 
 			NEXT_ACC_B(); CYCLES(4);
@@ -463,7 +464,7 @@ static int ccpu_execute(int cycles)
 		case 0x9c:	case 0x9d:	case 0x9e:	case 0x9f:
 			if (ccpu.acc == &ccpu.A)
 			{
-				//wrlog("CCPU Output");
+				//LOG_INFO("CCPU Output");
 				if ((opcode & 0x07) == 5) coin_handler(~*ccpu.acc & 1);
 				if ((opcode & 0x07) == 6) vec_control_write(~*ccpu.acc & 1);
 				if ((opcode & 0x07) == 7) MUX_VAL = ~*ccpu.acc & 1;
@@ -741,7 +742,7 @@ static int ccpu_execute(int cycles)
 		}
 	}
 
-	//wrlog("CCPU Frame");
+	//LOG_INFO("CCPU Frame");
 	return cycles - ccpu_icount;
 }
 

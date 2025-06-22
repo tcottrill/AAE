@@ -326,7 +326,7 @@ void AVG_RUN(void)
 				if (lastbank != vectorbank)
 				{
 					lastbank = vectorbank;
-					//wrlog("Vector Bank Switch %x",0x18000 + ((firstwd >> 8) & 3) * 0x2000);
+					//LOG_INFO("Vector Bank Switch %x",0x18000 + ((firstwd >> 8) & 3) * 0x2000);
 					memcpy(Machine->memory_region[CPU0] + 0x6000, Machine->memory_region[CPU0] + vectorbank, 0x2000);
 				}
 			}
@@ -367,7 +367,7 @@ void AVG_RUN(void)
 
 			if (sp == 0)
 			{
-				wrlog("AVG Stack Underflow");
+				LOG_INFO("AVG Stack Underflow");
 				done = 1; sp = MAXSTACK - 1;
 			}
 			else { sp--; pc = stack[sp]; }
@@ -383,23 +383,23 @@ void AVG_RUN(void)
 
 				if (sp == (MAXSTACK - 1))
 				{
-					wrlog("AVG Stack Overflow"); done = 1; sp = 0;
+					LOG_INFO("AVG Stack Overflow"); done = 1; sp = 0;
 				}
 				else { sp++; pc = a; }
 			}break;
 
-		default: wrlog("Some sort of Error in AVG engine, max stack reached.");
+		default: LOG_INFO("Some sort of Error in AVG engine, max stack reached.");
 		}
 	}
 }
 
 int avg_go()
 {
-	//wrlog("AVG GO CALLED");
+	//LOG_INFO("AVG GO CALLED");
 
 	if (AVG_BUSY)
 	{
-		//wrlog("AVG call with AVG Busy, returning and doing nothing.");
+		//LOG_INFO("AVG call with AVG Busy, returning and doing nothing.");
 		return 1;
 	}
 	else {
@@ -407,7 +407,7 @@ int avg_go()
 		if (total_length > 1)
 		{
 			if (config.debug_profile_code) {
-				wrlog("Total AVG Draw Length here is %d at cpu0 cycles ran: %d, video_ticks %d", total_length, get_elapsed_ticks(CPU0), get_video_ticks(0));
+				LOG_INFO("Total AVG Draw Length here is %d at cpu0 cycles ran: %d, video_ticks %d", total_length, get_elapsed_ticks(CPU0), get_video_ticks(0));
 			}
 			AVG_BUSY = 1;
 		
@@ -415,7 +415,7 @@ int avg_go()
 		}
 		else
 		{
-			//wrlog("Erronious AVG Busy Clear, this should never happen.");
+			//LOG_INFO("Erronious AVG Busy Clear, this should never happen.");
 			AVG_BUSY = 0;
 		}
 	}
@@ -431,8 +431,8 @@ int avg_clear()
 
 int avg_check()
 {
-	//if ((get_video_ticks(0) > sweep) && AVG_BUSY) { avg_clear(); wrlog("Clearing Busy Flag"); }
-	//wrlog("Returning %d for AVG BUSY", AVG_BUSY);
+	//if ((get_video_ticks(0) > sweep) && AVG_BUSY) { avg_clear(); LOG_INFO("Clearing Busy Flag"); }
+	//LOG_INFO("Returning %d for AVG BUSY", AVG_BUSY);
 	return { !AVG_BUSY };
 }
 
@@ -448,7 +448,7 @@ void advdvg_go_w(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite)
 
 void avgdvg_reset_w(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite)
 {
-	//wrlog("AVG Reset 1 Called");
+	//LOG_INFO("AVG Reset 1 Called");
 	//avgdvg_reset(0, 0);
 	avg_clear();
 }

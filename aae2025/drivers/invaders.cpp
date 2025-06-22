@@ -40,7 +40,7 @@ static unsigned char invaders_palette[] = /* V.V */ /* Smoothed pure colors, ove
 
 void init_palette(unsigned char* palette, unsigned char* colortable, const unsigned char* color_prom)
 {
-	wrlog("Init Palette Called");
+	LOG_INFO("Init Palette Called");
 	memcpy(palette, invaders_palette, sizeof(invaders_palette));
 }
 
@@ -341,7 +341,7 @@ int init_invaddlx()
 
 int init_invaders()
 {
-	wrlog("Invaders init called");
+	LOG_INFO("Invaders init called");
 
 	invaders_videoram = &Machine->memory_region[0][0x2400];
 	init8080(invaders_readmem, invaders_writemem, invaders_readport, invaders_writeport, CPU0);

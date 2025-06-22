@@ -85,7 +85,7 @@ WRITE_HANDLER(sega_mem_w)
 			(*sega_decrypt)(val, &bad);
 
 			offset = (page & 0xFF00) | (bad & 0x00FF);
-			//wrlog("VAL %x, OP %x BAD %x PAGE %x ADDRESS %x OFFSET %x", val, op, bad, page, address, offset);
+			//LOG_INFO("VAL %x, OP %x BAD %x PAGE %x ADDRESS %x OFFSET %x", val, op, bad, page, address, offset);
 			address = offset;
 		}
 	}

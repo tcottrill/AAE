@@ -56,10 +56,10 @@ void run_gui()
 
 void end_gui()
 {
-	wrlog("EXITING  GUI");
+	LOG_INFO("EXITING  GUI");
 	sample_stop(1);
 
-	wrlog("Deleting GUI Textures.");
+	LOG_INFO("Deleting GUI Textures.");
 	glDeleteTextures(1, &fun_tex[0]);
 	glDeleteTextures(1, &fun_tex[1]);
 	glDeleteTextures(1, &fun_tex[2]);
@@ -84,7 +84,7 @@ void gui_loop()
 	i = keyin;
 	b = keyin;
 
-	//	wrlog("KEYin here is %d ", i);
+	//	LOG_INFO("KEYin here is %d ", i);
 
 	if (s_animate == 0) { glPrint_centered(center, gamelist[i].glname, 255, 255, 0, 255, 1.2, 0, 0); }
 	pi = i;
@@ -253,7 +253,7 @@ int init_gui()
 	static int mtime = 0;
 	rotationcount = 0;
 
-	wrlog("STARTING GUI");
+	LOG_INFO("STARTING GUI");
 
 	//Is this the first time through?? Then init the GUI textures
 	if (!mtime) { sample_start(2, 1, 0); mtime++; }

@@ -122,7 +122,7 @@ WRITE16_HANDLER(quantum_led_write)
 
 READ16_HANDLER(MRA_NOP16)
 {
-	//wrlog("--------------------Unhandled Read, %x data: %x", address);
+	//LOG_INFO("--------------------Unhandled Read, %x data: %x", address);
 	return 0;
 }
 
@@ -221,7 +221,7 @@ void run_quantum()
 
 int init_quantum()
 {
-	wrlog("Starting Quantum Init");
+	LOG_INFO("Starting Quantum Init");
 	memset(main_ram, 0x00, 0x4fff);
 	memset(vec_ram, 0x00, 0x1fff);
 	memset(program_rom, 0x00, 0x13fff);
@@ -235,7 +235,7 @@ int init_quantum()
 
 	//timer_set(TIME_IN_HZ(246), 0, quantum_interrupt);
 	pokey_sh_start(&pokey_interface);
-	wrlog("End Quantum Init");
+	LOG_INFO("End Quantum Init");
 	return 0;
 }
 

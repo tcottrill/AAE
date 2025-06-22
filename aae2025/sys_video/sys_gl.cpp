@@ -68,7 +68,7 @@ void CheckGLError(const char* file, int line) {
 		case GL_INVALID_FRAMEBUFFER_OPERATION:  error = "INVALID_FRAMEBUFFER_OPERATION";  break;
 		}
 
-		wrlog("OpenGL Error: %s in %s file at line %d ", error.c_str(), file, line);
+		LOG_INFO("OpenGL Error: %s in %s file at line %d ", error.c_str(), file, line);
 		err = glGetError();
 	}
 }
@@ -89,7 +89,7 @@ void CheckGLError2() {
 		case GL_INVALID_FRAMEBUFFER_OPERATION:  error = "INVALID_FRAMEBUFFER_OPERATION";  break;
 		}
 
-		if (err != GL_NO_ERROR) wrlog("OpenGL Error: %s ", error.c_str());
+		if (err != GL_NO_ERROR) LOG_INFO("OpenGL Error: %s ", error.c_str());
 	}
 }
 
@@ -100,7 +100,7 @@ void CheckGLVersionSupport()
 
 	version = (char*)glGetString(GL_VERSION);
 	sscanf(version, "%d.%d", &major, &minor);
-	wrlog("OpenGl Version supported %d.%d", major, minor);
+	LOG_INFO("OpenGl Version supported %d.%d", major, minor);
 
 	if (major < 2)
 	{
@@ -166,10 +166,10 @@ int OpenGL2Enable()
 	GLenum error = glewInit(); // Enable GLEW
 	if (error != GLEW_OK) // If GLEW fails
 	{
-		wrlog("Glew Init Failed");	return false;
+		LOG_INFO("Glew Init Failed");	return false;
 	}
 
-	wrlog("OpenGL %s, GLSL %s\n", glGetString(GL_VERSION), glGetString(GL_SHADING_LANGUAGE_VERSION));
+	LOG_INFO("OpenGL %s, GLSL %s\n", glGetString(GL_VERSION), glGetString(GL_SHADING_LANGUAGE_VERSION));
 	return true;
 }
 
@@ -204,7 +204,7 @@ int OpenGL3Enable()
 	GLenum error = glewInit(); // Enable GLEW
 	if (error != GLEW_OK) // If GLEW fails
 	{
-		wrlog("Glew Init Failed");	return false;
+		LOG_INFO("Glew Init Failed");	return false;
 	}
 
 	const int attributes[] = {
@@ -230,8 +230,8 @@ int OpenGL3Enable()
 	glGetIntegerv(GL_MAJOR_VERSION, &glVersion[0]); // Get back the OpenGL MAJOR version we are using
 	glGetIntegerv(GL_MINOR_VERSION, &glVersion[1]); // Get back the OpenGL MAJOR version we are using
 
-	wrlog("Gl version %x:%x", glVersion[0], glVersion[1]);
-	wrlog("OpenGL %s, GLSL %s\n", glGetString(GL_VERSION), glGetString(GL_SHADING_LANGUAGE_VERSION));
+	LOG_INFO("Gl version %x:%x", glVersion[0], glVersion[1]);
+	LOG_INFO("OpenGL %s, GLSL %s\n", glGetString(GL_VERSION), glGetString(GL_SHADING_LANGUAGE_VERSION));
 
 	if (GLEW_EXT_framebuffer_multisample)
 	{
@@ -296,7 +296,7 @@ GLuint LoadShaders(const char* vertex_file, const char* fragment_file, bool file
 			VertexShaderStream.close();
 		}
 		else {
-			wrlog("Impossible to open %s. Are you in the right directory ? Don't forget to read the FAQ !\n", vertex_file);
+			LOG_INFO("Impossible to open %s. Are you in the right directory ? Don't forget to read the FAQ !\n", vertex_file);
 			return 0;
 		}
 
@@ -310,7 +310,7 @@ GLuint LoadShaders(const char* vertex_file, const char* fragment_file, bool file
 			FragmentShaderStream.close();
 		}
 		else {
-			wrlog("Impossible to open %s. Are you in the right directory ? Don't forget to read the FAQ !\n", fragment_file);
+			LOG_INFO("Impossible to open %s. Are you in the right directory ? Don't forget to read the FAQ !\n", fragment_file);
 			return 0;
 		}
 	}
@@ -324,7 +324,7 @@ GLuint LoadShaders(const char* vertex_file, const char* fragment_file, bool file
 	int InfoLogLength;
 
 	// Compile Vertex Shader
-	wrlog("Compiling vertex shader");
+	LOG_INFO("Compiling vertex shader");
 	char const* VertexSourcePointer = VertexShaderCode.c_str();
 	glShaderSource(VertexShaderID, 1, &VertexSourcePointer, NULL);
 	glCompileShader(VertexShaderID);
@@ -335,11 +335,11 @@ GLuint LoadShaders(const char* vertex_file, const char* fragment_file, bool file
 	if (InfoLogLength > 0) {
 		std::vector<char> VertexShaderErrorMessage(InfoLogLength + 1);
 		glGetShaderInfoLog(VertexShaderID, InfoLogLength, NULL, &VertexShaderErrorMessage[0]);
-		wrlog("%s\n", &VertexShaderErrorMessage[0]);
+		LOG_INFO("%s\n", &VertexShaderErrorMessage[0]);
 	}
 
 	// Compile Fragment Shader
-	wrlog("Compiling fragment shader");
+	LOG_INFO("Compiling fragment shader");
 	char const* FragmentSourcePointer = FragmentShaderCode.c_str();
 	glShaderSource(FragmentShaderID, 1, &FragmentSourcePointer, NULL);
 	glCompileShader(FragmentShaderID);
@@ -350,11 +350,11 @@ GLuint LoadShaders(const char* vertex_file, const char* fragment_file, bool file
 	if (InfoLogLength > 0) {
 		std::vector<char> FragmentShaderErrorMessage(InfoLogLength + 1);
 		glGetShaderInfoLog(FragmentShaderID, InfoLogLength, NULL, &FragmentShaderErrorMessage[0]);
-		wrlog("%s\n", &FragmentShaderErrorMessage[0]);
+		LOG_INFO("%s\n", &FragmentShaderErrorMessage[0]);
 	}
 
 	// Link the program
-	wrlog("Linking program\n");
+	LOG_INFO("Linking program\n");
 	GLuint ProgramID = glCreateProgram();
 	glAttachShader(ProgramID, VertexShaderID);
 	glAttachShader(ProgramID, FragmentShaderID);
@@ -366,7 +366,7 @@ GLuint LoadShaders(const char* vertex_file, const char* fragment_file, bool file
 	if (InfoLogLength > 0) {
 		std::vector<char> ProgramErrorMessage(InfoLogLength + 1);
 		glGetProgramInfoLog(ProgramID, InfoLogLength, NULL, &ProgramErrorMessage[0]);
-		wrlog("%s\n", &ProgramErrorMessage[0]);
+		LOG_INFO("%s\n", &ProgramErrorMessage[0]);
 	}
 
 	glDetachShader(ProgramID, VertexShaderID);
@@ -378,7 +378,7 @@ GLuint LoadShaders(const char* vertex_file, const char* fragment_file, bool file
 	GLenum err;
 	while ((err = glGetError()) != GL_NO_ERROR)
 	{
-		wrlog("GL Error in shader processing  %d", err);
+		LOG_INFO("GL Error in shader processing  %d", err);
 		//Process/log the error.
 	}
 
@@ -389,7 +389,7 @@ bool ShaderIsValid(GLuint program) {
 	glValidateProgram(program);
 	int params = -1;
 	glGetProgramiv(program, GL_VALIDATE_STATUS, &params);
-	wrlog("program %i GL_VALIDATE_STATUS = %i\n", program, params);
+	LOG_INFO("program %i GL_VALIDATE_STATUS = %i\n", program, params);
 	if (GL_TRUE != params) {
 		//_print_programme_info_log(programme);
 		return false;

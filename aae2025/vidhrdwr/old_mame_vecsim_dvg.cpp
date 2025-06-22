@@ -109,7 +109,7 @@ int dvg_generate_vector_list(void)
 	int  currentx = 0;
 	int  currenty = 0;
 	int total_length = 1;
-	//wrlog("AVG VIDEO UPDATE-----------");
+	//LOG_INFO("AVG VIDEO UPDATE-----------");
 	cache_clear();
 	while (!done)
 	{
@@ -159,7 +159,7 @@ int dvg_generate_vector_list(void)
 
 				if ((currentx == currentx + deltax) && (currenty == currenty - deltay))
 				{
-					//wrlog("This is a dot");
+					//LOG_INFO("This is a dot");
 
 					if (z != 4)
 					{
@@ -248,7 +248,7 @@ int dvg_generate_vector_list(void)
 
 				if ((currentx == currentx + deltax) && (currenty == currenty - deltay))
 				{
-					//wrlog("This is a dot");
+					//LOG_INFO("This is a dot");
 
 					if (z != 4)
 					{
@@ -280,7 +280,7 @@ int dvg_generate_vector_list(void)
 			break;
 		}
 	}
-	//wrlog("AVG DUPDATE END");
+	//LOG_INFO("AVG DUPDATE END");
 	return total_length;
 }
 
@@ -288,10 +288,10 @@ void dvg_go(int offset, int data)
 {
 	int total_length;
 
-	//wrlog("DVG GO CALLED --------------");
+	//LOG_INFO("DVG GO CALLED --------------");
 
 	/* skip if already busy */
-	if (busy) { return; } //wrlog("Vector Busy");
+	if (busy) { return; } //LOG_INFO("Vector Busy");
 
 	/* count vector updates and mark ourselves busy */
 	vector_updates++;
@@ -302,7 +302,7 @@ void dvg_go(int offset, int data)
 	{
 		total_length = dvg_generate_vector_list();
 		dvg_timer_val=timer_pulse(TIME_IN_NSEC(4500) * total_length, CPU0, dvg_clr_busy);
-		//wrlog("Setting time at %f on timer %d", 1512000 * (TIME_IN_NSEC(4500) * total_length), dvg_timer_val);
+		//LOG_INFO("Setting time at %f on timer %d", 1512000 * (TIME_IN_NSEC(4500) * total_length), dvg_timer_val);
 	}
 
 	/* AVG case

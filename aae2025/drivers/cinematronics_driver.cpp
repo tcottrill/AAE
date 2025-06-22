@@ -105,7 +105,7 @@ static int speedfrk_wheel_r(int offset)
 	if (cpu_getcurrentframe() > last_frame)
 	{
 		delta_wheel = (INT8)readinputportbytag("WHEEL") / 8;
-		//wrlog("DELTA WHEEL is %d", delta_wheel);
+		//LOG_INFO("DELTA WHEEL is %d", delta_wheel);
 
 		if (delta_wheel > 3)
 			delta_wheel = 3;
@@ -113,7 +113,7 @@ static int speedfrk_wheel_r(int offset)
 			delta_wheel = -3;
 	}
 	last_frame = cpu_getcurrentframe();
-	//wrlog("Return %x for speedfreak", (speedfrk_steer[delta_wheel + 3] >> offset) & 1);
+	//LOG_INFO("Return %x for speedfreak", (speedfrk_steer[delta_wheel + 3] >> offset) & 1);
 	return (speedfrk_steer[delta_wheel + 3] >> offset) & 1;
 }
 
@@ -225,7 +225,7 @@ UINT16 get_ccpu_inputs(int offset)
 		break;
 	}
 
-	default: wrlog("Somehting is wrong with the CCPU Input config.!");
+	default: LOG_INFO("Somehting is wrong with the CCPU Input config.!");
 	}
 
 	return 0;
@@ -263,11 +263,17 @@ void coin_handler(int data)//coin_reset_w
 	coin_last_reset = data;
 }
 
+void qb3_ram_bank_w(int data)
+{
+
+
+}
+
 /*
 static int mux_set(int data) // mux_select_w
 {
 	mux_select = data;
-	wrlog("MUX SELECT");
+	LOG_INFO("MUX SELECT");
 }
 */
 
@@ -275,8 +281,8 @@ UINT8 joystick_read(void)
 {
 	int xval = (INT16)(cpunum_get_reg(0, CCPU_X) << 4) >> 4;
 
-	//wrlog("joystick read XVAL %x: MUXVAL %x  ", xval, MUX_VAL);
-	//wrlog("Returned value %x",( (readinputportbytag(MUX_VAL ? "IN2" : "IN3") << 4) - xval) < 0x800);
+	//LOG_INFO("joystick read XVAL %x: MUXVAL %x  ", xval, MUX_VAL);
+	//LOG_INFO("Returned value %x",( (readinputportbytag(MUX_VAL ? "IN2" : "IN3") << 4) - xval) < 0x800);
 
 	return ((readinputportbytag(MUX_VAL ? "ANALOGX" : "ANALOGY") << 4) - xval) < 0x800;
 }
@@ -416,6 +422,16 @@ int init_wotw()
 	init_ccpu(0, CCPU_MEMSIZE_16K);
 	return 1;
 }
+
+int init_qb3()
+{
+	init_cinemat();
+	init_cinemat_snd(wotwc_sound);
+	video_type_set(COLOR_QB3, 0);
+	init_ccpu(0, CCPU_MEMSIZE_32K);
+	return 1;
+}
+
 
 int init_cinemat()
 {

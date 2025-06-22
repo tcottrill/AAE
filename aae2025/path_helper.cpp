@@ -48,7 +48,7 @@ std::wstring getpathU(const char* dir, const char* file)
 	if (length == 0)
 	{
 		// If the function fails, it returns 0
-		wrlog("Failed to get the file path. Error: %ld\n", GetLastError());
+		LOG_INFO("Failed to get the file path. Error: %ld\n", GetLastError());
 	}
 
 	// Find the last backslash and terminate the string there
@@ -70,7 +70,7 @@ std::wstring getpathU(const char* dir, const char* file)
 		path.append(win32::Utf8ToUtf16(file));
 	}
 
-	wrlog("getpathU returning path: %s", path.c_str());
+	LOG_INFO("getpathU returning path: %s", path.c_str());
 	return path;
 }
 
@@ -86,7 +86,7 @@ std::string getpathM(const char* dir, const char* file)
 	if (length == 0)
 	{
 		// If the function fails, it returns 0
-		wrlog("Failed to get the file path. Error: %ld\n", GetLastError());
+		LOG_INFO("Failed to get the file path. Error: %ld\n", GetLastError());
 	}
 
 	// Find the last backslash and terminate the string there
@@ -108,7 +108,7 @@ std::string getpathM(const char* dir, const char* file)
 		path.append(file);
 	}
 
-	wrlog("getpathM returning path: %s", path.c_str());
+	LOG_INFO("getpathM returning path: %s", path.c_str());
 	return path;
 }
 

@@ -73,7 +73,7 @@ void sega_sh_update(void) {
 	if (queue[queuePtr] != NOT_PLAYING)
 	{
 		sound = queue[queuePtr];
-		 wrlog("Sound Played %d",(sound));
+		 LOG_INFO("Sound Played %d",(sound));
 		sound = sound - 1;
 		sample_start(9, sound, 0);
 
@@ -113,7 +113,7 @@ void sega_sh_speech_w(UINT16 port, UINT8 data, struct z80PortWrite* pPW)
 	if (data == 0x0a && soundlatch != 0x8c) { return; }
 
 	/* Queue the new sound */
-    //wrlog("num samples %d",NUM_SPEECH_SAMPLES);
+    //LOG_INFO("num samples %d",NUM_SPEECH_SAMPLES);
 	sound = data;
 	if (sound > NUM_SPEECH_SAMPLES) { return; }
 
@@ -130,7 +130,7 @@ void sega_sh_speech_w(UINT16 port, UINT8 data, struct z80PortWrite* pPW)
 	}
 
 	queue[newPtr] = sound;
-	// wrlog("Sound queued %d",(sound));
+	// LOG_INFO("Sound queued %d",(sound));
 /*
 //allegro_message("Main Speech call");
 
@@ -312,12 +312,12 @@ void Zektor_AY8910_w(UINT16 port, UINT8 data, struct z80PortWrite* pPW)
 		}
 	}
 
-	//wrlog("Data Zektor AY %x",data);
+	//LOG_INFO("Data Zektor AY %x",data);
 }
 
 void Zektor1_sh_w(UINT16 port, UINT8 data, struct z80PortWrite* pPW)
 {
-	//wrlog("Data Zektor sh 1 %x",data);
+	//LOG_INFO("Data Zektor sh 1 %x",data);
 	data ^= 0xff;
 
 	/* Play fireball sample */
@@ -352,7 +352,7 @@ void Zektor2_sh_w(UINT16 port, UINT8 data, struct z80PortWrite* pPW)
 {
 	static int lastdata = 0;
 
-	//wrlog("Data Zektor sh 2 %x", data);
+	//LOG_INFO("Data Zektor sh 2 %x", data);
 	data ^= 0xff;
 
 	/* Play thrust sample */

@@ -90,9 +90,6 @@
     <ClInclude Include="sys_audio\wav_filters.h">
       <Filter>Source Files\sys_audio</Filter>
     </ClInclude>
-    <ClInclude Include="sys_audio\wavfile.h">
-      <Filter>Source Files\sys_audio</Filter>
-    </ClInclude>
     <ClInclude Include="sys_audio\XAudio2Stream.h">
       <Filter>Source Files\sys_audio</Filter>
     </ClInclude>
@@ -378,6 +375,27 @@
     <ClInclude Include="config.h">
       <Filter>Source Files\sys_window</Filter>
     </ClInclude>
+    <ClInclude Include="drivers\rallyx.h">
+      <Filter>Source Files\drivers</Filter>
+    </ClInclude>
+    <ClInclude Include="sndhrdw\namco.h">
+      <Filter>Source Files\sndhrdw</Filter>
+    </ClInclude>
+    <ClInclude Include="vidhrdwr\rallyx_vid.h">
+      <Filter>Source Files\vidhrdwr</Filter>
+    </ClInclude>
+    <ClInclude Include="sys_video\fboclass.h">
+      <Filter>Source Files\sys_video</Filter>
+    </ClInclude>
+    <ClInclude Include="sys_video\shader_definitions.h">
+      <Filter>Source Files\sys_video</Filter>
+    </ClInclude>
+    <ClInclude Include="sys_audio\error_wav.h">
+      <Filter>Source Files\sys_audio</Filter>
+    </ClInclude>
+    <ClInclude Include="sys_audio\wav_file.h">
+      <Filter>Source Files\sys_audio</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="sys_window\rawinput.cpp">
@@ -403,9 +421,6 @@
     </ClCompile>
     <ClCompile Include="aae_emulator.cpp">
       <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="sys_audio\wavfile.cpp">
-      <Filter>Source Files\sys_audio</Filter>
     </ClCompile>
     <ClCompile Include="sys_audio\XAudio2Stream.cpp">
       <Filter>Source Files\sys_audio</Filter>
@@ -649,6 +664,18 @@
     </ClCompile>
     <ClCompile Include="drivers\invaders.cpp">
       <Filter>Source Files\drivers</Filter>
+    </ClCompile>
+    <ClCompile Include="drivers\rallyx.cpp">
+      <Filter>Source Files\drivers</Filter>
+    </ClCompile>
+    <ClCompile Include="sndhrdw\namco.cpp">
+      <Filter>Source Files\sndhrdw</Filter>
+    </ClCompile>
+    <ClCompile Include="vidhrdwr\rallyx_vid.cpp">
+      <Filter>Source Files\vidhrdwr</Filter>
+    </ClCompile>
+    <ClCompile Include="sys_audio\wav_file.cpp">
+      <Filter>Source Files\sys_audio</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

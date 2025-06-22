@@ -144,11 +144,11 @@ void mhavoc_video_update(void)
 	total_length = 0;
 	if ((firstwd == 0) && (secondwd == 0))
 	{
-		//wrlog("VGO with zeroed vector memory at %x\n",pc);
+		//LOG_INFO("VGO with zeroed vector memory at %x\n",pc);
 		return;
 	}
 	if (firstwd == 0xafe2) {
-		//wrlog("EMPTY FRAME");
+		//LOG_INFO("EMPTY FRAME");
 		total_length = 1; return;
 	}
 	pc = 0x4000;
@@ -192,7 +192,7 @@ void mhavoc_video_update(void)
 
 			//total_length += vector_timer_mh(deltax, deltay);
 			total_length += vector_timer(x * oldscale, y * oldscale);
-			//	wrlog("Total length here is %d ---------------->", vector_timer_mh(deltax, deltay));
+			//	LOG_INFO("Total length here is %d ---------------->", vector_timer_mh(deltax, deltay));
 			if (z)
 			{
 				ey = ((currenty - deltay) >> 16);
@@ -290,7 +290,7 @@ void mhavoc_video_update(void)
 
 			if (lastbank != vectorbank) {
 				lastbank = vectorbank;
-				//wrlog("Vector Bank Switch %x", ((firstwd >> 8) & 3) * 0x2000);
+				//LOG_INFO("Vector Bank Switch %x", ((firstwd >> 8) & 3) * 0x2000);
 				memcpy(Machine->memory_region[CPU0] + 0x6000, Machine->memory_region[CPU2] + vectorbank, 0x2000);
 			}
 			break;
@@ -329,7 +329,7 @@ void mhavoc_video_update(void)
 
 			if (sp == 0)
 			{
-				wrlog("*** Vector generator stack underflow! ***");
+				LOG_INFO("*** Vector generator stack underflow! ***");
 				done = 1;
 				sp = 8 - 1;
 			}
@@ -369,7 +369,7 @@ void mhavoc_video_update(void)
 				stack[sp] = pc;
 				if (sp == (8 - 1))
 				{
-					wrlog("--- Passed MAX STACK (BAD!!) ---");
+					LOG_INFO("--- Passed MAX STACK (BAD!!) ---");
 					done = 1;
 					sp = 0;
 				}
@@ -381,7 +381,7 @@ void mhavoc_video_update(void)
 			}
 			break;
 
-		default: wrlog("Error in AVG engine");
+		default: LOG_INFO("Error in AVG engine");
 		}
 	}
 }

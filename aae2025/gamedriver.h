@@ -33,6 +33,8 @@
 #include "llander.h"
 #include "aztarac.h"
 #include "invaders.h"
+#include "rallyx.h"
+#include "rallyx_vid.h"
 #include "earom.h"
 
 
@@ -1277,6 +1279,24 @@ struct AAEDriver driver[] =
 		0 // Earom Loader
 		},
 		{
+		"qb3", "QB-3 (prototype)", rom_qb3,
+		&init_qb3,&run_cinemat, &end_cinemat,
+		input_ports_qb3,
+		wotw_samples, noart,
+		{CPU_CCPU,CPU_NONE,CPU_NONE,CPU_NONE},
+		{4980750,0,0,0},
+		{1,0,0,0},
+		{1,0,0,0},
+		{0,0,0,0},
+		{0,0,0,0},
+		38 ,VIDEO_TYPE_VECTOR | VECTOR_USES_BW, ORIENTATION_DEFAULT,
+		1024, 768, {0,1024,0,768},
+		0,0,0,0, // Raster Graphix
+		0, 0,   // Loader
+		0, 0,  // Vector Location, Size
+		0 // Earom Loader
+		},
+		{
 		"quantum1", "Quantum (Revision 1)", rom_quantum1,
 		&init_quantum,&run_quantum, &end_quantum,
 		input_ports_quantum,
@@ -1429,6 +1449,25 @@ struct AAEDriver driver[] =
 		60,VIDEO_TYPE_RASTER | VECTOR_USES_OVERLAY1, ORIENTATION_ROTATE_270,
 		32 * 8, 32 * 8, { 0 * 8, 32 * 8 - 1, 0 * 8, 28 * 8 - 1 },
 		0, 21 / 3, 0, init_palette,
+		0,0, // HI Score Handling
+		0, 0, 0 // Vector, NVRAM
+		},
+		{
+		"rallyx", "Rally-X", rom_rallyx,
+		&init_rallyx,&run_rallyx,&end_rallyx,
+		input_ports_rallyx,
+		rallyx_samples, noart,
+		{CPU_MZ80,CPU_NONE,CPU_NONE,CPU_NONE},
+		{3072000,0,0,0},
+		{100,0,0,0},
+		{1,0,0,0},
+		{INT_TYPE_INT,0,0,0},
+		{&rallyx_interrupt,0,0,0},
+		60, VIDEO_TYPE_RASTER , ORIENTATION_DEFAULT,
+		36 * 8, 28 * 8, { 0 * 8, 36 * 8 - 1, 0 * 8, 28 * 8 - 1 },
+		rallyx_gfxdecodeinfo,
+		32,64 * 4 + 4 * 2,
+		rallyx_vh_convert_color_prom,
 		0,0, // HI Score Handling
 		0, 0, 0 // Vector, NVRAM
 		},

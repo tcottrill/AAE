@@ -103,7 +103,7 @@ uint8_t cpu_6502::get6502memory(uint16_t addr)
 	}
 	if (MemRead && mmem)
 	{
-		if (log_debug_rw) wrlog("Warning! Unhandled Read at %x", addr);
+		if (log_debug_rw) LOG_INFO("Warning! Unhandled Read at %x", addr);
 	}
 
 	return temp;
@@ -140,7 +140,7 @@ void cpu_6502::put6502memory(uint16_t addr, uint8_t byte)
 	}
 	if (MemWrite && mmem)
 	{
-		if (log_debug_rw) wrlog("Warning! Unhandled Write at %x data: %x", addr, byte);
+		if (log_debug_rw) LOG_INFO("Warning! Unhandled Write at %x data: %x", addr, byte);
 	}
 }
 
@@ -604,7 +604,7 @@ void cpu_6502::lsra6502()
 void cpu_6502::nop6502()
 {
 	if (opcode != 0xea) {
-		wrlog("!!!!WARNING UNHANDLED NO - OP CALLED: %x CPU: %x", opcode, cpu_num);
+		LOG_INFO("!!!!WARNING UNHANDLED NO - OP CALLED: %x CPU: %x", opcode, cpu_num);
 	}
 	switch (opcode) {
 	case 0x1C:
@@ -1199,7 +1199,7 @@ void cpu_6502::reset6502()
 	S = 0xff;
 	PC = get6502memory(0xFFFC & addrmask);
 	PC |= get6502memory(0xFFFD & addrmask) << 8;
-	if (debug) { wrlog("reset: PC is %X", PC); }
+	if (debug) { LOG_INFO("reset: PC is %X", PC); }
 	clockticks6502 += 6;
 }
 
@@ -1222,7 +1222,7 @@ void cpu_6502::irq6502()
 
 	if (!(P & F_I))
 	{
-		//wrlog("6502 IRQ Taken on CPU %d", cpu_num);
+		//LOG_INFO("6502 IRQ Taken on CPU %d", cpu_num);
 		push16(PC);
 		push8(P & ~F_B);
 		P |= F_I;		// set I flag
@@ -1248,7 +1248,7 @@ int cpu_6502::step6502()
 	// Trap any Opcode errors.
 	if (opcode > 0xff)
 	{
-		wrlog("Invalid Opcode called!!!: opcode %x  Memory %X ", opcode, PC);
+		LOG_INFO("Invalid Opcode called!!!: opcode %x  Memory %X ", opcode, PC);
 		return 0x00000000;
 	}
 	// Debug Logging if needed. This code needs lots of help.
@@ -1264,7 +1264,7 @@ int cpu_6502::step6502()
 		int t = bget(P, F_T) ? 1 : 0;
 		int v = bget(P, F_V) ? 1 : 0;
 		int n = bget(P, F_N) ? 1 : 0;
-		wrlog("%x: OP:%s DATA:%02x%02x F: C:%d Z:%d I:%d D:%d B:%d V:%d N:%d REG A:%x X:%x Y:%x S:%x ", PC - 1, op.c_str(), MEM[PC - 1], MEM[PC], c, z, i, d, b, v, n, A, X, Y, S);
+		LOG_INFO("%x: OP:%s DATA:%02x%02x F: C:%d Z:%d I:%d D:%d B:%d V:%d N:%d REG A:%x X:%x Y:%x S:%x ", PC - 1, op.c_str(), MEM[PC - 1], MEM[PC], c, z, i, d, b, v, n, A, X, Y, S);
 	}
 	//Backup PC
 	PPC = PC;

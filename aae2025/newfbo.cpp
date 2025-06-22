@@ -12,38 +12,38 @@ int multifbo::checkFboStatus()
 {
 	GLenum status;
 	status = glCheckFramebufferStatus(GL_FRAMEBUFFER_EXT);
-	//wrlog("%x", status);
+	//LOG_INFO("%x", status);
 	switch (status) {
 	case GL_FRAMEBUFFER_COMPLETE_EXT:
-		wrlog("Framebuffer Complete! A-OK");
+		LOG_INFO("Framebuffer Complete! A-OK");
 		break;
 	case GL_FRAMEBUFFER_UNSUPPORTED_EXT:
-		wrlog("framebuffer GL_FRAMEBUFFER_UNSUPPORTED_EXT");
+		LOG_INFO("framebuffer GL_FRAMEBUFFER_UNSUPPORTED_EXT");
 		/* you gotta choose different formats */
 		break;
 	case GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT_EXT:
-		wrlog("framebuffer INCOMPLETE_ATTACHMENT");
+		LOG_INFO("framebuffer INCOMPLETE_ATTACHMENT");
 		break;
 	case GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT_EXT:
-		wrlog("framebuffer FRAMEBUFFER_MISSING_ATTACHMENT");
+		LOG_INFO("framebuffer FRAMEBUFFER_MISSING_ATTACHMENT");
 		break;
 	case GL_FRAMEBUFFER_INCOMPLETE_DIMENSIONS_EXT:
-		wrlog("framebuffer FRAMEBUFFER_DIMENSIONS");
+		LOG_INFO("framebuffer FRAMEBUFFER_DIMENSIONS");
 		break;
 	case GL_FRAMEBUFFER_INCOMPLETE_FORMATS_EXT:
-		wrlog("framebuffer INCOMPLETE_FORMATS");
+		LOG_INFO("framebuffer INCOMPLETE_FORMATS");
 		break;
 	case GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER_EXT:
-		wrlog("framebuffer INCOMPLETE_DRAW_BUFFER");
+		LOG_INFO("framebuffer INCOMPLETE_DRAW_BUFFER");
 		break;
 	case GL_FRAMEBUFFER_INCOMPLETE_READ_BUFFER_EXT:
-		wrlog("framebuffer INCOMPLETE_READ_BUFFER");
+		LOG_INFO("framebuffer INCOMPLETE_READ_BUFFER");
 		break;
 	case GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE:
-		wrlog("framebuffer INCOMPLETE_MULTISAMPLE");
+		LOG_INFO("framebuffer INCOMPLETE_MULTISAMPLE");
 		break;
 	case GL_FRAMEBUFFER_BINDING_EXT:
-		wrlog("framebuffer BINDING_ Error");
+		LOG_INFO("framebuffer BINDING_ Error");
 		break;
 	}
 	return status;
@@ -72,7 +72,7 @@ multifbo::multifbo(int width, int height, int num_buffers, int num_samples, fboF
 
 		if (num_samples > maxSamples)
 		{
-			wrlog("Warning! NumSamples passed to FBO exceeds cards ability. %d is Max, you specified %d", maxSamples, num_samples);
+			LOG_INFO("Warning! NumSamples passed to FBO exceeds cards ability. %d is Max, you specified %d", maxSamples, num_samples);
 		}
 
 		// multi sampled color buffer

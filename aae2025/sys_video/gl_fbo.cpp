@@ -46,37 +46,37 @@ int CHECK_FRAMEBUFFER_STATUS()
 {
 	GLenum status;
 	status = glCheckFramebufferStatusEXT(GL_FRAMEBUFFER_EXT);
-	// wrlog("%x\n", status);
+	// LOG_INFO("%x\n", status);
 	switch (status) {
 	case GL_FRAMEBUFFER_COMPLETE_EXT:
-		wrlog("Framebuffer Complete! A-OK");   break;
+		LOG_INFO("Framebuffer Complete! A-OK");   break;
 	case GL_FRAMEBUFFER_UNSUPPORTED_EXT:
-		wrlog("framebuffer GL_FRAMEBUFFER_UNSUPPORTED_EXT\n");
+		LOG_INFO("framebuffer GL_FRAMEBUFFER_UNSUPPORTED_EXT\n");
 		/* you gotta choose different formats */
 		break;
 	case GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT_EXT:
-		wrlog("framebuffer INCOMPLETE_ATTACHMENT\n");
+		LOG_INFO("framebuffer INCOMPLETE_ATTACHMENT\n");
 		break;
 	case GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT_EXT:
-		wrlog("framebuffer FRAMEBUFFER_MISSING_ATTACHMENT\n");
+		LOG_INFO("framebuffer FRAMEBUFFER_MISSING_ATTACHMENT\n");
 		break;
 	case GL_FRAMEBUFFER_INCOMPLETE_DIMENSIONS_EXT:
-		wrlog("framebuffer FRAMEBUFFER_DIMENSIONS\n");
+		LOG_INFO("framebuffer FRAMEBUFFER_DIMENSIONS\n");
 		break;
 	//case GL_FRAMEBUFFER_INCOMPLETE_DUPLICATE_ATTACHMENT_EXT:
-	//	wrlog("framebuffer INCOMPLETE_DUPLICATE_ATTACHMENT\n");
+	//	LOG_INFO("framebuffer INCOMPLETE_DUPLICATE_ATTACHMENT\n");
 	//	break;
 	case GL_FRAMEBUFFER_INCOMPLETE_FORMATS_EXT:
-		wrlog("framebuffer INCOMPLETE_FORMATS\n");
+		LOG_INFO("framebuffer INCOMPLETE_FORMATS\n");
 		break;
 	case GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER_EXT:
-		wrlog("framebuffer INCOMPLETE_DRAW_BUFFER\n");
+		LOG_INFO("framebuffer INCOMPLETE_DRAW_BUFFER\n");
 		break;
 	case GL_FRAMEBUFFER_INCOMPLETE_READ_BUFFER_EXT:
-		wrlog("framebuffer INCOMPLETE_READ_BUFFER\n");
+		LOG_INFO("framebuffer INCOMPLETE_READ_BUFFER\n");
 		break;
 	case GL_FRAMEBUFFER_BINDING_EXT:
-		wrlog("framebuffer BINDING_EXT\n");
+		LOG_INFO("framebuffer BINDING_EXT\n");
 		break;
 
 	}

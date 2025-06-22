@@ -4,7 +4,7 @@
 #include "log.h"
 
 
-BOOL Calculate(int cx, int cy, RECT& rect)
+bool Calculate(int cx, int cy, RECT& rect)
 {
 	HWND hWnd = win_get_window();
 
@@ -145,7 +145,7 @@ void GetRefresh()
 
 	if (0 != EnumDisplaySettings(NULL, ENUM_CURRENT_SETTINGS, &dm))
 	{
-		write_to_log("Primary Monitor refresh rate: %d", dm.dmDisplayFrequency);
+		LOG_INFO("Primary Monitor refresh rate: %d", dm.dmDisplayFrequency);
 		// inspect the DEVMODE structure to obtain details
 		// about the display settings such as
 		//  - Orientation
@@ -156,7 +156,7 @@ void GetRefresh()
 
 		if (0 != EnumDisplaySettings(NULL, ENUM_CURRENT_SETTINGS, &dm))
 		{
-			write_to_log("Primary Monitor refresh rate: %d", dm.dmDisplayFrequency);
+			LOG_INFO("Primary Monitor refresh rate: %d", dm.dmDisplayFrequency);
 		}
 
 	}
@@ -203,7 +203,7 @@ static void toggleKey(int key)
 	keybd_event(key, 0, KEYEVENTF_KEYUP, 0);
 }
 
-
+/*
 void force_all_kbdleds_off()
 {
 	// Check Caps Lock state
@@ -219,11 +219,11 @@ void force_all_kbdleds_off()
 	if (scrollLockState & 0x0001)	toggleKey(VK_SCROLL);
 
 }
-
+*/
 //============================================================
 //	osd_get_leds
 //============================================================
-
+/*
 int osd_get_leds()
 {
 	BYTE key_states[256];
@@ -238,12 +238,12 @@ int osd_get_leds()
 	result |= (key_states[VK_SCROLL] & 1) << 2;
 	return result;
 }
-
+*/
 
 //============================================================
 //	osd_set_leds
 //============================================================
-
+/*
 void osd_set_leds(int state)
 {
 	BYTE key_states[256];
@@ -292,6 +292,60 @@ void osd_set_leds(int state)
 
 }
 
+*/
+
+// Bitmask enum for keyboard LEDs
+enum LedBitMask {
+	LED_NUMLOCK = 1 << 0,
+	LED_CAPSLOCK = 1 << 1,
+	LED_SCROLLLOCK = 1 << 2,
+};
+
+// Helper: check current lock key state
+bool IsLockKeyOn(WORD vk)
+{
+	BYTE keyState[256];
+	if (!GetKeyboardState(keyState)) return false;
+	return (keyState[vk] & 1) != 0;
+}
+
+// Helper: simulate toggle if state differs from desired
+void ToggleLockKey(WORD vk, bool desiredState)
+{
+	if (IsLockKeyOn(vk) == desiredState)
+		return;
+
+	INPUT inputs[2] = {};
+
+	// Key down
+	inputs[0].type = INPUT_KEYBOARD;
+	inputs[0].ki.wVk = vk;
+
+	// Key up
+	inputs[1].type = INPUT_KEYBOARD;
+	inputs[1].ki.wVk = vk;
+	inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
+
+	SendInput(2, inputs, sizeof(INPUT));
+}
+
+// Set LEDs based on bitmask
+void osd_set_leds(int state)
+{
+	ToggleLockKey(VK_NUMLOCK, (state & LED_NUMLOCK) != 0);
+	ToggleLockKey(VK_CAPITAL, (state & LED_CAPSLOCK) != 0);
+	ToggleLockKey(VK_SCROLL, (state & LED_SCROLLLOCK) != 0);
+}
+
+// Get LEDs as bitmask
+int osd_get_leds()
+{
+	int state = 0;
+	if (IsLockKeyOn(VK_NUMLOCK))    state |= LED_NUMLOCK;
+	if (IsLockKeyOn(VK_CAPITAL))    state |= LED_CAPSLOCK;
+	if (IsLockKeyOn(VK_SCROLL))     state |= LED_SCROLLLOCK;
+	return state;
+}
 
 void SetProcessorAffinity()
 {

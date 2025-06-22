@@ -61,7 +61,7 @@ uint8_t cpu_i8080::i8080_read(uint16_t addr)
 	}
 	if (MemRead && mmem)
 	{
-		if (log_debug_rw) wrlog("Warning! Unhandled Read at %x", addr);
+		if (log_debug_rw) LOG_INFO("Warning! Unhandled Read at %x", addr);
 	}
 
 	return temp;
@@ -98,7 +98,7 @@ void cpu_i8080::i8080_write(uint16_t addr, uint8_t byte)
 	}
 	if (MemWrite && mmem)
 	{
-		if (log_debug_rw) wrlog("Warning! Unhandled Write at %x data: %x", addr, byte);
+		if (log_debug_rw) LOG_INFO("Warning! Unhandled Write at %x data: %x", addr, byte);
 	}
 }
 
@@ -975,7 +975,7 @@ int cpu_i8080::exec(int cycles)
 
 #ifndef ALLOW_UNDEFINED
 		default:
-			wrlog("UNRECOGNIZED INSTRUCTION @ %04Xh: %02X\n", reg_PC - 1, opcode);
+			LOG_INFO("UNRECOGNIZED INSTRUCTION @ %04Xh: %02X\n", reg_PC - 1, opcode);
 			exit(0);
 #endif
 			

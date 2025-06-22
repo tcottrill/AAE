@@ -472,11 +472,11 @@ int load_input_port_settings(void)
 {
 	void* f;
 
-	wrlog("Setting Default Keys");
+	LOG_INFO("Setting Default Keys");
 
 	load_default_keys();
 
-	wrlog("opening File");
+	LOG_INFO("opening File");
 
 	if ((f = osd_fopen(Machine->gamedrv->name, 0, OSD_FILETYPE_CONFIG, 0)) != 0)
 	{
@@ -542,7 +542,7 @@ int load_input_port_settings(void)
 	//Update the input port tags regardless if there is a save file or not.
 	memset(&input_port_tag, 0, sizeof(input_port_tag));
 	struct InputPort* in = Machine->input_ports;
-	wrlog("Gamenum here in input ports is %d", gamenum);
+	LOG_INFO("Gamenum here in input ports is %d", gamenum);
 	int temp = 0;
 
 	while (in->type != IPT_END)
@@ -551,7 +551,7 @@ int load_input_port_settings(void)
 		if (in->tag)
 		{
 			input_port_tag[temp] = in->tag;
-			//wrlog("Tag %s :: Num %d", in->tag, temp);
+			//LOG_INFO("Tag %s :: Num %d", in->tag, temp);
 			temp++;
 		}
 
@@ -578,7 +578,7 @@ void save_input_port_settings(void)
 	void* f;
 
 	save_default_keys();
-	wrlog("Saving input port settings (in function)");
+	LOG_INFO("Saving input port settings (in function)");
 	if ((f = osd_fopen(Machine->gamedrv->name, 0, OSD_FILETYPE_CONFIG, 1)) != 0)
 	{
 		struct InputPort* in;
@@ -960,7 +960,7 @@ int Check_Input(int in, int state)
 	int out = 0;
 	int val = in;// = p+in;
 	//Is the key already pressed? Check to see if it's time for  keyup
-	//wrlog("Check Input Called %d port, %d state",in,state);
+	//LOG_INFO("Check Input Called %d port, %d state",in,state);
 
 	if (state)
 	{
@@ -1053,7 +1053,7 @@ void update_input_ports(void)
 	/* make sure the InputPort definition is correct */
 	if (in->type != IPT_PORT)
 	{
-		wrlog("Error in InputPort definition: expecting PORT_START\n");
+		LOG_INFO("Error in InputPort definition: expecting PORT_START\n");
 		return;
 	}
 	else in++;
@@ -1383,7 +1383,7 @@ int port_tag_to_index(const char* tag)
 	/* find the matching tag */
 	for (port = 0; port < MAX_INPUT_PORTS; port++)
 	{
-		//wrlog("INPUT PORT NAME %s",input_port_tag[port]);
+		//LOG_INFO("INPUT PORT NAME %s",input_port_tag[port]);
 		if (input_port_tag[port] != NULL && !strcmp(input_port_tag[port], tag))
 			return port;
 	}
@@ -1396,12 +1396,12 @@ UINT32 readinputportbytag(const char* tag)
 
 	if (port != -1)
 	{
-		//wrlog("Returning INPUT PORT NAME %s", input_port_tag[port]);
+		//LOG_INFO("Returning INPUT PORT NAME %s", input_port_tag[port]);
 		return readinputport(port);
 	}
 	/* otherwise fail horribly */
 	//osd_die("Unable to locate input port '%s'", tag);
-	wrlog("Unable to locate input port '%s' ------->>>>>>>CRAP", tag);
+	LOG_INFO("Unable to locate input port '%s' ------->>>>>>>CRAP", tag);
 	return -1;
 }
 

@@ -11,7 +11,7 @@ typedef struct timer_s
 	float				resolution;							// Timer Resolution
 	unsigned long	mm_timer_start;					// Multimedia Timer Start Value
 	unsigned long	mm_timer_elapsed;					// Multimedia Timer Elapsed Time
-	BOOL				performance_timer;				// Using The Performance Timer?
+	bool				performance_timer;				// Using The Performance Timer?
 	__int64			performance_timer_start;		// Performance Timer Start Value
 	__int64			performance_timer_elapsed;		// Performance Timer Elapsed Time
 } timer_t;

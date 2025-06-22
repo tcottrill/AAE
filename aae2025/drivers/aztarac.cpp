@@ -37,7 +37,7 @@ static int xcenter, ycenter;
 
 static void add_vector(int x, int y, int color, int intensity)
 {
-	//wrlog("ADD Vector Called, %x %x %x %x", x << 16 , y << 16, color, intensity);
+	//LOG_INFO("ADD Vector Called, %x %x %x %x", x << 16 , y << 16, color, intensity);
 	int new_x = (((xcenter + (x << 16)) >> 16) + 512);
 	int new_y = (((ycenter - (y << 16)) >> 16) + YC);
 
@@ -46,7 +46,7 @@ static void add_vector(int x, int y, int color, int intensity)
 
 	last_x = (xcenter + (x << 16)) >> 16;
 	last_y =  (ycenter - (y << 16)) >> 16;
-	//wrlog("last_x %x last_y %x ", last_x, last_y);
+	//LOG_INFO("last_x %x last_y %x ", last_x, last_y);
 }
 
 unsigned char aztarac_program_rom[0x00c000];
@@ -327,7 +327,7 @@ void run_aztarac()
 
 int init_aztarac()
 {
-	wrlog("Starting aztarac Init");
+	LOG_INFO("Starting aztarac Init");
 	memset(aztarac_main_ram, 0x00, 0x1fff);
 	memset(aztarac_program_rom, 0x00, 0x00C000);
 	memset(generic_nvram, 0xff, 0x200);
@@ -343,7 +343,7 @@ int init_aztarac()
 	// Required for now until I can change the rendering back end again. 
 	config.gain = 0;
 
-	wrlog("End aztarac Init");
+	LOG_INFO("End aztarac Init");
 	return 0;
 }
 

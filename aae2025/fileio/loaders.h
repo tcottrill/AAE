@@ -7,7 +7,7 @@ GLuint load_texture(const char* filename, const char* archname, int numcomponent
 int verify_rom(const char* archname, const struct RomModule *p, int romnum);
 int verify_sample(const char** p, int num);
 int read_samples(const char** p, int val);
-int file_exist(const char* filename);
+bool file_exist(const std::string& filename);
 void snapshot();
 int load_hi_aae(int start, int size, int image);
 int save_hi_aae(int start, int size, int image);

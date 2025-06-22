@@ -117,7 +117,7 @@ void starwars_sh_stop(void)
 void starwars_sh_update()
 {
     pokey_sh_update();
-   // wrlog("Calling TMS Update");
+   // LOG_INFO("Calling TMS Update");
     tms5220_sh_update();
 }
 
@@ -127,7 +127,7 @@ void starwars_sh_update()
 void starwars_snd_interrupt()
 {
 
-  //  wrlog("Sound Interrupt called");
+  //  LOG_INFO("Sound Interrupt called");
     /* if the timer is running, decrement it, and check if it */
     /* has expired.  If so - IRQ, otherwise ignore            */
     if (timer_running)
@@ -140,7 +140,7 @@ void starwars_snd_interrupt()
             //cpu_set_pending_interrupt(INT_TYPE_INT, 1);
             cpu_do_int_imm(1, INT_TYPE_INT);
             //cpu_do_interrupt(INT_TYPE_INT, 1);
-            //wrlog("Sound Interrupt Taken");
+            //LOG_INFO("Sound Interrupt Taken");
         }
     }
 }
@@ -189,7 +189,7 @@ UINT8 m6532_r(UINT32 address, struct MemoryReadByte* psMemRead)
 
 void m6532_w(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite)
 {
-  // wrlog("M6532 Write, address %x, data %x", address, data);
+  // LOG_INFO("M6532 Write, address %x, data %x", address, data);
     switch (address)
     {
         case 0: /* 0x80 - Port A Write */

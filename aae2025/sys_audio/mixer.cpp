@@ -1,319 +1,204 @@
-// Still TODO: Add per sample volume control as well as main volume.
-// Mixer code example in C/C++ Copyright 2022-2025 TC.
-// This may be an example of how not to do things, so be warned!
-// This is a work in progress..
-
-// This code mixes one or more MONO 8bit or 16 bit WAV samples and outputs it at the desired rate using Xaudio2 WITHOUT using a callback.
-// See example for usage. Optionally it will allow you to change the sample rate of a loaded wav file to match the output sample rate.
-// This code is not optimal, but it should compile for Windows 7 through 11 with no issues using Xaudio 2.9.
-
-// Error handling macro
-#define HR(hr) if (FAILED(hr)) { wrlog("Error at line %d: HRESULT = 0x%08X\n", __LINE__, hr);  }
-
-#define NOMINMAX
-#include "framework.h"
 #include "mixer.h"
-#include "wavfile.h"
+#include "framework.h"
+#include "wav_file.h"
 #include "aae_fileio.h"
 #include "XAudio2Stream.h"
-#include <cstdint>
-#include <list>
 #include "wav_resample.h"
 #include "helper_functions.h"
 #include "dbvolume.h"
+#include "error_wav.h"
 
-#include <thread>
 #include <mutex>
-#include <assert.h>
-#include <map>
+#include <vector>
+#include <list>
+#include <atomic>
+#include <cmath>
 #include <memory>
+#include <cstring>
+#include <algorithm>
+
+#define HR(hr) if (FAILED(hr)) { LOG_ERROR("Error at line %d: HRESULT = 0x%08X\n", __LINE__, hr); }
 
 extern IXAudio2* pXAudio2;
-
-using namespace std;
-//#include <math.h>
-//#include <limits>
-//#include <algorithm>    // std::max
-//#include <exception> //static_assert
 static int SYS_FREQ = 44100;
 static int BUFFER_SIZE = 0;
 
-//#define SMP_START 0x2c
-#define MAX_CHANNELS   20  //0-8 samples, 9-16 streaming, 17-19 Have been designated special for AAE.
-#define MAX_SOUNDS     255 // max number of sounds loaded in system at once 128 + 2 overloaded for streams
+constexpr int MAX_CHANNELS = 20;
+constexpr int MAX_SOUNDS = 255;
 
-#define SOUND_NULL     0
-#define SOUND_LOADED   1
-#define SOUND_PLAYING  2
-#define SOUND_STOPPED  3
-#define SOUND_PCM      4
-#define SOUND_STREAM   5
+static std::atomic<bool> sound_paused{ false };
+static std::atomic<bool> v_mute_audio{ false };
+static int sound_id = -1;
+static float last_master_vol = 1.0f;
 
-static int sound_paused = 0;
-static int v_mute_audio = 0;
+static std::mutex audioMutex;
+static std::list<int> audio_list;
+static std::vector<std::shared_ptr<SAMPLE>> lsamples;
 
-CHANNEL channel[MAX_CHANNELS];
-SAMPLE sound[MAX_SOUNDS];
-//List of actively playing samples
-std::list<int> audio_list;
-//List of loaded samples, so we can track, call by name, and delete when done;
-std::vector<SAMPLE> lsamples;
-
-static mutex audioMutex;
+static CHANNEL channel[MAX_CHANNELS];
 
 unsigned char Make8bit(int16_t sample)
 {
-	sample >>= 8;  // drop the low 8 bits
-	sample ^= 0x80;  // toggle the sign bit
-	return (sample & 0xFF);
+	sample >>= 8;
+	sample ^= 0x80;
+	return static_cast<uint8_t>(sample & 0xFF);
 }
 
 short Make16bit(uint8_t sample)
 {
-	short sample16 = (int16_t)(sample - 0x80) << 8;
-	return sample16;
+	return static_cast<int16_t>(sample - 0x80) << 8;
 }
 
-bool ends_with(const std::string& s, const std::string& ending)
+void resample_wav_8(SAMPLE* sample, int new_freq)
 {
-	return (s.size() >= ending.size()) && equal(ending.rbegin(), ending.rend(), s.rbegin());
+	int input_size = sample->sampleCount;
+	int output_size = static_cast<int>((float)input_size * new_freq / sample->fx.nSamplesPerSec);
+
+	auto output_data = std::make_unique<uint8_t[]>(output_size);
+	linear_interpolation_8(sample->data8.get(), output_data.get(), input_size, output_size);
+
+	LOG_INFO("Resampling 8-bit Sample #%d, %s", sample->num, sample->name.c_str());
+
+	sample->data8 = std::move(output_data);
+	sample->data16.reset();
+	sample->fx.nSamplesPerSec = new_freq;
+	sample->dataSize = output_size;
+	sample->sampleCount = output_size;
+	sample->fx.nAvgBytesPerSec = sample->fx.nSamplesPerSec * sample->fx.nBlockAlign;
+	sample->buffer = sample->data8.get();
 }
 
-void resample_wav_8(int sound_num, int new_freq)
+void resample_wav_16(SAMPLE* sample, int new_freq)
 {
-	int input_size = sound[sound_num].sampleCount;
+	int32_t output_samples = 0;
+	int16_t* output_data_16 = nullptr;
+	float resample_ratio = static_cast<float>(new_freq) / sample->fx.nSamplesPerSec;
 
-	int output_size = (int)((float)input_size * new_freq / sound[sound_num].sampleRate);
-	uint8_t* output_data = (uint8_t*)malloc(output_size);
+	LOG_INFO("Resampling 16-bit Sample #%d, %s", sample->num, sample->name.c_str());
 
-	linear_interpolation_8(sound[sound_num].data.u8, output_data, input_size, output_size);
+	linear_interpolation_16(sample->data16.get(), sample->sampleCount, &output_data_16, &output_samples, resample_ratio);
 
-	wrlog("Resampling 8 bit Sample #%d", sound_num);
-
-	free(sound[sound_num].data.buffer);
-	sound[sound_num].sampleRate = new_freq;
-	sound[sound_num].dataLength = output_size;
-	sound[sound_num].sampleCount = output_size;
-	sound[sound_num].data.buffer = output_data;
-
-	wrlog("Resample: Samplerate #: %d", sound[sound_num].sampleRate);
-	wrlog("Resample: Length #: %d", sound[sound_num].dataLength);
-	wrlog("Resample: BPS #: %d", sound[sound_num].sampleRate);
-	wrlog("Resample: Samplecount #: %d", sound[sound_num].sampleCount);
+	sample->data16.reset(output_data_16);
+	sample->data8.reset();
+	sample->fx.nSamplesPerSec = new_freq;
+	sample->dataSize = output_samples * 2;
+	sample->sampleCount = output_samples;
+	sample->fx.nAvgBytesPerSec = sample->fx.nSamplesPerSec * sample->fx.nBlockAlign;
+	sample->buffer = sample->data16.get();
 }
 
-void resample_wav_16(int sound_num, int new_freq)
+int load_sample(const char* archname, const char* filename, bool force_resample)
 {
-	int16_t* output_data_16;
-	int32_t output_samples;
-	float resample_ratio = (float)new_freq / (float)sound[sound_num].sampleRate;
+	auto sample = std::make_shared<SAMPLE>();
+	std::unique_ptr<uint8_t[]> sample_data;
+	int sample_size = 0;
 
-	wrlog("Resampling 16 bit Sample #%d", sound_num);
-
-	linear_interpolation_16(sound[sound_num].data.u16, sound[sound_num].sampleCount, &output_data_16, &output_samples, resample_ratio);
-
-	free(sound[sound_num].data.buffer);
-	sound[sound_num].sampleRate = new_freq;
-	sound[sound_num].dataLength = output_samples * 2;
-	sound[sound_num].sampleCount = output_samples;
-	sound[sound_num].data.buffer = output_data_16;
-
-	wrlog("Resample: Samplerate #: %d", Wave.sampleRate);
-	wrlog("Resample: Length #: %d", sound[sound_num].dataLength);
-	wrlog("Resample: BPS #: %d", sound[sound_num].sampleRate);
-	wrlog("Resample: Samplecount #: %d", sound[sound_num].sampleCount);
-}
-
-int load_sample(char* archname, char* filename, bool force_resample)
-{
-	int	sound_id = -1;      // id of sound to be loaded
-	int  index;               // looping variable
-	// step one: are there any open id's ?
-	for (index = 0; index < MAX_SOUNDS; index++)
-	{
-		// make sure this sound is unused
-		if (sound[index].state == SOUND_NULL)
-		{
-			sound_id = index;
-			break;
-		} // end if
-	} // end for index
-	  // did we get a free id? If not,fail.
-	if (sound_id == -1) {
-		wrlog("No free sound id's for sample %s", filename); return(-1);
+	if (archname) {
+		sample_data.reset(load_zip_file(archname, filename));
+		sample_size = get_last_zip_file_size();
 	}
-	//SOUND
-	wrlog("Loading file %s with sound id %d", filename, sound_id);
-
-	unsigned char* sample_temp;
-	HRESULT result;
-	// TODO: LOAD FILE - Please add some error handling here!!!!!!!!!
-	if (archname)
-	{
-		sample_temp = load_zip_file(archname, filename);
-		//Create Wav data
-		result = WavFileLoadInternal(sample_temp, (int)get_last_zip_file_size());
-	}
-	else
-	{
-		sample_temp = load_file(filename);
-		//Create Wav data
-		result = WavFileLoadInternal(sample_temp, get_last_file_size());
-		if (result == 0)
-		{
-			wrlog("Error, check loaded file format.");
-			if (sample_temp) {
-				free(sample_temp);
-			}
-			return -1;
-		}
+	else {
+		sample_data.reset(load_file(filename));
+		sample_size = get_last_file_size();
 	}
 
-	//If sample loaded successfully proceed!
-	// 
-	// Resample BEFORE setting all the parameters!
-	// 
-	// TODO: Do I still need to do all this? Can I edit the code to use the above? Think about it.
-	sound[sound_id].channels = Wave.channels;
-	sound[sound_id].sampleRate = Wave.sampleRate;
-	sound[sound_id].bitPerSample = Wave.bitPerSample;
-	sound[sound_id].dataLength = Wave.dataLength;
-	sound[sound_id].sampleCount = Wave.sampleCount;
-	sound[sound_id].state = SOUND_LOADED;
-	sound[sound_id].name = filename;
-	sound[sound_id].name = remove_extension(base_name(sound[sound_id].name));
-
-	sound[sound_id].data.buffer = (unsigned char*)malloc(Wave.dataLength);
-	// Here Wave.data is sample_temp
-	memcpy(sound[sound_id].data.buffer, Wave.data, Wave.dataLength);
-
-	// Either way, we don't need the original data any more.
-	free(sample_temp);
-	
-	//If we're at the wrong sample rate, resample to match the current rate if requested
-	if (sound[sound_id].sampleRate != SYS_FREQ && force_resample)
-	{
-		// The code currently doesn't handle resampling of stereo wav files. 
-		if (sound[sound_id].channels == 1)
-		{
-			if (sound[sound_id].bitPerSample == 8)
-			{ resample_wav_8(sound_id, SYS_FREQ); }
-			else { resample_wav_16(sound_id, SYS_FREQ); }
-		}
-		else ("Warning, sample needs to be interpolated, but it's the wrong number of channels, fix.!");
+	HRESULT result = S_OK;
+	if (!sample_data) {
+		LOG_ERROR("Error: File not found %s, loading fallback error.wav", filename);
+		result = WavLoadFileInternal(error_wav, 10008, sample.get());
 	}
-	
-	// set rate and size in data structure for the non-mixed samples
-	sound[sound_id].fx.wFormatTag = WAVE_FORMAT_PCM;
-	sound[sound_id].fx.nChannels = sound[sound_id].channels;
-	sound[sound_id].fx.nSamplesPerSec = sound[sound_id].sampleRate;
-	sound[sound_id].fx.wBitsPerSample = sound[sound_id].bitPerSample;
-	sound[sound_id].fx.nBlockAlign = sound[sound_id].channels * sound[sound_id].bitPerSample / 8;
-	sound[sound_id].fx.nAvgBytesPerSec = sound[sound_id].fx.nBlockAlign * sound[sound_id].sampleRate;
-	sound[sound_id].fx.cbSize = 0;
-	
-	// Debug Out:
-	wrlog("File %s loaded with sound id: %d and state is: %d", filename, sound_id, sound[sound_id].state);
-	wrlog("Loading WAV #: %d", sound_id);
-	wrlog("Stored filename is %s", sound[sound_id].name.c_str());
-	wrlog("Channels #: %d", Wave.channels);
-	wrlog("Samplerate #: %d", Wave.sampleRate);
-	wrlog("Length #: %d", Wave.dataLength);
-	wrlog("BPS #: %d", Wave.bitPerSample);
-	wrlog("Samplecount #: %d", Wave.sampleCount);
+	else {
+		result = WavLoadFileInternal(sample_data.get(), sample_size, sample.get());
+	}
 
-	//Add this sample to the loaded samples list
-	lsamples.push_back(sound[sound_id]);
-	//Return Sound ID
-	wrlog("Loaded sound success");
-	return(sound_id);
+	if (FAILED(result)) {
+		LOG_ERROR("Error loading WAV file: %s", filename);
+		return -1;
+	}
+
+	sample->name = base_name(remove_extension(filename));
+	sample->state = SoundState::Loaded;
+	sample->num = ++sound_id;
+
+	if (force_resample && sample->fx.nSamplesPerSec != SYS_FREQ && sample->fx.nChannels == 1) {
+		if (sample->fx.wBitsPerSample == 8)
+			resample_wav_8(sample.get(), SYS_FREQ);
+		else
+			resample_wav_16(sample.get(), SYS_FREQ);
+	}
+
+	LOG_INFO("Loaded file %s with ID %d", filename, sample->num);
+	{
+		std::scoped_lock lock(audioMutex);
+		lsamples.push_back(sample);
+	}
+
+	return sample->num;
 }
 
 void mixer_init(int rate, int fps)
 {
-	int i = 0;
 	BUFFER_SIZE = rate / fps;
 	SYS_FREQ = rate;
 
-	wrlog("Mixer init, BUFFER SIZE = %d, freq %d framerate %d", BUFFER_SIZE, rate, fps);
-
-	// Initialize the xaudio2 backend at the correct rate.
+	LOG_INFO("Mixer init, BUFFER_SIZE = %d, freq = %d, framerate = %d", BUFFER_SIZE, rate, fps);
 	xaudio2_init(rate, fps);
 
-	//Clear and init Sample Channels
-	for (i = 0; i < MAX_CHANNELS; i++)
-	{
-		channel[i].loaded_sample_num = -1;
-		channel[i].state = SOUND_STOPPED;
-		channel[i].looping = 0;
-		channel[i].pos = 0;
-		channel[i].vol = 1.0;
-		channel[i].frequency = SYS_FREQ;
-	}
-	//Set all samples to empty for start
-	for (i = 0; i < MAX_SOUNDS; i++)
-	{
-		sound[i].state = SOUND_NULL;
+	for (int i = 0; i < MAX_CHANNELS; ++i) {
+		channel[i] = CHANNEL(); // resets all fields to default
 	}
 
-	sound_paused = 0;
-	v_mute_audio = 0;
+	sound_paused = false;
+	v_mute_audio = false;
 }
 
 void mixer_update()
 {
-	int32_t smix = 0;    //Sample mix buffer
-	int32_t fmix = 0;   // Final sample mix buffer
-
+	int32_t fmix = 0;
 	BYTE* soundbuffer = GetNextBuffer();
 
-	for (int i = 0; i < BUFFER_SIZE; i++)
-	{
-		fmix = 0; //Set mix buffer to zero (silence for 16 bit audio)
+	std::scoped_lock lock(audioMutex);
 
-		if (!sound_paused) // Other option, keep playing but set fmix to zero at end. Maybe better option to prevent buffer overflow?
-		{
-			for (std::list<int>::iterator it = audio_list.begin(); it != audio_list.end(); ++it)
-			{
-				SAMPLE p = sound[channel[*it].loaded_sample_num]; //To shorten
+	for (int i = 0; i < BUFFER_SIZE; ++i) {
+		fmix = 0;
 
-				if (channel[*it].pos >= p.sampleCount) //Are we at the end?
-				{
-					if (channel[*it].looping == 0) {
-						channel[*it].state = SOUND_STOPPED; audio_list.erase(it);
-					} //If it's not looping, remove it.
-					channel[*it].pos = 0;  //Otherwise, rewind to the beginning, or if it's a stream, ready to load more data;
-				}
-				// 16 bit mono
-				if (p.bitPerSample == 16)
-				{
-					smix = (short)p.data.u16[channel[*it].pos];
-					smix = lround(smix = static_cast<int32_t> (smix * channel[*it].vol));
-					channel[*it].pos += p.channels;
-				}
-				// 8 bit mono
-				else if (p.bitPerSample == 8)
-				{
-					smix = (short)(((p.data.u8[channel[*it].pos] - 128) << 8));
-					smix = lround(smix = static_cast<int32_t> (smix * channel[*it].vol));
-					channel[*it].pos += p.channels;
+		if (!sound_paused) {
+			for (auto it = audio_list.begin(); it != audio_list.end(); ) {
+				int chan = *it;
+				auto& ch = channel[chan];
+				auto& sample = lsamples[ch.loaded_sample_num];
+
+				if (ch.pos >= sample->sampleCount) {
+					if (!ch.looping) {
+						ch.state = SoundState::Stopped;
+						it = audio_list.erase(it);
+						continue;
+					}
+					ch.pos = 0;
 				}
 
-				smix = static_cast<int32_t> (smix * .70); //Reduce volume to avoid clipping. This number can/should vary depending on the samples.
-				fmix = fmix + smix;  //Mix here.
+				int32_t smix = 0;
+				if (sample->fx.wBitsPerSample == 16 && sample->data16) {
+					smix = static_cast<int32_t>(sample->data16[ch.pos]);
+				}
+				else if (sample->fx.wBitsPerSample == 8 && sample->data8) {
+					smix = static_cast<int32_t>((sample->data8[ch.pos] - 128) << 8);
+				}
+
+				smix = static_cast<int32_t>(smix * ch.vol * 0.70);
+				fmix += smix;
+				ch.pos += sample->fx.nChannels;
+				++it;
 			}
 		}
 
-		if (v_mute_audio) fmix = 0; // Mute Volume
+		if (v_mute_audio)
+			fmix = 0;
 
-		if (fmix) //If the mix value is zero (nothing playing) , skip all this.
-		{
-			//Clip samples
-			if (fmix > INT16_MAX) { fmix = INT16_MAX; }
-			if (fmix < INT16_MIN) { fmix = INT16_MIN; }
-		}
-		soundbuffer[2 * i] = fmix & 0xff;
-		soundbuffer[2 * i + 1] = (fmix >> 8) & 0xff;
+		fmix = std::clamp(fmix, static_cast<int32_t>(INT16_MIN), static_cast<int32_t>(INT16_MAX));
+
+		soundbuffer[2 * i] = fmix & 0xFF;
+		soundbuffer[2 * i + 1] = (fmix >> 8) & 0xFF;
 	}
 
 	xaudio2_update(soundbuffer, BUFFER_SIZE);
@@ -322,102 +207,87 @@ void mixer_update()
 void mixer_end()
 {
 	xaudio2_stop();
-
-	for (std::size_t i = 0; i < lsamples.size(); ++i)
-
-	{
-		if (sound[i].data.buffer)
-		{
-			free(sound[i].data.buffer);
-			wrlog("Freeing sample #%d named %s", i, sound[i].name.c_str());
-		}
+	std::scoped_lock lock(audioMutex);
+	for (auto& sample : lsamples) {
+		if (sample->buffer)
+			LOG_INFO("Freeing sample #%d named %s", sample->num, sample->name.c_str());
 	}
+	lsamples.clear();
+	audio_list.clear();
 }
 
 void sample_stop(int chanid)
 {
-	if (channel[chanid].isPlaying)
-	{
-		//channel[chanid].voice->SetVolume(0);
-		channel[chanid].voice->Stop();
-		channel[chanid].voice->FlushSourceBuffers();
-		channel[chanid].isPlaying = false;
-
-		channel[chanid].state = SOUND_STOPPED;
-		channel[chanid].looping = 0;
-		channel[chanid].pos = 0;
+	auto& ch = channel[chanid];
+	if (ch.isPlaying && ch.voice) {
+		ch.voice->Stop();
+		ch.voice->FlushSourceBuffers();
+		ch.isPlaying = false;
+		ch.state = SoundState::Stopped;
+		ch.looping = 0;
+		ch.pos = 0;
 	}
 }
 
 static void SetPan(IXAudio2SourceVoice* voice, float pan)
 {
-	float left = 0.5f - pan / 2;
-	float right = 0.5f + pan / 2;
+	float left = 0.5f - pan / 2.0f;
+	float right = 0.5f + pan / 2.0f;
+	float outputMatrix[2] = { left, right };
 
-	float outputMatrix[8] = { 0 };
-	int nChannels = 0;
+	voice->SetOutputMatrix(nullptr, 1, 2, outputMatrix);
+}
 
-	outputMatrix[0] = left;
-	outputMatrix[1] = right;
-	nChannels = 2;
-
-	voice->SetOutputMatrix(nullptr, 1, nChannels, outputMatrix);
+void sample_remove(int samplenum)
+{
 }
 
 void sample_start(int chanid, int samplenum, int loop)
 {
-	//First check that it's a valid sample!
-	if (!sound[samplenum].state == SOUND_LOADED)
-	{
-		wrlog("error, attempting to play invalid sample on channel %d state: %d", chanid, channel[chanid].state);
+	std::scoped_lock lock(audioMutex);
+
+	if (samplenum < 0 || samplenum >= static_cast<int>(lsamples.size()) ||
+		lsamples[samplenum]->state != SoundState::Loaded) {
+		LOG_ERROR("Error: Attempting to play invalid sample %d on channel %d", samplenum, chanid);
 		return;
 	}
 
-     //Start the sample playing
-	
-	if (channel[chanid].voice)
-	{
-		wrlog("Destroying Source Voice!, chan %d", chanid);
-		channel[chanid].voice->Stop();
-		channel[chanid].voice->FlushSourceBuffers();
-		channel[chanid].voice->DestroyVoice();
-		channel[chanid].voice = NULL;
+	auto& ch = channel[chanid];
+
+	if (ch.voice) {
+		ch.voice->Stop();
+		ch.voice->FlushSourceBuffers();
+		ch.voice->DestroyVoice();
+		ch.voice = nullptr;
 	}
 
-	if (!channel[chanid].voice)
+	auto& sample = lsamples[samplenum];
+	
+	// the 4.0f is really important here and required for the StarCastle drone.
+	if (FAILED(pXAudio2->CreateSourceVoice(&ch.voice, &sample->fx, 0, 4.0f)))   
 	{
-		if (FAILED(pXAudio2->CreateSourceVoice(&channel[chanid].voice, &sound[samplenum].fx, 0, 16.0f)))// the 16 is really important here. 
-		{
-			CoUninitialize();
-			wrlog("FAILED to create source voice %d");
-		}
-		else
-			wrlog("Creating Source Voice!, chan %d", chanid);
+		LOG_ERROR("Failed to create voice for sample %d", sample->num);
+		return;
 	}
 
-	channel[chanid].isAllocated = true;
-	channel[chanid].isReleased = false;
-	channel[chanid].isPlaying = true;
-	channel[chanid].looping = loop;
-	channel[chanid].volume = 255;
-	channel[chanid].pan = 128;
+	ch.isAllocated = true;
+	ch.isReleased = false;
+	ch.isPlaying = true;
+	ch.looping = loop;
+	ch.volume = 255;
+	ch.pan = 128;
+	ch.frequency = sample->fx.nSamplesPerSec;
+	ch.loaded_sample_num = samplenum;
 
-	//samplenum
-	CHANNEL& v = channel[chanid];
-	
-	channel[chanid].frequency = sound[samplenum].fx.nSamplesPerSec;
-	channel[chanid].buffer.AudioBytes = sound[samplenum].dataLength;
-	channel[chanid].buffer.pAudioData = (BYTE*)sound[samplenum].data.buffer;
-	channel[chanid].buffer.LoopCount = v.looping ? XAUDIO2_LOOP_INFINITE : 0;
-	channel[chanid].voice->SubmitSourceBuffer(&channel[chanid].buffer);
-	channel[chanid].voice->SetVolume((float)channel[chanid].volume / 255.0f);
-	SetPan(channel[chanid].voice, (float)(channel[chanid].pan - 128) / 128.0f);
+	ch.buffer.AudioBytes = sample->dataSize;
+	ch.buffer.pAudioData = static_cast<BYTE*>(sample->buffer);
+	ch.buffer.LoopCount = loop ? XAUDIO2_LOOP_INFINITE : 0;
 
-	HR(channel[chanid].voice->Start());
+	ch.voice->SubmitSourceBuffer(&ch.buffer);
+	ch.voice->SetVolume(static_cast<float>(ch.volume) / 255.0f);
+	SetPan(ch.voice, (ch.pan - 128) / 128.0f);
 
-	channel[chanid].isPlaying = true;
-
-	wrlog("Playing Sample #%d  on channel %d, name:%s", samplenum,  chanid, sound[samplenum].name.c_str());
+	HR(ch.voice->Start());
 }
 
 int sample_get_position(int chanid)
@@ -425,31 +295,26 @@ int sample_get_position(int chanid)
 	return channel[chanid].pos;
 }
 
-// This goes from 0 to 100, with 100 being the original level.
-// Changed back to 255 for AAE
 void sample_set_volume(int chanid, int volume)
 {
-	float vol;
-	channel[chanid].vol = db_volume[volume];
-	
-	if (channel[chanid].voice)
-	{
-		vol = (float)(float(volume) / (float) 255.0);
-	//	wrlog("Setting channel %i to with volume %i setting Setvol %f", chanid, volume, vol);
-		channel[chanid].voice->SetVolume( vol);
+	auto& ch = channel[chanid];
+	ch.vol = db_volume[std::clamp(volume, 0, 255)];
+
+	if (ch.voice) {
+		float vol = static_cast<float>(volume) / 255.0f;
+		ch.voice->SetVolume(vol);
 	}
-	
-};
+}
 
 int sample_get_volume(int chanid)
 {
-	return (int)(channel[chanid].vol * 100);
-};
+	return static_cast<int>(channel[chanid].vol * 100.0);
+}
 
 void sample_set_position(int chanid, int pos)
 {
-	// Not needed with this code. ?
-};
+	// Placeholder: currently unused
+}
 
 int sample_get_freq(int chanid)
 {
@@ -460,36 +325,24 @@ int sample_get_freq(int chanid)
 	return 0;
 }
 
+
 void sample_set_freq(int chanid, int freq)
 {
-	if (channel[chanid].isPlaying)
-	{
-		float frequencyRatio = static_cast<float>( (float) freq/(float)channel[chanid].frequency);
-		channel[chanid].voice->SetFrequencyRatio(frequencyRatio);
+	auto& ch = channel[chanid];
+	if (ch.isPlaying && ch.voice) {
+		float ratio = static_cast<float>(freq) / static_cast<float>(ch.frequency);
+		ch.voice->SetFrequencyRatio(ratio);
 	}
-};
+}
 
 int sample_playing(int chanid)
 {
-	XAUDIO2_VOICE_STATE state;
-
-	if (channel[chanid].voice)
-	{
-
-		channel[chanid].voice->GetState(&state);
-
-		if (state.BuffersQueued == 0)
-		{
-			//wrlog("Check sample #%d playing, returning false", chanid);
-			return 0;
-		}
-		else
-		{
-			//wrlog("Check sample #%d playing, returning true", chanid);
-			return 1;
-		}
+	auto& ch = channel[chanid];
+	if (ch.voice) {
+		XAUDIO2_VOICE_STATE state;
+		ch.voice->GetState(&state);
+		return (state.BuffersQueued > 0) ? 1 : 0;
 	}
-	//wrlog("Check sample #%d playing, returning false, not allocated", chanid);
 	return 0;
 }
 
@@ -497,37 +350,36 @@ void sample_end(int chanid)
 {
 	channel[chanid].looping = 0;
 }
-/////////////////////////////////// ************** STREAMING / MIXER SAMPLE CODE BELOW  ***************** ////////////////////////////////////////////
+
 void sample_start_mixer(int chanid, int samplenum, int loop)
 {
-	//First check that it's a valid sample!
-	if (!sound[samplenum].state == SOUND_LOADED)
-	{
-		wrlog("error, attempting to play invalid sample on channel %d state: %d", chanid, channel[chanid].state);
+	std::scoped_lock lock(audioMutex);
+
+	if (samplenum < 0 || samplenum >= static_cast<int>(lsamples.size()) ||
+		lsamples[samplenum]->state != SoundState::Loaded) {
+		LOG_ERROR("Error: Attempting to play invalid sample %d on channel %d", samplenum, chanid);
 		return;
 	}
 
-	if (channel[chanid].state == SOUND_PLAYING)
-	{
-		wrlog("error, sound already playing on this channel %d state: %d", chanid, channel[chanid].state);
+	if (channel[chanid].state == SoundState::Playing) {
+		LOG_ERROR("Error: Sound already playing on channel %d", chanid);
 		return;
 	}
 
-	channel[chanid].state = SOUND_PLAYING;
-	channel[chanid].stream_type = SOUND_PCM;
-	channel[chanid].loaded_sample_num = samplenum;
-	channel[chanid].looping = loop;
-	channel[chanid].pos = 0;
-	//channel[chanid].vol = 1.0;
-	audio_list.emplace_back(chanid);
-	wrlog("Playing Sample #%d :%s", samplenum, sound[samplenum].name.c_str());
+	auto& ch = channel[chanid];
+	ch.state = SoundState::Playing;
+	ch.stream_type = static_cast<int>(SoundState::PCM);
+	ch.loaded_sample_num = samplenum;
+	ch.looping = loop;
+	ch.pos = 0;
+
+	audio_list.push_back(chanid);
+	LOG_INFO("Playing Sample #%d :%s", samplenum, lsamples[samplenum]->name.c_str());
 }
 
 int sample_playing_mixer(int chanid)
 {
-	if (channel[chanid].state == SOUND_PLAYING)
-		return 1;
-	else return 0;
+	return (channel[chanid].state == SoundState::Playing) ? 1 : 0;
 }
 
 void sample_end_mixer(int chanid)
@@ -537,170 +389,209 @@ void sample_end_mixer(int chanid)
 
 void sample_stop_mixer(int chanid)
 {
-	channel[chanid].state = SOUND_STOPPED;
+	std::scoped_lock lock(audioMutex);
+	channel[chanid].state = SoundState::Stopped;
 	channel[chanid].looping = 0;
 	channel[chanid].pos = 0;
 	audio_list.remove(chanid);
 }
 
-// This goes from 0 to 100, with 100 being the original level.
 void sample_set_volume_mixer(int chanid, int volume)
 {
-	channel[chanid].vol = db_volume[volume];
-	//wrlog("Setting channel %i to with volume %i setting bvolume %f", chanid, volume, channel[chanid].vol);
-};
+	channel[chanid].vol = db_volume[std::clamp(volume, 0, 255)];
+}
 
 int sample_get_volume_mixer(int chanid)
 {
-	return (int)(channel[chanid].vol * 100);
-};
-
-void stream_start(int chanid, int stream, int bits, int frame_rate)
-{
-	int stream_sample = create_sample(bits, 0, SYS_FREQ, (int)SYS_FREQ / frame_rate);
-
-	if (channel[chanid].state == SOUND_PLAYING)
-	{
-		wrlog("error, sound already playing on this channel %d state: %d", chanid, channel[chanid].state);
-		return;
-	}
-	//wrlog("Playing Sample :%s", sound[samplenum].name.c_str());
-	channel[chanid].state = SOUND_PLAYING;
-	channel[chanid].loaded_sample_num = stream_sample;
-	channel[chanid].looping = 1;
-	channel[chanid].pos = 0;
-	channel[chanid].stream_type = SOUND_STREAM;
-	audio_list.emplace_back(chanid);
+	return static_cast<int>(channel[chanid].vol * 100.0);
 }
 
-void stream_stop(int chanid, int stream)
+void stream_start(int chanid, int /*stream*/, int bits, int frame_rate)
 {
-	channel[stream].state = SOUND_STOPPED;
-	channel[stream].loaded_sample_num = 0;
-	channel[stream].looping = 0;
-	channel[stream].pos = 0;
+	int stream_sample = create_sample(bits, false, SYS_FREQ, SYS_FREQ / frame_rate, "STREAM");
+
+	auto& ch = channel[chanid];
+
+	if (ch.state == SoundState::Playing) {
+		LOG_ERROR("Error: Stream already playing on channel %d", chanid);
+		return;
+	}
+
+	ch.state = SoundState::Playing;
+	ch.loaded_sample_num = stream_sample;
+	ch.looping = 1;
+	ch.pos = 0;
+	ch.stream_type = static_cast<int>(SoundState::Stream);
+
+	std::scoped_lock lock(audioMutex);
+	audio_list.push_back(chanid);
+}
+
+void stream_stop(int chanid, int /*stream*/)
+{
+	auto& ch = channel[chanid];
+	ch.state = SoundState::Stopped;
+	ch.loaded_sample_num = -1;
+	ch.looping = 0;
+	ch.pos = 0;
+
+	std::scoped_lock lock(audioMutex);
 	audio_list.remove(chanid);
-	//Warning, This doesn't delete the created sample/stream
 }
 
 void stream_update(int chanid, short* data)
 {
-	if (channel[chanid].state == SOUND_PLAYING)
-	{
-		SAMPLE p = sound[channel[chanid].loaded_sample_num];
-		memcpy(p.data.buffer, data, p.dataLength);
+	auto& ch = channel[chanid];
+	if (ch.state == SoundState::Playing) {
+		auto& sample = lsamples[ch.loaded_sample_num];
+		std::memcpy(sample->data16.get(), data, sample->dataSize);
 	}
 }
 
 void stream_update(int chanid, unsigned char* data)
 {
-	if (channel[chanid].state == SOUND_PLAYING)
-	{
-		SAMPLE p = sound[channel[chanid].loaded_sample_num];
-		memcpy(p.data.buffer, data, p.dataLength);
+	auto& ch = channel[chanid];
+	if (ch.state == SoundState::Playing) {
+		auto& sample = lsamples[ch.loaded_sample_num];
+		std::memcpy(sample->data8.get(), data, sample->dataSize);
 	}
-}
-
-void sample_remove(int samplenum)
-{
-}
-// create_sample:
-// *  Constructs a new sample structure of the specified type.
-int create_sample(int bits, bool is_stereo, int freq, int len)
-{
-	wrlog("Creating sample, Buffer size here is %d", len);
-	int	sound_id = -1;      // id of sound to be loaded
-	int  index;               // looping variable
-	// step one: are there any open id's ?
-	for (index = 0; index < MAX_SOUNDS; index++)
-	{
-		// make sure this sound is unused
-		if (sound[index].state == SOUND_NULL)
-		{
-			sound_id = index;
-			break;
-		} // end if
-	} // end for index
-	  // did we get a free id? If not,fail.
-	if (sound_id == -1) {
-		wrlog("No free sound id's for creation of new sample?"); return(-1);
-	}
-	//SOUND
-	wrlog("Creating Stream Audio Sample with sound id %d", sound_id);
-	// set rate and size in data structure
-	// Sanity checks
-	sound[sound_id].sampleRate = freq;
-	sound[sound_id].bitPerSample = bits;
-	sound[sound_id].channels = ((is_stereo) ? 2 : 1);
-	sound[sound_id].dataLength = len * bits / 8;
-	sound[sound_id].sampleCount = len;
-	sound[sound_id].state = SOUND_LOADED;
-	sound[sound_id].name = "STREAM";
-	sound[sound_id].data.buffer = (unsigned char*)malloc(len * bits / 8);
-	memset(sound[sound_id].data.buffer, 0, len * bits / 8);
-
-	//wrlog("Real buffer size %d", BUFFER_SIZE * 2);
-	//wrlog("Buffer size created here %d", (len * ((bits == 8) ? 1 : sizeof(short)) * ((is_stereo) ? 2 : 1)));
-	lsamples.push_back(sound[sound_id]);
-	return sound_id;
 }
 
 void mute_audio()
 {
-	v_mute_audio = 1;
+	last_master_vol = mixer_get_master_volume();
+	v_mute_audio = true;
+	mixer_set_master_volume(0);
 }
 
 void restore_audio()
 {
-	v_mute_audio = 0;
+	mixer_set_master_volume(static_cast<int>(last_master_vol * 100));
+	v_mute_audio = false;
 }
 
 void pause_audio()
 {
-	sound_paused = 1;
+	last_master_vol = mixer_get_master_volume();
+	mixer_set_master_volume(0);
+	sound_paused = true;
 }
 
 void resume_audio()
 {
-	sound_paused = 0;
+	mixer_set_master_volume(static_cast<int>(last_master_vol * 100));
+	sound_paused = false;
 }
 
-//Find a loaded sample number in a list.
-int snumlookup(int snum)
+int create_sample(int bits, bool is_stereo, int freq, int len, const std::string& name)
 {
-	for (auto i = lsamples.begin(); i != lsamples.end(); ++i)
-	{
-		if (snum == (i->num)) { return i->num; }
+	auto sample = std::make_shared<SAMPLE>();
+	sample->num = ++sound_id;
+	sample->name = (name == "STREAM") ? name + std::to_string(sample->num) : name;
+
+	LOG_INFO("Creating Audio Sample with name %s and sound id %d", sample->name.c_str(), sample->num);
+
+	sample->fx.wFormatTag = WAVE_FORMAT_PCM;
+	sample->fx.nChannels = is_stereo ? 2 : 1;
+	sample->fx.nSamplesPerSec = freq;
+	sample->fx.wBitsPerSample = bits;
+	sample->fx.nBlockAlign = sample->fx.nChannels * bits / 8;
+	sample->fx.nAvgBytesPerSec = sample->fx.nSamplesPerSec * sample->fx.nBlockAlign;
+	sample->state = SoundState::Loaded;
+	sample->sampleCount = len;
+	sample->dataSize = len * bits / 8;
+
+	if (bits == 8) {
+		sample->data8 = std::make_unique<uint8_t[]>(sample->dataSize);
+		std::memset(sample->data8.get(), 0, sample->dataSize);
+		sample->buffer = sample->data8.get();
+	}
+	else {
+		sample->data16 = std::make_unique<int16_t[]>(len);
+		std::memset(sample->data16.get(), 0, sample->dataSize);
+		sample->buffer = sample->data16.get();
 	}
 
-	wrlog("Attempted lookup of sample number, it was not found in loaded samples?");
-	return 0;
+	std::scoped_lock lock(audioMutex);
+	lsamples.push_back(sample);
+	return sample->num;
 }
 
-//Be careful that you call this with a real sample->num, not just the loaded sample number
 std::string numToName(int num)
 {
-	try {
-		auto it = lsamples.at(num);      // vector::at throws an out-of-range
-		return it.name;
-	}
-
-	catch (const std::out_of_range& err)
-	{
-		wrlog("Out of Range error: get loaded sample name: %s \n", err.what());
-	}
-	return ("notfound");
-}
-
-int nameToNum(const std::string name)
-{
-	for (size_t i = 0; i < lsamples.size(); ++i) 
-	{
-		if (lsamples[i].name == name)
-		{
-			return static_cast<int>(i); // Return the index if found
+	std::scoped_lock lock(audioMutex);
+	for (const auto& sample : lsamples) {
+		if (sample->num == num) {
+			return sample->name;
 		}
 	}
+	LOG_ERROR("Name not found for Sample #%d!", num);
+	return "";
+}
 
-	return -1; // Return -1 if not found
+int nameToNum(const std::string& name)
+{
+	std::scoped_lock lock(audioMutex);
+	for (const auto& sample : lsamples) {
+		if (sample->name == name) {
+			return sample->num;
+		}
+	}
+	return -1;
+}
+
+int snumlookup(int snum)
+{
+	std::scoped_lock lock(audioMutex);
+	for (size_t i = 0; i < lsamples.size(); ++i) {
+		if (lsamples[i]->num == snum) {
+			return static_cast<int>(i);
+		}
+	}
+	LOG_ERROR("Sample number not found in lookup: %d", snum);
+	return -1;
+}
+
+void save_sample(int samplenum)
+{
+	std::scoped_lock lock(audioMutex);
+	if (samplenum < 0 || samplenum >= static_cast<int>(lsamples.size())) return;
+
+	const auto& sample = lsamples[samplenum];
+	if (!sample) return;
+
+	std::string filename = sample->name + ".wav";
+	FILE* file = nullptr;
+	if (fopen_s(&file, filename.c_str(), "wb") != 0 || !file) {
+		LOG_ERROR("Failed to open file for writing: %s", filename.c_str());
+		return;
+	}
+
+	DWORD subchunk1Size = 16;
+	DWORD subchunk2Size = static_cast<DWORD>(sample->dataSize);
+	DWORD chunkSize = 4 + (8 + subchunk1Size) + (8 + subchunk2Size);
+
+	fwrite("RIFF", 1, 4, file);
+	fwrite(&chunkSize, 4, 1, file);
+	fwrite("WAVE", 1, 4, file);
+	fwrite("fmt ", 1, 4, file);
+	fwrite(&subchunk1Size, 4, 1, file);
+	fwrite(&sample->fx.wFormatTag, 2, 1, file);
+	fwrite(&sample->fx.nChannels, 2, 1, file);
+	fwrite(&sample->fx.nSamplesPerSec, 4, 1, file);
+	fwrite(&sample->fx.nAvgBytesPerSec, 4, 1, file);
+	fwrite(&sample->fx.nBlockAlign, 2, 1, file);
+	fwrite(&sample->fx.wBitsPerSample, 2, 1, file);
+	fwrite("data", 1, 4, file);
+	fwrite(&subchunk2Size, 4, 1, file);
+
+	if (sample->fx.wBitsPerSample == 8 && sample->data8) {
+		fwrite(sample->data8.get(), 1, sample->dataSize, file);
+	}
+	else if (sample->fx.wBitsPerSample == 16 && sample->data16) {
+		fwrite(sample->data16.get(), 1, sample->dataSize, file);
+	}
+
+	fclose(file);
+	LOG_INFO("WAV file saved to %s", filename.c_str());
 }

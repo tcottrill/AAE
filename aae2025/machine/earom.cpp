@@ -28,7 +28,7 @@ UINT8 EaromRead(UINT32 address, struct MemoryReadByte* psMemRead)
 
 void EaromWrite(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite)
 {
-	//wrlog("Earom write? address %x data %d", earom_offset,data);
+	//LOG_INFO("Earom write? address %x data %d", earom_offset,data);
 	earom_offset = (address & 0x00ff);
 
 	earom_data = data;
@@ -52,7 +52,7 @@ void EaromCtrl(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite)
 	{
 		earom[earom_offset] = earom_data;
 	}
-	//if (debug) wrlog("Earom Control Write: address %x data %d", address,data);
+	//if (debug) LOG_INFO("Earom Control Write: address %x data %d", address,data);
 }
 
 int atari_vg_earom_load()
@@ -66,7 +66,7 @@ int atari_vg_earom_load()
 		osd_fread(f, &earom[0], 0x40);
 		osd_fclose(f);
 	}
-	else  wrlog("Hi Score not found.\n");
+	else  LOG_INFO("Hi Score not found.\n");
 	return 1;
 }
 

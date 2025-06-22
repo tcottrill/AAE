@@ -64,7 +64,7 @@ static int e1y;
 
 int sega_vh_start(int r)
 {
-	//wrlog("Sega Video Init");
+	//LOG_INFO("Sega Video Init");
 	sega_rotate = r;
 
 	min_x = 512;
@@ -168,7 +168,7 @@ int adjust_xy(int rawx, int rawy, int* outx, int* outy)
 
 void sega_vh_update(void)
 {
-	//wrlog("Starting Sega Video Update");
+	//LOG_INFO("Starting Sega Video Update");
 	//sintable = Machine->memory_region[REGION_PROMS];
 	sintable = memory_region(REGION_PROMS);
 	double total_time = 1.0 / (double)IRQ_CLOCK;

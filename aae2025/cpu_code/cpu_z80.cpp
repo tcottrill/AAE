@@ -666,7 +666,7 @@ unsigned cpu_z80::mz80step()
 	{
 		z80ppc = z80pc;
 		const uint8_t bOpcode = ImmedByte();
-		//wrlog("OPCode here %x %x pc:%x", m_rgbMemory[z80pc + 1], m_rgbMemory[z80pc + 2], z80pc);
+		//LOG_INFO("OPCode here %x %x pc:%x", m_rgbMemory[z80pc + 1], m_rgbMemory[z80pc + 2], z80pc);
 		cyc += exec_opcode(bOpcode);
 	}
 
@@ -2031,27 +2031,27 @@ UINT32 cpu_z80::mz80int(UINT32 bVal)
 			// Or fancy shifting as seen below, the fancy way.
 			//Rst(irq_vector - 0xC7);
 			Rst(((irq_vector >> 3) & 7) << 3);
-			//wrlog("Interrupt Mode 0 Taken, Vector %x or %x", irq_vector, ((irq_vector >> 3) & 7) << 3);
+			//LOG_INFO("Interrupt Mode 0 Taken, Vector %x or %x", irq_vector, ((irq_vector >> 3) & 7) << 3);
 			pending_int = 0;
 			break;
 
 		case 1:
 			cCycles += 13;
 			Rst(z80intAddr);
-			//wrlog("Interrupt Mode 1 Taken");
+			//LOG_INFO("Interrupt Mode 1 Taken");
 			pending_int = 0;
 			break;
 
 		case 2:
 			cCycles += 19;
 			pending_int = 0;
-			//wrlog("Interrupt Mode 2 Taken");
+			//LOG_INFO("Interrupt Mode 2 Taken");
 			Push(GetPC());
 			SetPC(MemReadWord(irq_vector | (m_regI << 8)));
 			break;
 
 		default:
-			wrlog("unsupported interrupt mode % d\n", m_nIM);
+			LOG_INFO("unsupported interrupt mode % d\n", m_nIM);
 			break;
 		}
 	}
@@ -8102,4 +8102,4 @@ endif,
 tmp = > flags, cf : = cf OR[a > 0x99],
 hf : = a.4 XOR tmp.4, a : = tmp
 */
-//wrlog("%04X %04X %04X %04X %04X %04X %04X %04X %04X \n",GetPC(), m_regAF, m_regBC, m_regDE, m_regHL,m_regIX, m_regIY, GetSP(), cCycles);
+//LOG_INFO("%04X %04X %04X %04X %04X %04X %04X %04X %04X \n",GetPC(), m_regAF, m_regBC, m_regDE, m_regHL,m_regIX, m_regIY, GetSP(), cCycles);

@@ -228,7 +228,7 @@ WRITE_HANDLER(asteroid_explode_w)
 		if (explosion2 != explosion)
 		{
 			//Not Needed, done for us with reallocate in allegro code
-			//wrlog("Calling sample stop explode");
+			//LOG_INFO("Calling sample stop explode");
 			//	sample_stop(7);
 			switch (explosion2)
 			{
@@ -244,7 +244,7 @@ WRITE_HANDLER(asteroid_explode_w)
 				break;
 			}
 		
-			//wrlog("Calling sample start explode");
+			//LOG_INFO("Calling sample start explode");
 			sample_start(8, sound, 0);
 		}
 		explosion = explosion2;
@@ -332,7 +332,7 @@ READ_HANDLER(asteroid_IN0_r)
 
 	if (!dvg_done())
 	{
-		//wrlog("DVG returning IN0 BUSY? Cycles %d", cpu_getcycles(0));
+		//LOG_INFO("DVG returning IN0 BUSY? Cycles %d", cpu_getcycles(0));
 		res |= 0x04;
 	}
 	if (res & bitmask)
@@ -489,7 +489,7 @@ int init_asteroid(void)
 	dvg_start_asteroid();
 	//timer_set(TIME_IN_HZ(MASTER_CLOCK / 4096), 0, clock3k_update);
 
-	wrlog("End init");
+	LOG_INFO("End init");
 	return 0;
 }
 
@@ -500,7 +500,7 @@ int init_asterock(void)
 	dvg_start_asteroid();
 	//timer_set(TIME_IN_HZ(MASTER_CLOCK / 4096), 0, clock3k_update);
 
-	wrlog("End Asterock init");
+	LOG_INFO("End Asterock init");
 	return 0;
 }
 

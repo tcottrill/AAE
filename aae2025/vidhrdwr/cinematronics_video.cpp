@@ -106,7 +106,7 @@ void vec_control_write(int data)
 {
 	int r, g, b, i;
 
-	//wrlog("Video control write");
+	//LOG_INFO("Video control write");
 
 	switch (color_mode)
 	{

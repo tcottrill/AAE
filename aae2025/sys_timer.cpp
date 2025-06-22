@@ -1,6 +1,6 @@
 #include "sys_timer.h"
 
-BOOL bTimerInitialized = FALSE;
+bool bTimerInitialized = FALSE;
 
 timer_t g_timer;
 

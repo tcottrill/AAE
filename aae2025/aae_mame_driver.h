@@ -524,6 +524,7 @@ enum GameDef {
 	DEMON,
 	BOXINGB,
 	WOTW,
+	QB3,
 	//Quantum Hardware
 	QUANTUM1,
 	QUANTUM,
@@ -536,7 +537,9 @@ enum GameDef {
 	AZTARAC,
 	//Space Invaders Hardware 
 	INVADERS,
-	INVADDLX
+	INVADDLX,
+	// Midway Raster
+	RALLYX
 };
 
 /* this allows to leave the INIT field empty in the GAME() macro call */

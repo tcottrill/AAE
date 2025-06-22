@@ -34,7 +34,7 @@ void os_init_input(void)
 	{
 			if (install_joystick () != 0)
 			{
-				wrlog ("Joystick not found.\n");
+				LOG_INFO ("Joystick not found.\n");
 				joystick = JOY_TYPE_NONE;
 			}
 		//}
@@ -43,7 +43,7 @@ void os_init_input(void)
 		
 			if (install_joystick () != 0)
 			{
-				wrlog("Joystick not found.\n");
+				LOG_INFO("Joystick not found.\n");
 				joystick = JOY_TYPE_NONE;
 			}
 		}
@@ -51,9 +51,9 @@ void os_init_input(void)
 /*		if (errorlog)
 		{
 		*/	if (joystick == JOY_TYPE_NONE)
-				wrlog("Joystick not found\n");
+				LOG_INFO("Joystick not found\n");
 			else
-				wrlog( "Installed Joystick");//%s %s\n",	joystick_driver->name, joystick_driver->desc);
+				LOG_INFO( "Installed Joystick");//%s %s\n",	joystick_driver->name, joystick_driver->desc);
 		//}
 		
 	}
@@ -208,7 +208,7 @@ int osd_key_pressed(int keycode)
 
 		return res;
 	}
-	//if (key[keycode])wrlog("read key immediate returning %d name: %s",keycode,osd_key_name(keycode));
+	//if (key[keycode])LOG_INFO("read key immediate returning %d name: %s",keycode,osd_key_name(keycode));
 	return key[keycode];
 }
 

@@ -47,7 +47,7 @@ int tms5220_sh_start(struct TMS5220interface* iinterface)
 	buffer_len = intfa->clock / 80 / Machine->gamedrv->fps;
 	emulation_rate = buffer_len * Machine->gamedrv->fps;
 
-	wrlog("Emulation Rate here is %d, buffer len is %d", emulation_rate, buffer_len);
+	LOG_INFO("Emulation Rate here is %d, buffer len is %d", emulation_rate, buffer_len);
 	sample_pos = 0;
 	/* allocate the buffer */
 
@@ -58,7 +58,7 @@ int tms5220_sh_start(struct TMS5220interface* iinterface)
 
 	if ((stream_buffer = (short*)malloc(stream_buffer_len * 2)) == 0)
 	{
-		wrlog("Pokey Buffer Creation Error");
+		LOG_INFO("Pokey Buffer Creation Error");
 		return 1;
 	}
 
@@ -71,7 +71,7 @@ int tms5220_sh_start(struct TMS5220interface* iinterface)
 	/* request a sound channel */
 	//channel = get_play_channels (1);
 
-	wrlog("TMS 5250 Init completed");
+	LOG_INFO("TMS 5250 Init completed");
 
 	channel = 1;
 	return 0;
@@ -86,7 +86,7 @@ int tms5220_sh_start(struct TMS5220interface* iinterface)
 
 void tms5220_sh_stop(void)
 {
-	wrlog("Stopping and cleaning up TMS5220 Audio");
+	LOG_INFO("Stopping and cleaning up TMS5220 Audio");
 
 	stream_stop(2, 2);
 	if (buffer)

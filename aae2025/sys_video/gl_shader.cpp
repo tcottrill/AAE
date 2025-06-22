@@ -1,94 +1,110 @@
-#include "aae_mame_driver.h"
-#include "config.h"
+#include "gl_shader.h"
 #include "log.h"
-#include "glcode.h"
+#include "shader_definitions.h"
+
+GLuint fragBlur = 0;
+GLuint fragMulti = 0;
 
 
-//Shader Handles
-GLuint fragBlur;
-GLuint fragMulti;
-GLuint MotionBlur;
-
-
-
-#define STRINGIFY(A)  #A
-#include "../Shaders/Texturing.vs"
-#include "../Shaders/MultiTexture.fs"
-#include "../Shaders/blur.fs"
-#include "../Shaders/vertex.vs"
-#include "../Shaders/motion.fs"
-#include "../Shaders/motion.vs"
-
-
-
-////////////////////////////////////////////////////////////////////////////////
-//  BEGIN SHADER CODE  /////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-
-void WriteShaderError(GLhandleARB obj, const char* shaderName)
+// Write errors
+static void write_shader_error(GLuint obj, const char* label, bool isProgram)
 {
-	int errorLength = 0;
-	int written = 0;
-	char* message;
+    GLint length = 0;
+    if (isProgram)
+        glGetProgramiv(obj, GL_INFO_LOG_LENGTH, &length);
+    else
+        glGetShaderiv(obj, GL_INFO_LOG_LENGTH, &length);
 
-	glGetObjectParameterivARB(obj, GL_OBJECT_INFO_LOG_LENGTH_ARB, &errorLength);
-	if (errorLength > 0)
-	{
-		message = (char*)malloc(errorLength);
-		glGetInfoLogARB(obj, errorLength, &written, message);
-		wrlog("Shader compile error in %s: %s\n", shaderName, message);
-		free(message);
-	}
+    if (length > 0) {
+        char* message = (char*)malloc(length);
+        if (isProgram)
+            glGetProgramInfoLog(obj, length, nullptr, message);
+        else
+            glGetShaderInfoLog(obj, length, nullptr, message);
+        LOG_INFO("Shader error in %s:\n%s", label, message);
+        free(message);
+    }
 }
 
-/******************** Shaders Function *******************************/
-int setupShaders(const char* vert, const char* frag) {
-	GLuint v = 0;
-	GLuint f = 0;
-	GLuint p = -1;
-	int param;
-	GLint linked;
+// Compile + link shader
+static GLuint create_shader_program(const char* vertSrc, const char* fragSrc)
+{
+    GLint status;
+    GLuint vert = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(vert, 1, &vertSrc, nullptr);
+    glCompileShader(vert);
+    glGetShaderiv(vert, GL_COMPILE_STATUS, &status);
+    if (!status) write_shader_error(vert, "Vertex", false);
 
-	v = glCreateShader(GL_VERTEX_SHADER);
-	glShaderSource(v, 1, (const GLchar**)&vert, 0);
-	glCompileShader(v);
-	glGetShaderiv(v, GL_COMPILE_STATUS, &param);
-	if (!param)
-	{
-		WriteShaderError(v, vert);
-	}
+    GLuint frag = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(frag, 1, &fragSrc, nullptr);
+    glCompileShader(frag);
+    glGetShaderiv(frag, GL_COMPILE_STATUS, &status);
+    if (!status) write_shader_error(frag, "Fragment", false);
 
-	f = glCreateShader(GL_FRAGMENT_SHADER);
-	glShaderSource(f, 1, (const GLchar**)&frag, 0);
-	glCompileShader(f);
-	if (!param)
-	{
-		WriteShaderError(f, frag);
-	}
-	p = glCreateProgram();
-	glAttachShader(p, f);
-	glAttachShader(p, v);
-	glLinkProgram(p);
+    GLuint prog = glCreateProgram();
+    glAttachShader(prog, vert);
+    glAttachShader(prog, frag);
+    glLinkProgram(prog);
+    glGetProgramiv(prog, GL_LINK_STATUS, &status);
+    if (!status) write_shader_error(prog, "Program", true);
+    else LOG_INFO("Shader linked OK");
 
-	glGetProgramiv(p, GL_LINK_STATUS, &linked);
-	if (linked)
-	{
-		wrlog("Shader Program linked ok Vert: %s. Frag: %s", vert, frag);
-	}
+    glDeleteShader(vert);
+    glDeleteShader(frag);
 
-	return p;
+    return prog;
 }
+
+void bind_shader(GLuint program) {
+    glUseProgram(program);
+}
+
+void unbind_shader() {
+    glUseProgram(0);
+}
+
+void delete_shader(GLuint* program) {
+    if (program && *program) {
+        glDeleteProgram(*program);
+        *program = 0;
+    }
+}
+
+// Uniform helpers
+static GLint get_uniform_loc(GLuint program, const char* name) {
+    return glGetUniformLocation(program, name);
+}
+
+void set_uniform1i(GLuint program, const char* name, int value) {
+    glUniform1i(get_uniform_loc(program, name), value);
+}
+
+void set_uniform1f(GLuint program, const char* name, float value) {
+    glUniform1f(get_uniform_loc(program, name), value);
+}
+
+void set_uniform2f(GLuint program, const char* name, float x, float y) {
+    glUniform2f(get_uniform_loc(program, name), x, y);
+}
+
+void set_uniform3f(GLuint program, const char* name, float x, float y, float z) {
+    glUniform3f(get_uniform_loc(program, name), x, y, z);
+}
+
+void set_uniform4f(GLuint program, const char* name, float x, float y, float z, float w) {
+    glUniform4f(get_uniform_loc(program, name), x, y, z, w);
+}
+
+//void set_uniform_mat4f(GLuint program, const char* name, const glm::mat4* matrix) {
+//   glUniformMatrix4fv(get_uniform_loc(program, name), 1, GL_FALSE, &((*matrix)[0][0]));
+//}
+
 
 int init_shader()
 {
-	wrlog("Shader Init Start");
-	fragBlur = setupShaders(vertText, fragText);
-	fragMulti = setupShaders(texvertText, texfragText);
-	MotionBlur = setupShaders(motionvs, motionfs);
-
-	return 1;
+    LOG_INFO("Shader Init Start");
+    fragBlur = create_shader_program(vertText, fragText);
+    fragMulti = create_shader_program(texvertText, texfragText);
+    return 1;
 }
-////////////////////////////////////////////////////////////////////////////////
-//  END SHADER CODE  /////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-

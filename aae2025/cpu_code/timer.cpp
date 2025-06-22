@@ -1,152 +1,158 @@
+//==========================================================================
+// AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME
+// code, 0.29 through .90 mixed with code of my own. This emulator was
+// created solely for my amusement and learning and is provided only
+// as an archival experience.
+//
+// All MAME code used and abused in this emulator remains the copyright
+// of the dedicated people who spend countless hours creating it. All
+// MAME code should be annotated as belonging to the MAME TEAM.
+//
+// SOME CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.
+//==========================================================================
+
+
 #include "aae_mame_driver.h"
-#include <string.h>
 #include "timer.h"
 #include "log.h"
 
-/*
-This is a simplified version of the mame cpu timers. It's sufficent for my needs.
-Timers are based off of cpu cycles, and can be tied to any cpu or audio cpu.
-*/
-
-//
-// *Note to self, since this is called hundreds of times per frame, please add a fast linked list to this like in older MAME.
-// This is taking up way to much valuable CPU time for no reason.
-//
-//
-//
-
-double cycles_to_sec[MAX_CPU + 1];
-double sec_to_cycles[MAX_CPU + 1];
-
-//We are starting all timers at 1!!!!
-// All timers must be positive!
+#include <vector>
+#include <optional>
+#include <algorithm>
 
 #define VERBOSE 0
-#define MAX_TIMERS 8
 
-typedef struct timer_entry
-{
-	void(*callback)(int);
-	int callback_param;
-	int enabled;
-	double period;
-	double count;
-	double expire;
-	int cpu;
-} timer_entry;
+double cycles_to_sec[MAX_CPU + 1]{};
+double sec_to_cycles[MAX_CPU + 1]{};
 
-timer_entry timer[MAX_TIMERS];
+struct Timer {
+	std::function<void(int)> callback;
+	int callback_param = 0;
+	bool one_shot = false;
+	double period = 0;
+	double count = 0;
+	int cpu = 0;
+	bool enabled = false;
+};
 
-void timer_remove(int timer_num)
-{
-	if (VERBOSE) {
-		wrlog("timer %d removed from list", timer_num);
-	}
-	timer[timer_num].cpu = 0;
-	timer[timer_num].period = 0;
-	timer[timer_num].count = 0;
-	timer[timer_num].enabled = 0;
-	timer[timer_num].expire = 0;
-	timer[timer_num].callback = 0;
-	timer[timer_num].callback_param = 0;
-}
+static std::vector<std::optional<Timer>> timers;
 
-void timer_init(void)
+void timer_init()
 {
 	int x = 0;
-	
-	//Add count for all cpu's here with driver structure
-
 	while (Machine->gamedrv->cpu_freq[x] && x < MAX_CPU)
 	{
 		sec_to_cycles[x] = Machine->gamedrv->cpu_freq[x];
 		cycles_to_sec[x] = 1.0 / sec_to_cycles[x];
 		if (VERBOSE) {
-			wrlog("Init timing for CPU #%d CPUClock Value %d", x, Machine->gamedrv->cpu_freq[x]);
+			LOG_INFO("Init timing for CPU #%d, CPUClock = %d", x, Machine->gamedrv->cpu_freq[x]);
 		}
 		x++;
 	}
+	timers.clear();
 }
 
-// Remember param here is actually just the cpu # to tie the timer too. It's overloaded with ONE_SHOT to denote
-// a non-reoccuring timer. I did this to keep compatibility for troubleshooting against mame, but I may change this
-// later. I don't have any drivers that need a value passed to the callback so it's ok for now.
-// I don't know how mame determines which cpu to count a timer with and I don't really care.
-// This is working fine for me for what I'm doing.
-
-int timer_set(double duration, int param, int data, void (*callback)(int))
+int timer_allocate_slot()
 {
-	int check = 0;
-	int x;
-	//Look for an unused timer, timers start at 1!
-	for (x = 1; x < MAX_TIMERS; x++)
-	{
-		if (timer[x].enabled == 0)
-		{
-			timer[x].cpu = (int8_t)param & 0x0f;
-			timer[x].period = Machine->gamedrv->cpu_freq[(int8_t)param & 0x0f] * duration;
+	for (size_t i = 0; i < timers.size(); ++i) {
+		if (!timers[i].has_value())
+			return static_cast<int>(i);
+	}
+	timers.emplace_back();
+	if (VERBOSE) {
+		LOG_INFO("New timer slot allocated: %zu", timers.size() - 1);
+	}
+	return static_cast<int>(timers.size() - 1);
+}
 
-			if (VERBOSE) { wrlog("Timer %d duration %f + Current: %d  cpuclock %d", x, timer[x].period, cpu_getcycles(timer[x].cpu), Machine->gamedrv->cpu_freq[(int8_t)param & 0x0f] ); }
-			timer[x].enabled = 1;
-			// If it's a one-shot timer, make sure to set that.
-			if (param > 0xff)
-			{
-				// Check that we're not setting a one shot timer (usually draw time) greater then the cycles
-				// left in the current frame. This fixes tempest and other vector games.
-				// This isn't how tempest works in the real world, but we need a frame to end somewhere.
-				// This should be cycles reemaining??? Like, get_cycles_remaining();
-				//int cycles = (Machine->drv->cpu[timer[x].cpu].cpu_clock / Machine->drv->frames_per_second);
-				//int cycles = (Machine->gamedrv->cpu_freq [timer[x].cpu] / Machine->gamedrv->fps);
-				//if (timer[x].period > cycles)
-			//	{
-				//	timer[x].period = cycles; // 20 picked randomly!
-				//	if (VERBOSE) 
-				//	{
-					//	wrlog("New timer with Cycles at %f on cpu: %d out of total cycles: %d ", timer[x].period, timer[x].cpu,cycles); 
-				//	}
-				//}
-				timer[x].expire = 1;
-				if (VERBOSE) { wrlog("Previous timer was a oneshot."); }
-			}
-			timer[x].count = 0; //Randomize the start a little bit so two timers don't fire at the same time?
-			timer[x].callback = callback;
-			timer[x].callback_param = data;
-			check = 1;
-			return x;
+int timer_set(double duration, int param, int data, std::function<void(int)> callback)
+{
+	if (!callback) return -1;
+
+	int index = timer_allocate_slot();
+	auto& timer = timers[index].emplace();
+
+	timer.cpu = param & 0x0f;
+	timer.period = Machine->gamedrv->cpu_freq[timer.cpu] * duration;
+	timer.count = 0;
+	timer.callback = std::move(callback);
+	timer.callback_param = data;
+	timer.one_shot = (param > 0xff);
+	timer.enabled = true;
+
+	if (VERBOSE) {
+		LOG_INFO("Timer %d set: CPU %d, period %f, one_shot %d", index, timer.cpu, timer.period, timer.one_shot);
+	}
+
+	return index;
+}
+
+int timer_set(double duration, int param, std::function<void(int)> callback)
+{
+	return timer_set(duration, param, 0, std::move(callback));
+}
+
+int timer_pulse(double duration, int param, std::function<void(int)> callback)
+{
+	return timer_set(duration, ONE_SHOT + param, 0, std::move(callback));
+}
+
+int timer_pulse(double duration, int param, int data, std::function<void(int)> callback)
+{
+	return timer_set(duration, ONE_SHOT + param, data, std::move(callback));
+}
+
+void timer_remove(int id)
+{
+	if (id >= 0 && id < static_cast<int>(timers.size())) {
+		if (VERBOSE) {
+			LOG_INFO("Timer %d removed", id);
+		}
+		timers[id] = std::nullopt;
+	}
+}
+
+void timer_reset(int id, double)
+{
+	if (id >= 0 && id < static_cast<int>(timers.size()) && timers[id].has_value()) {
+		timers[id]->count = 0;
+		if (VERBOSE) {
+			LOG_INFO("Timer %d reset", id);
 		}
 	}
-	if (check == 0) { wrlog("------ERROR!!! NO FREE TIMERS FOUND, SOMETHING IS SERIOUSLY WRONG!!--------"); }
-	//Return timer number so you can keep it for deletion later.
-	return 0;
+}
+
+int timer_is_timer_enabled(int id)
+{
+	return (id >= 0 && id < static_cast<int>(timers.size()) && timers[id].has_value() && timers[id]->enabled);
 }
 
 void timer_update(int cycles, int cpunum)
 {
-	int x;
+	for (size_t i = 0; i < timers.size(); ++i) {
+		auto& opt_timer = timers[i];
 
-	for (x = 0; x < MAX_TIMERS; x++)
-	{
-		if (timer[x].enabled)
+		if (!opt_timer || !opt_timer->enabled || opt_timer->cpu != cpunum)
+			continue;
+
+		auto& t = *opt_timer;
+		t.count += cycles;
+
+		if (VERBOSE) {
+			LOG_INFO("Timer %zu update: count = %f, period = %f", i, t.count, t.period);
+		}
+
+		if (t.count >= t.period)
 		{
-			//Only do stuff if it's enabled and timed from this cpu, duh.
-			if (timer[x].cpu == cpunum)
-			{
-				timer[x].count += cycles;
-				 //if (x > 1) wrlog("Timer %d update to %f cycles", x,timer[x].count);
+			if (VERBOSE) {
+				LOG_INFO("Timer %zu fired on CPU %d", i, t.cpu);
+			}
 
-				if (timer[x].count >= timer[x].period)
-				{
-					if (VERBOSE) { wrlog("Timer %d fired at %f + %d on cpu %d", x, timer[x].count, cpu_getcycles(timer[x].cpu), timer[x].cpu); }
-					timer[x].count = 0;// timer[x].count - timer[x].period; //Count leftover cycles as passed
-					if (timer[x].callback) { (timer[x].callback)(timer[x].callback_param); }
+			t.count = 0;
+			if (t.callback) t.callback(t.callback_param);
 
-					//If this is a one shot timer, clear it. Else keep it around
-					if (timer[x].expire == 1)
-					{
-						if (VERBOSE) { wrlog("timer %d removed", x); }
-						timer_remove(x);
-					}
-				}
+			if (t.one_shot) {
+				timer_remove(static_cast<int>(i));
 			}
 		}
 	}
@@ -154,66 +160,37 @@ void timer_update(int cycles, int cpunum)
 
 void timer_cpu_reset(int cpunum)
 {
-	int x;
-	for (x = 1; x < MAX_TIMERS; x++)
-	{
-		if (timer[x].cpu == cpunum)
-		{
-			timer[x].count = 0;
+	for (size_t i = 0; i < timers.size(); ++i) {
+		auto& opt_timer = timers[i];
+		if (opt_timer && opt_timer->cpu == cpunum) {
+			opt_timer->count = 0;
+			if (VERBOSE) {
+				LOG_INFO("Timer %zu reset for CPU %d", i, cpunum);
+			}
 		}
 	}
 }
 
-int  timer_is_timer_enabled(int timer_number)
-{
-	return timer[timer_number].enabled;
-}
-
-//This was written specifically for the watchdog, to reset it every frame.
-void timer_reset(int timer_number, double duration)
-{
-	//wrlog("WATCHDOG TIMER RESET, NUMBER #%d--------------------", timer_number);
-	if (timer[timer_number].enabled)
-		timer[timer_number].count = 0;
-}
-
-//
-int timer_pulse(double duration, int param, void(*callback)(int))
-{
-	int t = timer_set(duration, ONE_SHOT + param, 0, callback);
-	return t;
-}
-
-int timer_set(double duration, int param, void(*callback)(int))
-{
-	int t = timer_set(duration, param, 0, callback);
-	return t;
-}
-
-int timer_pulse(double duration, int param, int data, void(*callback)(int))
-{
-	int t = timer_set(duration, ONE_SHOT + param, data, callback);
-	return t;
-}
-
 void timer_clear_all_eof()
 {
-	int x;
-	for (x = 0; x < MAX_TIMERS; x++)
-	{
-		if (timer[x].enabled)
-		{
-			timer[x].count = 0;
+	for (size_t i = 0; i < timers.size(); ++i) {
+		if (timers[i]) {
+			timers[i]->count = 0;
+			if (VERBOSE) {
+				LOG_INFO("Timer %zu count cleared (EOF)", i);
+			}
 		}
 	}
 }
 
 void timer_clear_end_of_game()
 {
-	int x;
-	for (x = 0; x < MAX_TIMERS; x++)
-	{
-		timer_remove(x);
+	for (size_t i = 0; i < timers.size(); ++i) {
+		if (timers[i]) {
+			timers[i] = std::nullopt;
+			if (VERBOSE) {
+				LOG_INFO("Timer %zu cleared (end of game)", i);
+			}
+		}
 	}
-
 }

@@ -47,11 +47,11 @@ int pokey_sh_start(struct POKEYinterface* intfa)
 	sample_pos = 0;
 
 	//channel = get_play_channels(1);
-	wrlog("Pokey Stream Size start %d", (16 / 8) * buffer_len);
+	LOG_INFO("Pokey Stream Size start %d", (16 / 8) * buffer_len);
 	
 	if ((buffer = (short *)malloc(buffer_len * 2 )) == 0)
 	{
-		wrlog("Pokey Buffer Error");
+		LOG_INFO("Pokey Buffer Error");
 		return 1;
 	}
 
@@ -78,7 +78,7 @@ void pokey_sh_stop(void)
 	pokey_sound_stop();
 	stream_stop(0, 0);
 	free(buffer);
-	wrlog("Pokey Buffer Memory Freed");
+	LOG_INFO("Pokey Buffer Memory Freed");
 }
 
 static void update_pokeys(void)
@@ -111,7 +111,7 @@ static void update_pokeys(void)
 
 int Read_pokey_regs(uint16 addr, uint8 chip)
 {
-	//wrlog("Pokey #%d read from register %02x\n", chip, addr);
+	//LOG_INFO("Pokey #%d read from register %02x\n", chip, addr);
 
 	switch (addr & 0x0f)
 	{
@@ -149,11 +149,11 @@ int Read_pokey_regs(uint16 addr, uint8 chip)
 		if (rng[chip]) {
 			pokey_random[chip] = (pokey_random[chip] >> 4) | (rand() & 0xf0);
 		}
-	//	wrlog( "RNG #%d data: %02x\n", chip, pokey_random[chip]);
+	//	LOG_INFO( "RNG #%d data: %02x\n", chip, pokey_random[chip]);
 		return pokey_random[chip];
 		break;
 	default:
-		//wrlog( "Pokey #%d read from register %02x\n", chip, addr);
+		//LOG_INFO( "Pokey #%d read from register %02x\n", chip, addr);
 		return 0;
 		break;
 	}
@@ -193,7 +193,7 @@ int quad_pokey_r(int offset)
 
 void pokey1_w(int offset, int data)
 {
-	//wrlog("Pokey 1 write  #%d to register %02x\n", data, offset);
+	//LOG_INFO("Pokey 1 write  #%d to register %02x\n", data, offset);
 	update_pokeys();
 	Update_pokey_sound(offset, data, 0, intf->gain);
 }

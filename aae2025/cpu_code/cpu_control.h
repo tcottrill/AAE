@@ -120,6 +120,7 @@ void add_eterna_ticks(int cpunum, int ticks);
 int get_eterna_ticks(int cpunum);
 int get_video_ticks(int val);
 
+void cpu_needs_reset(int cpunum);
 void cpu_reset(int cpunum);
 void cpu_reset_all();
 int get_active_cpu();
@@ -147,9 +148,11 @@ void cpu_clear_pending_int(int int_type, int cpunum);
 int cpu_getiloops(void);
 int cpu_exec_now(int cpu, int cycles);
 void cpu_run(void);
-
 void free_cpu_memory();
+void cpu_enable(int cpunum, int val);
 
+void interrupt_enable_w(UINT32 address, UINT8 data, struct MemoryWriteByte* pMemWrite);
+void interrupt_vector_w(UINT32 address, UINT8 data, struct MemoryWriteByte* pMemWrite);
 
 //Watchdog Defines from cpu_handler.cpp
 extern void watchdog_reset_w(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite);

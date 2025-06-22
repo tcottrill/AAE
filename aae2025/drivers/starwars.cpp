@@ -126,20 +126,20 @@ void bank_switch_read(int address, int result)
 	if (new_bank != current_bank)
 	{
 		current_bank = new_bank;
-		//wrlog("Bank switch read to %d bank Result %04x, new bank %d OPCODE: %02X", current_bank, result, new_bank, m_cpu_6809[0]->get_last_ireg());
-	//	wrlog("Bank switch read to %d bank", current_bank);
+		//LOG_INFO("Bank switch read to %d bank Result %04x, new bank %d OPCODE: %02X", current_bank, result, new_bank, m_cpu_6809[0]->get_last_ireg());
+	//	LOG_INFO("Bank switch read to %d bank", current_bank);
 		memcpy(slapstic_base, &slapstic_source[current_bank * 0x2000], 0x2000);
 	}
 	//else
-	//	wrlog("Slapstic Read without Bank Switch %d bank, offset %04x, result %04x OPCODE: %0x", current_bank, address, result, m_cpu_6809[0]->get_last_ireg());
-		//wrlog("Slapstic Read without Bank Switch %d bank, offset %04x, result %04x\n", current_bank, address, result);
+	//	LOG_INFO("Slapstic Read without Bank Switch %d bank, offset %04x, result %04x OPCODE: %0x", current_bank, address, result, m_cpu_6809[0]->get_last_ireg());
+		//LOG_INFO("Slapstic Read without Bank Switch %d bank, offset %04x, result %04x\n", current_bank, address, result);
 }
 
 READ_HANDLER(esb_slapstic_r)
 {
 	int result = slapstic_base[address];
 
-	//wrlog("Slapstic Read Called, CPU %x, PC: %04x, PPC %04x, OPCODE: %02X", get_active_cpu(),m_cpu_6809[0]->get_pc(), m_cpu_6809[0]->ppc, this_opcode);
+	//LOG_INFO("Slapstic Read Called, CPU %x, PC: %04x, PPC %04x, OPCODE: %02X", get_active_cpu(),m_cpu_6809[0]->get_pc(), m_cpu_6809[0]->ppc, this_opcode);
 
 	if (slapstic_en) bank_switch_read(address, result);
 
@@ -157,10 +157,10 @@ WRITE_HANDLER(esb_slapstic_w)
 	if (new_bank != current_bank)
 	{
 		current_bank = new_bank;
-		//wrlog("Bank switch write to %d bank", current_bank);
+		//LOG_INFO("Bank switch write to %d bank", current_bank);
 		memcpy(slapstic_base, &slapstic_source[current_bank * 0x2000], 0x2000);
 	}
-	//else wrlog("Slapstic Write without Bank Switch %d bank\n", current_bank);
+	//else LOG_INFO("Slapstic Write without Bank Switch %d bank\n", current_bank);
 }
 
 static int esb_setopbase(int address)
@@ -179,7 +179,7 @@ static int esb_setopbase(int address)
 	{
 		esb_slapstic_r(address & 0x1fff, 0);
 
-		//wrlog("Slapstick in: PrevPC: %04x, address: %04x address adj: %04x, bank %d opcode %x", prevpc, address, (address & 0x1fff), current_bank, m_cpu_6809[0]->get_last_ireg());
+		//LOG_INFO("Slapstick in: PrevPC: %04x, address: %04x address adj: %04x, bank %d opcode %x", prevpc, address, (address & 0x1fff), current_bank, m_cpu_6809[0]->get_last_ireg());
 		/* make sure we catch the next branch as well */
 		//catch_nextBranch = 1;
 		return -1;
@@ -188,10 +188,10 @@ static int esb_setopbase(int address)
 	/* if we're jumping out of the slapstic region, tweak the previous PC */
 	else if ((prevpc & 0xe000) == 0x8000)
 	{
-		//wrlog("Slapstick exit: PrevPC: %04x, PrevPC Adj: %04x address: %04x, bank %d OPcode %x", prevpc, (prevpc & 0xe000), address, current_bank , m_cpu_6809[0]->get_last_ireg());
+		//LOG_INFO("Slapstick exit: PrevPC: %04x, PrevPC Adj: %04x address: %04x, bank %d OPcode %x", prevpc, (prevpc & 0xe000), address, current_bank , m_cpu_6809[0]->get_last_ireg());
 		if (prevpc != 0x8080 && prevpc != 0x8090 && prevpc != 0x80a0 && prevpc != 0x80b0)
 		{
-			//wrlog("Calling esb_slapstic_read from esb_setopbase jump out");
+			//LOG_INFO("Calling esb_slapstic_read from esb_setopbase jump out");
 			esb_slapstic_r(prevpc & 0x1fff, 0);
 		}
 	}

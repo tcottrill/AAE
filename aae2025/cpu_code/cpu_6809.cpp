@@ -155,7 +155,7 @@ uint8_t cpu_6809::get6809memory(uint16_t addr)
 	{
 		if ((addr >= MemRead->lowAddr) && (addr <= MemRead->highAddr))
 		{
-			//if  (cpu_num) wrlog("Reading from address: %x", addr);
+			//if  (cpu_num) LOG_INFO("Reading from address: %x", addr);
 			if (MemRead->memoryCall)
 			{
 				temp = MemRead->memoryCall(addr - MemRead->lowAddr, MemRead);
@@ -172,12 +172,12 @@ uint8_t cpu_6809::get6809memory(uint16_t addr)
 	// Add blocking here
 	if (MemRead && !mmem)
 	{
-		//wrlog("Reading from address: %x", addr);
+		//LOG_INFO("Reading from address: %x", addr);
 		temp = MEM[addr];
 	}
 	if (MemRead && mmem)
 	{
-		if (log_debug_rw) wrlog("Warning! Unhandled Read at %x", addr);
+		if (log_debug_rw) LOG_INFO("Warning! Unhandled Read at %x", addr);
 	}
 
 	return temp;
@@ -192,7 +192,7 @@ void cpu_6809::put6809memory(uint16_t addr, uint8_t byte)
 	{
 		if ((addr >= MemWrite->lowAddr) && (addr <= MemWrite->highAddr))
 		{
-			//if (cpu_num) wrlog("Writing to address: %x data: %x", addr, byte);
+			//if (cpu_num) LOG_INFO("Writing to address: %x data: %x", addr, byte);
 			if (MemWrite->memoryCall)
 			{
 				MemWrite->memoryCall(addr - MemWrite->lowAddr, byte, MemWrite);
@@ -213,7 +213,7 @@ void cpu_6809::put6809memory(uint16_t addr, uint8_t byte)
 	}
 	if (MemWrite && mmem)
 	{
-		if (log_debug_rw) wrlog("Warning! Unhandled Write at %x data: %x", addr, byte);
+		if (log_debug_rw) LOG_INFO("Warning! Unhandled Write at %x data: %x", addr, byte);
 	}
 }
 
@@ -244,7 +244,7 @@ uint16_t cpu_6809::get_ppc()
 
 void cpu_6809::set_pc(uint16_t newpc)
 {
-	//wrlog(" Current PCREG %X Setting new PC %x", pcreg, newpc);
+	//LOG_INFO(" Current PCREG %X Setting new PC %x", pcreg, newpc);
 	pcreg = newpc;
 }
 
@@ -252,7 +252,7 @@ void cpu_6809::change_pc(uint16_t pcreg)
 {
 	if (cpu_num > 0) return;
 
-	//wrlog("PC at ChangePC is %x", pcreg);
+	//LOG_INFO("PC at ChangePC is %x", pcreg);
 	//change_pc_called = 1;
 	slapstic_en = 1;
 	if (m6809_slapstic) cpu_setOPbase16(pcreg);
@@ -3481,9 +3481,9 @@ int cpu_6809::exec6809(int cycles)
 			if (cpu_num == 0 && logging)
 			{
 				Dasm6809(tempbuffer, pcreg);
-				//wrlog("M6809#%d Slapstic, Bank %d, PC %04X,  X REG %04x", get_active_cpu(), last_starwars_bank, pcreg, xreg);
-				//wrlog("%04X: %s  $%04X XREG:%X IREG: %x AREG: %x DREG: %04X", ppc, tempbuffer, M_RDMEM_WORD(pcreg), xreg, ireg, areg, GETDREG);
-				//wrlog("Flags: CC:%x F:%X , I:%X ,N:%x, Z:%x, C:%x", cc, (cc >> 6) & 1, (cc >> 4) & 1, (cc >> 3) & 1, (cc >> 2) & 1, cc & 1);
+				//LOG_INFO("M6809#%d Slapstic, Bank %d, PC %04X,  X REG %04x", get_active_cpu(), last_starwars_bank, pcreg, xreg);
+				//LOG_INFO("%04X: %s  $%04X XREG:%X IREG: %x AREG: %x DREG: %04X", ppc, tempbuffer, M_RDMEM_WORD(pcreg), xreg, ireg, areg, GETDREG);
+				//LOG_INFO("Flags: CC:%x F:%X , I:%X ,N:%x, Z:%x, C:%x", cc, (cc >> 6) & 1, (cc >> 4) & 1, (cc >> 3) & 1, (cc >> 2) & 1, cc & 1);
 			}
 
 			switch (ireg)

@@ -22,6 +22,7 @@ int init_speedfrk();
 int init_demon();
 int init_boxingb();
 int init_wotw();
+int init_qb3();
 
 
 

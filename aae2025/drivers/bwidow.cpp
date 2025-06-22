@@ -125,7 +125,7 @@ WRITE_HANDLER(irq_ack_w)
 
 WRITE_HANDLER(avgdvg_reset_w)
 {
-//	wrlog("AVG RESET");
+//	LOG_INFO("AVG RESET");
 }
 
 WRITE_HANDLER(bwidow_misc_w)
