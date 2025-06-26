@@ -1751,6 +1751,8 @@ void check_video_menu()
 
 void save_video_menu()
 {
+	LOG_DEBUG("SAVE VIDEO MENU CALLED");
+
 	int x = 0;
 	int y = 0;
 	/*

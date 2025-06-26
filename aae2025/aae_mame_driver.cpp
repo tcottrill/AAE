@@ -50,5 +50,5 @@ int mouseb[5]; // Only used by the gui and Tempest
 // Currrently  used by Major Havoc and Asteroids Video.
 int total_length;
 
-settings config;
+
 

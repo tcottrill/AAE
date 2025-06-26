@@ -50,6 +50,7 @@ int osd_fwrite(void *file, const void *buffer, int length);
 int osd_fseek(void *file, int offset, int whence);
 unsigned int osd_fcrc(void *file);
 void osd_fclose(void *file);
+
 //From inputport.cpp, all file ops should be together!
 int readint(void *f, UINT32 *num);
 void writeint(void *f, UINT32 num);

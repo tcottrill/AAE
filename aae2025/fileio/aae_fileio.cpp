@@ -11,6 +11,7 @@
 #include "loaders.h"
 #include "gameroms.h"
 #include "sha-1.h"
+#include <filesystem> 
 
 #define DEBUG_LOG 1
 
@@ -28,6 +29,16 @@ uint32_t last_zip_crc = 0;
 int get_last_crc() { return last_zip_crc; }
 unsigned int get_last_file_size() { return filesz; }
 unsigned int get_last_zip_file_size() { return uncomp_size; }
+
+bool file_exists(const std::string& filename) 
+{
+    return std::filesystem::exists(filename) && std::filesystem::is_regular_file(filename);
+}
+
+bool file_exists(const char* filename)
+{
+    return file_exists(std::string(filename));
+}
 
 int getFileSize(FILE* input) {
     fseek(input, 0, SEEK_END);

@@ -196,23 +196,10 @@ void set_ortho(GLint width, GLint height)
 
 int init_gl(void)
 {
-	GLint texSize;
-
 	static int init_one = 0;
 
 	if (!init_one)
 	{
-		
-		glGetIntegerv(GL_MAX_TEXTURE_SIZE, &texSize);
-		LOG_INFO("Max Texture Size supported by this card: %dx%d", texSize, texSize);
-		if (texSize < 1024)  LOG_INFO("Warning!! Your card does not support a large enough texture size to run this emulator!!!!");
-		glGetIntegerv(GL_MAX_COLOR_ATTACHMENTS_EXT, &texSize);
-		LOG_INFO("Max number of color buffers per fbo supported on this card: %d", texSize);
-		//Extensions Check
-		
-		if (wglewIsSupported("GL_ARB_texture_filter_anisotropic")) { LOG_INFO("Anisotropic Filtering Supported"); }
-
-		if (wglewIsSupported("WGL_ARB_multisample")) 	{ LOG_INFO("ARB_Multisample Extension Supported"); }
 				
 		if (config.forcesync)
 		{
@@ -379,27 +366,6 @@ void free_game_textures()
 	glDeleteTextures(1, &art_tex[3]);
 }
 
-void GLCheckError(const char* call)
-{
-	GLenum errcode = glGetError();
-
-	char enums[][20] =
-	{
-		"invalid enumeration", // GL_INVALID_ENUM
-		"invalid value",       // GL_INVALID_VALUE
-		"invalid operation",   // GL_INVALID_OPERATION
-		"stack overflow",      // GL_STACK_OVERFLOW
-		"stack underflow",     // GL_STACK_UNDERFLOW
-		"out of memory"        // GL_OUT_OF_MEMORY
-	};
-		
-	if (errcode == GL_NO_ERROR)
-		return;
-
-	errcode -= GL_INVALID_ENUM;
-	LOG_ERROR("OpenGL %s in '%s'", enums[errcode], call);
-}
-
 void set_render_fbo4()
 {
 	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo4);
@@ -422,22 +388,12 @@ void set_render_fbo4()
 void end_render_fbo4()
 {
 	//Set Ortho to 1024, and drawing to backbuffer
-
-	int err = glGetError();
-	if (err != 0)
-	{
-		LOG_ERROR("openglerror in end_render_fbo_a: %d", err);
-	}
-
+	check_gl_error_named("end_render_fbo_a");
 	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);
 	glDrawBuffer(GL_BACK);
 	set_texture(&img4a, 1, 0, 1, 0);
 	screen_rect.Render(1.33f);
-	err = glGetError();
-	if (err != 0)
-	{
-		LOG_ERROR("openglerror in end_render_fbo_b: %d", err);
-	}
+	check_gl_error_named("end_render_fbo_b");
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -463,7 +419,7 @@ void copy_main_img_to_fbo2()
 	//LOG_INFO("Debug Remove : img_copy to FBO2 2.5");
 	bind_shader(fragBlur);
 	//LOG_INFO("Debug Remove : img_copy to FBO2 2.6");
-	int err = glGetError();	if (err != 0) 	{ LOG_ERROR("openglerror in copy_main_img_to_fbo2: %d", err);	}
+	check_gl_error_named("copy_main_img_to_fbo2");
 	set_uniform1i(fragBlur, "colorMap", fbo2_tex);
 	//LOG_INFO("Debug Remove : img_copy to FBO2 2.6A");
 	set_uniform1f(fragBlur, "width", 512.0f);

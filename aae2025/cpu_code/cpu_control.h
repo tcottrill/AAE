@@ -134,6 +134,7 @@ int cpu_getcurrentframe();
 void cpu_do_int_imm(int cpunum, int int_type);
 void cpu_do_interrupt(int int_type, int cpunum);
 
+int get_exact_cyclecount(int cpu);
 void cpu_clear_cyclecount(int cpunum);
 void cpu_clear_cyclecount_eof();
 int cpu_getcycles_cpu(int cpu);

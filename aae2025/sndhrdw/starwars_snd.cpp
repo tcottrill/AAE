@@ -25,9 +25,9 @@ See drivers\starwars.c for notes
 ***************************************************************************/
 
 #include "aae_mame_driver.h"
-#include "pokyintf.h"
+#include "aae_pokey.h"
 #include "starwars_snd.h"
-#include "5220intf.h"
+#include "tms5220.h"
 
 #define SNDDEBUG 0
 #define FIFODEBUG 0

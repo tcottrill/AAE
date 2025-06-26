@@ -1,7 +1,3 @@
-//#include "stdio.h" //Required for vsprintf
-//#include "fonts.h"
-//#include "glcode.h"
-//#include "gl_texturing.h" //For font_tex[1]  ??? why not have it here?
 
 #include <cstdio>
 #include <cstdarg>

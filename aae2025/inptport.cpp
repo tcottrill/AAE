@@ -30,7 +30,6 @@ TODO:	remove the 1 analog device per port limitation
 #include "osdepend.h"
 #include "os_input.h"
 
-//#include "driver.h"
 
 /* Use the MRU code for 4way joysticks */
 #define MRU_JOYSTICK
@@ -38,14 +37,6 @@ TODO:	remove the 1 analog device per port limitation
 /* header identifying the version of the game.cfg file */
 #define MAMECFGSTRING "MAMECFG\4"
 #define MAMEDEFSTRING "MAMEDEF\3"
-
-extern void* record;
-extern void* playback;
-
-extern unsigned int dispensed_tickets;
-extern unsigned int coins[COIN_COUNTERS];
-extern unsigned int lastcoin[COIN_COUNTERS];
-extern unsigned int coinlockedout[COIN_COUNTERS];
 
 static unsigned short input_port_value[MAX_INPUT_PORTS];
 static unsigned short input_vblank[MAX_INPUT_PORTS];
@@ -309,71 +300,6 @@ struct ipd inputport_defaults[] =
 	{ IPT_UNKNOWN,             "UNKNOWN",         IP_KEY_NONE,     IP_JOY_NONE },
 	{ IPT_END,                 0,                 0,     0 }	/* returned when there is no match */
 };
-
-static int readint(void* f, UINT32* num)
-{
-	int i;
-
-	*num = 0;
-	for (i = 0; i < sizeof(UINT32); i++)
-	{
-		unsigned char c;
-
-		*num <<= 8;
-		if (osd_fread(f, &c, 1) != 1)
-			return -1;
-		*num |= c;
-	}
-
-	return 0;
-}
-
-static void writeint(void* f, UINT32 num)
-{
-	int i;
-
-	for (i = 0; i < sizeof(UINT32); i++)
-	{
-		unsigned char c;
-
-		c = (num >> 8 * (sizeof(UINT32) - 1)) & 0xff;
-		osd_fwrite(f, &c, 1);
-		num <<= 8;
-	}
-}
-
-static int readword(void* f, UINT16* num)
-{
-	int i, res;
-
-	res = 0;
-	for (i = 0; i < sizeof(UINT16); i++)
-	{
-		unsigned char c;
-
-		res <<= 8;
-		if (osd_fread(f, &c, 1) != 1)
-			return -1;
-		res |= c;
-	}
-
-	*num = res;
-	return 0;
-}
-
-static void writeword(void* f, UINT16 num)
-{
-	int i;
-
-	for (i = 0; i < sizeof(UINT16); i++)
-	{
-		unsigned char c;
-
-		c = (num >> 8 * (sizeof(UINT16) - 1)) & 0xff;
-		osd_fwrite(f, &c, 1);
-		num <<= 8;
-	}
-}
 
 static void load_default_keys(void)
 {

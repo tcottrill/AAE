@@ -17,7 +17,7 @@
 #include "cpu_control.h"
 #include "aae_avg.h"
 #include "earom.h"
-#include "pokyintf.h"
+#include "aae_pokey.h"
 #include "math.h"
 #include "timer.h"
 

@@ -60,9 +60,6 @@
     <ClInclude Include="sys_window\framework.h">
       <Filter>Source Files\sys_window</Filter>
     </ClInclude>
-    <ClInclude Include="sys_window\sys_ini.h">
-      <Filter>Source Files\sys_window</Filter>
-    </ClInclude>
     <ClInclude Include="sys_video\rotation_table.h">
       <Filter>Source Files\sys_video</Filter>
     </ClInclude>
@@ -173,9 +170,6 @@
     </ClInclude>
     <ClInclude Include="machine\SegaG80crypt.h">
       <Filter>Source Files\machine</Filter>
-    </ClInclude>
-    <ClInclude Include="sndhrdw\5220intf.h">
-      <Filter>Source Files\sndhrdw</Filter>
     </ClInclude>
     <ClInclude Include="sndhrdw\ay8910.h">
       <Filter>Source Files\sndhrdw</Filter>
@@ -300,12 +294,6 @@
     <ClInclude Include="gui\gui.h">
       <Filter>Source Files\gui</Filter>
     </ClInclude>
-    <ClInclude Include="sndhrdw\pokey.h">
-      <Filter>Source Files\sndhrdw</Filter>
-    </ClInclude>
-    <ClInclude Include="sndhrdw\pokyintf.h">
-      <Filter>Source Files\sndhrdw</Filter>
-    </ClInclude>
     <ClInclude Include="sys_audio\wav_resample.h">
       <Filter>Source Files\sys_audio</Filter>
     </ClInclude>
@@ -384,9 +372,6 @@
     <ClInclude Include="vidhrdwr\rallyx_vid.h">
       <Filter>Source Files\vidhrdwr</Filter>
     </ClInclude>
-    <ClInclude Include="sys_video\fboclass.h">
-      <Filter>Source Files\sys_video</Filter>
-    </ClInclude>
     <ClInclude Include="sys_video\shader_definitions.h">
       <Filter>Source Files\sys_video</Filter>
     </ClInclude>
@@ -396,15 +381,18 @@
     <ClInclude Include="sys_audio\wav_file.h">
       <Filter>Source Files\sys_audio</Filter>
     </ClInclude>
+    <ClInclude Include="sys_window\iniFile.h">
+      <Filter>Source Files\sys_window</Filter>
+    </ClInclude>
+    <ClInclude Include="sndhrdw\aae_pokey.h">
+      <Filter>Source Files\sndhrdw</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="sys_window\rawinput.cpp">
       <Filter>Source Files\sys_window</Filter>
     </ClCompile>
     <ClCompile Include="sys_window\winmain.cpp">
-      <Filter>Source Files\sys_window</Filter>
-    </ClCompile>
-    <ClCompile Include="sys_window\sys_ini.cpp">
       <Filter>Source Files\sys_window</Filter>
     </ClCompile>
     <ClCompile Include="sys_window\log.cpp">
@@ -503,9 +491,6 @@
     <ClCompile Include="machine\SegaG80crypt.cpp">
       <Filter>Source Files\machine</Filter>
     </ClCompile>
-    <ClCompile Include="sndhrdw\5220intf.cpp">
-      <Filter>Source Files\sndhrdw</Filter>
-    </ClCompile>
     <ClCompile Include="sndhrdw\ay8910.cpp">
       <Filter>Source Files\sndhrdw</Filter>
     </ClCompile>
@@ -593,12 +578,6 @@
     <ClCompile Include="gui\gui.cpp">
       <Filter>Source Files\gui</Filter>
     </ClCompile>
-    <ClCompile Include="sndhrdw\pokey.cpp">
-      <Filter>Source Files\sndhrdw</Filter>
-    </ClCompile>
-    <ClCompile Include="sndhrdw\pokyintf.cpp">
-      <Filter>Source Files\sndhrdw</Filter>
-    </ClCompile>
     <ClCompile Include="sys_audio\wav_resample.cpp">
       <Filter>Source Files\sys_audio</Filter>
     </ClCompile>
@@ -676,6 +655,12 @@
     </ClCompile>
     <ClCompile Include="sys_audio\wav_file.cpp">
       <Filter>Source Files\sys_audio</Filter>
+    </ClCompile>
+    <ClCompile Include="sys_window\iniFile.cpp">
+      <Filter>Source Files\sys_window</Filter>
+    </ClCompile>
+    <ClCompile Include="sndhrdw\aae_pokey.cpp">
+      <Filter>Source Files\sndhrdw</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

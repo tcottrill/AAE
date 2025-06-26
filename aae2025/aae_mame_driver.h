@@ -33,6 +33,7 @@
 #include "emu_vector_draw.h"
 
 
+
 typedef struct {
 	int next; // index of next entry in array
 	int prev; // previous entry (if double-linked)
@@ -61,9 +62,6 @@ extern int gamenum;
 
 
 #define str_eq(s1,s2)  (!strcmp ((s1),(s2))); //Equate string1 and sring2 true is equal
-
-//#define EPSILON 0.0001   // Define your own tolerance
-//#define FLOAT_EQ(x,v) (((v - EPSILON) < x) && (x <( v + EPSILON)))
 
 //Replace this with the correct one.
 #define twos_comp_val(num,bits) ((num&(1<<(bits-1)))?(num|~((1<<bits)-1)):(num&((1<<bits)-1)))
@@ -210,13 +208,6 @@ extern int gamenum;
 
 // STRUCTS AND GLOBAL VARIABLES START HERE
 
-/*
-void swap(int* x, int* y) {
-	int temp = *x;
-	*x = *y;
-	*y = temp;
-}
-*/
 struct rectangle
 {
 	int min_x, max_x;
@@ -262,7 +253,7 @@ struct AAEDriver
 	struct rectangle visible_area;
 	// Raster code requirements are below.
 	struct GfxDecodeInfo* gfxdecodeinfo;
-	unsigned int total_colors;	/* palette is 3*total_colors bytes long */
+	unsigned int total_colors;	/* palette is 3 * total_colors bytes long */
 	unsigned int color_table_len;	/* length in shorts of the color lookup table */
 	void (*vh_convert_color_prom)(unsigned char* palette, unsigned char* colortable, const unsigned char* color_prom);
 	//
@@ -283,25 +274,17 @@ struct RunningMachine
 	
 	struct GfxElement* gfx[MAX_GFX_ELEMENTS];	/* graphic sets (chars, sprites) */
 	struct osd_bitmap* scrbitmap;	/* bitmap to draw into */
-	unsigned char pens[MAX_PENS];	/* remapped palette pen numbers. When you write */
-	/* directly to a bitmap, never use absolute values, */
-	/* use this array to get the pen number. For example, */
+	unsigned char pens[MAX_PENS];	/* remapped palette pen numbers */
 	/* if you want to use color #6 in the palette, use */
 	/* pens[6] instead of just 6. */
-	unsigned short* colortable;	/* lookup table used to map gfx pen numbers */
-	/* to color numbers */
-	unsigned short* remapped_colortable;	/* the above, already remapped through */
-
+	unsigned short* colortable;	/* lookup table used to map gfx pen numbers to color numbers */
+	unsigned short* remapped_colortable;	/* the above, already remapped */
 	const struct AAEDriver* gamedrv;	/* contains the definition of the game machine */
 	const struct AAEDriver*drv;	/* same as gamedrv->drv */
 	//const struct MachineDriver* drv;	/* same as gamedrv->drv */
-	//struct GameSamples* samples;	/* samples loaded from disk */
 	struct InputPort* input_ports;	/* the input ports definition from the driver */
-	/* is copied here and modified (load settings from disk, */
-	/* remove cheat commands, and so on) */
 	int orientation;	/* see #defines in driver.h */
 	int vectortype;
-	//struct myrectangle absolute_visible_area;
 	int video_attributes;
 };
 
@@ -340,102 +323,31 @@ extern int num_samples; //Total number of samples for selected game
 extern int mouseb[5];
 extern int total_length;
 
-typedef struct {
-	char rompath[256];
-	char samplepath[256];
-	//int ksfps;
-	//int kquit;
-	int kreset;
-	int ktest;
-	int ktestadv;
-	int kpause;
-	int ksnap;
 
-	int drawzero;
-	int widescreen;
-	int overlay;
-	int colordepth;
-	int screenw;
-	int screenh;
-	int windowed;
-	int language;
-	int translucent;
-	float translevel;
-	int lives;
-
-	int m_line;
-	int m_point;
-	int monitor;
-
-	float linewidth;
-	float pointsize;
-
-	int gamma;
-	int bright;
-	int contrast;
-	int gain;
-	int fire_point_size;
-	int explode_point_size;
-	//int colorhack;
-	int shotsize;
-	int cocktail;
-	int mainvol;
-	int pokeyvol;
-	int artwork;
-	int bezel;
-	int burnin;
-	int artcrop;
-	int vid_rotate;
-	int vecglow;
-	int vectrail;
-
-	int psnoise;
-	int hvnoise;
-	int pshiss;
-	int noisevol;
-	int snappng;
-
-	char* aspect;
-	int prescale;
-	int anisfilter;
-	int priority;
-	int forcesync;
-	int dblbuffer;
-	int showinfo; //Show readme info message
-	char* exrompath; //optional path for roms
-	int hack;
-	int debug;
-	int debug_profile_code;
-	int audio_force_resample;
-	int kbleds;
-	int samplerate;
-}settings;
-
-extern settings config;
 
 struct GameOptions {
 	
 	int cheat;
-	int gui_host;
+	//int gui_host;
 
-	int samplerate;
-	int samplebits;
-	int use_samples;
-	int norotate;
-	int ror;
-	int rol;
-	int flipx;
-	int flipy;
-	int beam;
-	int flicker;
-	int translucency;
-	int antialias;
-	int use_artwork;
-	int use_overlay;
-	int use_bezel;
-	int bezel_crop;
-	int gl_line_width;
-	int vector_flicker;
+	//int samplerate;
+	//int samplebits;
+	//int use_samples;
+	//int norotate;
+	//int ror;
+	//int rol;
+	//int flipx;
+	//int flipy;
+	//int beam;
+	//int flicker;
+	//int translucency;
+	//int antialias;
+	//int use_artwork;
+	//int use_overlay;
+	//int use_bezel;
+	//int bezel_crop;
+	//int gl_line_width;
+	//int vector_flicker;
 };
 
 extern struct GameOptions options;

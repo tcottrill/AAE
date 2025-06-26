@@ -1,25 +1,27 @@
 //==========================================================================
-// AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME 
-// code, 0.29 through .90 mixed with code of my own. This emulator was 
-// created solely for my amusement and learning and is provided only 
-// as an archival experience. 
-// 
-// All MAME code used and abused in this emulator remains the copyright 
+// AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME
+// code, 0.29 through .90 mixed with code of my own. This emulator was
+// created solely for my amusement and learning and is provided only
+// as an archival experience.
+//
+// All MAME code used and abused in this emulator remains the copyright
 // of the dedicated people who spend countless hours creating it. All
 // MAME code should be annotated as belonging to the MAME TEAM.
-// 
-// THE CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.  
+//
+// THE CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.
 //==========================================================================
-
 
 #include "tempest.h"
 #include "aae_mame_driver.h"
 #include "aae_avg.h"
-#include "pokyintf.h"
+#include "aae_pokey.h"
 #include "earom.h"
 #include "mathbox.h"
 #include "timer.h"
 #include "glcode.h"
+
+#include "vector_fonts.h"
+
 //
 // Tempest Multigame Notes:
 // Tempest Multigame is Copyright 1999 Clay Cowgill, and provides a very nice menu system to run
@@ -315,12 +317,10 @@ static int INMENU = 0;
 static int tempprot = 1;
 static char* tbuffer = nullptr;
 
-
 void tempest_interrupt()
 {
 	cpu_do_int_imm(CPU0, INT_TYPE_INT);
 }
-
 
 static struct POKEYinterface pokey_interface =
 {
@@ -398,7 +398,6 @@ READ_HANDLER(pokey_2_tempest_read)
 	return val;
 }
 
-
 READ_HANDLER(TempestIN0read)
 {
 	int res;
@@ -448,22 +447,6 @@ WRITE_HANDLER(coin_write)
 	else { flipscreen = 0; }
 }
 
-WRITE_HANDLER(prot_w_1)
-{
-	Machine->memory_region[CPU0][0x011b] = 0;
-}
-
-WRITE_HANDLER(prot_w_2)
-{
-	Machine->memory_region[CPU0][0x011f] = 0;
-}
-
-WRITE_HANDLER(prot_w_3)
-{
-	Machine->memory_region[CPU0][0x0455] = 0;
-}
-
-
 //////////////////////////////////////////////////////////////////////////
 
 MEM_READ(TempestMenuRead)
@@ -479,9 +462,6 @@ MEM_ADDR(0x6070, 0x6070, MathboxHighbitRead)
 MEM_END
 
 MEM_WRITE(TempestMenuWrite)
-//MEM_ADDR(0x011b, 0x011b, prot_w_1)
-//MEM_ADDR(0x011f, 0x011f, prot_w_2)
-//MEM_ADDR(0x0455, 0x0455, prot_w_3)
 MEM_ADDR(0x0800, 0x080f, colorram_w)
 MEM_ADDR(0x60c0, 0x60cf, pokey_1_w)
 MEM_ADDR(0x60d0, 0x60df, pokey_2_w)
@@ -511,9 +491,6 @@ MEM_ADDR(0x6070, 0x6070, MathboxHighbitRead)
 MEM_END
 
 MEM_WRITE(TempestWrite)
-MEM_ADDR(0x011b, 0x011b, prot_w_1)
-MEM_ADDR(0x011f, 0x011f, prot_w_2)
-MEM_ADDR(0x0455, 0x0455, prot_w_3)
 MEM_ADDR(0x0800, 0x080f, colorram_w)
 MEM_ADDR(0x60c0, 0x60cf, pokey_1_w)
 MEM_ADDR(0x60d0, 0x60df, pokey_2_w)
@@ -532,7 +509,7 @@ MEM_END
 
 void run_tempest()
 {
-	watchdog_reset_w(0, 0, 0); // Required for protos.
+	watchdog_reset_w(0, 0, 0); // Required for protos.I should set this up so it is just here for those. 
 	pokey_sh_update();
 }
 
@@ -557,10 +534,8 @@ int init_tempestm()
 int init_tempest(void)
 {
 	pokey_sh_start(&pokey_interface);
-	init6502(TempestRead, TempestWrite , 0xffff, CPU0);
-
+	init6502(TempestRead, TempestWrite, 0xffff, CPU0);
 	cache_clear();
-
 	if (gamenum == TEMPTUBE ||
 		gamenum == TEMPEST1 ||
 		gamenum == TEMPEST2 ||
@@ -568,18 +543,17 @@ int init_tempest(void)
 		gamenum == VBRAKOUT ||
 		gamenum == TEMPEST)
 	{
-		
-		//LEVEL SELECTION HACK   (Does NOT Work on Protos)
-		if (config.hack) { Machine->memory_region[CPU0][0x90cd] = 0xea; Machine->memory_region[CPU0][0x90ce] = 0xea; }
+		if (config.hack) 
+		{ 
+			//LEVEL SELECTION HACK   (Does NOT Work on Protos)
+			Machine->memory_region[CPU0][0x9001] = 0xd1;
+			Machine->memory_region[CPU0][0x90cd] = 0xea; 
+			Machine->memory_region[CPU0][0x90ce] = 0xea; 
+		}
 	}
-
-	pokey_sh_start(&pokey_interface);
 	avg_start_tempest();
-
 	if (gamenum == VBRAKOUT) config.gain = 0;
-
 	//timer_set(TIME_IN_HZ(240), CPU0, tempest_interrupt);
-
 	return 0;
 }
 

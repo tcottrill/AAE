@@ -14,7 +14,7 @@
 #include "bwidow.h"
 #include "aae_avg.h"
 #include "earom.h"
-#include "pokyintf.h"
+#include "aae_pokey.h"
 #include "aae_mame_driver.h"
 #include "timer.h"
 

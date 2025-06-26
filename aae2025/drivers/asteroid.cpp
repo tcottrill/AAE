@@ -14,7 +14,7 @@
 #include "asteroid.h"
 #include "aae_mame_driver.h"
 #include "earom.h"
-#include "pokyintf.h"
+#include "aae_pokey.h"
 #include "acommon.h"
 #include "loaders.h"
 #include "old_mame_vecsim_dvg.h"

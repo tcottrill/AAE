@@ -190,6 +190,16 @@ Minor cleanup on the ay-8910 emulation.
 
 6/22/25 Updated to the latest Audio Engine code. Verified against several games, should be ok. Uploaded latest Mixer code to GitHub
 
+6/23/25-6/24/25 C++ 17 is now required for this code to compile, FYI. Reworked most of the config, updated and moved the config options out of the main header. Still more work to do, focused on fixing menu system issues. 
+Cleaned up and updated the emu_vector_draw code, I think there is a slight graphics improvement on the color games. Still slowly trudging toward opengl4, but there are a ton of other things to fix first, now that I have at least of most of the games emulated more or less correctly. 
+
+6/25/25
+Got sidetracked working on the pokey code. Merged the MAME pokeyintf code with the pokey, made a few changes and added more or less cycle accurate random generation similar but not the same as MAME.Verified that it passes the 150,000 point test in Tempest. Removed all the tempest protection hacks. 
+Added a new cpu function, get_exact_cycles(int cpu_num) which gives the exact cycle count for that frame/cpu.
+
+6/26/25
+Continued Opengl Updates and cleanup. Going to release a new version since there have been so many quality changes since the last release.
+ 
 
 
 

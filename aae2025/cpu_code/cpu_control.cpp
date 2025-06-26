@@ -153,7 +153,36 @@ void init68k(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct 
 	LOG_INFO("PC:%08X\tSP:%08X\n", m68k_get_reg(NULL, M68K_REG_PC), m68k_get_reg(NULL, M68K_REG_SP));
 }
 
+void special_tickcount_update_6502(int ticks, int cpu_num)
+{
+	cyclecount[cpu_num] += ticks;
+}
 
+int get_exact_cyclecount(int cpu)
+{
+	int ticks = 0;
+
+	//Run cycles depending on which cpu
+	switch (Machine->gamedrv->cpu_type[cpu])
+	{
+	case CPU_MZ80:
+		ticks = m_cpu_z80[cpu]->mz80GetElapsedTicks(0xff);
+		break;
+
+	case CPU_M6502:
+		ticks = m_cpu_6502[active_cpu]->get6502ticks(0xff);
+		break;
+
+	case CPU_8080:
+		ticks = m_cpu_i8080[cpu]->get_ticks(0xff);
+		break;
+
+	case CPU_M6809:
+		ticks = m_cpu_6809[cpu]->get6809ticks(0xff);
+		break;
+	}
+	return cyclecount[cpu] += ticks;
+}
 // **************************************************************************
 // Used by several games
 void add_eterna_ticks(int cpunum, int ticks)
@@ -565,6 +594,8 @@ int cpu_exec_now(int cpu, int cycles)
 		  	break;
 	}
 	// Update the cyclecount and the interrupt timers.
+	
+	//if (Machine->gamedrv->cpu_type[active_cpu] != CPU_M6502)
 	cyclecount[cpu] += ticks;
 	// NOTE THE CPU CODE ITSELF IS UPDATING THE TIMERS NOW, except for the 68000 and the 8080
 	//timer_update(ticks, active_cpu);
@@ -726,21 +757,21 @@ void cpu_clear_pending_int(int int_type, int cpunum)
 
 int cpu_scale_by_cycles(int val, int clock)
 {
-	float temp;
+	double temp;
 	int k;
 	int sclock = Machine->gamedrv->cpu_freq[active_cpu];
-	int current = tickcount[active_cpu];//cyclecount[active_cpu];  //totalcpu-1]; active_cpu was last
+	int current = get_exact_cyclecount(active_cpu);//cyclecount[active_cpu];  //totalcpu-1]; active_cpu was last  tickcount[active_cpu];//
 
 	//LOG_INFO(" Sound Update called, clock value: %d ", current);
 	int max = sclock / Machine->gamedrv->fps;
 	//LOG_INFO(" Clock  %d divided by FPS: %d is equal to value: %d",sclock,Machine->gamedrv->fps,max);
-	temp = ((float)current / (float)max);
-	if (temp > 1) temp = (float).99;
-
-	//LOG_INFO(" Current %d divided by MAX: %d is equal to value: %f",current,max,temp);
+	temp = ((double)current / (double)max);
+	if (temp > 1) temp = .99;
+	//LOG_INFO(" Current %d divided by MAX: %d is equal to value: %f", current, max, temp);
 	temp = val * temp;
+
 	k = (int)temp;
-	//LOG_INFO("Sound position %d",k);
+//	LOG_INFO("Sound position %d",k);
 	return k;
 }
 

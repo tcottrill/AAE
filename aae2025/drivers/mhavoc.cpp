@@ -14,9 +14,9 @@
 
 #include "mhavoc.h"
 #include "aae_mame_driver.h"
-#include "pokyintf.h"
+#include "aae_pokey.h"
 #include "earom.h"
-#include "5220intf.h"
+#include "tms5220.h"
 #include "loaders.h"
 #include "timer.h"
 #include "mhavoc_custom_video.h"
@@ -155,9 +155,9 @@ WRITE_HANDLER(dual_pokey_w)
 	int pokey_reg = (offset % 8) | control;
 
 	if (pokey_num == 0)
-		pokey1_w(pokey_reg, data);
+		pokey_1_w(pokey_reg, data, 0);
 	else
-		pokey2_w(pokey_reg, data);
+		pokey_2_w(pokey_reg, data, 0);
 }
 
 static int last_sample = 0;

@@ -199,12 +199,10 @@
     <ClInclude Include="os_input.h" />
     <ClInclude Include="path_helper.h" />
     <ClInclude Include="rand.h" />
-    <ClInclude Include="sndhrdw\5220intf.h" />
+    <ClInclude Include="sndhrdw\aae_pokey.h" />
     <ClInclude Include="sndhrdw\ay8910.h" />
     <ClInclude Include="sndhrdw\cinematronics_sound.h" />
     <ClInclude Include="sndhrdw\namco.h" />
-    <ClInclude Include="sndhrdw\pokey.h" />
-    <ClInclude Include="sndhrdw\pokyintf.h" />
     <ClInclude Include="sndhrdw\segag80snd.h" />
     <ClInclude Include="sndhrdw\starwars_snd.h" />
     <ClInclude Include="sndhrdw\tms5220.h" />
@@ -219,7 +217,6 @@
     <ClInclude Include="sys_audio\XAudio2Stream.h" />
     <ClInclude Include="sys_timer.h" />
     <ClInclude Include="sys_video\colordefs.h" />
-    <ClInclude Include="sys_video\fboclass.h" />
     <ClInclude Include="sys_video\fonts.h" />
     <ClInclude Include="sys_video\glcode.h" />
     <ClInclude Include="sys_video\glew.h" />
@@ -236,7 +233,7 @@
     <ClInclude Include="sys_video\vector_fonts.h" />
     <ClInclude Include="sys_video\wglew.h" />
     <ClInclude Include="sys_window\framework.h" />
-    <ClInclude Include="sys_window\sys_ini.h" />
+    <ClInclude Include="sys_window\iniFile.h" />
     <ClInclude Include="sys_window\log.h" />
     <ClInclude Include="sys_window\rawinput.h" />
     <ClInclude Include="sys_window\targetver.h" />
@@ -309,12 +306,10 @@
     <ClCompile Include="os_input.cpp" />
     <ClCompile Include="path_helper.cpp" />
     <ClCompile Include="rand.cpp" />
-    <ClCompile Include="sndhrdw\5220intf.cpp" />
+    <ClCompile Include="sndhrdw\aae_pokey.cpp" />
     <ClCompile Include="sndhrdw\ay8910.cpp" />
     <ClCompile Include="sndhrdw\cinematronics_sound.cpp" />
     <ClCompile Include="sndhrdw\namco.cpp" />
-    <ClCompile Include="sndhrdw\pokey.cpp" />
-    <ClCompile Include="sndhrdw\pokyintf.cpp" />
     <ClCompile Include="sndhrdw\segag80snd.cpp" />
     <ClCompile Include="sndhrdw\starwars_snd.cpp" />
     <ClCompile Include="sndhrdw\tms5220.cpp" />
@@ -334,7 +329,7 @@
     <ClCompile Include="sys_video\gl_texturing.cpp" />
     <ClCompile Include="sys_video\sys_gl.cpp" />
     <ClCompile Include="sys_video\vector_fonts.cpp" />
-    <ClCompile Include="sys_window\sys_ini.cpp" />
+    <ClCompile Include="sys_window\iniFile.cpp" />
     <ClCompile Include="sys_window\log.cpp" />
     <ClCompile Include="sys_window\rawinput.cpp" />
     <ClCompile Include="sys_window\winmain.cpp" />

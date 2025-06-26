@@ -1,225 +1,116 @@
-
 #include "sys_gl.h"
 #include "gl_fbo.h"
 #include "log.h"
 #include "aae_mame_driver.h"
+#include "iniFile.h"
+#include <array>
+#include <initializer_list>
 
-#pragma warning( disable : 4305 4244 )
+#pragma warning(disable : 4305 4244)
 
-// FBO Handles
-GLuint fbo1;            
-GLuint fbo2;
-GLuint fbo3;
-GLuint fbo4;
+GLuint fbo1, fbo2, fbo3, fbo4, fbo_raster;
+GLuint img1a, img1b, img1c, img2a, img2b, img3a, img3b, img4a, img5a;
 
-GLuint fbo_raster;
-GLuint img5a;
-
-// Texture Handles
-GLuint img1a;
-GLuint img1b;
-GLuint img1c;
-GLuint img2a;
-GLuint img2b;
-GLuint img3a;
-GLuint img3b;
-
-GLuint img4a;
-//Unused Depth Buffer Handles
-//GLuint dep1;             // Our handle to the FBO
-//GLuint dep2;
-//GLuint dep3;
-//GLuint dep4;
-
-
-float width = 1024.0;		         // The height of the texture we'll be rendering to for FBO1
-float height = 1024.0;		         // The width of the texture we'll be rendering to for FBO1
-
-const float width2 = 512.0;		// The height of the texture we'll be rendering to for FBO2
-const float height2 = 512.0;		// The width of the texture we'll be rendering to for FBO2
-
-const float width3 = 256.0;		// The height of the texture we'll be rendering to for FBO3
-const float height3 = 256.0;		// The width of the texture we'll be rendering to for FBO3
-
+float width = 1024.0f, height = 1024.0f;
+const float width2 = 512.0f, height2 = 512.0f;
+const float width3 = 256.0f, height3 = 256.0f;
 
 int CHECK_FRAMEBUFFER_STATUS()
 {
-	GLenum status;
-	status = glCheckFramebufferStatusEXT(GL_FRAMEBUFFER_EXT);
-	// LOG_INFO("%x\n", status);
-	switch (status) {
-	case GL_FRAMEBUFFER_COMPLETE_EXT:
-		LOG_INFO("Framebuffer Complete! A-OK");   break;
-	case GL_FRAMEBUFFER_UNSUPPORTED_EXT:
-		LOG_INFO("framebuffer GL_FRAMEBUFFER_UNSUPPORTED_EXT\n");
-		/* you gotta choose different formats */
-		break;
-	case GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT_EXT:
-		LOG_INFO("framebuffer INCOMPLETE_ATTACHMENT\n");
-		break;
-	case GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT_EXT:
-		LOG_INFO("framebuffer FRAMEBUFFER_MISSING_ATTACHMENT\n");
-		break;
-	case GL_FRAMEBUFFER_INCOMPLETE_DIMENSIONS_EXT:
-		LOG_INFO("framebuffer FRAMEBUFFER_DIMENSIONS\n");
-		break;
-	//case GL_FRAMEBUFFER_INCOMPLETE_DUPLICATE_ATTACHMENT_EXT:
-	//	LOG_INFO("framebuffer INCOMPLETE_DUPLICATE_ATTACHMENT\n");
-	//	break;
-	case GL_FRAMEBUFFER_INCOMPLETE_FORMATS_EXT:
-		LOG_INFO("framebuffer INCOMPLETE_FORMATS\n");
-		break;
-	case GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER_EXT:
-		LOG_INFO("framebuffer INCOMPLETE_DRAW_BUFFER\n");
-		break;
-	case GL_FRAMEBUFFER_INCOMPLETE_READ_BUFFER_EXT:
-		LOG_INFO("framebuffer INCOMPLETE_READ_BUFFER\n");
-		break;
-	case GL_FRAMEBUFFER_BINDING_EXT:
-		LOG_INFO("framebuffer BINDING_EXT\n");
-		break;
-
-	}
-	return status;
+    GLenum status = glCheckFramebufferStatusEXT(GL_FRAMEBUFFER_EXT);
+    switch (status) {
+    case GL_FRAMEBUFFER_COMPLETE_EXT:
+        LOG_INFO("Framebuffer Complete! A-OK");
+        break;
+    case GL_FRAMEBUFFER_UNSUPPORTED_EXT:
+        LOG_ERROR("GL_FRAMEBUFFER_UNSUPPORTED_EXT");
+        break;
+    case GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT_EXT:
+        LOG_ERROR("GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT_EXT");
+        break;
+    case GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT_EXT:
+        LOG_ERROR("GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT_EXT");
+        break;
+    case GL_FRAMEBUFFER_INCOMPLETE_DIMENSIONS_EXT:
+        LOG_ERROR("GL_FRAMEBUFFER_INCOMPLETE_DIMENSIONS_EXT");
+        break;
+    case GL_FRAMEBUFFER_INCOMPLETE_FORMATS_EXT:
+        LOG_ERROR("GL_FRAMEBUFFER_INCOMPLETE_FORMATS_EXT");
+        break;
+    case GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER_EXT:
+        LOG_ERROR("GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER_EXT");
+        break;
+    case GL_FRAMEBUFFER_INCOMPLETE_READ_BUFFER_EXT:
+        LOG_ERROR("GL_FRAMEBUFFER_INCOMPLETE_READ_BUFFER_EXT");
+        break;
+    default:
+        LOG_ERROR("Unknown Framebuffer Error: 0x%x", status);
+        break;
+    }
+    return status;
 }
 
+static GLuint create_texture(float w, float h, GLenum format = GL_RGB8, GLenum internal_format = GL_RGBA)
+{
+    GLuint tex = 0;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glTexImage2D(GL_TEXTURE_2D, 0, format, (GLsizei)w, (GLsizei)h, 0, internal_format, GL_UNSIGNED_BYTE, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    return tex;
+}
 
+static void create_fbo(GLuint& fbo, std::initializer_list<std::pair<GLuint*, std::array<float, 2>>> attachments)
+{
+    glGenFramebuffersEXT(1, &fbo);
+    glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo);
+
+    int attachment = 0;
+    for (const auto& texInfo : attachments) {
+        GLuint* tex = texInfo.first;
+        const auto& dim = texInfo.second;
+        *tex = create_texture(dim[0], dim[1]);
+        glFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT, GL_COLOR_ATTACHMENT0_EXT + attachment, GL_TEXTURE_2D, *tex, 0);
+        attachment++;
+    }
+
+    CHECK_FRAMEBUFFER_STATUS();
+    glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);
+}
 
 void fbo_init()
 {
-	glGenFramebuffersEXT(1, &fbo1);
-	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo1);
+    float raster_scale = get_config_float("main", "raster_scale", 3.0f);
 
-	glGenTextures(1, &img1a); glBindTexture(GL_TEXTURE_2D, img1a);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-	//glGenerateMipmapEXT(GL_TEXTURE_2D);
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	// And attach it to the FBO so we can render to it
-	glFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT, GL_COLOR_ATTACHMENT0_EXT, GL_TEXTURE_2D, img1a, 0);
+    create_fbo(fbo1, {
+        { &img1a, { width, height } },
+        { &img1b, { width, height } },
+        { &img1c, { width, height } }
+        });
 
+    create_fbo(fbo2, {
+        { &img2a, { width2, height2 } },
+        { &img2b, { width2, height2 } }
+        });
 
-	//Gen Texture 2
-	glGenTextures(1, &img1b);
-	glBindTexture(GL_TEXTURE_2D, img1b);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    create_fbo(fbo3, {
+        { &img3a, { width3, height3 } },
+        { &img3b, { width3, height3 } }
+        });
 
-	// glGenerateMipmapEXT(GL_TEXTURE_2D);
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	// And attach it to the FBO so we can render to it
-	glFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT, GL_COLOR_ATTACHMENT1_EXT, GL_TEXTURE_2D, img1b, 0);
+    create_fbo(fbo4, {
+        { &img4a, { width, height } }
+        });
 
-	//Gen Texture 3
-	glGenTextures(1, &img1c);
-	glBindTexture(GL_TEXTURE_2D, img1c);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    std::array<float, 2> raster_dims = {
+        static_cast<float>(Machine->gamedrv->screen_width) * raster_scale,
+        static_cast<float>(Machine->gamedrv->screen_height) * raster_scale
+    };
 
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	// And attach it to the FBO so we can render to it
-	glFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT, GL_COLOR_ATTACHMENT2_EXT, GL_TEXTURE_2D, img1c, 0);
-
-	CHECK_FRAMEBUFFER_STATUS(); //Check Framebuffer Status
-	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);	// Unbind the FBO for now
-	//////////////////////////////////////////////////////////////////////////////////////////////////
-
-	// Setup our FBO 2
-	glGenFramebuffersEXT(1, &fbo2);
-	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo2);
-
-	glGenTextures(1, &img2a); glBindTexture(GL_TEXTURE_2D, img2a);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, width2, height2, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-
-	// glGenerateMipmapEXT(GL_TEXTURE_2D);
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-
-	// And attach it to the FBO so we can render to it
-	glFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT, GL_COLOR_ATTACHMENT0_EXT, GL_TEXTURE_2D, img2a, 0);
-
-	//Gen Texture 2
-	glGenTextures(1, &img2b); glBindTexture(GL_TEXTURE_2D, img2b);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, width2, height2, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-	// glGenerateMipmapEXT(GL_TEXTURE_2D);
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-
-
-	// And attach it to the FBO so we can render to it
-	glFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT, GL_COLOR_ATTACHMENT1_EXT, GL_TEXTURE_2D, img2b, 0);
-
-	CHECK_FRAMEBUFFER_STATUS(); //Check Framebuffer Status
-	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);	// Unbind the FBO for now
-
-	//////////////////////////////////////////////////////////////////////////////////////////////////////
-
-	// Setup our FBO 3
-	glGenFramebuffersEXT(1, &fbo3);
-	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo3);
-
-	glGenTextures(1, &img3a); glBindTexture(GL_TEXTURE_2D, img3a);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, width3, height3, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-
-	//glGenerateMipmapEXT(GL_TEXTURE_2D);
-	//glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	//glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	// And attach it to the FBO so we can render to it
-	glFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT, GL_COLOR_ATTACHMENT0_EXT, GL_TEXTURE_2D, img3a, 0);
-
-	//Gen Texture 2
-	glGenTextures(1, &img3b); glBindTexture(GL_TEXTURE_2D, img3b);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, width3, height3, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-	//glGenerateMipmapEXT(GL_TEXTURE_2D);
-	//glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	//glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	// And attach it to the FBO so we can render to it
-	glFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT, GL_COLOR_ATTACHMENT1_EXT, GL_TEXTURE_2D, img3b, 0);
-	CHECK_FRAMEBUFFER_STATUS(); //Check Framebuffer Status
-	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);	// Unbind the FBO for now
-
-	// Setup our FBO 4
-	glGenFramebuffersEXT(1, &fbo4);
-	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo4);
-
-	glGenTextures(1, &img4a); glBindTexture(GL_TEXTURE_2D, img4a);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	// And attach it to the FBO so we can render to it
-	glFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT, GL_COLOR_ATTACHMENT0_EXT, GL_TEXTURE_2D, img4a, 0);
-
-	CHECK_FRAMEBUFFER_STATUS(); //Check Framebuffer Status
-	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);	// Unbind the FBO for now
-
-
-	// Setup our FBO for rasterization
-	glGenFramebuffersEXT(1, &fbo_raster);
-	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo_raster);
-
-	glGenTextures(1, &img5a); glBindTexture(GL_TEXTURE_2D, img5a);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, Machine->gamedrv->screen_width*3, Machine->gamedrv->screen_height*3, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	// And attach it to the FBO so we can render to it
-	glFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT, GL_COLOR_ATTACHMENT0_EXT, GL_TEXTURE_2D, img5a, 0);
-
-	CHECK_FRAMEBUFFER_STATUS(); //Check Framebuffer Status
-	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);	// Unbind the FBO for now
-
-
+    create_fbo(fbo_raster, {
+        { &img5a, raster_dims }
+        });
 }

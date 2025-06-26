@@ -18,7 +18,7 @@
 #include "aae_avg.h"
 #include "earom.h"
 #include "mathbox.h"
-#include "pokyintf.h"
+#include "aae_pokey.h"
 #include "timer.h"
 
 #define IN0_3KHZ (1<<7)
@@ -101,7 +101,7 @@ static struct POKEYinterface rb_pokey_interface =
 WRITE_HANDLER(bzone_pokey_w)
 {
 	if (soundEnable)
-		pokey1_w(address, data);
+		pokey_1_w(address, data, 0);
 }
 
 READ_HANDLER(BzoneIN0read)

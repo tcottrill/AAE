@@ -1,31 +1,45 @@
 /*
-BMFont example implementation with Kerning, for C++ and OpenGL 2.0
+  sys_gl.h / sys_gl.cpp - OpenGL Context Creation and Utility (Win32 + GLEW)
 
-This is free and unencumbered software released into the public domain.
+  This module provides OpenGL context setup and utility functions for Win32
+  applications using WGL and GLEW. It supports both legacy OpenGL 2.1 and
+  modern OpenGL 3.x/4.x contexts (compatibility profile), and includes
+  diagnostic tools and capability checks.
 
-Anyone is free to copy, modify, publish, use, compile, sell, or
-distribute this software, either in source code form or as a compiled
-binary, for any purpose, commercial or non-commercial, and by any
-means.
+  Features:
+    - Single entry point to create an OpenGL context:
+        InitOpenGLContext(bool forceLegacyGL2)
+          • forceLegacyGL2 = true: creates OpenGL 2.1 compatibility context
+          • forceLegacyGL2 = false: creates highest supported OpenGL 4.x/3.x context
+    - GLEW initialization and extension checks
+    - Sets up orthographic 2D projection (ViewOrtho)
+    - Handles window resizing (OnResize)
+    - Double-buffered rendering support (GLSwapBuffers)
+    - VSync enable/disable via WGL extension (osWaitVsync)
+    - Full OpenGL error checking with file/line info (CheckGLError)
+    - Capability reporting for debugging and compatibility logging (ReportOpenGLCapabilities)
 
-In jurisdictions that recognize copyright laws, the author or authors
-of this software dedicate any and all copyright interest in the
-software to the public domain. We make this dedication for the benefit
-of the public at large and to the detriment of our heirs and
-successors. We intend this dedication to be an overt act of
-relinquishment in perpetuity of all present and future rights to this
-software under copyright law.
+  Dependencies:
+    - GLEW and WGLEW
+    - Win32 API (HDC, HWND)
+    - External: win_get_window() for HWND
+    - Logging macros: LOG_INFO, LOG_ERROR
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR
-OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
-ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
-OTHER DEALINGS IN THE SOFTWARE.
+  Usage:
+    1. Call InitOpenGLContext(true) for legacy OpenGL 2.1
+       or InitOpenGLContext(false) to use the highest OpenGL 3/4 version.
+    2. Use ViewOrtho() for 2D rendering setup.
+    3. Use OnResize() to adjust the viewport on window resize.
+    4. Call GLSwapBuffers() after rendering.
+    5. Optionally call osWaitVsync(true/false) to toggle vsync.
+    6. Use check_gl_error() macro to log any OpenGL errors.
+    7. Call OpenGLShutDown() to clean up resources on exit.
 
-For more information, please refer to <http://unlicense.org/>
+  License:
+    Released into the public domain under The Unlicense.
+    See http://unlicense.org/ for more details.
 */
+
 
 #pragma once
 
@@ -37,25 +51,18 @@ For more information, please refer to <http://unlicense.org/>
 #include "glew.h"
 #include "wglew.h"
 
-
-void CheckGLVersionSupport();
 void ViewOrtho(int width, int height);
-int OpenGL2Enable();
-int OpenGL3Enable();
+bool InitOpenGLContext(bool forceLegacyGL2);
 void OpenGLShutDown();
 void GLSwapBuffers();
 void osWaitVsync(bool enable);
 void OnResize(GLsizei width, GLsizei height);
 
-GLuint LoadShaders(const char * vertex_file, const char * fragment_file, bool file_or_char);
-bool ShaderIsValid(GLuint program);
-void CheckGLError(const char *file, int line);
-void CheckGLError2();
-///
-/// Usage
-/// [... some opengl calls]
-/// glCheckError();
-///
-#define check_gl_error() _check_gl_error(__FILE__,__LINE__)
+void CheckGLErrorEx(const char* label = nullptr, const char* file = nullptr, int line = 0);
+void ReportOpenGLCapabilities();
+
+#define check_gl_error()          CheckGLErrorEx(nullptr, __FILE__, __LINE__)
+#define check_gl_error_named(x)   CheckGLErrorEx(x, __FILE__, __LINE__)
+#define check_gl_error_simple()   CheckGLErrorEx()
 
 #endif

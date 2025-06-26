@@ -3,6 +3,8 @@
 #ifndef _loader_shim_h_
 #define _loader_shim_h_
 
+
+#include <string>
 #include <stdbool.h>
 
 // Loads all ROMs defined in a RomModule list from a ZIP archive
@@ -30,5 +32,11 @@ unsigned char* load_zip_file(const char* archname, const char* filename);
 
 // Saves data into a ZIP archive (in-place)
 bool save_zip_file(const char* archname, const char* filename, const unsigned char* data);
+
+// Check if file exists string
+bool file_exists(const std::string& filename);
+
+// Check if file exists char
+bool file_exists(const char* filename);
 
 #endif

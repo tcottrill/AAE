@@ -12,7 +12,7 @@
 #include "sys_gl.h"
 #include "gl_prim_debug.h"
 #include "aae_emulator.h"
-#include "sys_ini.h"
+#include "iniFile.h"
 #include "sys_timer.h"
 #include "aae_mame_driver.h"
 #include "path_helper.h"
@@ -515,8 +515,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 		LOG_INFO("NOPENOPENOPENOPEN");
 	}
 	// enable OpenGL for the window
-	OpenGL2Enable();
-	//OpenGL3Enable();
+	InitOpenGLContext(true);
 	
 	// Set the Swap Interval to 60Hz, or whatever the monitor is set to.
 	if (WGLEW_EXT_swap_control)

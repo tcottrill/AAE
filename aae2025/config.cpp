@@ -1,266 +1,169 @@
 #include "framework.h"
-#include <stdio.h>
 #include "config.h"
+#include "iniFile.h"
 #include "aae_mame_driver.h"
 #include "menu.h"
 #include "log.h"
 #include "path_helper.h"
+#include <string>
+#include <cstdio>
 
-#pragma warning( disable : 4996 4244)
-
-extern int gamenum;
-
-int is_override = 0; //1 if file exists
 char aaepath[MAX_PATH];
 char gamepath[MAX_PATH];
 
-static int file_exists(const char* filename)
-{
-	FILE* file;
 
-	if (file = fopen(filename, "r"))
-	{
-		fclose(file); return 1;
-	}
-	return 0;
+void setup_config() {
+    std::string temppath;
+
+    // Load base config: aae.ini
+    temppath = getpathM(0, "aae.ini");
+    strcpy(aaepath, temppath.c_str());
+    SetIniFile(aaepath);
+    LOG_DEBUG("INI PATH HERE %s", aaepath);
+    // Load all fields from aae.ini
+    config.samplerate = get_config_int("main", "samplerate", 22050);
+    config.prescale = get_config_int("main", "prescale", 1);
+    config.vid_rotate = get_config_int("main", "vid_rotate", 1);
+    config.anisfilter = get_config_int("main", "anisfilter", 0);
+    config.translucent = get_config_int("main", "translucent", 0);
+    config.m_line = get_config_int("main", "m_line", 20);
+    config.m_point = get_config_int("main", "m_point", 16);
+    config.linewidth = get_config_float("main", "linewidth", 2.0f);
+    config.pointsize = get_config_float("main", "pointsize", 1.6f);
+    config.bezel = get_config_int("main", "bezel", 1);
+    config.artwork = get_config_int("main", "artwork", 0);
+    config.artcrop = get_config_int("main", "artcrop", 0);
+    config.overlay = get_config_int("main", "overlay", 0);
+    config.explode_point_size = get_config_int("main", "explode_point_size", 12);
+    config.fire_point_size = get_config_int("main", "fire_point_size", 12);
+    config.vecglow = get_config_int("main", "vectorglow", 5);
+    config.vectrail = get_config_int("main", "vectortrail", 1);
+    config.gain = get_config_int("main", "gain", 1);
+    config.debug = get_config_int("main", "debug", 0);
+    config.debug_profile_code = get_config_int("main", "debug_profile_code", 0);
+    config.audio_force_resample = get_config_int("main", "audio_force_resample", 0);
+    config.psnoise = get_config_int("main", "psnoise", 0);
+    config.hvnoise = get_config_int("main", "hvnoise", 0);
+    config.pshiss = get_config_int("main", "pshiss", 0);
+    config.pokeyvol = get_config_int("main", "pokeyvol", 200);
+    config.mainvol = get_config_int("main", "mainvol", 220);
+    config.noisevol = get_config_int("main", "noisevol", 50);
+    config.drawzero = get_config_int("main", "drawzero", 0);
+    config.widescreen = get_config_int("main", "widescreen", 0);
+    config.priority = get_config_int("main", "priority", 1);
+    config.kbleds = get_config_int("main", "kbleds", 1);
+    config.colordepth = get_config_int("main", "colordepth", 32);
+    config.dblbuffer = get_config_int("main", "doublebuffer", 1);
+    config.forcesync = get_config_int("main", "force_vsync", 1);
+    config.snappng = get_config_int("main", "snappng", 1);
+    config.gamma = get_config_int("main", "gamma", 127);
+    config.bright = get_config_int("main", "bright", 127);
+    config.contrast = get_config_int("main", "contrast", 127);
+    config.showinfo = get_config_int("main", "showinfo", 0);
+    config.windowed = get_config_int("main", "windowed", 0);
+    config.aspect = get_config_string("main", "aspect_ratio", "4:3");
+    config.screenw = get_config_int("main", "screenw", 1024);
+    config.screenh = get_config_int("main", "screenh", 768);
+    config.exrompath = get_config_string("main", "mame_rom_path", "NONE");
+
+    // Load game-specific overrides for select fields
+    temppath = getpathM("ini", 0) + std::string("\\") + Machine->gamedrv->name + ".ini";
+    strcpy(gamepath, temppath.c_str());
+
+    if (gamenum > 0 && file_exists(gamepath)) {
+        SetIniFile(gamepath);
+        LOG_INFO("Game Config Path: %s", gamepath);
+       
+        // somegame.ini available - video override options
+        config.bezel = get_config_int("main", "bezel", config.bezel);
+        config.artwork = get_config_int("main", "artwork", config.artwork);
+        config.artcrop = get_config_int("main", "artcrop", config.artcrop);
+        config.overlay = get_config_int("main", "overlay", config.overlay);
+        config.explode_point_size = get_config_int("main", "explode_point_size", config.explode_point_size);
+        config.fire_point_size = get_config_int("main", "fire_point_size", config.fire_point_size);
+        config.vecglow = get_config_int("main", "vectorglow", config.vecglow);
+        config.vectrail = get_config_int("main", "vectortrail", config.vectrail);
+        config.gain = get_config_int("main", "gain", config.gain);
+        config.prescale = get_config_int("main", "prescale", config.prescale);
+        config.vid_rotate = get_config_int("main", "vid_rotate", config.vid_rotate);
+        config.anisfilter = get_config_int("main", "anisfilter", config.anisfilter);
+        config.translucent = get_config_int("main", "translucent", config.translucent);
+        config.m_line = get_config_int("main", "m_line", config.m_line);
+        config.m_point = get_config_int("main", "m_point", config.m_point);
+        config.linewidth = get_config_float("main", "linewidth", config.linewidth);
+        config.pointsize = get_config_float("main", "pointsize", config.pointsize);
+             
+        // somegame.ini available - sound override options
+        config.psnoise = get_config_int("main", "psnoise", config.psnoise);
+        config.hvnoise = get_config_int("main", "hvnoise", config.hvnoise);
+        config.pshiss = get_config_int("main", "pshiss", config.pshiss);
+        config.pokeyvol = get_config_int("main", "pokeyvol", config.pokeyvol);
+        config.mainvol = get_config_int("main", "mainvol", config.mainvol);
+        config.noisevol = get_config_int("main", "noisevol", config.noisevol);
+        config.samplerate = get_config_int("main", "samplerate", config.samplerate);
+    }
+
+    config.linewidth = config.m_line * 0.1f;
+    config.pointsize = config.m_point * 0.1f;
+
+    LOG_INFO("Configured Mame Rom Path is %s", config.exrompath);
 }
 
-// If return size is 0, value is empty:  DWORD size = GetPrivateProfileString("SectionName", "KeyName", "", buffer, 256, "path/to/your/ini.ini");
-char* my_get_config_string(const char* section, const char* name, const char* def)
-{
-	int val = -1;
-	char* buffer;
-	buffer = (char*)malloc(MAX_PATH);
-	DWORD size = 0;
+void setup_video_config() {
+    std::string temppath = getpathM(0, "video.ini");
+    strcpy(aaepath, temppath.c_str());
+    SetIniFile(aaepath);
 
-	if (is_override) { // Check game file for value if file exists
-		//LOG_INFO("Returning string value from game file %s", name);
-		size = GetPrivateProfileString(section, name, def, buffer, MAX_PATH, gamepath);
-		if (strcmp(buffer, def) == 0)
-		{
-			//LOG_INFO("Returning string value from aae.ini %s", name);
-			GetPrivateProfileString(section, name, def, buffer, MAX_PATH, aaepath);
-			return buffer;
-		}
-		else { return buffer; }
-	}
-	else {
-		//LOG_INFO("Game file doesn't exist, Returning string value from aae.ini %s", name);
-		size = GetPrivateProfileString(section, name, def, buffer, MAX_PATH, aaepath);
-		if (strcmp(buffer, def) == 0) return (char*)def;
-		else return buffer;
-	}
+    std::string name = Machine->gamedrv->name;
+    sx = get_config_int(name, "fullsx", 0);
+    sy = get_config_int(name, "fullsy", 1024);
+    ex = get_config_int(name, "fullex", 1024);
+    ey = get_config_int(name, "fulley", 0);
+
+    if (config.bezel && gamenum && config.artcrop == 0) {
+        b1sx = get_config_int(name, "bezelsx", 0);
+        b1sy = get_config_int(name, "bezelsy", 900);
+        b2sx = get_config_int(name, "bezelex", 900);
+        b2sy = get_config_int(name, "bezeley", 0);
+        bezelzoom = 1.0;
+        bezelx = 0;
+        bezely = 0;
+    }
+
+    if (config.bezel && config.artcrop && gamenum) {
+        b1sx = get_config_int(name, "cropsx", 0);
+        b1sy = get_config_int(name, "cropsy", 900);
+        b2sx = get_config_int(name, "cropex", 900);
+        b2sy = get_config_int(name, "cropey", 0);
+        bezelzoom = get_config_float(name, "bezcropzoom", 1.0f);
+        bezelx = get_config_int(name, "bezcropx", 0);
+        bezely = get_config_int(name, "bezcropy", 0);
+    }
 }
 
-int my_get_config_int(const char* section, const char* name, int def)
-{
-	int val = -1;
-	if (is_override) // Try to get the value from the game file
-	{
-		val = GetPrivateProfileInt(section, name, -1, gamepath);
-
-		if (val == -1)
-		{
-			//LOG_DEBUG("Returning int value from aae.ini file %s val %d", name, val);
-			return GetPrivateProfileInt(section, name, def, aaepath); // Value does not exist in game file, get from aae.ini
-		}
-		else
-		{
-			//LOG_DEBUG("Returning int value from game file %s", name);
-			return val;  // Return value from Game file
-		}
-	}
-	else
-	{
-		//LOG_DEBUG("Returning int value from aae.ini file since the game file does not exist. %s val %d", name, val);
-		return GetPrivateProfileInt(section, name, def, aaepath); // Value does not exist in game file, get from aae.ini
-	}
+void setup_game_config() {
+    setup_config();
+    setup_video_menu();
+    setup_sound_menu();
+    set_points_lines();
 }
 
-//Broken
-double my_get_config_float(const char* section, const char* name, const double def)
-{
-	float val = -1;
-	char buffer[64];
+// Writes an int, float, or string value to either aae.ini or game.ini
+void my_set_config_value(const char* section, const char* key, const std::string& value, int path) {
+    const char* target_path = (path == 0) ? aaepath : gamepath;
 
-	if (is_override) { GetPrivateProfileString(section, name, "", buffer, sizeof(buffer), gamepath); }
-
-	else { val = GetPrivateProfileString(section, name, "", buffer, sizeof(buffer), aaepath); }
-	val = GetPrivateProfileString(section, name, "", buffer, sizeof(buffer), aaepath);
-	val = atof(buffer);
-	if (val == 0) { return def; }
-	else { return val; }
+    SetIniFile(target_path);  // target_path is assumed to already exist in memory
+    set_config_string(section, key, value.c_str());
 }
 
-void my_set_config_int(const char* section, const char* name, int val, int path)
-{
-	char buffer[64];
-
-	if (path == 0) { snprintf(buffer, 64, "%d", val); WritePrivateProfileString(section, name, buffer, aaepath); }
-	else { snprintf(buffer, 64, "%d", val); WritePrivateProfileString(section, name, buffer, gamepath); }
+void my_set_config_int(const char* section, const char* key, int val, int path) {
+    my_set_config_value(section, key, std::to_string(val), path);
 }
 
-void my_set_config_float(char* section, char* name, float val, int path)
-{
-	char buffer[64];
-
-	if (path == 0) { snprintf(buffer, 64, "%f", val); WritePrivateProfileString(section, name, buffer, aaepath); }
-	else { snprintf(buffer, 64, "%f", val); WritePrivateProfileString(section, name, buffer, gamepath); }
+void my_set_config_float(const char* section, const char* key, float val, int path) {
+    my_set_config_value(section, key, std::to_string(val), path);
 }
 
-// This sets up the drawing rect for each game, as well as with bezel, and for cropped bezel.
-// Not ideal, and will need to be completly changed for new rendering.
-// This sets the global variables sx, sy, ex, ey, reset every game. as well as b1sx, b1sy, b2sx, b2sy for bezel rendering.
-void setup_video_config()
-{
-	std::string temppath;
-	temppath = getpathM(0, "video.ini");
-	strcpy(aaepath, temppath.c_str());
-	
-
-	is_override = 0;
-
-	//int b1sx,b1sy,b2sx,b2sy;
-	//final_render(sx,sy,ex,ey,0,0);
-	//int xmin, int xmax, int ymin, int ymax
-
-	//For main texture rendering
-	sx = my_get_config_int((char*)Machine->gamedrv->name, "fullsx", 0);
-	sy = my_get_config_int((char*)Machine->gamedrv->name, "fullsy", 1024);
-	ex = my_get_config_int((char*)Machine->gamedrv->name, "fullex", 1024);
-	ey = my_get_config_int((char*)Machine->gamedrv->name, "fulley", 0);
-	//overalpha = my_get_config_float((char*)Machine->gamedrv->name, "overalpha", 1.0);
-
-	if (config.bezel && gamenum && config.artcrop == 0) 
-	{
-		b1sx = my_get_config_int((char*)Machine->gamedrv->name, "bezelsx", 0);
-		b1sy = my_get_config_int((char*)Machine->gamedrv->name, "bezelsy", 900);
-		b2sx = my_get_config_int((char*)Machine->gamedrv->name, "bezelex", 900);
-		b2sy = my_get_config_int((char*)Machine->gamedrv->name, "bezeley", 0);
-		bezelzoom = 1.0;
-		bezelx = 0;
-		bezely = 0;
-		//overalpha = my_get_config_float((char*)Machine->gamedrv->name, "overalpha", 1.0);
-	}
-
-	if (config.bezel && config.artcrop && gamenum) 
-	{
-		b1sx = my_get_config_int((char*)Machine->gamedrv->name, "cropsx", 0);
-		b1sy = my_get_config_int((char*)Machine->gamedrv->name, "cropsy", 900);
-		b2sx = my_get_config_int((char*)Machine->gamedrv->name, "cropex", 900);
-		b2sy = my_get_config_int((char*)Machine->gamedrv->name, "cropey", 0);
-		bezelzoom = my_get_config_float((char*)Machine->gamedrv->name, "bezcropzoom", 1.0);
-		bezelx = my_get_config_int((char*)Machine->gamedrv->name, "bezcropx", 0);
-		bezely = my_get_config_int((char*)Machine->gamedrv->name, "bezcropy", 0);
-		//overalpha = my_get_config_float((char*)Machine->gamedrv->name, "overalpha", 1.0);
-	}
-	//strcpy(aaepath, buffer);
-	//strcat(aaepath, "\\aae.ini");
-	temppath = getpathM(0, "aae.ini");
-	strcpy(aaepath, temppath.c_str());
-	
-}
-
-//SETUP CONFIGURATION DATA
-
-// New way of doing things:
-// So, for a subset of items, check if an item exists in a game.ini file, then load it. if not, load from the default aae.ini file.
-// If changed from the aae.ini file and you are not in the gui, save the changes to the game.ini file.
-
-// TODO:, why am I doing it this way again?> Why not load the aae.ini, then override any value with a game specific ini setting? What was I thinking here?
-
-void setup_config(void)
-{
-	// aae.ini
-	std::string temppath;
-	temppath = getpathM(0, "aae.ini");
-	strcpy(aaepath, temppath.c_str());
-		
-	// game.ini
-	temppath = getpathM("ini", 0);
-	temppath.append("\\");
-	temppath.append(Machine->gamedrv->name);
-	temppath.append(".ini");
-	strcpy(gamepath, temppath.c_str());
-
-	// If game file exists, and it's not the gui, try to pull values from it.
-	is_override = file_exists(gamepath);
-	if (gamenum == 0) { is_override = 0; }
-	LOG_INFO("Main AAE Path: %s", aaepath);
-	if (gamenum > 0) { LOG_INFO("Game Config Path: %s", gamepath); }
-	//LOG_INFO("Path Override Value: %d", is_override);
-	LOG_INFO("Loading configuration information for %s", Machine->gamedrv->desc);
-	//////VIDEO///////////
-	config.samplerate = my_get_config_int("main", "samplerate", 22050);
-	config.prescale = my_get_config_int("main", "prescale", 1);
-
-	// Not currently used
-	config.vid_rotate = my_get_config_int("main", "vid_rotate", 1);
-	config.anisfilter = my_get_config_int("main", "anisfilter", 0);
-	config.translucent = my_get_config_int("main", "translucent", 0);
-
-	// Game.ini available - video
-	config.m_line = my_get_config_int("main", "m_line", 20);
-	config.m_point = my_get_config_int("main", "m_point", 16);
-	config.linewidth = my_get_config_float("main", "linewidth", 2.0);
-	config.pointsize = my_get_config_float("main", "pointsize", 1.6);
-	config.bezel = my_get_config_int("main", "bezel", 1);
-	config.artwork = my_get_config_int("main", "artwork", 0);
-	config.artcrop = my_get_config_int("main", "artcrop", 0);
-	config.overlay = my_get_config_int("main", "overlay", 0);
-	config.explode_point_size = my_get_config_int("main", "explode_point_size", 12);
-	config.fire_point_size = my_get_config_int("main", "fire_point_size", 12);
-	config.vecglow = my_get_config_int("main", "vectorglow", 5);
-	config.vectrail = my_get_config_int("main", "vectortrail", 1);
-	config.gain = my_get_config_int("main", "gain", 1);
-	config.debug = my_get_config_int("main", "debug", 0);
-	// Added for code profiling and timing
-	config.debug_profile_code = my_get_config_int("main", "debug_profile_code", 0);
-	// Added for mixer
-	config.audio_force_resample = my_get_config_int("main", "audio_force_resample", 0);
-
-	// Game.ini available - SOUND
-	config.psnoise = my_get_config_int("main", "psnoise", 0);
-	config.hvnoise = my_get_config_int("main", "hvnoise", 0);
-	config.pshiss = my_get_config_int("main", "pshiss", 0);
-	config.pokeyvol = my_get_config_int("main", "pokeyvol", 200);
-	config.mainvol = my_get_config_int("main", "mainvol", 220);
-	config.noisevol = my_get_config_int("main", "noisevol", 50);
-	///// END OF GAME.INI AVAILABLE
-
-	config.drawzero = my_get_config_int("main", "drawzero", 0);
-	config.widescreen = my_get_config_int("main", "widescreen", 0);
-	config.priority = my_get_config_int("main", "priority", 1);
-	config.kbleds = my_get_config_int("main", "kbleds", 1);
-	// No longer used - review for removal
-	config.colordepth = my_get_config_int("main", "colordepth", 32);
-	config.dblbuffer = my_get_config_int("main", "doublebuffer", 1);
-	config.forcesync = my_get_config_int("main", "force_vsync", 1);
-	config.snappng = my_get_config_int("main", "snappng", 1);
-	config.gamma = my_get_config_int("main", "gamma", 127);
-	config.bright = my_get_config_int("main", "bright", 127);
-	config.contrast = my_get_config_int("main", "contrast", 127);
-	config.showinfo = my_get_config_int("main", "showinfo", 0);
-	config.windowed = my_get_config_int("main", "windowed", 0);
-	//////////////////////////////////////////////////////////////////
-
-	//Putting these last so we can override any game settings. These will only ever come from the main aae.ini file!!!
-	is_override = 0;
-	config.aspect = my_get_config_string("main", "aspect_ratio", "4:3");
-	config.screenw = my_get_config_int("main", "screenw", 1024);
-	config.screenh = my_get_config_int("main", "screenh", 768);
-	config.exrompath = my_get_config_string("main", "mame_rom_path", "NONE");
-	LOG_INFO("Configured Mame Rom Path is %s", config.exrompath);
-	//LOG_INFO("Config.mainvol loaded here is %d", config.mainvol);
-	config.linewidth = config.m_line * .1f;
-	config.pointsize = config.m_point * .1f;
-}
-
-void setup_game_config(void)
-{
-	setup_config();
-
-	setup_video_menu();
-	setup_sound_menu();
-	set_points_lines();
+void my_set_config_string(const char* section, const char* key, const char* val, int path) {
+    my_set_config_value(section, key, std::string(val), path);
 }

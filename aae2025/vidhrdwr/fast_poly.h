@@ -26,60 +26,41 @@ OTHER DEALINGS IN THE SOFTWARE.
 
 For more information, please refer to <http://unlicense.org/>
 */
+#pragma once
+
 #ifndef __FPOLY__
 #define __FPOLY__
 
-#pragma once
-
 #include <vector>
+#include <cstdint>
 #include "aae_mame_driver.h"
 #include "colordefs.h"
 #include "MathUtils.h"
-#include "log.h"
-
-//Rectangle block class, any size. "pixels" Nothing fancy supported here. 
 
 
-class _fpdata
-{
+// Represents a colored vertex
+class _fpdata {
 public:
+    float x = 0.0f;
+    float y = 0.0f;
+    uint32_t color = 0;
 
-	float x, y;
-	uint32_t color;
-
-	_fpdata() : x(0), y(0), color(0) { }
-	_fpdata(float x, float y, uint32_t _color) : x(x), y(y), color(_color) {}
-	_fpdata(const Vec2 &p, const uint32_t &_color) : x(p.x), y(p.y), color(_color) {}
+    _fpdata() = default;
+    _fpdata(float x, float y, uint32_t color) : x(x), y(y), color(color) {}
+    _fpdata(const Vec2& p, const uint32_t& color) : x(p.x), y(p.y), color(color) {}
 };
 
-
-
-class Fpoly
-{
-
+class Fpoly {
 public:
-	//Constructor	
-	Fpoly();
-	//Destructor
-	~Fpoly();
-	//Public Variables
+    Fpoly();
+    ~Fpoly();
 
-	//Public Functions
-	
-	void addPoly(float x, float y, float size, uint32_t color);
-	void Render();
-	
+    void addPoly(float x, float y, float size, uint32_t color);
+    void Render();
 
 private:
-	//Private Variables
-	std::vector<_fpdata> vertices;
-	uint32_t color;
-	int angle;
-
-	
-
+    std::vector<_fpdata> vertices;
+    uint32_t color = RGB_WHITE;
+    int angle = 0;
 };
-
-
-#endif
-
+#endif // __FPOLY__
