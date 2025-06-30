@@ -42,14 +42,14 @@ typedef UINT16 rgb15_t;
 #define MAKE_ARGB(a,r,g,b)	(MAKE_RGB(r,g,b) | (((rgb_t)(a) & 0xff) << 24))
 
 /* macros to extract components from rgb_t values */
-#define RGB_ALPHA(rgb)		(((rgb) >> 24) & 0xff)
-#define RGB_RED(rgb)		(((rgb) >> 16) & 0xff)
-#define RGB_GREEN(rgb)		(((rgb) >> 8) & 0xff)
-#define RGB_BLUE(rgb)		((rgb) & 0xff)
+//#define RGB_ALPHA(rgb)		(((rgb) >> 24) & 0xff)
+//#define RGB_RED(rgb)		(((rgb) >> 16) & 0xff)
+//#define RGB_GREEN(rgb)		(((rgb) >> 8) & 0xff)
+//#define RGB_BLUE(rgb)		((rgb) & 0xff)
 
 /* common colors */
-#define RGB_BLACK			(MAKE_RGB(0,0,0))
-#define RGB_WHITE			(MAKE_RGB(255,255,255))
+//#define RGB_BLACK			(MAKE_RGB(0,0,0))
+//#define RGB_WHITE			(MAKE_RGB(255,255,255))
 
 /*************************************
  *

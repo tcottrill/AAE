@@ -658,6 +658,15 @@ unsigned cpu_z80::mz80step()
 {
 	unsigned cyc = 0;
 
+	// Handle delayed EI activation
+	if (iff_delay > 0) {
+		iff_delay--;
+		if (iff_delay == 0) {
+			m_iff1 = 1;
+			m_iff2 = 1;
+		}
+	}
+
 	if (m_fHalt)
 	{
 		cyc += exec_opcode(0x00);
@@ -1284,6 +1293,7 @@ unsigned cpu_z80::exec_opcode(uint8_t bOpcode)
 	case 0x76: // halt
 		cCycles += 4;
 		m_fHalt = 1;
+		break;
 
 	case 0x77: // ld_xhl_a
 		cCycles += 7;
@@ -1983,14 +1993,11 @@ unsigned cpu_z80::exec_opcode(uint8_t bOpcode)
 
 int cpu_z80::Ei()
 {
-	m_iff2 = 1;
-
-	if (m_iff1 != 0)
-		return 0;
-
-	m_iff1 = 1;
-
-	return(0);
+	if (m_iff1 == 0) {
+		iff_delay = 2; // delay interrupts for 2 steps: EI + 1 instruction
+	}
+	// m_iff1 will be set later when iff_delay reaches 0
+	return 0;
 }
 
 void cpu_z80::Di()
@@ -2003,21 +2010,7 @@ UINT32 cpu_z80::mz80int(UINT32 bVal)
 {
 	irq_vector = bVal;
 
-	// Note: When I enable this, everything breaks.
-	// "When an EI instruction is executed, any pending interrupt request
-	// is not accepted until after the instruction following EI is executed."
-   /*
-	   if (iff_delay > 0) {
-		   iff_delay -= 1;
-		   if (iff_delay == 0) { //Ei(); instead?
-			   m_iff1 = 1;
-			   m_iff2 = 1;
-		   }
-		   return 0;
-	   }
-   */
-
-	if (m_iff1)
+	if (m_iff1 && iff_delay == 0)
 	{
 		m_iff1 = 0;
 		m_fHalt = false;

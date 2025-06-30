@@ -2,24 +2,54 @@
 // ADC and SBC code from M.A.M.E. (tm)  Copyright (c) 1998,1999,2000, etc Juergen Buchmueller
 // Timing table and debug code from FakeNes
 // Code rewritten to c++ and updated by TC 2015-2024 explicitly written to work with with older M.A.M.E. source code for my testing.
-// Currently does not handle IRQ after CLI correctly.
-// TODO, fix issues with incorrect operand display in the debug code.
 
 // Notes
 // 11/22/24 added undoucumented isb opcode, will work to add the rest later.
 // 12/28/24 Rewrote the main loop to resolve an issue with the cycle counting being consistently undereported.
-// 01/03/25 Discovered an edge case where clocktickstotal was not being set to zero at init, causing an immediate crash. 
-// 01/09/25 Changed clocktickstotal again to be set to zero at init, not reset. When a cpu was reset mid-frame, it was throwing the timing count off. 
+// 01/03/25 Discovered an edge case where clocktickstotal was not being set to zero at init, causing an immediate crash.
+// 01/09/25 Changed clocktickstotal again to be set to zero at init, not reset. When a cpu was reset mid-frame, it was throwing the timing count off.
+// 06/29/25 Added IRQ after CLI check, added new dissassembler, code cleanup
+// FOr your own usage, just undefine USING_AAE_EMU
+// cpu_6502.cpp
 
 #include <stdio.h>
 #include "cpu_6502.h"
 #include "log.h"
-#include <string>
-#include "timer.h"
 
-//Version 2025.1.09
+#ifdef USING_AAE_EMU
+#include "timer.h"
+constexpr bool AAE_TIMER_ENABLED = true;
+#else
+constexpr bool AAE_TIMER_ENABLED = false;
+#endif
 
 #define bget(p,m) ((p) & (m))
+
+// -----------------------------------------------------------------------------
+// Opcode Mnemonics Table
+// Provides string representations for all 256 opcodes. Used by both the
+// instruction profiling system (log_instruction_usage) and debugger output
+// to identify and label executed or inspected instructions.
+// -----------------------------------------------------------------------------
+
+static const char* mnemonics[256] = {
+		"BRK","ORA","???","???","TSB","ORA","ASL","???","PHP","ORA","ASL","???","TSB","ORA","ASL","???",
+		"BPL","ORA","ORA","???","TRB","ORA","ASL","???","CLC","ORA","INA","???","TRB","ORA","ASL","???",
+		"JSR","AND","???","???","BIT","AND","ROL","???","PLP","AND","ROL","???","BIT","AND","ROL","???",
+		"BMI","AND","AND","???","BIT","AND","ROL","???","SEC","AND","DEA","???","BIT","AND","ROL","???",
+		"RTI","EOR","???","???","???","EOR","LSR","???","PHA","EOR","LSR","???","JMP","EOR","LSR","???",
+		"BVC","EOR","EOR","???","???","EOR","LSR","???","CLI","EOR","PHY","???","???","EOR","LSR","???",
+		"RTS","ADC","???","???","STZ","ADC","ROR","???","PLA","ADC","ROR","???","JMP","ADC","ROR","???",
+		"BVS","ADC","ADC","???","STZ","ADC","ROR","???","SEI","ADC","PLY","???","JMP","ADC","ROR","???",
+		"BRA","STA","???","???","STY","STA","STX","???","DEY","BIT","TXA","???","STY","STA","STX","???",
+		"BCC","STA","STA","???","STY","STA","STX","???","TYA","STA","TXS","???","STZ","STA","STZ","???",
+		"LDY","LDA","LDX","???","LDY","LDA","LDX","???","TAY","LDA","TAX","???","LDY","LDA","LDX","???",
+		"BCS","LDA","???","???","LDY","LDA","LDX","???","CLV","LDA","TSX","???","LDY","LDA","LDX","???",
+		"CPY","CMP","???","???","CPY","CMP","DEC","???","INY","CMP","DEX","???","CPY","CMP","DEC","???",
+		"BNE","CMP","CMP","???","???","CMP","DEC","???","CLD","CMP","PHX","???","???","CMP","DEC","???",
+		"CPX","SBC","???","ISB","CPX","SBC","INC","ISB","INX","SBC","NOP","ISB","CPX","SBC","INC","ISB",
+		"BEQ","SBC","SBC","ISB","???","SBC","INC","ISB","SED","SBC","PLX","ISB","NOP","SBC","INC","ISB"
+};
 
 static const uint32_t ticks[256] = {
 	/*        |  0  |  1  |  2  |  3  |  4  |  5  |  6  |  7  |  8  |  9  |  A  |  B  |  C  |  D  |  E  |  F  |     */
@@ -41,6 +71,313 @@ static const uint32_t ticks[256] = {
 	/* F */      2,    5,    2,    8,    4,    4,    6,    6,    2,    4,    2,    7,    4,    4,    7,    7   /* F */
 };
 
+// -----------------------------------------------------------------------------
+// Opcode Table (Automatically Populated by init6502)
+//
+const cpu_6502::OpEntry cpu_6502::opcode_table[256] = {
+	{ &cpu_6502::brk6502, &cpu_6502::implied6502 }, // 0x00
+	{ &cpu_6502::ora6502, &cpu_6502::indx6502    }, // 0x01
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x02
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x03
+	{ &cpu_6502::tsb6502, &cpu_6502::zp6502      }, // 0x04
+	{ &cpu_6502::ora6502, &cpu_6502::zp6502      }, // 0x05
+	{ &cpu_6502::asl6502, &cpu_6502::zp6502      }, // 0x06
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x07
+	{ &cpu_6502::php6502, &cpu_6502::implied6502 }, // 0x08
+	{ &cpu_6502::ora6502, &cpu_6502::immediate6502 }, // 0x09
+	{ &cpu_6502::asla6502, &cpu_6502::implied6502 }, // 0x0A
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x0B
+	{ &cpu_6502::tsb6502, &cpu_6502::abs6502     }, // 0x0C
+	{ &cpu_6502::ora6502, &cpu_6502::abs6502     }, // 0x0D
+	{ &cpu_6502::asl6502, &cpu_6502::abs6502     }, // 0x0E
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x0F
+	{ &cpu_6502::bpl6502, &cpu_6502::relative6502 }, // 0x10
+	{ &cpu_6502::ora6502, &cpu_6502::indy6502    }, // 0x11
+	{ &cpu_6502::ora6502, &cpu_6502::indzp6502   }, // 0x12
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x13
+	{ &cpu_6502::trb6502, &cpu_6502::zp6502      }, // 0x14
+	{ &cpu_6502::ora6502, &cpu_6502::zpx6502     }, // 0x15
+	{ &cpu_6502::asl6502, &cpu_6502::zpx6502     }, // 0x16
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x17
+	{ &cpu_6502::clc6502, &cpu_6502::implied6502 }, // 0x18
+	{ &cpu_6502::ora6502, &cpu_6502::absy6502    }, // 0x19
+	{ &cpu_6502::ina6502, &cpu_6502::implied6502 }, // 0x1A
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x1B
+	{ &cpu_6502::trb6502, &cpu_6502::abs6502     }, // 0x1C
+	{ &cpu_6502::ora6502, &cpu_6502::absx6502    }, // 0x1D
+	{ &cpu_6502::asl6502, &cpu_6502::absx6502    }, // 0x1E
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x1F
+	{ &cpu_6502::jsr6502, &cpu_6502::abs6502     }, // 0x20
+	{ &cpu_6502::and6502, &cpu_6502::indx6502    }, // 0x21
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x22
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x23
+	{ &cpu_6502::bit6502, &cpu_6502::zp6502      }, // 0x24
+	{ &cpu_6502::and6502, &cpu_6502::zp6502      }, // 0x25
+	{ &cpu_6502::rol6502, &cpu_6502::zp6502      }, // 0x26
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x27
+	{ &cpu_6502::plp6502, &cpu_6502::implied6502 }, // 0x28
+	{ &cpu_6502::and6502, &cpu_6502::immediate6502 }, // 0x29
+	{ &cpu_6502::rola6502, &cpu_6502::implied6502 }, // 0x2A
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x2B
+	{ &cpu_6502::bit6502, &cpu_6502::abs6502     }, // 0x2C
+	{ &cpu_6502::and6502, &cpu_6502::abs6502     }, // 0x2D
+	{ &cpu_6502::rol6502, &cpu_6502::abs6502     }, // 0x2E
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x2F
+	{ &cpu_6502::bmi6502, &cpu_6502::relative6502 }, // 0x30
+	{ &cpu_6502::and6502, &cpu_6502::indy6502    }, // 0x31
+	{ &cpu_6502::and6502, &cpu_6502::indzp6502   }, // 0x32
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x33
+	{ &cpu_6502::bit6502, &cpu_6502::zpx6502     }, // 0x34
+	{ &cpu_6502::and6502, &cpu_6502::zpx6502     }, // 0x35
+	{ &cpu_6502::rol6502, &cpu_6502::zpx6502     }, // 0x36
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x37
+	{ &cpu_6502::sec6502, &cpu_6502::implied6502 }, // 0x38
+	{ &cpu_6502::and6502, &cpu_6502::absy6502    }, // 0x39
+	{ &cpu_6502::dea6502, &cpu_6502::implied6502 }, // 0x3A
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x3B
+	{ &cpu_6502::bit6502, &cpu_6502::absx6502    }, // 0x3C
+	{ &cpu_6502::and6502, &cpu_6502::absx6502    }, // 0x3D
+	{ &cpu_6502::rol6502, &cpu_6502::absx6502    }, // 0x3E
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x3F
+	{ &cpu_6502::rti6502, &cpu_6502::implied6502 }, // 0x40
+	{ &cpu_6502::eor6502, &cpu_6502::indx6502    }, // 0x41
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x42
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x43
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x44
+	{ &cpu_6502::eor6502, &cpu_6502::zp6502      }, // 0x45
+	{ &cpu_6502::lsr6502, &cpu_6502::zp6502      }, // 0x46
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x47
+	{ &cpu_6502::pha6502, &cpu_6502::implied6502 }, // 0x48
+	{ &cpu_6502::eor6502, &cpu_6502::immediate6502 }, // 0x49
+	{ &cpu_6502::lsra6502, &cpu_6502::implied6502 }, // 0x4A
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x4B
+	{ &cpu_6502::jmp6502, &cpu_6502::abs6502     }, // 0x4C
+	{ &cpu_6502::eor6502, &cpu_6502::abs6502     }, // 0x4D
+	{ &cpu_6502::lsr6502, &cpu_6502::abs6502     }, // 0x4E
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x4F
+	{ &cpu_6502::bvc6502, &cpu_6502::relative6502 }, // 0x50
+	{ &cpu_6502::eor6502, &cpu_6502::indy6502    }, // 0x51
+	{ &cpu_6502::eor6502, &cpu_6502::indzp6502   }, // 0x52
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x53
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x54
+	{ &cpu_6502::eor6502, &cpu_6502::zpx6502     }, // 0x55
+	{ &cpu_6502::lsr6502, &cpu_6502::zpx6502     }, // 0x56
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x57
+	{ &cpu_6502::cli6502, &cpu_6502::implied6502 }, // 0x58
+	{ &cpu_6502::eor6502, &cpu_6502::absy6502    }, // 0x59
+	{ &cpu_6502::phy6502, &cpu_6502::implied6502 }, // 0x5A
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x5B
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x5C
+	{ &cpu_6502::eor6502, &cpu_6502::absx6502    }, // 0x5D
+	{ &cpu_6502::lsr6502, &cpu_6502::absx6502    }, // 0x5E
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x5F
+	{ &cpu_6502::rts6502, &cpu_6502::implied6502 }, // 0x60
+	{ &cpu_6502::adc6502, &cpu_6502::indx6502    }, // 0x61
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x62
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x63
+	{ &cpu_6502::stz6502, &cpu_6502::zp6502      }, // 0x64
+	{ &cpu_6502::adc6502, &cpu_6502::zp6502      }, // 0x65
+	{ &cpu_6502::ror6502, &cpu_6502::zp6502      }, // 0x66
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x67
+	{ &cpu_6502::pla6502, &cpu_6502::implied6502 }, // 0x68
+	{ &cpu_6502::adc6502, &cpu_6502::immediate6502 }, // 0x69
+	{ &cpu_6502::rora6502, &cpu_6502::implied6502 }, // 0x6A
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x6B
+	{ &cpu_6502::jmp6502, &cpu_6502::indirect6502 }, // 0x6C
+	{ &cpu_6502::adc6502, &cpu_6502::abs6502     }, // 0x6D
+	{ &cpu_6502::ror6502, &cpu_6502::abs6502     }, // 0x6E
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x6F
+	{ &cpu_6502::bvs6502, &cpu_6502::relative6502 }, // 0x70
+	{ &cpu_6502::adc6502, &cpu_6502::indy6502    }, // 0x71
+	{ &cpu_6502::adc6502, &cpu_6502::indzp6502   }, // 0x72
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x73
+	{ &cpu_6502::stz6502, &cpu_6502::zpx6502     }, // 0x74
+	{ &cpu_6502::adc6502, &cpu_6502::zpx6502     }, // 0x75
+	{ &cpu_6502::ror6502, &cpu_6502::zpx6502     }, // 0x76
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x77
+	{ &cpu_6502::sei6502, &cpu_6502::implied6502 }, // 0x78
+	{ &cpu_6502::adc6502, &cpu_6502::absy6502    }, // 0x79
+	{ &cpu_6502::ply6502, &cpu_6502::implied6502 }, // 0x7A
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x7B
+	{ &cpu_6502::jmp6502, &cpu_6502::indabsx6502 }, // 0x7C
+	{ &cpu_6502::adc6502, &cpu_6502::absx6502    }, // 0x7D
+	{ &cpu_6502::ror6502, &cpu_6502::absx6502    }, // 0x7E
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x7F
+	{ &cpu_6502::bra6502, &cpu_6502::relative6502 }, // 0x80
+	{ &cpu_6502::sta6502, &cpu_6502::indx6502     }, // 0x81
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0x82
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0x83
+	{ &cpu_6502::sty6502, &cpu_6502::zp6502       }, // 0x84
+	{ &cpu_6502::sta6502, &cpu_6502::zp6502       }, // 0x85
+	{ &cpu_6502::stx6502, &cpu_6502::zp6502       }, // 0x86
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0x87
+	{ &cpu_6502::dey6502, &cpu_6502::implied6502  }, // 0x88
+	{ &cpu_6502::bit6502, &cpu_6502::immediate6502 }, // 0x89
+	{ &cpu_6502::txa6502, &cpu_6502::implied6502  }, // 0x8A
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0x8B
+	{ &cpu_6502::sty6502, &cpu_6502::abs6502      }, // 0x8C
+	{ &cpu_6502::sta6502, &cpu_6502::abs6502      }, // 0x8D
+	{ &cpu_6502::stx6502, &cpu_6502::abs6502      }, // 0x8E
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0x8F
+	{ &cpu_6502::bcc6502, &cpu_6502::relative6502 }, // 0x90
+	{ &cpu_6502::sta6502, &cpu_6502::indy6502     }, // 0x91
+	{ &cpu_6502::sta6502, &cpu_6502::indzp6502    }, // 0x92
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0x93
+	{ &cpu_6502::sty6502, &cpu_6502::zpx6502      }, // 0x94
+	{ &cpu_6502::sta6502, &cpu_6502::zpx6502      }, // 0x95
+	{ &cpu_6502::stx6502, &cpu_6502::zpy6502      }, // 0x96
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0x97
+	{ &cpu_6502::tya6502, &cpu_6502::implied6502  }, // 0x98
+	{ &cpu_6502::sta6502, &cpu_6502::absy6502     }, // 0x99
+	{ &cpu_6502::txs6502, &cpu_6502::implied6502  }, // 0x9A
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0x9B
+	{ &cpu_6502::stz6502, &cpu_6502::abs6502      }, // 0x9C
+	{ &cpu_6502::sta6502, &cpu_6502::absx6502     }, // 0x9D
+	{ &cpu_6502::stz6502, &cpu_6502::absx6502     }, // 0x9E
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0x9F
+	{ &cpu_6502::ldy6502, &cpu_6502::immediate6502 }, // 0xA0
+	{ &cpu_6502::lda6502, &cpu_6502::indx6502     }, // 0xA1
+	{ &cpu_6502::ldx6502, &cpu_6502::immediate6502 }, // 0xA2
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0xA3
+	{ &cpu_6502::ldy6502, &cpu_6502::zp6502       }, // 0xA4
+	{ &cpu_6502::lda6502, &cpu_6502::zp6502       }, // 0xA5
+	{ &cpu_6502::ldx6502, &cpu_6502::zp6502       }, // 0xA6
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0xA7
+	{ &cpu_6502::tay6502, &cpu_6502::implied6502  }, // 0xA8
+	{ &cpu_6502::lda6502, &cpu_6502::immediate6502 }, // 0xA9
+	{ &cpu_6502::tax6502, &cpu_6502::implied6502  }, // 0xAA
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0xAB
+	{ &cpu_6502::ldy6502, &cpu_6502::abs6502      }, // 0xAC
+	{ &cpu_6502::lda6502, &cpu_6502::abs6502      }, // 0xAD
+	{ &cpu_6502::ldx6502, &cpu_6502::abs6502      }, // 0xAE
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0xAF
+	{ &cpu_6502::bcs6502, &cpu_6502::relative6502 }, // 0xB0
+	{ &cpu_6502::lda6502, &cpu_6502::indy6502     }, // 0xB1
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0xB2
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0xB3
+	{ &cpu_6502::ldy6502, &cpu_6502::zpx6502      }, // 0xB4
+	{ &cpu_6502::lda6502, &cpu_6502::zpx6502      }, // 0xB5
+	{ &cpu_6502::ldx6502, &cpu_6502::zpy6502      }, // 0xB6
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0xB7
+	{ &cpu_6502::clv6502, &cpu_6502::implied6502  }, // 0xB8
+	{ &cpu_6502::lda6502, &cpu_6502::absy6502     }, // 0xB9
+	{ &cpu_6502::tsx6502, &cpu_6502::implied6502  }, // 0xBA
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0xBB
+	{ &cpu_6502::ldy6502, &cpu_6502::absx6502     }, // 0xBC
+	{ &cpu_6502::lda6502, &cpu_6502::absx6502     }, // 0xBD
+	{ &cpu_6502::ldx6502, &cpu_6502::absy6502     }, // 0xBE
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0xBF
+	{ &cpu_6502::cpy6502, &cpu_6502::immediate6502 }, // 0xC0
+	{ &cpu_6502::cmp6502, &cpu_6502::indx6502     }, // 0xC1
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0xC2
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0xC3
+	{ &cpu_6502::cpy6502, &cpu_6502::zp6502       }, // 0xC4
+	{ &cpu_6502::cmp6502, &cpu_6502::zp6502       }, // 0xC5
+	{ &cpu_6502::dec6502, &cpu_6502::zp6502       }, // 0xC6
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0xC7
+	{ &cpu_6502::iny6502, &cpu_6502::implied6502  }, // 0xC8
+	{ &cpu_6502::cmp6502, &cpu_6502::immediate6502 }, // 0xC9
+	{ &cpu_6502::dex6502, &cpu_6502::implied6502  }, // 0xCA
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0xCB
+	{ &cpu_6502::cpy6502, &cpu_6502::abs6502      }, // 0xCC
+	{ &cpu_6502::cmp6502, &cpu_6502::abs6502      }, // 0xCD
+	{ &cpu_6502::dec6502, &cpu_6502::abs6502      }, // 0xCE
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0xCF
+	{ &cpu_6502::bne6502, &cpu_6502::relative6502 }, // 0xD0
+	{ &cpu_6502::cmp6502, &cpu_6502::indy6502     }, // 0xD1
+	{ &cpu_6502::cmp6502, &cpu_6502::indzp6502    }, // 0xD2
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0xD3
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0xD4
+	{ &cpu_6502::cmp6502, &cpu_6502::zpx6502      }, // 0xD5
+	{ &cpu_6502::dec6502, &cpu_6502::zpx6502      }, // 0xD6
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0xD7
+	{ &cpu_6502::cld6502, &cpu_6502::implied6502  }, // 0xD8
+	{ &cpu_6502::cmp6502, &cpu_6502::absy6502     }, // 0xD9
+	{ &cpu_6502::phx6502, &cpu_6502::implied6502  }, // 0xDA
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0xDB
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0xDC
+	{ &cpu_6502::cmp6502, &cpu_6502::absx6502     }, // 0xDD
+	{ &cpu_6502::dec6502, &cpu_6502::absx6502     }, // 0xDE
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0xDF
+	{ &cpu_6502::cpx6502, &cpu_6502::immediate6502 }, // 0xE0
+	{ &cpu_6502::sbc6502, &cpu_6502::indx6502     }, // 0xE1
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0xE2
+	{ &cpu_6502::isb6502, &cpu_6502::indx6502     }, // 0xE3
+	{ &cpu_6502::cpx6502, &cpu_6502::zp6502       }, // 0xE4
+	{ &cpu_6502::sbc6502, &cpu_6502::zp6502       }, // 0xE5
+	{ &cpu_6502::inc6502, &cpu_6502::zp6502       }, // 0xE6
+	{ &cpu_6502::isb6502, &cpu_6502::zp6502       }, // 0xE7
+	{ &cpu_6502::inx6502, &cpu_6502::implied6502  }, // 0xE8
+	{ &cpu_6502::sbc6502, &cpu_6502::immediate6502 }, // 0xE9
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0xEA (real NOP)
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0xEB
+	{ &cpu_6502::cpx6502, &cpu_6502::abs6502      }, // 0xEC
+	{ &cpu_6502::sbc6502, &cpu_6502::abs6502      }, // 0xED
+	{ &cpu_6502::inc6502, &cpu_6502::abs6502      }, // 0xEE
+	{ &cpu_6502::isb6502, &cpu_6502::abs6502      }, // 0xEF
+	{ &cpu_6502::beq6502, &cpu_6502::relative6502 }, // 0xF0
+	{ &cpu_6502::sbc6502, &cpu_6502::indy6502     }, // 0xF1
+	{ &cpu_6502::sbc6502, &cpu_6502::indzp6502    }, // 0xF2
+	{ &cpu_6502::isb6502, &cpu_6502::indy6502     }, // 0xF3
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0xF4
+	{ &cpu_6502::sbc6502, &cpu_6502::zpx6502      }, // 0xF5
+	{ &cpu_6502::inc6502, &cpu_6502::zpx6502      }, // 0xF6
+	{ &cpu_6502::isb6502, &cpu_6502::zpx6502      }, // 0xF7
+	{ &cpu_6502::sed6502, &cpu_6502::implied6502  }, // 0xF8
+	{ &cpu_6502::sbc6502, &cpu_6502::absy6502     }, // 0xF9
+	{ &cpu_6502::plx6502, &cpu_6502::implied6502  }, // 0xFA
+	{ &cpu_6502::isb6502, &cpu_6502::absy6502     }, // 0xFB
+	{ &cpu_6502::nop6502, &cpu_6502::absx6502     }, // 0xFC
+	{ &cpu_6502::sbc6502, &cpu_6502::absx6502     }, // 0xFD
+	{ &cpu_6502::inc6502, &cpu_6502::absx6502     }, // 0xFE
+	{ &cpu_6502::isb6502, &cpu_6502::absx6502     }  // 0xFF
+};
+
+// -----------------------------------------------------------------------------
+// Name: init6502
+// Purpose: Initializes the 6502 CPU instance and sets up opcode dispatch tables.
+//
+// Description:
+//   - Clears internal CPU state and registers.
+//   - Resets the program counter, status flags, and clock counters.
+//   - Populates the opcode table for all 256 opcodes with function pointers
+//     to their instruction and addressing mode handlers.
+//   - Sets the address mask used for address wrapping in emulated memory space.
+//
+// Parameters:
+//   uint16_t addrmaskval - Bitmask used to constrain all memory addresses
+//                          (e.g., 0xFFFF for 16-bit addressing).
+//
+// Returns:
+//   void
+//
+// -----------------------------------------------------------------------------
+
+void cpu_6502::init6502(uint16_t addrmaskval)
+{
+	PC = PPC = 0;
+	addrmask = addrmaskval;
+	_irqPending = 0;
+	clocktickstotal = 0;
+
+	for (int i = 0; i < 256; ++i)
+	{
+		instruction[i] = opcode_table[i].instruction;     // Assign opcode handlers
+		adrmode[i] = opcode_table[i].addressing_mode;     // Assign addressing mode handlers
+	}
+}
+
+// -----------------------------------------------------------------------------
+// 6502 CPU Constructor.
+// Initializes memory pointers and configuration, sets CPU ID, enables debug
+// memory logging, disables execution debugging, and calls init6502().
+// Parameters:
+//   mem        - Pointer to backing memory array (used when no handler matches).
+//   read_mem   - Pointer to memory read handler table.
+//   write_mem  - Pointer to memory write handler table.
+//   addr       - Address mask used for wrapping memory accesses.
+//   num        - CPU identifier used for per-CPU operations/logging.
+// -----------------------------------------------------------------------------
 cpu_6502::cpu_6502(uint8_t* mem, MemoryReadByte* read_mem, MemoryWriteByte* write_mem, uint16_t addr, int num)
 {
 	MEM = mem;
@@ -52,1096 +389,154 @@ cpu_6502::cpu_6502(uint8_t* mem, MemoryReadByte* read_mem, MemoryWriteByte* writ
 	init6502(addr);
 }
 
-void cpu_6502::enable_debug(bool s)
-{
-	debug = 1;
-}
-
+// -----------------------------------------------------------------------------
+// Get the Total Number of Clock Ticks Executed.
+// Optionally resets the internal tick counter after returning the value.
+// Parameters:
+//   reset - If non-zero, resets the tick counter to 0 after retrieval.
+// Returns:
+//   The total number of ticks accumulated since the last reset (or start).
+// -----------------------------------------------------------------------------
 int cpu_6502::get6502ticks(int reset)
 {
-	int tmp;
-
-	tmp = clocktickstotal;
+	int tmp = clocktickstotal;
 	if (reset)
-	{
 		clocktickstotal = 0;
-	}
 	return tmp;
 }
 
+// -----------------------------------------------------------------------------
+// Read a Byte from 6502 Memory.
+// Checks all registered memory read handlers for a matching address range.
+// If a handler is found, uses it to read from the mapped area.
+// If no handler exists and `mmem` is false, returns from default `MEM` array.
+// If no handler exists and `mmem` is true, optionally logs unhandled access.
+// Parameters:
+//   addr - 16-bit address to read.
+// Returns:
+//   8-bit value at the specified address.
+// -----------------------------------------------------------------------------
+
 uint8_t cpu_6502::get6502memory(uint16_t addr)
 {
-	uint8_t temp = 0;
-	// Pointer to Beginning of our handler
-	MemoryReadByte* MemRead = memory_read;
-
-	while (MemRead->lowAddr != 0xffffffff)
+	if ((direct_zero_page && addr <= 0x00FF) || (direct_stack_page && addr >= 0x0100 && addr <= 0x01FF))
 	{
-		if ((addr >= MemRead->lowAddr) && (addr <= MemRead->highAddr))
+		return MEM[addr];
+	}
+
+	MemoryReadByte* reader = memory_read;
+	while (reader->lowAddr != 0xFFFFFFFF)
+	{
+		if (addr >= reader->lowAddr && addr <= reader->highAddr)
 		{
-			if (MemRead->memoryCall)
-			{
-				//Note the MAME style addressing here!
-				temp = MemRead->memoryCall(addr - MemRead->lowAddr, MemRead);
-				//temp = MemRead->memoryCall(addr, MemRead);
-			}
+			if (reader->memoryCall)
+				return reader->memoryCall(addr - reader->lowAddr, reader);
 			else
-			{
-				//Note the MAME style addressing here!
-				temp = *((uint8_t*)MemRead->pUserArea + (addr - MemRead->lowAddr));
-				//temp = *((uint8_t*)MemRead->pUserArea + (addr )); //Note the addressing here!
-			}
-			MemRead = nullptr;
-			break;
+				return static_cast<const uint8_t*>(reader->pUserArea)[addr - reader->lowAddr];
 		}
-		++MemRead;
-	}
-	// Add blocking here
-	if (MemRead && !mmem)
-	{
-		temp = MEM[addr];
-	}
-	if (MemRead && mmem)
-	{
-		if (log_debug_rw) LOG_INFO("Warning! Unhandled Read at %x", addr);
+		++reader;
 	}
 
-	return temp;
-}
+	if (!mmem)
+		return MEM[addr];
+
+	if (log_debug_rw)
+		LOG_INFO("Warning! Unhandled Read at %x", addr);
+
+	return 0;
+}// -----------------------------------------------------------------------------
+// Write a Byte to 6502 Memory.
+// Checks all registered memory write handlers for a matching address range.
+// If a handler is found, uses it to write to the mapped area.
+// If no handler exists and `mmem` is false, writes to default `MEM` array.
+// If no handler exists and `mmem` is true, optionally logs unhandled access.
+// Parameters:
+//   addr - 16-bit address to write to.
+//   byte - 8-bit value to write.
+// -----------------------------------------------------------------------------
 
 void cpu_6502::put6502memory(uint16_t addr, uint8_t byte)
 {
-	// Pointer to Beginning of our handler
-	MemoryWriteByte* MemWrite = memory_write;
-
-	while (MemWrite->lowAddr != 0xffffffff)
+	if ((direct_zero_page && addr <= 0x00FF) || (direct_stack_page && addr >= 0x0100 && addr <= 0x01FF))
 	{
-		if ((addr >= MemWrite->lowAddr) && (addr <= MemWrite->highAddr))
+		MEM[addr] = byte;
+		return;
+	}
+
+	MemoryWriteByte* writer = memory_write;
+	while (writer->lowAddr != 0xFFFFFFFF)
+	{
+		if (addr >= writer->lowAddr && addr <= writer->highAddr)
 		{
-			if (MemWrite->memoryCall)
-			{
-				//Note the MAME style addressing here!
-				MemWrite->memoryCall(addr - MemWrite->lowAddr, byte, MemWrite);
-			}
+			if (writer->memoryCall)
+				writer->memoryCall(addr - writer->lowAddr, byte, writer);
 			else
-			{
-				//Note the MAME style addressing here!
-				*((uint8_t*)MemWrite->pUserArea + (addr - MemWrite->lowAddr)) = byte;
-			}
-			MemWrite = nullptr;
-			break;
+				((uint8_t*)writer->pUserArea)[addr - writer->lowAddr] = byte;
+			return;
 		}
-		++MemWrite;
+		++writer;
 	}
-	// Add blocking here
-	if (MemWrite && !mmem)
-	{
-		MEM[addr] = (uint8_t)byte;
-	}
-	if (MemWrite && mmem)
-	{
-		if (log_debug_rw) LOG_INFO("Warning! Unhandled Write at %x data: %x", addr, byte);
-	}
-}
-
-// ================================================= Addressing Modes ========================================================
-
-//Accumulator opcodes are handled with their own separate functions.
-//{}
-
-// Absolute
-void cpu_6502::abs6502()
-{
-	savepc = get6502memory(PC) + (get6502memory(PC + 1) << 8);
-	PC += 2;
-}
-
-// Implied
-void cpu_6502::implied6502()
-{
-	//NOP
-}
-
-// #Immediate
-void cpu_6502::immediate6502()
-{
-	savepc = PC++;
-}
-
-// Branch
-void cpu_6502::relative6502()
-{
-	savepc = get6502memory(PC++);
-	if (savepc & F_N) savepc |= 0xFF00;
-}
-
-// Indirect JMP
-void cpu_6502::indirect6502()
-{
-	uint16_t temp;
-	help = get6502memory(PC) + (get6502memory(PC + 1) << 8);
-	temp = (help & 0xFF00) | ((help + 1) & 0x00FF);  //replicate 6502 page-boundary wraparound bug
-	savepc = (get6502memory(help) | get6502memory(temp) << 8);
-	PC += 2;
-}
-
-// Absolute X Indexed
-void cpu_6502::absx6502()
-{
-	savepc = get6502memory(PC) + (get6502memory(PC + 1) << 8);
-
-	if (ticks[opcode] == 4)
-		if ((savepc >> 8) != ((savepc + X) >> 8))
-			clockticks6502++;//one cycle penalty for page-crossing on some opcodes
-	savepc += X;
-	PC += 2;
-}
-
-// Absolute Y Indexed
-void cpu_6502::absy6502()
-{
-	savepc = get6502memory(PC) + (get6502memory(PC + 1) << 8);
-
-	if (ticks[opcode] == 4)
-		if ((savepc >> 8) != ((savepc + Y) >> 8))
-			clockticks6502++;//one cycle penalty for page-crossing on some opcodes
-	savepc += Y;
-	PC += 2;
-}
-
-//NOTE: ZERO PAGE and STACK READS/WRITES ARE GOING THROUGH A MEM HANDLER. THIS SLOWS DOWN EMULATION BUT WAS REQUIRED FOR MAJOR HAVOC
-// ZeroPage
-void cpu_6502::zp6502()
-{
-	savepc = (uint16_t)get6502memory((uint16_t)PC++);
-}
-
-// ZeroPage, X Indexed
-void cpu_6502::zpx6502()
-{
-	savepc = ((uint16_t)get6502memory((uint16_t)PC++) + (uint16_t)X) & 0xFF; //zero-page wraparound
-}
-
-// ZeroPage, Y Indexed
-void cpu_6502::zpy6502()
-{
-	savepc = ((uint16_t)get6502memory((uint16_t)PC++) + (uint16_t)Y) & 0xFF; //zero-page wraparound
-}
-
-// (X Indexed, Indirect)
-void cpu_6502::indx6502()
-{
-	value = (uint16_t)(((uint16_t)get6502memory(PC++) + (uint16_t)X) & 0xFF);
-	savepc = (uint16_t)get6502memory(value & 0x00FF) | ((uint16_t)get6502memory((value + 1) & 0x00FF) << 8);
-}
-
-// (Y Indexed, Indirect)
-void cpu_6502::indy6502()
-{
-	uint16_t temp;
-	value = (uint16_t)get6502memory(PC++);
-	temp = (value & 0xFF00) | ((value + 1) & 0x00FF);  //zero-page wraparound
-	savepc = (uint16_t)get6502memory(value) | ((uint16_t)get6502memory(temp) << 8);
-	if (ticks[opcode] == 5)
-		if ((savepc >> 8) != ((savepc + Y) >> 8))
-			clockticks6502++; //one cycle penlty for page-crossing on some opcodes
-	savepc += Y;
-}
-
-// (ABS,X) - Used by JMP only.
-void cpu_6502::indabsx6502()
-{
-	help = get6502memory(PC) + (get6502memory(PC + 1) << 8) + X;
-	savepc = get6502memory(help) + (get6502memory(help + 1) << 8);
-}
-
-// (ZP)
-void cpu_6502::indzp6502()
-{
-	value = get6502memory(PC++);
-	savepc = get6502memory(value) + (get6502memory(value + 1) << 8);
-}
-
-// ================================================= Stack Operations========================================================
-// It would be faster not doing zero page and stack access through handles, but Major Havoc requires this.
-void cpu_6502::push16(uint16_t pushval)
-{
-	put6502memory(BASE_STACK + S, (pushval >> 8) & 0xFF);
-	put6502memory(BASE_STACK + ((S - 1) & 0xFF), pushval & 0xFF);
-	S -= 2;
-}
-
-void cpu_6502::push8(uint8_t pushval)
-{
-	put6502memory(BASE_STACK + S--, pushval);
-}
-
-uint16_t cpu_6502::pull16()
-{
-	uint16_t temp16;
-	temp16 = get6502memory(BASE_STACK + ((S + 1) & 0xFF)) | ((uint16_t)get6502memory(BASE_STACK + ((S + 2) & 0xFF)) << 8);
-	S += 2;
-	return(temp16);
-}
-
-uint8_t cpu_6502::pull8()
-{
-	return (get6502memory(BASE_STACK + ++S));
-}
-
-// ================================================= Instructions ========================================================
-
-//ADC
-//Code taken from M.A.M.E (tm)
-void cpu_6502::adc6502()
-{
-	int tmp = get6502memory(savepc);
-
-	if (P & F_D)
-	{
-		int c = (P & F_C);
-		int lo = (A & 0x0f) + (tmp & 0x0f) + c;
-		int hi = (A & 0xf0) + (tmp & 0xf0);
-		P &= ~(F_V | F_C);
-		if (lo > 0x09)
-		{
-			hi += 0x10;
-			lo += 0x06;
-		}
-		if (~(A ^ tmp) & (A ^ hi) & F_N)
-			P |= F_V;
-		if (hi > 0x90)
-			hi += 0x60;
-		if (hi & 0xff00)
-			P |= F_C;
-		A = (lo & 0x0f) + (hi & 0xf0);
-	}
-	else
-	{
-		int c = (P & F_C);
-		int sum = A + tmp + c;
-		P &= ~(F_V | F_C);
-		if (~(A ^ tmp) & (A ^ sum) & F_N)
-			P |= F_V;
-		if (sum & 0xff00)
-			P |= F_C;
-		A = (uint8_t)sum;
-	}
-	SET_NZ(A);
-}
-//AND
-void cpu_6502::and6502()
-{
-	value = get6502memory(savepc);
-	A &= value;
-	SET_NZ(A);
-}
-//ASL
-void cpu_6502::asl6502()
-{
-	value = get6502memory(savepc);
-	P = (P & ~F_C) | ((value >> 7) & F_C);
-	value = value << 1;
-	put6502memory(savepc, value);
-	SET_NZ(value);
-}
-
-void cpu_6502::asla6502()
-{
-	P = (P & ~F_C) | ((A >> 7) & F_C);
-	A = A << 1;
-	SET_NZ(A);
-}
-
-void cpu_6502::bcc6502()
-{
-	if ((P & F_C) == 0)
-	{
-		oldpc = PC;
-		PC += savepc;
-		if ((oldpc & 0xFF00) != (PC & 0xFF00)) clockticks6502 += 2;
-		else clockticks6502++;
-	}
-}
-
-void cpu_6502::bcs6502()
-{
-	if (P & F_C)
-	{
-		oldpc = PC;
-		PC += savepc;
-		if ((oldpc & 0xFF00) != (PC & 0xFF00)) clockticks6502 += 2;
-		else clockticks6502++;
-	}
-}
-
-void cpu_6502::beq6502()
-{
-	if (P & F_Z)
-	{
-		oldpc = PC;
-		PC += savepc;
-		if ((oldpc & 0xFF00) != (PC & 0xFF00)) clockticks6502 += 2;
-		else clockticks6502++;
-	}
-}
-
-void cpu_6502::bit6502()
-{
-	value = get6502memory(savepc);
-
-	P &= ~(F_N | F_V | F_Z);
-	P |= value & (F_N | F_V);
-	if ((value & A) == 0)	P |= F_Z;
-}
-
-void cpu_6502::bmi6502()
-{
-	if (P & F_N)
-	{
-		oldpc = PC;
-		PC += savepc;
-		if ((oldpc & 0xFF00) != (PC & 0xFF00)) clockticks6502 += 2;
-		else clockticks6502++;
-	}
-}
-
-void cpu_6502::bne6502()
-{
-	if ((P & F_Z) == 0)
-	{
-		oldpc = PC;
-		PC += savepc;
-		if ((oldpc & 0xFF00) != (PC & 0xFF00)) clockticks6502 += 2;
-		else clockticks6502++;
-	}
-}
-
-void cpu_6502::bpl6502()
-{
-	if ((P & F_N) == 0)
-	{
-		oldpc = PC;
-		PC += savepc;
-		if ((oldpc & 0xFF00) != (PC & 0xFF00)) clockticks6502 += 2;
-		else clockticks6502++;
-	}
-}
-
-void cpu_6502::brk6502()
-{
-	PC++;
-	push16(PC); //push next instruction address onto stack
-	push8(P | F_B); //push CPU status to stack
-	P = (P | F_I) & ~F_D;
-	PC = MEM[0xfffe & addrmask] + (MEM[0xffff & addrmask] << 8);
-}
-
-void cpu_6502::bvc6502()
-{
-	if (!(P & F_V))
-	{
-		oldpc = PC;
-		PC += savepc;
-		if ((oldpc & 0xFF00) != (PC & 0xFF00)) clockticks6502 += 2;
-		else clockticks6502++;
-	}
-}
-
-void cpu_6502::bvs6502()
-{
-	if (P & F_V)
-	{
-		oldpc = PC;
-		PC += savepc;
-		if ((oldpc & 0xFF00) != (PC & 0xFF00)) clockticks6502 += 2;
-		else clockticks6502++;
-	}
-}
-
-void cpu_6502::clc6502()
-{
-	P &= ~F_C;
-}
-
-void cpu_6502::cld6502()
-{
-	P &= ~F_D;
-}
-
-void cpu_6502::cli6502()
-{
-	//if (_irqPending) irq6502();
-
-	P &= ~F_I;
-}
-
-void cpu_6502::clv6502()
-{
-	P &= ~F_V;
-}
-
-void cpu_6502::cmp6502()
-{
-	value = get6502memory(savepc);
-	if (A + 0x100 - value > 0xff) P |= F_C; else P &= ~F_C;
-	value = A + 0x100 - value;
-	SET_NZ(value);
-}
-
-void cpu_6502::cpx6502()
-{
-	value = get6502memory(savepc);
-	if (X + 0x100 - value > 0xff) P |= F_C; else P &= ~F_C;
-	value = X + 0x100 - value;
-	SET_NZ(value);
-}
-
-void cpu_6502::cpy6502()
-{
-	value = get6502memory(savepc);
-	if (Y + 0x100 - value > 0xff) P |= F_C; else P &= ~F_C;
-	value = Y + 0x100 - value;
-	SET_NZ(value);
-}
-
-void cpu_6502::dec6502()
-{
-	value = get6502memory(savepc);
-	uint8_t result = value - 1;
-	SET_NZ(result);
-	value = result; // Evaluate if value needs to be saved and used elsewhere
-	put6502memory(savepc, result);
-}
-
-void cpu_6502::dex6502()
-{
-	X--;
-	SET_NZ(X);
-}
 
-void cpu_6502::dey6502()
-{
-	Y--;
-	SET_NZ(Y);
-}
-
-void cpu_6502::eor6502()
-{
-	A ^= get6502memory(savepc);
-	SET_NZ(A);
-}
-
-void cpu_6502::inc6502()
-{
-	value = get6502memory(savepc);
-	uint8_t result = value + 1;
-	SET_NZ(result);
-	value = result; // Evaluate if value needs to be saved and used elsewhere
-	put6502memory(savepc, result);
-}
-
-void cpu_6502::inx6502()
-{
-	X++;
-	SET_NZ(X);
-}
-
-void cpu_6502::iny6502()
-{
-	Y++;
-	SET_NZ(Y);
-}
-
-void cpu_6502::jmp6502()
-{
-	PC = savepc;
-}
-
-void cpu_6502::jsr6502()
-{
-	PC--;
-	push16(PC);
-	PC = savepc;
-}
-
-void cpu_6502::lda6502()
-{
-	A = get6502memory(savepc);
-	SET_NZ(A);
-}
-
-void cpu_6502::ldx6502()
-{
-	X = get6502memory(savepc);
-	SET_NZ(X);
-}
-
-void cpu_6502::ldy6502()
-{
-	Y = get6502memory(savepc);
-	SET_NZ(Y);
-}
-
-void cpu_6502::lsr6502()
-{
-	value = get6502memory(savepc);
-	// set carry flag if shifting right causes a bit to be lost
-	P = (P & ~F_C) | (value & F_C);
-	//zero and negative Flag Calculations
-	value = value >> 1;
-	SET_NZ(value);
-	put6502memory(savepc, value);
-}
-
-void cpu_6502::lsra6502()
-{
-	P = (P & ~F_C) | (A & F_C);
-	A = A >> 1;
-	SET_NZ(A);
-}
-
-void cpu_6502::nop6502()
-{
-	if (opcode != 0xea) {
-		LOG_INFO("!!!!WARNING UNHANDLED NO - OP CALLED: %x CPU: %x", opcode, cpu_num);
-	}
-	switch (opcode) {
-	case 0x1C:
-	case 0x3C:
-	case 0x5C:
-	case 0x7C:
-	case 0xDC:
-	case 0xFC:
-		clockticks6502++;
-		break;
-	}
-}
-
-void cpu_6502::ora6502()
-{
-	A |= get6502memory(savepc);
-	SET_NZ(A);
-}
-
-void cpu_6502::pha6502()
-{
-	push8(A);
-}
-
-void cpu_6502::php6502()
-{
-	push8(P | F_B);
-}
-
-void cpu_6502::pla6502()
-{
-	A = pull8();
-	SET_NZ(A);
-}
-
-void cpu_6502::plp6502()
-{
-	P = pull8() | F_T;
-}
-
-void cpu_6502::rol6502()
-{
-	saveflags = (P & F_C);
-	value = get6502memory(savepc);
-	P = (P & ~F_C) | ((value >> 7) & F_C);
-	value = value << 1;
-	value |= saveflags;
-	put6502memory(savepc, value);
-	SET_NZ(value);
-}
-
-void cpu_6502::rola6502()
-{
-	saveflags = (P & F_C);
-	P = (P & ~F_C) | ((A >> 7) & F_C);
-	A = A << 1;
-	A |= saveflags;
-	SET_NZ(A);
-}
-
-void cpu_6502::ror6502()
-{
-	saveflags = (P & F_C);
-	value = get6502memory(savepc);
-	P = (P & ~F_C) | (value & F_C);
-	value = value >> 1;
-	if (saveflags) value |= F_N;
-	put6502memory(savepc, value);
-	SET_NZ(value);
-}
-
-void cpu_6502::rora6502()
-{
-	saveflags = (P & F_C);
-	P = (P & ~F_C) | (A & F_C);
-	A = A >> 1;
-	if (saveflags) A |= F_N;
-	SET_NZ(A);
-}
-
-void cpu_6502::rti6502()
-{
-	//if (_irqPending) irq6502();
-
-	P = pull8();
-	P |= F_T | F_B;
-	PC = pull16();
-}
-
-void cpu_6502::rts6502()
-{
-	PC = pull16();
-	PC++;
-}
-
-void cpu_6502::sbc6502() //Code taken from M.A.M.E (tm)
-{
-	int tmp = get6502memory(savepc);
-
-	if (P & F_D)
-	{
-		int c = (P & F_C) ^ F_C;
-		int sum = A - tmp - c;
-		int lo = (A & 0x0f) - (tmp & 0x0f) - c;
-		int hi = (A & 0xf0) - (tmp & 0xf0);
-		if (lo & 0x10)
-		{
-			lo -= 6;
-			hi--;
-		}
-		P &= ~(F_V | F_C | F_Z | F_N);
-		if ((A ^ tmp) & (A ^ sum) & F_N)
-			P |= F_V;
-		if (hi & 0x0100)
-			hi -= 0x60;
-		if ((sum & 0xff00) == 0)
-			P |= F_C;
-		if (!((A - tmp - c) & 0xff))
-			P |= F_Z;
-		if ((A - tmp - c) & 0x80)
-			P |= F_N;
-		A = (lo & 0x0f) | (hi & 0xf0);
-	}
-	else
-	{
-		int c = (P & F_C) ^ F_C;
-		int sum = A - tmp - c;
-		P &= ~(F_V | F_C);
-		if ((A ^ tmp) & (A ^ sum) & F_N)
-			P |= F_V;
-		if ((sum & 0xff00) == 0)
-			P |= F_C;
-		A = (uint8_t)sum;
-		SET_NZ(A);
-	}
-}
-
-void cpu_6502::sec6502()
-{
-	P |= F_C;  //Set Carry
-}
-
-void cpu_6502::sed6502()
-{
-	P |= F_D; //Set Decimal
-}
-
-void cpu_6502::sei6502()
-{
-	P |= F_I; //Set Interrupt
-}
-
-void cpu_6502::sta6502()
-{
-	put6502memory(savepc, A);
-}
-
-void cpu_6502::stx6502()
-{
-	put6502memory(savepc, X);
-}
-
-void cpu_6502::sty6502()
-{
-	put6502memory(savepc, Y);
-}
-
-void cpu_6502::tax6502()
-{
-	X = A;
-	SET_NZ(X);
-}
-
-void cpu_6502::tay6502()
-{
-	Y = A;
-	SET_NZ(Y);
-}
-
-void cpu_6502::tsx6502()
-{
-	X = S;
-	SET_NZ(X);
-}
-
-void cpu_6502::txa6502()
-{
-	A = X;
-	SET_NZ(A);
-}
-
-void cpu_6502::txs6502()
-{
-	S = X;
-}
-
-void cpu_6502::tya6502()
-{
-	A = Y;
-	SET_NZ(A);
-}
-//BRA - Branch Always
-void cpu_6502::bra6502()
-{
-	PC += savepc;
-	clockticks6502++;
+	if (!mmem)
+		MEM[addr] = byte;
+	else if (log_debug_rw)
+		LOG_INFO("Warning! Unhandled Write %02X at %x", byte, addr);
 }
-//DEC A Decrement A
-void cpu_6502::dea6502()
-{
-	A--;
-	SET_NZ(A);
-}
-//INC A Increment A
-void cpu_6502::ina6502()
-{
-	A++;
-	SET_NZ(A);
-}
-
-void cpu_6502::phx6502()
-{
-	put6502memory(0x100 + S--, X);
-}
-
-void cpu_6502::plx6502()
-{
-	X = pull8();
-	SET_NZ(X);
-}
-
-void cpu_6502::phy6502()
-{
-	put6502memory(0x100 + S--, Y);
-}
-
-void cpu_6502::ply6502()
-{
-	Y = pull8();
-	SET_NZ(Y);
-}
 
-void cpu_6502::stz6502()
+// -----------------------------------------------------------------------------
+// Enable Direct Zero Page Access
+// Enables or disables direct zero-page addressing mode optimization.
+// When enabled, accesses to the zero page may be handled directly for speed.
+// -----------------------------------------------------------------------------
+void cpu_6502::enableDirectZeroPage(bool enable)
 {
-	put6502memory(savepc, 0);
+	direct_zero_page = enable;
 }
-
-//65C02 OPS, need work.
 
-void cpu_6502::isb6502()
+// -----------------------------------------------------------------------------
+// Enable Direct Stack Page Access
+// Enables or disables direct stack page addressing mode optimization.
+// When enabled, accesses to the stack page may be handled directly for speed.
+// -----------------------------------------------------------------------------
+void cpu_6502::enableDirectStackPage(bool enable)
 {
-	inc6502();
-	sbc6502();
-	//if (penaltyop && penaltyaddr) clockticks6502--;
+	direct_stack_page = enable;
 }
 
-void cpu_6502::tsb6502()
+// -----------------------------------------------------------------------------
+// Callback Hook After CLI Instruction.
+// Called immediately after clearing the interrupt disable flag (CLI).
+// Delegates to maybe_take_irq() to decide if IRQ should be taken now.
+// -----------------------------------------------------------------------------
+void cpu_6502::check_interrupts_after_cli()
 {
-	MEM[savepc] |= A;
-	SET_Z(MEM[savepc]);
+	maybe_take_irq();
 }
 
-void cpu_6502::trb6502()
+// -----------------------------------------------------------------------------
+// Check Whether a Pending IRQ Should Be Taken Now.
+// Takes the IRQ if `_irqPending` is set and the interrupt disable flag is clear.
+// -----------------------------------------------------------------------------
+void cpu_6502::maybe_take_irq()
 {
-	MEM[savepc] = MEM[savepc] & (A ^ 0xff);
-	SET_Z(MEM[savepc]);
+	if (_irqPending && !(P & F_I))
+		irq6502();
 }
 
-// Init MyCpu
-void cpu_6502::init6502(uint16_t addrmaskval)
+// -----------------------------------------------------------------------------
+// Clear the Pending IRQ Flag.
+// Resets `_irqPending` to 0.
+// -----------------------------------------------------------------------------
+void cpu_6502::m6502clearpendingint()
 {
-	int Iperiod = 0;
-	int otherTicks = 0;
-	PC = 0;
-	PPC = 0;
-	addrmask = addrmaskval;
 	_irqPending = 0;
-	clocktickstotal = 0;
-	
-	instruction[0x00] = &cpu_6502::brk6502; adrmode[0x00] = &cpu_6502::implied6502;
-	instruction[0x01] = &cpu_6502::ora6502; adrmode[0x01] = &cpu_6502::indx6502;
-	instruction[0x02] = &cpu_6502::nop6502; adrmode[0x02] = &cpu_6502::implied6502;
-	instruction[0x03] = &cpu_6502::nop6502; adrmode[0x03] = &cpu_6502::implied6502;
-	instruction[0x04] = &cpu_6502::tsb6502; adrmode[0x04] = &cpu_6502::zp6502;
-	instruction[0x05] = &cpu_6502::ora6502; adrmode[0x05] = &cpu_6502::zp6502;
-	instruction[0x06] = &cpu_6502::asl6502; adrmode[0x06] = &cpu_6502::zp6502;
-	instruction[0x07] = &cpu_6502::nop6502; adrmode[0x07] = &cpu_6502::implied6502;
-	instruction[0x08] = &cpu_6502::php6502; adrmode[0x08] = &cpu_6502::implied6502;
-	instruction[0x09] = &cpu_6502::ora6502; adrmode[0x09] = &cpu_6502::immediate6502;
-	instruction[0x0a] = &cpu_6502::asla6502; adrmode[0x0a] = &cpu_6502::implied6502;
-	instruction[0x0b] = &cpu_6502::nop6502; adrmode[0x0b] = &cpu_6502::implied6502;
-	instruction[0x0c] = &cpu_6502::tsb6502; adrmode[0x0c] = &cpu_6502::abs6502;
-	instruction[0x0d] = &cpu_6502::ora6502; adrmode[0x0d] = &cpu_6502::abs6502;
-	instruction[0x0e] = &cpu_6502::asl6502; adrmode[0x0e] = &cpu_6502::abs6502;
-	instruction[0x0f] = &cpu_6502::nop6502; adrmode[0x0f] = &cpu_6502::implied6502;
-	instruction[0x10] = &cpu_6502::bpl6502; adrmode[0x10] = &cpu_6502::relative6502;
-	instruction[0x11] = &cpu_6502::ora6502; adrmode[0x11] = &cpu_6502::indy6502;
-	instruction[0x12] = &cpu_6502::ora6502; adrmode[0x12] = &cpu_6502::indzp6502;
-	instruction[0x13] = &cpu_6502::nop6502; adrmode[0x13] = &cpu_6502::implied6502;
-	instruction[0x14] = &cpu_6502::trb6502; adrmode[0x14] = &cpu_6502::zp6502;
-	instruction[0x15] = &cpu_6502::ora6502; adrmode[0x15] = &cpu_6502::zpx6502;
-	instruction[0x16] = &cpu_6502::asl6502; adrmode[0x16] = &cpu_6502::zpx6502;
-	instruction[0x17] = &cpu_6502::nop6502; adrmode[0x17] = &cpu_6502::implied6502;
-	instruction[0x18] = &cpu_6502::clc6502; adrmode[0x18] = &cpu_6502::implied6502;
-	instruction[0x19] = &cpu_6502::ora6502; adrmode[0x19] = &cpu_6502::absy6502;
-	instruction[0x1a] = &cpu_6502::ina6502; adrmode[0x1a] = &cpu_6502::implied6502;
-	instruction[0x1b] = &cpu_6502::nop6502; adrmode[0x1b] = &cpu_6502::implied6502;
-	instruction[0x1c] = &cpu_6502::trb6502; adrmode[0x1c] = &cpu_6502::abs6502;
-	instruction[0x1d] = &cpu_6502::ora6502; adrmode[0x1d] = &cpu_6502::absx6502;
-	instruction[0x1e] = &cpu_6502::asl6502; adrmode[0x1e] = &cpu_6502::absx6502;
-	instruction[0x1f] = &cpu_6502::nop6502; adrmode[0x1f] = &cpu_6502::implied6502;
-	instruction[0x20] = &cpu_6502::jsr6502; adrmode[0x20] = &cpu_6502::abs6502;
-	instruction[0x21] = &cpu_6502::and6502; adrmode[0x21] = &cpu_6502::indx6502;
-	instruction[0x22] = &cpu_6502::nop6502; adrmode[0x22] = &cpu_6502::implied6502;
-	instruction[0x23] = &cpu_6502::nop6502; adrmode[0x23] = &cpu_6502::implied6502;
-	instruction[0x24] = &cpu_6502::bit6502; adrmode[0x24] = &cpu_6502::zp6502;
-	instruction[0x25] = &cpu_6502::and6502; adrmode[0x25] = &cpu_6502::zp6502;
-	instruction[0x26] = &cpu_6502::rol6502; adrmode[0x26] = &cpu_6502::zp6502;
-	instruction[0x27] = &cpu_6502::nop6502; adrmode[0x27] = &cpu_6502::implied6502;
-	instruction[0x28] = &cpu_6502::plp6502; adrmode[0x28] = &cpu_6502::implied6502;
-	instruction[0x29] = &cpu_6502::and6502; adrmode[0x29] = &cpu_6502::immediate6502;
-	instruction[0x2a] = &cpu_6502::rola6502; adrmode[0x2a] = &cpu_6502::implied6502;
-	instruction[0x2b] = &cpu_6502::nop6502; adrmode[0x2b] = &cpu_6502::implied6502;
-	instruction[0x2c] = &cpu_6502::bit6502; adrmode[0x2c] = &cpu_6502::abs6502;
-	instruction[0x2d] = &cpu_6502::and6502; adrmode[0x2d] = &cpu_6502::abs6502;
-	instruction[0x2e] = &cpu_6502::rol6502; adrmode[0x2e] = &cpu_6502::abs6502;
-	instruction[0x2f] = &cpu_6502::nop6502; adrmode[0x2f] = &cpu_6502::implied6502;
-	instruction[0x30] = &cpu_6502::bmi6502; adrmode[0x30] = &cpu_6502::relative6502;
-	instruction[0x31] = &cpu_6502::and6502; adrmode[0x31] = &cpu_6502::indy6502;
-	instruction[0x32] = &cpu_6502::and6502; adrmode[0x32] = &cpu_6502::indzp6502;
-	instruction[0x33] = &cpu_6502::nop6502; adrmode[0x33] = &cpu_6502::implied6502;
-	instruction[0x34] = &cpu_6502::bit6502; adrmode[0x34] = &cpu_6502::zpx6502;
-	instruction[0x35] = &cpu_6502::and6502; adrmode[0x35] = &cpu_6502::zpx6502;
-	instruction[0x36] = &cpu_6502::rol6502; adrmode[0x36] = &cpu_6502::zpx6502;
-	instruction[0x37] = &cpu_6502::nop6502; adrmode[0x37] = &cpu_6502::implied6502;
-	instruction[0x38] = &cpu_6502::sec6502; adrmode[0x38] = &cpu_6502::implied6502;
-	instruction[0x39] = &cpu_6502::and6502; adrmode[0x39] = &cpu_6502::absy6502;
-	instruction[0x3a] = &cpu_6502::dea6502; adrmode[0x3a] = &cpu_6502::implied6502;
-	instruction[0x3b] = &cpu_6502::nop6502; adrmode[0x3b] = &cpu_6502::implied6502;
-	instruction[0x3c] = &cpu_6502::bit6502; adrmode[0x3c] = &cpu_6502::absx6502;
-	instruction[0x3d] = &cpu_6502::and6502; adrmode[0x3d] = &cpu_6502::absx6502;
-	instruction[0x3e] = &cpu_6502::rol6502; adrmode[0x3e] = &cpu_6502::absx6502;
-	instruction[0x3f] = &cpu_6502::nop6502; adrmode[0x3f] = &cpu_6502::implied6502;
-	instruction[0x40] = &cpu_6502::rti6502; adrmode[0x40] = &cpu_6502::implied6502;
-	instruction[0x41] = &cpu_6502::eor6502; adrmode[0x41] = &cpu_6502::indx6502;
-	instruction[0x42] = &cpu_6502::nop6502; adrmode[0x42] = &cpu_6502::implied6502;
-	instruction[0x43] = &cpu_6502::nop6502; adrmode[0x43] = &cpu_6502::implied6502;
-	instruction[0x44] = &cpu_6502::nop6502; adrmode[0x44] = &cpu_6502::implied6502;
-	instruction[0x45] = &cpu_6502::eor6502; adrmode[0x45] = &cpu_6502::zp6502;
-	instruction[0x46] = &cpu_6502::lsr6502; adrmode[0x46] = &cpu_6502::zp6502;
-	instruction[0x47] = &cpu_6502::nop6502; adrmode[0x47] = &cpu_6502::implied6502;
-	instruction[0x48] = &cpu_6502::pha6502; adrmode[0x48] = &cpu_6502::implied6502;
-	instruction[0x49] = &cpu_6502::eor6502; adrmode[0x49] = &cpu_6502::immediate6502;
-	instruction[0x4a] = &cpu_6502::lsra6502; adrmode[0x4a] = &cpu_6502::implied6502;
-	instruction[0x4b] = &cpu_6502::nop6502; adrmode[0x4b] = &cpu_6502::implied6502;
-	instruction[0x4c] = &cpu_6502::jmp6502; adrmode[0x4c] = &cpu_6502::abs6502;
-	instruction[0x4d] = &cpu_6502::eor6502; adrmode[0x4d] = &cpu_6502::abs6502;
-	instruction[0x4e] = &cpu_6502::lsr6502; adrmode[0x4e] = &cpu_6502::abs6502;
-	instruction[0x4f] = &cpu_6502::nop6502; adrmode[0x4f] = &cpu_6502::implied6502;
-	instruction[0x50] = &cpu_6502::bvc6502; adrmode[0x50] = &cpu_6502::relative6502;
-	instruction[0x51] = &cpu_6502::eor6502; adrmode[0x51] = &cpu_6502::indy6502;
-	instruction[0x52] = &cpu_6502::eor6502; adrmode[0x52] = &cpu_6502::indzp6502;
-	instruction[0x53] = &cpu_6502::nop6502; adrmode[0x53] = &cpu_6502::implied6502;
-	instruction[0x54] = &cpu_6502::nop6502; adrmode[0x54] = &cpu_6502::implied6502;
-	instruction[0x55] = &cpu_6502::eor6502; adrmode[0x55] = &cpu_6502::zpx6502;
-	instruction[0x56] = &cpu_6502::lsr6502; adrmode[0x56] = &cpu_6502::zpx6502;
-	instruction[0x57] = &cpu_6502::nop6502; adrmode[0x57] = &cpu_6502::implied6502;
-	instruction[0x58] = &cpu_6502::cli6502; adrmode[0x58] = &cpu_6502::implied6502;
-	instruction[0x59] = &cpu_6502::eor6502; adrmode[0x59] = &cpu_6502::absy6502;
-	instruction[0x5a] = &cpu_6502::phy6502; adrmode[0x5a] = &cpu_6502::implied6502;
-	instruction[0x5b] = &cpu_6502::nop6502; adrmode[0x5b] = &cpu_6502::implied6502;
-	instruction[0x5c] = &cpu_6502::nop6502; adrmode[0x5c] = &cpu_6502::implied6502;
-	instruction[0x5d] = &cpu_6502::eor6502; adrmode[0x5d] = &cpu_6502::absx6502;
-	instruction[0x5e] = &cpu_6502::lsr6502; adrmode[0x5e] = &cpu_6502::absx6502;
-	instruction[0x5f] = &cpu_6502::nop6502; adrmode[0x5f] = &cpu_6502::implied6502;
-	instruction[0x60] = &cpu_6502::rts6502; adrmode[0x60] = &cpu_6502::implied6502;
-	instruction[0x61] = &cpu_6502::adc6502; adrmode[0x61] = &cpu_6502::indx6502;
-	instruction[0x62] = &cpu_6502::nop6502; adrmode[0x62] = &cpu_6502::implied6502;
-	instruction[0x63] = &cpu_6502::nop6502; adrmode[0x63] = &cpu_6502::implied6502;
-	instruction[0x64] = &cpu_6502::stz6502; adrmode[0x64] = &cpu_6502::zp6502;
-	instruction[0x65] = &cpu_6502::adc6502; adrmode[0x65] = &cpu_6502::zp6502;
-	instruction[0x66] = &cpu_6502::ror6502; adrmode[0x66] = &cpu_6502::zp6502;
-	instruction[0x67] = &cpu_6502::nop6502; adrmode[0x67] = &cpu_6502::implied6502;
-	instruction[0x68] = &cpu_6502::pla6502; adrmode[0x68] = &cpu_6502::implied6502;
-	instruction[0x69] = &cpu_6502::adc6502; adrmode[0x69] = &cpu_6502::immediate6502;
-	instruction[0x6a] = &cpu_6502::rora6502; adrmode[0x6a] = &cpu_6502::implied6502;
-	instruction[0x6b] = &cpu_6502::nop6502; adrmode[0x6b] = &cpu_6502::implied6502;
-	instruction[0x6c] = &cpu_6502::jmp6502; adrmode[0x6c] = &cpu_6502::indirect6502;
-	instruction[0x6d] = &cpu_6502::adc6502; adrmode[0x6d] = &cpu_6502::abs6502;
-	instruction[0x6e] = &cpu_6502::ror6502; adrmode[0x6e] = &cpu_6502::abs6502;
-	instruction[0x6f] = &cpu_6502::nop6502; adrmode[0x6f] = &cpu_6502::implied6502;
-	instruction[0x70] = &cpu_6502::bvs6502; adrmode[0x70] = &cpu_6502::relative6502;
-	instruction[0x71] = &cpu_6502::adc6502; adrmode[0x71] = &cpu_6502::indy6502;
-	instruction[0x72] = &cpu_6502::adc6502; adrmode[0x72] = &cpu_6502::indzp6502;
-	instruction[0x73] = &cpu_6502::nop6502; adrmode[0x73] = &cpu_6502::implied6502;
-	instruction[0x74] = &cpu_6502::stz6502; adrmode[0x74] = &cpu_6502::zpx6502;
-	instruction[0x75] = &cpu_6502::adc6502; adrmode[0x75] = &cpu_6502::zpx6502;
-	instruction[0x76] = &cpu_6502::ror6502; adrmode[0x76] = &cpu_6502::zpx6502;
-	instruction[0x77] = &cpu_6502::nop6502; adrmode[0x77] = &cpu_6502::implied6502;
-	instruction[0x78] = &cpu_6502::sei6502; adrmode[0x78] = &cpu_6502::implied6502;
-	instruction[0x79] = &cpu_6502::adc6502; adrmode[0x79] = &cpu_6502::absy6502;
-	instruction[0x7a] = &cpu_6502::ply6502; adrmode[0x7a] = &cpu_6502::implied6502;
-	instruction[0x7b] = &cpu_6502::nop6502; adrmode[0x7b] = &cpu_6502::implied6502;
-	instruction[0x7c] = &cpu_6502::jmp6502; adrmode[0x7c] = &cpu_6502::indabsx6502;
-	instruction[0x7d] = &cpu_6502::adc6502; adrmode[0x7d] = &cpu_6502::absx6502;
-	instruction[0x7e] = &cpu_6502::ror6502; adrmode[0x7e] = &cpu_6502::absx6502;
-	instruction[0x7f] = &cpu_6502::nop6502; adrmode[0x7f] = &cpu_6502::implied6502;
-	instruction[0x80] = &cpu_6502::bra6502; adrmode[0x80] = &cpu_6502::relative6502;
-	instruction[0x81] = &cpu_6502::sta6502; adrmode[0x81] = &cpu_6502::indx6502;
-	instruction[0x82] = &cpu_6502::nop6502; adrmode[0x82] = &cpu_6502::implied6502;
-	instruction[0x83] = &cpu_6502::nop6502; adrmode[0x83] = &cpu_6502::implied6502;
-	instruction[0x84] = &cpu_6502::sty6502; adrmode[0x84] = &cpu_6502::zp6502;
-	instruction[0x85] = &cpu_6502::sta6502; adrmode[0x85] = &cpu_6502::zp6502;
-	instruction[0x86] = &cpu_6502::stx6502; adrmode[0x86] = &cpu_6502::zp6502;
-	instruction[0x87] = &cpu_6502::nop6502; adrmode[0x87] = &cpu_6502::implied6502;
-	instruction[0x88] = &cpu_6502::dey6502; adrmode[0x88] = &cpu_6502::implied6502;
-	instruction[0x89] = &cpu_6502::bit6502; adrmode[0x89] = &cpu_6502::immediate6502;
-	instruction[0x8a] = &cpu_6502::txa6502; adrmode[0x8a] = &cpu_6502::implied6502;
-	instruction[0x8b] = &cpu_6502::nop6502; adrmode[0x8b] = &cpu_6502::implied6502;
-	instruction[0x8c] = &cpu_6502::sty6502; adrmode[0x8c] = &cpu_6502::abs6502;
-	instruction[0x8d] = &cpu_6502::sta6502; adrmode[0x8d] = &cpu_6502::abs6502;
-	instruction[0x8e] = &cpu_6502::stx6502; adrmode[0x8e] = &cpu_6502::abs6502;
-	instruction[0x8f] = &cpu_6502::nop6502; adrmode[0x8f] = &cpu_6502::implied6502;
-	instruction[0x90] = &cpu_6502::bcc6502; adrmode[0x90] = &cpu_6502::relative6502;
-	instruction[0x91] = &cpu_6502::sta6502; adrmode[0x91] = &cpu_6502::indy6502;
-	instruction[0x92] = &cpu_6502::sta6502; adrmode[0x92] = &cpu_6502::indzp6502;
-	instruction[0x93] = &cpu_6502::nop6502; adrmode[0x93] = &cpu_6502::implied6502;
-	instruction[0x94] = &cpu_6502::sty6502; adrmode[0x94] = &cpu_6502::zpx6502;
-	instruction[0x95] = &cpu_6502::sta6502; adrmode[0x95] = &cpu_6502::zpx6502;
-	instruction[0x96] = &cpu_6502::stx6502; adrmode[0x96] = &cpu_6502::zpy6502;
-	instruction[0x97] = &cpu_6502::nop6502; adrmode[0x97] = &cpu_6502::implied6502;
-	instruction[0x98] = &cpu_6502::tya6502; adrmode[0x98] = &cpu_6502::implied6502;
-	instruction[0x99] = &cpu_6502::sta6502; adrmode[0x99] = &cpu_6502::absy6502;
-	instruction[0x9a] = &cpu_6502::txs6502; adrmode[0x9a] = &cpu_6502::implied6502;
-	instruction[0x9b] = &cpu_6502::nop6502; adrmode[0x9b] = &cpu_6502::implied6502;
-	instruction[0x9c] = &cpu_6502::stz6502; adrmode[0x9c] = &cpu_6502::abs6502;
-	instruction[0x9d] = &cpu_6502::sta6502; adrmode[0x9d] = &cpu_6502::absx6502;
-	instruction[0x9e] = &cpu_6502::stz6502; adrmode[0x9e] = &cpu_6502::absx6502;
-	instruction[0x9f] = &cpu_6502::nop6502; adrmode[0x9f] = &cpu_6502::implied6502;
-	instruction[0xa0] = &cpu_6502::ldy6502; adrmode[0xa0] = &cpu_6502::immediate6502;
-	instruction[0xa1] = &cpu_6502::lda6502; adrmode[0xa1] = &cpu_6502::indx6502;
-	instruction[0xa2] = &cpu_6502::ldx6502; adrmode[0xa2] = &cpu_6502::immediate6502;
-	instruction[0xa3] = &cpu_6502::nop6502; adrmode[0xa3] = &cpu_6502::implied6502;
-	instruction[0xa4] = &cpu_6502::ldy6502; adrmode[0xa4] = &cpu_6502::zp6502;
-	instruction[0xa5] = &cpu_6502::lda6502; adrmode[0xa5] = &cpu_6502::zp6502;
-	instruction[0xa6] = &cpu_6502::ldx6502; adrmode[0xa6] = &cpu_6502::zp6502;
-	instruction[0xa7] = &cpu_6502::nop6502; adrmode[0xa7] = &cpu_6502::implied6502;
-	instruction[0xa8] = &cpu_6502::tay6502; adrmode[0xa8] = &cpu_6502::implied6502;
-	instruction[0xa9] = &cpu_6502::lda6502; adrmode[0xa9] = &cpu_6502::immediate6502;
-	instruction[0xaa] = &cpu_6502::tax6502; adrmode[0xaa] = &cpu_6502::implied6502;
-	instruction[0xab] = &cpu_6502::nop6502; adrmode[0xab] = &cpu_6502::implied6502;
-	instruction[0xac] = &cpu_6502::ldy6502; adrmode[0xac] = &cpu_6502::abs6502;
-	instruction[0xad] = &cpu_6502::lda6502; adrmode[0xad] = &cpu_6502::abs6502;
-	instruction[0xae] = &cpu_6502::ldx6502; adrmode[0xae] = &cpu_6502::abs6502;
-	instruction[0xaf] = &cpu_6502::nop6502; adrmode[0xaf] = &cpu_6502::implied6502;
-	instruction[0xb0] = &cpu_6502::bcs6502; adrmode[0xb0] = &cpu_6502::relative6502;
-	instruction[0xb1] = &cpu_6502::lda6502; adrmode[0xb1] = &cpu_6502::indy6502;
-	instruction[0xb2] = &cpu_6502::nop6502; adrmode[0xb2] = &cpu_6502::implied6502;
-	instruction[0xb3] = &cpu_6502::nop6502; adrmode[0xb3] = &cpu_6502::implied6502;
-	instruction[0xb4] = &cpu_6502::ldy6502; adrmode[0xb4] = &cpu_6502::zpx6502;
-	instruction[0xb5] = &cpu_6502::lda6502; adrmode[0xb5] = &cpu_6502::zpx6502;
-	instruction[0xb6] = &cpu_6502::ldx6502; adrmode[0xb6] = &cpu_6502::zpy6502;
-	instruction[0xb7] = &cpu_6502::nop6502; adrmode[0xb7] = &cpu_6502::implied6502;
-	instruction[0xb8] = &cpu_6502::clv6502; adrmode[0xb8] = &cpu_6502::implied6502;
-	instruction[0xb9] = &cpu_6502::lda6502; adrmode[0xb9] = &cpu_6502::absy6502;
-	instruction[0xba] = &cpu_6502::tsx6502; adrmode[0xba] = &cpu_6502::implied6502;
-	instruction[0xbb] = &cpu_6502::nop6502; adrmode[0xbb] = &cpu_6502::implied6502;
-	instruction[0xbc] = &cpu_6502::ldy6502; adrmode[0xbc] = &cpu_6502::absx6502;
-	instruction[0xbd] = &cpu_6502::lda6502; adrmode[0xbd] = &cpu_6502::absx6502;
-	instruction[0xbe] = &cpu_6502::ldx6502; adrmode[0xbe] = &cpu_6502::absy6502;
-	instruction[0xbf] = &cpu_6502::nop6502; adrmode[0xbf] = &cpu_6502::implied6502;
-	instruction[0xc0] = &cpu_6502::cpy6502; adrmode[0xc0] = &cpu_6502::immediate6502;
-	instruction[0xc1] = &cpu_6502::cmp6502; adrmode[0xc1] = &cpu_6502::indx6502;
-	instruction[0xc2] = &cpu_6502::nop6502; adrmode[0xc2] = &cpu_6502::implied6502;
-	instruction[0xc3] = &cpu_6502::nop6502; adrmode[0xc3] = &cpu_6502::implied6502;
-	instruction[0xc4] = &cpu_6502::cpy6502; adrmode[0xc4] = &cpu_6502::zp6502;
-	instruction[0xc5] = &cpu_6502::cmp6502; adrmode[0xc5] = &cpu_6502::zp6502;
-	instruction[0xc6] = &cpu_6502::dec6502; adrmode[0xc6] = &cpu_6502::zp6502;
-	instruction[0xc7] = &cpu_6502::nop6502; adrmode[0xc7] = &cpu_6502::implied6502;
-	instruction[0xc8] = &cpu_6502::iny6502; adrmode[0xc8] = &cpu_6502::implied6502;
-	instruction[0xc9] = &cpu_6502::cmp6502; adrmode[0xc9] = &cpu_6502::immediate6502;
-	instruction[0xca] = &cpu_6502::dex6502; adrmode[0xca] = &cpu_6502::implied6502;
-	instruction[0xcb] = &cpu_6502::nop6502; adrmode[0xcb] = &cpu_6502::implied6502;
-	instruction[0xcc] = &cpu_6502::cpy6502; adrmode[0xcc] = &cpu_6502::abs6502;
-	instruction[0xcd] = &cpu_6502::cmp6502; adrmode[0xcd] = &cpu_6502::abs6502;
-	instruction[0xce] = &cpu_6502::dec6502; adrmode[0xce] = &cpu_6502::abs6502;
-	instruction[0xcf] = &cpu_6502::nop6502; adrmode[0xcf] = &cpu_6502::implied6502;
-	instruction[0xd0] = &cpu_6502::bne6502; adrmode[0xd0] = &cpu_6502::relative6502;
-	instruction[0xd1] = &cpu_6502::cmp6502; adrmode[0xd1] = &cpu_6502::indy6502;
-	instruction[0xd2] = &cpu_6502::cmp6502; adrmode[0xd2] = &cpu_6502::indzp6502;
-	instruction[0xd3] = &cpu_6502::nop6502; adrmode[0xd3] = &cpu_6502::implied6502;
-	instruction[0xd4] = &cpu_6502::nop6502; adrmode[0xd4] = &cpu_6502::implied6502;
-	instruction[0xd5] = &cpu_6502::cmp6502; adrmode[0xd5] = &cpu_6502::zpx6502;
-	instruction[0xd6] = &cpu_6502::dec6502; adrmode[0xd6] = &cpu_6502::zpx6502;
-	instruction[0xd7] = &cpu_6502::nop6502; adrmode[0xd7] = &cpu_6502::implied6502;
-	instruction[0xd8] = &cpu_6502::cld6502; adrmode[0xd8] = &cpu_6502::implied6502;
-	instruction[0xd9] = &cpu_6502::cmp6502; adrmode[0xd9] = &cpu_6502::absy6502;
-	instruction[0xda] = &cpu_6502::phx6502; adrmode[0xda] = &cpu_6502::implied6502;
-	instruction[0xdb] = &cpu_6502::nop6502; adrmode[0xdb] = &cpu_6502::implied6502;
-	instruction[0xdc] = &cpu_6502::nop6502; adrmode[0xdc] = &cpu_6502::implied6502;
-	instruction[0xdd] = &cpu_6502::cmp6502; adrmode[0xdd] = &cpu_6502::absx6502;
-	instruction[0xde] = &cpu_6502::dec6502; adrmode[0xde] = &cpu_6502::absx6502;
-	instruction[0xdf] = &cpu_6502::nop6502; adrmode[0xdf] = &cpu_6502::implied6502;
-	instruction[0xe0] = &cpu_6502::cpx6502; adrmode[0xe0] = &cpu_6502::immediate6502;
-	instruction[0xe1] = &cpu_6502::sbc6502; adrmode[0xe1] = &cpu_6502::indx6502;
-	instruction[0xe2] = &cpu_6502::nop6502; adrmode[0xe2] = &cpu_6502::implied6502;
-	instruction[0xe3] = &cpu_6502::isb6502; adrmode[0xe3] = &cpu_6502::indx6502;
-	instruction[0xe4] = &cpu_6502::cpx6502; adrmode[0xe4] = &cpu_6502::zp6502;
-	instruction[0xe5] = &cpu_6502::sbc6502; adrmode[0xe5] = &cpu_6502::zp6502;
-	instruction[0xe6] = &cpu_6502::inc6502; adrmode[0xe6] = &cpu_6502::zp6502;
-	instruction[0xe7] = &cpu_6502::isb6502; adrmode[0xe7] = &cpu_6502::zp6502;
-	instruction[0xe8] = &cpu_6502::inx6502; adrmode[0xe8] = &cpu_6502::implied6502;
-	instruction[0xe9] = &cpu_6502::sbc6502; adrmode[0xe9] = &cpu_6502::immediate6502;
-	instruction[0xea] = &cpu_6502::nop6502; adrmode[0xea] = &cpu_6502::implied6502;  //Real NOP
-	instruction[0xeb] = &cpu_6502::nop6502; adrmode[0xeb] = &cpu_6502::implied6502;
-	instruction[0xec] = &cpu_6502::cpx6502; adrmode[0xec] = &cpu_6502::abs6502;
-	instruction[0xed] = &cpu_6502::sbc6502; adrmode[0xed] = &cpu_6502::abs6502;
-	instruction[0xee] = &cpu_6502::inc6502; adrmode[0xee] = &cpu_6502::abs6502;
-	instruction[0xef] = &cpu_6502::isb6502; adrmode[0xef] = &cpu_6502::abs6502;
-	instruction[0xf0] = &cpu_6502::beq6502; adrmode[0xf0] = &cpu_6502::relative6502;
-	instruction[0xf1] = &cpu_6502::sbc6502; adrmode[0xf1] = &cpu_6502::indy6502;
-	instruction[0xf2] = &cpu_6502::sbc6502; adrmode[0xf2] = &cpu_6502::indzp6502;
-	instruction[0xf3] = &cpu_6502::isb6502; adrmode[0xf3] = &cpu_6502::indy6502;
-	instruction[0xf4] = &cpu_6502::nop6502; adrmode[0xf4] = &cpu_6502::implied6502;
-	instruction[0xf5] = &cpu_6502::sbc6502; adrmode[0xf5] = &cpu_6502::zpx6502;
-	instruction[0xf6] = &cpu_6502::inc6502; adrmode[0xf6] = &cpu_6502::zpx6502;
-	instruction[0xf7] = &cpu_6502::isb6502; adrmode[0xf7] = &cpu_6502::zpx6502;
-	instruction[0xf8] = &cpu_6502::sed6502; adrmode[0xf8] = &cpu_6502::implied6502;
-	instruction[0xf9] = &cpu_6502::sbc6502; adrmode[0xf9] = &cpu_6502::absy6502;
-	instruction[0xfa] = &cpu_6502::plx6502; adrmode[0xfa] = &cpu_6502::implied6502;
-	instruction[0xfb] = &cpu_6502::isb6502; adrmode[0xfb] = &cpu_6502::absy6502;
-	instruction[0xfc] = &cpu_6502::nop6502; adrmode[0xfc] = &cpu_6502::absx6502;
-	instruction[0xfd] = &cpu_6502::sbc6502; adrmode[0xfd] = &cpu_6502::absx6502;
-	instruction[0xfe] = &cpu_6502::inc6502; adrmode[0xfe] = &cpu_6502::absx6502;
-	instruction[0xff] = &cpu_6502::isb6502; adrmode[0xff] = &cpu_6502::absx6502;
 }
-//Register Operations, need refinement
+
+// -----------------------------------------------------------------------------
+// Get the value of a CPU register by register index.
+// Valid register IDs: M6502_S, M6502_P, M6502_A, M6502_X, M6502_Y
+// Returns: 8-bit register value; returns 0 if regnum is invalid.
+// -----------------------------------------------------------------------------
 uint8_t cpu_6502::m6502_get_reg(int regnum)
 {
 	switch (regnum)
@@ -1151,10 +546,15 @@ uint8_t cpu_6502::m6502_get_reg(int regnum)
 	case M6502_A: return A;
 	case M6502_X: return X;
 	case M6502_Y: return Y;
+	default: return 0;
 	}
-	return 0;
 }
 
+// -----------------------------------------------------------------------------
+// Set the value of a CPU register by register index.
+// Valid register IDs: M6502_S, M6502_P, M6502_A, M6502_X, M6502_Y
+// If regnum is invalid, function does nothing.
+// -----------------------------------------------------------------------------
 void cpu_6502::m6502_set_reg(int regnum, uint8_t val)
 {
 	switch (regnum)
@@ -1164,68 +564,70 @@ void cpu_6502::m6502_set_reg(int regnum, uint8_t val)
 	case M6502_A: A = val; break;
 	case M6502_X: X = val; break;
 	case M6502_Y: Y = val; break;
-	default:break;
+	default: break;
 	}
 }
 
+// -----------------------------------------------------------------------------
+// Get the current value of the program counter (PC).
+// Returns: 16-bit address of the current instruction.
+// -----------------------------------------------------------------------------
 uint16_t cpu_6502::get_pc()
 {
 	return PC;
 }
 
+// -----------------------------------------------------------------------------
+// Get the previous value of the program counter (PPC).
+// PPC is set to the PC value before the current instruction executes.
+// Returns: 16-bit address of the last instruction.
+// -----------------------------------------------------------------------------
 uint16_t cpu_6502::get_ppc()
 {
 	return PPC;
 }
 
+// -----------------------------------------------------------------------------
+// Set the program counter (PC) to a new address.
+// pc: New 16-bit address to assign to the PC.
+// -----------------------------------------------------------------------------
 void cpu_6502::set_pc(uint16_t pc)
 {
 	PC = pc;
 }
 
-void cpu_6502::m6502clearpendingint()
-{
-	if (_irqPending) _irqPending = 0;
-}
-
-// Reset MyCpu
+// -----------------------------------------------------------------------------
+// Reset the CPU to its initial state.
+// Clears A, X, Y. Sets P with F_T | F_I | F_Z. Stack pointer to 0xFF.
+// Loads PC from the reset vector at $FFFC/$FFFD.
+// Adds 6 cycles to clockticks6502.
+// -----------------------------------------------------------------------------
 void cpu_6502::reset6502()
 {
-	A = 0;
-	X = 0;
-	Y = 0;
-	P |= F_T | F_I | F_Z;
+	A = X = Y = 0;
+	P = F_T | F_I | F_Z;
 	_irqPending = 0;
-	S = 0xff;
+	S = 0xFF;
 	PC = get6502memory(0xFFFC & addrmask);
 	PC |= get6502memory(0xFFFD & addrmask) << 8;
-	if (debug) { LOG_INFO("reset: PC is %X", PC); }
+	if (debug)
+		LOG_INFO("reset: PC is %X", PC);
 	clockticks6502 += 6;
 }
 
-// Non maskerable interrupt
-void cpu_6502::nmi6502()
-{
-	push16(PC);
-	push8(P & ~F_B);
-	P |= F_I;		// set I flag
-	PC = get6502memory(0xFFFA & addrmask);
-	PC |= get6502memory(0xFFFB & addrmask) << 8;
-	clockticks6502 += 7;
-	clocktickstotal += 7;
-}
-
-// Maskerable Interrupt
+// -----------------------------------------------------------------------------
+// Execute a standard IRQ if pending and interrupts are enabled.
+// Pushes PC and P (without F_B), sets F_I, loads PC from $FFFE/$FFFF.
+// Adds 7 cycles to clockticks6502 and clocktickstotal.
+// -----------------------------------------------------------------------------
 void cpu_6502::irq6502()
 {
-	_irqPending = 1; //Set IRQ Pending.
-
+	_irqPending = 1;
 	if (!(P & F_I))
 	{
-		//LOG_INFO("6502 IRQ Taken on CPU %d", cpu_num);
 		push16(PC);
 		push8(P & ~F_B);
-		P |= F_I;		// set I flag
+		P |= F_I;
 		PC = get6502memory(0xFFFE & addrmask);
 		PC |= get6502memory(0xFFFF & addrmask) << 8;
 		_irqPending = 0;
@@ -1234,232 +636,1297 @@ void cpu_6502::irq6502()
 	}
 }
 
-// Execute a Single Instruction.
-int cpu_6502::step6502()
+// -----------------------------------------------------------------------------
+// Execute a non-maskable interrupt (NMI).
+// Always pushes PC and P (without F_B), sets F_I, loads PC from $FFFA/$FFFB.
+// Adds 7 cycles to clockticks6502 and clocktickstotal.
+// -----------------------------------------------------------------------------
+void cpu_6502::nmi6502()
 {
-	// Set the current number of cycles to zero.
-	clockticks6502 = 0;
-	// Make sure the flag is set.
-	P |= F_T;
-	// If there is an IRQ pending, take it.
-	if (_irqPending) irq6502();
-	// fetch instruction
-	opcode = get6502memory(PC++);
-	// Trap any Opcode errors.
-	if (opcode > 0xff)
-	{
-		LOG_INFO("Invalid Opcode called!!!: opcode %x  Memory %X ", opcode, PC);
-		return 0x00000000;
-	}
-	// Debug Logging if needed. This code needs lots of help.
-	if (debug)
-	{
-		std::string op = disam(opcode);
-
-		int c = bget(P, F_C) ? 1 : 0;
-		int z = bget(P, F_Z) ? 1 : 0;
-		int i = bget(P, F_I) ? 1 : 0;
-		int d = bget(P, F_D) ? 1 : 0;
-		int b = bget(P, F_B) ? 1 : 0;
-		int t = bget(P, F_T) ? 1 : 0;
-		int v = bget(P, F_V) ? 1 : 0;
-		int n = bget(P, F_N) ? 1 : 0;
-		LOG_INFO("%x: OP:%s DATA:%02x%02x F: C:%d Z:%d I:%d D:%d B:%d V:%d N:%d REG A:%x X:%x Y:%x S:%x ", PC - 1, op.c_str(), MEM[PC - 1], MEM[PC], c, z, i, d, b, v, n, A, X, Y, S);
-	}
-	//Backup PC
-	PPC = PC;
-	//set addressing mode
-	(this->*(adrmode[opcode]))();
-	// execute instruction
-	(this->*(instruction[opcode]))();
-	// update clock cycles
-	clockticks6502 += ticks[opcode];
-	// Update the running counter for clock cycles executed.
-	clocktickstotal += clockticks6502;
-	// Update Timer if being used
-	timer_update(clockticks6502, cpu_num);
-	// Keep the total # of ticks from exceeding the limit.
-	if (clocktickstotal > 0xfffffff) clocktickstotal = 0;
-	return clockticks6502;
+	push16(PC);
+	push8(P & ~F_B);
+	P |= F_I;
+	PC = get6502memory(0xFFFA & addrmask);
+	PC |= get6502memory(0xFFFB & addrmask) << 8;
+	clockticks6502 += 7;
+	clocktickstotal += 7;
 }
 
-// Execute Multiple Instructions
+// -----------------------------------------------------------------------------
+// Push a 16-bit value to the 6502 stack (high byte first).
+// Stack is located at $0100. Stack pointer S is post-decremented.
+// val: 16-bit value to push.
+// -----------------------------------------------------------------------------
+void cpu_6502::push16(uint16_t val)
+{
+	put6502memory(BASE_STACK + S, (val >> 8) & 0xFF);
+	put6502memory(BASE_STACK + ((S - 1) & 0xFF), val & 0xFF);
+	S -= 2;
+}
+
+// -----------------------------------------------------------------------------
+// Push an 8-bit value to the 6502 stack.
+// Stack pointer S is post-decremented.
+// val: 8-bit value to push.
+// -----------------------------------------------------------------------------
+void cpu_6502::push8(uint8_t val)
+{
+	put6502memory(BASE_STACK + S--, val);
+}
+
+// -----------------------------------------------------------------------------
+// Pull a 16-bit value from the 6502 stack (low byte first).
+// Stack pointer S is pre-incremented twice.
+// Returns: 16-bit value popped from the stack.
+// -----------------------------------------------------------------------------
+uint16_t cpu_6502::pull16()
+{
+	uint16_t val = get6502memory(BASE_STACK + ((S + 1) & 0xFF)) |
+		(static_cast<uint16_t>(get6502memory(BASE_STACK + ((S + 2) & 0xFF))) << 8);
+	S += 2;
+	return val;
+}
+
+// -----------------------------------------------------------------------------
+// Pull an 8-bit value from the 6502 stack.
+// Stack pointer S is pre-incremented.
+// Returns: 8-bit value popped from the stack.
+// -----------------------------------------------------------------------------
+uint8_t cpu_6502::pull8()
+{
+	return get6502memory(BASE_STACK + ++S);
+}
+
+// -----------------------------------------------------------------------------
+// Execute Instructions Until the Specified Timer Threshold is Reached.
+// Continues executing step6502() while accumulated cycles are less than timerTicks.
+// Returns: Fixed value 0x80000000 after reaching the cycle threshold.
+// -----------------------------------------------------------------------------
 int cpu_6502::exec6502(int timerTicks)
 {
-	int  cyc = 0;
-
-	while (cyc < timerTicks) 
-	{
-		cyc += step6502();
-	}
-
+	int cycles = 0;
+	while (cycles < timerTicks)
+		cycles += step6502();
 	return 0x80000000;
 }
 
-std::string cpu_6502::disam(uint8_t opcode)
+// -----------------------------------------------------------------------------
+// Execute a Single 6502 Instruction.
+// Handles IRQs, fetches the opcode, performs addressing and operation logic,
+// updates cycle counters, and optionally logs debugging information.
+// Returns: Number of clock cycles used by the executed instruction.
+// -----------------------------------------------------------------------------
+int cpu_6502::step6502()
 {
-	char opstr[64];
+	clockticks6502 = 0;
+	
+	P |= F_T;
 
-	std::string rval;
+	if (_irqPending)
+		irq6502();
+
+	opcode = get6502memory(PC++);
+	//++instruction_count[opcode];  // I only enable this during instruction counting
+	if (opcode > 0xFF)
+	{
+		LOG_INFO("Invalid Opcode called!!!: opcode %x Memory %X", opcode, PC);
+		return 0;
+	}
+
+	if (debug)
+	{
+		int bytes = 0;
+		std::string op = disassemble(PC - 1, &bytes);
+
+		int c = (P & F_C) ? 1 : 0;
+		int z = (P & F_Z) ? 1 : 0;
+		int i = (P & F_I) ? 1 : 0;
+		int d = (P & F_D) ? 1 : 0;
+		int b = (P & F_B) ? 1 : 0;
+		int t = (P & F_T) ? 1 : 0;
+		int v = (P & F_V) ? 1 : 0;
+		int n = (P & F_N) ? 1 : 0;
+
+		LOG_INFO("%04X: %-20s F:C:%d Z:%d I:%d D:%d B:%d T:%d V:%d N:%d A:%02X X:%02X Y:%02X S:%02X",
+			PC - 1, op.c_str(), c, z, i, d, b, t, v, n, A, X, Y, S);
+	}
+
+	PPC = PC;
+
+	(this->*opcode_table[opcode].addressing_mode)();
+	(this->*opcode_table[opcode].instruction)();
+
+	clockticks6502 += ticks[opcode];
+	clocktickstotal += clockticks6502;
+
+	if (AAE_TIMER_ENABLED)
+	{
+		timer_update(clockticks6502, cpu_num);
+	}
+
+	if (clocktickstotal > 0x0FFFFFFF)
+		clocktickstotal = 0;
+
+	return clockticks6502;
+}
+
+// -----------------------------------------------------------------------------
+// Absolute Addressing Mode
+// Operand is a 16-bit address (little-endian) following the opcode.
+// -----------------------------------------------------------------------------
+void cpu_6502::abs6502()
+{
+	savepc = get6502memory(PC) | (get6502memory(PC + 1) << 8);
+	PC += 2;
+}
+
+// -----------------------------------------------------------------------------
+// Immediate Addressing Mode
+// Operand is the next byte. Used for instructions like LDA #$10.
+// -----------------------------------------------------------------------------
+void cpu_6502::immediate6502()
+{
+	savepc = PC++;
+}
+
+// -----------------------------------------------------------------------------
+// Implied Addressing Mode
+// No operand is used. Used for instructions like CLC, SEI, RTS, etc.
+// -----------------------------------------------------------------------------
+void cpu_6502::implied6502()
+{
+	// NOP (handled inside instruction)
+}
+
+// -----------------------------------------------------------------------------
+// Relative Addressing Mode
+// Operand is a signed 8-bit offset. Used only for branch instructions.
+// -----------------------------------------------------------------------------
+void cpu_6502::relative6502()
+{
+	savepc = get6502memory(PC++);
+	if (savepc & 0x80)
+		savepc |= 0xFF00;
+}
+
+// -----------------------------------------------------------------------------
+// Indirect Addressing Mode (used only by JMP)
+// Operand is a 16-bit pointer to a 16-bit address.
+// Replicates 6502 page-boundary bug.
+// -----------------------------------------------------------------------------
+void cpu_6502::indirect6502()
+{
+	help = get6502memory(PC) | (get6502memory(PC + 1) << 8);
+	uint16_t temp = (help & 0xFF00) | ((help + 1) & 0x00FF);
+	savepc = get6502memory(help) | (get6502memory(temp) << 8);
+	PC += 2;
+}
+
+// -----------------------------------------------------------------------------
+// Absolute,X Addressing Mode
+// Effective address = absolute address + X.
+// Adds 1 cycle if page boundary is crossed.
+// -----------------------------------------------------------------------------
+void cpu_6502::absx6502()
+{
+	savepc = get6502memory(PC) | (get6502memory(PC + 1) << 8);
+	if (ticks[opcode] == 4 && ((savepc ^ (savepc + X)) & 0xFF00))
+		clockticks6502++;
+	savepc += X;
+	PC += 2;
+}
+
+// -----------------------------------------------------------------------------
+// Absolute,Y Addressing Mode
+// Effective address = absolute address + Y.
+// Adds 1 cycle if page boundary is crossed.
+// -----------------------------------------------------------------------------
+void cpu_6502::absy6502()
+{
+	savepc = get6502memory(PC) | (get6502memory(PC + 1) << 8);
+	if (ticks[opcode] == 4 && ((savepc ^ (savepc + Y)) & 0xFF00))
+		clockticks6502++;
+	savepc += Y;
+	PC += 2;
+}
+
+// -----------------------------------------------------------------------------
+// Zero Page Addressing Mode
+// Operand is an 8-bit zero page address.
+// -----------------------------------------------------------------------------
+void cpu_6502::zp6502()
+{
+	savepc = get6502memory(PC++);
+}
+
+// -----------------------------------------------------------------------------
+// Zero Page,X Addressing Mode
+// Effective address = (zero page address + X) & 0xFF.
+// -----------------------------------------------------------------------------
+void cpu_6502::zpx6502()
+{
+	savepc = (get6502memory(PC++) + X) & 0xFF;
+}
+
+// -----------------------------------------------------------------------------
+// Zero Page,Y Addressing Mode
+// Effective address = (zero page address + Y) & 0xFF.
+// -----------------------------------------------------------------------------
+void cpu_6502::zpy6502()
+{
+	savepc = (get6502memory(PC++) + Y) & 0xFF;
+}
+
+// -----------------------------------------------------------------------------
+// Indexed Indirect Addressing Mode (Indirect,X)
+// Effective address = (operand + X) points to the final 16-bit address.
+// -----------------------------------------------------------------------------
+void cpu_6502::indx6502()
+{
+	value = (get6502memory(PC++) + X) & 0xFF;
+	savepc = get6502memory(value) | (get6502memory((value + 1) & 0xFF) << 8);
+}
+
+// -----------------------------------------------------------------------------
+// Indirect Indexed Addressing Mode (Indirect),Y
+// Effective address = (operand points to base address) + Y.
+// Adds 1 cycle if page boundary is crossed.
+// -----------------------------------------------------------------------------
+void cpu_6502::indy6502()
+{
+	uint16_t temp;
+	value = get6502memory(PC++);
+	temp = (value + 1) & 0xFF;
+	savepc = get6502memory(value) | (get6502memory(temp) << 8);
+	if (ticks[opcode] == 5 && ((savepc ^ (savepc + Y)) & 0xFF00))
+		clockticks6502++;
+	savepc += Y;
+}
+
+// -----------------------------------------------------------------------------
+// Indirect Absolute,X Addressing Mode (used by JMP ($nnnn,X))
+// Effective address = address found at ($nnnn + X).
+// -----------------------------------------------------------------------------
+void cpu_6502::indabsx6502()
+{
+	help = get6502memory(PC) | (get6502memory(PC + 1) << 8);
+	help += X;
+	savepc = get6502memory(help) | (get6502memory(help + 1) << 8);
+}
+
+// -----------------------------------------------------------------------------
+// Indirect Zero Page Addressing Mode (used by 65C02 extensions)
+// Operand points to a zero page word (16-bit address).
+// -----------------------------------------------------------------------------
+void cpu_6502::indzp6502()
+{
+	value = get6502memory(PC++);
+	savepc = get6502memory(value) | (get6502memory((value + 1) & 0xFF) << 8);
+}
+
+// -----------------------------------------------------------------------------
+// Add with Carry (ADC)
+// Adds memory value and carry flag to the accumulator.
+// Handles both binary and decimal (BCD) mode.
+// -----------------------------------------------------------------------------
+inline void cpu_6502::adc6502()
+{
+	uint8_t tmp = get6502memory(savepc);
+	if (P & F_D) // BCD mode
+	{
+		int c = P & F_C;
+		int lo = (A & 0x0F) + (tmp & 0x0F) + c;
+		int hi = (A & 0xF0) + (tmp & 0xF0);
+		P &= ~(F_V | F_C);
+		if (lo > 0x09) { hi += 0x10; lo += 0x06; }
+		if (~(A ^ tmp) & (A ^ hi) & F_N) P |= F_V;
+		if (hi > 0x90) hi += 0x60;
+		if (hi & 0xFF00) P |= F_C;
+		A = (lo & 0x0F) + (hi & 0xF0);
+	}
+	else // binary mode
+	{
+		int c = P & F_C;
+		int sum = A + tmp + c;
+		P &= ~(F_V | F_C);
+		if (~(A ^ tmp) & (A ^ sum) & F_N) P |= F_V;
+		if (sum & 0xFF00) P |= F_C;
+		A = (uint8_t)(sum);  // C-style cast
+	}
+	set_nz(A);
+}
+
+// -----------------------------------------------------------------------------
+// Subtract with Carry (SBC)
+// Subtracts a value from the accumulator (A) along with the inverse of the
+// carry flag. Updates the carry, zero, negative, and overflow flags.
+// Handles both binary and decimal (BCD) modes.
+// -----------------------------------------------------------------------------
+inline void cpu_6502::sbc6502()
+{
+	uint8_t tmp = get6502memory(savepc);
+	if (P & F_D) // BCD mode
+	{
+		int c = (P & F_C) ^ F_C;
+		int sum = A - tmp - c;
+		int lo = (A & 0x0F) - (tmp & 0x0F) - c;
+		int hi = (A & 0xF0) - (tmp & 0xF0);
+		if (lo & 0x10) { lo -= 6; hi--; }
+		P &= ~(F_V | F_C | F_Z | F_N);
+		if ((A ^ tmp) & (A ^ sum) & F_N) P |= F_V;
+		if ((sum & 0xFF00) == 0) P |= F_C;
+		if (!(sum & 0xFF)) P |= F_Z;
+		if (sum & 0x80) P |= F_N;
+		A = (lo & 0x0F) | (hi & 0xF0);
+	}
+	else // binary mode
+	{
+		int c = (P & F_C) ^ F_C;
+		int sum = A - tmp - c;
+		P &= ~(F_V | F_C);
+		if ((A ^ tmp) & (A ^ sum) & F_N) P |= F_V;
+		if ((sum & 0xFF00) == 0) P |= F_C;
+		A = (uint8_t)(sum);  // C-style cast
+		set_nz(A);
+	}
+}
+
+// -----------------------------------------------------------------------------
+// Bitwise AND
+// Performs a logical AND between the accumulator (A) and memory.
+// Updates the zero and negative flags based on the result.
+// -----------------------------------------------------------------------------
+void cpu_6502::and6502()
+{
+	value = get6502memory(savepc);
+	A &= value;
+	set_nz(A);
+}
+
+// -----------------------------------------------------------------------------
+// Bitwise Exclusive OR (EOR)
+// Performs a logical exclusive OR between the accumulator (A) and memory.
+// Updates the zero and negative flags based on the result.
+// -----------------------------------------------------------------------------
+void cpu_6502::eor6502()
+{
+	A ^= get6502memory(savepc);
+	set_nz(A);
+}
+
+// -----------------------------------------------------------------------------
+// Bitwise OR (ORA)
+// Performs a logical inclusive OR between the accumulator (A) and memory.
+// Updates the zero and negative flags based on the result.
+// -----------------------------------------------------------------------------
+void cpu_6502::ora6502()
+{
+	A |= get6502memory(savepc);
+	set_nz(A);
+}
+
+// -----------------------------------------------------------------------------
+// BIT (Bit Test)
+// Tests bits in memory against the accumulator (A).
+// Sets the zero flag if (A & M) == 0.
+// Sets the negative and overflow flags from memory bits 7 and 6 respectively.
+// -----------------------------------------------------------------------------
+void cpu_6502::bit6502()
+{
+	value = get6502memory(savepc);
+
+	// Clear N, V, Z flags
+	P &= ~(F_N | F_V | F_Z);
+
+	// Set N and V from bits 7 and 6 of memory
+	P |= value & (F_N | F_V);
+
+	// Set Z if (A & value) == 0
+	if ((A & value) == 0)
+		P |= F_Z;
+}
+
+// -----------------------------------------------------------------------------
+// Compare (CMP)
+// Compares the accumulator (A) with memory and sets flags as if performing
+// A - M, without storing the result.
+// Updates carry, zero, and negative flags.
+// -----------------------------------------------------------------------------
+void cpu_6502::cmp6502()
+{
+	value = get6502memory(savepc);
+	if (A >= value)
+		P |= F_C;
+	else
+		P &= ~F_C;
+	set_nz(A - value);
+}
+
+// -----------------------------------------------------------------------------
+// Compare X Register (CPX)
+// Compares the X register with memory and sets flags as if performing
+// X - M, without storing the result.
+// Updates carry, zero, and negative flags.
+// -----------------------------------------------------------------------------
+void cpu_6502::cpx6502()
+{
+	value = get6502memory(savepc);
+
+	// Set Carry if X >= value
+	if (X >= value)
+		P |= F_C;
+	else
+		P &= ~F_C;
+
+	set_nz(X - value);
+}
+
+// -----------------------------------------------------------------------------
+// Compare Y Register (CPY)
+// Compares the Y register with memory and sets flags as if performing
+// Y - M, without storing the result.
+// Updates carry, zero, and negative flags.
+// -----------------------------------------------------------------------------
+void cpu_6502::cpy6502()
+{
+	value = get6502memory(savepc);
+
+	// Set Carry if Y >= value
+	if (Y >= value)
+		P |= F_C;
+	else
+		P &= ~F_C;
+
+	set_nz(Y - value);
+}
+
+// -----------------------------------------------------------------------------
+// Load Accumulator
+// Loads a value from memory into the accumulator (A) and sets the zero and
+// negative flags based on the result.
+// -----------------------------------------------------------------------------
+inline void cpu_6502::lda6502()
+{
+	A = get6502memory(savepc);
+	set_nz(A);
+}
+
+// -----------------------------------------------------------------------------
+// Load X Register
+// Loads a value from memory into the X register and sets the zero and
+// negative flags based on the result.
+// -----------------------------------------------------------------------------
+void cpu_6502::ldx6502()
+{
+	X = get6502memory(savepc);
+	set_nz(X);
+}
+
+// -----------------------------------------------------------------------------
+// Load Y Register
+// Loads a value from memory into the Y register and sets the zero and
+// negative flags based on the result.
+// -----------------------------------------------------------------------------
+void cpu_6502::ldy6502()
+{
+	Y = get6502memory(savepc);
+	set_nz(Y);
+}
+
+// -----------------------------------------------------------------------------
+// Store Accumulator
+// Stores the value of the accumulator (A) into memory.
+// -----------------------------------------------------------------------------
+void cpu_6502::sta6502()
+{
+	put6502memory(savepc, A);
+}
+
+// -----------------------------------------------------------------------------
+// Store X Register
+// Stores the value of the X register into memory.
+// -----------------------------------------------------------------------------
+void cpu_6502::stx6502()
+{
+	put6502memory(savepc, X);
+}
+
+// -----------------------------------------------------------------------------
+// Store Y Register
+// Stores the value of the Y register into memory.
+// -----------------------------------------------------------------------------
+void cpu_6502::sty6502()
+{
+	put6502memory(savepc, Y);
+}
+
+// -----------------------------------------------------------------------------
+// Store Zero (65C02)
+// Stores a zero value into memory. This is a 65C02 extension instruction.
+// -----------------------------------------------------------------------------
+void cpu_6502::stz6502()
+{
+	put6502memory(savepc, 0);
+}
+
+// -----------------------------------------------------------------------------
+// Increment Memory
+// Increments the value at the specified memory location and sets the zero and
+// negative flags based on the result.
+// -----------------------------------------------------------------------------
+void cpu_6502::inc6502()
+{
+	uint8_t result = get6502memory(savepc) + 1;
+	put6502memory(savepc, result);
+	set_nz(result);
+}
+
+// -----------------------------------------------------------------------------
+// Decrement Memory
+// Decrements the value at the specified memory location and sets the zero and
+// negative flags based on the result.
+// -----------------------------------------------------------------------------
+void cpu_6502::dec6502()
+{
+	uint8_t result = get6502memory(savepc) - 1;
+	put6502memory(savepc, result);
+	set_nz(result);
+}
+
+// -----------------------------------------------------------------------------
+// Increment X
+// Increments the X register and sets the zero and negative flags based on the result.
+// -----------------------------------------------------------------------------
+void cpu_6502::inx6502()
+{
+	X++;
+	set_nz(X);
+}
+
+// -----------------------------------------------------------------------------
+// Decrement X
+// Decrements the X register and sets the zero and negative flags based on the result.
+// -----------------------------------------------------------------------------
+void cpu_6502::dex6502()
+{
+	X--;
+	set_nz(X);
+}
+
+// -----------------------------------------------------------------------------
+// Increment Y
+// Increments the Y register and sets the zero and negative flags based on the result.
+// -----------------------------------------------------------------------------
+void cpu_6502::iny6502()
+{
+	Y++;
+	set_nz(Y);
+}
+
+// -----------------------------------------------------------------------------
+// Decrement Y
+// Decrements the Y register and sets the zero and negative flags based on the result.
+// -----------------------------------------------------------------------------
+void cpu_6502::dey6502()
+{
+	Y--;
+	set_nz(Y);
+}
+
+// -----------------------------------------------------------------------------
+// Increment A (Unofficial)
+// Increments the accumulator (A) and sets the zero and negative flags based on the result.
+// -----------------------------------------------------------------------------
+void cpu_6502::ina6502()
+{
+	A++;
+	set_nz(A);
+}
+
+// -----------------------------------------------------------------------------
+// Decrement A (Unofficial)
+// Decrements the accumulator (A) and sets the zero and negative flags based on the result.
+// -----------------------------------------------------------------------------
+void cpu_6502::dea6502()
+{
+	A--;
+	set_nz(A);
+}
+
+// -----------------------------------------------------------------------------
+// Logical Shift Left (Memory)
+// Performs a logical shift left on a memory value, stores the result back, and
+// sets the carry, zero, and negative flags accordingly.
+// -----------------------------------------------------------------------------
+void cpu_6502::asl6502()
+{
+	value = get6502memory(savepc);
+	P = (P & ~F_C) | ((value >> 7) & F_C);
+	value <<= 1;
+	put6502memory(savepc, value);
+	set_nz(value);
+}
+
+// -----------------------------------------------------------------------------
+// Logical Shift Left (Accumulator)
+// Performs a logical shift left on the accumulator (A) and sets the carry,
+// zero, and negative flags accordingly.
+// -----------------------------------------------------------------------------
+void cpu_6502::asla6502()
+{
+	P = (P & ~F_C) | ((A >> 7) & F_C);
+	A <<= 1;
+	set_nz(A);
+}
+
+// -----------------------------------------------------------------------------
+// Logical Shift Right (Memory)
+// Shifts memory value right by 1. Carry flag is set to bit 0 before the shift.
+// The result is stored back at the same memory location.
+// Updates the Zero and Negative flags (N is always 0).
+// -----------------------------------------------------------------------------
+void cpu_6502::lsr6502()
+{
+	value = get6502memory(savepc);
+	P = (P & ~F_C) | (value & F_C);
+	value >>= 1;
+	put6502memory(savepc, value);
+	set_nz(value);
+}
+
+// -----------------------------------------------------------------------------
+// Logical Shift Right (Accumulator)
+// Shifts the accumulator (A) one bit to the right (logical shift).
+// The low bit is moved into the carry flag. Bit 7 is set to 0.
+// Updates the carry, zero, and negative flags.
+// -----------------------------------------------------------------------------
+void cpu_6502::lsra6502()
+{
+	P = (P & ~F_C) | (A & F_C);
+	A >>= 1;
+	set_nz(A);
+}
+
+// -----------------------------------------------------------------------------
+// Rotate Left (Memory)
+// Rotates a memory value one bit to the left through the carry flag.
+// Bit 7 moves into carry, carry moves into bit 0.
+// Updates the carry, zero, and negative flags.
+// -----------------------------------------------------------------------------
+void cpu_6502::rol6502()
+{
+	saveflags = P & F_C;
+	value = get6502memory(savepc);
+	P = (P & ~F_C) | ((value >> 7) & F_C);
+	value = (value << 1) | saveflags;
+	put6502memory(savepc, value);
+	set_nz(value);
+}
+
+// -----------------------------------------------------------------------------
+// Rotate Left (Accumulator)
+// Rotates the accumulator (A) one bit to the left through the carry flag.
+// Bit 7 moves into carry, carry moves into bit 0.
+// Updates the carry, zero, and negative flags.
+// -----------------------------------------------------------------------------
+void cpu_6502::rola6502()
+{
+	saveflags = P & F_C;
+	P = (P & ~F_C) | ((A >> 7) & F_C);
+	A = (A << 1) | saveflags;
+	set_nz(A);
+}
+
+// -----------------------------------------------------------------------------
+// Rotate Right (Memory)
+// Rotates a memory value one bit to the right through the carry flag.
+// Bit 0 moves into carry, carry moves into bit 7.
+// Updates the carry, zero, and negative flags.
+// -----------------------------------------------------------------------------
+void cpu_6502::ror6502()
+{
+	saveflags = P & F_C;
+	value = get6502memory(savepc);
+	P = (P & ~F_C) | (value & F_C);
+	value >>= 1;
+	if (saveflags) value |= F_N;
+	put6502memory(savepc, value);
+	set_nz(value);
+}
+
+// -----------------------------------------------------------------------------
+// Rotate Right (Accumulator)
+// Rotates the accumulator (A) one bit to the right through the carry flag.
+// Bit 0 moves into carry, carry moves into bit 7.
+// Updates the carry, zero, and negative flags.
+// -----------------------------------------------------------------------------
+void cpu_6502::rora6502()
+{
+	saveflags = P & F_C;
+	P = (P & ~F_C) | (A & F_C);
+	A >>= 1;
+	if (saveflags) A |= F_N;
+	set_nz(A);
+}
+
+// -----------------------------------------------------------------------------
+// Branch if Carry Clear
+// Adds signed offset from operand if Carry flag is clear.
+// Increments clockticks by 1 if branch is on same page,
+// or by 2 if it crosses a page boundary.
+// -----------------------------------------------------------------------------
+inline void cpu_6502::bcc6502()
+{
+	if (!(P & F_C))
+	{
+		oldpc = PC;
+		PC += (int8_t)savepc;  // C-style cast used here
+		clockticks6502 += ((oldpc ^ PC) & 0xFF00) ? 2 : 1;
+	}
+}
+
+// -----------------------------------------------------------------------------
+// Branch if Carry Set (BCS)
+// Branches to a relative address if the carry flag is set.
+// Adds 1 cycle if branch occurs on the same page, 2 if it crosses a page.
+// -----------------------------------------------------------------------------
+inline void cpu_6502::bcs6502()
+{
+	if (P & F_C)
+	{
+		oldpc = PC;
+		PC += (int8_t)(savepc);
+		clockticks6502 += ((oldpc ^ PC) & 0xFF00) ? 2 : 1;
+	}
+}
+
+// -----------------------------------------------------------------------------
+// Branch if Equal (BEQ)
+// Branches to a relative address if the zero flag is set (A == M).
+// Adds 1 cycle if branch occurs on the same page, 2 if it crosses a page.
+// -----------------------------------------------------------------------------
+inline void cpu_6502::beq6502()
+{
+	if (P & F_Z)
+	{
+		oldpc = PC;
+		PC += (int8_t)(savepc);
+		clockticks6502 += ((oldpc ^ PC) & 0xFF00) ? 2 : 1;
+	}
+}
+
+// -----------------------------------------------------------------------------
+// Branch if Minus (BMI)
+// Branches to a relative address if the negative flag is set (result < 0).
+// Adds 1 cycle if branch occurs on the same page, 2 if it crosses a page.
+// -----------------------------------------------------------------------------
+inline void cpu_6502::bmi6502()
+{
+	if (P & F_N)
+	{
+		oldpc = PC;
+		PC += (int8_t)(savepc);
+		clockticks6502 += ((oldpc ^ PC) & 0xFF00) ? 2 : 1;
+	}
+}
+
+// -----------------------------------------------------------------------------
+// Branch if Not Equal (BNE)
+// Branches to a relative address if the zero flag is clear (A != M).
+// Adds 1 cycle if branch occurs on the same page, 2 if it crosses a page.
+// -----------------------------------------------------------------------------
+inline void cpu_6502::bne6502()
+{
+	if (!(P & F_Z))
+	{
+		oldpc = PC;
+		PC += (int8_t)(savepc);
+		clockticks6502 += ((oldpc ^ PC) & 0xFF00) ? 2 : 1;
+	}
+}
+
+// -----------------------------------------------------------------------------
+// Branch if Positive (BPL)
+// Branches to a relative address if the negative flag is clear (result >= 0).
+// Adds 1 cycle if branch occurs on the same page, 2 if it crosses a page.
+// -----------------------------------------------------------------------------
+void cpu_6502::bpl6502()
+{
+	if (!(P & F_N))
+	{
+		oldpc = PC;
+		PC += (int8_t)(savepc);
+		clockticks6502 += ((oldpc ^ PC) & 0xFF00) ? 2 : 1;
+	}
+}
+
+// -----------------------------------------------------------------------------
+// Branch if Overflow Clear (BVC)
+// Branches to a relative address if the overflow flag is clear.
+// Adds 1 cycle if branch occurs on the same page, 2 if it crosses a page.
+// -----------------------------------------------------------------------------
+void cpu_6502::bvc6502()
+{
+	if (!(P & F_V))
+	{
+		oldpc = PC;
+		PC += (int8_t)(savepc);
+		clockticks6502 += ((oldpc ^ PC) & 0xFF00) ? 2 : 1;
+	}
+}
+
+// -----------------------------------------------------------------------------
+// Branch if Overflow Set (BVS)
+// Branches to a relative address if the overflow flag is set.
+// Adds 1 cycle if branch occurs on the same page, 2 if it crosses a page.
+// -----------------------------------------------------------------------------
+void cpu_6502::bvs6502()
+{
+	if (P & F_V)
+	{
+		oldpc = PC;
+		PC += (int8_t)(savepc);
+		clockticks6502 += ((oldpc ^ PC) & 0xFF00) ? 2 : 1;
+	}
+}
+
+// -----------------------------------------------------------------------------
+// Branch Always (BRA) - 65C02 Only
+// Unconditionally branches to a relative address.
+// Adds 1 clock cycle to the base instruction timing.
+// -----------------------------------------------------------------------------
+inline void cpu_6502::bra6502()
+{
+	PC += (int8_t)(savepc);
+	clockticks6502++;
+}
+// -----------------------------------------------------------------------------
+// Jump (JMP)
+// Sets the program counter to the target address specified by savepc.
+// -----------------------------------------------------------------------------
+inline void cpu_6502::jmp6502()
+{
+	PC = savepc;
+}
+
+// -----------------------------------------------------------------------------
+// Jump to Subroutine (JSR)
+// Pushes the return address (PC - 1) onto the stack and jumps to the target
+// address specified by savepc.
+// -----------------------------------------------------------------------------
+inline void cpu_6502::jsr6502()
+{
+	PC--;
+	push16(PC);
+	PC = savepc;
+}
+
+// -----------------------------------------------------------------------------
+// Return from Subroutine (RTS)
+// Pops the return address from the stack and sets the program counter to it,
+// then increments the program counter by 1.
+// -----------------------------------------------------------------------------
+inline void cpu_6502::rts6502()
+{
+	PC = pull16();
+	PC++;
+}
+
+// -----------------------------------------------------------------------------
+// Return from Interrupt (RTI)
+// Pops the processor status and program counter from the stack.
+// Restores the CPU state after an interrupt handler has completed.
+// -----------------------------------------------------------------------------
+void cpu_6502::rti6502()
+{
+	P = pull8() | F_T | F_B;
+	PC = pull16();
+}
+
+// -----------------------------------------------------------------------------
+// Break (BRK)
+// Forces an interrupt (software interrupt).
+// Pushes the program counter and processor status onto the stack,
+// sets the interrupt disable flag, and loads the interrupt vector from $FFFE.
+// -----------------------------------------------------------------------------
+void cpu_6502::brk6502()
+{
+	PC++;
+	push16(PC);
+	push8(P | F_B);
+	P = (P | F_I) & ~F_D;
+	PC = get6502memory(0xFFFE & addrmask) | (get6502memory(0xFFFF & addrmask) << 8);
+}
+
+// -----------------------------------------------------------------------------
+// No Operation (NOP)
+// Performs no operation. Some undocumented NOPs add timing delay.
+// Logs a warning if the NOP opcode is unofficial.
+// -----------------------------------------------------------------------------
+void cpu_6502::nop6502()
+{
+	if (opcode != 0xEA) // Official NOP is 0xEA
+		LOG_INFO("!!!!WARNING UNHANDLED NO-OP CALLED: %02X CPU: %d", opcode, cpu_num);
 
 	switch (opcode)
 	{
-	case 0x00: sprintf_s(opstr, "BRK"); break;
-	case 0x01: sprintf_s(opstr, "ORA ($%02x,X)", MEM[PC]);  break;
-	case 0x04: sprintf_s(opstr, "TSB"); break;
-	case 0x05: sprintf_s(opstr, "ORA $%02x", MEM[PC]);  break;
-	case 0x06: sprintf_s(opstr, "ASL $%02x", MEM[PC]);  break;
-	case 0x08: sprintf_s(opstr, "PHP"); break;
-	case 0x09: sprintf_s(opstr, "ORA #$%02x", MEM[PC]);  break;
-	case 0x0a: sprintf_s(opstr, "ASL A"); break;
-	case 0x0d: sprintf_s(opstr, "ORA $%02x%02x", MEM[PC + 1], MEM[PC]); break;
-	case 0x0e: sprintf_s(opstr, "ASL $%02x%02x", MEM[PC + 1], MEM[PC]); break;
-	case 0x10: sprintf_s(opstr, "BPL $%02x", MEM[PC]);  break;
-	case 0x11: sprintf_s(opstr, "ORA ($%02x),Y", MEM[PC]);  break;
-	case 0x15: sprintf_s(opstr, "ORA $%02x,X", MEM[PC]);  break;
-	case 0x16: sprintf_s(opstr, "ASL $%02x,X", MEM[PC]);  break;
-	case 0x18: sprintf_s(opstr, "CLC"); break;
-	case 0x19: sprintf_s(opstr, "ORA $%02x%02x,Y", MEM[PC + 1], MEM[PC]); break;
-	case 0x1d: sprintf_s(opstr, "ORA $%02x%02x,X", MEM[PC + 1], MEM[PC]); break;
-	case 0x1e: sprintf_s(opstr, "ASL $%02x%02x,X", MEM[PC + 1], MEM[PC]); break;
-	case 0x20: sprintf_s(opstr, "JSR $%02x%02x", MEM[PC + 1], MEM[PC]); break;
-	case 0x21: sprintf_s(opstr, "AND ($%02x,X)", MEM[PC]);  break;
-	case 0x24: sprintf_s(opstr, "BIT $%02x", MEM[PC]);  break;
-	case 0x25: sprintf_s(opstr, "AND $%02x", MEM[PC]);  break;
-	case 0x26: sprintf_s(opstr, "ROL $%02x", MEM[PC]);  break;
-	case 0x28: sprintf_s(opstr, "PLP"); break;
-	case 0x29: sprintf_s(opstr, "AND #$%02x", MEM[PC]);  break;
-	case 0x2a: sprintf_s(opstr, "ROL A"); break;
-	case 0x2c: sprintf_s(opstr, "BIT $%02x%02x", MEM[PC + 1], MEM[PC]); break;
-	case 0x2d: sprintf_s(opstr, "AND $%02x%02x", MEM[PC + 1], MEM[PC]); break;
-	case 0x2e: sprintf_s(opstr, "ROL $%02x%02x", MEM[PC + 1], MEM[PC]); break;
-	case 0x30: sprintf_s(opstr, "BMI $%02x", MEM[PC]);  break;
-	case 0x31: sprintf_s(opstr, "AND ($%02x),Y", MEM[PC]);  break;
-	case 0x35: sprintf_s(opstr, "AND $%02x,X", MEM[PC]);  break;
-	case 0x36: sprintf_s(opstr, "ROL $%02x,X", MEM[PC]);  break;
-	case 0x38: sprintf_s(opstr, "SEC"); break;
-	case 0x39: sprintf_s(opstr, "AND $%02x%02x,Y", MEM[PC + 1], MEM[PC]); break;
-	case 0x3d: sprintf_s(opstr, "AND $%02x%02x,X", MEM[PC + 1], MEM[PC]); break;
-	case 0x3e: sprintf_s(opstr, "ROL $%02x%02x,X", MEM[PC + 1], MEM[PC]); break;
-	case 0x40: sprintf_s(opstr, "RTI"); break;
-	case 0x41: sprintf_s(opstr, "EOR ($%02x,X)", MEM[PC]);  break;
-	case 0x45: sprintf_s(opstr, "EOR $%02x", MEM[PC]);  break;
-	case 0x46: sprintf_s(opstr, "LSR $%02x", MEM[PC]);  break;
-	case 0x48: sprintf_s(opstr, "PHA"); break;
-	case 0x49: sprintf_s(opstr, "EOR #$%02x", MEM[PC]);  break;
-	case 0x4a: sprintf_s(opstr, "LSR A"); break;
-	case 0x4c: sprintf_s(opstr, "JMP $%02x%02x", MEM[PC + 1], MEM[PC]); break;
-	case 0x4d: sprintf_s(opstr, "EOR $%02x%02x", MEM[PC + 1], MEM[PC]); break;
-	case 0x4e: sprintf_s(opstr, "LSR $%02x%02x", MEM[PC + 1], MEM[PC]); break;
-	case 0x50: sprintf_s(opstr, "BVC $%02x", MEM[PC]);  break;
-	case 0x51: sprintf_s(opstr, "EOR ($%02x),Y", MEM[PC]);  break;
-	case 0x55: sprintf_s(opstr, "EOR $%02x,X", MEM[PC]);  break;
-	case 0x56: sprintf_s(opstr, "LSR $%02x,X", MEM[PC]);  break;
-	case 0x58: sprintf_s(opstr, "CLI"); break;
-	case 0x59: sprintf_s(opstr, "EOR $%02x%02x,Y", MEM[PC + 1], MEM[PC]); break;
-	case 0x5d: sprintf_s(opstr, "EOR $%02x%02x,X", MEM[PC + 1], MEM[PC]); break;
-	case 0x5e: sprintf_s(opstr, "LSR $%02x%02x,X", MEM[PC + 1], MEM[PC]); break;
-	case 0x60: sprintf_s(opstr, "RTS"); break;
-	case 0x61: sprintf_s(opstr, "ADC ($%02x,X)", MEM[PC]);  break;
-	case 0x65: sprintf_s(opstr, "ADC $%02x", MEM[PC]);  break;
-	case 0x66: sprintf_s(opstr, "ROR $%02x", MEM[PC]);  break;
-	case 0x68: sprintf_s(opstr, "PLA"); break;
-	case 0x69: sprintf_s(opstr, "ADC #$%02x", MEM[PC]);  break;
-	case 0x6a: sprintf_s(opstr, "ROR A"); break;
-	case 0x6c: sprintf_s(opstr, "JMP ($%02x%02x)", MEM[PC + 1], MEM[PC]); break;
-	case 0x6d: sprintf_s(opstr, "ADC $%02x%02x", MEM[PC + 1], MEM[PC]); break;
-	case 0x6e: sprintf_s(opstr, "ROR $%02x%02x,X", MEM[PC + 1], MEM[PC]); break;
-	case 0x70: sprintf_s(opstr, "BVS $%02x", MEM[PC]);  break;
-	case 0x71: sprintf_s(opstr, "ADC ($%02x),Y", MEM[PC]);  break;
-	case 0x75: sprintf_s(opstr, "ADC $%02x,X", MEM[PC]);  break;
-	case 0x76: sprintf_s(opstr, "ROR $%02x,X", MEM[PC]);  break;
-	case 0x78: sprintf_s(opstr, "SEI"); break;
-	case 0x79: sprintf_s(opstr, "ADC $%02x%02x,Y", MEM[PC + 1], MEM[PC]); break;
-	case 0x7d: sprintf_s(opstr, "ADC $%02x%02x,X", MEM[PC + 1], MEM[PC]); break;
-	case 0x7e: sprintf_s(opstr, "ROR $%02x%02x", MEM[PC + 1], MEM[PC]); break;
-	case 0x81: sprintf_s(opstr, "STA ($%02x,X)", MEM[PC]);  break;
-	case 0x84: sprintf_s(opstr, "STY $%02x", MEM[PC]);  break;
-	case 0x85: sprintf_s(opstr, "STA $%02x", MEM[PC]);  break;
-	case 0x86: sprintf_s(opstr, "STX $%02x", MEM[PC]);  break;
-	case 0x88: sprintf_s(opstr, "DEY"); break;
-	case 0x8a: sprintf_s(opstr, "TXA"); break;
-	case 0x8c: sprintf_s(opstr, "STY $%02x%02x", MEM[PC + 1], MEM[PC]); break;
-	case 0x8d: sprintf_s(opstr, "STA $%02x%02x", MEM[PC + 1], MEM[PC]); break;
-	case 0x8e: sprintf_s(opstr, "STX $%02x%02x", MEM[PC + 1], MEM[PC]); break;
-	case 0x90: sprintf_s(opstr, "BCC $%04x", MEM[PC]);  break; //PLUS SAVEpc MEM[PC]
-	case 0x91: sprintf_s(opstr, "STA ($%02x),Y", MEM[PC]);  break;
-	case 0x94: sprintf_s(opstr, "STY $%02x,X", MEM[PC]);  break;
-	case 0x95: sprintf_s(opstr, "STA $%02x,X", MEM[PC]);  break;
-	case 0x96: sprintf_s(opstr, "STX $%02x,Y", MEM[PC]);  break;
-	case 0x98: sprintf_s(opstr, "TYA"); break;
-	case 0x99: sprintf_s(opstr, "STA $%02x%02x,Y", MEM[PC + 1], MEM[PC]); break;
-	case 0x9a: sprintf_s(opstr, "TXS"); break;
-	case 0x9d: sprintf_s(opstr, "STA $%02x%02x,X", MEM[PC + 1], MEM[PC]); break;
-	case 0xa0: sprintf_s(opstr, "LDY #$%02x", MEM[PC]);  break;
-	case 0xa1: sprintf_s(opstr, "LDA ($%02x,X)", MEM[PC]);  break;
-	case 0xa2: sprintf_s(opstr, "LDX #$%02x", MEM[PC]);  break;
-	case 0xa4: sprintf_s(opstr, "LDY $%02x", MEM[PC]);  break;
-	case 0xa5: sprintf_s(opstr, "LDA $%02x", MEM[PC]);  break;
-	case 0xa6: sprintf_s(opstr, "LDX $%02x", MEM[PC]);  break;
-	case 0xa8: sprintf_s(opstr, "TAY"); break;
-	case 0xa9: sprintf_s(opstr, "LDA #$%02x", MEM[PC]);  break;
-	case 0xaa: sprintf_s(opstr, "TAX"); break;
-	case 0xac: sprintf_s(opstr, "LDY $%02x%02x", MEM[PC + 1], MEM[PC]); break;
-	case 0xad: sprintf_s(opstr, "LDA $%02x%02x", MEM[PC + 1], MEM[PC]); break;
-	case 0xae: sprintf_s(opstr, "LDX $%02x%02x", MEM[PC + 1], MEM[PC]); break;
-	case 0xb0: sprintf_s(opstr, "BCS $%02x", MEM[PC]);  break;
-	case 0xb1: sprintf_s(opstr, "LDA ($%02x),Y", MEM[PC]);  break;
-	case 0xb4: sprintf_s(opstr, "LDY $%02x,X", MEM[PC]);  break;
-	case 0xb5: sprintf_s(opstr, "LDA $%02x,X", MEM[PC]);  break;
-	case 0xb6: sprintf_s(opstr, "LDX $%02x,Y", MEM[PC]);  break;
-	case 0xb8: sprintf_s(opstr, "CLV"); break;
-	case 0xb9: sprintf_s(opstr, "LDA $%02x%02x,Y", MEM[PC + 1], MEM[PC]); break;
-	case 0xba: sprintf_s(opstr, "TSX"); break;
-	case 0xbc: sprintf_s(opstr, "LDY $%02x%02x,X", MEM[PC + 1], MEM[PC]); break;
-	case 0xbd: sprintf_s(opstr, "LDA $%02x%02x,X", MEM[PC + 1], MEM[PC]); break;
-	case 0xbe: sprintf_s(opstr, "LDX $%02x%02x,Y", MEM[PC + 1], MEM[PC]); break;
-	case 0xc0: sprintf_s(opstr, "CPY #$%02x", MEM[PC]);  break;
-	case 0xc1: sprintf_s(opstr, "CMP ($%02x,X)", MEM[PC]);  break;
-	case 0xc4: sprintf_s(opstr, "CPY $%02x", MEM[PC]);  break;
-	case 0xc5: sprintf_s(opstr, "CMP $%02x", MEM[PC]);  break;
-	case 0xc6: sprintf_s(opstr, "DEC $%02x", MEM[PC]);  break;
-	case 0xc8: sprintf_s(opstr, "INY"); break;
-	case 0xc9: sprintf_s(opstr, "CMP #$%02x", MEM[PC]);  break;
-	case 0xca: sprintf_s(opstr, "DEX"); break;
-	case 0xcc: sprintf_s(opstr, "CPY $%02x%02x", MEM[PC + 1], MEM[PC]); break;
-	case 0xcd: sprintf_s(opstr, "CMP $%02x%02x", MEM[PC + 1], MEM[PC]); break;
-	case 0xce: sprintf_s(opstr, "DEC $%02x%02x", MEM[PC + 1], MEM[PC]); break;
-	case 0xd0: sprintf_s(opstr, "BNE $%02x%02x", MEM[PC + 2], MEM[PC + 1]);  break;
-	case 0xd1: sprintf_s(opstr, "CMP ($%02x),Y", MEM[PC]);  break;
-	case 0xd5: sprintf_s(opstr, "CMP $%02x,X", MEM[PC]);  break;
-	case 0xd6: sprintf_s(opstr, "DEC $%02x,X", MEM[PC]);  break;
-	case 0xd8: sprintf_s(opstr, "CLD"); break;
-	case 0xd9: sprintf_s(opstr, "CMP $%02x%02x,Y", MEM[PC + 1], MEM[PC]); break;
-	case 0xdd: sprintf_s(opstr, "CMP $%02x%02x,X", MEM[PC + 1], MEM[PC]); break;
-	case 0xde: sprintf_s(opstr, "DEC $%02x%02x,X", MEM[PC + 1], MEM[PC]); break;
-	case 0xe0: sprintf_s(opstr, "CPX #$%02x", MEM[PC]);  break;
-	case 0xe1: sprintf_s(opstr, "SBC ($%02x,X)", MEM[PC]);  break;
-	case 0xe4: sprintf_s(opstr, "CPX $%02x", MEM[PC]);  break;
-	case 0xe5: sprintf_s(opstr, "SBC $%02x", MEM[PC]);  break;
-	case 0xe6: sprintf_s(opstr, "INC $%02x", MEM[PC]);  break;
-	case 0xe8: sprintf_s(opstr, "INX"); break;
-	case 0xe9: sprintf_s(opstr, "SBC #$%02x", MEM[PC]);  break;
-	case 0xea: sprintf_s(opstr, "NOP"); break;
-	case 0xec: sprintf_s(opstr, "CPX $%02x%02x", MEM[PC + 1], MEM[PC]); break;
-	case 0xed: sprintf_s(opstr, "SBC $%02x%02x", MEM[PC + 1], MEM[PC]); break;
-	case 0xee: sprintf_s(opstr, "INC $%02x%02x", MEM[PC + 1], MEM[PC]); break;
-	case 0xf0: sprintf_s(opstr, "BEQ $%02x", MEM[PC]);  break;
-	case 0xf1: sprintf_s(opstr, "SBC ($%02x),Y", MEM[PC]);  break;
-	case 0xf5: sprintf_s(opstr, "SBC $%02x,X", MEM[PC]);  break;
-	case 0xf6: sprintf_s(opstr, "INC $%02x,X", MEM[PC]);  break;
-	case 0xf8: sprintf_s(opstr, "SED"); break;
-	case 0xf9: sprintf_s(opstr, "SBC $%02x%02x,Y", MEM[PC + 1], MEM[PC]); break;
-	case 0xfd: sprintf_s(opstr, "SBC $%02x%02x,X", MEM[PC + 1], MEM[PC]); break;
-	case 0xfe: sprintf_s(opstr, "INC $%02x%02x,X", MEM[PC + 1], MEM[PC]); break;
-
-	default: sprintf_s(opstr, "UNKNOWN 6502 OPCODE: %x", opcode); break;
+	case 0x1C: case 0x3C: case 0x5C: case 0x7C:
+	case 0xDC: case 0xFC:
+		clockticks6502++;
+		break;
 	}
-	rval = opstr;
+}
 
-	return rval;
+// -----------------------------------------------------------------------------
+// Clear Carry Flag (CLC)
+// Clears the carry flag (C = 0).
+// -----------------------------------------------------------------------------
+void cpu_6502::clc6502()
+{
+	P &= ~F_C;
+}
+
+// -----------------------------------------------------------------------------
+// Clear Decimal Mode (CLD)
+// Clears the decimal mode flag (D = 0), disabling BCD arithmetic.
+// -----------------------------------------------------------------------------
+void cpu_6502::cld6502()
+{
+	P &= ~F_D;
+}
+
+// -----------------------------------------------------------------------------
+// Clear Interrupt Disable (CLI)
+// Clears the interrupt disable flag (I = 0), enabling maskable IRQs.
+// Also checks for any pending interrupts that were deferred.
+// -----------------------------------------------------------------------------
+void cpu_6502::cli6502()
+{
+	P &= ~F_I;
+	check_interrupts_after_cli(); // evaluate pending IRQs
+}
+
+// -----------------------------------------------------------------------------
+// Clear Overflow Flag (CLV)
+// Clears the overflow flag (V = 0).
+// -----------------------------------------------------------------------------
+void cpu_6502::clv6502()
+{
+	P &= ~F_V;
+}
+
+// -----------------------------------------------------------------------------
+// Set Carry Flag (SEC)
+// Sets the carry flag (C = 1).
+// -----------------------------------------------------------------------------
+void cpu_6502::sec6502()
+{
+	P |= F_C;
+}
+
+// -----------------------------------------------------------------------------
+// Set Decimal Mode (SED)
+// Sets the decimal mode flag (D = 1), enabling BCD arithmetic.
+// -----------------------------------------------------------------------------
+void cpu_6502::sed6502()
+{
+	P |= F_D;
+}
+
+// -----------------------------------------------------------------------------
+// Set Interrupt Disable (SEI)
+// Sets the interrupt disable flag (I = 1), preventing maskable IRQs.
+// -----------------------------------------------------------------------------
+void cpu_6502::sei6502()
+{
+	P |= F_I;
+}
+
+// -----------------------------------------------------------------------------
+// Transfer Accumulator to X (TAX)
+// Copies the accumulator (A) into the X register.
+// Updates the zero and negative flags based on the result.
+// -----------------------------------------------------------------------------
+void cpu_6502::tax6502()
+{
+	X = A;
+	set_nz(X);
+}
+
+// -----------------------------------------------------------------------------
+// Transfer Accumulator to Y (TAY)
+// Copies the accumulator (A) into the Y register.
+// Updates the zero and negative flags based on the result.
+// -----------------------------------------------------------------------------
+void cpu_6502::tay6502()
+{
+	Y = A;
+	set_nz(Y);
+}
+
+// -----------------------------------------------------------------------------
+// Transfer X to Accumulator (TXA)
+// Copies the X register into the accumulator (A).
+// Updates the zero and negative flags based on the result.
+// -----------------------------------------------------------------------------
+void cpu_6502::txa6502()
+{
+	A = X;
+	set_nz(A);
+}
+
+// -----------------------------------------------------------------------------
+// Transfer Y to Accumulator (TYA)
+// Copies the Y register into the accumulator (A).
+// Updates the zero and negative flags based on the result.
+// -----------------------------------------------------------------------------
+void cpu_6502::tya6502()
+{
+	A = Y;
+	set_nz(A);
+}
+
+// -----------------------------------------------------------------------------
+// Transfer Stack Pointer to X (TSX)
+// Copies the stack pointer (S) into the X register.
+// Updates the zero and negative flags based on the result.
+// -----------------------------------------------------------------------------
+void cpu_6502::tsx6502()
+{
+	X = S;
+	set_nz(X);
+}
+
+// -----------------------------------------------------------------------------
+// Transfer X to Stack Pointer (TXS)
+// Copies the X register into the stack pointer (S).
+// Does not affect any flags.
+// -----------------------------------------------------------------------------
+void cpu_6502::txs6502()
+{
+	S = X;
+}
+
+// -----------------------------------------------------------------------------
+// Push Accumulator (PHA)
+// Pushes the accumulator (A) onto the stack.
+// -----------------------------------------------------------------------------
+void cpu_6502::pha6502()
+{
+	push8(A);
+}
+
+// -----------------------------------------------------------------------------
+// Push Processor Status (PHP)
+// Pushes the processor status register (P) onto the stack.
+// The break flag is set in the value pushed.
+// -----------------------------------------------------------------------------
+void cpu_6502::php6502()
+{
+	push8(P | F_B);
+}
+
+// -----------------------------------------------------------------------------
+// Pull Accumulator (PLA)
+// Pulls a byte from the stack into the accumulator (A).
+// Updates the zero and negative flags based on the result.
+// -----------------------------------------------------------------------------
+void cpu_6502::pla6502()
+{
+	A = pull8();
+	set_nz(A);
+}
+
+// -----------------------------------------------------------------------------
+// Pull Processor Status (PLP)
+// Pulls a byte from the stack into the processor status register (P).
+// The unused flag (T) is forced on.
+// -----------------------------------------------------------------------------
+void cpu_6502::plp6502()
+{
+	P = pull8() | F_T;
+}
+
+// -----------------------------------------------------------------------------
+// Push X Register (PHX) - 65C02/undocumented
+// Pushes the X register onto the stack.
+// -----------------------------------------------------------------------------
+void cpu_6502::phx6502()
+{
+	push8(X);
+}
+
+// -----------------------------------------------------------------------------
+// Pull X Register (PLX) - 65C02/undocumented
+// Pulls a byte from the stack into the X register.
+// Updates the zero and negative flags based on the result.
+// -----------------------------------------------------------------------------
+void cpu_6502::plx6502()
+{
+	X = pull8();
+	set_nz(X);
+}
+
+// -----------------------------------------------------------------------------
+// Push Y Register (PHY) - 65C02/undocumented
+// Pushes the Y register onto the stack.
+// -----------------------------------------------------------------------------
+void cpu_6502::phy6502()
+{
+	push8(Y);
+}
+
+// -----------------------------------------------------------------------------
+// Pull Y Register (PLY) - 65C02/undocumented
+// Pulls a byte from the stack into the Y register.
+// Updates the zero and negative flags based on the result.
+// -----------------------------------------------------------------------------
+void cpu_6502::ply6502()
+{
+	Y = pull8();
+	set_nz(Y);
+}
+// -----------------------------------------------------------------------------
+// ISB (Increment and Subtract with Carry) — Unofficial Opcode
+// Increments the memory value, then subtracts it from the accumulator (A)
+// using SBC. Affects all standard SBC flags.
+// -----------------------------------------------------------------------------
+void cpu_6502::isb6502()
+{
+	inc6502();
+	sbc6502();
+}
+
+// -----------------------------------------------------------------------------
+// TRB (Test and Reset Bits)
+// Tests bits in memory against the accumulator (A).
+// Sets the zero flag if (A & M) == 0.
+// Clears bits in memory where A has 1s (M = M & ~A).
+// -----------------------------------------------------------------------------
+void cpu_6502::trb6502()
+{
+	uint8_t v = get6502memory(savepc);
+	set_z(A & v);
+	put6502memory(savepc, v & ~A);
+}
+
+// -----------------------------------------------------------------------------
+// TSB (Test and Set Bits)
+// Tests bits in memory against the accumulator (A).
+// Sets the zero flag if (A & M) == 0.
+// Sets bits in memory where A has 1s (M = M | A).
+// -----------------------------------------------------------------------------
+void cpu_6502::tsb6502()
+{
+	uint8_t v = get6502memory(savepc);
+	set_z(A & v);
+	put6502memory(savepc, v | A);
+}
+
+// -----------------------------------------------------------------------------
+// Log Instruction Usage
+// Logs the number of times each opcode was executed during the current frame.
+// Intended for profiling or debugging purposes.
+// -----------------------------------------------------------------------------
+void cpu_6502::log_instruction_usage()
+{
+	LOG_INFO("Instruction Usage This Frame:");
+	for (int i = 0; i < 256; ++i)
+	{
+		if (instruction_count[i] > 0)
+		{
+			LOG_INFO("Opcode %02X (%s): %llu", i, mnemonics[i], instruction_count[i]);
+		}
+	}
+}
+
+// -----------------------------------------------------------------------------
+// Reset Instruction Counts
+// Resets the instruction execution counters to zero.
+// Typically called at the start of a new profiling frame.
+// -----------------------------------------------------------------------------
+void cpu_6502::reset_instruction_counts()
+{
+	std::fill(std::begin(instruction_count), std::end(instruction_count), 0);
+}
+
+/*
+Usage:
+int used = 0;
+std::string disasm = cpu->disassemble(cpu->get_pc(), &used);
+LOG_INFO("%04X: %-20s  A:%02X X:%02X Y:%02X P:%02X", cpu->get_pc(), disasm.c_str(), cpu->A, cpu->X, cpu->Y, cpu->P);
+*/
+
+std::string cpu_6502::disassemble(uint16_t pc, int* bytesUsed)
+{
+	static const uint8_t length[256] = {
+		2,2,1,1,2,2,2,1,1,2,1,1,3,3,3,1,  // 00–0F
+		2,2,2,1,2,2,2,1,1,3,1,1,3,3,3,1,  // 10–1F
+		3,2,1,1,2,2,2,1,1,2,1,1,3,3,3,1,  // 20–2F
+		2,2,2,1,2,2,2,1,1,3,1,1,3,3,3,1,  // 30–3F
+		1,2,1,1,1,2,2,1,1,2,1,1,3,3,3,1,  // 40–4F
+		2,2,2,1,1,2,2,1,1,3,1,1,1,3,3,1,  // 50–5F
+		1,2,1,1,2,2,2,1,1,2,1,1,3,3,3,1,  // 60–6F
+		2,2,2,1,2,2,2,1,1,3,1,1,3,3,3,1,  // 70–7F
+		2,2,1,1,2,2,2,1,1,2,1,1,3,3,3,1,  // 80–8F
+		2,2,2,1,2,2,2,1,1,3,1,1,3,3,3,1,  // 90–9F
+		2,2,2,1,2,2,2,1,1,2,1,1,3,3,3,1,  // A0–AF
+		2,2,1,1,2,2,2,1,1,3,1,1,3,3,3,1,  // B0–BF
+		2,2,1,1,2,2,2,1,1,2,1,1,3,3,3,1,  // C0–CF
+		2,2,2,1,1,2,2,1,1,3,1,1,3,3,3,1,  // D0–DF
+		2,2,1,2,2,2,2,2,1,2,1,2,3,3,3,3,  // E0–EF
+		2,2,2,2,2,2,2,2,1,3,1,3,3,3,3,3   // F0–FF
+	};
+
+	char buffer[64] = {};
+	uint8_t opcode = get6502memory(pc);
+	uint8_t op1 = get6502memory(pc + 1);
+	uint8_t op2 = get6502memory(pc + 2);
+
+	switch (length[opcode])
+	{
+	case 1:
+		sprintf_s(buffer, sizeof(buffer), "%02X       %-4s", opcode, mnemonics[opcode]);
+		break;
+
+	case 2:
+		if ((opcode & 0x1F) == 0x10) // branch instructions
+		{
+			int8_t offset = static_cast<int8_t>(op1);
+			uint16_t target = pc + 2 + offset;
+			sprintf_s(buffer, sizeof(buffer), "%02X %02X    %-4s $%04X", opcode, op1, mnemonics[opcode], target);
+		}
+		else
+		{
+			sprintf_s(buffer, sizeof(buffer), "%02X %02X    %-4s $%02X", opcode, op1, mnemonics[opcode], op1);
+		}
+		break;
+
+	case 3:
+	{
+		uint16_t addr = static_cast<uint16_t>(op1) | (static_cast<uint16_t>(op2) << 8);
+		if (opcode == 0x4C || opcode == 0x20) // JMP abs, JSR abs
+		{
+			sprintf_s(buffer, sizeof(buffer), "%02X %02X %02X %-4s $%04X", opcode, op1, op2, mnemonics[opcode], addr);
+		}
+		else if (opcode == 0x6C) // JMP (indirect)
+		{
+			sprintf_s(buffer, sizeof(buffer), "%02X %02X %02X %-4s ($%04X)", opcode, op1, op2, mnemonics[opcode], addr);
+		}
+		else
+		{
+			sprintf_s(buffer, sizeof(buffer), "%02X %02X %02X %-4s $%02X%02X", opcode, op1, op2, mnemonics[opcode], op2, op1);
+		}
+		break;
+	}
+
+	default:
+		sprintf_s(buffer, sizeof(buffer), "%02X       ???", opcode);
+		break;
+	}
+
+	if (bytesUsed)
+		*bytesUsed = length[opcode];
+
+	return std::string(buffer);
 }

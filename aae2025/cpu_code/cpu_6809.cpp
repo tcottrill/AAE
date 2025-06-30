@@ -130,7 +130,7 @@ cpu_6809::cpu_6809(uint8_t* mem, MemoryReadByte* read_mem, MemoryWriteByte* writ
 	cpu_num = num;
 	m6809_ICount = 0;
 	init6809(addr);
-	logging = 0;
+	debug_log = 0;
 }
 
 int cpu_6809::get6809ticks(int reset)
@@ -3478,7 +3478,7 @@ int cpu_6809::exec6809(int cycles)
 			slapstic_en = 0;
 			ireg = rd_slow(pcreg++);
 
-			if (cpu_num == 0 && logging)
+			if (cpu_num == 0 && debug_log)
 			{
 				Dasm6809(tempbuffer, pcreg);
 				//LOG_INFO("M6809#%d Slapstic, Bank %d, PC %04X,  X REG %04x", get_active_cpu(), last_starwars_bank, pcreg, xreg);
@@ -4111,13 +4111,32 @@ const char* regs_6809[5] = { "X","Y","U","S","PC" };
 const char* teregs[16] = { "D","X","Y","U","S","PC","inv","inv","A","B","CC",
 	  "DP","inv","inv","inv","inv" };
 
+static const size_t BUF_SIZE = 256;
+
+/* Append formatted text to  --> buffer                        */
+#define APPEND_FMT(fmt, ...)                                                   \
+    do {                                                                       \
+        size_t _off = strlen(buffer);                                          \
+        sprintf_s(buffer + _off, BUF_SIZE - _off, fmt, ##__VA_ARGS__);         \
+    } while (0)
+
+/* Append literal string to  --> buffer                        */
+#define APPEND_STR(str)                                                        \
+    do {                                                                       \
+        size_t _off = strlen(buffer);                                          \
+        strcpy_s(buffer + _off, BUF_SIZE - _off, str);                         \
+    } while (0)
+
+/* Replace buffer with literal string                           */
+#define SET_STR(str)   strcpy_s(buffer, BUF_SIZE, str)
+
 static char* hexstring(int address)
 {
 	static char labtemp[10];
-	sprintf(labtemp, "$%04hX", address);
+	sprintf_s(labtemp, sizeof(labtemp), "$%04hX", address);
 	return labtemp;
 }
-
+/*  ----------------------------------------------------------------- */
 int cpu_6809::Dasm6809(char* buffer, int pc)
 {
 	int i, j, k, page, opcode, numoperands, mode;
@@ -4125,7 +4144,7 @@ int cpu_6809::Dasm6809(char* buffer, int pc)
 	char* opname;
 	int p = 0;
 
-	buffer[0] = 0;
+	buffer[0] = '\0';
 	opcode = M_RDMEM(pc + (p++));
 	for (i = 0; i < numops[0]; i++)
 		if (pg1opcodes[i].opcode == opcode)
@@ -4141,56 +4160,56 @@ int cpu_6809::Dasm6809(char* buffer, int pc)
 				if (opcode == pgpointers[page][k].opcode)
 					break;
 
-			if (k != numops[page])
-			{                 /* opcode found */
+			if (k != numops[page])                 /* opcode found */
+			{
 				numoperands = pgpointers[page][k].numoperands - 1;
 				for (j = 0; j < numoperands; j++)
 					operandarray[j] = M_RDMEM(pc + (p++));
 				mode = pgpointers[page][k].mode;
 				opname = pgpointers[page][k].name;
 				if (mode != IND)
-					sprintf(buffer + strlen(buffer), "%-6s", opname);
+					APPEND_FMT("%-6s", opname);
 				goto printoperands;
 			}
-			else
-			{               /* not found in alternate page */
-				strcpy(buffer, "Illegal Opcode");
+			else                                   /* not found */
+			{
+				SET_STR("Illegal Opcode");
 				return 2;
 			}
 		}
-		else
-		{                                /* page 1 opcode */
+		else                                        /* page-1 opcode */
+		{
 			numoperands = pg1opcodes[i].numoperands;
 			for (j = 0; j < numoperands; j++)
 				operandarray[j] = M_RDMEM(pc + (p++));
 			mode = pg1opcodes[i].mode;
 			opname = pg1opcodes[i].name;
 			if (mode != IND)
-				sprintf(buffer + strlen(buffer), "%-6s", opname);
+				APPEND_FMT("%-6s", opname);
 			goto printoperands;
 		}
 	}
 	else
 	{
-		strcpy(buffer, "Illegal Opcode");
+		SET_STR("Illegal Opcode");
 		return 1;
 	}
 
+	/*  ----------------------------------------------------------------- */
 printoperands:
 	pc += p;
 	{
 		int rel, pb, offset = 0, reg, pb2;
 		int comma;
-		int printdollar;                  /* print a leading $? before address */
-
-		printdollar = FALSE;
+		int printdollar = FALSE;       /* print leading '$'? */
 
 		if ((opcode != 0x1f) && (opcode != 0x1e))
 		{
-			switch (mode)
-			{                              /* print before operands */
+			switch (mode)              /* pre-operand decorations */
+			{
 			case IMM:
-				strcat(buffer, "#");
+				APPEND_STR("#");
+				/* fall through */
 			case DIR:
 			case EXT:
 				printdollar = TRUE;
@@ -4202,256 +4221,148 @@ printoperands:
 
 		switch (mode)
 		{
-		case REL:                                          /* 8-bit relative */
+			/* --------- relative addressing ------*/
+		case REL:                      /* 8-bit relative  */
 			rel = operandarray[0];
-			strcpy(buffer + strlen(buffer), hexstring((short)(pc + ((rel < 128) ? rel : rel - 256))));
+			APPEND_STR(hexstring((short)(pc + ((rel < 128) ? rel : rel - 256))));
 			break;
 
-		case LREL:                                   /* 16-bit long relative */
+		case LREL:                     /* 16-bit relative */
 			rel = (operandarray[0] << 8) + operandarray[1];
-			strcpy(buffer + strlen(buffer), hexstring(pc + ((rel < 32768) ? rel : rel - 65536)));
+			APPEND_STR(hexstring(pc + ((rel < 32768) ? rel : rel - 65536)));
 			break;
 
-		case IND:                                  /* indirect- many flavors */
+			/* --------- indexed / indirect ------*/
+		case IND:
 			pb = operandarray[0];
 			reg = (pb >> 5) & 0x3;
 			pb2 = pb & 0x8f;
-			if ((pb2 == 0x88) || (pb2 == 0x8c))
-			{                    /* 8-bit offset */
 
-			   /* KW 11/05/98 Fix of indirect opcodes      */
-
-			   /*  offset = M6809_RDOP_ARG(pc+(p++));      */
-
+			if ((pb2 == 0x88) || (pb2 == 0x8c))            /* 8-bit offset */
+			{
 				offset = M_RDMEM(pc);
 				p++;
 
-				/* KW 11/05/98 Fix of indirect opcodes      */
+				if (offset > 127) offset -= 256;           /* sign-extend */
+				if (pb == 0x8c) reg = 4;
 
-				if (offset > 127)                            /* convert to signed */
-					offset = offset - 256;
+				APPEND_FMT("%-6s", opname);
+				if ((pb & 0x90) == 0x90) APPEND_STR("[");
 				if (pb == 0x8c)
-					reg = 4;
-				sprintf(buffer + strlen(buffer), "%-6s", opname);
-				if ((pb & 0x90) == 0x90)
-					strcat(buffer, "[");
-				if (pb == 0x8c)
-					sprintf(buffer + strlen(buffer), "%s,%s", hexstring(offset), regs_6809[reg]);
+					APPEND_FMT("%s,%s", hexstring(offset), regs_6809[reg]);
 				else if (offset >= 0)
-					sprintf(buffer + strlen(buffer), "$%02X,%s", offset, regs_6809[reg]);
+					APPEND_FMT("$%02X,%s", offset, regs_6809[reg]);
 				else
-					sprintf(buffer + strlen(buffer), "-$%02X,%s", -offset, regs_6809[reg]);
+					APPEND_FMT("-$%02X,%s", -offset, regs_6809[reg]);
 				if (pb == 0x8c)
-					sprintf(buffer + strlen(buffer), " ; ($%04X)", offset + pc);
+					APPEND_FMT(" ; ($%04X)", offset + pc);
 			}
-			else if ((pb2 == 0x89) || (pb2 == 0x8d) || (pb2 == 0x8f))
-			{ /* 16-bit */
-
-			   /* KW 11/05/98 Fix of indirect opcodes      */
-
-			   /*  offset = M6809_RDOP_ARG(pc+(p++)) << 8; */
-			   /*  offset += M6809_RDOP_ARG(pc+(p++));     */
-
+			else if ((pb2 == 0x89) || (pb2 == 0x8d) || (pb2 == 0x8f)) /* 16-bit */
+			{
 				offset = M_RDMEM(pc) << 8;
 				offset += M_RDMEM(pc + 1);
 				p += 2;
 
-				/* KW 11/05/98 Fix of indirect opcodes      */
-
-				if ((pb != 0x8f) && (offset > 32767))
-					offset = offset - 65536;
+				if ((pb != 0x8f) && (offset > 32767)) offset -= 65536;
 				offset &= 0xffff;
+				if (pb == 0x8d) reg = 4;
+
+				APPEND_FMT("%-6s", opname);
+				if ((pb & 0x90) == 0x90) APPEND_STR("[");
 				if (pb == 0x8d)
-					reg = 4;
-				sprintf(buffer + strlen(buffer), "%-6s", opname);
-				if ((pb & 0x90) == 0x90)
-					strcat(buffer, "[");
-				if (pb == 0x8d)
-					sprintf(buffer + strlen(buffer), "%s,%s", hexstring(offset), regs_6809[reg]);
+					APPEND_FMT("%s,%s", hexstring(offset), regs_6809[reg]);
 				else if (offset >= 0)
-					sprintf(buffer + strlen(buffer), "$%04X,%s", offset, regs_6809[reg]);
+					APPEND_FMT("$%04X,%s", offset, regs_6809[reg]);
 				else
-					sprintf(buffer + strlen(buffer), "-$%04X,%s", offset, regs_6809[reg]);
+					APPEND_FMT("-$%04X,%s", offset, regs_6809[reg]);
 				if (pb == 0x8d)
-					sprintf(buffer + strlen(buffer), " ; ($%04X)", offset + pc);
+					APPEND_FMT(" ; ($%04X)", offset + pc);
 			}
-			else if (pb & 0x80)
+			else if (pb & 0x80)                               /* auto/inc-dec etc */
 			{
-				sprintf(buffer + strlen(buffer), "%-6s", opname);
-				if ((pb & 0x90) == 0x90)
-					strcat(buffer, "[");
-				if ((pb & 0x8f) == 0x80)
-					sprintf(buffer + strlen(buffer), ",%s+", regs_6809[reg]);
-				else if ((pb & 0x8f) == 0x81)
-					sprintf(buffer + strlen(buffer), ",%s++", regs_6809[reg]);
-				else if ((pb & 0x8f) == 0x82)
-					sprintf(buffer + strlen(buffer), ",-%s", regs_6809[reg]);
-				else if ((pb & 0x8f) == 0x83)
-					sprintf(buffer + strlen(buffer), ",--%s", regs_6809[reg]);
-				else if ((pb & 0x8f) == 0x84)
-					sprintf(buffer + strlen(buffer), ",%s", regs_6809[reg]);
-				else if ((pb & 0x8f) == 0x85)
-					sprintf(buffer + strlen(buffer), "B,%s", regs_6809[reg]);
-				else if ((pb & 0x8f) == 0x86)
-					sprintf(buffer + strlen(buffer), "A,%s", regs_6809[reg]);
-				else if ((pb & 0x8f) == 0x8b)
-					sprintf(buffer + strlen(buffer), "D,%s", regs_6809[reg]);
+				APPEND_FMT("%-6s", opname);
+				if ((pb & 0x90) == 0x90) APPEND_STR("[");
+				switch (pb & 0x8f)
+				{
+				case 0x80: APPEND_FMT(",%s+", regs_6809[reg]); break;
+				case 0x81: APPEND_FMT(",%s++", regs_6809[reg]); break;
+				case 0x82: APPEND_FMT(",-%s", regs_6809[reg]); break;
+				case 0x83: APPEND_FMT(",--%s", regs_6809[reg]); break;
+				case 0x84: APPEND_FMT(",%s", regs_6809[reg]); break;
+				case 0x85: APPEND_FMT("B,%s", regs_6809[reg]); break;
+				case 0x86: APPEND_FMT("A,%s", regs_6809[reg]); break;
+				case 0x8b: APPEND_FMT("D,%s", regs_6809[reg]); break;
+				}
 			}
-			else
-			{                                          /* 5-bit offset */
+			else                                            /* 5-bit offset */
+			{
 				offset = pb & 0x1f;
-				if (offset > 15)
-					offset = offset - 32;
-				sprintf(buffer + strlen(buffer), "%-6s", opname);
-				sprintf(buffer + strlen(buffer), "%s,%s", hexstring(offset), regs_6809[reg]);
+				if (offset > 15) offset -= 32;
+				APPEND_FMT("%-6s", opname);
+				APPEND_FMT("%s,%s", hexstring(offset), regs_6809[reg]);
 			}
-			if ((pb & 0x90) == 0x90)
-				strcat(buffer, "]");
+			if ((pb & 0x90) == 0x90) APPEND_STR("]");
 			break;
 
+			/* --------- miscellaneous formats ------*/
 		default:
-			if ((opcode == 0x1f) || (opcode == 0x1e))
-			{                   /* TFR/EXG */
-				sprintf(buffer + strlen(buffer), "%s,%s", teregs[(operandarray[0] >> 4) & 0xf], teregs[operandarray[0] & 0xf]);
+			if ((opcode == 0x1f) || (opcode == 0x1e))              /* TFR/EXG */
+			{
+				APPEND_FMT("%s,%s",
+					teregs[(operandarray[0] >> 4) & 0xf],
+					teregs[operandarray[0] & 0xf]);
 			}
-			else if ((opcode == 0x34) || (opcode == 0x36))
-			{              /* PUSH */
+			else if ((opcode == 0x34) || (opcode == 0x36))         /* PUSH */
+			{
 				comma = FALSE;
-				if (operandarray[0] & 0x80)
-				{
-					strcat(buffer, "PC");
+				if (operandarray[0] & 0x80) { APPEND_STR("PC"); comma = TRUE; }
+				if (operandarray[0] & 0x40) {
+					if (comma) APPEND_STR(",");
+					APPEND_STR(((opcode == 0x34) || (opcode == 0x35)) ? "U" : "S");
 					comma = TRUE;
 				}
-				if (operandarray[0] & 0x40)
-				{
-					if (comma)
-						strcat(buffer, ",");
-					if ((opcode == 0x34) || (opcode == 0x35))
-						strcat(buffer, "U");
-					else
-						strcat(buffer, "S");
-					comma = TRUE;
-				}
-				if (operandarray[0] & 0x20)
-				{
-					if (comma)
-						strcat(buffer, ",");
-					strcat(buffer, "Y");
-					comma = TRUE;
-				}
-				if (operandarray[0] & 0x10)
-				{
-					if (comma)
-						strcat(buffer, ",");
-					strcat(buffer, "X");
-					comma = TRUE;
-				}
-				if (operandarray[0] & 0x8)
-				{
-					if (comma)
-						strcat(buffer, ",");
-					strcat(buffer, "DP");
-					comma = TRUE;
-				}
-				if (operandarray[0] & 0x4)
-				{
-					if (comma)
-						strcat(buffer, ",");
-					strcat(buffer, "B");
-					comma = TRUE;
-				}
-				if (operandarray[0] & 0x2)
-				{
-					if (comma)
-						strcat(buffer, ",");
-					strcat(buffer, "A");
-					comma = TRUE;
-				}
-				if (operandarray[0] & 0x1)
-				{
-					if (comma)
-						strcat(buffer, ",");
-					strcat(buffer, "CC");
-				}
+				if (operandarray[0] & 0x20) { if (comma) APPEND_STR(","); APPEND_STR("Y");  comma = TRUE; }
+				if (operandarray[0] & 0x10) { if (comma) APPEND_STR(","); APPEND_STR("X");  comma = TRUE; }
+				if (operandarray[0] & 0x08) { if (comma) APPEND_STR(","); APPEND_STR("DP"); comma = TRUE; }
+				if (operandarray[0] & 0x04) { if (comma) APPEND_STR(","); APPEND_STR("B");  comma = TRUE; }
+				if (operandarray[0] & 0x02) { if (comma) APPEND_STR(","); APPEND_STR("A");  comma = TRUE; }
+				if (operandarray[0] & 0x01) { if (comma) APPEND_STR(","); APPEND_STR("CC"); }
 			}
-			else if ((opcode == 0x35) || (opcode == 0x37))
-			{              /* PULL */
+			else if ((opcode == 0x35) || (opcode == 0x37))         /* PULL */
+			{
 				comma = FALSE;
-				if (operandarray[0] & 0x1)
-				{
-					strcat(buffer, "CC");
+				if (operandarray[0] & 0x01) { APPEND_STR("CC"); comma = TRUE; }
+				if (operandarray[0] & 0x02) { if (comma) APPEND_STR(","); APPEND_STR("A");  comma = TRUE; }
+				if (operandarray[0] & 0x04) { if (comma) APPEND_STR(","); APPEND_STR("B");  comma = TRUE; }
+				if (operandarray[0] & 0x08) { if (comma) APPEND_STR(","); APPEND_STR("DP"); comma = TRUE; }
+				if (operandarray[0] & 0x10) { if (comma) APPEND_STR(","); APPEND_STR("X");  comma = TRUE; }
+				if (operandarray[0] & 0x20) { if (comma) APPEND_STR(","); APPEND_STR("Y");  comma = TRUE; }
+				if (operandarray[0] & 0x40) {
+					if (comma) APPEND_STR(",");
+					APPEND_STR(((opcode == 0x34) || (opcode == 0x35)) ? "U" : "S");
 					comma = TRUE;
 				}
-				if (operandarray[0] & 0x2)
-				{
-					if (comma)
-						strcat(buffer, ",");
-					strcat(buffer, "A");
-					comma = TRUE;
-				}
-				if (operandarray[0] & 0x4)
-				{
-					if (comma)
-						strcat(buffer, ",");
-					strcat(buffer, "B");
-					comma = TRUE;
-				}
-				if (operandarray[0] & 0x8)
-				{
-					if (comma)
-						strcat(buffer, ",");
-					strcat(buffer, "DP");
-					comma = TRUE;
-				}
-				if (operandarray[0] & 0x10)
-				{
-					if (comma)
-						strcat(buffer, ",");
-					strcat(buffer, "X");
-					comma = TRUE;
-				}
-				if (operandarray[0] & 0x20)
-				{
-					if (comma)
-						strcat(buffer, ",");
-					strcat(buffer, "Y");
-					comma = TRUE;
-				}
-				if (operandarray[0] & 0x40)
-				{
-					if (comma)
-						strcat(buffer, ",");
-					if ((opcode == 0x34) || (opcode == 0x35))
-						strcat(buffer, "U");
-					else
-						strcat(buffer, "S");
-					comma = TRUE;
-				}
-				if (operandarray[0] & 0x80)
-				{
-					if (comma)
-						strcat(buffer, ",");
-					strcat(buffer, "PC");
-					strcat(buffer, " ; (PUL? PC=RTS)");
+				if (operandarray[0] & 0x80) {
+					if (comma) APPEND_STR(",");
+					APPEND_STR("PC");
+					APPEND_STR(" ; (PUL? PC=RTS)");
 				}
 			}
 			else
 			{
 				if (numoperands == 2)
 				{
-					strcat(buffer + strlen(buffer), hexstring((operandarray[0] << 8) + operandarray[1]));
+					APPEND_STR(hexstring((operandarray[0] << 8) + operandarray[1]));
 				}
 				else
 				{
-					if (printdollar)
-						strcat(buffer, "$");
+					if (printdollar) APPEND_STR("$");
 					for (i = 0; i < numoperands; i++)
-						sprintf(buffer + strlen(buffer), "%02X", operandarray[i]);
+						APPEND_FMT("%02X", operandarray[i]);
 				}
 			}
 			break;
 		}
 	}
-
 	return p;
 }

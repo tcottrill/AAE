@@ -15,40 +15,4 @@
 
 
 
-
-FILE* errorlog;
-int logging;
-
-glist gamelist[256];
-int art_loaded[6];
-
-//TEMPORARY GRAPHICS GLOBALS
-//Video VARS
-int sx, ex, sy, ey;
-int msx, msy, esx, esy; //Main full screen adjustments for debug
-int b1sx, b1sy, b2sx, b2sy; //bezel full screen adjustments
-float bezelzoom;
-int bezelx;
-int bezely;
-
-
-int in_gui;
-unsigned int frames; //Global Framecounter
-int frameavg;
-
-int gamenum; //Global Gamenumber (really need this one)
-int have_error; //Global Error handler
-int showinfo; //Global info handler
-int done; //End of emulation indicator
-int paused; //Paused indicator
-double fps_count; //FPS Counter
-int num_games; //Total number of games ?? needed?
-int num_samples; //Total number of samples for selected game
-
-//KEY VARIABLES
-int mouseb[5]; // Only used by the gui and Tempest
-// Currrently  used by Major Havoc and Asteroids Video.
-int total_length;
-
-
-
+//int art_loaded[6];

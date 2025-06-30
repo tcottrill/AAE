@@ -16,7 +16,6 @@
 #include "aae_avg.h"
 #include "aae_pokey.h"
 #include "tms5220.h"
-#include "loaders.h"
 #include "starwars_machine.h"
 #include "starwars_snd.h"
 #include "slapstic.h"

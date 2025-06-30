@@ -13,7 +13,6 @@
 
 #include "mhavoc.h"
 #include "aae_mame_driver.h"
-#include "loaders.h"
 #include "emu_vector_draw.h"
 
 UINT8* mhavoc_colorram;

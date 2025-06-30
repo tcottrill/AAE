@@ -1,15 +1,14 @@
-
 //==========================================================================
-// AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME 
-// code, 0.29 through .90 mixed with code of my own. This emulator was 
-// created solely for my amusement and learning and is provided only 
-// as an archival experience. 
-// 
-// All MAME code used and abused in this emulator remains the copyright 
+// AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME
+// code, 0.29 through .90 mixed with code of my own. This emulator was
+// created solely for my amusement and learning and is provided only
+// as an archival experience.
+//
+// All MAME code used and abused in this emulator remains the copyright
 // of the dedicated people who spend countless hours creating it. All
 // MAME code should be annotated as belonging to the MAME TEAM.
-// 
-// THE CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.  
+//
+// THE CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.
 //==========================================================================
 
 #include "aae_mame_driver.h"
@@ -40,18 +39,15 @@ const char* rom_regions[] = {
 	"REGION_MAX"
 };
 
-
 std::vector<int>memory_allocation_tracker;
 
-
 /*-------------------------------------------------
-	Clear memory tracker, in preperation to keep 
-	track of system memory allocations 
+	Clear memory tracker, in preperation to keep
+	track of system memory allocations
 -------------------------------------------------*/
 void reset_memory_tracking()
 {
 	//memory_allocation_tracker.clear();
-
 }
 
 /*-------------------------------------------------
@@ -64,7 +60,7 @@ unsigned char* memory_region(int num)
 	int i;
 
 	if (num < MAX_MEMORY_REGIONS)
-		
+
 		return Machine->memory_region[num];
 	else
 	{
@@ -80,23 +76,13 @@ unsigned char* memory_region(int num)
 
 void free_all_memory_regions()
 {
-	for (std::vector<int>::iterator it = memory_allocation_tracker.begin(); it != memory_allocation_tracker.end(); ++it) 
+	for (std::vector<int>::iterator it = memory_allocation_tracker.begin(); it != memory_allocation_tracker.end(); ++it)
 	{
 		LOG_INFO("Freeing Memory Region %s", rom_regions[*it]);
 		if (Machine->memory_region[*it])
 			free(Machine->memory_region[*it]);
 		Machine->memory_region[*it] = nullptr;
-
 	}
-	/*
-	for (int i = 0; i < MAX_MEMORY_REGIONS; i++)
-	{
-		if (Machine->memory_region[i])
-			free(Machine->memory_region[i]);
-		Machine->memory_region[i] = nullptr;
-
-	}
-	*/
 }
 
 void free_memory_region(int num)
@@ -109,7 +95,6 @@ void free_memory_region(int num)
 		free(Machine->memory_region[num]);
 		Machine->memory_region[num] = 0;
 	}
-	
 }
 
 void byteswap(unsigned char* mem, int length)
@@ -149,13 +134,10 @@ void new_memory_region(int num, int size)
 		memset(Machine->memory_region[num], 0, size);
 		memory_allocation_tracker.push_back(num);
 
-
 		if (config.debug_profile_code) {
 			LOG_INFO("Memory Allocation Completed for Rom Region %d", num);
 		}
 	}
 	else
-	LOG_ERROR("Error, your'trying to allocate a memory space num that does not exist: ", num);
+		LOG_ERROR("Error, your'trying to allocate a memory space num that does not exist: ", num);
 }
-
-

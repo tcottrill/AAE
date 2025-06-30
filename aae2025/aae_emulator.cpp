@@ -19,12 +19,9 @@
 #include <malloc.h>
 #include "sys_timer.h"
 #include "acommon.h"
-#include "fileio/loaders.h"
+#include "fileio/texture_handler.h"
 #include "config.h"
 #include <mmsystem.h>
-#include "fonts.h"
-//#include "gui/gui.h"
-//#include "gui/animation.h"
 #include "gamedriver.h"
 #include "rand.h"
 #include "glcode.h"
@@ -37,8 +34,13 @@
 #include "gl_texturing.h"
 #include "mixer.h"
 #include <string>
+#include <vector>
+#include <sstream>
+#include <iomanip>
+#include <cstring>   // strlen
 
 #include "old_mame_raster.h"
+#include "game_list.h"
 
 //New 2024
 #include "os_basic.h"
@@ -66,8 +68,12 @@ int show_fps = 0;
 FpsClass* m_frame; //For frame counting. Prob needs moved out of here really.
 
 static int throttle = 1;
-
+//New 2025
+static bool game_loaded_sentinel = 0;
+int art_loaded[6] = {};
 extern int leds_status;
+
+GameList gamelist(driver);
 
 // M.A.M.E. (TM) Variables for testing
 static struct RunningMachine machine;
@@ -77,13 +83,13 @@ static const struct AAEDriver* drv;
 //static const struct MachineDriver* drv;
 struct GameOptions	options;
 
-struct 
+struct
 {
-	const char* desc; 
-	int x, y; 
-} 
+	const char* desc;
+	int x, y;
+}
 
-gfx_res[] = 
+gfx_res[] =
 {
 	{ "-320x240"	, 320, 240 },
 	{ "-512x384"	, 512, 384 },
@@ -101,8 +107,8 @@ gfx_res[] =
 	{ NULL		, 0, 0 }
 };
 
-double gametime = 0;// = TimerGetTimeMS();
-double starttime = 0;
+double gametime = 0.0;// = TimerGetTimeMS();
+static double starttime = 0.0;
 
 ///////////////////////////////////////  RASTER CODE START  ////////////////////////////////////////////////////
 // This is only a test. Trying out new things.
@@ -158,7 +164,6 @@ void osd_get_pen(int pen, unsigned char* red, unsigned char* green, unsigned cha
 struct osd_bitmap* osd_create_display(int width, int height, unsigned int totalcolors,
 	const unsigned char* palette, unsigned char* pens, int attributes)
 {
-	
 	LOG_INFO("New Display width %d, height %d", width, height);
 
 	/* Look if this is a vector game */
@@ -402,79 +407,101 @@ int mystrcmp(const char* s1, const char* s2)
 /****************************************
  *
  *	Output a full romlist as a text file
- *  TODO: Clean this up with strings later.
+ *
  *
  ****************************************/
+
+constexpr int REGION_TAG = 999;
+
 void list_all_roms()
 {
-	int loop = 2;
-	int loop2 = 0;
-	char* mylist;
-	char str[128];
+	if (num_games <= 0) return;
+	// ---------------------------------------------------------------------
+	// Dynamic buffer (pre-reserve old malloc size to avoid realloc churn)
+	// ---------------------------------------------------------------------
+	std::vector<char> buf;
+	buf.reserve(0x150000);
 
-	mylist = (char*)malloc(0x150000);
-	strcpy(mylist, "AAE All Games RomList\n");
+	// ---------------------------------------------------------------------
+	// Local helpers – lambdas capture buf by reference
+	// ---------------------------------------------------------------------
+	const auto append_cstr = [&](const char* s) {buf.insert(buf.end(), s, s + std::strlen(s)); };
+	const auto append_str = [&](const std::string& s) {buf.insert(buf.end(), s.begin(), s.end()); };
+	const auto append_chr = [&](char c) {buf.push_back(c); };
 
-	while (loop < (num_games - 1))
+	// ---------------------------------------------------------------------
+	// Start of file
+	// ---------------------------------------------------------------------
+	append_cstr("AAE All Games RomList\n");
+
+	for (int g = 0; g < num_games; ++g)
 	{
-		strcat(mylist, "\n");
-		strcat(mylist, "Game Name: ");
-		strcat(mylist, driver[loop].desc);
-		strcat(mylist, ":\n");
-		strcat(mylist, "Rom  Name: ");
-		strcat(mylist, driver[loop].name);
-		strcat(mylist, ".zip\n");
-		LOG_INFO("gamename %s", driver[loop].name);
-		LOG_INFO("gamename %s", driver[loop].desc);
-		while (driver[loop].rom[loop2].romSize > 0)
+		const AAEDriver& drv = driver[g];
+
+		if (!drv.name || !drv.desc || !drv.rom)
+			continue;
+
+		append_cstr("\nGame Name: ");
+		append_cstr(drv.desc);
+		append_cstr(":\nRom  Name: ");
+		append_cstr(drv.name);
+		append_cstr(".zip\n");
+
+		LOG_INFO("gamename %s", drv.name);
+		LOG_INFO("gamedesc %s", drv.desc);
+
+		for (int r = 0; drv.rom[r].romSize > 0; ++r)
 		{
-			if (driver[loop].rom[loop2].loadAddr == 999)
+			const RomModule& rm = drv.rom[r];
+
+			if (rm.loadAddr == REGION_TAG)
 			{
-				sprintf(str, "ROM_REGION(0x%04x, %s)\n", driver[loop].rom[loop2].romSize, rom_regions[driver[loop].rom[loop2].loadtype]);
-				strcat(mylist, str);
+				std::ostringstream oss;
+				oss << "ROM_REGION(0x"
+					<< std::hex << std::setw(4) << std::setfill('0') << rm.romSize
+					<< ", " << rom_regions[rm.loadtype] << ")\n";
+				append_str(oss.str());
+				continue;
 			}
+
+			if (rm.filename == reinterpret_cast<char*>(-1))
+				continue;
+
+			if (rm.filename == reinterpret_cast<char*>(-2))
+				append_cstr("ROM_CONTINUE");
 			else
-				if (driver[loop].rom[loop2].loadAddr != 999)
-				{
-					if (driver[loop].rom[loop2].filename != (char*)-1)
-					{
-						if (driver[loop].rom[loop2].filename == (char*)-2)
-							strcat(mylist, "ROM_CONTINUE");
-						else
-							strcat(mylist, driver[loop].rom[loop2].filename);
+				append_cstr(rm.filename);
 
-						strcat(mylist, " Size: ");
-						sprintf(str, "0x%04x", driver[loop].rom[loop2].romSize);
-						strcat(mylist, str);
+			std::ostringstream oss;
+			oss << " Size: 0x"
+				<< std::hex << std::setw(4) << std::setfill('0') << rm.romSize
+				<< " Load Addr: 0x"
+				<< std::hex << std::setw(4) << std::setfill('0') << rm.loadAddr
+				<< " CRC: 0x"
+				<< std::hex << std::setw(4) << std::setfill('0') << rm.crc
+				<< " SHA1: " << (rm.sha ? rm.sha : "NULL") << '\n';
 
-						strcat(mylist, " Load Addr: ");
-						sprintf(str, "0x%04x", driver[loop].rom[loop2].loadAddr);
-						strcat(mylist, str);
-
-						strcat(mylist, " CRC: ");
-						sprintf(str, "0x%04x", driver[loop].rom[loop2].crc);
-						strcat(mylist, str);
-
-						strcat(mylist, " SHA1: ");
-						sprintf(str, "%s", driver[loop].rom[loop2].sha);
-						strcat(mylist, str);
-						strcat(mylist, "\n");
-					}
-				}
-			loop2++;
+			append_str(oss.str());
 		}
-		loop2 = 0; //reset!!
-		loop++;
 	}
+	// Footer
+	std::ostringstream footer;
+	footer << "\n\nNumber of Games/Clones supported: "
+		<< (num_games - 1) << '\n';
+	append_str(footer.str());
 
-	strcat(mylist, "\n\nNumber of Games/Clones supported: ");
-	sprintf(str, "%d", num_games - 1);
-	strcat(mylist, str);
-	strcat(mylist, "\n");
-	strcat(mylist, "\0");
+	// Ensure C-string termination for save routine
+	append_chr('\0');
+
+	// ---------------------------------------------------------------------
+	// Save to file
+	// ---------------------------------------------------------------------
 	LOG_INFO("SAVING Romlist");
-	save_file_char("AAE All Game Roms List.txt", mylist, strlen(mylist));
-	free(mylist);
+	save_file_char("AAE All Game Roms List.txt",
+		buf.data(),
+		static_cast<int>(buf.size() - 1));   // exclude null
+	buf.clear();                // clears contents, keeps capacity
+	std::vector<char>().swap(buf);  // optional: truly release memory
 }
 
 /*************************************
@@ -494,8 +521,6 @@ void gameparse(int argc, char* argv[])
 	int retval = 0;
 	int i;
 	int j;
-
-	if (gamenum == 0) return;
 
 	win_override = 0; //Set default before checking
 
@@ -620,43 +645,6 @@ void gameparse(int argc, char* argv[])
 
 /*************************************
  *
- *	Sort the game list for the GUI
- *
- *************************************/
-
-void sort_games(void)
-{
-	int go = 0;
-	int i, b;
-	char tempchar[128];
-	int tempgame = 0;
-	int result = 0;
-	int loc;
-
-	for (i = 1; i < num_games - 1; i++)
-	{
-		strcpy(tempchar, gamelist[i].glname);
-		loc = gamelist[i].gamenum;
-		for (b = i; b < num_games - 1; b++)
-		{
-			result = strcmp(tempchar, gamelist[b].glname);
-			if (result > 0) {
-				strcpy(tempchar, gamelist[b].glname);
-				tempgame = gamelist[b].gamenum;
-				loc = b; //save the location of this one.
-				//OK, Start the move
-				strcpy(gamelist[loc].glname, gamelist[i].glname);   //move lower stuff to new location
-				gamelist[loc].gamenum = gamelist[i].gamenum;
-
-				strcpy(gamelist[i].glname, tempchar);
-				gamelist[i].gamenum = tempgame;
-			}
-		}
-	}
-}
-
-/*************************************
- *
  *	MAME Shadow input port creation for
  * the Menu system and save
  *
@@ -727,11 +715,6 @@ void msg_loop(void)
 		snapshot();
 	}
 
-	if (osd_key_pressed_memory(OSD_KEY_F6))
-	{
-		logging ^= 1;
-	}
-
 	if (osd_key_pressed_memory(OSD_KEY_F10))
 	{
 		throttle ^= 1;
@@ -761,13 +744,8 @@ void msg_loop(void)
 			}
 		}
 		else
-		{  //Are we in the GUI? If not jump back to the GUI else quit for real
-			//if (gamenum)
-			//{
-			//	in_gui = 1;
-			//}
-			//if ( get_menu_level() > 100)
-			done = 1; // Done == 1 means we are exiting?
+		{  
+			done = 1; // Exiting. 
 		}
 	}
 	int a = get_menu_level();
@@ -787,42 +765,46 @@ void msg_loop(void)
   *
  *************************************/
 
-static void throttle_speed(void)
-{
-	double millsec = (double)1000 / (double)driver[gamenum].fps;
-	gametime = TimerGetTimeMS();
-	if (throttle) {
-		while (((double)(gametime)-(double)starttime) < (double)millsec)
-		{
-			HANDLE current_thread = GetCurrentThread();
-			int old_priority = GetThreadPriority(current_thread);
+ 
+ void throttle_speed()
+ {
+	 const double ms_per_frame = 1000.0 / driver[gamenum].fps;
+	 double current_time = TimerGetTimeMS();
 
-			if (((double)gametime - (double)starttime) < (double)(millsec - 4))
-			{
-				SetThreadPriority(current_thread, THREAD_PRIORITY_TIME_CRITICAL);
-				//Sleep(1);
-				SetThreadPriority(current_thread, old_priority);
-			}
-			//else Sleep(0);
-			gametime = TimerGetTimeMS();
-		}
-	}
-	if (frames > 60)
-	{
-		frameavg++;
-		if (frameavg > 10000) { frameavg = 0; fps_count = 0; }
-		fps_count += 1000 / ((double)(gametime)-(double)starttime);
-	}
+	 if (throttle)
+	 {
+		 while ((current_time - starttime) < ms_per_frame)
+		 {
+			 double time_left = ms_per_frame - (current_time - starttime);
 
-	starttime = TimerGetTimeMS();
-}
+			 if (time_left > 2.0)
+				 Sleep(1); // Allow other threads time
+			 else
+				 //Sleep(0); // Yield remainder of timeslice
+			 YieldProcessor();
 
-/*************************************
- *
- *	Main Game load and
- *  configuration function.
- *
- *************************************/
+			 current_time = TimerGetTimeMS();
+		 }
+	 }
+
+	 if (frames > 60)
+	 {
+		 frameavg++;
+		 if (frameavg > 10000) { frameavg = 0; fps_count = 0.0; }
+		 double frame_time = current_time - starttime;
+		 if (frame_time > 0.0)
+			 fps_count += 1000.0 / frame_time;
+	 }
+
+	 starttime = TimerGetTimeMS();
+ }
+
+ /*************************************
+  *
+  *	Main Game load and
+  *  configuration function.
+  *
+  *************************************/
 
 void run_game(void)
 {
@@ -884,11 +866,8 @@ void run_game(void)
 	case 0: SetPriorityClass(GetCurrentProcess(), IDLE_PRIORITY_CLASS); break;
 	}
 	LimitThreadAffinityToCurrentProc();
-	// Reset are settings.
-	art_loaded[0] = 0;
-	art_loaded[1] = 0;
-	art_loaded[2] = 0;
-	art_loaded[3] = 0;
+
+	art_loaded[5] = {};
 
 	init_machine();
 	reset_memory_tracking(); // Before loading Anything!!!
@@ -901,16 +880,12 @@ void run_game(void)
 		{
 			LOG_INFO("Rom loading failure, exiting...");
 			have_error = 10;
-			gamenum = 0;
-			if (!in_gui) { exit(1); }
+			exit(1); 
 		}
 	}
 
 	LOG_INFO("OpenGL Init");
 	init_gl();
-	end_gl();
-	// TODO: Revisit THis
-	texture_reinit(); //This cleans up the FBO textures preping them for reuse.
 	// Load Artwork
 	if (Machine->gamedrv->artwork)
 	{
@@ -950,7 +925,10 @@ void run_game(void)
 	LOG_INFO("Loading InputPort Settings");
 	load_input_port_settings();
 	init_cpu_config(); ////////////////////-----------
-
+	
+	// At this point, we know we are running a game, so set this to true
+	game_loaded_sentinel = true;
+	
 	//Run this before Driver Init.
 	if (!(Machine->gamedrv->video_attributes & VIDEO_TYPE_VECTOR))
 	{
@@ -972,7 +950,9 @@ void run_game(void)
 	}
 
 	LOG_INFO("\n\n----END OF INIT -----!\n\n");
-	//reset_for_new_game(gamenum, 0);
+	
+
+//	LOG_INFO("Gamelist here is %s   Desc: %s", gamelist[0].displayName.c_str(), gamelist[0].description.c_str());
 }
 
 /*************************************
@@ -983,6 +963,11 @@ void run_game(void)
 
 void emulator_run()
 {
+	auto start = chrono::steady_clock::now();
+
+	if (get_menu_status() == 0 && !paused) { scare_mouse(); CaptureMouseToWindow(win_get_window()); }
+	else show_mouse();
+
 	if (config.debug_profile_code) {
 		LOG_INFO("Start of Frame");
 	}
@@ -991,36 +976,28 @@ void emulator_run()
 		hiscoreloaded = ((*Machine->gamedrv->hiscore_load))();
 
 	// Setup for rendering a frame.
-	if (Machine->drv->video_attributes & VIDEO_TYPE_VECTOR)
-	{
-		set_render();
-	}
-	else
-	{
-		//set_render_raster();
-		set_render();
-	}
-
-	auto start = chrono::steady_clock::now();
-
+	set_render();
+	
 	if (!paused && have_error == 0)
 	{
 		update_input_ports();
 		osd_poll_joysticks();
 
-		//if (driver[gamenum].pre_run) driver[gamenum].pre_run();
 		if (config.debug_profile_code) {
 			LOG_INFO("Calling CPU Run");
 		}
 		cpu_run();
+
+		auto end = chrono::steady_clock::now();
+		auto diff = end - start;
+		if (config.debug_profile_code) {
+			LOG_INFO("Profiler: CPU Time: %f ", chrono::duration <double, milli>(diff).count());
+		}
+
 		if (Machine->gamedrv->run_game) Machine->gamedrv->run_game();
 	}
 
-	auto end = chrono::steady_clock::now();
-	auto diff = end - start;
-	if (config.debug_profile_code) {
-		LOG_INFO("Profiler: CPU Time: %f ", chrono::duration <double, milli>(diff).count());
-	}
+	
 	// Complete and display the rendered frame after all video updates.
 	render();
 
@@ -1036,7 +1013,7 @@ void emulator_run()
 	{
 		mixer_update();
 	}
-	
+
 	frames++;
 	if (frames > 0xfffffff) { frames = 0; }
 
@@ -1064,8 +1041,6 @@ void emulator_init(int argc, char** argv)
 	int horizontal;
 	int vertical;
 
-	//LogOpen("aae.log");
-
 	os_init_input();
 	// We start with the running game being the gui, unless overridden by the command line.
 	gamenum = 18;
@@ -1076,20 +1051,6 @@ void emulator_init(int argc, char** argv)
 	LOG_INFO("Number of supported games is: %d", num_games);
 	num_games++;
 
-	for (loop = 1; loop < (num_games - 1); loop++) //
-	{
-		strcpy(gamelist[loop].glname, driver[loop].desc);
-		gamelist[loop].gamenum = loop;
-		if (loop < num_games - 2) { gamelist[loop].next = (loop + 1); }
-		else { gamelist[loop].next = 1; }
-
-		if (loop > 1) { gamelist[loop].prev = (loop - 1); }
-		else { gamelist[loop].prev = (num_games - 2); }
-	}
-	// Sort the supported game list since they are not in alphabetical order.
-	LOG_INFO("Sorting games");
-	sort_games();
-	LOG_INFO("Made it past here");
 	//Move this after command line processing is re-added
 	GetDesktopResolution(horizontal, vertical);
 	LOG_INFO("Actual primary monitor desktop screen size %d  %d", horizontal, vertical);
@@ -1101,7 +1062,8 @@ void emulator_init(int argc, char** argv)
 
 	// Disable ShortCut Keys
 	AllowAccessibilityShortcutKeys(0);
-
+	// Just to make sure we know that we have not laoded a game yet. 
+	game_loaded_sentinel = false;
 	//LOG_INFO(" String %s Max Num %d", argv[1], argc);
 
 	if (argv[1] == NULL)
@@ -1111,6 +1073,7 @@ void emulator_init(int argc, char** argv)
 		allegro_message("Error", "Please run from a command prompt. \nUsage: aae gamename -argument, -argument, etc.");
 		done = 1;
 		emulator_end();
+		return;
 	}
 	// Here is where we are checking command line for a supported game name.
 		// If not, it jumps straight into the GUI, bleh.
@@ -1141,10 +1104,6 @@ void emulator_init(int argc, char** argv)
 	//}
 
 	//THIS IS WHERE THE CODING STARTS
-	// Decide if we are still starting with the gui or not. ? Why do this twice? We already have gamenum=0 or a game?
-	//if (gamenum) in_gui = 0; else in_gui = 1;
-	in_gui = 0;
-
 	//LOG_INFO("Number of supported joysticks: %d ", num_joysticks);
 	/*
 	if (num_joysticks)
@@ -1163,7 +1122,6 @@ void emulator_init(int argc, char** argv)
 	*/
 	frames = 0; //init frame counter
 
-	config.hack = 0; //Just to set, used for tempest only.
 	showinfo = 0;
 	done = 0;
 	//////////////////////////////////////////////////////
@@ -1174,11 +1132,39 @@ void emulator_init(int argc, char** argv)
 
 	switch (config.priority)
 	{
-	case 4: SetPriorityClass(GetCurrentProcess(), REALTIME_PRIORITY_CLASS); break;
-	case 3: SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS); break;
-	case 2: SetPriorityClass(GetCurrentProcess(), ABOVE_NORMAL_PRIORITY_CLASS); break;
-	case 1: SetPriorityClass(GetCurrentProcess(), NORMAL_PRIORITY_CLASS); break;
-	case 0: SetPriorityClass(GetCurrentProcess(), IDLE_PRIORITY_CLASS); break;
+	case 4:
+		if (!SetPriorityClass(GetCurrentProcess(), REALTIME_PRIORITY_CLASS))
+			LOG_INFO("Failed to set REALTIME priority. Error code: %lu", GetLastError());
+		else
+			LOG_INFO("Process priority set to REALTIME_PRIORITY_CLASS");
+		break;
+	case 3:
+		if (!SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS))
+			LOG_INFO("Failed to set HIGH priority. Error code: %lu", GetLastError());
+		else
+			LOG_INFO("Process priority set to HIGH_PRIORITY_CLASS");
+		break;
+	case 2:
+		if (!SetPriorityClass(GetCurrentProcess(), ABOVE_NORMAL_PRIORITY_CLASS))
+			LOG_INFO("Failed to set ABOVE NORMAL priority. Error code: %lu", GetLastError());
+		else
+			LOG_INFO("Process priority set to ABOVE_NORMAL_PRIORITY_CLASS");
+		break;
+	case 1:
+		if (!SetPriorityClass(GetCurrentProcess(), NORMAL_PRIORITY_CLASS))
+			LOG_INFO("Failed to set NORMAL priority. Error code: %lu", GetLastError());
+		else
+			LOG_INFO("Process priority set to NORMAL_PRIORITY_CLASS");
+		break;
+	case 0:
+		if (!SetPriorityClass(GetCurrentProcess(), IDLE_PRIORITY_CLASS))
+			LOG_INFO("Failed to set IDLE priority. Error code: %lu", GetLastError());
+		else
+			LOG_INFO("Process priority set to IDLE_PRIORITY_CLASS");
+		break;
+	default:
+		LOG_INFO("Unknown priority level: %d", config.priority);
+		break;
 	}
 
 	run_game();
@@ -1195,37 +1181,133 @@ void emulator_end()
 {
 	LOG_INFO("Emulator End Called.");
 
-	// If we're using high scores, write them to disk.
-	if (hiscoreloaded != 0 && Machine->gamedrv->hiscore_save)
-		(*Machine->gamedrv->hiscore_save)();
-
-	//If the game uses NVRAM, save it. This code is from M.A.M.E. (TM)
-	if (Machine->gamedrv->nvram_handler)
+	// We only want to shut down the game and run all the cleanup if we actually ran one. 
+	if (game_loaded_sentinel == true)
 	{
-		void* f;
 
-		if ((f = osd_fopen(Machine->gamedrv->name, 0, OSD_FILETYPE_NVRAM, 1)) != 0)
+		// If we're using high scores, write them to disk.
+		if (hiscoreloaded != 0 && Machine->gamedrv->hiscore_save)
+			(*Machine->gamedrv->hiscore_save)();
+		LOG_INFO("End 1");
+		//If the game uses NVRAM, save it. This code is from M.A.M.E. (TM)
+		if (Machine->gamedrv->nvram_handler)
 		{
-			(*Machine->gamedrv->nvram_handler)(f, 1);
-			osd_fclose(f);
+			void* f;
+
+			if ((f = osd_fopen(Machine->gamedrv->name, 0, OSD_FILETYPE_NVRAM, 1)) != 0)
+			{
+				(*Machine->gamedrv->nvram_handler)(f, 1);
+				osd_fclose(f);
+			}
 		}
+		config.artwork = 0;
+		config.bezel = 0;
+		config.overlay = 0;
+				
+		//END-----------------------------------------------------
+		if (Machine->gamedrv->end_game) Machine->gamedrv->end_game();
+		save_input_port_settings();
+		if (Machine->input_ports) {
+			free(Machine->input_ports);
+			LOG_INFO("Machine Input Ports Freed.");
+		}
+		
+		free_cpu_memory();
+	
+		free_all_memory_regions();
+		
+		AllowAccessibilityShortcutKeys(1);
+		// Free samples and shutdown audio code
+		mixer_end();
+	
+		// Free textures
+		destroy_all_textures();
+		
 	}
-	config.artwork = 0;
-	config.bezel = 0;
-	config.overlay = 0;
-	// Free samples??
-	// Free textures??
-	//END-----------------------------------------------------
-	if (Machine->gamedrv->end_game) Machine->gamedrv->end_game();
-	save_input_port_settings();
-	if (Machine->input_ports) { free(Machine->input_ports); LOG_INFO("Machine Input Ports Freed."); }
-	free_cpu_memory();
-	free_all_memory_regions();
-
-	KillFont();
-
-	AllowAccessibilityShortcutKeys(1);
-	mixer_end();
 	//force_all_kbdleds_off();
 	osd_set_leds(0);
+	LOG_INFO("End Final");
 }
+
+
+
+/*
+static void throttle_speed(void)
+{
+	double millsec = (double)1000 / (double)driver[gamenum].fps;
+	gametime = TimerGetTimeMS();
+	if (throttle) {
+		while (((double)(gametime)-(double)starttime) < (double)millsec)
+		{
+			HANDLE current_thread = GetCurrentThread();
+			int old_priority = GetThreadPriority(current_thread);
+
+			if (((double)gametime - (double)starttime) < (double)(millsec - 4))
+			{
+				SetThreadPriority(current_thread, THREAD_PRIORITY_TIME_CRITICAL);
+				Sleep(1);
+				SetThreadPriority(current_thread, old_priority);
+			}
+			else YieldProcessor();
+			gametime = TimerGetTimeMS();
+		}
+	}
+	if (frames > 60)
+	{
+		frameavg++;
+		if (frameavg > 10000) { frameavg = 0; fps_count = 0; }
+		fps_count += 1000 / ((double)(gametime)-(double)starttime);
+	}
+
+	starttime = TimerGetTimeMS();
+}
+*/
+/*
+static void throttle_speed(void)
+{
+	const double millsec = 1000.0 / driver[gamenum].fps;
+	const double sleep_threshold = millsec - 4.0;
+
+	gametime = TimerGetTimeMS();
+	double elapsed = gametime - starttime;
+
+	if (throttle)
+	{
+		HANDLE current_thread = GetCurrentThread();
+		int old_priority = GetThreadPriority(current_thread);
+
+		while (elapsed < millsec)
+		{
+			if (elapsed < sleep_threshold)
+			{
+				SetThreadPriority(current_thread, THREAD_PRIORITY_TIME_CRITICAL);
+				Sleep(1);
+				SetThreadPriority(current_thread, old_priority);
+			}
+			else
+			{
+				YieldProcessor(); // efficient busy-wait
+			}
+
+			gametime = TimerGetTimeMS();
+			elapsed = gametime - starttime;
+		}
+	}
+
+	if (frames > 60)
+	{
+		frameavg++;
+		if (frameavg > 10000)
+		{
+			frameavg = 0;
+			fps_count = 0;
+		}
+
+		double frame_time = gametime - starttime;
+		if (frame_time > 0.0)
+			fps_count += 1000.0 / frame_time;
+	}
+
+	starttime = TimerGetTimeMS();
+}
+ */

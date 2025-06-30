@@ -27,25 +27,25 @@
 #include "colordefs.h"
 #include <stdio.h>
 
-#pragma warning( disable : 4305 4244 )
+#pragma warning( disable : 4305 4244 4996 )
 
 //TODO: Fix this mess eventually, remove/rewite the mame menu code to simplify it.
 
-#define MENU_INT 0
-#define MENU_FLOAT 1
-#define MAX_ITEMS 10
-#define GLOBAL_INPUT 5
-#define LOCAL_INPUT 1
+constexpr int MENU_INT = 0;
+constexpr int MENU_FLOAT = 1;
+constexpr int MAX_ITEMS = 10;
+constexpr int GLOBAL_INPUT = 5;
+constexpr int LOCAL_INPUT = 1;
 
-#define ROOTMENU   100
-#define GLOBALKEYS 200
-#define LOCALKEYS  300
-#define GLOBALJOY  400
-#define LOCALJOY   500
-#define ANALOGMENU 600
-#define DIPMENU    700
-#define VIDEOMENU  800
-#define AUDIOMENU  900
+constexpr int ROOTMENU = 100;
+constexpr int GLOBALKEYS = 200;
+constexpr int LOCALKEYS = 300;
+constexpr int GLOBALJOY = 400;
+constexpr int LOCALJOY = 500;
+constexpr int ANALOGMENU = 600;
+constexpr int DIPMENU = 700;
+constexpr int VIDEOMENU = 800;
+constexpr int AUDIOMENU = 900;
 
 int menuitem = 0;
 int menulevel = 100;
@@ -429,6 +429,14 @@ int get_menu_status()
 
 void set_menu_status(int on)
 {
+	if (on == 0)
+	{
+		if (get_menu_level() > 100)
+		{
+			set_menu_level_top();
+		}
+	}
+
 	static int last_menu_setting;
 	show_menu = on;
 	if (last_menu_setting != on && on == 0) { save_video_menu(); save_sound_menu(); }
@@ -1197,7 +1205,8 @@ void do_dipswitch_menu()
 		sel = -1;
 
 	if (osd_key_pressed_memory(OSD_KEY_CONFIGURE))
-		sel = -2;
+		//sel = -2;
+		sel = -1;
 
 	if (sel == -1 || sel == -2)
 	{
@@ -1300,21 +1309,22 @@ int do_mouse_menu()
 			switch (i % ENTRIES)
 			{
 			case 0:
-				strcat(label[i], " Key/Joy Speed");
-				sprintf(setting[i], "%d", delta);
+				strcat_s(label[i], sizeof(label[i]), " Key/Joy Speed");
+				sprintf_s(setting[i], sizeof(setting[i]), "%d", delta);
 				if (i == sel) arrowize = 3;
 				break;
 			case 1:
-				strcat(label[i], " Reverse");
+				strcat_s(label[i], sizeof(label[i]), " Reverse");
 				if (reverse)
-					sprintf(setting[i], "On");
+					strcpy_s(setting[i], sizeof(setting[i]), "On");
 				else
-					sprintf(setting[i], "Off");
+					strcpy_s(setting[i], sizeof(setting[i]), "Off");
 				if (i == sel) arrowize = 3;
 				break;
+
 			case 2:
-				strcat(label[i], " Sensitivity");
-				sprintf(setting[i], "%3d%%", sensitivity);
+				strcat_s(label[i], sizeof(label[i]), " Sensitivity");
+				sprintf_s(setting[i], sizeof(setting[i]), "%3d%%", sensitivity);
 				if (i == sel) arrowize = 3;
 				break;
 			}
@@ -1474,13 +1484,13 @@ void do_sound_menu()
 
 	quad_from_center(475, 575, 600, 275, 20, 20, 80, 255);
 	
-	if (gamenum == 0)
-	{
-		fprint(left, yval + 30, RGB_WHITE, 2.0, "Sound Settings - Global");
-	}
-	else {
+	//if (gamenum == 0)
+	//{
+	//	fprint(left, yval + 30, RGB_WHITE, 2.0, "Sound Settings - Global");
+	//}
+	//else {
 		fprint(left, yval + 30, RGB_WHITE, 2.0, "Sound Settings - This Game");
-	}
+	//}
 	val_low = 0;
 
 	for (x = 0; x < num_this_menu + 1; x++)
@@ -1682,13 +1692,13 @@ void do_video_menu()
 	}
 	quad_from_center(520, 400, 580, 625, 20, 20, 80, 255);
 
-	if (gamenum == 0)
-	{
-		fprint(330, yval + 30, RGB_WHITE, 2.0, "GL Settings - Global");
-	}
-	else {
+	//if (gamenum == 0)
+	//{
+	//	fprint(330, yval + 30, RGB_WHITE, 2.0, "GL Settings - Global");
+	//}
+	//else {
 		fprint(300, yval + 30, RGB_WHITE, 2.0, "GL Settings - This Game");
-	}
+	//}
 	val_low = 0;
 
 	for (x = 0; x < num_this_menu + 1; x++)

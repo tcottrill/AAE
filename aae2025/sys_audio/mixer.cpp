@@ -132,7 +132,7 @@ int load_sample(const char* archname, const char* filename, bool force_resample)
 		std::scoped_lock lock(audioMutex);
 		lsamples.push_back(sample);
 	}
-
+	LOG_INFO("Wav File Load completed");
 	return sample->num;
 }
 
@@ -264,7 +264,7 @@ void sample_start(int chanid, int samplenum, int loop)
 	auto& sample = lsamples[samplenum];
 	
 	// the 4.0f is really important here and required for the StarCastle drone.
-	if (FAILED(pXAudio2->CreateSourceVoice(&ch.voice, &sample->fx, 0, 4.0f)))   
+	if (FAILED(pXAudio2->CreateSourceVoice(&ch.voice, &sample->fx, 0, 8.0f)))   
 	{
 		LOG_ERROR("Failed to create voice for sample %d", sample->num);
 		return;
@@ -328,13 +328,22 @@ int sample_get_freq(int chanid)
 
 void sample_set_freq(int chanid, int freq)
 {
+	if (channel[chanid].isPlaying)
+	{
+		float frequencyRatio = static_cast<float>((float)freq / (float)channel[chanid].frequency);
+		channel[chanid].voice->SetFrequencyRatio(frequencyRatio);
+	}
+};
+/*
+void sample_set_freq(int chanid, int freq)
+{
 	auto& ch = channel[chanid];
 	if (ch.isPlaying && ch.voice) {
 		float ratio = static_cast<float>(freq) / static_cast<float>(ch.frequency);
 		ch.voice->SetFrequencyRatio(ratio);
 	}
 }
-
+*/
 int sample_playing(int chanid)
 {
 	auto& ch = channel[chanid];

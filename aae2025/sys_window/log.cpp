@@ -1,3 +1,49 @@
+/*
+	Asynchronous Logging System (Windows 11 / C++11+ Compatible)
+
+	Description:
+	------------
+	This is a high-performance, thread-safe logging system designed for modern
+	Windows systems (Windows 11+) using C++11 or newer. It supports asynchronous
+	logging via a dedicated background thread, colored console output, log levels,
+	formatted messages, timestamps, and source location tagging.
+
+	Features:
+	---------
+	- C++11+ compatible (requires threads, atomics, variadic templates)
+	- Asynchronous, non-blocking logging (background thread)
+	- Log levels: DEBUG, INFO, ERROR, OFF
+	- Optional timestamped log entries (define LOG_WITH_TIMESTAMP)
+	- File, function, and line tracking
+	- Optional colored console output (WinAPI)
+	- Secure formatted output using vsnprintf_s
+	- Public domain (Unlicense)
+
+	Usage:
+	------
+		LogOpen("log.txt");               // Start the logging system
+		LOG_INFO("App started");          // Log an info message
+		LOG_DEBUG("x = %d", x);           // Log a debug message
+		LOG_ERROR("Something failed");    // Log an error
+		LogClose();                       // Shutdown and flush log
+
+		Log::setLevel(Log::Level::Info);  // Set minimum log level
+		Log::setConsoleOutputEnabled(true); // Enable colored console output
+
+	Notes:
+	------
+	- Messages are queued and written asynchronously.
+	- Console output is optional and color-coded per log level.
+	- LOG_WITH_TIMESTAMP must be defined **before** including the header
+	  to enable timestamp output.
+
+	License:
+	--------
+	This is free and unencumbered software released into the public domain.
+	For more information, please refer to <http://unlicense.org/>
+*/
+
+
 #include "log.h"
 
 #include <cstdarg>  // <-- Required for va_start, va_list, va_end

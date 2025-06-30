@@ -51,6 +51,7 @@
     <PlatformToolset>v143</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>MultiByte</CharacterSet>
+    <EnableASAN>false</EnableASAN>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
@@ -123,11 +124,13 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;GLEW_STATIC;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;GLEW_STATIC;_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <AdditionalIncludeDirectories>C:\SourceTest\aae2025_68000\aae2025\cpu_code\68000;./cpu_code/68000;./fileio;./;./sys_window;./gui;./cpu_code;./drivers;./machine;./sys_video;./sndhrdwr;./sndhrdw;./vidhrdwr;./sys_audio;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <LanguageStandard_C>stdc17</LanguageStandard_C>
+      <LanguageStandard_C>Default</LanguageStandard_C>
+      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -135,6 +138,7 @@
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalDependencies>%(AdditionalDependencies)</AdditionalDependencies>
+      <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -170,7 +174,7 @@
     <ClInclude Include="drivers\tempest.h" />
     <ClInclude Include="aae_emulator.h" />
     <ClInclude Include="fileio\aae_fileio.h" />
-    <ClInclude Include="fileio\loaders.h" />
+    <ClInclude Include="fileio\texture_handler.h" />
     <ClInclude Include="fileio\mame_fileio.h" />
     <ClInclude Include="fileio\miniz.h" />
     <ClInclude Include="fileio\sha-1.h" />
@@ -180,8 +184,7 @@
     <ClInclude Include="gamekeys.h" />
     <ClInclude Include="gameroms.h" />
     <ClInclude Include="gamesamp.h" />
-    <ClInclude Include="gui\animation.h" />
-    <ClInclude Include="gui\gui.h" />
+    <ClInclude Include="game_list.h" />
     <ClInclude Include="inptport.h" />
     <ClInclude Include="joystick.h" />
     <ClInclude Include="machine\earom.h" />
@@ -217,7 +220,6 @@
     <ClInclude Include="sys_audio\XAudio2Stream.h" />
     <ClInclude Include="sys_timer.h" />
     <ClInclude Include="sys_video\colordefs.h" />
-    <ClInclude Include="sys_video\fonts.h" />
     <ClInclude Include="sys_video\glcode.h" />
     <ClInclude Include="sys_video\glew.h" />
     <ClInclude Include="sys_video\gl_fbo.h" />
@@ -252,6 +254,7 @@
     <ClInclude Include="vidhrdwr\SegaG80vid.h" />
     <ClInclude Include="win10_win11_required_code.h">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -286,12 +289,11 @@
     <ClCompile Include="drivers\tempest.cpp" />
     <ClCompile Include="aae_emulator.cpp" />
     <ClCompile Include="fileio\aae_fileio.cpp" />
-    <ClCompile Include="fileio\loaders.cpp" />
+    <ClCompile Include="fileio\texture_handler.cpp" />
     <ClCompile Include="fileio\mame_fileio.cpp" />
     <ClCompile Include="fileio\miniz.c" />
     <ClCompile Include="fpsclass.cpp" />
-    <ClCompile Include="gui\animation.cpp" />
-    <ClCompile Include="gui\gui.cpp" />
+    <ClCompile Include="game_list.cpp" />
     <ClCompile Include="inptport.cpp" />
     <ClCompile Include="Joystick.cpp" />
     <ClCompile Include="machine\earom.cpp" />
@@ -320,7 +322,6 @@
     <ClCompile Include="sys_audio\wav_resample.cpp" />
     <ClCompile Include="sys_audio\XAudio2Stream.cpp" />
     <ClCompile Include="sys_timer.cpp" />
-    <ClCompile Include="sys_video\fonts.cpp" />
     <ClCompile Include="sys_video\glcode.cpp" />
     <ClCompile Include="sys_video\glew.c" />
     <ClCompile Include="sys_video\gl_fbo.cpp" />
@@ -347,6 +348,7 @@
     <ClCompile Include="vidhrdwr\SegaG80vid.cpp" />
     <ClCompile Include="win10_win11_required_code.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

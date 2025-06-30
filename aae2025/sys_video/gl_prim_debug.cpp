@@ -1,6 +1,7 @@
 #include "framework.h"
 #include "gl_prim_debug.h"
 //#include "rotation_table.h"
+#include <algorithm>
 
 // OpenGL Code Goes here.....-------------------------------------------------------------------------
 void glCircle(float cx, float cy, float r, int num_segments)

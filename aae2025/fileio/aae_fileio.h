@@ -39,4 +39,10 @@ bool file_exists(const std::string& filename);
 // Check if file exists char
 bool file_exists(const char* filename);
 
+int load_hi_aae(int start, int size, int image);
+int save_hi_aae(int start, int size, int image);
+int verify_rom(const char* archname, const struct RomModule* p, int romnum);
+int verify_sample(const char** p, int num);
+int read_samples(const char** p, int val);
+
 #endif

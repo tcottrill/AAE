@@ -11,7 +11,7 @@ size_t rallyx_radarram_size;
 extern unsigned char* rallyx_scrollx;
 extern unsigned char* rallyx_scrolly;
 //static unsigned char* dirtybuffer2;	/* keep track of modified portions of the screen */
-extern unsigned char* rallyx_radarcarx, * rallyx_radarcary, * rallyx_radarcarcolor;									
+extern unsigned char* rallyx_radarcarx, * rallyx_radarcary, * rallyx_radarcarcolor;
 static struct osd_bitmap* tmpbitmap1;
 extern int rallyx_flipscreen;
 
@@ -41,7 +41,6 @@ static struct rectangle radarvisibleareaflip =
 
 const rectangle visible_area =
 { 0, 287, 0, 223 };
-
 
 void rallyx_vh_convert_color_prom(unsigned char* palette, unsigned char* colortable, const unsigned char* color_prom)
 {
@@ -96,14 +95,15 @@ void rallyx_vh_convert_color_prom(unsigned char* palette, unsigned char* colorta
 void rallyx_vh_screenrefresh()//struct osd_bitmap* bitmap)
 {
 	int offs, sx, sy;
-	int flipx, flipy;
+	bool flipx = 0;
+	bool flipy = 0;
 	int scrollx = 0; int scrolly = 0;
 
 	// copy the temporary bitmap to the screen
 	{
 		if (rallyx_flipscreen)
 		{
-			scrollx = (*rallyx_scrollx-1) + 32;
+			scrollx = (*rallyx_scrollx - 1) + 32;
 			scrolly = (*rallyx_scrolly + 16) - 32;
 		}
 		else
@@ -160,7 +160,6 @@ void rallyx_vh_screenrefresh()//struct osd_bitmap* bitmap)
 	}
 
 	copyscrollbitmap(main_bitmap, tmpbitmap1, 1, &scrollx, 1, &scrolly, &visible_area, TRANSPARENCY_NONE, 0);
-	
 
 	// draw the sprites
 
@@ -182,7 +181,6 @@ void rallyx_vh_screenrefresh()//struct osd_bitmap* bitmap)
 	for (offs = videoram_size - 1; offs >= 0; offs--)
 	{
 		int flipx, flipy;
-
 
 		if (!(rallyx_colorram2[offs] & 0x20))  continue;
 
@@ -212,13 +210,11 @@ void rallyx_vh_screenrefresh()//struct osd_bitmap* bitmap)
 			0, TRANSPARENCY_NONE, 0);
 	}
 
-
 	/* radar */
 	if (rallyx_flipscreen)
 		copybitmap(main_bitmap, tmpbitmap, 0, 0, 0, 0, &radarvisibleareaflip, TRANSPARENCY_NONE, 0);
 	else
 		copybitmap(main_bitmap, tmpbitmap, 0, 0, 28 * 8, 0, &radarvisiblearea, TRANSPARENCY_NONE, 0);
-
 
 	// draw the cars on the radar (working perfectly, sub optimal rendering)
 	for (offs = 0; offs < 9; offs++)

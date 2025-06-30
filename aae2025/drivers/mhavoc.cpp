@@ -17,7 +17,6 @@
 #include "aae_pokey.h"
 #include "earom.h"
 #include "tms5220.h"
-#include "loaders.h"
 #include "timer.h"
 #include "mhavoc_custom_video.h"
 #include "glcode.h"
@@ -602,6 +601,9 @@ WRITE_HANDLER(speech_data_w)
 
 void run_mhavoc()
 {
+	//m_cpu_6502[0]->log_instruction_usage();
+	//m_cpu_6502[0]->reset_instruction_counts();
+
 	if (!has_gamma_cpu) 
 	{
 		watchdog_reset_w(0, 0, 0);	

@@ -208,7 +208,7 @@ void ReportOpenGLCapabilities() {
 		LOG_INFO("GL_SHADING_LANGUAGE_VERSION: %s", glslVersionStr);
 
 		int major = 0, minor = 0;
-		if (sscanf(glslVersionStr, "%d.%d", &major, &minor) == 2) {
+		if (sscanf_s(glslVersionStr, "%d.%d", &major, &minor) == 2) {
 			if (major >= 4) {
 				LOG_INFO("GLSL 4.x or higher is supported");
 			}

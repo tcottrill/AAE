@@ -1,10 +1,7 @@
-#include "aae_mame_driver.h"
+﻿#include "aae_mame_driver.h"
 #include "gl_texturing.h"
-#include "config.h"
-#include "log.h"
 #include "glcode.h"
-#include "gl_fbo.h"
-#include "fonts.h"
+
 // For Vector Fonts.
 #include "vector_fonts.h"
 #include "colordefs.h"
@@ -21,270 +18,173 @@ GLuint art_tex[8];
 GLuint game_tex[10];
 GLuint menu_tex[7];
 
-bool is_texture_resident(GLuint tex_num)
-{
-	GLboolean ok;
-	bool is_it = glAreTexturesResident(1, &tex_num, &ok);
-
-	return(is_it);
-}
-
 //
 //   Texturing and drawing rectangle code Below.
 //
 
+// Binds and configures a 2D texture.
+/// @param texture     OpenGL texture ID to bind.
+/// @param linear      Use linear filtering if true (default: true).
+/// @param mipmapping  Enable trilinear mipmap filtering if true (default: false).
+/// @param blendMode   Enable Blending
+/// @param setColor    Reset current color to opaque white if true (default: false).
+
 void set_texture(GLuint* texture, GLboolean linear, GLboolean mipmapping, GLboolean blending, GLboolean set_color)
 {
-	GLenum filter = linear ? GL_LINEAR : GL_NEAREST;
+	// Determine filters
+	GLenum magFilter = linear ? GL_LINEAR : GL_NEAREST;
+	GLenum minFilter = mipmapping
+		? GL_LINEAR_MIPMAP_LINEAR
+		: magFilter;
+
+	// Bind & env
 	glBindTexture(GL_TEXTURE_2D, *texture);
 	glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-	if (mipmapping)
-		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-	else
-		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	// Filtering
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, magFilter);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, minFilter);
+
+	// Wrapping
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+	// Enable texturing
 	glEnable(GL_TEXTURE_2D);
-	if (set_color) glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-	if (blending)  glEnable(GL_BLEND);
-	//glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
-	//glBlendFunc(GL_DST_COLOR, GL_ZERO);}
-	//glBlendFunc(GL_ONE_MINUS_DST_COLOR , GL_ONE);
-	//glBlendFunc(GL_ONE , GL_ONE);
-}
 
-// Only used by the GUI
-void draw_center_tex(GLuint* texture, int size, int x, int y, int rotation, int facing, int r, int g, int b, int alpha, int blend)
-{
-	glPushMatrix();
-	//glPushAttrib(GL_COLOR_BUFFER_BIT);
-	//glLoadIdentity();
-	glColor4ub(r, g, b, alpha);
-	glEnable(GL_TEXTURE_2D);
-	glEnable(GL_BLEND);
-	switch (blend)
-	{
-	case 1:glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); break;
-	case 2:glBlendFunc(GL_SRC_ALPHA, GL_ONE); break;
-	case 3:glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_SRC_ALPHA); break;
-	case 4: {
-		glDisable(GL_BLEND);
-		//glEnable(GL_ALPHA_TEST);
-		//glAlphaFunc(GL_GREATER, 0.5);
+	// Optional color reset
+	if (set_color) {
+		glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
 	}
-	}
-	glEnable(GL_TEXTURE_2D);
-	glBindTexture(GL_TEXTURE_2D, *texture);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
 
-	glTranslated(x, y, 0);
-	glRotatef(rotation, 0.0, 0.0, 1.0); //-90
-
-	switch (facing)
-	{
-	case 1: {//normal
-		glBegin(GL_QUADS);
-		glTexCoord2f(0, 0); glVertex2f(-size, -size);
-		glTexCoord2f(0, 1); glVertex2f(-size, size);
-		glTexCoord2f(1, 1); glVertex2f(size, size);
-		glTexCoord2f(1, 0); glVertex2f(size, -size);
-		glEnd();
-		break;
-	}
-	case 2: {//upside down
-		glBegin(GL_QUADS);
-		glTexCoord2d(1, 1); glVertex2f(-size, -size);
-		glTexCoord2d(1, 0); glVertex2f(-size, size);
-		glTexCoord2d(0, 0); glVertex2f(size, size);
-		glTexCoord2d(0, 1); glVertex2f(size, -size);
-		glEnd();
-		break;
-	}
-	case 3: {//right
-		glBegin(GL_QUADS);
-		glTexCoord2f(0, 1); glVertex2f(size, size);
-		glTexCoord2f(0, 0); glVertex2f(-size, size);
-		glTexCoord2f(1, 0); glVertex2f(-size, -size);
-		glTexCoord2f(1, 1); glVertex2f(size, -size);
-		glEnd();
-		break;
-	}
-	case 4: { //left
-		glBegin(GL_QUADS);
-		glTexCoord2f(0, 1); glVertex2f(-size, -size);
-		glTexCoord2f(0, 0); glVertex2f(size, -size);
-		glTexCoord2f(1, 0); glVertex2f(size, size);
-		glTexCoord2f(1, 1); glVertex2f(-size, size);
-		glEnd();
-		break;
-	}
-	}
-	switch (blend)
-	{
-	case 1:glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); break;
-	case 2:glBlendFunc(GL_SRC_ALPHA, GL_ONE); break;
-	case 3:glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_SRC_ALPHA); break;
-	case 4: {
+	if (blending) {
 		glEnable(GL_BLEND);
-		//glDisable(GL_ALPHA_TEST);
-	   // glAlphaFunc(GL_GREATER, 0.5);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	}
-	}
-	glPopMatrix();
-	//glPopAttrib();
-	//glDisable(GL_TEXTURE_2D);
 }
 
-// This was only used by the Menu system
-void draw_a_quad(int tleft, int bleft, int tright, int bright, int r, int g, int b, int alpha, int blend)
+/// Apply one of several preset blend functions (0–15), or disable blending for any other value.
+/// @param mode  Blend mode index (0–15); anything else turns off GL_BLEND.
+inline void applyBlendMode(int mode)
 {
-	// glPushMatrix();
-	//glLoadIdentity();
-  // glDisable(GL_TEXTURE_2D);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	if (mode < 0 || mode > 15) {
+		glDisable(GL_BLEND);
+		return;
+	}
+
 	glEnable(GL_BLEND);
-	glColor4ub(r, g, b, alpha);
-	glBegin(GL_QUADS);					// Start Drawing Quads
-	glVertex3f(tleft, tright, 0.0f);			// Left And Up 1 Unit (Top Left)(left)
-	glVertex3f(bleft, tright, 0.0f);			// Right And Up 1 Unit (Top Right)(top)
-	glVertex3f(bleft, bright, 0.0f);			// Right And Down One Unit (Bottom Right)(right)
-	glVertex3f(tleft, bright, 0.0f);			// Left And Down One Unit (Bottom Left)(bottom)
-	glEnd();
-	//glEnable(GL_TEXTURE_2D); //Reenable Texturing
-		//glPopMatrix();
+	switch (mode)
+	{
+	case 0:  glBlendFunc(GL_DST_COLOR, GL_ZERO);               break;
+	case 1:  glBlendFunc(GL_SRC_COLOR, GL_ONE);                break;
+	case 2:  glBlendFunc(GL_SRC_ALPHA, GL_ONE);                break;
+	case 3:  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); break;  // default
+	case 4:  glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_ONE);                break;
+	case 5:  glBlendFunc(GL_DST_COLOR, GL_SRC_COLOR);          break;
+	case 6:  glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_SRC_ALPHA);          break;
+	case 7:  glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_ZERO);               break;
+	case 8:  glBlendFunc(GL_ONE_MINUS_SRC_ALPHA, GL_SRC_COLOR);          break;
+	case 9:  glBlendFunc(GL_SRC_ALPHA, GL_DST_COLOR);          break;
+	case 10: glBlendFunc(GL_ONE, GL_ONE);                break;
+	case 11: glBlendFunc(GL_ONE, GL_ZERO);               break;
+	case 12: glBlendFunc(GL_ZERO, GL_ONE);                break;
+	case 13: glBlendFunc(GL_ONE, GL_DST_COLOR);          break;
+	case 14: glBlendFunc(GL_SRC_ALPHA, GL_DST_COLOR);          break;
+	case 15: glBlendFunc(GL_ONE_MINUS_SRC_ALPHA, GL_SRC_COLOR);          break;
+	}
+}
+
+inline void drawTexturedQuad(float x1, float y1, float x2, float y2)
+{
+	// Vertex coordinates (two triangles)
+	GLfloat vertices[] = {
+		x1, y1,
+		x1, y2,
+		x2, y2,
+
+		x1, y1,
+		x2, y2,
+		x2, y1
+	};
+
+	// Corresponding texture coordinates
+	GLfloat texCoords[] = {
+		0.0f, 1.0f,
+		0.0f, 0.0f,
+		1.0f, 0.0f,
+
+		0.0f, 1.0f,
+		1.0f, 0.0f,
+		1.0f, 1.0f
+	};
+
+	glEnableClientState(GL_VERTEX_ARRAY);
+	glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+
+	glVertexPointer(2, GL_FLOAT, 0, vertices);
+	glTexCoordPointer(2, GL_FLOAT, 0, texCoords);
+
+	glDrawArrays(GL_TRIANGLES, 0, 6);
+
+	glDisableClientState(GL_TEXTURE_COORD_ARRAY);
+	glDisableClientState(GL_VERTEX_ARRAY);
 }
 
 // This is only used by the menu system
 void quad_from_center(float x, float y, float width, float height, int r, int g, int b, int alpha)
 {
-	float minx = 0.0f;
-	float miny = 0.0f;
-	float maxx = 0.0f;
-	float maxy = 0.0f;
+	float minx = x - (width / 2.0f);
+	float miny = y - (height / 2.0f);
+	float maxx = x + (width / 2.0f);
+	float maxy = y + (height / 2.0f);
 
+	// Set color and blend mode
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	glEnable(GL_BLEND);
 	glColor4ub(r, g, b, alpha);
 
-	//Set Origin to Center of Texture
-	minx = x - (width / 2.0f);
-	miny = y - (height / 2.0f);
-	maxx = x + (width / 2.0f);
-	maxy = y + (height / 2.0f);
+	// Vertex positions for two triangles forming a quad
+	GLfloat vertices[] = {
+		minx, miny,
+		maxx, miny,
+		maxx, maxy,
 
-	glBegin(GL_QUADS);
-	glVertex2f(minx, miny);
-	glVertex2f(maxx, miny);
-	glVertex2f(maxx, maxy);
-	glVertex2f(minx, maxy);
-	glEnd();
-}
+		minx, miny,
+		maxx, maxy,
+		minx, maxy
+	};
 
-// Rectangle Drawing. Way too many.
-void Bezel_Rect(int facing, int xmin, int xmax, int ymin, int ymax)
-{
-	float x = 0;
-
-	x = (1.00 - wideadj) / 2;
-	LOG_INFO("Bezel Rect here is %d", x);
-	glTranslatef(x * xmax, 0, 0);
-	glBegin(GL_QUADS);
-	glTexCoord2f(0, 1); glVertex2f(xmin, ymin);
-	glTexCoord2f(0, 0); glVertex2f(xmin, ymax);
-	glTexCoord2f(1, 0); glVertex2f(xmax * wideadj, ymax); //x
-	glTexCoord2f(1, 1); glVertex2f(xmax * wideadj, ymin); //x,size
-	glEnd();
-	glTranslatef(-(x * xmax), 0, 0);
+	glEnableClientState(GL_VERTEX_ARRAY);
+	glVertexPointer(2, GL_FLOAT, 0, vertices);
+	glDrawArrays(GL_TRIANGLES, 0, 6);
+	glDisableClientState(GL_VERTEX_ARRAY);
 }
 
 void Any_Rect(int facing, int xmin, int xmax, int ymin, int ymax)
 {
 	//LOG_INFO("AnyRect here is xmin:%d xmax:%d ymin:%d ymax:%d", xmin, xmax, ymin, ymax);
-	glBegin(GL_QUADS);
-	glTexCoord2f(0, 1); glVertex2f(xmin, ymin);
-	glTexCoord2f(0, 0); glVertex2f(xmin, ymax);
-	glTexCoord2f(1, 0); glVertex2f(xmax, ymax);
-	glTexCoord2f(1, 1); glVertex2f(xmax, ymin);
-	glEnd();
+	drawTexturedQuad((float)xmin, (float)ymin, (float)xmax, (float)ymax);
 }
 
 void FS_Rect(int facing, int size)
 {
-	glBegin(GL_QUADS);
-	glTexCoord2f(0, 1); glVertex2f(0, size);
-	glTexCoord2f(0, 0); glVertex2f(0, 0);
-	glTexCoord2f(1, 0); glVertex2f(size, 0); //x
-	glTexCoord2f(1, 1); glVertex2f(size, size); //x,size
-	glEnd();
+	drawTexturedQuad(0.0f, (float)size, (float)size, 0.0f);
 }
 void Screen_Rect(int facing, int size)
-{/*
-	float x;
-	if (config.widescreen)
-	{
-		x = (1.00 - wideadj) / 2;
-		glTranslatef(x * size, 0, 0);
-
-		glBegin(GL_QUADS);
-		glTexCoord2f(0, 1); glVertex2f(0, size);
-		glTexCoord2f(0, 0); glVertex2f(0, 0);
-		glTexCoord2f(1, 0); glVertex2f(size * wideadj, 0); //x
-		glTexCoord2f(1, 1); glVertex2f(size * wideadj, size); //x,size
-		glEnd();
-		glTranslatef(x * size, 0, 0);
-	}
-	else
-	{*/
-		glBegin(GL_QUADS);
-		glTexCoord2f(0, 1); glVertex2f(0, size);
-		glTexCoord2f(0, 0); glVertex2f(0, 0);
-		glTexCoord2f(1, 0); glVertex2f(size, 0); //x
-		glTexCoord2f(1, 1); glVertex2f(size, size); //x,size
-		glEnd();
-	//}
-}
-
-void Special_Rect(int facing, int size)
 {
-	float x;
-	float sizeC = size * .75;
-
-	x = (1.00 - wideadj);
-	glTranslatef(-((x * size) / 2), 0, 0);
-	glBegin(GL_QUADS);
-	glTexCoord2f(0, 1); glVertex2f(0, size);
-	glTexCoord2f(0, 0); glVertex2f(0, 0);
-	glTexCoord2f(1, 0); glVertex2f(size * wideadj, 0); //x
-	glTexCoord2f(1, 1); glVertex2f(size * wideadj, size); //x,size
-	glEnd();
-	glTranslatef((x * size) / 2, 0, 0);
+	drawTexturedQuad(0.0f, (float)size, (float)size, 0.0f);
 }
 
 void Centered_Rect(int facing, int size)
 {
-	//float x;
-	float sizeC = size * .75;
-
-	glBegin(GL_QUADS);
-	glTexCoord2f(0, 1); glVertex2f(0, sizeC);
-	glTexCoord2f(0, 0); glVertex2f(0, 0);
-	glTexCoord2f(1, 0); glVertex2f(size, 0);
-	glTexCoord2f(1, 1); glVertex2f(size, sizeC);
-	glEnd();
+	float h = size * 0.75f;
+	drawTexturedQuad(0.0f, h, (float)size, 0.0f);
 }
 
 void Resize_Rect(int facing, int size)
 {
-	glBegin(GL_QUADS);
-	glTexCoord2f(0, 1); glVertex2f(0, size * .75);
-	glTexCoord2f(0, 0); glVertex2f(0, 0);
-	glTexCoord2f(1, 0); glVertex2f(size, 0);
-	glTexCoord2f(1, 1); glVertex2f(size, size * .75);
-	glEnd();
+	float h = size * 0.75f;
+	drawTexturedQuad(0.0f, h, (float)size, 0.0f);
 }
 
 // This code should never have to be ran.
@@ -353,9 +253,8 @@ void texture_reinit()
 
 void resize_art_textures()
 {
-	
 	set_render();
-	
+
 	if (art_loaded[0]) {
 		glDrawBuffer(GL_COLOR_ATTACHMENT2_EXT);
 		glReadBuffer(GL_COLOR_ATTACHMENT2_EXT);
@@ -422,83 +321,6 @@ void resize_art_textures()
 	set_ortho(1024, 768);
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	
-}
-
-void menu_textureit(GLuint* texture, int x, int y, int xsize, int ysize)
-{
-	glEnable(GL_TEXTURE_2D);
-	//allegro_gl_use_mipmapping(FALSE);
-	glDisable(GL_BLEND);
-	//glLoadIdentity();
-	glColor3f(1, 1, 1);
-	glBindTexture(GL_TEXTURE_2D, *texture);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-	//glBlendFunc(GL_ZERO, GL_ONE);
-
-	glBegin(GL_POLYGON);
-	glTexCoord2f(0, 1); glVertex2f(x + xsize, y + ysize);
-	glTexCoord2f(0, 0); glVertex2f(x - xsize, y + ysize);
-	glTexCoord2f(1, 0); glVertex2f(x - xsize, y - ysize);
-	glTexCoord2f(1, 1); glVertex2f(x + xsize, y - ysize);
-	glEnd();
-	glEnable(GL_BLEND);
-	glDisable(GL_TEXTURE_2D);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-}
-
-void blit_any_tex(GLuint* texture, int blending, float alpha, int x, int y, int w, int h)
-{
-	glPushMatrix();
-	glLoadIdentity();
-	glEnable(GL_TEXTURE_2D);
-	glEnable(GL_BLEND);
-	glBindTexture(GL_TEXTURE_2D, *texture);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);	// Linear Filtering
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);	// Linear Filtering
-
-	//glHint(GL_POLYGON_SMOOTH_HINT, GL_DONT_CARE);
-
-	//if (blending==1) glBlendFunc(GL_DST_COLOR, GL_ZERO);
-	//if (blending==0) glBlendFunc(GL_SRC_COLOR, GL_ONE); //PROPER
-	//if (blending==2)glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	//if (blending==4)glBlendFunc(GL_ONE, GL_ONE);
-
-	switch (blending)
-	{
-	case 0:glBlendFunc(GL_DST_COLOR, GL_ZERO); break;
-	case 1:glBlendFunc(GL_SRC_COLOR, GL_ONE); break;
-	case 2:glBlendFunc(GL_SRC_ALPHA, GL_ONE); break;
-	case 3:glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); break;
-	case 4:glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_ONE); break;
-	case 5:glBlendFunc(GL_DST_COLOR, GL_SRC_COLOR); break;
-	case 6:glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_SRC_ALPHA); break;
-	case 7:glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_ZERO); break;
-	case 8:glBlendFunc(GL_ONE_MINUS_SRC_ALPHA, GL_SRC_COLOR); break;
-	case 9:glBlendFunc(GL_SRC_ALPHA, GL_DST_COLOR); break;
-	case 10:glBlendFunc(GL_ONE, GL_ONE); break;
-	case 11:glBlendFunc(GL_ONE, GL_ZERO); break;
-	case 12:glBlendFunc(GL_ZERO, GL_ONE); break;
-	case 13:glBlendFunc(GL_ONE, GL_DST_COLOR); break;
-	case 14:glBlendFunc(GL_SRC_ALPHA, GL_DST_COLOR); break;
-	case 15:glBlendFunc(GL_ONE_MINUS_SRC_ALPHA, GL_SRC_COLOR); break;
-		//case 16: glDisable(GL_BLEND);break;
-	}
-
-	glColor4f(1.0f, 1.0f, 1.0f, alpha);
-	//glScalef(1.1,1.1,0 );
-	glTranslated(x, y, 0);
-	glBegin(GL_QUADS);
-	glTexCoord2f(0, 1); glVertex2i(0, h);
-	glTexCoord2f(0, 0); glVertex2i(0, 0);
-	glTexCoord2f(1, 0); glVertex2i(w, 0);
-	glTexCoord2f(1, 1); glVertex2i(w, h);
-	glEnd();
-	glDisable(GL_TEXTURE_2D);
-	glPopMatrix();
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }
 
 // Part of the GUI
@@ -515,12 +337,7 @@ void show_error(void)
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
 		glColor4ub(40, 0, 0, 220);
-		glBegin(GL_QUADS);					// Start Drawing Quads
-		glTexCoord2f(0, 0); glVertex3d(282, 234, 0);
-		glTexCoord2f(0, 1); glVertex3d(282, 534, 0);
-		glTexCoord2f(1, 1); glVertex3d(742, 534, 0);
-		glTexCoord2f(1, 0); glVertex3d(742, 234, 0);
-		glEnd();
+		drawTexturedQuad(282.0f, 234.0f, 742.0f, 534.0f);
 
 		glEnable(GL_TEXTURE_2D);
 		glColor4ub(255, 255, 255, 255);
@@ -531,12 +348,11 @@ void show_error(void)
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE); //PROPER
 		glTranslatef(375, 475, 0);
 
-		glBegin(GL_QUADS);
-		glTexCoord2d(0, 0); glVertex2d(-24, -24); //24
-		glTexCoord2d(0, 1); glVertex2d(-24, 24);
-		glTexCoord2d(1, 1); glVertex2d(24, 24);
-		glTexCoord2d(1, 0); glVertex2d(24, -24);
-		glEnd();
+		drawTexturedQuad(-24.0f, -24.0f, 24.0f, 24.0f);
+		
+		//TODO: Replace this with Vector drawing calls. 
+		
+		/*
 		glLoadIdentity();
 		glPrint(418, 457, 255, 255, 255, 255, 1.1, 0, 0, "An Error Occurred!!");
 		switch (have_error)
@@ -553,6 +369,7 @@ void show_error(void)
 		glPrint(385, 350, 255, 255, 255, 255, 1.1, 0, 0, "Please see AAE.LOG");
 		glPrint(385, 320, 255, 255, 255, 255, 1.1, 0, 0, "for further details.");
 		glPrint(365, 235, fade, 255, 255, fade, 1.1, 0, 0, "[Press Exit to Close]");
+		*/
 		if (dir == 0) {
 			fade -= 5;
 			if (fade < 40) { dir = 1; }
@@ -567,30 +384,6 @@ void show_error(void)
 	}
 }
 
-// Part of the GUI
-void fadeit(void)
-{  //THIS NEEDS TO BE FIXED BEFORE USE
-	static int fader = 255;
-
-	if (fader > 1) {
-		glDisable(GL_TEXTURE_2D);
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-		glColor4ub(0, 0, 0, fader);
-		glBegin(GL_QUADS);					// Start Drawing Quads
-		glTexCoord2f(0, 0); glVertex3d(0, 0, 0);
-		glTexCoord2f(0, 1); glVertex3d(1024, 0, 0);
-		glTexCoord2f(1, 1); glVertex3d(1024, 768, 0);
-		glTexCoord2f(1, 0); glVertex3d(0, 768, 0);
-		glEnd();
-		fader -= 10;
-
-		glEnable(GL_TEXTURE_2D);
-	}
-}
-
-//Currently Commented Out
-
 void pause_loop()
 {
 	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);
@@ -601,7 +394,62 @@ void pause_loop()
 	glDisable(GL_DITHER);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	fontmode_start();
-	fprint(420, 450, RGB_WHITE, 4.0, "PAUSED");
+	fprint(460, 450, RGB_WHITE, 4.0, "PAUSED");
 	fontmode_end();
-	
 }
+
+/*
+inline void drawTexturedQuad(float x1, float y1, float x2, float y2)
+{
+	static GLuint vboVertices = 0;
+	static GLuint vboTexCoords = 0;
+	static bool initialized = false;
+
+	if (!initialized) {
+		glGenBuffers(1, &vboVertices);
+		glGenBuffers(1, &vboTexCoords);
+
+		static const GLfloat texCoords[12] = {
+			0.0f, 1.0f,
+			0.0f, 0.0f,
+			1.0f, 0.0f,
+
+			0.0f, 1.0f,
+			1.0f, 0.0f,
+			1.0f, 1.0f
+		};
+		glBindBuffer(GL_ARRAY_BUFFER, vboTexCoords);
+		glBufferData(GL_ARRAY_BUFFER, sizeof(texCoords), texCoords, GL_STATIC_DRAW);
+
+		initialized = true;
+	}
+
+	// Update screen-space vertex positions
+	GLfloat vertices[12] = {
+		x1, y1,
+		x1, y2,
+		x2, y2,
+
+		x1, y1,
+		x2, y2,
+		x2, y1
+	};
+
+	glBindBuffer(GL_ARRAY_BUFFER, vboVertices);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), nullptr, GL_STREAM_DRAW); // buffer orphaning
+	glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices);
+
+	glEnableClientState(GL_VERTEX_ARRAY);
+	glVertexPointer(2, GL_FLOAT, 0, nullptr);
+
+	glBindBuffer(GL_ARRAY_BUFFER, vboTexCoords);
+	glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+	glTexCoordPointer(2, GL_FLOAT, 0, nullptr);
+
+	glDrawArrays(GL_TRIANGLES, 0, 6);
+
+	glDisableClientState(GL_TEXTURE_COORD_ARRAY);
+	glDisableClientState(GL_VERTEX_ARRAY);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+}
+*/

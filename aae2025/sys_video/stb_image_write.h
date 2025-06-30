@@ -110,6 +110,8 @@ distribute, and modify this file as you see fit.
 #ifndef INCLUDE_STB_IMAGE_WRITE_H
 #define INCLUDE_STB_IMAGE_WRITE_H
 
+#pragma warning( disable : 4996)
+
 #ifdef __cplusplus
 extern "C" {
 #endif

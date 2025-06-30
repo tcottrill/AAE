@@ -77,6 +77,11 @@ struct AY8910
 
 static struct AY8910 AYPSG[MAX_8910];		/* array of PSG's */
 
+void AY8910_set_volume(int chip, int channel, int volume)
+{
+
+}
+
 void _AYWriteReg(int n, int r, int v)
 {
 	struct AY8910* PSG = &AYPSG[n];

@@ -40,17 +40,11 @@
     <Filter Include="Source Files\sndhrdw">
       <UniqueIdentifier>{a0203f15-8ead-4259-b5ac-7c7e14490a4b}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Source Files\gui">
-      <UniqueIdentifier>{14cd736d-efed-4789-9b06-73632ef19fec}</UniqueIdentifier>
-    </Filter>
     <Filter Include="Source Files\cpu_code\68000">
       <UniqueIdentifier>{ea8e125f-41d6-414c-9b71-7c2169869d10}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="sys_window\log.h">
-      <Filter>Source Files\sys_window</Filter>
-    </ClInclude>
     <ClInclude Include="sys_window\rawinput.h">
       <Filter>Source Files\sys_window</Filter>
     </ClInclude>
@@ -156,7 +150,7 @@
     <ClInclude Include="cpu_code\timer.h">
       <Filter>Source Files\cpu_code</Filter>
     </ClInclude>
-    <ClInclude Include="fileio\loaders.h">
+    <ClInclude Include="fileio\texture_handler.h">
       <Filter>Source Files\fileio</Filter>
     </ClInclude>
     <ClInclude Include="fileio\mame_fileio.h">
@@ -182,9 +176,6 @@
     </ClInclude>
     <ClInclude Include="sndhrdw\tms5220.h">
       <Filter>Source Files\sndhrdw</Filter>
-    </ClInclude>
-    <ClInclude Include="sys_video\fonts.h">
-      <Filter>Source Files\sys_video</Filter>
     </ClInclude>
     <ClInclude Include="sys_video\gl_fbo.h">
       <Filter>Source Files\sys_video</Filter>
@@ -288,12 +279,6 @@
     <ClInclude Include="aae_mame_driver.h">
       <Filter>Source Files</Filter>
     </ClInclude>
-    <ClInclude Include="gui\animation.h">
-      <Filter>Source Files\gui</Filter>
-    </ClInclude>
-    <ClInclude Include="gui\gui.h">
-      <Filter>Source Files\gui</Filter>
-    </ClInclude>
     <ClInclude Include="sys_audio\wav_resample.h">
       <Filter>Source Files\sys_audio</Filter>
     </ClInclude>
@@ -387,15 +372,18 @@
     <ClInclude Include="sndhrdw\aae_pokey.h">
       <Filter>Source Files\sndhrdw</Filter>
     </ClInclude>
+    <ClInclude Include="game_list.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="sys_window\log.h">
+      <Filter>Source Files\sys_window</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="sys_window\rawinput.cpp">
       <Filter>Source Files\sys_window</Filter>
     </ClCompile>
     <ClCompile Include="sys_window\winmain.cpp">
-      <Filter>Source Files\sys_window</Filter>
-    </ClCompile>
-    <ClCompile Include="sys_window\log.cpp">
       <Filter>Source Files\sys_window</Filter>
     </ClCompile>
     <ClCompile Include="sys_video\sys_gl.cpp">
@@ -476,7 +464,7 @@
     <ClCompile Include="cpu_code\timer.cpp">
       <Filter>Source Files\cpu_code</Filter>
     </ClCompile>
-    <ClCompile Include="fileio\loaders.cpp">
+    <ClCompile Include="fileio\texture_handler.cpp">
       <Filter>Source Files\fileio</Filter>
     </ClCompile>
     <ClCompile Include="fileio\mame_fileio.cpp">
@@ -502,9 +490,6 @@
     </ClCompile>
     <ClCompile Include="sndhrdw\tms5220.cpp">
       <Filter>Source Files\sndhrdw</Filter>
-    </ClCompile>
-    <ClCompile Include="sys_video\fonts.cpp">
-      <Filter>Source Files\sys_video</Filter>
     </ClCompile>
     <ClCompile Include="sys_video\gl_fbo.cpp">
       <Filter>Source Files\sys_video</Filter>
@@ -571,12 +556,6 @@
     </ClCompile>
     <ClCompile Include="aae_mame_driver.cpp">
       <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="gui\animation.cpp">
-      <Filter>Source Files\gui</Filter>
-    </ClCompile>
-    <ClCompile Include="gui\gui.cpp">
-      <Filter>Source Files\gui</Filter>
     </ClCompile>
     <ClCompile Include="sys_audio\wav_resample.cpp">
       <Filter>Source Files\sys_audio</Filter>
@@ -661,6 +640,12 @@
     </ClCompile>
     <ClCompile Include="sndhrdw\aae_pokey.cpp">
       <Filter>Source Files\sndhrdw</Filter>
+    </ClCompile>
+    <ClCompile Include="game_list.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="sys_window\log.cpp">
+      <Filter>Source Files\sys_window</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

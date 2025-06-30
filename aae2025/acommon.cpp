@@ -1,21 +1,19 @@
 //==========================================================================
-// AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME 
-// code, 0.29 through .90 mixed with code of my own. This emulator was 
-// created solely for my amusement and learning and is provided only 
-// as an archival experience. 
-// 
-// All MAME code used and abused in this emulator remains the copyright 
+// AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME
+// code, 0.29 through .90 mixed with code of my own. This emulator was
+// created solely for my amusement and learning and is provided only
+// as an archival experience.
+//
+// All MAME code used and abused in this emulator remains the copyright
 // of the dedicated people who spend countless hours creating it. All
 // MAME code should be annotated as belonging to the MAME TEAM.
-// 
-// SOME CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.  
+//
+// SOME CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.
 //==========================================================================
-
 
 #include "framework.h"
 #include "osd_cpu.h"
 #include "glcode.h"
-#include "fonts.h"
 #include "menu.h"
 #include "aae_mame_driver.h"
 #include "vector_fonts.h"
@@ -27,8 +25,8 @@ extern int show_fps;
 extern int menulevel;
 extern int gamenum;
 
-int leds_status=0;
-static int last_led_status=0;
+int leds_status = 0;
+static int last_led_status = 0;
 
 //For stickykeys
 TOGGLEKEYS g_StartupToggleKeys = { sizeof(TOGGLEKEYS), 0 };
@@ -36,7 +34,6 @@ FILTERKEYS g_StartupFilterKeys = { sizeof(FILTERKEYS), 0 };
 STICKYKEYS g_StartupStickyKeys = { sizeof(STICKYKEYS), 0 };
 
 #pragma warning( disable : 4244 )
-
 
 /*-------------------------------------------------
 	set_led_status - set the state of a given LED
@@ -49,7 +46,6 @@ void set_led_status(int num, int on)
 	else
 		leds_status &= ~(1 << num);
 }
-
 
 /*
 
@@ -124,7 +120,7 @@ void video_loop(void)
 {
 	//If were displaying the menu, go ahead and show it.
 	fontmode_start();
-	
+
 	int err = glGetError();
 	if (err != 0)
 	{
@@ -156,55 +152,24 @@ void video_loop(void)
 		osd_set_leds(leds_status);
 	}
 
-
-
 	//fprint(200.00, 200.0, RGB_WHITE, 2.0, " Menu Level: %d", get_menu_level());
-	/*
-    err = glGetError();
-	if (err != 0)
-	{
-		LOG_INFO("openglerror in video loop 3: %d", err);
-	}
-	*/
+
 	show_error(); //If there is currently an error condition, show it.
-	/*
-	err = glGetError();
-	if (err != 0)
-	{
-		LOG_INFO("openglerror in video loop 4: %d", err);
-	}
-	*/
 	fontmode_end();
-	/*
-	err = glGetError();
-	if (err != 0)
-	{
-		LOG_INFO("openglerror in video loop 5: %d", err);
-	}
-	*/
-
 }
 
-// Note to self: Move this to the GL code. 
+// Note to self: Move this to the GL code.
 
-void return_to_menu(void)
-{
-	//free_samples(); //Free and allocated Samples
-	free_game_textures(); //Free textures
-	LOG_INFO("Done Freeing All"); //Log it.
-	gamenum = 0; //Set gamenum to zero (menu)
-	done = 0; //Set done false
-}
 
 void setup_ambient(int style)
 {
 	int samplenum;
-	
+
 	if (config.hvnoise)
 	{
 		samplenum = nameToNum("flyback");
 
-		if (samplenum !=-1) sample_set_volume(17, config.noisevol / 3); sample_start(17, nameToNum("flyback"), 1);
+		if (samplenum != -1) sample_set_volume(17, config.noisevol / 3); sample_start(17, nameToNum("flyback"), 1);
 	}
 	else
 		sample_stop(17);
@@ -228,10 +193,7 @@ void setup_ambient(int style)
 	}
 	else
 		sample_stop(19);
-	
 }
-
-
 
 void AllowAccessibilityShortcutKeys(int bAllowKeys)
 {
@@ -254,7 +216,6 @@ void AllowAccessibilityShortcutKeys(int bAllowKeys)
 		SystemParametersInfo(SPI_GETSTICKYKEYS, sizeof(STICKYKEYS), &g_StartupStickyKeys, 0);
 		SystemParametersInfo(SPI_GETTOGGLEKEYS, sizeof(TOGGLEKEYS), &g_StartupToggleKeys, 0);
 		SystemParametersInfo(SPI_GETFILTERKEYS, sizeof(FILTERKEYS), &g_StartupFilterKeys, 0);
-
 
 		FILTERKEYS fkOff = g_StartupFilterKeys;
 		STICKYKEYS skOff = g_StartupStickyKeys;

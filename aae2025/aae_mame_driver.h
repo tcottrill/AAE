@@ -33,24 +33,8 @@
 #include "emu_vector_draw.h"
 
 
+inline FILE* errorlog = nullptr;
 
-typedef struct {
-	int next; // index of next entry in array
-	int prev; // previous entry (if double-linked)
-	int  gamenum; 		//Short Name of game
-	char glname[128];	    //Display name for Game
-	int extopt;   //Any extra options for each game
-	//int numbertag;
-} glist;                      //Only one gamelist at a time
-
-extern glist gamelist[256];
-
-
-extern int logging;
-
-extern FILE* errorlog;
-extern char* gamename[];
-extern int gamenum;
 
 // Raster Defines, new. 
 #define MAX_GFX_ELEMENTS 10
@@ -88,13 +72,13 @@ extern int gamenum;
 #define SWAP(a, b)  {a ^= b; b ^= a; a ^= b;}
 
 //These should be somewhere else as well. 
-#define bitget(p,m) ((p) & (m))
-#define bitset(p,m) ((p) |= (m))
-#define bitclr(p,m) ((p) &= ~(m))
-#define bitflp(p,m) ((p) ^= (m))
-#define bit_write(c,p,m) (c ? bit_set(p,m) : bit_clear(p,m))
-#define BIT(x) (0x01 << (x))
-#define LONGBIT(x) ((unsigned long)0x00000001 << (x))
+//#define bitget(p,m) ((p) & (m))
+//#define bitset(p,m) ((p) |= (m))
+//#define bitclr(p,m) ((p) &= ~(m))
+//#define bitflp(p,m) ((p) ^= (m))
+//#define bit_write(c,p,m) (c ? bit_set(p,m) : bit_clear(p,m))
+//#define BIT(x) (0x01 << (x))
+//#define LONGBIT(x) ((unsigned long)0x00000001 << (x))
 
 // These are for different translation units. Maybe bite the bullet and make them all non-static, or wrap in namespaces?
 // This is a temporary solution.
@@ -159,10 +143,10 @@ extern int gamenum;
 #define VECTOR_DEFAULT_SCALE_2		0x4000
 #define VECTOR_DEFAULT_SCALE_3		0x8000
 
-#define ORIENTATION_MASK        	0x0007
-#define	ORIENTATION_FLIP_X			0x0001	// mirror everything in the X direction 
-#define	ORIENTATION_FLIP_Y			0x0002	// mirror everything in the Y direction 
-#define ORIENTATION_SWAP_XY			0x0004	// mirror along the top-left/bottom-right diagonal 
+//#define ORIENTATION_MASK        	0x0007
+//#define	ORIENTATION_FLIP_X			0x0001	// mirror everything in the X direction 
+//#define	ORIENTATION_FLIP_Y			0x0002	// mirror everything in the Y direction 
+//#define ORIENTATION_SWAP_XY			0x0004	// mirror along the top-left/bottom-right diagonal 
 //#define VECTOR_USES_COLOR           0x0008
 
 #define	ROT0	0
@@ -220,6 +204,45 @@ const struct artworks
 	const char* filename;
 	int type;
 	int target;
+};
+
+struct MachineCPU {
+	int cpu_type = 0;
+	int cpu_clock = 0;
+
+	const MemoryReadByte* memory_read = nullptr;
+	const MemoryWriteByte* memory_write = nullptr;
+	const z80PortRead* port_read = nullptr;
+	const z80PortWrite* port_write = nullptr;
+
+	int vblank_interrupts_per_frame = 1;
+	int (*timed_interrupt)(void) = nullptr;
+	int timed_interrupts_per_second = 0;
+
+	// Default constructor (disabled CPU)
+	MachineCPU() = default;
+
+	// Full setup constructor
+	MachineCPU(int type,
+		int clock,
+		const MemoryReadByte* read,
+		const MemoryWriteByte* write,
+		const z80PortRead* port_r,
+		const z80PortWrite* port_w,
+		int vblank,
+		int (*irq)(),
+		int irq_per_sec)
+		: cpu_type(type),
+		cpu_clock(clock),
+		memory_read(read),
+		memory_write(write),
+		port_read(port_r),
+		port_write(port_w),
+		vblank_interrupts_per_frame(vblank),
+		timed_interrupt(irq),
+		timed_interrupts_per_second(irq_per_sec)
+	{
+	}
 };
 
 
@@ -292,62 +315,29 @@ extern struct RunningMachine* Machine;
 
 extern int art_loaded[6];
 
+inline int sx = 0, ex = 0, sy = 0, ey = 0;
+inline int msx = 0, msy = 0, esx = 0, esy = 0;
+inline int b1sx = 0, b1sy = 0, b2sx = 0, b2sy = 0;
+inline float bezelzoom = 1.0f;
+inline int bezelx = 0;
+inline int bezely = 0;
 
-//Video VARS
-extern int sx, ex, sy, ey;
-//TEMPORARY GRAPHICS GLOBALS
-extern int msx, msy, esx, esy; //Main full screen adjustments for debug
-extern int b1sx, b1sy, b2sx, b2sy; //bezel full screen adjustments
-extern float bezelzoom;
-extern int bezelx;
-extern int bezely;
-
-
-extern int in_gui;
-extern unsigned int frames; //Global Framecounter
-extern int frameavg;
-//Shared variable for GUI
-
-extern int gamenum; //Global Gamenumber (really need this one)
-extern int have_error; //Global Error handler
-extern int showinfo; //Global info handler
-extern int done; //End of emulation indicator
-extern int paused; //Paused indicator
-extern double fps_count; //FPS Counter
-
-//extern int gamefps; //GAME REQUIRED FPS
-extern int num_games; //Total number of games ?? needed?
-extern int num_samples; //Total number of samples for selected game
-
-//KEY VARIABLES
-extern int mouseb[5];
-extern int total_length;
-
-
+inline unsigned int frames = 0;
+inline int frameavg = 0;
+inline int gamenum = 0;
+inline int have_error = 0;
+inline int showinfo = 0;
+inline int done = 0;
+inline int paused = 0;
+inline double fps_count = 0.0;
+inline int num_games = 0;
+inline int num_samples = 0;
+inline int mouseb[5] = {};
+inline int total_length = 0;
 
 struct GameOptions {
 	
 	int cheat;
-	//int gui_host;
-
-	//int samplerate;
-	//int samplebits;
-	//int use_samples;
-	//int norotate;
-	//int ror;
-	//int rol;
-	//int flipx;
-	//int flipy;
-	//int beam;
-	//int flicker;
-	//int translucency;
-	//int antialias;
-	//int use_artwork;
-	//int use_overlay;
-	//int use_bezel;
-	//int bezel_crop;
-	//int gl_line_width;
-	//int vector_flicker;
 };
 
 extern struct GameOptions options;
@@ -357,7 +347,6 @@ extern struct GameOptions options;
 //GAME DEFINES
 ////////////////////////////////
 enum GameDef {
-	AAEGUI,
 	//Asteroids Hardware
 	METEORTS,
 	ASTEROCK,

@@ -8,7 +8,6 @@
 #include "aae_mame_driver.h"
 #include "memory.h"
 #include "path_helper.h"
-#include "loaders.h"
 #include "gameroms.h"
 #include "sha-1.h"
 #include <filesystem> 
@@ -83,6 +82,96 @@ int save_file(const char* filename, const unsigned char* buf, int size) {
     fclose(fd);
     return 1;
 }
+
+
+// TODO: Fix Alternate path for Sample Loading from MAME or other dir.
+int read_samples(const char** samplenames, int val)
+{
+    char temppath[MAX_PATH];
+    const char* def_sample_path = "samples\\"; //Change this to get config
+    int ret = 0;
+    int i = 0;
+    int total = 0;
+
+    if (samplenames == 0 || samplenames[0] == 0) return 0;
+
+    i = 0;
+    while (samplenames[i] != 0) { i++; }
+    total = i;
+    LOG_INFO("Total number of Samples is %d", total);
+
+    //Build a path
+    strcpy(temppath, def_sample_path);//if it's not there, try sample dir
+    //get_config_string("directory","samplepath","samples");
+    strcat(temppath, (char*)samplenames[0]);
+    strcat(temppath, "\0");
+
+    //Load Samples
+    for (i = 1; i < total; i++)
+    {
+        LOG_INFO("Path: %s Sample name: %s ", temppath, samplenames[i]);
+        load_sample(temppath, (char*)samplenames[i], config.audio_force_resample ? 1 : 0);
+    }
+    num_samples = total - 2;
+    if (num_samples == 0) { LOG_INFO("Samples loading failure, bad with no sound..."); }
+    LOG_INFO("Completed Loading Samples: Num %d", num_samples);
+
+    return EXIT_SUCCESS;
+}
+
+
+int load_hi_aae(int start, int size, int image)
+{
+
+    std::string fullpath = getpathM("hi", 0) + "\\";
+    fullpath.append(Machine->gamedrv->name);
+    fullpath.append(".aae");
+
+    auto membuffer = std::make_unique<unsigned char[]>(size);
+    std::memset(membuffer.get(), 0, size);
+
+    FILE* fd = nullptr;
+    if (fopen_s(&fd, fullpath.c_str(), "rb") != 0 || !fd) {
+        LOG_INFO("Hiscore / nvram file not found: %s", fullpath.c_str());
+        return 1;
+    }
+
+    LOG_INFO("Loading Hiscore table / nvram from %s", fullpath.c_str());
+    std::fread(membuffer.get(), 1, size, fd);
+    std::fclose(fd);
+
+    std::memcpy(Machine->memory_region[CPU0] + start, membuffer.get(), size);
+    return 0;
+
+}
+
+int save_hi_aae(int start, int size, int image)
+{
+    std::string fullpath = getpathM("hi", 0) + "\\";
+    fullpath.append(Machine->gamedrv->name);
+    fullpath.append(".aae");
+
+    LOG_INFO("Saving Hiscore table / nvram to %s", fullpath.c_str());
+
+    auto membuffer = std::make_unique<unsigned char[]>(size);
+    std::memset(membuffer.get(), 0, size);
+    std::memcpy(membuffer.get(), Machine->memory_region[CPU0] + start, size);
+
+    save_file(fullpath.c_str(), membuffer.get(), size);
+    return 0;
+}
+
+// TODO: Add this back in
+int verify_rom(const char* archname, const struct RomModule* p, int romnum)
+{
+    return 1;
+}
+// TODO: Add this back in
+int verify_sample(const char** p, int num)
+{
+    return 1;
+}
+
 
 unsigned char* load_zip_file(const char* archname, const char* filename) {
     mz_zip_archive zip_archive;
@@ -171,7 +260,7 @@ int load_roms(const char* archname, const struct RomModule* p)
     temppath.append(archname);
     temppath.append(".zip");
 
-    if (!file_exist(temppath.c_str())) {
+    if (!file_exists(temppath.c_str())) {
         DLOG("Rom not found in external path, looking in rom folder");
         temppath = getpathM("roms", 0) + "\\" + archname + ".zip";
     }
@@ -181,7 +270,7 @@ int load_roms(const char* archname, const struct RomModule* p)
     memset(&zip_archive, 0, sizeof(zip_archive));
     status = mz_zip_reader_init_file(&zip_archive, temppath.c_str(), 0);
     if (!status) {
-        LOG_INFO("Zip File %s failed to open. Archive missing?", archname);
+        LOG_ERROR("Zip File %s failed to open. Archive missing?", archname);
         goto end;
     }
 
@@ -222,20 +311,20 @@ int load_roms(const char* archname, const struct RomModule* p)
             }
 
             if (file_index == -1) {
-                LOG_INFO("File not found in zip: %s", p[i].filename ? p[i].filename : "<null>");
+                LOG_ERROR("File not found in zip: %s", p[i].filename ? p[i].filename : "<null>");
                 goto end;
             }
 
             //We have a valid file, lets tell everyone.
             if (config.debug_profile_code) {
-                if (p[i].filename == (char*)-1)
-                    LOG_INFO("Loading Rom: %s", p[i - 1].filename);
-                else
-                    LOG_INFO("Loading Rom: %s", p[i].filename);
+                    if (last_reload_filename)
+                        LOG_INFO("Loading Rom: %s", last_reload_filename);
+                    else  if (p[i].filename)
+                        LOG_INFO("Loading Rom: %s", p[i].filename);
             }
             // Get information on the current file
             status = mz_zip_reader_file_stat(&zip_archive, file_index, &file_stat);
-            if (status != MZ_TRUE) { LOG_INFO("Could not read file in Zip, corrupt?"); ret = EXIT_FAILURE; goto end; }
+            if (status != MZ_TRUE) { LOG_ERROR("Could not read file in Zip, corrupt?"); ret = EXIT_FAILURE; goto end; }
 
             //Get File Size
             uncomp_size = (unsigned int)file_stat.m_uncomp_size;
@@ -246,7 +335,7 @@ int load_roms(const char* archname, const struct RomModule* p)
                 // Check if ROM_CONTINUE is screwing things up
                 if (p[i + 1].filename != (char*)-2)
                 {
-                    LOG_INFO("Warning: File Size Mismatch, check your rom definition and romset.");
+                    LOG_ERROR("Warning: File Size Mismatch, check your rom definition and romset.");
                     ret = EXIT_FAILURE; goto end;
                 }
             }
@@ -254,20 +343,20 @@ int load_roms(const char* archname, const struct RomModule* p)
             zipdata = (unsigned char*)malloc(uncomp_size);//p[i].romSize); // We don't use romSize here because of ROM_CONTINUE
             // Read (decompress) the file
             status = mz_zip_reader_extract_to_mem(&zip_archive, file_index, zipdata, uncomp_size, 0);
-            if (status != MZ_TRUE) { LOG_INFO("File Failed to Extract"); ret = EXIT_FAILURE; goto end; }
+            if (status != MZ_TRUE) { LOG_ERROR("File Failed to Extract"); ret = EXIT_FAILURE; goto end; }
             //LOG_INFO("Passed file extract");
             if (p[i].filename != (char*)-1 && p[i].filename != (char*)-2)
             {
                 //SHA-1 Check
                 shatest = sha1.CalculateHash(zipdata, uncomp_size);
                 if (p[i].sha && strcmp(shatest, p[i].sha) != 0) {
-                    LOG_INFO("SHA-1 mismatch. Expected: %s, Got: %s", p[i].sha, shatest);
+                    LOG_ERROR("SHA-1 mismatch. Expected: %s, Got: %s", p[i].sha, shatest);
                 }
 
                 //CRC Check
                 crc = static_cast<int>(file_stat.m_crc32);
                 if (p[i].crc && crc != p[i].crc) {
-                    LOG_INFO("CRC mismatch: Expected %x, Got %x", p[i].crc, crc);
+                    LOG_ERROR("CRC mismatch: Expected %x, Got %x", p[i].crc, crc);
                 }
             }
 
@@ -298,7 +387,7 @@ int load_roms(const char* archname, const struct RomModule* p)
                 break;
             }
 
-            default:  LOG_INFO("Invalid load type in ROM loader"); break;
+            default:  LOG_ERROR("Invalid load type in ROM loader"); break;
             }
             //Finished loading Rom
             //LOG_INFO("ROM Loaded");

@@ -44,6 +44,7 @@
 // 110524 Invalidating the Previous Program counter after an interrupt, setting it to -1; and trapping it like in M.A.M.E (tm) fixed the decryption issue in Tacscan. 
 // 110524 LD A,nn Instructions after an interrupt are not decrypted. 
 // 011024 Corrected R Register handling ala Superzazu
+// 062925 Corrected iff delay after EI
 // 
 //Most of my code verification is with:
 //[superzazu / z80](https://github.com/superzazu/z80)

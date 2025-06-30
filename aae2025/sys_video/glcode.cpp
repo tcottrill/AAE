@@ -13,9 +13,8 @@
 
 #include "glcode.h"
 #include "aae_mame_driver.h"
-#include "fonts.h"
 #include "vector_fonts.h"
-#include "loaders.h"
+#include "texture_handler.h"
 #include "gl_fbo.h"
 #include "gl_texturing.h"
 #include "gl_shader.h"
@@ -131,17 +130,16 @@ void calc_screen_rect(int screen_width, int screen_height, char* aspect, int rot
 	LOG_INFO("Bottom Right %f %f", target_width + xadj, yadj);
 }
 
-
 void raster_poly_update(void)
 {
 	//LOG_INFO("Update Screen Called");
 	int x, y;
 	unsigned char  c = 0;
 	unsigned char r1, g1, b1;
-	
+
 	vid_scale = 3.0;
 
-	for (x = Machine->drv->visible_area.min_y; x < Machine->drv->visible_area.max_y + 1; x++) 
+	for (x = Machine->drv->visible_area.min_y; x < Machine->drv->visible_area.max_y + 1; x++)
 	{
 		for (y = Machine->drv->visible_area.min_x; y < Machine->drv->visible_area.max_x + 1; y++)
 		{
@@ -155,10 +153,6 @@ void raster_poly_update(void)
 		}
 	}
 }
-
-
-//
-//
 //
 // END OF NEW CODE 2024
 
@@ -170,15 +164,15 @@ void Widescreen_calc()
 	if (config.widescreen == 1) val = 1.77f;
 	if (config.widescreen == 2) val = 1.6f;
 
-	wideadj = 1.3333 / val;//val;  1.6
+	wideadj = 1.3333 / val;
 }
 
 void set_ortho_proper()
 {
-	glViewport(0, 0, Machine->gamedrv->screen_width*3, Machine->gamedrv->screen_height*3);
+	glViewport(0, 0, Machine->gamedrv->screen_width * 3, Machine->gamedrv->screen_height * 3);
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
-	glOrtho(0, Machine->gamedrv->screen_width*3, Machine->gamedrv->screen_height*3, 0, -1, 1); // Define a 2D orthographic view
+	glOrtho(0, Machine->gamedrv->screen_width * 3, Machine->gamedrv->screen_height * 3, 0, -1, 1); // Define a 2D orthographic view
 	glMatrixMode(GL_MODELVIEW);
 }
 
@@ -200,7 +194,6 @@ int init_gl(void)
 
 	if (!init_one)
 	{
-				
 		if (config.forcesync)
 		{
 			if (wglewIsSupported("WGL_EXT_swap_control"))
@@ -218,7 +211,7 @@ int init_gl(void)
 			}
 			else LOG_INFO("There was a problem disabling vSync, please check your video card drivers.");
 		}
-		
+
 		// Reset The Current Viewport
 		set_ortho(1024, 768);
 		glClearColor(0.0f, 0.0f, 0.0f, 0.0f);					// Black Background
@@ -267,7 +260,6 @@ int init_gl(void)
 		// NEW CODE
 		//fbo = new multifbo(1024, 768, 16, 0, fboFilter::FB_NEAREST);
 		LOG_INFO("Building Font");
-		BuildFont(); // Note to self: Remove this dependency. Move to using vector font everywhere including gui
 		font_init(); //Build the Vector Font
 		init_shader();
 		LOG_INFO("Finished configuration of OpenGl sucessfully");
@@ -283,15 +275,6 @@ int init_gl(void)
 void end_gl()
 {
 	// KillFont();
-	glDeleteTextures(1, &error_tex[0]);
-	glDeleteTextures(1, &error_tex[1]);
-	glDeleteTextures(1, &menu_tex[0]);
-	glDeleteTextures(1, &menu_tex[1]);
-	glDeleteTextures(1, &menu_tex[2]);
-	glDeleteTextures(1, &menu_tex[3]);
-	glDeleteTextures(1, &menu_tex[4]);
-	glDeleteTextures(1, &menu_tex[5]);
-	glDeleteTextures(1, &menu_tex[6]);
 }
 
 int make_single_bitmap(GLuint* texture, const char* filename, const char* archname, int mtype)
@@ -346,9 +329,9 @@ void load_artwork(const struct artworks* p)
 		case FUN_TEX:  goodload = make_single_bitmap(&fun_tex[p[i].target], p[i].filename, p[i].zipfile, 0); break;
 		case ART_TEX: {
 			goodload = make_single_bitmap(&art_tex[p[i].target], p[i].filename, p[i].zipfile, type);
-			if (goodload) {	art_loaded[p[i].target] = 1;}	
+			if (goodload) { art_loaded[p[i].target] = 1; }
 		}break;
-					 
+
 		case GAME_TEX: goodload = make_single_bitmap(&game_tex[p[i].target], p[i].filename, p[i].zipfile, 0); break;
 		default: LOG_ERROR("You have defined something wrong in the artwork loading!!!!"); break;
 		}
@@ -401,8 +384,8 @@ void end_render_fbo4()
 ////////////////////////////////////////////////////////////////////////////////
 
 //
-//	Downsample Part 1,                                   
-//  This copies fbo1, img1b to fbo2, img2a at 512x512	
+//	Downsample Part 1,
+//  This copies fbo1, img1b to fbo2, img2a at 512x512
 //
 void copy_main_img_to_fbo2()
 {
@@ -430,15 +413,15 @@ void copy_main_img_to_fbo2()
 }
 
 //
-//	Downsample Part 2                                   
-//  This copies the 512x512 texture at fbo2, img1a to fbo3 img1a	
+//	Downsample Part 2
+//  This copies the 512x512 texture at fbo2, img1a to fbo3 img1a
 //
 void copy_fbo2_to_fbo3()
 {
 	GLuint fbo3_tex = 0;
 	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo3);
 
-	// Clear buffers between frames. 
+	// Clear buffers between frames.
 	// This is a requirement
 	glDrawBuffer(GL_COLOR_ATTACHMENT1_EXT);
 	glClearColor(0.0, 0.0, 0.0, 0.0);
@@ -446,7 +429,7 @@ void copy_fbo2_to_fbo3()
 	glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT);
 	set_ortho(256, 256);
 	glDisable(GL_BLEND);
-	int err = glGetError();	if (err != 0)  { LOG_ERROR("openglerror in copy_fbo2_to_fbo3: %d", err);}
+	check_gl_error_named("openglerror in copy_fbo2_to_fbo3:");
 
 	bind_shader(fragBlur);
 	set_uniform1i(fragBlur, "colorMap", fbo3_tex);
@@ -458,75 +441,10 @@ void copy_fbo2_to_fbo3()
 }
 
 //
-//	Downsample Part 3                                  
-//  This copies img2a to the 256x256 blur texture at fbo3, img3a to img1b pingpong back and forth to blur	
+//	Downsample Part 3
+//  This copies img2a to the 256x256 blur texture at fbo3, img3a to img1b pingpong back and forth to blur
 //
-/*
-void render_blur_image_fbo3() 
-{
-	static constexpr auto v1 = 1.0f;  //1.7 //1.0 //1.5
-	static constexpr auto v2 = 2.0f;  //2.7 //2.0 //2.5
-	GLuint fbo3ab_tex = 0;
-	int i = 0;
-	// Directional float shifts for v1 and v2
-	float fshifta[] = {
-		v1,  0,  -v1,   0, // RIGHT
-	   -v1,  0,   v1,   0, // LEFT
-		 0,  v1,   0, -v1, // UP
-		 0, -v1,   0,  v1, // DOWN
-		v1,  v1, -v1, -v1, // DIAGONAL: UP-RIGHT, DOWN-LEFT
-	   -v1, -v1,  v1,  v1, // DIAGONAL: DOWN-LEFT, UP-RIGHT
-	   -v1,  v1,  v1, -v1, // DIAGONAL: UP-LEFT, DOWN-RIGHT
-		v1, -v1, -v1,  v1  // DIAGONAL: DOWN-RIGHT, UP-LEFT
-	};
-
-	float fshiftb[] = {
-		v2,  0,  -v2,   0, // RIGHT
-	   -v2,  0,   v2,   0, // LEFT
-		 0,  v2,   0, -v2, // UP
-		 0, -v2,   0,  v2, // DOWN
-		v2,  v2, -v2, -v2, // DIAGONAL: UP-RIGHT, DOWN-LEFT
-	   -v2, -v2,  v2,  v2, // DIAGONAL: DOWN-LEFT, UP-RIGHT
-	   -v2,  v2,  v2, -v2, // DIAGONAL: UP-LEFT, DOWN-RIGHT
-		v2, -v2, -v2,  v2  // DIAGONAL: DOWN-RIGHT, UP-LEFT
-	};
-
-	
-	bind_shader(fragBlur);
-	set_uniform1i(fragBlur, "colorMap", fbo3ab_tex);
-	set_uniform1f(fragBlur, "width", 256.0f);
-	set_uniform1f(fragBlur, "height", 256.0f);
-
-	glEnable(GL_TEXTURE_2D);
-	glEnable(GL_BLEND);
-	glColor4f(.1f, .1f, .1f, .1f);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-
-	for (int x = 4; x < 8; x++) //4 to 8
-	{
-		glDrawBuffer(GL_COLOR_ATTACHMENT1_EXT);
-		glReadBuffer(GL_COLOR_ATTACHMENT0_EXT);
-		set_texture(&img3a, 1, 0, 0, 0);
-		glTranslatef(fshifta[i], fshifta[(i + 1)], 0);
-		FS_Rect(0, height3);
-		glTranslatef(fshifta[(i + 2)], fshifta[(i + 3)], 0);
-
-		glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT);
-		glReadBuffer(GL_COLOR_ATTACHMENT1_EXT);
-		set_texture(&img3b, 1, 0, 0, 0);
-		glBindTexture(GL_TEXTURE_2D, img3b);
-
-		glTranslatef(fshiftb[(i)], fshiftb[(i + 1)], 0);
-		FS_Rect(0, height3);
-		glTranslatef(fshiftb[(i + 2)], fshiftb[(i + 3)], 0);
-		i += 4;
-	}
-	int err = glGetError();	if (err != 0)	{LOG_ERROR("openglerror in render_blur_image_fbo3: %d", err);}
-	unbind_shader();
-}
-*/
-
-// This code will be replaced by shader code. 
+// This code will be replaced by shader code.
 void render_blur_image_fbo3()
 {
 	static constexpr float v1 = 1.0f;
@@ -558,7 +476,6 @@ void render_blur_image_fbo3()
 		v2, -v2, -v2,  v2  // DIAGONAL: DOWN-RIGHT, UP-LEFT
 	};
 
-
 	bind_shader(fragBlur);
 	set_uniform1i(fragBlur, "colorMap", fbo3ab_tex);
 	set_uniform1f(fragBlur, "width", 256.0f);
@@ -573,7 +490,7 @@ void render_blur_image_fbo3()
 
 	// Apply a global nudge downward to compensate for drift
 	glTranslatef(0.0f, -0.20f, 0.0f);
-	// Apply a global nudge to the left to compensate for drift as well. 
+	// Apply a global nudge to the left to compensate for drift as well.
 	glTranslatef(-0.05f, 0.0f, 0.0f);
 
 	// 4 passes = 8 blur directions (2 shifts per pass)
@@ -599,14 +516,9 @@ void render_blur_image_fbo3()
 		i += 4; // Advance to next shift pair
 	}
 
-	int err = glGetError();
-	if (err != 0) {
-		LOG_ERROR("OpenGL error in render_blur_image_fbo3: %d", err);
-	}
-
+	check_gl_error_named("OpenGL error in render_blur_image_fbo3");
 	unbind_shader();
 }
-
 
 ////////////////////////////////////////////////////////////////////////////////
 // END  FBO / SHADER DOWNSAMPLING and COMPOSITING CODE						  //
@@ -627,16 +539,16 @@ void set_render()
 
 	// Set the projection to 1024x1024
 	set_ortho(1024, 1024);
-	
+
 	// Then render as normal
 	//glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 	glClear(GL_COLOR_BUFFER_BIT);// | GL_DEPTH_BUFFER_BIT);	// Clear Screen And Depth Buffer
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	
+
 	// Leaving these here for review
 	//glDisable(GL_LIGHTING);
-	//glDisable(GL_DEPTH_TEST); 
+	//glDisable(GL_DEPTH_TEST);
 	// LOG_INFO("Setting FBO renderer");
 	//glEnable(GL_MULTISAMPLE_ARB);
 	//glEnable(GL_SAMPLE_COVERAGE);
@@ -645,7 +557,7 @@ void set_render()
 	// Required for some older cards.
 	//glDisable(GL_DITHER);
 
-	int err = glGetError(); if (err != 0)	{LOG_ERROR("openglerror in set_render: %d", err);}
+	check_gl_error_named("openglerror in set_render");
 }
 
 // Rendering Continued, this is STEP 2, this is where the vectors are drawn to our 1024x1024 texture.
@@ -664,7 +576,6 @@ void render()
 		sc->Render();
 		//final_render_raster();
 		final_render(sx, sy, ex, ey, 0, 0);
-		
 	}
 }
 
@@ -672,7 +583,6 @@ void render()
 // art_tex[0] is always Backdrop
 // art_tex[1] is always Overlay
 // art_tex[3] is always Bezel
-// GUI is always gamenum 0, so gamenum has to be > 0 for all games
 // FINAL RENDERING and COMPOSITING HERE:
 // Rendering Continued, this is STEP 3
 void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty)
@@ -698,31 +608,30 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 	// Draw the vecture texture to fbo1, img1b
 	Any_Rect(0, xmin, xmax, ymin, ymax);
 	//////////////////////////////////////////////////////////////////////////////////////////////////////
-	if (gamenum)
-	{
-		// DRAW OVERLAY to FBO1, Image img1b from image1a Ortho 1024x1014, Viewport 1024x1024
-		// Rotated overlays for tempest and tacscan are handled as bezels down below, fix.
-		if (config.overlay && art_loaded[1]) {
 
-			if (Machine->gamedrv->video_attributes & VECTOR_USES_OVERLAY1)
+	// DRAW OVERLAY to FBO1, Image img1b from image1a Ortho 1024x1014, Viewport 1024x1024
+	// Rotated overlays for tempest and tacscan are handled as bezels down below, fix.
+	
+	if (config.overlay && art_loaded[1]) {
+		if (Machine->gamedrv->video_attributes & VECTOR_USES_OVERLAY1)
 
-			{
-				glBlendFunc(GL_DST_COLOR, GL_SRC_COLOR);
-				glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-			}
-			else
-			{
-				glBlendFunc(GL_ONE_MINUS_SRC_ALPHA, GL_SRC_COLOR);
-				glColor4f(1.0f, 1.0f, 1.0f, .5f);
-			}
-
-			set_texture(&art_tex[1], 1, 0, 0, 0);
-			FS_Rect(0, 1024);
+		{
+			glBlendFunc(GL_DST_COLOR, GL_SRC_COLOR);
+			glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
 		}
+		else
+		{
+			glBlendFunc(GL_ONE_MINUS_SRC_ALPHA, GL_SRC_COLOR);
+			glColor4f(1.0f, 1.0f, 1.0f, .5f);
+		}
+
+		set_texture(&art_tex[1], 1, 0, 0, 0);
+		FS_Rect(0, 1024);
 	}
+
 	//// Render to fbo2, attachment2 (img1b) from img1b.  //////////////////////////////////////////////////
 
-	if (config.vectrail && gamenum)
+	if (config.vectrail)
 	{
 		// FBO1 is still bound at this point, switching to drawing the feedback texture blending on top of itself, frame additive
 		glDrawBuffer(GL_COLOR_ATTACHMENT2_EXT);
@@ -743,7 +652,7 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 	}
 
 	/////// RENDER the blur texture to FBO2 and FBO3, using Image img1b and img2a
-	if (config.vecglow && gamenum)
+	if (config.vecglow)
 	{
 		//Bind FBO2.
 		copy_main_img_to_fbo2();
@@ -764,25 +673,24 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 	glBlendFunc(GL_ONE, GL_ONE);
 
 	//Render combined texture
-	if (config.vecglow && gamenum) { useglow = 1; }
+	if (config.vecglow) { useglow = 1; }
 	bind_shader(fragMulti);
 	// Get the variables for the shader.
-	
+
 	bleh = glGetUniformLocation(fragMulti, "mytex1"); glUniform1i(bleh, 0);
 	bleh = glGetUniformLocation(fragMulti, "mytex2"); glUniform1i(bleh, 1);
 	bleh = glGetUniformLocation(fragMulti, "mytex3"); glUniform1i(bleh, 2);
 	bleh = glGetUniformLocation(fragMulti, "mytex4"); glUniform1i(bleh, 3);
 	bleh = glGetUniformLocation(fragMulti, "useart");
-	
+
 	// If artwork is loaded, check to see if backdrop artwork should be used. How is this working?
-	if (gamenum && art_loaded[0]) { glUniform1i(bleh, config.artwork); }
+	if (art_loaded[0]) { glUniform1i(bleh, config.artwork); }
 	else { glUniform1i(bleh, 0); }
 
 	set_uniform1i(fragMulti, "usefb", config.vectrail);
 	set_uniform1i(fragMulti, "useglow", useglow);
 	set_uniform1f(fragMulti, "glowamt", config.vecglow * .01);
 	set_uniform1i(fragMulti, "brighten", gamenum);
-
 
 	//Activate all 3 texture units
 	glActiveTexture(GL_TEXTURE0);
@@ -800,7 +708,7 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 	// Enable fbo4, and render everything below to it, then render to the screen with the correct size and aspect.
 	set_render_fbo4();
 
-	if (config.bezel && gamenum && art_loaded[3])
+	if (config.bezel && art_loaded[3])
 	{
 		glColor4f(1.0, 1.0, 1.0, 1.0);
 		//if (config.debug)	//{	Any_Rect(0, msx, msy, esy, esx);}
@@ -830,8 +738,7 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 	glActiveTextureARB(GL_TEXTURE0_ARB);
 	glBindTexture(GL_TEXTURE_2D, 0); // Don't disable GL_TEXTURE_2D on the main texture unit.
 
-	
-	if (config.bezel && art_loaded[3] && gamenum) {
+	if (config.bezel && art_loaded[3]) {
 		if (config.artcrop)
 		{
 			glScalef(bezelzoom, bezelzoom, 0);
@@ -848,7 +755,7 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 		glDisable(GL_DEPTH_TEST);
 		glDisable(GL_ALPHA_TEST);
 	}
-	
+
 	glLoadIdentity();
 
 	video_loop();
@@ -862,7 +769,6 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 	}
 }
 
-
 ////////////////////////////////////////////////////////////////////////////////
 // FINAL COMPOSITING AND RENDERING CODE ENDS HERE  ///////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
@@ -870,7 +776,7 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 void set_render_raster()
 {
 	LOG_INFO("Set Render Raster Called");
-		// First we bind to FBO1 so we can render to it
+	// First we bind to FBO1 so we can render to it
 	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo_raster);
 	//Write To Texture img1a
 	glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT);
@@ -884,21 +790,15 @@ void set_render_raster()
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	glDisable(GL_TEXTURE_2D);
 
-	int err = glGetError();
-	if (err != 0)
-	{
-		LOG_INFO("openglerror in set_render: %d", err);
-	}
+	check_gl_error_named("openglerror in set_render:");
 }
 
 void final_render_raster()
 {
 	LOG_INFO("Final Render Raster Called");
 	int err = glGetError();
-	if (err != 0)
-	{
-		LOG_INFO("openglerror in final_render_fbo_raster: %d", err);
-	}
+	check_gl_error_named("openglerror in final_render_fbo_raster:");
+
 	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);
 	glDrawBuffer(GL_BACK);
 
@@ -911,10 +811,5 @@ void final_render_raster()
 
 	//Centered_Rect(0, 1024);
 
-	err = glGetError();
-	if (err != 0)
-	{
-		LOG_INFO("openglerror in end_render_fbo_b: %d", err);
-	}
-
+	check_gl_error_named("openglerror in end_render_fbo_b:");
 }

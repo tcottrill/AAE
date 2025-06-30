@@ -1,5 +1,4 @@
 // Includes
-
 #include <windows.h>
 // For command line processing
 #include <vector>
@@ -7,8 +6,6 @@
 //
 #include "framework.h"
 #include "rawinput.h"
-//#include "dwmapi.h"
-// Included just for testing.
 #include "sys_gl.h"
 #include "gl_prim_debug.h"
 #include "aae_emulator.h"
@@ -28,11 +25,28 @@ HWND hWnd;
 int SCREEN_W = 1024;
 int SCREEN_H = 768;
 
-//#pragma comment (lib,"dwmapi.lib")
 #pragma comment(lib, "winmm.lib")
 
 // Function Declarations
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
+
+static UINT g_timer_resolution = 0;
+
+void InitHighResTimer()
+{
+	TIMECAPS caps;
+	if (timeGetDevCaps(&caps, sizeof(TIMECAPS)) == TIMERR_NOERROR)
+	{
+		g_timer_resolution = caps.wPeriodMin;
+		timeBeginPeriod(g_timer_resolution); // Request high-res timer
+	}
+}
+
+void ShutdownHighResTimer()
+{
+	if (g_timer_resolution > 0)
+		timeEndPeriod(g_timer_resolution); // Restore system timer resolution
+}
 
 //========================================================================
 // Hide mouse cursor (lock it)
@@ -447,11 +461,15 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 	
 	if (!SetCurrentDirectory(temppath.c_str()))
 	{
-		LOG_INFO("SetCurrentDirectory failed (%d)\n", GetLastError());
+		fprintf(stderr, "SetCurrentDirectory failed (%lu)\n", GetLastError());
 	}
 
-	Log::open("./aaelog.txt");
+	LogOpen("./aaelog.txt");
+
+#ifndef WIN7BUILD
 	Log::setConsoleOutputEnabled(false);
+#endif
+
 	LOG_INFO("Starting Log");
 
 	// This has to be done AFTER the window instantiation.
@@ -481,6 +499,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 	//Init OS Timers
 	timeGetDevCaps(&caps, sizeof(TIMECAPS));
 	timeBeginPeriod(caps.wPeriodMin);
+	//InitHighResTimer();
 	TimerInit(); //Start timer
 	LOG_INFO("Setting timer resolution to Min Supported: %d (ms)", caps.wPeriodMin);
 
@@ -516,11 +535,11 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 	}
 	// enable OpenGL for the window
 	InitOpenGLContext(true);
-	
 	// Set the Swap Interval to 60Hz, or whatever the monitor is set to.
+	// Disabled for now.
 	if (WGLEW_EXT_swap_control)
 	{
-		osWaitVsync(true);
+		//osWaitVsync(true);
 	}
 	// Initalize Rawinput
 	if ((RawInput_Initialize(hWnd) != 0))
@@ -533,7 +552,6 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 	ViewOrtho(SCREEN_W, SCREEN_H);
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	
 	scare_mouse();
 	CaptureMouseToWindow(hWnd);
 	SetFocus(hWnd);
@@ -565,7 +583,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 		{
 			// Run Emulator Here.
 			if (config.debug_profile_code) { LOG_INFO("starting emulator run"); }
-			CaptureMouseToWindow(hWnd);
+			//CaptureMouseToWindow(hWnd);
 			emulator_run();
 		
 			int err = glGetError();
@@ -587,13 +605,10 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 	emulator_end();
 	// shutdown OpenGL
 	OpenGLShutDown();
-
 	timeEndPeriod(caps.wPeriodMin);
-	
+	ShutdownHighResTimer();
 	//Shutdown logging
-	LOG_INFO("Closing Log");
 	LogClose();
-
 	// destroy the window explicitly
 	DestroyWindow(hWnd);
 

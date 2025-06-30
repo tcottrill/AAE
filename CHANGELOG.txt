@@ -199,6 +199,21 @@ Added a new cpu function, get_exact_cycles(int cpu_num) which gives the exact cy
 
 6/26/25
 Continued Opengl Updates and cleanup. Going to release a new version since there have been so many quality changes since the last release.
+
+6/27/25
+More cleanup, no more GL_QUADS. Removed all traces of the GUI, it's most likely not coming back. 
+
+6/29/25. Broke Windows 7 compatibility, this got me: https://github.com/microsoft/STL/releases/tag/vs-2022-17.10 on std::mutex. Did a lot of testing, nothing seems to work except creating your own win32 code and ditching std::mutex, so for now added the preprocessor _DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR as a workaround.
+Fixed code crashing on Windows 7 when running without command line options.
+
+6/30/25
+Minor 6502 and z80 fixes, all documented functions should finally be emulated correctly. I don't know how I can keep doing optimizations and my 6502 code is about 20% slower.
+Removed more old code.Gui and old font code are gone. Removed all traces of gamenum[0] which was the gui. 
+ 
+
+ 
+
+
  
 
 

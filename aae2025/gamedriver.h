@@ -18,7 +18,6 @@
 #include "gamekeys.h"
 #include "gamesamp.h"
 #include "gameart.h"
-#include "gui/gui.h"
 #include "asteroid.h"
 #include "bwidow.h"
 #include "SegaG80.h"
@@ -41,23 +40,6 @@
 struct AAEDriver driver[] =
 {
 		{
-		"aae", "AAE GUI",  0,
-		&init_gui,&run_gui, &end_gui,
-		input_ports_gui,
-		guisamples, noart,
-		{CPU_NONE,CPU_NONE,CPU_NONE,CPU_NONE},
-		{0,0,0,0},
-		{0,0,0,0},
-		{0,0,0,0},
-		{0,0,0,0},
-		{0,0,0,0},
-		60, VIDEO_TYPE_RASTER, ORIENTATION_DEFAULT,
-		1024 , 768, {0, 1040, 0, 820},
-		0,0,0,0,
-		0, 0,
-		0x4000, 0x800,0
-		},
-	    {
 		"meteorts", "Meteorites (Asteroids Bootleg)", rom_meteorts,
 		&init_asteroid,&run_asteroid,&end_asteroid,
 		input_ports_asteroid,

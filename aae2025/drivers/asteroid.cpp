@@ -16,7 +16,6 @@
 #include "earom.h"
 #include "aae_pokey.h"
 #include "acommon.h"
-#include "loaders.h"
 #include "old_mame_vecsim_dvg.h"
 
 #define MASTER_CLOCK (12096000)

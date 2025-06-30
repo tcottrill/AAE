@@ -77,7 +77,7 @@ MemoryWriteByte* M_MemoryWrite8 = nullptr;
 // 16 bit
 MemoryReadWord* M_MemoryRead16 = nullptr;
 MemoryWriteWord* M_MemoryWrite16 = nullptr;
-//32 bit is handled 
+//32 bit is handled
 
 //Machine->gamedrv->cpu_type[0]
 
@@ -86,11 +86,11 @@ void init_z80(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct
 	LOG_INFO("Z80 Init Started");
 	active_cpu = cpunum;
 	m_cpu_z80[cpunum] = new cpu_z80(Machine->memory_region[cpunum],
-		read, 
-		write, 
-		portread, 
-		portwrite, 
-		0xffff, 
+		read,
+		write,
+		portread,
+		portwrite,
+		0xffff,
 		cpunum);
 	m_cpu_z80[cpunum]->mz80reset();
 	LOG_INFO("Z80 Init Ended");
@@ -117,11 +117,14 @@ void init8080(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct
 	m_cpu_i8080[cpunum]->reset();
 }
 
-
 void init6502(struct MemoryReadByte* read, struct MemoryWriteByte* write, int mem_top, int cpunum)
 {
 	active_cpu = cpunum;
 	m_cpu_6502[cpunum] = new cpu_6502(Machine->memory_region[cpunum], read, write, mem_top, cpunum);
+
+	m_cpu_6502[cpunum]->enableDirectStackPage(true);
+	//m_cpu_6502[cpunum]->enableDirectZeroPage(true);
+
 	m_cpu_6502[cpunum]->reset6502();
 	LOG_INFO("Finished Configuring CPU");
 }
@@ -197,14 +200,14 @@ int get_eterna_ticks(int cpunum)
 }
 // *************************************************************************
 
-// THis one is needed, OmegaRace, AVG Code. 
+// THis one is needed, OmegaRace, AVG Code.
 int get_elapsed_ticks(int cpunum)
 {
 	return tickcount[cpunum];
 }
 
 // I think the code below is really crazy, and I don't understand it. Simplifying to see if this affects anything.
-// This one is needed, OmegaRace, AVG Code and Asteroids. 
+// This one is needed, OmegaRace, AVG Code and Asteroids.
 int get_video_ticks(int reset)
 {
 	int temp = 0;
@@ -234,24 +237,21 @@ void cpu_setOPbaseoverride(int (*f)(int))
 	setOPbasefunc = f;
 }
 
-
 /* Need to called after CPU or PC changed (JP,JR,BRA,CALL,RET) */
 void cpu_setOPbase16(int apc)
 {
-	
 	//LOG_INFO("we're here PC before %x", apc);
 	/* ASG 970206 -- allow overrides */
 	if (setOPbasefunc)
 	{
-			if (apc == -1)
+		if (apc == -1)
 			return;
-	
+
 		uint16_t something = setOPbasefunc(apc);
 
-	//	uint16_t retpc = Machine->memory_region[0][something];
+		//	uint16_t retpc = Machine->memory_region[0][something];
 	}
 }
-
 
 int cpu_getppc()
 {
@@ -270,9 +270,8 @@ int cpu_getppc()
 		return m_cpu_6809[0]->get_ppc();
 		break;
 	}
-		return 0;
+	return 0;
 }
-
 
 int cpu_getpc()
 {
@@ -306,7 +305,6 @@ void cpu_needs_reset(int cpunum)
 {
 	reset_cpu_status[cpunum] = 1;
 }
-
 
 void cpu_enable(int cpunum, int val)
 {
@@ -364,7 +362,7 @@ int get_current_cpu()
 
 void cpu_setcontext(int cpunum)
 {
-	// Disabled for now, I have only single CPU 68000 games, and this was causing issues. 
+	// Disabled for now, I have only single CPU 68000 games, and this was causing issues.
 	//switch (Machine->gamedrv->cpu_type[cpunum])
 	//{
 	//case CPU_68000: m68k_set_context(cpu_context[0]); break;
@@ -373,11 +371,11 @@ void cpu_setcontext(int cpunum)
 
 void cpu_getcontext(int cpunum)
 {
-// Disabled for now, I have only single CPU 68000 games, and this was causing issues. 
-//	switch (Machine->gamedrv->cpu_type[cpunum])
-//	{
-//	case CPU_68000: m68k_get_context(cpu_context[0]); break;
-//	}
+	// Disabled for now, I have only single CPU 68000 games, and this was causing issues.
+	//	switch (Machine->gamedrv->cpu_type[cpunum])
+	//	{
+	//	case CPU_68000: m68k_get_context(cpu_context[0]); break;
+	//	}
 }
 
 void interrupt_enable_w(UINT32 address, UINT8 data, struct MemoryWriteByte* pMemWrite)
@@ -388,7 +386,6 @@ void interrupt_enable_w(UINT32 address, UINT8 data, struct MemoryWriteByte* pMem
 	/* make sure there are no queued interrupts */
 	if (data == 0) cpu_clear_pending_interrupts(cpunum);
 }
-
 
 void interrupt_vector_w(UINT32 address, UINT8 data, struct MemoryWriteByte* pMemWrite)
 {
@@ -402,8 +399,6 @@ void interrupt_vector_w(UINT32 address, UINT8 data, struct MemoryWriteByte* pMem
 		cpu_clear_pending_interrupts(cpunum);
 	}
 }
-
-
 
 void cpu_disable_interrupts(int cpunum, int val)
 {
@@ -434,9 +429,9 @@ void cpu_do_int_imm(int cpunum, int int_type)
 	switch (Machine->gamedrv->cpu_type[cpunum])
 	{
 	case CPU_8080:
-		if (int_type == INT_TYPE_INT) 
+		if (int_type == INT_TYPE_INT)
 		{
-		    m_cpu_i8080[cpunum]->interrupt(interrupt_vector[cpunum]);
+			m_cpu_i8080[cpunum]->interrupt(interrupt_vector[cpunum]);
 		}
 		break;
 
@@ -446,7 +441,7 @@ void cpu_do_int_imm(int cpunum, int int_type)
 		}
 		else {
 			m_cpu_z80[cpunum]->mz80int(interrupt_vector[cpunum]);
-			LOG_INFO("Interrupt Vector here is %x", interrupt_vector[cpunum]);
+			//LOG_INFO("Interrupt Vector here is %x", interrupt_vector[cpunum]);
 		}
 		break;
 
@@ -525,7 +520,7 @@ void cpu_do_interrupt(int int_type, int cpunum)
 			}
 			break;
 		case CPU_68000: m68k_set_irq(int_type);
-				//LOG_INFO("INT Taken 68000, type: %d", Machine->gamedrv->cpu_int_type[active_cpu]);
+			//LOG_INFO("INT Taken 68000, type: %d", Machine->gamedrv->cpu_int_type[active_cpu]);
 			break;
 		}
 
@@ -584,17 +579,17 @@ int cpu_exec_now(int cpu, int cycles)
 		ticks = m_cpu_6809[cpu]->get6809ticks(0xff);
 		break;
 	case CPU_68000:
-			ticks = m68k_execute(cycles);
-			//LOG_INFO("Cycles Executed here %d", cycles);
-			//LOG_INFO("PC:%08X\tSP:%08X\n", m68k_get_reg(NULL, M68K_REG_PC), m68k_get_reg(NULL, M68K_REG_SP));
+		ticks = m68k_execute(cycles);
+		//LOG_INFO("Cycles Executed here %d", cycles);
+		//LOG_INFO("PC:%08X\tSP:%08X\n", m68k_get_reg(NULL, M68K_REG_PC), m68k_get_reg(NULL, M68K_REG_SP));
 		timer_update(ticks, active_cpu);
 		break;
 	case CPU_CCPU:
-		  	ticks = run_ccpu(cycles);
-		  	break;
+		ticks = run_ccpu(cycles);
+		break;
 	}
 	// Update the cyclecount and the interrupt timers.
-	
+
 	//if (Machine->gamedrv->cpu_type[active_cpu] != CPU_M6502)
 	cyclecount[cpu] += ticks;
 	// NOTE THE CPU CODE ITSELF IS UPDATING THE TIMERS NOW, except for the 68000 and the 8080
@@ -609,10 +604,10 @@ void cpu_run(void)
 	tickcount[1] = 0;
 	tickcount[2] = 0;
 	tickcount[3] = 0;
-	// Start with all timers at zero; This will need to change. 
+	// Start with all timers at zero; This will need to change.
 	//timer_clear_all_eof();
-	
-    //LOG_INFO("CPU RUN MAME CALLED");
+
+	//LOG_INFO("CPU RUN MAME CALLED");
 	//update_input_ports();	/* read keyboard & update the status of the input ports */
 
 	for (active_cpu = 0; active_cpu < totalcpu; active_cpu++)
@@ -671,7 +666,7 @@ void cpu_run(void)
 						// I still don't have a good idea of what all these timers are doing :(
 						tickcount[active_cpu] += ran;
 						add_eterna_ticks(active_cpu, ran);
-						if (active_cpu == 0) {vid_tickcount += ran;	}
+						if (active_cpu == 0) { vid_tickcount += ran; }
 						/////////////////////////////////////////////////////////////////////////
 						ran_this_frame[active_cpu] += ran;
 						totalcycles[active_cpu] += ran;
@@ -707,18 +702,18 @@ void cpu_reset(int cpunum)
 
 	switch (Machine->gamedrv->cpu_type[cpunum])
 	{
-	case CPU_MZ80:  
-		m_cpu_z80[cpunum]->mz80reset(); 
+	case CPU_MZ80:
+		m_cpu_z80[cpunum]->mz80reset();
 		break;
 
-	case CPU_M6502: 
-		m_cpu_6502[cpunum]->reset6502(); 
+	case CPU_M6502:
+		m_cpu_6502[cpunum]->reset6502();
 		break;
 
 	case CPU_8080:
 		m_cpu_i8080[cpunum]->reset();
 		break;
-	case CPU_68000:  m68k_pulse_reset(); 
+	case CPU_68000:  m68k_pulse_reset();
 		break;
 	case CPU_M6809:
 		m_cpu_6809[cpunum]->reset6809();
@@ -771,20 +766,20 @@ int cpu_scale_by_cycles(int val, int clock)
 	temp = val * temp;
 
 	k = (int)temp;
-//	LOG_INFO("Sound position %d",k);
+	//	LOG_INFO("Sound position %d",k);
 	return k;
 }
 
 void free_cpu_memory()
 {
 	LOG_INFO("Freeing allocated CPU Cores. Totalcpu = %d", totalcpu);
-	
+
 	for (int x = 0; x < totalcpu; x++)
 	{
 		switch (Machine->gamedrv->cpu_type[x])
 		{
 		case CPU_MZ80:
-			free (m_cpu_z80[x]);
+			free(m_cpu_z80[x]);
 			break;
 
 		case CPU_M6502:
@@ -792,11 +787,11 @@ void free_cpu_memory()
 			break;
 
 		case CPU_8080:
-			free (m_cpu_i8080[x]);
+			free(m_cpu_i8080[x]);
 			break;
 
 		case CPU_M6809:
-			free (m_cpu_6809[x]);
+			free(m_cpu_6809[x]);
 			break;
 
 		case CPU_68000:
@@ -815,7 +810,7 @@ void init_cpu_config()
 
 	for (x = 0; x < 4; x++)
 	{
-		reset_cpu_status[x]=0;
+		reset_cpu_status[x] = 0;
 		cpurunning[x] = 1;
 		interrupt_count[x] = 0;
 		interrupt_pending[x] = 0;
@@ -824,10 +819,10 @@ void init_cpu_config()
 		cyclecount[x] = 0;
 		if (Machine->gamedrv->cpu_type[x])  totalcpu++;
 	}
-	
+
 	cpu_framecounter = 0;
 	vid_tickcount = 0;//Initalize video tickcount;
-	
+
 	timer_init();
 	watchdog_timer = timer_set(TIME_IN_HZ(4), 0, watchdog_callback);
 	LOG_INFO("NUMBER OF CPU'S to RUN: %d ", totalcpu);
@@ -880,7 +875,7 @@ UINT8 MRA_RAM(UINT32 address, struct MemoryReadByte* psMemRead)
 void MWA_RAM(UINT32 address, UINT8 data, struct MemoryWriteByte* pMemWrite)
 {
 	//LOG_INFO("Address here is %x Writing address %x ", address, address + pMemWrite->lowAddr);
-	
+
 	Machine->memory_region[active_cpu][address + pMemWrite->lowAddr] = data;
 	//LOG_INFO("Active CPU here is %d", active_cpu);
 }
@@ -889,7 +884,7 @@ void MWA_RAM(UINT32 address, UINT8 data, struct MemoryWriteByte* pMemWrite)
 UINT8 MRA_ROM(UINT32 address, struct MemoryReadByte* psMemRead)
 {
 	//LOG_INFO("Active CPU here is %d", active_cpu);
-    //LOG_INFO("Address here is %x reading address %x data %x", address, address + psMemRead->lowAddr, Machine->memory_region[active_cpu][address + psMemRead->lowAddr]);
+	//LOG_INFO("Address here is %x reading address %x data %x", address, address + psMemRead->lowAddr, Machine->memory_region[active_cpu][address + psMemRead->lowAddr]);
 	return Machine->memory_region[active_cpu][address + psMemRead->lowAddr];
 }
 
@@ -922,7 +917,6 @@ void MWA_NOP(UINT32 address, UINT8 data, struct MemoryWriteByte* pMemWrite)
 {
 	//If logging add here
 }
-
 
 /*--------------------------------------------------------------------------*/
 /* 68000 Memory handlers                                                          */
@@ -999,7 +993,7 @@ unsigned int m68k_read_memory_8(unsigned int address)
 		++MemRead;
 	}
 
-	LOG_INFO("Unhandled Memory 8 Read: addr: %x", address); 
+	LOG_INFO("Unhandled Memory 8 Read: addr: %x", address);
 	return 0;
 }
 
@@ -1020,9 +1014,8 @@ void m68k_write_memory_8(unsigned int address, unsigned int value)
 			else
 			{
 				//k = 1;
-				WRITE_BYTE((unsigned char*)MemWrite->pUserArea, address - MemWrite->lowAddr, (UINT8) value);
+				WRITE_BYTE((unsigned char*)MemWrite->pUserArea, address - MemWrite->lowAddr, (UINT8)value);
 			}
-
 		}
 		MemWrite++;
 	}
@@ -1040,12 +1033,12 @@ unsigned int m68k_read_memory_16(unsigned int address)
 			if (MemRead->memoryCall)
 			{
 				//LOG_INFO("Handler 16 Read: addr: %x", address);
-				return (UINT16) (MemRead->memoryCall(address - MemRead->lowAddr, MemRead));
+				return (UINT16)(MemRead->memoryCall(address - MemRead->lowAddr, MemRead));
 			}
 			else
 			{
 				//LOG_INFO("MEM 16 Read: addr: %x", address);
-				return (UINT16) READ_WORD((unsigned char*)MemRead->pUserArea, address - MemRead->lowAddr);
+				return (UINT16)READ_WORD((unsigned char*)MemRead->pUserArea, address - MemRead->lowAddr);
 			}
 		}
 
@@ -1068,14 +1061,14 @@ void m68k_write_memory_16(unsigned int address, unsigned int value)
 		{
 			if (MemWrite->memoryCall)
 			{
-			//	k = 1;
-				//LOG_INFO("Write Handler 16, addr: %x, data %x", address, value);
-				MemWrite->memoryCall(address - MemWrite->lowAddr, (UINT16) value, MemWrite);
+				//	k = 1;
+					//LOG_INFO("Write Handler 16, addr: %x, data %x", address, value);
+				MemWrite->memoryCall(address - MemWrite->lowAddr, (UINT16)value, MemWrite);
 			}
 			else {
 				//k = 1;
 				//LOG_INFO("Write Memory 16, addr: %x, data %x", address, value);
-				WRITE_WORD((unsigned char*)MemWrite->pUserArea, address - MemWrite->lowAddr, (UINT16) value);
+				WRITE_WORD((unsigned char*)MemWrite->pUserArea, address - MemWrite->lowAddr, (UINT16)value);
 			}
 		}
 		MemWrite++;
@@ -1083,7 +1076,7 @@ void m68k_write_memory_16(unsigned int address, unsigned int value)
 	//if (!k)
 	//{
 	//	LOG_INFO("Unhandled Memory 16 Write: addr: %x data: %x", address, value);
-		//exit(1); 
+		//exit(1);
 	//}
 }
 
@@ -1092,7 +1085,7 @@ unsigned int m68k_read_memory_32(unsigned int address)
 	//LOG_INFO("Reading Memory 32, addr: %x", address);
 
 	/* Split into 2 reads */
-	return (UINT32) (m68k_read_memory_16(address + 0) << 16 | m68k_read_memory_16(address + 2));
+	return (UINT32)(m68k_read_memory_16(address + 0) << 16 | m68k_read_memory_16(address + 2));
 }
 
 void m68k_write_memory_32(unsigned int address, unsigned int value)

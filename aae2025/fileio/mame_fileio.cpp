@@ -24,6 +24,7 @@
 /* gamename holds the driver name, filename is only used for ROMs and samples. */
 /* if 'write' is not 0, the file is opened for write. Otherwise it is opened */
 /* for read. */
+/*
 void* osd_fopen(const char* gamename, const char* filename, int filetype, int write)
 {
 	char name[100];
@@ -84,6 +85,68 @@ void* osd_fopen(const char* gamename, const char* filename, int filetype, int wr
 		break;
 	}
 }
+*/
+
+void* osd_fopen(const char* gamename,
+	const char* filename,
+	int         filetype,
+	int         write)         // 0 = read, non-zero = write
+{
+	char        name[MAX_PATH];
+	FILE* fp = nullptr;
+	const char* dirname = nullptr;
+	int         nchars = -1;              // snprintf result
+
+	SetIniFile("aae.ini");
+
+	/* -------- build the pathname ---------------------------------- */
+	switch (filetype)
+	{
+	case OSD_FILETYPE_ROM:
+	case OSD_FILETYPE_SAMPLE:
+		LOG_ERROR("MAME OSD_FOPEN UNSUPPORTED FILE TYPE");
+		return nullptr;
+
+	case OSD_FILETYPE_HIGHSCORE:
+		dirname = get_config_string("directory", "hi", "HI");
+		nchars = snprintf(name, sizeof(name), "%s\\%s.hi", dirname, gamename);
+		break;
+
+	case OSD_FILETYPE_NVRAM:
+		dirname = get_config_string("directory", "hi", "HI");
+		nchars = snprintf(name, sizeof(name), "%s\\%s.nv", dirname, gamename);
+		break;
+
+	case OSD_FILETYPE_CONFIG:
+		dirname = get_config_string("directory", "cfg", "cfg");
+		nchars = snprintf(name, sizeof(name), "%s\\%s.cfg", dirname, gamename);
+		LOG_INFO("Trying to open game config file: %s", name);
+		break;
+
+	case OSD_FILETYPE_INPUTLOG:
+		nchars = snprintf(name, sizeof(name), "%s.inp", filename);
+		break;
+
+	default:
+		LOG_ERROR("MAME OSD_FOPEN CALLED WITH UNSUPPORTED FILE TYPE");
+		return nullptr;
+	}
+
+	/* -------- validate path length -------------------------------- */
+	if (nchars < 0 || static_cast<size_t>(nchars) >= sizeof(name)) {
+		LOG_ERROR("MAME OSD_FOPEN: path too long or formatting error");
+		return nullptr;
+	}
+
+	if (fopen_s(&fp, name, write ? "wb" : "rb") != 0) {
+		char errbuf[128] = {};
+		strerror_s(errbuf, sizeof(errbuf), errno);
+		LOG_INFO("Failed to open file '%s' (%s)", name, errbuf);
+		return nullptr;
+	}
+
+	return static_cast<void*>(fp);         // keep legacy signature
+}
 
 int osd_fread_scatter(void* file, void* buffer, int length, int increment)
 {
@@ -125,9 +188,16 @@ int osd_fseek(void* file, int offset, int whence)
 	return fseek((FILE*)file, offset, whence);
 }
 
+/*
 void osd_fclose(void* file)
 {
 	fclose((FILE*)file);
+}
+*/
+void osd_fclose(void* file)
+{
+	if (file)
+		fclose(static_cast<FILE*>(file));
 }
 
 unsigned int osd_fcrc(void* file)

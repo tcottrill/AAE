@@ -17,7 +17,7 @@ void setup_config() {
 
     // Load base config: aae.ini
     temppath = getpathM(0, "aae.ini");
-    strcpy(aaepath, temppath.c_str());
+    strcpy_s(aaepath, sizeof(aaepath), temppath.c_str());
     SetIniFile(aaepath);
     LOG_DEBUG("INI PATH HERE %s", aaepath);
     // Load all fields from aae.ini
@@ -65,12 +65,12 @@ void setup_config() {
     config.screenw = get_config_int("main", "screenw", 1024);
     config.screenh = get_config_int("main", "screenh", 768);
     config.exrompath = get_config_string("main", "mame_rom_path", "NONE");
+    config.hack = get_config_int("main", "hack", 0);
 
     // Load game-specific overrides for select fields
     temppath = getpathM("ini", 0) + std::string("\\") + Machine->gamedrv->name + ".ini";
-    strcpy(gamepath, temppath.c_str());
-
-    if (gamenum > 0 && file_exists(gamepath)) {
+    strcpy_s(gamepath, sizeof(gamepath), temppath.c_str());
+    if (file_exists(gamepath)) {
         SetIniFile(gamepath);
         LOG_INFO("Game Config Path: %s", gamepath);
        
@@ -111,7 +111,7 @@ void setup_config() {
 
 void setup_video_config() {
     std::string temppath = getpathM(0, "video.ini");
-    strcpy(aaepath, temppath.c_str());
+    strcpy_s(aaepath, sizeof(aaepath), temppath.c_str());
     SetIniFile(aaepath);
 
     std::string name = Machine->gamedrv->name;
