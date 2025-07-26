@@ -9,19 +9,17 @@
 // 01/03/25 Discovered an edge case where clocktickstotal was not being set to zero at init, causing an immediate crash.
 // 01/09/25 Changed clocktickstotal again to be set to zero at init, not reset. When a cpu was reset mid-frame, it was throwing the timing count off.
 // 06/29/25 Added IRQ after CLI check, added new dissassembler, code cleanup
-// FOr your own usage, just undefine USING_AAE_EMU
+// 06/30/25 Added the most commonly used undocumented instructions, and hopefully adjusted the timing table to match. These are totally unverified.
+// For your own usage, just undefine USING_AAE_EMU
+// 07/01/25 Moved the stack operations back to not using the Memory Handlers. This was a good speed up and did not affect Major Havoc.
+// I left the old code commented out, just in case. 
 // cpu_6502.cpp
 
 #include <stdio.h>
 #include "cpu_6502.h"
 #include "log.h"
-
-#ifdef USING_AAE_EMU
 #include "timer.h"
-constexpr bool AAE_TIMER_ENABLED = true;
-#else
-constexpr bool AAE_TIMER_ENABLED = false;
-#endif
+
 
 #define bget(p,m) ((p) & (m))
 
@@ -51,6 +49,9 @@ static const char* mnemonics[256] = {
 		"BEQ","SBC","SBC","ISB","???","SBC","INC","ISB","SED","SBC","PLX","ISB","NOP","SBC","INC","ISB"
 };
 
+// -----------------------------------------------------------------------------
+// Cycle count table for all 256 opcodes, including common undocumented opcodes
+// -----------------------------------------------------------------------------
 static const uint32_t ticks[256] = {
 	/*        |  0  |  1  |  2  |  3  |  4  |  5  |  6  |  7  |  8  |  9  |  A  |  B  |  C  |  D  |  E  |  F  |     */
 	/* 0 */      7,    6,    2,    8,    3,    3,    5,    5,    3,    2,    2,    2,    4,    4,    6,    6,  /* 0 */
@@ -74,263 +75,264 @@ static const uint32_t ticks[256] = {
 // -----------------------------------------------------------------------------
 // Opcode Table (Automatically Populated by init6502)
 //
+
 const cpu_6502::OpEntry cpu_6502::opcode_table[256] = {
-	{ &cpu_6502::brk6502, &cpu_6502::implied6502 }, // 0x00
-	{ &cpu_6502::ora6502, &cpu_6502::indx6502    }, // 0x01
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x02
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x03
-	{ &cpu_6502::tsb6502, &cpu_6502::zp6502      }, // 0x04
-	{ &cpu_6502::ora6502, &cpu_6502::zp6502      }, // 0x05
-	{ &cpu_6502::asl6502, &cpu_6502::zp6502      }, // 0x06
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x07
-	{ &cpu_6502::php6502, &cpu_6502::implied6502 }, // 0x08
+	{ &cpu_6502::brk6502, &cpu_6502::implied6502 },   // 0x00
+	{ &cpu_6502::ora6502, &cpu_6502::indx6502    },   // 0x01
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0x02
+	{ &cpu_6502::slo6502, &cpu_6502::indx6502    },   // 0x03 (UNDOC)
+	{ &cpu_6502::tsb6502, &cpu_6502::zp6502      },   // 0x04
+	{ &cpu_6502::ora6502, &cpu_6502::zp6502      },   // 0x05
+	{ &cpu_6502::asl6502, &cpu_6502::zp6502      },   // 0x06
+	{ &cpu_6502::slo6502, &cpu_6502::zp6502      },   // 0x07 (UNDOC)
+	{ &cpu_6502::php6502, &cpu_6502::implied6502 },   // 0x08
 	{ &cpu_6502::ora6502, &cpu_6502::immediate6502 }, // 0x09
-	{ &cpu_6502::asla6502, &cpu_6502::implied6502 }, // 0x0A
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x0B
-	{ &cpu_6502::tsb6502, &cpu_6502::abs6502     }, // 0x0C
-	{ &cpu_6502::ora6502, &cpu_6502::abs6502     }, // 0x0D
-	{ &cpu_6502::asl6502, &cpu_6502::abs6502     }, // 0x0E
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x0F
-	{ &cpu_6502::bpl6502, &cpu_6502::relative6502 }, // 0x10
-	{ &cpu_6502::ora6502, &cpu_6502::indy6502    }, // 0x11
-	{ &cpu_6502::ora6502, &cpu_6502::indzp6502   }, // 0x12
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x13
-	{ &cpu_6502::trb6502, &cpu_6502::zp6502      }, // 0x14
-	{ &cpu_6502::ora6502, &cpu_6502::zpx6502     }, // 0x15
-	{ &cpu_6502::asl6502, &cpu_6502::zpx6502     }, // 0x16
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x17
-	{ &cpu_6502::clc6502, &cpu_6502::implied6502 }, // 0x18
-	{ &cpu_6502::ora6502, &cpu_6502::absy6502    }, // 0x19
-	{ &cpu_6502::ina6502, &cpu_6502::implied6502 }, // 0x1A
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x1B
-	{ &cpu_6502::trb6502, &cpu_6502::abs6502     }, // 0x1C
-	{ &cpu_6502::ora6502, &cpu_6502::absx6502    }, // 0x1D
-	{ &cpu_6502::asl6502, &cpu_6502::absx6502    }, // 0x1E
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x1F
-	{ &cpu_6502::jsr6502, &cpu_6502::abs6502     }, // 0x20
-	{ &cpu_6502::and6502, &cpu_6502::indx6502    }, // 0x21
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x22
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x23
-	{ &cpu_6502::bit6502, &cpu_6502::zp6502      }, // 0x24
-	{ &cpu_6502::and6502, &cpu_6502::zp6502      }, // 0x25
-	{ &cpu_6502::rol6502, &cpu_6502::zp6502      }, // 0x26
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x27
-	{ &cpu_6502::plp6502, &cpu_6502::implied6502 }, // 0x28
+	{ &cpu_6502::asla6502, &cpu_6502::implied6502 },  // 0x0A
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0x0B
+	{ &cpu_6502::tsb6502, &cpu_6502::abs6502     },   // 0x0C
+	{ &cpu_6502::ora6502, &cpu_6502::abs6502     },   // 0x0D
+	{ &cpu_6502::asl6502, &cpu_6502::abs6502     },   // 0x0E
+	{ &cpu_6502::slo6502, &cpu_6502::abs6502     },   // 0x0F (UNDOC)
+	{ &cpu_6502::bpl6502, &cpu_6502::relative6502 },  // 0x10
+	{ &cpu_6502::ora6502, &cpu_6502::indy6502    },   // 0x11
+	{ &cpu_6502::ora6502, &cpu_6502::indzp6502   },   // 0x12
+	{ &cpu_6502::slo6502, &cpu_6502::indzp6502   },   // 0x13 (UNDOC)
+	{ &cpu_6502::trb6502, &cpu_6502::zp6502      },   // 0x14
+	{ &cpu_6502::ora6502, &cpu_6502::zpx6502     },   // 0x15
+	{ &cpu_6502::asl6502, &cpu_6502::zpx6502     },   // 0x16
+	{ &cpu_6502::slo6502, &cpu_6502::zpx6502     },   // 0x17 (UNDOC)
+	{ &cpu_6502::clc6502, &cpu_6502::implied6502 },   // 0x18
+	{ &cpu_6502::ora6502, &cpu_6502::absy6502    },   // 0x19
+	{ &cpu_6502::ina6502, &cpu_6502::implied6502 },   // 0x1A
+	{ &cpu_6502::slo6502, &cpu_6502::absy6502    },   // 0x1B (UNDOC)
+	{ &cpu_6502::trb6502, &cpu_6502::abs6502     },   // 0x1C
+	{ &cpu_6502::ora6502, &cpu_6502::absx6502    },   // 0x1D
+	{ &cpu_6502::asl6502, &cpu_6502::absx6502    },   // 0x1E
+	{ &cpu_6502::slo6502, &cpu_6502::absx6502    },   // 0x1F (UNDOC)
+	{ &cpu_6502::jsr6502, &cpu_6502::abs6502     },   // 0x20
+	{ &cpu_6502::and6502, &cpu_6502::indx6502    },   // 0x21
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0x22
+	{ &cpu_6502::rla6502, &cpu_6502::indx6502    },   // 0x23 (UNDOC, optional)
+	{ &cpu_6502::bit6502, &cpu_6502::zp6502      },   // 0x24
+	{ &cpu_6502::and6502, &cpu_6502::zp6502      },   // 0x25
+	{ &cpu_6502::rol6502, &cpu_6502::zp6502      },   // 0x26
+	{ &cpu_6502::rla6502, &cpu_6502::zp6502      },   // 0x27 (UNDOC, optional)
+	{ &cpu_6502::plp6502, &cpu_6502::implied6502 },   // 0x28
 	{ &cpu_6502::and6502, &cpu_6502::immediate6502 }, // 0x29
-	{ &cpu_6502::rola6502, &cpu_6502::implied6502 }, // 0x2A
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x2B
-	{ &cpu_6502::bit6502, &cpu_6502::abs6502     }, // 0x2C
-	{ &cpu_6502::and6502, &cpu_6502::abs6502     }, // 0x2D
-	{ &cpu_6502::rol6502, &cpu_6502::abs6502     }, // 0x2E
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x2F
-	{ &cpu_6502::bmi6502, &cpu_6502::relative6502 }, // 0x30
-	{ &cpu_6502::and6502, &cpu_6502::indy6502    }, // 0x31
-	{ &cpu_6502::and6502, &cpu_6502::indzp6502   }, // 0x32
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x33
-	{ &cpu_6502::bit6502, &cpu_6502::zpx6502     }, // 0x34
-	{ &cpu_6502::and6502, &cpu_6502::zpx6502     }, // 0x35
-	{ &cpu_6502::rol6502, &cpu_6502::zpx6502     }, // 0x36
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x37
-	{ &cpu_6502::sec6502, &cpu_6502::implied6502 }, // 0x38
-	{ &cpu_6502::and6502, &cpu_6502::absy6502    }, // 0x39
-	{ &cpu_6502::dea6502, &cpu_6502::implied6502 }, // 0x3A
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x3B
-	{ &cpu_6502::bit6502, &cpu_6502::absx6502    }, // 0x3C
-	{ &cpu_6502::and6502, &cpu_6502::absx6502    }, // 0x3D
-	{ &cpu_6502::rol6502, &cpu_6502::absx6502    }, // 0x3E
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x3F
-	{ &cpu_6502::rti6502, &cpu_6502::implied6502 }, // 0x40
-	{ &cpu_6502::eor6502, &cpu_6502::indx6502    }, // 0x41
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x42
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x43
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x44
-	{ &cpu_6502::eor6502, &cpu_6502::zp6502      }, // 0x45
-	{ &cpu_6502::lsr6502, &cpu_6502::zp6502      }, // 0x46
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x47
-	{ &cpu_6502::pha6502, &cpu_6502::implied6502 }, // 0x48
+	{ &cpu_6502::rola6502, &cpu_6502::implied6502 },  // 0x2A
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0x2B
+	{ &cpu_6502::bit6502, &cpu_6502::abs6502     },   // 0x2C
+	{ &cpu_6502::and6502, &cpu_6502::abs6502     },   // 0x2D
+	{ &cpu_6502::rol6502, &cpu_6502::abs6502     },   // 0x2E
+	{ &cpu_6502::rla6502, &cpu_6502::abs6502     },   // 0x2F (UNDOC, optional)
+	{ &cpu_6502::bmi6502, &cpu_6502::relative6502 },  // 0x30
+	{ &cpu_6502::and6502, &cpu_6502::indy6502    },   // 0x31
+	{ &cpu_6502::and6502, &cpu_6502::indzp6502   },   // 0x32
+	{ &cpu_6502::rla6502, &cpu_6502::indzp6502   },   // 0x33 (UNDOC, optional)
+	{ &cpu_6502::bit6502, &cpu_6502::zpx6502     },   // 0x34
+	{ &cpu_6502::and6502, &cpu_6502::zpx6502     },   // 0x35
+	{ &cpu_6502::rol6502, &cpu_6502::zpx6502     },   // 0x36
+	{ &cpu_6502::rla6502, &cpu_6502::zpx6502     },   // 0x37 (UNDOC, optional)
+	{ &cpu_6502::sec6502, &cpu_6502::implied6502 },   // 0x38
+	{ &cpu_6502::and6502, &cpu_6502::absy6502    },   // 0x39
+	{ &cpu_6502::dea6502, &cpu_6502::implied6502 },   // 0x3A
+	{ &cpu_6502::rla6502, &cpu_6502::absy6502    },   // 0x3B (UNDOC, optional)
+	{ &cpu_6502::bit6502, &cpu_6502::absx6502    },   // 0x3C
+	{ &cpu_6502::and6502, &cpu_6502::absx6502    },   // 0x3D
+	{ &cpu_6502::rol6502, &cpu_6502::absx6502    },   // 0x3E
+	{ &cpu_6502::rla6502, &cpu_6502::absx6502    },   // 0x3F (UNDOC, optional)
+	{ &cpu_6502::rti6502, &cpu_6502::implied6502 },   // 0x40
+	{ &cpu_6502::eor6502, &cpu_6502::indx6502    },   // 0x41
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0x42
+	{ &cpu_6502::sre6502, &cpu_6502::indx6502    },   // 0x43 (UNDOC)
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0x44
+	{ &cpu_6502::eor6502, &cpu_6502::zp6502      },   // 0x45
+	{ &cpu_6502::lsr6502, &cpu_6502::zp6502      },   // 0x46
+	{ &cpu_6502::sre6502, &cpu_6502::zp6502      },   // 0x47 (UNDOC)
+	{ &cpu_6502::pha6502, &cpu_6502::implied6502 },   // 0x48
 	{ &cpu_6502::eor6502, &cpu_6502::immediate6502 }, // 0x49
-	{ &cpu_6502::lsra6502, &cpu_6502::implied6502 }, // 0x4A
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x4B
-	{ &cpu_6502::jmp6502, &cpu_6502::abs6502     }, // 0x4C
-	{ &cpu_6502::eor6502, &cpu_6502::abs6502     }, // 0x4D
-	{ &cpu_6502::lsr6502, &cpu_6502::abs6502     }, // 0x4E
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x4F
-	{ &cpu_6502::bvc6502, &cpu_6502::relative6502 }, // 0x50
-	{ &cpu_6502::eor6502, &cpu_6502::indy6502    }, // 0x51
-	{ &cpu_6502::eor6502, &cpu_6502::indzp6502   }, // 0x52
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x53
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x54
-	{ &cpu_6502::eor6502, &cpu_6502::zpx6502     }, // 0x55
-	{ &cpu_6502::lsr6502, &cpu_6502::zpx6502     }, // 0x56
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x57
-	{ &cpu_6502::cli6502, &cpu_6502::implied6502 }, // 0x58
-	{ &cpu_6502::eor6502, &cpu_6502::absy6502    }, // 0x59
-	{ &cpu_6502::phy6502, &cpu_6502::implied6502 }, // 0x5A
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x5B
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x5C
-	{ &cpu_6502::eor6502, &cpu_6502::absx6502    }, // 0x5D
-	{ &cpu_6502::lsr6502, &cpu_6502::absx6502    }, // 0x5E
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x5F
-	{ &cpu_6502::rts6502, &cpu_6502::implied6502 }, // 0x60
-	{ &cpu_6502::adc6502, &cpu_6502::indx6502    }, // 0x61
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x62
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x63
-	{ &cpu_6502::stz6502, &cpu_6502::zp6502      }, // 0x64
-	{ &cpu_6502::adc6502, &cpu_6502::zp6502      }, // 0x65
-	{ &cpu_6502::ror6502, &cpu_6502::zp6502      }, // 0x66
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x67
-	{ &cpu_6502::pla6502, &cpu_6502::implied6502 }, // 0x68
+	{ &cpu_6502::lsra6502, &cpu_6502::implied6502 },  // 0x4A
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0x4B
+	{ &cpu_6502::jmp6502, &cpu_6502::abs6502     },   // 0x4C
+	{ &cpu_6502::eor6502, &cpu_6502::abs6502     },   // 0x4D
+	{ &cpu_6502::lsr6502, &cpu_6502::abs6502     },   // 0x4E
+	{ &cpu_6502::sre6502, &cpu_6502::abs6502     },   // 0x4F (UNDOC)
+	{ &cpu_6502::bvc6502, &cpu_6502::relative6502 },  // 0x50
+	{ &cpu_6502::eor6502, &cpu_6502::indy6502    },   // 0x51
+	{ &cpu_6502::eor6502, &cpu_6502::indzp6502   },   // 0x52
+	{ &cpu_6502::sre6502, &cpu_6502::indzp6502   },   // 0x53 (UNDOC)
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0x54
+	{ &cpu_6502::eor6502, &cpu_6502::zpx6502     },   // 0x55
+	{ &cpu_6502::lsr6502, &cpu_6502::zpx6502     },   // 0x56
+	{ &cpu_6502::sre6502, &cpu_6502::zpx6502     },   // 0x57 (UNDOC)
+	{ &cpu_6502::cli6502, &cpu_6502::implied6502 },   // 0x58
+	{ &cpu_6502::eor6502, &cpu_6502::absy6502    },   // 0x59
+	{ &cpu_6502::phy6502, &cpu_6502::implied6502 },   // 0x5A
+	{ &cpu_6502::sre6502, &cpu_6502::absy6502    },   // 0x5B (UNDOC)
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0x5C
+	{ &cpu_6502::eor6502, &cpu_6502::absx6502    },   // 0x5D
+	{ &cpu_6502::lsr6502, &cpu_6502::absx6502    },   // 0x5E
+	{ &cpu_6502::sre6502, &cpu_6502::absx6502    },   // 0x5F (UNDOC)
+	{ &cpu_6502::rts6502, &cpu_6502::implied6502 },   // 0x60
+	{ &cpu_6502::adc6502, &cpu_6502::indx6502    },   // 0x61
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0x62
+	{ &cpu_6502::rra6502, &cpu_6502::indx6502    },   // 0x63 (UNDOC)
+	{ &cpu_6502::stz6502, &cpu_6502::zp6502      },   // 0x64
+	{ &cpu_6502::adc6502, &cpu_6502::zp6502      },   // 0x65
+	{ &cpu_6502::ror6502, &cpu_6502::zp6502      },   // 0x66
+	{ &cpu_6502::rra6502, &cpu_6502::zp6502      },   // 0x67 (UNDOC)
+	{ &cpu_6502::pla6502, &cpu_6502::implied6502 },   // 0x68
 	{ &cpu_6502::adc6502, &cpu_6502::immediate6502 }, // 0x69
-	{ &cpu_6502::rora6502, &cpu_6502::implied6502 }, // 0x6A
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x6B
-	{ &cpu_6502::jmp6502, &cpu_6502::indirect6502 }, // 0x6C
-	{ &cpu_6502::adc6502, &cpu_6502::abs6502     }, // 0x6D
-	{ &cpu_6502::ror6502, &cpu_6502::abs6502     }, // 0x6E
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x6F
-	{ &cpu_6502::bvs6502, &cpu_6502::relative6502 }, // 0x70
-	{ &cpu_6502::adc6502, &cpu_6502::indy6502    }, // 0x71
-	{ &cpu_6502::adc6502, &cpu_6502::indzp6502   }, // 0x72
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x73
-	{ &cpu_6502::stz6502, &cpu_6502::zpx6502     }, // 0x74
-	{ &cpu_6502::adc6502, &cpu_6502::zpx6502     }, // 0x75
-	{ &cpu_6502::ror6502, &cpu_6502::zpx6502     }, // 0x76
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x77
-	{ &cpu_6502::sei6502, &cpu_6502::implied6502 }, // 0x78
-	{ &cpu_6502::adc6502, &cpu_6502::absy6502    }, // 0x79
-	{ &cpu_6502::ply6502, &cpu_6502::implied6502 }, // 0x7A
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x7B
-	{ &cpu_6502::jmp6502, &cpu_6502::indabsx6502 }, // 0x7C
-	{ &cpu_6502::adc6502, &cpu_6502::absx6502    }, // 0x7D
-	{ &cpu_6502::ror6502, &cpu_6502::absx6502    }, // 0x7E
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 }, // 0x7F
-	{ &cpu_6502::bra6502, &cpu_6502::relative6502 }, // 0x80
-	{ &cpu_6502::sta6502, &cpu_6502::indx6502     }, // 0x81
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0x82
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0x83
-	{ &cpu_6502::sty6502, &cpu_6502::zp6502       }, // 0x84
-	{ &cpu_6502::sta6502, &cpu_6502::zp6502       }, // 0x85
-	{ &cpu_6502::stx6502, &cpu_6502::zp6502       }, // 0x86
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0x87
-	{ &cpu_6502::dey6502, &cpu_6502::implied6502  }, // 0x88
+	{ &cpu_6502::rora6502, &cpu_6502::implied6502 },  // 0x6A
+	{ &cpu_6502::rra6502, &cpu_6502::implied6502 },   // 0x6B (UNDOC)
+	{ &cpu_6502::jmp6502, &cpu_6502::indirect6502 },  // 0x6C
+	{ &cpu_6502::adc6502, &cpu_6502::abs6502     },   // 0x6D
+	{ &cpu_6502::ror6502, &cpu_6502::abs6502     },   // 0x6E
+	{ &cpu_6502::rra6502, &cpu_6502::abs6502     },   // 0x6F (UNDOC)
+	{ &cpu_6502::bvs6502, &cpu_6502::relative6502 },  // 0x70
+	{ &cpu_6502::adc6502, &cpu_6502::indy6502    },   // 0x71
+	{ &cpu_6502::adc6502, &cpu_6502::indzp6502   },   // 0x72
+	{ &cpu_6502::rra6502, &cpu_6502::indy6502    },   // 0x73 (UNDOC)
+	{ &cpu_6502::stz6502, &cpu_6502::zpx6502     },   // 0x74
+	{ &cpu_6502::adc6502, &cpu_6502::zpx6502     },   // 0x75
+	{ &cpu_6502::ror6502, &cpu_6502::zpx6502     },   // 0x76
+	{ &cpu_6502::rra6502, &cpu_6502::zpx6502     },   // 0x77 (UNDOC)
+	{ &cpu_6502::sei6502, &cpu_6502::implied6502 },   // 0x78
+	{ &cpu_6502::adc6502, &cpu_6502::absy6502    },   // 0x79
+	{ &cpu_6502::ply6502, &cpu_6502::implied6502 },   // 0x7A
+	{ &cpu_6502::rra6502, &cpu_6502::absy6502    },   // 0x7B (UNDOC)
+	{ &cpu_6502::jmp6502, &cpu_6502::indabsx6502 },   // 0x7C
+	{ &cpu_6502::adc6502, &cpu_6502::absx6502    },   // 0x7D
+	{ &cpu_6502::ror6502, &cpu_6502::absx6502    },   // 0x7E
+	{ &cpu_6502::rra6502, &cpu_6502::absx6502    },   // 0x7F (UNDOC)
+	{ &cpu_6502::bra6502, &cpu_6502::relative6502 },  // 0x80
+	{ &cpu_6502::sta6502, &cpu_6502::indx6502 },	  // 0x81
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0x82
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0x83
+	{ &cpu_6502::sty6502, &cpu_6502::zp6502 },		  // 0x84
+	{ &cpu_6502::sta6502, &cpu_6502::zp6502 },		  // 0x85
+	{ &cpu_6502::stx6502, &cpu_6502::zp6502 },		  // 0x86
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0x87
+	{ &cpu_6502::dey6502, &cpu_6502::implied6502 },   // 0x88
 	{ &cpu_6502::bit6502, &cpu_6502::immediate6502 }, // 0x89
-	{ &cpu_6502::txa6502, &cpu_6502::implied6502  }, // 0x8A
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0x8B
-	{ &cpu_6502::sty6502, &cpu_6502::abs6502      }, // 0x8C
-	{ &cpu_6502::sta6502, &cpu_6502::abs6502      }, // 0x8D
-	{ &cpu_6502::stx6502, &cpu_6502::abs6502      }, // 0x8E
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0x8F
-	{ &cpu_6502::bcc6502, &cpu_6502::relative6502 }, // 0x90
-	{ &cpu_6502::sta6502, &cpu_6502::indy6502     }, // 0x91
-	{ &cpu_6502::sta6502, &cpu_6502::indzp6502    }, // 0x92
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0x93
-	{ &cpu_6502::sty6502, &cpu_6502::zpx6502      }, // 0x94
-	{ &cpu_6502::sta6502, &cpu_6502::zpx6502      }, // 0x95
-	{ &cpu_6502::stx6502, &cpu_6502::zpy6502      }, // 0x96
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0x97
-	{ &cpu_6502::tya6502, &cpu_6502::implied6502  }, // 0x98
-	{ &cpu_6502::sta6502, &cpu_6502::absy6502     }, // 0x99
-	{ &cpu_6502::txs6502, &cpu_6502::implied6502  }, // 0x9A
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0x9B
-	{ &cpu_6502::stz6502, &cpu_6502::abs6502      }, // 0x9C
-	{ &cpu_6502::sta6502, &cpu_6502::absx6502     }, // 0x9D
-	{ &cpu_6502::stz6502, &cpu_6502::absx6502     }, // 0x9E
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0x9F
+	{ &cpu_6502::txa6502, &cpu_6502::implied6502 },   // 0x8A
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0x8B
+	{ &cpu_6502::sty6502, &cpu_6502::abs6502 },       // 0x8C
+	{ &cpu_6502::sta6502, &cpu_6502::abs6502 },       // 0x8D
+	{ &cpu_6502::stx6502, &cpu_6502::abs6502 },       // 0x8E
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0x8F
+	{ &cpu_6502::bcc6502, &cpu_6502::relative6502 },  // 0x90
+	{ &cpu_6502::sta6502, &cpu_6502::indy6502 },      // 0x91
+	{ &cpu_6502::sta6502, &cpu_6502::indzp6502 },	  // 0x92
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0x93
+	{ &cpu_6502::sty6502, &cpu_6502::zpx6502 },		  // 0x94
+	{ &cpu_6502::sta6502, &cpu_6502::zpx6502 },		  // 0x95
+	{ &cpu_6502::stx6502, &cpu_6502::zpy6502 },		  // 0x96
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0x97
+	{ &cpu_6502::tya6502, &cpu_6502::implied6502 },   // 0x98
+	{ &cpu_6502::sta6502, &cpu_6502::absy6502 },	  // 0x99
+	{ &cpu_6502::txs6502, &cpu_6502::implied6502 },   // 0x9A
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0x9B
+	{ &cpu_6502::stz6502, &cpu_6502::abs6502 },		  // 0x9C
+	{ &cpu_6502::sta6502, &cpu_6502::absx6502 },	  // 0x9D
+	{ &cpu_6502::stz6502, &cpu_6502::absx6502 },	  // 0x9E
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0x9F
 	{ &cpu_6502::ldy6502, &cpu_6502::immediate6502 }, // 0xA0
-	{ &cpu_6502::lda6502, &cpu_6502::indx6502     }, // 0xA1
+	{ &cpu_6502::lda6502, &cpu_6502::indx6502 },      // 0xA1
 	{ &cpu_6502::ldx6502, &cpu_6502::immediate6502 }, // 0xA2
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0xA3
-	{ &cpu_6502::ldy6502, &cpu_6502::zp6502       }, // 0xA4
-	{ &cpu_6502::lda6502, &cpu_6502::zp6502       }, // 0xA5
-	{ &cpu_6502::ldx6502, &cpu_6502::zp6502       }, // 0xA6
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0xA7
-	{ &cpu_6502::tay6502, &cpu_6502::implied6502  }, // 0xA8
+	{ &cpu_6502::lax6502, &cpu_6502::indx6502 },      // 0xA3 (UNDOC)
+	{ &cpu_6502::ldy6502, &cpu_6502::zp6502 },        // 0xA4
+	{ &cpu_6502::lda6502, &cpu_6502::zp6502 },        // 0xA5
+	{ &cpu_6502::ldx6502, &cpu_6502::zp6502 },        // 0xA6
+	{ &cpu_6502::lax6502, &cpu_6502::zp6502 },        // 0xA7 (UNDOC)
+	{ &cpu_6502::tay6502, &cpu_6502::implied6502 },   // 0xA8
 	{ &cpu_6502::lda6502, &cpu_6502::immediate6502 }, // 0xA9
-	{ &cpu_6502::tax6502, &cpu_6502::implied6502  }, // 0xAA
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0xAB
-	{ &cpu_6502::ldy6502, &cpu_6502::abs6502      }, // 0xAC
-	{ &cpu_6502::lda6502, &cpu_6502::abs6502      }, // 0xAD
-	{ &cpu_6502::ldx6502, &cpu_6502::abs6502      }, // 0xAE
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0xAF
-	{ &cpu_6502::bcs6502, &cpu_6502::relative6502 }, // 0xB0
-	{ &cpu_6502::lda6502, &cpu_6502::indy6502     }, // 0xB1
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0xB2
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0xB3
-	{ &cpu_6502::ldy6502, &cpu_6502::zpx6502      }, // 0xB4
-	{ &cpu_6502::lda6502, &cpu_6502::zpx6502      }, // 0xB5
-	{ &cpu_6502::ldx6502, &cpu_6502::zpy6502      }, // 0xB6
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0xB7
-	{ &cpu_6502::clv6502, &cpu_6502::implied6502  }, // 0xB8
-	{ &cpu_6502::lda6502, &cpu_6502::absy6502     }, // 0xB9
-	{ &cpu_6502::tsx6502, &cpu_6502::implied6502  }, // 0xBA
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0xBB
-	{ &cpu_6502::ldy6502, &cpu_6502::absx6502     }, // 0xBC
-	{ &cpu_6502::lda6502, &cpu_6502::absx6502     }, // 0xBD
-	{ &cpu_6502::ldx6502, &cpu_6502::absy6502     }, // 0xBE
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0xBF
+	{ &cpu_6502::tax6502, &cpu_6502::implied6502 },   // 0xAA
+	{ &cpu_6502::lax6502, &cpu_6502::immediate6502 }, // 0xAB (UNDOC)
+	{ &cpu_6502::ldy6502, &cpu_6502::abs6502 },       // 0xAC
+	{ &cpu_6502::lda6502, &cpu_6502::abs6502 },       // 0xAD
+	{ &cpu_6502::ldx6502, &cpu_6502::abs6502 },       // 0xAE
+	{ &cpu_6502::lax6502, &cpu_6502::abs6502 },       // 0xAF (UNDOC)
+	{ &cpu_6502::bcs6502, &cpu_6502::relative6502 },  // 0xB0
+	{ &cpu_6502::lda6502, &cpu_6502::indy6502 },      // 0xB1
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0xB2
+	{ &cpu_6502::lax6502, &cpu_6502::indy6502 },      // 0xB3 (UNDOC)
+	{ &cpu_6502::ldy6502, &cpu_6502::zpx6502 },       // 0xB4
+	{ &cpu_6502::lda6502, &cpu_6502::zpx6502 },       // 0xB5
+	{ &cpu_6502::ldx6502, &cpu_6502::zpy6502 },       // 0xB6
+	{ &cpu_6502::lax6502, &cpu_6502::zpy6502 },       // 0xB7 (UNDOC)
+	{ &cpu_6502::clv6502, &cpu_6502::implied6502 },   // 0xB8
+	{ &cpu_6502::lda6502, &cpu_6502::absy6502 },      // 0xB9
+	{ &cpu_6502::tsx6502, &cpu_6502::implied6502 },   // 0xBA
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0xBB
+	{ &cpu_6502::ldy6502, &cpu_6502::absx6502 },      // 0xBC
+	{ &cpu_6502::lda6502, &cpu_6502::absx6502 },      // 0xBD
+	{ &cpu_6502::ldx6502, &cpu_6502::absy6502 },      // 0xBE
+	{ &cpu_6502::lax6502, &cpu_6502::absy6502 },      // 0xBF (UNDOC)
 	{ &cpu_6502::cpy6502, &cpu_6502::immediate6502 }, // 0xC0
-	{ &cpu_6502::cmp6502, &cpu_6502::indx6502     }, // 0xC1
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0xC2
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0xC3
-	{ &cpu_6502::cpy6502, &cpu_6502::zp6502       }, // 0xC4
-	{ &cpu_6502::cmp6502, &cpu_6502::zp6502       }, // 0xC5
-	{ &cpu_6502::dec6502, &cpu_6502::zp6502       }, // 0xC6
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0xC7
-	{ &cpu_6502::iny6502, &cpu_6502::implied6502  }, // 0xC8
+	{ &cpu_6502::cmp6502, &cpu_6502::indx6502 },      // 0xC1
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0xC2
+	{ &cpu_6502::dcp6502, &cpu_6502::indx6502 },      // 0xC3 (UNDOC)
+	{ &cpu_6502::cpy6502, &cpu_6502::zp6502 },        // 0xC4
+	{ &cpu_6502::cmp6502, &cpu_6502::zp6502 },        // 0xC5
+	{ &cpu_6502::dec6502, &cpu_6502::zp6502 },        // 0xC6
+	{ &cpu_6502::dcp6502, &cpu_6502::zp6502 },        // 0xC7 (UNDOC)
+	{ &cpu_6502::iny6502, &cpu_6502::implied6502 },   // 0xC8
 	{ &cpu_6502::cmp6502, &cpu_6502::immediate6502 }, // 0xC9
-	{ &cpu_6502::dex6502, &cpu_6502::implied6502  }, // 0xCA
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0xCB
-	{ &cpu_6502::cpy6502, &cpu_6502::abs6502      }, // 0xCC
-	{ &cpu_6502::cmp6502, &cpu_6502::abs6502      }, // 0xCD
-	{ &cpu_6502::dec6502, &cpu_6502::abs6502      }, // 0xCE
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0xCF
-	{ &cpu_6502::bne6502, &cpu_6502::relative6502 }, // 0xD0
-	{ &cpu_6502::cmp6502, &cpu_6502::indy6502     }, // 0xD1
-	{ &cpu_6502::cmp6502, &cpu_6502::indzp6502    }, // 0xD2
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0xD3
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0xD4
-	{ &cpu_6502::cmp6502, &cpu_6502::zpx6502      }, // 0xD5
-	{ &cpu_6502::dec6502, &cpu_6502::zpx6502      }, // 0xD6
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0xD7
-	{ &cpu_6502::cld6502, &cpu_6502::implied6502  }, // 0xD8
-	{ &cpu_6502::cmp6502, &cpu_6502::absy6502     }, // 0xD9
-	{ &cpu_6502::phx6502, &cpu_6502::implied6502  }, // 0xDA
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0xDB
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0xDC
-	{ &cpu_6502::cmp6502, &cpu_6502::absx6502     }, // 0xDD
-	{ &cpu_6502::dec6502, &cpu_6502::absx6502     }, // 0xDE
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0xDF
+	{ &cpu_6502::dex6502, &cpu_6502::implied6502 },   // 0xCA
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0xCB
+	{ &cpu_6502::cpy6502, &cpu_6502::abs6502 },		  // 0xCC
+	{ &cpu_6502::cmp6502, &cpu_6502::abs6502 },		  // 0xCD
+	{ &cpu_6502::dec6502, &cpu_6502::abs6502 },		  // 0xCE
+	{ &cpu_6502::dcp6502, &cpu_6502::abs6502 },		  // 0xCF (UNDOC)
+	{ &cpu_6502::bne6502, &cpu_6502::relative6502 },  // 0xD0
+	{ &cpu_6502::cmp6502, &cpu_6502::indy6502 },	  // 0xD1
+	{ &cpu_6502::cmp6502, &cpu_6502::indzp6502 },	  // 0xD2
+	{ &cpu_6502::dcp6502, &cpu_6502::indzp6502 },	  // 0xD3 (UNDOC)
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0xD4
+	{ &cpu_6502::cmp6502, &cpu_6502::zpx6502 },		  // 0xD5
+	{ &cpu_6502::dec6502, &cpu_6502::zpx6502 },		  // 0xD6
+	{ &cpu_6502::dcp6502, &cpu_6502::zpx6502 },		  // 0xD7 (UNDOC)
+	{ &cpu_6502::cld6502, &cpu_6502::implied6502 },   // 0xD8
+	{ &cpu_6502::cmp6502, &cpu_6502::absy6502 },	  // 0xD9
+	{ &cpu_6502::phx6502, &cpu_6502::implied6502 },	  // 0xDA
+	{ &cpu_6502::dcp6502, &cpu_6502::absy6502 },	  // 0xDB (UNDOC)
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0xDC
+	{ &cpu_6502::cmp6502, &cpu_6502::absx6502 },	  // 0xDD
+	{ &cpu_6502::dec6502, &cpu_6502::absx6502 },	  // 0xDE
+	{ &cpu_6502::dcp6502, &cpu_6502::absx6502 },	  // 0xDF (UNDOC)
 	{ &cpu_6502::cpx6502, &cpu_6502::immediate6502 }, // 0xE0
-	{ &cpu_6502::sbc6502, &cpu_6502::indx6502     }, // 0xE1
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0xE2
-	{ &cpu_6502::isb6502, &cpu_6502::indx6502     }, // 0xE3
-	{ &cpu_6502::cpx6502, &cpu_6502::zp6502       }, // 0xE4
-	{ &cpu_6502::sbc6502, &cpu_6502::zp6502       }, // 0xE5
-	{ &cpu_6502::inc6502, &cpu_6502::zp6502       }, // 0xE6
-	{ &cpu_6502::isb6502, &cpu_6502::zp6502       }, // 0xE7
-	{ &cpu_6502::inx6502, &cpu_6502::implied6502  }, // 0xE8
+	{ &cpu_6502::sbc6502, &cpu_6502::indx6502 },	  // 0xE1
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0xE2
+	{ &cpu_6502::isc6502, &cpu_6502::indx6502 },	  // 0xE3 (UNDOC)
+	{ &cpu_6502::cpx6502, &cpu_6502::zp6502 },		  // 0xE4
+	{ &cpu_6502::sbc6502, &cpu_6502::zp6502 },		  // 0xE5
+	{ &cpu_6502::inc6502, &cpu_6502::zp6502 },		  // 0xE6
+	{ &cpu_6502::isc6502, &cpu_6502::zp6502 },		  // 0xE7 (UNDOC)
+	{ &cpu_6502::inx6502, &cpu_6502::implied6502 },   // 0xE8
 	{ &cpu_6502::sbc6502, &cpu_6502::immediate6502 }, // 0xE9
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0xEA (real NOP)
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0xEB
-	{ &cpu_6502::cpx6502, &cpu_6502::abs6502      }, // 0xEC
-	{ &cpu_6502::sbc6502, &cpu_6502::abs6502      }, // 0xED
-	{ &cpu_6502::inc6502, &cpu_6502::abs6502      }, // 0xEE
-	{ &cpu_6502::isb6502, &cpu_6502::abs6502      }, // 0xEF
-	{ &cpu_6502::beq6502, &cpu_6502::relative6502 }, // 0xF0
-	{ &cpu_6502::sbc6502, &cpu_6502::indy6502     }, // 0xF1
-	{ &cpu_6502::sbc6502, &cpu_6502::indzp6502    }, // 0xF2
-	{ &cpu_6502::isb6502, &cpu_6502::indy6502     }, // 0xF3
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502  }, // 0xF4
-	{ &cpu_6502::sbc6502, &cpu_6502::zpx6502      }, // 0xF5
-	{ &cpu_6502::inc6502, &cpu_6502::zpx6502      }, // 0xF6
-	{ &cpu_6502::isb6502, &cpu_6502::zpx6502      }, // 0xF7
-	{ &cpu_6502::sed6502, &cpu_6502::implied6502  }, // 0xF8
-	{ &cpu_6502::sbc6502, &cpu_6502::absy6502     }, // 0xF9
-	{ &cpu_6502::plx6502, &cpu_6502::implied6502  }, // 0xFA
-	{ &cpu_6502::isb6502, &cpu_6502::absy6502     }, // 0xFB
-	{ &cpu_6502::nop6502, &cpu_6502::absx6502     }, // 0xFC
-	{ &cpu_6502::sbc6502, &cpu_6502::absx6502     }, // 0xFD
-	{ &cpu_6502::inc6502, &cpu_6502::absx6502     }, // 0xFE
-	{ &cpu_6502::isb6502, &cpu_6502::absx6502     }  // 0xFF
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0xEA
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0xEB
+	{ &cpu_6502::cpx6502, &cpu_6502::abs6502 },		  // 0xEC
+	{ &cpu_6502::sbc6502, &cpu_6502::abs6502 },		  // 0xED
+	{ &cpu_6502::inc6502, &cpu_6502::abs6502 },		  // 0xEE
+	{ &cpu_6502::isc6502, &cpu_6502::abs6502 },		  // 0xEF (UNDOC)
+	{ &cpu_6502::beq6502, &cpu_6502::relative6502 },  // 0xF0
+	{ &cpu_6502::sbc6502, &cpu_6502::indy6502 },	  // 0xF1
+	{ &cpu_6502::sbc6502, &cpu_6502::indzp6502 },	  // 0xF2
+	{ &cpu_6502::isc6502, &cpu_6502::indzp6502 },	  // 0xF3 (UNDOC)
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0xF4
+	{ &cpu_6502::sbc6502, &cpu_6502::zpx6502 },		  // 0xF5
+	{ &cpu_6502::inc6502, &cpu_6502::zpx6502 },       // 0xF6
+	{ &cpu_6502::isc6502, &cpu_6502::zpx6502 },		  // 0xF7 (UNDOC)
+	{ &cpu_6502::sed6502, &cpu_6502::implied6502 },   // 0xF8
+	{ &cpu_6502::sbc6502, &cpu_6502::absy6502 },      // 0xF9
+	{ &cpu_6502::plx6502, &cpu_6502::implied6502 },   // 0xFA
+	{ &cpu_6502::isc6502, &cpu_6502::absy6502 },      // 0xFB (UNDOC)
+	{ &cpu_6502::nop6502, &cpu_6502::absx6502 },      // 0xFC
+	{ &cpu_6502::sbc6502, &cpu_6502::absx6502 },      // 0xFD
+	{ &cpu_6502::inc6502, &cpu_6502::absx6502 },      // 0xFE
+	{ &cpu_6502::isc6502, &cpu_6502::absx6502 }       // 0xFF (UNDOC)
 };
 
 // -----------------------------------------------------------------------------
@@ -385,6 +387,7 @@ cpu_6502::cpu_6502(uint8_t* mem, MemoryReadByte* read_mem, MemoryWriteByte* writ
 	memory_read = read_mem;
 	cpu_num = num;
 	log_debug_rw = 1;
+	mmem = false;
 	debug = 0;
 	init6502(addr);
 }
@@ -419,25 +422,21 @@ int cpu_6502::get6502ticks(int reset)
 
 uint8_t cpu_6502::get6502memory(uint16_t addr)
 {
-	if ((direct_zero_page && addr <= 0x00FF) || (direct_stack_page && addr >= 0x0100 && addr <= 0x01FF))
-	{
-		return MEM[addr];
-	}
-
 	MemoryReadByte* reader = memory_read;
-	while (reader->lowAddr != 0xFFFFFFFF)
+	while (reader->lowAddr != -1)
 	{
 		if (addr >= reader->lowAddr && addr <= reader->highAddr)
 		{
 			if (reader->memoryCall)
 				return reader->memoryCall(addr - reader->lowAddr, reader);
 			else
-				return static_cast<const uint8_t*>(reader->pUserArea)[addr - reader->lowAddr];
+				// Please note this is MAME style memory addressing, where the address returned is relative to the calling address. 
+				return ((const uint8_t*)reader->pUserArea)[addr - reader->lowAddr];
 		}
 		++reader;
 	}
 
-	if (!mmem)
+	if (!mmem)	
 		return MEM[addr];
 
 	if (log_debug_rw)
@@ -457,51 +456,29 @@ uint8_t cpu_6502::get6502memory(uint16_t addr)
 
 void cpu_6502::put6502memory(uint16_t addr, uint8_t byte)
 {
-	if ((direct_zero_page && addr <= 0x00FF) || (direct_stack_page && addr >= 0x0100 && addr <= 0x01FF))
-	{
-		MEM[addr] = byte;
-		return;
-	}
-
 	MemoryWriteByte* writer = memory_write;
-	while (writer->lowAddr != 0xFFFFFFFF)
+	while (writer->lowAddr != -1)
 	{
 		if (addr >= writer->lowAddr && addr <= writer->highAddr)
 		{
 			if (writer->memoryCall)
 				writer->memoryCall(addr - writer->lowAddr, byte, writer);
 			else
-				((uint8_t*)writer->pUserArea)[addr - writer->lowAddr] = byte;
+				((uint8_t*)writer->pUserArea)[addr - writer->lowAddr] = byte; 
+			// Please note this is MAME style memory addressing, where the address written to is relative to the calling address. 
 			return;
 		}
 		++writer;
 	}
 
-	if (!mmem)
-		MEM[addr] = byte;
-	else if (log_debug_rw)
+	if (!mmem) {
+		MEM[addr] = byte; return;
+	}
+	
+	 if (log_debug_rw)
 		LOG_INFO("Warning! Unhandled Write %02X at %x", byte, addr);
 }
 
-// -----------------------------------------------------------------------------
-// Enable Direct Zero Page Access
-// Enables or disables direct zero-page addressing mode optimization.
-// When enabled, accesses to the zero page may be handled directly for speed.
-// -----------------------------------------------------------------------------
-void cpu_6502::enableDirectZeroPage(bool enable)
-{
-	direct_zero_page = enable;
-}
-
-// -----------------------------------------------------------------------------
-// Enable Direct Stack Page Access
-// Enables or disables direct stack page addressing mode optimization.
-// When enabled, accesses to the stack page may be handled directly for speed.
-// -----------------------------------------------------------------------------
-void cpu_6502::enableDirectStackPage(bool enable)
-{
-	direct_stack_page = enable;
-}
 
 // -----------------------------------------------------------------------------
 // Callback Hook After CLI Instruction.
@@ -659,8 +636,10 @@ void cpu_6502::nmi6502()
 // -----------------------------------------------------------------------------
 void cpu_6502::push16(uint16_t val)
 {
-	put6502memory(BASE_STACK + S, (val >> 8) & 0xFF);
-	put6502memory(BASE_STACK + ((S - 1) & 0xFF), val & 0xFF);
+	//put6502memory(BASE_STACK + S, (val >> 8) & 0xFF);
+	//put6502memory(BASE_STACK + ((S - 1) & 0xFF), val & 0xFF);
+	MEM[BASE_STACK + S] = (uint8_t)((val >> 8) & 0xFF);
+	MEM[BASE_STACK + ((S - 1) & 0xFF)] = (uint8_t)(val & 0xFF);
 	S -= 2;
 }
 
@@ -671,7 +650,8 @@ void cpu_6502::push16(uint16_t val)
 // -----------------------------------------------------------------------------
 void cpu_6502::push8(uint8_t val)
 {
-	put6502memory(BASE_STACK + S--, val);
+	//put6502memory(BASE_STACK + S--, val);
+	MEM[BASE_STACK + S--] = val;
 }
 
 // -----------------------------------------------------------------------------
@@ -681,8 +661,10 @@ void cpu_6502::push8(uint8_t val)
 // -----------------------------------------------------------------------------
 uint16_t cpu_6502::pull16()
 {
-	uint16_t val = get6502memory(BASE_STACK + ((S + 1) & 0xFF)) |
-		(static_cast<uint16_t>(get6502memory(BASE_STACK + ((S + 2) & 0xFF))) << 8);
+	//uint16_t val = get6502memory(BASE_STACK + ((S + 1) & 0xFF)) |
+		//(static_cast<uint16_t>(get6502memory(BASE_STACK + ((S + 2) & 0xFF))) << 8);
+	uint16_t val = MEM[BASE_STACK + ((S + 1) & 0xFF)] |
+		((uint16_t)MEM[BASE_STACK + ((S + 2) & 0xFF)] << 8);
 	S += 2;
 	return val;
 }
@@ -694,7 +676,8 @@ uint16_t cpu_6502::pull16()
 // -----------------------------------------------------------------------------
 uint8_t cpu_6502::pull8()
 {
-	return get6502memory(BASE_STACK + ++S);
+	//return get6502memory(BASE_STACK + ++S);
+	return MEM[BASE_STACK + ++S];
 }
 
 // -----------------------------------------------------------------------------
@@ -719,14 +702,14 @@ int cpu_6502::exec6502(int timerTicks)
 int cpu_6502::step6502()
 {
 	clockticks6502 = 0;
-	
+
 	P |= F_T;
 
 	if (_irqPending)
 		irq6502();
 
 	opcode = get6502memory(PC++);
-	//++instruction_count[opcode];  // I only enable this during instruction counting
+	//++instruction_count[opcode];  // You should only enable this during instruction counting and debugging
 	if (opcode > 0xFF)
 	{
 		LOG_INFO("Invalid Opcode called!!!: opcode %x Memory %X", opcode, PC);
@@ -758,12 +741,9 @@ int cpu_6502::step6502()
 
 	clockticks6502 += ticks[opcode];
 	clocktickstotal += clockticks6502;
-
-	if (AAE_TIMER_ENABLED)
-	{
-		timer_update(clockticks6502, cpu_num);
-	}
-
+    
+	timer_update(clockticks6502, cpu_num);
+	
 	if (clocktickstotal > 0x0FFFFFFF)
 		clocktickstotal = 0;
 
@@ -896,11 +876,13 @@ void cpu_6502::indy6502()
 {
 	uint16_t temp;
 	value = get6502memory(PC++);
-	temp = (value + 1) & 0xFF;
+	temp = (value & 0xFF00) | ((value + 1) & 0x00FF);  //zero-page wraparound
 	savepc = get6502memory(value) | (get6502memory(temp) << 8);
-	if (ticks[opcode] == 5 && ((savepc ^ (savepc + Y)) & 0xFF00))
-		clockticks6502++;
+	if (ticks[opcode] == 5)
+		if ((savepc >> 8) != ((savepc + Y) >> 8))
+			clockticks6502++; //one cycle penlty for page-crossing on some opcodes
 	savepc += Y;
+
 }
 
 // -----------------------------------------------------------------------------
@@ -1568,6 +1550,7 @@ void cpu_6502::nop6502()
 	if (opcode != 0xEA) // Official NOP is 0xEA
 		LOG_INFO("!!!!WARNING UNHANDLED NO-OP CALLED: %02X CPU: %d", opcode, cpu_num);
 
+	// I need to review this when I get some time.
 	switch (opcode)
 	{
 	case 0x1C: case 0x3C: case 0x5C: case 0x7C:
@@ -1786,15 +1769,28 @@ void cpu_6502::ply6502()
 	Y = pull8();
 	set_nz(Y);
 }
+
 // -----------------------------------------------------------------------------
-// ISB (Increment and Subtract with Carry) — Unofficial Opcode
-// Increments the memory value, then subtracts it from the accumulator (A)
-// using SBC. Affects all standard SBC flags.
+// LAX Instruction (Undocumented)
+//
+// Loads memory into both the A and X registers simultaneously.
+// Affects: N, Z
 // -----------------------------------------------------------------------------
-void cpu_6502::isb6502()
+inline void cpu_6502::lax6502()
 {
-	inc6502();
-	sbc6502();
+	A = X = get6502memory(savepc);
+	set_nz(A);
+}
+
+// -----------------------------------------------------------------------------
+// SAX Instruction (Undocumented)
+//
+// Stores A & X to memory. Combines A and X registers with bitwise AND.
+// Affects: None
+// -----------------------------------------------------------------------------
+inline void cpu_6502::sax6502()
+{
+	put6502memory(savepc, A & X);
 }
 
 // -----------------------------------------------------------------------------
@@ -1821,6 +1817,122 @@ void cpu_6502::tsb6502()
 	uint8_t v = get6502memory(savepc);
 	set_z(A & v);
 	put6502memory(savepc, v | A);
+}
+
+// -----------------------------------------------------------------------------
+// DCP Instruction (Undocumented)
+//
+// Decrements memory, then compares the result with A as if performing CMP.
+// Affects: N, Z, C
+// -----------------------------------------------------------------------------
+inline void cpu_6502::dcp6502()
+{
+	uint8_t m = get6502memory(savepc) - 1;
+	put6502memory(savepc, m);
+	uint16_t result = (uint16_t)A - m;
+	P = (P & ~(F_C | F_Z | F_N)) |
+		((result < 0x100) ? F_C : 0) |
+		((A == m) ? F_Z : 0) |
+		((result & 0x80) ? F_N : 0);
+}
+
+// -----------------------------------------------------------------------------
+// ISC Instruction (Undocumented)
+//
+// Increments memory, then subtracts it from A with carry (SBC).
+// Affects: N, Z, C, V
+// -----------------------------------------------------------------------------
+inline void cpu_6502::isc6502()
+{
+	uint8_t m = get6502memory(savepc) + 1;
+	put6502memory(savepc, m);
+
+	uint16_t sum = (uint16_t)A - m - (P & F_C ? 0 : 1);
+	uint8_t result = (uint8_t)(sum & 0xFF);
+
+	P = (P & ~(F_V | F_C)) |
+		((~(A ^ m) & (A ^ result) & 0x80) ? F_V : 0) |
+		((sum < 0x100) ? F_C : 0);
+
+	A = result;
+	set_nz(A);
+}
+
+// -----------------------------------------------------------------------------
+// SLO Instruction (Undocumented)
+//
+// Shifts memory left (ASL), then ORs the result into A.
+// Affects: N, Z, C
+// -----------------------------------------------------------------------------
+inline void cpu_6502::slo6502()
+{
+	value = get6502memory(savepc);
+	P = (P & ~F_C) | (value >> 7);
+	value <<= 1;
+	put6502memory(savepc, value);
+	A |= value;
+	set_nz(A);
+}
+
+// -----------------------------------------------------------------------------
+// RRA Instruction (Undocumented)
+//
+// Rotates memory right (ROR), then adds it to A with carry (ADC).
+// Affects: N, Z, C, V
+// -----------------------------------------------------------------------------
+inline void cpu_6502::rra6502()
+{
+	value = get6502memory(savepc);
+	uint8_t carry_in = (P & F_C) ? 0x80 : 0;
+	P = (P & ~F_C) | (value & 1);
+	value = (value >> 1) | carry_in;
+	put6502memory(savepc, value);
+
+	int c = (P & F_C) ? 1 : 0;
+	int sum = A + value + c;
+
+	P &= ~(F_V | F_C);
+	if (~(A ^ value) & (A ^ sum) & 0x80) P |= F_V;
+	if (sum > 0xFF) P |= F_C;
+
+	A = (uint8_t)(sum);
+	set_nz(A);
+}
+
+// -----------------------------------------------------------------------------
+// RLA Instruction (Undocumented)
+//
+// Performs a left shift on memory (ASL), then ANDs the result with A.
+// Equivalent to: ASL + AND
+// Affects: N, Z, C
+// -----------------------------------------------------------------------------
+inline void cpu_6502::rla6502()
+{
+	value = get6502memory(savepc);
+	P = (P & ~F_C) | (value >> 7); // Set Carry from old bit 7
+	value <<= 1;
+	put6502memory(savepc, value);
+
+	A &= value;
+	set_nz(A);
+}
+
+// -----------------------------------------------------------------------------
+// SRE Instruction (Undocumented)
+//
+// Performs a logical shift right (LSR) on memory, then EORs the result with A.
+// Equivalent to: LSR + EOR
+// Affects: N, Z, C
+// -----------------------------------------------------------------------------
+inline void cpu_6502::sre6502()
+{
+	value = get6502memory(savepc);
+	P = (P & ~F_C) | (value & 0x01); // Set Carry from bit 0
+	value >>= 1;
+	put6502memory(savepc, value);
+
+	A ^= value;
+	set_nz(A);
 }
 
 // -----------------------------------------------------------------------------

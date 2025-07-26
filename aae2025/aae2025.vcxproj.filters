@@ -261,9 +261,6 @@
     <ClInclude Include="rand.h">
       <Filter>Source Files</Filter>
     </ClInclude>
-    <ClInclude Include="sys_timer.h">
-      <Filter>Source Files</Filter>
-    </ClInclude>
     <ClInclude Include="targetver.h">
       <Filter>Source Files</Filter>
     </ClInclude>
@@ -377,6 +374,12 @@
     </ClInclude>
     <ClInclude Include="sys_window\log.h">
       <Filter>Source Files\sys_window</Filter>
+    </ClInclude>
+    <ClInclude Include="sys_video\shader_util.h">
+      <Filter>Source Files\sys_video</Filter>
+    </ClInclude>
+    <ClInclude Include="wintimer.h">
+      <Filter>Source Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -542,9 +545,6 @@
     <ClCompile Include="rand.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="sys_timer.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="texrect.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -646,6 +646,9 @@
     </ClCompile>
     <ClCompile Include="sys_window\log.cpp">
       <Filter>Source Files\sys_window</Filter>
+    </ClCompile>
+    <ClCompile Include="wintimer.cpp">
+      <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

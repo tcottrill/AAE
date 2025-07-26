@@ -10,7 +10,7 @@
 #include "gl_prim_debug.h"
 #include "aae_emulator.h"
 #include "iniFile.h"
-#include "sys_timer.h"
+#include "wintimer.h"
 #include "aae_mame_driver.h"
 #include "path_helper.h"
 
@@ -18,35 +18,20 @@
 #include "win10_win11_required_code.h"
 #endif // WIN7BUILD
 
-
-
 //Globals
 HWND hWnd;
 int SCREEN_W = 1024;
 int SCREEN_H = 768;
+int currentWinWidth = 1024;
+int currentWinHeight = 768;
 
-#pragma comment(lib, "winmm.lib")
+
 
 // Function Declarations
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
 
-static UINT g_timer_resolution = 0;
 
-void InitHighResTimer()
-{
-	TIMECAPS caps;
-	if (timeGetDevCaps(&caps, sizeof(TIMECAPS)) == TIMERR_NOERROR)
-	{
-		g_timer_resolution = caps.wPeriodMin;
-		timeBeginPeriod(g_timer_resolution); // Request high-res timer
-	}
-}
 
-void ShutdownHighResTimer()
-{
-	if (g_timer_resolution > 0)
-		timeEndPeriod(g_timer_resolution); // Restore system timer resolution
-}
 
 //========================================================================
 // Hide mouse cursor (lock it)
@@ -75,7 +60,6 @@ void scare_mouse()
 	SetCapture(hWnd);
 }
 
-
 //========================================================================
 // Show mouse cursor (unlock it)
 //========================================================================
@@ -90,7 +74,7 @@ void show_mouse()
 	ShowCursor(true);
 }
 
-void CaptureMouseToWindow(HWND hwnd) 
+void CaptureMouseToWindow(HWND hwnd)
 {
 	RECT rc;
 	GetClientRect(hwnd, &rc);
@@ -103,7 +87,7 @@ void CaptureMouseToWindow(HWND hwnd)
 	SetCapture(hwnd);
 }
 
-void ReleaseMouseFromWindow() 
+void ReleaseMouseFromWindow()
 {
 	ClipCursor(nullptr);
 	ReleaseCapture();
@@ -134,7 +118,6 @@ void osMessage(const char* caption, const char* fmt, ...) {
 	va_end(args);
 	MessageBoxA(hWnd, buffer, caption, MB_ICONERROR | MB_OK);
 }
-
 
 enum WindowsOS {
 	NotFind,
@@ -242,27 +225,50 @@ HWND win_get_window()
 {
 	return hWnd;
 }
-/*
-HRESULT DisableNCRendering(HWND hWnd)
+
+void ResizeWindowToFullscreenWithBorders(HWND hWnd, float aspectRatio)
 {
-	HRESULT hr = S_OK;
+	// Restore standard window borders
+	DWORD style = WS_OVERLAPPEDWINDOW;
+	DWORD exStyle = WS_EX_APPWINDOW;
+	SetWindowLong(hWnd, GWL_STYLE, style);
+	SetWindowLong(hWnd, GWL_EXSTYLE, exStyle);
 
-	DWMNCRENDERINGPOLICY ncrp = DWMNCRP_DISABLED;
+	// Get the monitor dimensions excluding the taskbar
+	MONITORINFO mi = { sizeof(mi) };
+	HMONITOR hMonitor = MonitorFromWindow(hWnd, MONITOR_DEFAULTTONEAREST);
+	GetMonitorInfo(hMonitor, &mi);
+	RECT workArea = mi.rcWork;  // This excludes the taskbar
 
-	// Disable non-client area rendering on the window.
-	hr = ::DwmSetWindowAttribute(hWnd,
-		DWMWA_NCRENDERING_POLICY,
-		&ncrp,
-		sizeof(ncrp));
+	int screenW = workArea.right - workArea.left;
+	int screenH = workArea.bottom - workArea.top;
 
-	if (SUCCEEDED(hr))
-	{
-		// ...
+	// Compute target window size with same aspect ratio
+	int targetW = screenW;
+	int targetH = static_cast<int>(targetW / aspectRatio);
+
+	if (targetH > screenH) {
+		targetH = screenH;
+		targetW = static_cast<int>(targetH * aspectRatio);
 	}
 
-	return hr;
+	// Compute centered position
+	int posX = workArea.left + (screenW - targetW) / 2;
+	int posY = workArea.top + (screenH - targetH) / 2;
+
+	// Adjust for window style (so client area is correct)
+	RECT windowRect = { 0, 0, targetW, targetH };
+	AdjustWindowRectEx(&windowRect, style, FALSE, exStyle);
+	int winW = windowRect.right - windowRect.left;
+	int winH = windowRect.bottom - windowRect.top;
+
+	SetWindowPos(hWnd, nullptr, posX, posY, winW, winH, SWP_NOZORDER | SWP_FRAMECHANGED);
+	SCREEN_W = winW;
+	SCREEN_H = winH;
+//	ViewOrtho(SCREEN_W, SCREEN_H);
 }
-*/
+
+/*
 void CenterWindow(void)
 {
 	//   long lWS;
@@ -320,7 +326,7 @@ void AdjustWindowRectForBorders(const int borders, const int x, const int y,
 		LOG_INFO("AdjustWindowRect failed, error: ");
 	}
 }
-
+*/
 std::string toLowerCase(const std::string& str) {
 	std::string result = str;
 	std::transform(result.begin(), result.end(), result.begin(), [](unsigned char c) {
@@ -342,7 +348,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 	RECT rect;
 	MSG msg;
 	bool quit = FALSE;
-	TIMECAPS caps;
+	
 	std::string temppath;
 
 	//Buffer for command line parsing
@@ -360,19 +366,9 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 	wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
 	wc.lpszMenuName = NULL;
 	wc.lpszClassName = "Emulator";
-
-	//This has to be set BEFORE Window creation on Windows 10. This enables or disables DPI Scaling support on Windows 10 or 11
-	// Windows 11 still reports as Windows 10. :(
-	if (GetOsVersion() == Win10 || GetOsVersion() == Win11)
-	{
-		//Make the OS DPI Aware for those people with 4K monitors using scaling.
-       //bool REZ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE);
-		//DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 // DPI_AWARENESS_CONTEXT_UNAWARE_GDISCALED // DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 //DPI_AWARENESS_CONTEXT_UNAWARE
-		//SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_SYSTEM_AWARE);
-	}
-
+	
 	if (!RegisterClass(&wc)) {
-		MessageBox(NULL, "Window Registration Failed!","Error", MB_OK | MB_ICONERROR);
+		MessageBox(NULL, "Window Registration Failed!", "Error", MB_OK | MB_ICONERROR);
 		return 1;
 	}
 
@@ -418,7 +414,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 	//
 	///////////////// FIX THIS CRAP
 	//
-	//
+	// ResizeWindowToFullscreenWithBorders(win_get_window(), 4.0f / 3.0f);
 	//
 	//
 	// Create The Window
@@ -445,7 +441,6 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 	SetForegroundWindow(hWnd);
 	SetFocus(hWnd);
 
-
 	::SetWindowPos(win_get_window(),       // handle to window
 		HWND_TOPMOST,  // placement-order handle
 		0,     // horizontal position
@@ -455,10 +450,10 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 		SWP_SHOWWINDOW | SWP_NOSIZE | SWP_NOMOVE// window-positioning options
 	);
 
-	// Set the current working directory to the location of the executable. 
-	// This solves any issues with running from a front end in a different folder. 
+	// Set the current working directory to the location of the executable.
+	// This solves any issues with running from a front end in a different folder.
 	temppath = getpathM(0, 0);
-	
+
 	if (!SetCurrentDirectory(temppath.c_str()))
 	{
 		fprintf(stderr, "SetCurrentDirectory failed (%lu)\n", GetLastError());
@@ -471,15 +466,6 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 #endif
 
 	LOG_INFO("Starting Log");
-
-	// This has to be done AFTER the window instantiation.
-	// Disable Windows 10 window decorations cause I hates them.
-	//if (GetOsVersion() == Win10 || GetOsVersion() == Win11)
-	//{
-		// Try to disable Windows 10/11 Decorations. We don't want em.
-		// If not, add the 8 pixels back to the bottom and resize?
-		//DisableNCRendering(hWnd);
-	//}
 
 #ifndef WIN7BUILD
 	disable_windows10_window_scaling();
@@ -495,15 +481,14 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 
 	SCREEN_W = gl_width;
 	SCREEN_H = gl_height;
-	
-	//Init OS Timers
-	timeGetDevCaps(&caps, sizeof(TIMECAPS));
-	timeBeginPeriod(caps.wPeriodMin);
-	//InitHighResTimer();
-	TimerInit(); //Start timer
-	LOG_INFO("Setting timer resolution to Min Supported: %d (ms)", caps.wPeriodMin);
 
-	//Setup cmd line parsing (Not currently being used, but here so I don't lose it. 
+	AllowAccessibilityShortcutKeys(false);
+
+	//Init OS Timer
+	TimerInit(); //Start timer
+	
+
+	//Setup cmd line parsing (Not currently being used, but here so I don't lose it.
 	int w_argc = 0;
 	LPWSTR* w_argv = CommandLineToArgvW(GetCommandLineW(), &w_argc);
 	if (w_argv)
@@ -520,12 +505,12 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 			my_argv_buf.push_back(toLowerCase(s));
 			LOG_INFO("string here is %s", my_argv_buf[i].c_str());
 		}
-		
+
 		my_argv.reserve(my_argv_buf.size());
 
 		for (size_t i = 0; i < my_argv_buf.size(); ++i)
 		{
-		   my_argv.push_back(const_cast<char*>(my_argv_buf[i].c_str()));
+			my_argv.push_back(const_cast<char*>(my_argv_buf[i].c_str()));
 		}
 		LocalFree(w_argv);
 	}
@@ -556,12 +541,14 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 	CaptureMouseToWindow(hWnd);
 	SetFocus(hWnd);
 
-		// Init Emulator Here.
+	//ResizeWindowToFullscreenWithBorders(win_get_window(), 4.0f / 3.0f);
+	
+	// Init Emulator Here.
 	emulator_init(__argc, __argv);
 
 	//
 	/////////////////// END INITIALIZATION ////////////////////////////////////
-	
+
 	// program main loop
 	while (!done)
 	{
@@ -585,7 +572,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 			if (config.debug_profile_code) { LOG_INFO("starting emulator run"); }
 			//CaptureMouseToWindow(hWnd);
 			emulator_run();
-		
+
 			int err = glGetError();
 			if (err != 0)
 			{
@@ -605,8 +592,8 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 	emulator_end();
 	// shutdown OpenGL
 	OpenGLShutDown();
-	timeEndPeriod(caps.wPeriodMin);
-	ShutdownHighResTimer();
+
+	AllowAccessibilityShortcutKeys(true);
 	//Shutdown logging
 	LogClose();
 	// destroy the window explicitly
@@ -623,115 +610,67 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 	switch (message)
 	{
-	case WM_DPICHANGED:
-		return 0;
-
-		/*
-		 UINT dpiX = LOWORD(wParam);
-			UINT dpiY = HIWORD(wParam);
-
-			// Get the suggested new window rectangle
-			RECT* newRect = reinterpret_cast<RECT*>(lParam);
-
-			// Update window size and position based on the new DPI
-			SetWindowPos(hwnd,
-						 NULL,
-						 newRect->left,
-						 newRect->top,
-						 newRect->right - newRect->left,
-						 newRect->bottom - newRect->top,
-						 SWP_NOZORDER | SWP_NOACTIVATE);
-
-			// Update any other UI elements or resources that depend on DPI
-			// ...
-		*/
-
 	case WM_CREATE:
 		GetClientRect(hWnd, &windowRect);
-		// Hide the cursor
-		ShowCursor(FALSE);
-		// Clip the cursor to the window rectangle
-		ClipCursor(&windowRect);
+		ShowCursor(FALSE);               // Hide cursor
+		ClipCursor(&windowRect);         // Clip cursor to window
 		return 0;
 
-	case WM_CLOSE:
-		// Unhide the cursor
-		ShowCursor(TRUE);
-		// Release the cursor clip
-		ClipCursor(NULL);
-		PostQuitMessage(0);
-		return 0;
-
-	case WM_INPUT: 
+	case WM_DPICHANGED:
 	{
-		//SetForegroundWindow(hWnd);
-		return RawInput_ProcessInput(hWnd, wParam, lParam); 
-		return 0; 
+		RECT* newRect = reinterpret_cast<RECT*>(lParam);
+		SetWindowPos(hWnd, NULL,
+			newRect->left, newRect->top,
+			newRect->right - newRect->left,
+			newRect->bottom - newRect->top,
+			SWP_NOZORDER | SWP_NOACTIVATE);
+		// TODO: Handle other DPI-dependent updates
+		return 0;
 	}
 
-	case WM_DESTROY:
-		// Unhide the cursor
-		ShowCursor(TRUE);
-		// Release the cursor clip
-		ClipCursor(NULL);
-		PostQuitMessage(0);
+	case WM_INPUT:
+		return RawInput_ProcessInput(hWnd, wParam, lParam);
 
+	case WM_SETCURSOR:
+		if (LOWORD(lParam) == HTCLIENT) {
+			SetCursor(NULL);  // Hide the hardware cursor in client area
+			return TRUE;
+		}
+		break;
+
+	case WM_KEYDOWN:
+		if (wParam == VK_ESCAPE) {
+			PostQuitMessage(0);
+			return 0;
+		}
+		break;
+
+	case WM_SYSKEYDOWN:
+	case WM_SYSKEYUP:
+		if (wParam == VK_MENU) {
+			return 0;  // Suppress Alt key (system menu)
+		}
+		break;
+
+	case WM_CLOSE:
+	case WM_DESTROY:
+		ShowCursor(TRUE);         // Restore cursor
+		ClipCursor(NULL);         // Release cursor clip
+		PostQuitMessage(0);
 		return 0;
 
 	case WM_SYSCOMMAND:
-	{
-		switch (wParam & 0xfff0)
+		switch (wParam & 0xFFF0)
 		{
 		case SC_SCREENSAVE:
 		case SC_MONITORPOWER:
-		{
-			return 0;
-		}
-
-		case WM_SETCURSOR:
-			if (LOWORD(lParam) == HTCLIENT)
-			{
-				SetCursor(NULL);
-
-				return TRUE;
-			}
-			return 0;
-
-		case WM_CLOSE:
-		{
-			if (MessageBox(hWnd, ("Do You Want To Exit?"), ("Exit?"), MB_YESNO) == IDYES)
-			{
-				DestroyWindow(hWnd);
-				PostQuitMessage(0);
-			}
-			return 0;
-		}
-		/*
-		case SC_CLOSE:
-		{
-			//I can add a close hook here to trap close button
-			quit = 1;
-			PostQuitMessage(0);
+		case SC_KEYMENU:
+			return 0;  // Block screen saver, monitor power, ALT menu
+		default:
 			break;
 		}
-		*/
-		// User trying to access application menu using ALT?
-		case SC_KEYMENU:
-			return 0;
-		}
-		DefWindowProc(hWnd, message, wParam, lParam);
+		break;
 	}
 
-	case WM_KEYDOWN:
-		switch (wParam)
-		{
-		case VK_ESCAPE:
-			PostQuitMessage(0);
-			return 0;
-		}
-		return 0;
-
-	default:
-		return DefWindowProc(hWnd, message, wParam, lParam);
-	}
+	return DefWindowProc(hWnd, message, wParam, lParam);
 }

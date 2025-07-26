@@ -218,7 +218,6 @@
     <ClInclude Include="sys_audio\wav_filters.h" />
     <ClInclude Include="sys_audio\wav_resample.h" />
     <ClInclude Include="sys_audio\XAudio2Stream.h" />
-    <ClInclude Include="sys_timer.h" />
     <ClInclude Include="sys_video\colordefs.h" />
     <ClInclude Include="sys_video\glcode.h" />
     <ClInclude Include="sys_video\glew.h" />
@@ -229,6 +228,7 @@
     <ClInclude Include="sys_video\MathUtils.h" />
     <ClInclude Include="sys_video\rotation_table.h" />
     <ClInclude Include="sys_video\shader_definitions.h" />
+    <ClInclude Include="sys_video\shader_util.h" />
     <ClInclude Include="sys_video\stb_image.h" />
     <ClInclude Include="sys_video\stb_image_write.h" />
     <ClInclude Include="sys_video\sys_gl.h" />
@@ -256,6 +256,7 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
     </ClInclude>
+    <ClInclude Include="wintimer.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="aae_mame_driver.cpp" />
@@ -321,7 +322,6 @@
     <ClCompile Include="sys_audio\wav_filters.cpp" />
     <ClCompile Include="sys_audio\wav_resample.cpp" />
     <ClCompile Include="sys_audio\XAudio2Stream.cpp" />
-    <ClCompile Include="sys_timer.cpp" />
     <ClCompile Include="sys_video\glcode.cpp" />
     <ClCompile Include="sys_video\glew.c" />
     <ClCompile Include="sys_video\gl_fbo.cpp" />
@@ -350,6 +350,7 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
     </ClCompile>
+    <ClCompile Include="wintimer.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

@@ -29,7 +29,7 @@ enum DXTI_MOUSE_BUTTON_STATE //named state of mouse buttons
 	DOWN = TRUE,
 };
 struct DXTI_MOUSE_STATE m_mouseStateRaw;
-
+/*
 HRESULT RawInput_Initialize(HWND hWnd)
 {
 	RAWINPUTDEVICE Rid[2];
@@ -54,6 +54,40 @@ HRESULT RawInput_Initialize(HWND hWnd)
 	if (FALSE == RegisterRawInputDevices(Rid, 2, sizeof(Rid[0]))) //registers both mouse and keyboard
 		return E_FAIL;
 
+	return S_OK;
+}
+*/
+
+HRESULT RawInput_Initialize(HWND hWnd)
+{
+	RAWINPUTDEVICE Rid[2] = {};
+
+	// Mouse
+	Rid[0].usUsagePage = 0x01;
+	Rid[0].usUsage = 0x02; // Mouse
+	Rid[0].dwFlags = RIDEV_INPUTSINK; // receive input even when not focused
+	Rid[0].hwndTarget = hWnd;
+
+	// Keyboard
+	Rid[1].usUsagePage = 0x01;
+	Rid[1].usUsage = 0x06; // Keyboard
+	Rid[1].dwFlags = RIDEV_INPUTSINK;
+	Rid[1].hwndTarget = hWnd;
+
+	// Clear key/mouse state
+	ZeroMemory(key, sizeof(key));
+	ZeroMemory(lastkey, sizeof(lastkey));
+	ZeroMemory(&m_mouseStateRaw, sizeof(m_mouseStateRaw));
+
+	ShowCursor(TRUE);
+	windowHandle = hWnd;
+
+	if (!RegisterRawInputDevices(Rid, 2, sizeof(RAWINPUTDEVICE))) {
+		LOG_INFO("RegisterRawInputDevices (keyboard/mouse) failed.");
+		return E_FAIL;
+	}
+
+	LOG_INFO("RawInput (keyboard/mouse) initialized successfully.");
 	return S_OK;
 }
 

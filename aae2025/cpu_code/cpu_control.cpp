@@ -122,7 +122,7 @@ void init6502(struct MemoryReadByte* read, struct MemoryWriteByte* write, int me
 	active_cpu = cpunum;
 	m_cpu_6502[cpunum] = new cpu_6502(Machine->memory_region[cpunum], read, write, mem_top, cpunum);
 
-	m_cpu_6502[cpunum]->enableDirectStackPage(true);
+	//m_cpu_6502[cpunum]->enableDirectStackPage(true);
 	//m_cpu_6502[cpunum]->enableDirectZeroPage(true);
 
 	m_cpu_6502[cpunum]->reset6502();

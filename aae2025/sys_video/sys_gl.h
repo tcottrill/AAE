@@ -7,39 +7,38 @@
   diagnostic tools and capability checks.
 
   Features:
-    - Single entry point to create an OpenGL context:
-        InitOpenGLContext(bool forceLegacyGL2)
-          • forceLegacyGL2 = true: creates OpenGL 2.1 compatibility context
-          • forceLegacyGL2 = false: creates highest supported OpenGL 4.x/3.x context
-    - GLEW initialization and extension checks
-    - Sets up orthographic 2D projection (ViewOrtho)
-    - Handles window resizing (OnResize)
-    - Double-buffered rendering support (GLSwapBuffers)
-    - VSync enable/disable via WGL extension (osWaitVsync)
-    - Full OpenGL error checking with file/line info (CheckGLError)
-    - Capability reporting for debugging and compatibility logging (ReportOpenGLCapabilities)
+	- Single entry point to create an OpenGL context:
+		InitOpenGLContext(bool forceLegacyGL2)
+		  • forceLegacyGL2 = true: creates OpenGL 2.1 compatibility context
+		  • forceLegacyGL2 = false: creates highest supported OpenGL 4.x/3.x context
+	- GLEW initialization and extension checks
+	- Sets up orthographic 2D projection (ViewOrtho)
+	- Handles window resizing (OnResize)
+	- Double-buffered rendering support (GLSwapBuffers)
+	- VSync enable/disable via WGL extension (osWaitVsync)
+	- Full OpenGL error checking with file/line info (CheckGLError)
+	- Capability reporting for debugging and compatibility logging (ReportOpenGLCapabilities)
 
   Dependencies:
-    - GLEW and WGLEW
-    - Win32 API (HDC, HWND)
-    - External: win_get_window() for HWND
-    - Logging macros: LOG_INFO, LOG_ERROR
+	- GLEW and WGLEW
+	- Win32 API (HDC, HWND)
+	- External: win_get_window() for HWND
+	- Logging macros: LOG_INFO, LOG_ERROR
 
   Usage:
-    1. Call InitOpenGLContext(true) for legacy OpenGL 2.1
-       or InitOpenGLContext(false) to use the highest OpenGL 3/4 version.
-    2. Use ViewOrtho() for 2D rendering setup.
-    3. Use OnResize() to adjust the viewport on window resize.
-    4. Call GLSwapBuffers() after rendering.
-    5. Optionally call osWaitVsync(true/false) to toggle vsync.
-    6. Use check_gl_error() macro to log any OpenGL errors.
-    7. Call OpenGLShutDown() to clean up resources on exit.
+	1. Call InitOpenGLContext(true) for legacy OpenGL 2.1
+	   or InitOpenGLContext(false) to use the highest OpenGL 3/4 version.
+	2. Use ViewOrtho() for 2D rendering setup.
+	3. Use OnResize() to adjust the viewport on window resize.
+	4. Call GLSwapBuffers() after rendering.
+	5. Optionally call osWaitVsync(true/false) to toggle vsync.
+	6. Use check_gl_error() macro to log any OpenGL errors.
+	7. Call OpenGLShutDown() to clean up resources on exit.
 
   License:
-    Released into the public domain under The Unlicense.
-    See http://unlicense.org/ for more details.
+	Released into the public domain under The Unlicense.
+	See http://unlicense.org/ for more details.
 */
-
 
 #pragma once
 
@@ -52,7 +51,7 @@
 #include "wglew.h"
 
 void ViewOrtho(int width, int height);
-bool InitOpenGLContext(bool forceLegacyGL2);
+bool InitOpenGLContext(bool forceLegacyGL2, bool enableMultisample = false, bool useCoreProfile = false);
 void OpenGLShutDown();
 void GLSwapBuffers();
 void osWaitVsync(bool enable);

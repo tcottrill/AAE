@@ -202,7 +202,7 @@ WRITE_HANDLER(BzoneSounds)
 	{
 		if (data & 0x10)
 		{ 	//Data is 0xb0
-			sample_set_freq(3, sample_get_freq(3) * 1.66);
+			sample_set_freq(3, (int) (sample_get_freq(3) * 1.66));
 		}// Fast rumble
 		else
 		{//data is 0xa0

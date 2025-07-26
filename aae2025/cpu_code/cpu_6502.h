@@ -71,12 +71,6 @@ public:
 	void reset_instruction_counts();
 
 	// -------------------------------------------------------------------------
-	// Direct memory access configuration
-	// -------------------------------------------------------------------------
-	void enableDirectZeroPage(bool enable);
-	void enableDirectStackPage(bool enable);
-
-	// -------------------------------------------------------------------------
 	// Register access
 	// -------------------------------------------------------------------------
 	uint8_t m6502_get_reg(int regnum);
@@ -226,9 +220,14 @@ private:
 	void sec6502(); void sed6502(); void sei6502(); void sta6502();
 	void stx6502(); void sty6502(); void tax6502(); void tay6502();
 	void tsx6502(); void txa6502(); void txs6502(); void tya6502();
-	void bra6502(); void dea6502(); void ina6502();
-	void phx6502(); void plx6502(); void phy6502(); void ply6502();
-	void stz6502(); void isb6502(); void tsb6502(); void trb6502();
+	void bra6502(); void dea6502(); void ina6502(); void phx6502();
+	void plx6502(); void phy6502(); void ply6502(); void stz6502();
+	void tsb6502(); void trb6502(); 
+	// -------------------------------------------------------------------------
+	// Undocumented Instructions
+	// -------------------------------------------------------------------------
+	void lax6502(); void sax6502(); void dcp6502(); void isc6502();
+	void slo6502(); void rra6502(); void rla6502(); void sre6502();
 };
 
 #endif // _6502_H_

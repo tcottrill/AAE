@@ -446,9 +446,13 @@ MEM_ADDR(0x4800, 0x7fff, MWA_ROM)
 MEM_END
 
 MEM_READ(AsteroidRead)
+MEM_ADDR(0x0000, 0x03ff, MRA_RAM)
 MEM_ADDR(0x2000, 0x2007, asteroid_IN0_r)
 MEM_ADDR(0x2400, 0x2407, asteroid_IN1_r)
 MEM_ADDR(0x2800, 0x2803, asteroid_DSW1_r) /* DSW1 */
+MEM_ADDR(0x4000, 0x47ff, MRA_RAM)
+MEM_ADDR(0x5000, 0x57ff, MRA_ROM)
+MEM_ADDR(0x6800, 0x7fff, MRA_ROM)
 MEM_END
 
 MEM_READ(AsterockRead)
@@ -458,14 +462,16 @@ MEM_ADDR(0x2800, 0x2803, asteroid_DSW1_r) /* DSW1 */
 MEM_END
 
 MEM_WRITE(AsteroidWrite)
+MEM_ADDR(0x0000, 0x03ff, MWA_RAM)
 MEM_ADDR(0x3000, 0x3000, dvg_go_w)
 MEM_ADDR(0x3200, 0x3200, asteroid_bank_switch_w)
 MEM_ADDR(0x3400, 0x3400, watchdog_reset_w)
 MEM_ADDR(0x3600, 0x3600, asteroid_explode_w)
 MEM_ADDR(0x3a00, 0x3a00, asteroid_thump_w)
 MEM_ADDR(0x3c00, 0x3c05, asteroid_sounds_w)
-MEM_ADDR(0x6800, 0x7fff, MWA_ROM) //Program Rom
+MEM_ADDR(0x4000, 0x47ff, MWA_RAM)
 MEM_ADDR(0x5000, 0x57ff, MWA_ROM) //Vector Rom
+MEM_ADDR(0x6800, 0x7fff, MWA_ROM) //Program Rom
 MEM_END
 
 /////////////////// MAIN() for program ///////////////////////////////////////////////////

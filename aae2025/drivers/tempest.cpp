@@ -479,32 +479,38 @@ MEM_ADDR(0x3000, 0x57ff, MWA_ROM)
 MEM_END
 
 MEM_READ(TempestRead)
+MEM_ADDR(0x0000, 0x07ff, MRA_RAM)
 MEM_ADDR(0x0c00, 0x0c00, TempestIN0read)
 MEM_ADDR(0x0d00, 0x0d00, ip_port_3_r)
 MEM_ADDR(0x0e00, 0x0e00, ip_port_4_r)
-MEM_ADDR(0x60c0, 0x60cf, pokey_1_r)
-MEM_ADDR(0x60d0, 0x60df, pokey_2_r)
+MEM_ADDR(0x2000, 0x2fff, MRA_RAM)
+MEM_ADDR(0x3000, 0x3fff, MRA_ROM)
 MEM_ADDR(0x6040, 0x6040, MathboxStatusRead)
 MEM_ADDR(0x6050, 0x6050, EaromRead)
 MEM_ADDR(0x6060, 0x6060, MathboxLowbitRead)
 MEM_ADDR(0x6070, 0x6070, MathboxHighbitRead)
+MEM_ADDR(0x60c0, 0x60cf, pokey_1_r)
+MEM_ADDR(0x60d0, 0x60df, pokey_2_r)
+MEM_ADDR(0x9000, 0xdfff, MRA_ROM)
+MEM_ADDR(0xf000, 0xffff, MRA_ROM)
 MEM_END
 
 MEM_WRITE(TempestWrite)
+MEM_ADDR(0x0000, 0x07ff, MWA_RAM)
 MEM_ADDR(0x0800, 0x080f, colorram_w)
-MEM_ADDR(0x60c0, 0x60cf, pokey_1_w)
-MEM_ADDR(0x60d0, 0x60df, pokey_2_w)
-MEM_ADDR(0x6080, 0x609f, MathboxGo)
+MEM_ADDR(0x2000, 0x2fff, MWA_RAM)
+MEM_ADDR(0x3000, 0x3fff, MWA_ROM)
 MEM_ADDR(0x4000, 0x4000, coin_write)
 MEM_ADDR(0x4800, 0x4800, advdvg_go_w)
-MEM_ADDR(0x3000, 0x3fff, MWA_ROM)
-MEM_ADDR(0x6000, 0x603f, EaromWrite)
-MEM_ADDR(0x6040, 0x6040, EaromCtrl)
 MEM_ADDR(0x5000, 0x5000, watchdog_reset_w)
 MEM_ADDR(0x5800, 0x5800, avg_reset_w)
+MEM_ADDR(0x6000, 0x603f, EaromWrite)
+MEM_ADDR(0x6040, 0x6040, EaromCtrl)
+MEM_ADDR(0x6080, 0x609f, MathboxGo)
+MEM_ADDR(0x60c0, 0x60cf, pokey_1_w)
+MEM_ADDR(0x60d0, 0x60df, pokey_2_w)
 MEM_ADDR(0x60e0, 0x60e0, tempest_led_w)
 MEM_ADDR(0x9000, 0xffff, MWA_ROM)
-MEM_ADDR(0x3000, 0x57ff, MWA_ROM)
 MEM_END
 
 void run_tempest()
@@ -535,12 +541,11 @@ int init_tempest(void)
 {
 	pokey_sh_start(&pokey_interface);
 	init6502(TempestRead, TempestWrite, 0xffff, CPU0);
-	cache_clear();
+	
 	if (gamenum == TEMPTUBE ||
 		gamenum == TEMPEST1 ||
 		gamenum == TEMPEST2 ||
 		gamenum == TEMPEST3 ||
-		gamenum == VBRAKOUT ||
 		gamenum == TEMPEST)
 	{
 		if (config.hack) 

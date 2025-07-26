@@ -24,12 +24,12 @@ extern "C" {
 	void free_game_textures();
 	int init_gl(void);
 	void end_gl();
-	int init_shader();
-	void WriteShaderError(GLhandleARB obj, const char* shaderName);
+	//int init_shader();
+	
 	void Widescreen_calc();
 	
-	void set_render_raster();
-	void final_render_raster();
+	//void set_render_raster();
+	//void final_render_raster();
 
 #ifdef __cplusplus
 }

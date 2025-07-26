@@ -169,6 +169,7 @@ MEM_ADDR(0x3200, 0x3200, ll_led_write)
 MEM_ADDR(0x3400, 0x3400, watchdog_reset_w)
 MEM_ADDR(0x3c00, 0x3c00, llander_sounds_w)
 MEM_ADDR(0x3e00, 0x3e00, llander_snd_reset_w)
+MEM_ADDR(0x4000, 0x47ff, MWA_RAM )
 MEM_ADDR(0x4800, 0x5fff, MWA_ROM)
 MEM_ADDR(0x6000, 0x7fff, MWA_ROM)
 MEM_END
@@ -179,6 +180,9 @@ MEM_ADDR(0x2000, 0x2000, llander_IN0_r)
 MEM_ADDR(0x2400, 0x2407, llander_IN1_r)
 MEM_ADDR(0x2800, 0x2803, llander_DSW1_r)
 MEM_ADDR(0x2c00, 0x2c00, ip_port_3_r)
+MEM_ADDR(0x4000, 0x47ff, MRA_RAM)
+MEM_ADDR(0x4800, 0x5fff, MRA_ROM ) /* vector rom */
+MEM_ADDR(0x6000, 0x7fff, MRA_ROM )
 MEM_END
 
 void run_llander()

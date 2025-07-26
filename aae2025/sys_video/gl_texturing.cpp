@@ -1,7 +1,7 @@
 ﻿#include "aae_mame_driver.h"
 #include "gl_texturing.h"
 #include "glcode.h"
-
+#include "texture_handler.h"
 // For Vector Fonts.
 #include "vector_fonts.h"
 #include "colordefs.h"
@@ -11,88 +11,9 @@
 float wideadj = 1;
 int errorsound = 0;
 
-GLuint error_tex[2];
-GLuint pause_tex[2];
-GLuint fun_tex[4];
-GLuint art_tex[8];
-GLuint game_tex[10];
-GLuint menu_tex[7];
-
 //
 //   Texturing and drawing rectangle code Below.
 //
-
-// Binds and configures a 2D texture.
-/// @param texture     OpenGL texture ID to bind.
-/// @param linear      Use linear filtering if true (default: true).
-/// @param mipmapping  Enable trilinear mipmap filtering if true (default: false).
-/// @param blendMode   Enable Blending
-/// @param setColor    Reset current color to opaque white if true (default: false).
-
-void set_texture(GLuint* texture, GLboolean linear, GLboolean mipmapping, GLboolean blending, GLboolean set_color)
-{
-	// Determine filters
-	GLenum magFilter = linear ? GL_LINEAR : GL_NEAREST;
-	GLenum minFilter = mipmapping
-		? GL_LINEAR_MIPMAP_LINEAR
-		: magFilter;
-
-	// Bind & env
-	glBindTexture(GL_TEXTURE_2D, *texture);
-	glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
-
-	// Filtering
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, magFilter);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, minFilter);
-
-	// Wrapping
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-	// Enable texturing
-	glEnable(GL_TEXTURE_2D);
-
-	// Optional color reset
-	if (set_color) {
-		glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-	}
-
-	if (blending) {
-		glEnable(GL_BLEND);
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	}
-}
-
-/// Apply one of several preset blend functions (0–15), or disable blending for any other value.
-/// @param mode  Blend mode index (0–15); anything else turns off GL_BLEND.
-inline void applyBlendMode(int mode)
-{
-	if (mode < 0 || mode > 15) {
-		glDisable(GL_BLEND);
-		return;
-	}
-
-	glEnable(GL_BLEND);
-	switch (mode)
-	{
-	case 0:  glBlendFunc(GL_DST_COLOR, GL_ZERO);               break;
-	case 1:  glBlendFunc(GL_SRC_COLOR, GL_ONE);                break;
-	case 2:  glBlendFunc(GL_SRC_ALPHA, GL_ONE);                break;
-	case 3:  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); break;  // default
-	case 4:  glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_ONE);                break;
-	case 5:  glBlendFunc(GL_DST_COLOR, GL_SRC_COLOR);          break;
-	case 6:  glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_SRC_ALPHA);          break;
-	case 7:  glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_ZERO);               break;
-	case 8:  glBlendFunc(GL_ONE_MINUS_SRC_ALPHA, GL_SRC_COLOR);          break;
-	case 9:  glBlendFunc(GL_SRC_ALPHA, GL_DST_COLOR);          break;
-	case 10: glBlendFunc(GL_ONE, GL_ONE);                break;
-	case 11: glBlendFunc(GL_ONE, GL_ZERO);               break;
-	case 12: glBlendFunc(GL_ZERO, GL_ONE);                break;
-	case 13: glBlendFunc(GL_ONE, GL_DST_COLOR);          break;
-	case 14: glBlendFunc(GL_SRC_ALPHA, GL_DST_COLOR);          break;
-	case 15: glBlendFunc(GL_ONE_MINUS_SRC_ALPHA, GL_SRC_COLOR);          break;
-	}
-}
 
 inline void drawTexturedQuad(float x1, float y1, float x2, float y2)
 {
@@ -175,12 +96,6 @@ void Screen_Rect(int facing, int size)
 	drawTexturedQuad(0.0f, (float)size, (float)size, 0.0f);
 }
 
-void Centered_Rect(int facing, int size)
-{
-	float h = size * 0.75f;
-	drawTexturedQuad(0.0f, h, (float)size, 0.0f);
-}
-
 void Resize_Rect(int facing, int size)
 {
 	float h = size * 0.75f;
@@ -189,51 +104,6 @@ void Resize_Rect(int facing, int size)
 
 // This code should never have to be ran.
 // All games run in the same internal resolution.
-
-void texture_reinit()
-{
-	/*
-	glEnable(GL_TEXTURE_2D);
-	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo1);
-	glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT);
-	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	glDrawBuffer(GL_COLOR_ATTACHMENT1_EXT);
-	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	glDrawBuffer(GL_COLOR_ATTACHMENT2_EXT);
-	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo2);
-	glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT);
-	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	glDrawBuffer(GL_COLOR_ATTACHMENT1_EXT);
-	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo3);
-	glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT);
-	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	glDrawBuffer(GL_COLOR_ATTACHMENT1_EXT);
-	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);
-	glDrawBuffer(GL_BACK);
-	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	//allegro_gl_flip();
-	/*
-	glDeleteTextures(1, &art_tex[0]);
-	glDeleteTextures(1, &art_tex[1]);
-	glDeleteTextures(1, &art_tex[2]);
-	glDeleteTextures(1, &art_tex[3]);
-	glDeleteTextures(1, &game_tex[0]);
-	*/
-}
 
 // This should only be called once per each game.
 // This code is needed because of the weird way I loaded textures power of 2.
@@ -266,10 +136,7 @@ void resize_art_textures()
 		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 		glDisable(GL_BLEND);
-		// Norm_Rect(0,1024);
-		 //Centered_Rect(0,1024);
 		Resize_Rect(0, 1024);
-		//Any_Rect(0, 0, 1024, 0, 750);
 		glBindTexture(GL_TEXTURE_2D, 0);
 		glDeleteTextures(1, &art_tex[0]);
 		glGenTextures(1, &art_tex[0]);
@@ -295,10 +162,7 @@ void resize_art_textures()
 		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 		glDisable(GL_BLEND);
-		//Norm_Rect(0,1024);
-		//Centered_Rect(0,1024);
 		Resize_Rect(0, 1024);
-		//Any_Rect(0, sx, sy, ex, ey);
 		glBindTexture(GL_TEXTURE_2D, 0);
 		glDeleteTextures(1, &art_tex[1]);
 		glGenTextures(1, &art_tex[1]);
@@ -349,9 +213,9 @@ void show_error(void)
 		glTranslatef(375, 475, 0);
 
 		drawTexturedQuad(-24.0f, -24.0f, 24.0f, 24.0f);
-		
-		//TODO: Replace this with Vector drawing calls. 
-		
+
+		//TODO: Replace this with Vector drawing calls.
+
 		/*
 		glLoadIdentity();
 		glPrint(418, 457, 255, 255, 255, 255, 1.1, 0, 0, "An Error Occurred!!");
@@ -399,57 +263,36 @@ void pause_loop()
 }
 
 /*
-inline void drawTexturedQuad(float x1, float y1, float x2, float y2)
+
+/// Apply one of several preset blend functions (0–15), or disable blending for any other value.
+/// @param mode  Blend mode index (0–15); anything else turns off GL_BLEND.
+inline void applyBlendMode(int mode)
 {
-	static GLuint vboVertices = 0;
-	static GLuint vboTexCoords = 0;
-	static bool initialized = false;
-
-	if (!initialized) {
-		glGenBuffers(1, &vboVertices);
-		glGenBuffers(1, &vboTexCoords);
-
-		static const GLfloat texCoords[12] = {
-			0.0f, 1.0f,
-			0.0f, 0.0f,
-			1.0f, 0.0f,
-
-			0.0f, 1.0f,
-			1.0f, 0.0f,
-			1.0f, 1.0f
-		};
-		glBindBuffer(GL_ARRAY_BUFFER, vboTexCoords);
-		glBufferData(GL_ARRAY_BUFFER, sizeof(texCoords), texCoords, GL_STATIC_DRAW);
-
-		initialized = true;
+	if (mode < 0 || mode > 15) {
+		glDisable(GL_BLEND);
+		return;
 	}
 
-	// Update screen-space vertex positions
-	GLfloat vertices[12] = {
-		x1, y1,
-		x1, y2,
-		x2, y2,
-
-		x1, y1,
-		x2, y2,
-		x2, y1
-	};
-
-	glBindBuffer(GL_ARRAY_BUFFER, vboVertices);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), nullptr, GL_STREAM_DRAW); // buffer orphaning
-	glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices);
-
-	glEnableClientState(GL_VERTEX_ARRAY);
-	glVertexPointer(2, GL_FLOAT, 0, nullptr);
-
-	glBindBuffer(GL_ARRAY_BUFFER, vboTexCoords);
-	glEnableClientState(GL_TEXTURE_COORD_ARRAY);
-	glTexCoordPointer(2, GL_FLOAT, 0, nullptr);
-
-	glDrawArrays(GL_TRIANGLES, 0, 6);
-
-	glDisableClientState(GL_TEXTURE_COORD_ARRAY);
-	glDisableClientState(GL_VERTEX_ARRAY);
-	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glEnable(GL_BLEND);
+	switch (mode)
+	{
+	case 0:  glBlendFunc(GL_DST_COLOR, GL_ZERO);               break;
+	case 1:  glBlendFunc(GL_SRC_COLOR, GL_ONE);                break;
+	case 2:  glBlendFunc(GL_SRC_ALPHA, GL_ONE);                break;
+	case 3:  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); break;  // default
+	case 4:  glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_ONE);                break;
+	case 5:  glBlendFunc(GL_DST_COLOR, GL_SRC_COLOR);          break;
+	case 6:  glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_SRC_ALPHA);          break;
+	case 7:  glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_ZERO);               break;
+	case 8:  glBlendFunc(GL_ONE_MINUS_SRC_ALPHA, GL_SRC_COLOR);          break;
+	case 9:  glBlendFunc(GL_SRC_ALPHA, GL_DST_COLOR);          break;
+	case 10: glBlendFunc(GL_ONE, GL_ONE);                break;
+	case 11: glBlendFunc(GL_ONE, GL_ZERO);               break;
+	case 12: glBlendFunc(GL_ZERO, GL_ONE);                break;
+	case 13: glBlendFunc(GL_ONE, GL_DST_COLOR);          break;
+	case 14: glBlendFunc(GL_SRC_ALPHA, GL_DST_COLOR);          break;
+	case 15: glBlendFunc(GL_ONE_MINUS_SRC_ALPHA, GL_SRC_COLOR);          break;
+	}
 }
+
 */

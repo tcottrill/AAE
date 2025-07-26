@@ -230,6 +230,7 @@ uint8_t cpu_z80::In(uint8_t bPort)
 	}
 
 	m_regF = (m_regF & C_FLAG) | ZSPTable[bVal];
+	m_regF &= ~(H_FLAG | N_FLAG);
 
 	return bVal;
 }

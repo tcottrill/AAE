@@ -3,6 +3,7 @@
 #define WIN10_WIN11_H
 
 void disable_windows10_window_scaling();
-
+void DisableRoundedCorners(HWND hwnd);
+void EnableDPIAwareness();
 
 #endif

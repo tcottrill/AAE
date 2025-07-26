@@ -3,6 +3,7 @@
 #include "aae_avg.h"
 #include "emu_vector_draw.h"
 #include "gl_texturing.h"
+#include "texture_handler.h"
 //============================================================================
 // AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME 
 // code, 0.29 through .90 mixed with code of my own. This emulator was 

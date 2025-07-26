@@ -39,6 +39,7 @@ static int lastbank = 0;
 static float sweep = 0;
 
 static int NO_CACHE = 0;
+static int cache_count = 0;
 
 static int (*opcode_handler)(int) = nullptr;
 static void (*draw_handler)(int, int, int, int, int, int) = nullptr;
@@ -233,8 +234,9 @@ void AVG_RUN(void)
 	statz = 0;
 	scale = 0;
 	total_length = 0;
-	if (NO_CACHE) cache_clear();
-
+	//if (NO_CACHE) 
+	cache_clear();
+	
 	while (!done)
 	{
 		firstwd = opcode_handler(pc);
@@ -403,6 +405,7 @@ int avg_go()
 		return 1;
 	}
 	else {
+		
 		AVG_RUN();
 		if (total_length > 1)
 		{
@@ -472,7 +475,7 @@ int avg_init(int type)
 	case USE_AVG:
 	{
 		vec_mem = &Machine->memory_region[CPU0][Machine->gamedrv->vectorram];
-		NO_CACHE = 1;
+		NO_CACHE = 0;
 		scale_adj = 2;
 		draw_handler = draw_avg;
 		stat_handler = stat_avg;

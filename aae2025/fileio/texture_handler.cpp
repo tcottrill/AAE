@@ -13,6 +13,14 @@
 #include "../sys_video/stb_image.h"
 #include "../sys_video/stb_image_write.h" // https://github.com/nothings/stb
 
+
+GLuint error_tex[2];
+GLuint pause_tex[2];
+GLuint fun_tex[4];
+GLuint art_tex[8];
+GLuint game_tex[10];
+GLuint menu_tex[7];
+
 // Keep track of every texture created.
 static std::vector<GLuint> g_textures;
 static std::mutex       g_texMutex;
@@ -68,7 +76,7 @@ GLuint load_texture(const char* filename,
 	}
 
 	if (!image_data) {
-		LOG_ERROR("ERROR: could not load %s\n", filename);
+		LOG_ERROR("ERROR: could not load %s", filename);
 		if (raw_data) free(raw_data);
 		return 0;
 	}
@@ -76,7 +84,7 @@ GLuint load_texture(const char* filename,
 
 	// NPOT warning
 	if ((width & (width - 1)) != 0 || (height & (height - 1)) != 0) {
-		LOG_INFO("WARNING: texture %s is not power of 2 dimensions\n", filename);
+		LOG_INFO("NOTE: texture %s is not power of 2 dimensions", filename);
 	}
 
 	// generate & bind
@@ -201,4 +209,45 @@ void snapshot()
 		buffer.data(), width * 4);
 
 	LOG_INFO("snapshot saved: %s", outPath.string().c_str());
+}
+
+// Binds and configures a 2D texture.
+/// @param texture     OpenGL texture ID to bind.
+/// @param linear      Use linear filtering if true (default: true).
+/// @param mipmapping  Enable trilinear mipmap filtering if true (default: false).
+/// @param blendMode   Enable Blending
+/// @param setColor    Reset current color to opaque white if true (default: false).
+
+void set_texture(GLuint* texture, GLboolean linear, GLboolean mipmapping, GLboolean blending, GLboolean set_color)
+{
+	// Determine filters
+	GLenum magFilter = linear ? GL_LINEAR : GL_NEAREST;
+	GLenum minFilter = mipmapping
+		? GL_LINEAR_MIPMAP_LINEAR
+		: magFilter;
+
+	// Bind & env
+	glBindTexture(GL_TEXTURE_2D, *texture);
+	glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+
+	// Filtering
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, magFilter);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, minFilter);
+
+	// Wrapping
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+	// Enable texturing
+	glEnable(GL_TEXTURE_2D);
+
+	// Optional color reset
+	if (set_color) {
+		glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+	}
+
+	if (blending) {
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	}
 }

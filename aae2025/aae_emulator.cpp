@@ -17,7 +17,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <malloc.h>
-#include "sys_timer.h"
+#include "wintimer.h"
 #include "acommon.h"
 #include "fileio/texture_handler.h"
 #include "config.h"
@@ -49,6 +49,8 @@
 #ifndef WIN7BUILD
 #include "win10_win11_required_code.h"
 #endif // WIN7BUILD
+
+extern void ResizeWindowToFullscreenWithBorders(HWND hWnd, float aspectRatio);
 
 using namespace std;
 using namespace chrono;
@@ -950,7 +952,9 @@ void run_game(void)
 	}
 
 	LOG_INFO("\n\n----END OF INIT -----!\n\n");
-	
+
+	//ResizeWindowToFullscreenWithBorders(win_get_window(), 4.0f/3.0f);
+
 
 //	LOG_INFO("Gamelist here is %s   Desc: %s", gamelist[0].displayName.c_str(), gamelist[0].description.c_str());
 }

@@ -33,7 +33,8 @@
 extern void osd_get_pen(int pen, unsigned char* red, unsigned char* green, unsigned char* blue);
 
 // Main screen rect calc
-Rect2 screen_rect;
+//Rect2 screen_rect;
+Rect2 *screen_rect = nullptr;
 //Raster rendering
 Fpoly* sc;
 extern float vid_scale;
@@ -59,6 +60,7 @@ int adj_vert = 0;
 //
 //
 //
+
 
 void calc_screen_rect(int screen_width, int screen_height, char* aspect, int rotated)
 {
@@ -120,13 +122,13 @@ void calc_screen_rect(int screen_width, int screen_height, char* aspect, int rot
 
 	int v = 8 * rotated; //0,16,24
 	//Now set the points
-	screen_rect.BottomLeft(xadj, yadj, indices[v], indices[v + 1]);
+	screen_rect->BottomLeft(xadj, yadj, indices[v], indices[v + 1]);
 	LOG_INFO("Bottom Left %f %f", xadj, yadj);
-	screen_rect.TopLeft(xadj, screen_height + yadj, indices[v + 2], indices[v + 3]);
+	screen_rect->TopLeft(xadj, screen_height + yadj, indices[v + 2], indices[v + 3]);
 	LOG_INFO("Top Left %f %f", xadj, screen_height + yadj);
-	screen_rect.TopRight(target_width + xadj, screen_height + yadj, indices[v + 4], indices[v + 5]);
+	screen_rect->TopRight(target_width + xadj, screen_height + yadj, indices[v + 4], indices[v + 5]);
 	LOG_INFO("Top Right %f %f", target_width + xadj, screen_height + yadj);
-	screen_rect.BottomRight(target_width + xadj, yadj, indices[v + 6], indices[v + 7]);
+	screen_rect->BottomRight(target_width + xadj, yadj, indices[v + 6], indices[v + 7]);
 	LOG_INFO("Bottom Right %f %f", target_width + xadj, yadj);
 }
 
@@ -180,8 +182,8 @@ void set_ortho(GLint width, GLint height)
 {
 	glMatrixMode(GL_PROJECTION);							// Select The Projection Matrix
 	glLoadIdentity();										// Reset The Projection Matrix
-	glViewport(0, 0, width - 1, height - 1);
-	glOrtho(0, width - 1, 0, height - 1, -1.0f, 1.0f);
+	glViewport(0, 0, width, height);
+	glOrtho(0, width, 0, height, -1.0f, 1.0f);
 	glMatrixMode(GL_MODELVIEW);								// Select The Modelview Matrix
 	glLoadIdentity();
 }
@@ -231,6 +233,7 @@ int init_gl(void)
 			//screenRect2 = new Rect2DVBO;
 			//config.screenw = 1280;
 			//config.screenh = 1024;
+		screen_rect = new(Rect2);
 		calc_screen_rect(config.screenw, config.screenh, config.aspect, 0);
 
 		// END NEW CODE
@@ -266,7 +269,7 @@ int init_gl(void)
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 		sc = new Fpoly();
-
+		
 		init_one++;
 	}
 	return 1;
@@ -374,8 +377,9 @@ void end_render_fbo4()
 	check_gl_error_named("end_render_fbo_a");
 	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);
 	glDrawBuffer(GL_BACK);
+	glActiveTexture(GL_TEXTURE0);
 	set_texture(&img4a, 1, 0, 1, 0);
-	screen_rect.Render(1.33f);
+	screen_rect->Render(1.33f);
 	check_gl_error_named("end_render_fbo_b");
 }
 
@@ -751,7 +755,7 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 
 		set_texture(&art_tex[3], 1, 0, 0, 1);
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-		Centered_Rect(0, 1024);
+		Resize_Rect(0, 1024);
 		glDisable(GL_DEPTH_TEST);
 		glDisable(GL_ALPHA_TEST);
 	}
@@ -772,7 +776,7 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 ////////////////////////////////////////////////////////////////////////////////
 // FINAL COMPOSITING AND RENDERING CODE ENDS HERE  ///////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
-
+/*
 void set_render_raster()
 {
 	LOG_INFO("Set Render Raster Called");
@@ -813,3 +817,4 @@ void final_render_raster()
 
 	check_gl_error_named("openglerror in end_render_fbo_b:");
 }
+*/

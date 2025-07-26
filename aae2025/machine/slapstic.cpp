@@ -177,7 +177,7 @@
 #include <stdio.h>
 #include "aae_mame_driver.h"
 #include "slapstic.h"
-#include "sys_timer.h"
+//#include "sys_timer.h"
 
 
 /*************************************

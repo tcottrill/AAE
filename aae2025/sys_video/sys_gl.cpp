@@ -105,47 +105,120 @@ void OnResize(GLsizei width, GLsizei height) {
 	ViewOrtho(width, height);
 }
 
-bool InitOpenGLContext(bool forceLegacyGL2) {
-	hDC = GetDC(win_get_window());
+// -----------------------------------------------------------------------------
+// InitOpenGLContext
+// Initializes the OpenGL rendering context using WGL, with support for:
+// - Legacy OpenGL 2.1 fallback
+// - Modern OpenGL 4.5 core or compatibility profile
+// - Optional multisampling (MSAA) via command-line switch
+//
+// Parameters:
+//   forceLegacyGL2    - Forces use of legacy OpenGL 2.1 context, ignoring modern support
+//   enableMultisample - If true, requests 4x MSAA (multisample anti-aliasing) if available
+//   useCoreProfile    - If true, requests a forward-compatible core profile context;
+//                       otherwise a compatibility profile is requested
+//
+// Returns:
+//   true if context initialization succeeded, false if any stage failed.
+//
+// Behavior:
+//   - Uses a temporary OpenGL context to initialize GLEW and check WGL extensions
+//   - Attempts to set a multisample pixel format if requested and supported
+//   - Creates either a core or compatibility OpenGL 4.5 context, falling back to 2.1
+//   - Enables GL_MULTISAMPLE if MSAA was successfully requested
+//
+// Usage:
+//   bool msaa = strstr(lpCmdLine, "-msaa") != nullptr;
+//   bool core = strstr(lpCmdLine, "-core") != nullptr;
+//   InitOpenGLContext(false, msaa, core);
+// -----------------------------------------------------------------------------
+bool InitOpenGLContext(bool forceLegacyGL2, bool enableMultisample, bool useCoreProfile)
+{
+	HWND hwnd = win_get_window();
+	hDC = GetDC(hwnd);
 
-	PIXELFORMATDESCRIPTOR pfd = {};
-	pfd.nSize = sizeof(pfd);
-	pfd.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
-	pfd.iPixelType = PFD_TYPE_RGBA;
-	pfd.cColorBits = 32;
-	pfd.cDepthBits = 32;
-	pfd.iLayerType = PFD_MAIN_PLANE;
+	// Step 1: Set temporary pixel format (required to create temp context)
+	PIXELFORMATDESCRIPTOR tempPFD = {};
+	tempPFD.nSize = sizeof(tempPFD);
+	tempPFD.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
+	tempPFD.iPixelType = PFD_TYPE_RGBA;
+	tempPFD.cColorBits = 32;
+	tempPFD.cDepthBits = 24;
+	tempPFD.cStencilBits = 8;
+	tempPFD.iLayerType = PFD_MAIN_PLANE;
 
-	int pixelFormat = ChoosePixelFormat(hDC, &pfd);
-	if (pixelFormat == 0 || !SetPixelFormat(hDC, pixelFormat, &pfd)) {
-		LOG_ERROR("Failed to choose/set pixel format");
+	int tempFormat = ChoosePixelFormat(hDC, &tempPFD);
+	if (!tempFormat || !SetPixelFormat(hDC, tempFormat, &tempPFD)) {
+		LOG_ERROR("Failed to set temporary pixel format");
 		return false;
 	}
 
-	// Step 1: Temporary OpenGL context
+	// Step 2: Create temporary OpenGL context
 	HGLRC tempContext = wglCreateContext(hDC);
 	if (!tempContext || !wglMakeCurrent(hDC, tempContext)) {
 		LOG_ERROR("Failed to create/make current temporary OpenGL context");
 		return false;
 	}
 
+	// Step 3: Init GLEW
 	glewExperimental = GL_TRUE;
 	if (glewInit() != GLEW_OK) {
 		LOG_ERROR("GLEW init failed");
 		return false;
 	}
 
+	// Step 4: If requested, try MSAA with modern pixel format
+	if (enableMultisample &&
+		wglewIsSupported("WGL_ARB_multisample") &&
+		wglewIsSupported("WGL_ARB_pixel_format"))
+	{
+		const int msaaAttribs[] = {
+			WGL_DRAW_TO_WINDOW_ARB, GL_TRUE,
+			WGL_SUPPORT_OPENGL_ARB, GL_TRUE,
+			WGL_DOUBLE_BUFFER_ARB, GL_TRUE,
+			WGL_PIXEL_TYPE_ARB, WGL_TYPE_RGBA_ARB,
+			WGL_COLOR_BITS_ARB, 32,
+			WGL_DEPTH_BITS_ARB, 24,
+			WGL_STENCIL_BITS_ARB, 8,
+			WGL_SAMPLE_BUFFERS_ARB, 1,
+			WGL_SAMPLES_ARB, 4, // 4x MSAA
+			0
+		};
+
+		int format;
+		UINT numFormats;
+		if (wglChoosePixelFormatARB(hDC, msaaAttribs, nullptr, 1, &format, &numFormats) && numFormats > 0) {
+			PIXELFORMATDESCRIPTOR finalPFD;
+			DescribePixelFormat(hDC, format, sizeof(finalPFD), &finalPFD);
+			if (SetPixelFormat(hDC, format, &finalPFD)) {
+				LOG_INFO("Using multisample pixel format (4x MSAA)");
+			}
+			else {
+				LOG_INFO("Failed to set multisample pixel format, continuing without MSAA");
+			}
+		}
+		else {
+			LOG_INFO("Multisample format not supported, continuing without MSAA");
+		}
+	}
+	else {
+		LOG_INFO("MSAA not enabled or not supported — using legacy pixel format");
+	}
+
+	// Step 5: Create final OpenGL context
 	if (forceLegacyGL2 || !wglewIsSupported("WGL_ARB_create_context")) {
 		LOG_INFO("Using legacy OpenGL 2.1 context");
 		hRC = tempContext;
 	}
 	else {
-		// Step 2: Create modern context (request highest compatible 4.x fallback to 3.x)
+		LOG_INFO("Creating OpenGL 4.5 %s profile context", useCoreProfile ? "core" : "compatibility");
+
 		const int attribs[] = {
 			WGL_CONTEXT_MAJOR_VERSION_ARB, 4,
 			WGL_CONTEXT_MINOR_VERSION_ARB, 5,
 			WGL_CONTEXT_FLAGS_ARB, WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB,
-			WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB,
+			WGL_CONTEXT_PROFILE_MASK_ARB,
+				useCoreProfile ? WGL_CONTEXT_CORE_PROFILE_BIT_ARB : WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB,
 			0
 		};
 
@@ -161,19 +234,25 @@ bool InitOpenGLContext(bool forceLegacyGL2) {
 		}
 	}
 
+	if (enableMultisample)
+		glEnable(GL_MULTISAMPLE);
+
 	LOG_INFO("OpenGL %s, GLSL %s", glGetString(GL_VERSION), glGetString(GL_SHADING_LANGUAGE_VERSION));
 	ReportOpenGLCapabilities();
 	return true;
 }
 
 void OpenGLShutDown() {
-	wglMakeCurrent(nullptr, nullptr);
 	if (hRC) {
+		wglMakeCurrent(nullptr, nullptr);
 		wglDeleteContext(hRC);
 		hRC = nullptr;
 	}
 	if (hDC) {
-		ReleaseDC(win_get_window(), hDC);
+		HWND hwnd = win_get_window(); // <--- re-fetch here
+		if (hwnd) {
+			ReleaseDC(hwnd, hDC); // only call if hwnd is valid
+		}
 		hDC = nullptr;
 	}
 }
