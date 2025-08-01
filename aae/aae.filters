@@ -1,0 +1,243 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="Source Files\system">
+      <UniqueIdentifier>{c05f1a33-f80e-4dc2-aaac-4dfb102f011a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\system\3rdparty">
+      <UniqueIdentifier>{79ecbc88-353f-4f0e-958c-ac0ccc856f81}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\system\system">
+      <UniqueIdentifier>{f8840b25-3c28-4193-a8fb-a9af54dc18c5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\system\font">
+      <UniqueIdentifier>{90e1a6aa-c74d-40f3-9852-8a501f490cd2}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\system\graphics">
+      <UniqueIdentifier>{292253ee-2512-4919-b632-22c3d13e4f27}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\system\input">
+      <UniqueIdentifier>{9bab2bb4-4398-4c21-9ed7-e023fe35e740}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\system\math">
+      <UniqueIdentifier>{fb1bf5c3-4247-49c7-a829-c961f76dff34}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\system\platform">
+      <UniqueIdentifier>{221c7d12-9d06-4f81-b6ca-ce1272e1edcc}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\system\window">
+      <UniqueIdentifier>{14bea4af-7f9e-4e13-a906-d044ab8607e1}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\system\util">
+      <UniqueIdentifier>{79b00d6c-2997-4faf-81ec-82be085f5755}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\system\project">
+      <UniqueIdentifier>{dfadc75e-d618-4e85-ae22-f918a657a1b6}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="json.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="system\3rdparty\stb_image.h">
+      <Filter>Source Files\system\3rdparty</Filter>
+    </ClInclude>
+    <ClInclude Include="system\3rdparty\stb_image_write.h">
+      <Filter>Source Files\system\3rdparty</Filter>
+    </ClInclude>
+    <ClInclude Include="system\3rdparty\wglew.h">
+      <Filter>Source Files\system\3rdparty</Filter>
+    </ClInclude>
+    <ClInclude Include="system\3rdparty\glew.h">
+      <Filter>Source Files\system\3rdparty</Filter>
+    </ClInclude>
+    <ClInclude Include="system\3rdparty\json.hpp">
+      <Filter>Source Files\system\3rdparty</Filter>
+    </ClInclude>
+    <ClInclude Include="system\3rdparty\miniz.h">
+      <Filter>Source Files\system\3rdparty</Filter>
+    </ClInclude>
+    <ClInclude Include="system\system\path_helper.h">
+      <Filter>Source Files\system\system</Filter>
+    </ClInclude>
+    <ClInclude Include="system\system\sys_fileio.h">
+      <Filter>Source Files\system\system</Filter>
+    </ClInclude>
+    <ClInclude Include="system\system\sys_log.h">
+      <Filter>Source Files\system\system</Filter>
+    </ClInclude>
+    <ClInclude Include="system\system\iniFile.h">
+      <Filter>Source Files\system\system</Filter>
+    </ClInclude>
+    <ClInclude Include="system\font\bmfont.h">
+      <Filter>Source Files\system\font</Filter>
+    </ClInclude>
+    <ClInclude Include="system\graphics\gl_basics.h">
+      <Filter>Source Files\system\graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="system\graphics\shader_util.h">
+      <Filter>Source Files\system\graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="system\graphics\spritesheet.h">
+      <Filter>Source Files\system\graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="system\graphics\sys_texture.h">
+      <Filter>Source Files\system\graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="system\graphics\texrect.h">
+      <Filter>Source Files\system\graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="system\graphics\vector_draw.h">
+      <Filter>Source Files\system\graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="system\graphics\Vertex_Helpers.h">
+      <Filter>Source Files\system\graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="system\graphics\colordefs.h">
+      <Filter>Source Files\system\graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="system\graphics\debug_draw.h">
+      <Filter>Source Files\system\graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="system\graphics\fbo_modern.h">
+      <Filter>Source Files\system\graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="system\input\joystick_win32.h">
+      <Filter>Source Files\system\input</Filter>
+    </ClInclude>
+    <ClInclude Include="system\input\joystick_xinput.h">
+      <Filter>Source Files\system\input</Filter>
+    </ClInclude>
+    <ClInclude Include="system\input\rawinput.h">
+      <Filter>Source Files\system\input</Filter>
+    </ClInclude>
+    <ClInclude Include="system\input\joystick.h">
+      <Filter>Source Files\system\input</Filter>
+    </ClInclude>
+    <ClInclude Include="system\math\MathUtils.h">
+      <Filter>Source Files\system\math</Filter>
+    </ClInclude>
+    <ClInclude Include="system\project\game.h">
+      <Filter>Source Files\system\project</Filter>
+    </ClInclude>
+    <ClInclude Include="system\window\win10_win11_required_code.h">
+      <Filter>Source Files\system\window</Filter>
+    </ClInclude>
+    <ClInclude Include="system\window\framework.h">
+      <Filter>Source Files\system\window</Filter>
+    </ClInclude>
+    <ClInclude Include="system\window\utf8conv.h">
+      <Filter>Source Files\system\window</Filter>
+    </ClInclude>
+    <ClInclude Include="system\util\allegro_timer.h">
+      <Filter>Source Files\system\util</Filter>
+    </ClInclude>
+    <ClInclude Include="system\util\wintimer.h">
+      <Filter>Source Files\system\util</Filter>
+    </ClInclude>
+    <ClInclude Include="resource.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="system\3rdparty\glew.c">
+      <Filter>Source Files\system\3rdparty</Filter>
+    </ClCompile>
+    <ClCompile Include="system\3rdparty\miniz.c">
+      <Filter>Source Files\system\3rdparty</Filter>
+    </ClCompile>
+    <ClCompile Include="system\system\path_helper.cpp">
+      <Filter>Source Files\system\system</Filter>
+    </ClCompile>
+    <ClCompile Include="system\system\sys_fileio.cpp">
+      <Filter>Source Files\system\system</Filter>
+    </ClCompile>
+    <ClCompile Include="system\system\sys_log.cpp">
+      <Filter>Source Files\system\system</Filter>
+    </ClCompile>
+    <ClCompile Include="system\system\iniFile.cpp">
+      <Filter>Source Files\system\system</Filter>
+    </ClCompile>
+    <ClCompile Include="system\font\bmfont.cpp">
+      <Filter>Source Files\system\font</Filter>
+    </ClCompile>
+    <ClCompile Include="system\graphics\gl_basics.cpp">
+      <Filter>Source Files\system\graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="system\graphics\spritesheet.cpp">
+      <Filter>Source Files\system\graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="system\graphics\spritesheet_ogl4.cpp">
+      <Filter>Source Files\system\graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="system\graphics\sys_texture.cpp">
+      <Filter>Source Files\system\graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="system\graphics\texrect.cpp">
+      <Filter>Source Files\system\graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="system\graphics\vector_draw.cpp">
+      <Filter>Source Files\system\graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="system\graphics\fbo_modern.cpp">
+      <Filter>Source Files\system\graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="system\input\joystick_xinput.cpp">
+      <Filter>Source Files\system\input</Filter>
+    </ClCompile>
+    <ClCompile Include="system\input\rawinput.cpp">
+      <Filter>Source Files\system\input</Filter>
+    </ClCompile>
+    <ClCompile Include="system\input\Joystick.cpp">
+      <Filter>Source Files\system\input</Filter>
+    </ClCompile>
+    <ClCompile Include="system\input\joystick_win32.cpp">
+      <Filter>Source Files\system\input</Filter>
+    </ClCompile>
+    <ClCompile Include="system\project\game.cpp">
+      <Filter>Source Files\system\project</Filter>
+    </ClCompile>
+    <ClCompile Include="system\window\win10_win11_required_code.cpp">
+      <Filter>Source Files\system\window</Filter>
+    </ClCompile>
+    <ClCompile Include="system\window\winmain.cpp">
+      <Filter>Source Files\system\window</Filter>
+    </ClCompile>
+    <ClCompile Include="system\util\allegro_timer.cpp">
+      <Filter>Source Files\system\util</Filter>
+    </ClCompile>
+    <ClCompile Include="system\util\wintimer.cpp">
+      <Filter>Source Files\system\util</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Manifest Include="app.manifest">
+      <Filter>Source Files</Filter>
+    </Manifest>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="resource.rc">
+      <Filter>Resource Files</Filter>
+    </ResourceCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="appicon.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="resource.aps" />
+  </ItemGroup>
+</Project>

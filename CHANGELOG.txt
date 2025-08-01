@@ -211,7 +211,16 @@ Minor 6502 and z80 fixes, all documented functions should finally be emulated co
 Removed more old code.Gui and old font code are gone. Removed all traces of gamenum[0] which was the gui. 
 
 7/26/25
-Live gets in the way sometime, but a major revamp of the win32 code coming soon. Removed the last bit of depricated opengl code with the tetrect.cpp code., moved it to a shader. Minor work on texturing but really prepping for a major code change, coming soonish.
+Life gets in the way sometime, but a major revamp of the win32 code coming soon. Removed the last bit of depricated opengl code with the tetrect.cpp code., moved it to a shader. Minor work on texturing but really prepping for a major code change, coming soonish.
+
+7/30/25
+Swapped out all the win32 code from my in progress game engine project. Swapped to unicode handling (incomplete). With the new engine it should be easy enough to add back the GUI. New command line options, I need to write a quick document but I haven't quite gotten to that yet. A lot of things are still in flux, I am still testing ways to render the lines and points with opengl4 shaders. 
+Added ALT-TAB switching from window to fullscreen. Reorganized the game code and separated it from the engine/system code. These changes pave the way for better graphics handling. Changed up the licensing a bit (still in progress) and made sure to try to document correctly all M.A.M.E code as copyright the team and the original authors. Next is still cleanup then a major effort to get rid of video.ini and correctly add (with non-MAME code) the MAME style layout handling. 
+
+8/1/25 In an effort to speed up the code as much as possible, I moved all audio and input processing to their own threads. Does it make a difference? I'm still running tests but it looks good so far. Also cleaned up a bit of the mixer code. 
+
+
+
 
 
 
