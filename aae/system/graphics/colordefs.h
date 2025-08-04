@@ -45,16 +45,18 @@
 
 typedef unsigned int rgb_t;
 
-#ifndef MAKE_BGR
-#define MAKE_BGR(r,g,b) ((((b) & 0xff) << 16) | (((g) & 0xff) << 8) | ((r) & 0xff))
-#endif
+//#ifndef MAKE_BGR
+//#define MAKE_BGR(r,g,b) ((((b) & 0xff) << 16) | (((g) & 0xff) << 8) | ((r) & 0xff))
+//#endif
 
 #ifndef MAKE_RGB
-#define MAKE_RGB(r,g,b) ((((r) & 0xff) << 16) | (((g) & 0xff) << 8) | ((b) & 0xff))
+//#define MAKE_RGB(r,g,b) ((((r) & 0xff) << 16) | (((g) & 0xff) << 8) | ((b) & 0xff))
+#define MAKE_RGB(r,g,b)  (((r) & 0xFF) | (((g) & 0xFF) << 8) | (((b) & 0xFF) << 16))
 #endif
 
 #ifndef MAKE_RGBA
-#define MAKE_RGBA(r,g,b,a)  (r | (g << 8) | (b << 16) | (a << 24))
+//#define MAKE_RGBA(r,g,b,a)  (r | (g << 8) | (b << 16) | (a << 24))
+#define MAKE_RGBA(r,g,b,a)  (((r) & 0xFF) | (((g) & 0xFF) << 8) | (((b) & 0xFF) << 16) | (((a) & 0xFF) << 24))
 #endif
 
 #ifndef RGB_BLUE

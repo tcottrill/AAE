@@ -38,12 +38,14 @@ TEX::TEX(const std::string& filename, const std::string& archive, int filter, bo
 	unsigned char* image_data = nullptr;
 
 	if (archive.empty()) {
-		image_data = stbi_load(filename.c_str(), &width, &height, &comp, STBI_rgb_alpha);
+			image_data = stbi_load(filename.c_str(), &width, &height, &comp, STBI_rgb_alpha);
+		
 	}
 	else {
 		image_data = loadZip(archive.c_str(), filename.c_str());
 		size_t zsize = getLastZSize();
 		int buffer_size = static_cast<int>(zsize);
+		comp = 4;
 		image_data = stbi_load_from_memory(image_data, buffer_size, &width, &height, &comp, STBI_rgb_alpha);
 	}
 

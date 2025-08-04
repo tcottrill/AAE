@@ -209,13 +209,13 @@ char ipdn_defaultstrings[][MAX_DEFSTR_LEN] =
 struct ipd inputport_defaults[] =
 {
 	{ IPT_UI_PAUSE, "Pause",         OSD_KEY_P, 0 },
-	{ IPT_COIN1,  "Coin 1",          OSD_KEY_5, 0 },
-	{ IPT_COIN2,  "Coin 2",          OSD_KEY_6, 0 },
+	{ IPT_COIN1,  "Coin 1",          OSD_KEY_5, OSD_JOY_FIRE10 },
+	{ IPT_COIN2,  "Coin 2",          OSD_KEY_6, OSD_JOY_FIRE9 },
 	{ IPT_COIN3,  "Coin 3",          OSD_KEY_3, 0 },
 	{ IPT_COIN4,  "Coin 4",          OSD_KEY_4, 0 },
 	{ IPT_TILT,   "Tilt",            OSD_KEY_T, IP_JOY_NONE },
-	{ IPT_START1, "1 Player Start",  OSD_KEY_1, 0 },
-	{ IPT_START2, "2 Players Start", OSD_KEY_2, 0 },
+	{ IPT_START1, "1 Player Start",  OSD_KEY_1, OSD_JOY_FIRE7 },
+	{ IPT_START2, "2 Players Start", OSD_KEY_2, OSD_JOY_FIRE8 },
 	{ IPT_START3, "3 Players Start", OSD_KEY_7, 0 },
 	{ IPT_START4, "4 Players Start", OSD_KEY_8, 0 },
 

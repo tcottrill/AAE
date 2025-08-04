@@ -232,7 +232,7 @@ void mhavoc_video_update(void)
 							else { sy -= 1; }
 						}
 						// Add the point for the line
-						avg_add_point_mh(sx, sy, ex, ey, z,MAKE_BGR(ar, ag, ab), 0);
+						avg_add_point_mh(sx, sy, ex, ey, z,MAKE_RGBA(ar, ag, ab, 255), 0);
 
 						spkl_shift = (((spkl_shift & 0x40) >> 6) ^ ((spkl_shift & 0x20) >> 5) ^ 1) | (spkl_shift << 1);
 						if ((spkl_shift & 0x7f) == 0x7f) spkl_shift = 0;
@@ -261,7 +261,7 @@ void mhavoc_video_update(void)
 						ag = bit1 * 0xcb;
 						ab = bit0 * 0xcb;
 
-						avg_add_point_mh(sx, sy, ex, ey, z,MAKE_BGR(ar, ag, ab), 1);
+						avg_add_point_mh(sx, sy, ex, ey, z,MAKE_RGBA(ar, ag, ab, 255), 1);
 					}
 				}
 			}

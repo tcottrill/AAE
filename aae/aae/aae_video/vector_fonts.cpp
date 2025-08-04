@@ -382,6 +382,7 @@ void VectorFont::Print(float x, int y, rgb_t color, float scale, const char* fmt
 // -----------------------------------------------------------------------------
 void VectorFont::PrintCentered(int y, rgb_t color, float scale, const char* str) {
 	int len = static_cast<int>(strnlen(str, 255));
+	// Screen Width is hardcoded here, please fix.
 	float total = len * (FONT_SPACING * scale);
 	float x = (1024.0f / 2.0f) - (total / 2.0f);
 	Print(x, y, color, scale, "%s", str);

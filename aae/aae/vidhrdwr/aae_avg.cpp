@@ -108,15 +108,15 @@ static void draw_bzone(int sx, int sy, int ex, int ey, int z, int color)
 	set_clip_rect(0, 0, 1024, BZ_CLIP);
 
 	if (vector_engine == USE_AVG_RBARON)
-		add_line(sx, sy, ex, ey, z, MAKE_BGR(z, z, z));
+		add_line(sx, sy, ex, ey, z, MAKE_RGBA(z, z, z, z));
 	else
 	{
-		if (color) add_line(sx, sy, ex, ey, z, MAKE_BGR(z, z, z));
+		if (color) add_line(sx, sy, ex, ey, z, MAKE_RGBA(z, z, z, z));
 		else
 		{
 			if (clip = ClipLine(&sx, &sy, &ex, &ey))
 			{
-				add_line(sx, sy, ex, ey, z, MAKE_BGR(z, z, z));
+				add_line(sx, sy, ex, ey, z, MAKE_RGBA(z, z, z, z));
 			}
 		}
 	}
@@ -149,7 +149,7 @@ static void draw_tempest(int sx, int sy, int ex, int ey, int z, int color)
 	int clip = ClipLine(&sx, &sy, &ex, &ey);
 	if (clip)
 	{
-		add_line(sx, sy, ex, ey, z << 4, MAKE_BGR(r, g, b));
+		add_line(sx, sy, ex, ey, z << 4, MAKE_RGBA(r, g, b, z << 4));
 	}
 }
 
@@ -167,7 +167,7 @@ static void draw_quantum(int sx, int sy, int ex, int ey, int z, int color)
 	b = bit2 * 0xce;
 	r = bit3 * 0xce;
 
-	add_line(sx, sy, ex, ey, z << 4, MAKE_BGR(r, g, b));
+	add_line(sx, sy, ex, ey, z << 4, MAKE_RGBA(r, g, b, z<<4));
 }
 
 static void draw_mhavoc(int sx, int sy, int ex, int ey, int z, int color)
@@ -398,7 +398,6 @@ void AVG_RUN(void)
 int avg_go()
 {
 	//LOG_INFO("AVG GO CALLED");
-
 	if (AVG_BUSY)
 	{
 		//LOG_INFO("AVG call with AVG Busy, returning and doing nothing.");

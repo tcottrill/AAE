@@ -248,20 +248,6 @@ void show_error(void)
 	}
 }
 
-void pause_loop()
-{
-	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);
-	glDrawBuffer(GL_BACK);
-	set_ortho(1024, 768);
-	glEnable(GL_TEXTURE_2D);
-	glDisable(GL_BLEND);
-	glDisable(GL_DITHER);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	VF.Begin();
-	VF.Print(440, 450, RGB_WHITE, 5.0f, "PAUSED");
-	VF.End();
-}
-
 /*
 
 /// Apply one of several preset blend functions (0–15), or disable blending for any other value.

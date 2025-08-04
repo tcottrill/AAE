@@ -810,11 +810,14 @@ void msg_loop(void)
 	int a = get_menu_level();
 	if (a != 700)
 	{
-		if (osd_key_pressed_memory_repeat(OSD_KEY_UI_UP, 4)) { change_menu_level(0); } //up
-		if (osd_key_pressed_memory_repeat(OSD_KEY_UI_DOWN, 4)) { change_menu_level(1); } //down
-		if (osd_key_pressed_memory(OSD_KEY_UI_LEFT)) { change_menu_item(0); } //left
-		if (osd_key_pressed_memory(OSD_KEY_UI_RIGHT)) { change_menu_item(1); } //right
-		if (osd_key_pressed_memory(OSD_KEY_UI_SELECT)) { select_menu_item(); }
+		if (get_menu_status()) // Work around for ALT-ENTER Issue. Only read these keys if IN MENU
+		{
+			if (osd_key_pressed_memory_repeat(OSD_KEY_UI_UP, 4)) { change_menu_level(0); } //up
+			if (osd_key_pressed_memory_repeat(OSD_KEY_UI_DOWN, 4)) { change_menu_level(1); } //down
+			if (osd_key_pressed_memory(OSD_KEY_UI_LEFT)) { change_menu_item(0); } //left
+			if (osd_key_pressed_memory(OSD_KEY_UI_RIGHT)) { change_menu_item(1); } //right
+			if (osd_key_pressed_memory(OSD_KEY_UI_SELECT))	{select_menu_item();}  // Enter
+		}
 	}
 }
 

@@ -13,7 +13,7 @@ int make_single_bitmap(GLuint* texture, const char* filename, const char* archna
 void set_ortho(GLint width, GLint height);
 void set_render();
 void render();
-void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty);
+void final_render(int xmin, int xmax, int ymin, int ymax);
 void set_render_fbo4();
 void end_render_fbo4();
 

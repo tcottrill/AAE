@@ -18,7 +18,6 @@ void Screen_Rect(int facing, int size);
 void Resize_Rect(int facing, int size);
 void resize_art_textures();
 void show_error(void);
-void pause_loop();
 
 
 

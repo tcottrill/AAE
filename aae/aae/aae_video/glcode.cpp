@@ -32,7 +32,7 @@
 //Please fix this
 extern void osd_get_pen(int pen, unsigned char* red, unsigned char* green, unsigned char* blue);
 
-Rect2 *screen_rect = nullptr;
+Rect2* screen_rect = nullptr;
 //Raster rendering
 Fpoly* sc;
 extern float vid_scale;
@@ -167,9 +167,8 @@ int init_gl(void)
 
 		screen_rect = new Rect2(ws.clientWidth, ws.clientHeight, ws.aspectRatio, 0);
 		//calc_screen_rect(config.screenw, config.screenh, config.aspect, 0);
-		
 
-		// TODO:  Reevaluate
+		// TODO:  Move to new GUI Code.
 		/*
 		make_single_bitmap(&error_tex[0], "error.png", "aae.zip", 0); //This has to be loaded before any driver init.
 		make_single_bitmap(&error_tex[1], "info.png", "aae.zip", 0);
@@ -192,7 +191,7 @@ int init_gl(void)
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 		sc = new Fpoly();
-		
+
 		init_one++;
 	}
 	return 1;
@@ -205,12 +204,7 @@ void end_gl()
 
 int make_single_bitmap(GLuint* texture, const char* filename, const char* archname, int mtype)
 {
-	//char temppath[MAX_PATH] = { 0 };
-	//int test = 0;
-	//int ret = 0;
-	//unsigned char* zipdata = 0;
 	std::string temppath;
-
 	temppath = getpathM("artwork", archname);
 
 	//strcpy(temppath, "artwork\\");
@@ -280,7 +274,7 @@ void set_render_fbo4()
 	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo4);
 	//Write To Texture img1a
 	glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT);
-	
+
 	set_ortho(1024, 1024);
 	// Then render as normal
 	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
@@ -307,7 +301,7 @@ void end_render_fbo4()
 
 	auto& ws = GetWindowSetup();
 	set_ortho(ws.clientWidth, ws.clientHeight);
-	
+
 	set_texture(&img4a, 1, 0, 1, 0);
 	screen_rect->Render(1.33f);
 	check_gl_error_named("end_render_fbo_b");
@@ -378,76 +372,81 @@ void copy_fbo2_to_fbo3()
 //	Downsample Part 3
 //  This copies img2a to the 256x256 blur texture at fbo3, img3a to img1b pingpong back and forth to blur
 //
-// This code will be replaced by shader code.
 void render_blur_image_fbo3()
 {
 	static constexpr float v1 = 1.0f;
 	static constexpr float v2 = 2.0f;
 
-	GLuint fbo3ab_tex = 0; // Texture bound to the shader
-
-	// 8 directional shift pairs (each 4 values = two shifts per pass)
-	// Directional float shifts for v1 and v2
 	float fshifta[] = {
-		v1,  0,  -v1,   0, // RIGHT
-	   -v1,  0,   v1,   0, // LEFT
-		 0,  v1,   0, -v1, // UP
-		 0, -v1,   0,  v1, // DOWN
-		v1,  v1, -v1, -v1, // DIAGONAL: UP-RIGHT, DOWN-LEFT
-	   -v1, -v1,  v1,  v1, // DIAGONAL: DOWN-LEFT, UP-RIGHT
-	   -v1,  v1,  v1, -v1, // DIAGONAL: UP-LEFT, DOWN-RIGHT
-		v1, -v1, -v1,  v1  // DIAGONAL: DOWN-RIGHT, UP-LEFT
+		v1,  0,  -v1,   0,
+	   -v1,  0,   v1,   0,
+		 0,  v1,   0, -v1,
+		 0, -v1,   0,  v1,
+		v1,  v1, -v1, -v1,
+	   -v1, -v1,  v1,  v1,
+	   -v1,  v1,  v1, -v1,
+		v1, -v1, -v1,  v1
 	};
 
 	float fshiftb[] = {
-		v2,  0,  -v2,   0, // RIGHT
-	   -v2,  0,   v2,   0, // LEFT
-		 0,  v2,   0, -v2, // UP
-		 0, -v2,   0,  v2, // DOWN
-		v2,  v2, -v2, -v2, // DIAGONAL: UP-RIGHT, DOWN-LEFT
-	   -v2, -v2,  v2,  v2, // DIAGONAL: DOWN-LEFT, UP-RIGHT
-	   -v2,  v2,  v2, -v2, // DIAGONAL: UP-LEFT, DOWN-RIGHT
-		v2, -v2, -v2,  v2  // DIAGONAL: DOWN-RIGHT, UP-LEFT
+		v2,  0,  -v2,   0,
+	   -v2,  0,   v2,   0,
+		 0,  v2,   0, -v2,
+		 0, -v2,   0,  v2,
+		v2,  v2, -v2, -v2,
+	   -v2, -v2,  v2,  v2,
+	   -v2,  v2,  v2, -v2,
+		v2, -v2, -v2,  v2
 	};
 
 	bind_shader(fragBlur);
-	set_uniform1i(fragBlur, "colorMap", fbo3ab_tex);
+	set_uniform1i(fragBlur, "colorMap", 0);
 	set_uniform1f(fragBlur, "width", 256.0f);
 	set_uniform1f(fragBlur, "height", 256.0f);
 
-	glEnable(GL_TEXTURE_2D); // Compatibility profile
+	glEnable(GL_TEXTURE_2D);
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-	glColor4f(0.1f, 0.1f, 0.1f, 0.1f); // Used by FS_Rect
+	//glColor4f(0.1f, 0.1f, 0.1f, 0.05f); // LOWER alpha = softer halo Prev: 0.1f
+	float passAlpha[4] = { 0.08f, 0.05f, 0.03f, 0.015f };
+	const float globalOffsetX = -0.05f;
+	const float globalOffsetY = -0.20f;
 
-	int i = 0; // Index into shift arrays
+	auto DrawQuadOffset = [&](float ox, float oy) {
+		float x1 = ox + globalOffsetX;
+		float y1 = oy + globalOffsetY;
+		float x2 = 256.0f + x1;
+		float y2 = 256.0f + y1;
 
-	// Apply a global nudge downward to compensate for drift
-	glTranslatef(0.0f, -0.20f, 0.0f);
-	// Apply a global nudge to the left to compensate for drift as well.
-	glTranslatef(-0.05f, 0.0f, 0.0f);
+		glBegin(GL_QUADS);
+		glTexCoord2f(0.0f, 0.0f); glVertex2f(x1, y1);
+		glTexCoord2f(1.0f, 0.0f); glVertex2f(x2, y1);
+		glTexCoord2f(1.0f, 1.0f); glVertex2f(x2, y2);
+		glTexCoord2f(0.0f, 1.0f); glVertex2f(x1, y2);
+		glEnd();
+		};
 
-	// 4 passes = 8 blur directions (2 shifts per pass)
+	int i = 0;
 	for (int pass = 0; pass < 4; ++pass)
 	{
-		// A → B
+		// Adjust alpha here per pass (test)
+		//glColor4f(0.1f, 0.1f, 0.1f, passAlpha[pass]);
+		glColor4f(0.1f, 0.1f, 0.1f, 0.05f);
+
+		// ---- PASS A → B ----
 		glDrawBuffer(GL_COLOR_ATTACHMENT1_EXT);
 		glReadBuffer(GL_COLOR_ATTACHMENT0_EXT);
 		set_texture(&img3a, 1, 0, 0, 0);
-		glTranslatef(fshifta[i], fshifta[i + 1], 0.0f);
-		FS_Rect(0, height3);
-		glTranslatef(fshifta[i + 2], fshifta[i + 3], 0.0f);
+		DrawQuadOffset(fshifta[i], fshifta[i + 1]);
 
-		// B → A
+		// ---- PASS B → A ----
 		glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT);
 		glReadBuffer(GL_COLOR_ATTACHMENT1_EXT);
 		set_texture(&img3b, 1, 0, 0, 0);
-		glBindTexture(GL_TEXTURE_2D, img3b); // Redundant safety bind
-		glTranslatef(fshiftb[i], fshiftb[i + 1], 0.0f);
-		FS_Rect(0, height3);
-		glTranslatef(fshiftb[i + 2], fshiftb[i + 3], 0.0f);
+		glBindTexture(GL_TEXTURE_2D, img3b);
+		DrawQuadOffset(fshiftb[i], fshiftb[i + 1]);
 
-		i += 4; // Advance to next shift pair
+		i += 4;
 	}
 
 	check_gl_error_named("OpenGL error in render_blur_image_fbo3");
@@ -499,19 +498,27 @@ void set_render()
 // Rendering Continued, this is STEP 2, this is where the vectors are drawn to our 1024x1024 texture.
 void render()
 {
-	if (paused) { pause_loop(); return; }
+	// If we're paused we bypass all the rendering, print our message and display on the final FBO
+	if (paused) { 
+		set_render_fbo4();
+		VF.Begin();
+		VF.PrintCentered(440, RGB_WHITE, 5.0f, "PAUSED");
+		VF.End();
+		end_render_fbo4();
+		return;
+	}
 
 	if (Machine->drv->video_attributes & VIDEO_TYPE_VECTOR)
 	{
 		draw_all();
-		final_render(sx, sy, ex, ey, 0, 0);
+		final_render(sx, sy, ex, ey);
+		//final_render(0, 1024, 0, 1024);
 	}
 	else
 	{
 		raster_poly_update();
 		sc->Render();
-		//final_render_raster();
-		final_render(sx, sy, ex, ey, 0, 0);
+		final_render(sx, sy, ex, ey);
 	}
 }
 
@@ -521,11 +528,11 @@ void render()
 // art_tex[3] is always Bezel
 // FINAL RENDERING and COMPOSITING HERE:
 // Rendering Continued, this is STEP 3
-void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty)
+void final_render(int xmin, int xmax, int ymin, int ymax)
 {
 	GLint bleh = 0;
 	// Glow Shader variable
-	GLfloat glowamt = 0.0;
+	GLfloat glowamt = 2.0;
 	// Glow enabled variable
 	int useglow = 0;
 	// Used for code profiling disable in final release.
@@ -548,7 +555,7 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 
 	// DRAW OVERLAY to FBO1, Image img1b from image1a Ortho 1024x1014, Viewport 1024x1024
 	// Rotated overlays for tempest and tacscan are handled as bezels down below, fix.
-	
+
 	if (config.overlay && art_loaded[1]) {
 		if (Machine->gamedrv->video_attributes & VECTOR_USES_OVERLAY1)
 
@@ -640,7 +647,7 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 	// I don't see where this texture is being modified anywhere?
 	glActiveTexture(GL_TEXTURE3);
 	set_texture(&img1c, 1, 0, 0, 0);
-	
+
 	// FINAL RENDERING TO SCREEN IS RIGHT HERE
 	// Enable fbo4, and render everything below to it, then render to the screen with the correct size and aspect.
 	set_render_fbo4();
@@ -708,45 +715,3 @@ void final_render(int xmin, int xmax, int ymin, int ymax, int shiftx, int shifty
 ////////////////////////////////////////////////////////////////////////////////
 // FINAL COMPOSITING AND RENDERING CODE ENDS HERE  ///////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
-/*
-void set_render_raster()
-{
-	LOG_INFO("Set Render Raster Called");
-	// First we bind to FBO1 so we can render to it
-	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo_raster);
-	//Write To Texture img1a
-	glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT);
-
-	set_ortho_proper();
-
-	// Then render as normal
-	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-	glClear(GL_COLOR_BUFFER_BIT);// | GL_DEPTH_BUFFER_BIT);	// Clear Screen And Depth Buffer
-	glEnable(GL_BLEND);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	glDisable(GL_TEXTURE_2D);
-
-	check_gl_error_named("openglerror in set_render:");
-}
-
-void final_render_raster()
-{
-	LOG_INFO("Final Render Raster Called");
-	int err = glGetError();
-	check_gl_error_named("openglerror in final_render_fbo_raster:");
-
-	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);
-	glDrawBuffer(GL_BACK);
-
-	glEnable(GL_TEXTURE_2D);
-	glEnable(GL_BLEND);
-
-	glColor4f(1.0, 1.0, 1.0, 1.0);
-	set_texture(&img5a, 1, 0, 1, 0);
-	screen_rect.Render(1.0f);
-
-	//Centered_Rect(0, 1024);
-
-	check_gl_error_named("openglerror in end_render_fbo_b:");
-}
-*/
