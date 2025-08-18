@@ -37,13 +37,13 @@ rgb_t modulate_color(rgb_t col, int intensity, int gain)
     uint8_t r = (col >> 0) & 0xFF;
     uint8_t g = (col >> 8) & 0xFF;
     uint8_t b = (col >> 16) & 0xFF;
-    uint8_t a = 0xff;//(col >> 24) & 0xFF;
+    uint8_t a = 0xff;// (col >> 24) & 0xFF;
 
     r = clip((r & intensity) + gain, 0, 255);
     g = clip((g & intensity) + gain, 0, 255);
     b = clip((b & intensity) + gain, 0, 255);
 
-    return (a << 24) | (b << 16) | (g << 8) | r;
+    return  (a << 24) | (b << 16) | (g << 8) | r;
 }
 
 rgb_t cache_tex_color(int intensity, rgb_t col)
@@ -128,7 +128,9 @@ void draw_all()
     {
         glEnable(GL_TEXTURE_2D);
         glBindTexture(GL_TEXTURE_2D, *tex);
-        glBlendFunc(GL_ONE, GL_ONE);
+       // glBlendFunc(GL_ONE, GL_ONE);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+       //glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ONE, GL_ONE);
 
         glEnableClientState(GL_VERTEX_ARRAY);
         glVertexPointer(2, GL_FLOAT, sizeof(txdata), &texlist[0].x);

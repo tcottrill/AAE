@@ -46,6 +46,7 @@
 #endif
 #include "windows_util.h"
 #include "glcode.h"
+#include "aae_mame_driver.h"  // for global 'done'
 // -----------------------------------------------------------------------------
 // Globals
 // -----------------------------------------------------------------------------
@@ -496,7 +497,12 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		return 0;
 
 	case WM_CLOSE:
+		done = 1;
 		PostQuitMessage(0);
+		return 0;
+
+	case WM_DESTROY:
+		PostQuitMessage(0);  // still let Windows post WM_QUIT
 		return 0;
 
 	case WM_SIZE:
@@ -581,14 +587,14 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			return 0;
 		}
 		break;
-
+/*
 	case WM_KEYDOWN:
 		if (wParam == VK_ESCAPE) {
 			PostQuitMessage(0);
 			return 0;
 		}
 		break;
-
+*/
 	case WM_ERASEBKGND:
 		// Prevent flickering behind OpenGL surface
 		return 1;
@@ -789,17 +795,17 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance,
 	// Step 7: Main high-speed game loop
 	// -------------------------------------------------------------------------
 	MSG msg = {};
-	while (true)
+	while (!done)
 	{
 		while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE)) {
-			if (msg.message == WM_QUIT)
+			if (msg.message == WM_QUIT && done == 1)
 				goto exit_main;
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
 		}
 		poll_joystick();
 		emulator_run();
-		GLSwapBuffers(); // provided in gl_basics
+		//GLSwapBuffers(); // provided in gl_basics
 	}
 
 exit_main:

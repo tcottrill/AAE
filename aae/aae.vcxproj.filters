@@ -319,6 +319,9 @@
     <ClCompile Include="aae\aae_video\vector_draw.cpp">
       <Filter>Source Files\aae\aae_video</Filter>
     </ClCompile>
+    <ClCompile Include="system\audio\wav_sweep.cpp">
+      <Filter>Source Files\system\audio</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="resource.h">
@@ -353,9 +356,6 @@
     </ClInclude>
     <ClInclude Include="system\3rdparty\wglew.h">
       <Filter>Source Files\system\3rdparty</Filter>
-    </ClInclude>
-    <ClInclude Include="system\audio\dbvolume.h">
-      <Filter>Source Files\system\audio</Filter>
     </ClInclude>
     <ClInclude Include="system\audio\emptywav.h">
       <Filter>Source Files\system\audio</Filter>
@@ -716,6 +716,15 @@
     </ClInclude>
     <ClInclude Include="aae\aae_video\vector_draw.h">
       <Filter>Source Files\aae\aae_video</Filter>
+    </ClInclude>
+    <ClInclude Include="system\audio\mixer_volume.h">
+      <Filter>Source Files\system\audio</Filter>
+    </ClInclude>
+    <ClInclude Include="system\audio\wav_sweep.h">
+      <Filter>Source Files\system\audio</Filter>
+    </ClInclude>
+    <ClInclude Include="system\util\FrameLimiter.h">
+      <Filter>Source Files\system\util</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

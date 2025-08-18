@@ -224,6 +224,8 @@ Finally defaulted the Coin in and START 1 and Start 2 to Xbox controls, eventual
 
 8/3/25 Replaced the depricated code in render_blur_image_fbo3()
 
+8/16/25. More massive changes. Fixed cascading menu exit since the new winmain change. The biggest change is fixing a greater then 10 year old bug with frame timing calcuation and throttling. I changed to default double buffering and no vsync and a new frame timer, so games SHOULD not tear and they seem to run MUCH smoother, so that is the new default until its proven otherwise to be a bad idea. Started doing some minor menu updates.
+Added my new audio engine and updated the TMS audio code to a new cubic resampler, no more crackling and most important, no more memory leaks on either the cubic or linear resampler. Updated the ay8910 code also, it should sound a little bit closer to what it does in MAME with new filters and volume table. 
 
 
 

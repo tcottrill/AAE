@@ -20,6 +20,8 @@
 //   - TC (Allegro Compatibility, Full Keyboard Key Support, Modernization and GLFW style callback system)
 // -----------------------------------------------------------------------------
 
+//Note: Updated bad mouse handling code. 8/5/25
+
 #include "rawinput.h"
 #include "sys_log.h"
 #include <queue>
@@ -48,8 +50,8 @@ unsigned char key[256];
 unsigned int lastkey[256];
 int mouse_b;
 
-// This defaults to 2x for AAE
-static float g_mouseScale = 2.0f;
+// This defaults to 1x for AAE - To be removed..
+static float g_mouseScale = 1.0f;
 
 // --------------------
 // Thread management
@@ -284,8 +286,10 @@ static void RawInput_ProcessInternal(const RAWINPUT& input)
 	{
 		int mods = GetModifierFlags();
 
-		m_mouseStateRaw.dx = input.data.mouse.lLastX;
-		m_mouseStateRaw.dy = input.data.mouse.lLastY;
+		// 
+		// Explicitly accumulate all WM_INPUT deltas per frame.
+		m_mouseStateRaw.dx += input.data.mouse.lLastX;
+		m_mouseStateRaw.dy += input.data.mouse.lLastY;
 
 		m_mouseStateRaw.x += m_mouseStateRaw.dx;
 		m_mouseStateRaw.y += m_mouseStateRaw.dy;
@@ -402,14 +406,11 @@ void get_mouse_mickeys(int* mickeyx, int* mickeyy)
 {
 	int temp_x = m_mouseStateRaw.dx;
 	int temp_y = m_mouseStateRaw.dy;
-
-	m_mouseStateRaw.dx -= temp_x;
-	m_mouseStateRaw.dy -= temp_y;
-
+	m_mouseStateRaw.dx = 0;
+	m_mouseStateRaw.dy = 0;
 	*mickeyx = static_cast<int>(temp_x * g_mouseScale);
 	*mickeyy = static_cast<int>(temp_y * g_mouseScale);
 }
-
 //keyboard state checks
 // -----------------------------------------------------------------------------
 // isKeyHeld

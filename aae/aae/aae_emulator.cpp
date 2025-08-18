@@ -16,6 +16,7 @@
 #include "aae_mame_driver.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdlib.h>
 #include <malloc.h>
 #include "wintimer.h"
 #include "acommon.h"
@@ -49,6 +50,15 @@
 #ifndef WIN7BUILD
 #include "win10_win11_required_code.h"
 #endif // WIN7BUILD
+
+#include <algorithm>
+#include "FrameLimiter.h"
+
+static double g_lastFrameTimestampMs = 0.0;
+
+//#include <cctype>
+//#include <cstdlib>     // for exit()
+//#include <iostream>    // optional logging
 
 using namespace std;
 using namespace chrono;
@@ -566,37 +576,54 @@ void list_all_roms()
 /*************************************
  *
  *	Command Line Parsing Function
- *  Most of this still doesn't work
- *
+ *  
  *************************************/
 
+
+// -----------------------------------------------------------------------------
+// Helper: convert to lowercase
+// -----------------------------------------------------------------------------
+static std::string to_lowercase(const char* str) {
+	std::string s(str ? str : "");
+	std::transform(s.begin(), s.end(), s.begin(),
+		[](unsigned char c) { return std::tolower(c); });
+	return s;
+}
+
+// -----------------------------------------------------------------------------
+// gameparse
+// Secure, modern version of the original gameparse().
+// - Uses lowercase args to simplify comparisons
+// - Uses std::string for safe concatenation
+// - Avoids all unsafe functions (malloc/strcpy/strcat)
+// -----------------------------------------------------------------------------
 void gameparse(int argc, char* argv[])
 {
-	char* mylist;
 	int x = 0;
-	int loop = 0;
 	int w = 0;
 	int list = 0;
 	int retval = 0;
-	int i;
-	int j;
 
-	win_override = 0; //Set default before checking
+	win_override = 0; // Set default before parsing
 
-	for (i = 1; i < argc; i++)
-	{
-		if (stricmp(argv[i], "-listroms") == 0) list = 1;
-		if (stricmp(argv[i], "-verifyroms") == 0) list = 2;
-		if (stricmp(argv[i], "-listsamples") == 0) list = 3;
-		if (stricmp(argv[i], "-verifysamples") == 0) list = 4;
-		if (strcmp(argv[2], "-debug") == 0) { config.debug = 1; }
-		if (strcmp(argv[i], "-window") == 0) { win_override = 3; }
-		if (strcmp(argv[i], "-nowindow") == 0) { win_override = 2; }
+	// ------------------------------
+	// Parse command-line arguments
+	// ------------------------------
+	for (int i = 1; i < argc; i++) {
+		std::string arg = to_lowercase(argv[i]); // lowercase once
 
-		for (j = 0; gfx_res[j].desc != NULL; j++)
-		{
-			if (stricmp(argv[i], gfx_res[j].desc) == 0)
-			{
+		if (arg == "-listroms")        list = 1;
+		else if (arg == "-verifyroms") list = 2;
+		else if (arg == "-listsamples") list = 3;
+		else if (arg == "-verifysamples") list = 4;
+		else if (arg == "-debug")      config.debug = 1;
+		else if (arg == "-window")     win_override = 3;
+		else if (arg == "-nowindow")   win_override = 2;
+
+		// Match against gfx_res (also lowercase for comparison)
+		for (int j = 0; gfx_res[j].desc != nullptr; j++) {
+			std::string res = to_lowercase(gfx_res[j].desc);
+			if (arg == res) {
 				x_override = gfx_res[j].x;
 				y_override = gfx_res[j].y;
 				break;
@@ -604,101 +631,130 @@ void gameparse(int argc, char* argv[])
 		}
 	}
 
+	// ------------------------------
+	// Build log output safely
+	// ------------------------------
+	std::string logOutput;
+	logOutput.reserve(65536); // reserve to avoid reallocations
+
+	// ------------------------------
+	// Process requested operation
+	// ------------------------------
 	switch (list)
 	{
-	case 1:
+		// -------------------------------------------------------------------------
+	case 1: // List ROMs 
+		logOutput.clear();
+		x = 0;
+		LOG_INFO("%s rom list:", driver[gamenum].name);
 
-		mylist = (char*)malloc(10000);
-		strcpy(mylist, "\n");
-		while (driver[gamenum].rom[x].romSize > 0)
-		{
-			if (driver[gamenum].rom[x].loadAddr != 0x999) {
-				if (driver[gamenum].rom[x].filename != (char*)-1) {
-					strcat(mylist, driver[gamenum].rom[x].filename);
-					if (w > 1) { strcat(mylist, "\n"); w = 0; }
-					else { strcat(mylist, " "); w++; }
-				}
+		while (driver[gamenum].rom[x].romSize > 0) {
+			const auto& rom = driver[gamenum].rom[x];
+			const char* fname = rom.filename;
+
+			// If this is a ROM_REGION marker, log region name
+			if (rom.loadAddr == ROM_REGION_START && rom.loadtype >= 0 && rom.loadtype < REGION_MAX) {
+				LOG_INFO("Region: %s", rom_regions[rom.loadtype]);
+			}
+
+			// Skip ROM_RELOAD and ROM_CONTINUE
+			if (fname && fname != (char*)-1 && fname != (char*)-2 &&
+				rom.loadAddr != ROM_REGION_START &&
+				rom.loadAddr != 0x999)
+			{
+				// Format CRC string
+				char crcbuf[16];
+				snprintf(crcbuf, sizeof(crcbuf), "%08X", rom.crc);
+
+				// Compose full line
+				logOutput = std::string(fname) +
+					" | CRC: " + crcbuf +
+					" | SHA1: " + (rom.sha ? rom.sha : "NULL");
+
+				LOG_INFO("%s", logOutput.c_str());
+				logOutput.clear();
 			}
 			x++;
 		}
 
-		strcat(mylist, "\0");
-		//	if (gamenum > 0) { allegro_message("%s rom list: %s", driver[gamenum].name, mylist); }
-		free(mylist);
-		LogClose();
-		exit(1); break;
-
-	case 2:
-		setup_game_config(); //Have to do this so the Rom loader can find the rom path.......
-		sanity_check_config();
-
-		mylist = (char*)malloc(0x25000);
-		strcpy(mylist, "\n");
-		LOG_INFO("Starting rom verify");
-		while (driver[gamenum].rom[x].romSize > 0)
-		{
-			if (driver[gamenum].rom[x].loadAddr != 0x999) {
-				if (driver[gamenum].rom[x].filename != (char*)-1) {
-					strcat(mylist, driver[gamenum].rom[x].filename);
-					retval = verify_rom(driver[gamenum].name, driver[gamenum].rom, x);
-
-					switch (retval)
-					{
-					case 0: strcat(mylist, " BAD? "); break;
-					case 1: strcat(mylist, " OK "); break;
-					case 3: strcat(mylist, " BADSIZE "); break;
-					case 4: strcat(mylist, " NOFILE "); break;
-					case 5: strcat(mylist, " NOZIP "); break;
-					}
-					if (w > 1) { strcat(mylist, "\n"); w = 0; }
-					else { strcat(mylist, " "); w++; }
-				}
-			}
-			x++;
-		}
-		strcat(mylist, "\0");
-
-		//if (gamenum > 0) { allegro_message("%s rom verify: %s", driver[gamenum].name, mylist); }
-		free(mylist);
-		LogClose();
-		exit(1);  break;
-
-	case 3: mylist = (char*)malloc(5000);
-		strcpy(mylist, "\n");
-		while (strcmp(driver[gamenum].game_samples[i], "NULL")) { strcat(mylist, driver[gamenum].game_samples[i]); strcat(mylist, " "); i++; }
-		strcat(mylist, "\0");
-		//if (gamenum > 0) allegro_message("%s Samples: %s", driver[gamenum].name, mylist);
-		free(mylist);
 		LogClose();
 		exit(1);
 		break;
-	case 4: mylist = (char*)malloc(0x11000); i = 0;
-		strcpy(mylist, "\n");
-		LOG_INFO("Starting sample verify");
-		while (strcmp(driver[gamenum].game_samples[i], "NULL"))
-		{
-			strcat(mylist, driver[gamenum].game_samples[i]);
-			retval = verify_sample(driver[gamenum].game_samples, i);
 
-			switch (retval)
+		// -------------------------------------------------------------------------
+	case 2: // Verify ROMs
+		//setup_game_config();
+		//sanity_check_config();
+
+		logOutput.clear();
+		x = 0;
+		LOG_INFO("Starting ROM verification for %s", driver[gamenum].name );
+
+		while (driver[gamenum].rom[x].romSize > 0) {
+			const char* fname = driver[gamenum].rom[x].filename;
+			if (fname && fname != (char*)-1 && fname != (char*)-2 &&
+				driver[gamenum].rom[x].loadAddr != ROM_REGION_START &&
+				driver[gamenum].rom[x].loadAddr != 0x999)
 			{
-			case 0: strcat(mylist, " BAD? "); break;
-			case 1: strcat(mylist, " OK "); break;
-			case 3: strcat(mylist, " BADSIZE "); break;
-			case 4: strcat(mylist, " NOFILE "); break;
-			case 5: strcat(mylist, " NOZIP "); break;
+				logOutput += fname;
+				LOG_INFO("LOOP ");
+				retval = verify_rom(driver[gamenum].name, driver[gamenum].rom, x);
+				switch (retval) {
+				case 0: logOutput += " BAD? "; break;
+				case 1: logOutput += " OK "; break;
+				case 3: logOutput += " BADSIZE "; break;
+				case 4: logOutput += " NOFILE "; break;
+				case 5: logOutput += " NOZIP "; break;
+				default: logOutput += " UNKNOWN "; break;
+				}
+
+				logOutput += (w > 1) ? "\n" : " ";
+				w = (w > 1) ? 0 : w + 1;
+				LOG_INFO("%s", logOutput.c_str());
+				logOutput.clear();
 			}
-			if (w > 1) { strcat(mylist, "\n"); w = 0; }
-			else { strcat(mylist, " "); w++; }
-			i++;
+			x++;
 		}
-
-		strcat(mylist, "\0");
-
-		//if (gamenum > 0) { allegro_message("%s sample verify: %s", driver[gamenum].name, mylist); }
-		free(mylist);
 		LogClose();
-		exit(1);  break;
+		exit(1);
+		break;
+
+		// -------------------------------------------------------------------------
+	case 3: // List Samples
+		logOutput.clear();
+		for (int i = 0; strcmp(driver[gamenum].game_samples[i], "NULL") != 0; i++) {
+			logOutput += driver[gamenum].game_samples[i];
+			logOutput += " ";
+		}
+		LOG_INFO("%s sample list: %s", driver[gamenum].name, logOutput.c_str());
+		LogClose();
+		exit(1);
+		break;
+
+		// -------------------------------------------------------------------------
+	case 4: // Verify Samples
+		logOutput.clear();
+		LOG_INFO("Starting sample verification...");
+		for (int i = 0; strcmp(driver[gamenum].game_samples[i], "NULL") != 0; i++) {
+			logOutput += driver[gamenum].game_samples[i];
+
+			retval = verify_sample(driver[gamenum].game_samples, i);
+			switch (retval) {
+			case 0: logOutput += " BAD? "; break;
+			case 1: logOutput += " OK "; break;
+			case 3: logOutput += " BADSIZE "; break;
+			case 4: logOutput += " NOFILE "; break;
+			case 5: logOutput += " NOZIP "; break;
+			default: logOutput += " UNKNOWN "; break;
+			}
+
+			logOutput += (w > 1) ? "\n" : " ";
+			w = (w > 1) ? 0 : w + 1;
+		}
+		LOG_INFO("%s sample verify: %s", driver[gamenum].name, logOutput.c_str());
+		LogClose();
+		exit(1);
+		break;
 	}
 }
 
@@ -778,7 +834,7 @@ void msg_loop(void)
 	{
 		throttle ^= 1;
 		frameavg = 0; fps_count = 0;
-		SetvSync(throttle);
+		//SetvSync(throttle);
 	}
 
 	if (osd_key_pressed_memory(OSD_KEY_CONFIGURE))
@@ -819,45 +875,6 @@ void msg_loop(void)
 			if (osd_key_pressed_memory(OSD_KEY_UI_SELECT))	{select_menu_item();}  // Enter
 		}
 	}
-}
-
-/*************************************
- *
- *	Speed Throttling:
-  *
- *************************************/
-
-void throttle_speed()
-{
-	const double ms_per_frame = 1000.0 / driver[gamenum].fps;
-	double current_time = TimerGetTimeMS();
-
-	if (throttle)
-	{
-		while ((current_time - starttime) < ms_per_frame)
-		{
-			double time_left = ms_per_frame - (current_time - starttime);
-
-			if (time_left > 2.0)
-				Sleep(1); // Allow other threads time
-			else
-				//Sleep(0); // Yield remainder of timeslice
-				YieldProcessor();
-
-			current_time = TimerGetTimeMS();
-		}
-	}
-
-	if (frames > 60)
-	{
-		frameavg++;
-		if (frameavg > 10000) { frameavg = 0; fps_count = 0.0; }
-		double frame_time = current_time - starttime;
-		if (frame_time > 0.0)
-			fps_count += 1000.0 / frame_time;
-	}
-
-	starttime = TimerGetTimeMS();
 }
 
 /*************************************
@@ -917,58 +934,6 @@ void run_game(void)
 	clamp(config.noisevol);
 	//set_volume(config.mainvol, 0);
 
-	/*
-	SetThreadPriority(GetCurrentThread(), ABOVE_NORMAL_PRIORITY_CLASS);
-
-	switch (config.priority)
-	{
-	case 4:
-		if (!SetPriorityClass(GetCurrentProcess(), REALTIME_PRIORITY_CLASS))
-			LOG_INFO("Failed to set REALTIME priority. Error code: %lu", GetLastError());
-		else
-			LOG_INFO("Process priority set to REALTIME_PRIORITY_CLASS");
-		break;
-	case 3:
-		if (!SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS))
-			LOG_INFO("Failed to set HIGH priority. Error code: %lu", GetLastError());
-		else
-			LOG_INFO("Process priority set to HIGH_PRIORITY_CLASS");
-		break;
-	case 2:
-		if (!SetPriorityClass(GetCurrentProcess(), ABOVE_NORMAL_PRIORITY_CLASS))
-			LOG_INFO("Failed to set ABOVE NORMAL priority. Error code: %lu", GetLastError());
-		else
-			LOG_INFO("Process priority set to ABOVE_NORMAL_PRIORITY_CLASS");
-		break;
-	case 1:
-		if (!SetPriorityClass(GetCurrentProcess(), NORMAL_PRIORITY_CLASS))
-			LOG_INFO("Failed to set NORMAL priority. Error code: %lu", GetLastError());
-		else
-			LOG_INFO("Process priority set to NORMAL_PRIORITY_CLASS");
-		break;
-	case 0:
-		if (!SetPriorityClass(GetCurrentProcess(), IDLE_PRIORITY_CLASS))
-			LOG_INFO("Failed to set IDLE priority. Error code: %lu", GetLastError());
-		else
-			LOG_INFO("Process priority set to IDLE_PRIORITY_CLASS");
-		break;
-	default:
-		LOG_INFO("Unknown priority level: %d", config.priority);
-		break;
-	}
-	LimitThreadAffinityToCurrentProc();
-	*/
-	/*
-	switch (config.priority)
-	{
-	case 4: SetPriorityClass(GetCurrentProcess(), REALTIME_PRIORITY_CLASS); break;
-	case 3: SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS); break;
-	case 2: SetPriorityClass(GetCurrentProcess(), ABOVE_NORMAL_PRIORITY_CLASS); break;
-	case 1: SetPriorityClass(GetCurrentProcess(), NORMAL_PRIORITY_CLASS); break;
-	case 0: SetPriorityClass(GetCurrentProcess(), IDLE_PRIORITY_CLASS); break;
-	}
-	LimitThreadAffinityToCurrentProc();
-	*/
 	art_loaded[5] = {};
 
 	init_machine();
@@ -1066,9 +1031,10 @@ void run_game(void)
 
 void emulator_run()
 {
+	wglSwapIntervalEXT(0);
 	auto start = chrono::steady_clock::now();
 
-	if (get_menu_status() == 0 && !paused) { ClipAndHideCursor(win_get_window()); }//scare_mouse(); CaptureMouseToWindow(win_get_window()); }
+	if (get_menu_status() == 0 && !paused) { ClipAndHideCursor(win_get_window()); }
 	else UnclipAndShowCursor();
 
 	if (config.debug_profile_code) {
@@ -1108,13 +1074,25 @@ void emulator_run()
 	inputport_vblank_end();
 	//timer_clear_all_eof();
 	cpu_clear_cyclecount_eof();
-
-	throttle_speed();
+	GLSwapBuffers();
 
 	if (throttle)
 	{
+		FrameLimiter::Throttle();   // waits until the next frame boundary
 		mixer_update();
 	}
+
+	// Update FPS counters just like throttle_speed() did, *after* pacing.
+	const double now = TimerGetTimeMS();
+	if (frames > 60) {
+		frameavg++;
+		if (frameavg > 10000) { frameavg = 0; fps_count = 0.0; }
+		const double dt = now - g_lastFrameTimestampMs;
+		if (dt > 0.0) {
+			fps_count += 1000.0 / dt;   // instantaneous FPS accumulator
+		}
+	}
+	g_lastFrameTimestampMs = now;
 
 	frames++;
 	if (frames > 0xfffffff) { frames = 0; }
@@ -1167,6 +1145,17 @@ void emulator_init(int argc, char** argv)
 	// Just to make sure we know that we have not loaded a game yet.
 	game_loaded_sentinel = false;
 
+	// Normalize all command-line args to lowercase *before* any parsing.
+    // If an arg begins with '-' or '/', leave the prefix and lowercase the rest.
+	for (int i = 1; i < argc; ++i)
+	{
+		if (!argv[i]) continue;
+		if (argv[i][0] == '-' || argv[i][0] == '/')
+			toLowerCase(argv[i] + 1);  // skip the dash/slash, lowercase the rest
+		else
+			toLowerCase(argv[i]);      // lowercase whole token (e.g., game name)
+	}
+
 	LOG_INFO(" String %s Max Num %d", argv[1], argc);
 
 	if (argv[1] == NULL)
@@ -1181,7 +1170,7 @@ void emulator_init(int argc, char** argv)
 	// Here is where we are checking command line for a supported game name.
 		// If not, it jumps straight into the GUI, bleh.
 
-	toLowerCase(argv[1]);
+//	toLowerCase(argv[1]);
 
 	// Handle List all roms
 	for (int i = 1; i < argc; i++)
@@ -1203,7 +1192,7 @@ void emulator_init(int argc, char** argv)
 		}
 	}
 	//gamenum = 18;
-	//	if (argc > 2) gameparse(argc, argv);
+	if (argc > 2) gameparse(argc, argv);
 	//}
 
 	//THIS IS WHERE THE CODING STARTS
@@ -1232,7 +1221,8 @@ void emulator_init(int argc, char** argv)
 	initrand();
 	//fillstars(stars);
 	have_error = 0;
-
+	FrameLimiter::Init(driver[gamenum].fps);
+	g_lastFrameTimestampMs = TimerGetTimeMS();
 	run_game();
 	LOG_INFO("Starting Run Game");
 }
@@ -1287,88 +1277,8 @@ void emulator_end()
 		// Free textures
 		destroy_all_textures();
 	}
+	FrameLimiter::Shutdown();
 	//force_all_kbdleds_off();
 	osd_set_leds(0);
 	LOG_INFO("End Final");
 }
-
-/*
-static void throttle_speed(void)
-{
-	double millsec = (double)1000 / (double)driver[gamenum].fps;
-	gametime = TimerGetTimeMS();
-	if (throttle) {
-		while (((double)(gametime)-(double)starttime) < (double)millsec)
-		{
-			HANDLE current_thread = GetCurrentThread();
-			int old_priority = GetThreadPriority(current_thread);
-
-			if (((double)gametime - (double)starttime) < (double)(millsec - 4))
-			{
-				SetThreadPriority(current_thread, THREAD_PRIORITY_TIME_CRITICAL);
-				Sleep(1);
-				SetThreadPriority(current_thread, old_priority);
-			}
-			else YieldProcessor();
-			gametime = TimerGetTimeMS();
-		}
-	}
-	if (frames > 60)
-	{
-		frameavg++;
-		if (frameavg > 10000) { frameavg = 0; fps_count = 0; }
-		fps_count += 1000 / ((double)(gametime)-(double)starttime);
-	}
-
-	starttime = TimerGetTimeMS();
-}
-*/
-/*
-static void throttle_speed(void)
-{
-	const double millsec = 1000.0 / driver[gamenum].fps;
-	const double sleep_threshold = millsec - 4.0;
-
-	gametime = TimerGetTimeMS();
-	double elapsed = gametime - starttime;
-
-	if (throttle)
-	{
-		HANDLE current_thread = GetCurrentThread();
-		int old_priority = GetThreadPriority(current_thread);
-
-		while (elapsed < millsec)
-		{
-			if (elapsed < sleep_threshold)
-			{
-				SetThreadPriority(current_thread, THREAD_PRIORITY_TIME_CRITICAL);
-				Sleep(1);
-				SetThreadPriority(current_thread, old_priority);
-			}
-			else
-			{
-				YieldProcessor(); // efficient busy-wait
-			}
-
-			gametime = TimerGetTimeMS();
-			elapsed = gametime - starttime;
-		}
-	}
-
-	if (frames > 60)
-	{
-		frameavg++;
-		if (frameavg > 10000)
-		{
-			frameavg = 0;
-			fps_count = 0;
-		}
-
-		double frame_time = gametime - starttime;
-		if (frame_time > 0.0)
-			fps_count += 1000.0 / frame_time;
-	}
-
-	starttime = TimerGetTimeMS();
-}
- */

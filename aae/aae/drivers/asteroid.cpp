@@ -217,6 +217,7 @@ WRITE_HANDLER(asteroid_sounds_w)
 
 WRITE_HANDLER(asteroid_explode_w)
 {
+	/*
 	static int explosion = -1;
 	int explosion2;
 	int sound = -1;
@@ -249,6 +250,12 @@ WRITE_HANDLER(asteroid_explode_w)
 		explosion = explosion2;
 	}
 	else explosion = -1;
+	*/
+	if (data == 0x3d) { sample_start(8, 0, 0); }
+	if (data == 0xfd) { sample_start(8, 1, 0); }
+	if (data == 0xbd) { sample_start(8, 2, 0); }
+
+
 }
 ///////////////////////////////////////////////////////////////////////////////
 WRITE_HANDLER(astdelux_led_w)

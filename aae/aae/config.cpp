@@ -56,7 +56,7 @@ void setup_config() {
     config.kbleds = get_config_int("main", "kbleds", 1);
     config.colordepth = get_config_int("main", "colordepth", 32);
     config.dblbuffer = get_config_int("main", "doublebuffer", 1);
-    config.forcesync = get_config_int("main", "force_vsync", 1);
+    config.forcesync = get_config_int("main", "force_vsync", 0);
     config.snappng = get_config_int("main", "snappng", 1);
     config.gamma = get_config_int("main", "gamma", 127);
     config.bright = get_config_int("main", "bright", 127);
@@ -66,7 +66,7 @@ void setup_config() {
     config.aspect = get_config_string("main", "aspect_ratio", "4:3");
     config.screenw = get_config_int("main", "screenw", 1024);
     config.screenh = get_config_int("main", "screenh", 768);
-    config.exrompath = get_config_string("main", "mame_rom_path", "NONE");
+    config.exrompath = get_config_string("main", "mame_rom_path", "roms");
     config.hack = get_config_int("main", "hack", 0);
 
     // Load game-specific overrides for select fields

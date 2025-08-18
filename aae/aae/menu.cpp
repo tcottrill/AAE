@@ -29,7 +29,6 @@
 
 #pragma warning( disable : 4305 4244 4996 )
 
-//TODO: Fix this mess eventually, remove/rewite the mame menu code to simplify it.
 
 constexpr int MENU_INT = 0;
 constexpr int MENU_FLOAT = 1;
@@ -47,24 +46,54 @@ constexpr int DIPMENU = 700;
 constexpr int VIDEOMENU = 800;
 constexpr int AUDIOMENU = 900;
 
+// Tracks the currently highlighted menu entry across all menus.
+// Used in drawing (to highlight) and navigation (up/down movement).
 int menuitem = 0;
-int menulevel = 100;
+
+// Represents the current menu level (ROOTMENU, VIDEOMENU, etc.).
+// Determines which menu function is called in do_the_menu().
+int menulevel = ROOTMENU;
+
+// Indicates a sub-mode (1 = waiting for user input, e.g., remapping keys/joysticks).
+// Used by input configuration menus to capture new input.
 int sublevel = 0;
+
+// Flag set when the program is waiting for a key during key mapping.
+// Set in change_key() and cleared once the key is processed.
 int key_set_flag = 0;
+
+// Controls whether the menu is visible (1) or hidden (0).
+// Checked by get_menu_status(), modified by set_menu_status().
 int show_menu = 0;
 
+// Stores the total number of items in the currently active menu (minus one).
+// Calculated during menu setup and used to limit navigation bounds.
 int num_this_menu = 0;
+
+// Holds the currently adjusted value for the selected menu entry (before committing).
+// Used in change_menu_item(), check_sound_menu(), and check_video_menu().
 static int currentval = 0;
+
+// Lower bound for the currently selected menu entry’s value (used in float menus).
+// Recalculated each time a menu is drawn. Could be local to menu functions.
 int val_low = 0;
+
+// Upper bound for the currently selected menu entry’s value.
+// Used for wrapping values in change_menu_item(). Also recalculated per menu draw.
 int val_high = 0;
+
+// Iterator index for looping over menu entries during drawing.
+// Set to 0 at the start of menu functions. Could be local to those functions.
 int it = 1;
+
+// Initialization sentinel and total menu item counter.
+// Used only during the first run of do_video_menu() and do_sound_menu() to count entries.
+// Could be refactored to a local variable in setup_*_menu() functions.
 static int number = 0;
-static int curr_item = 0;
 
-// For savecall when exiting.
+// Remembers the previous menu visibility state to detect transitions.
+// Used in set_menu_status() to trigger saving configurations when the menu closes.
 static int last_menu_setting = 0;
-
-// TODO: Add another value here to differentiate settings that should NOT be saved into a "game" ini file like screen size!
 
 typedef struct
 {
@@ -87,262 +116,21 @@ const char* mouse_names[] =
 };
 
 const char* key_names[256] = {
-	"NULL",              // Code 0x0
-	"LBUTTON",           // Code 0x1
-	"RBUTTON",           // Code 0x2
-	"CANCEL",            // Code 0x3
-	"MBUTTON",           // Code 0x4
-	"XBUTTON1",          // Code 0x5
-	"XBUTTON2",          // Code 0x6
-	"UNDEF",             // Code 0x7
-	"BACKSPACE",         // Code 0x8
-	"TAB",               // Code 0x9
-	"LF",                // Code 0xA
-	"VT",                // Code 0xB
-	"CLEAR",             // Code 0xC
-	"ENTER",             // Code 0xD
-	"UNDEF",             // Code 0xE
-	"UNDEF",             // Code 0xF
-	"SHIFT",             // Code 0x10
-	"CONTROL",           // Code 0x11
-	"MENU",              // Code 0x12
-	"PAUSE",             // Code 0x13
-	"CAPSLOCK",          // Code 0x14
-	"KANA",              // Code 0x15
-	"IME_ON",            // Code 0x16
-	"JUNJA",             // Code 0x17
-	"CANCEL",            // Code 0x18
-	"KANJI",             // Code 0x19
-	"IME_OFF",           // Code 0x1A
-	"ESC",               // Code 0x1B
-	"CONVERT",           // Code 0x1C
-	"NONCONVERT",        // Code 0x1D
-	"ACCEPT",            // Code 0x1E
-	"MODECHANGE",        // Code 0x1F
-	"SPACE",             // Code 0x20
-	"PGUP",              // Code 0x21
-	"PGDN",              // Code 0x22
-	"END",               // Code 0x23
-	"HOME",				 // Code 0x24
-	"LEFT",              // Code 0x25
-	"UP",				 // Code 0x26
-	"RIGHT",			 // Code 0x27
-	"DOWN",				 // Code 0x28
-	"SELECT",            // Code 0x29
-	"PRINT",             // Code 0x2A
-	"PLUS",              // Code 0x2B
-	"PRINTSCRN",         // Code 0x2C
-	"INSERT",            // Code 0x2D
-	"DEL",				 // Code 0x2E
-	"HELP",              // Code 0x2F
-	"0",                 // Code 0x30
-	"1",                 // Code 0x31
-	"2",                 // Code 0x32
-	"3",                 // Code 0x33
-	"4",                 // Code 0x34
-	"5",                 // Code 0x35
-	"6",                 // Code 0x36
-	"7",                 // Code 0x37
-	"8",                 // Code 0x38
-	"9",                 // Code 0x39
-	"UNDEF",             // Code 0x3A
-	"UNDEF",			 // Code 0x3B
-	"UNDEF",			 // Code 0x3C
-	"UNDEF",             // Code 0x3D
-	"UNDEF",			 // Code 0x3E
-	"UNDEF",		     // Code 0x3F
-	"UNDEF",             // Code 0x40
-	"A",                 // Code 0x41
-	"B",                 // Code 0x42
-	"C",                 // Code 0x43
-	"D",                 // Code 0x44
-	"E",                 // Code 0x45
-	"F",                 // Code 0x46
-	"G",                 // Code 0x47
-	"H",                 // Code 0x48
-	"I",                 // Code 0x49
-	"J",                 // Code 0x4A
-	"K",                 // Code 0x4B
-	"L",                 // Code 0x4C
-	"M",                 // Code 0x4D
-	"N",                 // Code 0x4E
-	"O",                 // Code 0x4F
-	"P",                 // Code 0x50
-	"Q",                 // Code 0x51
-	"R",                 // Code 0x52
-	"S",                 // Code 0x53
-	"T",                 // Code 0x54
-	"U",                 // Code 0x55
-	"V",                 // Code 0x56
-	"W",                 // Code 0x57
-	"X",                 // Code 0x58
-	"Y",                 // Code 0x59
-	"Z",                 // Code 0x5A
-	"LWIN",				 // Code 0x5B
-	"RWIN",				 // Code 0x5C
-	"APPS",				 // Code 0x5D
-	"RES",		         // Code 0x5E
-	"SLEEP",             // Code 0x5F
-	"0_PAD",             // Code 0x60
-	"1_PAD",             // Code 0x61
-	"2_PAD",             // Code 0x62
-	"3_PAD",             // Code 0x63
-	"4_PAD",             // Code 0x64
-	"5_PAD",             // Code 0x65
-	"6_PAD",             // Code 0x66
-	"7_PAD",             // Code 0x67
-	"8_PAD",             // Code 0x68
-	"9_PAD",             // Code 0x69
-	"MULTIPLY",          // Code 0x6A
-	"ADD",               // Code 0x6B
-	"SEP",               // Code 0x6C
-	"SUBTRACT",          // Code 0x6D
-	"DECIMAL",           // Code 0x6E
-	"DIVIDE",            // Code 0x6F
-	"F1",                // Code 0x70
-	"F2",                // Code 0x71
-	"F3",                // Code 0x72
-	"F4",                // Code 0x73
-	"F5",                // Code 0x74
-	"F6",                // Code 0x75
-	"F7",                // Code 0x76
-	"F8",                // Code 0x77
-	"F9",                // Code 0x78
-	"F10",               // Code 0x79
-	"F11",               // Code 0x7A
-	"F12",				 // Code 0x7B
-	"F13",               // Code 0x7C
-	"F14",				 // Code 0x7D
-	"F15",               // Code 0x7E
-	"F16",               // Code 0x7F
-	"F17",               // Code 0x80
-	"F18",				 // Code 0x81
-	"F19",				 // Code 0x82
-	"F20",				 // Code 0x83
-	"F21",				 // Code 0x84
-	"F22",				 // Code 0x85
-	"F23",				 // Code 0x86
-	"F24",				 // Code 0x87
-	"CIRCUMFLEX",        // Code 0x88
-	"PERMILLE",          // Code 0x89
-	"SCARON",            // Code 0x8A
-	"LEFTANGLEQUOTE",    // Code 0x8B
-	"OE",                // Code 0x8C
-	"UNASSIGNED141",     // Code 0x8D
-	"ZCARON",            // Code 0x8E
-	"UNASSIGNED143",     // Code 0x8F
-	"NUMLOCK",           // Code 0x90
-	"SCRLOCK",           // Code 0x91
-	"RSQUOTE",           // Code 0x92
-	"LDQUOTE",           // Code 0x93
-	"RDQUOTE",           // Code 0x94
-	"BULLET",            // Code 0x95
-	"ENDASH",            // Code 0x96
-	"EMDASH",            // Code 0x97
-	"SMALLTILDE",        // Code 0x98
-	"TRADEMARK",         // Code 0x99
-	"SCARON_SMALL",      // Code 0x9A
-	"RIGHTANGLEQUOTE",   // Code 0x9B
-	"OE_SMALL",          // Code 0x9C
-	"UNASSIGNED157",     // Code 0x9D
-	"ZCARON_SMALL",      // Code 0x9E
-	"YDIAERESIS",        // Code 0x9F
-	"LSHIFT",            // Code 0xA0
-	"RSHIFT",		     // Code 0xA1
-	"LCONTROL",			 // Code 0xA2
-	"RCONTROL",          // Code 0xA3
-	"LMENU",			 // Code 0xA4
-	"RMENU",             // Code 0xA5
-	"BBACK",			 // Code 0xA6
-	"ALTGR",			 // Code 0xA7
-	"DIAERESIS",         // Code 0xA8
-	"COPYRIGHT",         // Code 0xA9
-	"FEMININEORD",       // Code 0xAA
-	"LEFTANGLEQUOTE",    // Code 0xAB
-	"NOTSIGN",           // Code 0xAC
-	"SOFT_HYPHEN",       // Code 0xAD
-	"REGISTERED",        // Code 0xAE
-	"MACRON",            // Code 0xAF
-	"DEGREE",            // Code 0xB0
-	"PLUSMINUS",         // Code 0xB1
-	"SUPER2",            // Code 0xB2
-	"SUPER3",            // Code 0xB3
-	"ACUTE",             // Code 0xB4
-	"MICRO",             // Code 0xB5
-	"PILCROW",           // Code 0xB6
-	"MIDDOT",            // Code 0xB7
-	"CEDILLA",           // Code 0xB8
-	"SUPER1",            // Code 0xB9
-	"SEMICOLON",	     // Code 0xBA
-	"EQUALS",            // Code 0xBB
-	"ONEQUARTER",        // Code 0xBC
-	"MINUS",	         // Code 0xBD
-	"STOP",				 // Code 0xBE
-	"SLASH",			 // Code 0xBF
-	"TILDE",             // Code 0xC0
-	"UPPER_A_ACUTE",     // Code 0xC1
-	"UPPER_A_CIRCUMFLEX",// Code 0xC2
-	"UPPER_A_TILDE",     // Code 0xC3
-	"UPPER_A_UMLAUT",    // Code 0xC4
-	"UPPER_A_RING",      // Code 0xC5
-	"UPPER_AE",          // Code 0xC6
-	"UPPER_C_CEDILLA",   // Code 0xC7
-	"UPPER_E_GRAVE",     // Code 0xC8
-	"UPPER_E_ACUTE",     // Code 0xC9
-	"UPPER_E_CIRCUMFLEX",// Code 0xCA
-	"UPPER_E_UMLAUT",    // Code 0xCB
-	"UPPER_I_GRAVE",     // Code 0xCC
-	"UPPER_I_ACUTE",     // Code 0xCD
-	"UPPER_I_CIRCUMFLEX",// Code 0xCE
-	"UPPER_I_UMLAUT",    // Code 0xCF
-	"UPPER_ETH",         // Code 0xD0
-	"UPPER_N_TILDE",     // Code 0xD1
-	"UPPER_O_GRAVE",     // Code 0xD2
-	"UPPER_O_ACUTE",     // Code 0xD3
-	"UPPER_O_CIRCUMFLEX",// Code 0xD4
-	"UPPER_O_TILDE",     // Code 0xD5
-	"UPPER_O_UMLAUT",    // Code 0xD6
-	"MULTIPLY",          // Code 0xD7
-	"UPPER_O_SLASH",     // Code 0xD8
-	"UPPER_U_GRAVE",     // Code 0xD9
-	"UPPER_U_ACUTE",     // Code 0xDA
-	"OPENBRACE",         // Code 0xDB
-	"BACKSLASH",	     // Code 0xDC
-	"CLOSEBRACE",        // Code 0xDD
-	"QUOTE",		     // Code 0xDE
-	"LOWER_SHARP_S",     // Code 0xDF
-	"LOWER_A_GRAVE",     // Code 0xE0
-	"LOWER_A_ACUTE",     // Code 0xE1
-	"LOWER_A_CIRCUMFLEX",// Code 0xE2
-	"LOWER_A_TILDE",     // Code 0xE3
-	"LOWER_A_UMLAUT",    // Code 0xE4
-	"LOWER_A_RING",      // Code 0xE5
-	"LOWER_AE",          // Code 0xE6
-	"LOWER_C_CEDILLA",   // Code 0xE7
-	"LOWER_E_GRAVE",     // Code 0xE8
-	"LOWER_E_ACUTE",     // Code 0xE9
-	"LOWER_E_CIRCUMFLEX",// Code 0xEA
-	"LOWER_E_UMLAUT",    // Code 0xEB
-	"LOWER_I_GRAVE",     // Code 0xEC
-	"LOWER_I_ACUTE",     // Code 0xED
-	"LOWER_I_CIRCUMFLEX",// Code 0xEE
-	"LOWER_I_UMLAUT",    // Code 0xEF
-	"LOWER_ETH",         // Code 0xF0
-	"LOWER_N_TILDE",     // Code 0xF1
-	"LOWER_O_GRAVE",     // Code 0xF2
-	"LOWER_O_ACUTE",     // Code 0xF3
-	"LOWER_O_CIRCUMFLEX",// Code 0xF4
-	"LOWER_O_TILDE",     // Code 0xF5
-	"LOWER_O_UMLAUT",    // Code 0xF6
-	"DIVIDE",            // Code 0xF7
-	"LOWER_O_SLASH",     // Code 0xF8
-	"LOWER_U_GRAVE",     // Code 0xF9
-	"LOWER_U_ACUTE",     // Code 0xFA
-	"LOWER_U_CIRCUMFLEX",// Code 0xFB
-	"LOWER_U_UMLAUT",    // Code 0xFC
-	"LOWER_Y_ACUTE",     // Code 0xFD
-	"LOWER_THORN",       // Code 0xFE
-	"NONE"				 // Code 0xFF
+"NULL","LBUTTON","RBUTTON","CANCEL","MBUTTON","XBUTTON1","XBUTTON2","UNDEF","BACKSPACE","TAB","LF","VT","CLEAR","ENTER","UNDEF","UNDEF",
+"SHIFT","CONTROL","MENU","PAUSE","CAPSLOCK","KANA","IME_ON","JUNJA","CANCEL","KANJI","IME_OFF","ESC","CONVERT","NONCONVERT","ACCEPT","MODECHANGE",
+"SPACE","PGUP","PGDN","END","HOME","LEFT","UP","RIGHT","DOWN","SELECT","PRINT","EXECUTE","PRINTSCRN","INSERT","DEL","HELP",
+"0","1","2","3","4","5","6","7","8","9","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF",
+"UNDEF","A","B","C","D","E","F","G","H","I","J","K","L","M","N","O",
+"P","Q","R","S","T","U","V","W","X","Y","Z","LWIN","RWIN","APPS","UNDEF","SLEEP",
+"NUMPAD0","NUMPAD1","NUMPAD2","NUMPAD3","NUMPAD4","NUMPAD5","NUMPAD6","NUMPAD7","NUMPAD8","NUMPAD9","MULTIPLY","ADD","SEPARATOR","SUBTRACT","DECIMAL","DIVIDE",
+"F1","F2","F3","F4","F5","F6","F7","F8","F9","F10","F11","F12","F13","F14","F15","F16",
+"F17","F18","F19","F20","F21","F22","F23","F24","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF",
+"NUMLOCK","SCROLL","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF",
+"LSHIFT","RSHIFT","LCONTROL","RCONTROL","LMENU","RMENU","BROWSER_BACK","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF",
+"UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","SEMICOLON","EQUALS","OEM_COMMA","MINUS","PERIOD","SLASH","OEM_3",
+"UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF",
+"UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","LBRACKET","BACKSLASH","RBRACKET","APOSTROPHE","UNDEF",
+"UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","NONE"
 };
 
 static MENUS glmenu[] = {
@@ -482,6 +270,7 @@ void change_menu_level(int dir) //This is up and down
 		if (menulevel == AUDIOMENU) { currentval = soundmenu[menuitem].current; }
 	}
 }
+
 void change_menu_item(int dir) //This is right and left
 {
 	if (menulevel == DIPMENU) return;
@@ -509,43 +298,17 @@ void select_menu_item() //This is enter
 		menuitem = 0;
 		break;
 	}
-				 //For changing levels
-	case GLOBALKEYS: { sublevel = 1; break; }
-	case LOCALKEYS: { sublevel = 1; break; }
-	case GLOBALJOY: { sublevel = 1; break; }
-	case LOCALJOY: { sublevel = 1; break; };
+	//For changing levels
+	case GLOBALKEYS:
+	case LOCALKEYS: 
+	case GLOBALJOY: 
+	case LOCALJOY: sublevel = 1; break; 
 	case ANALOGMENU: do_mouse_menu(); break;
 	case DIPMENU: { do_dipswitch_menu(); break; }
 	}
 }
 
-//This is no longer being used
-/*
-void change_menu()
-{
-	//This is menu exit;
 
-	   //Tweak for dipswitch to make sure to set selected item on exit
-	if (menulevel == AUDIOMENU)
-	{
-		if ((soundmenu[menuitem].current) != currentval) { soundmenu[menuitem].current = currentval; }
-		number = 0;
-		save_sound_menu();
-	}
-	if (menulevel == VIDEOMENU)
-	{
-		if ((glmenu[menuitem].current) != currentval) { glmenu[menuitem].current = currentval; }
-		number = 0;
-		save_video_menu();
-	}
-
-	if (menulevel == DIPMENU) { number = 0; }
-	if (menulevel == ANALOGMENU) { number = 0; } //if ((mousemenu[menuitem - 1].current) != currentval){ mousemenu[menuitem - 1].current = currentval; } number = 0; save_mouse_menu();}
-
-	if (menulevel == GLOBALKEYS) { number = 0; }//save_keys();}
-	if (menulevel > ROOTMENU) { menulevel = 100; menuitem = 1; number = 0; }
-}
-*/
 void do_the_menu()
 {
 	switch (menulevel)
@@ -603,8 +366,7 @@ int do_joystick_menu(int type)
 	int i, x;
 	struct ipd* in;
 	int total;
-	extern struct ipd inputport_defaults[];
-
+	
 	//int newkey=0;
 	int color = 255;
 	int spacing = 21;
@@ -664,17 +426,13 @@ int do_joystick_menu(int type)
 	{
 		if (top > bottom - 16) top = bottom - 16;
 		if (x >= top && x <= bottom + b) {
-			if (menuitem == x)
-			{
-				color = 0;
-				VF.Print(left, start, MAKE_RGBA(255, color, 255, 255), 2.3, menu_item[menuitem]);
+			if (menuitem == x) {
+				VF.Print(left, start, RGB_PINK, 2.3, menu_item[menuitem]);
 			}
-			else
-			{
-				color = 255;
-				VF.Print(left, start, MAKE_RGBA(255, color, 255, 255), 2.0, "%s", entry[x]->name);
+			else {
+				VF.Print(left, start, RGB_WHITE, 2.0, "%s", entry[x]->name);
 			}
-			VF.Print(545, start, MAKE_RGBA(255, color, 255, 255), 2.0, menu_subitem[x]);
+			VF.Print(545, start, RGB_WHITE, 2.0, menu_subitem[x]);
 			start -= 8 * 2.5;
 		}
 	}
@@ -775,7 +533,6 @@ int do_gamejoy_menu(int type)
 	}
 	num_this_menu = (total - 1);
 
-	//	quad_from_center(450, 475, 580, 450, 20, 20, 80, 255);
 	VF.DrawQuad(450, 475, 580, 450, MAKE_RGBA(20, 20, 80, 255));
 	VF.Print(left, 650, RGB_WHITE, 1.9, "JOY CONFIG - This Game");
 
@@ -788,17 +545,14 @@ int do_gamejoy_menu(int type)
 	{
 		if (top > bottom - 16) top = bottom - 16;
 		if (x >= top && x <= bottom + b) {
-			if (menuitem == x)
-			{
-				color = 0;
-				VF.Print(left, start, MAKE_RGBA(255, color, 255, 255), 2.3, menu_item[menuitem]);
+			if (menuitem == x) {
+				VF.Print(left, start, RGB_PINK, 2.3, menu_item[menuitem]);
 			}
-			else
-			{
+			else {
 				color = 255;
-				VF.Print(left, start, MAKE_RGBA(255, color, 255, 255), 2.0, menu_item[x]);
+				VF.Print(left, start, RGB_WHITE, 2.0, menu_item[x]);
 			}
-			VF.Print(545, start, MAKE_RGBA(255, color, 255, 255), 2.0, menu_subitem[x]);
+			VF.Print(545, start, RGB_WHITE, 2.0, menu_subitem[x]);
 			start -= 8 * 2.5;
 		}
 	}
@@ -842,8 +596,8 @@ int do_gamejoy_menu(int type)
 
 void do_keyboard_menu(int type)
 {
-	const char* menu_item[400];
-	struct ipd* entry[400];
+	const char* menu_item[400] = { nullptr };  
+	struct ipd* entry[400] = { nullptr };     
 	int x = 0;
 	int newkey = 0;
 	int color = 255;
@@ -857,8 +611,6 @@ void do_keyboard_menu(int type)
 	int total;
 	static int page = 0;
 	int b = 0;
-
-	extern struct ipd inputport_defaults[];
 
 	in = inputport_defaults;
 
@@ -876,7 +628,7 @@ void do_keyboard_menu(int type)
 	}
 
 	num_this_menu = (total - 1);
-	//quad_from_center(500, 475, 670, 500, 20, 20, 80, 255);
+	
 	VF.DrawQuad(500, 475, 670, 500, MAKE_RGBA(20, 20, 80, 255));
 	VF.Print(left, 650, RGB_WHITE, 2.0, "Input Configuration (Global)");
 
@@ -889,18 +641,14 @@ void do_keyboard_menu(int type)
 	{
 		if (top > bottom - 16) top = bottom - 16;
 		if (x >= top && x <= bottom + b) {
-			if (menuitem == x)
-			{
-				color = 0;
-				VF.Print(left, start, MAKE_RGBA(255, color, 255, 255), 2.0, menu_item[menuitem]);
+			if (menuitem == x) {
+						VF.Print(left, start, RGB_PINK, 2.0, menu_item[menuitem]);
 			}
-			else
-			{
-				color = 255;
-				VF.Print(left, start, MAKE_RGBA(255, color, 255, 255), 2.0, "%s", entry[x]->name);
+			else {
+				VF.Print(left, start, RGB_WHITE, 2.0, "%s", entry[x]->name);
 			}
 
-			VF.Print(545, start, MAKE_RGBA(255, color, 255, 255), 2.0, key_names[entry[x]->keyboard]);
+			VF.Print(545, start, RGB_WHITE, 2.0, key_names[entry[x]->keyboard]);
 			start -= 8 * 2.5;
 		}
 	}
@@ -976,20 +724,15 @@ void do_gamekey_menu(int type)
 
 	for (x = 0; x < total; x++)
 	{
-		if (menuitem == x)
-		{
-			color = 0;
-			VF.Print(left, start, MAKE_RGBA(255, color, 255, 255), 2.0, menu_item[menuitem]);
+		if (menuitem == x) {
+			VF.Print(left, start, RGB_PINK, 2.0, menu_item[menuitem]);
 		}
-		else
-		{
-			color = 255;
-			VF.Print(left, start, MAKE_RGBA(255, color, 255, 255), 2.0, menu_item[x]);
-			//LOG_INFO("Printing menu item %x", menu_item[x]);
+		else {
+			VF.Print(left, start, RGB_WHITE, 2.0, menu_item[x]);
 		}
 
-		VF.Print(545, start, MAKE_RGBA(255, color, 255, 255), 2.0, "%s", menu_subitem[x]);//key_names[entry[x]->keyboard]);
-		LOG_INFO("Printing menu item key name %x", menu_subitem[x]);
+		VF.Print(545, start, RGB_WHITE, 2.0, "%s", menu_subitem[x]);//key_names[entry[x]->keyboard]);
+		//LOG_INFO("Printing menu item key name %x", menu_subitem[x]);
 		start -= 8 * 2.5;
 	}
 	if (sublevel == 1)
@@ -1107,22 +850,17 @@ void do_dipswitch_menu()
 		}
 	}
 
-	//quad_from_center(520, 525, 850, 325, 20, 20, 80, 255);
 	VF.DrawQuad(520, 525, 850, 325, RGB_PURPLE);
 
 	for (x = 0; x < total; x++)
 	{
-		if (menuitem == x)
-		{
-			color = 0;
-			VF.Print(left, start, MAKE_RGBA(255, color, 255, 255), 2.0, menu_item[menuitem]);
+		if (menuitem == x) {
+			VF.Print(left, start, RGB_PINK, 2.0, menu_item[menuitem]);
 		}
-		else
-		{
-			color = 255;
-			VF.Print(left, start, MAKE_RGBA(255, color, 255, 255), 2.0, menu_item[x]);
+		else {
+			VF.Print(left, start, RGB_WHITE, 2.0, menu_item[x]);
 		}
-		if (menu_subitem[x]) VF.Print(580, start, MAKE_RGBA(255, color, 255, 255), 2.0, menu_subitem[x]);
+		if (menu_subitem[x]) VF.Print(580, start, RGB_WHITE, 2.0, menu_subitem[x]);
 
 		if (arrowize == 2 && menuitem == x)
 		{
@@ -1336,7 +1074,6 @@ int do_mouse_menu()
 		else menu_subitem[i] = 0;	/* no subitem */
 	}
 
-	//quad_from_center(520, 575, 680, 200, 20, 20, 80, 255);
 	VF.DrawQuad(520, 575, 680, 200, RGB_PURPLE);
 	VF.Print(285, 700, RGB_WHITE, 2.0, "ANALOG SETTINGS");
 	menu_item[total] = "Return to Main Menu";
@@ -1346,18 +1083,13 @@ int do_mouse_menu()
 
 	for (x = 0; x < total; x++)
 	{
-		if (menuitem == x)
-		{
-			color = 0;
-			VF.Print(left, start, MAKE_RGBA(255, color, 255, 255), 2.0, menu_item[menuitem]);
+		if (menuitem == x) {			
+			VF.Print(left, start, RGB_PINK, 2.0, menu_item[menuitem]);
 		}
-		else
-		{
-			color = 255;
-			VF.Print(left, start, MAKE_RGBA(255, color, 255, 255), 2.0, menu_item[x]);
+		else {
+			VF.Print(left, start, RGB_WHITE, 2.0, menu_item[x]);
 		}
-
-		VF.Print(left + 400, start, MAKE_RGBA(255, color, 255, 255), 2.0, menu_subitem[x]);
+        VF.Print(left + 400, start, RGB_WHITE, 2.0, menu_subitem[x]);
 
 		start -= 8 * 2.5;
 	}
@@ -1467,63 +1199,46 @@ int do_mouse_menu()
 void do_sound_menu()
 {
 	int yval = 625;
-	int color = 0;
-	it = 0;
-	int x = 0;
 	int left = 225;
 
-	if (number == 0)
-	{
+	if (number == 0) {
 		while (soundmenu[number].NumOptions) { number++; }
 		number--;
 		num_this_menu = number;
 		currentval = soundmenu[it].current;
 	}
 
-	//quad_from_center(475, 575, 600, 275, 20, 20, 80, 255);
 	VF.DrawQuad(475, 575, 600, 275, RGB_PURPLE);
-
-	//if (gamenum == 0)
-	//{
-	//	 VF.Print(left, yval + 30, RGB_WHITE, 2.0, "Sound Settings - Global");
-	//}
-	//else {
 	VF.Print(left, yval + 30, RGB_WHITE, 2.0, "Sound Settings - This Game");
-	//}
+
 	val_low = 0;
-
-	for (x = 0; x < num_this_menu + 1; x++)
-	{
+	it = 0;
+	for (int x = 0; x < num_this_menu + 1; x++)	{
+		
 		val_low = 0;
+		rgb_t rowColor = (menuitem == it) ? RGB_PINK : RGB_WHITE;
 
-		if (menuitem == it)
-		{
-			color = 0;
-			if (soundmenu[(it)].menu_type == MENU_INT)
-			{
-				val_high = (soundmenu[(it)].NumOptions);
+		if (menuitem == it)	{
+			if (soundmenu[it].menu_type == MENU_INT) {
+				val_high = soundmenu[it].NumOptions;
 			}
-			else if (soundmenu[(it)].menu_type == MENU_FLOAT)
-			{
-				val_low = soundmenu[(it)].Min * ceilf((1 / soundmenu[(it)].step));
-				val_high = (soundmenu[(it)].Max * ceilf((1 / soundmenu[(it)].step)));
+			else if (soundmenu[it].menu_type == MENU_FLOAT) {
+				val_low = soundmenu[it].Min * ceilf((1 / soundmenu[it].step));
+				val_high = soundmenu[it].Max * ceilf((1 / soundmenu[it].step));
 			}
 		}
-		else { color = 255; }
 
-		if (soundmenu[(it)].menu_type == MENU_INT)
-		{
-			VF.Print(left + 350, yval, MAKE_RGBA(255, color, 255, 255), 2.0, "%s", soundmenu[(it)].options[soundmenu[(it)].current]);
+		if (soundmenu[it].menu_type == MENU_INT) {
+			VF.Print(left + 350, yval, rowColor, 2.0, "%s", soundmenu[it].options[soundmenu[it].current]);
 		}
-		else if (soundmenu[(it)].menu_type == MENU_FLOAT)
-		{
-			VF.Print(left + 350, yval, MAKE_RGBA(255, color, 255, 255), 2.0, "%2.1f", soundmenu[(it)].step * soundmenu[(it)].current);
+		else if (soundmenu[it].menu_type == MENU_FLOAT)	{
+			VF.Print(left + 350, yval, rowColor, 2.0, "%2.1f", soundmenu[it].step * soundmenu[it].current);
 		}
 
-		VF.Print(left, yval, MAKE_RGBA(255, color, 255, 255), 2.0, soundmenu[(it)].heading);
+		VF.Print(left, yval, rowColor, 2.0, soundmenu[it].heading);
 
 		it++;
-		yval -= 28; //35
+		yval -= 28;
 	}
 }
 
@@ -1577,7 +1292,6 @@ void save_sound_menu()
 	if (soundmenu[5].Changed != soundmenu[5].current) my_set_config_int("main", "pshiss", soundmenu[5].current, gamenum);
 }
 
-/*
 void setup_mouse_menu()
 {
 	int x = 0;
@@ -1591,12 +1305,12 @@ void setup_mouse_menu()
 
 void save_mouse_menu()
 {
-	 if (mousemenu[0].Changed != mousemenu[0].current) my_set_config_int("main", "mouse1xs", mousemenu[0].current, gamenum);
-	 if (mousemenu[1].Changed != mousemenu[1].current) my_set_config_int("main", "mouse1ys", mousemenu[1].current, gamenum);
-	 if (mousemenu[2].Changed != mousemenu[2].current) my_set_config_int("main", "mouse1x_invert", mousemenu[2].current, gamenum);
-	 if (mousemenu[3].Changed != mousemenu[3].current) my_set_config_int("main", "mouse1y_invert",  mousemenu[3].current, gamenum);
+	if (mousemenu[0].Changed != mousemenu[0].current) my_set_config_int("main", "mouse1xs", mousemenu[0].current, gamenum);
+	if (mousemenu[1].Changed != mousemenu[1].current) my_set_config_int("main", "mouse1ys", mousemenu[1].current, gamenum);
+	if (mousemenu[2].Changed != mousemenu[2].current) my_set_config_int("main", "mouse1x_invert", mousemenu[2].current, gamenum);
+	if (mousemenu[3].Changed != mousemenu[3].current) my_set_config_int("main", "mouse1y_invert", mousemenu[3].current, gamenum);
 }
-*/
+
 void set_points_lines()
 {
 	config.linewidth = glmenu[10].step * (glmenu[10].current);
@@ -1675,63 +1389,54 @@ void setup_video_menu()
 void do_video_menu()
 {
 	int yval = 650;
-	int color = 0;
 	it = 0;
-	int x = 0;
-
-	if (number == 0)
-	{
+	
+	if (number == 0) {
 		while (glmenu[number].NumOptions) { number++; }
-		number--;
-		num_this_menu = number;
+		num_this_menu = number--;
 		currentval = glmenu[it].current;
 	}
-	//quad_from_center(520, 400, 580, 625, 20, 20, 80, 255);
-	VF.DrawQuad(520, 400, 580, 625, RGB_PURPLE);
 
-	//if (gamenum == 0)
-	//{
-	//	 VF.Print(330, yval + 30, RGB_WHITE, 2.0, "GL Settings - Global");
-	//}
-	//else {
+	VF.DrawQuad(520, 400, 580, 625, RGB_PURPLE);
+	//if (gamenum == 0){ VF.Print(330, yval + 30, RGB_WHITE, 2.0, "GL Settings - Global");}else {
 	VF.Print(300, yval + 30, RGB_WHITE, 2.0, "GL Settings - This Game");
-	//}
+
 	val_low = 0;
 
-	for (x = 0; x < num_this_menu + 1; x++)
+	for (int x = 0; x < num_this_menu + 1; x++)
 	{
 		val_low = 0;
 
-		if (menuitem == it)
-		{
-			color = 0;
-			if (glmenu[(it)].menu_type == MENU_INT)
-			{
-				val_high = (glmenu[(it)].NumOptions);
-			}
-			else if (glmenu[(it)].menu_type == MENU_FLOAT)
-			{
-				val_low = glmenu[(it)].Min * ceilf((1 / glmenu[(it)].step));
-				val_high = (glmenu[(it)].Max * ceilf((1 / glmenu[(it)].step)));
-			}
-		}
-		else { color = 255; }
+		// Use rowColor instead of color variable
+		rgb_t rowColor = (menuitem == it) ? RGB_PINK : RGB_WHITE;
 
-		if (glmenu[(it)].menu_type == MENU_INT)
-		{
-			VF.Print(550, yval, MAKE_RGBA(255, color, 255, 255), 2.0, "%s", glmenu[(it)].options[glmenu[(it)].current]);
-		}
-		else if (glmenu[(it)].menu_type == MENU_FLOAT)
-		{
-			VF.Print(550, yval, MAKE_RGBA(255, color, 255, 255), 2.0, "%2.1f", glmenu[(it)].step * glmenu[(it)].current);
+		// Only set val_high/val_low when the current item is selected
+		if (menuitem == it)	{
+			if (glmenu[it].menu_type == MENU_INT) {
+				val_high = glmenu[it].NumOptions;
+			}
+			else if (glmenu[it].menu_type == MENU_FLOAT) {
+				val_low = glmenu[it].Min * ceilf((1 / glmenu[it].step));
+				val_high = glmenu[it].Max * ceilf((1 / glmenu[it].step));
+			}
 		}
 
-		VF.Print(245, yval, MAKE_RGBA(255, color, 255, 255), 2.0, glmenu[(it)].heading);
+		// Print value using the computed color
+		if (glmenu[it].menu_type == MENU_INT) {
+			VF.Print(550, yval, rowColor, 2.0, "%s", glmenu[it].options[glmenu[it].current]);
+		}
+		else if (glmenu[it].menu_type == MENU_FLOAT) {
+			VF.Print(550, yval, rowColor, 2.0, "%2.1f", glmenu[it].step * glmenu[it].current);
+		}
+
+		// Print heading using the same color
+		VF.Print(245, yval, rowColor, 2.0, glmenu[it].heading);
 
 		it++;
-		yval -= 28; //35
+		yval -= 28;
 	}
 }
+
 
 void check_video_menu()
 {

@@ -10,6 +10,7 @@
 #include "path_helper.h"
 #include "gameroms.h"
 #include "sha-1.h"
+#include "iniFile.h"
 #include <filesystem> 
 
 #define DEBUG_LOG 1
@@ -161,15 +162,104 @@ int save_hi_aae(int start, int size, int image)
     return 0;
 }
 
-// TODO: Add this back in
+// -----------------------------------------------------------------------------
+// verify_rom
+// Verifies a single ROM file inside <archname>.zip.
+// Returns: 1=OK, 0=BAD?, 3=BADSIZE, 4=NOFILE, 5=NOZIP
+// -----------------------------------------------------------------------------
 int verify_rom(const char* archname, const struct RomModule* p, int romnum)
 {
-    return 1;
+    std::string zipPath;
+    // Validate ROM entry
+    if (!archname || !p) return 4;
+
+    const auto& rom = p[romnum];
+    LOG_INFO("Trying to verify ROM %s", rom.filename);
+    // Skip non-ROM entries (ROM_RELOAD, ROM_CONTINUE)
+    if (!rom.filename || rom.filename == (char*)-1 || rom.filename == (char*)-2)
+        return 4; // NOFILE (or skip logic, depending on your needs)
+    // Skip dummy region entry
+    if (rom.loadAddr == ROM_REGION_START || rom.loadAddr == 0x999)
+        return 4;
+  
+    zipPath = get_config_string("main", "mame_rom_path", "roms");
+    zipPath.append("\\");
+    zipPath.append(archname);
+    zipPath.append(".zip");
+   
+    if (!file_exists(zipPath)) {
+        zipPath = getpathM("roms", 0) + "\\" + archname + ".zip";
+        if (!file_exists(zipPath)) {
+            LOG_INFO("ROM ZIP not found: %s", zipPath.c_str());
+            return 5; // NOZIP
+        }
+    }
+    // Load ROM from ZIP
+    unsigned char* buf = load_zip_file(zipPath.c_str(), rom.filename);
+    if (!buf) {
+        LOG_INFO("ROM file not found in zip: %s", rom.filename);
+        return 4; // NOFILE
+    }
+
+    unsigned int actualSize = get_last_zip_file_size();
+    // Size check
+    if (actualSize != static_cast<unsigned int>(rom.romSize)) {
+        LOG_INFO("ROM size mismatch: %s expected %d, got %u", rom.filename, rom.romSize, actualSize);
+        free(buf);
+        return 3; // BADSIZE
+    }
+    // Optional SHA1 check
+    if (rom.sha) {
+        const char* calcSha = sha1.CalculateHash(buf, actualSize);
+        if (strcmp(calcSha, rom.sha) != 0) {
+            LOG_INFO("ROM SHA1 mismatch: %s expected %s", rom.filename, rom.sha);
+            free(buf);
+            return 0; // BAD?
+        }
+    }
+    // Optional CRC check
+    if (rom.crc) {
+        int fileCrc = get_last_crc();
+        if (fileCrc != static_cast<int>(rom.crc)) {
+            LOG_INFO("ROM CRC mismatch: %s expected %08X, got %08X", rom.filename, rom.crc, fileCrc);
+            free(buf);
+            return 0; // BAD?
+        }
+    }
+
+    free(buf);
+    return 1; // OK
 }
-// TODO: Add this back in
-int verify_sample(const char** p, int num)
+
+
+// -----------------------------------------------------------------------------
+// verify_sample
+// Verifies a single sample file from samples\<game>.zip.
+// Returns: 1=OK, 0=BAD?, 3=BADSIZE, 4=NOFILE, 5=NOZIP
+// -----------------------------------------------------------------------------
+int verify_sample(const char** samples, int num)
 {
-    return 1;
+    if (!samples || !samples[num]) return 4;
+
+    // Build sample ZIP path safely
+    std::string sampleZip = getpathM("samples", 0) + std::string("\\") + samples[0] + ".zip";
+    if (!file_exists(sampleZip)) {
+        LOG_INFO("Sample ZIP not found: %s", sampleZip.c_str());
+        return 5; // NOZIP
+    }
+
+    const char* filename = samples[num];
+
+    // Attempt to load sample from ZIP
+    unsigned char* buf = load_zip_file(sampleZip.c_str(), filename);
+    if (!buf) {
+        LOG_INFO("Sample file not found in zip: %s", filename);
+        return 4; // NOFILE
+    }
+
+    // Currently no expected size to check — any successful extraction counts as OK
+    free(buf);
+    return 1; // OK
 }
 
 

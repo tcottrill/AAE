@@ -76,7 +76,7 @@ typedef unsigned int rgb_t;
 #endif
 
 #define VECTOR_COLOR111(c) \
-	MAKE_RGB((((c) >> 0) & 1) * 0xff, (((c) >> 1) & 1) * 0xff, (((c) >> 2) & 1) * 0xff)
+	MAKE_RGB((((c) >> 2) & 1) * 0xff, (((c) >> 1) & 1) * 0xff, (((c) >> 0) & 1) * 0xff)
 
 #define VECTOR_COLOR222(c) \
 	MAKE_RGB((((c) >> 4) & 3) * 0x55, (((c) >> 2) & 3) * 0x55, (((c) >> 0) & 3) * 0x55)

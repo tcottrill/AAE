@@ -79,8 +79,18 @@ struct InputPort
 	const char* tag;        /* used to tag PORT_START declarations */
 };
 
+struct ipd
+{
+	UINT32 type;
+	const char* name;
+	UINT16 keyboard;
+	UINT16 joystick;
+};
+
 #define IP_ACTIVE_HIGH 0x0000
 #define IP_ACTIVE_LOW 0xffff
+
+extern struct ipd inputport_defaults[];
 
 enum {
 	IPT_END = 1, IPT_PORT,
@@ -390,12 +400,5 @@ int input_port_13_r(int offset);
 int input_port_14_r(int offset);
 int input_port_15_r(int offset);
 
-struct ipd
-{
-	UINT32 type;
-	const char* name;
-	UINT16 keyboard;
-	UINT16 joystick;
-};
 
 #endif
