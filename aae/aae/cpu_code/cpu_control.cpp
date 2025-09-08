@@ -926,7 +926,7 @@ void init_cpu_config()
 	cpu_framecounter = 0;
 	vid_tickcount = 0;//Initalize video tickcount;
 
-	timer_init();
+	
 	watchdog_timer = timer_set(TIME_IN_HZ(4), 0, watchdog_callback);
 	LOG_INFO("NUMBER OF CPU'S to RUN: %d ", totalcpu);
 	LOG_INFO("Finished starting up cpu settings, defaults");

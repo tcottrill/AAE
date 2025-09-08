@@ -25,6 +25,14 @@ static int lamp0 = 0;
 static int lastlamp0;
 static int a, b, c;
 
+static const char* llander_samples[] = {
+	"llander.zip",
+	"lthrust.wav",
+	"beep.wav",
+	"lexplode.wav",
+	"lander6k.wav",
+	 0 };
+
 void llander_interrupt()
 {
 	// Turn off interrupts if self-test is enabled
@@ -247,13 +255,6 @@ void end_llander()
 {
 }
 
-static const char* llander_samples[] = {
-	"llander.zip",
-	"lthrust.wav",
-	"beep.wav",
-	"lexplode.wav",
-	"lander6k.wav",
-	 0 };
 
 //Lunar Lander Input Ports
 INPUT_PORTS_START(llander)
@@ -356,7 +357,7 @@ INPUT_PORTS_END
 
 // Lunar Lander ROMSETS
 ROM_START(llander)
-ROM_REGION(0x8000, REGION_CPU1, 0)
+ROM_REGION(0x10000, REGION_CPU1, 0)
 // Vector ROM
 ROM_LOAD("034599-01.r3", 0x4800, 0x0800, CRC(355a9371) SHA1(6ecb40169b797d9eb623bcb17872f745b1bf20fa))
 ROM_LOAD("034598-01.np3", 0x5000, 0x0800, CRC(9c4ffa68) SHA1(eb4ffc289d254f699f821df3146aa2c6cd78597f))
@@ -373,7 +374,7 @@ ROM_LOAD("034602-01.c8", 0x0000, 0x0100, CRC(97953db8) SHA1(8cbded64d1dd35b18c4d
 ROM_END
 
 ROM_START(llander1)
-ROM_REGION(0x8000, REGION_CPU1, 0)
+ROM_REGION(0x10000, REGION_CPU1, 0)
 // Vector ROM
 ROM_LOAD("034599-01.r3", 0x4800, 0x0800, CRC(355a9371) SHA1(6ecb40169b797d9eb623bcb17872f745b1bf20fa))
 ROM_LOAD("034598-01.np3", 0x5000, 0x0800, CRC(9c4ffa68) SHA1(eb4ffc289d254f699f821df3146aa2c6cd78597f))

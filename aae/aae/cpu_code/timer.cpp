@@ -143,7 +143,7 @@ void timer_update(int cycles, int cpunum)
 		t.count += cycles;
 
 		if (VERBOSE) {
-			LOG_INFO("Timer %zu update: count = %f, period = %f", i, t.count, t.period);
+			//LOG_INFO("Timer %zu update: count = %f, period = %f", i, t.count, t.period);
 		}
 
 		if (t.count >= t.period)

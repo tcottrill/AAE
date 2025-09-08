@@ -103,7 +103,7 @@ static void draw_bzone(int sx, int sy, int ex, int ey, int z, int color)
 	int clip;
 	int BZ_CLIP = 768 - 50;
 
-	z = ((z & 0xf) << 4) | 0xf;
+	z = (z << 4);
 	
 	set_clip_rect(0, 0, 1024, BZ_CLIP);
 

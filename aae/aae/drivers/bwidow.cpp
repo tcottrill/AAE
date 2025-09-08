@@ -29,7 +29,7 @@
 
 void bwidow_interrupt(int dummy)
 {
-	//WRLOG("BWidow Interrupt");
+	//LOG_INFO("BWidow Interrupt");
 	cpu_do_int_imm(CPU0, INT_TYPE_INT);
 }
 

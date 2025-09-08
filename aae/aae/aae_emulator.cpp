@@ -796,7 +796,11 @@ void run_game(void)
 	{
 		vh_open();
 	}
-
+	// TO DO: Fix this Mess. 
+	//I have to make sure the Timers are initialized so I can set them in the init_gamexx function.
+	// But I have to setup the CPU's AFTER init_gamexxx so some drivers can futz with memory and encryption.
+	// I thing I need to add another init function that runs after the cpu's are setup?
+	timer_init();
 	Machine->gamedrv->init_game();
 	init_cpu_config(); ////////////////////-----------
 
