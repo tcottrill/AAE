@@ -142,6 +142,25 @@ void mixer_update();
 // Shutdown 
 void mixer_end();
 
+// -----------------------------------------------------------------------------
+// mixer_upload_sample16
+// Replace/initialize a sample's PCM with mono/stereo 16-bit data and format.
+// Allocates/reallocates internal storage as needed.
+// Returns 0 on success, -1 on failure.
+//
+// Parameters:
+//   samplenum - index into the mixer sample registry (the same value used by sample_start)
+//   pcm       - pointer to interleaved 16-bit PCM
+//   frames    - number of frames (samples per channel)
+//   freq      - sample rate (e.g., 44100)
+//   stereo    - false=mono, true=stereo
+// -----------------------------------------------------------------------------
+int mixer_upload_sample16(int samplenum,
+    const int16_t* pcm,
+    uint32_t frames,
+    int freq,
+    bool stereo = false);
+
 // Sample loading and control
 int load_sample(const char* archname, const char* filename, bool force_resample = true);
 void sample_stop(int chanid);

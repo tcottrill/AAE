@@ -165,18 +165,20 @@ int dvg_generate_vector_list(void)
 					if (z != 4)
 					{
 						z = (z << 4) | 0x0f;
-						add_tex(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, MAKE_RGB(z, z, z), MAKE_RGB(z, z, z));
+						add_tex(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, z, MAKE_RGBA(z, z, z, z));
 					}
 					else
 					{
 						z = (z << 4) | 0x0f;
-						add_line(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, MAKE_RGB(z, z, z), MAKE_RGB(z, z, z));
+						//LOG_ERROR("Z dot here at 0x01-9 is %d", z);
+						add_line(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, z, MAKE_RGB(z, z, z));
 					}
 				}
 				else
 				{
 					z = (z << 4) | 0x0f;
-					add_line(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, (currentx + deltax) >> VEC_SHIFT, (currenty - deltay) >> VEC_SHIFT, MAKE_RGB(z, z, z), MAKE_RGB(z, z, z));
+					//LOG_ERROR("Z line here at 0x01-9 is %d", z);
+					add_line(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, (currentx + deltax) >> VEC_SHIFT, (currenty - deltay) >> VEC_SHIFT, z, MAKE_RGB(z, z, z));
 				}
 
 			}
@@ -255,23 +257,25 @@ int dvg_generate_vector_list(void)
 					{
 						z = (z << 4) | 0x0f;
 						if (ASTEROID_DVG) {
-							add_tex(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, MAKE_RGB(z, z, z), MAKE_RGB(z, z, z));
+							add_tex(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, z, MAKE_RGBA(z, z, z, z));
 						}
 						else
 						{
-							add_line(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, MAKE_RGB(z, z, z), MAKE_RGB(z, z, z));
+							add_line(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, z, MAKE_RGB(z, z, z));
 						}
 					}
 					else
 					{
 						z = (z << 4) | 0x0f;
-						add_line(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, MAKE_RGB(z, z, z), MAKE_RGB(z, z, z));
+						//LOG_ERROR("Z dot here at 0x0f is %d", z);
+						add_line(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, z, MAKE_RGB(z, z, z));
 					}
 				}
 				else
 				{
 					z = (z << 4) | 0x0f;
-					add_line(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, (currentx + deltax) >> VEC_SHIFT, (currenty - deltay) >> VEC_SHIFT, MAKE_RGB(z, z, z), MAKE_RGB(z, z, z));
+					//LOG_ERROR("Z here at 0x0f is %d", z);
+					add_line(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, (currentx + deltax) >> VEC_SHIFT, (currenty - deltay) >> VEC_SHIFT, z, MAKE_RGB(z, z, z));
 				}
 
 			}

@@ -28,3 +28,47 @@
 
 void highPassFilter(std::vector<int16_t>& audioSample, float cutoffFreq, float sampleRate);
 void lowPassFilter (std::vector<int16_t>& audioSample, float cutoffFreq, float sampleRate);
+// -----------------------------------------------------------------------------
+// wav_filters.h
+// Low-pass filter utilities for post-processing audio buffers.
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// design_biquad_lowpass
+// Compute coefficients for a 2nd-order low-pass biquad filter
+// using bilinear transform.
+//
+// Parameters:
+//   fs   - sample rate in Hz
+//   fc   - cutoff frequency in Hz
+//   Q    - quality factor (default 0.707 for Butterworth)
+//
+// Outputs (by reference):
+//   b0, b1, b2 - numerator coefficients
+//   a1, a2     - denominator coefficients (a0 normalized to 1.0)
+// -----------------------------------------------------------------------------
+void design_biquad_lowpass(float fs, float fc, float Q,
+    float& b0, float& b1, float& b2,
+    float& a1, float& a2);
+
+// -----------------------------------------------------------------------------
+// biquad_lowpass_inplace_i16
+// Apply a low-pass biquad filter to an array of int16_t samples in place.
+//
+// Parameters:
+//   x       - pointer to audio buffer
+//   n       - number of samples
+//   fs      - sample rate in Hz
+//   fc      - cutoff frequency in Hz
+//   Q       - quality factor (default 0.707 for Butterworth)
+//   passes  - how many times to apply the filter (default 1)
+//             (more passes = steeper roll-off)
+//
+// Behavior:
+//   - Processes samples in place.
+//   - Clamps output to [-32768, 32767].
+// -----------------------------------------------------------------------------
+void biquad_lowpass_inplace_i16(int16_t* x, int n,
+    float fs, float fc,
+    float Q = 0.707f,
+    int passes = 1);

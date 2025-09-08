@@ -72,6 +72,7 @@ typedef struct {
 	int kbleds;
 	int samplerate;
 
+	char* raster_effect;
 
 	// --- NEW FIELDS for performance options ---
 	int useMMCSS;         // 1 = enable MMCSS for main thread

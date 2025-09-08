@@ -136,7 +136,8 @@ HRESULT xaudio2_init(int rate, int fps)  // <<< integer FPS
 
     HR(XAudio2Create(&pXAudio2, 0, XAUDIO2_DEFAULT_PROCESSOR));
     HR(pXAudio2->CreateMasteringVoice(&pMasterVoice, XAUDIO2_DEFAULT_CHANNELS, SamplesPerSecond, 0, 0));
-    pMasterVoice->SetVolume(1.0f);
+    // I am defaulting to 80 percent here. 
+    pMasterVoice->SetVolume(.80f);
 
     // Stereo 16-bit PCM source voice
     WAVEFORMATEX wf = {};

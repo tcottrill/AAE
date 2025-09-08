@@ -38,15 +38,6 @@ static int sega_rotate = 0;
 extern unsigned char* sega_vectorram;
 UINT8* sintable = nullptr;
 
-#define MAKE_RGB(r,g,b) ((((b) & 0xff) << 16) | (((g) & 0xff) << 8) | ((r) & 0xff))
-
-uint8_t pal2bit(UINT8 bits)
-{
-	bits &= 3;
-	return (bits << 6) | (bits << 4) | (bits << 2) | bits;
-}
-
-#define VECTOR_COLOR222C(c) MAKE_RGB(pal2bit((c) >> 4), pal2bit((c) >> 2), pal2bit((c) >> 0))
 
 #define VECTOR_CLOCK		15468480			/* master clock */
 #define U34_CLOCK			(VECTOR_CLOCK/3)	/* clock for interrupt chain */
@@ -295,7 +286,7 @@ void sega_vh_update(void)
 				total_time -= 4.0 / (double)U51_CLOCK;
 
 				/* Compute color/intensity values from the attributes */
-				color = VECTOR_COLOR222C((attrib >> 1) & 0x3f);
+				color = VECTOR_COLOR222((attrib >> 1) & 0x3f);
 
 				if ((attrib & 1) && color)
 					intensity = 0xff;

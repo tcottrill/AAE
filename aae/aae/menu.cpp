@@ -755,7 +755,7 @@ void do_dipswitch_menu()
 	const char* menu_subitem[40];
 	struct InputPort* entry[40];
 	char flag[40];
-	int i, sel, b, x;
+	int i, sel, x;// , b;
 	struct InputPort* in;
 	int total;
 	int arrowize;
@@ -979,7 +979,7 @@ int do_mouse_menu()
 	const char* menu_item[40];
 	const char* menu_subitem[40];
 	struct InputPort* entry[40];
-	int i, sel, b, x;
+	int i, sel, x;// , b;
 	struct InputPort* in;
 	int total, total2;
 	int arrowize;

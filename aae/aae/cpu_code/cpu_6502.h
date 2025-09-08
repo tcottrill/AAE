@@ -122,6 +122,7 @@ private:
 	int clockticks6502 = 0;
 	int clocktickstotal = 0;
 	int _irqPending = 0;
+	uint8_t irq_inhibit_one = 0;
 	int cpu_num = 0;
 
 	bool debug = false;
@@ -227,6 +228,7 @@ private:
 	// -------------------------------------------------------------------------
 	void lax6502(); void sax6502(); void dcp6502(); void isc6502();
 	void slo6502(); void rra6502(); void rla6502(); void sre6502();
+	void anc6502(); void alr6502(); void arr6502();
 };
 
 #endif // _6502_H_

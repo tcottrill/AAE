@@ -33,6 +33,9 @@ struct Timer {
 	double count = 0;
 	int cpu = 0;
 	bool enabled = false;
+	// After the first firing, switch to this repeat period (in cycles).
+	// 0.0 means one-shot or no special repeat handling.
+	double repeat = 0.0;
 };
 
 static std::vector<std::optional<Timer>> timers;
@@ -40,12 +43,12 @@ static std::vector<std::optional<Timer>> timers;
 void timer_init()
 {
 	int x = 0;
-	while (Machine->gamedrv->cpu_freq[x] && x < MAX_CPU)
+	while (x < MAX_CPU && Machine->gamedrv->cpu[x].cpu_freq)
 	{
-		sec_to_cycles[x] = Machine->gamedrv->cpu_freq[x];
+		sec_to_cycles[x] = Machine->gamedrv->cpu[x].cpu_freq;
 		cycles_to_sec[x] = 1.0 / sec_to_cycles[x];
 		if (VERBOSE) {
-			LOG_INFO("Init timing for CPU #%d, CPUClock = %d", x, Machine->gamedrv->cpu_freq[x]);
+			LOG_INFO("Init timing for CPU #%d, CPUClock = %d", x, Machine->gamedrv->cpu[x].cpu_freq);
 		}
 		x++;
 	}
@@ -73,12 +76,13 @@ int timer_set(double duration, int param, int data, std::function<void(int)> cal
 	auto& timer = timers[index].emplace();
 
 	timer.cpu = param & 0x0f;
-	timer.period = Machine->gamedrv->cpu_freq[timer.cpu] * duration;
+	timer.period = Machine->gamedrv->cpu[timer.cpu].cpu_freq * duration;
 	timer.count = 0;
 	timer.callback = std::move(callback);
 	timer.callback_param = data;
-	timer.one_shot = (param > 0xff);
+	timer.one_shot = ((param & ONE_SHOT) != 0);  //(param > 0xff);
 	timer.enabled = true;
+	timer.repeat = 0.0;
 
 	if (VERBOSE) {
 		LOG_INFO("Timer %d set: CPU %d, period %f, one_shot %d", index, timer.cpu, timer.period, timer.one_shot);
@@ -154,6 +158,10 @@ void timer_update(int cycles, int cpunum)
 			if (t.one_shot) {
 				timer_remove(static_cast<int>(i));
 			}
+			else if (t.repeat > 0.0) {
+				// Switch to the repeat interval after the first fire.
+				t.period = t.repeat;
+			}
 		}
 	}
 }
@@ -192,5 +200,58 @@ void timer_clear_end_of_game()
 				LOG_INFO("Timer %zu cleared (end of game)", i);
 			}
 		}
+	}
+}
+
+// -----------------------------------------------------------------------------
+// New: Allocate a disabled timer with a stored callback (MAME-style).
+// You arm it with timer_adjust(...).
+// -----------------------------------------------------------------------------
+int timer_alloc(std::function<void(int)> callback)
+{
+	if (!callback) return -1;
+	int index = timer_allocate_slot();
+	auto& t = timers[index].emplace();
+	t.callback = std::move(callback);
+	t.callback_param = 0;
+	t.one_shot = true;
+	t.period = 0.0;
+	t.count = 0.0;
+	t.cpu = 0;
+	t.enabled = false;
+	t.repeat = 0.0;
+	if (VERBOSE) {
+		LOG_INFO("Timer %d allocated (disabled)", index);
+	}
+	return index;
+}
+
+// -----------------------------------------------------------------------------
+// New: Arm or re-arm an existing timer (MAME-style).
+// duration: seconds until the first fire (TIME_NOW => ASAP on next update)
+// param:    full value given to callback; low 4 bits select driving CPU
+// period:   seconds for subsequent firings (0 => one-shot)
+// -----------------------------------------------------------------------------
+void timer_adjust(int id, double duration, int param, double period)
+{
+	if (id < 0 || id >= static_cast<int>(timers.size()) || !timers[id].has_value())
+		return;
+
+	Timer& t = *timers[id];
+	t.cpu = (param & 0x0f);
+	t.callback_param = param; // pass whole param like MAME
+
+	double hz = Machine->gamedrv->cpu[t.cpu].cpu_freq;
+	// TIME_NOW -> zero-cycle delay (fires on next timer_update for that CPU).
+	t.period = (duration <= TIME_NOW) ? 0.0 : (duration * hz);
+	t.repeat = (period > 0.0) ? (period * hz) : 0.0;
+	t.one_shot = (t.repeat <= 0.0);
+
+	t.count = 0.0;
+	t.enabled = true;
+
+	if (VERBOSE) {
+		LOG_INFO("Timer %d adjusted: CPU %d, first=%f cyc, repeat=%f cyc, oneshot=%d",
+			id, t.cpu, t.period, t.repeat, t.one_shot);
 	}
 }

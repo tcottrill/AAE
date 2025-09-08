@@ -1,4 +1,3 @@
-
 #ifndef CPU_TIMER_H
 #define CPU_TIMER_H
 
@@ -34,5 +33,15 @@ void timer_cpu_reset(int cpunum);
 int  timer_is_timer_enabled(int timer_id);
 void timer_clear_all_eof();
 void timer_clear_end_of_game();
+
+// --- MAME-style helpers ---
+// Allocate a disabled timer with a stored callback; arm it later via timer_adjust.
+int  timer_alloc(std::function<void(int)> callback);
+
+// Arm or re-arm an existing timer.
+//  - duration: seconds until first fire (use TIME_NOW for ASAP on next update)
+//  - param:    full value passed to callback; low 4 bits select CPU stream (0..3)
+//  - period:   seconds between subsequent fires (0 => one-shot)
+void timer_adjust(int timer_id, double duration, int param, double period);
 
 #endif

@@ -203,8 +203,16 @@ Sound Commands:
 
 #include "omegrace.h"
 #include "aae_mame_driver.h"
+#include "driver_registry.h"
 #include "AY8910.H"
 #include "old_mame_vecsim_dvg.h"
+
+
+ART_START(omegarace_art)
+ART_LOAD("omegrace.zip", "omegbkdp3.png", ART_TEX, 0)
+ART_LOAD("omegrace.zip", "omegrace_overlay.png", ART_TEX, 1)
+ART_LOAD("omegrace.zip", "omegbezlcroped.png", ART_TEX, 3)
+ART_END
 
 static struct AY8910interface ay8910_interface =
 {
@@ -448,8 +456,8 @@ PORT_END
 /////////////////// MAIN() for program ///////////////////////////////////////////////////
 int init_omega()
 {
-	init_z80(OmegaRead, OmegaWrite, OmegaPortRead, OmegaPortWrite, 0);
-	init_z80(SoundMemRead, SoundMemWrite, SoundPortRead, SoundPortWrite, 1);
+	//init_z80(OmegaRead, OmegaWrite, OmegaPortRead, OmegaPortWrite, 0);
+	////init_z80((SoundMemRead, SoundMemWrite, SoundPortRead, SoundPortWrite, 1);
 	dvg_start();
 	AY8910_sh_start(&ay8910_interface);
 
@@ -462,3 +470,221 @@ void end_omega()
 	LOG_INFO("OMEGA RACE END CALLED");
 	AY8910clear();
 }
+
+
+INPUT_PORTS_START(omegrace)
+PORT_START("SW0") /* SW0 */
+PORT_DIPNAME(0x03, 0x03, "1st Bonus Life")
+PORT_DIPSETTING(0x00, "40k")
+PORT_DIPSETTING(0x01, "50k")
+PORT_DIPSETTING(0x02, "70k")
+PORT_DIPSETTING(0x03, "100k")
+PORT_DIPNAME(0x0c, 0x0c, "2nd & 3rd Bonus Life")
+PORT_DIPSETTING(0x00, "150k 250k")
+PORT_DIPSETTING(0x04, "250k 500k")
+PORT_DIPSETTING(0x08, "500k 750k")
+PORT_DIPSETTING(0x0c, "750k 1500k")
+PORT_DIPNAME(0x30, 0x30, "Credit(s)/Ships")
+PORT_DIPSETTING(0x00, "1C/2S 2C/4S")
+PORT_DIPSETTING(0x10, "1C/2S 2C/5S")
+PORT_DIPSETTING(0x20, "1C/3S 2C/6S")
+PORT_DIPSETTING(0x30, "1C/3S 2C/7S")
+PORT_DIPNAME(0x40, 0x40, DEF_STR(Unused))
+PORT_DIPSETTING(0x00, DEF_STR(Off))
+PORT_DIPSETTING(0x40, DEF_STR(On))
+PORT_DIPNAME(0x80, 0x40, DEF_STR(Unused))
+PORT_DIPSETTING(0x00, DEF_STR(Off))
+PORT_DIPSETTING(0x80, DEF_STR(On))
+
+PORT_START("SW1") /* SW1 */
+PORT_DIPNAME(0x07, 0x07, DEF_STR(Coin_A))
+PORT_DIPSETTING(0x06, DEF_STR(2C_1C))
+PORT_DIPSETTING(0x07, DEF_STR(1C_1C))
+PORT_DIPSETTING(0x03, "4 Coins/5 Credits")
+PORT_DIPSETTING(0x04, DEF_STR(3C_4C))
+PORT_DIPSETTING(0x05, DEF_STR(2C_3C))
+PORT_DIPSETTING(0x00, DEF_STR(1C_2C))
+PORT_DIPSETTING(0x01, DEF_STR(1C_3C))
+PORT_DIPSETTING(0x02, DEF_STR(1C_5C))
+PORT_DIPNAME(0x38, 0x38, DEF_STR(Coin_B))
+PORT_DIPSETTING(0x30, DEF_STR(2C_1C))
+PORT_DIPSETTING(0x38, DEF_STR(1C_1C))
+PORT_DIPSETTING(0x18, "4 Coins/5 Credits")
+PORT_DIPSETTING(0x20, DEF_STR(3C_4C))
+PORT_DIPSETTING(0x28, DEF_STR(2C_3C))
+PORT_DIPSETTING(0x00, DEF_STR(1C_2C))
+PORT_DIPSETTING(0x08, DEF_STR(1C_3C))
+PORT_DIPSETTING(0x10, DEF_STR(1C_5C))
+PORT_DIPNAME(0x40, 0x00, DEF_STR(Free_Play))
+PORT_DIPSETTING(0x00, DEF_STR(Off))
+PORT_DIPSETTING(0x40, DEF_STR(On))
+PORT_DIPNAME(0x80, 0x00, DEF_STR(Cabinet))
+PORT_DIPSETTING(0x00, DEF_STR(Upright))
+PORT_DIPSETTING(0x80, DEF_STR(Cocktail))
+
+PORT_START("IN2") /* IN2 -port 0x11 */
+PORT_BIT(0x01, IP_ACTIVE_LOW, IPT_COIN1)
+PORT_BIT(0x02, IP_ACTIVE_LOW, IPT_COIN2)
+PORT_BIT(0x04, IP_ACTIVE_LOW, IPT_UNKNOWN)
+PORT_BIT(0x08, IP_ACTIVE_LOW, IPT_UNKNOWN)
+PORT_BIT(0x10, IP_ACTIVE_LOW, IPT_TILT)
+PORT_BIT(0x20, IP_ACTIVE_LOW, IPT_BUTTON2)
+PORT_BIT(0x40, IP_ACTIVE_LOW, IPT_BUTTON1)
+PORT_BITX(0x80, 0x80, IPT_DIPSWITCH_NAME | IPF_TOGGLE, DEF_STR(Service_Mode), OSD_KEY_F2, IP_JOY_NONE)
+PORT_DIPSETTING(0x80, DEF_STR(Off))
+PORT_DIPSETTING(0x00, DEF_STR(On))
+
+PORT_START("IN3") /* IN3 - port 0x12 */
+PORT_BIT(0x01, IP_ACTIVE_LOW, IPT_BUTTON2 | IPF_COCKTAIL)
+PORT_BIT(0x02, IP_ACTIVE_LOW, IPT_BUTTON1 | IPF_COCKTAIL)
+PORT_BIT(0x04, IP_ACTIVE_LOW, IPT_START3 | IPF_COCKTAIL)
+PORT_BIT(0x08, IP_ACTIVE_LOW, IPT_START4 | IPF_COCKTAIL)
+PORT_BIT(0x10, IP_ACTIVE_LOW, IPT_UNKNOWN)
+PORT_BIT(0x20, IP_ACTIVE_LOW, IPT_UNKNOWN)
+PORT_BIT(0x40, IP_ACTIVE_LOW, IPT_START1)
+PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_START2)
+
+PORT_START("IN4") /* IN4 - port 0x15 - spinner */
+PORT_ANALOG(0x3f, 0x00, IPT_DIAL, 12, 10, 0, 0, 0)
+
+PORT_START("IN5") /* IN5 - port 0x16 - second spinner */
+PORT_ANALOG(0x3f, 0x00, IPT_DIAL | IPF_COCKTAIL, 12, 10, 0, 0, 0)
+INPUT_PORTS_END
+
+
+ROM_START(omegrace)
+ROM_REGION(0x10000, REGION_CPU1, 0)
+ROM_LOAD("omega.m7", 0x0000, 0x1000, CRC(0424d46e) SHA1(cc1ac6c06ba6f6e8466fa08286a0c70b5335af33))
+ROM_LOAD("omega.l7", 0x1000, 0x1000, CRC(edcd7a7d) SHA1(5d142de2f48b01d563578a54fd5540e5d0ac8f4c))
+ROM_LOAD("omega.k7", 0x2000, 0x1000, CRC(6d10f197) SHA1(9609a0cbeeef2efa10d49cde9f0afdca96e9c2f8))
+ROM_LOAD("omega.j7", 0x3000, 0x1000, CRC(8e8d4b54) SHA1(944192c0f6f0cdb25d492ee9f33959d38a1062f2))
+// Vector Roms
+ROM_LOAD("omega.e1", 0x9000, 0x0800, CRC(1d0fdf3a) SHA1(3333397a9745874cea1dd6a1bda783cc59393b55))
+ROM_LOAD("omega.f1", 0x9800, 0x0800, CRC(d44c0814) SHA1(2f216ee6de88bbe09775619003aee2d5aa8c554d))
+ROM_REGION(0x10000, REGION_CPU2, 0)
+ROM_LOAD("sound.k5", 0x0000, 0x0800, CRC(7d426017) SHA1(370f0fb5608819de873c845f6010cbde75a9818e))
+// DVG Prom
+ROM_REGION(0x100, REGION_PROMS, 0)
+ROM_LOAD("dvgprom.bin", 0x0000, 0x0100, CRC(d481e958) SHA1(d8790547dc539e25984807573097b61ec3ffe614))
+ROM_END
+
+ROM_START(deltrace)
+ROM_REGION(0x10000, REGION_CPU1, 0)
+ROM_LOAD("omega.m7", 0x0000, 0x1000, CRC(0424d46e) SHA1(cc1ac6c06ba6f6e8466fa08286a0c70b5335af33))
+ROM_LOAD("omega.l7", 0x1000, 0x1000, CRC(edcd7a7d) SHA1(5d142de2f48b01d563578a54fd5540e5d0ac8f4c))
+ROM_LOAD("omega.k7", 0x2000, 0x1000, CRC(6d10f197) SHA1(9609a0cbeeef2efa10d49cde9f0afdca96e9c2f8))
+ROM_LOAD("delta.j7", 0x3000, 0x1000, CRC(8ef9541e) SHA1(89e34f50a958ac60c5f223bcb6c1c14796b903c7))
+// Vector Roms
+ROM_LOAD("omega.e1", 0x9000, 0x0800, CRC(1d0fdf3a) SHA1(3333397a9745874cea1dd6a1bda783cc59393b55))
+ROM_LOAD("omega.f1", 0x9800, 0x0800, CRC(d44c0814) SHA1(2f216ee6de88bbe09775619003aee2d5aa8c554d))
+ROM_REGION(0x10000, REGION_CPU2, 0)
+ROM_LOAD("sound.k5", 0x0000, 0x0800, CRC(7d426017) SHA1(370f0fb5608819de873c845f6010cbde75a9818e))
+ROM_REGION(0x100, REGION_PROMS, 0)
+ROM_LOAD("dvgprom.bin", 0x0000, 0x0100, CRC(d481e958) SHA1(d8790547dc539e25984807573097b61ec3ffe614))
+ROM_END
+
+// Omega Race
+AAE_DRIVER_BEGIN(drv_omegrace, "omegrace", "Omega Race")
+AAE_DRIVER_ROM(rom_omegrace)
+AAE_DRIVER_FUNCS(&init_omega, &run_omega, &end_omega)
+AAE_DRIVER_INPUT(input_ports_omegrace)
+AAE_DRIVER_SAMPLES_NONE()
+AAE_DRIVER_ART(omegarace_art)
+
+AAE_DRIVER_CPUS(
+	// CPU0: Main Z80 @ 3.020 MHz, 100 divs, 25 int passes, standard INT via omega_interrupt
+	AAE_CPU_ENTRY(
+		/*type*/     CPU_MZ80,
+		/*freq*/     3020000,
+		/*div*/      100,
+		/*ipf*/      25,
+		/*int type*/ INT_TYPE_INT,
+		/*int cb*/   &omega_interrupt,
+		/*r8*/       OmegaRead,
+		/*w8*/       OmegaWrite,
+		/*pr*/       OmegaPortRead,
+		/*pw*/       OmegaPortWrite,
+		/*r16*/      nullptr,
+		/*w16*/      nullptr
+	),
+	// CPU1: Sound Z80 @ 1.512 MHz, 100 divs, 25 int passes, INT via omega_nmi_interrupt
+	AAE_CPU_ENTRY(
+		/*type*/     CPU_MZ80,
+		/*freq*/     1512000,
+		/*div*/      100,
+		/*ipf*/      25,
+		/*int type*/ INT_TYPE_INT,
+		/*int cb*/   &omega_nmi_interrupt,
+		/*r8*/       SoundMemRead,
+		/*w8*/       SoundMemWrite,
+		/*pr*/       SoundPortRead,
+		/*pw*/       SoundPortWrite,
+		/*r16*/      nullptr,
+		/*w16*/      nullptr
+	),
+	AAE_CPU_NONE_ENTRY(),
+	AAE_CPU_NONE_ENTRY()
+)
+
+AAE_DRIVER_VIDEO_CORE(40, VIDEO_TYPE_VECTOR | VECTOR_USES_BW | VECTOR_USES_OVERLAY1, ORIENTATION_DEFAULT)
+AAE_DRIVER_SCREEN(1024, 768, 0, 1044, 0, 1024)
+AAE_DRIVER_RASTER_NONE()
+AAE_DRIVER_HISCORE_NONE()
+AAE_DRIVER_VECTORRAM(0x8000, 0x1000)
+AAE_DRIVER_NVRAM(nvram_handler)
+AAE_DRIVER_END()
+
+// Delta Race (Omega Race Bootleg)
+AAE_DRIVER_BEGIN(drv_deltrace, "deltrace", "Delta Race (Omega Race Bootleg)")
+AAE_DRIVER_ROM(rom_deltrace)
+AAE_DRIVER_FUNCS(&init_omega, &run_omega, &end_omega)
+AAE_DRIVER_INPUT(input_ports_omegrace)
+AAE_DRIVER_SAMPLES_NONE()
+AAE_DRIVER_ART(omegarace_art)
+
+AAE_DRIVER_CPUS(
+	// CPU0: Main Z80 (same as Omega Race)
+	AAE_CPU_ENTRY(
+		/*type*/     CPU_MZ80,
+		/*freq*/     3020000,
+		/*div*/      100,
+		/*ipf*/      25,
+		/*int type*/ INT_TYPE_INT,
+		/*int cb*/   &omega_interrupt,
+		/*r8*/       OmegaRead,
+		/*w8*/       OmegaWrite,
+		/*pr*/       OmegaPortRead,
+		/*pw*/       OmegaPortWrite,
+		/*r16*/      nullptr,
+		/*w16*/      nullptr
+	),
+	// CPU1: Sound Z80 @ 1.512 MHz; bootleg sets INT_TYPE_NONE (no CPU interrupt callback)
+	AAE_CPU_ENTRY(
+		/*type*/     CPU_MZ80,
+		/*freq*/     1512000,
+		/*div*/      100,
+		/*ipf*/      25,
+		/*int type*/ INT_TYPE_NONE,
+		/*int cb*/   nullptr,
+		/*r8*/       SoundMemRead,
+		/*w8*/       SoundMemWrite,
+		/*pr*/       SoundPortRead,
+		/*pw*/       SoundPortWrite,
+		/*r16*/      nullptr,
+		/*w16*/      nullptr
+	),
+	AAE_CPU_NONE_ENTRY(),
+	AAE_CPU_NONE_ENTRY()
+)
+
+AAE_DRIVER_VIDEO_CORE(40, VIDEO_TYPE_VECTOR | VECTOR_USES_BW | VECTOR_USES_OVERLAY1, ORIENTATION_DEFAULT)
+AAE_DRIVER_SCREEN(1024, 768, 0, 1044, 0, 1024)
+AAE_DRIVER_RASTER_NONE()
+AAE_DRIVER_HISCORE_NONE()
+AAE_DRIVER_VECTORRAM(0x8000, 0x1000)
+AAE_DRIVER_NVRAM(nvram_handler)
+AAE_DRIVER_END()
+
+// Registrations
+AAE_REGISTER_DRIVER(drv_omegrace)
+AAE_REGISTER_DRIVER(drv_deltrace)

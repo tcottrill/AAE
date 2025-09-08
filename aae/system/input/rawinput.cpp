@@ -103,7 +103,7 @@ static KeyCallback g_keyCallback = nullptr;
 // Description:
 //   TODO: Describe this function.
 // -----------------------------------------------------------------------------
-static int GetModifierFlags()
+int GetModifierFlags()
 {
 	int mods = 0;
 	if (GetAsyncKeyState(VK_SHIFT) & 0x8000)

@@ -38,19 +38,7 @@ typedef UINT16 rgb15_t;
 ***************************************************************************/
 
 /* macros to assemble rgb_t values */
-#define MAKE_RGB(r,g,b) 	((((rgb_t)(r) & 0xff) << 16) | (((rgb_t)(g) & 0xff) << 8) | ((rgb_t)(b) & 0xff))
-#define MAKE_ARGB(a,r,g,b)	(MAKE_RGB(r,g,b) | (((rgb_t)(a) & 0xff) << 24))
-
-/* macros to extract components from rgb_t values */
-//#define RGB_ALPHA(rgb)		(((rgb) >> 24) & 0xff)
-//#define RGB_RED(rgb)		(((rgb) >> 16) & 0xff)
-//#define RGB_GREEN(rgb)		(((rgb) >> 8) & 0xff)
-//#define RGB_BLUE(rgb)		((rgb) & 0xff)
-
-/* common colors */
-//#define RGB_BLACK			(MAKE_RGB(0,0,0))
-//#define RGB_WHITE			(MAKE_RGB(255,255,255))
-
+#define MAKE_COL(r,g,b)  (((r) & 0xFF) | (((g) & 0xFF) << 8) | (((b) & 0xFF) << 16))
 /*************************************
  *
  *  Local variables
@@ -112,7 +100,7 @@ void vec_control_write(int data)
 	{
 	case COLOR_BILEVEL:
 		/* color is either bright or dim, selected by the value sent to the port */
-		vector_color = (data & 1) ? MAKE_RGB(0x80, 0x80, 0x80) : MAKE_RGB(0xff, 0xff, 0xff);
+		vector_color = (data & 1) ? MAKE_COL(0x80, 0x80, 0x80) : MAKE_COL(0xff, 0xff, 0xff);
 		break;
 
 	case COLOR_16LEVEL:
@@ -122,7 +110,7 @@ void vec_control_write(int data)
 		{
 			int xval = cpunum_get_reg(0, CCPU_X) & 0x0f;
 			i = (xval + 1) * 255 / 16;
-			vector_color = MAKE_RGB(i, i, i);
+			vector_color = MAKE_COL(i, i, i);
 		}
 		break;
 
@@ -134,7 +122,7 @@ void vec_control_write(int data)
 			int xval = cpunum_get_reg(0, CCPU_X);
 			xval = (~xval >> 2) & 0x3f;
 			i = (xval + 1) * 255 / 64;
-			vector_color = MAKE_RGB(i, i, i);
+			vector_color = MAKE_COL(i, i, i);
 		}
 		break;
 
@@ -150,7 +138,7 @@ void vec_control_write(int data)
 			g = g * 255 / 15;
 			b = (~xval >> 8) & 0x0f;
 			b = b * 255 / 15;
-			vector_color = MAKE_RGB(r, g, b);
+			vector_color = MAKE_COL(r, g, b);
 		}
 		break;
 
@@ -179,7 +167,7 @@ void vec_control_write(int data)
 			g = g * 255 / 7;
 			b = (~yval >> 6) & 0x03;
 			b = b * 255 / 3;
-			vector_color = MAKE_RGB(r, g, b);
+			vector_color = MAKE_COL(r, g, b);
 
 			/* restore the original X,Y values */
 			cpunum_set_reg(0, CCPU_X, lastx);

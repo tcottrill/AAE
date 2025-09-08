@@ -87,8 +87,6 @@ void free_all_memory_regions()
 
 void free_memory_region(int num)
 {
-	int i;
-
 	if (num < MAX_MEMORY_REGIONS)
 	{
 		LOG_INFO("Freeing Memory Region %d", num);
@@ -108,7 +106,7 @@ void byteswap(unsigned char* mem, int length)
 	}
 }
 
-void new_memory_region(int num, int size)
+void new_memory_region(int num, int size, int type)
 {
 	if (num < MAX_MEMORY_REGIONS)
 	{
@@ -125,7 +123,9 @@ void new_memory_region(int num, int size)
 		}
 
 		Machine->memory_region[num] = (unsigned char*)malloc(size);
-
+		Machine->memory_region_length[num] = size;
+		Machine->memory_region_type[num] = type;
+		
 		if (Machine->memory_region[num] == nullptr)
 		{
 			LOG_INFO("Can't allocate system ram for Cpu Emulation! - This is bad. Exiting System!"); exit(1);

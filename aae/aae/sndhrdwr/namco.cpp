@@ -283,7 +283,7 @@ void doupdate()
 {
 	if (g_buffer_len <= 0) return;
 
-	const int cpu0_hz = Machine->gamedrv->cpu_freq[0];
+	const int cpu0_hz = Machine->gamedrv->cpu[0].cpu_freq;
 	const int newpos = cpu_scale_by_cycles(g_buffer_len, cpu0_hz);
 	const int delta = newpos - g_sample_pos;
 	if (delta > 0) {

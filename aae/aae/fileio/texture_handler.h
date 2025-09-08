@@ -20,6 +20,8 @@ void set_texture(GLuint* texture, GLboolean linear, GLboolean mipmapping, GLbool
 void snapshot();
 // Deletes all registered textures
 void destroy_all_textures();
+// Retrieve loaded texture size
+bool get_texture_size(GLuint tex, int* outW, int* outH);
 
 
 #endif

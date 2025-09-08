@@ -45,9 +45,9 @@
 
 typedef unsigned int rgb_t;
 
-//#ifndef MAKE_BGR
-//#define MAKE_BGR(r,g,b) ((((b) & 0xff) << 16) | (((g) & 0xff) << 8) | ((r) & 0xff))
-//#endif
+#ifndef MAKE_BGR
+#define MAKE_BGR(r,g,b) ((((b) & 0xff) << 16) | (((g) & 0xff) << 8) | ((r) & 0xff))
+#endif
 
 #ifndef MAKE_RGB
 //#define MAKE_RGB(r,g,b) ((((r) & 0xff) << 16) | (((g) & 0xff) << 8) | ((b) & 0xff))
@@ -74,6 +74,15 @@ typedef unsigned int rgb_t;
 #ifndef RGB_ALPHA
 #define RGB_ALPHA(rgba) (((rgba)>>24) & 0xff)
 #endif
+
+// Add alpha to VECTOR_COLOR111 result
+#define VECTOR_COLOR111_A(c, a) \
+    MAKE_RGBA( (((c) >> 2) & 1) * 0xff, \
+               (((c) >> 1) & 1) * 0xff, \
+               (((c) >> 0) & 1) * 0xff, \
+               (a) )
+
+#define VECTOR_COLOR111_OPAQUE(c) VECTOR_COLOR111_A(c, 255)
 
 #define VECTOR_COLOR111(c) \
 	MAKE_RGB((((c) >> 2) & 1) * 0xff, (((c) >> 1) & 1) * 0xff, (((c) >> 0) & 1) * 0xff)

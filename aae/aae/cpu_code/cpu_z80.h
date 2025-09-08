@@ -48,7 +48,13 @@
 // 110524 LD A,nn Instructions after an interrupt are not decrypted. 
 // 011024 Corrected R Register handling ala Superzazu
 // 062925 Corrected iff delay after EI
-// 
+// 08/24/25 Changed ImmedByte and ImmedWord to always go through handlers, this fixes memory banking.
+// corrected the cycle timing typo on LDIR , 0x16 vs 16, oops. 
+// added an RTI hook for daily chained devices and corrected RTI instruction handling.  
+// consolidated both m_fPendingInterrupt and pending_int to m_irq_line, I am still doing irq_hold only, if
+// something needs irq_strobe, I'll adjust eventually. 
+// 8/26/25 Fixed not adding the cycles taken during interrupt correctly to the cycle total. 
+// This code STILL does not meet ZexDoc for cycle counts (all functions pass), it runs over by ~38000 very frustrating and I can't find the bug.
 //Most of my code verification is with:
 //[superzazu / z80](https://github.com/superzazu/z80)
 
@@ -83,7 +89,9 @@ Currently any undocumented behavior is not emulated. (X and Y flags and undocume
 /////////////////////////////////////////////
 
 #include <cstdint>
+#include <functional>  // <-- required for std::function
 #include "deftypes.h"
+
 
 enum
 {
@@ -137,6 +145,8 @@ public:
 	void   mz80ReleaseTimeslice();
 	void   mz80ClearPendingInterrupt();
 	
+	std::function<void()> reti_hook;  // optional: notify external daisy-chained device on RETI
+
 	cpu_z80(uint8_t* MEM, MemoryReadByte* read_mem, MemoryWriteByte* write_mem, z80PortRead* port_read, z80PortWrite* port_write, uint16_t addr, int num);
 	~cpu_z80();
 
@@ -222,10 +232,11 @@ private:
 	int m_iff1, m_iff2;
 	bool m_fHalt;
 	int m_nIM;
-	bool m_fPendingInterrupt = false;
-
+	//bool m_fPendingInterrupt = false;
+	// External INT line (level). Asserted by devices; CPU clears it when taken.
+	bool m_irq_line = false;
 	//New
-	int pending_int;  //TODO: Swap this with m_fPendingInterrupt
+	//int pending_int;  //TODO: Swap this with m_fPendingInterrupt
 	uint8_t iff_delay;
 	// Contains the irq vector. 
 	uint16_t irq_vector; 

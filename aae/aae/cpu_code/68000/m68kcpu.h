@@ -133,7 +133,7 @@
 /* Exception Vectors handled by emulation */
 #define EXCEPTION_BUS_ERROR                2 /* This one is not emulated! */
 #define EXCEPTION_ADDRESS_ERROR            3 /* This one is partially emulated (doesn't stack a proper frame yet) */
-#define EXCEPTION_ILLEGAL_INSTRUCTION      4
+#define EXCEPTION_ILLEGAL_INST             4
 #define EXCEPTION_ZERO_DIVIDE              5
 #define EXCEPTION_CHK                      6
 #define EXCEPTION_TRAPV                    7

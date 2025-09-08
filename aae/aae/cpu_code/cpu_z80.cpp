@@ -91,7 +91,7 @@ static uint8_t ZSPTable[256] =
 
 void cpu_z80::mz80reset()
 {
-	m_fPendingInterrupt = false;
+	//m_fPendingInterrupt = false;
 	m_rgbStackBase = m_rgbMemory;
 
 	m_regAF = 0;
@@ -115,7 +115,8 @@ void cpu_z80::mz80reset()
 	irq_vector = 0xff;
 	z80intAddr = 0x38;
 	z80nmiAddr = 0x66;
-	pending_int = 0;        // Added for int strobe
+	//pending_int = 0;        // Added for int strobe
+	m_irq_line = false;     // ensure INT line starts low
 	SetPC(0x0000);
 	SetSP(0x0000);
 	z80pc = 0;
@@ -140,15 +141,20 @@ cpu_z80::cpu_z80(uint8_t* MEM, MemoryReadByte* read_mem, MemoryWriteByte* write_
 
 uint8_t cpu_z80::ImmedByte()
 {
-	return m_rgbMemory[z80pc++];
+	//return m_rgbMemory[z80pc++];
+	return mz80GetMemory(z80pc++);
 }
 
 UINT16 cpu_z80::ImmedWord()
 {
-	uint8_t a, b;
-	a = m_rgbMemory[z80pc++];
-	b = (m_rgbMemory[z80pc++] & 0xFFFF);
-	return ((b << 8) | a);
+	//uint8_t a, b;
+	//a = m_rgbMemory[z80pc++];
+	//b = (m_rgbMemory[z80pc++] & 0xFFFF);
+	//return ((b << 8) | a);
+	
+	uint8_t a = mz80GetMemory(z80pc++);
+	uint8_t b = mz80GetMemory(z80pc++);
+	return static_cast<uint16_t>((b << 8) | a);
 }
 
 uint16_t cpu_z80::GetPC()
@@ -697,9 +703,11 @@ unsigned cpu_z80::mz80step()
 		cyc += exec_opcode(bOpcode);
 	}
 
-	if (pending_int && !m_fHalt)
+	if (m_irq_line && !m_fHalt)
 	{
-		mz80int(irq_vector);
+		unsigned before = cCycles;
+		mz80int(irq_vector);                 // adds to cCycles internally
+		cyc += (cCycles - before);
 	}
 
 	dwElapsedTicks += cyc;
@@ -837,6 +845,7 @@ unsigned cpu_z80::exec_opcode(uint8_t bOpcode)
 		break;
 
 	case 0x18: // jr
+		cCycles += 7;
 		cCycles += Jr0(1);
 		break;
 
@@ -2043,22 +2052,22 @@ UINT32 cpu_z80::mz80int(UINT32 bVal)
 			//Rst(irq_vector - 0xC7);
 			Rst(((irq_vector >> 3) & 7) << 3);
 			//LOG_INFO("Interrupt Mode 0 Taken, Vector %x or %x", irq_vector, ((irq_vector >> 3) & 7) << 3);
-			pending_int = 0;
+			m_irq_line = false;
 			break;
 
 		case 1:
 			cCycles += 13;
 			Rst(z80intAddr);
 			//LOG_INFO("Interrupt Mode 1 Taken");
-			pending_int = 0;
+			m_irq_line = false;
 			break;
 
 		case 2:
 			cCycles += 19;
-			pending_int = 0;
 			//LOG_INFO("Interrupt Mode 2 Taken");
 			Push(GetPC());
 			SetPC(MemReadWord(irq_vector | (m_regI << 8)));
+			m_irq_line = false;
 			break;
 
 		default:
@@ -2068,7 +2077,8 @@ UINT32 cpu_z80::mz80int(UINT32 bVal)
 	}
 	else
 	{
-		pending_int = 1;        // Set Interrupt Pending.
+		// IFF1 disabled or EI still deferring: latch the request and try again next step
+		m_irq_line = true;        // Set Interrupt Pending.
 		return 0xffffffff;		// Interrupt not taken!
 	}
 	return(0);
@@ -2087,7 +2097,7 @@ UINT32 cpu_z80::mz80nmi()
 
 void cpu_z80::mz80ClearPendingInterrupt()
 {
-	pending_int = 0;
+	m_irq_line = false;
 }
 
 /* ***************************************************************************
@@ -3735,7 +3745,8 @@ int cpu_z80::HandleDD()
 
 	case 0x76: // no_op
 		SetPC(GetPC() - 1);
-		return 19;
+		//return 19;
+		return 4;
 
 	case 0x77: // ld_xix_a
 		MemWriteByte(IndirectIX(), m_regA);
@@ -4633,8 +4644,12 @@ void cpu_z80::HandleED() {
 		}
 
 	case 0x4D: // reti
+		//cCycles += 8;
+		//cCycles += Ret0(1);
 		cCycles += 8;
-		cCycles += Ret0(1);
+		m_iff1 = m_iff2;             // RETI behaves like RETN inside the CPU
+		if (reti_hook) reti_hook();  // optional external notification
+		cCycles += Ret0(1);          // +6 = 14 cycles total
 		break;
 
 	case 0x4E: // im_0
@@ -5136,53 +5151,80 @@ void cpu_z80::HandleED() {
 			break;
 		}
 
-	case 0xAA: // ind //Review
+	case 0xAA: { // IND
+		uint8_t data = InRaw(m_regC);           // <— use InRaw: no flag side-effects
+		MemWriteByte(m_regHL, data);
+		--m_regHL;
+		--m_regB;
 		cCycles += 16;
-		{
-			MemWriteByte(m_regHL, In(m_regC));
-			--m_regHL;
-			--m_regB;
-			m_regF = (m_regB) ? N_FLAG : (N_FLAG | Z_FLAG);
-			break;
-			/*
-				tmp: = ((c)), (hl) : = tmp, hl -= 1,
-				b -= 1 = > flags, nf : = tmp.7,
-				tmp2 = tmp + [[c - 1]AND 0xff],
-				pf : = parity of [[tmp2 AND 0x07]XOR b],
-				hf : = cf : = tmp2 > 255
-			*/
-		}
 
-	case 0xAB: // outd
+		// tmp = data + (C-1); flags from tmp and new B
+		uint16_t tmp = uint16_t(data) + uint8_t(m_regC - 1);
+		uint8_t f = 0;
+		if (m_regB == 0) f |= Z_FLAG;           // Z from B'
+		if (data & 0x80) f |= N_FLAG;           // N = input bit7
+		if (tmp > 0xFF)  f |= (H_FLAG | C_FLAG); // H=C=carry of tmp
+		if (ZSPTable[((tmp & 7) ^ m_regB)] & V_FLAG) f |= V_FLAG; // PV = parity(((tmp&7)^B'))
+		if (m_regB & 0x80) f |= S_FLAG;         // S from B'
+		m_regF = f;
+		break;
+	}
+
+	case 0xAB: { // OUTD
+		uint8_t data = MemReadByte(m_regHL);
+		Out(m_regC, data);
+		--m_regHL;
+		--m_regB;
 		cCycles += 16;
-		{
-			Out(m_regC, MemReadByte(m_regHL));
-			--m_regHL;
-			--m_regB;
-			m_regF = (m_regB) ? N_FLAG : (Z_FLAG | N_FLAG);
-			break;
-		}
 
-	case 0xAC: // nop
-		cCycles += 0;
+		uint16_t tmp = uint16_t(data) + m_regL;    // L' (after HL--)
+		uint8_t f = 0;
+		if (m_regB == 0) f |= Z_FLAG;
+		if (data & 0x80) f |= N_FLAG;
+		if (tmp > 0xFF)  f |= (H_FLAG | C_FLAG);
+		if (ZSPTable[((tmp & 7) ^ m_regB)] & V_FLAG) f |= V_FLAG;
+		if (m_regB & 0x80) f |= S_FLAG;
+		m_regF = f;
 		break;
+	}
 
-	case 0xAD: // nop
-		cCycles += 0;
+	case 0xAC: // NEG (undocumented duplicate)
+	{
+		uint8_t b = m_regA;
+		m_regA = 0;
+		Sub_1(b);            // A <- 0 - b; sets S,Z,H,P/V,N,C and X/Y correctly
+		cCycles += 8;
 		break;
-
-	case 0xAE: // nop
-		cCycles += 0;
+	}
+	case 0xAD: // NEG (undocumented duplicate)
+	{
+		uint8_t b = m_regA;
+		m_regA = 0;
+		Sub_1(b);
+		cCycles += 8;
 		break;
-
-	case 0xAF: // nop
-		cCycles += 0;
+	}
+	case 0xAE: // NEG (undocumented duplicate)
+	{
+		uint8_t b = m_regA;
+		m_regA = 0;
+		Sub_1(b);
+		cCycles += 8;
 		break;
+	}
+	case 0xAF: // NEG (undocumented duplicate)
+	{
+		uint8_t b = m_regA;
+		m_regA = 0;
+		Sub_1(b);
+		cCycles += 8;
+		break;
+	}
 
 	case 0xB0: // ldir
 	{
 		MemWriteByte(m_regDE, MemReadByte(m_regHL));
-		cCycles += 0x16;
+		cCycles += 16;
 
 		++m_regDE;
 		++m_regHL;
@@ -6050,7 +6092,8 @@ int cpu_z80::HandleFD() {
 
 	case 0x66: // ld_h_xiy
 		m_regH = MemReadByte(IndirectIY());
-		return 9;
+		//return 9;
+		return 19;
 
 	case 0x67: // ld_iyh_a
 		m_regIYh = m_regA;
@@ -6082,7 +6125,8 @@ int cpu_z80::HandleFD() {
 
 	case 0x6E: // ld_l_xiy
 		m_regL = MemReadByte(IndirectIY());
-		return 9;
+		//return 9;
+		return 19;
 
 	case 0x6F: // ld_iyl_a
 		m_regIYl = m_regA;

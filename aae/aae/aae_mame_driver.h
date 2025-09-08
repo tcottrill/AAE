@@ -1,16 +1,16 @@
 #pragma once
 
 //============================================================================
-// AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME 
-// code, 0.29 through .90 mixed with code of my own. This emulator was 
-// created solely for my amusement and learning and is provided only 
-// as an archival experience. 
-// 
-// All MAME code used and abused in this emulator remains the copyright 
+// AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME
+// code, 0.29 through .90 mixed with code of my own. This emulator was
+// created solely for my amusement and learning and is provided only
+// as an archival experience.
+//
+// All MAME code used and abused in this emulator remains the copyright
 // of the dedicated people who spend countless hours creating it. All
 // MAME code should be annotated as belonging to the MAME TEAM.
-// 
-// SOME CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.  
+//
+// SOME CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.
 //============================================================================
 
 #ifndef GLOBALS_H
@@ -18,7 +18,6 @@
 
 #include "framework.h"
 
-//Note: Move these to cpu_control.h
 
 #include "sys_log.h"
 #include "inptport.h"
@@ -31,19 +30,18 @@
 #include "memory.h"
 #include "mixer.h"
 #include "emu_vector_draw.h"
-
+#include "osd_video.h"
+#include "driver_macros.h"
 
 inline FILE* errorlog = nullptr;
 
-
-// Raster Defines, new. 
+// Raster Defines, new.
 #define MAX_GFX_ELEMENTS 10
 #define MAX_MEMORY_REGIONS 16
 #define MAX_PENS 256	/* can't handle more than 256 colors on screen */
 #define MAX_LAYERS 4	/* MAX_LAYERS is the maximum number of gfx layers */
 /* which we can handle. Currently, 4 is enough. */
 #define MAX_SOUND 4
-
 
 #define str_eq(s1,s2)  (!strcmp ((s1),(s2))); //Equate string1 and sring2 true is equal
 
@@ -63,7 +61,6 @@ inline FILE* errorlog = nullptr;
 #define ART_TEX  10
 #define GAME_TEX 15
 
-
 #define NORMAL      1
 #define FLIP        2
 #define RRIGHT      3
@@ -71,7 +68,7 @@ inline FILE* errorlog = nullptr;
 // GENERAL FUNCTION DEFINES
 #define SWAP(a, b)  {a ^= b; b ^= a; a ^= b;}
 
-//These should be somewhere else as well. 
+//These should be somewhere else as well.
 //#define bitget(p,m) ((p) & (m))
 //#define bitset(p,m) ((p) |= (m))
 //#define bitclr(p,m) ((p) &= ~(m))
@@ -94,9 +91,12 @@ inline FILE* errorlog = nullptr;
 
 #define MEM_WRITE(name) struct MemoryWriteByte name[] = {
 #define MEM_READ(name)  struct MemoryReadByte name[] = {
-
 #define MEM_WRITE16(name) struct MemoryWriteWord name[] = {
 #define MEM_READ16(name)  struct MemoryReadWord name[] = {
+// For 8-bit memory handlers that also specify a base pointer
+#define MEM_ADDR8(start, end, routine, base) { (start), (end), (routine), (base) },
+// For 16-bit memory handlers (word access)
+#define MEM_ADDR16(start, end, routine, base) { (start), (end), (routine), (base) },
 
 #define MEM_ADDR(start,end,routine) {start,end,routine},
 #define MEM_END {(UINT32) -1,(UINT32) -1,NULL}};
@@ -109,17 +109,61 @@ inline FILE* errorlog = nullptr;
 #define PORT_ADDR(start,end,routine) {start,end,routine},
 #define PORT_END {(UINT16) -1, (UINT16) -1,NULL}};
 
-/* flags for video_attributes */
 
-/* bit 0 of the video attributes indicates raster or vector video hardware */
-#define	VIDEO_TYPE_RASTER			0x0000
-#define	VIDEO_TYPE_VECTOR			0x0001
+// Rom setting moved here temporarily
+const struct RomModule
+{
+	const char* filename;
+	unsigned int loadAddr;
+	int romSize;
+	int loadtype;
+	//Hashing Checksums
+	unsigned int crc;
+	const char* sha;
+	int disposable;
+};
 
-/* bit 1 of the video attributes indicates whether or not dirty rectangles will work */
-#define	VIDEO_SUPPORTS_DIRTY		0x0002
+#define COMMA ,
+#define CRC(n)            (0x ## n)
+#define SHA1(x)           COMMA#x
+#define ROM_LOAD_NORMAL 0
+#define ROM_LOAD_16     1
+#define ROM_REGION_START 999
+#define	ROMREGION_DISPOSE 0x10
 
-/* bit 2 of the video attributes indicates whether or not the driver modifies the palette */
-#define	VIDEO_MODIFIES_PALETTE	0x0004
+#define ROM_START(name) static struct RomModule rom_##name[] = {
+//#define ROM_REGION( romSize, loadtype, disposable) { NULL, ROM_REGION_START, romSize, loadtype, disposable },
+ // For regions: filename=NULL, loadAddr=ROM_REGION_START, romSize, loadtype=REGION_*, crc=0, sha=NULL, disposable=flag
+	// Note: second param is your REGION_* id (e.g., REGION_GFX1)
+#define ROM_REGION(romSize, regionId, disposableFlag) \
+    { NULL, ROM_REGION_START, (romSize), (regionId), 0, NULL, (disposableFlag) },
+#define ROM_LOAD(filename, loadAddr, romSize, ...) { filename, loadAddr, romSize, ROM_LOAD_NORMAL, __VA_ARGS__ },
+#define ROM_LOAD16_BYTE(filename,loadAddr,romSize, ...) { filename,loadAddr,romSize, ROM_LOAD_16, __VA_ARGS__ },
+#define ROM_RELOAD(loadAddr,romSize) { (char *)-1, loadAddr,romSize, ROM_LOAD_NORMAL , 0 , 0 },
+#define ROM_CONTINUE(loadAddr,romSize) { (char *)-2, loadAddr,romSize, ROM_LOAD_NORMAL, 0 , 0 },
+#define ROM_END {NULL, 0, 0, 0, 0, 0}};
+
+///// Artwork Settings //////////////
+const struct artworks
+{
+	const char* zipfile;
+	const char* filename;
+	int type;
+	int target;
+};
+
+#define ART_START(name)  static const struct artworks name[] = {
+#define ART_LOAD(zipfile, filename, type, target) { zipfile, filename, type, target },
+#define ART_END {NULL, NULL, 0}};
+
+//
+//Artwork Setting.
+//Backdrop : layer 0
+//Overlay : layer 1
+// Bezel Mask : layer 2
+// Bezel : layer 3
+//Screen burn layer 4:
+
 ////////////////////////////////
 //PALETTE SETTINGS
 #define VEC_BW_BI  0
@@ -137,16 +181,16 @@ inline FILE* errorlog = nullptr;
 #define GAME_NO_SOUND			0x0008	/* sound is missing */
 #define GAME_IMPERFECT_SOUND	0x0010	/* sound is known to be wrong */
 #define VECTOR_USES_OVERLAY1	0x0100  // Blending type 1 overlay
-#define VECTOR_USES_OVERLAY2	0x0400  // An overlay that is visible like a gel. 
+#define VECTOR_USES_OVERLAY2	0x0400  // An overlay that is visible like a gel.
 #define VECTOR_USES_BW				0x1000
 #define VECTOR_USES_COLOR			0x2000
 #define VECTOR_DEFAULT_SCALE_2		0x4000
 #define VECTOR_DEFAULT_SCALE_3		0x8000
 
 //#define ORIENTATION_MASK        	0x0007
-//#define	ORIENTATION_FLIP_X			0x0001	// mirror everything in the X direction 
-//#define	ORIENTATION_FLIP_Y			0x0002	// mirror everything in the Y direction 
-//#define ORIENTATION_SWAP_XY			0x0004	// mirror along the top-left/bottom-right diagonal 
+//#define	ORIENTATION_FLIP_X			0x0001	// mirror everything in the X direction
+//#define	ORIENTATION_FLIP_Y			0x0002	// mirror everything in the Y direction
+//#define ORIENTATION_SWAP_XY			0x0004	// mirror along the top-left/bottom-right diagonal
 //#define VECTOR_USES_COLOR           0x0008
 
 #define	ROT0	0
@@ -174,9 +218,15 @@ inline FILE* errorlog = nullptr;
 
 /* flags for video_attributes */
 
-/* bit 0 of the video attributes indicates raster or vector video hardware */
-#define	VIDEO_TYPE_RASTER			0x0000
+/* bit 0&1 of the video attributes indicates raster or vector video hardware */
+//#define	VIDEO_TYPE_RASTER			0x0000
 #define	VIDEO_TYPE_VECTOR			0x0001
+
+#define VIDEO_TYPE_RASTER_COLOR  0x0008   /* bit 3: raster, color */
+#define VIDEO_TYPE_RASTER_BW     0x0020   /* bit 5: raster, monochrome */
+
+/* mask for testing raster class */
+#define VIDEO_RASTER_CLASS_MASK  (VIDEO_TYPE_RASTER_COLOR | VIDEO_TYPE_RASTER_BW)
 
 /* bit 1 of the video attributes indicates whether or not dirty rectangles will work */
 #define	VIDEO_SUPPORTS_DIRTY		0x0002
@@ -198,53 +248,22 @@ struct rectangle
 	int min_y, max_y;
 };
 
-const struct artworks
+
+struct MachineCPU
 {
-	const char* zipfile;
-	const char* filename;
-	int type;
-	int target;
+	 MemoryReadByte* memory_read;
+	 MemoryWriteByte* memory_write;
+	z80PortRead* port_read;
+	 z80PortWrite* port_write;
+	 MemoryReadWord* read16;
+	 MemoryWriteWord* write16;
+	int cpu_type;               //6502, etc...
+	int cpu_freq;               // CPU Frequency
+	int cpu_divisions;          // Divisions per frame cycle
+	int cpu_intpass_per_frame;  // Passes from above before interrupt called.(Interrupt Period)
+	int cpu_int_type;           // Main type of CPU interrupt
+	void (*int_cpu)(); //Interrupt Handler CPU 0/4
 };
-
-struct MachineCPU {
-	int cpu_type = 0;
-	int cpu_clock = 0;
-
-	const MemoryReadByte* memory_read = nullptr;
-	const MemoryWriteByte* memory_write = nullptr;
-	const z80PortRead* port_read = nullptr;
-	const z80PortWrite* port_write = nullptr;
-
-	int vblank_interrupts_per_frame = 1;
-	int (*timed_interrupt)(void) = nullptr;
-	int timed_interrupts_per_second = 0;
-
-	// Default constructor (disabled CPU)
-	MachineCPU() = default;
-
-	// Full setup constructor
-	MachineCPU(int type,
-		int clock,
-		const MemoryReadByte* read,
-		const MemoryWriteByte* write,
-		const z80PortRead* port_r,
-		const z80PortWrite* port_w,
-		int vblank,
-		int (*irq)(),
-		int irq_per_sec)
-		: cpu_type(type),
-		cpu_clock(clock),
-		memory_read(read),
-		memory_write(write),
-		port_read(port_r),
-		port_write(port_w),
-		vblank_interrupts_per_frame(vblank),
-		timed_interrupt(irq),
-		timed_interrupts_per_second(irq_per_sec)
-	{
-	}
-};
-
 
 struct AAEDriver
 {
@@ -261,13 +280,7 @@ struct AAEDriver
 
 	const char** game_samples;
 	const struct artworks* artwork;
-
-	int cpu_type[4];               //6502, etc...
-	int cpu_freq[4];               // CPU Frequency
-	int cpu_divisions[4];          // Divisions per frame cycle
-	int cpu_intpass_per_frame[4];  // Passes from above before interrupt called.(Interrupt Period)
-	int cpu_int_type[4];           // Main type of CPU interrupt
-	void (*int_cpu[4])(); //Interrupt Handler CPU 0/4
+	MachineCPU cpu[MAX_CPU];
 
 	const int fps;
 	const int video_attributes;
@@ -288,13 +301,12 @@ struct AAEDriver
 	void (*nvram_handler)(void* file, int read_or_write);
 };
 
-extern struct AAEDriver driver[];
-
 struct RunningMachine
 {
-	unsigned char* memory_region[MAX_MEMORY_REGIONS]; 
+	unsigned char* memory_region[MAX_MEMORY_REGIONS];
 	unsigned int memory_region_length[MAX_MEMORY_REGIONS];	/* some drivers might find this useful */
-	
+	int memory_region_type[MAX_MEMORY_REGIONS];
+
 	struct GfxElement* gfx[MAX_GFX_ELEMENTS];	/* graphic sets (chars, sprites) */
 	struct osd_bitmap* scrbitmap;	/* bitmap to draw into */
 	unsigned char pens[MAX_PENS];	/* remapped palette pen numbers */
@@ -303,7 +315,7 @@ struct RunningMachine
 	unsigned short* colortable;	/* lookup table used to map gfx pen numbers to color numbers */
 	unsigned short* remapped_colortable;	/* the above, already remapped */
 	const struct AAEDriver* gamedrv;	/* contains the definition of the game machine */
-	const struct AAEDriver*drv;	/* same as gamedrv->drv */
+	const struct AAEDriver* drv;	/* same as gamedrv->drv */
 	//const struct MachineDriver* drv;	/* same as gamedrv->drv */
 	struct InputPort* input_ports;	/* the input ports definition from the driver */
 	int orientation;	/* see #defines in driver.h */
@@ -336,117 +348,9 @@ inline int mouseb[5] = {};
 inline int total_length = 0;
 
 struct GameOptions {
-	
 	int cheat;
 };
 
 extern struct GameOptions options;
-
-
-////////////////////////////////
-//GAME DEFINES
-////////////////////////////////
-enum GameDef {
-	//Asteroids Hardware
-	METEORTS,
-	ASTEROCK,
-	ASTEROIDB,
-	ASTEROID1,
-	ASTEROID,
-	ASTDELUX1,
-	ASTDELUX2,
-	ASTDELUX,
-	//Lunar Lander Hardware
-	LLANDER1,
-	LLANDER,
-   //Midway Omega Race Hardware
-	OMEGRACE,
-	DELTRACE,
-	//BattleZone Hardware
-	BZONE,
-	BZONEA,
-	BZONEC,
-	BZONEP,
-	REDBARON,
-	BRADLEY,
-	
-	//Spacduel Hardware
-	SPACDUEL,
-	SPACDUEL0,
-	SPACDUEL1,
-	BWIDOW,
-	GRAVITAR,
-	GRAVITAR2,
-	GRAVP,
-	LUNARBAT,
-	LUNARBA1,
-	//Tempest Hardware
-	TEMPESTM,
-	TEMPEST,
-	TEMPEST3,
-	TEMPEST2,
-	TEMPEST1,
-	TEMPTUBE,
-	ALIENSV,
-	VBRAKOUT,
-	VORTEX,
-	//Sega G80 Vector Hardware
-	ZEKTOR,
-	TACSCAN,
-	STARTREK,
-	SPACFURY,
-	SPACFURA,
-	SPACFURB,
-	ELIM2,
-	ELIM2A,
-	ELIM2C,
-	ELIM4,
-	ELIM4P,
-	//Major Havoc Hardware
-	MHAVOC,
-	MHAVOC2,
-	MHAVOCRV,
-	MHAVOCPE,
-	MHAVOCP,
-	ALPHAONE,
-	ALPHAONEA,
-	//Cinematronics Hardware
-	SOLARQ,
-	STARCAS,
-	RIPOFF,
-	ARMORA,
-	BARRIER,
-	SUNDANCE,
-	WARRIOR,
-	TAILG,
-	STARHAWK,
-	SPACEWAR,
-	SPEEDFRK,
-	DEMON,
-	BOXINGB,
-	WOTW,
-	QB3,
-	//Quantum Hardware
-	QUANTUM1,
-	QUANTUM,
-	QUANTUMP,
-	//Star Wars Hardware
-	STARWARS,
-	STARWARS1,
-	ESB,
-	//Cinematronics Hardware
-	AZTARAC,
-	//Space Invaders Hardware 
-	INVADERS,
-	INVADDLX,
-	// Midway Raster
-	RALLYX
-};
-
-/* this allows to leave the INIT field empty in the GAME() macro call */
-#define init_0 0
-
-extern const struct GameDriver* drivers[];
-
 
 #endif

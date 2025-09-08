@@ -19,7 +19,7 @@
 #include "vector_fonts.h"
 #include "gl_texturing.h"
 #include "colordefs.h"
-
+#include "rawinput.h"
 extern int errorsound;
 extern int show_fps;
 extern int menulevel;
@@ -27,7 +27,6 @@ extern int gamenum;
 
 int leds_status = 0;
 static int last_led_status = 0;
-
 
 #pragma warning( disable : 4244 )
 
@@ -136,16 +135,55 @@ void video_loop(void)
 	{
 		VF.Print(400.00, 750.0, RGB_WHITE, 2.0, " Speed: %2.0f%% %2.0f out of %d FPS", ((fps_count / frameavg) / Machine->gamedrv->fps) * 100, fps_count / frameavg, Machine->gamedrv->fps);
 	}
-		
+
 	if (config.debug)
 	{
-		VF.Print(300, 330, RGB_WHITE, 2.0, "sx:%d sy:%d ex:%d ey:%d", msx, msy, esx, esy);
+		//VF.Print(300, 530, RGB_WHITE, 2.0, "sx:%d sy:%d ex:%d ey:%d", msx, msy, esx, esy);
 	}
 
 	if (leds_status != last_led_status)
 	{
 		last_led_status = leds_status;
 		osd_set_leds(leds_status);
+	}
+	
+	if (config.debug) {
+		
+	 // Input
+		const bool shift = (GetModifierFlags() & 1) != 0;
+		const int  STEP = 1;
+		const int  LO = -1824, HI = 1884;
+		const int  MINW = -2000, MINH = -2000;
+
+		enum Side { NONE, LEFT, RIGHT, BOTTOM, TOP } moved = NONE;
+
+		// Apply movement (order-preserving; we won't swap sx/sy or ex/ey)
+		if (key[KEY_RIGHT]) { sy += (shift ? -STEP : +STEP); moved = RIGHT; }
+		else if (key[KEY_LEFT]) { sx += (shift ? +STEP : -STEP); moved = LEFT; }
+		else if (key[KEY_DOWN]) { ex += (shift ? -STEP : +STEP); moved = BOTTOM; }
+		else if (key[KEY_UP]) { ey += (shift ? +STEP : -STEP); moved = TOP; }
+
+		// Clamp each side to [0, 1024], NO reordering
+		auto clamp = [](int& v, int lo, int hi) { if (v < lo) v = lo; else if (v > hi) v = hi; };
+		clamp(sx, LO, HI);
+		clamp(sy, LO, HI);
+		clamp(ex, LO, HI);
+		clamp(ey, LO, HI);
+
+		// Enforce minimum width/height by pushing back the side we just moved,
+		// but keep current orientation (sx<=sy and ex<=ey expected by your draw).
+		if (moved == LEFT && sy - sx < MINW) sx = sy - MINW;
+		if (moved == RIGHT && sy - sx < MINW) sy = sx + MINW;
+		if (moved == BOTTOM && ey - ex < MINH) ex = ey - MINH;
+		if (moved == TOP && ey - ex < MINH) ey = ex + MINH;
+
+		// Re-clamp in case MIN push hit bounds
+		clamp(sx, LO, HI);
+		clamp(sy, LO, HI);
+		clamp(ex, LO, HI);
+		clamp(ey, LO, HI);
+
+		VF.Print(300, 330, RGB_WHITE, 2.0, "sx:%d sy:%d ex:%d ey:%d", sx, sy, ex, ey);
 	}
 
 	//fprint(200.00, 200.0, RGB_WHITE, 2.0, " Menu Level: %d", get_menu_level());
@@ -155,7 +193,6 @@ void video_loop(void)
 }
 
 // Note to self: Move this to the GL code.
-
 
 void setup_ambient(int style)
 {

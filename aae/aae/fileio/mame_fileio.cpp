@@ -133,7 +133,7 @@ int osd_fread_scatter(void* file, void* buffer, int length, int increment)
 
 int osd_fread(void* file, void* buffer, int length)
 {
-	return fread(buffer, 1, length, (FILE*)file);
+	return (int) fread(buffer, 1, length, (FILE*)file);
 }
 
 int osd_fread_swap(void* file, void* buffer, int length)
@@ -158,7 +158,7 @@ int osd_fread_swap(void* file, void* buffer, int length)
 
 int osd_fwrite(void* file, const void* buffer, int length)
 {
-	return fwrite(buffer, 1, length, (FILE*)file);
+	return (int) fwrite(buffer, 1, length, (FILE*)file);
 }
 
 int osd_fseek(void* file, int offset, int whence)
@@ -166,12 +166,6 @@ int osd_fseek(void* file, int offset, int whence)
 	return fseek((FILE*)file, offset, whence);
 }
 
-/*
-void osd_fclose(void* file)
-{
-	fclose((FILE*)file);
-}
-*/
 void osd_fclose(void* file)
 {
 	if (file)

@@ -369,6 +369,7 @@ int cpu_i8080::exec(int cycles)
 		int last_cycles = cycles;
 
 		opcode = i8080_read(reg_PC++);
+		//LOG_INFO("Opcode here :%x  pc:%x", opcode, reg_PC);
 		switch (opcode) 
 		{
 		case 0x3A: //LDA a - load A from memory

@@ -28,15 +28,16 @@
 #include <chrono> // For code profiling
 #include "path_helper.h"
 #include "old_mame_raster.h"
+#include "tiled_effect.h"   // new mini-module you added earlier
 
 //Please fix this
-extern void osd_get_pen(int pen, unsigned char* red, unsigned char* green, unsigned char* blue);
+//extern void osd_get_pen(int pen, unsigned char* red, unsigned char* green, unsigned char* blue);
 
 Rect2* screen_rect = nullptr;
 //Raster rendering
 Fpoly* sc;
 extern float vid_scale;
-
+static GLuint g_scanrezTex = 0;
 // Notes for reference:
 //
 // config.artwork
@@ -65,7 +66,7 @@ void emulator_on_window_resize(int newW, int newH)
 	screen_rect->UpdateScreenRect(ws.clientWidth, ws.clientHeight, ws.aspectRatio, 0);
 	LOG_INFO("New Screen Rect, Width: %d Height: %d", ws.clientWidth, ws.clientHeight);
 }
-
+/*
 void raster_poly_update(void)
 {
 	//LOG_INFO("Update Screen Called");
@@ -81,11 +82,304 @@ void raster_poly_update(void)
 		{
 			c = main_bitmap->line[x][y];
 			//Only update if it is non black?
-			if (main_bitmap->line[x][y])
+			if (c)
 			{
 				osd_get_pen(Machine->pens[c], &r1, &g1, &b1);
 				sc->addPoly(y, x, vid_scale, MAKE_RGBA(r1, g1, b1, 0xff));
 			}
+		}
+	}
+}
+*/
+
+/*
+
+void raster_poly_update(void)
+{
+	//LOG_INFO("Update Screen Called");
+	unsigned char r1, g1, b1;
+	vid_scale = 3.0f;
+
+	const rectangle& va = Machine->drv->visible_area;
+	const int minX = va.min_x;
+	const int maxX = va.max_x;
+	const int minY = va.min_y;
+	const int maxY = va.max_y;
+
+	const int W = (maxX - minX + 1); // visible width
+	const int H = (maxY - minY + 1); // visible height
+
+	const int rot = Machine->drv->rotation;
+
+	const bool rot90 = (rot & ORIENTATION_ROTATE_90) != 0; // clockwise
+	const bool rot270 = (rot & ORIENTATION_ROTATE_270) != 0; // counter-clockwise
+	const bool rot180 = (rot & ORIENTATION_ROTATE_180) != 0;
+	const bool flipX = (rot & ORIENTATION_FLIP_X) != 0;
+	const bool flipY = (rot & ORIENTATION_FLIP_Y) != 0;
+
+	for (int srcY = minY; srcY <= maxY; ++srcY)
+	{
+		unsigned char* srcRow = main_bitmap->line[srcY]; // row-major: [y][x]
+
+		for (int srcX = minX; srcX <= maxX; ++srcX)
+		{
+			const unsigned char c = srcRow[srcX];
+			if (!c) continue; // skip black
+
+			osd_get_pen(Machine->pens[c], &r1, &g1, &b1);
+
+			// Offsets inside the visible window
+			const int xOff = srcX - minX; // 0..W-1
+			const int yOff = srcY - minY; // 0..H-1
+
+			// --- Rotation mapping ---
+			int dstX, dstY;
+			if (rot90)
+			{
+				// 90° CW: dstX spans 0..H-1, dstY spans 0..W-1
+				dstX = minX + (H - 1 - yOff);
+				dstY = minY + xOff;
+			}
+			else if (rot270)
+			{
+				// 90° CCW
+				dstX = minX + yOff;
+				dstY = minY + (W - 1 - xOff);
+			}
+			else if (rot180)
+			{
+				// 180°
+				dstX = minX + (W - 1 - xOff);
+				dstY = minY + (H - 1 - yOff);
+			}
+			else
+			{
+				// ORIENTATION_DEFAULT (no rotation)
+				dstX = srcX;
+				dstY = srcY;
+			}
+
+			// --- Flips are applied AFTER rotation ---
+			if (flipX)
+				dstX = minX + (W - 1 - (dstX - minX));
+			if (flipY)
+				dstY = minY + (H - 1 - (dstY - minY));
+
+			// Plot the pixel via polygon point helper
+			sc->addPoly(dstX, dstY, vid_scale, MAKE_RGBA(r1, g1, b1, 0xff));
+		}
+	}
+}
+*/
+/*
+void raster_poly_update(void)
+{
+	unsigned char r1, g1, b1;
+	vid_scale = 3.0f;
+
+	const rectangle& va = Machine->drv->visible_area;
+	const int minX = va.min_x;
+	const int maxX = va.max_x;
+	const int minY = va.min_y;
+	const int maxY = va.max_y;
+
+	const int W = (maxX - minX + 1); // visible width
+	const int H = (maxY - minY + 1); // visible height
+
+	const int rot = Machine->drv->rotation;
+
+	const bool swapXY = (rot & ORIENTATION_SWAP_XY) != 0;
+	const bool flipX = (rot & ORIENTATION_FLIP_X) != 0;
+	const bool flipY = (rot & ORIENTATION_FLIP_Y) != 0;
+
+	for (int srcY = minY; srcY <= maxY; ++srcY)
+	{
+		unsigned char* srcRow = main_bitmap->line[srcY]; // row-major: [y][x]
+
+		for (int srcX = minX; srcX <= maxX; ++srcX)
+		{
+			const unsigned char c = srcRow[srcX];
+			if (!c) continue; // skip black
+
+			osd_get_pen(Machine->pens[c], &r1, &g1, &b1);
+
+			// Offsets inside the visible window
+			int x = srcX - minX; // 0..W-1
+			int y = srcY - minY; // 0..H-1
+
+			int w = W, h = H;
+
+			// 1) Swap XY (and extents) if requested
+			if (swapXY) {
+				std::swap(x, y);
+				std::swap(w, h);
+			}
+
+			// 2) Flips in the (possibly swapped) space
+			if (flipX) x = (w - 1 - x);
+			if (flipY) y = (h - 1 - y);
+
+			// 3) Map back to destination coordinates
+			const int dstX = minX + x;
+			const int dstY = minY + y;
+
+			sc->addPoly(dstX, dstY, vid_scale, MAKE_RGBA(r1, g1, b1, 0xff));
+		}
+	}
+}
+*/
+/*
+void raster_poly_update(void)
+{
+	unsigned char r1, g1, b1;
+	vid_scale = 3.0f;
+
+	const rectangle& va = Machine->drv->visible_area;
+	const int minX = va.min_x, maxX = va.max_x;
+	const int minY = va.min_y, maxY = va.max_y;
+
+	const int W = (maxX - minX + 1);
+	const int H = (maxY - minY + 1);
+
+	const int rot = Machine->drv->rotation;
+	const bool swxy = (rot & ORIENTATION_SWAP_XY) != 0;
+	const bool fx = (rot & ORIENTATION_FLIP_X) != 0;
+	const bool fy = (rot & ORIENTATION_FLIP_Y) != 0;
+
+	for (int srcY = minY; srcY <= maxY; ++srcY)
+	{
+		unsigned char* srcRow = main_bitmap->line[srcY];
+
+		for (int srcX = minX; srcX <= maxX; ++srcX)
+		{
+			const unsigned char c = srcRow[srcX];
+			if (!c) continue;
+
+			osd_get_pen(Machine->pens[c], &r1, &g1, &b1);
+
+			// local coords in visible window
+			int x = srcX - minX;   // 0..W-1
+			int y = srcY - minY;   // 0..H-1
+			int w = W, h = H;      // extents in current space
+
+			// 1) swap XY (and extents)
+			if (swxy) { std::swap(x, y); std::swap(w, h); }
+
+			// 2) flip X in current space
+			if (fx) x = (w - 1 - x);
+
+			// 3) flip Y in current space
+			if (fy) y = (h - 1 - y);
+
+			sc->addPoly(minX + x, minY + y, vid_scale, MAKE_RGBA(r1, g1, b1, 0xff));
+		}
+	}
+}
+*/
+/*
+void raster_poly_update(void)
+{
+	unsigned char r1, g1, b1;
+	vid_scale = 3.0f;
+
+	const rectangle& va = Machine->drv->visible_area;
+	const int minX = va.min_x, maxX = va.max_x;
+	const int minY = va.min_y, maxY = va.max_y;
+
+	const int W = (maxX - minX + 1);
+	const int H = (maxY - minY + 1);
+
+	const int rot = Machine->drv->rotation;
+	const int rb = (rot & (ORIENTATION_SWAP_XY | ORIENTATION_FLIP_X | ORIENTATION_FLIP_Y));
+
+	for (int srcY = minY; srcY <= maxY; ++srcY)
+	{
+		unsigned char* srcRow = main_bitmap->line[srcY];
+
+		for (int srcX = minX; srcX <= maxX; ++srcX)
+		{
+			const unsigned char c = srcRow[srcX];
+			if (!c) continue;
+
+			osd_get_pen(Machine->pens[c], &r1, &g1, &b1);
+
+			const int x = srcX - minX; // 0..W-1
+			const int y = srcY - minY; // 0..H-1
+
+			int dx = 0, dy = 0; // destination-local coords
+			switch (rb)
+			{
+			case 0: // DEFAULT
+				dx = x;               dy = y;               break;
+			case ORIENTATION_FLIP_X:
+				dx = (W - 1 - x);     dy = y;               break;
+			case ORIENTATION_FLIP_Y:
+				dx = x;               dy = (H - 1 - y);     break;
+			case (ORIENTATION_FLIP_X | ORIENTATION_FLIP_Y): // ROTATE_180
+				dx = (W - 1 - x);     dy = (H - 1 - y);     break;
+
+			case ORIENTATION_SWAP_XY:
+				dx = y;               dy = x;               break;
+			case (ORIENTATION_SWAP_XY | ORIENTATION_FLIP_X): // ROTATE_90
+				dx = (H - 1 - y);     dy = x;               break;
+			case (ORIENTATION_SWAP_XY | ORIENTATION_FLIP_Y): // ROTATE_270
+				dx = y;               dy = (W - 1 - x);     break;
+
+			case (ORIENTATION_SWAP_XY | ORIENTATION_FLIP_X | ORIENTATION_FLIP_Y): // 270 + flip X
+				dx = (H - 1 - y);     dy = (W - 1 - x);     break;
+			}
+
+			sc->addPoly(minX + dx, minY + dy, vid_scale, MAKE_RGBA(r1, g1, b1, 0xff));
+		}
+	}
+}
+*/
+
+void raster_poly_update(void)
+{
+	unsigned char r1, g1, b1;
+	vid_scale = 3.0f;
+
+	const rectangle& va = Machine->drv->visible_area;
+	const int minX = va.min_x, maxX = va.max_x;
+	const int minY = va.min_y, maxY = va.max_y;
+
+	const int W = (maxX - minX + 1);
+	const int H = (maxY - minY + 1);
+
+	const int rot = Machine->drv->rotation;
+
+	for (int srcY = minY; srcY <= maxY; ++srcY)
+	{
+		unsigned char* srcRow = main_bitmap->line[srcY];
+
+		for (int srcX = minX; srcX <= maxX; ++srcX)
+		{
+			const unsigned char c = srcRow[srcX];
+			if (!c) continue;
+
+			osd_get_pen(Machine->pens[c], &r1, &g1, &b1);
+
+			// Local source coords (0..W-1, 0..H-1)
+			int x = srcX - minX;
+			int y = srcY - minY;
+
+			// Apply transforms
+			if (rot & ORIENTATION_SWAP_XY) {
+				int tmp = x;
+				x = y;
+				y = tmp;
+			}
+			if (rot & ORIENTATION_FLIP_X) {
+				x = (W - 1) - x;
+			}
+			if (rot & ORIENTATION_FLIP_Y) {
+				y = (H - 1) - y;
+			}
+
+			// Destination coords are minX/minY aligned
+			sc->addPoly(minX + x, minY + y, vid_scale,
+				MAKE_RGBA(r1, g1, b1, 0xff));
 		}
 	}
 }
@@ -166,20 +460,16 @@ int init_gl(void)
 		auto& ws = GetWindowSetup();
 
 		screen_rect = new Rect2(ws.clientWidth, ws.clientHeight, ws.aspectRatio, 0);
-		//calc_screen_rect(config.screenw, config.screenh, config.aspect, 0);
-
-		// TODO:  Move to new GUI Code.
-		/*
-		make_single_bitmap(&error_tex[0], "error.png", "aae.zip", 0); //This has to be loaded before any driver init.
-		make_single_bitmap(&error_tex[1], "info.png", "aae.zip", 0);
-		make_single_bitmap(&menu_tex[0], "joystick.png", "aae.zip", 0);
-		make_single_bitmap(&menu_tex[1], "spinner.png", "aae.zip", 0);
-		make_single_bitmap(&menu_tex[2], "settings.png", "aae.zip", 0);
-		make_single_bitmap(&menu_tex[3], "video.png", "aae.zip", 0);
-		make_single_bitmap(&menu_tex[4], "sound.png", "aae.zip", 0);
-		make_single_bitmap(&menu_tex[5], "gamma.png", "aae.zip", 0);
-		make_single_bitmap(&menu_tex[6], "buttons.png", "aae.zip", 0);
-		*/
+	
+		if (!g_scanrezTex || config.raster_effect)
+		{
+			if (!make_single_bitmap(&g_scanrezTex, config.raster_effect, "aae.zip", 0))
+			{
+				LOG_INFO("scanrez2.png not found in aae.zip; raster overlay disabled.");
+				g_scanrezTex = -1;
+			}
+			
+		}
 		////////////////////////////////////////////////////////////////////////////////
 
 		LOG_INFO("Initalizing FBO's");
@@ -189,6 +479,8 @@ int init_gl(void)
 		init_shader();
 		LOG_INFO("Finished configuration of OpenGl sucessfully");
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		// after OpenGL + GLEW are ready
+		TiledEffect_Init();
 
 		sc = new Fpoly();
 
@@ -199,6 +491,7 @@ int init_gl(void)
 
 void end_gl()
 {
+	TiledEffect_Shutdown();
 	LOG_INFO("AAE Gl Shutdown");
 }
 
@@ -214,8 +507,8 @@ int make_single_bitmap(GLuint* texture, const char* filename, const char* archna
 	LOG_INFO("Artwork Path: %s", temppath.c_str());
 
 	*texture = load_texture(filename, temppath.c_str(), 4, 1);
-
-	if (texture) return 1;
+	LOG_INFO("Made it past here");
+	if (texture ) return 1;
 	else return 0;
 }
 
@@ -372,6 +665,8 @@ void copy_fbo2_to_fbo3()
 //	Downsample Part 3
 //  This copies img2a to the 256x256 blur texture at fbo3, img3a to img1b pingpong back and forth to blur
 //
+/*
+
 void render_blur_image_fbo3()
 {
 	static constexpr float v1 = 1.0f;
@@ -452,7 +747,82 @@ void render_blur_image_fbo3()
 	check_gl_error_named("OpenGL error in render_blur_image_fbo3");
 	unbind_shader();
 }
+*/
 
+void render_blur_image_fbo3()
+{
+	static constexpr float v1 = 1.0f;
+	static constexpr float v2 = 2.0f;
+
+	GLuint fbo3ab_tex = 0; // Texture bound to the shader
+
+	// 8 directional shift pairs (each 4 values = two shifts per pass)
+	// Directional float shifts for v1 and v2
+	float fshifta[] = {
+		v1,  0,  -v1,   0, // RIGHT
+	   -v1,  0,   v1,   0, // LEFT
+		 0,  v1,   0, -v1, // UP
+		 0, -v1,   0,  v1, // DOWN
+		v1,  v1, -v1, -v1, // DIAGONAL: UP-RIGHT, DOWN-LEFT
+	   -v1, -v1,  v1,  v1, // DIAGONAL: DOWN-LEFT, UP-RIGHT
+	   -v1,  v1,  v1, -v1, // DIAGONAL: UP-LEFT, DOWN-RIGHT
+		v1, -v1, -v1,  v1  // DIAGONAL: DOWN-RIGHT, UP-LEFT
+	};
+
+	float fshiftb[] = {
+		v2,  0,  -v2,   0, // RIGHT
+	   -v2,  0,   v2,   0, // LEFT
+		 0,  v2,   0, -v2, // UP
+		 0, -v2,   0,  v2, // DOWN
+		v2,  v2, -v2, -v2, // DIAGONAL: UP-RIGHT, DOWN-LEFT
+	   -v2, -v2,  v2,  v2, // DIAGONAL: DOWN-LEFT, UP-RIGHT
+	   -v2,  v2,  v2, -v2, // DIAGONAL: UP-LEFT, DOWN-RIGHT
+		v2, -v2, -v2,  v2  // DIAGONAL: DOWN-RIGHT, UP-LEFT
+	};
+
+	bind_shader(fragBlur);
+	set_uniform1i(fragBlur, "colorMap", fbo3ab_tex);
+	set_uniform1f(fragBlur, "width", 256.0f);
+	set_uniform1f(fragBlur, "height", 256.0f);
+
+	glEnable(GL_TEXTURE_2D); // Compatibility profile
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+	glColor4f(0.1f, 0.1f, 0.1f, 0.1f); // Used by FS_Rect
+
+	int i = 0; // Index into shift arrays
+
+	// Apply a global nudge downward to compensate for drift
+	glTranslatef(0.0f, -0.20f, 0.0f);
+	// Apply a global nudge to the left to compensate for drift as well.
+	glTranslatef(-0.05f, 0.0f, 0.0f);
+
+	// 4 passes = 8 blur directions (2 shifts per pass)
+	for (int pass = 0; pass < 4; ++pass)
+	{
+		// A → B
+		glDrawBuffer(GL_COLOR_ATTACHMENT1_EXT);
+		glReadBuffer(GL_COLOR_ATTACHMENT0_EXT);
+		set_texture(&img3a, 1, 0, 0, 0);
+		glTranslatef(fshifta[i], fshifta[i + 1], 0.0f);
+		FS_Rect(0, height3);
+		glTranslatef(fshifta[i + 2], fshifta[i + 3], 0.0f);
+
+		// B → A
+		glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT);
+		glReadBuffer(GL_COLOR_ATTACHMENT1_EXT);
+		set_texture(&img3b, 1, 0, 0, 0);
+		glBindTexture(GL_TEXTURE_2D, img3b); // Redundant safety bind
+		glTranslatef(fshiftb[i], fshiftb[i + 1], 0.0f);
+		FS_Rect(0, height3);
+		glTranslatef(fshiftb[i + 2], fshiftb[i + 3], 0.0f);
+
+		i += 4; // Advance to next shift pair
+	}
+
+	check_gl_error_named("OpenGL error in render_blur_image_fbo3");
+	unbind_shader();
+}
 ////////////////////////////////////////////////////////////////////////////////
 // END  FBO / SHADER DOWNSAMPLING and COMPOSITING CODE						  //
 ////////////////////////////////////////////////////////////////////////////////
@@ -475,22 +845,9 @@ void set_render()
 
 	// Then render as normal
 	//glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-	glClear(GL_COLOR_BUFFER_BIT);// | GL_DEPTH_BUFFER_BIT);	// Clear Screen And Depth Buffer
+	glClear(GL_COLOR_BUFFER_BIT);
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-	// Leaving these here for review
-	//glDisable(GL_LIGHTING);
-	//glDisable(GL_DEPTH_TEST);
-	// LOG_INFO("Setting FBO renderer");
-	//glEnable(GL_MULTISAMPLE_ARB);
-	//glEnable(GL_SAMPLE_COVERAGE);
-	//glEnable(GL_LINE_SMOOTH);
-	//glEnable(GL_POINT_SMOOTH);
-	// Required for some older cards.
-	//glDisable(GL_DITHER);
-	//LOG_INFO("SET RENDER");
-	//LogCurrentViewportAndProjection();
 
 	check_gl_error_named("openglerror in set_render");
 }
@@ -499,7 +856,7 @@ void set_render()
 void render()
 {
 	// If we're paused we bypass all the rendering, print our message and display on the final FBO
-	if (paused) { 
+	if (paused) {
 		set_render_fbo4();
 		VF.Begin();
 		VF.PrintCentered(440, RGB_WHITE, 5.0f, "PAUSED");
@@ -548,23 +905,33 @@ void final_render(int xmin, int xmax, int ymin, int ymax)
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	set_texture(&img1a, 1, 0, 0, 1);
 	glTranslatef(.25, .25, 0);  // This may need to go.
-	glBlendFunc(GL_ONE, GL_ONE);
+
+	if (Machine->drv->video_attributes & VIDEO_TYPE_RASTER_BW) {
+		glBlendFunc(GL_ONE, GL_ZERO);  // exact copy for B/W raster
+	}
+	else {
+		glBlendFunc(GL_ONE, GL_ONE);   // keep additive for vectors/color
+	}
 	// Draw the vecture texture to fbo1, img1b
 	Any_Rect(0, xmin, xmax, ymin, ymax);
 	//////////////////////////////////////////////////////////////////////////////////////////////////////
 
 	// DRAW OVERLAY to FBO1, Image img1b from image1a Ortho 1024x1014, Viewport 1024x1024
 	// Rotated overlays for tempest and tacscan are handled as bezels down below, fix.
-
 	if (config.overlay && art_loaded[1]) {
-		if (Machine->gamedrv->video_attributes & VECTOR_USES_OVERLAY1)
-
-		{
-			glBlendFunc(GL_DST_COLOR, GL_SRC_COLOR);
-			glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+		if (Machine->gamedrv->video_attributes & VECTOR_USES_OVERLAY1) {
+			if (Machine->drv->video_attributes & VIDEO_TYPE_RASTER_BW) {
+				// Pure multiply for B/W raster so whites aren't blown out
+				glBlendFunc(GL_DST_COLOR, GL_ZERO); // or GL_ZERO, GL_SRC_COLOR
+				glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+			}
+			else {
+				// Original vector path
+				glBlendFunc(GL_DST_COLOR, GL_SRC_COLOR);
+				glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+			}
 		}
-		else
-		{
+		else {
 			glBlendFunc(GL_ONE_MINUS_SRC_ALPHA, GL_SRC_COLOR);
 			glColor4f(1.0f, 1.0f, 1.0f, .5f);
 		}
@@ -701,8 +1068,35 @@ void final_render(int xmin, int xmax, int ymin, int ymax)
 
 	glLoadIdentity();
 
+	if (Machine->drv->video_attributes & VIDEO_TYPE_RASTER_COLOR)
+	{
+	
+		// Get viewport
+		GLint vp[4] = { 0,0,0,0 };
+		glGetIntegerv(GL_VIEWPORT, vp);
+		const int surfaceW = vp[2];
+		const int surfaceH = vp[3];
+
+				
+		// enable alpha blending if your overlay has transparency
+		//glEnable(GL_BLEND);
+		//glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		//glBlendFunc(GL_DST_COLOR, GL_SRC_COLOR);
+
+		// Draw the tiled overlay as a single full-screen quad
+		// Opacity range: [0..1]. 
+		if (g_scanrezTex)
+		TiledEffect_Draw(g_scanrezTex, surfaceW, surfaceH, .5f);
+		// If you only wanted it in the game rectangle (letterboxed), set a scissor:
+		// glEnable(GL_SCISSOR_TEST);
+		// glScissor(gameX, gameY, gameW, gameH);
+		// TiledEffect_Draw(gScanRezTex, gameW, gameH, 1.0f);
+		// glDisable(GL_SCISSOR_TEST);
+	}
+	
 	video_loop();
 	end_render_fbo4();
+	
 	glDisable(GL_TEXTURE_2D);
 
 	if (config.debug_profile_code) {

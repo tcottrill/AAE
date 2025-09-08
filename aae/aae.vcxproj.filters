@@ -106,9 +106,6 @@
     <ClCompile Include="aae\cpu_code\ccpu.cpp">
       <Filter>Source Files\aae\cpu_code</Filter>
     </ClCompile>
-    <ClCompile Include="aae\cpu_code\cpu_6502.cpp">
-      <Filter>Source Files\aae\cpu_code</Filter>
-    </ClCompile>
     <ClCompile Include="aae\cpu_code\cpu_6809.cpp">
       <Filter>Source Files\aae\cpu_code</Filter>
     </ClCompile>
@@ -139,46 +136,7 @@
     <ClCompile Include="aae\cpu_code\68000\m68kops.cpp">
       <Filter>Source Files\aae\cpu_code\68000</Filter>
     </ClCompile>
-    <ClCompile Include="aae\drivers\invaders.cpp">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClCompile>
     <ClCompile Include="aae\drivers\llander.cpp">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\mhavoc.cpp">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\omegrace.cpp">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\quantum.cpp">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\rallyx.cpp">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\segag80.cpp">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\starwars.cpp">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\tempest.cpp">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\asteroid.cpp">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\aztarac.cpp">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\bwidow.cpp">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\bzone.cpp">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\cinematronics_driver.cpp">
       <Filter>Source Files\aae\drivers</Filter>
     </ClCompile>
     <ClCompile Include="aae\fileio\texture_handler.cpp">
@@ -193,26 +151,11 @@
     <ClCompile Include="aae\machine\mathbox.cpp">
       <Filter>Source Files\aae\machine</Filter>
     </ClCompile>
-    <ClCompile Include="aae\machine\SegaG80crypt.cpp">
-      <Filter>Source Files\aae\machine</Filter>
-    </ClCompile>
     <ClCompile Include="aae\machine\slapstic.cpp">
-      <Filter>Source Files\aae\machine</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\machine\starwars_machine.cpp">
       <Filter>Source Files\aae\machine</Filter>
     </ClCompile>
     <ClCompile Include="aae\machine\earom.cpp">
       <Filter>Source Files\aae\machine</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\sndhrdwr\namco.cpp">
-      <Filter>Source Files\aae\sndhrdwr</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\sndhrdwr\segag80snd.cpp">
-      <Filter>Source Files\aae\sndhrdwr</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\sndhrdwr\starwars_snd.cpp">
-      <Filter>Source Files\aae\sndhrdwr</Filter>
     </ClCompile>
     <ClCompile Include="aae\sndhrdwr\tms5220.cpp">
       <Filter>Source Files\aae\sndhrdwr</Filter>
@@ -222,12 +165,6 @@
     </ClCompile>
     <ClCompile Include="aae\sndhrdwr\ay8910.cpp">
       <Filter>Source Files\aae\sndhrdwr</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\sndhrdwr\cinematronics_sound.cpp">
-      <Filter>Source Files\aae\sndhrdwr</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\vidhrdwr\cinematronics_video.cpp">
-      <Filter>Source Files\aae\vidhrdwr</Filter>
     </ClCompile>
     <ClCompile Include="aae\vidhrdwr\cohen_sutherland_clipping.cpp">
       <Filter>Source Files\aae\vidhrdwr</Filter>
@@ -245,12 +182,6 @@
       <Filter>Source Files\aae\vidhrdwr</Filter>
     </ClCompile>
     <ClCompile Include="aae\vidhrdwr\old_mame_vecsim_dvg.cpp">
-      <Filter>Source Files\aae\vidhrdwr</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\vidhrdwr\rallyx_vid.cpp">
-      <Filter>Source Files\aae\vidhrdwr</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\vidhrdwr\SegaG80vid.cpp">
       <Filter>Source Files\aae\vidhrdwr</Filter>
     </ClCompile>
     <ClCompile Include="aae\vidhrdwr\aae_avg.cpp">
@@ -272,9 +203,6 @@
       <Filter>Source Files\aae\aae_video</Filter>
     </ClCompile>
     <ClCompile Include="aae\aae_video\gl_texturing.cpp">
-      <Filter>Source Files\aae\aae_video</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\aae_video\glcode.cpp">
       <Filter>Source Files\aae\aae_video</Filter>
     </ClCompile>
     <ClCompile Include="aae\fpsclass.cpp">
@@ -304,9 +232,6 @@
     <ClCompile Include="aae\aae_emulator.cpp">
       <Filter>Source Files\aae</Filter>
     </ClCompile>
-    <ClCompile Include="aae\aae_mame_driver.cpp">
-      <Filter>Source Files\aae</Filter>
-    </ClCompile>
     <ClCompile Include="aae\acommon.cpp">
       <Filter>Source Files\aae</Filter>
     </ClCompile>
@@ -321,6 +246,120 @@
     </ClCompile>
     <ClCompile Include="system\audio\wav_sweep.cpp">
       <Filter>Source Files\system\audio</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\aae_video\tiled_effect.cpp">
+      <Filter>Source Files\aae\aae_video</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\aae_video\glcode.cpp">
+      <Filter>Source Files\aae\aae_video</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\vidhrdwr\osd_video.cpp">
+      <Filter>Source Files\aae\vidhrdwr</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\cpu_code\cpu_6502.cpp">
+      <Filter>Source Files\aae\cpu_code</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\driver_compat.cpp">
+      <Filter>Source Files\aae</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\driver_registry.cpp">
+      <Filter>Source Files\aae</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\drivers\asteroid.cpp">
+      <Filter>Source Files\aae\drivers</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\drivers\bwidow.cpp">
+      <Filter>Source Files\aae\drivers</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\drivers\bzone.cpp">
+      <Filter>Source Files\aae\drivers</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\drivers\tempest.cpp">
+      <Filter>Source Files\aae\drivers</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\drivers\mhavoc.cpp">
+      <Filter>Source Files\aae\drivers</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\drivers\cinematronics_driver.cpp">
+      <Filter>Source Files\aae\drivers</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\drivers\omegrace.cpp">
+      <Filter>Source Files\aae\drivers</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\drivers\quantum.cpp">
+      <Filter>Source Files\aae\drivers</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\drivers\segag80.cpp">
+      <Filter>Source Files\aae\drivers</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\drivers\starwars.cpp">
+      <Filter>Source Files\aae\drivers</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\drivers\aztarac.cpp">
+      <Filter>Source Files\aae\drivers</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\vidhrdwr\cinematronics_video.cpp">
+      <Filter>Source Files\aae\vidhrdwr</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\machine\SegaG80crypt.cpp">
+      <Filter>Source Files\aae\machine</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\machine\starwars_machine.cpp">
+      <Filter>Source Files\aae\machine</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\sndhrdwr\cinematronics_sound.cpp">
+      <Filter>Source Files\aae\sndhrdwr</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\sndhrdwr\namco.cpp">
+      <Filter>Source Files\aae\sndhrdwr</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\sndhrdwr\segag80snd.cpp">
+      <Filter>Source Files\aae\sndhrdwr</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\sndhrdwr\starwars_snd.cpp">
+      <Filter>Source Files\aae\sndhrdwr</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\vidhrdwr\SegaG80vid.cpp">
+      <Filter>Source Files\aae\vidhrdwr</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\vidhrdwr\rallyx_vid.cpp">
+      <Filter>Source Files\aae\vidhrdwr</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\vidhrdwr\galaxian_vid.cpp">
+      <Filter>Source Files\aae\vidhrdwr</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\sndhrdwr\galsnd_stream.cpp">
+      <Filter>Source Files\aae\sndhrdwr</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\drivers\rallyx.cpp">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\drivers\galaxian_driver.cpp">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\drivers\invaders.cpp">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\drivers\vicdual.cpp">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\drivers\galaga.cpp">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\drivers\pacman.cpp">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\drivers\milliped.cpp">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\drivers\missile.cpp">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\drivers\warlord.cpp">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\sndhrdwr\okim6295_loader.cpp">
+      <Filter>Source Files\aae\sndhrdwr</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -504,46 +543,7 @@
     <ClInclude Include="aae\cpu_code\68000\mem68k.h">
       <Filter>Source Files\aae\cpu_code\68000</Filter>
     </ClInclude>
-    <ClInclude Include="aae\drivers\invaders.h">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClInclude>
     <ClInclude Include="aae\drivers\llander.h">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\drivers\mhavoc.h">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\drivers\omegrace.h">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\drivers\quantum.h">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\drivers\rallyx.h">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\drivers\segag80.h">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\drivers\starwars.h">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\drivers\tempest.h">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\drivers\asteroid.h">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\drivers\aztarac.h">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\drivers\bwidow.h">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\drivers\bzone.h">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\drivers\cinematronics_driver.h">
       <Filter>Source Files\aae\drivers</Filter>
     </ClInclude>
     <ClInclude Include="aae\fileio\sha-1.h">
@@ -561,26 +561,11 @@
     <ClInclude Include="aae\machine\mathbox.h">
       <Filter>Source Files\aae\machine</Filter>
     </ClInclude>
-    <ClInclude Include="aae\machine\SegaG80crypt.h">
-      <Filter>Source Files\aae\machine</Filter>
-    </ClInclude>
     <ClInclude Include="aae\machine\slapstic.h">
-      <Filter>Source Files\aae\machine</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\machine\starwars_machine.h">
       <Filter>Source Files\aae\machine</Filter>
     </ClInclude>
     <ClInclude Include="aae\machine\earom.h">
       <Filter>Source Files\aae\machine</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\sndhrdwr\namco.h">
-      <Filter>Source Files\aae\sndhrdwr</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\sndhrdwr\segag80snd.h">
-      <Filter>Source Files\aae\sndhrdwr</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\sndhrdwr\starwars_snd.h">
-      <Filter>Source Files\aae\sndhrdwr</Filter>
     </ClInclude>
     <ClInclude Include="aae\sndhrdwr\tms5220.h">
       <Filter>Source Files\aae\sndhrdwr</Filter>
@@ -590,12 +575,6 @@
     </ClInclude>
     <ClInclude Include="aae\sndhrdwr\ay8910.h">
       <Filter>Source Files\aae\sndhrdwr</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\sndhrdwr\cinematronics_sound.h">
-      <Filter>Source Files\aae\sndhrdwr</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\vidhrdwr\cinematronics_video.h">
-      <Filter>Source Files\aae\vidhrdwr</Filter>
     </ClInclude>
     <ClInclude Include="aae\vidhrdwr\cohen_sutherland_clipping.h">
       <Filter>Source Files\aae\vidhrdwr</Filter>
@@ -613,12 +592,6 @@
       <Filter>Source Files\aae\vidhrdwr</Filter>
     </ClInclude>
     <ClInclude Include="aae\vidhrdwr\old_mame_vecsim_dvg.h">
-      <Filter>Source Files\aae\vidhrdwr</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\vidhrdwr\rallyx_vid.h">
-      <Filter>Source Files\aae\vidhrdwr</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\vidhrdwr\SegaG80vid.h">
       <Filter>Source Files\aae\vidhrdwr</Filter>
     </ClInclude>
     <ClInclude Include="aae\vidhrdwr\aae_avg.h">
@@ -655,18 +628,6 @@
       <Filter>Source Files\aae</Filter>
     </ClInclude>
     <ClInclude Include="aae\gameart.h">
-      <Filter>Source Files\aae</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\gamedriver.h">
-      <Filter>Source Files\aae</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\gamekeys.h">
-      <Filter>Source Files\aae</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\gameroms.h">
-      <Filter>Source Files\aae</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\gamesamp.h">
       <Filter>Source Files\aae</Filter>
     </ClInclude>
     <ClInclude Include="aae\inptport.h">
@@ -725,6 +686,120 @@
     </ClInclude>
     <ClInclude Include="system\util\FrameLimiter.h">
       <Filter>Source Files\system\util</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\aae_video\tiled_effect.h">
+      <Filter>Source Files\aae\aae_video</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\vidhrdwr\osd_video.h">
+      <Filter>Source Files\aae\vidhrdwr</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\driver_compat.h">
+      <Filter>Source Files\aae</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\driver_registry.h">
+      <Filter>Source Files\aae</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\driver_macros.h">
+      <Filter>Source Files\aae</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\drivers\asteroid.h">
+      <Filter>Source Files\aae\drivers</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\drivers\bwidow.h">
+      <Filter>Source Files\aae\drivers</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\drivers\bzone.h">
+      <Filter>Source Files\aae\drivers</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\drivers\tempest.h">
+      <Filter>Source Files\aae\drivers</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\drivers\mhavoc.h">
+      <Filter>Source Files\aae\drivers</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\drivers\cinematronics_driver.h">
+      <Filter>Source Files\aae\drivers</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\drivers\namco_stars.h">
+      <Filter>Source Files\aae\drivers</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\drivers\omegrace.h">
+      <Filter>Source Files\aae\drivers</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\drivers\quantum.h">
+      <Filter>Source Files\aae\drivers</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\drivers\segag80.h">
+      <Filter>Source Files\aae\drivers</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\drivers\starwars.h">
+      <Filter>Source Files\aae\drivers</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\drivers\aztarac.h">
+      <Filter>Source Files\aae\drivers</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\vidhrdwr\cinematronics_video.h">
+      <Filter>Source Files\aae\vidhrdwr</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\machine\SegaG80crypt.h">
+      <Filter>Source Files\aae\machine</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\machine\starwars_machine.h">
+      <Filter>Source Files\aae\machine</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\sndhrdwr\cinematronics_sound.h">
+      <Filter>Source Files\aae\sndhrdwr</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\sndhrdwr\namco.h">
+      <Filter>Source Files\aae\sndhrdwr</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\sndhrdwr\segag80snd.h">
+      <Filter>Source Files\aae\sndhrdwr</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\sndhrdwr\starwars_snd.h">
+      <Filter>Source Files\aae\sndhrdwr</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\vidhrdwr\SegaG80vid.h">
+      <Filter>Source Files\aae\vidhrdwr</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\vidhrdwr\rallyx_vid.h">
+      <Filter>Source Files\aae\vidhrdwr</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\vidhrdwr\galaxian_vid.h">
+      <Filter>Source Files\aae\vidhrdwr</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\sndhrdwr\galsnd_stream.h">
+      <Filter>Source Files\aae\sndhrdwr</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\drivers\rallyx.h">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\drivers\galaxian_driver.h">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\drivers\invaders.h">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\drivers\vicdual.h">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\drivers\galaga.h">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\drivers\pacman.h">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\drivers\milliped.h">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\drivers\missile.h">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\drivers\warlord.h">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\sndhrdwr\okim6295_loader.h">
+      <Filter>Source Files\aae\sndhrdwr</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -797,6 +872,9 @@
     </Filter>
     <Filter Include="Source Files\aae\cpu_code\68000">
       <UniqueIdentifier>{11feed3f-610f-4067-84af-657828dfa47a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\aae\drivers\raster">
+      <UniqueIdentifier>{d3b1a532-181d-44f4-92aa-3fd58d1c1e7c}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>

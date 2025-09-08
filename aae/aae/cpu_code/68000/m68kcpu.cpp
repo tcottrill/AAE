@@ -1700,11 +1700,11 @@ void m68ki_exception_illegal(void)
 		m68ki_disassemble_quick(ADDRESS_68K(REG_PPC))));
 
 	sr = m68ki_init_exception();
-	m68ki_stack_frame_0000(REG_PC, sr, EXCEPTION_ILLEGAL_INSTRUCTION);
-	m68ki_jump_vector(EXCEPTION_ILLEGAL_INSTRUCTION);
+	m68ki_stack_frame_0000(REG_PC, sr, EXCEPTION_ILLEGAL_INST);
+	m68ki_jump_vector(EXCEPTION_ILLEGAL_INST);
 
 	/* Use up some clock cycles and undo the instruction's cycles */
-	USE_CYCLES(CYC_EXCEPTION[EXCEPTION_ILLEGAL_INSTRUCTION] - CYC_INSTRUCTION[REG_IR]);
+	USE_CYCLES(CYC_EXCEPTION[EXCEPTION_ILLEGAL_INST] - CYC_INSTRUCTION[REG_IR]);
 }
 
 /* Exception for format errror in RTE */

@@ -808,7 +808,7 @@ void scale_analog_port(int port)
 	in = input_analog[port];
 	sensitivity = IP_GET_SENSITIVITY(in);
 
-	delta = cpu_scale_by_cycles(input_analog_current_value[port] - input_analog_previous_value[port], Machine->gamedrv->cpu_freq[0]);// Machine->cpu[0].cpu_clock);
+	delta = cpu_scale_by_cycles(input_analog_current_value[port] - input_analog_previous_value[port], Machine->gamedrv->cpu[0].cpu_freq); // Machine->cpu[0].cpu_clock);
 
 	current = input_analog_previous_value[port] + delta;
 

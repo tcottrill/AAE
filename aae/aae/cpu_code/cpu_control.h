@@ -101,7 +101,6 @@ enum
 #define INT_TYPE_68K7 7
 
 void init6502(struct MemoryReadByte* read, struct MemoryWriteByte* write, int mem_top, int cpunum);
-void init8080(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum);
 void init6809(struct MemoryReadByte* read, struct MemoryWriteByte* write, int cpunum);
 void init_z80(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum);
 void init8080(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum);
@@ -109,6 +108,13 @@ void init68k(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct 
 
 void cpu_setOPbaseoverride(int (*f)(int));
 void cpu_setOPbase16(int apc);
+
+// New Scanline Calculation
+// cpu_control.h
+int aae_cpu_getscanline(void);               // 0..(LINES_PER_FRAME-1)
+int aae_cpu_getscanlinecycles(void);         // cycles per scanline, CPU0
+int aae_cpu_getcurrentcycles_in_frame(void); // cycles since frame start, CPU0
+void aae_set_lines_per_frame(int lines);     // optional: change 256/262 etc.
 
 // Used for cycle to time scaling.
 int cpu_scale_by_cycles(int val, int clock);
@@ -132,7 +138,7 @@ void cpu_disable_interrupts(int cpunum, int val);
 int cpu_getcurrentframe();
 
 void cpu_do_int_imm(int cpunum, int int_type);
-void cpu_do_interrupt(int int_type, int cpunum);
+//void cpu_do_interrupt(int int_type, int cpunum);
 
 int get_exact_cyclecount(int cpu);
 void cpu_clear_cyclecount(int cpunum);
@@ -153,7 +159,7 @@ void free_cpu_memory();
 void cpu_enable(int cpunum, int val);
 
 void interrupt_enable_w(UINT32 address, UINT8 data, struct MemoryWriteByte* pMemWrite);
-void interrupt_vector_w(UINT32 address, UINT8 data, struct MemoryWriteByte* pMemWrite);
+void interrupt_vector_w(UINT16 address, UINT8 data, struct z80PortWrite* pPW);
 
 //Watchdog Defines from cpu_handler.cpp
 extern void watchdog_reset_w(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite);

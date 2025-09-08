@@ -441,6 +441,66 @@ int load_sample(const char* archname, const char* filename, bool force_resample)
 }
 
 // -----------------------------------------------------------------------------
+// mixer_upload_sample16
+// Replace/initialize a sample's PCM with mono/stereo 16-bit data and format.
+// Allocates/reallocates internal storage as needed.
+// Returns 0 on success, -1 on failure.
+//
+// Parameters:
+//   samplenum - index into the mixer sample registry (the same value used by sample_start)
+//   pcm       - pointer to interleaved 16-bit PCM
+//   frames    - number of frames (samples per channel)
+//   freq      - sample rate (e.g., 44100)
+//   stereo    - false=mono, true=stereo
+// -----------------------------------------------------------------------------
+int mixer_upload_sample16(int samplenum,
+	const int16_t* pcm,
+	uint32_t frames,
+	int freq,
+	bool stereo)
+{
+	if (!pcm || frames == 0 || freq <= 0) {
+		LOG_ERROR("mixer_upload_sample16: invalid args (pcm=%p frames=%u freq=%d)", (void*)pcm, frames, freq);
+		return -1;
+	}
+
+	std::scoped_lock lock(audioMutex);
+
+	if (samplenum < 0 || samplenum >= static_cast<int>(lsamples.size())) {
+		LOG_ERROR("mixer_upload_sample16: invalid samplenum %d", samplenum);
+		return -1;
+	}
+
+	auto& s = lsamples[samplenum];
+	if (!s) return -1;
+
+	// (Re)configure format
+	s->fx.wFormatTag = WAVE_FORMAT_PCM;
+	s->fx.nChannels = stereo ? 2 : 1;
+	s->fx.wBitsPerSample = 16;
+	s->fx.nSamplesPerSec = freq;
+	s->fx.nBlockAlign = static_cast<WORD>(s->fx.nChannels * (s->fx.wBitsPerSample / 8));
+	s->fx.nAvgBytesPerSec = s->fx.nSamplesPerSec * s->fx.nBlockAlign;
+	s->fx.cbSize = 0;
+
+	const uint32_t channels = s->fx.nChannels;
+	s->sampleCount = frames * channels;
+	s->dataSize = s->sampleCount * sizeof(int16_t);
+
+	// Allocate/resize storage
+	s->data8.reset();
+	s->data16 = std::make_unique<int16_t[]>(s->sampleCount);
+
+	// Copy PCM
+	std::memcpy(s->data16.get(), pcm, s->dataSize);
+
+	s->buffer = s->data16.get();
+	s->state = SoundState::Loaded;
+	return 0;
+}
+
+
+// -----------------------------------------------------------------------------
 // mixer_init
 // Initializes the mixer with an exact (possibly fractional) frames-per-second
 // clock and starts the audio worker thread. Audio generation remains frame-locked:

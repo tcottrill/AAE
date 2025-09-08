@@ -103,8 +103,8 @@ static void draw_bzone(int sx, int sy, int ex, int ey, int z, int color)
 	int clip;
 	int BZ_CLIP = 768 - 50;
 
-	z = (z & 0xe) << 4;
-
+	z = ((z & 0xf) << 4) | 0xf;
+	
 	set_clip_rect(0, 0, 1024, BZ_CLIP);
 
 	if (vector_engine == USE_AVG_RBARON)
@@ -124,7 +124,9 @@ static void draw_bzone(int sx, int sy, int ex, int ey, int z, int color)
 
 static void draw_avg(int sx, int sy, int ex, int ey, int z, int color)
 {
-	add_line(sx, sy, ex, ey, (z & 0xe) << 4, VECTOR_COLOR111(color));
+	z = ((z & 0xf) << 4) | 0xf;
+
+	add_line(sx, sy, ex, ey, z, VECTOR_COLOR111(color));
 }
 
 static void draw_starwars(int sx, int sy, int ex, int ey, int z, int color)
@@ -134,6 +136,10 @@ static void draw_starwars(int sx, int sy, int ex, int ey, int z, int color)
 
 static void draw_tempest(int sx, int sy, int ex, int ey, int z, int color)
 {
+	if (z == 0) return; 
+
+
+
 	uint8_t data = tempest_colorram[color];
 	int r, g, b;
 	int bit3 = (~data >> 3) & 1;
@@ -149,7 +155,8 @@ static void draw_tempest(int sx, int sy, int ex, int ey, int z, int color)
 	int clip = ClipLine(&sx, &sy, &ex, &ey);
 	if (clip)
 	{
-		add_line(sx, sy, ex, ey, z << 4, MAKE_RGBA(r, g, b, z << 4));
+		z = ((z & 0xf) << 4) | 0xf;
+		add_line(sx, sy, ex, ey, z , MAKE_RGBA(r, g, b, z ));
 	}
 }
 

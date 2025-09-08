@@ -6,6 +6,7 @@
  * $Header: /usr2/eric/vg/atari/vecsim/RCS/mathbox.c,v 1.1 1996/08/29 07:23:59 eric Exp eric $
  */
 
+
  //#include "driver.h"
 #include "mathbox.h"
 
@@ -80,9 +81,8 @@ void mb_go(int addr, int data)
 
 	case 0x0b:
 
-		REG5 = (REG5 & 0x00ff) | (data << 8);
-
-		REGf = 0xffff;
+		REG5 = (s16)((REG5 & 0x00ff) | ((data & 0xff) << 8));
+		REGf = -1;  // was 0xffff; (explicitly mean “negative sentinel”)
 		REG4 -= REG2;
 		REG5 -= REG3;
 
@@ -113,6 +113,7 @@ void mb_go(int addr, int data)
 		REG7 += REG2;
 
 		/* fall into command 12 */
+		[[fallthrough]];
 
 	case 0x12:
 
@@ -144,6 +145,7 @@ void mb_go(int addr, int data)
 		REG9 &= 0xff00;
 
 		/* fall into command 13 */
+		[[fallthrough]];
 
 	case 0x13:
 #ifdef MB_TEST
@@ -238,6 +240,7 @@ void mb_go(int addr, int data)
 			REG3 = -REG3;
 
 		/* fall into command 1e */
+		[[fallthrough]];
 
 	case 0x1e:
 		/* result = max (REG2, REG3) + 3/8 * min (REG2, REG3) */

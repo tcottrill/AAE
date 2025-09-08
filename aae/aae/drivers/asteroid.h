@@ -1,7 +1,7 @@
 #ifndef ASTEROID_H
 #define ASTEROID_H
 
-//#include "aaemain.h"
+#include "aae_mame_driver.h"
 
 int init_asteroid(void);
 int init_asterock(void);
@@ -18,8 +18,6 @@ int asteroid_hiload();
 void  asteroid_hisave();
 extern void asteroid_interrupt();
 extern void asterock_interrupt();
-
-// Should be in avg_dvg.h
 
 
 

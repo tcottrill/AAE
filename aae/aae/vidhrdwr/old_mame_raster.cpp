@@ -1,1129 +1,785 @@
 //============================================================================
-// AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME
-// code, 0.29 through .90 mixed with code of my own. This emulator was
-// created solely for my amusement and learning and is provided only
-// as an archival experience.
-//
-// All MAME code used and abused in this emulator remains the copyright
-// of the dedicated people who spend countless hours creating it. All
-// MAME code should be annotated as belonging to the MAME TEAM.
-//
-// THE CODE BELOW IS DERIVED FROM MAME and COPYRIGHT the MAME TEAM.
+// AAE raster module (speed-first modernized drop-in)
+// Derived from early MAME code. See project headers for attribution.
 //============================================================================
 
 #include "old_mame_raster.h"
 
+#include <cstdlib>
+#include <cstdint>
+#include <cstring>
+#if defined(_MSC_VER)
+#include <malloc.h> // _aligned_malloc/_aligned_free
+#endif
+
+//------------------------------------------------------------------------------
+// Public globals (compatibility; keep names/layout)
+//------------------------------------------------------------------------------
 unsigned char* videoram;
-int videoram_size;
+int   videoram_size;
 unsigned char* colorram;
 unsigned char* spriteram;
-int spriteram_size;
+int   spriteram_size;
 unsigned char* spriteram_2;
-int spriteram_2_size;
+int   spriteram_2_size;
 unsigned char* spriteram_3;
-int spriteram_3_size;
+int   spriteram_3_size;
 unsigned char* flip_screen;
 unsigned char* flip_screen_x;
 unsigned char* flip_screen_y;
 unsigned char* dirtybuffer;
 
-//Bitmaps 
+// Bitmaps
 struct osd_bitmap* tmpbitmap;
 struct osd_bitmap* tmpbitmap1;
 struct osd_bitmap* main_bitmap;
 
+// Gfx sets
 struct GfxElement* gfx[MAX_GFX_ELEMENTS];
 
+//------------------------------------------------------------------------------
+// Internal helpers
+//------------------------------------------------------------------------------
+namespace
+{
+    // Safety border for unclipped routines (unchanged value)
+    constexpr int kSafety = 16;
 
+    // Round up to multiple of 8 for better row strides (quadword friendly)
+    inline int round_up_8(int v) { return (v + 7) & ~7; }
 
-/***************************************************************************
+    // Allocate aligned memory (64B) for cache/SIMD friendliness
+    static inline unsigned char* aae_aligned_alloc(size_t bytes)
+    {
+#if defined(_MSC_VER)
+        return reinterpret_cast<unsigned char*>(_aligned_malloc(bytes, 64));
+#else
+        void* p = nullptr;
+        if (posix_memalign(&p, 64, bytes) != 0) return nullptr;
+        return reinterpret_cast<unsigned char*>(p);
+#endif
+    }
 
-  Start the video hardware emulation.
+    static inline void aae_aligned_free(void* p)
+    {
+#if defined(_MSC_VER)
+        _aligned_free(p);
+#else
+        free(p);
+#endif
+    }
 
-***************************************************************************/
+    // Clip rectangle according to Machine orientation (kept behavior)
+    inline void apply_orientation_clip(const struct osd_bitmap* dest, const struct rectangle*& clipRef,
+        rectangle& tmp)
+    {
+        const int orient = Machine ? Machine->orientation : 0;
+
+        if (orient & ORIENTATION_SWAP_XY)
+        {
+            if (clipRef)
+            {
+                tmp.min_x = clipRef->min_y;
+                tmp.max_x = clipRef->max_y;
+                tmp.min_y = clipRef->min_x;
+                tmp.max_y = clipRef->max_x;
+                clipRef = &tmp;
+            }
+        }
+        if (orient & ORIENTATION_FLIP_X)
+        {
+            if (clipRef)
+            {
+                rectangle t{};
+                t.min_x = dest->width - 1 - clipRef->max_x;
+                t.max_x = dest->width - 1 - clipRef->min_x;
+                t.min_y = clipRef->min_y;
+                t.max_y = clipRef->max_y;
+                tmp = t;
+                clipRef = &tmp;
+            }
+        }
+        if (orient & ORIENTATION_FLIP_Y)
+        {
+            if (clipRef)
+            {
+                rectangle t{};
+                t.min_x = clipRef->min_x;
+                t.max_x = clipRef->max_x;
+                t.min_y = dest->height - 1 - clipRef->max_y;
+                t.max_y = dest->height - 1 - clipRef->min_y;
+                tmp = t;
+                clipRef = &tmp;
+            }
+        }
+    }
+
+    // Tight remap copy: bm[x..x+n) = pal[sd[x..x+n))
+    inline void copy_remap_u8(unsigned char* AAE_RESTRICT bm,
+        const unsigned char* AAE_RESTRICT sd,
+        int n, const unsigned char* AAE_RESTRICT pal)
+    {
+        // Unroll by 8 for typical tile widths
+        int i = 0;
+        for (; i + 8 <= n; i += 8)
+        {
+            bm[0] = pal[sd[0]];
+            bm[1] = pal[sd[1]];
+            bm[2] = pal[sd[2]];
+            bm[3] = pal[sd[3]];
+            bm[4] = pal[sd[4]];
+            bm[5] = pal[sd[5]];
+            bm[6] = pal[sd[6]];
+            bm[7] = pal[sd[7]];
+            bm += 8; sd += 8;
+        }
+        for (; i < n; ++i) { *bm++ = pal[*sd++]; }
+    }
+
+    // Tight selective copy with transparent PEN match on source index
+    inline void copy_remap_trans_pen(unsigned char* AAE_RESTRICT bm,
+        const unsigned char* AAE_RESTRICT sd,
+        int n, const unsigned char* AAE_RESTRICT pal,
+        unsigned char transparent_color)
+    {
+        // Process in 4s where possible; keep branch light
+        int i = 0;
+        for (; i + 4 <= n; i += 4)
+        {
+            unsigned char s0 = sd[0], s1 = sd[1], s2 = sd[2], s3 = sd[3];
+            if (s0 != transparent_color) bm[0] = pal[s0];
+            if (s1 != transparent_color) bm[1] = pal[s1];
+            if (s2 != transparent_color) bm[2] = pal[s2];
+            if (s3 != transparent_color) bm[3] = pal[s3];
+            bm += 4; sd += 4;
+        }
+        for (; i < n; ++i)
+        {
+            unsigned char s = *sd++;
+            if (s != transparent_color) *bm = pal[s];
+            ++bm;
+        }
+    }
+
+    // Tight selective copy with transparent COLOR match on dest
+    inline void copy_remap_trans_color(unsigned char* AAE_RESTRICT bm,
+        const unsigned char* AAE_RESTRICT sd,
+        int n, const unsigned char* AAE_RESTRICT pal,
+        unsigned char transparent_color)
+    {
+        int i = 0;
+        for (; i + 4 <= n; i += 4)
+        {
+            unsigned char p0 = pal[sd[0]], p1 = pal[sd[1]];
+            unsigned char p2 = pal[sd[2]], p3 = pal[sd[3]];
+            if (p0 != transparent_color) bm[0] = p0;
+            if (p1 != transparent_color) bm[1] = p1;
+            if (p2 != transparent_color) bm[2] = p2;
+            if (p3 != transparent_color) bm[3] = p3;
+            bm += 4; sd += 4;
+        }
+        for (; i < n; ++i)
+        {
+            unsigned char p = pal[*sd++];
+            if (p != transparent_color) *bm = p;
+            ++bm;
+        }
+    }
+
+    // "Through" blending: copy only where dest == key
+    inline void copy_remap_through(unsigned char* AAE_RESTRICT bm,
+        const unsigned char* AAE_RESTRICT sd,
+        int n, const unsigned char* AAE_RESTRICT pal,
+        unsigned char key)
+    {
+        for (int i = 0; i < n; ++i)
+        {
+            if (bm[i] == key) bm[i] = pal[sd[i]];
+        }
+    }
+
+    // Non-remap variants (verbatim)
+    inline void copy_verbatim(unsigned char* AAE_RESTRICT bm,
+        const unsigned char* AAE_RESTRICT sd, int n)
+    {
+        // memcpy is optimal here
+        std::memcpy(bm, sd, static_cast<size_t>(n));
+    }
+
+    inline void copy_verbatim_trans_pen(unsigned char* AAE_RESTRICT bm,
+        const unsigned char* AAE_RESTRICT sd,
+        int n, unsigned char transparent_color)
+    {
+        for (int i = 0; i < n; ++i)
+        {
+            unsigned char s = sd[i];
+            if (s != transparent_color) bm[i] = s;
+        }
+    }
+
+    inline void copy_verbatim_through(unsigned char* AAE_RESTRICT bm,
+        const unsigned char* AAE_RESTRICT sd,
+        int n, unsigned char key)
+    {
+        for (int i = 0; i < n; ++i)
+        {
+            if (bm[i] == key) bm[i] = sd[i];
+        }
+    }
+} // anonymous namespace
+
+//------------------------------------------------------------------------------
+// Start/Stop
+//------------------------------------------------------------------------------
 int generic_vh_start(void)
 {
-	if (videoram_size == 0)
-	{
-		LOG_INFO("Error: generic_vh_start() called but videoram_size not initialized\n");
-		return 1;
-	}
+    if (videoram_size == 0)
+    {
+        LOG_INFO("Error: generic_vh_start() called but videoram_size not initialized\n");
+        return 1;
+    }
 
-	if ((dirtybuffer = (unsigned char*)malloc(videoram_size)) == 0)
-		return 1;
-	memset(dirtybuffer, 1, videoram_size);
+    // Dirty flags (1 = needs redraw)
+    if ((dirtybuffer = (unsigned char*)std::malloc((size_t)videoram_size)) == nullptr)
+        return 1;
+    std::memset(dirtybuffer, 1, (size_t)videoram_size);
 
-	if ((tmpbitmap = osd_create_bitmap(Machine->gamedrv->screen_width, Machine->gamedrv->screen_height)) == 0)
-	{
-		LOG_INFO("ERROR----- tmpbitmap create failed");
-		free(dirtybuffer);
-		return 1;
-	}
-	LOG_INFO("INIT: Raster Video Init Completed");
-	return 0;
+    // Primary scratch/back buffer
+    tmpbitmap = osd_create_bitmap(Machine->gamedrv->screen_width, Machine->gamedrv->screen_height);
+    if (!tmpbitmap)
+    {
+        LOG_INFO("ERROR: tmpbitmap create failed");
+        std::free(dirtybuffer);
+        dirtybuffer = nullptr;
+        return 1;
+    }
+
+    LOG_INFO("INIT: Raster Video Init Completed");
+    return 0;
 }
 
-/***************************************************************************
-
-  Stop the video hardware emulation.
-
-***************************************************************************/
 void generic_vh_stop(void)
 {
-	free(dirtybuffer);
-	osd_free_bitmap(tmpbitmap);
-	dirtybuffer = 0;
-	tmpbitmap = 0;
+    if (dirtybuffer) { std::free(dirtybuffer); dirtybuffer = nullptr; }
+    osd_free_bitmap(tmpbitmap);  tmpbitmap = nullptr;
+    // tmpbitmap1/main_bitmap (if used) are managed by their owners
 }
 
-int videoram_r(int offset)
-{
-	return videoram[offset];
-}
-
-int colorram_r(int offset)
-{
-	return colorram[offset];
-}
+//------------------------------------------------------------------------------
+// VRAM access (dirty tracking re-enabled for incremental redraws)
+//------------------------------------------------------------------------------
+int videoram_r(int offset) { return videoram[offset]; }
+int colorram_r(int offset) { return colorram[offset]; }
 
 void videoram_w(int offset, int data)
 {
-	if (videoram[offset] != data)
-	{
-		//dirtybuffer[offset] = 1;
-		videoram[offset] = data;
-	}
+    if (videoram[offset] != (unsigned char)data)
+    {
+        videoram[offset] = (unsigned char)data;
+        if (dirtybuffer) dirtybuffer[offset] = 1;
+    }
 }
 
 void colorram_w(int offset, int data)
 {
-	if (colorram[offset] != data)
-	{
-		//dirtybuffer[offset] = 1;
-		colorram[offset] = data;
-	}
+    if (colorram[offset] != (unsigned char)data)
+    {
+        colorram[offset] = (unsigned char)data;
+        if (dirtybuffer) dirtybuffer[offset] = 1;
+    }
 }
 
-void plot_pixel(struct osd_bitmap* b, int x, int y, int p) { b->line[x][y] = p; }
-int read_pixel(struct osd_bitmap* b, int x, int y) { return b->line[x][y]; }
-
+//------------------------------------------------------------------------------
+// Bitmap allocation (aligned, leak-free, fast)
+//------------------------------------------------------------------------------
 void osd_clearbitmap(struct osd_bitmap* bitmap)
 {
-	int i; 	for (i = 0; i < bitmap->height; i++)	memset(bitmap->line[i], 0, bitmap->width);
+    for (int y = 0; y < bitmap->height; ++y)
+        std::memset(bitmap->line[y], 0, (size_t)bitmap->width);
 }
 
-/* Create a bitmap. Also calls osd_clearbitmap() to appropriately initialize */
-/* it to the background color. */
-/* VERY IMPORTANT: the function must allocate also a "safety area" 16 pixels wide all */
-/* around the bitmap. This is required because, for performance reasons, some graphic */
-/* routines don't clip at boundaries of the bitmap. */
-
-const int safety = 16;
-
-struct osd_bitmap* osd_create_bitmap(int width, int height)       // ASG 980209 
+struct osd_bitmap* osd_create_bitmap(int width, int height)
 {
-	struct osd_bitmap* bitmap;
+    struct osd_bitmap* bitmap = (struct osd_bitmap*)std::malloc(sizeof(struct osd_bitmap));
+    if (!bitmap) return nullptr;
 
-	if ((bitmap = (struct osd_bitmap*)malloc(sizeof(struct osd_bitmap))) != 0)
-	{
-		int i, rowlen, rdwidth;
-		unsigned char* bm;
+    bitmap->width = width;
+    bitmap->height = height;
+    bitmap->depth = 8;
 
-		int depth = 8;
+    // Row length with left/right safety
+    const int rounded_w = round_up_8(width);
+    const int rowlen = rounded_w + 2 * kSafety;
 
-		bitmap->width = width;
-		bitmap->height = height;
-		bitmap->depth = 8;
+    // Allocate pixel plane (with top/bottom safety rows)
+    const size_t bytes = (size_t)(height + 2 * kSafety) * (size_t)rowlen;
+    unsigned char* bm = aae_aligned_alloc(bytes);
+    if (!bm)
+    {
+        std::free(bitmap);
+        return nullptr;
+    }
+    std::memset(bm, 0, bytes);
 
-		rdwidth = (width + 7) & ~7;     /* round width to a quadword */
-		if (depth == 16)
-			rowlen = 2 * (rdwidth + 2 * safety) * sizeof(unsigned char);
-		else
-			rowlen = (rdwidth + 2 * safety) * sizeof(unsigned char);
+    // Allocate row pointer table (with safety rows)
+    const int rows_with_safety = height + 2 * kSafety;
+    unsigned char** line_base =
+        (unsigned char**)aae_aligned_alloc((size_t)rows_with_safety * sizeof(unsigned char*));
+    if (!line_base)
+    {
+        aae_aligned_free(bm);
+        std::free(bitmap);
+        return nullptr;
+    }
 
-		if ((bm = (unsigned char*)malloc((height + 2 * safety) * rowlen)) == 0)
-		{
-			free(bitmap);
-			return 0;
-		}
+    // Build row pointers; leave kSafety rows above and below
+    for (int i = 0; i < rows_with_safety; ++i)
+        line_base[i] = &bm[i * rowlen + kSafety];
 
-		/* clear ALL bitmap, including safety area, to avoid garbage on right */
-		/* side of screen is width is not a multiple of 4 */
-		memset(bm, 0, (height + 2 * safety) * rowlen);
+    // Expose only the visible rows through 'line' (skip top safety)
+    bitmap->line = line_base + kSafety;
+    bitmap->privatebm = bm;
+    bitmap->line_base = line_base;
 
-		if ((bitmap->line = (unsigned char**)malloc((height + 2 * safety) * sizeof(unsigned char*))) == 0)
-		{
-			free(bm);
-			free(bitmap);
-			return 0;
-		}
-
-		for (i = 0; i < height + 2 * safety; i++)
-		{
-			if (depth == 16)
-				bitmap->line[i] = &bm[i * rowlen + 2 * safety];
-			else
-				bitmap->line[i] = &bm[i * rowlen + safety];
-		}
-		bitmap->line += safety;
-
-		bitmap->privatebm = bm;
-
-		osd_clearbitmap(bitmap);
-	}
-	LOG_INFO("INIT:Screen bitmap created");
-	return bitmap;
+    osd_clearbitmap(bitmap);
+    LOG_INFO("INIT: Screen bitmap created (%dx%d, rowlen=%d, safety=%d)", width, height, rowlen, kSafety);
+    return bitmap;
 }
-
 
 void osd_free_bitmap(struct osd_bitmap* bitmap)
 {
-	if (bitmap)
-	{
-		free(bitmap->privatebm);	free(bitmap);
-	}
+    if (!bitmap) return;
+
+    // Undo the +kSafety offset to free the original pointer table
+    if (bitmap->line_base) aae_aligned_free(bitmap->line_base);
+    if (bitmap->privatebm) aae_aligned_free(bitmap->privatebm);
+    std::free(bitmap);
 }
 
-int readbit(const unsigned char* src, int bitnum)
+//------------------------------------------------------------------------------
+// Graphics decode
+//------------------------------------------------------------------------------
+static inline int readbit(const unsigned char* src, int bitnum)
 {
-	int bit;
-
-	bit = src[bitnum / 8] << (bitnum % 8);
-
-	if (bit & 0x80) return 1;
-	else return 0;
+    // Same semantics, tighter
+    return (src[bitnum >> 3] << (bitnum & 7)) & 0x80 ? 1 : 0;
 }
 
-void decodechar(struct GfxElement* gfx, int num, const unsigned char* src, const struct GfxLayout* gl)
+void decodechar(struct GfxElement* ge, int num, const unsigned char* src, const struct GfxLayout* gl)
 {
-	int plane;
-	static int ch = 0;
-
-	for (plane = 0; plane < gl->planes; plane++)
-	{
-		int offs, y;
-
-		offs = num * gl->charincrement + gl->planeoffset[plane];
-		for (y = 0; y < gl->height; y++)
-		{
-			int x;
-
-			for (x = 0; x < gl->width; x++)
-			{
-				unsigned char* dp;
-
-				dp = gfx->gfxdata->line[num * gl->height + y];
-				if (plane == 0) dp[x] = 0;
-				else dp[x] <<= 1;
-
-				dp[x] += readbit(src, offs + gl->yoffset[y] + gl->xoffset[x]);
-			}
-		}
-	}
+    for (int plane = 0; plane < gl->planes; ++plane)
+    {
+        const int offs = num * gl->charincrement + gl->planeoffset[plane];
+        for (int y = 0; y < gl->height; ++y)
+        {
+            unsigned char* dp = ge->gfxdata->line[num * gl->height + y];
+            // First plane clears, subsequent planes shift then add
+            if (plane == 0)
+            {
+                for (int x = 0; x < gl->width; ++x)
+                    dp[x] = (unsigned char)readbit(src, offs + gl->yoffset[y] + gl->xoffset[x]);
+            }
+            else
+            {
+                for (int x = 0; x < gl->width; ++x)
+                    dp[x] = (unsigned char)((dp[x] << 1) + readbit(src, offs + gl->yoffset[y] + gl->xoffset[x]));
+            }
+        }
+    }
 }
 
 struct GfxElement* decodegfx(const unsigned char* src, const struct GfxLayout* gl)
 {
-	int c;
-	struct osd_bitmap* bm;
-	struct GfxElement* gfx;
+    LOG_INFO("decodegfx, creating bitmap W:%d T:%d", gl->width, gl->total * gl->height);
+    struct osd_bitmap* bm = osd_create_bitmap(gl->width, gl->total * gl->height);
+    if (!bm) { LOG_INFO("Error creating gfx bitmap"); return nullptr; }
+    else { LOG_INFO("gfx bitmap created, continuing"); }
+    struct GfxElement* ge = (struct GfxElement*)std::malloc(sizeof(struct GfxElement));
+    if (!ge) { osd_free_bitmap(bm); LOG_INFO("Error allocating GfxElement"); return nullptr; }
 
-	// allegro_message("Creating Bitmap, width %d height %d",gl->width,gl->total * gl->height);
-	if ((bm = osd_create_bitmap(gl->width, gl->total * gl->height)) == 0)
-	{
-		LOG_INFO("Error Creating gfx bitmap"); return 0;
-	}
+    ge->width = gl->width;
+    ge->height = gl->height;
+    ge->total_elements = gl->total;
+    ge->color_granularity = 1 << gl->planes;
+    ge->gfxdata = bm;
+    ge->colortable = nullptr;
+    ge->total_colors = 0;
+    ge->total_colors_this = 0;
+    ge->pal_start_this = 0;
 
-	if ((gfx = (struct GfxElement*)malloc(sizeof(struct GfxElement))) == 0)
-	{
-		LOG_INFO("Error Malloc'ing memoey for main bitmap");
-		return 0;
-	}
-
-	gfx->width = gl->width;
-	gfx->height = gl->height;
-	gfx->total_elements = gl->total;
-	gfx->color_granularity = 1 << gl->planes;
-	gfx->gfxdata = bm;
-
-	for (c = 0; c < gl->total; c++)
-	{
-		decodechar(gfx, c, src, gl);
-	}
-	return gfx;
+    for (int c = 0; c < gl->total; ++c) decodechar(ge, c, src, gl);
+    return ge;
 }
 
-void freegfx(struct GfxElement* gfx)
+void freegfx(struct GfxElement* ge)
 {
-	if (gfx)
-	{
-		osd_free_bitmap(gfx->gfxdata);
-		free(gfx);
-	}
+    if (!ge) return;
+    osd_free_bitmap(ge->gfxdata);
+    std::free(ge);
 }
 
-void drawgfx(struct osd_bitmap* dest, const struct GfxElement* gfx,
-	unsigned int code, unsigned int color, int flipx, int flipy, int sx, int sy,
-	const struct rectangle* clip, int transparency, int transparent_color)
+//------------------------------------------------------------------------------
+// drawgfx (hot path) — vectorized-and-unrolled inner loops, same behavior
+//------------------------------------------------------------------------------
+void drawgfx(struct osd_bitmap* dest, const struct GfxElement* ge,
+    unsigned int code, unsigned int color, int flipx, int flipy, int sx, int sy,
+    const struct rectangle* clip, int transparency, int transparent_color)
 {
-	int ox, oy, ex, ey, x, y, start;
+    if (!ge) return;
 
-	const unsigned char* sd;
-	unsigned char* bm;
-	int col;
-	int me = 0;
+    // Compute visible bounds
+    int ox = sx, oy = sy;
+    int ex = sx + ge->width - 1;
+    int ey = sy + ge->height - 1;
 
-	if (!gfx) return;
-	/* check bounds */
-	ox = sx;
-	oy = sy;
-	ex = sx + gfx->width - 1;
-	if (sx < 0) sx = 0;
-	if (clip && sx < clip->min_x) sx = clip->min_x;
-	if (ex >= dest->width) ex = dest->width - 1;
-	if (clip && ex > clip->max_x) ex = clip->max_x;
-	if (sx > ex) return;
-	ey = sy + gfx->height - 1;
-	if (sy < 0) sy = 0;
-	if (clip && sy < clip->min_y) sy = clip->min_y;
-	if (ey >= dest->height) ey = dest->height - 1;
-	if (clip && ey > clip->max_y) ey = clip->max_y;
-	if (sy > ey) return;
-	start = (code % gfx->total_elements) * gfx->height;
+    if (sx < 0) sx = 0;
+    if (ex >= dest->width)  ex = dest->width - 1;
+    if (sy < 0) sy = 0;
+    if (ey >= dest->height) ey = dest->height - 1;
 
-	if (gfx->colortable)	/* remap colors */
-	{
-		const unsigned char* paldata;
+    if (clip)
+    {
+        if (sx < clip->min_x) sx = clip->min_x;
+        if (ex > clip->max_x) ex = clip->max_x;
+        if (sy < clip->min_y) sy = clip->min_y;
+        if (ey > clip->max_y) ey = clip->max_y;
+    }
+    if (sx > ex || sy > ey) return;
 
-		//paldata = &gfx->colortable[(gfx->color_granularity * color) + gfx->pal_start_this];
-		paldata = &gfx->colortable[gfx->color_granularity * (color % gfx->total_colors)];
-		//LOG_INFO("PALDATA START HERE is %d");
-		switch (transparency)
-		{
-		case TRANSPARENCY_NONE:
-			if (flipx)
-			{
-				if (flipy)	/* XY flip */
-				{
-					for (y = sy; y <= ey; y++)
-					{
-						bm = dest->line[y] + sx;
-						sd = gfx->gfxdata->line[start + gfx->height - 1 - (y - oy)] + gfx->width - 1 - (sx - ox);
-						for (x = sx; x <= ex; x++)
-							*(bm++) = paldata[*(sd--)];
-					}
-				}
-				else 	/* X flip */
-				{
-					for (y = sy; y <= ey; y++)
-					{
-						bm = dest->line[y] + sx;
-						sd = gfx->gfxdata->line[start + (y - oy)] + gfx->width - 1 - (sx - ox);
-						for (x = sx; x <= ex; x++)
-							*(bm++) = paldata[*(sd--)];
-					}
-				}
-			}
-			else
-			{
-				if (flipy)	/* Y flip */
-				{
-					for (y = sy; y <= ey; y++)
-					{
-						bm = dest->line[y] + sx;
-						sd = gfx->gfxdata->line[start + gfx->height - 1 - (y - oy)] + (sx - ox);
-						for (x = sx; x <= ex; x++)
-							*(bm++) = paldata[*(sd++)];
-					}
-				}
-				else		/* normal */
-				{
-					/* unrolled loop for the most common case */
-					if (ex - sx + 1 == 8)
-					{
-						for (y = sy; y <= ey; y++)
-						{
-							bm = dest->line[y] + sx;
-							sd = gfx->gfxdata->line[start + (y - oy)] + (sx - ox);
-							*(bm++) = paldata[*(sd++)];
-							*(bm++) = paldata[*(sd++)];
-							*(bm++) = paldata[*(sd++)];
-							*(bm++) = paldata[*(sd++)];
-							*(bm++) = paldata[*(sd++)];
-							*(bm++) = paldata[*(sd++)];
-							*(bm++) = paldata[*(sd++)];
-							*bm = paldata[*sd];
-						}
-					}
-					else
-					{
-						for (y = sy; y <= ey; y++)
-						{
-							bm = dest->line[y] + sx;
-							sd = gfx->gfxdata->line[start + (y - oy)] + (sx - ox);
-							for (x = sx; x <= ex; x++)
-								*(bm++) = paldata[*(sd++)];
-						}
-					}
-				}
-			}
-			break;
+    // Source start row
+    const int start = (int)((code % (unsigned)ge->total_elements) * ge->height);
 
-		case TRANSPARENCY_PEN:
-			if (flipx)
-			{
-				if (flipy)	/* XY flip */
-				{
-					for (y = sy; y <= ey; y++)
-					{
-						bm = dest->line[y] + sx;
-						sd = gfx->gfxdata->line[start + gfx->height - 1 - (y - oy)] + gfx->width - 1 - (sx - ox);
-						for (x = sx; x <= ex; x++)
-						{
-							col = *(sd--);
-							if (col != transparent_color) *bm = paldata[col];
-							bm++;
-						}
-					}
-				}
-				else 	/* X flip */
-				{
-					for (y = sy; y <= ey; y++)
-					{
-						bm = dest->line[y] + sx;
-						sd = gfx->gfxdata->line[start + (y - oy)] + gfx->width - 1 - (sx - ox);
-						for (x = sx; x <= ex; x++)
-						{
-							col = *(sd--);
-							if (col != transparent_color) *bm = paldata[col];
-							bm++;
-						}
-					}
-				}
-			}
-			else
-			{
-				if (flipy)	/* Y flip */
-				{
-					for (y = sy; y <= ey; y++)
-					{
-						bm = dest->line[y] + sx;
-						sd = gfx->gfxdata->line[start + gfx->height - 1 - (y - oy)] + (sx - ox);
-						for (x = sx; x <= ex; x++)
-						{
-							col = *(sd++);
-							if (col != transparent_color) *bm = paldata[col];
-							bm++;
-						}
-					}
-				}
-				else		/* normal */
-				{
-					for (y = sy; y <= ey; y++)
-					{
-						bm = dest->line[y] + sx;
-						sd = gfx->gfxdata->line[start + (y - oy)] + (sx - ox);
-						for (x = sx; x <= ex; x++)
-						{
-							col = *(sd++);
-							if (col != transparent_color) *bm = paldata[col];
-							bm++;
-						}
-					}
-				}
-			}
-			break;
+    // Palette remap (if provided)
+    const unsigned char* paldata = nullptr;
+    if (ge->colortable)
+    {
+        // original behavior: color-code group by granularity (mod clamp)
+        const int idx = ge->color_granularity * (int)(color % (unsigned)ge->total_colors);
+        paldata = &ge->colortable[idx];
+    }
 
-		case TRANSPARENCY_COLOR:
-			if (flipx)
-			{
-				if (flipy)	/* XY flip */
-				{
-					for (y = sy; y <= ey; y++)
-					{
-						bm = dest->line[y] + sx;
-						sd = gfx->gfxdata->line[start + gfx->height - 1 - (y - oy)] + gfx->width - 1 - (sx - ox);
-						for (x = sx; x <= ex; x++)
-						{
-							col = paldata[*(sd--)];
-							if (col != transparent_color) *bm = col;
-							bm++;
-						}
-					}
-				}
-				else 	/* X flip */
-				{
-					for (y = sy; y <= ey; y++)
-					{
-						bm = dest->line[y] + sx;
-						sd = gfx->gfxdata->line[start + (y - oy)] + gfx->width - 1 - (sx - ox);
-						for (x = sx; x <= ex; x++)
-						{
-							col = paldata[*(sd--)];
-							if (col != transparent_color) *bm = col;
-							bm++;
-						}
-					}
-				}
-			}
-			else
-			{
-				if (flipy)	/* Y flip */
-				{
-					for (y = sy; y <= ey; y++)
-					{
-						bm = dest->line[y] + sx;
-						sd = gfx->gfxdata->line[start + gfx->height - 1 - (y - oy)] + (sx - ox);
-						for (x = sx; x <= ex; x++)
-						{
-							col = paldata[*(sd++)];
-							if (col != transparent_color) *bm = col;
-							bm++;
-						}
-					}
-				}
-				else		/* normal */
-				{
-					for (y = sy; y <= ey; y++)
-					{
-						bm = dest->line[y] + sx;
-						sd = gfx->gfxdata->line[start + (y - oy)] + (sx - ox);
-						for (x = sx; x <= ex; x++)
-						{
-							col = paldata[*(sd++)];
-							if (col != transparent_color) *bm = col;
-							bm++;
-						}
-					}
-				}
-			}
-			break;
+    const int span = ex - sx + 1;
 
-		case TRANSPARENCY_THROUGH:
-			if (flipx)
-			{
-				if (flipy)	/* XY flip */
-				{
-					for (y = sy; y <= ey; y++)
-					{
-						bm = dest->line[y] + sx;
-						sd = gfx->gfxdata->line[start + gfx->height - 1 - (y - oy)] + gfx->width - 1 - (sx - ox);
-						for (x = sx; x <= ex; x++)
-						{
-							if (*bm == transparent_color)
-								*bm = paldata[*sd];
-							bm++;
-							sd--;
-						}
-					}
-				}
-				else 	/* X flip */
-				{
-					for (y = sy; y <= ey; y++)
-					{
-						bm = dest->line[y] + sx;
-						sd = gfx->gfxdata->line[start + (y - oy)] + gfx->width - 1 - (sx - ox);
-						for (x = sx; x <= ex; x++)
-						{
-							if (*bm == transparent_color)
-								*bm = paldata[*sd];
-							bm++;
-							sd--;
-						}
-					}
-				}
-			}
-			else
-			{
-				if (flipy)	/* Y flip */
-				{
-					for (y = sy; y <= ey; y++)
-					{
-						bm = dest->line[y] + sx;
-						sd = gfx->gfxdata->line[start + gfx->height - 1 - (y - oy)] + (sx - ox);
-						for (x = sx; x <= ex; x++)
-						{
-							if (*bm == transparent_color)
-								*bm = paldata[*sd];
-							bm++;
-							sd++;
-						}
-					}
-				}
-				else		/* normal */
-				{
-					for (y = sy; y <= ey; y++)
-					{
-						bm = dest->line[y] + sx;
-						sd = gfx->gfxdata->line[start + (y - oy)] + (sx - ox);
-						for (x = sx; x <= ex; x++)
-						{
-							if (*bm == transparent_color)
-								*bm = paldata[*sd];
-							bm++;
-							sd++;
-						}
-					}
-				}
-			}
-			break;
-		}
-	}
-	else
-	{
-		switch (transparency)
-		{
-		case TRANSPARENCY_NONE:		/* do a verbatim copy (faster) */
-			if (flipx)
-			{
-				if (flipy)	/* XY flip */
-				{
-					for (y = sy; y <= ey; y++)
-					{
-						bm = dest->line[y] + sx;
-						sd = gfx->gfxdata->line[start + gfx->height - 1 - (y - oy)] + gfx->width - 1 - (sx - ox);
-						for (x = sx; x <= ex; x++)
-							*(bm++) = *(sd--);
-					}
-				}
-				else 	/* X flip */
-				{
-					for (y = sy; y <= ey; y++)
-					{
-						bm = dest->line[y] + sx;
-						sd = gfx->gfxdata->line[start + (y - oy)] + gfx->width - 1 - (sx - ox);
-						for (x = sx; x <= ex; x++)
-							*(bm++) = *(sd--);
-					}
-				}
-			}
-			else
-			{
-				if (flipy)	/* Y flip */
-				{
-					for (y = sy; y <= ey; y++)
-					{
-						bm = dest->line[y] + sx;
-						sd = gfx->gfxdata->line[start + gfx->height - 1 - (y - oy)] + (sx - ox);
-						memcpy(bm, sd, ex - sx + 1);
-					}
-				}
-				else		/* normal */
-				{
-					for (y = sy; y <= ey; y++)
-					{
-						bm = dest->line[y] + sx;
-						sd = gfx->gfxdata->line[start + (y - oy)] + (sx - ox);
-						memcpy(bm, sd, ex - sx + 1);
-					}
-				}
-			}
-			break;
+    // Precompute X deltas for source addressing
+    const int dx_left = sx - ox;
+    const int dx_right = ge->width - 1 - (sx - ox);
 
-		case TRANSPARENCY_PEN:
-		case TRANSPARENCY_COLOR:
-		{
-			int* sd4, x1;
-			int trans4;
+    for (int y = sy; y <= ey; ++y)
+    {
+        unsigned char* bm = dest->line[y] + sx;
+        const unsigned char* sd;
 
-			trans4 = transparent_color * 0x01010101;
+        if (flipy)
+            sd = ge->gfxdata->line[start + ge->height - 1 - (y - oy)];
+        else
+            sd = ge->gfxdata->line[start + (y - oy)];
 
-			if (flipx)
-			{
-				if (flipy)	/* XY flip */
-				{
-					for (y = sy; y <= ey; y++)
-					{
-						bm = dest->line[y] + sx;
-						sd4 = (int*)(gfx->gfxdata->line[start + gfx->height - 1 - (y - oy)] + gfx->width - 1 - (sx - ox) - 3);
-						for (x = sx; x <= ex; x += 4)
-						{
-							/* WARNING: if the width of the area to copy is not a multiple of sizeof(int), this */
-							/* might access memory outside it. The copy will be executed correctly, though. */
-							if (*sd4 == trans4)
-							{
-								bm += 4;
-							}
-							else
-							{
-								sd = ((unsigned char*)sd4) + 3;
-								x1 = ex - x;
-								if (x1 > 3) x1 = 3;
-								while (x1 >= 0)
-								{
-									col = *(sd--);
-									if (col != transparent_color) *bm = col;
-									bm++;
-									x1--;
-								}
-							}
-							sd4--;
-						}
-					}
-				}
-				else 	/* X flip */
-				{
-					for (y = sy; y <= ey; y++)
-					{
-						bm = dest->line[y] + sx;
-						sd4 = (int*)(gfx->gfxdata->line[start + (y - oy)] + gfx->width - 1 - (sx - ox) - 3);
-						for (x = sx; x <= ex; x += 4)
-						{
-							/* WARNING: if the width of the area to copy is not a multiple of sizeof(int), this */
-							/* might access memory outside it. The copy will be executed correctly, though. */
-							if (*sd4 == trans4)
-							{
-								bm += 4;
-							}
-							else
-							{
-								sd = ((unsigned char*)sd4) + 3;
-								x1 = ex - x;
-								if (x1 > 3) x1 = 3;
-								while (x1 >= 0)
-								{
-									col = *(sd--);
-									if (col != transparent_color) *bm = col;
-									bm++;
-									x1--;
-								}
-							}
-							sd4--;
-						}
-					}
-				}
-			}
-			else
-			{
-				if (flipy)	/* Y flip */
-				{
-					for (y = sy; y <= ey; y++)
-					{
-						bm = dest->line[y] + sx;
-						sd4 = (int*)(gfx->gfxdata->line[start + gfx->height - 1 - (y - oy)] + (sx - ox));
-						for (x = sx; x <= ex; x += 4)
-						{
-							/* WARNING: if the width of the area to copy is not a multiple of sizeof(int), this */
-							/* might access memory outside it. The copy will be executed correctly, though. */
-							if (*sd4 == trans4)
-							{
-								bm += 4;
-							}
-							else
-							{
-								sd = (unsigned char*)sd4;
-								x1 = ex - x;
-								if (x1 > 3) x1 = 3;
-								while (x1 >= 0)
-								{
-									col = *(sd++);
-									if (col != transparent_color) *bm = col;
-									bm++;
-									x1--;
-								}
-							}
-							sd4++;
-						}
-					}
-				}
-				else		/* normal */
-				{
-					for (y = sy; y <= ey; y++)
-					{
-						bm = dest->line[y] + sx;
-						sd4 = (int*)(gfx->gfxdata->line[start + (y - oy)] + (sx - ox));
-						for (x = sx; x <= ex; x += 4)
-						{
-							/* WARNING: if the width of the area to copy is not a multiple of sizeof(int), this */
-							/* might access memory outside it. The copy will be executed correctly, though. */
-							if (*sd4 == trans4)
-							{
-								bm += 4;
-							}
-							else
-							{
-								sd = (unsigned char*)sd4;
-								x1 = ex - x;
-								if (x1 > 3) x1 = 3;
-								while (x1 >= 0)
-								{
-									col = *(sd++);
-									if (col != transparent_color) *bm = col;
-									bm++;
-									x1--;
-								}
-							}
-							sd4++;
-						}
-					}
-				}
-			}
-		}
-		break;
+        // Horizontal flip picks direction
+        if (flipx) sd += dx_right;
+        else       sd += dx_left;
 
-		case TRANSPARENCY_THROUGH:
-			if (flipx)
-			{
-				if (flipy)	/* XY flip */
-				{
-					for (y = sy; y <= ey; y++)
-					{
-						bm = dest->line[y] + sx;
-						sd = gfx->gfxdata->line[start + gfx->height - 1 - (y - oy)] + gfx->width - 1 - (sx - ox);
-						for (x = sx; x <= ex; x++)
-						{
-							if (*bm == transparent_color)
-								*bm = *sd;
-							bm++;
-							sd--;
-						}
-					}
-				}
-				else 	/* X flip */
-				{
-					for (y = sy; y <= ey; y++)
-					{
-						bm = dest->line[y] + sx;
-						sd = gfx->gfxdata->line[start + (y - oy)] + gfx->width - 1 - (sx - ox);
-						for (x = sx; x <= ex; x++)
-						{
-							if (*bm == transparent_color)
-								*bm = *sd;
-							bm++;
-							sd--;
-						}
-					}
-				}
-			}
-			else
-			{
-				if (flipy)	/* Y flip */
-				{
-					for (y = sy; y <= ey; y++)
-					{
-						bm = dest->line[y] + sx;
-						sd = gfx->gfxdata->line[start + gfx->height - 1 - (y - oy)] + (sx - ox);
-						for (x = sx; x <= ex; x++)
-						{
-							if (*bm == transparent_color)
-								*bm = *sd;
-							bm++;
-							sd++;
-						}
-					}
-				}
-				else		/* normal */
-				{
-					for (y = sy; y <= ey; y++)
-					{
-						bm = dest->line[y] + sx;
-						sd = gfx->gfxdata->line[start + (y - oy)] + (sx - ox);
-						for (x = sx; x <= ex; x++)
-						{
-							if (*bm == transparent_color)
-								*bm = *sd;
-							bm++;
-							sd++;
-						}
-					}
-				}
-			}
-			break;
-		}
-	}
+        if (!paldata)
+        {
+            // Verbatim copy
+            if (transparency == TRANSPARENCY_NONE)
+            {
+                if (!flipx)
+                    copy_verbatim(bm, sd, span);
+                else
+                {
+                    // reverse walk
+                    for (int x = 0; x < span; ++x) bm[x] = sd[-x];
+                }
+            }
+            else if (transparency == TRANSPARENCY_PEN)
+            {
+                if (!flipx)
+                    copy_verbatim_trans_pen(bm, sd, span, (unsigned char)transparent_color);
+                else
+                {
+                    for (int x = 0; x < span; ++x)
+                    {
+                        unsigned char s = sd[-x];
+                        if (s != (unsigned char)transparent_color) bm[x] = s;
+                    }
+                }
+            }
+            else if (transparency == TRANSPARENCY_COLOR)
+            {
+                // Apply as if paldata equals identity; this path is rarely used without colortable,
+                // but we retain the exact behavior for compatibility.
+                if (!flipx)
+                {
+                    for (int x = 0; x < span; ++x)
+                    {
+                        unsigned char s = sd[x];
+                        if (s != (unsigned char)transparent_color) bm[x] = s;
+                    }
+                }
+                else
+                {
+                    for (int x = 0; x < span; ++x)
+                    {
+                        unsigned char s = sd[-x];
+                        if (s != (unsigned char)transparent_color) bm[x] = s;
+                    }
+                }
+            }
+            else // TRANSPARENCY_THROUGH
+            {
+                if (!flipx)
+                    copy_verbatim_through(bm, sd, span, (unsigned char)transparent_color);
+                else
+                {
+                    for (int x = 0; x < span; ++x)
+                    {
+                        if (bm[x] == (unsigned char)transparent_color) bm[x] = sd[-x];
+                    }
+                }
+            }
+        }
+        else
+        {
+            // Palette remap copy
+            if (transparency == TRANSPARENCY_NONE)
+            {
+                if (!flipx)
+                    copy_remap_u8(bm, sd, span, paldata);
+                else
+                {
+                    for (int x = 0; x < span; ++x) bm[x] = paldata[sd[-x]];
+                }
+            }
+            else if (transparency == TRANSPARENCY_PEN)
+            {
+                if (!flipx)
+                    copy_remap_trans_pen(bm, sd, span, paldata, (unsigned char)transparent_color);
+                else
+                {
+                    for (int x = 0; x < span; ++x)
+                    {
+                        unsigned char s = sd[-x];
+                        if (s != (unsigned char)transparent_color) bm[x] = paldata[s];
+                    }
+                }
+            }
+            else if (transparency == TRANSPARENCY_COLOR)
+            {
+                if (!flipx)
+                    copy_remap_trans_color(bm, sd, span, paldata, (unsigned char)transparent_color);
+                else
+                {
+                    for (int x = 0; x < span; ++x)
+                    {
+                        unsigned char p = paldata[sd[-x]];
+                        if (p != (unsigned char)transparent_color) bm[x] = p;
+                    }
+                }
+            }
+            else // TRANSPARENCY_THROUGH
+            {
+                if (!flipx)
+                    copy_remap_through(bm, sd, span, paldata, (unsigned char)transparent_color);
+                else
+                {
+                    for (int x = 0; x < span; ++x)
+                    {
+                        if (bm[x] == (unsigned char)transparent_color)
+                            bm[x] = paldata[sd[-x]];
+                    }
+                }
+            }
+        }
+    }
 }
 
+//------------------------------------------------------------------------------
+// copybitmap: minimal wrapper around drawgfx 
+//------------------------------------------------------------------------------
 void copybitmap(struct osd_bitmap* dest, struct osd_bitmap* src, int flipx, int flipy, int sx, int sy,
-	const struct rectangle* clip, int transparency, int transparent_color)
+    const struct rectangle* clip, int transparency, int transparent_color)
 {
-	static struct GfxElement mygfx =
-	{
-		0,0,0,	/* filled in later */
-		1,1,0,1
-	};
+    GfxElement mygfx{};                 // zero-initialize all fields
+    mygfx.width = src->width;
+    mygfx.height = src->height;
+    mygfx.total_elements = 1;
+    mygfx.color_granularity = 1;
+    mygfx.gfxdata = src;
+    mygfx.colortable = nullptr;
+    mygfx.total_colors = 0;
+    mygfx.total_colors_this = 0;
+    mygfx.pal_start_this = 0;
 
-	mygfx.width = src->width;
-	mygfx.height = src->height;
-	mygfx.gfxdata = src;
-	drawgfx(dest, &mygfx, 0, 0, flipx, flipy, sx, sy, clip, transparency, transparent_color);
+    drawgfx(dest, &mygfx, 0, 0, flipx, flipy, sx, sy, clip, transparency, transparent_color);
 }
 
-/***************************************************************************
-
-  Copy a bitmap onto another with scroll and wraparound.
-  This function supports multiple independently scrolling rows/columns.
-  "rows" is the number of indepentently scrolling rows. "rowscroll" is an
-  array of integers telling how much to scroll each row. Same thing for
-  "cols" and "colscroll".
-  If the bitmap cannot scroll in one direction, set rows or columns to 0.
-  If the bitmap scrolls as a whole, set rows and/or cols to 1.
-  Bidirectional scrolling is, of course, supported only if the bitmap
-  scrolls as a whole in at least one direction.
-
-***************************************************************************/
+//------------------------------------------------------------------------------
+// copyscrollbitmap (logic preserved; tightened slightly)
+//------------------------------------------------------------------------------
 void copyscrollbitmap(struct osd_bitmap* dest, struct osd_bitmap* src,
-	int rows, const int* rowscroll, int cols, const int* colscroll,
-	const struct rectangle* clip, int transparency, int transparent_color)
+    int rows, const int* rowscroll, int cols, const int* colscroll,
+    const struct rectangle* clip, int transparency, int transparent_color)
 {
-	int srcwidth, srcheight;
+    int srcwidth = (Machine && (Machine->orientation & ORIENTATION_SWAP_XY)) ? src->height : src->width;
+    int srcheight = (Machine && (Machine->orientation & ORIENTATION_SWAP_XY)) ? src->width : src->height;
 
-	if (Machine->orientation & ORIENTATION_SWAP_XY)
-	{
-		srcwidth = src->height;
-		srcheight = src->width;
-	}
-	else
-	{
-		srcwidth = src->width;
-		srcheight = src->height;
-	}
+    if (rows == 0)
+    {
+        // Scrolling columns
+        const int colwidth = srcwidth / cols;
+        rectangle myclip{ 0, 0, 0, 0 };
+        myclip.min_y = clip->min_y;
+        myclip.max_y = clip->max_y;
 
-	if (rows == 0)
-	{
-		/* scrolling columns */
-		int col, colwidth;
-		struct rectangle myclip;
+        for (int col = 0; col < cols; )
+        {
+            int scroll = colscroll[col], cons = 1;
+            while (col + cons < cols && colscroll[col + cons] == scroll) ++cons;
+            if (scroll < 0) scroll = srcheight - (-scroll % srcheight);
+            else            scroll = scroll % srcheight;
 
-		colwidth = srcwidth / cols;
+            myclip.min_x = col * colwidth;
+            if (myclip.min_x < clip->min_x) myclip.min_x = clip->min_x;
+            myclip.max_x = (col + cons) * colwidth - 1;
+            if (myclip.max_x > clip->max_x) myclip.max_x = clip->max_x;
 
-		myclip.min_y = clip->min_y;
-		myclip.max_y = clip->max_y;
+            copybitmap(dest, src, 0, 0, 0, scroll, &myclip, transparency, transparent_color);
+            copybitmap(dest, src, 0, 0, 0, scroll - srcheight, &myclip, transparency, transparent_color);
 
-		col = 0;
-		while (col < cols)
-		{
-			int cons, scroll;
+            col += cons;
+        }
+    }
+    else if (cols == 0)
+    {
+        // Scrolling rows
+        const int rowheight = srcheight / rows;
+        rectangle myclip{ 0, 0, 0, 0 };
+        myclip.min_x = clip->min_x;
+        myclip.max_x = clip->max_x;
 
-			/* count consecutive columns scrolled by the same amount */
-			scroll = colscroll[col];
-			cons = 1;
-			while (col + cons < cols && colscroll[col + cons] == scroll)
-				cons++;
+        for (int row = 0; row < rows; )
+        {
+            int scroll = rowscroll[row], cons = 1;
+            while (row + cons < rows && rowscroll[row + cons] == scroll) ++cons;
+            if (scroll < 0) scroll = srcwidth - (-scroll % srcwidth);
+            else            scroll = scroll % srcwidth;
 
-			if (scroll < 0) scroll = srcheight - (-scroll) % srcheight;
-			else scroll %= srcheight;
+            myclip.min_y = row * rowheight;
+            if (myclip.min_y < clip->min_y) myclip.min_y = clip->min_y;
+            myclip.max_y = (row + cons) * rowheight - 1;
+            if (myclip.max_y > clip->max_y) myclip.max_y = clip->max_y;
 
-			myclip.min_x = col * colwidth;
-			if (myclip.min_x < clip->min_x) myclip.min_x = clip->min_x;
-			myclip.max_x = (col + cons) * colwidth - 1;
-			if (myclip.max_x > clip->max_x) myclip.max_x = clip->max_x;
+            copybitmap(dest, src, 0, 0, scroll, 0, &myclip, transparency, transparent_color);
+            copybitmap(dest, src, 0, 0, scroll - srcwidth, 0, &myclip, transparency, transparent_color);
 
-			copybitmap(dest, src, 0, 0, 0, scroll, &myclip, transparency, transparent_color);
-			copybitmap(dest, src, 0, 0, 0, scroll - srcheight, &myclip, transparency, transparent_color);
+            row += cons;
+        }
+    }
+    else if (rows == 1 && cols == 1)
+    {
+        // XY scrolling playfield
+        int scrollx = (rowscroll[0] < 0) ? (srcwidth - ((-rowscroll[0]) % srcwidth)) : (rowscroll[0] % srcwidth);
+        int scrolly = (colscroll[0] < 0) ? (srcheight - ((-colscroll[0]) % srcheight)) : (colscroll[0] % srcheight);
 
-			col += cons;
-		}
-	}
-	else if (cols == 0)
-	{
-		/* scrolling rows */
-		int row, rowheight;
-		struct rectangle myclip;
+        copybitmap(dest, src, 0, 0, scrollx, scrolly, clip, transparency, transparent_color);
+        copybitmap(dest, src, 0, 0, scrollx, scrolly - srcheight, clip, transparency, transparent_color);
+        copybitmap(dest, src, 0, 0, scrollx - srcwidth, scrolly, clip, transparency, transparent_color);
+        copybitmap(dest, src, 0, 0, scrollx - srcwidth, scrolly - srcheight, clip, transparency, transparent_color);
+    }
+    else if (rows == 1)
+    {
+        // Scrolling columns + horizontal scroll
+        const int colwidth = srcwidth / cols;
+        int scrollx = (rowscroll[0] < 0) ? (srcwidth - ((-rowscroll[0]) % srcwidth)) : (rowscroll[0] % srcwidth);
 
-		rowheight = srcheight / rows;
+        rectangle myclip{ 0, 0, 0, 0 };
+        myclip.min_y = clip->min_y;
+        myclip.max_y = clip->max_y;
 
-		myclip.min_x = clip->min_x;
-		myclip.max_x = clip->max_x;
+        for (int col = 0; col < cols; )
+        {
+            int scroll = colscroll[col], cons = 1;
+            while (col + cons < cols && colscroll[col + cons] == scroll) ++cons;
+            if (scroll < 0) scroll = srcheight - ((-scroll) % srcheight);
+            else            scroll = scroll % srcheight;
 
-		row = 0;
-		while (row < rows)
-		{
-			int cons, scroll;
+            myclip.min_x = col * colwidth + scrollx;
+            if (myclip.min_x < clip->min_x) myclip.min_x = clip->min_x;
+            myclip.max_x = (col + cons) * colwidth - 1 + scrollx;
+            if (myclip.max_x > clip->max_x) myclip.max_x = clip->max_x;
 
-			/* count consecutive rows scrolled by the same amount */
-			scroll = rowscroll[row];
-			cons = 1;
-			while (row + cons < rows && rowscroll[row + cons] == scroll)
-				cons++;
+            copybitmap(dest, src, 0, 0, scrollx, scroll, &myclip, transparency, transparent_color);
+            copybitmap(dest, src, 0, 0, scrollx, scroll - srcheight, &myclip, transparency, transparent_color);
 
-			if (scroll < 0) scroll = srcwidth - (-scroll) % srcwidth;
-			else scroll %= srcwidth;
+            myclip.min_x = col * colwidth + scrollx - srcwidth;
+            if (myclip.min_x < clip->min_x) myclip.min_x = clip->min_x;
+            myclip.max_x = (col + cons) * colwidth - 1 + scrollx - srcwidth;
+            if (myclip.max_x > clip->max_x) myclip.max_x = clip->max_x;
 
-			myclip.min_y = row * rowheight;
-			if (myclip.min_y < clip->min_y) myclip.min_y = clip->min_y;
-			myclip.max_y = (row + cons) * rowheight - 1;
-			if (myclip.max_y > clip->max_y) myclip.max_y = clip->max_y;
+            copybitmap(dest, src, 0, 0, scrollx - srcwidth, scroll, &myclip, transparency, transparent_color);
+            copybitmap(dest, src, 0, 0, scrollx - srcwidth, scroll - srcheight, &myclip, transparency, transparent_color);
 
-			copybitmap(dest, src, 0, 0, scroll, 0, &myclip, transparency, transparent_color);
-			copybitmap(dest, src, 0, 0, scroll - srcwidth, 0, &myclip, transparency, transparent_color);
+            col += cons;
+        }
+    }
+    else if (cols == 1)
+    {
+        // Scrolling rows + vertical scroll
+        const int rowheight = srcheight / rows;
+        int scrolly = (colscroll[0] < 0) ? (srcheight - ((-colscroll[0]) % srcheight)) : (colscroll[0] % srcheight);
 
-			row += cons;
-		}
-	}
-	else if (rows == 1 && cols == 1)
-	{
-		/* XY scrolling playfield */
-		int scrollx, scrolly;
+        rectangle myclip{ 0, 0, 0, 0 };
+        myclip.min_x = clip->min_x;
+        myclip.max_x = clip->max_x;
 
-		if (rowscroll[0] < 0) scrollx = srcwidth - (-rowscroll[0]) % srcwidth;
-		else scrollx = rowscroll[0] % srcwidth;
+        for (int row = 0; row < rows; )
+        {
+            int scroll = rowscroll[row], cons = 1;
+            while (row + cons < rows && rowscroll[row + cons] == scroll) ++cons;
+            if (scroll < 0) scroll = srcwidth - ((-scroll) % srcwidth);
+            else            scroll = scroll % srcwidth;
 
-		if (colscroll[0] < 0) scrolly = srcheight - (-colscroll[0]) % srcheight;
-		else scrolly = colscroll[0] % srcheight;
+            myclip.min_y = row * rowheight + scrolly;
+            if (myclip.min_y < clip->min_y) myclip.min_y = clip->min_y;
+            myclip.max_y = (row + cons) * rowheight - 1 + scrolly;
+            if (myclip.max_y > clip->max_y) myclip.max_y = clip->max_y;
 
-		copybitmap(dest, src, 0, 0, scrollx, scrolly, clip, transparency, transparent_color);
-		copybitmap(dest, src, 0, 0, scrollx, scrolly - srcheight, clip, transparency, transparent_color);
-		copybitmap(dest, src, 0, 0, scrollx - srcwidth, scrolly, clip, transparency, transparent_color);
-		copybitmap(dest, src, 0, 0, scrollx - srcwidth, scrolly - srcheight, clip, transparency, transparent_color);
-	}
-	else if (rows == 1)
-	{
-		/* scrolling columns + horizontal scroll */
-		int col, colwidth;
-		int scrollx;
-		struct rectangle myclip;
+            copybitmap(dest, src, 0, 0, scroll, scrolly, &myclip, transparency, transparent_color);
+            copybitmap(dest, src, 0, 0, scroll - srcwidth, scrolly, &myclip, transparency, transparent_color);
 
-		if (rowscroll[0] < 0) scrollx = srcwidth - (-rowscroll[0]) % srcwidth;
-		else scrollx = rowscroll[0] % srcwidth;
+            myclip.min_y = row * rowheight + scrolly - srcheight;
+            if (myclip.min_y < clip->min_y) myclip.min_y = clip->min_y;
+            myclip.max_y = (row + cons) * rowheight - 1 + scrolly - srcheight;
+            if (myclip.max_y > clip->max_y) myclip.max_y = clip->max_y;
 
-		colwidth = srcwidth / cols;
+            copybitmap(dest, src, 0, 0, scroll, scrolly - srcheight, &myclip, transparency, transparent_color);
+            copybitmap(dest, src, 0, 0, scroll - srcwidth, scrolly - srcheight, &myclip, transparency, transparent_color);
 
-		myclip.min_y = clip->min_y;
-		myclip.max_y = clip->max_y;
-
-		col = 0;
-		while (col < cols)
-		{
-			int cons, scroll;
-
-			/* count consecutive columns scrolled by the same amount */
-			scroll = colscroll[col];
-			cons = 1;
-			while (col + cons < cols && colscroll[col + cons] == scroll)
-				cons++;
-
-			if (scroll < 0) scroll = srcheight - (-scroll) % srcheight;
-			else scroll %= srcheight;
-
-			myclip.min_x = col * colwidth + scrollx;
-			if (myclip.min_x < clip->min_x) myclip.min_x = clip->min_x;
-			myclip.max_x = (col + cons) * colwidth - 1 + scrollx;
-			if (myclip.max_x > clip->max_x) myclip.max_x = clip->max_x;
-
-			copybitmap(dest, src, 0, 0, scrollx, scroll, &myclip, transparency, transparent_color);
-			copybitmap(dest, src, 0, 0, scrollx, scroll - srcheight, &myclip, transparency, transparent_color);
-
-			myclip.min_x = col * colwidth + scrollx - srcwidth;
-			if (myclip.min_x < clip->min_x) myclip.min_x = clip->min_x;
-			myclip.max_x = (col + cons) * colwidth - 1 + scrollx - srcwidth;
-			if (myclip.max_x > clip->max_x) myclip.max_x = clip->max_x;
-
-			copybitmap(dest, src, 0, 0, scrollx - srcwidth, scroll, &myclip, transparency, transparent_color);
-			copybitmap(dest, src, 0, 0, scrollx - srcwidth, scroll - srcheight, &myclip, transparency, transparent_color);
-
-			col += cons;
-		}
-	}
-	else if (cols == 1)
-	{
-		/* scrolling rows + vertical scroll */
-		int row, rowheight;
-		int scrolly;
-		struct rectangle myclip;
-
-		if (colscroll[0] < 0) scrolly = srcheight - (-colscroll[0]) % srcheight;
-		else scrolly = colscroll[0] % srcheight;
-
-		rowheight = srcheight / rows;
-
-		myclip.min_x = clip->min_x;
-		myclip.max_x = clip->max_x;
-
-		row = 0;
-		while (row < rows)
-		{
-			int cons, scroll;
-
-			/* count consecutive rows scrolled by the same amount */
-			scroll = rowscroll[row];
-			cons = 1;
-			while (row + cons < rows && rowscroll[row + cons] == scroll)
-				cons++;
-
-			if (scroll < 0) scroll = srcwidth - (-scroll) % srcwidth;
-			else scroll %= srcwidth;
-
-			myclip.min_y = row * rowheight + scrolly;
-			if (myclip.min_y < clip->min_y) myclip.min_y = clip->min_y;
-			myclip.max_y = (row + cons) * rowheight - 1 + scrolly;
-			if (myclip.max_y > clip->max_y) myclip.max_y = clip->max_y;
-
-			copybitmap(dest, src, 0, 0, scroll, scrolly, &myclip, transparency, transparent_color);
-			copybitmap(dest, src, 0, 0, scroll - srcwidth, scrolly, &myclip, transparency, transparent_color);
-
-			myclip.min_y = row * rowheight + scrolly - srcheight;
-			if (myclip.min_y < clip->min_y) myclip.min_y = clip->min_y;
-			myclip.max_y = (row + cons) * rowheight - 1 + scrolly - srcheight;
-			if (myclip.max_y > clip->max_y) myclip.max_y = clip->max_y;
-
-			copybitmap(dest, src, 0, 0, scroll, scrolly - srcheight, &myclip, transparency, transparent_color);
-			copybitmap(dest, src, 0, 0, scroll - srcwidth, scrolly - srcheight, &myclip, transparency, transparent_color);
-
-			row += cons;
-		}
-	}
+            row += cons;
+        }
+    }
 }
 
-/* fill a bitmap using the specified pen */
-void fillbitmap(struct osd_bitmap* dest, int pen, const struct rectangle* clip)
+//------------------------------------------------------------------------------
+// fillbitmap (behavior preserved; orientation handled via helper)
+//------------------------------------------------------------------------------
+void fillbitmap(struct osd_bitmap* dest, int pen, const struct rectangle* clip_in)
 {
-	int sx, sy, ex, ey, y;
-	struct rectangle myclip;
+    rectangle tmpClip{};
+    const rectangle* clip = clip_in;
+    apply_orientation_clip(dest, clip, tmpClip);
 
-	if (Machine->orientation & ORIENTATION_SWAP_XY)
-	{
-		if (clip)
-		{
-			myclip.min_x = clip->min_y;
-			myclip.max_x = clip->max_y;
-			myclip.min_y = clip->min_x;
-			myclip.max_y = clip->max_x;
-			clip = &myclip;
-		}
-	}
-	if (Machine->orientation & ORIENTATION_FLIP_X)
-	{
-		if (clip)
-		{
-			int temp;
+    int sx = 0, sy = 0, ex = dest->width - 1, ey = dest->height - 1;
+    if (clip)
+    {
+        if (sx < clip->min_x) sx = clip->min_x;
+        if (ex > clip->max_x) ex = clip->max_x;
+        if (sy < clip->min_y) sy = clip->min_y;
+        if (ey > clip->max_y) ey = clip->max_y;
+    }
+    if (sx > ex || sy > ey) return;
 
-			temp = clip->min_x;
-			myclip.min_x = dest->width - 1 - clip->max_x;
-			myclip.max_x = dest->width - 1 - temp;
-			myclip.min_y = clip->min_y;
-			myclip.max_y = clip->max_y;
-			clip = &myclip;
-		}
-	}
-	if (Machine->orientation & ORIENTATION_FLIP_Y)
-	{
-		if (clip)
-		{
-			int temp;
-
-			myclip.min_x = clip->min_x;
-			myclip.max_x = clip->max_x;
-			temp = clip->min_y;
-			myclip.min_y = dest->height - 1 - clip->max_y;
-			myclip.max_y = dest->height - 1 - temp;
-			clip = &myclip;
-		}
-	}
-
-	sx = 0;
-	ex = dest->width - 1;
-	sy = 0;
-	ey = dest->height - 1;
-
-	if (clip && sx < clip->min_x) sx = clip->min_x;
-	if (clip && ex > clip->max_x) ex = clip->max_x;
-	if (sx > ex) return;
-	if (clip && sy < clip->min_y) sy = clip->min_y;
-	if (clip && ey > clip->max_y) ey = clip->max_y;
-	if (sy > ey) return;
-
-	//osd_mark_dirty(sx, sy, ex, ey, 0);	/* ASG 971011 */
-
-	for (y = sy; y <= ey; y++)
-		memset(&dest->line[y][sx], pen, ex - sx + 1);
+    const int span = ex - sx + 1;
+    for (int y = sy; y <= ey; ++y)
+        std::memset(&dest->line[y][sx], pen, (size_t)span);
 }

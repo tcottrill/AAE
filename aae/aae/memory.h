@@ -75,7 +75,7 @@ enum {
 #define PROM_MEMORY_REGION(region) ((const unsigned char *)((-(region))-1))
 
 unsigned char *memory_region(int num);
-void new_memory_region(int num, int size);
+void new_memory_region(int num, int size, int type);
 void free_memory_region(int num);
 void byteswap(unsigned char* mem, int length);
 void free_all_memory_regions();

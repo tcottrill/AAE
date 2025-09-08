@@ -6,6 +6,7 @@
 #include <mutex>
 #include <sstream>
 #include <filesystem>
+#include <unordered_map>
 #include "aae_mame_driver.h"
 
 //#define STB_IMAGE_IMPLEMENTATION
@@ -24,6 +25,8 @@ GLuint menu_tex[7];
 // Keep track of every texture created.
 static std::vector<GLuint> g_textures;
 static std::mutex       g_texMutex;
+// Track width/height for each created texture
+static std::unordered_map<GLuint, std::pair<int, int>> g_texSize;
 
 // Registers a texture ID for later bulk-deletion
 inline void register_texture(GLuint id) noexcept
@@ -47,7 +50,48 @@ void destroy_all_textures()
 		);
 		LOG_INFO("destroy_all_textures - deleted %zu textures", g_textures.size());
 		g_textures.clear();
+		g_texSize.clear();
 	}
+}
+
+bool get_texture_size(GLuint tex, int* outW, int* outH)
+{
+	if (!tex || !outW || !outH) return false;
+
+	// First try our registry (fast path)
+	{
+		std::lock_guard<std::mutex> lock(g_texMutex);
+		auto it = g_texSize.find(tex);
+		if (it != g_texSize.end()) {
+			*outW = it->second.first;
+			*outH = it->second.second;
+			return true;
+		}
+	}
+
+	// Fallback: query GL (works for textures not loaded via load_texture)
+	if (!glIsTexture(tex)) return false;
+
+	GLint prevBinding = 0;
+	glGetIntegerv(GL_TEXTURE_BINDING_2D, &prevBinding);
+
+	glBindTexture(GL_TEXTURE_2D, tex);
+	GLint w = 0, h = 0;
+	glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &w);
+	glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &h);
+
+	// Restore previous binding
+	glBindTexture(GL_TEXTURE_2D, (GLuint)prevBinding);
+
+	if (w > 0 && h > 0) {
+		// Cache for next time
+		std::lock_guard<std::mutex> lock(g_texMutex);
+		g_texSize[tex] = { (int)w, (int)h };
+		*outW = (int)w;
+		*outH = (int)h;
+		return true;
+	}
+	return false;
 }
 
 // filter: 0 = linear, 1 = mipmap
@@ -71,12 +115,14 @@ GLuint load_texture(const char* filename,
 	}
 	else {
 		raw_data = load_zip_file(archname, filename);
-		size_t size = get_last_zip_file_size();
-		image_data = stbi_load_from_memory(raw_data, (int)size, &width, &height, &comp, numcomponents);
+		if (raw_data) {
+			size_t size = get_last_zip_file_size();
+			image_data = stbi_load_from_memory(raw_data, (int)size, &width, &height, &comp, numcomponents);
+		}
 	}
 
 	if (!image_data) {
-		LOG_ERROR("ERROR: could not load %s", filename);
+		LOG_ERROR("ERROR: could not load file %s", filename);
 		if (raw_data) free(raw_data);
 		return 0;
 	}
@@ -159,7 +205,8 @@ GLuint load_texture(const char* filename,
 
 	// Track for bulk-deletion
 	register_texture(tex);
-
+	std::lock_guard<std::mutex> lock(g_texMutex);
+	g_texSize[tex] = { width, height };
 	LOG_INFO("New Texture created: ID %u", tex);
 	return tex;
 }

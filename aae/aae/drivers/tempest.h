@@ -5,6 +5,7 @@
 
 int init_tempestm();
 int init_tempest();
+int init_vbrakout();
 void run_tempest();
 void end_tempest();
 void tempest_interrupt();

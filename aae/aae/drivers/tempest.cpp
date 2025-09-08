@@ -13,6 +13,7 @@
 
 #include "tempest.h"
 #include "aae_mame_driver.h"
+#include "driver_registry.h"    // AAE_REGISTER_DRIVER
 #include "aae_avg.h"
 #include "aae_pokey.h"
 #include "earom.h"
@@ -312,6 +313,10 @@ Note: Roms for Tempest Analog Vector-Generator PCB Assembly A037383-03 or A03738
 
 ***************************************************************************/
 
+ART_START(tempestart)
+ART_LOAD("custom.zip", "vert_mask.png", ART_TEX, 2)
+ART_END
+
 static int flipscreen = 0;
 static int INMENU = 0;
 static int tempprot = 1;
@@ -521,7 +526,7 @@ void run_tempest()
 
 int init_tempestm()
 {
-	init6502(TempestMenuRead, TempestMenuWrite, 0xffff, CPU0);
+	//init6502(TempestMenuRead, TempestMenuWrite, 0xffff, CPU0);
 
 	cache_clear();
 
@@ -540,29 +545,724 @@ int init_tempestm()
 int init_tempest(void)
 {
 	pokey_sh_start(&pokey_interface);
-	init6502(TempestRead, TempestWrite, 0xffff, CPU0);
-	
-	if (gamenum == TEMPTUBE ||
-		gamenum == TEMPEST1 ||
-		gamenum == TEMPEST2 ||
-		gamenum == TEMPEST3 ||
-		gamenum == TEMPEST)
-	{
-		if (config.hack) 
-		{ 
-			//LEVEL SELECTION HACK   (Does NOT Work on Protos)
-			Machine->memory_region[CPU0][0x9001] = 0xd1;
-			Machine->memory_region[CPU0][0x90cd] = 0xea; 
-			Machine->memory_region[CPU0][0x90ce] = 0xea; 
-		}
+	//init6502(TempestRead, TempestWrite, 0xffff, CPU0);
+	if (config.hack) 
+	{ 
+		//LEVEL SELECTION HACK   (Does NOT Work on Protos)
+		Machine->memory_region[CPU0][0x9001] = 0xd1;
+		Machine->memory_region[CPU0][0x90cd] = 0xea; 
+		Machine->memory_region[CPU0][0x90ce] = 0xea; 
 	}
+	
 	avg_start_tempest();
-	if (gamenum == VBRAKOUT) config.gain = 0;
 	//timer_set(TIME_IN_HZ(240), CPU0, tempest_interrupt);
 	return 0;
 }
+
+int init_vbrakout(void)
+{
+	pokey_sh_start(&pokey_interface);
+	//init6502(TempestRead, TempestWrite, 0xffff, CPU0);
+	avg_start_tempest();
+  //timer_set(TIME_IN_HZ(240), CPU0, tempest_interrupt);
+	return 0;
+
+}
+
 
 void end_tempest()
 {
 	pokey_sh_stop();
 }
+
+
+INPUT_PORTS_START(tempest)
+PORT_START("IN0")	/* IN0 */
+PORT_BIT(0x01, IP_ACTIVE_LOW, IPT_COIN3)
+PORT_BIT(0x02, IP_ACTIVE_LOW, IPT_COIN2)
+PORT_BIT(0x04, IP_ACTIVE_LOW, IPT_COIN1)
+PORT_BIT(0x08, IP_ACTIVE_LOW, IPT_TILT)
+PORT_BITX(0x10, 0x10, IPT_DIPSWITCH_NAME | IPF_TOGGLE, DEF_STR(Service_Mode), OSD_KEY_F2, IP_JOY_NONE)
+PORT_DIPSETTING(0x10, DEF_STR(Off))
+PORT_DIPSETTING(0x00, DEF_STR(On))
+PORT_BITX(0x20, IP_ACTIVE_LOW, IPT_SERVICE, "Diagnostic Step", OSD_KEY_F1, IP_JOY_NONE)
+/* bit 6 is the VG HALT bit. We set it to "low" */
+/* per default (busy vector processor). */
+/* handled by tempest_IN0_r() */
+PORT_BIT(0x40, IP_ACTIVE_HIGH, IPT_UNKNOWN)
+/* bit 7 is tied to a 3khz (?) clock */
+/* handled by tempest_IN0_r() */
+PORT_BIT(0x80, IP_ACTIVE_HIGH, IPT_UNKNOWN)
+
+PORT_START("IN1")	/* IN1/DSW0 */
+/* This is the Tempest spinner input. It only uses 4 bits. */
+PORT_ANALOG(0x0f, 0x00, IPT_DIAL | IPF_REVERSE, 25, 20, 0, 0, 0)
+/* The next one is reponsible for cocktail mode.
+ * According to the documentation, this is not a switch, although
+ * it may have been planned to put it on the Math Box PCB, D/E2 )
+ */
+PORT_DIPNAME(0x10, 0x10, DEF_STR(Cabinet))
+PORT_DIPSETTING(0x00, DEF_STR(Upright))
+PORT_DIPSETTING(0x10, DEF_STR(Cocktail))
+PORT_BIT(0x20, IP_ACTIVE_HIGH, IPT_UNKNOWN)
+PORT_BIT(0x40, IP_ACTIVE_HIGH, IPT_UNKNOWN)
+PORT_BIT(0x80, IP_ACTIVE_HIGH, IPT_UNKNOWN)
+
+PORT_START("IN2")	/* IN2 */
+PORT_DIPNAME(0x03, 0x00, DEF_STR(Difficulty))
+PORT_DIPSETTING(0x01, "Easy")
+PORT_DIPSETTING(0x00, "Medium1")
+PORT_DIPSETTING(0x03, "Medium2")
+PORT_DIPSETTING(0x02, "Hard")
+PORT_DIPNAME(0x04, 0x00, "Rating")
+PORT_DIPSETTING(0x00, "1, 3, 5, 7, 9")
+PORT_DIPSETTING(0x04, "tied to high score")
+PORT_BIT(0x08, IP_ACTIVE_HIGH, IPT_BUTTON2)
+PORT_BIT(0x10, IP_ACTIVE_HIGH, IPT_BUTTON1)
+PORT_BIT(0x20, IP_ACTIVE_HIGH, IPT_START1)
+PORT_BIT(0x40, IP_ACTIVE_HIGH, IPT_START2)
+PORT_BIT(0x80, IP_ACTIVE_HIGH, IPT_UNKNOWN)
+
+PORT_START("DS1")	/* DSW1 - (N13 on analog vector generator PCB */
+PORT_DIPNAME(0x03, 0x00, DEF_STR(Coinage))
+PORT_DIPSETTING(0x01, DEF_STR(2C_1C))
+PORT_DIPSETTING(0x00, DEF_STR(1C_1C))
+PORT_DIPSETTING(0x03, DEF_STR(1C_2C))
+PORT_DIPSETTING(0x02, DEF_STR(Free_Play))
+PORT_DIPNAME(0x0c, 0x00, "Right Coin")
+PORT_DIPSETTING(0x00, "*1")
+PORT_DIPSETTING(0x04, "*4")
+PORT_DIPSETTING(0x08, "*5")
+PORT_DIPSETTING(0x0c, "*6")
+PORT_DIPNAME(0x10, 0x00, "Left Coin")
+PORT_DIPSETTING(0x00, "*1")
+PORT_DIPSETTING(0x10, "*2")
+PORT_DIPNAME(0xe0, 0x00, "Bonus Coins")
+PORT_DIPSETTING(0x00, "None")
+PORT_DIPSETTING(0x80, "1 each 5")
+PORT_DIPSETTING(0x40, "1 each 4 (+Demo)")
+PORT_DIPSETTING(0xa0, "1 each 3")
+PORT_DIPSETTING(0x60, "2 each 4 (+Demo)")
+PORT_DIPSETTING(0x20, "1 each 2")
+PORT_DIPSETTING(0xc0, "Freeze Mode")
+PORT_DIPSETTING(0xe0, "Freeze Mode")
+
+PORT_START("DS2")	/* DSW2 - (L12 on analog vector generator PCB */
+PORT_DIPNAME(0x01, 0x00, "Minimum")
+PORT_DIPSETTING(0x00, "1 Credit")
+PORT_DIPSETTING(0x01, "2 Credit")
+PORT_DIPNAME(0x06, 0x00, "Language")
+PORT_DIPSETTING(0x00, "English")
+PORT_DIPSETTING(0x02, "French")
+PORT_DIPSETTING(0x04, "German")
+PORT_DIPSETTING(0x06, "Spanish")
+PORT_DIPNAME(0x38, 0x00, DEF_STR(Bonus_Life))
+PORT_DIPSETTING(0x08, "10000")
+PORT_DIPSETTING(0x00, "20000")
+PORT_DIPSETTING(0x10, "30000")
+PORT_DIPSETTING(0x18, "40000")
+PORT_DIPSETTING(0x20, "50000")
+PORT_DIPSETTING(0x28, "60000")
+PORT_DIPSETTING(0x30, "70000")
+PORT_DIPSETTING(0x38, "None")
+PORT_DIPNAME(0xc0, 0x00, DEF_STR(Lives))
+PORT_DIPSETTING(0xc0, "2")
+PORT_DIPSETTING(0x00, "3")
+PORT_DIPSETTING(0x40, "4")
+PORT_DIPSETTING(0x80, "5")
+INPUT_PORTS_END
+
+
+
+ROM_START(tempestm)
+ROM_REGION(0x90000, REGION_CPU1, 0)
+ROM_LOAD("menu_D1.bin", 0x9000, 0x0800, CRC(8a6633fb) SHA1(b143a5d2019f24666b350b40b0dab2924bb9c7c0))
+ROM_LOAD("menu_E1.bin", 0x9800, 0x0800, CRC(2eedfdf6) SHA1(2ed494bd8610bebd07284289ca8b7059fd805300))
+ROM_LOAD("menu_F1.bin", 0xa000, 0x0800, CRC(12f62746) SHA1(37356b5738c27ffe4c38f1b6cf99ae21441d8e8e))
+ROM_LOAD("136002.113", 0xa800, 0x0800, CRC(65d61fe7) SHA1(38a1e8a8f65b7887cf3e190269fe4ce2c6f818aa))
+ROM_LOAD("136002.114", 0xb000, 0x0800, CRC(11077375) SHA1(ed8ff0ca969da6672a7683b93d4fcf2935a0d903))
+ROM_LOAD("136002.115", 0xb800, 0x0800, CRC(f3e2827a) SHA1(bd04fcfbbba995e08c3144c1474fcddaaeb1c700))
+ROM_LOAD("136002.116", 0xc000, 0x0800, CRC(7356896c) SHA1(a013ede292189a8f5a907de882ee1a573d784b3c))
+ROM_LOAD("136002.117", 0xc800, 0x0800, CRC(55952119) SHA1(470d914fa52fce3786cb6330889876d3547dca65))
+ROM_LOAD("136002.118", 0xd000, 0x0800, CRC(beb352ab) SHA1(f213166d3970e0bd0f29d8dea8d6afa6990cce38))
+ROM_LOAD("menu_R1.bin", 0xd800, 0x0800, CRC(1d8f194a) SHA1(c77f6b83f5c498c0f2d5372089a4604913a4aad5))
+ROM_RELOAD(0xf800, 0x0800)
+ROM_LOAD("menu_N3.bin", 0x3000, 0x0800, CRC(29f7e937) SHA1(686c8b9b8901262e743497cee7f2f7dd5cb3af7e))
+ROM_LOAD("menu_R3.bin", 0x3800, 0x0800, CRC(c16ec351) SHA1(a30a3662c740810c0f20e3712679606921b8ca06))
+ROM_LOAD("alienst/aliens_d1.bin", 0x19000, 0x0800, CRC(337e21f6) SHA1(7adadeaa975e22f0b20e8f1fb6ad68b5c3934133))
+ROM_LOAD("alienst/aliens_e1.bin", 0x19800, 0x0800, CRC(337e21f6) SHA1(7adadeaa975e22f0b20e8f1fb6ad68b5c3934133))
+ROM_LOAD("alienst/aliens_f1.bin", 0x1a000, 0x0800, CRC(4d2aabb0) SHA1(31106a1fc22d2a19866f07b8d6c6f4bf76007909))
+ROM_LOAD("alienst/aliens_h1.bin", 0x1a800, 0x0800, CRC(a503f54a) SHA1(91ebf9f69a183a04a5bf55fcdd9e191523bb66bb))
+ROM_LOAD("alienst/aliens_j1.bin", 0x1b000, 0x0800, CRC(5487d531) SHA1(c95f037151b824345af03f27a6c3c7eb8a899b2c))
+ROM_LOAD("alienst/aliens_k1.bin", 0x1b800, 0x0800, CRC(ac96e87) SHA1(37461e84e6f46516c25dbf4ddb2ffd65877445c0))
+ROM_LOAD("alienst/aliens_l1.bin", 0x1c000, 0x0800, CRC(cd246ac2) SHA1(de2e6fe2e72c092c3874e797fc302a71dbf57710))
+ROM_LOAD("alienst/aliens_n1.bin", 0x1c800, 0x0800, CRC(bd98c5f3) SHA1(268487d9cf46b4b7b49eab7420d078bf676e636c))
+ROM_LOAD("alienst/aliens_p1.bin", 0x1d000, 0x0800, CRC(7c10adbd) SHA1(38579128a90bff4a7a4ae46d6aaa42118b8bc218))
+ROM_LOAD("alienst/aliens_r1.bin", 0x1d800, 0x0800, CRC(555c3070) SHA1(032f03af23c7ccac8a2bf50c3c646e141921ffee))
+ROM_RELOAD(0x1f800, 0x0800)
+ROM_LOAD("alienst/aliens_n3.bin", 0x13000, 0x0800, CRC(5c8fd38b) SHA1(bb0d6bd062eba53b5d64b3f444d5ce0a34728bf5))
+ROM_LOAD("alienst/aliens_r3.bin", 0x13800, 0x0800, CRC(6cabcd08) SHA1(e3950de50f3dfbc4d4d2f4fe26625d8ef94c0819))
+ROM_LOAD("vbreak/vb_d1.bin", 0x29000, 0x0800, CRC(6fd3efe5) SHA1(d195d08984ad8797607bc1989e8a606d51547c68))
+ROM_LOAD("vbreak/vb_e1.bin", 0x29800, 0x0800, CRC(9974b9a5) SHA1(6ecc6f72070895bb15992977348f58835233911f))
+ROM_LOAD("vbreak/vb_f1.bin", 0x2a000, 0x0800, CRC(44d611d8) SHA1(82cd63fc9067ea1f00feeffbee66e7d750cab7e5))
+ROM_LOAD("vbreak/vb_h1.bin", 0x2a800, 0x0800, CRC(cd58fc11) SHA1(060e31e55183ccef67a1adc91fb48c22424a4ba5))
+ROM_LOAD("vbreak/136002.114", 0x2b000, 0x0800, CRC(11077375) SHA1(ed8ff0ca969da6672a7683b93d4fcf2935a0d903))
+ROM_LOAD("vbreak/136002.115", 0x2b800, 0x0800, CRC(f3e2827a) SHA1(bd04fcfbbba995e08c3144c1474fcddaaeb1c700))
+ROM_LOAD("vbreak/136002.116", 0x2c000, 0x0800, CRC(7356896c) SHA1(a013ede292189a8f5a907de882ee1a573d784b3c))
+ROM_LOAD("vbreak/136002.117", 0x2c800, 0x0800, CRC(55952119) SHA1(470d914fa52fce3786cb6330889876d3547dca65))
+ROM_LOAD("vbreak/136002.118", 0x2d000, 0x0800, CRC(beb352ab) SHA1(f213166d3970e0bd0f29d8dea8d6afa6990cce38))
+ROM_LOAD("vbreak/vb_r1.bin", 0x2d800, 0x0800, CRC(1ae2dd53) SHA1(b908ba6b59195aea853380a56a243aa8fa2fba71))
+ROM_RELOAD(0x2f800, 0x0800)
+ROM_LOAD("vbreak/vb_n3.bin", 0x23000, 0x0800, CRC(29f7e937) SHA1(686c8b9b8901262e743497cee7f2f7dd5cb3af7e))
+ROM_LOAD("vbreak/vb_r3.bin", 0x23800, 0x0800, CRC(c16ec351) SHA1(a30a3662c740810c0f20e3712679606921b8ca06))
+ROM_LOAD("vortex/d1.bin", 0x39000, 0x0800, CRC(3aff3417) SHA1(3b7c31f01b7467757ec85e98a17038e5df5720bb))
+ROM_LOAD("vortex/e1.bin", 0x39800, 0x0800, CRC(11861be3) SHA1(a35797c649e8286c844cee6dac86ac50f4fbd669))
+ROM_LOAD("vortex/f1.bin", 0x3a000, 0x0800, CRC(1d251111) SHA1(2912a21dc708231e28d6164e54e593a8300b9c4a))
+ROM_LOAD("vortex/h1.bin", 0x3a800, 0x0800, CRC(937a9859) SHA1(336b25291533d19294f1ced730bbf20971849adf))
+ROM_LOAD("vortex/j1.bin", 0x3b000, 0x0800, CRC(79481246) SHA1(c5362670fd29ef1432f8e626323da395d6e8a675))
+ROM_LOAD("vortex/k1.bin", 0x3b800, 0x0800, CRC(390f872a) SHA1(c5463ea2d2307e21c941b5b459e3652c12154609))
+ROM_LOAD("vortex/lm1.bin", 0x3c000, 0x0800, CRC(515760dd) SHA1(773f06c9a64e72f9d3d8a5c622bf3ec2b4ba678d))
+ROM_LOAD("vortex/mn1.bin", 0x3c800, 0x0800, CRC(c6c41c68) SHA1(9323c07fc80a947142dde008c53f5e8c0b0c572d))
+ROM_LOAD("vortex/p1.bin", 0x3d000, 0x0800, CRC(3c2ff130) SHA1(32ebabcb2cbd7aab5e29de2b873f02ed78776ae6))
+ROM_LOAD("vortex/r1.bin", 0x3d800, 0x0800, CRC(67cafbb1) SHA1(467515733d843398e6fe29661002536a1e6c8fc9))
+ROM_RELOAD(0x3f800, 0x0800)
+ROM_LOAD("vortex/n3.bin", 0x33000, 0x0800, CRC(29c6a1cb) SHA1(290702a1c0942a68e288b37963e51eba02177a3f))
+ROM_LOAD("vortex/r3.bin", 0x33800, 0x0800, CRC(7fbe5e21) SHA1(e5de6c3af82e64444b0ddcda559e9cb4fbf6c1da))
+ROM_LOAD("temptube/136002-113.d1", 0x49000, 0x0800, CRC(65d61fe7) SHA1(38a1e8a8f65b7887cf3e190269fe4ce2c6f818aa))
+ROM_LOAD("temptube/136002-114.e1", 0x49800, 0x0800, CRC(11077375) SHA1(ed8ff0ca969da6672a7683b93d4fcf2935a0d903))
+ROM_LOAD("temptube/136002-115.f1", 0x4a000, 0x0800, CRC(f3e2827a) SHA1(bd04fcfbbba995e08c3144c1474fcddaaeb1c700))
+ROM_LOAD("temptube/136002-316.h1", 0x4a800, 0x0800, CRC(aeb0f7e9) SHA1(a5cc25015b98692673cfc1c7c2e9634efd750870))
+ROM_LOAD("temptube/136002-217.j1", 0x4b000, 0x0800, CRC(ef2eb645) SHA1(b1a2c969e8897e335d5354de6ae04a65d4b2a1e4))
+ROM_LOAD("temptube/tube-118.k1", 0x4b800, 0x0800, CRC(cefb03f0) SHA1(41ddfa4991fa49a31d4740a04551556acca66196))
+ROM_LOAD("temptube/136002-119.lm1", 0x4c000, 0x0800, CRC(a4de050f) SHA1(ea302e43a313a5a18115e74ddbaaedde0fbecda7))
+ROM_LOAD("temptube/136002-120.mn1", 0x4c800, 0x0800, CRC(35619648) SHA1(48f1e8bed7ec6afa0b4c549a30e5ec331c071e40))
+ROM_LOAD("temptube/136002-121.p1", 0x4d000, 0x0800, CRC(73d38e47) SHA1(9980606376a79ba94f8e2a325871a6c8d10d83fc))
+ROM_LOAD("temptube/136002-222.r1", 0x4d800, 0x0800, CRC(707bd5c3) SHA1(2f0af6fb7154c244c794f7247e5c16a1e06ddf7d))
+ROM_RELOAD(0x4f800, 0x0800)
+ROM_LOAD("temptube/136002-123.np3", 0x43000, 0x0800, CRC(29f7e937) SHA1(686c8b9b8901262e743497cee7f2f7dd5cb3af7e))
+ROM_LOAD("temptube/136002-124.r3", 0x43800, 0x0800, CRC(c16ec351) SHA1(a30a3662c740810c0f20e3712679606921b8ca06))
+ROM_LOAD("tempest1/136002-113.d1", 0x59000, 0x0800, CRC(65d61fe7) SHA1(38a1e8a8f65b7887cf3e190269fe4ce2c6f818aa))
+ROM_LOAD("tempest1/136002-114.e1", 0x59800, 0x0800, CRC(11077375) SHA1(ed8ff0ca969da6672a7683b93d4fcf2935a0d903))
+ROM_LOAD("tempest1/136002-115.f1", 0x5a000, 0x0800, CRC(f3e2827a) SHA1(bd04fcfbbba995e08c3144c1474fcddaaeb1c700))
+ROM_LOAD("tempest1/136002-116.h1", 0x5a800, 0x0800, CRC(7356896c) SHA1(a013ede292189a8f5a907de882ee1a573d784b3c))
+ROM_LOAD("tempest1/136002-117.j1", 0x5b000, 0x0800, CRC(55952119) SHA1(470d914fa52fce3786cb6330889876d3547dca65))
+ROM_LOAD("tempest1/136002-118.k1", 0x5b800, 0x0800, CRC(beb352ab) SHA1(f213166d3970e0bd0f29d8dea8d6afa6990cce38))
+ROM_LOAD("tempest1/136002-119.lm1", 0x5c000, 0x0800, CRC(a4de050f) SHA1(ea302e43a313a5a18115e74ddbaaedde0fbecda7))
+ROM_LOAD("tempest1/136002-120.mn1", 0x5c800, 0x0800, CRC(35619648) SHA1(48f1e8bed7ec6afa0b4c549a30e5ec331c071e40))
+ROM_LOAD("tempest1/136002-121.p1", 0x5d000, 0x0800, CRC(73d38e47) SHA1(9980606376a79ba94f8e2a325871a6c8d10d83fc))
+ROM_LOAD("tempest1/136002-122.r1", 0x5d800, 0x0800, CRC(796a9918) SHA1(c862a0d4ea330161e4c3cc8e5e9ad38893fffbd4))
+ROM_RELOAD(0x5f800, 0x0800)
+ROM_LOAD("tempest1/136002-123.np3", 0x53000, 0x0800, CRC(29f7e937) SHA1(686c8b9b8901262e743497cee7f2f7dd5cb3af7e))
+ROM_LOAD("tempest1/136002-124.r3", 0x53800, 0x0800, CRC(c16ec351) SHA1(a30a3662c740810c0f20e3712679606921b8ca06))
+ROM_LOAD("tempest2/136002-113.d1", 0x69000, 0x0800, CRC(65d61fe7) SHA1(38a1e8a8f65b7887cf3e190269fe4ce2c6f818aa))
+ROM_LOAD("tempest2/136002-114.e1", 0x69800, 0x0800, CRC(11077375) SHA1(ed8ff0ca969da6672a7683b93d4fcf2935a0d903))
+ROM_LOAD("tempest2/136002-115.f1", 0x6a000, 0x0800, CRC(f3e2827a) SHA1(bd04fcfbbba995e08c3144c1474fcddaaeb1c700))
+ROM_LOAD("tempest2/136002-116.h1", 0x6a800, 0x0800, CRC(7356896c) SHA1(a013ede292189a8f5a907de882ee1a573d784b3c))
+ROM_LOAD("tempest2/136002-217.j1", 0x6b000, 0x0800, CRC(ef2eb645) SHA1(b1a2c969e8897e335d5354de6ae04a65d4b2a1e4))
+ROM_LOAD("tempest2/136002-118.k1", 0x6b800, 0x0800, CRC(beb352ab) SHA1(f213166d3970e0bd0f29d8dea8d6afa6990cce38))
+ROM_LOAD("tempest2/136002-119.lm1", 0x6c000, 0x0800, CRC(a4de050f) SHA1(ea302e43a313a5a18115e74ddbaaedde0fbecda7))
+ROM_LOAD("tempest2/136002-120.mn1", 0x6c800, 0x0800, CRC(35619648) SHA1(48f1e8bed7ec6afa0b4c549a30e5ec331c071e40))
+ROM_LOAD("tempest2/136002-121.p1", 0x6d000, 0x0800, CRC(73d38e47) SHA1(9980606376a79ba94f8e2a325871a6c8d10d83fc))
+ROM_LOAD("tempest2/136002-222.r1", 0x6d800, 0x0800, CRC(707bd5c3) SHA1(2f0af6fb7154c244c794f7247e5c16a1e06ddf7d))
+ROM_RELOAD(0x6f800, 0x0800)
+ROM_LOAD("tempest2/136002-123.np3", 0x63000, 0x0800, CRC(29f7e937) SHA1(686c8b9b8901262e743497cee7f2f7dd5cb3af7e))
+ROM_LOAD("tempest2/136002-124.r3", 0x63800, 0x0800, CRC(c16ec351) SHA1(a30a3662c740810c0f20e3712679606921b8ca06))
+ROM_LOAD("tempest/136002-113.d1", 0x79000, 0x0800, CRC(65d61fe7) SHA1(38a1e8a8f65b7887cf3e190269fe4ce2c6f818aa))
+ROM_LOAD("tempest/136002-114.e1", 0x79800, 0x0800, CRC(11077375) SHA1(ed8ff0ca969da6672a7683b93d4fcf2935a0d903))
+ROM_LOAD("tempest/136002-115.f1", 0x7a000, 0x0800, CRC(f3e2827a) SHA1(bd04fcfbbba995e08c3144c1474fcddaaeb1c700))
+ROM_LOAD("tempest/136002-316.h1", 0x7a800, 0x0800, CRC(aeb0f7e9) SHA1(a5cc25015b98692673cfc1c7c2e9634efd750870))
+ROM_LOAD("tempest/136002-217.j1", 0x7b000, 0x0800, CRC(ef2eb645) SHA1(b1a2c969e8897e335d5354de6ae04a65d4b2a1e4))
+ROM_LOAD("tempest/136002-118.k1", 0x7b800, 0x0800, CRC(beb352ab) SHA1(f213166d3970e0bd0f29d8dea8d6afa6990cce38))
+ROM_LOAD("tempest/136002-119.lm1", 0x7c000, 0x0800, CRC(a4de050f) SHA1(ea302e43a313a5a18115e74ddbaaedde0fbecda7))
+ROM_LOAD("tempest/136002-120.mn1", 0x7c800, 0x0800, CRC(35619648) SHA1(48f1e8bed7ec6afa0b4c549a30e5ec331c071e40))
+ROM_LOAD("tempest/136002-121.p1", 0x7d000, 0x0800, CRC(73d38e47) SHA1(9980606376a79ba94f8e2a325871a6c8d10d83fc))
+ROM_LOAD("tempest/136002-222.r1", 0x7d800, 0x0800, CRC(707bd5c3) SHA1(2f0af6fb7154c244c794f7247e5c16a1e06ddf7d))
+ROM_RELOAD(0x7f800, 0x0800)
+ROM_LOAD("tempest/136002-123.np3", 0x73000, 0x0800, CRC(29f7e937) SHA1(686c8b9b8901262e743497cee7f2f7dd5cb3af7e))
+ROM_LOAD("tempest/136002-124.r3", 0x73800, 0x0800, CRC(c16ec351) SHA1(a30a3662c740810c0f20e3712679606921b8ca06))
+ROM_END
+
+
+ROM_START(aliensv) //TEMPEST PROTO
+ROM_REGION(0x10000, REGION_CPU1, 0)
+ROM_LOAD("aliens_d1.bin", 0x9000, 0x0800, CRC(337e21f6) SHA1(7adadeaa975e22f0b20e8f1fb6ad68b5c3934133))
+ROM_LOAD("aliens_e1.bin", 0x9800, 0x0800, CRC(337e21f6) SHA1(7adadeaa975e22f0b20e8f1fb6ad68b5c3934133))
+ROM_LOAD("aliens_f1.bin", 0xa000, 0x0800, CRC(4d2aabb0) SHA1(31106a1fc22d2a19866f07b8d6c6f4bf76007909))
+ROM_LOAD("aliens_h1.bin", 0xa800, 0x0800, CRC(a503f54a) SHA1(91ebf9f69a183a04a5bf55fcdd9e191523bb66bb))
+ROM_LOAD("aliens_j1.bin", 0xb000, 0x0800, CRC(5487d531) SHA1(c95f037151b824345af03f27a6c3c7eb8a899b2c))
+ROM_LOAD("aliens_k1.bin", 0xb800, 0x0800, CRC(ac96e87) SHA1(37461e84e6f46516c25dbf4ddb2ffd65877445c0))
+ROM_LOAD("aliens_l1.bin", 0xc000, 0x0800, CRC(cd246ac2) SHA1(de2e6fe2e72c092c3874e797fc302a71dbf57710))
+ROM_LOAD("aliens_n1.bin", 0xc800, 0x0800, CRC(bd98c5f3) SHA1(268487d9cf46b4b7b49eab7420d078bf676e636c))
+ROM_LOAD("aliens_p1.bin", 0xd000, 0x0800, CRC(7c10adbd) SHA1(38579128a90bff4a7a4ae46d6aaa42118b8bc218))
+ROM_LOAD("aliens_r1.bin", 0xd800, 0x0800, CRC(555c3070) SHA1(032f03af23c7ccac8a2bf50c3c646e141921ffee))
+ROM_RELOAD(0xf800, 0x0800)
+ROM_LOAD("aliens_n3.bin", 0x3000, 0x0800, CRC(5c8fd38b) SHA1(bb0d6bd062eba53b5d64b3f444d5ce0a34728bf5))
+ROM_LOAD("aliens_r3.bin", 0x3800, 0x0800, CRC(6cabcd08) SHA1(e3950de50f3dfbc4d4d2f4fe26625d8ef94c0819))
+/* AVG PROM */
+ROM_REGION(0x100, REGION_PROMS, 0)
+ROM_LOAD("136002-125.d7", 0x0000, 0x0100, CRC(5903af03) SHA1(24bc0366f394ad0ec486919212e38be0f08d0239))
+ROM_END
+
+ROM_START(vortex)
+ROM_REGION(0x10000, REGION_CPU1, 0)
+ROM_LOAD("d1.bin", 0x9000, 0x0800, CRC(3aff3417) SHA1(3b7c31f01b7467757ec85e98a17038e5df5720bb))
+ROM_LOAD("e1.bin", 0x9800, 0x0800, CRC(11861be3) SHA1(a35797c649e8286c844cee6dac86ac50f4fbd669))
+ROM_LOAD("f1.bin", 0xa000, 0x0800, CRC(1d251111) SHA1(2912a21dc708231e28d6164e54e593a8300b9c4a))
+ROM_LOAD("h1.bin", 0xa800, 0x0800, CRC(937a9859) SHA1(336b25291533d19294f1ced730bbf20971849adf))
+ROM_LOAD("j1.bin", 0xb000, 0x0800, CRC(79481246) SHA1(c5362670fd29ef1432f8e626323da395d6e8a675))
+ROM_LOAD("k1.bin", 0xb800, 0x0800, CRC(390f872a) SHA1(c5463ea2d2307e21c941b5b459e3652c12154609))
+ROM_LOAD("lm1.bin", 0xc000, 0x0800, CRC(515760dd) SHA1(773f06c9a64e72f9d3d8a5c622bf3ec2b4ba678d))
+ROM_LOAD("mn1.bin", 0xc800, 0x0800, CRC(c6c41c68) SHA1(9323c07fc80a947142dde008c53f5e8c0b0c572d))
+ROM_LOAD("p1.bin", 0xd000, 0x0800, CRC(3c2ff130) SHA1(32ebabcb2cbd7aab5e29de2b873f02ed78776ae6))
+ROM_LOAD("r1.bin", 0xd800, 0x0800, CRC(67cafbb1) SHA1(467515733d843398e6fe29661002536a1e6c8fc9))
+ROM_RELOAD(0xf800, 0x0800)
+ROM_LOAD("n3.bin", 0x3000, 0x0800, CRC(29c6a1cb) SHA1(290702a1c0942a68e288b37963e51eba02177a3f))
+ROM_LOAD("r3.bin", 0x3800, 0x0800, CRC(7fbe5e21) SHA1(e5de6c3af82e64444b0ddcda559e9cb4fbf6c1da))
+/* AVG PROM */
+ROM_REGION(0x100, REGION_PROMS, 0)
+ROM_LOAD("136002-125.d7", 0x0000, 0x0100, CRC(5903af03) SHA1(24bc0366f394ad0ec486919212e38be0f08d0239))
+ROM_END
+
+
+ROM_START(vbrakout)
+ROM_REGION(0x10000, REGION_CPU1, 0)
+ROM_LOAD("vbrakout.113", 0x9000, 0x0800, CRC(6fd3efe5) SHA1(d195d08984ad8797607bc1989e8a606d51547c68))
+ROM_LOAD("vbrakout.114", 0x9800, 0x0800, CRC(9974b9a5) SHA1(6ecc6f72070895bb15992977348f58835233911f))
+ROM_LOAD("vbrakout.115", 0xa000, 0x0800, CRC(44d611d8) SHA1(82cd63fc9067ea1f00feeffbee66e7d750cab7e5))
+ROM_LOAD("vbrakout.116", 0xa800, 0x0800, CRC(cd58fc11) SHA1(060e31e55183ccef67a1adc91fb48c22424a4ba5))
+ROM_LOAD("vbrakout.122", 0xd800, 0x0800, CRC(1ae2dd53) SHA1(b908ba6b59195aea853380a56a243aa8fa2fba71))
+ROM_RELOAD(0xf800, 0x0800)
+ROM_LOAD("136002-123.np3", 0x3000, 0x0800, CRC(29f7e937) SHA1(686c8b9b8901262e743497cee7f2f7dd5cb3af7e))
+ROM_LOAD("136002-124.r3", 0x3800, 0x0800, CRC(c16ec351) SHA1(a30a3662c740810c0f20e3712679606921b8ca06))
+/* AVG PROM */
+ROM_REGION(0x100, REGION_PROMS, 0)
+ROM_LOAD("136002-125.d7", 0x0000, 0x0100, CRC(5903af03) SHA1(24bc0366f394ad0ec486919212e38be0f08d0239))
+ROM_END
+
+ROM_START(temptube)//TEMPEST TUBES
+ROM_REGION(0x10000, REGION_CPU1, 0)
+ROM_LOAD("136002-113.d1", 0x9000, 0x0800, CRC(65d61fe7) SHA1(38a1e8a8f65b7887cf3e190269fe4ce2c6f818aa))
+ROM_LOAD("136002-114.e1", 0x9800, 0x0800, CRC(11077375) SHA1(ed8ff0ca969da6672a7683b93d4fcf2935a0d903))
+ROM_LOAD("136002-115.f1", 0xa000, 0x0800, CRC(f3e2827a) SHA1(bd04fcfbbba995e08c3144c1474fcddaaeb1c700))
+ROM_LOAD("136002-316.h1", 0xa800, 0x0800, CRC(aeb0f7e9) SHA1(a5cc25015b98692673cfc1c7c2e9634efd750870))
+ROM_LOAD("136002-217.j1", 0xb000, 0x0800, CRC(ef2eb645) SHA1(b1a2c969e8897e335d5354de6ae04a65d4b2a1e4))
+ROM_LOAD("tube-118.k1", 0xb800, 0x0800, CRC(cefb03f0) SHA1(41ddfa4991fa49a31d4740a04551556acca66196))
+ROM_LOAD("136002-119.lm1", 0xc000, 0x0800, CRC(a4de050f) SHA1(ea302e43a313a5a18115e74ddbaaedde0fbecda7))
+ROM_LOAD("136002-120.mn1", 0xc800, 0x0800, CRC(35619648) SHA1(48f1e8bed7ec6afa0b4c549a30e5ec331c071e40))
+ROM_LOAD("136002-121.p1", 0xd000, 0x0800, CRC(73d38e47) SHA1(9980606376a79ba94f8e2a325871a6c8d10d83fc))
+ROM_LOAD("136002-222.r1", 0xd800, 0x0800, CRC(707bd5c3) SHA1(2f0af6fb7154c244c794f7247e5c16a1e06ddf7d))
+ROM_RELOAD(0xf800, 0x0800) /* for reset/interrupt vectors */// Vector ROM
+ROM_LOAD("136002-123.np3", 0x3000, 0x0800, CRC(29f7e937) SHA1(686c8b9b8901262e743497cee7f2f7dd5cb3af7e)) /* May be labeled "136002-111", same data */
+ROM_LOAD("136002-124.r3", 0x3800, 0x0800, CRC(c16ec351) SHA1(a30a3662c740810c0f20e3712679606921b8ca06)) /* May be labeled "136002-112", same data */
+/* AVG PROM */
+ROM_REGION(0x100, REGION_PROMS, 0)
+ROM_LOAD("136002-125.d7", 0x0000, 0x0100, CRC(5903af03) SHA1(24bc0366f394ad0ec486919212e38be0f08d0239))
+ROM_END
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+ROM_START(tempest) // rev 3
+ROM_REGION(0x10000, REGION_CPU1, 0)
+
+ROM_LOAD("136002-133.d1", 0x9000, 0x1000, CRC(1d0cc503) SHA1(7bef95db9b1102d6b1166bda0ccb276ef4cc3764)) /* 136002-113 + 136002-114 */
+ROM_LOAD("136002-134.f1", 0xa000, 0x1000, CRC(c88e3524) SHA1(89144baf1efc703b2336774793ce345b37829ee7)) /* 136002-115 + 136002-316 */
+ROM_LOAD("136002-235.j1", 0xb000, 0x1000, CRC(a4b2ce3f) SHA1(a5f5fb630a48c5d25346f90d4c13aaa98f60b228)) /* 136002-217 + 136002-118 */
+ROM_LOAD("136002-136.lm1", 0xc000, 0x1000, CRC(65a9a9f9) SHA1(73aa7d6f4e7093ccb2d97f6344f354872bcfd72a)) /* 136002-119 + 136002-120 */
+ROM_LOAD("136002-237.p1", 0xd000, 0x1000, CRC(de4e9e34) SHA1(04be074e45bf5cd95a852af97cd04e35b7f27fc4)) /* 136002-121 + 136002-222 */
+ROM_RELOAD(0xf000, 0x1000) /* for reset/interrupt vectors */
+/* Vector ROM */
+ROM_LOAD("136002-138.np3", 0x3000, 0x1000, CRC(9995256d) SHA1(2b725ee1a57d423c7d7377a1744f48412e0f2f69))
+/* AVG PROM */
+ROM_REGION(0x100, REGION_PROMS, 0)
+ROM_LOAD("136002-125.d7", 0x0000, 0x0100, CRC(5903af03) SHA1(24bc0366f394ad0ec486919212e38be0f08d0239))
+ROM_END
+
+ROM_START(tempest1) /* rev 1 */
+ROM_REGION(0x10000, REGION_CPU1, 0)
+ROM_LOAD("136002-123.np3", 0x3000, 0x0800, CRC(29f7e937) SHA1(686c8b9b8901262e743497cee7f2f7dd5cb3af7e)) /* May be labeled "136002-111", same data */
+ROM_LOAD("136002-124.r3", 0x3800, 0x0800, CRC(c16ec351) SHA1(a30a3662c740810c0f20e3712679606921b8ca06)) /* May be labeled "136002-112", same data */
+ROM_LOAD("136002-113.d1", 0x9000, 0x0800, CRC(65d61fe7) SHA1(38a1e8a8f65b7887cf3e190269fe4ce2c6f818aa))
+ROM_LOAD("136002-114.e1", 0x9800, 0x0800, CRC(11077375) SHA1(ed8ff0ca969da6672a7683b93d4fcf2935a0d903))
+ROM_LOAD("136002-115.f1", 0xa000, 0x0800, CRC(f3e2827a) SHA1(bd04fcfbbba995e08c3144c1474fcddaaeb1c700))
+ROM_LOAD("136002-116.h1", 0xa800, 0x0800, CRC(7356896c) SHA1(a013ede292189a8f5a907de882ee1a573d784b3c))
+ROM_LOAD("136002-117.j1", 0xb000, 0x0800, CRC(55952119) SHA1(470d914fa52fce3786cb6330889876d3547dca65))
+ROM_LOAD("136002-118.k1", 0xb800, 0x0800, CRC(beb352ab) SHA1(f213166d3970e0bd0f29d8dea8d6afa6990cce38))
+ROM_LOAD("136002-119.lm1", 0xc000, 0x0800, CRC(a4de050f) SHA1(ea302e43a313a5a18115e74ddbaaedde0fbecda7))
+ROM_LOAD("136002-120.mn1", 0xc800, 0x0800, CRC(35619648) SHA1(48f1e8bed7ec6afa0b4c549a30e5ec331c071e40))
+ROM_LOAD("136002-121.p1", 0xd000, 0x0800, CRC(73d38e47) SHA1(9980606376a79ba94f8e2a325871a6c8d10d83fc))
+ROM_LOAD("136002-122.r1", 0xd800, 0x0800, CRC(796a9918) SHA1(c862a0d4ea330161e4c3cc8e5e9ad38893fffbd4))
+ROM_RELOAD(0xf800, 0x0800) /* for reset/interrupt vectors */
+/* AVG PROM */
+ROM_REGION(0x100, REGION_PROMS, 0)
+ROM_LOAD("136002-125.d7", 0x0000, 0x0100, CRC(5903af03) SHA1(24bc0366f394ad0ec486919212e38be0f08d0239))
+ROM_END
+
+ROM_START(tempest2) // rev 2
+ROM_REGION(0x10000, REGION_CPU1, 0)
+// Roms are for Tempest Analog Vector-Generator PCB Assembly A037383-01 or A037383-02
+ROM_LOAD("136002-113.d1", 0x9000, 0x0800, CRC(65d61fe7) SHA1(38a1e8a8f65b7887cf3e190269fe4ce2c6f818aa))
+ROM_LOAD("136002-114.e1", 0x9800, 0x0800, CRC(11077375) SHA1(ed8ff0ca969da6672a7683b93d4fcf2935a0d903))
+ROM_LOAD("136002-115.f1", 0xa000, 0x0800, CRC(f3e2827a) SHA1(bd04fcfbbba995e08c3144c1474fcddaaeb1c700))
+ROM_LOAD("136002-116.h1", 0xa800, 0x0800, CRC(7356896c) SHA1(a013ede292189a8f5a907de882ee1a573d784b3c))
+ROM_LOAD("136002-217.j1", 0xb000, 0x0800, CRC(ef2eb645) SHA1(b1a2c969e8897e335d5354de6ae04a65d4b2a1e4))
+ROM_LOAD("136002-118.k1", 0xb800, 0x0800, CRC(beb352ab) SHA1(f213166d3970e0bd0f29d8dea8d6afa6990cce38))
+ROM_LOAD("136002-119.lm1", 0xc000, 0x0800, CRC(a4de050f) SHA1(ea302e43a313a5a18115e74ddbaaedde0fbecda7))
+ROM_LOAD("136002-120.mn1", 0xc800, 0x0800, CRC(35619648) SHA1(48f1e8bed7ec6afa0b4c549a30e5ec331c071e40))
+ROM_LOAD("136002-121.p1", 0xd000, 0x0800, CRC(73d38e47) SHA1(9980606376a79ba94f8e2a325871a6c8d10d83fc))
+ROM_LOAD("136002-222.r1", 0xd800, 0x0800, CRC(707bd5c3) SHA1(2f0af6fb7154c244c794f7247e5c16a1e06ddf7d))
+ROM_RELOAD(0xf800, 0x0800) /* for reset/interrupt vectors */
+// Vector ROM
+ROM_LOAD("136002-123.np3", 0x3000, 0x0800, CRC(29f7e937) SHA1(686c8b9b8901262e743497cee7f2f7dd5cb3af7e)) /* May be labeled "136002-111", same data */
+ROM_LOAD("136002-124.r3", 0x3800, 0x0800, CRC(c16ec351) SHA1(a30a3662c740810c0f20e3712679606921b8ca06)) /* May be labeled "136002-112", same data */
+/* AVG PROM */
+ROM_REGION(0x100, REGION_PROMS, 0)
+ROM_LOAD("136002-125.d7", 0x0000, 0x0100, CRC(5903af03) SHA1(24bc0366f394ad0ec486919212e38be0f08d0239))
+ROM_END
+
+ROM_START(tempest3) // rev 2
+ROM_REGION(0x10000, REGION_CPU1, 0)
+ROM_LOAD("136002-113.d1", 0x9000, 0x0800)
+ROM_LOAD("136002-114.e1", 0x9800, 0x0800)
+ROM_LOAD("136002-115.f1", 0xa000, 0x0800)
+ROM_LOAD("136002-316.h1", 0xa800, 0x0800)
+ROM_LOAD("136002-217.j1", 0xb000, 0x0800)
+ROM_LOAD("136002-118.k1", 0xb800, 0x0800)
+ROM_LOAD("136002-119.lm1", 0xc000, 0x0800)
+ROM_LOAD("136002-120.mn1", 0xc800, 0x0800)
+ROM_LOAD("136002-121.p1", 0xd000, 0x0800)
+ROM_LOAD("136002-222.r1", 0xd800, 0x0800)
+ROM_RELOAD(0xf800, 0x0800) /* for reset/interrupt vectors */
+/* Vector ROM */
+ROM_LOAD("136002-123.np3", 0x3000, 0x0800)
+ROM_LOAD("136002-124.r3", 0x3800, 0x0800)
+// Roms are for Tempest Analog Vector-Generator PCB Assembly A037383-03 or A037383-04
+//ROM_LOAD("136002-237.p1", 0x9000, 0x1000)
+//ROM_LOAD("136002-136.lm1", 0xa000, 0x1000)
+//ROM_LOAD("136002-235.j1", 0xb000, 0x1000)
+//ROM_LOAD("136002-134.f1", 0xc000, 0x1000)
+//ROM_LOAD("136002-133.d1", 0xd000, 0x1000)
+//ROM_RELOAD(0xf000, 0x1000)//Reload
+// Vector ROM
+//ROM_LOAD("136002-138.np3", 0x3000, 0x1000)
+/* AVG PROM */
+ROM_REGION(0x100, REGION_PROMS, 0)
+ROM_LOAD("136002-125.d7", 0x0000, 0x0100, CRC(5903af03) SHA1(24bc0366f394ad0ec486919212e38be0f08d0239))
+ROM_END
+
+
+// Tempest Multigame (1999 Clay Cowgill)
+AAE_DRIVER_BEGIN(drv_tempestm, "tempestm", "Tempest Multigame (1999 Clay Cowgill)")
+AAE_DRIVER_ROM(rom_tempestm)
+AAE_DRIVER_FUNCS(&init_tempestm, &run_tempest, &end_tempest)
+AAE_DRIVER_INPUT(input_ports_tempest)
+AAE_DRIVER_SAMPLES_NONE()
+AAE_DRIVER_ART(tempestart)
+AAE_DRIVER_CPUS(
+	AAE_CPU_ENTRY(
+		/*type*/     CPU_M6502,
+		/*freq*/     1512000,
+		/*div*/      100,
+		/*ipf*/      4,
+		/*int type*/ INT_TYPE_INT,
+		/*int cb*/   &tempest_interrupt,
+		/*r8*/       TempestMenuRead,   // init_tempestm()
+		/*w8*/       TempestMenuWrite,
+		/*pr*/       nullptr,
+		/*pw*/       nullptr,
+		/*r16*/      nullptr,
+		/*w16*/      nullptr
+	),
+	AAE_CPU_NONE_ENTRY(),
+	AAE_CPU_NONE_ENTRY(),
+	AAE_CPU_NONE_ENTRY()
+)
+AAE_DRIVER_VIDEO_CORE(60, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_ROTATE_270)
+AAE_DRIVER_SCREEN(1024, 768, 0, 580, 0, 570)
+AAE_DRIVER_RASTER_NONE()
+AAE_DRIVER_HISCORE_NONE()
+AAE_DRIVER_VECTORRAM(0x2000, 0x1000)
+AAE_DRIVER_NVRAM(atari_vg_earom_handler)
+AAE_DRIVER_END()
+
+// Tempest (Revision 3)
+AAE_DRIVER_BEGIN(drv_tempest, "tempest", "Tempest (Revision 3)")
+AAE_DRIVER_ROM(rom_tempest)
+AAE_DRIVER_FUNCS(&init_tempest, &run_tempest, &end_tempest)
+AAE_DRIVER_INPUT(input_ports_tempest)
+AAE_DRIVER_SAMPLES_NONE()
+AAE_DRIVER_ART(tempestart)
+AAE_DRIVER_CPUS(
+	AAE_CPU_ENTRY(
+		/*type*/     CPU_M6502,
+		/*freq*/     1515000,           // rev3
+		/*div*/      100,
+		/*ipf*/      4,
+		/*int type*/ INT_TYPE_INT,
+		/*int cb*/   &tempest_interrupt,
+		/*r8*/       TempestRead,       // init_tempest()
+		/*w8*/       TempestWrite,
+		/*pr*/       nullptr,
+		/*pw*/       nullptr,
+		/*r16*/      nullptr,
+		/*w16*/      nullptr
+	),
+	AAE_CPU_NONE_ENTRY(),
+	AAE_CPU_NONE_ENTRY(),
+	AAE_CPU_NONE_ENTRY()
+)
+AAE_DRIVER_VIDEO_CORE(60, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_ROTATE_270)
+AAE_DRIVER_SCREEN(1024, 768, 0, 580, 0, 570)
+AAE_DRIVER_RASTER_NONE()
+AAE_DRIVER_HISCORE_NONE()
+AAE_DRIVER_VECTORRAM(0x2000, 0x1000)
+AAE_DRIVER_NVRAM(atari_vg_earom_handler)
+AAE_DRIVER_END()
+
+// Tempest (Revision 2B)
+AAE_DRIVER_BEGIN(drv_tempest3, "tempest3", "Tempest (Revision 2B)")
+AAE_DRIVER_ROM(rom_tempest3)
+AAE_DRIVER_FUNCS(&init_tempest, &run_tempest, &end_tempest)
+AAE_DRIVER_INPUT(input_ports_tempest)
+AAE_DRIVER_SAMPLES_NONE()
+AAE_DRIVER_ART(tempestart)
+AAE_DRIVER_CPUS(
+	AAE_CPU_ENTRY(
+		/*type*/     CPU_M6502,
+		/*freq*/     1512000,
+		/*div*/      100,
+		/*ipf*/      4,
+		/*int type*/ INT_TYPE_INT,
+		/*int cb*/   &tempest_interrupt,
+		/*r8*/       TempestRead,
+		/*w8*/       TempestWrite,
+		/*pr*/       nullptr,
+		/*pw*/       nullptr,
+		/*r16*/      nullptr,
+		/*w16*/      nullptr
+	),
+	AAE_CPU_NONE_ENTRY(),
+	AAE_CPU_NONE_ENTRY(),
+	AAE_CPU_NONE_ENTRY()
+)
+AAE_DRIVER_VIDEO_CORE(60, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_ROTATE_270)
+AAE_DRIVER_SCREEN(1024, 768, 0, 580, 0, 570)
+AAE_DRIVER_RASTER_NONE()
+AAE_DRIVER_HISCORE_NONE()
+AAE_DRIVER_VECTORRAM(0x2000, 0x1000)
+AAE_DRIVER_NVRAM(atari_vg_earom_handler)
+AAE_DRIVER_END()
+
+
+// Tempest (Revision 2A)
+AAE_DRIVER_BEGIN(drv_tempest2, "tempest2", "Tempest (Revision 2A)")
+AAE_DRIVER_ROM(rom_tempest2)
+AAE_DRIVER_FUNCS(&init_tempest, &run_tempest, &end_tempest)
+AAE_DRIVER_INPUT(input_ports_tempest)
+AAE_DRIVER_SAMPLES_NONE()
+AAE_DRIVER_ART(tempestart)
+AAE_DRIVER_CPUS(
+	AAE_CPU_ENTRY(
+		/*type*/     CPU_M6502,
+		/*freq*/     1512000,
+		/*div*/      100,
+		/*ipf*/      4,
+		/*int type*/ INT_TYPE_INT,
+		/*int cb*/   &tempest_interrupt,
+		/*r8*/       TempestRead,
+		/*w8*/       TempestWrite,
+		/*pr*/       nullptr,
+		/*pw*/       nullptr,
+		/*r16*/      nullptr,
+		/*w16*/      nullptr
+	),
+	AAE_CPU_NONE_ENTRY(),
+	AAE_CPU_NONE_ENTRY(),
+	AAE_CPU_NONE_ENTRY()
+)
+AAE_DRIVER_VIDEO_CORE(60, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_ROTATE_270)
+AAE_DRIVER_SCREEN(1024, 768, 0, 580, 0, 570)
+AAE_DRIVER_RASTER_NONE()
+AAE_DRIVER_HISCORE_NONE()
+AAE_DRIVER_VECTORRAM(0x2000, 0x1000)
+AAE_DRIVER_NVRAM(atari_vg_earom_handler)
+AAE_DRIVER_END()
+
+
+// Tempest (Revision 1)
+AAE_DRIVER_BEGIN(drv_tempest1, "tempest1", "Tempest (Revision 1)")
+AAE_DRIVER_ROM(rom_tempest1)
+AAE_DRIVER_FUNCS(&init_tempest, &run_tempest, &end_tempest)
+AAE_DRIVER_INPUT(input_ports_tempest)
+AAE_DRIVER_SAMPLES_NONE()
+AAE_DRIVER_ART(tempestart)
+AAE_DRIVER_CPUS(
+	AAE_CPU_ENTRY(
+		/*type*/     CPU_M6502,
+		/*freq*/     1512000,
+		/*div*/      100,
+		/*ipf*/      4,
+		/*int type*/ INT_TYPE_INT,
+		/*int cb*/   &tempest_interrupt,
+		/*r8*/       TempestRead,
+		/*w8*/       TempestWrite,
+		/*pr*/       nullptr,
+		/*pw*/       nullptr,
+		/*r16*/      nullptr,
+		/*w16*/      nullptr
+	),
+	AAE_CPU_NONE_ENTRY(),
+	AAE_CPU_NONE_ENTRY(),
+	AAE_CPU_NONE_ENTRY()
+)
+AAE_DRIVER_VIDEO_CORE(60, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_ROTATE_270)
+AAE_DRIVER_SCREEN(1024, 768, 0, 580, 0, 570)
+AAE_DRIVER_RASTER_NONE()
+AAE_DRIVER_HISCORE_NONE()
+AAE_DRIVER_VECTORRAM(0x2000, 0x1000)
+AAE_DRIVER_NVRAM(atari_vg_earom_handler)
+AAE_DRIVER_END()
+
+// Tempest Tubes
+AAE_DRIVER_BEGIN(drv_temptube, "temptube", "Tempest Tubes")
+AAE_DRIVER_ROM(rom_temptube)
+AAE_DRIVER_FUNCS(&init_tempest, &run_tempest, &end_tempest)
+AAE_DRIVER_INPUT(input_ports_tempest)
+AAE_DRIVER_SAMPLES_NONE()
+AAE_DRIVER_ART(tempestart)
+AAE_DRIVER_CPUS(
+	AAE_CPU_ENTRY(
+		/*type*/     CPU_M6502,
+		/*freq*/     1512000,
+		/*div*/      100,
+		/*ipf*/      4,
+		/*int type*/ INT_TYPE_INT,
+		/*int cb*/   &tempest_interrupt,
+		/*r8*/       TempestRead,
+		/*w8*/       TempestWrite,
+		/*pr*/       nullptr,
+		/*pw*/       nullptr,
+		/*r16*/      nullptr,
+		/*w16*/      nullptr
+	),
+	AAE_CPU_NONE_ENTRY(),
+	AAE_CPU_NONE_ENTRY(),
+	AAE_CPU_NONE_ENTRY()
+)
+AAE_DRIVER_VIDEO_CORE(60, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_ROTATE_270)
+AAE_DRIVER_SCREEN(1024, 768, 0, 580, 0, 570)
+AAE_DRIVER_RASTER_NONE()
+AAE_DRIVER_HISCORE_NONE()
+AAE_DRIVER_VECTORRAM(0x2000, 0x1000)
+AAE_DRIVER_NVRAM(atari_vg_earom_handler)
+AAE_DRIVER_END()
+
+// Aliens (Tempest Alpha)
+AAE_DRIVER_BEGIN(drv_aliensv, "aliensv", "Aliens (Tempest Alpha)")
+AAE_DRIVER_ROM(rom_aliensv)
+AAE_DRIVER_FUNCS(&init_tempest, &run_tempest, &end_tempest)
+AAE_DRIVER_INPUT(input_ports_tempest)
+AAE_DRIVER_SAMPLES_NONE()
+AAE_DRIVER_ART(tempestart)
+AAE_DRIVER_CPUS(
+	AAE_CPU_ENTRY(
+		/*type*/     CPU_M6502,
+		/*freq*/     1512000,
+		/*div*/      100,
+		/*ipf*/      4,
+		/*int type*/ INT_TYPE_INT,
+		/*int cb*/   &tempest_interrupt,
+		/*r8*/       TempestRead,
+		/*w8*/       TempestWrite,
+		/*pr*/       nullptr,
+		/*pw*/       nullptr,
+		/*r16*/      nullptr,
+		/*w16*/      nullptr
+	),
+	AAE_CPU_NONE_ENTRY(),
+	AAE_CPU_NONE_ENTRY(),
+	AAE_CPU_NONE_ENTRY()
+)
+AAE_DRIVER_VIDEO_CORE(60, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_ROTATE_270)
+AAE_DRIVER_SCREEN(1024, 768, 0, 580, 0, 570)
+AAE_DRIVER_RASTER_NONE()
+AAE_DRIVER_HISCORE_NONE()
+AAE_DRIVER_VECTORRAM(0x2000, 0x1000)
+AAE_DRIVER_NVRAM(atari_vg_earom_handler)
+AAE_DRIVER_END()
+
+// Vector Breakout (1999 Clay Cowgill)
+AAE_DRIVER_BEGIN(drv_vbrakout, "vbrakout", "Vector Breakout (1999 Clay Cowgill)")
+AAE_DRIVER_ROM(rom_vbrakout)
+AAE_DRIVER_FUNCS(&init_vbrakout, &run_tempest, &end_tempest)
+AAE_DRIVER_INPUT(input_ports_tempest)
+AAE_DRIVER_SAMPLES_NONE()
+AAE_DRIVER_ART(tempestart)
+AAE_DRIVER_CPUS(
+	AAE_CPU_ENTRY(
+		/*type*/     CPU_M6502,
+		/*freq*/     1512000,
+		/*div*/      100,
+		/*ipf*/      4,
+		/*int type*/ INT_TYPE_INT,
+		/*int cb*/   &tempest_interrupt,
+		/*r8*/       TempestRead,       // init_vbrakout()
+		/*w8*/       TempestWrite,
+		/*pr*/       nullptr,
+		/*pw*/       nullptr,
+		/*r16*/      nullptr,
+		/*w16*/      nullptr
+	),
+	AAE_CPU_NONE_ENTRY(),
+	AAE_CPU_NONE_ENTRY(),
+	AAE_CPU_NONE_ENTRY()
+)
+AAE_DRIVER_VIDEO_CORE(60, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_ROTATE_270)
+AAE_DRIVER_SCREEN(1024, 768, 0, 580, 0, 570)
+AAE_DRIVER_RASTER_NONE()
+AAE_DRIVER_HISCORE_NONE()
+AAE_DRIVER_VECTORRAM(0x2000, 0x1000)
+AAE_DRIVER_NVRAM(atari_vg_earom_handler)
+AAE_DRIVER_END()
+
+// Vortex (Tempest Beta)
+AAE_DRIVER_BEGIN(drv_vortex, "vortex", "Vortex (Tempest Beta)")
+AAE_DRIVER_ROM(rom_vortex)
+AAE_DRIVER_FUNCS(&init_tempest, &run_tempest, &end_tempest)
+AAE_DRIVER_INPUT(input_ports_tempest)
+AAE_DRIVER_SAMPLES_NONE()
+AAE_DRIVER_ART(tempestart)
+AAE_DRIVER_CPUS(
+AAE_CPU_ENTRY(
+/*type*/     CPU_M6502,
+/*freq*/     1512000,
+/*div*/      100,
+/*ipf*/      4,
+/*int type*/ INT_TYPE_INT,
+/*int cb*/   &tempest_interrupt,
+/*r8*/       TempestRead,
+/*w8*/       TempestWrite,
+/*pr*/       nullptr,
+/*pw*/       nullptr,
+/*r16*/      nullptr,
+/*w16*/      nullptr
+),
+AAE_CPU_NONE_ENTRY(),
+AAE_CPU_NONE_ENTRY(),
+AAE_CPU_NONE_ENTRY()
+)
+AAE_DRIVER_VIDEO_CORE(60, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_ROTATE_270)
+AAE_DRIVER_SCREEN(1024, 768, 0, 580, 0, 570)
+AAE_DRIVER_RASTER_NONE()
+AAE_DRIVER_HISCORE_NONE()
+AAE_DRIVER_VECTORRAM(0x2000, 0x1000)
+AAE_DRIVER_NVRAM(atari_vg_earom_handler)
+AAE_DRIVER_END()
+
+AAE_REGISTER_DRIVER(drv_tempestm)
+AAE_REGISTER_DRIVER(drv_tempest)
+AAE_REGISTER_DRIVER(drv_tempest3)
+AAE_REGISTER_DRIVER(drv_tempest2)
+AAE_REGISTER_DRIVER(drv_tempest1)
+AAE_REGISTER_DRIVER(drv_temptube)
+AAE_REGISTER_DRIVER(drv_aliensv)
+AAE_REGISTER_DRIVER(drv_vbrakout)
+AAE_REGISTER_DRIVER(drv_vortex)

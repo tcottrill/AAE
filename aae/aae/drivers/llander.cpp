@@ -13,8 +13,9 @@
 
 /* Lunar Lander Emu */
 
-#include "llander.h"
 #include "aae_mame_driver.h"
+#include "driver_registry.h"    // AAE_REGISTER_DRIVER
+#include "llander.h"
 #include "old_mame_vecsim_dvg.h"
 
 static int ldvggo = 0;
@@ -29,6 +30,7 @@ void llander_interrupt()
 	// Turn off interrupts if self-test is enabled
 	if (readinputport(0) & 0x02)
 	{
+		LOG_INFO("LANDER INT CALLED");
 		cpu_do_int_imm(CPU0, INT_TYPE_NMI);
 	}
 }
@@ -169,7 +171,7 @@ MEM_ADDR(0x3200, 0x3200, ll_led_write)
 MEM_ADDR(0x3400, 0x3400, watchdog_reset_w)
 MEM_ADDR(0x3c00, 0x3c00, llander_sounds_w)
 MEM_ADDR(0x3e00, 0x3e00, llander_snd_reset_w)
-MEM_ADDR(0x4000, 0x47ff, MWA_RAM )
+MEM_ADDR(0x4000, 0x47ff, MWA_RAM)
 MEM_ADDR(0x4800, 0x5fff, MWA_ROM)
 MEM_ADDR(0x6000, 0x7fff, MWA_ROM)
 MEM_END
@@ -181,8 +183,8 @@ MEM_ADDR(0x2400, 0x2407, llander_IN1_r)
 MEM_ADDR(0x2800, 0x2803, llander_DSW1_r)
 MEM_ADDR(0x2c00, 0x2c00, ip_port_3_r)
 MEM_ADDR(0x4000, 0x47ff, MRA_RAM)
-MEM_ADDR(0x4800, 0x5fff, MRA_ROM ) /* vector rom */
-MEM_ADDR(0x6000, 0x7fff, MRA_ROM )
+MEM_ADDR(0x4800, 0x5fff, MRA_ROM) /* vector rom */
+MEM_ADDR(0x6000, 0x7fff, MRA_ROM)
 MEM_END
 
 void run_llander()
@@ -221,7 +223,7 @@ void run_llander()
 /////////////////// MAIN() for program ///////////////////////////////////////////////////
 int init_llander()
 {
-	init6502(LlanderRead, LlanderWrite, 0x7fff, CPU0);
+	//init6502(LlanderRead, LlanderWrite, 0x7fff, CPU0);
 
 	/*
 	if (config.artwork){
@@ -234,7 +236,6 @@ int init_llander()
 	make_single_bitmap( &art_tex[6],"lunarcom.png","llander.zip");
 	}
 	*/
-	
 	sample_start(1, 0, 1);
 	sample_set_volume(1, 5);
 
@@ -245,4 +246,202 @@ int init_llander()
 void end_llander()
 {
 }
+
+static const char* llander_samples[] = {
+	"llander.zip",
+	"lthrust.wav",
+	"beep.wav",
+	"lexplode.wav",
+	"lander6k.wav",
+	 0 };
+
+//Lunar Lander Input Ports
+INPUT_PORTS_START(llander)
+PORT_START("IN0") /* IN0 */
+/* Bit 0 is VG_HALT, handled in the machine dependant part */
+PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_UNKNOWN)
+PORT_BITX(0x02, 0x02, IPT_DIPSWITCH_NAME | IPF_TOGGLE, DEF_STR(Service_Mode), OSD_KEY_F2, IP_JOY_NONE)
+PORT_DIPSETTING(0x02, DEF_STR(Off))
+PORT_DIPSETTING(0x00, DEF_STR(On))
+PORT_BIT(0x04, IP_ACTIVE_LOW, IPT_TILT)
+/* Of the rest, Bit 6 is the 3KHz source. 3,4 and 5 are unknown */
+PORT_BIT(0x78, IP_ACTIVE_LOW, IPT_UNKNOWN)
+PORT_BITX(0x80, IP_ACTIVE_LOW, IPT_SERVICE, "Diagnostic Step", OSD_KEY_F1, IP_JOY_NONE)
+
+PORT_START("IN1") /* IN1 */
+PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_START1)
+PORT_BIT(0x02, IP_ACTIVE_LOW, IPT_COIN1)
+PORT_BIT(0x04, IP_ACTIVE_HIGH, IPT_COIN2)
+PORT_BIT(0x08, IP_ACTIVE_LOW, IPT_COIN3)
+PORT_BITX(0x10, IP_ACTIVE_HIGH, IPT_START2, "Select Game", IP_KEY_DEFAULT, IP_JOY_DEFAULT)
+PORT_BITX(0x20, IP_ACTIVE_HIGH, IPT_BUTTON1, "Abort", IP_KEY_DEFAULT, IP_JOY_DEFAULT)
+PORT_BIT(0x40, IP_ACTIVE_HIGH, IPT_JOYSTICK_RIGHT | IPF_2WAY)
+PORT_BIT(0x80, IP_ACTIVE_HIGH, IPT_JOYSTICK_LEFT | IPF_2WAY)
+
+PORT_START("DSW1") /* DSW1 */
+PORT_DIPNAME(0x03, 0x01, "Right Coin")
+PORT_DIPSETTING(0x00, "*1")
+PORT_DIPSETTING(0x01, "*4")
+PORT_DIPSETTING(0x02, "*5")
+PORT_DIPSETTING(0x03, "*6")
+PORT_DIPNAME(0x0c, 0x00, "Language")
+PORT_DIPSETTING(0x00, "English")
+PORT_DIPSETTING(0x04, "French")
+PORT_DIPSETTING(0x08, "Spanish")
+PORT_DIPSETTING(0x0c, "German")
+PORT_DIPNAME(0x20, 0x00, DEF_STR(Coinage))
+PORT_DIPSETTING(0x00, "Normal")
+PORT_DIPSETTING(0x20, DEF_STR(Free_Play))
+PORT_DIPNAME(0xd0, 0x80, "Fuel units")
+PORT_DIPSETTING(0x00, "450")
+PORT_DIPSETTING(0x40, "600")
+PORT_DIPSETTING(0x80, "750")
+PORT_DIPSETTING(0xc0, "900")
+PORT_DIPSETTING(0x10, "1100")
+PORT_DIPSETTING(0x50, "1300")
+PORT_DIPSETTING(0x90, "1550")
+PORT_DIPSETTING(0xd0, "1800")
+
+/* The next one is a potentiometer */
+PORT_START("IN3")/* IN3 */
+PORT_ANALOGX(0xff, 0x00, IPT_PADDLE | IPF_REVERSE, 100, 10, 0, 0, 255, OSD_KEY_UP, OSD_KEY_DOWN, OSD_JOY_UP, OSD_JOY_DOWN)
+INPUT_PORTS_END
+
+INPUT_PORTS_START(llander1)
+PORT_START("IN0") /* IN0 */
+/* Bit 0 is VG_HALT, handled in the machine dependant part */
+PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_UNKNOWN)
+PORT_BITX(0x02, 0x02, IPT_DIPSWITCH_NAME | IPF_TOGGLE, DEF_STR(Service_Mode), OSD_KEY_F2, IP_JOY_NONE)
+PORT_DIPSETTING(0x02, DEF_STR(Off))
+PORT_DIPSETTING(0x00, DEF_STR(On))
+PORT_BIT(0x04, IP_ACTIVE_LOW, IPT_TILT)
+/* Of the rest, Bit 6 is the 3KHz source. 3,4 and 5 are unknown */
+PORT_BIT(0x78, IP_ACTIVE_LOW, IPT_UNKNOWN)
+PORT_BITX(0x80, IP_ACTIVE_LOW, IPT_SERVICE, "Diagnostic Step", OSD_KEY_F1, IP_JOY_NONE)
+
+PORT_START("IN1") /* IN1 */
+PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_START1)
+PORT_BIT(0x02, IP_ACTIVE_LOW, IPT_COIN1)
+PORT_BIT(0x04, IP_ACTIVE_HIGH, IPT_COIN2)
+PORT_BIT(0x08, IP_ACTIVE_LOW, IPT_COIN3)
+PORT_BITX(0x10, IP_ACTIVE_HIGH, IPT_START2, "Select Game", IP_KEY_DEFAULT, IP_JOY_DEFAULT)
+PORT_BITX(0x20, IP_ACTIVE_HIGH, IPT_BUTTON1, "Abort", IP_KEY_DEFAULT, IP_JOY_DEFAULT)
+PORT_BIT(0x40, IP_ACTIVE_HIGH, IPT_JOYSTICK_RIGHT | IPF_2WAY)
+PORT_BIT(0x80, IP_ACTIVE_HIGH, IPT_JOYSTICK_LEFT | IPF_2WAY)
+
+PORT_START("DSW1") /* DSW1 */
+PORT_DIPNAME(0x03, 0x01, "Right Coin")
+PORT_DIPSETTING(0x00, "*1")
+PORT_DIPSETTING(0x01, "*4")
+PORT_DIPSETTING(0x02, "*5")
+PORT_DIPSETTING(0x03, "*6")
+PORT_DIPNAME(0x0c, 0x00, "Language")
+PORT_DIPSETTING(0x00, "English")
+PORT_DIPSETTING(0x04, "French")
+PORT_DIPSETTING(0x08, "Spanish")
+PORT_DIPSETTING(0x0c, "German")
+PORT_DIPNAME(0x10, 0x00, DEF_STR(Coinage))
+PORT_DIPSETTING(0x00, "Normal")
+PORT_DIPSETTING(0x10, DEF_STR(Free_Play))
+PORT_DIPNAME(0xc0, 0x80, "Fuel units")
+PORT_DIPSETTING(0x00, "450")
+PORT_DIPSETTING(0x40, "600")
+PORT_DIPSETTING(0x80, "750")
+PORT_DIPSETTING(0xc0, "900")
+
+/* The next one is a potentiometer */
+PORT_START("IN3") /* IN3 */
+PORT_ANALOGX(0xff, 0x00, IPT_PADDLE | IPF_REVERSE, 100, 10, 0, 0, 255, OSD_KEY_UP, OSD_KEY_DOWN, OSD_JOY_UP, OSD_JOY_DOWN)
+INPUT_PORTS_END
+
+// Lunar Lander ROMSETS
+ROM_START(llander)
+ROM_REGION(0x8000, REGION_CPU1, 0)
+// Vector ROM
+ROM_LOAD("034599-01.r3", 0x4800, 0x0800, CRC(355a9371) SHA1(6ecb40169b797d9eb623bcb17872f745b1bf20fa))
+ROM_LOAD("034598-01.np3", 0x5000, 0x0800, CRC(9c4ffa68) SHA1(eb4ffc289d254f699f821df3146aa2c6cd78597f))
+ROM_LOAD("034597-01.m3", 0x5800, 0x0800, CRC(ebb744f2) SHA1(e685b094c1261a351e4e82dfb487462163f136a4)) // Built from original Atari source code
+
+ROM_LOAD("034572-02.f1", 0x6000, 0x0800, CRC(b8763eea) SHA1(5a15eaeaf825ccdf9ce013a6789cf51da20f785c))
+ROM_LOAD("034571-02.de1", 0x6800, 0x0800, CRC(77da4b2f) SHA1(4be6cef5af38734d580cbfb7e4070fe7981ddfd6))
+ROM_LOAD("034570-01.c1", 0x7000, 0x0800, CRC(2724e591) SHA1(ecf4430a0040c227c896aa2cd81ee03960b4d641))
+ROM_LOAD("034569-02.b1", 0x7800, 0x0800, CRC(72837a4e) SHA1(9b21ba5e1518079c326ca6e15b9993e6c4483caa))
+ROM_RELOAD(0xf800, 0x0800)	/* for reset/interrupt vectors */
+// DVG PROM
+ROM_REGION(0x100, REGION_PROMS, 0)
+ROM_LOAD("034602-01.c8", 0x0000, 0x0100, CRC(97953db8) SHA1(8cbded64d1dd35b18c4d5cece00f77e7b2cab2ad))
+ROM_END
+
+ROM_START(llander1)
+ROM_REGION(0x8000, REGION_CPU1, 0)
+// Vector ROM
+ROM_LOAD("034599-01.r3", 0x4800, 0x0800, CRC(355a9371) SHA1(6ecb40169b797d9eb623bcb17872f745b1bf20fa))
+ROM_LOAD("034598-01.np3", 0x5000, 0x0800, CRC(9c4ffa68) SHA1(eb4ffc289d254f699f821df3146aa2c6cd78597f))
+ROM_LOAD("034597-01.m3", 0x5800, 0x0800, CRC(ebb744f2) SHA1(e685b094c1261a351e4e82dfb487462163f136a4)) // Built from original Atari source code
+
+ROM_LOAD("034572-01.f1", 0x6000, 0x0800, CRC(2aff3140) SHA1(4fc8aae640ce655417c11d9a3121aae9a1238e7c))
+ROM_LOAD("034571-01.de1", 0x6800, 0x0800, CRC(493e24b7) SHA1(125a2c335338ccabababef12fd7096ef4b605a31))
+ROM_LOAD("034570-01.c1", 0x7000, 0x0800, CRC(2724e591) SHA1(ecf4430a0040c227c896aa2cd81ee03960b4d641))
+ROM_LOAD("034569-01.b1", 0x7800, 0x0800, CRC(b11a7d01) SHA1(8f2935dbe04ee68815d69ea9e71853b5a145d7c3))
+ROM_RELOAD(0xf800, 0x0800)	/* for reset/interrupt vectors */
+// DVG PROM
+ROM_REGION(0x100, REGION_PROMS, 0)
+ROM_LOAD("034602-01.c8", 0x0000, 0x0100, CRC(97953db8) SHA1(8cbded64d1dd35b18c4d5cece00f77e7b2cab2ad))
+ROM_END
+
+AAE_DRIVER_BEGIN(llander, "llander", "Lunar Lander")
+AAE_DRIVER_ROM(rom_llander)
+AAE_DRIVER_FUNCS(init_llander, run_llander, end_llander)
+AAE_DRIVER_INPUT(input_ports_llander)
+AAE_DRIVER_SAMPLES(llander_samples)
+AAE_DRIVER_ART(nullptr)
+AAE_DRIVER_CPUS(
+	AAE_CPU_ENTRY(CPU_M6502, 1512000, 100, 6, INT_TYPE_NMI, llander_interrupt,
+		LlanderRead, LlanderWrite, nullptr, nullptr, nullptr, nullptr),
+	AAE_CPU_NONE_ENTRY(),
+	AAE_CPU_NONE_ENTRY(),
+	AAE_CPU_NONE_ENTRY()
+)
+// Vector video
+AAE_DRIVER_VIDEO_CORE(40, VIDEO_TYPE_VECTOR | VECTOR_USES_BW, ORIENTATION_DEFAULT)
+AAE_DRIVER_SCREEN(1024, 768, 0, 1044, -80, 780)
+// Vector game => no raster decode/palette conversion
+AAE_DRIVER_RASTER_NONE()
+// No hiscore yet
+AAE_DRIVER_HISCORE_NONE()
+// Vector RAM base/size (match your current values)
+AAE_DRIVER_VECTORRAM(0x4000, 0x800)
+// No NVRAM handler
+AAE_DRIVER_NVRAM_NONE()
+AAE_DRIVER_END()
+
+
+AAE_DRIVER_BEGIN(llander1, "llander1", "Lunar Lander (Revision 1)")
+AAE_DRIVER_ROM(rom_llander1)
+AAE_DRIVER_FUNCS(init_llander, run_llander, end_llander)
+AAE_DRIVER_INPUT(input_ports_llander)
+AAE_DRIVER_SAMPLES(llander_samples)
+AAE_DRIVER_ART(nullptr)
+AAE_DRIVER_CPUS(
+	AAE_CPU_ENTRY(CPU_M6502, 1512000, 100, 6, INT_TYPE_NMI, llander_interrupt,
+		LlanderRead, LlanderWrite, nullptr, nullptr, nullptr, nullptr),
+	AAE_CPU_NONE_ENTRY(),
+	AAE_CPU_NONE_ENTRY(),
+	AAE_CPU_NONE_ENTRY()
+)
+// Vector video
+AAE_DRIVER_VIDEO_CORE(40, VIDEO_TYPE_VECTOR | VECTOR_USES_BW, ORIENTATION_DEFAULT)
+AAE_DRIVER_SCREEN(1024, 768, 0, 1044, -80, 780)
+// Vector game => no raster decode/palette conversion
+AAE_DRIVER_RASTER_NONE()
+// No hiscore yet
+AAE_DRIVER_HISCORE_NONE()
+// Vector RAM base/size (match your current values)
+AAE_DRIVER_VECTORRAM(0x4000, 0x800)
+// No NVRAM handler
+AAE_DRIVER_NVRAM_NONE()
+AAE_DRIVER_END()
+
+AAE_REGISTER_DRIVER(llander)
+AAE_REGISTER_DRIVER(llander1)
 //////////////////  END OF MAIN PROGRAM /////////////////////////////////////////////

@@ -105,8 +105,10 @@
       public:
           GameList();
           explicit GameList(const AAEDriver* list);          // build immediately
+          explicit GameList(const std::vector<const AAEDriver*>& reg); // NEW
 
           void              build(const AAEDriver* drivers); // (re)build
+          void              build(const std::vector<const AAEDriver*>& reg);
           std::size_t       size() const;
 
           GameNode* head();

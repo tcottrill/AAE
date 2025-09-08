@@ -1,8 +1,6 @@
-
 //#include <Windows.h>
 #include "framework.h"
 #include "sys_log.h"
-
 
 bool Calculate(int cx, int cy, RECT& rect)
 {
@@ -43,7 +41,6 @@ void ClientResize(int nWidth, int nHeight)
 	MoveWindow(hWnd, rcWind.left, rcWind.top, nWidth + ptDiff.x, nHeight + ptDiff.y, TRUE);
 }
 
-
 void Set_ForeGround()
 {
 	HWND hCurrWnd;
@@ -63,8 +60,8 @@ void Set_ForeGround()
 
 void center_window()
 {
-	//   long lWS; 
-	//    long lWSEX; 
+	//   long lWS;
+	//    long lWSEX;
 
 	HWND wnd = win_get_window();
 	HWND desktop = GetDesktopWindow();
@@ -97,9 +94,7 @@ void center_window()
 	//THIS IS JUST FOR TESTING PURPOSES!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 	//Update window
 	//SetWindowPos(wnd,HWND_TOP,0,SCREEN_H,SCREEN_W,SCREEN_H,SWP_SHOWWINDOW );
-
 }
-
 
 void SetTopMost(const bool TopMost)
 {
@@ -109,17 +104,14 @@ void SetTopMost(const bool TopMost)
 	//SetWindowPos(hWnd, HWND_TOP, 0, 0, 1920, 1080, SWP_NOMOVE | SWP_NOSIZE);//SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
-
 void setwindow()
 {
 	::SetWindowLong(win_get_window(), GWL_STYLE, ::GetWindowLong(win_get_window(), GWL_STYLE) & ~(WS_BORDER | WS_DLGFRAME | WS_THICKFRAME));
 	::SetWindowLong(win_get_window(), GWL_EXSTYLE, ::GetWindowLong(win_get_window(), GWL_EXSTYLE) & ~WS_EX_DLGMODALFRAME);
 }
 
-
-
 // Get the horizontal and vertical screen sizes in pixel
-void GetDesktopResolution(int &horizontal, int &vertical)
+void GetDesktopResolution(int& horizontal, int& vertical)
 {
 	RECT desktop;
 	// Get a handle to the desktop window
@@ -132,9 +124,6 @@ void GetDesktopResolution(int &horizontal, int &vertical)
 	horizontal = desktop.right;
 	vertical = desktop.bottom;
 }
-
-
-
 
 void GetRefresh()
 {
@@ -158,13 +147,11 @@ void GetRefresh()
 		{
 			LOG_INFO("Primary Monitor refresh rate: %d", dm.dmDisplayFrequency);
 		}
-
 	}
 }
 
-
 //--------------------------------------------------------------------------------------
-// Limit the current thread to one processor (the current one). This ensures that timing code 
+// Limit the current thread to one processor (the current one). This ensures that timing code
 // runs on only one processor, and will not suffer any ill effects from power management.
 // See "Game Timing and Multicore Processors" for more details
 //--------------------------------------------------------------------------------------
@@ -194,8 +181,7 @@ void LimitThreadAffinityToCurrentProc()
 	CloseHandle(hCurrentProcess);
 }
 
-
-static void toggleKey(int key) 
+static void toggleKey(int key)
 {
 	// Simulate a key press
 	keybd_event(key, 0, 0, 0);
@@ -217,7 +203,6 @@ void force_all_kbdleds_off()
 	// Check Scroll Lock state
 	SHORT scrollLockState = GetKeyState(VK_SCROLL);
 	if (scrollLockState & 0x0001)	toggleKey(VK_SCROLL);
-
 }
 */
 //============================================================
@@ -289,7 +274,6 @@ void osd_set_leds(int state)
 		keybd_event(VK_SCROLL, 0x46, KEYEVENTF_KEYUP, 0);
 	}
 	key_states[VK_SCROLL] = (key_states[VK_SCROLL] & ~1) | newstate;
-
 }
 
 */

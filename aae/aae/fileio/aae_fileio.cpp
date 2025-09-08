@@ -8,7 +8,6 @@
 #include "aae_mame_driver.h"
 #include "memory.h"
 #include "path_helper.h"
-#include "gameroms.h"
 #include "sha-1.h"
 #include "iniFile.h"
 #include <filesystem> 
@@ -325,6 +324,7 @@ bool save_zip_file(const char* archname, const char* filename, const unsigned ch
 //  Added better ROM_RELOAD support
 //  Added NON-MAME crc and SHA-1 checking. 
 //  Not the cleanest code, but it's working. 
+//  Added missing  ret = EXIT_FAILURE's. (9/2/25)
 
 int load_roms(const char* archname, const struct RomModule* p)
 {
@@ -361,21 +361,22 @@ int load_roms(const char* archname, const struct RomModule* p)
     status = mz_zip_reader_init_file(&zip_archive, temppath.c_str(), 0);
     if (!status) {
         LOG_ERROR("Zip File %s failed to open. Archive missing?", archname);
+        ret = EXIT_FAILURE;
         goto end;
     }
 
     //Start Loading ROMS HERE////
     DLOG("ROM_START(%s)", archname);
-    //LOG_INFO("starting with romsize = %d romsize 1 = %d",p[0].romSize,p[1].romSize);
+    LOG_INFO("starting with romsize = %d romsize 1 = %d",p[0].romSize,p[1].romSize);
     for (i = 0; p[i].romSize > 0; i += 1)
     {
         //   Check for ROM_REGION: IF SO, decode and skip
         if (p[i].loadAddr == ROM_REGION_START)
         {
             // This is temporary, to help me build romsets with the correct SHA without typing
-            //LOG_INFO("ROM_REGION(0x%04x, %s)", p[i].romSize, rom_regions[p[i].loadtype]);
+           // LOG_INFO("ROM_REGION(0x%04x, %s, Disposable %d)", p[i].romSize, rom_regions[p[i].loadtype], p[i].disposable);
             //Allocate Memory for this region
-            new_memory_region(p[i].loadtype, p[i].romSize);
+            new_memory_region(p[i].loadtype, p[i].romSize, p[i].disposable);
             cpunum = p[i].loadtype;
         }
         else {
@@ -391,10 +392,11 @@ int load_roms(const char* archname, const struct RomModule* p)
                 }
                 file_index = mz_zip_reader_locate_file(&zip_archive, last_reload_filename, 0, 0);
                 ////// TEMP PRINTING
-                //LOG_INFO("ROM_RELOAD(0x%04x, 0x%04x)", p[i].loadAddr, p[i].romSize);
+                LOG_INFO("ROM_RELOAD(0x%04x, 0x%04x)", p[i].loadAddr, p[i].romSize);
             }
             else
             {
+                LOG_INFO("Starting to load Rom: %s", p[i].filename);
                 // Were loading normally, so lets take this opportunity to reset the rom reload filename for reuse. 
                 last_reload_filename = nullptr;
                 file_index = mz_zip_reader_locate_file(&zip_archive, p[i].filename, 0, 0);
@@ -402,6 +404,7 @@ int load_roms(const char* archname, const struct RomModule* p)
 
             if (file_index == -1) {
                 LOG_ERROR("File not found in zip: %s", p[i].filename ? p[i].filename : "<null>");
+                ret = EXIT_FAILURE;
                 goto end;
             }
 

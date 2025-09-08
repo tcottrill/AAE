@@ -21,7 +21,7 @@
   Converted to a Neil Bradley compatible emulator class for use in AAE, July 2020 TC
 */
 
-#define ALLOW_UNDEFINED
+//#define ALLOW_UNDEFINED
 
 
 static const uint8_t parity[0x100] = {

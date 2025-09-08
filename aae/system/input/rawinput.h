@@ -202,9 +202,18 @@ void MyKeyCallback(int key, int scancode, int action, int mods) {
 
 #define KEY_MAX               0xEF  //127 Not!
 
+// Public modifier masks 
+enum RI_Modifiers {
+    RI_MOD_SHIFT = 0x01,
+    RI_MOD_CONTROL = 0x02,
+    RI_MOD_ALT = 0x04,
+    RI_MOD_SUPER = 0x08
+};
 
 #define toUpper(ch) ((ch >= 'a' && ch <='z') ? ch & 0x5f : ch)
 #define RI_MOUSE_HWHEEL 0x0800 
+
+int GetModifierFlags();
 
 // -----------------------------------------------------------------------------
 // Keyboard Callback Support

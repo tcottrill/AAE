@@ -68,6 +68,7 @@ void setup_config() {
     config.screenh = get_config_int("main", "screenh", 768);
     config.exrompath = get_config_string("main", "mame_rom_path", "roms");
     config.hack = get_config_int("main", "hack", 0);
+    config.raster_effect = get_config_string("main", "raster_effect", "NONE");
 
     // Load game-specific overrides for select fields
     temppath = getpathM("ini", 0) + std::string("\\") + Machine->gamedrv->name + ".ini";
@@ -94,6 +95,7 @@ void setup_config() {
         config.m_point = get_config_int("main", "m_point", config.m_point);
         config.linewidth = get_config_float("main", "linewidth", config.linewidth);
         config.pointsize = get_config_float("main", "pointsize", config.pointsize);
+        config.raster_effect = get_config_string("main", "raster_effect", config.raster_effect);
              
         // somegame.ini available - sound override options
         config.psnoise = get_config_int("main", "psnoise", config.psnoise);

@@ -39,7 +39,7 @@ Fpoly::~Fpoly() {
 void Fpoly::addPoly(float x, float y, float size, uint32_t color) {
     float x0 = x * size;
     float y0 = y * size;
-    float x1 = x0 - size;
+    float x1 = x0 + size;
     float y1 = y0 + size;
 
     // Two triangles forming a rectangle (quad)

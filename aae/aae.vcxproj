@@ -118,7 +118,7 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>NDEBUG;_WINDOWS;GLEW_STATIC;_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR;WIN7BUILD;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>NDEBUG;_WINDOWS;GLEW_STATIC;_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <LanguageStandard_C>stdc17</LanguageStandard_C>
@@ -140,6 +140,7 @@
     <ClInclude Include="aae\aae_video\gl_shader.h" />
     <ClInclude Include="aae\aae_video\gl_texturing.h" />
     <ClInclude Include="aae\aae_video\shader_definitions.h" />
+    <ClInclude Include="aae\aae_video\tiled_effect.h" />
     <ClInclude Include="aae\aae_video\vector_draw.h" />
     <ClInclude Include="aae\aae_video\vector_fonts.h" />
     <ClInclude Include="aae\acommon.h" />
@@ -149,9 +150,13 @@
     <ClInclude Include="aae\cpu_code\68000\m68kcpu.h" />
     <ClInclude Include="aae\cpu_code\68000\m68kops.h" />
     <ClInclude Include="aae\cpu_code\68000\mem68k.h" />
-    <ClInclude Include="aae\cpu_code\ccpu.h" />
+    <ClInclude Include="aae\cpu_code\ccpu.h">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+    </ClInclude>
     <ClInclude Include="aae\cpu_code\cpu_6502.h" />
-    <ClInclude Include="aae\cpu_code\cpu_6809.h" />
+    <ClInclude Include="aae\cpu_code\cpu_6809.h">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+    </ClInclude>
     <ClInclude Include="aae\cpu_code\cpu_control.h" />
     <ClInclude Include="aae\cpu_code\cpu_i8080.h" />
     <ClInclude Include="aae\cpu_code\cpu_z80.h" />
@@ -162,25 +167,32 @@
     <ClInclude Include="aae\drivers\bwidow.h" />
     <ClInclude Include="aae\drivers\bzone.h" />
     <ClInclude Include="aae\drivers\cinematronics_driver.h" />
+    <ClInclude Include="aae\drivers\galaga.h" />
+    <ClInclude Include="aae\drivers\galaxian_driver.h" />
     <ClInclude Include="aae\drivers\invaders.h" />
     <ClInclude Include="aae\drivers\llander.h" />
     <ClInclude Include="aae\drivers\mhavoc.h" />
+    <ClInclude Include="aae\drivers\milliped.h" />
+    <ClInclude Include="aae\drivers\missile.h" />
+    <ClInclude Include="aae\drivers\namco_stars.h" />
     <ClInclude Include="aae\drivers\omegrace.h" />
+    <ClInclude Include="aae\drivers\pacman.h" />
     <ClInclude Include="aae\drivers\quantum.h" />
     <ClInclude Include="aae\drivers\rallyx.h" />
     <ClInclude Include="aae\drivers\segag80.h" />
     <ClInclude Include="aae\drivers\starwars.h" />
     <ClInclude Include="aae\drivers\tempest.h" />
+    <ClInclude Include="aae\drivers\vicdual.h" />
+    <ClInclude Include="aae\drivers\warlord.h" />
+    <ClInclude Include="aae\driver_compat.h" />
+    <ClInclude Include="aae\driver_macros.h" />
+    <ClInclude Include="aae\driver_registry.h" />
     <ClInclude Include="aae\fileio\aae_fileio.h" />
     <ClInclude Include="aae\fileio\mame_fileio.h" />
     <ClInclude Include="aae\fileio\sha-1.h" />
     <ClInclude Include="aae\fileio\texture_handler.h" />
     <ClInclude Include="aae\fpsclass.h" />
     <ClInclude Include="aae\gameart.h" />
-    <ClInclude Include="aae\gamedriver.h" />
-    <ClInclude Include="aae\gamekeys.h" />
-    <ClInclude Include="aae\gameroms.h" />
-    <ClInclude Include="aae\gamesamp.h" />
     <ClInclude Include="aae\game_list.h" />
     <ClInclude Include="aae\inptport.h" />
     <ClInclude Include="aae\machine\earom.h" />
@@ -199,7 +211,9 @@
     <ClInclude Include="aae\sndhrdwr\aae_pokey.h" />
     <ClInclude Include="aae\sndhrdwr\ay8910.h" />
     <ClInclude Include="aae\sndhrdwr\cinematronics_sound.h" />
+    <ClInclude Include="aae\sndhrdwr\galsnd_stream.h" />
     <ClInclude Include="aae\sndhrdwr\namco.h" />
+    <ClInclude Include="aae\sndhrdwr\okim6295_loader.h" />
     <ClInclude Include="aae\sndhrdwr\segag80snd.h" />
     <ClInclude Include="aae\sndhrdwr\starwars_snd.h" />
     <ClInclude Include="aae\sndhrdwr\tms5220.h" />
@@ -209,9 +223,15 @@
     <ClInclude Include="aae\vidhrdwr\cohen_sutherland_clipping.h" />
     <ClInclude Include="aae\vidhrdwr\emu_vector_draw.h" />
     <ClInclude Include="aae\vidhrdwr\fast_poly.h" />
-    <ClInclude Include="aae\vidhrdwr\mhavoc_custom_video.h" />
+    <ClInclude Include="aae\vidhrdwr\galaxian_vid.h" />
+    <ClInclude Include="aae\vidhrdwr\mhavoc_custom_video.h">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+    </ClInclude>
     <ClInclude Include="aae\vidhrdwr\old_mame_raster.h" />
     <ClInclude Include="aae\vidhrdwr\old_mame_vecsim_dvg.h" />
+    <ClInclude Include="aae\vidhrdwr\osd_video.h">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+    </ClInclude>
     <ClInclude Include="aae\vidhrdwr\rallyx_vid.h" />
     <ClInclude Include="aae\vidhrdwr\SegaG80vid.h" />
     <ClInclude Include="system\3rdparty\glew.h" />
@@ -270,13 +290,13 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="aae\aae_emulator.cpp" />
-    <ClCompile Include="aae\aae_mame_driver.cpp" />
     <ClCompile Include="aae\aae_video\fbo.cpp" />
     <ClCompile Include="aae\aae_video\glcode.cpp" />
     <ClCompile Include="aae\aae_video\gl_fbo.cpp" />
     <ClCompile Include="aae\aae_video\gl_prim_debug.cpp" />
     <ClCompile Include="aae\aae_video\gl_shader.cpp" />
     <ClCompile Include="aae\aae_video\gl_texturing.cpp" />
+    <ClCompile Include="aae\aae_video\tiled_effect.cpp" />
     <ClCompile Include="aae\aae_video\vector_draw.cpp" />
     <ClCompile Include="aae\aae_video\vector_fonts.cpp" />
     <ClCompile Include="aae\acommon.cpp" />
@@ -286,9 +306,13 @@
     <ClCompile Include="aae\cpu_code\68000\m68kopdm.cpp" />
     <ClCompile Include="aae\cpu_code\68000\m68kopnz.cpp" />
     <ClCompile Include="aae\cpu_code\68000\m68kops.cpp" />
-    <ClCompile Include="aae\cpu_code\ccpu.cpp" />
+    <ClCompile Include="aae\cpu_code\ccpu.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+    </ClCompile>
     <ClCompile Include="aae\cpu_code\cpu_6502.cpp" />
-    <ClCompile Include="aae\cpu_code\cpu_6809.cpp" />
+    <ClCompile Include="aae\cpu_code\cpu_6809.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+    </ClCompile>
     <ClCompile Include="aae\cpu_code\cpu_control.cpp" />
     <ClCompile Include="aae\cpu_code\cpu_i8080.cpp" />
     <ClCompile Include="aae\cpu_code\cpu_z80.cpp" />
@@ -298,15 +322,24 @@
     <ClCompile Include="aae\drivers\bwidow.cpp" />
     <ClCompile Include="aae\drivers\bzone.cpp" />
     <ClCompile Include="aae\drivers\cinematronics_driver.cpp" />
+    <ClCompile Include="aae\drivers\galaga.cpp" />
+    <ClCompile Include="aae\drivers\galaxian_driver.cpp" />
     <ClCompile Include="aae\drivers\invaders.cpp" />
     <ClCompile Include="aae\drivers\llander.cpp" />
     <ClCompile Include="aae\drivers\mhavoc.cpp" />
+    <ClCompile Include="aae\drivers\milliped.cpp" />
+    <ClCompile Include="aae\drivers\missile.cpp" />
     <ClCompile Include="aae\drivers\omegrace.cpp" />
+    <ClCompile Include="aae\drivers\pacman.cpp" />
     <ClCompile Include="aae\drivers\quantum.cpp" />
     <ClCompile Include="aae\drivers\rallyx.cpp" />
     <ClCompile Include="aae\drivers\segag80.cpp" />
     <ClCompile Include="aae\drivers\starwars.cpp" />
     <ClCompile Include="aae\drivers\tempest.cpp" />
+    <ClCompile Include="aae\drivers\vicdual.cpp" />
+    <ClCompile Include="aae\drivers\warlord.cpp" />
+    <ClCompile Include="aae\driver_compat.cpp" />
+    <ClCompile Include="aae\driver_registry.cpp" />
     <ClCompile Include="aae\fileio\aae_fileio.cpp" />
     <ClCompile Include="aae\fileio\mame_fileio.cpp" />
     <ClCompile Include="aae\fileio\texture_handler.cpp" />
@@ -327,7 +360,9 @@
     <ClCompile Include="aae\sndhrdwr\aae_pokey.cpp" />
     <ClCompile Include="aae\sndhrdwr\ay8910.cpp" />
     <ClCompile Include="aae\sndhrdwr\cinematronics_sound.cpp" />
+    <ClCompile Include="aae\sndhrdwr\galsnd_stream.cpp" />
     <ClCompile Include="aae\sndhrdwr\namco.cpp" />
+    <ClCompile Include="aae\sndhrdwr\okim6295_loader.cpp" />
     <ClCompile Include="aae\sndhrdwr\segag80snd.cpp" />
     <ClCompile Include="aae\sndhrdwr\starwars_snd.cpp" />
     <ClCompile Include="aae\sndhrdwr\tms5220.cpp" />
@@ -336,9 +371,15 @@
     <ClCompile Include="aae\vidhrdwr\cohen_sutherland_clipping.cpp" />
     <ClCompile Include="aae\vidhrdwr\emu_vector_draw.cpp" />
     <ClCompile Include="aae\vidhrdwr\fast_poly.cpp" />
-    <ClCompile Include="aae\vidhrdwr\mhavoc_custom_video.cpp" />
+    <ClCompile Include="aae\vidhrdwr\galaxian_vid.cpp" />
+    <ClCompile Include="aae\vidhrdwr\mhavoc_custom_video.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+    </ClCompile>
     <ClCompile Include="aae\vidhrdwr\old_mame_raster.cpp" />
     <ClCompile Include="aae\vidhrdwr\old_mame_vecsim_dvg.cpp" />
+    <ClCompile Include="aae\vidhrdwr\osd_video.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+    </ClCompile>
     <ClCompile Include="aae\vidhrdwr\rallyx_vid.cpp" />
     <ClCompile Include="aae\vidhrdwr\SegaG80vid.cpp" />
     <ClCompile Include="system\3rdparty\glew.c" />

@@ -227,6 +227,33 @@ Finally defaulted the Coin in and START 1 and Start 2 to Xbox controls, eventual
 8/16/25. More massive changes. Fixed cascading menu exit since the new winmain change. The biggest change is fixing a greater then 10 year old bug with frame timing calcuation and throttling. I changed to default double buffering and no vsync and a new frame timer, so games SHOULD not tear and they seem to run MUCH smoother, so that is the new default until its proven otherwise to be a bad idea. Started doing some minor menu updates.
 Added my new audio engine and updated the TMS audio code to a new cubic resampler, no more crackling and most important, no more memory leaks on either the cubic or linear resampler. Updated the ay8910 code also, it should sound a little bit closer to what it does in MAME with new filters and volume table. 
 
+8/17/25 - 9/1/25
+Where to start. Reverted the vsync change above, it was a bad idea. 
+MAJOR REORGANIZATION: Completely changed every driver by adding a driver registry. Now the code has been reorganised to look like classic MAME with inputports and roms and samples and art in each driver, as well as a local driver config. This looks like MAME, but it's not the classic "C" style, this is a c++ object with no driver.c configuration required. To remove support for a driver, just remove the driver, no other changes needed. 
+Removed gamedriver.h, gamekeys.h, gameroms.h and gamesamp.h
+Made major changes to cpu_interface.cpp. Fixed several timing bugs as well as rewrote cpu_run. get_exact_cyclecount(), now actually returns the current cycle count for the cpu selected, like it's supposed to, go figure. Added 3 new functions, aae_cpu_getscanlinecycles, aae_cpu_getcurrentcycles_in_frame and aae_cpu_getscanline. These mimic the scanline functions in MAME, and were required for depthcharge to work correctly. Corrected some code issues in cpu_z80.cpp,see z80_cpu.h for more details. 
+Added raster drivers for pacman, mspacman, bosconian, galaga, galaxian (sound needs more work) depthcharge and missile command (not working yet)
+Corrected raster_poly_update to really honor the driver rotation. 
+Broke the games in Tempest Menu (Clay Cowgill) , still working on a fix. Made changes to the alpha channel and intensity handling on the AVG games, this fixed a few issues and added more. Still tweaking the settings but mostly affects battlezone and gravitar. 
+I'm getting closer to just forgetting everything and implementing the modern MAME vector engine by Mathis Rosenhauer.
+Added Raster Effects shadow mask shader and associated config setting, but it's slow and the whole graphics chain needs reworked.
+9/2/25
+Added Warlords driver. Still have not implemented vblank, but i'll get there, it's on the backburner. The raster games are just for fun anyways.
+Fixed missing  ret = EXIT_FAILURE's in the rom loaded, emulator now exits correctly if a rom file is not found or corrupt.
+9/4/25 
+Added the equivalent of MAME timer_alloc and timer_adjust to timer.cpp. Added a very simplified version of the MAME palette functions, for palette_recalc. But it didn't help the issues with the driver that has frustrated me for the last two days. Going back to verctor fixes. 
+9/5/25-9/7/25 
+Did another big pass at the vector rendering. This time I fixed multiple issues, all vectors should look better on must screens, at least with tweaking. The asteroid and asteroid deluxe shots still look like crap, I'll get that corrected on the next rendering update. 
+Added an non-mame oki6295 adpcm chip emulation after 7 iterations and 2 complete restarts with ChatGPT. mhavocpe no longer requires separate samples, it's all decoded from the roms properly now. Added a new low pass filter to use, I'll use it in more code in the future. Made another pass at the LFO code in galaxian, it's better but still not 100%. I'm going to dig out my galaxian pcb and put it in my pacman cocktail to compare to for the final adjustments. I think I have all the sound code fixes out of my system, next is to finish the driver updates, centralize the CPU setup ala MAME, and then move on to the complete rendering overhaul. 
+Temporarily reinstated the depricated code in render_blur_image_fbo3() to help with the asteroids texture issue. 
+Expect the graphics overhaul to add correct scaling and rotation, as well as a new set of menu options for maximum number of knobs to tune for  every graphics piece. 
+9/8/25 Finished the CPU code cutover to MAME style, still cleaning up.
+
+
+
+
+ 
+
 
 
 

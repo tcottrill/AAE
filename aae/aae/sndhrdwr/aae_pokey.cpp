@@ -98,7 +98,7 @@
 // --- Core constants for audio generation ---
 #define NOTPOLY5    0x80
 #define POLY4       0x40
-#define PURE        0x20
+#define PUREA        0x20
 #define VOL_ONLY    0x10
 #define VOLUME_MASK 0x0F
 
@@ -495,7 +495,7 @@ void Pokey_process(short* buffer, uint16_t n)
 			// Toggle logic
 			if (!(audc & VOL_ONLY)) {
 				if ((audc & NOTPOLY5) || poly5[P5]) {
-					if (audc & PURE) {
+					if (audc & PUREA) {
 						toggle = true;
 					}
 					else if (audc & POLY4) {
@@ -594,6 +594,8 @@ int pokey_sh_start(POKEYinterface* intfa) {
 	}
 
 	stream_start(0, 0, 16, Machine->gamedrv->fps);
+	// Honor POKEYinterface.volume (0..255) on the POKEY streaming channel
+	sample_set_volume(0, intf_ptr->volume);
 	return 0;
 }
 
@@ -647,7 +649,7 @@ int Read_pokey_regs(uint16_t addr, uint8_t chip) {
 			uint64_t elapsed_cycles = now - last;
 
 			// Convert CPU cycles to POKEY clocks
-			pokey_clocks = elapsed_cycles * intf_ptr->clock / Machine->drv->cpu_freq[0];
+			pokey_clocks = elapsed_cycles * intf_ptr->clock / Machine->gamedrv->cpu[0].cpu_freq;
 		}
 
 		if (pokey_clocks > 0) {

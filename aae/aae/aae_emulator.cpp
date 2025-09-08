@@ -16,14 +16,12 @@
 #include "aae_mame_driver.h"
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdlib.h>
 #include <malloc.h>
 #include "wintimer.h"
 #include "acommon.h"
 #include "fileio/texture_handler.h"
 #include "config.h"
 #include <mmsystem.h>
-#include "gamedriver.h"
 #include "rand.h"
 #include "glcode.h"
 #include "menu.h"
@@ -41,6 +39,7 @@
 #include <cstring>   // strlen
 #include "utf8conv.h"
 #include "old_mame_raster.h"
+#include "osd_video.h"
 #include "game_list.h"
 //#include <thread>
 //New 2024
@@ -53,6 +52,8 @@
 
 #include <algorithm>
 #include "FrameLimiter.h"
+#include "driver_compat.h"
+#include "driver_registry.h"   // AllDrivers(), FindDriverByName(), AAE_REGISTER_DRIVER
 
 static double g_lastFrameTimestampMs = 0.0;
 
@@ -83,7 +84,10 @@ static bool game_loaded_sentinel = 0;
 int art_loaded[6] = {};
 extern int leds_status;
 
-GameList gamelist(driver);
+//GameList gList(&driver[0]);
+GameList gList;
+
+//AAEDriver* driver = nullptr;
 
 // M.A.M.E. (TM) Variables for testing
 static struct RunningMachine machine;
@@ -126,237 +130,7 @@ static double starttime = 0.0;
 ///////////////////////////////////////  RASTER CODE START  ////////////////////////////////////////////////////
 // This is only a test. Trying out new things.
 
-int vector_game;
-int use_dirty;
-
-//OSD VIDEO THINGS
-int game_width = 0;
-int game_height = 0;
-int game_attributes = 0;
 float vid_scale = 3.0;
-
-int gfx_mode;
-int gfx_width;
-int gfx_height;
-
-unsigned char current_palette[640][3];
-//static unsigned char current_background_color;
-//static PALETTE adjusted_palette;
-
-//From MAME .30 for VH Hardware
-#define MAX_COLOR_TUPLE 16      /* no more than 4 bits per pixel, for now */
-#define MAX_COLOR_CODES 256     /* no more than 256 color codes, for now */
-static unsigned char remappedtable[MAX_GFX_ELEMENTS * MAX_COLOR_TUPLE * MAX_COLOR_CODES];
-
-//Move to Raster
-void osd_modify_pen(int pen, unsigned char red, unsigned char green, unsigned char blue)
-{
-	if (current_palette[pen][0] != red ||
-		current_palette[pen][1] != green ||
-		current_palette[pen][2] != blue)
-	{
-		current_palette[pen][0] = red;
-		current_palette[pen][1] = green;
-		current_palette[pen][2] = blue;
-	}
-}
-
-//Move to Raster
-void osd_get_pen(int pen, unsigned char* red, unsigned char* green, unsigned char* blue)
-{
-	*red = current_palette[pen][0];
-	*green = current_palette[pen][1];
-	*blue = current_palette[pen][2];
-}
-
-/* Create a display screen, or window, large enough to accomodate a bitmap */
-/* of the given dimensions. Attributes are the ones defined in driver.h. */
-/* palette is an array of 'totalcolors' R,G,B triplets. The function returns */
-/* in *pens the pen values corresponding to the requested colors. */
-/* Return a osd_bitmap pointer or 0 in case of error. */
-struct osd_bitmap* osd_create_display(int width, int height, unsigned int totalcolors,
-	const unsigned char* palette, unsigned char* pens, int attributes)
-{
-	LOG_INFO("New Display width %d, height %d", width, height);
-
-	/* Look if this is a vector game */
-	if (Machine->drv->video_attributes & VIDEO_TYPE_VECTOR)
-	{
-		LOG_INFO("Init: Vector game starting");
-		vector_game = 1;
-		//VECTOR_START();
-	}
-	else
-		vector_game = 0;
-
-	/* Is the game using a dirty system? */
-	if ((Machine->drv->video_attributes & VIDEO_SUPPORTS_DIRTY))
-		use_dirty = 1;
-	else
-		use_dirty = 0;
-
-	//select_display_mode(); //I need to add this
-
-	if (vector_game)
-	{
-		//use_double = 1;
-		/* center display */
-	}
-	else /* center display based on visible area */
-	{
-		struct rectangle vis = Machine->drv->visible_area;
-	}
-
-	game_width = width;
-	game_height = height;
-	game_attributes = attributes;
-
-	//Create the main bitmap screen
-	main_bitmap = osd_create_bitmap(width + 2, height + 2);
-	LOG_INFO("Main Bitmap Created");
-	if (!main_bitmap)
-	{
-		LOG_INFO("Bitmap create failed, why?");
-		return 0;
-	}
-	LOG_INFO("exiting create display");
-	return main_bitmap;
-}
-
-static void vh_close(void)
-{
-	int i;
-
-	for (i = 0; i < MAX_GFX_ELEMENTS; i++) freegfx(Machine->gfx[i]);
-	free(Machine->pens);
-	//osd_close_display();
-}
-
-static int vh_open(void)
-{
-	int i;
-	unsigned char* palette;
-	unsigned char* colortable = nullptr;
-	unsigned char convpalette[3 * MAX_PENS];
-	unsigned char* convtable;
-
-	LOG_INFO("Running vh_open");
-
-	LOG_INFO("MIN Y:%d ", Machine->drv->visible_area.min_y);
-	LOG_INFO("MIN X:%d ", Machine->drv->visible_area.min_x);
-	LOG_INFO("MAX Y:%d ", Machine->drv->visible_area.max_y);
-	LOG_INFO("MAX x:%d ", Machine->drv->visible_area.max_x);
-
-	LOG_INFO("1");
-	convtable = (unsigned char*)malloc(MAX_GFX_ELEMENTS * MAX_COLOR_TUPLE * MAX_COLOR_CODES);
-	if (!convtable) return 1;
-
-	for (i = 0; i < MAX_GFX_ELEMENTS; i++) Machine->gfx[i] = 0;
-
-	LOG_INFO("2");
-	/* convert the gfx ROMs into character sets. This is done BEFORE calling the driver's */
-	/* convert_color_prom() routine because it might need to check the Machine->gfx[] data */
-
-	if (Machine->gamedrv->gfxdecodeinfo)
-	{
-		for (i = 0; i < MAX_GFX_ELEMENTS && Machine->gamedrv->gfxdecodeinfo[i].memory_region != -1; i++)
-		{
-			if ((Machine->gfx[i] = decodegfx(Machine->memory_region[Machine->gamedrv->gfxdecodeinfo[i].memory_region]
-				+ Machine->gamedrv->gfxdecodeinfo[i].start,
-				Machine->gamedrv->gfxdecodeinfo[i].gfxlayout)) == 0)
-			{
-				vh_close();
-				free(convtable);
-				return 1;
-			}
-			LOG_INFO("I here at gfx convert is %d, memregion is %d", i, Machine->gamedrv->gfxdecodeinfo[i].memory_region);
-			Machine->gfx[i]->colortable = &remappedtable[Machine->gamedrv->gfxdecodeinfo[i].color_codes_start];
-			Machine->gfx[i]->total_colors = Machine->gamedrv->gfxdecodeinfo[i].total_color_codes;
-			LOG_INFO("Colortable here is remap table at is %d,total color codes is %d", Machine->gamedrv->gfxdecodeinfo[i].color_codes_start, Machine->gamedrv->gfxdecodeinfo[i].total_color_codes);
-		}
-	}
-	LOG_INFO("3");
-	//Create a default pallet
-	palette = (unsigned char*)malloc(MAX_GFX_ELEMENTS * MAX_COLOR_TUPLE * MAX_COLOR_CODES);
-
-	for (int x = 0; x < (MAX_GFX_ELEMENTS * MAX_COLOR_TUPLE * MAX_COLOR_CODES); x++)
-	{
-		palette[x] = 1;
-	}
-	/* convert the palette */
-	/* now the driver can modify the default values if it wants to. */
-	if (Machine->drv->vh_convert_color_prom)
-	{
-		(*Machine->drv->vh_convert_color_prom)(convpalette, convtable, memory_region(REGION_PROMS));
-		palette = convpalette;
-		colortable = convtable;
-	}
-
-	LOG_INFO("4");
-	/* create the display bitmap, and allocate the palette */
-	if ((Machine->scrbitmap = osd_create_display(
-		Machine->gamedrv->screen_width, Machine->gamedrv->screen_height, Machine->gamedrv->total_colors,
-		palette, Machine->pens, Machine->gamedrv->video_attributes)) == 0)
-	{
-		LOG_INFO("Why is this returning?");
-		free(convtable);
-		exit(1);
-	}
-	else
-	{
-		LOG_INFO("Created Display surface, Width: %d Height: %d", Machine->gamedrv->screen_width, Machine->gamedrv->screen_height);
-	}
-	/* initialize the palette */
-	for (i = 0; i < MAX_COLOR_CODES; i++)
-	{
-		current_palette[i][0] = current_palette[i][1] = current_palette[i][2] = 0;
-	}
-	/* fill the palette starting from the end, so we mess up badly written */
-	/* drivers which don't go through Machine->pens[]
-	NOT DOING THIS, I need to be able to access the palette directly!!
-	*/
-	for (i = 0; i < MAX_PENS; i++) //totalcolors
-	{
-		Machine->pens[i] = i;// 255 - i;
-	}
-
-	LOG_INFO("TotalColors here is %d", Machine->gamedrv->total_colors);
-	for (i = 0; i < Machine->gamedrv->total_colors; i++)
-	{
-		current_palette[Machine->pens[i]][0] = palette[3 * i];
-		current_palette[Machine->pens[i]][1] = palette[3 * i + 1];
-		current_palette[Machine->pens[i]][2] = palette[3 * i + 2];
-	}
-
-	LOG_INFO("Color Table Len %d", Machine->gamedrv->color_table_len);
-	for (i = 0; i < Machine->gamedrv->color_table_len; i++)
-		remappedtable[i] = Machine->pens[colortable[i]];
-
-	//Fix code below so it works
-	/*
-	// free memory regions allocated with REGIONFLAG_DISPOSE (typically gfx roms)
-	for (region = 0; region < MAX_MEMORY_REGIONS; region++)
-	{
-		if (Machine->memory_region_type[region] & REGIONFLAG_DISPOSE)
-		{
-			int i;
-
-			// invalidate contents to avoid subtle bugs
-			for (i = 0; i < memory_region_length(region); i++)
-				memory_region(region)[i] = rand();
-			free(Machine->memory_region[region]);
-			Machine->memory_region[region] = 0;
-		}
-	}
-	*/
-	/* free the graphics ROMs, they are no longer needed */
-	//free(Machine->memory_region[REGION_GFX1]);
-	//Machine->memory_region[REGION_GFX1] = 0;
-
-	free(convtable);
-	LOG_INFO("Returning from vh_open");
-	return 0;
-}
 
 // -----------------------------------------------------------------------------
 // SetGamePerformanceMode
@@ -399,7 +173,6 @@ void SetGamePerformanceMode(const settings& config)
 	else
 		LOG_INFO("Process priority set to %s", priorityName);
 
-
 	// --- Optional Thread Boost ---
 	if (config.boostThread)
 	{
@@ -411,7 +184,6 @@ void SetGamePerformanceMode(const settings& config)
 
 	//DWORD_PTR cores = (1ULL << std::thread::hardware_concurrency()) - 1;
 	//SetThreadAffinityMask(GetCurrentThread(), cores);
-
 }
 
 ///////////////////////////////////////  RASTER CODE END    ////////////////////////////////////////////////////
@@ -438,7 +210,8 @@ void toLowerCase(char* str) {
 
 int run_a_game(int game)
 {
-	Machine->gamedrv = gamedrv = &driver[game];
+	//Machine->gamedrv = gamedrv = &driver[game];
+	Machine->gamedrv = gamedrv = aae::AllDrivers().at(game);
 	Machine->drv = gamedrv;
 	LOG_INFO("Starting game, Driver name now is %s", Machine->gamedrv->name);
 	return 0;
@@ -484,7 +257,10 @@ constexpr int REGION_TAG = 999;
 
 void list_all_roms()
 {
-	if (num_games <= 0) return;
+	const auto& reg = aae::AllDrivers();
+	const int game_count = static_cast<int>(reg.size());
+	if (game_count <= 0) return;
+
 	// ---------------------------------------------------------------------
 	// Dynamic buffer (pre-reserve old malloc size to avoid realloc churn)
 	// ---------------------------------------------------------------------
@@ -494,41 +270,48 @@ void list_all_roms()
 	// ---------------------------------------------------------------------
 	// Local helpers – lambdas capture buf by reference
 	// ---------------------------------------------------------------------
-	const auto append_cstr = [&](const char* s) {buf.insert(buf.end(), s, s + std::strlen(s)); };
-	const auto append_str = [&](const std::string& s) {buf.insert(buf.end(), s.begin(), s.end()); };
-	const auto append_chr = [&](char c) {buf.push_back(c); };
+	const auto append_cstr = [&](const char* s) {
+		if (!s) return;
+		buf.insert(buf.end(), s, s + std::strlen(s));
+		};
+	const auto append_str = [&](const std::string& s) {
+		buf.insert(buf.end(), s.begin(), s.end());
+		};
+	const auto append_chr = [&](char c) {
+		buf.push_back(c);
+		};
 
 	// ---------------------------------------------------------------------
 	// Start of file
 	// ---------------------------------------------------------------------
 	append_cstr("AAE All Games RomList\n");
 
-	for (int g = 0; g < num_games; ++g)
+	for (int g = 0; g < game_count; ++g)
 	{
-		const AAEDriver& drv = driver[g];
-
-		if (!drv.name || !drv.desc || !drv.rom)
-			continue;
+		const AAEDriver* drv = reg[g];
+		if (!drv || !drv->name || !drv->desc || !drv->rom) continue;
 
 		append_cstr("\nGame Name: ");
-		append_cstr(drv.desc);
+		append_cstr(drv->desc);
 		append_cstr(":\nRom  Name: ");
-		append_cstr(drv.name);
+		append_cstr(drv->name);
 		append_cstr(".zip\n");
 
-		LOG_INFO("gamename %s", drv.name);
-		LOG_INFO("gamedesc %s", drv.desc);
+		LOG_INFO("gamename %s", drv->name);
+		LOG_INFO("gamedesc %s", drv->desc);
 
-		for (int r = 0; drv.rom[r].romSize > 0; ++r)
+		for (int r = 0; drv->rom[r].romSize > 0; ++r)
 		{
-			const RomModule& rm = drv.rom[r];
+			const RomModule& rm = drv->rom[r];
 
 			if (rm.loadAddr == REGION_TAG)
 			{
+				const char* region_name =
+					(rm.loadtype >= 0 && rm.loadtype < REGION_MAX) ? rom_regions[rm.loadtype] : "UNKNOWN";
 				std::ostringstream oss;
 				oss << "ROM_REGION(0x"
-					<< std::hex << std::setw(4) << std::setfill('0') << rm.romSize
-					<< ", " << rom_regions[rm.loadtype] << ")\n";
+					<< std::hex << std::uppercase << std::setw(4) << std::setfill('0') << rm.romSize
+					<< ", " << region_name << ")\n";
 				append_str(oss.str());
 				continue;
 			}
@@ -539,24 +322,24 @@ void list_all_roms()
 			if (rm.filename == reinterpret_cast<char*>(-2))
 				append_cstr("ROM_CONTINUE");
 			else
-				append_cstr(rm.filename);
+				append_cstr(rm.filename ? rm.filename : "NULL");
 
 			std::ostringstream oss;
 			oss << " Size: 0x"
-				<< std::hex << std::setw(4) << std::setfill('0') << rm.romSize
+				<< std::hex << std::uppercase << std::setw(4) << std::setfill('0') << rm.romSize
 				<< " Load Addr: 0x"
-				<< std::hex << std::setw(4) << std::setfill('0') << rm.loadAddr
+				<< std::hex << std::uppercase << std::setw(4) << std::setfill('0') << rm.loadAddr
 				<< " CRC: 0x"
-				<< std::hex << std::setw(4) << std::setfill('0') << rm.crc
+				<< std::hex << std::uppercase << std::setw(8) << std::setfill('0') << rm.crc
 				<< " SHA1: " << (rm.sha ? rm.sha : "NULL") << '\n';
 
 			append_str(oss.str());
 		}
 	}
-	// Footer
+
+	// Footer (use actual registry size; drop “-1” unless you intentionally skip an entry)
 	std::ostringstream footer;
-	footer << "\n\nNumber of Games/Clones supported: "
-		<< (num_games - 1) << '\n';
+	footer << "\n\nNumber of Games/Clones supported: " << game_count << '\n';
 	append_str(footer.str());
 
 	// Ensure C-string termination for save routine
@@ -569,20 +352,20 @@ void list_all_roms()
 	save_file_char("AAE All Game Roms List.txt",
 		buf.data(),
 		static_cast<int>(buf.size() - 1));   // exclude null
-	buf.clear();                // clears contents, keeps capacity
-	std::vector<char>().swap(buf);  // optional: truly release memory
+
+	// release memory (optional)
+	std::vector<char>().swap(buf);
 }
 
 /*************************************
  *
  *	Command Line Parsing Function
- *  
+ *
  *************************************/
 
-
-// -----------------------------------------------------------------------------
-// Helper: convert to lowercase
-// -----------------------------------------------------------------------------
+ // -----------------------------------------------------------------------------
+ // Helper: convert to lowercase
+ // -----------------------------------------------------------------------------
 static std::string to_lowercase(const char* str) {
 	std::string s(str ? str : "");
 	std::transform(s.begin(), s.end(), s.begin(),
@@ -616,7 +399,6 @@ void gameparse(int argc, char* argv[])
 		else if (arg == "-verifyroms") list = 2;
 		else if (arg == "-listsamples") list = 3;
 		else if (arg == "-verifysamples") list = 4;
-		else if (arg == "-debug")      config.debug = 1;
 		else if (arg == "-window")     win_override = 3;
 		else if (arg == "-nowindow")   win_override = 2;
 
@@ -643,7 +425,7 @@ void gameparse(int argc, char* argv[])
 	switch (list)
 	{
 		// -------------------------------------------------------------------------
-	case 1: // List ROMs 
+	case 1: // List ROMs
 		logOutput.clear();
 		x = 0;
 		LOG_INFO("%s rom list:", driver[gamenum].name);
@@ -688,7 +470,7 @@ void gameparse(int argc, char* argv[])
 
 		logOutput.clear();
 		x = 0;
-		LOG_INFO("Starting ROM verification for %s", driver[gamenum].name );
+		LOG_INFO("Starting ROM verification for %s", driver[gamenum].name);
 
 		while (driver[gamenum].rom[x].romSize > 0) {
 			const char* fname = driver[gamenum].rom[x].filename;
@@ -722,11 +504,13 @@ void gameparse(int argc, char* argv[])
 		// -------------------------------------------------------------------------
 	case 3: // List Samples
 		logOutput.clear();
-		for (int i = 0; strcmp(driver[gamenum].game_samples[i], "NULL") != 0; i++) {
-			logOutput += driver[gamenum].game_samples[i];
-			logOutput += " ";
+		if (Machine->gamedrv->game_samples) {
+			const char** samples = Machine->gamedrv->game_samples;
+			for (int i = 0; samples[i] && std::strcmp(samples[i], "NULL") != 0; ++i) {
+				logOutput += samples[i];
+			}
 		}
-		LOG_INFO("%s sample list: %s", driver[gamenum].name, logOutput.c_str());
+		LOG_INFO("%s sample list: %s", Machine->gamedrv->name, logOutput.c_str());
 		LogClose();
 		exit(1);
 		break;
@@ -735,26 +519,27 @@ void gameparse(int argc, char* argv[])
 	case 4: // Verify Samples
 		logOutput.clear();
 		LOG_INFO("Starting sample verification...");
-		for (int i = 0; strcmp(driver[gamenum].game_samples[i], "NULL") != 0; i++) {
-			logOutput += driver[gamenum].game_samples[i];
+		LOG_INFO("Starting sample verification.");
+		if (Machine->gamedrv->game_samples) {
+			const char** samples = Machine->gamedrv->game_samples;
+			for (int i = 0; samples[i] && std::strcmp(samples[i], "NULL") != 0; ++i) {
+				logOutput += samples[i];
 
-			retval = verify_sample(driver[gamenum].game_samples, i);
-			switch (retval) {
-			case 0: logOutput += " BAD? "; break;
-			case 1: logOutput += " OK "; break;
-			case 3: logOutput += " BADSIZE "; break;
-			case 4: logOutput += " NOFILE "; break;
-			case 5: logOutput += " NOZIP "; break;
-			default: logOutput += " UNKNOWN "; break;
+				retval = verify_sample(samples, i);
+				switch (retval) {
+				case 0: logOutput += " BAD? "; break;
+				case 1: logOutput += " OK ";    break;
+				case 3: logOutput += " BADSIZE "; break;
+				case 4: logOutput += " NOFILE ";  break;
+				case 5: logOutput += " NOZIP ";   break;
+				default: logOutput += " UNKNOWN "; break;
+				}
+
+				logOutput += (w > 1) ? "\n" : " ";
+				w = (w > 1) ? 0 : w + 1;
 			}
-
-			logOutput += (w > 1) ? "\n" : " ";
-			w = (w > 1) ? 0 : w + 1;
 		}
-		LOG_INFO("%s sample verify: %s", driver[gamenum].name, logOutput.c_str());
-		LogClose();
-		exit(1);
-		break;
+		LOG_INFO("%s sample verify: %s", Machine->gamedrv->name, logOutput.c_str());
 	}
 }
 
@@ -834,7 +619,7 @@ void msg_loop(void)
 	{
 		throttle ^= 1;
 		frameavg = 0; fps_count = 0;
-		//SetvSync(throttle);
+		SetvSync(throttle);
 	}
 
 	if (osd_key_pressed_memory(OSD_KEY_CONFIGURE))
@@ -872,7 +657,7 @@ void msg_loop(void)
 			if (osd_key_pressed_memory_repeat(OSD_KEY_UI_DOWN, 4)) { change_menu_level(1); } //down
 			if (osd_key_pressed_memory(OSD_KEY_UI_LEFT)) { change_menu_item(0); } //left
 			if (osd_key_pressed_memory(OSD_KEY_UI_RIGHT)) { change_menu_item(1); } //right
-			if (osd_key_pressed_memory(OSD_KEY_UI_SELECT))	{select_menu_item();}  // Enter
+			if (osd_key_pressed_memory(OSD_KEY_UI_SELECT)) { select_menu_item(); }  // Enter
 		}
 	}
 }
@@ -904,12 +689,15 @@ void run_game(void)
 	errorlog = 0;
 
 	EnumDisplaySettings(NULL, ENUM_CURRENT_SETTINGS, &dvmd);
-
 	// ------------Setup all the aliases for Machine, gamedrv, drv, etc. -------------
 	run_a_game(gamenum);
 
 	setup_game_config();
 	sanity_check_config();
+
+	// Now before we run a game, we have to override any command line options that were previously set,
+	// because setup_game_config overrides everything.
+
 	LOG_INFO("Running game %s", Machine->gamedrv->desc);
 
 	//Check for setting greater then screen availability
@@ -946,8 +734,15 @@ void run_game(void)
 		if (goodload == EXIT_FAILURE)
 		{
 			LOG_INFO("Rom loading failure, exiting...");
+
 			have_error = 10;
-			exit(1);
+
+			// We may have allocated regions before failing; free them so we exit cleanly.
+			free_all_memory_regions();
+
+			// Make sure we don't continue init. Mark app to quit and return out.
+			done = 1;
+			return;
 		}
 	}
 
@@ -981,8 +776,8 @@ void run_game(void)
 
 	//Now load the Ambient and menu samples
 
-	goodload = read_samples(noise_samples, 1);
-	if (goodload == EXIT_FAILURE) { LOG_INFO("Noise Samples loading failure, not critical, continuing."); }
+	//goodload = read_samples(noise_samples, 1);
+	//if (goodload == EXIT_FAILURE) { LOG_INFO("Noise Samples loading failure, not critical, continuing."); }
 
 	LOG_INFO("Number of samples for this game is %d", num_samples);
 	// Configure the Ambient Sounds.
@@ -991,7 +786,7 @@ void run_game(void)
 	LOG_INFO("Initializing Game");
 	LOG_INFO("Loading InputPort Settings");
 	load_input_port_settings();
-	init_cpu_config(); ////////////////////-----------
+	
 
 	// At this point, we know we are running a game, so set this to true
 	game_loaded_sentinel = true;
@@ -1003,6 +798,7 @@ void run_game(void)
 	}
 
 	Machine->gamedrv->init_game();
+	init_cpu_config(); ////////////////////-----------
 
 	hiscoreloaded = 0;
 
@@ -1031,8 +827,8 @@ void run_game(void)
 
 void emulator_run()
 {
-	wglSwapIntervalEXT(0);
-	auto start = chrono::steady_clock::now();
+	//wglSwapIntervalEXT(0);
+	auto begin = chrono::steady_clock::now();
 
 	if (get_menu_status() == 0 && !paused) { ClipAndHideCursor(win_get_window()); }
 	else UnclipAndShowCursor();
@@ -1055,11 +851,12 @@ void emulator_run()
 		if (config.debug_profile_code) {
 			LOG_INFO("Calling CPU Run");
 		}
+		auto start = chrono::steady_clock::now();
 		cpu_run();
 
-		auto end = chrono::steady_clock::now();
-		auto diff = end - start;
 		if (config.debug_profile_code) {
+			auto end = chrono::steady_clock::now();
+			auto diff = end - start;
 			LOG_INFO("Profiler: CPU Time: %f ", chrono::duration <double, milli>(diff).count());
 		}
 
@@ -1074,6 +871,13 @@ void emulator_run()
 	inputport_vblank_end();
 	//timer_clear_all_eof();
 	cpu_clear_cyclecount_eof();
+
+	if (config.debug_profile_code) {
+		auto end = chrono::steady_clock::now();
+		auto diff = end - begin;
+		LOG_INFO("Profiler: Total Frame Time before throttle: %f ", chrono::duration <double, milli>(diff).count());
+	}
+
 	GLSwapBuffers();
 
 	if (throttle)
@@ -1111,7 +915,7 @@ void emulator_run()
 
 void emulator_init(int argc, char** argv)
 {
-	int i;
+	//int i;
 	int loop = 0;
 	int loop2 = 0;
 	//char str[20];
@@ -1127,9 +931,13 @@ void emulator_init(int argc, char** argv)
 	x_override = 0;
 	y_override = 0;
 	// Build the supported game list.
-	while (driver[loop].name != 0) { num_games++; loop++; }
+	//while (driver[loop].name != 0) { num_games++; loop++; }
+	//LOG_INFO("Number of supported games is: %d", num_games);
+	//num_games++;
+	// Build the supported game list from the registry.
+	const auto& reg = aae::AllDrivers();
+	num_games = static_cast<int>(reg.size());
 	LOG_INFO("Number of supported games is: %d", num_games);
-	num_games++;
 
 	//Move this after command line processing is re-added
 	GetDesktopResolution(horizontal, vertical);
@@ -1146,7 +954,7 @@ void emulator_init(int argc, char** argv)
 	game_loaded_sentinel = false;
 
 	// Normalize all command-line args to lowercase *before* any parsing.
-    // If an arg begins with '-' or '/', leave the prefix and lowercase the rest.
+	// If an arg begins with '-' or '/', leave the prefix and lowercase the rest.
 	for (int i = 1; i < argc; ++i)
 	{
 		if (!argv[i]) continue;
@@ -1167,6 +975,7 @@ void emulator_init(int argc, char** argv)
 		emulator_end();
 		return;
 	}
+
 	// Here is where we are checking command line for a supported game name.
 		// If not, it jumps straight into the GUI, bleh.
 
@@ -1182,16 +991,15 @@ void emulator_init(int argc, char** argv)
 			exit(1);
 		}
 	}
-
-	for (loop = 1; loop < (num_games - 1); loop++)
-	{
-		if (strcmp(argv[1], driver[loop].name) == 0)
-		{
-			gamenum = loop;
+	
+	for (int i = 0; i < num_games; ++i) {
+		if (std::strcmp(argv[1], reg[i]->name) == 0) {
+			gamenum = i;
 			started_from_command_line = 1;
+			break;
 		}
 	}
-	//gamenum = 18;
+	//	gamenum = 83;
 	if (argc > 2) gameparse(argc, argv);
 	//}
 
@@ -1221,10 +1029,34 @@ void emulator_init(int argc, char** argv)
 	initrand();
 	//fillstars(stars);
 	have_error = 0;
-	FrameLimiter::Init(driver[gamenum].fps);
+	FrameLimiter::Init(reg.at(gamenum)->fps);
 	g_lastFrameTimestampMs = TimerGetTimeMS();
+	// Build the Complete Driver List
+	gList.build(aae::AllDrivers());
 	run_game();
-	LOG_INFO("Starting Run Game");
+	LOG_INFO("Finished Run Game");
+
+	// This would be a really good time to parse the rest of the command line vars 
+	// and override anything loaded and set by the config. 
+	int val;
+	// ------------------------------ TEMP --
+	// Parse command-line arguments
+	// Move this to ANOTHER command 
+	// line handler, or something 
+	// else
+	// -------------------------------------
+	for (int i = 1; i < argc; i++) {
+		std::string arg = to_lowercase(argv[i]); // lowercase once
+			
+		 if (arg == "-debug")      
+		 val = 1;  // default if no explicit value
+		 if (i + 1 < argc && (std::strcmp(argv[i + 1], "0") == 0 || std::strcmp(argv[i + 1], "1") == 0)) {
+			 val = std::atoi(argv[i + 1]);
+			 ++i; // consume next token
+			 config.debug = val;
+		 }
+		
+	 }
 }
 
 /*************************************

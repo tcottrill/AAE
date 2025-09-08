@@ -34,27 +34,73 @@ void set_blendmode(GLenum sfactor, GLenum dfactor)
 
 rgb_t modulate_color(rgb_t col, int intensity, int gain)
 {
-    uint8_t r = (col >> 0) & 0xFF;
-    uint8_t g = (col >> 8) & 0xFF;
-    uint8_t b = (col >> 16) & 0xFF;
-    uint8_t a = 0xff;// (col >> 24) & 0xFF;
+    if ((col & 0x00FFFFFF) == 0) {return 0; }
 
-    r = clip((r & intensity) + gain, 0, 255);
-    g = clip((g & intensity) + gain, 0, 255);
-    b = clip((b & intensity) + gain, 0, 255);
+    uint16_t a;
+    uint16_t r = (col >> 0) & 0xFF;
+    uint16_t g = (col >> 8) & 0xFF;
+    uint16_t b = (col >> 16) & 0xFF;
+    
+    if (Machine->gamedrv->video_attributes & VECTOR_USES_COLOR)
+       a = intensity & 0xFF;
+    else
+       a = 0xff;
 
-    return  (a << 24) | (b << 16) | (g << 8) | r;
+   r = clip((r & intensity) + gain, 0, 255);
+   g = clip((g & intensity) + gain, 0, 255);
+   b = clip((b & intensity) + gain, 0, 255);
+   
+   if (Machine->gamedrv->video_attributes & VECTOR_USES_COLOR)
+       a = clip((a & intensity) + gain, 0, 255);
+   else
+       a = 0xff;
+ 
+   
+   r = (r > 255) ? 255 : r;
+   g = (g > 255) ? 255 : g;
+   b = (b > 255) ? 255 : b;
+   a = (a > 255) ? 255 : a;
+
+   return  (a << 24) | ((uint8_t) b << 16) | ((uint8_t) g << 8) | (uint8_t) r;
 }
+
+/*
+rgb_t modulate_color(rgb_t col, int intensity, int gain)
+{
+    // Extract channels (assumes colordefs.h defines these)
+    uint32_t r0 = RGB_RED(col);
+    uint32_t g0 = RGB_GREEN(col);
+    uint32_t b0 = RGB_BLUE(col);
+    uint32_t a0 = RGB_ALPHA(col);
+
+
+
+    // Clamp intensity to 0..255
+    uint32_t I = (intensity < 0) ? 0u : (intensity > 255 ? 255u : (uint32_t)intensity);
+
+    auto clamp255 = [](int v) -> uint32_t {
+        return (v < 0) ? 0u : (v > 255) ? 255u : (uint32_t)v;
+        };
+
+    // Rule: if original > 0 => set to intensity, else 0; then add gain and clamp
+    uint32_t r = clamp255(((r0 > 0) ? (int)I : 0) + gain);
+    uint32_t g = clamp255(((g0 > 0) ? (int)I : 0) + gain);
+    uint32_t b = clamp255(((b0 > 0) ? (int)I : 0) + gain);
+    uint32_t a = clamp255(((a0 > 0) ? (int)I : 0) + gain);
+
+    return MAKE_RGBA((uint8_t)r, (uint8_t)g, (uint8_t)b, (uint8_t)a);
+}
+*/
 
 rgb_t cache_tex_color(int intensity, rgb_t col)
 {
     rgb_t result = modulate_color(col, intensity, config.gain);
-    return (result & 0x00FFFFFF) | (intensity << 24);
+    return col;//(result & 0x00FFFFFF) | (intensity << 24);
 }
 
 void cache_texpoint(float ex, float ey, float tx, float ty, int intensity, rgb_t col)
 {
-    texlist.emplace_back(ex - xoffset, ey - yoffset, tx, ty, cache_tex_color(intensity, col));
+    texlist.emplace_back(ex - xoffset, ey - yoffset, tx, ty, 0xff7f7f7f);
 }
 
 void add_line(float sx, float sy, float ex, float ey, int intensity, rgb_t col)
@@ -128,9 +174,10 @@ void draw_all()
     {
         glEnable(GL_TEXTURE_2D);
         glBindTexture(GL_TEXTURE_2D, *tex);
-       // glBlendFunc(GL_ONE, GL_ONE);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+        glBlendFunc(GL_ONE, GL_ONE);
+       // glBlendFunc(GL_SRC_ALPHA, GL_ONE);
        //glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ONE, GL_ONE);
+       // glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
         glEnableClientState(GL_VERTEX_ARRAY);
         glVertexPointer(2, GL_FLOAT, sizeof(txdata), &texlist[0].x);
