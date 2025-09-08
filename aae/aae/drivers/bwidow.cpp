@@ -221,9 +221,6 @@ int init_spacduel()
 	//init6502(SpaceDuelRead, SpaceDuelWrite, 0xffff, CPU0);
 	avg_start();
 	timer_set(TIME_IN_HZ(246), CPU0, bwidow_interrupt);
-
-	sample_set_volume(1, 5);
-
 	return 1;
 }
 void end_bwidow()

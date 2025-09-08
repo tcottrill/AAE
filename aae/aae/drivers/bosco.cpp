@@ -13,7 +13,6 @@
 #include <vector>
 #include <string>
 
-
 static const char* bosco_samples[] =
 {
 	"bosco.zip",
@@ -22,7 +21,6 @@ static const char* bosco_samples[] =
 	"shot.wav",
 	0	/* end of array */
 };
-
 
 // Prebuilt sample IDs
 static int s_bosco_blastOff = -1;
@@ -119,7 +117,6 @@ static struct namco_interface bosco_namco_interface =
 	245			// playback volume
 };
 
-
 static struct GfxLayout charlayout =
 {
 	8,8,	/* 8*8 characters */
@@ -191,18 +188,18 @@ static int build_resampled_sample_from_u8(const uint8_t* u8, int srcFrames,
 	if (sound_id < 0) return -1;
 	const int samplenum = snumlookup(sound_id);
 	if (samplenum < 0) return -1;
-	
+
 	// 4) Cubic-resample into a temporary buffer, then upload via mixer_upload_sample16.
 	std::vector<int16_t> s16_dst(dstFrames);
 	cubic_interpolation_16_into(s16_src.data(), (int32_t)s16_src.size(),
-	s16_dst.data(), (int32_t)dstFrames);
-	
+		s16_dst.data(), (int32_t)dstFrames);
+
 	if (mixer_upload_sample16(samplenum, s16_dst.data(),
-			(uint32_t)dstFrames, dstHz, /*stereo=*/false) != 0)
-		 return -1;
-	
-		// Return the samplenum (registry index) so callers can pass it to sample_start(...)
-		return samplenum;
+		(uint32_t)dstFrames, dstHz, /*stereo=*/false) != 0)
+		return -1;
+
+	// Return the samplenum (registry index) so callers can pass it to sample_start(...)
+	return samplenum;
 }
 
 // Decode ROM, slice phrases, create & resample to 44.1 kHz; run once at init.
@@ -248,19 +245,15 @@ static void bosco_build_voice_samples()
 	}
 }
 
-
-
 void bosco_vh_convert_color_prom(unsigned char* palette, unsigned char* colortable, const unsigned char* color_prom)
 {
 	int i;
 #define TOTAL_COLORS(gfxn) (Machine->gfx[gfxn]->total_colors * Machine->gfx[gfxn]->color_granularity)
 #define COLOR(gfxn,offs) (colortable[Machine->drv->gfxdecodeinfo[gfxn].color_codes_start + offs])
 
-
 	for (i = 0; i < 32; i++)
 	{
 		int bit0, bit1, bit2;
-
 
 		bit0 = (color_prom[31 - i] >> 0) & 0x01;
 		bit1 = (color_prom[31 - i] >> 1) & 0x01;
@@ -302,18 +295,15 @@ void bosco_vh_convert_color_prom(unsigned char* palette, unsigned char* colortab
 		bits = ((i - 32) >> 4) & 0x03;
 		palette[3 * i + 2] = map[bits];
 	}
-
 }
 
 //////////////////////////////////////////////////////////////
 //MAIN bosco HANDLERS
 //////////////////////////////////////////////////////////////
 
-
 //////////////////////////////////////////////////////////////
 //MAIN bosco HANDLERS
 //////////////////////////////////////////////////////////////
-
 
 WRITE_HANDLER(bosco_flipscreen_w)
 {
@@ -343,8 +333,6 @@ WRITE_HANDLER(bosco_interrupt_enable_3_w)
 	interrupt_enable_3 = !(data & 1);
 }
 
-
-
 WRITE_HANDLER(bosco_halt_w)
 {
 	if (data & 1)
@@ -372,7 +360,6 @@ WRITE_HANDLER(boscohaltw)
 		cpu_enable(CPU2, 1);
 
 		//LOG_INFO("CPUS ENABLED");
-
 	}
 	else if (!data)
 	{
@@ -384,20 +371,17 @@ WRITE_HANDLER(boscohaltw)
 	reset23 = data;
 }
 
-
 void bosco_nmi_generate_1(int param)
 {
 	cpu_do_int_imm(CPU0, INT_TYPE_NMI);
 	//LOG_INFO("NMI CPU0");
 }
 
-
 void bosco_nmi_generate_2(int param)
 {
 	cpu_do_int_imm(CPU1, INT_TYPE_NMI);
 	//LOG_INFO("NMI CPU1");
 }
-
 
 READ_HANDLER(bosco_dsw_r)
 {
@@ -409,7 +393,6 @@ READ_HANDLER(bosco_dsw_r)
 
 	return bit0 | (bit1 << 1);
 }
-
 
 WRITE_HANDLER(bosco_scrollx_w)
 {
@@ -435,7 +418,6 @@ READ_HANDLER(bosco_sharedram_r)
 {
 	return bosco_sharedram[address];
 }
-
 
 /***************************************************************************
 
@@ -568,7 +550,7 @@ WRITE_HANDLER(bosco_customio_data_1_w)
 			}
 		}
 		break;
-		
+
 	case 0x84:
 		if (offset == 2)
 		{
@@ -795,7 +777,7 @@ WRITE_HANDLER(bosco_customio_data_2_w)
 		if (offset == 2)
 		{
 			// customio_2[0] selects the phrase 1..5
-			sample_set_volume(4,200);
+			sample_set_volume(4, 200);
 			switch (customio_2[0])
 			{
 			case 1: // Blast Off
@@ -857,8 +839,7 @@ WRITE_HANDLER(bosco_customio_2_w)
 			nmi_timer_2 = -1;
 		}
 		return;
-		
-			
+
 		break;
 	}
 	//LOG_INFO("NMI TIMER 2 SET ");
@@ -915,7 +896,6 @@ void bosco_vh_screenrefresh()
 			flipx, flipy,
 			8 * sx, 8 * sy,
 			&radarvisibleareaflip, TRANSPARENCY_NONE, 0);
-
 	}
 	/* copy the temporary bitmap to the screen */
 	{
@@ -957,7 +937,6 @@ void bosco_vh_screenrefresh()
 	{
 		int x, y;
 
-
 		x = bosco_radarx[offs] + ((~bosco_radarattr[offs] & 0x01) << 8) - 2;
 		y = 235 - bosco_radary[offs];
 		if (flipscreen)
@@ -974,7 +953,7 @@ void bosco_vh_screenrefresh()
 			&Machine->drv->visible_area, TRANSPARENCY_PEN, 3);
 	}
 
-	// draw the stars 
+	// draw the stars
 
 	if ((*bosco_staronoff & 1) == 0)
 	{
@@ -999,7 +978,6 @@ void bosco_vh_screenrefresh()
 			}
 		}
 	}
-
 }
 
 int bosco_vh_start(void)
@@ -1059,7 +1037,6 @@ int bosco_vh_start(void)
 	return generic_vh_start();
 }
 
-
 /***************************************************************************
 
   Stop the video hardware emulation.
@@ -1079,7 +1056,6 @@ void bosco_vh_interrupt(void)
 	bstars_scrolly += speedsy[(bosco_starcontrol & 56) >> 3];
 }
 
-
 void boscoint1()
 {
 	bosco_vh_interrupt();	/* update the background stars position */
@@ -1088,7 +1064,6 @@ void boscoint1()
 		//LOG_INFO("bosco interrupt CPU0 called");
 		cpu_do_int_imm(CPU0, INT_TYPE_INT);
 	}
-
 }
 
 void boscoint2()
@@ -1197,16 +1172,8 @@ MEM_ADDR(0x7800, 0x97ff, bosco_sharedram_w)
 //MEM_ADDR(0x8c00, 0x8fff, bosco_colorram2_w)
 MEM_END
 
-
 int init_bosco()
 {
-		
-	//Init CPU's
-	//Init CPU's
-	init_z80(boscoCPU1_Read, boscoCPU1_Write, boscoPortRead, boscoPortWrite, CPU0);
-	init_z80(boscoCPU2_Read, boscoCPU2_Write, boscoPortRead, boscoPortWrite, CPU1);
-	init_z80(boscoCPU3_Read, boscoCPU3_Write, boscoPortRead, boscoPortWrite, CPU2);
-
 	credits = 0;
 	HiScore = 20000;
 
@@ -1249,9 +1216,7 @@ int init_bosco()
 
 void end_bosco()
 {
-
 }
-
 
 ROM_START(bosco)
 ROM_REGION(0x10000, REGION_CPU1, 0)	/* 64k for code for the first CPU  */
@@ -1281,7 +1246,6 @@ ROM_LOAD("bos1-6.6b", 0x0000, 0x0020, CRC(d2b96fb0)SHA1(54c100ec9d173d7dd48a453e
 ROM_LOAD("bos1-5.4m", 0x0020, 0x0100, CRC(4e15d59c)SHA1(3542ead6421d169c3569e121ec2be304e108787c))    /* lookup table */
 //ROM_LOAD("bos1-3.2d", 0x0120, 0x0020, CRC(b88d5ba9)SHA1(7b97a38a540b7ca4b7d9ae338ec38b9b1a337846))    /* video layout (not used) */
 //ROM_LOAD("bos1-7.7h", 0x0140, 0x0020, CRC(87d61353)SHA1(c7493e52662c921625676a4a4e8cf4371bd938b7))    /* video timing (not used) */
-
 
 ROM_REGION(0x0200, REGION_SOUND1, 0)	/* sound prom */
 ROM_LOAD("bos1-1.1d", 0x0000, 0x0100, CRC(de2316c6) SHA1(0e55c56046331888d1d3f0d9823d2ceb203e7d3f))
@@ -1332,7 +1296,6 @@ ROM_LOAD("4900.5n", 0x0000, 0x1000, CRC(96021267)SHA1(bd49b0caabcccf9df45a272d76
 ROM_LOAD("5000.5m", 0x1000, 0x1000, CRC(96021267)SHA1(bd49b0caabcccf9df45a272d767456a4fc8a7c07))
 ROM_LOAD("5100.5l", 0x2000, 0x1000, CRC(96021267)SHA1(bd49b0caabcccf9df45a272d767456a4fc8a7c07))
 ROM_END
-
 
 INPUT_PORTS_START(bosco)
 PORT_START("DSW0")  /* DSW0 */
@@ -1416,7 +1379,6 @@ PORT_BIT_IMPULSE(0x20, IP_ACTIVE_LOW, IPT_COIN2, 1)
 PORT_BIT_IMPULSE(0x40, IP_ACTIVE_LOW, IPT_COIN3, 1)
 PORT_SERVICE(0x80, IP_ACTIVE_LOW)
 INPUT_PORTS_END
-
 
 INPUT_PORTS_START(boscomd)
 PORT_START("DSW0")  /* DSW0 */
@@ -1508,13 +1470,17 @@ AAE_DRIVER_FUNCS(&init_bosco, &run_bosco, &end_bosco)
 AAE_DRIVER_INPUT(input_ports_bosco)
 AAE_DRIVER_SAMPLES(bosco_samples)
 AAE_DRIVER_ART_NONE()
-AAE_DRIVER_CPU3(CPU_MZ80, 3072000, 400, 1, INT_TYPE_INT, &boscoint1, CPU_MZ80, 3072000, 400, 1, INT_TYPE_INT, boscoint2, CPU_MZ80, 3072000, 400, 2, INT_TYPE_INT, boscoint3)
-AAE_DRIVER_VIDEO_CORE(60, VIDEO_TYPE_RASTER_COLOR | VIDEO_SUPPORTS_DIRTY, ORIENTATION_DEFAULT)
-AAE_DRIVER_SCREEN(36 * 8, 28 * 8, 0 * 8, 36 * 8 - 1, 0 * 8, 28 * 8 - 1)
-AAE_DRIVER_RASTER(bosco_gfxdecodeinfo, 32 + 64, 64 * 4 + 64 * 4 + 4, bosco_vh_convert_color_prom)
-AAE_DRIVER_HISCORE_NONE()
-AAE_DRIVER_VECTORRAM(0, 0)
-AAE_DRIVER_NVRAM_NONE()
-AAE_DRIVER_END()
+AAE_DRIVER_CPUS(
+	AAE_CPU_ENTRY(CPU_MZ80, 3072000, 400, 1, INT_TYPE_INT, &boscoint1, boscoCPU1_Read, boscoCPU1_Write, boscoPortRead, boscoPortWrite, nullptr, nullptr),
+	AAE_CPU_ENTRY(CPU_MZ80, 3072000, 400, 1, INT_TYPE_INT, &boscoint2, boscoCPU2_Read, boscoCPU2_Write, boscoPortRead, boscoPortWrite, nullptr, nullptr),
+	AAE_CPU_ENTRY(CPU_MZ80, 3072000, 400, 2, INT_TYPE_INT, &boscoint3, boscoCPU3_Read, boscoCPU3_Write, boscoPortRead, boscoPortWrite, nullptr, nullptr),
+	AAE_CPU_NONE_ENTRY())
+	AAE_DRIVER_VIDEO_CORE(60, VIDEO_TYPE_RASTER_COLOR | VIDEO_SUPPORTS_DIRTY, ORIENTATION_DEFAULT)
+	AAE_DRIVER_SCREEN(36 * 8, 28 * 8, 0 * 8, 36 * 8 - 1, 0 * 8, 28 * 8 - 1)
+	AAE_DRIVER_RASTER(bosco_gfxdecodeinfo, 32 + 64, 64 * 4 + 64 * 4 + 4, bosco_vh_convert_color_prom)
+	AAE_DRIVER_HISCORE_NONE()
+	AAE_DRIVER_VECTORRAM(0, 0)
+	AAE_DRIVER_NVRAM_NONE()
+	AAE_DRIVER_END()
 
-AAE_REGISTER_DRIVER(drv_bosco)
+	AAE_REGISTER_DRIVER(drv_bosco)

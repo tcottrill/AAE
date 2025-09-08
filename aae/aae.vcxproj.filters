@@ -361,6 +361,9 @@
     <ClCompile Include="aae\sndhrdwr\okim6295_loader.cpp">
       <Filter>Source Files\aae\sndhrdwr</Filter>
     </ClCompile>
+    <ClCompile Include="aae\drivers\bosco.cpp">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="resource.h">
@@ -800,6 +803,9 @@
     </ClInclude>
     <ClInclude Include="aae\sndhrdwr\okim6295_loader.h">
       <Filter>Source Files\aae\sndhrdwr</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\drivers\bosco.h">
+      <Filter>Source Files\aae\drivers\raster</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

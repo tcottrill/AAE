@@ -360,8 +360,6 @@ int init_esb()
 
 	starwars_sh_start();
 
-	//init6809(empire_readmem, empire_writemem, 0);
-	//init6809(starwars_audio_readmem, starwars_audio_writemem, 1);
 	swmathbox_init();
 	avg_start_starwars();
 	// TODO: This is temporary, figure it out.
@@ -374,8 +372,6 @@ int init_esb()
 int init_starwars(void)
 {
 	starwars_sh_start();
-	//init6809(starwars_readmem, starwars_writemem, 0);
-	//init6809(starwars_audio_readmem, starwars_audio_writemem, 1);
 	swmathbox_init();
 	avg_start_starwars();
 	return 0;

@@ -164,6 +164,7 @@
     <ClInclude Include="aae\deftypes.h" />
     <ClInclude Include="aae\drivers\asteroid.h" />
     <ClInclude Include="aae\drivers\aztarac.h" />
+    <ClInclude Include="aae\drivers\bosco.h" />
     <ClInclude Include="aae\drivers\bwidow.h" />
     <ClInclude Include="aae\drivers\bzone.h" />
     <ClInclude Include="aae\drivers\cinematronics_driver.h" />
@@ -319,6 +320,7 @@
     <ClCompile Include="aae\cpu_code\timer.cpp" />
     <ClCompile Include="aae\drivers\asteroid.cpp" />
     <ClCompile Include="aae\drivers\aztarac.cpp" />
+    <ClCompile Include="aae\drivers\bosco.cpp" />
     <ClCompile Include="aae\drivers\bwidow.cpp" />
     <ClCompile Include="aae\drivers\bzone.cpp" />
     <ClCompile Include="aae\drivers\cinematronics_driver.cpp" />

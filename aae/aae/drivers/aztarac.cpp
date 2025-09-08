@@ -329,7 +329,7 @@ void run_aztarac()
 	// It  has to be called AFTER CPU init, and init_aztarac has to be called BEFORE init,
 	// and I don't have another place to init. 
 	static int poop = 0;
-	if (poop == 0) { poop == 1; m68k_set_int_ack_callback(aztarac_irq_callback);
+	if (poop == 0) { poop = 1; m68k_set_int_ack_callback(aztarac_irq_callback);
 	}
 	AY8910_sh_update();
 	watchdog_reset_w(0, 0, 0);
