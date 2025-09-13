@@ -249,6 +249,7 @@ Temporarily reinstated the depricated code in render_blur_image_fbo3() to help w
 Expect the graphics overhaul to add correct scaling and rotation, as well as a new set of menu options for maximum number of knobs to tune for  every graphics piece. 
 9/8/25 Finished the CPU code cutover to MAME style, still cleaning up.
 9/9/25 Corrected Tempest Menu (Clay Cowgill)
+9/12/25 Finally fixed the DD and FD opcodes in the Z80, now finally fully passes zexdoc. 
 
 
 

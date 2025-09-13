@@ -19,7 +19,7 @@
 // -----------------------------------------------------------------------------
 // Original Header Below:
 
-/* 
+/*
  * Zilog Z80 processor emulator in C. Modified to be API compliant with Neil
  * Bradley's MZ80 (for ported projects)
  * Ported to 'C' by Jeff Mitchell; original copyright follows:
@@ -36,7 +36,7 @@
  * Original copyright (C) 1997 Edward Massey
  */
 
- #include "cpu_z80.h"
+#include "cpu_z80.h"
 #include <assert.h>
 #include "sys_log.h"
 #include <stdlib.h>
@@ -91,9 +91,7 @@ static uint8_t ZSPTable[256] =
 
 void cpu_z80::mz80reset()
 {
-	//m_fPendingInterrupt = false;
 	m_rgbStackBase = m_rgbMemory;
-
 	m_regAF = 0;
 	m_regBC = 0;
 	m_regDE = 0;
@@ -115,7 +113,6 @@ void cpu_z80::mz80reset()
 	irq_vector = 0xff;
 	z80intAddr = 0x38;
 	z80nmiAddr = 0x66;
-	//pending_int = 0;        // Added for int strobe
 	m_irq_line = false;     // ensure INT line starts low
 	SetPC(0x0000);
 	SetSP(0x0000);
@@ -151,7 +148,7 @@ UINT16 cpu_z80::ImmedWord()
 	//a = m_rgbMemory[z80pc++];
 	//b = (m_rgbMemory[z80pc++] & 0xFFFF);
 	//return ((b << 8) | a);
-	
+
 	uint8_t a = mz80GetMemory(z80pc++);
 	uint8_t b = mz80GetMemory(z80pc++);
 	return static_cast<uint16_t>((b << 8) | a);
@@ -311,7 +308,7 @@ UINT16 cpu_z80::MemReadWord(UINT16 wAddr)
 
 	op1 = MemReadByte(wAddr++);
 	op2 = MemReadByte(wAddr);
-	return  (op1 | (op2 << 8));//   (MAKEWORD(op1, op2));
+	return  (op1 | (op2 << 8));
 }
 
 // increments R, keeping the highest byte intact
@@ -673,9 +670,7 @@ unsigned long int cpu_z80::mz80exec(unsigned long int cCyclesArg)
 		cyc += mz80step();
 	}
 
-	// My emulator expects a return code here rather then the number of cycles ran. Change this per your preferences.
-	//return cyc;
-	return 0x80000000;
+	return cyc;
 }
 
 unsigned cpu_z80::mz80step()
@@ -2134,8 +2129,6 @@ int cpu_z80::Jr1(int f)
 
 int cpu_z80::Call0(int f)
 {
-	//char string[150];
-
 	if (f)
 	{
 		uint16_t wAddr = ImmedWord();
@@ -2171,7 +2164,7 @@ int cpu_z80::Jp0(int f)
 	if (f)
 	{
 		SetPC(ImmedWord());
-		return 0; // ????????????????
+		return 0; 
 	}
 	else
 	{
@@ -2190,7 +2183,7 @@ int cpu_z80::Jp1(int f)
 	else
 	{
 		SetPC(ImmedWord());
-		return 0; // ????????????????
+		return 0; 
 	}
 }
 
@@ -3268,137 +3261,13 @@ int cpu_z80::HandleDD()
 
 	switch (bOpcode)
 	{
-	case 0x00: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x01: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x02: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x03: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x04: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x05: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x06: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x07: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x08: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
 	case 0x09: // add_ix_bc
 		m_regIX = Add_2(m_regIX, m_regBC);
 		return 15;
 
-	case 0x0A: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x0B: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x0C: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x0D: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x0E: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x0F: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x10: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x11: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x12: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x13: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x14: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x15: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x16: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x17: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x18: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
 	case 0x19: // add_ix_de
 		m_regIX = Add_2(m_regIX, m_regDE);
 		return 15;
-
-	case 0x1A: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x1B: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x1C: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x1D: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x1E: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x1F: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x20: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
 
 	case 0x21: // ld_ix_word
 		m_regIX = ImmedWord();
@@ -3414,23 +3283,15 @@ int cpu_z80::HandleDD()
 
 	case 0x24: // inc_ixh
 		m_regIXh = Inc(m_regIXh);
-		return 9;
+		return 8;
 
 	case 0x25: // dec_ixh
 		m_regIXh = Dec(m_regIXh);
-		return 9;
+		return 8;
 
 	case 0x26: // ld_ixh_byte
 		m_regIXh = ImmedByte();
-		return 9;
-
-	case 0x27: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x28: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
+		return 11;
 
 	case 0x29: // add_ix_ix
 		m_regIX = Add_2(m_regIX, m_regIX);
@@ -3446,35 +3307,15 @@ int cpu_z80::HandleDD()
 
 	case 0x2C: // inc_ixl
 		m_regIXl = Inc(m_regIXl);
-		return 9;
+		return 8;
 
 	case 0x2D: // dec_ixl
 		m_regIXl = Dec(m_regIXl);
-		return 9;
+		return 8;
 
 	case 0x2E: // ld_ixl_byte
 		m_regIXl = ImmedByte();
-		return 9;
-
-	case 0x2F: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x30: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x31: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x32: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x33: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
+		return 11;
 
 	case 0x34: // inc_xix
 		wAddr = IndirectIX();
@@ -3491,233 +3332,121 @@ int cpu_z80::HandleDD()
 		MemWriteByte(wAddr, ImmedByte());
 		return 19;
 
-	case 0x37: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x38: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
 	case 0x39: // add_ix_sp
 		m_regIX = Add_2(m_regIX, GetSP());
 		return 15;
 
-	case 0x3A: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x3B: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x3C: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x3D: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x3E: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x3F: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x40: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x41: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x42: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x43: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
 	case 0x44: // ld_b_ixh
 		m_regB = m_regIXh;
-		return 9;
+		return 8;
 
 	case 0x45: // ld_b_ixl
 		m_regB = m_regIXl;
-		return 9;
+		return 8;
 
 	case 0x46: // ld_b_xix
 		m_regB = MemReadByte(IndirectIX());
 		return 19;
 
-	case 0x47: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x48: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x49: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x4A: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x4B: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
 	case 0x4C: // ld_c_ixh
 		m_regC = m_regIXh;
-		return 9;
+		return 8;
 
 	case 0x4D: // ld_c_ixl
 		m_regC = m_regIXl;
-		return 9;
+		return 8;
 
 	case 0x4E: // ld_c_xix
 		m_regC = MemReadByte(IndirectIX());
 		return 19;
 
-	case 0x4F: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x50: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x51: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x52: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x53: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
 	case 0x54: // ld_d_ixh
 		m_regD = m_regIXh;
-		return 9;
+		return 8;
 
 	case 0x55: // ld_d_ixl
 		m_regD = m_regIXl;
-		return 9;
+		return 8;
 
 	case 0x56: // ld_d_xix
 		m_regD = MemReadByte(IndirectIX());
 		return 19;
 
-	case 0x57: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x58: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x59: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x5A: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x5B: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
 	case 0x5C: // ld_e_ixh
 		m_regE = m_regIXh;
-		return 9;
+		return 8;
 
 	case 0x5D: // ld_e_ixl
 		m_regE = m_regIXl;
-		return 9;
+		return 8;
 
 	case 0x5E: // ld_e_xix
 		m_regE = MemReadByte(IndirectIX());
 		return 19;
 
-	case 0x5F: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
 	case 0x60: // ld_ixh_b
 		m_regIXh = m_regB;
-		return 9;
+		return 8;
 
 	case 0x61: // ld_ixh_c
 		m_regIXh = m_regC;
-		return 9;
+		return 8;
 
 	case 0x62: // ld_ixh_d
 		m_regIXh = m_regD;
-		return 9;
+		return 8;
 
 	case 0x63: // ld_ixh_e
 		m_regIXh = m_regE;
-		return 9;
+		return 8;
 
 	case 0x64: // ld_ixh_h
 		m_regIXh = m_regH;
-		return 9;
+		return 8;
 
 	case 0x65: // ld_ixh_l
 		m_regIXh = m_regL;
-		return 9;
+		return 8;
 
 	case 0x66: // ld_h_xix
 		m_regH = MemReadByte(IndirectIX());
-		return 9;
+		return 19;
 
 	case 0x67: // ld_ixh_a
 		m_regIXh = m_regA;
-		return 9;
+		return 8;
 
 	case 0x68: // ld_ixl_b
 		m_regIXl = m_regB;
-		return 9;
+		return 8;
 
 	case 0x69: // ld_ixl_c
 		m_regIXl = m_regC;
-		return 9;
+		return 8;
 
 	case 0x6A: // ld_ixl_d
 		m_regIXl = m_regD;
-		return 9;
+		return 8;
 
 	case 0x6B: // ld_ixl_e
 		m_regIXl = m_regE;
-		return 9;
+		return 8;
 
 	case 0x6C: // ld_ixl_h
 		m_regIXl = m_regH;
-		return 9;
+		return 8;
 
 	case 0x6D: // ld_ixl_l
 		m_regIXl = m_regL;
-		return 9;
+		return 8;
 
 	case 0x6E: // ld_l_xix
 		m_regL = MemReadByte(IndirectIX());
-		return 9;
+		return 19;
 
 	case 0x6F: // ld_ixl_a
 		m_regIXl = m_regA;
-		return 9;
+		return 8;
 
 	case 0x70: // ld_xix_b
 		MemWriteByte(IndirectIX(), m_regB);
@@ -3743,442 +3472,125 @@ int cpu_z80::HandleDD()
 		MemWriteByte(IndirectIX(), m_regL);
 		return 19;
 
-	case 0x76: // no_op
-		SetPC(GetPC() - 1);
-		//return 19;
-		return 4;
-
 	case 0x77: // ld_xix_a
 		MemWriteByte(IndirectIX(), m_regA);
 		return 19;
 
-	case 0x78: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x79: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x7A: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x7B: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
 	case 0x7C: // ld_a_ixh
 		m_regA = m_regIXh;
-		return 9;
+		return 8;
 
 	case 0x7D: // ld_a_ixl
 		m_regA = m_regIXl;
-		return 9;
+		return 8;
 
 	case 0x7E: // ld_a_xix
 		m_regA = MemReadByte(IndirectIX());
 		return 19;
 
-	case 0x7F: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x80: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x81: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x82: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x83: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
 	case 0x84: // add_a_ixh
 		Add_1(m_regIXh);
-		return 9;
+		return 8;
 
 	case 0x85: // add_a_ixl
 		Add_1(m_regIXl);
-		return 9;
+		return 8;
 
 	case 0x86: // add_a_xix
 		Add_1(MemReadByte(IndirectIX()));
 		return 19;
 
-	case 0x87: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x88: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x89: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x8A: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x8B: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
 	case 0x8C: // adc_a_ixh
 		Adc_1(m_regIXh);
-		return 9;
+		return 8;
 
 	case 0x8D: // adc_a_ixl
 		Adc_1(m_regIXl);
-		return 9;
+		return 8;
 
 	case 0x8E: // adc_a_xix
 		Adc_1(MemReadByte(IndirectIX()));
 		return 19;
 
-	case 0x8F: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x90: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x91: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x92: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x93: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
 	case 0x94: // sub_ixh
 		Sub_1(m_regIXh);
-		return 9;
+		return 8;
 
 	case 0x95: // sub_ixl
 		Sub_1(m_regIXl);
-		return 9;
+		return 8;
 
 	case 0x96: // sub_xix
 		Sub_1(MemReadByte(IndirectIX()));
 		return 19;
 
-	case 0x97: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x98: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x99: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x9A: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x9B: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
 	case 0x9C: // sbc_a_ixh
 		Sbc_1(m_regIXh);
-		return 9;
+		return 8;
 
 	case 0x9D: // sbc_a_ixl
 		Sbc_1(m_regIXl);
-		return 9;
+		return 8;
 
 	case 0x9E: // sbc_a_xix
 		Sbc_1(MemReadByte(IndirectIX()));
 		return 19;
 
-	case 0x9F: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xA0: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xA1: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xA2: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xA3: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
 	case 0xA4: // and_ixh
 		And(m_regIXh);
-		return 9;
+		return 8;
 
 	case 0xA5: // and_ixl
 		And(m_regIXl);
-		return 9;
+		return 8;
 
 	case 0xA6: // and_xix
 		And(MemReadByte(IndirectIX()));
 		return 19;
 
-	case 0xA7: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xA8: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xA9: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xAA: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xAB: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
 	case 0xAC: // xor_ixh
 		Xor(m_regIXh);
-		return 9;
+		return 8;
 
 	case 0xAD: // xor_ixl
 		Xor(m_regIXl);
-		return 9;
+		return 8;
 
 	case 0xAE: // xor_xix
 		Xor(MemReadByte(IndirectIX()));
 		return 19;
 
-	case 0xAF: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xB0: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xB1: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xB2: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xB3: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
 	case 0xB4: // or_ixh
 		Or(m_regIXh);
-		return 9;
+		return 8;
 
 	case 0xB5: // or_ixl
 		Or(m_regIXl);
-		return 9;
+		return 8;
 
 	case 0xB6: // or_xix
 		Or(MemReadByte(IndirectIX()));
 		return 19;
 
-	case 0xB7: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xB8: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xB9: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xBA: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xBB: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
 	case 0xBC: // cp_ixh
 		Cp(m_regIXh);
-		return 9;
+		return 8;
 
 	case 0xBD: // cp_ixl
 		Cp(m_regIXl);
-		return 9;
+		return 8;
 
 	case 0xBE: // cp_xix
 		Cp(MemReadByte(IndirectIX()));
 		return 19;
 
-	case 0xBF: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xC0: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xC1: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xC2: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xC3: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xC4: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xC5: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xC6: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xC7: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xC8: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xC9: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xCA: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
 	case 0xCB: // dd_cb
 		return HandleDDCB();
 		break;
 
-	case 0xCC: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xCD: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xCE: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xCF: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xD0: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xD1: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xD2: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xD3: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xD4: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xD5: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xD6: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xD7: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xD8: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xD9: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xDA: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xDB: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xDC: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xDD: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xDE: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xDF: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xE0: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
 	case 0xE1: // pop_ix
 		m_regIX = Pop();
 		return 14;
-
-	case 0xE2: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
 
 	case 0xE3: // ex_xsp_ix
 		wTemp = MemReadWord(GetSP());
@@ -4186,120 +3598,20 @@ int cpu_z80::HandleDD()
 		m_regIX = wTemp;
 		return 23;
 
-	case 0xE4: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
 	case 0xE5: // push_ix
 		Push(m_regIX);
 		return 15;
-
-	case 0xE6: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xE7: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xE8: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
 
 	case 0xE9: // jp_ix
 		SetPC(m_regIX);
 		return 8;
 
-	case 0xEA: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xEB: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xEC: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xED: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xEE: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xEF: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xF0: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xF1: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xF2: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xF3: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xF4: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xF5: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xF6: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xF7: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xF8: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
 	case 0xF9: // ld_sp_ix
 		SetSP(m_regIX);
 		return 10;
 
-	case 0xFA: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xFB: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xFC: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xFD: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xFE: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xFF: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
 	default:
-		return 0;
+		return 4 + exec_opcode(bOpcode);
 	}
 }
 
@@ -4313,262 +3625,6 @@ void cpu_z80::HandleED() {
 
 	switch (bOpcode)
 	{
-	case 0x00: // nop
-		cCycles += 0;
-		break;
-
-	case 0x01: // nop
-		cCycles += 0;
-		break;
-
-	case 0x02: // nop
-		cCycles += 0;
-		break;
-
-	case 0x03: // nop
-		cCycles += 0;
-		break;
-
-	case 0x04: // nop
-		cCycles += 0;
-		break;
-
-	case 0x05: // nop
-		cCycles += 0;
-		break;
-
-	case 0x06: // nop
-		cCycles += 0;
-		break;
-
-	case 0x07: // nop
-		cCycles += 0;
-		break;
-
-	case 0x08: // nop
-		cCycles += 0;
-		break;
-
-	case 0x09: // nop
-		cCycles += 0;
-		break;
-
-	case 0x0A: // nop
-		cCycles += 0;
-		break;
-
-	case 0x0B: // nop
-		cCycles += 0;
-		break;
-
-	case 0x0C: // nop
-		cCycles += 0;
-		break;
-
-	case 0x0D: // nop
-		cCycles += 0;
-		break;
-
-	case 0x0E: // nop
-		cCycles += 0;
-		break;
-
-	case 0x0F: // nop
-		cCycles += 0;
-		break;
-
-	case 0x10: // nop
-		cCycles += 0;
-		break;
-
-	case 0x11: // nop
-		cCycles += 0;
-		break;
-
-	case 0x12: // nop
-		cCycles += 0;
-		break;
-
-	case 0x13: // nop
-		cCycles += 0;
-		break;
-
-	case 0x14: // nop
-		cCycles += 0;
-		break;
-
-	case 0x15: // nop
-		cCycles += 0;
-		break;
-
-	case 0x16: // nop
-		cCycles += 0;
-		break;
-
-	case 0x17: // nop
-		cCycles += 0;
-		break;
-
-	case 0x18: // nop
-		cCycles += 0;
-		break;
-
-	case 0x19: // nop
-		cCycles += 0;
-		break;
-
-	case 0x1A: // nop
-		cCycles += 0;
-		break;
-
-	case 0x1B: // nop
-		cCycles += 0;
-		break;
-
-	case 0x1C: // nop
-		cCycles += 0;
-		break;
-
-	case 0x1D: // nop
-		cCycles += 0;
-		break;
-
-	case 0x1E: // nop
-		cCycles += 0;
-		break;
-
-	case 0x1F: // nop
-		cCycles += 0;
-		break;
-
-	case 0x20: // nop
-		cCycles += 0;
-		break;
-
-	case 0x21: // nop
-		cCycles += 0;
-		break;
-
-	case 0x22: // nop
-		cCycles += 0;
-		break;
-
-	case 0x23: // nop
-		cCycles += 0;
-		break;
-
-	case 0x24: // nop
-		cCycles += 0;
-		break;
-
-	case 0x25: // nop
-		cCycles += 0;
-		break;
-
-	case 0x26: // nop
-		cCycles += 0;
-		break;
-
-	case 0x27: // nop
-		cCycles += 0;
-		break;
-
-	case 0x28: // nop
-		cCycles += 0;
-		break;
-
-	case 0x29: // nop
-		cCycles += 0;
-		break;
-
-	case 0x2A: // nop
-		cCycles += 0;
-		break;
-
-	case 0x2B: // nop
-		cCycles += 0;
-		break;
-
-	case 0x2C: // nop
-		cCycles += 0;
-		break;
-
-	case 0x2D: // nop
-		cCycles += 0;
-		break;
-
-	case 0x2E: // nop
-		cCycles += 0;
-		break;
-
-	case 0x2F: // nop
-		cCycles += 0;
-		break;
-
-	case 0x30: // nop
-		cCycles += 0;
-		break;
-
-	case 0x31: // nop
-		cCycles += 0;
-		break;
-
-	case 0x32: // nop
-		cCycles += 0;
-		break;
-
-	case 0x33: // nop
-		cCycles += 0;
-		break;
-
-	case 0x34: // nop
-		cCycles += 0;
-		break;
-
-	case 0x35: // nop
-		cCycles += 0;
-		break;
-
-	case 0x36: // nop
-		cCycles += 0;
-		break;
-
-	case 0x37: // nop
-		cCycles += 0;
-		break;
-
-	case 0x38: // nop
-		cCycles += 0;
-		break;
-
-	case 0x39: // nop
-		cCycles += 0;
-		break;
-
-	case 0x3A: // nop
-		cCycles += 0;
-		break;
-
-	case 0x3B: // nop
-		cCycles += 0;
-		break;
-
-	case 0x3C: // nop
-		cCycles += 0;
-		break;
-
-	case 0x3D: // nop
-		cCycles += 0;
-		break;
-
-	case 0x3E: // nop
-		cCycles += 0;
-		break;
-
-	case 0x3F: // nop
-		cCycles += 0;
-		break;
-
 	case 0x40: // in_b_c
 		cCycles += 12;
 		m_regB = In(m_regC);
@@ -4644,8 +3700,6 @@ void cpu_z80::HandleED() {
 		}
 
 	case 0x4D: // reti
-		//cCycles += 8;
-		//cCycles += Ret0(1);
 		cCycles += 8;
 		m_iff1 = m_iff2;             // RETI behaves like RETN inside the CPU
 		if (reti_hook) reti_hook();  // optional external notification
@@ -4750,7 +3804,7 @@ void cpu_z80::HandleED() {
 
 	case 0x5F: // ld_a_r
 		cCycles += 9;
-		m_regA = m_regR; 
+		m_regA = m_regR;
 		m_regF = (m_regF & C_FLAG) | ZSTable[m_regA] | (m_iff2 << 2);
 		break;
 
@@ -4937,138 +3991,6 @@ void cpu_z80::HandleED() {
 		m_nIM = 2;
 		break;
 
-	case 0x7F: // nop
-		cCycles += 0;
-		break;
-
-	case 0x80: // nop
-		cCycles += 0;
-		break;
-
-	case 0x81: // nop
-		cCycles += 0;
-		break;
-
-	case 0x82: // nop
-		cCycles += 0;
-		break;
-
-	case 0x83: // nop
-		cCycles += 0;
-		break;
-
-	case 0x84: // nop
-		cCycles += 0;
-		break;
-
-	case 0x85: // nop
-		cCycles += 0;
-		break;
-
-	case 0x86: // nop
-		cCycles += 0;
-		break;
-
-	case 0x87: // nop
-		cCycles += 0;
-		break;
-
-	case 0x88: // nop
-		cCycles += 0;
-		break;
-
-	case 0x89: // nop
-		cCycles += 0;
-		break;
-
-	case 0x8A: // nop
-		cCycles += 0;
-		break;
-
-	case 0x8B: // nop
-		cCycles += 0;
-		break;
-
-	case 0x8C: // nop
-		cCycles += 0;
-		break;
-
-	case 0x8D: // nop
-		cCycles += 0;
-		break;
-
-	case 0x8E: // nop
-		cCycles += 0;
-		break;
-
-	case 0x8F: // nop
-		cCycles += 0;
-		break;
-
-	case 0x90: // nop
-		cCycles += 0;
-		break;
-
-	case 0x91: // nop
-		cCycles += 0;
-		break;
-
-	case 0x92: // nop
-		cCycles += 0;
-		break;
-
-	case 0x93: // nop
-		cCycles += 0;
-		break;
-
-	case 0x94: // nop
-		cCycles += 0;
-		break;
-
-	case 0x95: // nop
-		cCycles += 0;
-		break;
-
-	case 0x96: // nop
-		cCycles += 0;
-		break;
-
-	case 0x97: // nop
-		cCycles += 0;
-		break;
-
-	case 0x98: // nop
-		cCycles += 0;
-		break;
-
-	case 0x99: // nop
-		cCycles += 0;
-		break;
-
-	case 0x9A: // nop
-		cCycles += 0;
-		break;
-
-	case 0x9B: // nop
-		cCycles += 0;
-		break;
-
-	case 0x9C: // nop
-		cCycles += 0;
-		break;
-
-	case 0x9D: // nop
-		cCycles += 0;
-		break;
-
-	case 0x9E: // nop
-		cCycles += 0;
-		break;
-
-	case 0x9F: // nop
-		cCycles += 0;
-		break;
-
 	case 0xA0: // ldi
 		cCycles += 16;
 		{
@@ -5110,22 +4032,6 @@ void cpu_z80::HandleED() {
 			m_regF = (m_regB) ? N_FLAG : (Z_FLAG | N_FLAG);
 			break;
 		}
-
-	case 0xA4: // nop
-		cCycles += 0;
-		break;
-
-	case 0xA5: // nop
-		cCycles += 0;
-		break;
-
-	case 0xA6: // nop
-		cCycles += 0;
-		break;
-
-	case 0xA7: // nop
-		cCycles += 0;
-		break;
 
 	case 0xA8: // ldd
 		cCycles += 16;
@@ -5261,7 +4167,7 @@ void cpu_z80::HandleED() {
 		break;
 	}
 
-	case 0xB2: // inir //Review
+	case 0xB2: // inir
 	{
 		MemWriteByte(m_regHL, In(m_regC));
 		++m_regHL;
@@ -5275,8 +4181,6 @@ void cpu_z80::HandleED() {
 			cCycles += 5;
 		}
 		break;
-
-		/*	ini, if b <> 0 then pc -= 2*/
 	}
 
 	case 0xB3: // otir
@@ -5294,22 +4198,6 @@ void cpu_z80::HandleED() {
 		}
 	}
 	break;
-
-	case 0xB4: // nop
-		cCycles += 0;
-		break;
-
-	case 0xB5: // nop
-		cCycles += 0;
-		break;
-
-	case 0xB6: // nop
-		cCycles += 0;
-		break;
-
-	case 0xB7: // nop
-		cCycles += 0;
-		break;
 
 	case 0xB8: // lddr
 	{
@@ -5383,280 +4271,8 @@ void cpu_z80::HandleED() {
 			break;
 		}
 
-	case 0xBC: // nop
+	default:  // nop
 		cCycles += 0;
-		break;
-
-	case 0xBD: // nop
-		cCycles += 0;
-		break;
-
-	case 0xBE: // nop
-		cCycles += 0;
-		break;
-
-	case 0xBF: // nop
-		cCycles += 0;
-		break;
-
-	case 0xC0: // nop
-		cCycles += 0;
-		break;
-
-	case 0xC1: // nop
-		cCycles += 0;
-		break;
-
-	case 0xC2: // nop
-		cCycles += 0;
-		break;
-
-	case 0xC3: // nop
-		cCycles += 0;
-		break;
-
-	case 0xC4: // nop
-		cCycles += 0;
-		break;
-
-	case 0xC5: // nop
-		cCycles += 0;
-		break;
-
-	case 0xC6: // nop
-		cCycles += 0;
-		break;
-
-	case 0xC7: // nop
-		cCycles += 0;
-		break;
-
-	case 0xC8: // nop
-		cCycles += 0;
-		break;
-
-	case 0xC9: // nop
-		cCycles += 0;
-		break;
-
-	case 0xCA: // nop
-		cCycles += 0;
-		break;
-
-	case 0xCB: // nop
-		cCycles += 0;
-		break;
-
-	case 0xCC: // nop
-		cCycles += 0;
-		break;
-
-	case 0xCD: // nop
-		cCycles += 0;
-		break;
-
-	case 0xCE: // nop
-		cCycles += 0;
-		break;
-
-	case 0xCF: // nop
-		cCycles += 0;
-		break;
-
-	case 0xD0: // nop
-		cCycles += 0;
-		break;
-
-	case 0xD1: // nop
-		cCycles += 0;
-		break;
-
-	case 0xD2: // nop
-		cCycles += 0;
-		break;
-
-	case 0xD3: // nop
-		cCycles += 0;
-		break;
-
-	case 0xD4: // nop
-		cCycles += 0;
-		break;
-
-	case 0xD5: // nop
-		cCycles += 0;
-		break;
-
-	case 0xD6: // nop
-		cCycles += 0;
-		break;
-
-	case 0xD7: // nop
-		cCycles += 0;
-		break;
-
-	case 0xD8: // nop
-		cCycles += 0;
-		break;
-
-	case 0xD9: // nop
-		cCycles += 0;
-		break;
-
-	case 0xDA: // nop
-		cCycles += 0;
-		break;
-
-	case 0xDB: // nop
-		cCycles += 0;
-		break;
-
-	case 0xDC: // nop
-		cCycles += 0;
-		break;
-
-	case 0xDD: // nop
-		cCycles += 0;
-		break;
-
-	case 0xDE: // nop
-		cCycles += 0;
-		break;
-
-	case 0xDF: // nop
-		cCycles += 0;
-		break;
-
-	case 0xE0: // nop
-		cCycles += 0;
-		break;
-
-	case 0xE1: // nop
-		cCycles += 0;
-		break;
-
-	case 0xE2: // nop
-		cCycles += 0;
-		break;
-
-	case 0xE3: // nop
-		cCycles += 0;
-		break;
-
-	case 0xE4: // nop
-		cCycles += 0;
-		break;
-
-	case 0xE5: // nop
-		cCycles += 0;
-		break;
-
-	case 0xE6: // nop
-		cCycles += 0;
-		break;
-
-	case 0xE7: // nop
-		cCycles += 0;
-		break;
-
-	case 0xE8: // nop
-		cCycles += 0;
-		break;
-
-	case 0xE9: // nop
-		cCycles += 0;
-		break;
-
-	case 0xEA: // nop
-		cCycles += 0;
-		break;
-
-	case 0xEB: // nop
-		cCycles += 0;
-		break;
-
-	case 0xEC: // nop
-		cCycles += 0;
-		break;
-
-	case 0xED: // nop
-		cCycles += 0;
-		break;
-
-	case 0xEE: // nop
-		cCycles += 0;
-		break;
-
-	case 0xEF: // nop
-		cCycles += 0;
-		break;
-
-	case 0xF0: // nop
-		cCycles += 0;
-		break;
-
-	case 0xF1: // nop
-		cCycles += 0;
-		break;
-
-	case 0xF2: // nop
-		cCycles += 0;
-		break;
-
-	case 0xF3: // nop
-		cCycles += 0;
-		break;
-
-	case 0xF4: // nop
-		cCycles += 0;
-		break;
-
-	case 0xF5: // nop
-		cCycles += 0;
-		break;
-
-	case 0xF6: // nop
-		cCycles += 0;
-		break;
-
-	case 0xF7: // nop
-		cCycles += 0;
-		break;
-
-	case 0xF8: // nop
-		cCycles += 0;
-		break;
-
-	case 0xF9: // nop
-		cCycles += 0;
-		break;
-
-	case 0xFA: // nop
-		cCycles += 0;
-		break;
-
-	case 0xFB: // nop
-		cCycles += 0;
-		break;
-
-	case 0xFC: // nop
-		cCycles += 0;
-		break;
-
-	case 0xFD: // nop
-		cCycles += 0;
-		break;
-
-	case 0xFE: // patch
-		cCycles += 0;
-		break;
-
-	case 0xFF: // nop
-		cCycles += 0;
-		break;
-
-	default:
-		assert(false);
 		break;
 	}
 }
@@ -5679,137 +4295,13 @@ int cpu_z80::HandleFD() {
 
 	switch (bOpcode)
 	{
-	case 0x00: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x01: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x02: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x03: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x04: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x05: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x06: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x07: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x08: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
 	case 0x09: // add_iy_bc
 		m_regIY = Add_2(m_regIY, m_regBC);
 		return 15;
 
-	case 0x0A: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x0B: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x0C: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x0D: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x0E: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x0F: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x10: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x11: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x12: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x13: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x14: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x15: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x16: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x17: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x18: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
 	case 0x19: // add_iy_de
 		m_regIY = Add_2(m_regIY, m_regDE);
 		return 15;
-
-	case 0x1A: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x1B: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x1C: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x1D: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x1E: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x1F: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x20: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
 
 	case 0x21: // ld_iy_word
 		m_regIY = ImmedWord();
@@ -5825,23 +4317,15 @@ int cpu_z80::HandleFD() {
 
 	case 0x24: // inc_iyh
 		m_regIYh = Inc(m_regIYh);
-		return 9;
+		return 8;
 
 	case 0x25: // dec_iyh
 		m_regIYh = Dec(m_regIYh);
-		return 9;
+		return 8;
 
 	case 0x26: // ld_iyh_byte
 		m_regIYh = ImmedByte();
-		return 9;
-
-	case 0x27: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x28: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
+		return 11;
 
 	case 0x29: // add_iy_iy
 		m_regIY = Add_2(m_regIY, m_regIY);
@@ -5857,35 +4341,15 @@ int cpu_z80::HandleFD() {
 
 	case 0x2C: // inc_iyl
 		m_regIYl = Inc(m_regIYl);
-		return 9;
+		return 8;
 
 	case 0x2D: // dec_iyl
 		m_regIYl = Dec(m_regIYl);
-		return 9;
+		return 8;
 
 	case 0x2E: // ld_iyl_byte
 		m_regIYl = ImmedByte();
-		return 9;
-
-	case 0x2F: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x30: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x31: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x32: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x33: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
+		return 11;
 
 	case 0x34: // inc_xiy
 		wAddr = IndirectIY();
@@ -5902,235 +4366,121 @@ int cpu_z80::HandleFD() {
 		MemWriteByte(wAddr, ImmedByte());
 		return 19;
 
-	case 0x37: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x38: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
 	case 0x39: // add_iy_sp
 		m_regIY = Add_2(m_regIY, GetSP());
 		return 15;
 
-	case 0x3A: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x3B: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x3C: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x3D: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x3E: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x3F: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x40: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x41: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x42: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x43: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
 	case 0x44: // ld_b_iyh
 		m_regB = m_regIYh;
-		return 9;
+		return 8;
 
 	case 0x45: // ld_b_iyl
 		m_regB = m_regIYl;
-		return 9;
+		return 8;
 
 	case 0x46: // ld_b_xiy
 		m_regB = MemReadByte(IndirectIY());
 		return 19;
 
-	case 0x47: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x48: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x49: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x4A: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x4B: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
 	case 0x4C: // ld_c_iyh
 		m_regC = m_regIYh;
-		return 9;
+		return 8;
 
 	case 0x4D: // ld_c_iyl
 		m_regC = m_regIYl;
-		return 9;
+		return 8;
 
 	case 0x4E: // ld_c_xiy
 		m_regC = MemReadByte(IndirectIY());
 		return 19;
 
-	case 0x4F: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x50: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x51: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x52: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x53: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
 	case 0x54: // ld_d_iyh
 		m_regD = m_regIYh;
-		return 9;
+		return 8;
 
 	case 0x55: // ld_d_iyl
 		m_regD = m_regIYl;
-		return 9;
+		return 8;
 
 	case 0x56: // ld_d_xiy
 		m_regD = MemReadByte(IndirectIY());
 		return 19;
 
-	case 0x57: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x58: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x59: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x5A: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x5B: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
 	case 0x5C: // ld_e_iyh
 		m_regE = m_regIYh;
-		return 9;
+		return 8;
 
 	case 0x5D: // ld_e_iyl
 		m_regE = m_regIYl;
-		return 9;
+		return 8;
 
 	case 0x5E: // ld_e_xiy
 		m_regE = MemReadByte(IndirectIY());
 		return 19;
 
-	case 0x5F: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
 	case 0x60: // ld_iyh_b
 		m_regIYh = m_regB;
-		return 9;
+		return 8;
 
 	case 0x61: // ld_iyh_c
 		m_regIYh = m_regC;
-		return 9;
+		return 8;
 
 	case 0x62: // ld_iyh_d
 		m_regIYh = m_regD;
-		return 9;
+		return 8;
 
 	case 0x63: // ld_iyh_e
 		m_regIYh = m_regE;
-		return 9;
+		return 8;
 
 	case 0x64: // ld_iyh_h
 		m_regIYh = m_regH;
-		return 9;
+		return 8;
 
 	case 0x65: // ld_iyh_l
 		m_regIYh = m_regL;
-		return 9;
+		return 8;
 
 	case 0x66: // ld_h_xiy
 		m_regH = MemReadByte(IndirectIY());
-		//return 9;
 		return 19;
 
 	case 0x67: // ld_iyh_a
 		m_regIYh = m_regA;
-		return 9;
+		return 8;
 
 	case 0x68: // ld_iyl_b
 		m_regIYl = m_regB;
-		return 9;
+		return 8;
 
 	case 0x69: // ld_iyl_c
 		m_regIYl = m_regC;
-		return 9;
+		return 8;
 
 	case 0x6A: // ld_iyl_d
 		m_regIYl = m_regD;
-		return 9;
+		return 8;
 
 	case 0x6B: // ld_iyl_e
 		m_regIYl = m_regE;
-		return 9;
+		return 8;
 
 	case 0x6C: // ld_iyl_h
 		m_regIYl = m_regH;
-		return 9;
+		return 8;
 
 	case 0x6D: // ld_iyl_l
 		m_regIYl = m_regL;
-		return 9;
+		return 8;
 
 	case 0x6E: // ld_l_xiy
 		m_regL = MemReadByte(IndirectIY());
-		//return 9;
 		return 19;
 
 	case 0x6F: // ld_iyl_a
 		m_regIYl = m_regA;
-		return 9;
+		return 8;
 
 	case 0x70: // ld_xiy_b
 		MemWriteByte(IndirectIY(), m_regB);
@@ -6156,440 +4506,124 @@ int cpu_z80::HandleFD() {
 		MemWriteByte(IndirectIY(), m_regL);
 		return 19;
 
-	case 0x76: // no_op
-		SetPC(GetPC() - 1);
-		return 19;
-
 	case 0x77: // ld_xiy_a
 		MemWriteByte(IndirectIY(), m_regA);
 		return 19;
 
-	case 0x78: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x79: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x7A: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x7B: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
 	case 0x7C: // ld_a_iyh
 		m_regA = m_regIYh;
-		return 9;
+		return 8;
 
 	case 0x7D: // ld_a_iyl
 		m_regA = m_regIYl;
-		return 9;
+		return 8;
 
 	case 0x7E: // ld_a_xiy
 		m_regA = MemReadByte(IndirectIY());
 		return 19;
 
-	case 0x7F: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x80: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x81: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x82: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x83: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
 	case 0x84: // add_a_iyh
 		Add_1(m_regIYh);
-		return 9;
+		return 8;
 
 	case 0x85: // add_a_iyl
 		Add_1(m_regIYl);
-		return 9;
+		return 8;
 
 	case 0x86: // add_a_xiy
 		Add_1(MemReadByte(IndirectIY()));
 		return 19;
 
-	case 0x87: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x88: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x89: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x8A: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x8B: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
 	case 0x8C: // adc_a_iyh
 		Adc_1(m_regIYh);
-		return 9;
+		return 8;
 
 	case 0x8D: // adc_a_iyl
 		Adc_1(m_regIYl);
-		return 9;
+		return 8;
 
 	case 0x8E: // adc_a_xiy
 		Adc_1(MemReadByte(IndirectIY()));
 		return 19;
 
-	case 0x8F: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x90: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x91: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x92: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x93: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
 	case 0x94: // sub_iyh
 		Sub_1(m_regIYh);
-		return 9;
+		return 8;
 
 	case 0x95: // sub_iyl
 		Sub_1(m_regIYl);
-		return 9;
+		return 8;
 
 	case 0x96: // sub_xiy
 		Sub_1(MemReadByte(IndirectIY()));
 		return 19;
 
-	case 0x97: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x98: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x99: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x9A: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0x9B: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
 	case 0x9C: // sbc_a_iyh
 		Sbc_1(m_regIYh);
-		return 9;
+		return 8;
 
 	case 0x9D: // sbc_a_iyl
 		Sbc_1(m_regIYl);
-		return 9;
+		return 8;
 
 	case 0x9E: // sbc_a_xiy
 		Sbc_1(MemReadByte(IndirectIY()));
 		return 19;
 
-	case 0x9F: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xA0: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xA1: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xA2: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xA3: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
 	case 0xA4: // and_iyh
 		And(m_regIYh);
-		return 9;
+		return 8;
 
 	case 0xA5: // and_iyl
 		And(m_regIYl);
-		return 9;
+		return 8;
 
 	case 0xA6: // and_xiy
 		And(MemReadByte(IndirectIY()));
 		return 19;
 
-	case 0xA7: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xA8: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xA9: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xAA: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xAB: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
 	case 0xAC: // xor_iyh
 		Xor(m_regIYh);
-		return 9;
+		return 8;
 
 	case 0xAD: // xor_iyl
 		Xor(m_regIYl);
-		return 9;
+		return 8;
 
 	case 0xAE: // xor_xiy
 		Xor(MemReadByte(IndirectIY()));
 		return 19;
 
-	case 0xAF: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xB0: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xB1: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xB2: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xB3: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
 	case 0xB4: // or_iyh
 		Or(m_regIYh);
-		return 9;
+		return 8;
 
 	case 0xB5: // or_iyl
 		Or(m_regIYl);
-		return 9;
+		return 8;
 
 	case 0xB6: // or_xiy
 		Or(MemReadByte(IndirectIY()));
 		return 19;
 
-	case 0xB7: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xB8: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xB9: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xBA: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xBB: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
 	case 0xBC: // cp_iyh
 		Cp(m_regIYh);
-		return 9;
+		return 8;
 
 	case 0xBD: // cp_iyl
 		Cp(m_regIYl);
-		return 9;
+		return 8;
 
 	case 0xBE: // cp_xiy
 		Cp(MemReadByte(IndirectIY()));
 		return 19;
 
-	case 0xBF: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xC0: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xC1: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xC2: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xC3: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xC4: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xC5: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xC6: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xC7: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xC8: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xC9: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xCA: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
 	case 0xCB: // fd_cb
 		return HandleFDCB();
-
-	case 0xCC: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xCD: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xCE: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xCF: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xD0: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xD1: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xD2: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xD3: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xD4: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xD5: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xD6: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xD7: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xD8: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xD9: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xDA: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xDB: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xDC: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xDD: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xDE: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xDF: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xE0: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
 
 	case 0xE1: // pop_iy
 		m_regIY = Pop();
 		return 14;
-
-	case 0xE2: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
 
 	case 0xE3: // ex_xsp_iy
 		wTemp = MemReadWord(GetSP());
@@ -6597,121 +4631,20 @@ int cpu_z80::HandleFD() {
 		m_regIY = wTemp;
 		return 23;
 
-	case 0xE4: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
 	case 0xE5: // push_iy
 		Push(m_regIY);
 		return 15;
-
-	case 0xE6: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xE7: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xE8: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
 
 	case 0xE9: // jp_iy
 		SetPC(m_regIY);
 		return 8;
 
-	case 0xEA: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xEB: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xEC: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xED: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xEE: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xEF: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xF0: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xF1: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xF2: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xF3: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xF4: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xF5: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xF6: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xF7: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xF8: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
 	case 0xF9: // ld_sp_iy
 		SetSP(m_regIY);
 		return 10;
 
-	case 0xFA: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xFB: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xFC: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xFD: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xFE: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
-	case 0xFF: // no_op
-		SetPC(GetPC() - 1);
-		return 0;
-
 	default:
-		assert(false);
-		return 0;
+		return 4 + exec_opcode(bOpcode);
 	}
 }
 
@@ -6726,205 +4659,37 @@ int cpu_z80::HandleFDCB() {
 
 	switch (bOpcode)
 	{
-	case 0x00: // no_op_xx
-		return 0;
-
-	case 0x01: // no_op_xx
-		return 0;
-
-	case 0x02: // no_op_xx
-		return 0;
-
-	case 0x03: // no_op_xx
-		return 0;
-
-	case 0x04: // no_op_xx
-		return 0;
-
-	case 0x05: // no_op_xx
-		return 0;
-
 	case 0x06: // rlc_xiy
 		MemWriteByte(wAddr, Rlc(MemReadByte(wAddr)));
 		return 23;
-
-	case 0x07: // no_op_xx
-		return 0;
-
-	case 0x08: // no_op_xx
-		return 0;
-
-	case 0x09: // no_op_xx
-		return 0;
-
-	case 0x0A: // no_op_xx
-		return 0;
-
-	case 0x0B: // no_op_xx
-		return 0;
-
-	case 0x0C: // no_op_xx
-		return 0;
-
-	case 0x0D: // no_op_xx
-		return 0;
 
 	case 0x0E: // rrc_xiy
 		MemWriteByte(wAddr, Rrc(MemReadByte(wAddr)));
 		return 23;
 
-	case 0x0F: // no_op_xx
-		return 0;
-
-	case 0x10: // no_op_xx
-		return 0;
-
-	case 0x11: // no_op_xx
-		return 0;
-
-	case 0x12: // no_op_xx
-		return 0;
-
-	case 0x13: // no_op_xx
-		return 0;
-
-	case 0x14: // no_op_xx
-		return 0;
-
-	case 0x15: // no_op_xx
-		return 0;
-
 	case 0x16: // rl_xiy
 		MemWriteByte(wAddr, Rl(MemReadByte(wAddr)));
 		return 23;
-
-	case 0x17: // no_op_xx
-		return 0;
-
-	case 0x18: // no_op_xx
-		return 0;
-
-	case 0x19: // no_op_xx
-		return 0;
-
-	case 0x1A: // no_op_xx
-		return 0;
-
-	case 0x1B: // no_op_xx
-		return 0;
-
-	case 0x1C: // no_op_xx
-		return 0;
-
-	case 0x1D: // no_op_xx
-		return 0;
 
 	case 0x1E: // rr_xiy
 		MemWriteByte(wAddr, Rr(MemReadByte(wAddr)));
 		return 23;
 
-	case 0x1F: // no_op_xx
-		return 0;
-
-	case 0x20: // no_op_xx
-		return 0;
-
-	case 0x21: // no_op_xx
-		return 0;
-
-	case 0x22: // no_op_xx
-		return 0;
-
-	case 0x23: // no_op_xx
-		return 0;
-
-	case 0x24: // no_op_xx
-		return 0;
-
-	case 0x25: // no_op_xx
-		return 0;
-
 	case 0x26: // sla_xiy
 		MemWriteByte(wAddr, Sla(MemReadByte(wAddr)));
 		return 23;
-
-	case 0x27: // no_op_xx
-		return 0;
-
-	case 0x28: // no_op_xx
-		return 0;
-
-	case 0x29: // no_op_xx
-		return 0;
-
-	case 0x2A: // no_op_xx
-		return 0;
-
-	case 0x2B: // no_op_xx
-		return 0;
-
-	case 0x2C: // no_op_xx
-		return 0;
-
-	case 0x2D: // no_op_xx
-		return 0;
 
 	case 0x2E: // sra_xiy
 		MemWriteByte(wAddr, Sra(MemReadByte(wAddr)));
 		return 23;
 
-	case 0x2F: // no_op_xx
-		return 0;
-
-	case 0x30: // no_op_xx
-		return 0;
-
-	case 0x31: // no_op_xx
-		return 0;
-
-	case 0x32: // no_op_xx
-		return 0;
-
-	case 0x33: // no_op_xx
-		return 0;
-
-	case 0x34: // no_op_xx
-		return 0;
-
-	case 0x35: // no_op_xx
-		return 0;
-
 	case 0x36: // sll_xiy
 		MemWriteByte(wAddr, Sll(MemReadByte(wAddr)));
 		return 23;
 
-	case 0x37: // no_op_xx
-		return 0;
-
-	case 0x38: // no_op_xx
-		return 0;
-
-	case 0x39: // no_op_xx
-		return 0;
-
-	case 0x3A: // no_op_xx
-		return 0;
-
-	case 0x3B: // no_op_xx
-		return 0;
-
-	case 0x3C: // no_op_xx
-		return 0;
-
-	case 0x3D: // no_op_xx
-		return 0;
-
 	case 0x3E: // srl_xiy
 		MemWriteByte(wAddr, Srl(MemReadByte(wAddr)));
 		return 23;
-
-	case 0x3F: // no_op_xx
-		return 0;
 
 	case 0x40: // bit_0_xiy
 	case 0x41: // bit_0_xiy
@@ -7014,408 +4779,71 @@ int cpu_z80::HandleFDCB() {
 		Bit(MemReadByte(wAddr), 7);
 		return 20;
 
-	case 0x80: // no_op_xx
-		return 0;
-
-	case 0x81: // no_op_xx
-		return 0;
-
-	case 0x82: // no_op_xx
-		return 0;
-
-	case 0x83: // no_op_xx
-		return 0;
-
-	case 0x84: // no_op_xx
-		return 0;
-
-	case 0x85: // no_op_xx
-		return 0;
-
 	case 0x86: // res_0_xiy
 		MemWriteByte(wAddr, Res(MemReadByte(wAddr), 0));
 		return 23;
-
-	case 0x87: // no_op_xx
-		return 0;
-
-	case 0x88: // no_op_xx
-		return 0;
-
-	case 0x89: // no_op_xx
-		return 0;
-
-	case 0x8A: // no_op_xx
-		return 0;
-
-	case 0x8B: // no_op_xx
-		return 0;
-
-	case 0x8C: // no_op_xx
-		return 0;
-
-	case 0x8D: // no_op_xx
-		return 0;
 
 	case 0x8E: // res_1_xiy
 		MemWriteByte(wAddr, Res(MemReadByte(wAddr), 1));
 		return 23;
 
-	case 0x8F: // no_op_xx
-		return 0;
-
-	case 0x90: // no_op_xx
-		return 0;
-
-	case 0x91: // no_op_xx
-		return 0;
-
-	case 0x92: // no_op_xx
-		return 0;
-
-	case 0x93: // no_op_xx
-		return 0;
-
-	case 0x94: // no_op_xx
-		return 0;
-
-	case 0x95: // no_op_xx
-		return 0;
-
 	case 0x96: // res_2_xiy
 		MemWriteByte(wAddr, Res(MemReadByte(wAddr), 2));
 		return 23;
-
-	case 0x97: // no_op_xx
-		return 0;
-
-	case 0x98: // no_op_xx
-		return 0;
-
-	case 0x99: // no_op_xx
-		return 0;
-
-	case 0x9A: // no_op_xx
-		return 0;
-
-	case 0x9B: // no_op_xx
-		return 0;
-
-	case 0x9C: // no_op_xx
-		return 0;
-
-	case 0x9D: // no_op_xx
-		return 0;
 
 	case 0x9E: // res_3_xiy
 		MemWriteByte(wAddr, Res(MemReadByte(wAddr), 3));
 		return 23;
 
-	case 0x9F: // no_op_xx
-		return 0;
-
-	case 0xA0: // no_op_xx
-		return 0;
-
-	case 0xA1: // no_op_xx
-		return 0;
-
-	case 0xA2: // no_op_xx
-		return 0;
-
-	case 0xA3: // no_op_xx
-		return 0;
-
-	case 0xA4: // no_op_xx
-		return 0;
-
-	case 0xA5: // no_op_xx
-		return 0;
-
 	case 0xA6: // res_4_xiy
 		MemWriteByte(wAddr, Res(MemReadByte(wAddr), 4));
 		return 23;
-
-	case 0xA7: // no_op_xx
-		return 0;
-
-	case 0xA8: // no_op_xx
-		return 0;
-
-	case 0xA9: // no_op_xx
-		return 0;
-
-	case 0xAA: // no_op_xx
-		return 0;
-
-	case 0xAB: // no_op_xx
-		return 0;
-
-	case 0xAC: // no_op_xx
-		return 0;
-
-	case 0xAD: // no_op_xx
-		return 0;
 
 	case 0xAE: // res_5_xiy
 		MemWriteByte(wAddr, Res(MemReadByte(wAddr), 5));
 		return 23;
 
-	case 0xAF: // no_op_xx
-		return 0;
-
-	case 0xB0: // no_op_xx
-		return 0;
-
-	case 0xB1: // no_op_xx
-		return 0;
-
-	case 0xB2: // no_op_xx
-		return 0;
-
-	case 0xB3: // no_op_xx
-		return 0;
-
-	case 0xB4: // no_op_xx
-		return 0;
-
-	case 0xB5: // no_op_xx
-		return 0;
-
 	case 0xB6: // res_6_xiy
 		MemWriteByte(wAddr, Res(MemReadByte(wAddr), 6));
 		return 23;
-
-	case 0xB7: // no_op_xx
-		return 0;
-
-	case 0xB8: // no_op_xx
-		return 0;
-
-	case 0xB9: // no_op_xx
-		return 0;
-
-	case 0xBA: // no_op_xx
-		return 0;
-
-	case 0xBB: // no_op_xx
-		return 0;
-
-	case 0xBC: // no_op_xx
-		return 0;
-
-	case 0xBD: // no_op_xx
-		return 0;
 
 	case 0xBE: // res_7_xiy
 		MemWriteByte(wAddr, Res(MemReadByte(wAddr), 7));
 		return 23;
 
-	case 0xBF: // no_op_xx
-		return 0;
-
-	case 0xC0: // no_op_xx
-		return 0;
-
-	case 0xC1: // no_op_xx
-		return 0;
-
-	case 0xC2: // no_op_xx
-		return 0;
-
-	case 0xC3: // no_op_xx
-		return 0;
-
-	case 0xC4: // no_op_xx
-		return 0;
-
-	case 0xC5: // no_op_xx
-		return 0;
-
 	case 0xC6: // set_0_xiy
 		MemWriteByte(wAddr, Set(MemReadByte(wAddr), 0));
 		return 23;
-
-	case 0xC7: // no_op_xx
-		return 0;
-
-	case 0xC8: // no_op_xx
-		return 0;
-
-	case 0xC9: // no_op_xx
-		return 0;
-
-	case 0xCA: // no_op_xx
-		return 0;
-
-	case 0xCB: // no_op_xx
-		return 0;
-
-	case 0xCC: // no_op_xx
-		return 0;
-
-	case 0xCD: // no_op_xx
-		return 0;
 
 	case 0xCE: // set_1_xiy
 		MemWriteByte(wAddr, Set(MemReadByte(wAddr), 1));
 		return 23;
 
-	case 0xCF: // no_op_xx
-		return 0;
-
-	case 0xD0: // no_op_xx
-		return 0;
-
-	case 0xD1: // no_op_xx
-		return 0;
-
-	case 0xD2: // no_op_xx
-		return 0;
-
-	case 0xD3: // no_op_xx
-		return 0;
-
-	case 0xD4: // no_op_xx
-		return 0;
-
-	case 0xD5: // no_op_xx
-		return 0;
-
 	case 0xD6: // set_2_xiy
 		MemWriteByte(wAddr, Set(MemReadByte(wAddr), 2));
 		return 23;
-
-	case 0xD7: // no_op_xx
-		return 0;
-
-	case 0xD8: // no_op_xx
-		return 0;
-
-	case 0xD9: // no_op_xx
-		return 0;
-
-	case 0xDA: // no_op_xx
-		return 0;
-
-	case 0xDB: // no_op_xx
-		return 0;
-
-	case 0xDC: // no_op_xx
-		return 0;
-
-	case 0xDD: // no_op_xx
-		return 0;
 
 	case 0xDE: // set_3_xiy
 		MemWriteByte(wAddr, Set(MemReadByte(wAddr), 3));
 		return 23;
 
-	case 0xDF: // no_op_xx
-		return 0;
-
-	case 0xE0: // no_op_xx
-		return 0;
-
-	case 0xE1: // no_op_xx
-		return 0;
-
-	case 0xE2: // no_op_xx
-		return 0;
-
-	case 0xE3: // no_op_xx
-		return 0;
-
-	case 0xE4: // no_op_xx
-		return 0;
-
-	case 0xE5: // no_op_xx
-		return 0;
-
 	case 0xE6: // set_4_xiy
 		MemWriteByte(wAddr, Set(MemReadByte(wAddr), 4));
 		return 23;
-
-	case 0xE7: // no_op_xx
-		return 0;
-
-	case 0xE8: // no_op_xx
-		return 0;
-
-	case 0xE9: // no_op_xx
-		return 0;
-
-	case 0xEA: // no_op_xx
-		return 0;
-
-	case 0xEB: // no_op_xx
-		return 0;
-
-	case 0xEC: // no_op_xx
-		return 0;
-
-	case 0xED: // no_op_xx
-		return 0;
 
 	case 0xEE: // set_5_xiy
 		MemWriteByte(wAddr, Set(MemReadByte(wAddr), 5));
 		return 23;
 
-	case 0xEF: // no_op_xx
-		return 0;
-
-	case 0xF0: // no_op_xx
-		return 0;
-
-	case 0xF1: // no_op_xx
-		return 0;
-
-	case 0xF2: // no_op_xx
-		return 0;
-
-	case 0xF3: // no_op_xx
-		return 0;
-
-	case 0xF4: // no_op_xx
-		return 0;
-
-	case 0xF5: // no_op_xx
-		return 0;
-
 	case 0xF6: // set_6_xiy
 		MemWriteByte(wAddr, Set(MemReadByte(wAddr), 6));
 		return 23;
-
-	case 0xF7: // no_op_xx
-		return 0;
-
-	case 0xF8: // no_op_xx
-		return 0;
-
-	case 0xF9: // no_op_xx
-		return 0;
-
-	case 0xFA: // no_op_xx
-		return 0;
-
-	case 0xFB: // no_op_xx
-		return 0;
-
-	case 0xFC: // no_op_xx
-		return 0;
-
-	case 0xFD: // no_op_xx
-		return 0;
 
 	case 0xFE: // set_7_xiy
 		MemWriteByte(wAddr, Set(MemReadByte(wAddr), 7));
 		return 23;
 
-	case 0xFF: // no_op_x
-		return 0;
-
 	default:
-		assert(false);
 		return 0;
 	}
 }
@@ -7431,205 +4859,37 @@ int cpu_z80::HandleDDCB() {
 
 	switch (bOpcode)
 	{
-	case 0x00: // no_op_xx
-		return 0;
-
-	case 0x01: // no_op_xx
-		return 0;
-
-	case 0x02: // no_op_xx
-		return 0;
-
-	case 0x03: // no_op_xx
-		return 0;
-
-	case 0x04: // no_op_xx
-		return 0;
-
-	case 0x05: // no_op_xx
-		return 0;
-
 	case 0x06: // rlc_xix
 		MemWriteByte(wAddr, Rlc(MemReadByte(wAddr)));
 		return 23;
-
-	case 0x07: // no_op_xx
-		return 0;
-
-	case 0x08: // no_op_xx
-		return 0;
-
-	case 0x09: // no_op_xx
-		return 0;
-
-	case 0x0A: // no_op_xx
-		return 0;
-
-	case 0x0B: // no_op_xx
-		return 0;
-
-	case 0x0C: // no_op_xx
-		return 0;
-
-	case 0x0D: // no_op_xx
-		return 0;
 
 	case 0x0E: // rrc_xix
 		MemWriteByte(wAddr, Rrc(MemReadByte(wAddr)));
 		return 23;
 
-	case 0x0F: // no_op_xx
-		return 0;
-
-	case 0x10: // no_op_xx
-		return 0;
-
-	case 0x11: // no_op_xx
-		return 0;
-
-	case 0x12: // no_op_xx
-		return 0;
-
-	case 0x13: // no_op_xx
-		return 0;
-
-	case 0x14: // no_op_xx
-		return 0;
-
-	case 0x15: // no_op_xx
-		return 0;
-
 	case 0x16: // rl_xix
 		MemWriteByte(wAddr, Rl(MemReadByte(wAddr)));
 		return 23;
-
-	case 0x17: // no_op_xx
-		return 0;
-
-	case 0x18: // no_op_xx
-		return 0;
-
-	case 0x19: // no_op_xx
-		return 0;
-
-	case 0x1A: // no_op_xx
-		return 0;
-
-	case 0x1B: // no_op_xx
-		return 0;
-
-	case 0x1C: // no_op_xx
-		return 0;
-
-	case 0x1D: // no_op_xx
-		return 0;
 
 	case 0x1E: // rr_xix
 		MemWriteByte(wAddr, Rr(MemReadByte(wAddr)));
 		return 23;
 
-	case 0x1F: // no_op_xx
-		return 0;
-
-	case 0x20: // no_op_xx
-		return 0;
-
-	case 0x21: // no_op_xx
-		return 0;
-
-	case 0x22: // no_op_xx
-		return 0;
-
-	case 0x23: // no_op_xx
-		return 0;
-
-	case 0x24: // no_op_xx
-		return 0;
-
-	case 0x25: // no_op_xx
-		return 0;
-
 	case 0x26: // sla_xix
 		MemWriteByte(wAddr, Sla(MemReadByte(wAddr)));
 		return 23;
-
-	case 0x27: // no_op_xx
-		return 0;
-
-	case 0x28: // no_op_xx
-		return 0;
-
-	case 0x29: // no_op_xx
-		return 0;
-
-	case 0x2A: // no_op_xx
-		return 0;
-
-	case 0x2B: // no_op_xx
-		return 0;
-
-	case 0x2C: // no_op_xx
-		return 0;
-
-	case 0x2D: // no_op_xx
-		return 0;
 
 	case 0x2E: // sra_xix
 		MemWriteByte(wAddr, Sra(MemReadByte(wAddr)));
 		return 23;
 
-	case 0x2F: // no_op_xx
-		return 0;
-
-	case 0x30: // no_op_xx
-		return 0;
-
-	case 0x31: // no_op_xx
-		return 0;
-
-	case 0x32: // no_op_xx
-		return 0;
-
-	case 0x33: // no_op_xx
-		return 0;
-
-	case 0x34: // no_op_xx
-		return 0;
-
-	case 0x35: // no_op_xx
-		return 0;
-
 	case 0x36: // sll_xix
 		MemWriteByte(wAddr, Sll(MemReadByte(wAddr)));
 		return 23;
 
-	case 0x37: // no_op_xx
-		return 0;
-
-	case 0x38: // no_op_xx
-		return 0;
-
-	case 0x39: // no_op_xx
-		return 0;
-
-	case 0x3A: // no_op_xx
-		return 0;
-
-	case 0x3B: // no_op_xx
-		return 0;
-
-	case 0x3C: // no_op_xx
-		return 0;
-
-	case 0x3D: // no_op_xx
-		return 0;
-
 	case 0x3E: // srl_xix
 		MemWriteByte(wAddr, Srl(MemReadByte(wAddr)));
 		return 23;
-
-	case 0x3F: // no_op_xx
-		return 0;
 
 	case 0x40: // bit_0_xix
 	case 0x41: // bit_0_xix
@@ -7719,408 +4979,71 @@ int cpu_z80::HandleDDCB() {
 		Bit(MemReadByte(wAddr), 7);
 		return 20;
 
-	case 0x80: // no_op_xx
-		return 0;
-
-	case 0x81: // no_op_xx
-		return 0;
-
-	case 0x82: // no_op_xx
-		return 0;
-
-	case 0x83: // no_op_xx
-		return 0;
-
-	case 0x84: // no_op_xx
-		return 0;
-
-	case 0x85: // no_op_xx
-		return 0;
-
 	case 0x86: // res_0_xix
 		MemWriteByte(wAddr, Res(MemReadByte(wAddr), 0));
 		return 23;
-
-	case 0x87: // no_op_xx
-		return 0;
-
-	case 0x88: // no_op_xx
-		return 0;
-
-	case 0x89: // no_op_xx
-		return 0;
-
-	case 0x8A: // no_op_xx
-		return 0;
-
-	case 0x8B: // no_op_xx
-		return 0;
-
-	case 0x8C: // no_op_xx
-		return 0;
-
-	case 0x8D: // no_op_xx
-		return 0;
 
 	case 0x8E: // res_1_xix
 		MemWriteByte(wAddr, Res(MemReadByte(wAddr), 1));
 		return 23;
 
-	case 0x8F: // no_op_xx
-		return 0;
-
-	case 0x90: // no_op_xx
-		return 0;
-
-	case 0x91: // no_op_xx
-		return 0;
-
-	case 0x92: // no_op_xx
-		return 0;
-
-	case 0x93: // no_op_xx
-		return 0;
-
-	case 0x94: // no_op_xx
-		return 0;
-
-	case 0x95: // no_op_xx
-		return 0;
-
 	case 0x96: // res_2_xix
 		MemWriteByte(wAddr, Res(MemReadByte(wAddr), 2));
 		return 23;
-
-	case 0x97: // no_op_xx
-		return 0;
-
-	case 0x98: // no_op_xx
-		return 0;
-
-	case 0x99: // no_op_xx
-		return 0;
-
-	case 0x9A: // no_op_xx
-		return 0;
-
-	case 0x9B: // no_op_xx
-		return 0;
-
-	case 0x9C: // no_op_xx
-		return 0;
-
-	case 0x9D: // no_op_xx
-		return 0;
 
 	case 0x9E: // res_3_xix
 		MemWriteByte(wAddr, Res(MemReadByte(wAddr), 3));
 		return 23;
 
-	case 0x9F: // no_op_xx
-		return 0;
-
-	case 0xA0: // no_op_xx
-		return 0;
-
-	case 0xA1: // no_op_xx
-		return 0;
-
-	case 0xA2: // no_op_xx
-		return 0;
-
-	case 0xA3: // no_op_xx
-		return 0;
-
-	case 0xA4: // no_op_xx
-		return 0;
-
-	case 0xA5: // no_op_xx
-		return 0;
-
 	case 0xA6: // res_4_xix
 		MemWriteByte(wAddr, Res(MemReadByte(wAddr), 4));
 		return 23;
-
-	case 0xA7: // no_op_xx
-		return 0;
-
-	case 0xA8: // no_op_xx
-		return 0;
-
-	case 0xA9: // no_op_xx
-		return 0;
-
-	case 0xAA: // no_op_xx
-		return 0;
-
-	case 0xAB: // no_op_xx
-		return 0;
-
-	case 0xAC: // no_op_xx
-		return 0;
-
-	case 0xAD: // no_op_xx
-		return 0;
 
 	case 0xAE: // res_5_xix
 		MemWriteByte(wAddr, Res(MemReadByte(wAddr), 5));
 		return 23;
 
-	case 0xAF: // no_op_xx
-		return 0;
-
-	case 0xB0: // no_op_xx
-		return 0;
-
-	case 0xB1: // no_op_xx
-		return 0;
-
-	case 0xB2: // no_op_xx
-		return 0;
-
-	case 0xB3: // no_op_xx
-		return 0;
-
-	case 0xB4: // no_op_xx
-		return 0;
-
-	case 0xB5: // no_op_xx
-		return 0;
-
 	case 0xB6: // res_6_xix
 		MemWriteByte(wAddr, Res(MemReadByte(wAddr), 6));
 		return 23;
-
-	case 0xB7: // no_op_xx
-		return 0;
-
-	case 0xB8: // no_op_xx
-		return 0;
-
-	case 0xB9: // no_op_xx
-		return 0;
-
-	case 0xBA: // no_op_xx
-		return 0;
-
-	case 0xBB: // no_op_xx
-		return 0;
-
-	case 0xBC: // no_op_xx
-		return 0;
-
-	case 0xBD: // no_op_xx
-		return 0;
 
 	case 0xBE: // res_7_xix
 		MemWriteByte(wAddr, Res(MemReadByte(wAddr), 7));
 		return 23;
 
-	case 0xBF: // no_op_xx
-		return 0;
-
-	case 0xC0: // no_op_xx
-		return 0;
-
-	case 0xC1: // no_op_xx
-		return 0;
-
-	case 0xC2: // no_op_xx
-		return 0;
-
-	case 0xC3: // no_op_xx
-		return 0;
-
-	case 0xC4: // no_op_xx
-		return 0;
-
-	case 0xC5: // no_op_xx
-		return 0;
-
 	case 0xC6: // set_0_xix
 		MemWriteByte(wAddr, Set(MemReadByte(wAddr), 0));
 		return 23;
-
-	case 0xC7: // no_op_xx
-		return 0;
-
-	case 0xC8: // no_op_xx
-		return 0;
-
-	case 0xC9: // no_op_xx
-		return 0;
-
-	case 0xCA: // no_op_xx
-		return 0;
-
-	case 0xCB: // no_op_xx
-		return 0;
-
-	case 0xCC: // no_op_xx
-		return 0;
-
-	case 0xCD: // no_op_xx
-		return 0;
 
 	case 0xCE: // set_1_xix
 		MemWriteByte(wAddr, Set(MemReadByte(wAddr), 1));
 		return 23;
 
-	case 0xCF: // no_op_xx
-		return 0;
-
-	case 0xD0: // no_op_xx
-		return 0;
-
-	case 0xD1: // no_op_xx
-		return 0;
-
-	case 0xD2: // no_op_xx
-		return 0;
-
-	case 0xD3: // no_op_xx
-		return 0;
-
-	case 0xD4: // no_op_xx
-		return 0;
-
-	case 0xD5: // no_op_xx
-		return 0;
-
 	case 0xD6: // set_2_xix
 		MemWriteByte(wAddr, Set(MemReadByte(wAddr), 2));
 		return 23;
-
-	case 0xD7: // no_op_xx
-		return 0;
-
-	case 0xD8: // no_op_xx
-		return 0;
-
-	case 0xD9: // no_op_xx
-		return 0;
-
-	case 0xDA: // no_op_xx
-		return 0;
-
-	case 0xDB: // no_op_xx
-		return 0;
-
-	case 0xDC: // no_op_xx
-		return 0;
-
-	case 0xDD: // no_op_xx
-		return 0;
 
 	case 0xDE: // set_3_xix
 		MemWriteByte(wAddr, Set(MemReadByte(wAddr), 3));
 		return 23;
 
-	case 0xDF: // no_op_xx
-		return 0;
-
-	case 0xE0: // no_op_xx
-		return 0;
-
-	case 0xE1: // no_op_xx
-		return 0;
-
-	case 0xE2: // no_op_xx
-		return 0;
-
-	case 0xE3: // no_op_xx
-		return 0;
-
-	case 0xE4: // no_op_xx
-		return 0;
-
-	case 0xE5: // no_op_xx
-		return 0;
-
 	case 0xE6: // set_4_xix
 		MemWriteByte(wAddr, Set(MemReadByte(wAddr), 4));
 		return 23;
-
-	case 0xE7: // no_op_xx
-		return 0;
-
-	case 0xE8: // no_op_xx
-		return 0;
-
-	case 0xE9: // no_op_xx
-		return 0;
-
-	case 0xEA: // no_op_xx
-		return 0;
-
-	case 0xEB: // no_op_xx
-		return 0;
-
-	case 0xEC: // no_op_xx
-		return 0;
-
-	case 0xED: // no_op_xx
-		return 0;
 
 	case 0xEE: // set_5_xix
 		MemWriteByte(wAddr, Set(MemReadByte(wAddr), 5));
 		return 23;
 
-	case 0xEF: // no_op_xx
-		return 0;
-
-	case 0xF0: // no_op_xx
-		return 0;
-
-	case 0xF1: // no_op_xx
-		return 0;
-
-	case 0xF2: // no_op_xx
-		return 0;
-
-	case 0xF3: // no_op_xx
-		return 0;
-
-	case 0xF4: // no_op_xx
-		return 0;
-
-	case 0xF5: // no_op_xx
-		return 0;
-
 	case 0xF6: // set_6_xix
 		MemWriteByte(wAddr, Set(MemReadByte(wAddr), 6));
 		return 23;
-
-	case 0xF7: // no_op_xx
-		return 0;
-
-	case 0xF8: // no_op_xx
-		return 0;
-
-	case 0xF9: // no_op_xx
-		return 0;
-
-	case 0xFA: // no_op_xx
-		return 0;
-
-	case 0xFB: // no_op_xx
-		return 0;
-
-	case 0xFC: // no_op_xx
-		return 0;
-
-	case 0xFD: // no_op_xx
-		return 0;
 
 	case 0xFE: // set_7_xix
 		MemWriteByte(wAddr, Set(MemReadByte(wAddr), 7));
 		return 23;
 
-	case 0xFF: // no_op_x
-		return 0;
-
-	default:
-		assert(false);
+	default:// no_op_xx
 		return 0;
 	}
 }
@@ -8143,4 +5066,3 @@ void cpu_z80::mz80ReleaseTimeslice()
 {
 	cCycles = 0;
 }
-

@@ -55,6 +55,7 @@
 // something needs irq_strobe, I'll adjust eventually. 
 // 8/26/25 Fixed not adding the cycles taken during interrupt correctly to the cycle total. 
 // This code STILL does not meet ZexDoc for cycle counts (all functions pass), it runs over by ~38000 very frustrating and I can't find the bug.
+// 9/12/25 Finally fixed the DD and FD opcode cycle counting. Now passes all ZexDoc, finally!!.
 //Most of my code verification is with:
 //[superzazu / z80](https://github.com/superzazu/z80)
 
@@ -66,8 +67,6 @@ Add interrupt pulse instead of just hold. So far everything I have tested doesn'
 Currently any undocumented behavior is not emulated. (X and Y flags and undocumented opcodes). 
 
 */
-
-
 
 
 #ifndef	_MZ80_H_
@@ -91,7 +90,6 @@ Currently any undocumented behavior is not emulated. (X and Y flags and undocume
 #include <cstdint>
 #include <functional>  // <-- required for std::function
 #include "deftypes.h"
-
 
 enum
 {
@@ -152,74 +150,75 @@ public:
 
 private:
 
+	    union {
+			uint16_t m_regAF;
+			struct {
+				uint8_t m_regF;
+				uint8_t m_regA;
+			} regAFs;
+		} regAF;
+	#define m_regAF regAF.m_regAF
+	#define m_regF regAF.regAFs.m_regF
+	#define m_regA regAF.regAFs.m_regA
 
-	union {
-		uint16_t m_regAF;
-		struct {
-			uint8_t m_regF;
-			uint8_t m_regA;
-		} regAFs;
-	} regAF;
-#define m_regAF regAF.m_regAF
-#define m_regF regAF.regAFs.m_regF
-#define m_regA regAF.regAFs.m_regA
+		union {
+			uint16_t m_regBC;
+			struct {
+				uint8_t m_regC;
+				uint8_t m_regB;
+			} regBCs;
+		} regBC;
+	#define m_regBC regBC.m_regBC
+	#define m_regB regBC.regBCs.m_regB
+	#define m_regC regBC.regBCs.m_regC
 
-	union {
-		uint16_t m_regBC;
-		struct {
-			uint8_t m_regC;
-			uint8_t m_regB;
-		} regBCs;
-	} regBC;
-#define m_regBC regBC.m_regBC
-#define m_regB regBC.regBCs.m_regB
-#define m_regC regBC.regBCs.m_regC
+		union {
+			uint16_t m_regDE;
+			struct {
+				uint8_t m_regE;
+				uint8_t m_regD;
+			} regDEs;
+		} regDE;
+	#define m_regDE regDE.m_regDE
+	#define m_regD regDE.regDEs.m_regD
+	#define m_regE regDE.regDEs.m_regE
 
-	union {
-		uint16_t m_regDE;
-		struct {
-			uint8_t m_regE;
-			uint8_t m_regD;
-		} regDEs;
-	} regDE;
-#define m_regDE regDE.m_regDE
-#define m_regD regDE.regDEs.m_regD
-#define m_regE regDE.regDEs.m_regE
+		union {
+			uint16_t m_regHL;
+			struct {
+				uint8_t m_regL;
+				uint8_t m_regH;
+			} regHLs;
+		} regHL;
+	#define m_regHL regHL.m_regHL
+	#define m_regH regHL.regHLs.m_regH
+	#define m_regL regHL.regHLs.m_regL
 
-	union {
-		uint16_t m_regHL;
-		struct {
-			uint8_t m_regL;
-			uint8_t m_regH;
-		} regHLs;
-	} regHL;
-#define m_regHL regHL.m_regHL
-#define m_regH regHL.regHLs.m_regH
-#define m_regL regHL.regHLs.m_regL
+		union {
+			uint16_t m_regIX;
+			struct {
+				uint8_t m_regIXl;
+				uint8_t m_regIXh;
+			} regIXs;
+		} regIX;
+	#define m_regIX regIX.m_regIX
+	#define m_regIXl regIX.regIXs.m_regIXl
+	#define m_regIXh regIX.regIXs.m_regIXh
 
-	union {
-		uint16_t m_regIX;
-		struct {
-			uint8_t m_regIXl;
-			uint8_t m_regIXh;
-		} regIXs;
-	} regIX;
-#define m_regIX regIX.m_regIX
-#define m_regIXl regIX.regIXs.m_regIXl
-#define m_regIXh regIX.regIXs.m_regIXh
+		union {
+			uint16_t m_regIY;
+			struct {
+				uint8_t m_regIYl;
+				uint8_t m_regIYh;
+			} regIYs;
+		} regIY;
+	#define m_regIY regIY.m_regIY
+	#define m_regIYl regIY.regIYs.m_regIYl
+	#define m_regIYh regIY.regIYs.m_regIYh
 
-	union {
-		uint16_t m_regIY;
-		struct {
-			uint8_t m_regIYl;
-			uint8_t m_regIYh;
-		} regIYs;
-	} regIY;
-#define m_regIY regIY.m_regIY
-#define m_regIYl regIY.regIYs.m_regIYl
-#define m_regIYh regIY.regIYs.m_regIYh
 
-		uint8_t* m_rgbStack;			// takes place of the SP register
+
+	uint8_t* m_rgbStack;			// takes place of the SP register
 	uint8_t* m_rgbMemory;			// direct access to memory buffer (RAM)
 	uint8_t* m_rgbStackBase;
 	int cCycles;
@@ -232,11 +231,9 @@ private:
 	int m_iff1, m_iff2;
 	bool m_fHalt;
 	int m_nIM;
-	//bool m_fPendingInterrupt = false;
 	// External INT line (level). Asserted by devices; CPU clears it when taken.
 	bool m_irq_line = false;
-	//New
-	//int pending_int;  //TODO: Swap this with m_fPendingInterrupt
+	bool debug = false;
 	uint8_t iff_delay;
 	// Contains the irq vector. 
 	uint16_t irq_vector; 
