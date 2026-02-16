@@ -1,3 +1,5 @@
+@@NEW UPDATE COMING SOON, BEFORE 2/28/26!@@
+
 A.A.E (Another Arcade Emulator)
 
 AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME code, 0.29 through .90 mixed with code of my own. This emulator was created solely for my amusement and learning and is provided only as an archival experience. 
@@ -28,3 +30,4 @@ https://learn.microsoft.com/en-us/windows/win32/xaudio2/xaudio2-redistributable
 ![Alt text](https://github.com/tcottrill/AAE/blob/main/images/astdelux.png)
 ![Alt text](https://github.com/tcottrill/AAE/blob/main/images/graphics_menu.png)
 ![Alt text](https://github.com/tcottrill/AAE/blob/main/images/warrior.png)
+
