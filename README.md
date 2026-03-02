@@ -28,6 +28,8 @@ https://learn.microsoft.com/en-us/windows/win32/xaudio2/xaudio2-redistributable
 ![Alt text](https://github.com/tcottrill/AAE/blob/main/images/astdelux.png)
 ![Alt text](https://github.com/tcottrill/AAE/blob/main/images/graphics_menu.png)
 ![Alt text](https://github.com/tcottrill/AAE/blob/main/images/warrior.png)
+![Alt text](https://github.com/tcottrill/AAE/blob/main/images/gui.png)
+
 
 
 
