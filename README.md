@@ -10,7 +10,7 @@ While this code is based on M.A.M.E, the 6502 cpu core, Z80 cpu core, Window, Re
 
 While I am not busy working, I am reviving this 17 year old code and updating it with code I have written in the past several years, as well as fixing many of the glaring issues. I am still really happy with how the graphics look all this time later on an OLED screen with freesync, and I can't believe it still runs on modern hardware. 
 
-!!!!!!Note: This code is currently undergoing a complete renovation, most command line options are not working and the GUI is removed for now. 
+!!!!!!Note: This code is currently undergoing a complete renovation, many command line options are not working.
 
 Please see CHANGELOG.TXT for all changes since I revived work on this emulator. 
 
@@ -28,5 +28,6 @@ https://learn.microsoft.com/en-us/windows/win32/xaudio2/xaudio2-redistributable
 ![Alt text](https://github.com/tcottrill/AAE/blob/main/images/astdelux.png)
 ![Alt text](https://github.com/tcottrill/AAE/blob/main/images/graphics_menu.png)
 ![Alt text](https://github.com/tcottrill/AAE/blob/main/images/warrior.png)
+
 
 
