@@ -419,7 +419,7 @@ void freegfx(struct GfxElement* ge)
 }
 
 //------------------------------------------------------------------------------
-// drawgfx (hot path) — vectorized-and-unrolled inner loops, same behavior
+// drawgfx (hot path) - vectorized-and-unrolled inner loops, same behavior
 //------------------------------------------------------------------------------
 void drawgfx(struct osd_bitmap* dest, const struct GfxElement* ge,
     unsigned int code, unsigned int color, int flipx, int flipy, int sx, int sy,

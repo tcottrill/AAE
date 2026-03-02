@@ -33,38 +33,38 @@ For more information, please refer to <http://unlicense.org/>
 Fpoly::Fpoly() = default;
 
 Fpoly::~Fpoly() {
-    LOG_INFO("Class Destructor called");
+	LOG_INFO("Class Destructor called");
 }
 
 void Fpoly::addPoly(float x, float y, float size, uint32_t color) {
-    float x0 = x * size;
-    float y0 = y * size;
-    float x1 = x0 + size;
-    float y1 = y0 + size;
+	float x0 = x * size;
+	float y0 = y * size;
+	float x1 = x0 + size;
+	float y1 = y0 + size;
 
-    // Two triangles forming a rectangle (quad)
-    vertices.emplace_back(x0, y0, color); // V0
-    vertices.emplace_back(x1, y0, color); // V1
-    vertices.emplace_back(x1, y1, color); // V2
+	// Two triangles forming a rectangle (quad)
+	vertices.emplace_back(x0, y0, color); // V0
+	vertices.emplace_back(x1, y0, color); // V1
+	vertices.emplace_back(x1, y1, color); // V2
 
-    vertices.emplace_back(x1, y1, color); // V2
-    vertices.emplace_back(x0, y1, color); // V3
-    vertices.emplace_back(x0, y0, color); // V0
+	vertices.emplace_back(x1, y1, color); // V2
+	vertices.emplace_back(x0, y1, color); // V3
+	vertices.emplace_back(x0, y0, color); // V0
 }
 
 void Fpoly::Render() {
-    if (vertices.empty()) return;
+	if (vertices.empty()) return;
 
-    glEnableClientState(GL_VERTEX_ARRAY);
-    glVertexPointer(2, GL_FLOAT, sizeof(_fpdata), &vertices[0].x);
+	glEnableClientState(GL_VERTEX_ARRAY);
+	glVertexPointer(2, GL_FLOAT, sizeof(_fpdata), &vertices[0].x);
 
-    glEnableClientState(GL_COLOR_ARRAY);
-    glColorPointer(4, GL_UNSIGNED_BYTE, sizeof(_fpdata), &vertices[0].color);
+	glEnableClientState(GL_COLOR_ARRAY);
+	glColorPointer(4, GL_UNSIGNED_BYTE, sizeof(_fpdata), &vertices[0].color);
 
-    glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(vertices.size()));
+	glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(vertices.size()));
 
-    glDisableClientState(GL_COLOR_ARRAY);
-    glDisableClientState(GL_VERTEX_ARRAY);
+	glDisableClientState(GL_COLOR_ARRAY);
+	glDisableClientState(GL_VERTEX_ARRAY);
 
-    vertices.clear();
+	vertices.clear();
 }

@@ -2,6 +2,13 @@
 #pragma once
 
 // -----------------------------------------------------------------------------
+// This file is part of the AAE (Another Arcade Emulator) project.
+// This Code is copyright (C) 2025/2026 Tim Cottrill and released
+// under the GNU GPL v3 or later. See the accompanying source files for full
+// license details.
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
 // TiledEffect - Fast tiling of a small texture over a larger surface (GL 2.1).
 // Uses your shader_util.h and sys_gl for GLEW + error logging.
 // Draws a single quad; scales UVs so the texture repeats in hardware.

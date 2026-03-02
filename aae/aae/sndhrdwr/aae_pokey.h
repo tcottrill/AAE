@@ -41,6 +41,7 @@ constexpr uint8_t SERIN_C  = 0x0D;
 constexpr uint8_t IRQST_C  = 0x0E;
 constexpr uint8_t SKSTAT_C = 0x0F;
 
+
 // Core clock frequency options (not currently used)
 //constexpr uint32_t FREQ_17_EXACT  = 1789790;
 //constexpr uint32_t FREQ_17_APPROX = 1787520;

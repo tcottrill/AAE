@@ -17,12 +17,12 @@ public:
 		halfWidth(_width * 0.5f), halfHeight(_height * 0.5f) {
 	}
 
-	Rect2D(const Vec2& p, const Vec2& s)
+	Rect2D(const aae::math::vec2& p, const aae::math::vec2& s)
 		: x(p.x), y(p.y), width(s.x), height(s.y),
 		halfWidth(s.x * 0.5f), halfHeight(s.y * 0.5f) {
 	}
 
-	bool contains(const Vec2& p) const {
+	bool contains(const aae::math::vec2& p) const {
 		return p.x >= x && p.x <= x + width &&
 			p.y >= y && p.y <= y + height;
 	}
@@ -38,12 +38,12 @@ public:
 		halfHeight = _height * 0.5f;
 	}
 
-	void setPosition(const Vec2& position) {
+	void setPosition(const aae::math::vec2& position) {
 		x = position.x;
 		y = position.y;
 	}
 
-	void setSize(const Vec2& lowerLeft, const Vec2& upperRight) {
+	void setSize(const aae::math::vec2& lowerLeft, const aae::math::vec2& upperRight) {
 		x = lowerLeft.x;
 		y = lowerLeft.y;
 		width = upperRight.x - x;
@@ -52,7 +52,7 @@ public:
 		halfHeight = height * 0.5f;
 	}
 
-	void extendTo(const Vec2& p) {
+	void extendTo(const aae::math::vec2& p) {
 		if (p.x < x) {
 			width += (x - p.x);
 			x = p.x;
@@ -78,7 +78,7 @@ public:
 			y > other.y + other.height);// this bottom > other top
 	}
 	
-	bool intersects(const Vec2& point) const {
+	bool intersects(const aae::math::vec2& point) const {
 		return contains(point);
 	}
 
@@ -86,7 +86,7 @@ public:
 	float getY() const { return y; }
 	float getWidth() const { return width; }
 	float getHeight() const { return height; }
-	Vec2 getPosition() const { return Vec2(x, y); }
-	Vec2 getCenter() const { return Vec2(x + halfWidth, y + halfHeight); }
-	Vec2 getSize() const { return Vec2(width, height); }
+	aae::math::vec2 getPosition() const { return aae::math::vec2(x, y); }
+	aae::math::vec2 getCenter() const { return aae::math::vec2(x + halfWidth, y + halfHeight); }
+	aae::math::vec2 getSize() const { return aae::math::vec2(width, height); }
 };

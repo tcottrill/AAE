@@ -28,13 +28,13 @@ public:
 	void TopRight(float x, float y, float tx, float ty);
 	void BottomRight(float x, float y, float tx, float ty);
 
-	// convenience: full‐quad [0..1] texcoords
+	// convenience: full-quad [0..1] texcoords
 	void BottomLeft(float x, float y);
 	void TopLeft(float x, float y);
 	void TopRight(float x, float y);
 	void BottomRight(float x, float y);
 
-	// Render the quad, scaling the y‐coordinates of the top two verts by scaley
+	// Render the quad, scaling the y-coordinates of the top two verts by scaley
 	// Must have bound your GL_TEXTURE_2D before calling.
 	void Render(float scaley);
 

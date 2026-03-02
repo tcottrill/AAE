@@ -1,11 +1,16 @@
 #pragma once
 
+// -----------------------------------------------------------------------------
+// This file is part of the AAE (Another Arcade Emulator) project.
+// This Code is copyright (C) 2025/2026 Tim Cottrill and released
+// under the GNU GPL v3 or later. See the accompanying source files for full
+// license details.
+// -----------------------------------------------------------------------------
+
 #ifndef GL_SHADER_H
 #define GL_SHADER_H
 
 #include "sys_gl.h"
-//#include <glm/glm.hpp>
-
 // Shader program handles
 extern GLuint fragBlur;
 extern GLuint fragMulti;

@@ -9,7 +9,7 @@
 // Features:
 // - UTF-8 compatible logging and message dialogs
 // - Customizable window configuration via INI and command-line
-// - Borderless fullscreen and aspect ratio–locked modes
+// - Borderless fullscreen and aspect ratio-locked modes
 // - Mouse cursor clipping and hiding support
 // - DPI awareness with Windows 10/11 feature handling
 // - Safe accessibility feature suppression (StickyKeys, etc.)
@@ -47,10 +47,11 @@
 #include "windows_util.h"
 #include "glcode.h"
 #include "aae_mame_driver.h"  // for global 'done'
+#include "os_basic.h"   // for osd_led_service_start/stop
+
 // -----------------------------------------------------------------------------
 // Globals
 // -----------------------------------------------------------------------------
-bool g_cursorClipped = false;
 HWND g_hWnd = nullptr;
 
 // Initialize the audio mixer
@@ -78,58 +79,133 @@ void RestoreWindowViewport()
 	glViewport(0, 0, g_windowSetup.clientWidth, g_windowSetup.clientHeight);
 }
 
+// When starting in fullscreen, we still need a valid windowed-mode target
+// (style/exstyle/rect) for restoring on ALT+ENTER.
+static WindowSetup g_windowedFallbackSetup;
+
 // -----------------------------------------------------------------------------
-// Clips mouse to window and hides cursor
+// Monitor helpers
 // -----------------------------------------------------------------------------
-void ClipAndHideCursor(HWND hWnd) // Replace with g_hWnd
+static RECT Win32_GetNearestMonitorRect(HWND hwnd)
 {
-	RECT rect;
-	GetClientRect(hWnd, &rect);
-	MapWindowPoints(hWnd, nullptr, reinterpret_cast<POINT*>(&rect), 2);
-	ClipCursor(&rect);
-	while (ShowCursor(FALSE) >= 0);
-	g_cursorClipped = true;
+	if (!hwnd) return RECT{ 0,0,0,0 };
+	MONITORINFO mi = { sizeof(mi) };
+	HMONITOR mon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+	if (mon && GetMonitorInfo(mon, &mi)) return mi.rcMonitor;
+	return RECT{ 0,0,0,0 };
+}
+
+static RECT Win32_GetPrimaryMonitorRect()
+{
+	MONITORINFO mi = { sizeof(mi) };
+	HMONITOR mon = MonitorFromPoint(POINT{ 0, 0 }, MONITOR_DEFAULTTOPRIMARY);
+	if (mon && GetMonitorInfo(mon, &mi)) return mi.rcMonitor;
+	return RECT{ 0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN) };
 }
 
 // -----------------------------------------------------------------------------
-// Unclips mouse and shows cursor
+// Helper: Update Window Title with Mouse State
 // -----------------------------------------------------------------------------
-void UnclipAndShowCursor()
+void UpdateWindowTitle()
 {
-	ClipCursor(nullptr);
-	while (ShowCursor(TRUE) < 0);
-	g_cursorClipped = false;
+	if (!g_hWnd) return;
+
+	std::wstring title = L"AAE Emulator";
+
+	// Only append the suffix if the feature is enabled
+	if (g_windowSetup.cursorClipEnabled) {
+		title += L" - Mouse Captured (F9 to release)";
+	}
+
+	SetWindowTextW(g_hWnd, title.c_str());
 }
 
-void UpdateCursorClipState(HWND hwnd)
+// -----------------------------------------------------------------------------
+// Centralized Cursor State Logic
+// Adapted from WindowCode.cpp + Framework integration
+// -----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
+// Centralized Cursor State Logic
+// Adapted from WindowCode.cpp + Framework integration
+// -----------------------------------------------------------------------------
+void UpdateCursorState()
 {
+	// 1. Update the window title to reflect the current mode
+	UpdateWindowTitle();
+
+	// 2. Manage input pausing based on focus and minimize state
+	bool isActive = g_windowSetup.isFocused && !g_windowSetup.isMinimized;
+	RawInput_SetPaused(!isActive);
+
+	// 3. Check Global Override first
+	// If the user passed -noclip or set ini[window] cursor_clip=0
 	if (!g_windowSetup.cursorClipEnabled) {
-		if (g_cursorClipped)
-			UnclipAndShowCursor();
+		ClipCursor(nullptr);
+		while (ShowCursor(TRUE) < 0);
 		return;
 	}
 
-	if (g_windowSetup.isFocused && !g_windowSetup.isMinimized)
-	{
-		if (!g_cursorClipped)
-			ClipAndHideCursor(hwnd);
+	// 4. Determine Desired State
+	// We capture if: We have Focus AND we are not Minimized.
+	bool shouldCapture = isActive;
+
+	// 5. Brute Force Visibility
+	// Windows uses a counter for ShowCursor. Loop until we hit the state we want.
+	if (shouldCapture) {
+		while (ShowCursor(FALSE) >= 0); // Hide
 	}
-	else
-	{
-		if (g_cursorClipped)
-			UnclipAndShowCursor();
+	else {
+		while (ShowCursor(TRUE) < 0);   // Show
+	}
+
+	// 6. Handle Clipping (The "Trap")
+	if (shouldCapture && g_hWnd) {
+		RECT rect;
+		GetClientRect(g_hWnd, &rect);
+
+		// Convert Client (0,0) to Screen Coordinates for ClipCursor
+		POINT tl = { rect.left, rect.top };
+		POINT br = { rect.right, rect.bottom };
+		ClientToScreen(g_hWnd, &tl);
+		ClientToScreen(g_hWnd, &br);
+
+		RECT clipRect = { tl.x, tl.y, br.x, br.y };
+		ClipCursor(&clipRect);
+	}
+	else {
+		ClipCursor(nullptr);
 	}
 }
+// -----------------------------------------------------------------------------
+// Framework Compatibility Wrappers
+// These match the declarations in framework.h so the rest of the app compiles.
+// -----------------------------------------------------------------------------
 
 void EnableCursorClip(bool enable)
 {
 	g_windowSetup.cursorClipEnabled = enable;
-	UpdateCursorClipState(g_hWnd);
+	UpdateCursorState();
 }
 
 void ForceCursorClipUpdate()
 {
-	UpdateCursorClipState(g_hWnd);
+	UpdateCursorState();
+}
+
+// Deprecated logic replaced by UpdateCursorState, but kept for API compatibility
+void ClipAndHideCursor(HWND hWnd)
+{
+	// If the app explicitly asks to Clip, we assume they want the feature enabled
+	g_windowSetup.cursorClipEnabled = true;
+	UpdateCursorState();
+}
+
+// Deprecated logic replaced by UpdateCursorState, but kept for API compatibility
+void UnclipAndShowCursor()
+{
+	// If the app explicitly asks to Unclip, we assume they want it disabled temporarily
+	g_windowSetup.cursorClipEnabled = false;
+	UpdateCursorState();
 }
 
 // -----------------------------------------------------------------------------
@@ -174,10 +250,11 @@ WindowSetup GetBorderlessFullscreenSetup()
 	ws.style = WS_POPUP;
 	ws.exStyle = WS_EX_APPWINDOW | WS_EX_TOPMOST;
 
-	ws.rect.left = GetSystemMetrics(SM_XVIRTUALSCREEN);
-	ws.rect.top = GetSystemMetrics(SM_YVIRTUALSCREEN);
-	ws.rect.right = ws.rect.left + GetSystemMetrics(SM_CXVIRTUALSCREEN);
-	ws.rect.bottom = ws.rect.top + GetSystemMetrics(SM_CYVIRTUALSCREEN);
+	// IMPORTANT: Do NOT use the virtual screen rect here. That spans all monitors
+	// and produces a giant "fullscreen" window across the entire desktop.
+	// Start fullscreen on the primary monitor by default. When toggling at runtime,
+	// we will use the monitor nearest to the current window.
+	ws.rect = Win32_GetPrimaryMonitorRect();
 
 	ws.borderlessFullscreen = true;
 	return ws;
@@ -283,26 +360,65 @@ WindowSetup GetCenteredAspectWindowSetup(float aspectRatio, bool disableNC)
 
 void LoadWindowIniConfig(WindowSetup& config)
 {
-	SetIniFile("aae.ini");
+	// Always point at the real aae.ini in the exe/root folder.
+	std::string iniPath = getpathM(0, "aae.ini");
+	SetIniFile(iniPath.c_str());
 
-	config.useFullscreen = get_config_int("window", "fullscreen", 0) != 0;
+	// -----------------------------
+	// 1) Prefer [window] if present
+	// -----------------------------
+	const int win_fullscreen = get_config_int("window", "fullscreen", -1);
+	const int win_width = get_config_int("window", "width", -1);
+	const int win_height = get_config_int("window", "height", -1);
+
+	// Legacy keys saved by your menu/config system
+	const int main_windowed = get_config_int("main", "windowed", -1);
+	const int main_screenw = get_config_int("main", "screenw", -1);
+	const int main_screenh = get_config_int("main", "screenh", -1);
+
+	// Fullscreen/windowed selection:
+	// - If [window].fullscreen exists, use it.
+	// - Else fall back to [main].windowed (your existing saved value).
+	if (win_fullscreen != -1) {
+		config.useFullscreen = (win_fullscreen != 0);
+	}
+	else if (main_windowed != -1) {
+		config.useFullscreen = (main_windowed == 0); // windowed=1 => fullscreen=false
+	}
+	else {
+		config.useFullscreen = false; // safe default
+	}
+
 	config.centerWindow = get_config_int("window", "center", 1) != 0;
 	config.useAspectRatio = get_config_int("window", "use_aspect", 0) != 0;
 	config.disableNC = get_config_int("window", "disable_nc", 0) != 0;
-	config.windowWidth = get_config_int("window", "width", 1024);
-	config.windowHeight = get_config_int("window", "height", 768);
+
+	// Width/Height selection:
+	// - Prefer [window].width/height if present
+	// - Else fall back to [main].screenw/screenh (what your menu saves)
+	if (win_width != -1) config.windowWidth = win_width;
+	else if (main_screenw != -1) config.windowWidth = main_screenw;
+	else config.windowWidth = 1024;
+
+	if (win_height != -1) config.windowHeight = win_height;
+	else if (main_screenh != -1) config.windowHeight = main_screenh;
+	else config.windowHeight = 768;
+
 	config.disableRoundedCorners = get_config_bool("window", "disable_rounded_corners", false);
 	config.dpiAware = get_config_bool("window", "dpi_aware", true);
 	config.cursorClipEnabled = get_config_bool("window", "cursor_clip", true);
 
-	// Load aspect ratio as "4:3", "16:9", etc.
+	// Aspect ratio string stays in [window] for now (fallback default is fine)
 	std::string aspect = get_config_string("window", "aspect_ratio", "4:3");
 	int ax = 0, ay = 0;
 	if (sscanf_s(aspect.c_str(), "%d:%d", &ax, &ay) != 2 || ax == 0 || ay == 0) {
-		LOG_INFO("Invalid aspect ratio: %s — defaulting to 4:3", aspect.c_str());
+		LOG_INFO("Invalid aspect ratio: %s - defaulting to 4:3", aspect.c_str());
 		ax = 4; ay = 3;
 	}
 	config.aspectRatio = (float)ax / (float)ay;
+
+	LOG_INFO("Window config from %s: useFullscreen=%d window=%dx%d",
+		iniPath.c_str(), config.useFullscreen ? 1 : 0, config.windowWidth, config.windowHeight);
 }
 
 void ParseCommandLineArgs(WindowSetup& config)
@@ -343,6 +459,13 @@ WindowSetup GenerateFinalWindowSetup(bool forceWindowed = false)
 {
 	WindowSetup config;
 	LoadWindowIniConfig(config);
+	// Always compute a windowed-mode fallback so ALT+ENTER restore works even
+	// when the app starts in fullscreen.
+	if (config.useAspectRatio)
+		g_windowedFallbackSetup = GetCenteredAspectWindowSetup(config.aspectRatio, config.disableNC);
+	else
+		g_windowedFallbackSetup = GetClassicWindowSetup(config.windowWidth, config.windowHeight, config.centerWindow);
+
 	ParseCommandLineArgs(config);
 	WindowSetup finalSetup;
 
@@ -372,9 +495,7 @@ WindowSetup GenerateFinalWindowSetup(bool forceWindowed = false)
 	finalSetup.windowWidth = config.windowWidth;
 	finalSetup.windowHeight = config.windowHeight;
 	finalSetup.disableRoundedCorners = config.disableRoundedCorners;
-	// Set aspect ratio early for fallback sizing
 
-	//finalSetup.resizable = config.resizable;
 	finalSetup.dpiAware = config.dpiAware;
 	finalSetup.cursorClipEnabled = config.cursorClipEnabled;
 
@@ -440,17 +561,20 @@ void ToggleBorderlessFullscreen(HWND hwnd, WindowSetup& config)
 	LOG_INFO("Calling ToggleBorderlessFullscreen");
 	if (!config.borderlessFullscreen)
 	{
-		// This backs up the current "Window Size for restoration when returning to windowed mode.
+		// Backup current window rect for restoration
 		GetWindowRect(hwnd, &config.windowedRect);
 
 		SetWindowLong(hwnd, GWL_STYLE, WS_POPUP);
 		SetWindowLong(hwnd, GWL_EXSTYLE, WS_EX_APPWINDOW | WS_EX_TOPMOST);
+		config.style = WS_POPUP;
+		config.exStyle = WS_EX_APPWINDOW | WS_EX_TOPMOST;
 
-		RECT screen{};
-		screen.left = GetSystemMetrics(SM_XVIRTUALSCREEN);
-		screen.top = GetSystemMetrics(SM_YVIRTUALSCREEN);
-		screen.right = screen.left + GetSystemMetrics(SM_CXVIRTUALSCREEN);
-		screen.bottom = screen.top + GetSystemMetrics(SM_CYVIRTUALSCREEN);
+		// MULTI-MONITOR SAFE: fullscreen on the monitor nearest to this window.
+		RECT screen = Win32_GetNearestMonitorRect(hwnd);
+		if ((screen.right <= screen.left) || (screen.bottom <= screen.top)) {
+			// Fallback if monitor query fails.
+			screen = Win32_GetPrimaryMonitorRect();
+		}
 
 		SetWindowPos(hwnd, HWND_TOPMOST,
 			screen.left, screen.top,
@@ -462,15 +586,28 @@ void ToggleBorderlessFullscreen(HWND hwnd, WindowSetup& config)
 	}
 	else
 	{
-		SetWindowLong(hwnd, GWL_STYLE, config.style);
-		SetWindowLong(hwnd, GWL_EXSTYLE, config.exStyle);
+		// Restore to windowed mode. If we never captured a valid windowed rect
+		// (e.g., the app started in fullscreen), fall back to the computed
+		// windowed setup from config/ini.
+		RECT wr = config.windowedRect;
+		int w = wr.right - wr.left;
+		int h = wr.bottom - wr.top;
+		if (w <= 0 || h <= 0) {
+			wr = g_windowedFallbackSetup.rect;
+			w = wr.right - wr.left;
+			h = wr.bottom - wr.top;
+		}
 
-		// This sets the Windowed mode to the backed up previous Window Size and location.
-		int w = config.windowedRect.right - config.windowedRect.left;
-		int h = config.windowedRect.bottom - config.windowedRect.top;
+		DWORD restoreStyle = g_windowedFallbackSetup.style;
+		DWORD restoreExStyle = g_windowedFallbackSetup.exStyle;
+		SetWindowLong(hwnd, GWL_STYLE, restoreStyle);
+		SetWindowLong(hwnd, GWL_EXSTYLE, restoreExStyle);
+		config.style = restoreStyle;
+		config.exStyle = restoreExStyle;
+
 		LOG_INFO("Restoring to windowed size in ToggleScreenSize: %d x %d", w, h);
 		SetWindowPos(hwnd, HWND_TOPMOST,
-			config.windowedRect.left, config.windowedRect.top,
+			wr.left, wr.top,
 			w, h,
 			SWP_FRAMECHANGED | SWP_SHOWWINDOW);
 
@@ -482,7 +619,7 @@ void ToggleBorderlessFullscreen(HWND hwnd, WindowSetup& config)
 		config.clientWidth = client.right - client.left;
 		config.clientHeight = client.bottom - client.top;
 		ViewOrtho(config.clientWidth, config.clientHeight);
-		UpdateCursorClipState(hwnd);
+		UpdateCursorState();
 	}
 	LOG_INFO("Now in %s mode %d", config.borderlessFullscreen ? "borderless fullscreen" : "windowed", config.borderlessFullscreen);
 	LOG_INFO("Setting Client size: %d x %d", config.clientWidth, config.clientHeight);
@@ -526,13 +663,14 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 #endif
 		}
 
-		UpdateCursorClipState(hWnd);
+		// Update cursor trap when window size or minimized state changes
+		UpdateCursorState();
 		return 0;
 	}
 
 	case WM_SYSCOMMAND:
 		if ((wParam & 0xFFF0) == SC_KEYMENU) {
-			// Suppress Alt key system menu
+			// Suppress Alt key system menu to prevent game pause
 			return 0;
 		}
 		break;
@@ -568,8 +706,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 		rect->right = rect->left + fullW;
 		rect->bottom = rect->top + fullH;
-
-		LOG_INFO("WM_SIZING Adjusted rect: %dx%d (Client: %dx%d, Aspect %.6f)", fullW, fullH, clientW, clientH, (float)clientW / (float)clientH);
 		return TRUE;
 	}
 
@@ -587,28 +723,54 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			return 0;
 		}
 		break;
-/*
-	case WM_KEYDOWN:
-		if (wParam == VK_ESCAPE) {
-			PostQuitMessage(0);
-			return 0;
-		}
-		break;
-*/
+
 	case WM_ERASEBKGND:
 		// Prevent flickering behind OpenGL surface
 		return 1;
 
+		// --- MOUSE & FOCUS LOGIC START ---
+
+	case WM_LBUTTONDOWN:
+	case WM_RBUTTONDOWN:
+		// If user clicks the window, ensure we have focus and trap the mouse immediately.
+		if (!g_windowSetup.isFocused) {
+			SetFocus(hWnd);
+			g_windowSetup.isFocused = true;
+		}
+
+		// If they explicitly clicked inside the game view, auto-resume mouse capture 
+		// just in case they had previously disabled it with F9.
+		if (!g_windowSetup.cursorClipEnabled) {
+			g_windowSetup.cursorClipEnabled = true;
+		}
+
+		UpdateCursorState();
+		return 0;
+
+
+	case WM_KEYDOWN:
+	{
+		// Press F9 to toggle mouse capture/hiding
+		if (wParam == VK_F9) {
+			bool newState = !GetWindowSetup().cursorClipEnabled;
+			EnableCursorClip(newState);
+			return 0;
+		}
+	}
+	break;
+
 	case WM_KILLFOCUS:
 	case WM_SETFOCUS:
 		g_windowSetup.isFocused = (msg == WM_SETFOCUS);
-		UpdateCursorClipState(hWnd);
+		UpdateCursorState();
 		return 0;
 
 	case WM_ACTIVATEAPP:
 		g_windowSetup.isFocused = (wParam != 0);
-		UpdateCursorClipState(hWnd);
+		UpdateCursorState();
 		return 0;
+
+		// --- MOUSE & FOCUS LOGIC END ---
 
 	case SC_KEYMENU:
 	case SC_SCREENSAVE:
@@ -667,6 +829,15 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance,
 	_In_ int nCmdShow
 )
 {
+	std::wstring temppath = getpathU(0, 0);
+
+	// Initialize Logging and Directory EARLY so initialization doesn't fail
+	LogOpen("systemlog.txt");
+
+	if (!SetCurrentDirectory(temppath.c_str())) {
+		LOG_ERROR("SetCurrentDirectory failed (%lu)", GetLastError());
+	}
+
 	const wchar_t CLASS_NAME[] = L"OpenGLWindowClass";
 
 	HICON hIcon = static_cast<HICON>(LoadImage(
@@ -680,14 +851,12 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance,
 	WNDCLASSW wc = {};
 	wc.lpfnWndProc = WndProc;
 	wc.hInstance = hInstance;
-	//wc.hInstance = GetModuleHandleW(nullptr); ?? Should I be using this one?
 	wc.lpszClassName = CLASS_NAME;
 	wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
 	wc.hIcon = LoadIcon(wc.hInstance, MAKEINTRESOURCE(IDI_ICON1));
 	wc.style = CS_HREDRAW | CS_VREDRAW;
 	RegisterClassW(&wc);
 
-	std::wstring temppath = getpathU(0, 0);
 	// -------------------------------------------------------------------------
 	// Step 1: Load config + cmdline into a temporary structure
 	// -------------------------------------------------------------------------
@@ -711,12 +880,9 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance,
 	ShowWindow(g_hWnd, nCmdShow);
 	UpdateWindow(g_hWnd);
 
-	LogOpen("systemlog.txt");
+	// Assume focus because we just showed the window
+	g_windowSetup.isFocused = true;
 
-	// Working directory
-	if (!SetCurrentDirectory(temppath.c_str())) {
-		LOG_ERROR("SetCurrentDirectory failed (%lu)", GetLastError());
-	}
 	SaveAndDisableAccessibilityPopups();
 
 	// Register Raw Input devices (keyboard + mouse)
@@ -724,6 +890,9 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance,
 		LOG_ERROR("Failed to initialize Raw Input");
 		return false;
 	}
+
+	// Start keyboard LED service (pushes LED states to all KeyboardClass devices)
+	osd_led_service_start();
 
 	if (!install_joystick()) {
 		LOG_INFO("Win32 joystick initialized: %d detected", num_joysticks);
@@ -778,8 +947,12 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance,
 	if (requestedFullscreen)
 		ToggleBorderlessFullscreen(g_hWnd, g_windowSetup);
 
-	// This sets the High Performance timer. 
-	TimerInit(); 
+	// Now that all subsystems (Window, RawInput, OpenGL) are ready,
+   // enforce the cursor trap/hide logic.
+	UpdateCursorState();
+	EnableCursorClip(1);
+	// This sets the High Performance timer.
+	TimerInit();
 
 	int argc = 0;
 	char** argv = nullptr;
@@ -788,29 +961,45 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance,
 	// Init Emulator Here.
 	emulator_init(argc, argv);
 
-
-	//emulator_init(__argc, __argv);
-
 	// -------------------------------------------------------------------------
 	// Step 7: Main high-speed game loop
 	// -------------------------------------------------------------------------
 	MSG msg = {};
 	while (!done)
 	{
-		while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE)) {
-			if (msg.message == WM_QUIT && done == 1)
+		while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
+		{
+			if (msg.message == WM_QUIT)
+			{
+				done = 1;
 				goto exit_main;
+			}
+
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
 		}
+
 		poll_joystick();
 		emulator_run();
-		//GLSwapBuffers(); // provided in gl_basics
+
+		// If a game requested a switch (ESC-to-GUI or future GUI selection), do it here.
+		if (emulator_apply_pending_switch()) {
+			// A new game (or GUI) was started. Keep running.
+			continue;
+		}
+
+		// If the game ended and no switch is pending, this means quit emulator.
+		if (done)
+		{
+			break;
+		}
 	}
 
 exit_main:
 	//Shutdown Emulator Here
 	emulator_end();
+	// Stop keyboard LED service thread
+	osd_led_service_stop();
 	RestoreAccessibilityPopups();
 	TimerShutdown();
 	DeleteGLContext();

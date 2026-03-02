@@ -5,6 +5,7 @@
 
 #include <string>
 #include <cstdint>
+#include <cstdio> // For FILE*
 
 // Get Current Directory
 std::wstring getCurrentDirectoryW();
@@ -12,14 +13,15 @@ std::string getCurrentDirectory();
 
 // Path Management
 bool DirectoryExists(const char* dirName);
-bool fileExistsReadable(const char* filename); // No need to be `static` in header
+bool fileExistsReadable(const char* filename);
 
 // Get information on last file operation
 size_t getLastFileSize();
 int getFileSize(FILE* input);
 
-// Get information on last compression operation
+// Get information on last compression/zip operation
 size_t getLastZSize();
+uint32_t getLastZCrc(); // For AAE compatibility
 
 // Load/Save File
 uint8_t* loadFile(const std::string& filename);

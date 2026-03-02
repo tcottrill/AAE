@@ -25,13 +25,14 @@ static const char* invaders_samples[] =
 };
 
 ART_START(invaders_art)
-ART_LOAD("invaders.zip", "invaders.png", ART_TEX, 0)
-ART_LOAD("invaders.zip", "tintover2.png", ART_TEX, 1)
+ART_LOAD("invaders_aae.zip", "invaders.png", ART_TEX, 0)
+ART_LOAD("invaders_aae.zip", "tintover.png", ART_TEX, 1)
+ART_LOAD("invaders_aae.zip", "invaders_bezel_midway.png", ART_TEX, 3)
 ART_END
 
 ART_START(invaddlx_art)
-ART_LOAD("invaddlx.zip", "invaddlx.png", ART_TEX, 0)
-ART_LOAD("invaddlx.zip", "tintover.png", ART_TEX, 1)
+ART_LOAD("invaddlx_aae.zip", "invaddlx.png", ART_TEX, 0)
+ART_LOAD("invaddlx_aae.zip", "tintover.png", ART_TEX, 1)
 ART_END
 
 #define BITSWAP8(val,B7,B6,B5,B4,B3,B2,B1,B0) \

@@ -5,26 +5,24 @@
 #include "texrect.h"
 #include "sys_gl.h"
 
-void load_artwork(const struct artworks* p);
-int make_single_bitmap(GLuint* texture, const char* filename, const char* archname, int mtype);
+// Sane Global Rectangle Coordinates
+extern int game_rect_left;
+extern int game_rect_right;
+extern int game_rect_bottom;
+extern int game_rect_top;
 
-//NEW 2024
-//void calc_screen_rect(int screen_width, int screen_height, char* aspect, int rotated);
 void set_ortho(GLint width, GLint height);
 void set_render();
 void render();
-void final_render(int xmin, int xmax, int ymin, int ymax);
+void final_render(int left, int right, int bottom, int top); 
 void set_render_fbo4();
 void end_render_fbo4();
-
-void free_game_textures();
+void glcode_vector_hard_clear_fbo1();
 int init_gl(void);
 void end_gl();
-//int init_shader();
 void emulator_on_window_resize(int newW, int newH);
 void Widescreen_calc();
-
-//void set_render_raster();
-//void final_render_raster();
+void init_raster_overlay();
+void shutdown_raster_overlay();
 
 #endif

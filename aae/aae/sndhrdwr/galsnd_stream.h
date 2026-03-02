@@ -1,7 +1,7 @@
 #pragma once
 
 // -----------------------------------------------------------------------------
-// galsnd_stream.h — Galaxian-style streaming (tone + LFO motor only)
+// galsnd_stream.h - Galaxian-style streaming (tone + LFO motor only)
 // Mono S16, integer FPS. Partial updates supported.
 //
 // Lifecycle:

@@ -7,6 +7,9 @@
 #include "namco.h"
 #include "timer.h"
 
+ART_START(galaga_art)
+ART_LOAD("galaga.zip", "galaga_bezel.png", ART_TEX, 3)
+ART_END
 
 static const char* galaga_samples[] =
 {
@@ -45,7 +48,6 @@ const rectangle visible_area =
  288
 };
 
-
 static struct GfxLayout charlayout =
 {
 	8,8,           /* 8*8 characters */
@@ -70,7 +72,6 @@ static struct GfxLayout spritelayout =
 	64 * 8    /* every sprite takes 64 bytes */
 };
 
-
 struct GfxDecodeInfo galaga_gfxdecodeinfo[] =
 {
 	{ REGION_GFX1, 0, &charlayout,        0, 32 },
@@ -87,7 +88,6 @@ void galaga_vh_convert_color_prom(unsigned char* palette, unsigned char* colorta
 	for (i = 0; i < 32; i++)
 	{
 		int bit0, bit1, bit2;
-
 
 		bit0 = (color_prom[31 - i] >> 0) & 0x01;
 		bit1 = (color_prom[31 - i] >> 1) & 0x01;
@@ -137,7 +137,6 @@ void galaga_vh_convert_color_prom(unsigned char* palette, unsigned char* colorta
 	}
 }
 
-
 static void draw_stars(struct osd_bitmap* bitmap, const struct rectangle* cliprect)
 {
 	/* draw the stars */
@@ -176,8 +175,6 @@ static void draw_stars(struct osd_bitmap* bitmap, const struct rectangle* clipre
 	}
 }
 
-
-
 /***************************************************************************
 
   Draw the game screen in the given osd_bitmap.
@@ -192,16 +189,16 @@ void galaga_vh_screenrefresh()//struct osd_bitmap* bitmap)
 	int offs = 0;
 	int sx, sy, mx, my;
 
-	// for every character in the Video RAM, check if it has been modified 
+	// for every character in the Video RAM, check if it has been modified
 	// since last time and update it accordingly./
 
 	for (offs = videoram_size - 1; offs >= 0; offs--)
 	{
-		// Even if Galaga's screen is 28x36, the memory layout is 32x32. We therefore 
-		// have to convert the memory coordinates into screen coordinates. 
-		// Note that 32*32 = 1024, while 28*36 = 1008: therefore 16 bytes of Video RAM 
-		// don't map to a screen position. We don't check that here, however: range 
-		// checking is performed by drawgfx(). 
+		// Even if Galaga's screen is 28x36, the memory layout is 32x32. We therefore
+		// have to convert the memory coordinates into screen coordinates.
+		// Note that 32*32 = 1024, while 28*36 = 1008: therefore 16 bytes of Video RAM
+		// don't map to a screen position. We don't check that here, however: range
+		// checking is performed by drawgfx().
 
 		mx = offs / 32;
 		my = offs % 32;
@@ -227,7 +224,7 @@ void galaga_vh_screenrefresh()//struct osd_bitmap* bitmap)
 
 	osd_clearbitmap(main_bitmap);
 
-	// Draw the sprites. 
+	// Draw the sprites.
 
 	for (offs = 0; offs < spriteram_size; offs += 2)
 	{
@@ -253,27 +250,24 @@ void galaga_vh_screenrefresh()//struct osd_bitmap* bitmap)
 			}
 			//LOG_INFO("3");
 
-			if ((spriteram_3[offs] & 0x0c) == 0x0c)		// double width, double height 
+			if ((spriteram_3[offs] & 0x0c) == 0x0c)		// double width, double height
 			{
 				drawgfx(main_bitmap, Machine->gfx[1], code + 2, color, flipx, flipy, sx + sfa, sy + sfa, &visible_area, TRANSPARENCY_COLOR, 0);
 				drawgfx(main_bitmap, Machine->gfx[1], code, color, flipx, flipy, sx + sfb, sy + sfa, &visible_area, TRANSPARENCY_COLOR, 0);
 				drawgfx(main_bitmap, Machine->gfx[1], code + 3, color, flipx, flipy, sx + sfa, sy + sfb, &visible_area, TRANSPARENCY_COLOR, 0);
 				drawgfx(main_bitmap, Machine->gfx[1], code + 1, color, flipx, flipy, sx + sfb, sy + sfb, &visible_area, TRANSPARENCY_COLOR, 0);
-
 			}
-			else if (spriteram_3[offs] & 8)	// double width 
+			else if (spriteram_3[offs] & 8)	// double width
 			{
 				drawgfx(main_bitmap, Machine->gfx[1], code + 2, color, flipx, flipy, sx + sfa, sy, &Machine->drv->visible_area, TRANSPARENCY_COLOR, 0);
 				drawgfx(main_bitmap, Machine->gfx[1], code, color, flipx, flipy, sx + sfb, sy, &Machine->drv->visible_area, TRANSPARENCY_COLOR, 0);
 			}
-			else if (spriteram_3[offs] & 4)	// double height 
+			else if (spriteram_3[offs] & 4)	// double height
 			{
-
 				drawgfx(main_bitmap, Machine->gfx[1], code, color, flipx, flipy, sx, sy + sfa, &Machine->drv->visible_area, TRANSPARENCY_COLOR, 0);
 				drawgfx(main_bitmap, Machine->gfx[1], code + 1, color, flipx, flipy, sx, sy + sfb, &Machine->drv->visible_area, TRANSPARENCY_COLOR, 0);
 			}
 			else { drawgfx(main_bitmap, Machine->gfx[1], code, color, flipx, flipy, sx, sy, &visible_area, TRANSPARENCY_COLOR, 0); } // normal TRANSPARENCY_THROUGH
-
 		}
 	}
 	copybitmap(main_bitmap, tmpbitmap, 0, 0, 0, 0, &visible_area, TRANSPARENCY_COLOR, 0);
@@ -291,7 +285,6 @@ int galaga_vh_start(void)
 	return generic_vh_start();
 }
 
-
 /***************************************************************************
 
   Stop the video hardware emulation.
@@ -302,7 +295,6 @@ void galaga_vh_stop(void)
 	//osd_free_bitmap(tmpbitmap1);
 }
 
-
 /***************************************************************************
 
 Emulate the custom IO chip.
@@ -312,7 +304,6 @@ static int customio_command;
 static int mode, credits;
 static int coinpercred, credpercoin;
 static unsigned char customio[16];
-
 
 READ_HANDLER(galaga_customio_r)
 {
@@ -368,7 +359,6 @@ READ_HANDLER(galaga_customio_data_r)
 				int in;
 				static int coininserted;
 
-
 				in = readinputport(4);
 
 				/* check if the user inserted a coin */
@@ -386,7 +376,6 @@ READ_HANDLER(galaga_customio_data_r)
 					}
 				}
 				else credits = 2;
-
 
 				/* check for 1 player start button */
 				if ((in & 0x04) == 0)
@@ -438,9 +427,6 @@ WRITE_HANDLER(galaga_customio_w)
 	//}
 }
 
-
-
-
 //////////////////////////////////////////////////////////////
 //MAIN GALAGA HANDLERS
 //////////////////////////////////////////////////////////////
@@ -449,13 +435,11 @@ void galaga_interrupt(int galaga)
 {
 }
 
-
 void galaga_vh_interrupt(void)
 {
 	/* this function is called by galaga_interrupt_1() */
 	int s0, s1, s2;
 	static const int speeds[8] = { -1, -2, -3, 0, 3, 2, 1, 0 };
-
 
 	s0 = galaga_starcontrol[0];
 	s1 = galaga_starcontrol[1];
@@ -464,10 +448,8 @@ void galaga_vh_interrupt(void)
 	stars_scrollx += speeds[s0 + s1 * 2 + s2 * 4];
 }
 
-
 void galagaint()
 {
-
 	if (interrupt_enable_1)
 	{
 		cpu_do_int_imm(CPU0, INT_TYPE_INT);
@@ -494,7 +476,6 @@ void galagaint3()
 		//LOG_INFO("Galaga interrupt CPU2 called?");
 	}
 }
-
 
 WRITE_HANDLER(galaga_starcontrol_w)
 {
@@ -562,7 +543,6 @@ WRITE_HANDLER(galagahaltw)
 	reset23 = data;
 }
 
-
 void galaga_nmi_generate(int param)
 {
 	cpu_do_int_imm(CPU0, INT_TYPE_NMI);
@@ -579,7 +559,6 @@ READ_HANDLER(galaga_dsw_r)
 	return bit0 | (bit1 << 1);
 }
 
-
 WRITE_HANDLER(galagasharew)
 {
 	Machine->memory_region[CPU0][address + 0x8000] = data;
@@ -590,7 +569,6 @@ READ_HANDLER(galagasharer)
 	return Machine->memory_region[CPU0][address + 0x8000];
 }
 
-
 void run_galaga()
 {
 	watchdog_reset_w(0, 0, 0);
@@ -598,9 +576,7 @@ void run_galaga()
 	namco_sh_update();
 }
 
-
 ////////////////////////////////////////////////////
-
 
 PORT_READ(GalagaPortRead)
 PORT_END
@@ -651,11 +627,8 @@ MEM_ADDR(0x8000, 0x9fff, galagasharew)
 
 MEM_END
 
-
-
 int init_galaga()
 {
-		
 	//Init CPU's
 	//init_z80(GalagaCPU1_Read, GalagaCPU1_Write,GalagaPortRead, GalagaPortWrite, CPU0);
 	//init_z80(GalagaCPU2_Read, GalagaCPU2_Write, GalagaPortRead, GalagaPortWrite, CPU1);
@@ -675,8 +648,6 @@ int init_galaga()
 //	k = timer_set(TIME_IN_CYCLES((3125000 / 60 ), CPU1), CPU1,   galagaint2);
 //	l = timer_set(TIME_IN_CYCLES((3125000 / 60 / 2) , CPU2), CPU2, galagaint3);
 
-
-
 	//Start with CPU's 2 and 3 off.
 	cpu_enable(1, 0);
 	cpu_enable(2, 0);
@@ -690,13 +661,10 @@ int init_galaga()
 
 void end_galaga()
 {
-
 }
 
-
-
 INPUT_PORTS_START(galaga)
-PORT_START("DSW0")  // DSW0 
+PORT_START("DSW0")  // DSW0
 PORT_DIPNAME(0x07, 0x07, DEF_STR(Coinage))
 PORT_DIPSETTING(0x04, DEF_STR(4C_1C))
 PORT_DIPSETTING(0x02, DEF_STR(3C_1C))
@@ -722,7 +690,7 @@ PORT_DIPSETTING(0x80, "3")
 PORT_DIPSETTING(0x40, "4")
 PORT_DIPSETTING(0xc0, "5")
 
-PORT_START("DSW1")      // DSW1 
+PORT_START("DSW1")      // DSW1
 PORT_DIPNAME(0x01, 0x01, "2 Credits Game")
 PORT_DIPSETTING(0x00, "1 Player")
 PORT_DIPSETTING(0x01, "2 Players")
@@ -747,8 +715,7 @@ PORT_DIPNAME(0x80, 0x80, DEF_STR(Cabinet))
 PORT_DIPSETTING(0x80, DEF_STR(Upright))
 PORT_DIPSETTING(0x00, DEF_STR(Cocktail))
 
-PORT_START("IO1")      // FAKE 
-
+PORT_START("IO1")      // FAKE
 PORT_BIT(0x01, IP_ACTIVE_LOW, IPT_UNUSED)
 PORT_BIT(0x02, IP_ACTIVE_LOW, IPT_JOYSTICK_RIGHT | IPF_2WAY)
 PORT_BIT(0x04, IP_ACTIVE_LOW, IPT_UNUSED)
@@ -757,7 +724,7 @@ PORT_BIT_IMPULSE(0x10, IP_ACTIVE_LOW, IPT_BUTTON1, 1)
 PORT_BITX(0x20, IP_ACTIVE_LOW, IPT_BUTTON1, 0, IP_KEY_PREVIOUS, IP_JOY_PREVIOUS)
 PORT_BIT(0xc0, IP_ACTIVE_LOW, IPT_UNUSED)
 
-PORT_START("IO2")      // FAKE 
+PORT_START("IO2")      // FAKE
 PORT_BIT(0x01, IP_ACTIVE_LOW, IPT_UNUSED)
 PORT_BIT(0x02, IP_ACTIVE_LOW, IPT_JOYSTICK_RIGHT | IPF_2WAY | IPF_COCKTAIL)
 PORT_BIT(0x04, IP_ACTIVE_LOW, IPT_UNUSED)
@@ -766,8 +733,8 @@ PORT_BIT_IMPULSE(0x10, IP_ACTIVE_LOW, IPT_BUTTON1 | IPF_COCKTAIL, 1)
 PORT_BITX(0x20, IP_ACTIVE_LOW, IPT_BUTTON1 | IPF_COCKTAIL, 0, IP_KEY_PREVIOUS, IP_JOY_PREVIOUS)
 PORT_BIT(0xc0, IP_ACTIVE_LOW, IPT_UNUSED)
 
-PORT_START("IO3")      // FAKE 
-// the button here is used to trigger the sound in the test screen 
+PORT_START("IO3")      // FAKE
+// the button here is used to trigger the sound in the test screen
 PORT_BITX(0x03, IP_ACTIVE_LOW, IPT_BUTTON1, 0, IP_KEY_DEFAULT, IP_JOY_DEFAULT)
 PORT_BIT_IMPULSE(0x04, IP_ACTIVE_LOW, IPT_START1, 1)
 PORT_BIT_IMPULSE(0x08, IP_ACTIVE_LOW, IPT_START2, 1)
@@ -776,8 +743,6 @@ PORT_BIT_IMPULSE(0x20, IP_ACTIVE_LOW, IPT_COIN2, 1)
 PORT_BIT_IMPULSE(0x40, IP_ACTIVE_LOW, IPT_COIN3, 1)
 PORT_SERVICE(0x80, IP_ACTIVE_LOW)
 INPUT_PORTS_END
-
-
 
 ROM_START(galaga)
 ROM_REGION(0x10000, REGION_CPU1, 0)     /* 64k for code for the first CPU  */
@@ -797,7 +762,6 @@ ROM_LOAD("gg1-9.4l", 0x0000, 0x1000, CRC(58b2f47c) SHA1(62f1279a784ab2f8218c4137
 //ROM_LOAD("gg1-11.4d", 0x1000, 0x1000, CRC(ad447c80) SHA1(e697c180178cabd1d32483c5d8889a40633f7857))
 //ROM_LOAD("gg1-10.4f", 0x2000, 0x1000, CRC(dd6f1afc) SHA1(c340ed8c25e0979629a9a1730edc762bd72d0cff))
 
-
 ROM_REGION(0x2000, REGION_GFX2, ROMREGION_DISPOSE)
 ROM_LOAD("gg1-11.4d", 0x0000, 0x1000, CRC(ad447c80) SHA1(e697c180178cabd1d32483c5d8889a40633f7857))
 ROM_LOAD("gg1-10.4f", 0x1000, 0x1000, CRC(dd6f1afc) SHA1(c340ed8c25e0979629a9a1730edc762bd72d0cff))
@@ -812,15 +776,13 @@ ROM_LOAD("prom-1.1d", 0x0000, 0x0100, CRC(7a2815b4) SHA1(085ada18c498fdb18ecedef
 //ROM_LOAD("prom-2.5c", 0x0100, 0x0100, CRC(77245b66) SHA1(0c4d0bee858b97632411c440bea6948a74759746))	/* timing - not used */
 ROM_END
 
-
-
 // Galaga
 AAE_DRIVER_BEGIN(drv_galaga, "galaga", "Galaga")
 AAE_DRIVER_ROM(rom_galaga)
 AAE_DRIVER_FUNCS(&init_galaga, &run_galaga, &end_galaga)
 AAE_DRIVER_INPUT(input_ports_galaga)
 AAE_DRIVER_SAMPLES(galaga_samples)
-AAE_DRIVER_ART_NONE()
+AAE_DRIVER_ART(galaga_art)
 
 AAE_DRIVER_CPUS(
 	// CPU0

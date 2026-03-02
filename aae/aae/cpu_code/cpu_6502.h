@@ -7,14 +7,43 @@
 //
 // Origins and Contributions:
 //   - Original 6502 CPU core by Neil Bradley, adapted from unnamed web sources.
-//   - ADC and SBC algorithms from M.A.M.E.™ (c) 1998–2000 Juergen Buchmueller.
+//   - ADC and SBC algorithms from M.A.M.E. (c) 1998-2000 Juergen Buchmueller.
 //   - Timing tables and stack logic adapted from FakeNes.
-//   - Modern C++ refactor and extensions by TC (2015–2025) for AAE compatibility.
-//   - Additional documentation and cleanup assisted by ChatGPT.
+//   - Modern C++ refactor and extensions by TC (2015-2025) for AAE compatibility.
+//   - Additional documentation and cleanup assisted by ChatGPT and Gemini Pro 3 and Claude.ai.
 //
 // This version retains functional and timing accuracy, supports profiling and
 // debugging, and integrates mostly with legacy MAME-style emulation systems.
+// 6510 USAGE NOTE:
+// 1. Create the CPU
+// cpu = new cpu_6502(mem, read_handlers, write_handlers, 0xFFFF, 0, CPU_6510);
+// 2. Define a static callback to handle ROM Banking
+// static void c64_banking_callback(uint8_t data, uint8_t dir) {
+// Bits 0, 1, 2 of 'data' usually control BASIC, KERNAL, and I/O visibility
+// update_memory_map(data);
+// 3. Register it
+// cpu->set_6510_port_callback(c64_banking_callback);
 // -----------------------------------------------------------------------------
+
+// Notes
+// 11/22/24 added undoucumented isb opcode, will work to add the rest later.
+// 12/28/24 Rewrote the main loop to resolve an issue with the cycle counting being consistently undereported.
+// 01/03/25 Discovered an edge case where clocktickstotal was not being set to zero at init, causing an immediate crash.
+// 01/09/25 Changed clocktickstotal again to be set to zero at init, not reset. When a cpu was reset mid-frame, it was throwing the timing count off.
+// 06/29/25 Added IRQ after CLI check, added new dissassembler, code cleanup
+// 06/30/25 Added the most commonly used undocumented instructions, and hopefully adjusted the timing table to match. These are totally unverified.
+// For your own usage, just undefine USING_AAE_EMU
+// 07/01/25 Moved the stack operations back to not using the Memory Handlers. This was a good speed up and did not affect Major Havoc.
+// I left the old code commented out, just in case.
+// 09/01/25 Fixed a newly introduced BCD bug in SBC  if (hi & 0x0100) hi -= 0x60;  // <-- high-digit BCD adjust
+// Updated ABC and SBC code to handle NMOS edge cases. 
+// Rewrote the IRQ after CLI handling to work correctly. 
+// Doubled down on my targeted NMOS first support, added some undocumented upcodes. 
+// Updated (again) changed the ADC/SBC code.
+// 01/18/2025 Partial Re-Write with claude.ai. Corrected all documented and undocumented instructions. Added 65C02 Support, 6510 Support
+// and 2A03 support. This CPU Core now passes both NMOS and CMOS Klaus Tests, as well as most Lorentz tests, the rest need specific things that I do not want to add yet. 
+// Added IRQ_HOLD for Emulators that need it like the Commodore PET. Default is IRQ_PULSE.
+// TESTED with the Commodore 64 and NES, see AI generated test emulators on my GitHub. 
 
 #ifndef _6502_H_
 #define _6502_H_
@@ -25,7 +54,22 @@
 #include <string>
 #include "deftypes.h"
 
+// undefine USING_AAE_EMU to skip the timer code.  
 #define USING_AAE_EMU
+
+enum irqmode
+{
+	IRQ_PULSE,
+	IRQ_HOLD
+};
+
+
+enum CpuModel {
+	CPU_NMOS_6502,
+	CPU_CMOS_65C02,
+	CPU_NES_2A03,
+	CPU_6510
+};
 
 class cpu_6502
 {
@@ -49,16 +93,23 @@ public:
 	// -------------------------------------------------------------------------
 	// Construction and execution
 	// -------------------------------------------------------------------------
-	cpu_6502(uint8_t* mem, MemoryReadByte* read_mem, MemoryWriteByte* write_mem, uint16_t addr, int num);
+	cpu_6502(uint8_t* mem, MemoryReadByte* read_mem, MemoryWriteByte* write_mem, uint16_t addr, int num, CpuModel model = CPU_NMOS_6502);
 	~cpu_6502() = default;
 
-	void init6502(uint16_t addrmaskval);
+	void init6502(uint16_t addrmaskval, CpuModel model = CPU_NMOS_6502);
 	void reset6502();
-	void irq6502();
+	void execute_irq();
+	void irq6502(int irqmode = IRQ_PULSE);
 	void nmi6502();
 	int exec6502(int timerTicks);
 	int step6502();
 	int get6502ticks(int reset);
+
+	// 2. Add a callback setter for the 6510 Port
+	// The emulator calls this to set a function that triggers when the port changes.
+	typedef void (*PortCallback)(uint8_t data, uint8_t direction);
+	void set_6510_port_callback(PortCallback cb) { port_cb = cb; }
+
 
 	// -------------------------------------------------------------------------
 	// Instruction Usage Profiler
@@ -101,16 +152,18 @@ public:
 	uint16_t pull16();
 	uint8_t pull8();
 
+	uint8_t A = 0, P = 0, X = 0, Y = 0, S = 0xFF;
+	uint16_t PC = 0, PPC = 0;
+
+
 private:
+	// Store the model
+	CpuModel cpu_model = CPU_NMOS_6502;
 	// -------------------------------------------------------------------------
 	// CPU internal flags and registers
 	// -------------------------------------------------------------------------
 	bool direct_zero_page = false;
 	bool direct_stack_page = false;
-
-	uint8_t A = 0, P = 0, X = 0, Y = 0, S = 0xFF;
-	uint16_t PC = 0, PPC = 0;
-
 	// -------------------------------------------------------------------------
 	// CPU internal state
 	// -------------------------------------------------------------------------
@@ -121,6 +174,8 @@ private:
 
 	int clockticks6502 = 0;
 	int clocktickstotal = 0;
+	// IRQ Handling
+	int _irqMode = 0;
 	int _irqPending = 0;
 	uint8_t irq_inhibit_one = 0;
 	int cpu_num = 0;
@@ -129,11 +184,10 @@ private:
 	bool mmem = false;
 	bool log_debug_rw = false;
 
-	// -------------------------------------------------------------------------
-	// Opcode function dispatch tables
-	// -------------------------------------------------------------------------
-	void (cpu_6502::* adrmode[0x100])();
-	void (cpu_6502::* instruction[0x100])();
+	// 6510 Internal State
+	uint8_t io_port_data = 0; // $0001
+	uint8_t io_port_dir = 0;  // $0000
+	PortCallback port_cb = nullptr;
 
 	// -------------------------------------------------------------------------
 	// Processor status flags
@@ -188,11 +242,15 @@ private:
 	// -------------------------------------------------------------------------
 	// Opcode table entry structure
 	// -------------------------------------------------------------------------
+
 	struct OpEntry {
 		void (cpu_6502::* instruction)();
 		void (cpu_6502::* addressing_mode)();
 	};
-	static const OpEntry opcode_table[256];
+	OpEntry opcode_table[256]; // The instance table
+
+	// ADD THIS LINE HERE:
+	static const OpEntry initial_opcode_table[256];
 
 	// -------------------------------------------------------------------------
 	// Addressing modes
@@ -200,7 +258,7 @@ private:
 	void implied6502(); void immediate6502(); void abs6502(); void relative6502();
 	void indirect6502(); void absx6502(); void absy6502(); void zp6502();
 	void zpx6502(); void zpy6502(); void indx6502(); void indy6502();
-	void indabsx6502(); void indzp6502();
+	void indabsx6502(); void indzp6502(); void zprel6502(); // For BBR/BBS
 
 	// -------------------------------------------------------------------------
 	// Instruction implementations
@@ -223,12 +281,28 @@ private:
 	void bra6502(); void dea6502(); void ina6502(); void phx6502();
 	void plx6502(); void phy6502(); void ply6502(); void stz6502();
 	void tsb6502(); void trb6502(); 
+	// CMOS specific ALU helpers
+	void adc65c02();
+	void sbc65c02();
+	// NES 2A03 specific ALU helpers (BCD Disabled)
+	void adc_2a03();
+	void sbc_2a03();
+	void rra_2a03();
+	void isc_2a03();
 	// -------------------------------------------------------------------------
-	// Undocumented Instructions
+	// NMOS Undocumented Instructions
 	// -------------------------------------------------------------------------
 	void lax6502(); void sax6502(); void dcp6502(); void isc6502();
 	void slo6502(); void rra6502(); void rla6502(); void sre6502();
-	void anc6502(); void alr6502(); void arr6502();
+	void anc6502(); void alr6502(); void arr6502(); void axs6502();
+	//Lorentz Tests
+	void ane6502(); void lxa6502(); void shs6502(); void shy6502(); 
+	void shx6502(); void ahx6502(); void las6502();
+	// C6502 Special Instructions
+	void rmb_smb_6502(); // Handles RMB0-7 and SMB0-7
+	void bbr_bbs_6502(); // Handles BBR0-7 and BBS0-7
+
+
 };
 
 #endif // _6502_H_

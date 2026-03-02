@@ -1,6 +1,5 @@
 /*
 
-
 This is free and unencumbered software released into the public domain.
 
 Anyone is free to copy, modify, publish, use, compile, sell, or
@@ -37,30 +36,31 @@ For more information, please refer to <http://unlicense.org/>
 #include "colordefs.h"
 #include "MathUtils.h"
 
+using Vec2 = aae::math::vec2;
 
 // Represents a colored vertex
 class _fpdata {
 public:
-    float x = 0.0f;
-    float y = 0.0f;
-    uint32_t color = 0;
+	float x = 0.0f;
+	float y = 0.0f;
+	uint32_t color = 0;
 
-    _fpdata() = default;
-    _fpdata(float x, float y, uint32_t color) : x(x), y(y), color(color) {}
-    _fpdata(const Vec2& p, const uint32_t& color) : x(p.x), y(p.y), color(color) {}
+	_fpdata() = default;
+	_fpdata(float x, float y, uint32_t color) : x(x), y(y), color(color) {}
+	_fpdata(const Vec2& p, const uint32_t& color) : x(p.x), y(p.y), color(color) {}
 };
 
 class Fpoly {
 public:
-    Fpoly();
-    ~Fpoly();
+	Fpoly();
+	~Fpoly();
 
-    void addPoly(float x, float y, float size, uint32_t color);
-    void Render();
+	void addPoly(float x, float y, float size, uint32_t color);
+	void Render();
 
 private:
-    std::vector<_fpdata> vertices;
-    uint32_t color = RGB_WHITE;
-    int angle = 0;
+	std::vector<_fpdata> vertices;
+	uint32_t color = RGB_WHITE;
+	int angle = 0;
 };
 #endif // __FPOLY__

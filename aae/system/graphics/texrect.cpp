@@ -60,7 +60,7 @@ Rect2::Rect2(int screen_width, int screen_height, float aspectRatio, int rotated
 	texcoord_loc_ = glGetAttribLocation(prog_, "a_texcoord");
 	sampler_loc_ = glGetUniformLocation(prog_, "u_texture");
 
-	// bind sampler once to texture‐unit 0
+	// bind sampler once to texture-unit 0
 	glUseProgram(prog_);
 	glUniform1i(sampler_loc_, 0);
 	glUseProgram(0);
@@ -162,7 +162,7 @@ void Rect2::UpdateScreenRect(int screen_width, int screen_height, float aspectRa
 	float yadj = 0.0f;
 
 	if (used_width > screen_width) {
-		// Width doesn't fit — clamp to screen width instead
+		// Width doesn't fit - clamp to screen width instead
 		used_width = (float)screen_width;
 		used_height = used_width / aspectRatio;
 		yadj = ((float)screen_height - used_height) / 2.0f;

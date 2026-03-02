@@ -195,7 +195,7 @@
 #include "mhavoc_custom_video.h"
 #include "glcode.h"
 #include "mixer.h"
-#include "wav_resample.h"
+//#include "wav_resample.h"
 #include "okim6295_loader.h"
 
 #pragma warning( disable :  4244)
@@ -273,53 +273,6 @@ void mhavoc_nvram_handler(void* file, int read_or_write)
 		}
 	}
 }
-
-/*
-static const char* mhavocpe_samples[] = {
-	"mhavocpe.zip",
-	"00_speech_chip_test.wav",
-	"Char - Take 1 - One.wav",
-	"Char - Take 1 - Two.wav",
-	"Char - Take 1 - Three.wav",
-	"Char - Take 1 - Four.wav",
-	"Char - Take 1 - Five.wav",
-	"Char - Take 1 - Six.wav",
-	"Char - Take 1 - Seven.wav",
-	"Char - Take 1 - Eight.wav",
-	"Char - Take 1 - Nine.wav",
-	"Char - Take 1 - Ten.wav",
-	"jess_max_pitchdown_85_mechanized__intruder.wav",
-	"jess_max_pitchdown_85_mechanized__destroy_intruder.wav",
-	"jess_max_pitchdown_85_mechanized__destroyed.wav",
-	"jess_max_pitchdown_85_mechanized__hahahaha_1.wav",
-	"jess_max_pitchdown_85_mechanized__hahahaha_2.wav",
-	"jess_max_pitchdown_85_mechanized__hahahaha_3.wav",
-	"jess_max_pitchdown_85_mechanized__we_win.wav",
-	"jess_max_pitchdown_85_mechanized__you_lose.wav",
-	"jess_max2_pitchdown_83_mechanized__activated.wav",
-	"jess_max2_pitchdown_83_mechanized__attack.wav",
-	"jess_max2_pitchdown_83_mechanized__you_cannot_win.wav",
-	"jess_max2_pitchdown_83_mechanized__you_will_not_win.wav",
-	"jess_max3_pitchdown_85_mechanized__ill_be_back.wav",
-	"jess_max3_pitchdown_85_mechanized__ahhhh2.wav",
-	"jess_max3_pitchdown_85_mechanized__ohhhh.wav",
-	"jess_max3_pitchdown_85_mechanized__eeewww.wav",
-	"jess_rex_mechanized__better_hurry.wav",
-	"jess_rex_mechanized__come_on.wav",
-	"jess_rex_mechanized__im_outta_here.wav",
-	"jess_rex_mechanized__ooof.wav",
-	"jess_rex_mechanized__ooom.wav",
-	"jess_rex_mechanized__ouch.wav",
-	"jess_rex_mechanized__uggh.wav",
-	"jess_rex_mechanized__uh_oh.wav",
-	"jess_rex_mechanized__um_hmm.wav",
-	"jess_rex_mechanized__uumm.wav",
-	"jess_rex_mechanized__whoa.wav",
-	"jess_rex_mechanized__woo_hoo.wav",
-	"benk_18_force will be with you, always.wav",
-	"boy_01_look at the size of that thing.wav",
-	 0 };
-*/
 
 static UINT8 alpha_data = 0;
 static UINT8 alpha_rcvd = 0;
@@ -411,7 +364,7 @@ int mhavoc_sh_start(void)
 	size_t ROM_SIZE = Machine->memory_region_length[REGION_CPU4];
 
 	const int oki_clock_hz = OKI_CLOCK;
-	const bool pin7_high = true;     // pin 7 tied high → divisor 132
+	const bool pin7_high = true;     // pin 7 tied high -> divisor 132
 
 	// Mixer/system output rate
 	const int out_rate = config.samplerate;
@@ -1113,7 +1066,7 @@ ROM_LOAD("e000.tw", 0xe000, 0x1000, CRC(6b1d7d2b) SHA1(36ac8b53e2fe01ed281c94afe
 ROM_RELOAD(0x0f000, 0x1000)
 ROM_LOAD("page01.tw", 0x10000, 0x4000, CRC(cbf3b05a) SHA1(1dfaf9300a252c9c921f06167160a59cdf329726))
 
-ROM_REGION(0x10000, REGION_CPU3, 0)
+ROM_REGION(0x8000, REGION_GFX1, 0)
 ROM_LOAD("vec_pg01.tw", 0x0000, 0x4000, CRC(e392a94d) SHA1(b5843da97d7aa5767c87c29660115efc5ad9ad54))
 ROM_LOAD("vec_pg23.tw", 0x4000, 0x4000, CRC(1ff74292) SHA1(90e61c48544c62d905e207bba5c67ae7694e86a5))
 
@@ -1132,7 +1085,7 @@ ROM_LOAD("e000.tw", 0xe000, 0x1000, CRC(6b1d7d2b) SHA1(36ac8b53e2fe01ed281c94afe
 ROM_RELOAD(0x0f000, 0x1000)
 ROM_LOAD("page01.tw", 0x10000, 0x4000, CRC(cbf3b05a) SHA1(1dfaf9300a252c9c921f06167160a59cdf329726))
 
-ROM_REGION(0x10000, REGION_CPU3, 0)
+ROM_REGION(0x8000, REGION_GFX1, 0)
 ROM_LOAD("vec_pg01.tw", 0x0000, 0x4000, CRC(e392a94d) SHA1(b5843da97d7aa5767c87c29660115efc5ad9ad54))
 ROM_LOAD("vec_pg23.tw", 0x4000, 0x4000, CRC(1ff74292) SHA1(90e61c48544c62d905e207bba5c67ae7694e86a5))
 // AVG PROM
@@ -1148,7 +1101,7 @@ ROM_LOAD("136025.103", 0x8000, 0x4000, CRC(bf192284) SHA1(4c2dc3ba75122e521ebf2c
 ROM_LOAD("136025.104", 0xc000, 0x4000, CRC(833c5d4e) SHA1(932861b2a329172247c1a5d0a6498a00a1fce814))
 ROM_LOAD("136025.101", 0x10000, 0x4000, CRC(2b3b591f) SHA1(39fd6fdd14367906bc0102bde15d509d3289206b))
 ROM_LOAD("136025.109", 0x14000, 0x4000, CRC(4d766827) SHA1(7697bf6f92bff0e62850ed75ff66008a08583ef7))
-ROM_REGION(0x10000, REGION_CPU3, 0)
+ROM_REGION(0x8000, REGION_GFX1, 0)
 ROM_LOAD("136025.106", 0x0000, 0x4000, CRC(2ca83c76) SHA1(cc1adca32f70af30c4590e9fd6b056b051ccdb38))
 ROM_LOAD("136025.107", 0x4000, 0x4000, CRC(5f81c5f3) SHA1(be4055727a2d4536e37ec20150deffdb5af5b01f))
 ROM_REGION(0x10000, REGION_CPU2, 0)
@@ -1166,7 +1119,7 @@ ROM_LOAD("136025.916", 0x8000, 0x4000, CRC(1255bd7f) SHA1(e277fe7b23ce8cf1294b6b
 ROM_LOAD("136025.917", 0xc000, 0x4000, CRC(21889079) SHA1(d1ad6d9fa1432912e376bca50ceeefac2bfd6ac3))
 ROM_LOAD("136025.915", 0x10000, 0x4000, CRC(4c7235dc) SHA1(67cafc2ce438ec389550efb46c554a7fe7b45efc))
 ROM_LOAD("136025.918", 0x14000, 0x4000, CRC(84735445) SHA1(21aacd862ce8911d257c6f48ead119ee5bb0b60d))
-ROM_REGION(0x10000, REGION_CPU3, 0)
+ROM_REGION(0x8000, REGION_GFX1, 0)
 ROM_LOAD("136025.106", 0x0000, 0x4000, CRC(2ca83c76) SHA1(cc1adca32f70af30c4590e9fd6b056b051ccdb38))
 ROM_LOAD("136025.907", 0x4000, 0x4000, CRC(4deea2c9) SHA1(c4107581748a3f2d2084de2a4f120abd67a52189))
 ROM_REGION(0x10000, REGION_CPU2, 0)
@@ -1184,7 +1137,7 @@ ROM_LOAD("136025.016", 0x8000, 0x4000, CRC(94caf6c0) SHA1(8734411280bd0484c99a59
 ROM_LOAD("136025.017", 0xc000, 0x4000, CRC(5cba70a) SHA1(c069e6dec3e5bc278103156d0908ab93f3784be1))
 ROM_LOAD("136025.015", 0x10000, 0x4000, CRC(c567c11b) SHA1(23b89389f59bb6a040342adfe583818a91ce5bff))
 ROM_LOAD("136025.018", 0x14000, 0x4000, CRC(a8c35ccd) SHA1(c243a5407557390a64c6560d857f5031f839973f))
-ROM_REGION(0x10000, REGION_CPU3, 0)
+ROM_REGION(0x8000, REGION_GFX1, 0)
 ROM_LOAD("136025.006", 0x0000, 0x4000, CRC(e272ed41) SHA1(0de395d1c4300a64da7f45746d7b550779e36a21))
 ROM_LOAD("136025.007", 0x4000, 0x4000, CRC(e152c9d8) SHA1(79d0938fa9ad262c7f28c5a8ad21004a4dec9ed8))
 ROM_REGION(0x10000, REGION_CPU2, 0)
@@ -1205,7 +1158,7 @@ ROM_LOAD("136025.217", 0xc000, 0x4000, CRC(ea3d6877) SHA1(27823c1b546c073b37ff11
 ROM_LOAD("136025.215", 0x10000, 0x4000, CRC(a4d380ca) SHA1(c3cdc76054be2f904b1fb6f28c3c027eba5c3a70))
 ROM_LOAD("136025.318", 0x14000, 0x4000, CRC(ba935067) SHA1(05ad81e7a1982b9d8fddb48502546f48b5dc21b7))
 /* Paged Vector Generator ROM */
-ROM_REGION(0x10000, REGION_CPU3, 0)
+ROM_REGION(0x8000, REGION_GFX1, 0)
 ROM_LOAD("136025.106", 0x0000, 0x4000, CRC(2ca83c76) SHA1(cc1adca32f70af30c4590e9fd6b056b051ccdb38))
 ROM_LOAD("136025.107", 0x4000, 0x4000, CRC(5f81c5f3) SHA1(be4055727a2d4536e37ec20150deffdb5af5b01f))
 //GAMMA CPU
@@ -1228,7 +1181,7 @@ ROM_LOAD("mhpe101.1np", 0x18000, 0x8000, CRC(6f7b38a9) SHA1(0107cc88a54780c6bca9
 ROM_REGION(0x10000, REGION_CPU2, 0)
 ROM_LOAD("mhpe101.9s", 0x8000, 0x4000, CRC(46cdd0fa) SHA1(f6c75333311279b15cb42ce3ed8a40e54a508869))
 ROM_RELOAD(0x0c000, 0x4000) /* reset+interrupt vectors */
-ROM_REGION(0x10000, REGION_CPU3, 0)
+ROM_REGION(0x8000, REGION_GFX1, 0)
 ROM_LOAD("mhpe101.6h", 0x0000, 0x4000, CRC(6b380183) SHA1(2fad9dc301aa5622195e3acac2865339406ccc38))
 ROM_LOAD("mhpe101.6jk", 0x4000, 0x4000, CRC(7ecfd43b) SHA1(7f99fde09062bc4ca4bbbf06f1b11dc3f5203541))
 ROM_REGION(0x40000, REGION_CPU4, 0) // Speech Rom

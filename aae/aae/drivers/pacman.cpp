@@ -5,6 +5,7 @@
 #include "driver_registry.h"
 #include "namco.h"
 #include "timer.h"
+#include "pacplus_decode.h"
 
 static UINT8 interrupt_enable_1 = 1;
 static int flipscreen = 0;
@@ -14,6 +15,15 @@ static int mspac_activate = 0;
 extern unsigned char* pengo_soundregs;
 static int gfx_bank;
 static int xoffsethack;
+
+ART_START(pacman_art)
+ART_LOAD("pacplus.zip", "pacman_bezel_upright.png", ART_TEX, 3)
+ART_END
+
+ART_START(mspacman_art)
+ART_LOAD("mspacman.zip", "mspacman_bezel.png", ART_TEX, 3)
+ART_END
+
 
 /// // Video Settings
 const rectangle visible_area =
@@ -517,6 +527,15 @@ int init_pacman()
 	return 0;
 }
 
+int init_pacplus()
+{
+	pacplus_decode();
+	init_pacman();
+
+	return 0;
+}
+
+
 int init_mspacman()
 {
 	LOG_INFO("INIT: MsPacman Driver Init");
@@ -729,6 +748,28 @@ ROM_LOAD("82s126.1m", 0x0000, 0x0100, CRC(a9cc86bf) SHA1(bbcec0570aeceb582ff8238
 ROM_LOAD("82s126.3m", 0x0100, 0x0100, CRC(77245b66) SHA1(0c4d0bee858b97632411c440bea6948a74759746))	/* timing - not used */
 ROM_END
 
+ROM_START(pacplus)
+ROM_REGION(0x10000, REGION_CPU1, 0)	/* 64k for code */
+ROM_LOAD("pacplus.6e", 0x0000, 0x1000, CRC(d611ef68) SHA1(8531c54ca6b0de0ea4ccc34e0e801ba9847e75bc))
+ROM_LOAD("pacplus.6f", 0x1000, 0x1000, CRC(c7207556) SHA1(8ba97215bdb75f0e70eb8d3223847efe4dc4fb48))
+ROM_LOAD("pacplus.6h", 0x2000, 0x1000, CRC(ae379430) SHA1(4e8613d51a80cf106f883db79685e1e22541da45))
+ROM_LOAD("pacplus.6j", 0x3000, 0x1000, CRC(5a6dff7b) SHA1(b956ae5d66683aab74b90469ad36b5bb361d677e))
+
+ROM_REGION(0x2000, REGION_GFX1, ROMREGION_DISPOSE)
+ROM_LOAD("pacplus.5e", 0x0000, 0x1000, CRC(022c35da) SHA1(57d7d723c7b029e3415801f4ce83469ec97bb8a1))
+ROM_LOAD("pacplus.5f", 0x1000, 0x1000, CRC(4de65cdd) SHA1(9c0699204484be819b77f0b212c792fe9e9fae5d))
+//ROM_REGION(0x1000, REGION_GFX2, ROMREGION_DISPOSE)
+//ROM_LOAD("pacplus.5f", 0x0000, 0x1000, CRC(4de65cdd) SHA1(9c0699204484be819b77f0b212c792fe9e9fae5d))
+
+ROM_REGION(0x0120, REGION_PROMS, 0)
+ROM_LOAD("pacplus.7f", 0x0000, 0x0020, CRC(063dd53a) SHA1(2e43b46ec3b101d1babab87cdaddfa944116ec06))
+ROM_LOAD("pacplus.4a", 0x0020, 0x0100, CRC(e271a166) SHA1(cf006536215a7a1d488eebc1d8a2e2a8134ce1a6))
+
+ROM_REGION(0x0200, REGION_SOUND1, 0)	/* sound PROMs */
+ROM_LOAD("82s126.1m", 0x0000, 0x0100, CRC(a9cc86bf) SHA1(bbcec0570aeceb582ff8238a4bc8546a23430081))
+ROM_LOAD("82s126.3m", 0x0100, 0x0100, CRC(77245b66) SHA1(0c4d0bee858b97632411c440bea6948a74759746))	/* timing - not used */
+ROM_END
+
 
 // Pacman
 AAE_DRIVER_BEGIN(drv_pacman, "pacman", "Pacman")
@@ -736,7 +777,7 @@ AAE_DRIVER_ROM(rom_pacman)
 AAE_DRIVER_FUNCS(&init_pacman, &run_pacman, &end_pacman)
 AAE_DRIVER_INPUT(input_ports_pacman)
 AAE_DRIVER_SAMPLES_NONE()
-AAE_DRIVER_ART_NONE()
+AAE_DRIVER_ART(pacman_art)
 
 AAE_DRIVER_CPUS(
 	AAE_CPU_ENTRY(
@@ -772,7 +813,7 @@ AAE_DRIVER_ROM(rom_mspacman)
 AAE_DRIVER_FUNCS(&init_mspacman, &run_pacman, &end_pacman)
 AAE_DRIVER_INPUT(input_ports_pacman)
 AAE_DRIVER_SAMPLES_NONE()
-AAE_DRIVER_ART_NONE()
+AAE_DRIVER_ART(mspacman_art)
 
 AAE_DRIVER_CPUS(
 	AAE_CPU_ENTRY(
@@ -801,5 +842,43 @@ AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0, 0)
 AAE_DRIVER_NVRAM_NONE()
 AAE_DRIVER_END()
+///////////////////////////////////////////////////////////////////////
+// PacPlus
+AAE_DRIVER_BEGIN(drv_pacplus, "pacplus", "Pacman Plus")
+AAE_DRIVER_ROM(rom_pacplus)
+AAE_DRIVER_FUNCS(&init_pacplus, &run_pacman, &end_pacman)
+AAE_DRIVER_INPUT(input_ports_pacman)
+AAE_DRIVER_SAMPLES_NONE()
+AAE_DRIVER_ART(pacman_art)
+
+AAE_DRIVER_CPUS(
+	AAE_CPU_ENTRY(
+		/*type*/     CPU_MZ80,
+		/*freq*/     3072000,
+		/*div*/      100,
+		/*ipf*/      1,
+		/*int type*/ INT_TYPE_INT,
+		/*int cb*/   &pacman_interrupt,
+		/*r8*/       pacman_readmem,
+		/*w8*/       pacman_writemem,
+		/*pr*/       pacman_readport,
+		/*pw*/       pacman_writeport,
+		/*r16*/      nullptr,
+		/*w16*/      nullptr
+	),
+	AAE_CPU_NONE_ENTRY(),
+	AAE_CPU_NONE_ENTRY(),
+	AAE_CPU_NONE_ENTRY()
+)
+
+AAE_DRIVER_VIDEO_CORE(60, VIDEO_TYPE_RASTER_COLOR | VIDEO_SUPPORTS_DIRTY, ORIENTATION_DEFAULT)
+AAE_DRIVER_SCREEN(28 * 8, 36 * 8, 0, 224 - 1, 0, 288 - 1)
+AAE_DRIVER_RASTER(pacman_gfxdecodeinfo, 16, 4 * 32, pacman_vh_convert_color_prom)
+AAE_DRIVER_HISCORE_NONE()
+AAE_DRIVER_VECTORRAM(0, 0)
+AAE_DRIVER_NVRAM_NONE()
+AAE_DRIVER_END()
+//////////////////////////////////////////////////////////////////////////////////////////////////
 AAE_REGISTER_DRIVER(drv_pacman)
 AAE_REGISTER_DRIVER(drv_mspacman)
+AAE_REGISTER_DRIVER(drv_pacplus)

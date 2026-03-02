@@ -108,7 +108,7 @@ namespace Log {
     void setConsoleOutputEnabled(bool enabled);
 }
 
-// Logging macros — safe, fast, and non-blocking.
+// Logging macros - safe, fast, and non-blocking.
 #define LogOpen(f) Log::open(f)
 #define LogClose() Log::close()
 #define LOG_DEBUG(fmt, ...) Log::write(Log::Level::Debug, __FILE__, __func__, __LINE__, fmt, ##__VA_ARGS__)

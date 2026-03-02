@@ -33,13 +33,13 @@ static UINT8 analog_data;
 int bzone_timer = -1;
 
 ART_START(bzoneart)
-ART_LOAD("bzone.zip", "bzone_overlay.png", ART_TEX, 1)
-ART_LOAD("bzone.zip", "bzone.png", ART_TEX, 3)
+ART_LOAD("bzone_aae.zip", "bzone_overlay.png", ART_TEX, 1)
+ART_LOAD("bzone_aae.zip", "bzone.png", ART_TEX, 3)
 ART_END
 
 ART_START(redbaronart)
-ART_LOAD("redbaron.zip", "redbaron_overlay.png", ART_TEX, 1)
-ART_LOAD("redbaron.zip", "rbbezel.png", ART_TEX, 3)
+ART_LOAD("redbaron_aae.zip", "redbaron_overlay.png", ART_TEX, 1)
+ART_LOAD("redbaron_aae.zip", "rbbezel.png", ART_TEX, 3)
 ART_END
 
 /* Constants for the sound names in the bzone sample array */
@@ -679,7 +679,7 @@ AAE_DRIVER_CPUS(
 	),
 	AAE_CPU_NONE_ENTRY(), AAE_CPU_NONE_ENTRY(), AAE_CPU_NONE_ENTRY()
 )
-AAE_DRIVER_VIDEO_CORE(40, VIDEO_TYPE_VECTOR | VECTOR_USES_BW | VECTOR_USES_OVERLAY1, ORIENTATION_DEFAULT)
+AAE_DRIVER_VIDEO_CORE(40, VIDEO_TYPE_VECTOR | VECTOR_USES_BW, ORIENTATION_DEFAULT)
 AAE_DRIVER_SCREEN(1024, 768, 0, 460, 0, 395)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()

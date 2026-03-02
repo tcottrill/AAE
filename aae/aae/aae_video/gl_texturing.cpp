@@ -1,43 +1,63 @@
-﻿#include "aae_mame_driver.h"
+#include "aae_mame_driver.h"
 #include "gl_texturing.h"
 #include "glcode.h"
 #include "texture_handler.h"
-// For Vector Fonts.
 #include "vector_fonts.h"
 #include "colordefs.h"
 
 #pragma warning( disable : 4305 4244 )
 
-float wideadj = 1;
+float wideadj = 1.0f;
 int errorsound = 0;
 
-//
-//   Texturing and drawing rectangle code Below.
-//
+// ---------------------------------------------------------------------------
+// Texturing and drawing rectangle code Below.
+// ---------------------------------------------------------------------------
 
-inline void drawTexturedQuad(float x1, float y1, float x2, float y2)
+// Consolidated drawing routine. Uses standard OpenGL UVs (0=bottom, 1=top).
+// Set flip_v = true for FBO copies that need to be inverted.
+void drawTexturedQuad(float left, float right, float bottom, float top, bool flip_v = false)
 {
-	// Vertex coordinates (two triangles)
 	GLfloat vertices[] = {
-		x1, y1,
-		x1, y2,
-		x2, y2,
+		left,  bottom,
+		left,  top,
+		right, top,
 
-		x1, y1,
-		x2, y2,
-		x2, y1
+		left,  bottom,
+		right, top,
+		right, bottom
 	};
 
-	// Corresponding texture coordinates
-	GLfloat texCoords[] = {
-		0.0f, 1.0f,
-		0.0f, 0.0f,
-		1.0f, 0.0f,
+	GLfloat texCoords[12];
 
-		0.0f, 1.0f,
-		1.0f, 0.0f,
-		1.0f, 1.0f
-	};
+	if (flip_v)
+	{
+		// Flipped UVs (Bottom maps to 1.0, Top maps to 0.0)
+		const GLfloat flipped[] = {
+			0.0f, 1.0f,
+			0.0f, 0.0f,
+			1.0f, 0.0f,
+
+			0.0f, 1.0f,
+			1.0f, 0.0f,
+			1.0f, 1.0f
+		};
+		memcpy(texCoords, flipped, sizeof(flipped));
+	}
+	else
+	{
+		// Standard OpenGL UVs (Bottom maps to 0.0, Top maps to 1.0)
+		const GLfloat standard[] = {
+			0.0f, 0.0f,
+			0.0f, 1.0f,
+			1.0f, 1.0f,
+
+			0.0f, 0.0f,
+			1.0f, 1.0f,
+			1.0f, 0.0f
+		};
+		memcpy(texCoords, standard, sizeof(standard));
+	}
 
 	glEnableClientState(GL_VERTEX_ARRAY);
 	glEnableClientState(GL_TEXTURE_COORD_ARRAY);
@@ -51,7 +71,6 @@ inline void drawTexturedQuad(float x1, float y1, float x2, float y2)
 	glDisableClientState(GL_VERTEX_ARRAY);
 }
 
-// This is only used by the menu system
 void quad_from_center(float x, float y, float width, float height, int r, int g, int b, int alpha)
 {
 	float minx = x - (width / 2.0f);
@@ -59,12 +78,10 @@ void quad_from_center(float x, float y, float width, float height, int r, int g,
 	float maxx = x + (width / 2.0f);
 	float maxy = y + (height / 2.0f);
 
-	// Set color and blend mode
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	glEnable(GL_BLEND);
 	glColor4ub(r, g, b, alpha);
 
-	// Vertex positions for two triangles forming a quad
 	GLfloat vertices[] = {
 		minx, miny,
 		maxx, miny,
@@ -81,113 +98,35 @@ void quad_from_center(float x, float y, float width, float height, int r, int g,
 	glDisableClientState(GL_VERTEX_ARRAY);
 }
 
-void Any_Rect(int facing, int xmin, int xmax, int ymin, int ymax)
+void Any_Rect(int facing, int left, int right, int bottom, int top)
 {
-	//LOG_INFO("AnyRect here is xmin:%d xmax:%d ymin:%d ymax:%d", xmin, xmax, ymin, ymax);
-	drawTexturedQuad((float)xmin, (float)ymin, (float)xmax, (float)ymax);
+	// Historically, Any_Rect copied FBOs to FBOs and required vertical flipping
+	drawTexturedQuad((float)left, (float)right, (float)bottom, (float)top, true);
 }
 
 void FS_Rect(int facing, int size)
 {
-	drawTexturedQuad(0.0f, (float)size, (float)size, 0.0f);
+	drawTexturedQuad(0.0f, (float)size, 0.0f, (float)size, false);
 }
+
 void Screen_Rect(int facing, int size)
 {
-	drawTexturedQuad(0.0f, (float)size, (float)size, 0.0f);
+	drawTexturedQuad(0.0f, (float)size, 0.0f, (float)size, false);
 }
 
 void Resize_Rect(int facing, int size)
 {
 	float h = size * 0.75f;
-	drawTexturedQuad(0.0f, h, (float)size, 0.0f);
+	drawTexturedQuad(0.0f, (float)size, 0.0f, h, false);
 }
 
-// This code should never have to be ran.
-// All games run in the same internal resolution.
-
-// This should only be called once per each game.
-// This code is needed because of the weird way I loaded textures power of 2.
-// Please fix if you find time in the future.
-
-// Notes for reference:
-//
-// config.artwork
-// config.overlay
-// config.bezel
-// Artwork Setting.
-// Backdrop : layer 0	 art_tex[0]
-// Overlay : layer 1		 art_tex[1]
-// Bezel Mask : layer 2  art_tex[2] Only used for the tempest and tacscan bezel mask, please fix with a shader or different blending
-// Bezel : layer 3		 art_tex[3]
-// Screen burn layer 4:   art_tex[4] (Not currently used)
-
-void resize_art_textures()
+void Bezel_Rect(int left, int right, int bottom, int top)
 {
-	set_render();
-
-	if (art_loaded[0]) {
-		glDrawBuffer(GL_COLOR_ATTACHMENT2_EXT);
-		glReadBuffer(GL_COLOR_ATTACHMENT2_EXT);
-		glClear(GL_COLOR_BUFFER_BIT);
-		glEnable(GL_TEXTURE_2D);
-		glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-		glBindTexture(GL_TEXTURE_2D, art_tex[0]);
-		glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
-		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glDisable(GL_BLEND);
-		Resize_Rect(0, 1024);
-		glBindTexture(GL_TEXTURE_2D, 0);
-		glDeleteTextures(1, &art_tex[0]);
-		glGenTextures(1, &art_tex[0]);
-		glBindTexture(GL_TEXTURE_2D, art_tex[0]);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST); //nearest!!
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-		glCopyTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 0, 0, 1024, 1024, 0); //RGBA8?
-		glEnable(GL_BLEND);
-		glClear(GL_COLOR_BUFFER_BIT);
-		glDisable(GL_TEXTURE_2D);
-		glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT);
-		glReadBuffer(GL_COLOR_ATTACHMENT0_EXT);
-	}
-
-	if (art_loaded[1]) {
-		glDrawBuffer(GL_COLOR_ATTACHMENT2_EXT);
-		glReadBuffer(GL_COLOR_ATTACHMENT2_EXT);
-		glClear(GL_COLOR_BUFFER_BIT);
-		glEnable(GL_TEXTURE_2D);
-		glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-		glBindTexture(GL_TEXTURE_2D, art_tex[1]);
-		glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
-		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glDisable(GL_BLEND);
-		Resize_Rect(0, 1024);
-		glBindTexture(GL_TEXTURE_2D, 0);
-		glDeleteTextures(1, &art_tex[1]);
-		glGenTextures(1, &art_tex[1]);
-		glBindTexture(GL_TEXTURE_2D, art_tex[1]);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST); //nearest!!
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-		glCopyTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 0, 0, 1024, 1024, 0); //RGBA8?
-		glEnable(GL_BLEND);
-		glClear(GL_COLOR_BUFFER_BIT);
-		glDisable(GL_TEXTURE_2D);
-		glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT);
-		glReadBuffer(GL_COLOR_ATTACHMENT0_EXT);
-	}
-
-	// Restore old view port and set rendering back to default frame buffer
-	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);
-	glDrawBuffer(GL_BACK);
-	//glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-	glClear(GL_COLOR_BUFFER_BIT);	// Clear Screen And Depth Buffer
-	set_ortho(1024, 768);
-	glEnable(GL_BLEND);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	drawTexturedQuad((float)left, (float)right, (float)bottom, (float)top, false);
 }
 
-// Part of the GUI
+
+// Eventually I'll get back to this and re-enable it again in some fashion.
 void show_error(void)
 {
 	static int fade = 255;
@@ -206,10 +145,10 @@ void show_error(void)
 		glEnable(GL_TEXTURE_2D);
 		glColor4ub(255, 255, 255, 255);
 
-		glBindTexture(GL_TEXTURE_2D, error_tex[0]);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE); //PROPER
+		//glBindTexture(GL_TEXTURE_2D, error_tex[0]);
+		//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		//glBlendFunc(GL_SRC_ALPHA, GL_ONE); //PROPER
 		glTranslatef(375, 475, 0);
 
 		drawTexturedQuad(-24.0f, -24.0f, 24.0f, 24.0f);
@@ -247,38 +186,3 @@ void show_error(void)
 		glDisable(GL_TEXTURE_2D);
 	}
 }
-
-/*
-
-/// Apply one of several preset blend functions (0–15), or disable blending for any other value.
-/// @param mode  Blend mode index (0–15); anything else turns off GL_BLEND.
-inline void applyBlendMode(int mode)
-{
-	if (mode < 0 || mode > 15) {
-		glDisable(GL_BLEND);
-		return;
-	}
-
-	glEnable(GL_BLEND);
-	switch (mode)
-	{
-	case 0:  glBlendFunc(GL_DST_COLOR, GL_ZERO);               break;
-	case 1:  glBlendFunc(GL_SRC_COLOR, GL_ONE);                break;
-	case 2:  glBlendFunc(GL_SRC_ALPHA, GL_ONE);                break;
-	case 3:  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); break;  // default
-	case 4:  glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_ONE);                break;
-	case 5:  glBlendFunc(GL_DST_COLOR, GL_SRC_COLOR);          break;
-	case 6:  glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_SRC_ALPHA);          break;
-	case 7:  glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_ZERO);               break;
-	case 8:  glBlendFunc(GL_ONE_MINUS_SRC_ALPHA, GL_SRC_COLOR);          break;
-	case 9:  glBlendFunc(GL_SRC_ALPHA, GL_DST_COLOR);          break;
-	case 10: glBlendFunc(GL_ONE, GL_ONE);                break;
-	case 11: glBlendFunc(GL_ONE, GL_ZERO);               break;
-	case 12: glBlendFunc(GL_ZERO, GL_ONE);                break;
-	case 13: glBlendFunc(GL_ONE, GL_DST_COLOR);          break;
-	case 14: glBlendFunc(GL_SRC_ALPHA, GL_DST_COLOR);          break;
-	case 15: glBlendFunc(GL_ONE_MINUS_SRC_ALPHA, GL_SRC_COLOR);          break;
-	}
-}
-
-*/

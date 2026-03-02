@@ -128,6 +128,7 @@ static uint8_t  AUDCTL[MAXPOKEYS];
 static uint8_t  AUDV[4 * MAXPOKEYS];
 static uint8_t  Outbit[4 * MAXPOKEYS];
 static uint8_t  Outvol[4 * MAXPOKEYS];
+static uint8_t SKCTL[MAXPOKEYS] = { 0 };
 
 static uint8_t* poly9;
 static uint8_t* poly17;
@@ -150,6 +151,19 @@ static uint32_t Div_n_max[4 * MAXPOKEYS];
 static uint32_t Samp_n_max;
 static uint32_t Samp_n_cnt[2];
 static uint32_t Base_mult[MAXPOKEYS];
+
+//Test - REMOVE
+// --- Tempest protection burst detector + 5-sample window (per chip) ---
+static uint8_t  temp_win[MAXPOKEYS][5] = { {0} };
+static uint32_t temp_cnt[MAXPOKEYS] = { 0 };
+static int      temp_burst[MAXPOKEYS] = { 0 };   // consecutive "tight" reads
+static bool     temp_mode[MAXPOKEYS] = { 0 };   // we're inside the protection window
+static int      temp_mode_left[MAXPOKEYS] = { 0 }; // how many reads to keep checking
+// Heuristics: "tight" = elapsed_cpu in this range (tune if needed)
+static const uint32_t TIGHT_MIN_CYC = 12;   // lower bound (avoid zero)
+static const uint32_t TIGHT_MAX_CYC = 80;   // upper bound (your logs showed ~38)
+static const int      TIGHT_BURST_N = 4;    // need N consecutive tight reads to arm
+static const int      MODE_READS = 40;   // keep checking next N reads once armed
 
 void test_tempest_rng_pattern()
 {
@@ -256,6 +270,7 @@ int Pokey_sound_init(uint32_t freq17, uint16_t playback_freq, uint8_t num_pokeys
 		AUDCTL[c] = 0;
 		Base_mult[c] = DIV_64;
 		rng[c] = 3;
+		SKCTL[c] = 0;     // start "disabled" until ROM writes SKCTL
 	}
 	// Init our attempt at pokey cycle counting
 	// for the pseudo-random number generator
@@ -264,7 +279,7 @@ int Pokey_sound_init(uint32_t freq17, uint16_t playback_freq, uint8_t num_pokeys
 		last_rng_cycle[i] = 0;
 		pokey_random[i] = 0x00; // shift reg = 0, so ^0xFF = 0xFF
 	}
-
+	LOG_DEBUG("POKEY SOUND INIT for %d pokeys", num_pokeys);
 	Num_pokeys = num_pokeys;
 	return 0;
 }
@@ -294,6 +309,8 @@ void Update_pokey_sound(uint16_t addr, uint8_t val, uint8_t chip, uint8_t gain)
 	uint8_t chan;
 	uint8_t chan_mask = 0;
 	uint8_t chip_offs = chip << 2;
+
+	LOG_DEBUG("Update Pokey Sound Addr: %x Data: %x Chip: %x", addr, val, chip);
 
 	switch (addr & 0x0f)
 	{
@@ -353,12 +370,13 @@ void Update_pokey_sound(uint16_t addr, uint8_t val, uint8_t chip, uint8_t gain)
 	{
 		// Enable RNG if any of the lower 2 bits of SKCTL are set
 		rng[chip] = (val & 0x03) != 0;
+		SKCTL[chip] = val;
 
 		if (!rng[chip])
 		{
 			// When SKCTL is reset, clear the RNG shift register
 			// This causes RANDOM_C to return 0xFF (due to XOR)
-			pokey_random[chip] = 0x00;
+			pokey_random[chip] = 0xa0;
 			random_pos[chip] = 0;
 			last_rng_cycle[chip] = get_exact_cyclecount(get_active_cpu());
 		}
@@ -571,7 +589,7 @@ static int    buffer_len;
 static int    emulation_rate;
 static int    sample_pos;
 static int    channel;
-static POKEYinterface* intf_ptr;
+POKEYinterface* intf_ptr;
 static int16_t* buffer_ptr;
 
 int pokey_sh_start(POKEYinterface* intfa) {
@@ -608,7 +626,7 @@ void pokey_sh_stop(void) {
 
 static void update_pokeys(void) {
 	int newpos = cpu_scale_by_cycles(buffer_len, intf_ptr->clock);
-	if (newpos - sample_pos < 10)	{ return; }
+	if (newpos - sample_pos < 10) { return; }
 	Pokey_process(buffer_ptr + sample_pos, newpos - sample_pos);
 	sample_pos = newpos;
 }
@@ -665,6 +683,7 @@ int Read_pokey_regs(uint16_t addr, uint8_t chip) {
 
 		return pokey_random[chip] ^ 0xFF;
 	}
+
 	default:
 		return 0;
 	}

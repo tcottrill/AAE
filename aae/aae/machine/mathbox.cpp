@@ -82,7 +82,7 @@ void mb_go(int addr, int data)
 	case 0x0b:
 
 		REG5 = (s16)((REG5 & 0x00ff) | ((data & 0xff) << 8));
-		REGf = -1;  // was 0xffff; (explicitly mean “negative sentinel”)
+		REGf = -1;  // was 0xffff; (explicitly mean "negative sentinel")
 		REG4 -= REG2;
 		REG5 -= REG3;
 

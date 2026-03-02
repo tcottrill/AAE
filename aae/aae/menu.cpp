@@ -1,17 +1,3 @@
-//============================================================================
-// AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME
-// code, 0.29 through .90 mixed with code of my own. This emulator was
-// created solely for my amusement and learning and is provided only
-// as an archival experience.
-//
-// All MAME code used and abused in this emulator remains the copyright
-// of the dedicated people who spend countless hours creating it. All
-// MAME code should be annotated as belonging to the MAME TEAM.
-//
-// SOME CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.
-//
-//============================================================================
-
 #include "menu.h"
 #include "framework.h"
 #include "aae_mame_driver.h"
@@ -22,1486 +8,1306 @@
 #include "deftypes.h"
 #include "osdepend.h"
 #include "os_input.h"
-#include "math.h"
 #include "config.h"
 #include "colordefs.h"
-#include <stdio.h>
 
-#pragma warning( disable : 4305 4244 4996 )
+#include <cmath>
+#include <cstdio>
+#include <cstring>
+#include <vector>
+#include <string>
+#include <functional>
+#include <algorithm>
+
+void AAE_ApplyAudioVolumesFromConfig(int force);
+void setup_ambient(int style);
+void init_raster_overlay();
+void setup_video_config();
+
+// Pull in emulator_is_gui_active() so SaveConfigIfRequired and GetTitleText
+// can detect when the menu is being used from the GUI frontend instead of
+// during gameplay. In GUI mode all saves go to aae.ini (path 0).
+#include "aae_emulator.h"
+
+// ----------------------------------------------------------------------
+// Artwork Availability Flag Definitions
+// ----------------------------------------------------------------------
+// Defaults to 0 (unavailable). Your texture/artwork loading code should
+// set these after it attempts to load each art resource.
+// See menu.h for full usage instructions.
+
+int g_artworkAvailable = 0;
+int g_overlayAvailable = 0;
+int g_bezelAvailable   = 0;
+int g_artcropAvailable = 0;  // automatically follows g_bezelAvailable in practice
+
+// ----------------------------------------------------------------------
+// Internal Configuration, Enums, and Data
+// ----------------------------------------------------------------------
+
+namespace {
+
+    enum class MenuID : int {
+        None = 0,
+        Root = 100,
+        GlobalKeys = 200,
+        LocalKeys = 300,
+        GlobalJoy = 400,
+        LocalJoy = 500,
+        Analog = 600,
+        DipSwitch = 700,
+        Video = 800,
+        Audio = 900
+    };
+
+    // Constants for Layout
+    constexpr float MENU_X          = 225.0f;
+    constexpr float MENU_LINE_HEIGHT = 28.0f;
+    constexpr int   VISIBLE_ITEMS   = 16;
+    constexpr float VALUE_X_OFFSET  = 350.0f;
+
+    // Visual Styling Constants
+    constexpr float TITLE_Y      = 650.0f;
+    constexpr float TITLE_GAP    = 20.0f;
+    constexpr float FOOTER_GAP   = 25.0f;
+    constexpr float POLL_GAP     = 14.0f;
+    constexpr float PAD_TOP      = 25.0f;
+    constexpr float PAD_BOTTOM   = 25.0f;
+    constexpr float PAD_LEFT     = 30.0f;
+    constexpr float PAD_RIGHT    = 30.0f;
+
+    constexpr float FONT_SCALE   = 2.0f;
+    constexpr float FOOTER_SCALE = 1.6f;
+    constexpr float CHAR_PITCH   = 9.5f * FONT_SCALE;
+    constexpr float FOOTER_PITCH = 9.5f * FOOTER_SCALE;
+
+    // Extra width allowance for selected < and > arrows + padding
+    constexpr float ARROW_EXTRA  = 2.0f * (9.5f * 2.0f) + 10.0f;
+
+    // Gray color used for disabled (unavailable) menu items.
+    // Defined here so it can be tuned without hunting through Draw().
+    constexpr unsigned int RGB_DISABLED = MAKE_RGBA(100, 100, 100, 255);
+
+    // Key Names Array (256 entries, 12 across)
+    const char* key_names[256] = {
+        "NULL","LBUTTON","RBUTTON","CANCEL","MBUTTON","XBUTTON1","XBUTTON2","UNDEF","BACKSPACE","TAB","LF","VT",
+        "CLEAR","ENTER","UNDEF","UNDEF","SHIFT","CONTROL","MENU","PAUSE","CAPSLOCK","KANA","IME_ON","JUNJA",
+        "CANCEL","KANJI","IME_OFF","ESC","CONVERT","NONCONVERT","ACCEPT","MODECHANGE","SPACE","PGUP","PGDN","END",
+        "HOME","LEFT","UP","RIGHT","DOWN","SELECT","PRINT","EXECUTE","PRNTSCRN","INSERT","DEL","HELP",
+        "0","1","2","3","4","5","6","7","8","9","UNDEF","UNDEF",
+        "UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","A","B","C","D","E","F","G",
+        "H","I","J","K","L","M","N","O","P","Q","R","S",
+        "T","U","V","W","X","Y","Z","LWIN","RWIN","APPS","UNDEF","SLEEP",
+        "NUMPAD0","NUMPAD1","NUMPAD2","NUMPAD3","NUMPAD4","NUMPAD5","NUMPAD6","NUMPAD7","NUMPAD8","NUMPAD9","MULTIPLY","ADD",
+        "SEPARATOR","SUBTRACT","DECIMAL","DIVIDE","F1","F2","F3","F4","F5","F6","F7","F8",
+        "F9","F10","F11","F12","F13","F14","F15","F16","F17","F18","F19","F20",
+        "F21","F22","F23","F24","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF",
+        "NUMLOCK","SCROLL","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF",
+        "UNDEF","UNDEF","UNDEF","UNDEF","LSHIFT","RSHIFT","LCONTROL","RCONTROL","LMENU","RMENU","BROWSER_BACK","BROWSER_FORWARD",
+        "BROWSER_REFRESH","BROWSER_STOP","BROWSER_SEARCH","BROWSER_FAVORITES","BROWSER_HOME","VOLUME_MUTE","VOLUME_DOWN","VOLUME_UP","MEDIA_NEXT","MEDIA_PREV","MEDIA_STOP","MEDIA_PLAY_PAUSE",
+        "LAUNCH_MAIL","LAUNCH_MEDIA_SELECT","LAUNCH_APP1","LAUNCH_APP2","UNDEF","SEMICOLON","EQUALS","OEM_COMMA","MINUS","PERIOD","SLASH","OEM_3",
+        "UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF",
+        "UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","LBRACKET","BACKSLASH","RBRACKET",
+        "APOSTROPHE","OEM_8","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF",
+        "UNDEF","UNDEF","UNDEF","NONE"
+    };
+
+    // Safe helper to get key name string from a virtual key code.
+    std::string GetKeyName(int keycode) {
+        if (keycode >= 0 && keycode < 256) {
+            return std::string(key_names[keycode]);
+        }
+        return "UNKNOWN";
+    }
+
+} // end anonymous namespace
+
+// ----------------------------------------------------------------------
+// MenuItem Abstraction
+// ----------------------------------------------------------------------
+
+struct MenuItem {
+    std::string label;
+
+    // Returns the string to display on the right side (value column).
+    std::function<std::string()> getValueDisplay;
+
+    // Called when Left (-1) or Right (+1) is pressed.
+    std::function<void(int dir)> onAdjust;
+
+    // Called when Enter is pressed.
+    std::function<void()> onActivate;
+
+    // Predicates that control whether directional arrows are drawn.
+    std::function<bool()> hasLeft;
+    std::function<bool()> hasRight;
+
+    // If true, this item opens a submenu or fires a command (renders differently).
+    bool isLink = false;
+
+    // If true, this item cannot be adjusted. It is rendered in a dimmed color
+    // and no arrows are drawn. Use this for artwork options that did not load.
+    bool isDisabled = false;
+
+    // Optional short reason shown after the value when the item is disabled
+    // (e.g. "NOT LOADED"). Keep it short -- it has to fit in the value column.
+    std::string disabledReason;
+
+    // ------------------------------------------------------------------
+    // Factory: Integer with optional string label list
+    // ------------------------------------------------------------------
+    static MenuItem Integer(const std::string& name, int* target, int min, int max,
+        const std::vector<std::string>& labels = {})
+    {
+        MenuItem item;
+        item.label = name;
+        item.getValueDisplay = [target, labels]() {
+            if (!labels.empty()) {
+                int idx = *target;
+                if (idx < 0) idx = 0;
+                if (idx >= (int)labels.size()) idx = (int)labels.size() - 1;
+                return labels[idx];
+            }
+            return std::to_string(*target);
+        };
+        item.onAdjust = [target, min, max](int dir) {
+            int newVal = *target + dir;
+            if (newVal > max) newVal = max;
+            if (newVal < min) newVal = min;
+            *target = newVal;
+        };
+        item.onActivate = []() {};
+        item.hasLeft  = [target, min]() { return *target > min; };
+        item.hasRight = [target, max]() { return *target < max; };
+        return item;
+    }
+
+    // ------------------------------------------------------------------
+    // Factory: Float value with step size and format string
+    // ------------------------------------------------------------------
+    static MenuItem Float(const std::string& name, float* target, float step,
+        float min, float max, const char* fmt = "%2.1f")
+    {
+        MenuItem item;
+        item.label = name;
+        item.getValueDisplay = [target, fmt]() {
+            char buf[32];
+            snprintf(buf, 32, fmt, *target);
+            return std::string(buf);
+        };
+        item.onAdjust = [target, step, min, max](int dir) {
+            float newVal = *target + (dir * step);
+            if (newVal > max) newVal = max;
+            if (newVal < min) newVal = min;
+            *target = newVal;
+        };
+        item.onActivate = []() {};
+        item.hasLeft  = [target, min]() { return *target > min; };
+        item.hasRight = [target, max]() { return *target < max; };
+        return item;
+    }
+
+    // ------------------------------------------------------------------
+    // Factory: Boolean (int 0/1) shown as NO/YES
+    // ------------------------------------------------------------------
+    static MenuItem Bool(const std::string& name, int* target) {
+        return Integer(name, target, 0, 1, { "NO", "YES" });
+    }
+
+    // ------------------------------------------------------------------
+    // Factory: Boolean that is conditionally disabled when art is absent.
+    // availableFlag  - pointer to the g_xxxAvailable flag from menu.h.
+    //                  When *availableFlag == 0 the item is disabled.
+    // unavailText    - short string shown in value column when disabled.
+    // ------------------------------------------------------------------
+    static MenuItem BoolWithAvailability(const std::string& name, int* target,
+        const int* availableFlag,
+        const std::string& unavailText = "NOT LOADED")
+    {
+        // Build a normal Bool item first, then decorate it.
+        MenuItem item = Bool(name, target);
+
+        // Capture the flag pointer so we can query it at draw/adjust time.
+        // We do NOT use a lambda that re-evaluates the flag in getValueDisplay
+        // because the disabled state is applied at the top level in Draw().
+        // Instead we store the flag and the reason, and BuildVideoMenu will
+        // call this at item-build time to bake in the current state.
+        if (*availableFlag == 0) {
+            item.isDisabled     = true;
+            item.disabledReason = unavailText;
+        }
+
+        return item;
+    }
+
+    // ------------------------------------------------------------------
+    // Factory: String cycling through a list of options
+    // ------------------------------------------------------------------
+    static MenuItem String(const std::string& name, std::string* target,
+        const std::vector<std::string>& options,
+        std::function<void(const std::string&)> onChange = nullptr)
+    {
+        MenuItem item;
+        item.label = name;
+        item.getValueDisplay = [target]() { return *target; };
+
+        item.onAdjust = [target, options, onChange](int dir) {
+            if (options.empty()) return;
+            int idx = 0;
+            for (int i = 0; i < (int)options.size(); ++i) {
+                if (options[i] == *target) { idx = i; break; }
+            }
+            idx += dir;
+            if (idx < 0) idx = 0;
+            if (idx >= (int)options.size()) idx = (int)options.size() - 1;
+            *target = options[idx];
+            if (onChange) onChange(*target);
+        };
+
+        item.onActivate = []() {};
+
+        item.hasLeft = [target, options]() {
+            if (options.empty()) return false;
+            for (int i = 0; i < (int)options.size(); ++i) {
+                if (options[i] == *target) return i > 0;
+            }
+            return false;
+        };
+
+        item.hasRight = [target, options]() {
+            if (options.empty()) return false;
+            for (int i = 0; i < (int)options.size(); ++i) {
+                if (options[i] == *target) return i < (int)options.size() - 1;
+            }
+            return false;
+        };
+
+        return item;
+    }
+
+    // ------------------------------------------------------------------
+    // Factory: Link / Command (opens submenu or fires action)
+    // ------------------------------------------------------------------
+    static MenuItem Link(const std::string& name, std::function<void()> action) {
+        MenuItem item;
+        item.label = name;
+        item.isLink = true;
+        item.getValueDisplay = []() { return ""; };
+        item.onAdjust    = [](int) {};
+        item.onActivate  = action;
+        item.hasLeft     = []() { return false; };
+        item.hasRight    = []() { return false; };
+        return item;
+    }
+
+    // ------------------------------------------------------------------
+    // Factory: Permanently disabled placeholder item.
+    //
+    // Use this for settings that exist in the config struct and are saved/
+    // loaded correctly, but whose runtime effect is not yet implemented.
+    // The item is grayed out and always shows "DISABLED" in the value
+    // column. No arrows are drawn and no adjustment is possible.
+    // Swap back to Integer/Bool factories once the feature is wired up.
+    // ------------------------------------------------------------------
+    static MenuItem Disabled(const std::string& name)
+    {
+        MenuItem item;
+        item.label = name;
+        item.isDisabled = true;
+        item.disabledReason = "DISABLED";
+        item.getValueDisplay = []() { return std::string("DISABLED"); };
+        item.onAdjust = [](int) {};
+        item.onActivate = []() {};
+        item.hasLeft = []() { return false; };
+        item.hasRight = []() { return false; };
+        return item;
+    }
+};  
 
 
-constexpr int MENU_INT = 0;
-constexpr int MENU_FLOAT = 1;
-constexpr int MAX_ITEMS = 10;
-constexpr int GLOBAL_INPUT = 5;
-constexpr int LOCAL_INPUT = 1;
+// ----------------------------------------------------------------------
+// MenuManager (Singleton)
+// ----------------------------------------------------------------------
 
-constexpr int ROOTMENU = 100;
-constexpr int GLOBALKEYS = 200;
-constexpr int LOCALKEYS = 300;
-constexpr int GLOBALJOY = 400;
-constexpr int LOCALJOY = 500;
-constexpr int ANALOGMENU = 600;
-constexpr int DIPMENU = 700;
-constexpr int VIDEOMENU = 800;
-constexpr int AUDIOMENU = 900;
+class MenuManager {
+public:
+    static MenuManager& Instance() {
+        static MenuManager instance;
+        return instance;
+    }
 
-// Tracks the currently highlighted menu entry across all menus.
-// Used in drawing (to highlight) and navigation (up/down movement).
-int menuitem = 0;
+    // Public interface matching the legacy free-function calls
+    int  GetStatus() const  { return m_showMenu; }
+    void SetStatus(int on);
+    int  GetLevel() const   { return static_cast<int>(m_currentMenuId); }
+    void SetLevelTop();
 
-// Represents the current menu level (ROOTMENU, VIDEOMENU, etc.).
-// Determines which menu function is called in do_the_menu().
-int menulevel = ROOTMENU;
+    void Draw();
 
-// Indicates a sub-mode (1 = waiting for user input, e.g., remapping keys/joysticks).
-// Used by input configuration menus to capture new input.
-int sublevel = 0;
+    void Navigate(int dir); // Up/Down arrow
+    void Adjust(int dir);   // Left/Right arrow
+    void Select();          // Enter key
 
-// Flag set when the program is waiting for a key during key mapping.
-// Set in change_key() and cleared once the key is processed.
-int key_set_flag = 0;
+    bool IsPolling() const  { return m_isPolling; }
+    void PollInput();
 
-// Controls whether the menu is visible (1) or hidden (0).
-// Checked by get_menu_status(), modified by set_menu_status().
-int show_menu = 0;
+private:
+    MenuManager() = default;
 
-// Stores the total number of items in the currently active menu (minus one).
-// Calculated during menu setup and used to limit navigation bounds.
-int num_this_menu = 0;
+    // State
+    int    m_showMenu      = 0;
+    MenuID m_currentMenuId = MenuID::Root;
+    std::vector<MenuItem> m_items;
+    int    m_selectedIndex = 0;
+    int    m_scrollOffset  = 0;
 
-// Holds the currently adjusted value for the selected menu entry (before committing).
-// Used in change_menu_item(), check_sound_menu(), and check_video_menu().
-static int currentval = 0;
+    // Layout cache -- recalculated once per menu build/adjust
+    float  m_cachedMaxWidth = 0.0f;
 
-// Lower bound for the currently selected menu entry’s value (used in float menus).
-// Recalculated each time a menu is drawn. Could be local to menu functions.
-int val_low = 0;
+    // Key/joy polling state for input assignment screens
+    bool   m_isPolling      = false;
+    bool   m_pollingIsJoy   = false;
+    std::function<void(int code)> m_inputAssignmentHandler;
 
-// Upper bound for the currently selected menu entry’s value.
-// Used for wrapping values in change_menu_item(). Also recalculated per menu draw.
-int val_high = 0;
+    // Menu Builders
+    void RebuildCurrentMenu();
+    void BuildRootMenu();
+    void BuildVideoMenu();
+    void BuildSoundMenu();
+    void BuildDipSwitchMenu();
+    void BuildAnalogMenu();
+    void BuildInputMenu(bool isGlobal, bool isJoystick);
 
-// Iterator index for looping over menu entries during drawing.
-// Set to 0 at the start of menu functions. Could be local to those functions.
-int it = 1;
+    // Helpers
+    void TransitionTo(MenuID newId);
+    void RecalculateLayout();
+    void DrawBackground();
+    void DrawFooter();
+    void SaveConfigIfRequired(MenuID fromId);
 
-// Initialization sentinel and total menu item counter.
-// Used only during the first run of do_video_menu() and do_sound_menu() to count entries.
-// Could be refactored to a local variable in setup_*_menu() functions.
-static int number = 0;
-
-// Remembers the previous menu visibility state to detect transitions.
-// Used in set_menu_status() to trigger saving configurations when the menu closes.
-static int last_menu_setting = 0;
-
-typedef struct
-{
-	const char* heading;
-	const char* options[MAX_ITEMS];
-	int NumOptions;
-	int Changed; //changed
-	int Default;
-	int current;
-	int Value[MAX_ITEMS];
-	int menu_type;// MENU_INT MENU_FLOAT
-	float step;
-	int Min;
-	int Max;
-} MENUS;
-
-const char* mouse_names[] =
-{
-  "(none)",  "MB1","MB2","MB3","MB4"
+    std::string GetTitleText() const;
+    std::string GetFooterText() const;
 };
 
-const char* key_names[256] = {
-"NULL","LBUTTON","RBUTTON","CANCEL","MBUTTON","XBUTTON1","XBUTTON2","UNDEF","BACKSPACE","TAB","LF","VT","CLEAR","ENTER","UNDEF","UNDEF",
-"SHIFT","CONTROL","MENU","PAUSE","CAPSLOCK","KANA","IME_ON","JUNJA","CANCEL","KANJI","IME_OFF","ESC","CONVERT","NONCONVERT","ACCEPT","MODECHANGE",
-"SPACE","PGUP","PGDN","END","HOME","LEFT","UP","RIGHT","DOWN","SELECT","PRINT","EXECUTE","PRINTSCRN","INSERT","DEL","HELP",
-"0","1","2","3","4","5","6","7","8","9","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF",
-"UNDEF","A","B","C","D","E","F","G","H","I","J","K","L","M","N","O",
-"P","Q","R","S","T","U","V","W","X","Y","Z","LWIN","RWIN","APPS","UNDEF","SLEEP",
-"NUMPAD0","NUMPAD1","NUMPAD2","NUMPAD3","NUMPAD4","NUMPAD5","NUMPAD6","NUMPAD7","NUMPAD8","NUMPAD9","MULTIPLY","ADD","SEPARATOR","SUBTRACT","DECIMAL","DIVIDE",
-"F1","F2","F3","F4","F5","F6","F7","F8","F9","F10","F11","F12","F13","F14","F15","F16",
-"F17","F18","F19","F20","F21","F22","F23","F24","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF",
-"NUMLOCK","SCROLL","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF",
-"LSHIFT","RSHIFT","LCONTROL","RCONTROL","LMENU","RMENU","BROWSER_BACK","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF",
-"UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","SEMICOLON","EQUALS","OEM_COMMA","MINUS","PERIOD","SLASH","OEM_3",
-"UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF",
-"UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","LBRACKET","BACKSLASH","RBRACKET","APOSTROPHE","UNDEF",
-"UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","UNDEF","NONE"
-};
+// ----------------------------------------------------------------------
+// MenuManager Implementation
+// ----------------------------------------------------------------------
 
-static MENUS glmenu[] = {
-   { "WINDOWED ", {"YES", "YES"},
-   1, 100,1,1,{1,1},MENU_INT,0,0,0},
-   { "RESOLUTION ", {"1024x768","1152x864","1280x1024","1600x1200","1920x1080","","",""},
-   4, 200,1,1,{0,1,2,3,4,0,0,0,0,0},MENU_INT,0,0,0},
-   // Note to self: These are not currently doing anything.
-   { "GAMMA ADJUST ", {"-8%","-5%","-3%","0%","+3%","+5%","+8%","+12%","+15","+18"},
-   9, 300,0,0,{157,147,137,127,117,107,100,97,94,90},MENU_FLOAT,.5,-20,20},
-   { "BRIGHTNESS ADJ", {"-8%","-5%","-3%","0%","+3%","+5%","+8%","+12%","+15","+18"},
-   9, 300,0,0,{113,117,122,127,134,140,144,149,155,161},MENU_FLOAT,.5,-20,20},
-   { "CONTRAST ADJ", {"-8%","-5%","-3%","0%","+3%","+5%","+8%","+12%","+15","+18"},
-   9, 300,0,0,{157,147,137,127,117,107,100,97,94,90},MENU_FLOAT,.5,-20,20},
-   // **********************************
-   { "VSYNC", {"DISABLED", "ENABLED"},
-   1, 400,1,1,{0,1},MENU_INT,0,0,0},
-   { "DRAW 0 LINES", {"DISABLED", "ENABLED"},   // This is currenly very limited 12/10/24
-   1, 500,0,0,{0,1},MENU_INT,0,0,0},
-   { "GAME ASPECT", {"4:3","+5%","+10%","EDGE TO EDGE",""},
-   3, 600,0,0,{0,1,2,3,4},MENU_INT,0,0,0},
-   { "PHOSPHER TRAIL", {"NONE", "LITTLE","MORE","MAX","","","","","",""},
-   3, 700,0,0,{0,1,2,3,0,0,0,0,0,0},MENU_INT,0,0,0},
-   { "VECTOR GLOW", {"NO", "YES","MORE","MAX","","","","","",""},
-   1, 800,0,0,{0,1,2,3,0,0,0,0,0,0},MENU_FLOAT,1,0,25},
-   { "LINEWIDTH", {"NO", "YES","","","","","","","",""},
-   8, 900,0,0,{0,0,0,0,0,0,0,0,0,0},MENU_FLOAT,.1,1,7},
-   { "POINTSIZE", {"NO", "YES","","","","","","","",""},
-   8, 1000,0,0,{0,0,0,0,0,0,0,0,0,0},MENU_FLOAT,.1,1,7},
-   { "MONITOR GAIN", {"ANALOG", "LCD","","","","","","","",""},
-   1, 1100,0,0,{0,1,0,0,0,0,0,0,0,0},MENU_FLOAT,1,-127,127},
-   { "ARTWORK", {"NO", "YES","","","","","","","",""},
-   1, 1200,1,1,{0,1,0,0,0,0,0,0,0,0},MENU_INT,0,0,0},
-   { "OVERLAY", {"NO", "YES","","","","","","","",""},
-   1, 1300,1,1,{0,1,0,0,0,0,0,0,0,0},MENU_INT,0,0,0},
-   { "BEZEL ART", {"NO", "YES","","","","","","","",""},
-   1, 1400,1,1,{0,1,0,0,0,0,0,0,0,0},MENU_INT,0,0,0},
-   { "CROP BEZEL", {"NO", "YES","","","","","","","",""},
-   1, 1500,1,1,{0,1,0,0,0,0,0,0,0,0},MENU_INT,0,0,0},
-   { "PRIORITY", {"LOW", "NORMAL","ABOVE NORMAL","HIGH","DANGER!","","","","",""},
-   4, 1700,1,1,{0,1,0,0,0,0,0,0,0,0},MENU_INT,0,0,0},
-   { "KB LEDS", {"DISABLED", "ENABLED","","","","","","","",""},
-   1, 1800,1,1,{0,1,0,0,0,0,0,0,0,0}},
-   { "NONE", {"NONE", " ", " ", " "}, 0,0, 0,0,{0,0,0,0,0,0,0,0,0,0},0,0,0,0}
-};
-
-static MENUS soundmenu[] = {
-   { "MAIN VOLUME",  {"NO", "YES"},
-   1, 100,0,0,{0,0},MENU_FLOAT,5,0,20},
-   { "POKEY/AY VOLUME", {"NO", "YES"},
-   1, 200,0,0,{0,0},MENU_FLOAT,5,0,20},
-   { "AMBIENT VOLUME", {"NO", "YES"},
-   1, 300,0,0,{0,0},MENU_FLOAT,5,0,20},
-   { "HV CHATTER", {"NO", "YES"},
-   1, 400,1,1,{0,1},MENU_INT,0,0,1},
-   { "PS HISS", {"NO", "YES"},
-   1, 500,1,1,{0,1},MENU_INT,0,0,1},
-   { "PS NOISE",{"NO", "YES",},
-   1, 600,1,1,{0,1},MENU_INT,0,0,1},
-   { "NONE", {"NONE", " ", " ", " "}, 0,0, 0,0,{0,0,0,0,0,0,0,0,0,0},0,0,0,0},
-   //{ "NONE", {"NONE", " ", " ", " "}, 0,0, 0,0,{0,0,0,0,0,0,0,0,0,0},0,0,0,0} // Todo: understand buffer overflow here and resolve.
-};
-
-static MENUS mousemenu[] = {
- { "MOUSE X SENSITIVITY ", {"1", "2","3","4","5","6","7","8","9",""},
-   8, 100,2,2,{0,1,2,3,4,5,6,7,8,9},MENU_INT,0,0,0},
- { "MOUSE Y SENSITIVITY ", {"1", "2","3","4","5","6","7","8","9",""},
-   8, 200,2,2,{0,1,2,3,4,5,6,7,8,9},MENU_INT,0,0,0},
- { "MOUSE X INVERT", {"NO", "YES","?","?","?","","","","",""},
-   1, 300,0,0,{0,1,0,0,0,0,0,0,0,0},MENU_INT,0,0,0},
- { "MOUSE Y INVERT", {"NO", "YES","?","?","?","","","","",""},
-   1, 400,0,0,{0,1,0,0,0,0,0,0,0,0},MENU_INT,0,0,0},
- { "NONE", {"NONE", " ", " ", " "}, 0,0, 0,0,{0,0,0,0,0,0,0,0,0,0},0,0,0,0}
-};
-
-MENUS* curr_menu;
-
-int get_menu_status()
-{
-	return show_menu;
+void MenuManager::SetStatus(int on) {
+    if (m_showMenu != on) {
+        if (on == 0) {
+            // Save whatever submenu we're leaving, then return to root.
+            SaveConfigIfRequired(m_currentMenuId);
+            SetLevelTop();
+        }
+        else {
+            SetLevelTop();
+        }
+    }
+    m_showMenu = on;
 }
 
-void set_menu_status(int on)
-{
-	if (on == 0)
-	{
-		if (get_menu_level() > 100)
-		{
-			set_menu_level_top();
-		}
-	}
-
-	static int last_menu_setting;
-	show_menu = on;
-	if (last_menu_setting != on && on == 0) { save_video_menu(); save_sound_menu(); }
-	last_menu_setting = on;
+void MenuManager::SetLevelTop() {
+    m_isPolling = false;
+    m_inputAssignmentHandler = nullptr;
+    TransitionTo(MenuID::Root);
 }
 
-int get_menu_level()
-{
-	return menulevel;
+void MenuManager::TransitionTo(MenuID newId) {
+    // Save the menu we are leaving (unless we are rebuilding in place).
+    if (m_currentMenuId != newId) {
+        SaveConfigIfRequired(m_currentMenuId);
+    }
+    m_currentMenuId = newId;
+    m_selectedIndex = 0;
+    m_scrollOffset  = 0;
+    m_isPolling     = false;
+    RebuildCurrentMenu();
+
+    // Stable layout dimensions before the first Draw() call.
+    RecalculateLayout();
 }
 
-void set_menu_level_top()
-{
-	menulevel = 100;
-	menuitem = 0;
-	sublevel = 0;
-	key_set_flag = 0;
-	// Super important.
-	number = 0;
+std::string MenuManager::GetTitleText() const {
+    if (m_currentMenuId == MenuID::Root)       return "MAIN MENU";
+    if (m_currentMenuId == MenuID::Audio) {
+        // Show (GLOBAL) label when accessed from the GUI frontend, because in
+        // that context saves go to aae.ini and affect all games.
+        return emulator_is_gui_active() ? "AUDIO SETUP (GLOBAL)" : "AUDIO SETUP";
+    }
+    if (m_currentMenuId == MenuID::Video) {
+        return emulator_is_gui_active() ? "VIDEO SETUP (GLOBAL)" : "VIDEO SETUP";
+    }
+    if (m_currentMenuId == MenuID::GlobalKeys) return "KEY CONFIG (GLOBAL)";
+    if (m_currentMenuId == MenuID::LocalKeys)  return "KEY CONFIG (THIS GAME)";
+    if (m_currentMenuId == MenuID::GlobalJoy)  return "JOY CONFIG (GLOBAL)";
+    if (m_currentMenuId == MenuID::LocalJoy)   return "JOY CONFIG (THIS GAME)";
+    if (m_currentMenuId == MenuID::Analog)     return "ANALOG SETTINGS";
+    if (m_currentMenuId == MenuID::DipSwitch)  return "DIPSWITCH MENU";
+    return "CONFIGURATION";
 }
 
-void change_menu_level(int dir) //This is up and down
-{
-	int level = 0;
-
-	if (dir)
-	{
-		if (menulevel == VIDEOMENU) { if ((glmenu[menuitem].current) != currentval) { glmenu[menuitem].current = currentval; } }
-		if (menulevel == AUDIOMENU) { if ((soundmenu[menuitem].current) != currentval) { soundmenu[menuitem].current = currentval; } }
-
-		if (menuitem < (num_this_menu)) { menuitem++; } //change dir here
-
-		if (menulevel == VIDEOMENU) { currentval = glmenu[menuitem].current; }
-		if (menulevel == AUDIOMENU) { currentval = soundmenu[menuitem].current; }
-	}
-
-	else
-	{
-		if (menulevel == VIDEOMENU) { if ((glmenu[menuitem].current) != currentval) { glmenu[menuitem].current = currentval; } }
-		if (menulevel == AUDIOMENU) { if ((soundmenu[menuitem].current) != currentval) { soundmenu[menuitem].current = currentval; } }
-
-		if (menuitem > 0) { menuitem--; } //change dir here
-
-		if (menulevel == VIDEOMENU) { currentval = glmenu[menuitem].current; }
-		if (menulevel == AUDIOMENU) { currentval = soundmenu[menuitem].current; }
-	}
+std::string MenuManager::GetFooterText() const {
+    if (m_currentMenuId == MenuID::Root) return "ESC to close menu";
+    return "ESC to return to menu root";
 }
 
-void change_menu_item(int dir) //This is right and left
-{
-	if (menulevel == DIPMENU) return;
+void MenuManager::RecalculateLayout() {
+    // Start with the title and footer widths as minimums.
+    std::string title  = GetTitleText();
+    float maxW = (float)title.length() * CHAR_PITCH;
 
-	if (dir)
-	{
-		currentval++; if (currentval > val_high) currentval = val_low;
-		if (menulevel == AUDIOMENU) { check_sound_menu(); }
-		if (menulevel == VIDEOMENU) { check_video_menu(); }
-	}
-	else
-	{
-		currentval--; if (currentval < val_low) currentval = val_high;
-		if (menulevel == AUDIOMENU) { check_sound_menu(); }
-		if (menulevel == VIDEOMENU) { check_video_menu(); }
-	}
+    std::string footer = GetFooterText();
+    float footerW = (float)footer.length() * FOOTER_PITCH;
+    if (footerW > maxW) maxW = footerW;
+
+    // Walk all items (not just the visible window) to find the widest row.
+    for (const auto& item : m_items) {
+        float labelW = (float)item.label.length() * CHAR_PITCH;
+        float totalW = labelW;
+
+        if (!item.isLink && item.getValueDisplay) {
+            std::string val = item.isDisabled
+                ? item.disabledReason   // use the reason string for width calc
+                : item.getValueDisplay();
+            totalW = VALUE_X_OFFSET + (float)val.length() * CHAR_PITCH + ARROW_EXTRA;
+        }
+
+        if (totalW > maxW) maxW = totalW;
+    }
+
+    m_cachedMaxWidth = maxW;
 }
 
-void select_menu_item() //This is enter
-{
-	switch (menulevel)
-	{
-	case ROOTMENU: {
-		menulevel = menulevel * (menuitem + 2);
-		menuitem = 0;
-		break;
-	}
-	//For changing levels
-	case GLOBALKEYS:
-	case LOCALKEYS: 
-	case GLOBALJOY: 
-	case LOCALJOY: sublevel = 1; break; 
-	case ANALOGMENU: do_mouse_menu(); break;
-	case DIPMENU: { do_dipswitch_menu(); break; }
-	}
+void MenuManager::SaveConfigIfRequired(MenuID fromId) {
+    // When the menu is used from the GUI frontend (no game running), treat all
+    // saves as global -- write everything to aae.ini (path 0). This prevents
+    // settings from accidentally going to gui.ini and also makes the intent
+    // clear: editing video/audio from the GUI sets the global defaults.
+    const bool inGui = emulator_is_gui_active();
+
+    if (fromId == MenuID::Video) {
+        // Global display options always go to aae.ini (path 0).
+        my_set_config_int("window", "fullscreen", config.windowed, 0);
+        my_set_config_string("window", "aspect_ratio",
+            config.aspect ? config.aspect : "4:3", 0);
+        my_set_config_int("main", "screenw",     config.screenw,   0);
+        my_set_config_int("main", "screenh",     config.screenh,   0);
+        my_set_config_int("main", "gamma",       config.gamma,     0);
+        my_set_config_int("main", "bright",      config.bright,    0);
+        my_set_config_int("main", "contrast",    config.contrast,  0);
+        my_set_config_int("main", "force_vsync", config.forcesync, 0);
+        my_set_config_int("main", "drawzero",    config.drawzero,  0);
+        my_set_config_int("main", "widescreen",  config.widescreen,0);
+        my_set_config_int("main", "priority",    config.priority,  0);
+        my_set_config_int("main", "kbleds",      config.kbleds,    0);
+
+        // Game-specific visual overrides.
+        // In GUI mode these also go to aae.ini (path 0) so they become the
+        // new global defaults rather than being silently written to gui.ini.
+        const int vidPath = inGui ? 0 : gamenum;
+        my_set_config_int("main", "vectortrail", config.vectrail, vidPath);
+        my_set_config_int("main", "vectorglow",  config.vecglow,  vidPath);
+        my_set_config_int("main", "m_line",      config.m_line,   vidPath);
+        my_set_config_int("main", "m_point",     config.m_point,  vidPath);
+        my_set_config_int("main", "gain",        config.gain,     vidPath);
+        my_set_config_int("main", "artwork",     config.artwork,  vidPath);
+        my_set_config_int("main", "overlay",     config.overlay,  vidPath);
+        my_set_config_int("main", "bezel",       config.bezel,    vidPath);
+        my_set_config_int("main", "artcrop",     config.artcrop,  vidPath);
+        my_set_config_string("main", "raster_effect",
+            config.raster_effect ? config.raster_effect : "NONE", vidPath);
+    }
+    else if (fromId == MenuID::Audio) {
+        // In GUI mode audio saves go to aae.ini (path 0) as global defaults.
+        // During gameplay they go to the per-game ini as overrides.
+        const int audPath = inGui ? 0 : gamenum;
+
+        // Volumes stored as real 0..255 byte values.
+        my_set_config_int("main", "mainvol",  config.mainvol,  audPath);
+        my_set_config_int("main", "pokeyvol", config.pokeyvol, audPath);
+        my_set_config_int("main", "noisevol", config.noisevol, audPath);
+        my_set_config_int("main", "hvnoise",  config.hvnoise,  audPath);
+        my_set_config_int("main", "psnoise",  config.psnoise,  audPath);
+        my_set_config_int("main", "pshiss",   config.pshiss,   audPath);
+    }
 }
 
+// ----------------------------------------------------------------------
+// Menu Builders
+// ----------------------------------------------------------------------
 
-void do_the_menu()
-{
-	switch (menulevel)
-	{
-	case ROOTMENU:   do_root_menu(); break;
-	case GLOBALKEYS: do_keyboard_menu(GLOBAL_INPUT); break;
-	case LOCALKEYS:  do_gamekey_menu(LOCAL_INPUT); break;
-	case GLOBALJOY:  do_joystick_menu(GLOBAL_INPUT); break;
-	case LOCALJOY:   do_gamejoy_menu(LOCAL_INPUT); break;
-	case ANALOGMENU: do_mouse_menu(); break;
-	case DIPMENU:    do_dipswitch_menu(); break;
-	case VIDEOMENU:  do_video_menu(); break;
-	case AUDIOMENU:  do_sound_menu(); break;
-	default: do_root_menu();
-	}
+void MenuManager::RebuildCurrentMenu() {
+    m_items.clear();
+    switch (m_currentMenuId) {
+    case MenuID::Root:       BuildRootMenu();              break;
+    case MenuID::Video:      BuildVideoMenu();             break;
+    case MenuID::Audio:      BuildSoundMenu();             break;
+    case MenuID::DipSwitch:  BuildDipSwitchMenu();         break;
+    case MenuID::Analog:     BuildAnalogMenu();            break;
+    case MenuID::GlobalKeys: BuildInputMenu(true,  false); break;
+    case MenuID::LocalKeys:  BuildInputMenu(false, false); break;
+    case MenuID::GlobalJoy:  BuildInputMenu(true,  true);  break;
+    case MenuID::LocalJoy:   BuildInputMenu(false, true);  break;
+    default:                 BuildRootMenu();              break;
+    }
 }
 
-void do_root_menu()
-{
-	int x;
-	unsigned int C;
-	float top = 650.0;
-	float LFT = 250.0;
-	float SPC = 35;
-	num_this_menu = 7;
+void MenuManager::BuildRootMenu() {
+    // When running in the GUI frontend, video and audio changes go to aae.ini
+    // as global defaults, so label them accordingly so the user knows.
+    const bool inGui = emulator_is_gui_active();
 
-	//quad_from_center(520.0, 525.0, 580.0, 350.0, 20, 20, 80, 255);
-	VF.DrawQuad(520.0, 525.0, 580.0, 350.0, MAKE_RGBA(20, 20, 80, 255));
-
-	for (x = 0; x < num_this_menu + 1; x++)
-	{
-		if (menuitem == x) { C = RGB_PINK; }
-		else { C = RGB_WHITE; }
-
-		switch (x)
-		{
-		case 0:  VF.Print(LFT, top - (SPC * x), C, 2.6, "KEY CONFIG (GLOBAL)"); break;
-		case 1:  VF.Print(LFT, top - (SPC * x), C, 2.6, "KEY CONFIG (THIS GAME)"); break;
-		case 2:  VF.Print(LFT, top - (SPC * x), C, 2.6, "JOY CONFIG (GLOBAL)"); break;
-		case 3:  VF.Print(LFT, top - (SPC * x), C, 2.6, "JOY CONFIG (THIS GAME)"); break;
-		case 4:  VF.Print(LFT, top - (SPC * x), C, 2.6, "ANALOG CONFIG"); break;
-		case 5:  VF.Print(LFT, top - (SPC * x), C, 2.6, "DIPSWITCHES"); break;
-		case 6:  VF.Print(LFT, top - (SPC * x), C, 2.6, "VIDEO SETUP"); break;
-		case 7:  VF.Print(LFT, top - (SPC * x), C, 2.6, "SOUND SETUP"); break;
-		}
-	}
+    m_items.push_back(MenuItem::Link("KEY CONFIG (GLOBAL)", [this]() { TransitionTo(MenuID::GlobalKeys); }));
+    m_items.push_back(MenuItem::Link("KEY CONFIG (THIS GAME)", [this]() { TransitionTo(MenuID::LocalKeys);  }));
+    m_items.push_back(MenuItem::Link("JOY CONFIG (GLOBAL)", [this]() { TransitionTo(MenuID::GlobalJoy);  }));
+    m_items.push_back(MenuItem::Link("JOY CONFIG (THIS GAME)", [this]() { TransitionTo(MenuID::LocalJoy);   }));
+    m_items.push_back(MenuItem::Link("ANALOG CONFIG", [this]() { TransitionTo(MenuID::Analog);     }));
+    m_items.push_back(MenuItem::Link("DIPSWITCHES", [this]() { TransitionTo(MenuID::DipSwitch);  }));
+    m_items.push_back(MenuItem::Link(inGui ? "VIDEO SETUP (GLOBAL)" : "VIDEO SETUP",
+        [this]() { TransitionTo(MenuID::Video);      }));
+    m_items.push_back(MenuItem::Link(inGui ? "SOUND SETUP (GLOBAL)" : "SOUND SETUP",
+        [this]() { TransitionTo(MenuID::Audio);      }));
 }
 
-int do_joystick_menu(int type)
-{
-	const char* menu_item[400];
-	const char* menu_subitem[400];
-	struct ipd* entry[400];
-	char flag[400];
-	int i, x;
-	struct ipd* in;
-	int total;
-	
-	//int newkey=0;
-	int color = 255;
-	int spacing = 21;
-	int start = 600;
-	int left = 225;
-	int top = 0;
-	int bottom = 0;
-	int shift = 0;
-	int b = 0;
-	// int newjoy;
-	int joyindex;
+void MenuManager::BuildVideoMenu() {
+    m_items.push_back(MenuItem::Bool("FULLSCREEN", &config.windowed));
 
-	if (Machine->input_ports == 0)
-		return 0;
-	in = inputport_defaults;
+    // Window aspect ratio stored as a stable static string so config.aspect
+    // always points to valid memory while the menu is alive.
+    static std::string s_windowAspect;
+    if (config.aspect && config.aspect[0])
+        s_windowAspect = config.aspect;
+    else
+        s_windowAspect = "4:3";
 
-	total = 0;
-	while (in->type != IPT_END)
-	{
-		if (in->name != 0 && in->joystick != IP_JOY_NONE && (in->type & IPF_UNUSED) == 0
-			&& !(!options.cheat && (in->type & IPF_CHEAT)))
-		{
-			entry[total] = in;
-			menu_item[total] = in->name;
-			total++;
-		}
+    m_items.push_back(MenuItem::String(
+        "WINDOW ASPECT",
+        &s_windowAspect,
+        { "4:3", "5:4", "6:5", "16:10", "16:9" },
+        [](const std::string& v) { config.aspect = (char*)v.c_str(); }
+    ));
 
-		in++;
-	}
+    // Resolution preset binding. Static so the index survives redraws.
+    static int resIndex = 0;
+    if (config.screenw == 1024) resIndex = 0;
+    else if (config.screenw == 1152) resIndex = 1;
+    else if (config.screenw == 1280) resIndex = 2;
+    else if (config.screenw == 1600) resIndex = 3;
+    else if (config.screenw == 1920) resIndex = 4;
 
-	if (total == 0) return 0;
+    MenuItem resItem;
+    resItem.label = "RESOLUTION";
+    resItem.getValueDisplay = []() {
+        const char* names[] = { "1024x768", "1152x864", "1280x1024", "1600x1200", "1920x1080" };
+        return std::string(names[std::clamp(resIndex, 0, 4)]);
+        };
+    resItem.onAdjust = [](int dir) {
+        resIndex += dir;
+        if (resIndex > 4) resIndex = 4;
+        if (resIndex < 0) resIndex = 0;
+        switch (resIndex) {
+        case 0: config.screenw = 1024; config.screenh = 768;  break;
+        case 1: config.screenw = 1152; config.screenh = 864;  break;
+        case 2: config.screenw = 1280; config.screenh = 1024; break;
+        case 3: config.screenw = 1600; config.screenh = 1200; break;
+        case 4: config.screenw = 1920; config.screenh = 1080; break;
+        }
+        };
+    resItem.hasLeft = []() { return resIndex > 0; };
+    resItem.hasRight = []() { return resIndex < 4; };
+    resItem.onActivate = []() {};
+    m_items.push_back(resItem);
 
-	//menu_item[total] = "Return to Main Menu";
-	menu_item[total] = 0;	/* terminate array */
-	//total++;
+    // ------------------------------------------------------------------
+    // The following five settings exist in config and are saved/loaded
+    // correctly, but are not yet connected to the rendering pipeline.
+    // They show as DISABLED so the user knows they are not active yet.
+    // To re-enable any of them once the rendering code is wired up,
+    // swap the Disabled() call for the commented-out original below it.
+    // ------------------------------------------------------------------
+    m_items.push_back(MenuItem::Disabled("GAMMA"));
+    // m_items.push_back(MenuItem::Integer("GAMMA",      &config.gamma,    50, 200));
 
-	for (i = 0; i < total; i++)
-	{
-		if (i < total)
-			menu_subitem[i] = osd_joy_name(entry[i]->joystick);
-		else menu_subitem[i] = 0;	/* no subitem */
-		flag[i] = 0;
-	}
+    m_items.push_back(MenuItem::Disabled("BRIGHTNESS"));
+    // m_items.push_back(MenuItem::Integer("BRIGHTNESS", &config.bright,   50, 200));
 
-	num_this_menu = (total - 1);
+    m_items.push_back(MenuItem::Disabled("CONTRAST"));
+    // m_items.push_back(MenuItem::Integer("CONTRAST",   &config.contrast, 50, 200));
 
-	VF.DrawQuad(450, 475, 580, 450, MAKE_RGBA(20, 20, 80, 255));
+    m_items.push_back(MenuItem::Disabled("VSYNC"));
+    // m_items.push_back(MenuItem::Bool("VSYNC",         &config.forcesync));
 
-	VF.Print(left, 650, RGB_WHITE, 1.9, "JOY CONFIG - Global");
+    m_items.push_back(MenuItem::Disabled("DRAW 0 LINES"));
+    // m_items.push_back(MenuItem::Bool("DRAW 0 LINES",  &config.drawzero));
 
-	top = menuitem - 8;   if (top < 0) { b = abs(top); top = 0; }
-	else b = 0;
-	bottom = menuitem + 8; 	if (bottom > num_this_menu) bottom = num_this_menu;
-	if (menuitem > num_this_menu) menuitem = num_this_menu;
+    m_items.push_back(MenuItem::Integer("GAME ASPECT", &config.widescreen, 0, 3,
+        { "4:3", "5:4", "14:10", "16:9" }));
+    m_items.push_back(MenuItem::Integer("PHOSPHOR TRAIL", &config.vectrail, 0, 3,
+        { "NONE", "LITTLE", "MORE", "MAX" }));
+    m_items.push_back(MenuItem::Integer("VECTOR GLOW", &config.vecglow, 0, 25));
 
-	for (x = 0; x < total; x++)
-	{
-		if (top > bottom - 16) top = bottom - 16;
-		if (x >= top && x <= bottom + b) {
-			if (menuitem == x) {
-				VF.Print(left, start, RGB_PINK, 2.3, menu_item[menuitem]);
-			}
-			else {
-				VF.Print(left, start, RGB_WHITE, 2.0, "%s", entry[x]->name);
-			}
-			VF.Print(545, start, RGB_WHITE, 2.0, menu_subitem[x]);
-			start -= 8 * 2.5;
-		}
-	}
+    {
+        MenuItem lwItem;
+        lwItem.label = "LINEWIDTH";
+        lwItem.getValueDisplay = []() {
+            char buf[32];
+            snprintf(buf, 32, "%2.1f", config.m_line * 0.1f);
+            return std::string(buf);
+            };
+        lwItem.onAdjust = [](int dir) {
+            config.m_line += dir;
+            if (config.m_line < 10) config.m_line = 10;
+            if (config.m_line > 70) config.m_line = 70;
+            config.linewidth = config.m_line * 0.1f;
+            };
+        lwItem.hasLeft = []() { return config.m_line > 10; };
+        lwItem.hasRight = []() { return config.m_line < 70; };
+        lwItem.onActivate = []() {};
+        m_items.push_back(lwItem);
+    }
+    {
+        MenuItem psItem;
+        psItem.label = "POINTSIZE";
+        psItem.getValueDisplay = []() {
+            char buf[32];
+            snprintf(buf, 32, "%2.1f", config.m_point * 0.1f);
+            return std::string(buf);
+            };
+        psItem.onAdjust = [](int dir) {
+            config.m_point += dir;
+            if (config.m_point < 10) config.m_point = 10;
+            if (config.m_point > 70) config.m_point = 70;
+            config.pointsize = config.m_point * 0.1f;
+            };
+        psItem.hasLeft = []() { return config.m_point > 10; };
+        psItem.hasRight = []() { return config.m_point < 70; };
+        psItem.onActivate = []() {};
+        m_items.push_back(psItem);
+    }
 
-	if (sublevel == 1) {
-		if (osd_key_pressed_memory(OSD_KEY_FAST_EXIT) || osd_key_pressed_memory(OSD_KEY_CANCEL))
-		{
-			sublevel = 0;
-			return 0;
-		}
-		if (osd_key_pressed_memory(OSD_KEY_A))
-		{
-			entry[menuitem]->joystick = OSD_JOY_FIRE;
-			sublevel = 0;
-		}
-		if (osd_key_pressed_memory(OSD_KEY_B))
-		{
-			entry[menuitem]->joystick = OSD_JOY2_FIRE;
-			sublevel = 0;
-		}
-		/* Clears entry "None" */
-		if (osd_key_pressed_memory(OSD_KEY_N))
-		{
-			sublevel = 0;
-			entry[menuitem]->joystick = 0;
-		}
+    m_items.push_back(MenuItem::Integer("MONITOR GAIN", &config.gain, -127, 127));
 
-		VF.Print(left, 625, MAKE_RGB(255, 200, 30), 1.8, "Press a Button or N to clear");
-		for (joyindex = 1; joyindex < OSD_MAX_JOY; joyindex++)
-		{
-			if (osd_joy_pressed(joyindex))
-			{
-				sublevel = 0;
-				entry[menuitem]->joystick = joyindex;
-				break;
-			}
-		}
-	}
-	return 0;
+    // ------------------------------------------------------------------
+    // Artwork items -- conditionally disabled based on availability flags.
+    //
+    // BoolWithAvailability checks the flag at build time (this function is
+    // called fresh every time the Video submenu is entered). If the flag is
+    // 0 the item is marked disabled: grayed out, no arrows, ignores input.
+    // Your texture loading code must set these flags after loading art.
+    //
+    // artcrop depends on bezel, so it inherits g_bezelAvailable.
+    // ------------------------------------------------------------------
+    m_items.push_back(MenuItem::BoolWithAvailability(
+        "ARTWORK", &config.artwork, &g_artworkAvailable, "NOT LOADED"));
+    m_items.push_back(MenuItem::BoolWithAvailability(
+        "OVERLAY", &config.overlay, &g_overlayAvailable, "NOT LOADED"));
+    m_items.push_back(MenuItem::BoolWithAvailability(
+        "BEZEL ART", &config.bezel, &g_bezelAvailable, "NOT LOADED"));
+
+    // Crop-bezel requires bezel to be present. Even if g_artcropAvailable
+    // were set separately, we guard on g_bezelAvailable as the primary gate.
+    {
+        const int* cropFlag = g_bezelAvailable ? &g_artcropAvailable : &g_bezelAvailable;
+        m_items.push_back(MenuItem::BoolWithAvailability(
+            "CROP BEZEL", &config.artcrop, cropFlag, "NEEDS BEZEL"));
+    }
+
+    // ------------------------------------------------------------------
+    // Raster / scanlines overlay effect.
+    // Cycles between "NONE" and known effect filenames stored under artwork\.
+    // onChange live-reloads the texture so the change is visible immediately.
+    // ------------------------------------------------------------------
+    {
+        static std::string s_rasterEffect;
+        if (config.raster_effect && config.raster_effect[0])
+            s_rasterEffect = config.raster_effect;
+        else
+            s_rasterEffect = "NONE";
+
+        std::vector<std::string> rasterOptions = {
+            "NONE", "aperture4x6.png", "scanlines.png", "scanrez2.png", "scanrez2r.png"
+        };
+        // Include any custom filename that came from the ini but is not in our list.
+        bool alreadyListed = false;
+        for (const auto& opt : rasterOptions) {
+            if (opt == s_rasterEffect) { alreadyListed = true; break; }
+        }
+        if (!alreadyListed)
+            rasterOptions.push_back(s_rasterEffect);
+
+        m_items.push_back(MenuItem::String(
+            "RASTER EFFECT",
+            &s_rasterEffect,
+            rasterOptions,
+            [](const std::string& v) {
+                config.raster_effect = (char*)v.c_str();
+                // Live reload so the change is visible without restarting.
+                init_raster_overlay();
+            }
+        ));
+    }
+
+    m_items.push_back(MenuItem::Integer("PRIORITY", &config.priority, 0, 4,
+        { "LOW", "NORMAL", "ABOVE NORMAL", "HIGH", "REALTIME" }));
+
+    m_items.push_back(MenuItem::Bool("KB LEDS", &config.kbleds));
+}
+void MenuManager::BuildSoundMenu() {
+    auto clamp_int = [](int v, int lo, int hi) -> int {
+        if (v < lo) return lo;
+        if (v > hi) return hi;
+        return v;
+    };
+
+    // Convert a 0..255 byte volume to a 0..100 percentage for display.
+    auto vol255_to_percent = [&](int vol255) -> int {
+        vol255 = clamp_int(vol255, 0, 255);
+        int pct = (int)std::lround((double)vol255 * 100.0 / 255.0);
+        return clamp_int(pct, 0, 100);
+    };
+
+    // Convert a 0..100 percentage back to a 0..255 byte volume.
+    auto percent_to_vol255 = [&](int pct) -> int {
+        pct = clamp_int(pct, 0, 100);
+        int vol255 = (int)std::lround((double)pct * 255.0 / 100.0);
+        return clamp_int(vol255, 0, 255);
+    };
+
+    // Helper that builds a volume item displaying as percentage with
+    // smart stepping (1% steps below 10%, 5% steps otherwise).
+    auto addVolItemPercent = [this, &clamp_int, &vol255_to_percent, &percent_to_vol255]
+        (const std::string& title, int* val255)
+    {
+        MenuItem item;
+        item.label = title;
+
+        item.getValueDisplay = [val255, &vol255_to_percent]() {
+            int pct = vol255_to_percent(*val255);
+            return std::to_string(pct) + "%";
+        };
+
+        item.onAdjust = [val255, &clamp_int, &vol255_to_percent, &percent_to_vol255](int dir) {
+            int pct  = vol255_to_percent(*val255);
+            int step = (pct < 10) ? 1 : 5;
+            pct += dir * step;
+            pct = clamp_int(pct, 0, 100);
+            *val255 = percent_to_vol255(pct);
+        };
+
+        item.hasLeft = [val255, &vol255_to_percent]() {
+            return vol255_to_percent(*val255) > 0;
+        };
+        item.hasRight = [val255, &vol255_to_percent]() {
+            return vol255_to_percent(*val255) < 100;
+        };
+
+        item.onActivate = []() {};
+        m_items.push_back(item);
+    };
+
+    // Clamp before building so the display starts in a sane state.
+    config.mainvol  = clamp_int(config.mainvol,  0, 255);
+    config.pokeyvol = clamp_int(config.pokeyvol, 0, 255);
+    config.noisevol = clamp_int(config.noisevol, 0, 255);
+
+    addVolItemPercent("MAIN VOLUME",    &config.mainvol);
+    addVolItemPercent("POKEY/AY VOLUME",&config.pokeyvol);
+    addVolItemPercent("AMBIENT VOLUME", &config.noisevol);
+
+    m_items.push_back(MenuItem::Bool("HV CHATTER", &config.hvnoise));
+    m_items.push_back(MenuItem::Bool("PS HISS",    &config.pshiss));
+    m_items.push_back(MenuItem::Bool("PS NOISE",   &config.psnoise));
 }
 
-int do_gamejoy_menu(int type)
-{
-	const char* menu_item[400];
-	const char* menu_subitem[400];
-	struct InputPort* entry[40];
-	//char flag[400];
-	int i, x;
-	struct InputPort* in;
-	int total;
+void MenuManager::BuildDipSwitchMenu() {
+    if (Machine->input_ports == nullptr) {
+        m_items.push_back(MenuItem::Link("NO INPUT PORTS", []() {}));
+        return;
+    }
 
-	int color = 255;
-	int spacing = 21;
-	int start = 600;
-	int left = 225;
-	int top = 0;
-	int bottom = 0;
-	int shift = 0;
-	int b = 0;
-	int joyindex;
+    InputPort* in = Machine->input_ports;
+    while (in->type != IPT_END) {
+        if ((in->type & ~IPF_MASK) == IPT_DIPSWITCH_NAME &&
+            input_port_name(in) != nullptr &&
+            !(in->type & IPF_UNUSED) &&
+            !(!options.cheat && (in->type & IPF_CHEAT)))
+        {
+            MenuItem item;
+            item.label = input_port_name(in);
+            UINT16 mask = in->mask;
 
-	if (Machine->input_ports == 0)
-		return 0;
+            // Collect all valid settings for this dipswitch.
+            auto getSettings = [in, mask]() {
+                std::vector<InputPort*> settings;
+                InputPort* p = in + 1;
+                while ((p->type & ~IPF_MASK) == IPT_DIPSWITCH_SETTING) {
+                    if (!(!options.cheat && (p->type & IPF_CHEAT)))
+                        settings.push_back(p);
+                    p++;
+                }
+                return settings;
+            };
 
-	in = Machine->input_ports;
+            item.getValueDisplay = [in, mask]() {
+                UINT16 currentVal = in->default_value & mask;
+                InputPort* setting = in + 1;
+                while ((setting->type & ~IPF_MASK) == IPT_DIPSWITCH_SETTING) {
+                    if ((setting->default_value & mask) == currentVal) {
+                        if (input_port_name(setting))
+                            return std::string(input_port_name(setting));
+                        else if (setting->name)
+                            return std::string(setting->name);
+                    }
+                    setting++;
+                }
+                return std::string("INVALID");
+            };
 
-	total = 0;
-	while (in->type != IPT_END)
-	{
-		if (input_port_name(in) != 0 && input_port_joy(in) != IP_JOY_NONE)
-		{
-			entry[total] = in;
-			menu_item[total] = input_port_name(in);
+            item.onAdjust = [in, mask, getSettings](int dir) {
+                auto settings = getSettings();
+                if (settings.empty()) return;
 
-			total++;
-		}
+                UINT16 currentVal = in->default_value & mask;
+                int curIdx = 0;
+                for (size_t i = 0; i < settings.size(); ++i) {
+                    if ((settings[i]->default_value & mask) == currentVal) {
+                        curIdx = (int)i;
+                        break;
+                    }
+                }
 
-		in++;
-	}
+                curIdx += dir;
+                if (curIdx >= (int)settings.size()) curIdx = (int)settings.size() - 1;
+                if (curIdx < 0) curIdx = 0;
 
-	if (total == 0) return 0;
+                in->default_value = (in->default_value & ~mask) |
+                                    (settings[curIdx]->default_value & mask);
+            };
 
-	//menu_item[total] = "Return to Main Menu";
-	menu_item[total] = 0;// +1] = 0;	/* terminate array */
-	//total++;
+            item.hasLeft = [in, mask, getSettings]() {
+                auto settings = getSettings();
+                if (settings.empty()) return false;
+                UINT16 currentVal = in->default_value & mask;
+                return (settings[0]->default_value & mask) != currentVal;
+            };
 
-	for (i = 0; i < total; i++)
-	{
-		if (i < total)
-		{
-			menu_subitem[i] = osd_joy_name(input_port_joy(entry[i]));
-			//if (entry[i]->joystick != IP_JOY_default)
-			//	flag[i] = 1;
-			//else
-			//	flag[i] = 0;
-		}
-		else menu_subitem[i] = 0;	// no subitem
-	}
-	num_this_menu = (total - 1);
+            item.hasRight = [in, mask, getSettings]() {
+                auto settings = getSettings();
+                if (settings.empty()) return false;
+                UINT16 currentVal = in->default_value & mask;
+                return (settings.back()->default_value & mask) != currentVal;
+            };
 
-	VF.DrawQuad(450, 475, 580, 450, MAKE_RGBA(20, 20, 80, 255));
-	VF.Print(left, 650, RGB_WHITE, 1.9, "JOY CONFIG - This Game");
+            item.onActivate = []() {};
+            m_items.push_back(item);
+        }
+        in++;
+    }
 
-	top = menuitem - 8;   if (top < 0) { b = abs(top); top = 0; }
-	else b = 0;
-	bottom = menuitem + 8; 	if (bottom > num_this_menu) bottom = num_this_menu;
-	if (menuitem > num_this_menu) menuitem = num_this_menu;
-
-	for (x = 0; x < total; x++)
-	{
-		if (top > bottom - 16) top = bottom - 16;
-		if (x >= top && x <= bottom + b) {
-			if (menuitem == x) {
-				VF.Print(left, start, RGB_PINK, 2.3, menu_item[menuitem]);
-			}
-			else {
-				color = 255;
-				VF.Print(left, start, RGB_WHITE, 2.0, menu_item[x]);
-			}
-			VF.Print(545, start, RGB_WHITE, 2.0, menu_subitem[x]);
-			start -= 8 * 2.5;
-		}
-	}
-
-	if (sublevel == 1) {
-		if (osd_key_pressed_memory(OSD_KEY_FAST_EXIT) || osd_key_pressed_memory(OSD_KEY_CANCEL))
-		{
-			sublevel = 0;
-			return 0;
-		}
-		if (osd_key_pressed_memory(OSD_KEY_A))
-		{
-			entry[menuitem]->joystick = OSD_JOY_FIRE;
-			sublevel = 0;
-		}
-		if (osd_key_pressed_memory(OSD_KEY_B))
-		{
-			entry[menuitem]->joystick = OSD_JOY2_FIRE;
-			sublevel = 0;
-		}
-		/* Clears entry "None" */
-		if (osd_key_pressed_memory(OSD_KEY_N))
-		{
-			sublevel = 0;
-			entry[menuitem]->joystick = 0;
-		}
-
-		VF.Print(225, 625, MAKE_RGB(255, 200, 30), 1.8, "Press a Button or N to clear");
-		for (joyindex = 1; joyindex < OSD_MAX_JOY; joyindex++)
-		{
-			if (osd_joy_pressed(joyindex))
-			{
-				sublevel = 0;
-				entry[menuitem]->joystick = joyindex;
-				break;
-			}
-		}
-	}
-	return 0;
+    if (m_items.empty()) {
+        m_items.push_back(MenuItem::Link("NO DIPSWITCHES FOUND", []() {}));
+    }
 }
 
-void do_keyboard_menu(int type)
-{
-	const char* menu_item[400] = { nullptr };  
-	struct ipd* entry[400] = { nullptr };     
-	int x = 0;
-	int newkey = 0;
-	int color = 255;
-	int left = 225;
-	int spacing = 21;
-	int start = 600;
-	int top = 0;
-	int bottom = 0;
-	int shift = 0;
-	struct ipd* in;
-	int total;
-	static int page = 0;
-	int b = 0;
+void MenuManager::BuildAnalogMenu() {
+    if (Machine->input_ports == nullptr) {
+        m_items.push_back(MenuItem::Link("NO INPUT PORTS", []() {}));
+        return;
+    }
 
-	in = inputport_defaults;
+    InputPort* in = Machine->input_ports;
+    while (in->type != IPT_END) {
+        int type = in->type & 0xFF;
+        if (type > IPT_ANALOG_START && type < IPT_ANALOG_END &&
+            !(!options.cheat && (in->type & IPF_CHEAT)))
+        {
+            // Speed / delta
+            MenuItem deltaItem;
+            deltaItem.label = std::string(input_port_name(in)) + " Speed";
+            deltaItem.getValueDisplay = [in]() { return std::to_string(IP_GET_DELTA(in)); };
+            deltaItem.onAdjust = [in](int dir) {
+                int val = IP_GET_DELTA(in) + dir;
+                if (val < 1)   val = 1;
+                if (val > 255) val = 255;
+                IP_SET_DELTA(in, val);
+            };
+            deltaItem.hasLeft  = [in]() { return IP_GET_DELTA(in) > 1;   };
+            deltaItem.hasRight = [in]() { return IP_GET_DELTA(in) < 255; };
+            deltaItem.onActivate = []() {};
+            m_items.push_back(deltaItem);
 
-	total = 0;
-	while (in->type != IPT_END)
-	{
-		if (in->name != 0 && in->keyboard != IP_KEY_NONE && (in->type & IPF_UNUSED) == 0
-			&& !(!options.cheat && (in->type & IPF_CHEAT)))
-		{
-			entry[total] = in;
-			menu_item[total] = in->name;
-			total++;
-		}
-		in++;
-	}
+            // Sensitivity
+            MenuItem sensItem;
+            sensItem.label = std::string(input_port_name(in)) + " Sensitivity";
+            sensItem.getValueDisplay = [in]() { return std::to_string(IP_GET_SENSITIVITY(in)) + "%"; };
+            sensItem.onAdjust = [in](int dir) {
+                int val = IP_GET_SENSITIVITY(in) + dir;
+                if (val < 1)   val = 1;
+                if (val > 255) val = 255;
+                IP_SET_SENSITIVITY(in, val);
+            };
+            sensItem.hasLeft  = [in]() { return IP_GET_SENSITIVITY(in) > 1;   };
+            sensItem.hasRight = [in]() { return IP_GET_SENSITIVITY(in) < 255; };
+            sensItem.onActivate = []() {};
+            m_items.push_back(sensItem);
 
-	num_this_menu = (total - 1);
-	
-	VF.DrawQuad(500, 475, 670, 500, MAKE_RGBA(20, 20, 80, 255));
-	VF.Print(left, 650, RGB_WHITE, 2.0, "Input Configuration (Global)");
+            // Reverse toggle
+            MenuItem revItem;
+            revItem.label = std::string(input_port_name(in)) + " Reverse";
+            revItem.getValueDisplay = [in]() { return (in->type & IPF_REVERSE) ? "ON" : "OFF"; };
+            revItem.onAdjust = [in](int dir) {
+                int isRev = (in->type & IPF_REVERSE) ? 1 : 0;
+                int newVal = isRev + dir;
+                if (newVal < 0) newVal = 0;
+                if (newVal > 1) newVal = 1;
+                if (newVal) in->type |=  IPF_REVERSE;
+                else        in->type &= ~IPF_REVERSE;
+            };
+            revItem.hasLeft  = [in]() { return (in->type & IPF_REVERSE) != 0; };
+            revItem.hasRight = [in]() { return (in->type & IPF_REVERSE) == 0; };
+            revItem.onActivate = []() {};
+            m_items.push_back(revItem);
+        }
+        in++;
+    }
 
-	top = menuitem - 8;   if (top < 0) { b = abs(top); top = 0; }
-	else b = 0;
-	bottom = menuitem + 8; 	if (bottom > num_this_menu) bottom = num_this_menu;
-	if (menuitem > num_this_menu) menuitem = num_this_menu;
-
-	for (x = 0; x < total; x++)
-	{
-		if (top > bottom - 16) top = bottom - 16;
-		if (x >= top && x <= bottom + b) {
-			if (menuitem == x) {
-						VF.Print(left, start, RGB_PINK, 2.0, menu_item[menuitem]);
-			}
-			else {
-				VF.Print(left, start, RGB_WHITE, 2.0, "%s", entry[x]->name);
-			}
-
-			VF.Print(545, start, RGB_WHITE, 2.0, key_names[entry[x]->keyboard]);
-			start -= 8 * 2.5;
-		}
-	}
-
-	if (sublevel == 1) {
-		newkey = change_key();
-		if (newkey != OSD_KEY_NONE)
-		{
-			entry[menuitem]->keyboard = newkey;
-			newkey = 0;
-		}
-	}
+    if (m_items.empty()) {
+        m_items.push_back(MenuItem::Link("NO ANALOG CONTROLS", []() {}));
+    }
 }
 
-void do_gamekey_menu(int type)
-{
-	const char* menu_item[400];
-	const char* menu_subitem[400];
-	struct InputPort* entry[400];
-	int x = 0;
-	int newkey = 0;
-	int color = 255;
-	int left = 225;
-	int spacing = 21;
-	int start = 600;
-	int top = 0;
-	int bottom = 0;
-	int shift = 0;
-	struct InputPort* in;
-	int total;
-	int b = 0;
-	int i;
+void MenuManager::BuildInputMenu(bool isGlobal, bool isJoystick) {
+    if (isGlobal) {
+        struct ipd* in = inputport_defaults;
+        while (in->type != IPT_END) {
+            if (in->name &&
+                !(in->type & IPF_UNUSED) &&
+                !(!options.cheat && (in->type & IPF_CHEAT)) &&
+                ((isJoystick  && in->joystick != IP_JOY_NONE) ||
+                 (!isJoystick && in->keyboard  != IP_KEY_NONE)))
+            {
+                MenuItem item;
+                item.label = in->name;
+                item.getValueDisplay = [in, isJoystick]() {
+                    if (isJoystick) return std::string(osd_joy_name(in->joystick));
+                    return GetKeyName(in->keyboard);
+                };
+                item.onActivate = [this, in, isJoystick]() {
+                    m_isPolling    = true;
+                    m_pollingIsJoy = isJoystick;
+                    m_inputAssignmentHandler = [in, isJoystick](int code) {
+                        if (isJoystick) in->joystick = code;
+                        else {
+                            if (osd_key_invalid(code)) code = IP_KEY_DEFAULT;
+                            in->keyboard = code;
+                        }
+                    };
+                };
+                item.onAdjust = [in, isJoystick](int dir) {
+                    // Left/Right clears the assignment for this input.
+                    if (isJoystick) in->joystick = 0;
+                    else            in->keyboard  = 0;
+                };
+                // Key/joy input rows do not have a left/right range to arrow through.
+                item.hasLeft  = []() { return false; };
+                item.hasRight = []() { return false; };
+                m_items.push_back(item);
+            }
+            in++;
+        }
+    }
+    else {
+        if (Machine->input_ports == nullptr) {
+            m_items.push_back(MenuItem::Link("NO INPUT PORTS", []() {}));
+            return;
+        }
 
-	LOG_INFO("---------------CALLING show game keys");
-
-	in = Machine->input_ports;
-	total = 0;
-	while (in->type != IPT_END)
-	{
-		if (input_port_name(in) != 0 && input_port_key(in) != IP_KEY_NONE)
-		{
-			entry[total] = in;
-			menu_item[total] = input_port_name(in);
-			total++;
-		}
-
-		in++;
-	}
-	if (total == 0) return;
-	LOG_INFO("Made it here 1");
-	num_this_menu = (total - 1);
-
-	for (i = 0; i < total; i++)
-	{
-		if (i < total + 1)        //osd_key_name(input_port_key(entry[i]));
-		{
-			menu_subitem[i] = key_names[input_port_key(entry[i])];
-			LOG_INFO("MENU ITEM Key # is %x", input_port_key(entry[i]));
-			/* If the key isn't the default, flag it */
-			//if (entry[i]->keyboard != IP_KEY_default)
-			//	flag[i] = 1;
-			//else
-			//	flag[i] = 0;
-		}
-		else menu_subitem[i] = 0;	/* no subitem */
-	}
-	LOG_INFO("Made it here 2");
-	quad_from_center(500, 475, 670, 450, 20, 20, 80, 255);
-	VF.DrawQuad(500, 475, 670, 450, RGB_PURPLE);
-	VF.Print(left, 650, RGB_WHITE, 2.0, "Input Configuration (This Game)");// %d", num_this_menu);
-
-	if (menuitem > num_this_menu) menuitem = num_this_menu;
-
-	for (x = 0; x < total; x++)
-	{
-		if (menuitem == x) {
-			VF.Print(left, start, RGB_PINK, 2.0, menu_item[menuitem]);
-		}
-		else {
-			VF.Print(left, start, RGB_WHITE, 2.0, menu_item[x]);
-		}
-
-		VF.Print(545, start, RGB_WHITE, 2.0, "%s", menu_subitem[x]);//key_names[entry[x]->keyboard]);
-		//LOG_INFO("Printing menu item key name %x", menu_subitem[x]);
-		start -= 8 * 2.5;
-	}
-	if (sublevel == 1)
-	{
-		newkey = change_key();
-		if (newkey != OSD_KEY_NONE)
-		{
-			if (osd_key_invalid(newkey))	/* pseudo key code? */
-				newkey = IP_KEY_DEFAULT;
-
-			entry[menuitem]->keyboard = newkey;
-			newkey = 0;
-		}
-	}
+        InputPort* in = Machine->input_ports;
+        while (in->type != IPT_END) {
+            if (input_port_name(in) &&
+                ((isJoystick  && input_port_joy(in) != IP_JOY_NONE) ||
+                 (!isJoystick && input_port_key(in) != IP_KEY_NONE)))
+            {
+                MenuItem item;
+                item.label = input_port_name(in);
+                item.getValueDisplay = [in, isJoystick]() {
+                    if (isJoystick) return std::string(osd_joy_name(input_port_joy(in)));
+                    return GetKeyName(input_port_key(in));
+                };
+                item.onActivate = [this, in, isJoystick]() {
+                    m_isPolling    = true;
+                    m_pollingIsJoy = isJoystick;
+                    m_inputAssignmentHandler = [in, isJoystick](int code) {
+                        if (isJoystick) in->joystick = code;
+                        else {
+                            if (osd_key_invalid(code)) code = IP_KEY_DEFAULT;
+                            in->keyboard = code;
+                        }
+                    };
+                };
+                item.onAdjust = [in, isJoystick](int dir) {
+                    if (isJoystick) in->joystick = 0;
+                    else            in->keyboard  = 0;
+                };
+                item.hasLeft  = []() { return false; };
+                item.hasRight = []() { return false; };
+                m_items.push_back(item);
+            }
+            in++;
+        }
+    }
 }
 
-void do_dipswitch_menu()
-{
-	const char* menu_item[40];
-	const char* menu_subitem[40];
-	struct InputPort* entry[40];
-	char flag[40];
-	int i, sel, x;// , b;
-	struct InputPort* in;
-	int total;
-	int arrowize;
-	int color = 255;
-	int left = 175;
-	int spacing = 21;
-	int start = 600;
-	int top = 0;
-	int bottom = 0;
-	int shift = 0;
+// ----------------------------------------------------------------------
+// Drawing & Navigation
+// ----------------------------------------------------------------------
 
-	sel = menuitem;//selected - 1;
-	in = Machine->input_ports;
+void MenuManager::Draw() {
+    if (!m_showMenu) return;
 
-	total = 0;
-	while (in->type != IPT_END)
-	{
-		if ((in->type & ~IPF_MASK) == IPT_DIPSWITCH_NAME && input_port_name(in) != 0 &&
-			(in->type & IPF_UNUSED) == 0 &&
-			!(!options.cheat && (in->type & IPF_CHEAT)))
-		{
-			entry[total] = in;
-			menu_item[total] = input_port_name(in);
+    std::string title = GetTitleText();
 
-			total++;
-		}
+    // ---- Compute visible item count and scroll window ----
+    int count = (int)m_items.size();
+    if (m_selectedIndex < m_scrollOffset)
+        m_scrollOffset = m_selectedIndex;
+    if (m_selectedIndex >= m_scrollOffset + VISIBLE_ITEMS)
+        m_scrollOffset = m_selectedIndex - VISIBLE_ITEMS + 1;
 
-		in++;
-	}
-	if (total == 0)
-	{
-		menulevel = 100; menuitem = 0; //Reset menu level to top and return
-		return; //No Dipswitches!
-	}
-	menu_item[total] = "Return to Main Menu";
-	menu_item[total + 1] = 0;	/* terminate array */
-	total++;
+    int visibleCount = (std::min)(count - m_scrollOffset, VISIBLE_ITEMS);
+    if (visibleCount < 0) visibleCount = 0;
 
-	for (i = 0; i < total; i++)
-	{
-		flag[i] = 0; /* TODO: flag the dip if it's not the real default */
-		if (i < total - 1)
-		{
-			in = entry[i] + 1;
-			while ((in->type & ~IPF_MASK) == IPT_DIPSWITCH_SETTING &&
-				in->default_value != entry[i]->default_value)
-				in++;
+    // ---- Layout using cached max width ----
+    float topY        = TITLE_Y + PAD_TOP;
+    float firstItemY  = TITLE_Y - TITLE_GAP - MENU_LINE_HEIGHT;
+    float lastItemY   = firstItemY - ((visibleCount > 0 ? visibleCount - 1 : 0) * MENU_LINE_HEIGHT);
 
-			if ((in->type & ~IPF_MASK) != IPT_DIPSWITCH_SETTING)
-				menu_subitem[i] = "INVALID";
-			else menu_subitem[i] = input_port_name(in);
-		}
-		else menu_subitem[i] = 0;	/* no subitem */
-	}
+    float contentBottomY = lastItemY;
+    if (m_isPolling) {
+        contentBottomY -= (POLL_GAP + MENU_LINE_HEIGHT);
+    }
+    float footerY  = contentBottomY - FOOTER_GAP;
+    float bottomY  = footerY - PAD_BOTTOM;
 
-	arrowize = 0;
+    float maxTextWidth = m_cachedMaxWidth;
+    float leftX        = MENU_X - PAD_LEFT;
+    float rightX       = MENU_X + maxTextWidth + PAD_RIGHT;
+    float bgCenterX    = (leftX + rightX) * 0.5f;
+    float bgCenterY    = (topY + bottomY) * 0.5f;
+    float bgWidth      = rightX - leftX;
+    float bgHeight     = topY - bottomY;
 
-	VF.Print(285, 650, RGB_WHITE, 1.9, "DIPSWITCH MENU");
+    // ---- Background + Title ----
+    VF.DrawQuad(bgCenterX, bgCenterY, bgWidth, bgHeight, MAKE_RGBA(20, 20, 80, 255));
+    VF.Print(MENU_X, (int)TITLE_Y, RGB_WHITE, FONT_SCALE, title.c_str());
 
-	if (sel < total - 1)
-	{
-		in = entry[sel] + 1;
-		while ((in->type & ~IPF_MASK) == IPT_DIPSWITCH_SETTING &&
-			in->default_value != entry[sel]->default_value)
-			in++;
+    // ---- Scroll indicator positions ----
+    float scrollArrowX   = rightX - (PAD_RIGHT * 0.55f) - (CHAR_PITCH * 0.5f);
+    float titleSafeBottomY = TITLE_Y - (TITLE_GAP * 0.25f);
+    float footerSafeTopY   = footerY + (MENU_LINE_HEIGHT * 0.55f);
 
-		if ((in->type & ~IPF_MASK) != IPT_DIPSWITCH_SETTING)
-			// invalid setting: revert to a valid one
-			arrowize |= 1;
-		else
-		{
-			if (((in - 1)->type & ~IPF_MASK) == IPT_DIPSWITCH_SETTING &&
-				!(!options.cheat && ((in - 1)->type & IPF_CHEAT)))
-				arrowize |= 1;
-		}
-	}
-	if (sel < total - 1)
-	{
-		in = entry[sel] + 1;
-		while ((in->type & ~IPF_MASK) == IPT_DIPSWITCH_SETTING &&
-			in->default_value != entry[sel]->default_value)
-			in++;
+    float upArrowY = firstItemY + (MENU_LINE_HEIGHT * 0.85f);
+    if (upArrowY > titleSafeBottomY) upArrowY = titleSafeBottomY;
 
-		if ((in->type & ~IPF_MASK) != IPT_DIPSWITCH_SETTING)
-			// invalid setting: revert to a valid one
-			arrowize |= 2;
-		else
-		{
-			if (((in + 1)->type & ~IPF_MASK) == IPT_DIPSWITCH_SETTING &&
-				!(!options.cheat && ((in + 1)->type & IPF_CHEAT)))
-				arrowize |= 2;
-		}
-	}
+    float downArrowY = lastItemY - (MENU_LINE_HEIGHT * 0.35f);
+    if (downArrowY < footerSafeTopY) downArrowY = footerSafeTopY;
 
-	VF.DrawQuad(520, 525, 850, 325, RGB_PURPLE);
+    if (m_scrollOffset > 0) {
+        VF.Print(scrollArrowX, (int)upArrowY, RGB_YELLOW, FONT_SCALE, "\x1E"); // UP TRI
+    }
 
-	for (x = 0; x < total; x++)
-	{
-		if (menuitem == x) {
-			VF.Print(left, start, RGB_PINK, 2.0, menu_item[menuitem]);
-		}
-		else {
-			VF.Print(left, start, RGB_WHITE, 2.0, menu_item[x]);
-		}
-		if (menu_subitem[x]) VF.Print(580, start, RGB_WHITE, 2.0, menu_subitem[x]);
+    constexpr float ARROW_GAP = 5.0f;
 
-		if (arrowize == 2 && menuitem == x)
-		{
-			VF.Print(VF.GetLastStringLength(), start, RGB_WHITE, 2.0, ">"); //740
-		}
-		if (arrowize == 1 && menuitem == x)
-		{
-			VF.Print(555, start, RGB_WHITE, 2.0, "<");
-		}
+    // ---- Draw visible items ----
+    float y = firstItemY;
+    for (int i = m_scrollOffset; i < m_scrollOffset + visibleCount; ++i) {
+        const MenuItem& it = m_items[i];
+        bool isSelected = (i == m_selectedIndex);
 
-		start -= 8 * 2.5;
-	}
-	//displaymenu(menu_item,menu_subitem,flag,sel,arrowize);
+        // Disabled items always draw gray regardless of selection.
+        unsigned int color;
+        if (it.isDisabled) {
+            color = RGB_DISABLED;
+        }
+        else {
+            color = isSelected ? RGB_PINK : RGB_WHITE;
+        }
 
-	if (osd_key_pressed_memory_repeat(OSD_KEY_UI_DOWN, 8))
-	{
-		if (sel < total - 1) sel++;
-		else sel = 0;
-		menuitem = sel;
-	}
+        VF.Print(MENU_X, (int)y, color, FONT_SCALE, it.label.c_str());
 
-	if (osd_key_pressed_memory_repeat(OSD_KEY_UI_UP, 8))
-	{
-		if (sel > 0) sel--;
-		else sel = total - 1;
-		menuitem = sel;
-	}
+        if (!it.isLink && it.getValueDisplay) {
+            if (it.isDisabled) {
+                // Show the reason string (e.g. "NOT LOADED") without arrows.
+                VF.Print(MENU_X + VALUE_X_OFFSET, (int)y,
+                    RGB_DISABLED, FONT_SCALE, it.disabledReason.c_str());
+            }
+            else {
+                std::string val = it.getValueDisplay();
 
-	if (osd_key_pressed_memory_repeat(OSD_KEY_UI_RIGHT, 8))
-	{
-		if (sel < total - 1)
-		{
-			in = entry[sel] + 1;
-			while ((in->type & ~IPF_MASK) == IPT_DIPSWITCH_SETTING &&
-				in->default_value != entry[sel]->default_value)
-				in++;
+                if (isSelected) {
+                    // Left arrow
+                    if (it.hasLeft && it.hasLeft()) {
+                        float arrowLeftX = MENU_X + VALUE_X_OFFSET - ARROW_GAP - CHAR_PITCH;
+                        VF.Print(arrowLeftX, (int)y, RGB_WHITE, FONT_SCALE, "<");
+                    }
 
-			if ((in->type & ~IPF_MASK) != IPT_DIPSWITCH_SETTING)
-				// invalid setting: revert to a valid one
-				entry[sel]->default_value = (entry[sel] + 1)->default_value & entry[sel]->mask;
-			else
-			{
-				if (((in + 1)->type & ~IPF_MASK) == IPT_DIPSWITCH_SETTING &&
-					!(!options.cheat && ((in + 1)->type & IPF_CHEAT)))
-					entry[sel]->default_value = (in + 1)->default_value & entry[sel]->mask;
-			}
-		}
-	}
+                    VF.Print(MENU_X + VALUE_X_OFFSET, (int)y, color, FONT_SCALE, val.c_str());
 
-	if (osd_key_pressed_memory_repeat(OSD_KEY_UI_LEFT, 8))
-	{
-		if (sel < total - 1)
-		{
-			in = entry[sel] + 1;
-			while ((in->type & ~IPF_MASK) == IPT_DIPSWITCH_SETTING &&
-				in->default_value != entry[sel]->default_value)
-				in++;
+                    // Right arrow
+                    if (it.hasRight && it.hasRight()) {
+                        float valEndX = MENU_X + VALUE_X_OFFSET + (float)val.length() * CHAR_PITCH + ARROW_GAP;
+                        VF.Print(valEndX, (int)y, RGB_WHITE, FONT_SCALE, ">");
+                    }
+                }
+                else {
+                    VF.Print(MENU_X + VALUE_X_OFFSET, (int)y, color, FONT_SCALE, val.c_str());
+                }
+            }
+        }
 
-			if ((in->type & ~IPF_MASK) != IPT_DIPSWITCH_SETTING)
-				// invalid setting: revert to a valid one
-				entry[sel]->default_value = (entry[sel] + 1)->default_value & entry[sel]->mask;
-			else
-			{
-				if (((in - 1)->type & ~IPF_MASK) == IPT_DIPSWITCH_SETTING &&
-					!(!options.cheat && ((in - 1)->type & IPF_CHEAT)))
-					entry[sel]->default_value = (in - 1)->default_value & entry[sel]->mask;
-			}
-		}
-	}
+        y -= MENU_LINE_HEIGHT;
+    }
 
-	if (osd_key_pressed_memory(OSD_KEY_UI_SELECT))
-	{
-		if (sel == total - 1) sel = -1;
-		menulevel = 100; menuitem = 0;
-	}
+    // Down scroll indicator
+    if (m_scrollOffset + visibleCount < count) {
+        VF.Print(scrollArrowX, (int)downArrowY, RGB_YELLOW, FONT_SCALE, "\x1F"); // DOWN TRI
+    }
 
-	if (osd_key_pressed_memory(OSD_KEY_FAST_EXIT) || osd_key_pressed_memory(OSD_KEY_CANCEL))
-		sel = -1;
+    // ---- Input polling hint ----
+    if (m_isPolling) {
+        VF.Print(MENU_X, (int)(y - POLL_GAP), RGB_YELLOW, FONT_SCALE,
+            "PRESS KEY/BUTTON OR ESC TO CANCEL");
+    }
 
-	if (osd_key_pressed_memory(OSD_KEY_CONFIGURE))
-		//sel = -2;
-		sel = -1;
-
-	if (sel == -1 || sel == -2)
-	{
-	}
+    // ---- Footer ----
+    std::string footerText = GetFooterText();
+    VF.Print(MENU_X, (int)footerY, RGB_YELLOW, FOOTER_SCALE, footerText.c_str());
 }
 
-void reset_menu()
-{
-	//This is for setting defaults                  //Below Resets selected item as well.
-	//if (menulevel == DIPMENU) {currentval=dips[(menuitem-1)].default;}//reset_to_default_dips();
-	if (menulevel == GLOBALKEYS) { ; }//set_default_keys();}
+void MenuManager::DrawBackground() {}
+void MenuManager::DrawFooter()    {}
+
+void MenuManager::Navigate(int dir) {
+    if (m_isPolling) return;
+    m_selectedIndex += dir;
+    if (m_selectedIndex < 0) m_selectedIndex = 0;
+    if (m_selectedIndex >= (int)m_items.size())
+        m_selectedIndex = (int)m_items.size() - 1;
 }
 
-int change_key()
-{
-	int k = 0;
-	key_set_flag = 1;
-	VF.Print(460, 665, MAKE_RGB(255, 200, 30), 1.8, "Press a Key");
-	// set_aae_leds(0); //Clear kb inputs
-	k = osd_read_key_immediate();
+void MenuManager::Adjust(int dir) {
+    if (m_isPolling) return;
 
-	if (k == OSD_KEY_PAUSE || k == OSD_KEY_ENTER) { k = 0; } //Make sure to trap the entering of the key
-	if (k) {
-		sublevel = 0;
-		//key[k] = 0;
-		//clear_keybuf();
-		key_set_flag = 0;
-	}
-	return k;
+    if (m_selectedIndex >= 0 && m_selectedIndex < (int)m_items.size()) {
+        const MenuItem& it = m_items[m_selectedIndex];
+
+        // Refuse to adjust disabled (unavailable art) items.
+        if (it.isDisabled) return;
+
+        if (it.onAdjust) {
+            it.onAdjust(dir);
+
+            if (m_currentMenuId == MenuID::Video) {
+                set_points_lines();
+                setup_video_config();
+            }
+            else if (m_currentMenuId == MenuID::Audio) {
+                // Apply master volume and ambient toggles immediately.
+                AAE_ApplyAudioVolumesFromConfig(0);
+                setup_ambient(0);
+            }
+
+            // Recalculate layout in case the value string length changed
+            // (e.g. "NO" -> "YES", or "99" -> "100").
+            RecalculateLayout();
+        }
+    }
 }
 
-int do_mouse_menu()
-{
-	const char* menu_item[40];
-	const char* menu_subitem[40];
-	struct InputPort* entry[40];
-	int i, sel, x;// , b;
-	struct InputPort* in;
-	int total, total2;
-	int arrowize;
-	int yval = 500;
-	int left = 225;
-	int color = 0;
-	int start = 600;
-	int top = 0;
-	int bottom = 0;
-	int shift = 0;
-
-	sel = menuitem;//selected - 1;
-
-	if (Machine->input_ports == 0)
-		return 0;
-
-	in = Machine->input_ports;
-
-	/* Count the total number of analog controls */
-	total = 0;
-	while (in->type != IPT_END)
-	{
-		if (((in->type & 0xff) > IPT_ANALOG_START) && ((in->type & 0xff) < IPT_ANALOG_END)
-			&& !(!options.cheat && (in->type & IPF_CHEAT)))
-		{
-			entry[total] = in;
-			total++;
-		}
-		in++;
-	}
-
-	if (total == 0)
-	{
-		menulevel = 100; menuitem = 0;
-		return 0;
-	}
-
-	/* Each analog control has 3 entries - key & joy delta, reverse, sensitivity */
-
-#define ENTRIES 3
-
-	total2 = total * ENTRIES;
-
-	//	menu_item[total2] = "Return to Main Menu";
-	//	menu_item[total2 + 1] = 0;	/* terminate array */
-	total2++;
-
-	arrowize = 0;
-	for (i = 0; i < total2; i++)
-	{
-		if (i < total2 - 1)
-		{
-			char label[30][40];
-			char setting[30][40];
-			int sensitivity, delta;
-			int reverse;
-
-			strcpy(label[i], input_port_name(entry[i / ENTRIES]));
-			sensitivity = IP_GET_SENSITIVITY(entry[i / ENTRIES]);
-			delta = IP_GET_DELTA(entry[i / ENTRIES]);
-			reverse = (entry[i / ENTRIES]->type & IPF_REVERSE);
-
-			switch (i % ENTRIES)
-			{
-			case 0:
-				strcat_s(label[i], sizeof(label[i]), " Key/Joy Speed");
-				sprintf_s(setting[i], sizeof(setting[i]), "%d", delta);
-				if (i == sel) arrowize = 3;
-				break;
-			case 1:
-				strcat_s(label[i], sizeof(label[i]), " Reverse");
-				if (reverse)
-					strcpy_s(setting[i], sizeof(setting[i]), "On");
-				else
-					strcpy_s(setting[i], sizeof(setting[i]), "Off");
-				if (i == sel) arrowize = 3;
-				break;
-
-			case 2:
-				strcat_s(label[i], sizeof(label[i]), " Sensitivity");
-				sprintf_s(setting[i], sizeof(setting[i]), "%3d%%", sensitivity);
-				if (i == sel) arrowize = 3;
-				break;
-			}
-
-			menu_item[i] = label[i];
-			menu_subitem[i] = setting[i];
-			//LOG_INFO("Menu subitem %s", setting[i]);
-
-			in++;
-		}
-		else menu_subitem[i] = 0;	/* no subitem */
-	}
-
-	VF.DrawQuad(520, 575, 680, 200, RGB_PURPLE);
-	VF.Print(285, 700, RGB_WHITE, 2.0, "ANALOG SETTINGS");
-	menu_item[total] = "Return to Main Menu";
-	menu_subitem[total] = nullptr;
-	menu_item[total + 1] = 0;	/* terminate array */
-	total++;
-
-	for (x = 0; x < total; x++)
-	{
-		if (menuitem == x) {			
-			VF.Print(left, start, RGB_PINK, 2.0, menu_item[menuitem]);
-		}
-		else {
-			VF.Print(left, start, RGB_WHITE, 2.0, menu_item[x]);
-		}
-        VF.Print(left + 400, start, RGB_WHITE, 2.0, menu_subitem[x]);
-
-		start -= 8 * 2.5;
-	}
-
-	if (menuitem > total - 1) menuitem = total - 1;
-
-	if (osd_key_pressed_memory_repeat(OSD_KEY_UI_DOWN, 8))
-	{
-		if (sel < total - 1) sel++;
-		else sel = 0;
-		menuitem = sel;
-	}
-
-	if (osd_key_pressed_memory_repeat(OSD_KEY_UI_UP, 8))
-	{
-		if (sel > 0) sel--;
-		else sel = total - 1;
-		menuitem = sel;
-	}
-
-	if (osd_key_pressed_memory_repeat(OSD_KEY_UI_LEFT, 8))
-	{
-		if ((sel % ENTRIES) == 0)
-			/* keyboard/joystick delta */
-		{
-			int val = IP_GET_DELTA(entry[sel / ENTRIES]);
-
-			val--;
-			if (val < 1) val = 1;
-			IP_SET_DELTA(entry[sel / ENTRIES], val);
-		}
-		else if ((sel % ENTRIES) == 1)
-			/* reverse */
-		{
-			int reverse = entry[sel / ENTRIES]->type & IPF_REVERSE;
-			if (reverse)
-				reverse = 0;
-			else
-				reverse = IPF_REVERSE;
-			entry[sel / ENTRIES]->type &= ~IPF_REVERSE;
-			entry[sel / ENTRIES]->type |= reverse;
-		}
-		else if ((sel % ENTRIES) == 2)
-			/* sensitivity */
-		{
-			int val = IP_GET_SENSITIVITY(entry[sel / ENTRIES]);
-
-			val--;
-			if (val < 1) val = 1;
-			IP_SET_SENSITIVITY(entry[sel / ENTRIES], val);
-		}
-	}
-
-	if (osd_key_pressed_memory_repeat(OSD_KEY_UI_RIGHT, 8))
-	{
-		if ((sel % ENTRIES) == 0)
-			/* keyboard/joystick delta */
-		{
-			int val = IP_GET_DELTA(entry[sel / ENTRIES]);
-
-			val++;
-			if (val > 255) val = 255;
-			IP_SET_DELTA(entry[sel / ENTRIES], val);
-		}
-		else if ((sel % ENTRIES) == 1)
-			/* reverse */
-		{
-			int reverse = entry[sel / ENTRIES]->type & IPF_REVERSE;
-			if (reverse)
-				reverse = 0;
-			else
-				reverse = IPF_REVERSE;
-			entry[sel / ENTRIES]->type &= ~IPF_REVERSE;
-			entry[sel / ENTRIES]->type |= reverse;
-		}
-		else if ((sel % ENTRIES) == 2)
-			/* sensitivity */
-		{
-			int val = IP_GET_SENSITIVITY(entry[sel / ENTRIES]);
-
-			val++;
-			if (val > 255) val = 255;
-			IP_SET_SENSITIVITY(entry[sel / ENTRIES], val);
-		}
-	}
-
-	if (osd_key_pressed_memory(OSD_KEY_UI_SELECT))
-	{
-		if (sel == total - 1) sel = -1;
-		menulevel = 100; menuitem = 0;
-	}
-
-	if (osd_key_pressed_memory(OSD_KEY_FAST_EXIT) || osd_key_pressed_memory(OSD_KEY_CANCEL))
-		sel = -1;
-
-	if (osd_key_pressed_memory(OSD_KEY_CONFIGURE))
-		sel = -2;
-
-	if (sel == -1 || sel == -2)
-	{
-	}
-
-	return sel + 1;
-	//	it=1;
+void MenuManager::Select() {
+    if (m_isPolling) return;
+    if (m_selectedIndex >= 0 && m_selectedIndex < (int)m_items.size()) {
+        // Allow activating disabled items as a no-op (onActivate is [](){} anyway).
+        // If you want to block Enter on disabled items, add: if (m_items[...].isDisabled) return;
+        if (m_items[m_selectedIndex].onActivate) {
+            m_items[m_selectedIndex].onActivate();
+        }
+    }
 }
 
-void do_sound_menu()
-{
-	int yval = 625;
-	int left = 225;
+void MenuManager::PollInput() {
+    if (!m_isPolling) return;
 
-	if (number == 0) {
-		while (soundmenu[number].NumOptions) { number++; }
-		number--;
-		num_this_menu = number;
-		currentval = soundmenu[it].current;
-	}
+    // ESC / cancel during polling aborts the assignment.
+    if (osd_key_pressed_memory(OSD_KEY_FAST_EXIT) ||
+        osd_key_pressed_memory(OSD_KEY_CANCEL)    ||
+        osd_key_pressed_memory(OSD_KEY_ESC))
+    {
+        m_isPolling = false;
+        m_inputAssignmentHandler = nullptr;
+        return;
+    }
 
-	VF.DrawQuad(475, 575, 600, 275, RGB_PURPLE);
-	VF.Print(left, yval + 30, RGB_WHITE, 2.0, "Sound Settings - This Game");
+    int detectedCode = -1;
 
-	val_low = 0;
-	it = 0;
-	for (int x = 0; x < num_this_menu + 1; x++)	{
-		
-		val_low = 0;
-		rgb_t rowColor = (menuitem == it) ? RGB_PINK : RGB_WHITE;
+    if (m_pollingIsJoy) {
+        for (int j = 1; j < OSD_MAX_JOY; ++j) {
+            if (osd_joy_pressed(j)) {
+                detectedCode = j;
+                break;
+            }
+        }
+    }
+    else {
+        int k = osd_read_key_immediate();
+        if (k != OSD_KEY_NONE && k != OSD_KEY_PAUSE && k != OSD_KEY_ENTER) {
+            detectedCode = k;
+        }
+    }
 
-		if (menuitem == it)	{
-			if (soundmenu[it].menu_type == MENU_INT) {
-				val_high = soundmenu[it].NumOptions;
-			}
-			else if (soundmenu[it].menu_type == MENU_FLOAT) {
-				val_low = soundmenu[it].Min * ceilf((1 / soundmenu[it].step));
-				val_high = soundmenu[it].Max * ceilf((1 / soundmenu[it].step));
-			}
-		}
-
-		if (soundmenu[it].menu_type == MENU_INT) {
-			VF.Print(left + 350, yval, rowColor, 2.0, "%s", soundmenu[it].options[soundmenu[it].current]);
-		}
-		else if (soundmenu[it].menu_type == MENU_FLOAT)	{
-			VF.Print(left + 350, yval, rowColor, 2.0, "%2.1f", soundmenu[it].step * soundmenu[it].current);
-		}
-
-		VF.Print(left, yval, rowColor, 2.0, soundmenu[it].heading);
-
-		it++;
-		yval -= 28;
-	}
+    if (detectedCode != -1) {
+        if (m_inputAssignmentHandler) {
+            m_inputAssignmentHandler(detectedCode);
+        }
+        m_isPolling = false;
+        m_inputAssignmentHandler = nullptr;
+        // Re-layout in case the key name string length changed.
+        RecalculateLayout();
+    }
 }
 
-void check_sound_menu()
-{
-	if ((soundmenu[menuitem].current) != currentval) { soundmenu[menuitem].current = currentval; }
+// ----------------------------------------------------------------------
+// Legacy Free-Function Interface
+// ----------------------------------------------------------------------
 
-	if ((menuitem) == 0)
-	{
-		config.mainvol = (currentval * 12.75);
-		//set_volume((int)(currentval * 12.75), 0);
-		//play_sample(game_sounds[num_samples-5],currentval,128,1000,0);
-	} //Main Vol
-	if ((menuitem) == 1)
-	{
-		config.pokeyvol = (currentval * 12.75);
-		//play_sample(game_sounds[num_samples-5],currentval,128,1000,0);
-	} //Pokey Vol
-	if ((menuitem) == 2)
-	{
-		config.noisevol = (currentval * 12.75);
-		//play_sample(game_sounds[num_samples-5],currentval,128,1000,0);
-	}//Noise Vol
+int  get_menu_status()        { return MenuManager::Instance().GetStatus(); }
+void set_menu_status(int on)  { MenuManager::Instance().SetStatus(on);      }
+int  get_menu_level()         { return MenuManager::Instance().GetLevel();   }
+void set_menu_level_top()     { MenuManager::Instance().SetLevelTop();       }
 
-	if ((menuitem) == 3) { config.hvnoise = currentval; setup_ambient(VECTOR); }
-	if ((menuitem) == 4) { config.psnoise = currentval; setup_ambient(VECTOR); }
-	if ((menuitem) == 5) { config.pshiss = currentval; setup_ambient(VECTOR); }
+void do_the_menu() {
+    // If we are waiting for a key/joy assignment, service that first.
+    if (MenuManager::Instance().IsPolling()) {
+        MenuManager::Instance().PollInput();
+    }
+    MenuManager::Instance().Draw();
 }
 
-void setup_sound_menu()
-{
-	int x = 0;
-
-	soundmenu[0].current = ceilf(config.mainvol);
-	soundmenu[1].current = ceilf(config.pokeyvol);
-	soundmenu[2].current = ceilf(config.noisevol);
-	soundmenu[3].current = config.hvnoise;
-	soundmenu[4].current = config.psnoise;
-	soundmenu[5].current = config.pshiss;
-
-	while (soundmenu[x].NumOptions != 0) { soundmenu[x].Changed = soundmenu[x].current; x++; }//SET TO DETECT CHANGED VALUES
+void change_menu_level(int dir) {
+    // dir != 0 means "go deeper" (was used to push submenu); 0 means "back".
+    MenuManager::Instance().Navigate(dir ? 1 : -1);
 }
 
-void save_sound_menu()
-{
-	if (soundmenu[0].Changed != soundmenu[0].current) my_set_config_int("main", "mainvol", soundmenu[0].current, gamenum);
-	if (soundmenu[1].Changed != soundmenu[1].current) my_set_config_int("main", "pokeyvol", soundmenu[1].current, gamenum);
-	if (soundmenu[2].Changed != soundmenu[2].current) my_set_config_int("main", "noisevol", soundmenu[2].current, gamenum);
-	if (soundmenu[3].Changed != soundmenu[3].current) my_set_config_int("main", "hvnoise", soundmenu[3].current, gamenum);
-	if (soundmenu[4].Changed != soundmenu[4].current) my_set_config_int("main", "psnoise", soundmenu[4].current, gamenum);
-	if (soundmenu[5].Changed != soundmenu[5].current) my_set_config_int("main", "pshiss", soundmenu[5].current, gamenum);
+void change_menu_item(int dir) {
+    MenuManager::Instance().Adjust(dir ? 1 : -1);
 }
 
-void setup_mouse_menu()
-{
-	int x = 0;
-
-	// mousemenu[0].current=config.mouse1xs;
-	// mousemenu[1].current=config.mouse1ys;
-   //  mousemenu[2].current=config.mouse1x_invert;
-   //  mousemenu[3].current=config.mouse1y_invert;
-	while (mousemenu[x].NumOptions != 0) { mousemenu[x].Changed = mousemenu[x].current; x++; }//SET TO DETECT CHANGED VALUES
+void select_menu_item() {
+    MenuManager::Instance().Select();
 }
 
-void save_mouse_menu()
-{
-	if (mousemenu[0].Changed != mousemenu[0].current) my_set_config_int("main", "mouse1xs", mousemenu[0].current, gamenum);
-	if (mousemenu[1].Changed != mousemenu[1].current) my_set_config_int("main", "mouse1ys", mousemenu[1].current, gamenum);
-	if (mousemenu[2].Changed != mousemenu[2].current) my_set_config_int("main", "mouse1x_invert", mousemenu[2].current, gamenum);
-	if (mousemenu[3].Changed != mousemenu[3].current) my_set_config_int("main", "mouse1y_invert", mousemenu[3].current, gamenum);
-}
-
-void set_points_lines()
-{
-	config.linewidth = glmenu[10].step * (glmenu[10].current);
-	config.pointsize = glmenu[11].step * (glmenu[11].current);
-
-	//Change this to be set in the gl code.
-	glLineWidth(config.linewidth);//linewidth
-	glPointSize(config.pointsize);//pointsize
-}
-
-void setup_video_menu()
-{
-	int x = 0;
-
-	if (config.windowed) { glmenu[0].current = 1; }
-	else { glmenu[0].current = 0; }//WINDOWED
-
-	switch (config.screenw) //RESOLUTION
-	{
-	case 1024: glmenu[1].current = 0; break;
-	case 1152: glmenu[1].current = 1; break;
-	case 1280: glmenu[1].current = 2; break;
-	case 1600: glmenu[1].current = 3; break;
-	case 1920: glmenu[1].current = 4; break;
-	default: glmenu[1].current = 0; break;
-	}
-	glmenu[2].current = (config.gamma - 127) / 2;
-	glmenu[3].current = (config.bright - 127) / 2;
-	glmenu[4].current = (config.contrast - 127) / 2;
-	if (config.forcesync) { glmenu[5].current = 1; }
-	else { glmenu[5].current = 0; }//VSYNC
-
-	//Draw zero lines
-	if (config.drawzero) { glmenu[6].current = 1; }
-	else { glmenu[6].current = 0; }//VSYNC
-	if (config.widescreen) { glmenu[7].current = 1; }
-	else { glmenu[7].current = 0; }
-
-	switch (config.vectrail) //SAMPLE LEVEL
-	{
-	case 0: glmenu[8].current = 0; break;
-	case 1: glmenu[8].current = 1; break;
-	case 2: glmenu[8].current = 2; break;
-	case 3: glmenu[8].current = 3; break;
-	default: glmenu[8].current = 0; break;
-	}
-
-	glmenu[9].current = config.vecglow;
-	glmenu[10].current = config.m_line;// / .1; //config.m_line;
-	glmenu[11].current = config.m_point;// / .1;//config.m_point;
-	glmenu[12].current = config.gain;//'if (config.monitor) {glmenu[12].current=1;}else {glmenu[12].current=0;}//MONITOR
-	if (config.artwork) { glmenu[13].current = 1; }
-	else { glmenu[13].current = 0; }//ARTWORK
-	if (config.overlay) { glmenu[14].current = 1; }
-	else { glmenu[14].current = 0; }//OVERLAY
-	if (config.bezel) { glmenu[15].current = 1; }
-	else { glmenu[15].current = 0; }//BEZEL
-	if (config.artcrop) { glmenu[16].current = 1; }
-	else { glmenu[16].current = 0; }//CROP BEZEL
-
-	switch (config.priority) //POINTSIZE
-	{
-	case 0: glmenu[17].current = 0; break;
-	case 1: glmenu[17].current = 1; break;
-	case 2: glmenu[17].current = 2; break;
-	case 3: glmenu[17].current = 3; break;
-	case 4: glmenu[17].current = 4; break;
-	default: glmenu[17].current = 2; break;
-	}
-
-	glmenu[18].current = config.kbleds;
-
-	while (glmenu[x].NumOptions != 0) { glmenu[x].Changed = glmenu[x].current; x++; }//SET TO DETECT CHANGED VALUES
-}
-
-void do_video_menu()
-{
-	int yval = 650;
-	it = 0;
-	
-	if (number == 0) {
-		while (glmenu[number].NumOptions) { number++; }
-		num_this_menu = number--;
-		currentval = glmenu[it].current;
-	}
-
-	VF.DrawQuad(520, 400, 580, 625, RGB_PURPLE);
-	//if (gamenum == 0){ VF.Print(330, yval + 30, RGB_WHITE, 2.0, "GL Settings - Global");}else {
-	VF.Print(300, yval + 30, RGB_WHITE, 2.0, "GL Settings - This Game");
-
-	val_low = 0;
-
-	for (int x = 0; x < num_this_menu + 1; x++)
-	{
-		val_low = 0;
-
-		// Use rowColor instead of color variable
-		rgb_t rowColor = (menuitem == it) ? RGB_PINK : RGB_WHITE;
-
-		// Only set val_high/val_low when the current item is selected
-		if (menuitem == it)	{
-			if (glmenu[it].menu_type == MENU_INT) {
-				val_high = glmenu[it].NumOptions;
-			}
-			else if (glmenu[it].menu_type == MENU_FLOAT) {
-				val_low = glmenu[it].Min * ceilf((1 / glmenu[it].step));
-				val_high = glmenu[it].Max * ceilf((1 / glmenu[it].step));
-			}
-		}
-
-		// Print value using the computed color
-		if (glmenu[it].menu_type == MENU_INT) {
-			VF.Print(550, yval, rowColor, 2.0, "%s", glmenu[it].options[glmenu[it].current]);
-		}
-		else if (glmenu[it].menu_type == MENU_FLOAT) {
-			VF.Print(550, yval, rowColor, 2.0, "%2.1f", glmenu[it].step * glmenu[it].current);
-		}
-
-		// Print heading using the same color
-		VF.Print(245, yval, rowColor, 2.0, glmenu[it].heading);
-
-		it++;
-		yval -= 28;
-	}
-}
-
-
-void check_video_menu()
-{
-	if ((glmenu[menuitem].current) != currentval) { glmenu[menuitem].current = currentval; }
-
-	//if ((menuitem-1)==2){SetGammaRamp(127+(currentval*2),config.bright,config.contrast); }
-	//if ((menuitem-1)==3){SetGammaRamp(config.gamma,127+(currentval*2),config.contrast); }
-	//if ((menuitem-1)==4){SetGammaRamp(config.gamma,config.bright,127+(currentval*2)); }
-	if ((menuitem - 1) == 4) { config.forcesync = currentval; }
-	if ((menuitem - 1) == 5) { config.drawzero = currentval; }
-	if ((menuitem - 1) == 6) { config.widescreen = currentval; } //Widescreen_calc(); //Recalculate Widescreen value
-	if ((menuitem - 1) == 7) { config.vectrail = currentval; }
-	if ((menuitem - 1) == 8) { config.vecglow = currentval; }
-	if ((menuitem - 1) == 9) { config.linewidth = glmenu[10].step * currentval; set_points_lines(); }
-	if ((menuitem - 1) == 10) { config.pointsize = glmenu[11].step * currentval; set_points_lines(); }
-	if ((menuitem - 1) == 11) { config.gain = currentval; }
-	if ((menuitem - 1) == 12) { if (art_loaded[0]) config.artwork = currentval; }
-	if ((menuitem - 1) == 13) { if (art_loaded[1])config.overlay = currentval; }
-	if ((menuitem - 1) == 14) { if (art_loaded[3]) config.bezel = currentval; setup_video_config(); }
-	if ((menuitem - 1) == 15) { config.artcrop = currentval;  setup_video_config(); } //Reconfigure video size
-	if ((menuitem - 1) == 16) { config.priority = currentval; }
-	if ((menuitem - 1) == 17) { config.kbleds = currentval; }
-}
-
-void save_video_menu()
-{
-	LOG_DEBUG("SAVE VIDEO MENU CALLED");
-
-	int x = 0;
-	int y = 0;
-	/*
-		 if (glmenu[2].Changed != glmenu[2].current)   my_set_config_int("main", "gamma", (glmenu[2].current*2)+127, gamenum);
-		 if (glmenu[3].Changed != glmenu[3].current)   my_set_config_int("main", "bright", (glmenu[3].current*2)+127, gamenum);
-		 if (glmenu[4].Changed != glmenu[4].current)   my_set_config_int("main", "contrast", (glmenu[4].current*2)+127, gamenum);
-
-		 */
-
-	if (glmenu[1].Changed != glmenu[1].current)
-	{
-		switch (glmenu[1].current) //RESOLUTION
-		{
-		case 0: x = 1024; y = 768; break;
-		case 1: x = 1152; y = 864; break;
-		case 2: x = 1280; y = 1024; break;
-		case 3: x = 1600; y = 1200; break;
-		case 4: x = 1920; y = 1080; break;
-		default:x = 1024; y = 768; break;
-		}
-
-		my_set_config_int("main", "screenw", x, gamenum);
-		my_set_config_int("main", "screenh", y, gamenum);
-	}
-
-	if (glmenu[5].Changed != glmenu[5].current)   my_set_config_int("main", "force_vsync", glmenu[5].current, gamenum);
-	if (glmenu[6].Changed != glmenu[6].current)   my_set_config_int("main", "drawzero", glmenu[6].Value[glmenu[6].current], gamenum);
-	if (glmenu[7].Changed != glmenu[7].current)   my_set_config_int("main", "widescreen", glmenu[7].Value[glmenu[7].current], gamenum);
-	if (glmenu[8].Changed != glmenu[8].current)   my_set_config_int("main", "vectortrail", glmenu[8].Value[glmenu[8].current], gamenum);
-	if (glmenu[9].Changed != glmenu[9].current)   my_set_config_int("main", "vectorglow", glmenu[9].current, gamenum);
-	if (glmenu[10].Changed != glmenu[10].current) my_set_config_int("main", "m_line", glmenu[10].current, gamenum);
-	if (glmenu[11].Changed != glmenu[11].current) my_set_config_int("main", "m_point", glmenu[11].current, gamenum);
-	if (glmenu[12].Changed != glmenu[12].current) my_set_config_int("main", "gain", glmenu[12].current, gamenum);
-	if (glmenu[13].Changed != glmenu[13].current) my_set_config_int("main", "artwork", glmenu[13].current, gamenum);
-	if (glmenu[14].Changed != glmenu[14].current) my_set_config_int("main", "overlay", glmenu[14].current, gamenum);
-	if (glmenu[15].Changed != glmenu[15].current) my_set_config_int("main", "bezel", glmenu[15].current, gamenum);
-	if (glmenu[16].Changed != glmenu[16].current) my_set_config_int("main", "artcrop", glmenu[16].current, gamenum);
-	if (glmenu[18].Changed != glmenu[17].current) my_set_config_int("main", "priority", glmenu[17].current, gamenum);
-	if (glmenu[18].Changed != glmenu[18].current) { my_set_config_int("main", "kbleds", glmenu[18].current, gamenum); }
+void set_points_lines() {
+    glLineWidth(config.linewidth);
+    glPointSize(config.pointsize);
 }

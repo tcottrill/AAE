@@ -32,6 +32,7 @@
 #include "emu_vector_draw.h"
 #include "osd_video.h"
 #include "driver_macros.h"
+#include "os_basic.h"   // for osd_led_service_start/stop
 
 inline FILE* errorlog = nullptr;
 
@@ -181,11 +182,16 @@ const struct artworks
 #define GAME_NO_SOUND			0x0008	/* sound is missing */
 #define GAME_IMPERFECT_SOUND	0x0010	/* sound is known to be wrong */
 #define VECTOR_USES_OVERLAY1	0x0100  // Blending type 1 overlay
-#define VECTOR_USES_OVERLAY2	0x0400  // An overlay that is visible like a gel.
-#define VECTOR_USES_BW				0x1000
-#define VECTOR_USES_COLOR			0x2000
-#define VECTOR_DEFAULT_SCALE_2		0x4000
-#define VECTOR_DEFAULT_SCALE_3		0x8000
+#define VECTOR_USES_OVERLAY2	0x0200  // An overlay that is visible like a gel.
+#define VEC_OVER_HACK			0x0400  // An temporary hack to rescale the overlay JUST for solarq 
+
+
+// This is not a flag that should be used by drivers, and will be removed once the vector overlay is properly implemented
+// wITH MAME Lay Files
+#define VECTOR_USES_BW			0x1000
+#define VECTOR_USES_COLOR		0x2000
+#define VECTOR_DEFAULT_SCALE_2	0x4000
+#define VECTOR_DEFAULT_SCALE_3	0x8000
 
 //#define ORIENTATION_MASK        	0x0007
 //#define	ORIENTATION_FLIP_X			0x0001	// mirror everything in the X direction
@@ -321,15 +327,20 @@ struct RunningMachine
 	int orientation;	/* see #defines in driver.h */
 	int vectortype;
 	int video_attributes;
+	struct rectangle visible_area;
 };
 
 extern struct RunningMachine* Machine;
 
 extern int art_loaded[6];
 
-inline int sx = 0, ex = 0, sy = 0, ey = 0;
-inline int msx = 0, msy = 0, esx = 0, esy = 0;
-inline int b1sx = 0, b1sy = 0, b2sx = 0, b2sy = 0;
+
+// Sane Global Rectangle Coordinates (Replacing sx, sy, ex, ey)
+inline int game_rect_left = 0;
+inline int game_rect_right = 1024;
+inline int game_rect_bottom = 0;
+inline int game_rect_top = 1024;
+
 inline float bezelzoom = 1.0f;
 inline int bezelx = 0;
 inline int bezely = 0;

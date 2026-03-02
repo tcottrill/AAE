@@ -20,14 +20,13 @@
 #include "mathbox.h"
 #include "timer.h"
 #include "glcode.h"
-
 #include "vector_fonts.h"
-
+#include "cpu_6502.h"
 //
 // Tempest Multigame Notes:
 // Tempest Multigame is Copyright 1999 Clay Cowgill, and provides a very nice menu system to run
 // multiple games on a real tempest arcade machine.
-// Tempest Multigame emulation is setup with Aliens Enabled, and the optional “Reset Adapter” is installed.
+// Tempest Multigame emulation is setup with Aliens Enabled, and the optional "Reset Adapter" is installed.
 // Pressing Start 1 and Start 2 together resets the game and reenters the menu
 // Note: Aliens requires the Watchdog to be disabled to function.
 //
@@ -450,6 +449,37 @@ WRITE_HANDLER(coin_write)
 {
 	if ((data & 0x08)) { flipscreen = 1; }
 	else { flipscreen = 0; }
+}
+
+// globals or static debug stash:
+static uint8_t A1 = 0, Y1 = 0, A2 = 0, Y2 = 0;
+
+// call this from your per-instruction hook (right after step) or wherever you log instructions
+void maybe_log_tempest_points()
+{
+	uint16_t ppc = m_cpu_6502[0]->get_ppc();  // just-executed instruction
+	switch (ppc) {
+	case 0xAE20:  // LDA $60CA
+		A1 = m_cpu_6502[0]->m6502_get_reg(cpu_6502::M6502_A);
+		break;
+	case 0xAE23:  // LDY $60CA
+		Y1 = m_cpu_6502[0]->m6502_get_reg(cpu_6502::M6502_Y);
+		break;
+	case 0xAE30:  // LDA $60DA
+		A2 = m_cpu_6502[0]->m6502_get_reg(cpu_6502::M6502_A);
+		break;
+	case 0xAE33:  // LDY $60DA
+		Y2 = m_cpu_6502[0]->m6502_get_reg(cpu_6502::M6502_Y);
+		break;
+	case 0xAE46:  // STA $011F
+	{
+		// You can read A here as well, but the write handler for $011F will have the final byte
+		uint8_t a_now = m_cpu_6502[0]->m6502_get_reg(cpu_6502::M6502_A);
+		LOG_INFO("TEMP PROT (trace): STA $011F about to write %02X  (A1=%02X Y1=%02X A2=%02X Y2=%02X)",
+			a_now, A1, Y1, A2, Y2);
+		break;
+	}
+	}
 }
 
 //////////////////////////////////////////////////////////////////////////

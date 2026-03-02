@@ -1,6 +1,7 @@
 #include "aae_mame_driver.h"
 #include "galaxian_vid.h"
 #include "old_mame_raster.h"
+#include "galsnd_stream.h"
 
 static struct rectangle spritevisiblearea =
 {
@@ -283,7 +284,7 @@ void galaxian_attributes_w(int offset, int data)
 {
 	if ((offset & 1) && galaxian_attributesram[offset] != data)
 	{
-		int i;
+		//int i;
 
 		//for (i = offset / 2; i < videoram_size; i += 32)
 			//dirtybuffer[i] = 1;
@@ -370,6 +371,15 @@ int galaxian_vh_start(void)
 	gfx_extend = 0;
 	bank_mask = 0;
 	stars_type = 0;
+	
+
+	galaxian_attributesram = &Machine->memory_region[0][0x5800];
+	galaxian_bulletsram = &Machine->memory_region[0][0x5860];
+	galaxian_bulletsram_size = 0x20;
+	videoram = &Machine->memory_region[0][0x5000];
 	videoram_size = 0x400;
+	spriteram = &Machine->memory_region[0][0x5840];
+	spriteram_size = 0x20;
+	
 	return common_vh_start();
 }

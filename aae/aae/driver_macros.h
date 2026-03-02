@@ -96,7 +96,7 @@
 #define AAE_CPU_NONE_ENTRY() \
     { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, CPU_NONE, 0, 0, 0, 0, nullptr }
 
-// Emit the entire cpu array POSITIONALLY (no .cpu = … designator!)
+// Emit the entire cpu array POSITIONALLY (no .cpu = ... designator!)
 // This must appear exactly where the cpu field belongs in AAEDriver's initializer.
 #define AAE_DRIVER_CPUS(e0, e1, e2, e3) \
     { e0, e1, e2, e3 },

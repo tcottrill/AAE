@@ -256,7 +256,7 @@ void cpu_6809::change_pc(uint16_t pcreg)
 	//change_pc_called = 1;
 	slapstic_en = 1;
 	if (m6809_slapstic) cpu_setOPbase16(pcreg);
-	// I don't have any other reason to change the PC? No banking? I am cluelessa bout how mame does the banking properly.
+	// I don't have any other reason to change the PC? No banking? I am clueless about how mame does the banking properly.
 	//else
 	//	change_pc16(pcreg);
 

@@ -5,7 +5,7 @@
 typedef struct {
 	char rompath[256];
 	char samplepath[256];
-	
+	char artpath[256];
 	int kreset;
 	int ktest;
 	int ktestadv;
@@ -64,6 +64,7 @@ typedef struct {
 	int dblbuffer;
 	int showinfo; //Show readme info message
 	char* exrompath; //optional path for roms
+	char* exartpath; // optional path for artwork files
 	int hack;
 	int cheat;
 	int debug;
@@ -79,6 +80,11 @@ typedef struct {
 	int boostThread;      // 1 = boost thread priority above normal
 	int setTimerRes;      // 1 = enable 1ms timer resolution
 	int preventSleep;     // 1 = prevent system sleep during gameplay
+	// --- Exit confirmation dialog ---
+	// 1 = show YES/NO prompt before exiting (default)
+	// 0 = exit immediately with no prompt
+	int confirm_exit;
+	int flip_gui_controls;
 
 }settings;
 

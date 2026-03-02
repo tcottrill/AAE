@@ -74,7 +74,7 @@ static void ReportOpenGLCapabilities()
 			if (major >= 4)
 				LOG_INFO("GLSL 4.x or higher is supported");
 			else
-				LOG_ERROR("GLSL version is below 4.x — some shaders may be incompatible");
+				LOG_ERROR("GLSL version is below 4.x - some shaders may be incompatible");
 		}
 		else {
 			LOG_ERROR("Unable to parse GLSL version string");
@@ -249,7 +249,7 @@ bool InitOpenGLContext(bool forceLegacyGL2, bool enableMultisample, bool useCore
 		}
 	}
 	else {
-		LOG_INFO("MSAA not enabled or not supported — using legacy pixel format");
+		LOG_INFO("MSAA not enabled or not supported - using legacy pixel format");
 	}
 
 	// Step 5: Create final OpenGL context
@@ -271,7 +271,7 @@ bool InitOpenGLContext(bool forceLegacyGL2, bool enableMultisample, bool useCore
 
 		hRC = wglCreateContextAttribsARB(hDC, 0, attribs);
 		if (!hRC) {
-			LOG_ERROR("wglCreateContextAttribsARB failed — falling back to OpenGL 2.1");
+			LOG_ERROR("wglCreateContextAttribsARB failed - falling back to OpenGL 2.1");
 			hRC = tempContext;
 		}
 		else {

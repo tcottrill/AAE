@@ -1,21 +1,50 @@
-//==========================================================================
-// AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME
-// code, 0.29 through .90 mixed with code of my own. This emulator was
-// created solely for my amusement and learning and is provided only
-// as an archival experience.
+// -----------------------------------------------------------------------------
+// Legacy MAME-Derived Module
+// This file contains code originally developed as part of the M.A.M.E. Project.
+// Portions of this file remain under the copyright of the original MAME authors
+// and contributors. It has since been adapted and modernized for integration
+// with the Game Engine Alpha project.
 //
-// All MAME code used and abused in this emulator remains the copyright
-// of the dedicated people who spend countless hours creating it. All
-// MAME code should be annotated as belonging to the MAME TEAM.
+// Integration:
+//   This library is part of the A.A.E emulator project and is tightly
+//   integrated with its texture management, logging, and math utility systems.
 //
-// SOME CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.
-//==========================================================================
+// Licensing Notice:
+//   - Original portions of this code remain (C) the M.A.M.E. Project and its
+//     respective contributors under their original terms of distribution.
+//   - Modifications, enhancements, and new code are (C) 2025/2026 Tim Cottrill and
+//     released under the GNU General Public License v3 (GPLv3) or later.
+//   - Redistribution must preserve both this notice and the original MAME
+//     copyright acknowledgement.
+//
+// License:
+//   This program is free software: you can redistribute it and/or modify
+//   it under the terms of the GNU General Public License as published by
+//   the Free Software Foundation, either version 3 of the License, or
+//   (at your option) any later version.
+//
+//   This program is distributed in the hope that it will be useful,
+//   but WITHOUT ANY WARRANTY; without even the implied warranty of
+//   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+//   GNU General Public License for more details.
+//
+//   You should have received a copy of the GNU General Public License
+//   along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// Original Copyright:
+//   This file is originally part of and copyright the M.A.M.E. Project.
+//   For more information about MAME licensing, see the original MAME source
+//   distribution and its associated license files.
+//
+// -----------------------------------------------------------------------------
 
+// Notes:
+// The timer pulse in this code doesn't work like mame, it's just a resettable one-shot timer
+// The main timer code is a repeatable timer, it's confusing and just another thing I need to fix
 
 #include "aae_mame_driver.h"
 #include "timer.h"
 #include "sys_log.h"
-
 #include <vector>
 #include <optional>
 #include <algorithm>
@@ -53,9 +82,10 @@ void timer_init()
 		x++;
 	}
 	timers.clear();
+	timers.reserve(16);
 }
 
-int timer_allocate_slot()
+static int timer_allocate_slot()
 {
 	for (size_t i = 0; i < timers.size(); ++i) {
 		if (!timers[i].has_value())
@@ -116,12 +146,15 @@ void timer_remove(int id)
 	}
 }
 
-void timer_reset(int id, double)
+void timer_reset(int id, double duration)
 {
 	if (id >= 0 && id < static_cast<int>(timers.size()) && timers[id].has_value()) {
 		timers[id]->count = 0;
+		if (duration > 0.0) {
+			timers[id]->period = Machine->gamedrv->cpu[timers[id]->cpu].cpu_freq * duration;
+		}
 		if (VERBOSE) {
-			LOG_INFO("Timer %d reset", id);
+			LOG_INFO("Timer %d reset, period = %f", id, timers[id]->period);
 		}
 	}
 }
@@ -131,36 +164,36 @@ int timer_is_timer_enabled(int id)
 	return (id >= 0 && id < static_cast<int>(timers.size()) && timers[id].has_value() && timers[id]->enabled);
 }
 
+
 void timer_update(int cycles, int cpunum)
 {
-	for (size_t i = 0; i < timers.size(); ++i) {
-		auto& opt_timer = timers[i];
-
-		if (!opt_timer || !opt_timer->enabled || opt_timer->cpu != cpunum)
+	size_t count = timers.size();  // snapshot size — only process existing timers
+	for (size_t i = 0; i < count; ++i) {
+		if (!timers[i] || !timers[i]->enabled || timers[i]->cpu != cpunum)
 			continue;
 
-		auto& t = *opt_timer;
-		t.count += cycles;
+		timers[i]->count += cycles;
 
-		if (VERBOSE) {
-			//LOG_INFO("Timer %zu update: count = %f, period = %f", i, t.count, t.period);
-		}
-
-		if (t.count >= t.period)
+		while (timers[i] && timers[i]->count >= timers[i]->period)
 		{
-			if (VERBOSE) {
-				LOG_INFO("Timer %zu fired on CPU %d", i, t.cpu);
-			}
+			timers[i]->count -= timers[i]->period;
 
-			t.count = 0;
-			if (t.callback) t.callback(t.callback_param);
+			auto cb = timers[i]->callback;       // copy before mutation
+			int param = timers[i]->callback_param;
+			bool is_oneshot = timers[i]->one_shot;
+			double repeat = timers[i]->repeat;
 
-			if (t.one_shot) {
+			if (cb) cb(param);
+
+			// After callback, the slot may have been removed or replaced
+			if (!timers[i]) break;
+
+			if (is_oneshot) {
 				timer_remove(static_cast<int>(i));
+				break;
 			}
-			else if (t.repeat > 0.0) {
-				// Switch to the repeat interval after the first fire.
-				t.period = t.repeat;
+			else if (repeat > 0.0) {
+				timers[i]->period = repeat;
 			}
 		}
 	}
@@ -203,55 +236,4 @@ void timer_clear_end_of_game()
 	}
 }
 
-// -----------------------------------------------------------------------------
-// New: Allocate a disabled timer with a stored callback (MAME-style).
-// You arm it with timer_adjust(...).
-// -----------------------------------------------------------------------------
-int timer_alloc(std::function<void(int)> callback)
-{
-	if (!callback) return -1;
-	int index = timer_allocate_slot();
-	auto& t = timers[index].emplace();
-	t.callback = std::move(callback);
-	t.callback_param = 0;
-	t.one_shot = true;
-	t.period = 0.0;
-	t.count = 0.0;
-	t.cpu = 0;
-	t.enabled = false;
-	t.repeat = 0.0;
-	if (VERBOSE) {
-		LOG_INFO("Timer %d allocated (disabled)", index);
-	}
-	return index;
-}
 
-// -----------------------------------------------------------------------------
-// New: Arm or re-arm an existing timer (MAME-style).
-// duration: seconds until the first fire (TIME_NOW => ASAP on next update)
-// param:    full value given to callback; low 4 bits select driving CPU
-// period:   seconds for subsequent firings (0 => one-shot)
-// -----------------------------------------------------------------------------
-void timer_adjust(int id, double duration, int param, double period)
-{
-	if (id < 0 || id >= static_cast<int>(timers.size()) || !timers[id].has_value())
-		return;
-
-	Timer& t = *timers[id];
-	t.cpu = (param & 0x0f);
-	t.callback_param = param; // pass whole param like MAME
-
-	double hz = Machine->gamedrv->cpu[t.cpu].cpu_freq;
-	// TIME_NOW -> zero-cycle delay (fires on next timer_update for that CPU).
-	t.period = (duration <= TIME_NOW) ? 0.0 : (duration * hz);
-	t.repeat = (period > 0.0) ? (period * hz) : 0.0;
-	t.one_shot = (t.repeat <= 0.0);
-
-	t.count = 0.0;
-	t.enabled = true;
-
-	if (VERBOSE) {
-		LOG_INFO("Timer %d adjusted: CPU %d, first=%f cyc, repeat=%f cyc, oneshot=%d",
-			id, t.cpu, t.period, t.repeat, t.one_shot);
-	}
-}

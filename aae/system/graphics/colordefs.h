@@ -1,7 +1,7 @@
 #pragma once
 // -----------------------------------------------------------------------------
 // Legacy MAME-Derived Module
-// This file contains code originally developed as part of the M.A.M.E.™ Project.
+// This file contains code originally developed as part of the M.A.M.E. Project.
 // Portions of this file remain under the copyright of the original MAME authors
 // and contributors. It has since been adapted and modernized for integration
 // with the Game Engine Alpha project.
@@ -11,9 +11,9 @@
 //   integrated with its texture management, logging, and math utility systems.
 //
 // Licensing Notice:
-//   - Original portions of this code remain © the M.A.M.E.™ Project and its
+//   - Original portions of this code remain @ the M.A.M.E. (TM) Project and its
 //     respective contributors under their original terms of distribution.
-//   - Modifications, enhancements, and new code are © 2025 Tim Cottrill and
+//   - Modifications, enhancements, and new code are @ 2025 Tim Cottrill and
 //     released under the GNU General Public License v3 (GPLv3) or later.
 //   - Redistribution must preserve both this notice and the original MAME
 //     copyright acknowledgement.
@@ -33,7 +33,7 @@
 //   along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // Original Copyright:
-//   This file is originally part of and copyright the M.A.M.E.™ Project.
+//   This file is originally part of and copyright the M.A.M.E.(TM) Project.
 //   For more information about MAME licensing, see the original MAME source
 //   distribution and its associated license files.
 //

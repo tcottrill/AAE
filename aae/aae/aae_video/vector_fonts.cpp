@@ -1,12 +1,21 @@
+// ============================================================================
+// vector_fonts.cpp
+// ============================================================================
 #include "vector_fonts.h"
+
 #include "shader_util.h"
-#include "colordefs.h"   // <-- required
-#include <vector>
+#include "colordefs.h"
+
 #include <cstdio>
 #include <cstring>
+#include <cstdarg>
 
-constexpr float FONT_SPACING = 9.5;
-constexpr int    EOC = 256;
+// Disable warnings about double-to-float conversions in the font data.
+#pragma warning(disable : 4305)
+
+static constexpr float CHAR_GAP = 2.0f;     // Inter-character gap (unscaled units)
+static constexpr float SPACE_WIDTH = 7.0f;   // Space character width (unscaled units)
+static constexpr int EOC = 256;
 
 // -----------------------------------------------------------------------------
 // Inline Shaders for OpenGL 2.1
@@ -14,12 +23,31 @@ constexpr int    EOC = 256;
 static const char* vfVertexShader = R"glsl(
 #version 120
 attribute vec2 aPos;
+attribute vec2 aOrigin;
+attribute float aAngle;
 attribute vec4 aColor;
 varying vec4 vColor;
 uniform mat4 uMVP;
 void main() {
     vColor = aColor;
-    gl_Position = uMVP * vec4(aPos, 0.0, 1.0);
+
+    // Convert degrees to radians
+    float rad = radians(aAngle);
+    float c = cos(rad);
+    float s = sin(rad);
+
+    // Calculate position relative to the text origin
+    vec2 local = aPos - aOrigin;
+
+    // Rotate
+    vec2 rotated;
+    rotated.x = local.x * c - local.y * s;
+    rotated.y = local.x * s + local.y * c;
+
+    // Translate back to world space
+    vec2 finalPos = rotated + aOrigin;
+
+    gl_Position = uMVP * vec4(finalPos, 0.0, 1.0);
 }
 )glsl";
 
@@ -32,48 +60,32 @@ void main() {
 )glsl";
 
 // -----------------------------------------------------------------------------
-// makeOrtho
-// Creates an orthographic projection matrix for rendering in 2D screen space.
-// The resulting matrix maps the specified left/right, bottom/top, and near/far
-// clipping planes into normalized device coordinates (-1 to 1) as required by
-// OpenGL. Returned as a Mat4 in column-major order.
-//
-// Parameters:
-//   left     - Left edge of the view volume.
-//   right    - Right edge of the view volume.
-//   bottom   - Bottom edge of the view volume.
-//   top      - Top edge of the view volume.
-//   nearVal  - Distance to the near clipping plane.
-//   farVal   - Distance to the far clipping plane.
-//
-// Returns:
-//   Mat4 containing the computed orthographic projection matrix.
-// -----------------------------------------------------------------------------
-Mat4 makeOrtho(float left, float right, float bottom, float top, float nearVal, float farVal) {
-	Mat4 mat{};
-	float rl = right - left;
-	float tb = top - bottom;
-	float fn = farVal - nearVal;
-
-	mat.m[0] = 2.0f / rl; mat.m[4] = 0.0f;       mat.m[8] = 0.0f;        mat.m[12] = -(right + left) / rl;
-	mat.m[1] = 0.0f;      mat.m[5] = 2.0f / tb;  mat.m[9] = 0.0f;        mat.m[13] = -(top + bottom) / tb;
-	mat.m[2] = 0.0f;      mat.m[6] = 0.0f;       mat.m[10] = -2.0f / fn;  mat.m[14] = -(farVal + nearVal) / fn;
-	mat.m[3] = 0.0f;      mat.m[7] = 0.0f;       mat.m[11] = 0.0f;        mat.m[15] = 1.0f;
-
-	return mat;
-}
-
-// -----------------------------------------------------------------------------
 // Full Embedded Font Data
 // -----------------------------------------------------------------------------
 
 static float fontdata[] = {
+	// 0x1E (30) - UP TRIANGLE (outline)
+	30, 3, 7, 0, 0, 0, 0, 7, 0, 7, 0, 3, 7, EOC,
+	// 0x1F (31) - DOWN TRIANGLE (outline)
+	31, 0, 7, 3, 0, 3, 0, 7, 7, 7, 7, 0, 7, EOC,
 	32, EOC,
 	33, 3.5, 2, 3.5, 6, 3.5, 0, 3.5, 1, EOC,
+	// 34 '"' - double quote
+	34, 2.5, 6, 2.5, 5, 4.5, 6, 4.5, 5, EOC,
+	// 35 '#'
+	35, 2, 1, 2, 6, 5, 1, 5, 6, 1, 3, 6, 3, 1, 4, 6, 4, EOC,
+	// 36 '$'
+	36, 3.5, 0, 3.5, 6, 6, 6, 1, 6, 1, 6, 1, 3, 1, 3, 6, 3, 6, 3, 6, 0, 6, 0, 1, 0, EOC,
 	37, 0, 0, 7, 6, 1, 6, 1, 5, 6, 0, 6, 1, EOC,
+	// 38 '&'
+	38, 6, 0, 1, 0, 1, 0, 1, 3, 1, 3, 6, 3, 6, 3, 6, 6, 6, 6, 1, 6, 3.5, 3, 6, 0, EOC,
 	39, 3.5, 6, 3.5, 5, EOC,
 	40, 2, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 5, 0, 5, 1, 6, 1, 6, 2, 6, EOC,
 	41, 5, 0, 6, 0, 6, 0, 7, 1, 7, 1, 7, 5, 7, 5, 6, 6, 6, 6, 5, 6, EOC,
+	// *
+	42, 3.5, 1, 3.5, 5, 1, 3, 6, 3, 1.5, 1.5, 5.5, 4.5, 1.5, 4.5, 5.5, 1.5, EOC,
+	// 43 '+'
+	43, 3.5, 1, 3.5, 5, 1.5, 3, 5.5, 3, EOC,
 	44, 3.5, 6, 3.5, 5, EOC,
 	45, 1, 3, 6, 3, EOC,
 	46, 3, 0, 4, 0, EOC,
@@ -88,9 +100,17 @@ static float fontdata[] = {
 	55, 2, 0, 7, 6, 7, 6, 0, 6, EOC,
 	56, 0, 0, 0, 6, 0, 6, 7, 6, 0, 3, 7, 3, 0, 0, 7, 0, 7, 0, 7, 6, EOC,
 	57, 0, 0, 7, 0, 7, 0, 7, 6, 7, 6, 0, 6, 0, 6, 0, 3, 0, 3, 7, 3, EOC,
+	// 58 ':'
+	58, 3.5, 5, 3.5, 5, 3.5, 1, 3.5, 1, EOC,
+	// 59 ';'
+	59, 3.5, 5, 3.5, 5, 3.5, 1, 3.5, 0, EOC,
 	60, 0, 3, 7, 0, 7, 0, 7, 7, 7, 7, 0, 3, EOC,
+	// 61 '='
+	61, 1, 4, 6, 4, 1, 2, 6, 2, EOC,
 	62, 0, 0, 7, 3, 7, 3, 0, 7, 0, 7, 0, 0, EOC,
 	63, 0, 6, 7, 6, 7, 6, 7, 3, 7, 3, 2, 3, 2, 3, 2, 2, 2, 0, 2, 1, EOC,
+	// 64 '@'
+	64, 0, 0, 7, 0, 7, 0, 7, 6, 7, 6, 0, 6, 0, 6, 0, 0, 2, 2, 5, 2, 5, 2, 5, 4, 5, 4, 2, 4, 6, 1, 6, 3, EOC,
 	65, 0, 0, 0, 3, 0, 6, 7, 6, 0, 3, 7, 3, 0, 0, 7, 0, 7, 0, 7, 6, EOC,
 	66, 0, 0, 0, 6, 0, 6, 6, 6, 6, 6, 7, 5, 7, 5, 7, 4, 7, 4, 6, 3, 6, 3, 0, 3, 0, 0, 6, 0, 6, 0, 7, 1, 7, 1, 7, 2, 7, 2, 6, 3, EOC,
 	67, 0, 0, 7, 0, 7, 6, 0, 6, 0, 6, 0, 0, EOC,
@@ -118,8 +138,13 @@ static float fontdata[] = {
 	89, 0, 6, 3.5, 3, 3.5, 3, 3.5, 0, 3.5, 3, 7, 6, EOC,
 	90, 0, 6, 7, 6, 7, 6, 0, 0, 0, 0, 7, 0, EOC,
 	91, 2, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 5, 0, 5, 1, 6, 1, 6, 2, 6, EOC,
+	// 92 '\'
+	92, 0, 0, 7, 7, EOC,
 	93, 5, 0, 6, 0, 6, 0, 7, 1, 7, 1, 7, 5, 7, 5, 6, 6, 6, 6, 5, 6, EOC,
+	94, 0, 0, 3.5, 6, 3.5, 6, 7, 0, EOC,
 	95, 1, 0, 6, 0, EOC,
+	// 96 '`'
+	96, 3.5, 6, 2.5, 5.5, EOC,
 	97, 0, 0, 0, 3, 0, 6, 7, 6, 0, 3, 7, 3, 0, 0, 7, 0, 7, 0, 7, 6, EOC,
 	98, 0, 0, 0, 6, 0, 6, 6, 6, 6, 6, 7, 5, 7, 5, 7, 4, 7, 4, 6, 3, 6, 3, 0, 3, 0, 0, 6, 0, 6, 0, 7, 1, 7, 1, 7, 2, 7, 2, 6, 3, EOC,
 	99, 0, 0, 7, 0, 7, 6, 0, 6, 0, 6, 0, 0, EOC,
@@ -147,14 +172,60 @@ static float fontdata[] = {
 	121, 0, 6, 3.5, 3, 3.5, 3, 3.5, 0, 3.5, 3, 7, 6, EOC,
 	122, 0, 6, 7, 6, 7, 6, 0, 0, 0, 0, 7, 0, EOC,
 	123, 2, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 5, 0, 5, 1, 6, 1, 6, 2, 6, EOC,
+	// 124 '|'
+	124, 3.5, 0, 3.5, 6, EOC,
 	125, 5, 0, 6, 0, 6, 0, 7, 1, 7, 1, 7, 5, 7, 5, 6, 6, 6, 6, 5, 6, EOC,
-	-5, -5
+	// 126 '~'
+	126, 1, 4, 3, 5, 3, 5, 5, 4, 5, 4, 6.5, 5, EOC,
+	
+	127, // // Ship without thrust
+	 6, 2, 18, 6 ,   // top edge to nose
+	 18, 6, 6, 10 ,  // bottom edge from nose
+	 6, 10, 7, 8 ,   // rear bottom short
+	 7, 8, 7, 4 ,    // rear inner vertical
+	 7, 4, 6, 2 ,    // rear top short
+	 EOC,
+
+	 128, // Ship with thrust
+	 6, 2, 18, 6,   // top edge to nose
+	 18, 6, 6, 10,  // bottom edge from nose
+	 6, 10, 7, 8,   // rear bottom short
+	 7, 8, 7, 4,    // rear inner vertical
+	 7, 4, 6, 2,    // rear top short
+
+	 // Tail notch
+	 7, 4, 3, 6,    // inner top to tail
+	 3, 6, 7, 8, EOC, // tail to inner bottom
+
+	// 0x81 (129) - Explosion (8 asterisks at compass points, 1.5 diameters apart)
+	// Bounding box: x=[6, 26] y=[6.5, 25.5]  Center: (16, 16)
+	129,
+	// N
+	16.0, 21.5, 16.0, 25.5,  13.5, 23.5, 18.5, 23.5,  14.0, 22.0, 18.0, 25.0,  14.0, 25.0, 18.0, 22.0,
+	// NE
+	21.3, 19.3, 21.3, 23.3,  18.8, 21.3, 23.8, 21.3,  19.3, 19.8, 23.3, 22.8,  19.3, 22.8, 23.3, 19.8,
+	// E
+	23.5, 14.0, 23.5, 18.0,  21.0, 16.0, 26.0, 16.0,  21.5, 14.5, 25.5, 17.5,  21.5, 17.5, 25.5, 14.5,
+	// SE
+	21.3, 8.7, 21.3, 12.7,  18.8, 10.7, 23.8, 10.7,  19.3, 9.2, 23.3, 12.2,  19.3, 12.2, 23.3, 9.2,
+	// S
+	16.0, 6.5, 16.0, 10.5,  13.5, 8.5, 18.5, 8.5,  14.0, 7.0, 18.0, 10.0,  14.0, 10.0, 18.0, 7.0,
+	// SW
+	10.7, 8.7, 10.7, 12.7,  8.2, 10.7, 13.2, 10.7,  8.7, 9.2, 12.7, 12.2,  8.7, 12.2, 12.7, 9.2,
+	// W
+	8.5, 14.0, 8.5, 18.0,  6.0, 16.0, 11.0, 16.0,  6.5, 14.5, 10.5, 17.5,  6.5, 17.5, 10.5, 14.5,
+	// NW
+	10.7, 19.3, 10.7, 23.3,  8.2, 21.3, 13.2, 21.3,  8.7, 19.8, 12.7, 22.8,  8.7, 22.8, 12.7, 19.8,
+	EOC,
+
+		-5, -5
 };
 
 // -----------------------------------------------------------------------------
 // Singleton Access
 // -----------------------------------------------------------------------------
-VectorFont& VectorFont::Instance() {
+VectorFont& VectorFont::Instance()
+{
 	static VectorFont instance;
 	return instance;
 }
@@ -163,83 +234,83 @@ VectorFont& VectorFont::Instance() {
 // Constructor / Destructor
 // -----------------------------------------------------------------------------
 VectorFont::VectorFont()
-	: vfProgram(0), vfVBO(0), attrPos(-1), attrColor(-1), uniMVP(-1),
-	lastx(0), lastscale(1.0f) {
-	for (int i = 0; i < 16; i++) proj[i] = (i % 5 == 0) ? 1.0f : 0.0f;
+	: vfProgram(0)
+	, vfVBO(0)
+	, attrPos(-1)
+	, attrColor(-1)
+	, attrOrigin(-1)
+	, attrAngle(-1)
+	, uniMVP(-1)
+	, proj()
+	, screenWidth(0)
+	, screenHeight(0)
+	, lastx(0)
+	, lastscale(1.0f)
+{
 	InitFontData();
 }
 
-VectorFont::~VectorFont() {
-	if (vfVBO) { glDeleteBuffers(1, &vfVBO); vfVBO = 0; }
-	if (vfProgram) { glDeleteProgram(vfProgram); vfProgram = 0; }
-}
+VectorFont::~VectorFont()
+{
+	if (vfVBO)
+	{
+		glDeleteBuffers(1, &vfVBO);
+		vfVBO = 0;
+	}
 
-// -----------------------------------------------------------------------------
-// Public API
-// -----------------------------------------------------------------------------
+	if (vfProgram)
+	{
+		glDeleteProgram(vfProgram);
+		vfProgram = 0;
+	}
+}
 
 // -----------------------------------------------------------------------------
 // Initialize
-// Sets up the VectorFont system by compiling shaders, creating buffers, and
-// setting the initial orthographic projection matrix based on the given
-// screen width and height. Must be called once after OpenGL context creation.
-//
-// Parameters:
-//   width   - Screen width in pixels.
-//   height  - Screen height in pixels.
 // -----------------------------------------------------------------------------
-void VectorFont::Initialize(int width, int height) {
+void VectorFont::Initialize(int width, int height)
+{
 	InitGL();
+
 	screenWidth = width;
 	screenHeight = height;
-	Mat4 ortho = makeOrtho(0.0f, (float)width, 0.0f, (float)height, -1.0f, 1.0f);
-	SetProjection(ortho);
+
+	// Use aae::math::ortho from MathUtils.h
+	proj = aae::math::ortho(0.0f, (float)width, 0.0f, (float)height);
 }
-// -----------------------------------------------------------------------------
-// Resize
-// Updates the internal orthographic projection matrix to match a new window
-// size. Does not reinitialize OpenGL resources. Call this when the window is
-// resized to keep text aligned with the new dimensions.
-//
-// Parameters:
-//   width   - New screen width in pixels.
-//   height  - New screen height in pixels.
-// -----------------------------------------------------------------------------
-void VectorFont::Resize(int width, int height) {
+
+void VectorFont::Resize(int width, int height)
+{
 	screenWidth = width;
 	screenHeight = height;
 
-	// Update projection matrix
-	Mat4 ortho = makeOrtho(0.0f, (float)width, 0.0f, (float)height, -1.0f, 1.0f);
-	SetProjection(ortho);
-
-	// Ensure OpenGL viewport matches the new dimensions
+	proj = aae::math::ortho(0.0f, (float)width, 0.0f, (float)height);
 	glViewport(0, 0, screenWidth, screenHeight);
 }
 
 // -----------------------------------------------------------------------------
 // Begin
-// Prepares the VectorFont renderer for batched text drawing. Binds the font
-// shader program, uploads the projection matrix, and enables blending for
-// alpha transparency. Must be called before any Print() calls each frame.
 // -----------------------------------------------------------------------------
-void VectorFont::Begin() {
-	glViewport(0, 0, screenWidth, screenHeight);   // <-- sets the viewport
+void VectorFont::Begin()
+{
+	glViewport(0, 0, screenWidth, screenHeight);
+
 	glUseProgram(vfProgram);
-	glUniformMatrix4fv(uniMVP, 1, GL_FALSE, proj);
+
+	// Use aae::math::value_ptr to get the raw float pointer
+	glUniformMatrix4fv(uniMVP, 1, GL_FALSE, aae::math::value_ptr(proj));
+
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }
 
 // -----------------------------------------------------------------------------
 // End
-// Finalizes the VectorFont rendering process by uploading accumulated vertex
-// data to the GPU and issuing the draw call. All text queued with Print() is
-// rendered during this call. Automatically unbinds the shader and VBO after
-// drawing and clears the vertex buffer for the next frame.
 // -----------------------------------------------------------------------------
-void VectorFont::End() {
-	if (drawVerts.empty()) {
+void VectorFont::End()
+{
+	if (drawVerts.empty())
+	{
 		glUseProgram(0);
 		return;
 	}
@@ -247,113 +318,157 @@ void VectorFont::End() {
 	glBindBuffer(GL_ARRAY_BUFFER, vfVBO);
 	glBufferData(GL_ARRAY_BUFFER, drawVerts.size() * sizeof(VFVertex), drawVerts.data(), GL_DYNAMIC_DRAW);
 
-	// Position attribute: 2 floats at start
+	// Position (pos)
 	glEnableVertexAttribArray(attrPos);
-	glVertexAttribPointer(attrPos, 2, GL_FLOAT, GL_FALSE, sizeof(VFVertex), (void*)0);
+	glVertexAttribPointer(attrPos, 2, GL_FLOAT, GL_FALSE, sizeof(VFVertex), (void*)offsetof(VFVertex, pos));
 
-	// Color attribute: 4 unsigned bytes, normalized, offset after x,y
+	// Origin (origin)
+	glEnableVertexAttribArray(attrOrigin);
+	glVertexAttribPointer(attrOrigin, 2, GL_FLOAT, GL_FALSE, sizeof(VFVertex), (void*)offsetof(VFVertex, origin));
+
+	// Angle
+	glEnableVertexAttribArray(attrAngle);
+	glVertexAttribPointer(attrAngle, 1, GL_FLOAT, GL_FALSE, sizeof(VFVertex), (void*)offsetof(VFVertex, angle));
+
+	// Color
 	glEnableVertexAttribArray(attrColor);
 	glVertexAttribPointer(attrColor, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(VFVertex), (void*)offsetof(VFVertex, color));
 
-	glDrawArrays(GL_LINES, 0, static_cast<GLsizei>(drawVerts.size()));
-	glDrawArrays(GL_POINTS, 0, static_cast<GLsizei>(drawVerts.size()));
+	glDrawArrays(GL_LINES, 0, (GLsizei)drawVerts.size());
+	glDrawArrays(GL_POINTS, 0, (GLsizei)drawVerts.size());
 
 	glDisableVertexAttribArray(attrPos);
+	glDisableVertexAttribArray(attrOrigin);
+	glDisableVertexAttribArray(attrAngle);
 	glDisableVertexAttribArray(attrColor);
+
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
 	glUseProgram(0);
 
 	drawVerts.clear();
 }
+
 // -----------------------------------------------------------------------------
 // DrawQuad
-// Uses the active VectorFont shader (set in Begin()) to render a solid quad.
 // -----------------------------------------------------------------------------
 void VectorFont::DrawQuad(float x, float y, float width, float height, rgb_t color)
 {
-	// Calculate quad corners
-	float minx = x - (width * 0.5f);
-	float miny = y - (height * 0.5f);
-	float maxx = x + (width * 0.5f);
-	float maxy = y + (height * 0.5f);
+	const float minx = x - (width * 0.5f);
+	const float miny = y - (height * 0.5f);
+	const float maxx = x + (width * 0.5f);
+	const float maxy = y + (height * 0.5f);
 
-	// Normalize color
-	float r = RGB_RED(color) / 255.0f;
-	float g = RGB_GREEN(color) / 255.0f;
-	float b = RGB_BLUE(color) / 255.0f;
-	float a = RGB_ALPHA(color) / 255.0f;
+	// Temporary immediate-mode draw using the new attributes
+	std::vector<VFVertex> quadV;
+	quadV.reserve(6);
 
-	// Interleave position(2) + color(4)
-	float verts[] = {
-		minx, miny, r, g, b, a,
-		maxx, miny, r, g, b, a,
-		maxx, maxy, r, g, b, a,
+	VFVertex qv;
+	qv.origin = aae::math::vec2(0.0f, 0.0f);
+	qv.angle = 0.0f;
+	qv.color = color;
 
-		minx, miny, r, g, b, a,
-		maxx, maxy, r, g, b, a,
-		minx, maxy, r, g, b, a
-	};
+	qv.pos = aae::math::vec2(minx, miny); quadV.push_back(qv);
+	qv.pos = aae::math::vec2(maxx, miny); quadV.push_back(qv);
+	qv.pos = aae::math::vec2(maxx, maxy); quadV.push_back(qv);
 
-	// Draw using the same shader attributes as text
-	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	qv.pos = aae::math::vec2(minx, miny); quadV.push_back(qv);
+	qv.pos = aae::math::vec2(maxx, maxy); quadV.push_back(qv);
+	qv.pos = aae::math::vec2(minx, maxy); quadV.push_back(qv);
+
+	glUseProgram(vfProgram);
+	glUniformMatrix4fv(uniMVP, 1, GL_FALSE, aae::math::value_ptr(proj));
+
+	GLuint tmpVBO = 0;
+	glGenBuffers(1, &tmpVBO);
+	glBindBuffer(GL_ARRAY_BUFFER, tmpVBO);
+	glBufferData(GL_ARRAY_BUFFER, quadV.size() * sizeof(VFVertex), quadV.data(), GL_STREAM_DRAW);
+
 	glEnableVertexAttribArray(attrPos);
-	glVertexAttribPointer(attrPos, 2, GL_FLOAT, GL_FALSE, 6 * sizeof(float), verts);
+	glVertexAttribPointer(attrPos, 2, GL_FLOAT, GL_FALSE, sizeof(VFVertex), (void*)offsetof(VFVertex, pos));
+
+	glEnableVertexAttribArray(attrOrigin);
+	glVertexAttribPointer(attrOrigin, 2, GL_FLOAT, GL_FALSE, sizeof(VFVertex), (void*)offsetof(VFVertex, origin));
+
+	glEnableVertexAttribArray(attrAngle);
+	glVertexAttribPointer(attrAngle, 1, GL_FLOAT, GL_FALSE, sizeof(VFVertex), (void*)offsetof(VFVertex, angle));
 
 	glEnableVertexAttribArray(attrColor);
-	glVertexAttribPointer(attrColor, 4, GL_FLOAT, GL_FALSE, 6 * sizeof(float), verts + 2);
+	glVertexAttribPointer(attrColor, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(VFVertex), (void*)offsetof(VFVertex, color));
 
 	glDrawArrays(GL_TRIANGLES, 0, 6);
 
 	glDisableVertexAttribArray(attrPos);
+	glDisableVertexAttribArray(attrOrigin);
+	glDisableVertexAttribArray(attrAngle);
 	glDisableVertexAttribArray(attrColor);
+
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glDeleteBuffers(1, &tmpVBO);
 }
 
 // -----------------------------------------------------------------------------
-// Print
-// Queues a formatted text string for rendering at the specified (x, y)
-// position using the provided color and scaling factor. Supports printf-style
-// formatting for dynamic text content. The text is built into the vertex
-// buffer and rendered when End() is called.
-//
-// Parameters:
-//   x      - Horizontal position (in screen coordinates).
-//   y      - Vertical position (in screen coordinates).
-//   color  - Text color (rgb_t with RGBA support).
-//   scale  - Scaling factor for text size.
-//   fmt    - printf-style format string followed by optional arguments.
-//
-// Notes:
-//   - Multiple Print() calls may be issued between Begin() and End().
-//   - Alpha from color controls blending if enabled.
+// Print (Legacy Overload)
 // -----------------------------------------------------------------------------
-void VectorFont::Print(float x, int y, rgb_t color, float scale, const char* fmt, ...) {
-	if (!fmt) {
-		LOG_ERROR("ERROR: NULL String passed to VectorFont::Print");
-		return;
-	}
-
-	char text[EOC] = "";
+void VectorFont::Print(float x, int y, rgb_t color, float scale, const char* fmt, ...)
+{
 	va_list ap;
 	va_start(ap, fmt);
+
+	char text[EOC];
 	vsnprintf(text, sizeof(text), fmt, ap);
+
 	va_end(ap);
 
-	// If the resulting string is empty, skip rendering
-	if (text[0] == '\0') {
-		return;
-	}
+	// Delegate to the main Print with angle = 0.0f
+	Print(x, y, color, scale, 0.0f, "%s", text);
+}
 
-	for (int i = 0; text[i]; i++) {
-		int idx = fstart[(unsigned char)text[i]] + 1;
+// -----------------------------------------------------------------------------
+// PrintCentered
+// -----------------------------------------------------------------------------
+void VectorFont::PrintCentered(int y, rgb_t color, float scale, const char* str)
+{
+	if (!str || str[0] == '\0') return;
+
+	const float total = GetStringPitch(str, scale, 0);
+	const float scrW = (screenWidth > 0) ? (float)screenWidth : 1024.0f;
+	const float x = (scrW * 0.5f) - (total * 0.5f);
+
+	Print(x, y, color, scale, 0.0f, "%s", str);
+}
+
+// -----------------------------------------------------------------------------
+	// Private Internal Helper: Generates vertices with explicit rotation origin
+	// -----------------------------------------------------------------------------
+void VectorFont::DrawTextInternal(float x, float y, const aae::math::vec2& rotationOrigin,
+	rgb_t color, float scale, float angle, const char* text)
+{
+	for (int i = 0; text[i]; ++i)
+	{
+		const unsigned char ch = (unsigned char)text[i];
+
+		// Space character: advance by space width, no geometry
+		if (ch == 32)
+		{
+			x += fontwidth[32] * scale;
+			continue;
+		}
+
+		int idx = fstart[ch] + 1;
 		int bidx = idx + 1;
-		while (fontdata[idx] != EOC) {
-			float x0 = fontdata[idx] * scale + x;
-			float y0 = fontdata[bidx] * scale + y;
-			float x1 = fontdata[idx + 2] * scale + x;
-			float y1 = fontdata[bidx + 2] * scale + y;
+		const float offset = fontoffset[ch];  // Shift glyph flush left
 
-			VFVertex v1 = { x0, y0, color };
-			VFVertex v2 = { x1, y1, color };
+		while ((int)fontdata[idx] != EOC)
+		{
+			// Vertex positions shifted by -offset to remove left dead space
+			const float x0 = (fontdata[idx] - offset) * scale + x;
+			const float y0 = fontdata[bidx] * scale + y;
+			const float x1 = (fontdata[idx + 2] - offset) * scale + x;
+			const float y1 = fontdata[bidx + 2] * scale + y;
+
+			// Apply the specific pivot point passed by the caller
+			VFVertex v1 = { aae::math::vec2(x0, y0), rotationOrigin, angle, color };
+			VFVertex v2 = { aae::math::vec2(x1, y1), rotationOrigin, angle, color };
 
 			drawVerts.push_back(v1);
 			drawVerts.push_back(v2);
@@ -361,62 +476,169 @@ void VectorFont::Print(float x, int y, rgb_t color, float scale, const char* fmt
 			idx += 4;
 			bidx += 4;
 		}
-		x += FONT_SPACING * scale;
+
+		// Advance by this glyph's proportional width + inter-character gap
+		x += (fontwidth[ch] + CHAR_GAP) * scale;
 	}
 
-	lastx = static_cast<int>(x);
+	lastx = (int)x;
 	lastscale = scale;
 }
 
 // -----------------------------------------------------------------------------
-// PrintCentered
-// Renders a text string horizontally centered on the screen at the given Y
-// position. The X position is calculated automatically based on the string
-// length and scaling factor.
-//
-// Parameters:
-//   y      - Vertical position (in screen coordinates).
-//   color  - Text color (rgb_t with RGBA support).
-//   scale  - Scaling factor for text size.
-//   str    - Null-terminated string to render.
+// Print (Standard)
+// Rotates around the STARTING (X,Y) position.
 // -----------------------------------------------------------------------------
-void VectorFont::PrintCentered(int y, rgb_t color, float scale, const char* str) {
-	int len = static_cast<int>(strnlen(str, 255));
-	// Screen Width is hardcoded here, please fix.
-	float total = len * (FONT_SPACING * scale);
-	float x = (1024.0f / 2.0f) - (total / 2.0f);
-	Print(x, y, color, scale, "%s", str);
+void VectorFont::Print(float x, int y, rgb_t color, float scale, float angle, const char* fmt, ...)
+{
+	if (!fmt) return;
+
+	char text[EOC];
+	va_list ap;
+	va_start(ap, fmt);
+	vsnprintf(text, sizeof(text), fmt, ap);
+	va_end(ap);
+
+	if (text[0] == '\0') return;
+
+	// Pivot is the exact starting coordinate passed by the user.
+	aae::math::vec2 origin(x, (float)y);
+
+	DrawTextInternal(x, (float)y, origin, color, scale, angle, text);
+}
+
+// -----------------------------------------------------------------------------
+// PrintCentered
+// Rotates around the GEOMETRIC CENTER of the text line.
+// -----------------------------------------------------------------------------
+void VectorFont::PrintCentered(int y, rgb_t color, float scale, float angle, const char* str)
+{
+	if (!str || str[0] == '\0') return;
+
+	// 1. Calculate dimensions using centralized pitch calculation
+	const float totalWidth = GetStringPitch(str, scale, 0);
+
+	// 2. Determine screen width (fallback to 1024 if 0)
+	const float scrW = (screenWidth > 0) ? (float)screenWidth : 1024.0f;
+
+	// 3. Calculate Start X (to center horizontally)
+	const float startX = (scrW * 0.5f) - (totalWidth * 0.5f);
+
+	// 4. STRATEGY: Pivot is the center of the bounding box.
+	//    X = Center of the line
+	//    Y = Middle of the font height (range 0..7 -> middle is 3.5)
+	const float centerX = startX + (totalWidth * 0.5f);
+	const float centerY = (float)y + (3.5f * scale);
+
+	aae::math::vec2 center(centerX, centerY);
+
+	DrawTextInternal(startX, (float)y, center, color, scale, angle, str);
+}
+
+// -----------------------------------------------------------------------------
+// DrawGlyph
+// Draws a single glyph centered exactly at (x,y), rotated around that center.
+// -----------------------------------------------------------------------------
+void VectorFont::DrawGlyph(float x, float y, int glyph, rgb_t color, float scale, float angle)
+{
+	if (glyph < 0 || glyph > 255) return;
+
+	// 1. Find the start index for this glyph
+	// Note: fstart is initialized in InitFontData. 
+	// If the glyph hasn't been defined, fstart usually defaults to the space char or 0.
+	// We double check if it points to valid data.
+	int idx = fstart[glyph];
+	if (static_cast<int>(fontdata[idx]) != glyph) {
+		// Fallback: If map is incorrect, try to find it (optional safety)
+		// or just return to avoid crashing. 
+		// For standard initialized data, fstart[glyph] should be correct.
+		return;
+	}
+
+	// 2. Calculate the Bounding Box of the glyph to find its center
+	float minX = 10000.0f, maxX = -10000.0f;
+	float minY = 10000.0f, maxY = -10000.0f;
+
+	// Skip the glyph ID
+	int scanner = idx + 1;
+	bool hasData = false;
+
+	while (static_cast<int>(fontdata[scanner]) != EOC)
+	{
+		// Read segment (x1, y1, x2, y2)
+		float vx1 = fontdata[scanner];
+		float vy1 = fontdata[scanner + 1];
+		float vx2 = fontdata[scanner + 2];
+		float vy2 = fontdata[scanner + 3];
+
+		if (vx1 < minX) minX = vx1;
+		if (vx1 > maxX) maxX = vx1;
+		if (vy1 < minY) minY = vy1;
+		if (vy1 > maxY) maxY = vy1;
+
+		if (vx2 < minX) minX = vx2;
+		if (vx2 > maxX) maxX = vx2;
+		if (vy2 < minY) minY = vy2;
+		if (vy2 > maxY) maxY = vy2;
+
+		hasData = true;
+		scanner += 4;
+	}
+
+	if (!hasData) return;
+
+	// 3. Determine the geometric center of the glyph data
+	float cx = (minX + maxX) * 0.5f;
+	float cy = (minY + maxY) * 0.5f;
+
+	// 4. Calculate the drawing start position.
+	// We want the glyph's (cx, cy) to land exactly on world coordinates (x, y).
+	// DrawTextInternal shifts vertices by -fontoffset, so effective center is (cx - fontoffset).
+	// We want: x = (cx - fontoffset) * scale + startPos  =>  startPos = x - (cx - fontoffset) * scale
+	float drawX = x - ((cx - fontoffset[glyph]) * scale);
+	float drawY = y - (cy * scale);
+
+	// 5. Construct a temporary string containing just this character
+	char str[2] = { (char)glyph, '\0' };
+
+	// 6. Draw it using the internal helper.
+	// The 'rotationOrigin' is the target (x,y) because we want to spin around the screen position.
+	DrawTextInternal(drawX, drawY, aae::math::vec2(x, y), color, scale, angle, str);
 }
 
 // -----------------------------------------------------------------------------
 // GetStringPitch
-// Calculates the horizontal pixel width (pitch) of a string when rendered
-// at the specified scale. Useful for manual alignment or layout calculations.
-//
-// Parameters:
-//   str    - Null-terminated string to measure.
-//   scale  - Scaling factor for text size.
-//   set    - Unused parameter (reserved for future font sets).
-//
-// Returns:
-//   Width in pixels that the string would occupy.
 // -----------------------------------------------------------------------------
-float VectorFont::GetStringPitch(const char* str, float scale, int set) {
+float VectorFont::GetStringPitch(const char* str, float scale, int set)
+{
 	(void)set;
-	int len = static_cast<int>(strnlen(str, 255));
-	return len * (FONT_SPACING * scale);
+	if (!str) return 0.0f;
+
+	float total = 0.0f;
+	for (int i = 0; str[i]; ++i)
+	{
+		const unsigned char ch = (unsigned char)str[i];
+		if (ch == 32)
+			total += fontwidth[32] * scale;
+		else
+			total += (fontwidth[ch] + CHAR_GAP) * scale;
+	}
+	return total;
 }
 
 // -----------------------------------------------------------------------------
-// Private Helpers
+// InitGL
 // -----------------------------------------------------------------------------
-void VectorFont::InitGL() {
+void VectorFont::InitGL()
+{
 	GLuint vs = CompileShader(GL_VERTEX_SHADER, vfVertexShader, "Vector Font VS");
 	GLuint fs = CompileShader(GL_FRAGMENT_SHADER, vfFragmentShader, "Vector Font FS");
 	vfProgram = LinkShaderProgram(vs, fs);
 
 	attrPos = glGetAttribLocation(vfProgram, "aPos");
 	attrColor = glGetAttribLocation(vfProgram, "aColor");
+	attrOrigin = glGetAttribLocation(vfProgram, "aOrigin");
+	attrAngle = glGetAttribLocation(vfProgram, "aAngle");
 	uniMVP = glGetUniformLocation(vfProgram, "uMVP");
 
 	glGenBuffers(1, &vfVBO);
@@ -424,33 +646,69 @@ void VectorFont::InitGL() {
 
 // -----------------------------------------------------------------------------
 // SetProjection
-// Copies the provided orthographic projection matrix into the internal storage
-// used by the VectorFont shader. This matrix is sent to the GPU in Begin().
-//
-// Parameters:
-//   mvp - Reference to a Mat4 containing the projection matrix to use.
 // -----------------------------------------------------------------------------
-void VectorFont::SetProjection(const Mat4& mvp) {
-	memcpy(proj, mvp.m, sizeof(float) * 16);
+void VectorFont::SetProjection(const aae::math::mat4& mvp)
+{
+	proj = mvp;
 }
 
 // -----------------------------------------------------------------------------
 // InitFontData
-// Initializes the font data lookup table `fstart[]` from the embedded fontdata[]
-// array. Each character code (ASCII 32–254) is mapped to its starting index
-// within fontdata. Values outside this range default to 32 (space).
-//
-// Behavior:
-//   - Sets all entries in fstart[] to 32 initially.
-//   - Scans fontdata[] until the sentinel -5 is found.
-//   - Assigns the start offset for every character present in the array.
 // -----------------------------------------------------------------------------
-void VectorFont::InitFontData() {
+void VectorFont::InitFontData()
+{
 	int a = 0;
-	for (int i = 0; i < 257; i++) fstart[i] = 32;
-	while (fontdata[a] > -1) {
-		int d = static_cast<int>(fontdata[a]);
-		if (d > 31 && d < 255) fstart[d] = a;
+
+	for (int i = 0; i < 257; ++i)
+		fstart[i] = 32;
+
+	// Initialize all widths/offsets to 0
+	for (int i = 0; i < 256; ++i)
+	{
+		fontwidth[i] = 0.0f;
+		fontoffset[i] = 0.0f;
+	}
+
+	while (fontdata[a] > -1.0f)
+	{
+		const int d = (int)fontdata[a];
+		if (d > 29 && d < 255)
+			fstart[d] = a;
 		a++;
 	}
+
+	// Calculate proportional width for each glyph using actual bounding box
+	for (int ch = 30; ch < 255; ++ch)
+	{
+		int idx = fstart[ch];
+		if (static_cast<int>(fontdata[idx]) != ch)
+			continue;  // Glyph not defined
+
+		float minX = 10000.0f;
+		float maxX = -10000.0f;
+		int scanner = idx + 1;  // Skip glyph ID
+		bool hasData = false;
+
+		while (static_cast<int>(fontdata[scanner]) != EOC)
+		{
+			float vx1 = fontdata[scanner];
+			float vx2 = fontdata[scanner + 2];
+			if (vx1 < minX) minX = vx1;
+			if (vx1 > maxX) maxX = vx1;
+			if (vx2 < minX) minX = vx2;
+			if (vx2 > maxX) maxX = vx2;
+			hasData = true;
+			scanner += 4;
+		}
+
+		if (hasData)
+		{
+			fontoffset[ch] = minX;                // Left bearing to subtract
+			fontwidth[ch] = maxX - minX;           // Actual visible width
+		}
+	}
+
+	// Space character: fixed width, no offset
+	fontoffset[32] = 0.0f;
+	fontwidth[32] = SPACE_WIDTH;
 }

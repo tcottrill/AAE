@@ -63,7 +63,7 @@ void warlords_vh_convert_color_prom(unsigned char* palette, unsigned char* color
 	int i, j;
 #define COLOR(gfxn,offs) (colortable[Machine->drv->gfxdecodeinfo[gfxn].color_codes_start + offs])
 
-	for (i = 0; i < Machine->drv->total_colors; i++)
+	for (i = 0; i < (INT)Machine->drv->total_colors; i++)
 	{
 		int r, g, b;
 
@@ -73,7 +73,7 @@ void warlords_vh_convert_color_prom(unsigned char* palette, unsigned char* color
 
 		/* Colors 0x40-0x7f are converted to grey scale as it's used on the
 		   upright version that had an overlay */
-		if (i >= Machine->drv->total_colors / 2)
+		if (i >= (INT)Machine->drv->total_colors / 2)
 		{
 			int grey;
 

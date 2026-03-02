@@ -9,8 +9,8 @@
 #include <vector>
 
 #include "okim6295_loader.h"
-#include "wav_resample.h"   // cubic_interpolation_16(...)
-#include "wav_filters.h"    // biquad_lowpass_inplace_i16(...)
+//#include "wav_resample.h"   // cubic_interpolation_16(...)
+//#include "wav_filters.h"    // biquad_lowpass_inplace_i16(...)
 #include "mixer.h"          // create_sample, mixer_upload_sample16
 #include "sys_log.h"            // LOG_INFO/LOG_ERROR, etc.
 

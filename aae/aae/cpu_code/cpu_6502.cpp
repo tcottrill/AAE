@@ -4,160 +4,133 @@
 // This file is part of the AAE project and is released under The Unlicense.
 // You are free to use, modify, and distribute this software without restriction.
 // See <http://unlicense.org/> for details.
-//
-// Origins and Contributions:
-//   - Original 6502 CPU core by Neil Bradley, adapted from unnamed web sources.
-//   - ADC and SBC algorithms from M.A.M.E.™ (c) 1998–2000 Juergen Buchmueller.
-//   - Timing tables and stack logic adapted from FakeNes.
-//   - Modern C++ refactor and extensions by TC (2015–2025) for AAE compatibility.
-//   - Additional documentation and cleanup assisted by ChatGPT.
-//
-// This version retains functional and timing accuracy, supports profiling and
-// debugging, and integrates mostly with legacy MAME-style emulation systems.
 // -----------------------------------------------------------------------------
 
-// Notes
-// 11/22/24 added undoucumented isb opcode, will work to add the rest later.
-// 12/28/24 Rewrote the main loop to resolve an issue with the cycle counting being consistently undereported.
-// 01/03/25 Discovered an edge case where clocktickstotal was not being set to zero at init, causing an immediate crash.
-// 01/09/25 Changed clocktickstotal again to be set to zero at init, not reset. When a cpu was reset mid-frame, it was throwing the timing count off.
-// 06/29/25 Added IRQ after CLI check, added new dissassembler, code cleanup
-// 06/30/25 Added the most commonly used undocumented instructions, and hopefully adjusted the timing table to match. These are totally unverified.
-// For your own usage, just undefine USING_AAE_EMU
-// 07/01/25 Moved the stack operations back to not using the Memory Handlers. This was a good speed up and did not affect Major Havoc.
-// I left the old code commented out, just in case.
-// 09/01/25 Fixed a newly introduced BCD bug in SBC  if (hi & 0x0100) hi -= 0x60;  // <-- high-digit BCD adjust
-// Updated ABC and SBC code to handle NMOS edge cases. 
-// Rewrote the IRQ after CLI handling to work correctly. 
-// Doubled down on my targeted NMOS first support, added some undocumented upcodes. 
-// Updated (again) changed the ADC/SBC code.
-// cpu_6502.cpp
-
 #include <stdio.h>
+#include <cstring> // Required for memcpy
 #include "cpu_6502.h"
 #include "sys_log.h"
+
+#ifdef USING_AAE_EMU
 #include "timer.h"
+#endif // USING_AAE_EMU
+
 
 #define bget(p,m) ((p) & (m))
 
 // -----------------------------------------------------------------------------
 // Opcode Mnemonics Table
-// Provides string representations for all 256 opcodes. Used by both the
-// instruction profiling system (log_instruction_usage) and debugger output
-// to identify and label executed or inspected instructions.
 // -----------------------------------------------------------------------------
-
 static const char* mnemonics[256] = {
-		"BRK","ORA","???","???","TSB","ORA","ASL","???","PHP","ORA","ASL","???","TSB","ORA","ASL","???",
-		"BPL","ORA","ORA","???","TRB","ORA","ASL","???","CLC","ORA","INA","???","TRB","ORA","ASL","???",
-		"JSR","AND","???","???","BIT","AND","ROL","???","PLP","AND","ROL","???","BIT","AND","ROL","???",
-		"BMI","AND","AND","???","BIT","AND","ROL","???","SEC","AND","DEA","???","BIT","AND","ROL","???",
-		"RTI","EOR","???","???","???","EOR","LSR","???","PHA","EOR","LSR","???","JMP","EOR","LSR","???",
-		"BVC","EOR","EOR","???","???","EOR","LSR","???","CLI","EOR","PHY","???","???","EOR","LSR","???",
-		"RTS","ADC","???","???","STZ","ADC","ROR","???","PLA","ADC","ROR","???","JMP","ADC","ROR","???",
-		"BVS","ADC","ADC","???","STZ","ADC","ROR","???","SEI","ADC","PLY","???","JMP","ADC","ROR","???",
-		"BRA","STA","???","???","STY","STA","STX","???","DEY","BIT","TXA","???","STY","STA","STX","???",
-		"BCC","STA","STA","???","STY","STA","STX","???","TYA","STA","TXS","???","STZ","STA","STZ","???",
-		"LDY","LDA","LDX","???","LDY","LDA","LDX","???","TAY","LDA","TAX","???","LDY","LDA","LDX","???",
-		"BCS","LDA","???","???","LDY","LDA","LDX","???","CLV","LDA","TSX","???","LDY","LDA","LDX","???",
-		"CPY","CMP","???","???","CPY","CMP","DEC","???","INY","CMP","DEX","???","CPY","CMP","DEC","???",
-		"BNE","CMP","CMP","???","???","CMP","DEC","???","CLD","CMP","PHX","???","???","CMP","DEC","???",
-		"CPX","SBC","???","ISB","CPX","SBC","INC","ISB","INX","SBC","NOP","ISB","CPX","SBC","INC","ISB",
-		"BEQ","SBC","SBC","ISB","???","SBC","INC","ISB","SED","SBC","PLX","ISB","NOP","SBC","INC","ISB"
+	"BRK","ORA","KIL","SLO","NOP","ORA","ASL","SLO","PHP","ORA","ASL","ANC","NOP","ORA","ASL","SLO", // 00-0F
+	"BPL","ORA","KIL","SLO","NOP","ORA","ASL","SLO","CLC","ORA","NOP","SLO","NOP","ORA","ASL","SLO", // 10-1F
+	"JSR","AND","KIL","RLA","BIT","AND","ROL","RLA","PLP","AND","ROL","ANC","BIT","AND","ROL","RLA", // 20-2F
+	"BMI","AND","KIL","RLA","NOP","AND","ROL","RLA","SEC","AND","NOP","RLA","NOP","AND","ROL","RLA", // 30-3F
+	"RTI","EOR","KIL","SRE","NOP","EOR","LSR","SRE","PHA","EOR","LSR","ALR","JMP","EOR","LSR","SRE", // 40-4F
+	"BVC","EOR","KIL","SRE","NOP","EOR","LSR","SRE","CLI","EOR","NOP","SRE","NOP","EOR","LSR","SRE", // 50-5F
+	"RTS","ADC","KIL","RRA","NOP","ADC","ROR","RRA","PLA","ADC","ROR","ARR","JMP","ADC","ROR","RRA", // 60-6F
+	"BVS","ADC","KIL","RRA","NOP","ADC","ROR","RRA","SEI","ADC","NOP","RRA","NOP","ADC","ROR","RRA", // 70-7F
+	"NOP","STA","NOP","SAX","STY","STA","STX","SAX","DEY","NOP","TXA","XAA","STY","STA","STX","SAX", // 80-8F
+	"BCC","STA","KIL","AHX","STY","STA","STX","SAX","TYA","STA","TXS","TAS","SHY","STA","SHX","AHX", // 90-9F
+	"LDY","LDA","LDX","LAX","LDY","LDA","LDX","LAX","TAY","LDA","TAX","LAX","LDY","LDA","LDX","LAX", // A0-AF
+	"BCS","LDA","KIL","LAX","LDY","LDA","LDX","LAX","CLV","LDA","TSX","LAS","LDY","LDA","LDX","LAX", // B0-BF
+	"CPY","CMP","NOP","DCP","CPY","CMP","DEC","DCP","INY","CMP","DEX","AXS","CPY","CMP","DEC","DCP", // C0-CF
+	"BNE","CMP","KIL","DCP","NOP","CMP","DEC","DCP","CLD","CMP","NOP","DCP","NOP","CMP","DEC","DCP", // D0-DF
+	"CPX","SBC","NOP","ISC","CPX","SBC","INC","ISC","INX","SBC","NOP","SBC","CPX","SBC","INC","ISC", // E0-EF
+	"BEQ","SBC","KIL","ISC","NOP","SBC","INC","ISC","SED","SBC","NOP","ISC","NOP","SBC","INC","ISC"  // F0-FF
 };
 
 // -----------------------------------------------------------------------------
-// Cycle count table for all 256 opcodes, including common undocumented opcodes
+// Cycle count table
 // -----------------------------------------------------------------------------
 static const uint32_t ticks[256] = {
-	/*        |  0  |  1  |  2  |  3  |  4  |  5  |  6  |  7  |  8  |  9  |  A  |  B  |  C  |  D  |  E  |  F  |     */
-	/* 0 */      7,    6,    2,    8,    3,    3,    5,    5,    3,    2,    2,    2,    4,    4,    6,    6,  /* 0 */
-	/* 1 */      2,    5,    2,    8,    4,    4,    6,    6,    2,    4,    2,    7,    4,    4,    7,    7,  /* 1 */
-	/* 2 */      6,    6,    2,    8,    3,    3,    5,    5,    4,    2,    2,    2,    4,    4,    6,    6,  /* 2 */
-	/* 3 */      2,    5,    2,    8,    4,    4,    6,    6,    2,    4,    2,    7,    4,    4,    7,    7,  /* 3 */
-	/* 4 */      6,    6,    2,    8,    3,    3,    5,    5,    3,    2,    2,    2,    3,    4,    6,    6,  /* 4 */
-	/* 5 */      2,    5,    2,    8,    4,    4,    6,    6,    2,    4,    2,    7,    4,    4,    7,    7,  /* 5 */
-	/* 6 */      6,    6,    2,    8,    3,    3,    5,    5,    4,    2,    2,    2,    5,    4,    6,    6,  /* 6 */
-	/* 7 */      2,    5,    2,    8,    4,    4,    6,    6,    2,    4,    2,    7,    4,    4,    7,    7,  /* 7 */
-	/* 8 */      2,    6,    2,    6,    3,    3,    3,    3,    2,    2,    2,    2,    4,    4,    4,    4,  /* 8 */
-	/* 9 */      2,    6,    2,    6,    4,    4,    4,    4,    2,    5,    2,    5,    5,    5,    5,    5,  /* 9 */
-	/* A */      2,    6,    2,    6,    3,    3,    3,    3,    2,    2,    2,    2,    4,    4,    4,    4,  /* A */
-	/* B */      2,    5,    2,    5,    4,    4,    4,    4,    2,    4,    2,    4,    4,    4,    4,    4,  /* B */
-	/* C */      2,    6,    2,    8,    3,    3,    5,    5,    2,    2,    2,    2,    4,    4,    6,    6,  /* C */
-	/* D */      2,    5,    2,    8,    4,    4,    6,    6,    2,    4,    2,    7,    4,    4,    7,    7,  /* D */
-	/* E */      2,    6,    2,    8,    3,    3,    5,    5,    2,    2,    2,    2,    4,    4,    6,    6,  /* E */
-	/* F */      2,    5,    2,    8,    4,    4,    6,    6,    2,    4,    2,    7,    4,    4,    7,    7   /* F */
+	7, 6, 2, 8, 3, 3, 5, 5, 3, 2, 2, 2, 4, 4, 6, 6,
+	2, 5, 2, 8, 4, 4, 6, 6, 2, 4, 2, 7, 4, 4, 7, 7,
+	6, 6, 2, 8, 3, 3, 5, 5, 4, 2, 2, 2, 4, 4, 6, 6,
+	2, 5, 2, 8, 4, 4, 6, 6, 2, 4, 2, 7, 4, 4, 7, 7,
+	6, 6, 2, 8, 3, 3, 5, 5, 3, 2, 2, 2, 3, 4, 6, 6,
+	2, 5, 2, 8, 4, 4, 6, 6, 2, 4, 2, 7, 4, 4, 7, 7,
+	6, 6, 2, 8, 3, 3, 5, 5, 4, 2, 2, 2, 5, 4, 6, 6,
+	2, 5, 2, 8, 4, 4, 6, 6, 2, 4, 2, 7, 4, 4, 7, 7,
+	2, 6, 2, 6, 3, 3, 3, 3, 2, 2, 2, 2, 4, 4, 4, 4,
+	2, 6, 2, 6, 4, 4, 4, 4, 2, 5, 2, 5, 5, 5, 5, 5,
+	2, 6, 2, 6, 3, 3, 3, 3, 2, 2, 2, 2, 4, 4, 4, 4,
+	2, 5, 2, 5, 4, 4, 4, 4, 2, 4, 2, 4, 4, 4, 4, 4,
+	2, 6, 2, 8, 3, 3, 5, 5, 2, 2, 2, 2, 4, 4, 6, 6,
+	2, 5, 2, 8, 4, 4, 6, 6, 2, 4, 2, 7, 4, 4, 7, 7,
+	2, 6, 2, 8, 3, 3, 5, 5, 2, 2, 2, 2, 4, 4, 6, 6,
+	2, 5, 2, 8, 4, 4, 6, 6, 2, 4, 2, 7, 4, 4, 7, 7
 };
 
 // -----------------------------------------------------------------------------
-// Opcode Table (Automatically Populated by init6502)
-//
-
-const cpu_6502::OpEntry cpu_6502::opcode_table[256] = {
+// Initial Opcode Table
+// Contains NMOS Official, NMOS Illegal, and CMOS Official instructions.
+// -----------------------------------------------------------------------------
+const cpu_6502::OpEntry cpu_6502::initial_opcode_table[256] = {
 	{ &cpu_6502::brk6502, &cpu_6502::implied6502 },   // 0x00
 	{ &cpu_6502::ora6502, &cpu_6502::indx6502    },   // 0x01
 	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0x02
 	{ &cpu_6502::slo6502, &cpu_6502::indx6502    },   // 0x03 (UNDOC)
-	{ &cpu_6502::tsb6502, &cpu_6502::zp6502      },   // 0x04
+	{ &cpu_6502::tsb6502, &cpu_6502::zp6502      },   // 0x04 (CMOS)
 	{ &cpu_6502::ora6502, &cpu_6502::zp6502      },   // 0x05
 	{ &cpu_6502::asl6502, &cpu_6502::zp6502      },   // 0x06
 	{ &cpu_6502::slo6502, &cpu_6502::zp6502      },   // 0x07 (UNDOC)
 	{ &cpu_6502::php6502, &cpu_6502::implied6502 },   // 0x08
 	{ &cpu_6502::ora6502, &cpu_6502::immediate6502 }, // 0x09
 	{ &cpu_6502::asla6502, &cpu_6502::implied6502 },  // 0x0A
-	{ &cpu_6502::anc6502, &cpu_6502::immediate6502 },   // 0x0B
-	{ &cpu_6502::tsb6502, &cpu_6502::abs6502     },   // 0x0C
+	{ &cpu_6502::anc6502, &cpu_6502::immediate6502 }, // 0x0B (UNDOC)
+	{ &cpu_6502::tsb6502, &cpu_6502::abs6502     },   // 0x0C (CMOS)
 	{ &cpu_6502::ora6502, &cpu_6502::abs6502     },   // 0x0D
 	{ &cpu_6502::asl6502, &cpu_6502::abs6502     },   // 0x0E
 	{ &cpu_6502::slo6502, &cpu_6502::abs6502     },   // 0x0F (UNDOC)
 	{ &cpu_6502::bpl6502, &cpu_6502::relative6502 },  // 0x10
 	{ &cpu_6502::ora6502, &cpu_6502::indy6502    },   // 0x11
-	{ &cpu_6502::ora6502, &cpu_6502::indzp6502   },   // 0x12
-	{ &cpu_6502::slo6502, &cpu_6502::indzp6502   },   // 0x13 (UNDOC)
-	{ &cpu_6502::trb6502, &cpu_6502::zp6502      },   // 0x14
+	{ &cpu_6502::ora6502, &cpu_6502::indzp6502   },   // 0x12 (CMOS)
+	{ &cpu_6502::slo6502, &cpu_6502::indy6502    },   // 0x13 SLO (ind),Y (UNDOC)
+	{ &cpu_6502::trb6502, &cpu_6502::zp6502      },   // 0x14 (CMOS)
 	{ &cpu_6502::ora6502, &cpu_6502::zpx6502     },   // 0x15
 	{ &cpu_6502::asl6502, &cpu_6502::zpx6502     },   // 0x16
 	{ &cpu_6502::slo6502, &cpu_6502::zpx6502     },   // 0x17 (UNDOC)
 	{ &cpu_6502::clc6502, &cpu_6502::implied6502 },   // 0x18
 	{ &cpu_6502::ora6502, &cpu_6502::absy6502    },   // 0x19
-	{ &cpu_6502::ina6502, &cpu_6502::implied6502 },   // 0x1A
+	{ &cpu_6502::ina6502, &cpu_6502::implied6502 },   // 0x1A (CMOS)
 	{ &cpu_6502::slo6502, &cpu_6502::absy6502    },   // 0x1B (UNDOC)
-	{ &cpu_6502::trb6502, &cpu_6502::abs6502     },   // 0x1C
+	{ &cpu_6502::trb6502, &cpu_6502::abs6502     },   // 0x1C (CMOS)
 	{ &cpu_6502::ora6502, &cpu_6502::absx6502    },   // 0x1D
 	{ &cpu_6502::asl6502, &cpu_6502::absx6502    },   // 0x1E
 	{ &cpu_6502::slo6502, &cpu_6502::absx6502    },   // 0x1F (UNDOC)
 	{ &cpu_6502::jsr6502, &cpu_6502::abs6502     },   // 0x20
 	{ &cpu_6502::and6502, &cpu_6502::indx6502    },   // 0x21
 	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0x22
-	{ &cpu_6502::rla6502, &cpu_6502::indx6502    },   // 0x23 (UNDOC, optional)
+	{ &cpu_6502::rla6502, &cpu_6502::indx6502    },   // 0x23 (UNDOC)
 	{ &cpu_6502::bit6502, &cpu_6502::zp6502      },   // 0x24
 	{ &cpu_6502::and6502, &cpu_6502::zp6502      },   // 0x25
 	{ &cpu_6502::rol6502, &cpu_6502::zp6502      },   // 0x26
-	{ &cpu_6502::rla6502, &cpu_6502::zp6502      },   // 0x27 (UNDOC, optional)
+	{ &cpu_6502::rla6502, &cpu_6502::zp6502      },   // 0x27 (UNDOC)
 	{ &cpu_6502::plp6502, &cpu_6502::implied6502 },   // 0x28
 	{ &cpu_6502::and6502, &cpu_6502::immediate6502 }, // 0x29
 	{ &cpu_6502::rola6502, &cpu_6502::implied6502 },  // 0x2A
-	{ &cpu_6502::anc6502, &cpu_6502::immediate6502 },   // 0x2B
+	{ &cpu_6502::anc6502, &cpu_6502::immediate6502 }, // 0x2B (UNDOC)
 	{ &cpu_6502::bit6502, &cpu_6502::abs6502     },   // 0x2C
 	{ &cpu_6502::and6502, &cpu_6502::abs6502     },   // 0x2D
 	{ &cpu_6502::rol6502, &cpu_6502::abs6502     },   // 0x2E
-	{ &cpu_6502::rla6502, &cpu_6502::abs6502     },   // 0x2F (UNDOC, optional)
+	{ &cpu_6502::rla6502, &cpu_6502::abs6502     },   // 0x2F (UNDOC)
 	{ &cpu_6502::bmi6502, &cpu_6502::relative6502 },  // 0x30
 	{ &cpu_6502::and6502, &cpu_6502::indy6502    },   // 0x31
-	{ &cpu_6502::and6502, &cpu_6502::indzp6502   },   // 0x32
-	{ &cpu_6502::rla6502, &cpu_6502::indzp6502   },   // 0x33 (UNDOC, optional)
-	{ &cpu_6502::bit6502, &cpu_6502::zpx6502     },   // 0x34
+	{ &cpu_6502::and6502, &cpu_6502::indzp6502   },   // 0x32 (CMOS)
+	{ &cpu_6502::rla6502, &cpu_6502::indy6502    },   // 0x33 RLA (ind),Y (UNDOC)
+	{ &cpu_6502::bit6502, &cpu_6502::zpx6502     },   // 0x34 (CMOS uses this, NMOS UNDOC)
 	{ &cpu_6502::and6502, &cpu_6502::zpx6502     },   // 0x35
 	{ &cpu_6502::rol6502, &cpu_6502::zpx6502     },   // 0x36
-	{ &cpu_6502::rla6502, &cpu_6502::zpx6502     },   // 0x37 (UNDOC, optional)
+	{ &cpu_6502::rla6502, &cpu_6502::zpx6502     },   // 0x37 (UNDOC)
 	{ &cpu_6502::sec6502, &cpu_6502::implied6502 },   // 0x38
 	{ &cpu_6502::and6502, &cpu_6502::absy6502    },   // 0x39
-	{ &cpu_6502::dea6502, &cpu_6502::implied6502 },   // 0x3A
-	{ &cpu_6502::rla6502, &cpu_6502::absy6502    },   // 0x3B (UNDOC, optional)
-	{ &cpu_6502::bit6502, &cpu_6502::absx6502    },   // 0x3C
+	{ &cpu_6502::dea6502, &cpu_6502::implied6502 },   // 0x3A (CMOS)
+	{ &cpu_6502::rla6502, &cpu_6502::absy6502    },   // 0x3B (UNDOC)
+	{ &cpu_6502::bit6502, &cpu_6502::absx6502    },   // 0x3C (CMOS uses this, NMOS UNDOC)
 	{ &cpu_6502::and6502, &cpu_6502::absx6502    },   // 0x3D
 	{ &cpu_6502::rol6502, &cpu_6502::absx6502    },   // 0x3E
-	{ &cpu_6502::rla6502, &cpu_6502::absx6502    },   // 0x3F (UNDOC, optional)
+	{ &cpu_6502::rla6502, &cpu_6502::absx6502    },   // 0x3F (UNDOC)
 	{ &cpu_6502::rti6502, &cpu_6502::implied6502 },   // 0x40
 	{ &cpu_6502::eor6502, &cpu_6502::indx6502    },   // 0x41
 	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0x42
@@ -169,22 +142,22 @@ const cpu_6502::OpEntry cpu_6502::opcode_table[256] = {
 	{ &cpu_6502::pha6502, &cpu_6502::implied6502 },   // 0x48
 	{ &cpu_6502::eor6502, &cpu_6502::immediate6502 }, // 0x49
 	{ &cpu_6502::lsra6502, &cpu_6502::implied6502 },  // 0x4A
-	{ &cpu_6502::alr6502, &cpu_6502::immediate6502 },   // 0x4B
+	{ &cpu_6502::alr6502, &cpu_6502::immediate6502 }, // 0x4B (UNDOC)
 	{ &cpu_6502::jmp6502, &cpu_6502::abs6502     },   // 0x4C
 	{ &cpu_6502::eor6502, &cpu_6502::abs6502     },   // 0x4D
 	{ &cpu_6502::lsr6502, &cpu_6502::abs6502     },   // 0x4E
 	{ &cpu_6502::sre6502, &cpu_6502::abs6502     },   // 0x4F (UNDOC)
 	{ &cpu_6502::bvc6502, &cpu_6502::relative6502 },  // 0x50
 	{ &cpu_6502::eor6502, &cpu_6502::indy6502    },   // 0x51
-	{ &cpu_6502::eor6502, &cpu_6502::indzp6502   },   // 0x52
-	{ &cpu_6502::sre6502, &cpu_6502::indzp6502   },   // 0x53 (UNDOC)
+	{ &cpu_6502::eor6502, &cpu_6502::indzp6502   },   // 0x52 (CMOS)
+	{ &cpu_6502::sre6502, &cpu_6502::indy6502    },   // 0x53 SRE (ind),Y (UNDOC)
 	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0x54
 	{ &cpu_6502::eor6502, &cpu_6502::zpx6502     },   // 0x55
 	{ &cpu_6502::lsr6502, &cpu_6502::zpx6502     },   // 0x56
 	{ &cpu_6502::sre6502, &cpu_6502::zpx6502     },   // 0x57 (UNDOC)
 	{ &cpu_6502::cli6502, &cpu_6502::implied6502 },   // 0x58
 	{ &cpu_6502::eor6502, &cpu_6502::absy6502    },   // 0x59
-	{ &cpu_6502::phy6502, &cpu_6502::implied6502 },   // 0x5A
+	{ &cpu_6502::phy6502, &cpu_6502::implied6502 },   // 0x5A (CMOS)
 	{ &cpu_6502::sre6502, &cpu_6502::absy6502    },   // 0x5B (UNDOC)
 	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0x5C
 	{ &cpu_6502::eor6502, &cpu_6502::absx6502    },   // 0x5D
@@ -194,66 +167,66 @@ const cpu_6502::OpEntry cpu_6502::opcode_table[256] = {
 	{ &cpu_6502::adc6502, &cpu_6502::indx6502    },   // 0x61
 	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0x62
 	{ &cpu_6502::rra6502, &cpu_6502::indx6502    },   // 0x63 (UNDOC)
-	{ &cpu_6502::stz6502, &cpu_6502::zp6502      },   // 0x64
+	{ &cpu_6502::stz6502, &cpu_6502::zp6502      },   // 0x64 (CMOS)
 	{ &cpu_6502::adc6502, &cpu_6502::zp6502      },   // 0x65
 	{ &cpu_6502::ror6502, &cpu_6502::zp6502      },   // 0x66
 	{ &cpu_6502::rra6502, &cpu_6502::zp6502      },   // 0x67 (UNDOC)
 	{ &cpu_6502::pla6502, &cpu_6502::implied6502 },   // 0x68
 	{ &cpu_6502::adc6502, &cpu_6502::immediate6502 }, // 0x69
 	{ &cpu_6502::rora6502, &cpu_6502::implied6502 },  // 0x6A
-	{ &cpu_6502::arr6502, &cpu_6502::immediate6502 },   // 0x6B (UNDOC)
+	{ &cpu_6502::arr6502, &cpu_6502::immediate6502 }, // 0x6B (UNDOC)
 	{ &cpu_6502::jmp6502, &cpu_6502::indirect6502 },  // 0x6C
 	{ &cpu_6502::adc6502, &cpu_6502::abs6502     },   // 0x6D
 	{ &cpu_6502::ror6502, &cpu_6502::abs6502     },   // 0x6E
 	{ &cpu_6502::rra6502, &cpu_6502::abs6502     },   // 0x6F (UNDOC)
 	{ &cpu_6502::bvs6502, &cpu_6502::relative6502 },  // 0x70
 	{ &cpu_6502::adc6502, &cpu_6502::indy6502    },   // 0x71
-	{ &cpu_6502::adc6502, &cpu_6502::indzp6502   },   // 0x72
-	{ &cpu_6502::rra6502, &cpu_6502::indy6502    },   // 0x73 (UNDOC)
-	{ &cpu_6502::stz6502, &cpu_6502::zpx6502     },   // 0x74
+	{ &cpu_6502::adc6502, &cpu_6502::indzp6502   },   // 0x72 (CMOS)
+	{ &cpu_6502::rra6502, &cpu_6502::indy6502    },   // 0x73 RRA (ind),Y (UNDOC)
+	{ &cpu_6502::stz6502, &cpu_6502::zpx6502     },   // 0x74 (CMOS)
 	{ &cpu_6502::adc6502, &cpu_6502::zpx6502     },   // 0x75
 	{ &cpu_6502::ror6502, &cpu_6502::zpx6502     },   // 0x76
 	{ &cpu_6502::rra6502, &cpu_6502::zpx6502     },   // 0x77 (UNDOC)
 	{ &cpu_6502::sei6502, &cpu_6502::implied6502 },   // 0x78
 	{ &cpu_6502::adc6502, &cpu_6502::absy6502    },   // 0x79
-	{ &cpu_6502::ply6502, &cpu_6502::implied6502 },   // 0x7A
+	{ &cpu_6502::ply6502, &cpu_6502::implied6502 },   // 0x7A (CMOS)
 	{ &cpu_6502::rra6502, &cpu_6502::absy6502    },   // 0x7B (UNDOC)
-	{ &cpu_6502::jmp6502, &cpu_6502::indabsx6502 },   // 0x7C
+	{ &cpu_6502::jmp6502, &cpu_6502::indabsx6502 },   // 0x7C (CMOS)
 	{ &cpu_6502::adc6502, &cpu_6502::absx6502    },   // 0x7D
 	{ &cpu_6502::ror6502, &cpu_6502::absx6502    },   // 0x7E
 	{ &cpu_6502::rra6502, &cpu_6502::absx6502    },   // 0x7F (UNDOC)
-	{ &cpu_6502::bra6502, &cpu_6502::relative6502 },  // 0x80
+	{ &cpu_6502::bra6502, &cpu_6502::relative6502 },  // 0x80 (CMOS)
 	{ &cpu_6502::sta6502, &cpu_6502::indx6502 },	  // 0x81
 	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0x82
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0x83
+	{ &cpu_6502::sax6502, &cpu_6502::indx6502 },      // 0x83 SAX (ind,X) (UNDOC)
 	{ &cpu_6502::sty6502, &cpu_6502::zp6502 },		  // 0x84
 	{ &cpu_6502::sta6502, &cpu_6502::zp6502 },		  // 0x85
 	{ &cpu_6502::stx6502, &cpu_6502::zp6502 },		  // 0x86
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0x87
+	{ &cpu_6502::sax6502, &cpu_6502::zp6502 },		  // 0x87 SAX zp (UNDOC)
 	{ &cpu_6502::dey6502, &cpu_6502::implied6502 },   // 0x88
-	{ &cpu_6502::bit6502, &cpu_6502::immediate6502 }, // 0x89
+	{ &cpu_6502::bit6502, &cpu_6502::immediate6502 }, // 0x89 (CMOS uses this, NMOS UNDOC)
 	{ &cpu_6502::txa6502, &cpu_6502::implied6502 },   // 0x8A
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0x8B
+	{ &cpu_6502::ane6502, &cpu_6502::immediate6502 }, // 0x8B ANE/XAA (UNDOC)
 	{ &cpu_6502::sty6502, &cpu_6502::abs6502 },       // 0x8C
 	{ &cpu_6502::sta6502, &cpu_6502::abs6502 },       // 0x8D
 	{ &cpu_6502::stx6502, &cpu_6502::abs6502 },       // 0x8E
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0x8F
+	{ &cpu_6502::sax6502, &cpu_6502::abs6502 },       // 0x8F SAX abs (UNDOC)
 	{ &cpu_6502::bcc6502, &cpu_6502::relative6502 },  // 0x90
 	{ &cpu_6502::sta6502, &cpu_6502::indy6502 },      // 0x91
-	{ &cpu_6502::sta6502, &cpu_6502::indzp6502 },	  // 0x92
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0x93
+	{ &cpu_6502::sta6502, &cpu_6502::indzp6502 },	  // 0x92 (CMOS)
+	{ &cpu_6502::ahx6502, &cpu_6502::indy6502 },      // 0x93 AHX (ind),Y (UNDOC)
 	{ &cpu_6502::sty6502, &cpu_6502::zpx6502 },		  // 0x94
 	{ &cpu_6502::sta6502, &cpu_6502::zpx6502 },		  // 0x95
 	{ &cpu_6502::stx6502, &cpu_6502::zpy6502 },		  // 0x96
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0x97
+	{ &cpu_6502::sax6502, &cpu_6502::zpy6502 },       // 0x97 SAX zp,Y (UNDOC)
 	{ &cpu_6502::tya6502, &cpu_6502::implied6502 },   // 0x98
 	{ &cpu_6502::sta6502, &cpu_6502::absy6502 },	  // 0x99
 	{ &cpu_6502::txs6502, &cpu_6502::implied6502 },   // 0x9A
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0x9B
-	{ &cpu_6502::stz6502, &cpu_6502::abs6502 },		  // 0x9C
+	{ &cpu_6502::shs6502, &cpu_6502::absy6502 },      // 0x9B SHS/TAS abs,Y (UNDOC)
+	{ &cpu_6502::stz6502, &cpu_6502::abs6502 },		  // 0x9C (CMOS)
 	{ &cpu_6502::sta6502, &cpu_6502::absx6502 },	  // 0x9D
-	{ &cpu_6502::stz6502, &cpu_6502::absx6502 },	  // 0x9E
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0x9F
+	{ &cpu_6502::stz6502, &cpu_6502::absx6502 },	  // 0x9E (CMOS)
+	{ &cpu_6502::ahx6502, &cpu_6502::absy6502 },      // 0x9F AHX abs,Y (UNDOC)
 	{ &cpu_6502::ldy6502, &cpu_6502::immediate6502 }, // 0xA0
 	{ &cpu_6502::lda6502, &cpu_6502::indx6502 },      // 0xA1
 	{ &cpu_6502::ldx6502, &cpu_6502::immediate6502 }, // 0xA2
@@ -265,14 +238,14 @@ const cpu_6502::OpEntry cpu_6502::opcode_table[256] = {
 	{ &cpu_6502::tay6502, &cpu_6502::implied6502 },   // 0xA8
 	{ &cpu_6502::lda6502, &cpu_6502::immediate6502 }, // 0xA9
 	{ &cpu_6502::tax6502, &cpu_6502::implied6502 },   // 0xAA
-	{ &cpu_6502::lax6502, &cpu_6502::immediate6502 }, // 0xAB (UNDOC)
+	{ &cpu_6502::lxa6502, &cpu_6502::immediate6502 }, // 0xAB LXA/ATX imm (UNDOC)
 	{ &cpu_6502::ldy6502, &cpu_6502::abs6502 },       // 0xAC
 	{ &cpu_6502::lda6502, &cpu_6502::abs6502 },       // 0xAD
 	{ &cpu_6502::ldx6502, &cpu_6502::abs6502 },       // 0xAE
 	{ &cpu_6502::lax6502, &cpu_6502::abs6502 },       // 0xAF (UNDOC)
 	{ &cpu_6502::bcs6502, &cpu_6502::relative6502 },  // 0xB0
 	{ &cpu_6502::lda6502, &cpu_6502::indy6502 },      // 0xB1
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0xB2
+	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0xB2 (CMOS Ind ZP uses this slot usually)
 	{ &cpu_6502::lax6502, &cpu_6502::indy6502 },      // 0xB3 (UNDOC)
 	{ &cpu_6502::ldy6502, &cpu_6502::zpx6502 },       // 0xB4
 	{ &cpu_6502::lda6502, &cpu_6502::zpx6502 },       // 0xB5
@@ -281,7 +254,7 @@ const cpu_6502::OpEntry cpu_6502::opcode_table[256] = {
 	{ &cpu_6502::clv6502, &cpu_6502::implied6502 },   // 0xB8
 	{ &cpu_6502::lda6502, &cpu_6502::absy6502 },      // 0xB9
 	{ &cpu_6502::tsx6502, &cpu_6502::implied6502 },   // 0xBA
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0xBB
+	{ &cpu_6502::las6502, &cpu_6502::absy6502 },      // 0xBB LAS abs,Y (UNDOC)
 	{ &cpu_6502::ldy6502, &cpu_6502::absx6502 },      // 0xBC
 	{ &cpu_6502::lda6502, &cpu_6502::absx6502 },      // 0xBD
 	{ &cpu_6502::ldx6502, &cpu_6502::absy6502 },      // 0xBE
@@ -297,22 +270,22 @@ const cpu_6502::OpEntry cpu_6502::opcode_table[256] = {
 	{ &cpu_6502::iny6502, &cpu_6502::implied6502 },   // 0xC8
 	{ &cpu_6502::cmp6502, &cpu_6502::immediate6502 }, // 0xC9
 	{ &cpu_6502::dex6502, &cpu_6502::implied6502 },   // 0xCA
-	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0xCB
+	{ &cpu_6502::axs6502, &cpu_6502::immediate6502 }, // 0xCB AXS/SBX imm (UNDOC)
 	{ &cpu_6502::cpy6502, &cpu_6502::abs6502 },		  // 0xCC
 	{ &cpu_6502::cmp6502, &cpu_6502::abs6502 },		  // 0xCD
 	{ &cpu_6502::dec6502, &cpu_6502::abs6502 },		  // 0xCE
 	{ &cpu_6502::dcp6502, &cpu_6502::abs6502 },		  // 0xCF (UNDOC)
 	{ &cpu_6502::bne6502, &cpu_6502::relative6502 },  // 0xD0
 	{ &cpu_6502::cmp6502, &cpu_6502::indy6502 },	  // 0xD1
-	{ &cpu_6502::cmp6502, &cpu_6502::indzp6502 },	  // 0xD2
-	{ &cpu_6502::dcp6502, &cpu_6502::indzp6502 },	  // 0xD3 (UNDOC)
+	{ &cpu_6502::cmp6502, &cpu_6502::indzp6502 },	  // 0xD2 (CMOS)
+	{ &cpu_6502::dcp6502, &cpu_6502::indy6502 },      // 0xD3 DCP (ind),Y (UNDOC)
 	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0xD4
 	{ &cpu_6502::cmp6502, &cpu_6502::zpx6502 },		  // 0xD5
 	{ &cpu_6502::dec6502, &cpu_6502::zpx6502 },		  // 0xD6
 	{ &cpu_6502::dcp6502, &cpu_6502::zpx6502 },		  // 0xD7 (UNDOC)
 	{ &cpu_6502::cld6502, &cpu_6502::implied6502 },   // 0xD8
 	{ &cpu_6502::cmp6502, &cpu_6502::absy6502 },	  // 0xD9
-	{ &cpu_6502::phx6502, &cpu_6502::implied6502 },	  // 0xDA
+	{ &cpu_6502::phx6502, &cpu_6502::implied6502 },	  // 0xDA (CMOS)
 	{ &cpu_6502::dcp6502, &cpu_6502::absy6502 },	  // 0xDB (UNDOC)
 	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0xDC
 	{ &cpu_6502::cmp6502, &cpu_6502::absx6502 },	  // 0xDD
@@ -336,15 +309,15 @@ const cpu_6502::OpEntry cpu_6502::opcode_table[256] = {
 	{ &cpu_6502::isc6502, &cpu_6502::abs6502 },		  // 0xEF (UNDOC)
 	{ &cpu_6502::beq6502, &cpu_6502::relative6502 },  // 0xF0
 	{ &cpu_6502::sbc6502, &cpu_6502::indy6502 },	  // 0xF1
-	{ &cpu_6502::sbc6502, &cpu_6502::indzp6502 },	  // 0xF2
-	{ &cpu_6502::isc6502, &cpu_6502::indzp6502 },	  // 0xF3 (UNDOC)
+	{ &cpu_6502::sbc6502, &cpu_6502::indzp6502 },	  // 0xF2 (CMOS)
+	{ &cpu_6502::isc6502, &cpu_6502::indy6502 },      // 0xF3 ISC (ind),Y (UNDOC)
 	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0xF4
 	{ &cpu_6502::sbc6502, &cpu_6502::zpx6502 },		  // 0xF5
 	{ &cpu_6502::inc6502, &cpu_6502::zpx6502 },       // 0xF6
 	{ &cpu_6502::isc6502, &cpu_6502::zpx6502 },		  // 0xF7 (UNDOC)
 	{ &cpu_6502::sed6502, &cpu_6502::implied6502 },   // 0xF8
 	{ &cpu_6502::sbc6502, &cpu_6502::absy6502 },      // 0xF9
-	{ &cpu_6502::plx6502, &cpu_6502::implied6502 },   // 0xFA
+	{ &cpu_6502::plx6502, &cpu_6502::implied6502 },   // 0xFA (CMOS)
 	{ &cpu_6502::isc6502, &cpu_6502::absy6502 },      // 0xFB (UNDOC)
 	{ &cpu_6502::nop6502, &cpu_6502::absx6502 },      // 0xFC
 	{ &cpu_6502::sbc6502, &cpu_6502::absx6502 },      // 0xFD
@@ -354,50 +327,185 @@ const cpu_6502::OpEntry cpu_6502::opcode_table[256] = {
 
 // -----------------------------------------------------------------------------
 // Name: init6502
-// Purpose: Initializes the 6502 CPU instance and sets up opcode dispatch tables.
-//
-// Description:
-//   - Clears internal CPU state and registers.
-//   - Resets the program counter, status flags, and clock counters.
-//   - Populates the opcode table for all 256 opcodes with function pointers
-//     to their instruction and addressing mode handlers.
-//   - Sets the address mask used for address wrapping in emulated memory space.
-//
-// Parameters:
-//   uint16_t addrmaskval - Bitmask used to constrain all memory addresses
-//                          (e.g., 0xFFFF for 16-bit addressing).
-//
-// Returns:
-//   void
-//
+// Purpose: Initializes the 6502 CPU instance and patches the opcode table
+//          based on whether we are emulating an NMOS 6502, CMOS 65C02, or NES.
 // -----------------------------------------------------------------------------
-
-void cpu_6502::init6502(uint16_t addrmaskval)
+void cpu_6502::init6502(uint16_t addrmaskval, CpuModel model)
 {
 	PC = PPC = 0;
 	addrmask = addrmaskval;
 	_irqPending = 0;
+	_irqMode = 0;
 	clocktickstotal = 0;
+	cpu_model = model;
 
-	for (int i = 0; i < 256; ++i)
+	// 1. Copy the master table (Contains ALL variants)
+	memcpy(opcode_table, initial_opcode_table, sizeof(initial_opcode_table));
+
+	// 2. Prune the table based on architecture type.
+
+	// Case A: CMOS 65C02
+	if (cpu_model == CPU_CMOS_65C02)
 	{
-		instruction[i] = opcode_table[i].instruction;     // Assign opcode handlers
-		adrmode[i] = opcode_table[i].addressing_mode;     // Assign addressing mode handlers
+		// 1. Map CMOS-Specific ALU functions (Decimal Flag fixes)
+		static const uint8_t adc_ops[] = { 0x61, 0x65, 0x69, 0x6D, 0x71, 0x72, 0x75, 0x79, 0x7D };
+		static const uint8_t sbc_ops[] = { 0xE1, 0xE5, 0xE9, 0xED, 0xF1, 0xF2, 0xF5, 0xF9, 0xFD };
+
+		for (uint8_t op : adc_ops) opcode_table[op].instruction = &cpu_6502::adc65c02;
+		for (uint8_t op : sbc_ops) opcode_table[op].instruction = &cpu_6502::sbc65c02;
+
+		// 2. NOP out Undocumented NMOS Instructions (CMOS doesn't support them)
+		//    We keep the addressing mode (implied behavior for multi-byte NOPs)
+		static const uint8_t nmos_undoc_opcodes[] = {
+			0xA3, 0xA7, 0xAB, 0xAF, 0xB3, 0xB7, 0xBF, // LAX
+			0x83, 0x87, 0x8F, 0x97,                   // SAX
+			0x03, 0x07, 0x0F, 0x13, 0x17, 0x1B, 0x1F, // SLO
+			0x23, 0x27, 0x2F, 0x33, 0x37, 0x3B, 0x3F, // RLA
+			0x43, 0x47, 0x4F, 0x53, 0x57, 0x5B, 0x5F, // SRE
+			0x63, 0x67, 0x6F, 0x73, 0x77, 0x7B, 0x7F, // RRA
+			0xC3, 0xC7, 0xCF, 0xD3, 0xD7, 0xDB, 0xDF, // DCP
+			0xE3, 0xE7, 0xEF, 0xF3, 0xF7, 0xFB, 0xFF, // ISC
+			0x0B, 0x2B, 0x4B, 0x6B, 0x8B, 0x9B, 0xBB, 0xCB // Other
+		};
+
+		for (uint8_t op : nmos_undoc_opcodes)
+		{
+			opcode_table[op].instruction = &cpu_6502::nop6502;
+			opcode_table[op].addressing_mode = &cpu_6502::implied6502;
+		}
+
+		// Map Rockwell/WDC Bit Manipulation Instructions
+		// RMB0-7, SMB0-7, BBR0-7, BBS0-7
+		for (int i = 0; i < 8; i++)
+		{
+			// RMBx (Opcode 07, 17 ... 77)
+			int rmb_op = (i << 4) | 0x07;
+			opcode_table[rmb_op].instruction = &cpu_6502::rmb_smb_6502;
+			opcode_table[rmb_op].addressing_mode = &cpu_6502::zp6502;
+
+			// SMBx (Opcode 87, 97 ... F7)
+			int smb_op = (i << 4) | 0x87;
+			opcode_table[smb_op].instruction = &cpu_6502::rmb_smb_6502;
+			opcode_table[smb_op].addressing_mode = &cpu_6502::zp6502;
+
+			// BBRx (Opcode 0F, 1F ... 7F)
+			int bbr_op = (i << 4) | 0x0F;
+			opcode_table[bbr_op].instruction = &cpu_6502::bbr_bbs_6502;
+			opcode_table[bbr_op].addressing_mode = &cpu_6502::zprel6502;
+
+			// BBSx (Opcode 8F, 9F ... FF)
+			int bbs_op = (i << 4) | 0x8F;
+			opcode_table[bbs_op].instruction = &cpu_6502::bbr_bbs_6502;
+			opcode_table[bbs_op].addressing_mode = &cpu_6502::zprel6502;
+		}
+		// 1. Map 2-byte NOPs (Immediate Addressing)
+		// These are opcodes: 02, 22, 42, 62, 82, C2, E2
+		static const uint8_t nop_2byte[] = {0x02, 0x22, 0x42, 0x62, 0x82, 0xC2, 0xE2,	0x44, 0x54, 0xD4, 0xF4 };
+		for (uint8_t op : nop_2byte) {
+			opcode_table[op].instruction = &cpu_6502::nop6502;
+			opcode_table[op].addressing_mode = &cpu_6502::immediate6502; // Consumes 2 bytes (Op + Imm)
+		}
+
+		// 2. Map 3-byte NOPs (Absolute/AbsX Addressing)
+		// 5C = NOP Abs (3 bytes, 4 cycles)
+		opcode_table[0x5C].instruction = &cpu_6502::nop6502;
+		opcode_table[0x5C].addressing_mode = &cpu_6502::abs6502;
+
+		// DC = NOP Abs,X (3 bytes, 4 cycles)
+		opcode_table[0xDC].instruction = &cpu_6502::nop6502;
+		opcode_table[0xDC].addressing_mode = &cpu_6502::absx6502;
+
+		// FC is usually already mapped to NOP+AbsX in your initial table, but safe to enforce:
+		opcode_table[0xFC].instruction = &cpu_6502::nop6502;
+		opcode_table[0xFC].addressing_mode = &cpu_6502::absx6502;
+
+		// FIX: Map CMOS Zero Page Indirect instructions ($zp)
+		// Opcodes: 12, 32, 52, 72, 92, B2, D2, F2
+		// -----------------------------------------------------------
+		opcode_table[0x12].instruction = &cpu_6502::ora6502; opcode_table[0x12].addressing_mode = &cpu_6502::indzp6502;
+		opcode_table[0x32].instruction = &cpu_6502::and6502; opcode_table[0x32].addressing_mode = &cpu_6502::indzp6502;
+		opcode_table[0x52].instruction = &cpu_6502::eor6502; opcode_table[0x52].addressing_mode = &cpu_6502::indzp6502;
+		opcode_table[0x72].instruction = &cpu_6502::adc65c02; opcode_table[0x72].addressing_mode = &cpu_6502::indzp6502;
+		opcode_table[0x92].instruction = &cpu_6502::sta6502; opcode_table[0x92].addressing_mode = &cpu_6502::indzp6502;
+		opcode_table[0xB2].instruction = &cpu_6502::lda6502; opcode_table[0xB2].addressing_mode = &cpu_6502::indzp6502;
+		opcode_table[0xD2].instruction = &cpu_6502::cmp6502; opcode_table[0xD2].addressing_mode = &cpu_6502::indzp6502;
+		opcode_table[0xF2].instruction = &cpu_6502::sbc65c02; opcode_table[0xF2].addressing_mode = &cpu_6502::indzp6502;
+	}
+	// Case B: NMOS 6502 or NES 2A03
+	else
+	{
+		// 1. Map 1-byte CMOS NOPs (Implied)
+		// INC/DEC A (1A, 3A), PHY/PLY (5A, 7A), PHX/PLX (DA, FA)
+		static const uint8_t nops_1byte[] = {
+			0x1A, 0x3A, 0x5A, 0x7A, 0xDA, 0xFA
+		};
+
+		for (uint8_t op : nops_1byte)
+		{
+			opcode_table[op].instruction = &cpu_6502::nop6502;
+			opcode_table[op].addressing_mode = &cpu_6502::implied6502;
+		}
+
+		// 2. Map 2-byte CMOS NOPs (Zero Page / Imm / Relative)
+		// 0x04 (TSB), 0x14 (TRB), 0x34 (BIT ZPX), 0x44, 0x54, 0x64 (STZ), 0x74 (STZ), 0xD4, 0xF4
+		// 0x80 (BRA), 0x89 (BIT Imm)
+		// 0x12, 0x32... (Ind ZP) - usually JAM on NMOS, but if NOP'd, must be 2 bytes
+		static const uint8_t nops_2byte[] = {
+			0x04, 0x14, 0x34, 0x44, 0x54, 0x64, 0x74, 0xD4, 0xF4,
+			0x80, 0x89,
+			0x12, 0x32, 0x52, 0x72, 0x92, 0xB2, 0xD2, 0xF2
+		};
+
+		for (uint8_t op : nops_2byte)
+		{
+			opcode_table[op].instruction = &cpu_6502::nop6502;
+			// Use zp6502 to consume the operand byte (PC+2 total)
+			opcode_table[op].addressing_mode = &cpu_6502::zp6502;
+		}
+
+		// 3. Map 3-byte CMOS NOPs (Absolute / AbsX)
+		// 0x0C (TSB Abs), 0x1C (TRB Abs), 0x3C (BIT AbsX), 0x7C (JMP Ind,X)
+		static const uint8_t nops_3byte[] = {
+			0x0C, 0x1C, 0x3C, 0x5C, 0x7C, 0xDC, 0xFC
+		};
+
+		for (uint8_t op : nops_3byte)
+		{
+			opcode_table[op].instruction = &cpu_6502::nop6502;
+			// Use abs6502 to consume 2 operand bytes (PC+3 total)
+			opcode_table[op].addressing_mode = &cpu_6502::abs6502;
+		}
+		opcode_table[0xEB].instruction = &cpu_6502::sbc6502;
+		opcode_table[0xEB].addressing_mode = &cpu_6502::immediate6502;
+		// 4. Handle NMOS Specific Undocumented Overwrites
+		// NMOS 0x9C is SHY (Abs,X) - not STZ
+		opcode_table[0x9C].instruction = &cpu_6502::shy6502;
+		opcode_table[0x9C].addressing_mode = &cpu_6502::absx6502;
+
+		// NMOS 0x9E is SHX (Abs,Y) - not STZ
+		opcode_table[0x9E].instruction = &cpu_6502::shx6502;
+		opcode_table[0x9E].addressing_mode = &cpu_6502::absy6502;
+	}
+
+	// 3. Apply NES 2A03 Specific Patches (BCD Disable)
+	if (cpu_model == CPU_NES_2A03)
+	{
+		static const uint8_t adc_ops[] = { 0x61, 0x65, 0x69, 0x6D, 0x71, 0x72, 0x75, 0x79, 0x7D };
+		static const uint8_t sbc_ops[] = { 0xE1, 0xE5, 0xE9, 0xED, 0xF1, 0xF2, 0xF5, 0xF9, 0xFD };
+		static const uint8_t rra_ops[] = { 0x63, 0x67, 0x6F, 0x73, 0x77, 0x7B, 0x7F };
+		static const uint8_t isc_ops[] = { 0xE3, 0xE7, 0xEF, 0xF3, 0xF7, 0xFB, 0xFF };
+
+		for (uint8_t op : adc_ops) opcode_table[op].instruction = &cpu_6502::adc_2a03;
+		for (uint8_t op : sbc_ops) opcode_table[op].instruction = &cpu_6502::sbc_2a03;
+		for (uint8_t op : rra_ops) opcode_table[op].instruction = &cpu_6502::rra_2a03;
+		for (uint8_t op : isc_ops) opcode_table[op].instruction = &cpu_6502::isc_2a03;
 	}
 }
 
 // -----------------------------------------------------------------------------
 // 6502 CPU Constructor.
-// Initializes memory pointers and configuration, sets CPU ID, enables debug
-// memory logging, disables execution debugging, and calls init6502().
-// Parameters:
-//   mem        - Pointer to backing memory array (used when no handler matches).
-//   read_mem   - Pointer to memory read handler table.
-//   write_mem  - Pointer to memory write handler table.
-//   addr       - Address mask used for wrapping memory accesses.
-//   num        - CPU identifier used for per-CPU operations/logging.
 // -----------------------------------------------------------------------------
-cpu_6502::cpu_6502(uint8_t* mem, MemoryReadByte* read_mem, MemoryWriteByte* write_mem, uint16_t addr, int num)
+cpu_6502::cpu_6502(uint8_t* mem, MemoryReadByte* read_mem, MemoryWriteByte* write_mem, uint16_t addr, int num, CpuModel model)
 {
 	MEM = mem;
 	memory_write = write_mem;
@@ -406,16 +514,13 @@ cpu_6502::cpu_6502(uint8_t* mem, MemoryReadByte* read_mem, MemoryWriteByte* writ
 	log_debug_rw = 1;
 	mmem = false;
 	debug = 0;
-	init6502(addr);
+
+	// Pass the model through to the initialization logic
+	init6502(addr, model);
 }
 
 // -----------------------------------------------------------------------------
 // Get the Total Number of Clock Ticks Executed.
-// Optionally resets the internal tick counter after returning the value.
-// Parameters:
-//   reset - If non-zero, resets the tick counter to 0 after retrieval.
-// Returns:
-//   The total number of ticks accumulated since the last reset (or start).
 // -----------------------------------------------------------------------------
 int cpu_6502::get6502ticks(int reset)
 {
@@ -426,19 +531,26 @@ int cpu_6502::get6502ticks(int reset)
 }
 
 // -----------------------------------------------------------------------------
-// Read a Byte from 6502 Memory.
-// Checks all registered memory read handlers for a matching address range.
-// If a handler is found, uses it to read from the mapped area.
-// If no handler exists and `mmem` is false, returns from default `MEM` array.
-// If no handler exists and `mmem` is true, optionally logs unhandled access.
-// Parameters:
-//   addr - 16-bit address to read.
-// Returns:
-//   8-bit value at the specified address.
+// get6502memory
 // -----------------------------------------------------------------------------
-
 uint8_t cpu_6502::get6502memory(uint16_t addr)
 {
+	addr &= addrmask;
+
+	// --- 6510 SUPPORT START ---
+	if (cpu_model == CPU_6510 && addr < 2)
+	{
+		if (addr == 0) return io_port_dir; // Return Direction Register
+		if (addr == 1)
+		{
+			// Return Input Bits (from external hardware) combined with Output bits
+			// Usually requires a callback to get external pins,
+			// but often returning the latched data is enough for simple emulation.
+			return io_port_data;
+		}
+	}
+	// --- 6510 SUPPORT END ---
+
 	MemoryReadByte* reader = memory_read;
 	while (reader->lowAddr != -1)
 	{
@@ -447,7 +559,6 @@ uint8_t cpu_6502::get6502memory(uint16_t addr)
 			if (reader->memoryCall)
 				return reader->memoryCall(addr - reader->lowAddr, reader);
 			else
-				// Please note this is MAME style memory addressing, where the address returned is relative to the calling address.
 				return ((const uint8_t*)reader->pUserArea)[addr - reader->lowAddr];
 		}
 		++reader;
@@ -460,19 +571,39 @@ uint8_t cpu_6502::get6502memory(uint16_t addr)
 		LOG_INFO("Warning! Unhandled Read at %x", addr);
 
 	return 0;
-}// -----------------------------------------------------------------------------
-// Write a Byte to 6502 Memory.
-// Checks all registered memory write handlers for a matching address range.
-// If a handler is found, uses it to write to the mapped area.
-// If no handler exists and `mmem` is false, writes to default `MEM` array.
-// If no handler exists and `mmem` is true, optionally logs unhandled access.
-// Parameters:
-//   addr - 16-bit address to write to.
-//   byte - 8-bit value to write.
-// -----------------------------------------------------------------------------
+}
 
+// -----------------------------------------------------------------------------
+// put6502memory
+// -----------------------------------------------------------------------------
 void cpu_6502::put6502memory(uint16_t addr, uint8_t byte)
 {
+	addr &= addrmask;
+
+	// --- 6510 SUPPORT START ---
+	if (cpu_model == CPU_6510 && addr < 2)
+	{
+		if (addr == 0)
+		{
+			io_port_dir = byte;
+		}
+		else // addr == 1
+		{
+			// 6510 Logic: Only bits set to '1' in Direction Register can be written.
+			// Bits set to '0' in Direction are inputs (external hardware drives them).
+
+			// Mask the write based on direction
+			io_port_data = (io_port_data & ~io_port_dir) | (byte & io_port_dir);
+		}
+
+		// Alert the external system (C64 MMU) that the banking might have changed
+		if (port_cb) port_cb(io_port_data, io_port_dir);
+
+		// Return immediately. The 6510 does NOT write these to external RAM.
+		return;
+	}
+	// --- 6510 SUPPORT END ---
+
 	MemoryWriteByte* writer = memory_write;
 	while (writer->lowAddr != -1)
 	{
@@ -482,7 +613,6 @@ void cpu_6502::put6502memory(uint16_t addr, uint8_t byte)
 				writer->memoryCall(addr - writer->lowAddr, byte, writer);
 			else
 				((uint8_t*)writer->pUserArea)[addr - writer->lowAddr] = byte;
-			// Please note this is MAME style memory addressing, where the address written to is relative to the calling address.
 			return;
 		}
 		++writer;
@@ -498,27 +628,24 @@ void cpu_6502::put6502memory(uint16_t addr, uint8_t byte)
 
 // -----------------------------------------------------------------------------
 // Callback Hook After CLI Instruction.
-// Called immediately after clearing the interrupt disable flag (CLI).
 // -----------------------------------------------------------------------------
 void cpu_6502::check_interrupts_after_cli()
 {
 	// block IRQ recognition for exactly the next instruction
-	irq_inhibit_one = 1;
+	irq_inhibit_one = 2;
 }
 
 // -----------------------------------------------------------------------------
 // Check Whether a Pending IRQ Should Be Taken Now.
-// Takes the IRQ if `_irqPending` is set and the interrupt disable flag is clear.
 // -----------------------------------------------------------------------------
 void cpu_6502::maybe_take_irq()
 {
 	if (_irqPending && !(P & F_I))
-		irq6502();
+		irq6502(0);
 }
 
 // -----------------------------------------------------------------------------
 // Clear the Pending IRQ Flag.
-// Resets `_irqPending` to 0.
 // -----------------------------------------------------------------------------
 void cpu_6502::m6502clearpendingint()
 {
@@ -527,8 +654,6 @@ void cpu_6502::m6502clearpendingint()
 
 // -----------------------------------------------------------------------------
 // Get the value of a CPU register by register index.
-// Valid register IDs: M6502_S, M6502_P, M6502_A, M6502_X, M6502_Y
-// Returns: 8-bit register value; returns 0 if regnum is invalid.
 // -----------------------------------------------------------------------------
 uint8_t cpu_6502::m6502_get_reg(int regnum)
 {
@@ -545,8 +670,6 @@ uint8_t cpu_6502::m6502_get_reg(int regnum)
 
 // -----------------------------------------------------------------------------
 // Set the value of a CPU register by register index.
-// Valid register IDs: M6502_S, M6502_P, M6502_A, M6502_X, M6502_Y
-// If regnum is invalid, function does nothing.
 // -----------------------------------------------------------------------------
 void cpu_6502::m6502_set_reg(int regnum, uint8_t val)
 {
@@ -563,7 +686,6 @@ void cpu_6502::m6502_set_reg(int regnum, uint8_t val)
 
 // -----------------------------------------------------------------------------
 // Get the current value of the program counter (PC).
-// Returns: 16-bit address of the current instruction.
 // -----------------------------------------------------------------------------
 uint16_t cpu_6502::get_pc()
 {
@@ -572,8 +694,6 @@ uint16_t cpu_6502::get_pc()
 
 // -----------------------------------------------------------------------------
 // Get the previous value of the program counter (PPC).
-// PPC is set to the PC value before the current instruction executes.
-// Returns: 16-bit address of the last instruction.
 // -----------------------------------------------------------------------------
 uint16_t cpu_6502::get_ppc()
 {
@@ -582,7 +702,6 @@ uint16_t cpu_6502::get_ppc()
 
 // -----------------------------------------------------------------------------
 // Set the program counter (PC) to a new address.
-// pc: New 16-bit address to assign to the PC.
 // -----------------------------------------------------------------------------
 void cpu_6502::set_pc(uint16_t pc)
 {
@@ -591,48 +710,59 @@ void cpu_6502::set_pc(uint16_t pc)
 
 // -----------------------------------------------------------------------------
 // Reset the CPU to its initial state.
-// Clears A, X, Y. Sets P with F_T | F_I | F_Z. Stack pointer to 0xFF.
-// Loads PC from the reset vector at $FFFC/$FFFD.
-// Adds 6 cycles to clockticks6502.
 // -----------------------------------------------------------------------------
 void cpu_6502::reset6502()
 {
+	LOG_INFO("6502 Reset");
+
 	A = X = Y = 0;
 	P = F_T | F_I | F_Z;
 	_irqPending = 0;
+
+	PC = PPC = 0;
+	_irqPending = 0;
+	clocktickstotal = 0;
+
 	S = 0xFF;
+
 	PC = get6502memory(0xFFFC & addrmask);
 	PC |= get6502memory(0xFFFD & addrmask) << 8;
-	if (debug)
-		LOG_INFO("reset: PC is %X", PC);
+
+	LOG_INFO("reset: PC is %X", PC);
 	clockticks6502 += 6;
 }
 
 // -----------------------------------------------------------------------------
-// Execute a standard IRQ if pending and interrupts are enabled.
-// Pushes PC and P (without F_B), sets F_I, loads PC from $FFFE/$FFFF.
-// Adds 7 cycles to clockticks6502 and clocktickstotal.
+// Internal Helper: Actually take the interrupt, push stack, change PC.
 // -----------------------------------------------------------------------------
-void cpu_6502::irq6502()
+void cpu_6502::execute_irq()
 {
-	_irqPending = 1;
-	if (!(P & F_I))
+	push16(PC);
+	push8(P & ~F_B);
+	P |= F_I;
+	PC = get6502memory(0xFFFE & addrmask);
+	PC |= get6502memory(0xFFFF & addrmask) << 8;
+
+	clockticks6502 += 7;
+	clocktickstotal += 7;
+
+	if (_irqMode == IRQ_PULSE)
 	{
-		push16(PC);
-		push8(P & ~F_B);
-		P |= F_I;
-		PC = get6502memory(0xFFFE & addrmask);
-		PC |= get6502memory(0xFFFF & addrmask) << 8;
 		_irqPending = 0;
-		clockticks6502 += 7;
-		clocktickstotal += 7;
 	}
 }
 
 // -----------------------------------------------------------------------------
+// Assert the IRQ Line.
+// -----------------------------------------------------------------------------
+void cpu_6502::irq6502(int irqmode)
+{
+	_irqPending = 1;
+	_irqMode = irqmode;
+}
+
+// -----------------------------------------------------------------------------
 // Execute a non-maskable interrupt (NMI).
-// Always pushes PC and P (without F_B), sets F_I, loads PC from $FFFA/$FFFB.
-// Adds 7 cycles to clockticks6502 and clocktickstotal.
 // -----------------------------------------------------------------------------
 void cpu_6502::nmi6502()
 {
@@ -647,106 +777,79 @@ void cpu_6502::nmi6502()
 
 // -----------------------------------------------------------------------------
 // Push a 16-bit value to the 6502 stack (high byte first).
-// Stack is located at $0100. Stack pointer S is post-decremented.
-// val: 16-bit value to push.
 // -----------------------------------------------------------------------------
 void cpu_6502::push16(uint16_t val)
 {
-	//put6502memory(BASE_STACK + S, (val >> 8) & 0xFF);
-	//put6502memory(BASE_STACK + ((S - 1) & 0xFF), val & 0xFF);
-	MEM[BASE_STACK + S] = (uint8_t)((val >> 8) & 0xFF);
-	MEM[BASE_STACK + ((S - 1) & 0xFF)] = (uint8_t)(val & 0xFF);
+	put6502memory(BASE_STACK + S, (val >> 8) & 0xFF);
+	put6502memory(BASE_STACK + ((S - 1) & 0xFF), val & 0xFF);
 	S -= 2;
 }
 
 // -----------------------------------------------------------------------------
 // Push an 8-bit value to the 6502 stack.
-// Stack pointer S is post-decremented.
-// val: 8-bit value to push.
 // -----------------------------------------------------------------------------
 void cpu_6502::push8(uint8_t val)
 {
-	//put6502memory(BASE_STACK + S--, val);
-	MEM[BASE_STACK + S--] = val;
+	put6502memory(BASE_STACK + S--, val);
 }
 
 // -----------------------------------------------------------------------------
 // Pull a 16-bit value from the 6502 stack (low byte first).
-// Stack pointer S is pre-incremented twice.
-// Returns: 16-bit value popped from the stack.
 // -----------------------------------------------------------------------------
 uint16_t cpu_6502::pull16()
 {
-	//uint16_t val = get6502memory(BASE_STACK + ((S + 1) & 0xFF)) |
-		//(static_cast<uint16_t>(get6502memory(BASE_STACK + ((S + 2) & 0xFF))) << 8);
-	uint16_t val = MEM[BASE_STACK + ((S + 1) & 0xFF)] |
-		((uint16_t)MEM[BASE_STACK + ((S + 2) & 0xFF)] << 8);
+	uint16_t val = get6502memory(BASE_STACK + ((S + 1) & 0xFF)) |
+		(static_cast<uint16_t>(get6502memory(BASE_STACK + ((S + 2) & 0xFF))) << 8);
 	S += 2;
 	return val;
 }
 
 // -----------------------------------------------------------------------------
 // Pull an 8-bit value from the 6502 stack.
-// Stack pointer S is pre-incremented.
-// Returns: 8-bit value popped from the stack.
 // -----------------------------------------------------------------------------
 uint8_t cpu_6502::pull8()
 {
-	//return get6502memory(BASE_STACK + ++S);
-	return MEM[BASE_STACK + ++S];
+	return get6502memory(BASE_STACK + ++S);
 }
 
 // -----------------------------------------------------------------------------
 // Execute Instructions Until the Specified Timer Threshold is Reached.
-// Continues executing step6502() while accumulated cycles are less than timerTicks.
-// Returns: Fixed value 0x80000000 after reaching the cycle threshold.
+// Returns the Number of Cycles Executed.
 // -----------------------------------------------------------------------------
 int cpu_6502::exec6502(int timerTicks)
 {
 	int cycles = 0;
 	while (cycles < timerTicks)
 		cycles += step6502();
-	return 0x80000000;
+	return cycles;
 }
 
 // -----------------------------------------------------------------------------
 // Execute a Single 6502 Instruction.
-// Handles IRQs, fetches the opcode, performs addressing and operation logic,
-// updates cycle counters, and optionally logs debugging information.
-// Returns: Number of clock cycles used by the executed instruction.
 // -----------------------------------------------------------------------------
 int cpu_6502::step6502()
 {
 	clockticks6502 = 0;
-	P |= F_T;
 
-	if (_irqPending) {
-		// Don't service during the one-instruction inhibition window
-		if (!irq_inhibit_one)
-			irq6502();
+	bool interrupts_allowed = (irq_inhibit_one == 0) && !(P & F_I);
+
+	// Check for IRQ
+	if (_irqPending && interrupts_allowed) {
+		execute_irq();
+
+		if (irq_inhibit_one > 0) irq_inhibit_one--;
+		return clockticks6502;
 	}
 
+	// Normal Instruction Fetch
 	opcode = get6502memory(PC++);
-	//++instruction_count[opcode];
-	
-	if (opcode > 0xFF) {
-		LOG_INFO("Invalid Opcode called!!!: opcode %x Memory %X", opcode, PC);
-		return 0;
-	}
+	P |= F_T;
 
 	if (debug) {
 		int bytes = 0;
 		std::string op = disassemble(PC - 1, &bytes);
-		int c = (P & F_C) ? 1 : 0;
-		int z = (P & F_Z) ? 1 : 0;
-		int i = (P & F_I) ? 1 : 0;
-		int d = (P & F_D) ? 1 : 0;
-		int b = (P & F_B) ? 1 : 0;
-		int t = (P & F_T) ? 1 : 0;
-		int v = (P & F_V) ? 1 : 0;
-		int n = (P & F_N) ? 1 : 0;
-		LOG_INFO("%04X: %-20s F:C:%d Z:%d I:%d D:%d B:%d T:%d V:%d N:%d A:%02X X:%02X Y:%02X S:%02X",
-			PC - 1, op.c_str(), c, z, i, d, b, t, v, n, A, X, Y, S);
+		LOG_INFO("%04X: %-20s A:%02X X:%02X Y:%02X S:%02X P:%02X",
+			PC - 1, op.c_str(), A, X, Y, S, P);
 	}
 
 	PPC = PC;
@@ -757,19 +860,21 @@ int cpu_6502::step6502()
 	clockticks6502 += ticks[opcode];
 	clocktickstotal += clockticks6502;
 
+#ifdef USING_AAE_EMU
 	timer_update(clockticks6502, cpu_num);
+#endif // USING_AAE_EMU
 
 	if (clocktickstotal > 0x0FFFFFFF)
 		clocktickstotal = 0;
 
-	// Expire the one-instruction inhibit window now
-	if (irq_inhibit_one) irq_inhibit_one = 0;
+	if (irq_inhibit_one > 0)
+		irq_inhibit_one--;
 
 	return clockticks6502;
 }
+
 // -----------------------------------------------------------------------------
-// Absolute Addressing Mode
-// Operand is a 16-bit address (little-endian) following the opcode.
+// Addressing Modes
 // -----------------------------------------------------------------------------
 void cpu_6502::abs6502()
 {
@@ -777,28 +882,16 @@ void cpu_6502::abs6502()
 	PC += 2;
 }
 
-// -----------------------------------------------------------------------------
-// Immediate Addressing Mode
-// Operand is the next byte. Used for instructions like LDA #$10.
-// -----------------------------------------------------------------------------
 void cpu_6502::immediate6502()
 {
 	savepc = PC++;
 }
 
-// -----------------------------------------------------------------------------
-// Implied Addressing Mode
-// No operand is used. Used for instructions like CLC, SEI, RTS, etc.
-// -----------------------------------------------------------------------------
 void cpu_6502::implied6502()
 {
 	// NOP (handled inside instruction)
 }
 
-// -----------------------------------------------------------------------------
-// Relative Addressing Mode
-// Operand is a signed 8-bit offset. Used only for branch instructions.
-// -----------------------------------------------------------------------------
 void cpu_6502::relative6502()
 {
 	savepc = get6502memory(PC++);
@@ -806,25 +899,24 @@ void cpu_6502::relative6502()
 		savepc |= 0xFF00;
 }
 
-// -----------------------------------------------------------------------------
-// Indirect Addressing Mode (used only by JMP)
-// Operand is a 16-bit pointer to a 16-bit address.
-// Replicates 6502 page-boundary bug.
-// -----------------------------------------------------------------------------
 void cpu_6502::indirect6502()
 {
-	// 6502 bug: high-byte fetch wraps within the same page as pointer
-	help = get6502memory(PC) | (get6502memory(PC + 1) << 8);
-	uint16_t temp = (help & 0xFF00) | ((help + 1) & 0x00FF);
-	savepc = get6502memory(help) | (get6502memory(temp) << 8);
+	uint16_t addr_ptr = get6502memory(PC) | (get6502memory(PC + 1) << 8);
+	uint16_t lo = addr_ptr;
+	uint16_t hi = addr_ptr + 1;
+
+	// Handle Page Boundary Bug for NMOS only (NES is also NMOS-based)
+	if (cpu_model != CPU_CMOS_65C02 && (lo & 0x00FF) == 0x00FF)
+	{
+		hi = lo & 0xFF00; // Wrap to beginning of page
+	}
+	if (cpu_model == CPU_CMOS_65C02) {
+		clockticks6502++;
+	}
+	savepc = get6502memory(lo) | (get6502memory(hi) << 8);
 	PC += 2;
 }
 
-// -----------------------------------------------------------------------------
-// Absolute,X Addressing Mode
-// Effective address = absolute address + X.
-// Adds 1 cycle if page boundary is crossed.
-// -----------------------------------------------------------------------------
 void cpu_6502::absx6502()
 {
 	savepc = get6502memory(PC) | (get6502memory(PC + 1) << 8);
@@ -834,11 +926,6 @@ void cpu_6502::absx6502()
 	PC += 2;
 }
 
-// -----------------------------------------------------------------------------
-// Absolute,Y Addressing Mode
-// Effective address = absolute address + Y.
-// Adds 1 cycle if page boundary is crossed.
-// -----------------------------------------------------------------------------
 void cpu_6502::absy6502()
 {
 	savepc = get6502memory(PC) | (get6502memory(PC + 1) << 8);
@@ -848,48 +935,27 @@ void cpu_6502::absy6502()
 	PC += 2;
 }
 
-// -----------------------------------------------------------------------------
-// Zero Page Addressing Mode
-// Operand is an 8-bit zero page address.
-// -----------------------------------------------------------------------------
 void cpu_6502::zp6502()
 {
 	savepc = get6502memory(PC++);
 }
 
-// -----------------------------------------------------------------------------
-// Zero Page,X Addressing Mode
-// Effective address = (zero page address + X) & 0xFF.
-// -----------------------------------------------------------------------------
 void cpu_6502::zpx6502()
 {
 	savepc = (get6502memory(PC++) + X) & 0xFF;
 }
 
-// -----------------------------------------------------------------------------
-// Zero Page,Y Addressing Mode
-// Effective address = (zero page address + Y) & 0xFF.
-// -----------------------------------------------------------------------------
 void cpu_6502::zpy6502()
 {
 	savepc = (get6502memory(PC++) + Y) & 0xFF;
 }
 
-// -----------------------------------------------------------------------------
-// Indexed Indirect Addressing Mode (Indirect,X)
-// Effective address = (operand + X) points to the final 16-bit address.
-// -----------------------------------------------------------------------------
 void cpu_6502::indx6502()
 {
 	value = (get6502memory(PC++) + X) & 0xFF;
 	savepc = get6502memory(value) | (get6502memory((value + 1) & 0xFF) << 8);
 }
 
-// -----------------------------------------------------------------------------
-// Indirect Indexed Addressing Mode (Indirect),Y
-// Effective address = (operand points to base address) + Y.
-// Adds 1 cycle if page boundary is crossed.
-// -----------------------------------------------------------------------------
 void cpu_6502::indy6502()
 {
 	uint16_t temp;
@@ -902,10 +968,6 @@ void cpu_6502::indy6502()
 	savepc += Y;
 }
 
-// -----------------------------------------------------------------------------
-// Indirect Absolute,X Addressing Mode (used by JMP ($nnnn,X))
-// Effective address = address found at ($nnnn + X).
-// -----------------------------------------------------------------------------
 void cpu_6502::indabsx6502()
 {
 	help = get6502memory(PC) | (get6502memory(PC + 1) << 8);
@@ -913,102 +975,187 @@ void cpu_6502::indabsx6502()
 	savepc = get6502memory(help) | (get6502memory(help + 1) << 8);
 }
 
-// -----------------------------------------------------------------------------
-// Indirect Zero Page Addressing Mode (used by 65C02 extensions)
-// Operand points to a zero page word (16-bit address).
-// -----------------------------------------------------------------------------
 void cpu_6502::indzp6502()
 {
 	value = get6502memory(PC++);
 	savepc = get6502memory(value) | (get6502memory((value + 1) & 0xFF) << 8);
+
+	// 65C02 Fix: These instructions take 5 cycles.
+	// The static ticks[] table usually has '2' for these slots.
+	// We add 3 extra cycles here to correct it.
+	if (cpu_model == CPU_CMOS_65C02) {
+		clockticks6502 += 3;
+	}
 }
 
 // -----------------------------------------------------------------------------
-// Add with Carry (ADC)
-// Adds memory value and carry flag to the accumulator.
-// Handles both binary and decimal (BCD) mode.
+// Zero Page Relative (65C02 Bit Branching)
+// Fetches ZP Address into 'help' and Relative Offset into 'savepc'
 // -----------------------------------------------------------------------------
-inline void cpu_6502::adc6502()
+void cpu_6502::zprel6502()
+{
+	help = get6502memory(PC++); // Zero Page Address
+	savepc = get6502memory(PC++); // Relative Offset
+	if (savepc & 0x80)
+		savepc |= 0xFF00; // Sign extend
+}
+
+// -----------------------------------------------------------------------------
+// NES 2A03 Arithmetic Implementations (Binary Only)
+// -----------------------------------------------------------------------------
+void cpu_6502::adc_2a03()
 {
 	const uint8_t m = get6502memory(savepc);
 	const int     cin = (P & F_C) ? 1 : 0;
-
-	// Binary sum (used for Z/N/V on NMOS)
 	const uint16_t sum = (uint16_t)A + m + cin;
 	const uint8_t  bin = (uint8_t)sum;
 
-	// V from binary add. Clear V/C first.
+	P &= ~(F_V | F_C);
+	if ((~(A ^ m) & (A ^ bin) & 0x80) != 0) P |= F_V;
+	if (sum & 0x0100) P |= F_C;
+
+	A = bin;
+	set_nz(A);
+}
+
+void cpu_6502::sbc_2a03()
+{
+	const uint8_t m = get6502memory(savepc);
+	const int     cin = (P & F_C) ? 1 : 0;
+	const uint16_t diff = (uint16_t)A - m - (1 - cin);
+	const uint8_t  bin = (uint8_t)diff;
+
+	P &= ~(F_V | F_C);
+	if (((A ^ m) & (A ^ bin) & 0x80) != 0) P |= F_V;
+	if (!(diff & 0x0100)) P |= F_C;
+
+	A = bin;
+	set_nz(A);
+}
+
+// -----------------------------------------------------------------------------
+// CMOS 65C02 Arithmetic Implementations (Decimal Flag Fix)
+// -----------------------------------------------------------------------------
+void cpu_6502::adc65c02()
+{
+	const uint8_t m = get6502memory(savepc);
+	const int     cin = (P & F_C) ? 1 : 0;
+	const uint16_t sum = (uint16_t)A + m + cin;
+	const uint8_t  bin = (uint8_t)sum;
+
 	P &= ~(F_V | F_C);
 	if ((~(A ^ m) & (A ^ bin) & 0x80) != 0) P |= F_V;
 
 	if (P & F_D)
 	{
-		// Decimal adjust; C indicates decimal carry
+		clockticks6502++;
 		uint16_t dec = sum;
-
-		// Low digit correction
-		if (((A & 0x0F) + (m & 0x0F) + cin) > 9)
-			dec += 0x06;
-
-		// High digit correction (+ carry)
+		if (((A & 0x0F) + (m & 0x0F) + cin) > 9) dec += 0x06;
 		if (dec > 0x0099) { dec += 0x60; P |= F_C; }
 		A = (uint8_t)dec;
+		set_nz(A);
 	}
 	else
 	{
-		if (sum & 0x0100) P |= F_C;   // binary carry
+		if (sum & 0x0100) P |= F_C;
 		A = bin;
+		set_nz(A);
 	}
-
-	// NMOS rule: N/Z from the BINARY result (not the adjusted A)
-	set_nz(bin);
 }
-// -----------------------------------------------------------------------------
-// Subtract with Carry (SBC)
-// Subtracts a value from the accumulator (A) along with the inverse of the
-// carry flag. Updates the carry, zero, negative, and overflow flags.
-// Handles both binary and decimal (BCD) modes.
-// -----------------------------------------------------------------------------
-inline void cpu_6502::sbc6502()
+
+void cpu_6502::sbc65c02()
 {
 	const uint8_t m = get6502memory(savepc);
-	const int     cin = (P & F_C) ? 1 : 0;  // SBC subtracts (1 - C)
-
-	// Binary diff (used for Z/N/V on NMOS)
+	const int     cin = (P & F_C) ? 1 : 0;
 	const uint16_t diff = (uint16_t)A - m - (1 - cin);
 	const uint8_t  bin = (uint8_t)diff;
 
-	// V from binary subtract. Clear V/C first.
 	P &= ~(F_V | F_C);
 	if (((A ^ m) & (A ^ bin) & 0x80) != 0) P |= F_V;
 
 	if (P & F_D)
 	{
-		// Start from the binary diff but compute decimal borrows explicitly.
+		clockticks6502++;
 		uint16_t dec = diff;
-
-		// Low digit: did we need a borrow in decimal?
 		const int lo_raw = (int)(A & 0x0F) - (int)(m & 0x0F) - (1 - cin);
 		const int lo_borr = (lo_raw < 0) ? 1 : 0;
-		if (lo_borr) dec -= 0x06;  // decimal low correction
+		if (lo_borr) dec -= 0x06;
 
-		// High digit: include low borrow when deciding decimal high borrow
+		int hi = (int)(A >> 4) - (int)(m >> 4) - lo_borr;
+		if (hi < 0) { dec -= 0x60; P &= ~F_C; }
+		else { P |= F_C; }
+
+		A = (uint8_t)dec;
+		set_nz(A);
+	}
+	else
+	{
+		if (!(diff & 0x0100)) P |= F_C;
+		A = bin;
+		set_nz(A);
+	}
+}
+
+// -----------------------------------------------------------------------------
+// Standard NMOS Arithmetic Implementations
+// -----------------------------------------------------------------------------
+inline void cpu_6502::adc6502()
+{
+	const uint8_t m = get6502memory(savepc);
+	const int     cin = (P & F_C) ? 1 : 0;
+	const uint16_t sum = (uint16_t)A + m + cin;
+	const uint8_t  bin = (uint8_t)sum;
+
+	P &= ~(F_V | F_C);
+	if ((~(A ^ m) & (A ^ bin) & 0x80) != 0) P |= F_V;
+
+	if (P & F_D)
+	{
+		uint16_t dec = sum;
+		if (((A & 0x0F) + (m & 0x0F) + cin) > 9) dec += 0x06;
+		if (dec > 0x0099) { dec += 0x60; P |= F_C; }
+		A = (uint8_t)dec;
+	}
+	else
+	{
+		if (sum & 0x0100) P |= F_C;
+		A = bin;
+	}
+	set_nz(bin);
+}
+
+inline void cpu_6502::sbc6502()
+{
+	const uint8_t m = get6502memory(savepc);
+	const int     cin = (P & F_C) ? 1 : 0;
+	const uint16_t diff = (uint16_t)A - m - (1 - cin);
+	const uint8_t  bin = (uint8_t)diff;
+
+	P &= ~(F_V | F_C);
+	if (((A ^ m) & (A ^ bin) & 0x80) != 0) P |= F_V;
+
+	if (P & F_D)
+	{
+		uint16_t dec = diff;
+		const int lo_raw = (int)(A & 0x0F) - (int)(m & 0x0F) - (1 - cin);
+		const int lo_borr = (lo_raw < 0) ? 1 : 0;
+		if (lo_borr) dec -= 0x06;
+
 		int hi = (int)(A >> 4) - (int)(m >> 4) - lo_borr;
 		if (hi < 0) { dec -= 0x60; /* decimal high correction */ P &= ~F_C; }
-		else {                          /* no dec borrow */ P |= F_C; }
+		else { /* no borrow */ P |= F_C; }
 
 		A = (uint8_t)dec;
 	}
 	else
 	{
-		// Binary carry: set if no borrow in binary diff
 		if (!(diff & 0x0100)) P |= F_C;
 		A = bin;
 	}
-
-	// NMOS rule: N/Z from the BINARY result (not the adjusted A)
 	set_nz(bin);
-}// -----------------------------------------------------------------------------
+}
+
+// -----------------------------------------------------------------------------
 // Bitwise AND
 // Performs a logical AND between the accumulator (A) and memory.
 // Updates the zero and negative flags based on the result.
@@ -1052,17 +1199,27 @@ void cpu_6502::bit6502()
 {
 	value = get6502memory(savepc);
 
-	// Clear N, V, Z flags
-	P &= ~(F_N | F_V | F_Z);
+	// 65C02 Specific: Immediate Mode ($89) ONLY touches the Z flag.
+	// All other modes (ZeroPage, Absolute, etc) touch N, V, and Z.
+	if (cpu_model == CPU_CMOS_65C02 && opcode == 0x89)
+	{
+		// Immediate mode: Only update Z
+		set_z(A & value);
+	}
+	else
+	{
+		// Standard behavior (NMOS and CMOS non-immediate)
+		// Clear N, V, Z
+		P &= ~(F_N | F_V | F_Z);
 
-	// Set N and V from bits 7 and 6 of memory
-	P |= value & (F_N | F_V);
+		// Set N and V from bits 7 and 6 of memory
+		P |= value & (F_N | F_V);
 
-	// Set Z if (A & value) == 0
-	if ((A & value) == 0)
-		P |= F_Z;
+		// Set Z if (A & value) == 0
+		if ((A & value) == 0)
+			P |= F_Z;
+	}
 }
-
 // -----------------------------------------------------------------------------
 // Compare (CMP)
 // Compares the accumulator (A) with memory and sets flags as if performing
@@ -1556,11 +1713,10 @@ inline void cpu_6502::rts6502()
 // -----------------------------------------------------------------------------
 void cpu_6502::rti6502()
 {
-	// --- RTI: same IRQ deferral when I changes 1->0 via RTI restore ---
 	const bool was_I = (P & F_I) != 0;
 	P = pull8() | F_T | F_B;
 	PC = pull16();
-	if (was_I && !(P & F_I)) irq_inhibit_one = 1;
+	if (was_I && !(P & F_I)) irq_inhibit_one = 2;
 }
 
 // -----------------------------------------------------------------------------
@@ -1573,7 +1729,8 @@ void cpu_6502::brk6502()
 {
 	PC++;
 	push16(PC);
-	push8(P | F_B);
+	// Ensure both Bit 4 (B) and Bit 5 (T) are set
+	push8(P | F_B | F_T);
 	P = (P | F_I) & ~F_D;
 	PC = get6502memory(0xFFFE & addrmask) | (get6502memory(0xFFFF & addrmask) << 8);
 }
@@ -1584,18 +1741,25 @@ void cpu_6502::brk6502()
 // Logs a warning if the NOP opcode is unofficial.
 // -----------------------------------------------------------------------------
 void cpu_6502::nop6502()
-{
-	if (opcode != 0xEA) // Official NOP is 0xEA
+	{
+		// Official NOP
+		if (opcode == 0xEA) return;
+
+		// Ignore known 65C02 valid NOPs to clean up logs
+		if (cpu_model == CPU_CMOS_65C02) {
+			// 1-byte NOPs (converted from NMOS undoc)
+			if ((opcode & 0x0F) == 0x03 || (opcode & 0x0F) == 0x0B) return;
+			// 2-byte and 3-byte NOPs
+			if ((opcode & 0x0F) == 0x02 || (opcode & 0x0F) == 0x04) return;
+			if (opcode == 0x5C || opcode == 0xDC || opcode == 0xFC) return;
+		}
+
 		LOG_INFO("!!!!WARNING UNHANDLED NO-OP CALLED: %02X CPU: %d", opcode, cpu_num);
 
-	// I need to review this when I get some time.
-	switch (opcode)
-	{
-	case 0x1C: case 0x3C: case 0x5C: case 0x7C:
-	case 0xDC: case 0xFC:
-		clockticks6502++;
-		break;
-	}
+	// 2. Handle Cycle Adjustments (if any are missing from ticks table)
+	// Most standard NOP timings are handled by the ticks[] table, 
+	// but some NOPs referencing page boundaries might need +1 here if desired.
+	// For functional tests, base table timing is usually sufficient.
 }
 
 // -----------------------------------------------------------------------------
@@ -1746,7 +1910,8 @@ void cpu_6502::pha6502()
 // -----------------------------------------------------------------------------
 void cpu_6502::php6502()
 {
-	push8(P | F_B);
+	// Ensure both Bit 4 (B) and Bit 5 (T) are set
+	push8(P | F_B | F_T);
 }
 
 // -----------------------------------------------------------------------------
@@ -1767,10 +1932,9 @@ void cpu_6502::pla6502()
 // -----------------------------------------------------------------------------
 void cpu_6502::plp6502()
 {
-	// --- PLP: same IRQ deferral when I changes 1->0 via status restore ---
 	const bool was_I = (P & F_I) != 0;
 	P = pull8() | F_T | F_B;
-	if (was_I && !(P & F_I)) irq_inhibit_one = 1;
+	if (was_I && !(P & F_I)) irq_inhibit_one = 2;
 }
 
 // -----------------------------------------------------------------------------
@@ -1873,40 +2037,88 @@ inline void cpu_6502::dcp6502()
 	uint8_t m = get6502memory(savepc) - 1;
 	put6502memory(savepc, m);
 	uint16_t result = (uint16_t)A - m;
-	P = (P & ~(F_C | F_Z | F_N)) |
-		((result < 0x100) ? F_C : 0) |
-		((A == m) ? F_Z : 0) |
-		((result & 0x80) ? F_N : 0);
+	P = (P & ~(F_C | F_Z | F_N)) | ((result < 0x100) ? F_C : 0) | ((A == m) ? F_Z : 0) | ((result & 0x80) ? F_N : 0);
 }
 
 // -----------------------------------------------------------------------------
-// ISC Instruction (Undocumented)
-//
-// Increments memory, then subtracts it from A with carry (SBC).
-// Affects: N, Z, C, V
+// NES 2A03: RRA (Undocumented, Binary Only)
 // -----------------------------------------------------------------------------
-inline void cpu_6502::isc6502()
+void cpu_6502::rra_2a03()
 {
-	uint8_t m = get6502memory(savepc) + 1;
-	put6502memory(savepc, m);
+	uint8_t carry_in = (P & F_C) ? 0x80 : 0;
+	value = get6502memory(savepc);
+	P = (P & ~F_C) | (value & 1);
+	value = (value >> 1) | carry_in;
+	put6502memory(savepc, value);
 
-	uint16_t sum = (uint16_t)A - m - (P & F_C ? 0 : 1);
-	uint8_t result = (uint8_t)(sum & 0xFF);
+	// ADC (Binary) logic
+	const uint8_t m = value;
+	const int cin = (P & F_C) ? 1 : 0;
+	const uint16_t sum = (uint16_t)A + m + cin;
 
-	P = (P & ~(F_V | F_C)) |
-		((~(A ^ m) & (A ^ result) & 0x80) ? F_V : 0) |
-		((sum < 0x100) ? F_C : 0);
+	P &= ~(F_V | F_C);
+	if ((~(A ^ m) & (A ^ (uint8_t)sum) & 0x80) != 0) P |= F_V;
+	if (sum & 0x0100) P |= F_C;
 
-	A = result;
+	A = (uint8_t)sum;
 	set_nz(A);
 }
 
 // -----------------------------------------------------------------------------
-// SLO Instruction (Undocumented)
-//
-// Shifts memory left (ASL), then ORs the result into A.
-// Affects: N, Z, C
+// NES 2A03: ISC (Undocumented, Binary Only)
 // -----------------------------------------------------------------------------
+void cpu_6502::isc_2a03()
+{
+	uint8_t m = get6502memory(savepc) + 1;
+	put6502memory(savepc, m);
+
+	// SBC (Binary) logic
+	const int cin = (P & F_C) ? 1 : 0;
+	const uint16_t diff = (uint16_t)A - m - (1 - cin);
+
+	P &= ~(F_V | F_C);
+	if (((A ^ m) & (A ^ (uint8_t)diff) & 0x80) != 0) P |= F_V;
+	if (!(diff & 0x0100)) P |= F_C;
+
+	A = (uint8_t)diff;
+	set_nz(A);
+}
+
+// -----------------------------------------------------------------------------
+// NMOS Undocumented: ISC (With BCD Support)
+// -----------------------------------------------------------------------------
+void cpu_6502::isc6502()
+{
+	uint8_t m = get6502memory(savepc) + 1;
+	put6502memory(savepc, m);
+
+	// SBC Logic (NMOS)
+	const int cin = (P & F_C) ? 1 : 0;
+	const uint16_t diff = (uint16_t)A - m - (1 - cin);
+	const uint8_t  bin = (uint8_t)diff;
+
+	P &= ~(F_V | F_C);
+	if (((A ^ m) & (A ^ bin) & 0x80) != 0) P |= F_V;
+
+	if (P & F_D)
+	{
+		uint16_t dec = diff;
+		const int lo_raw = (int)(A & 0x0F) - (int)(m & 0x0F) - (1 - cin);
+		const int lo_borr = (lo_raw < 0) ? 1 : 0;
+		if (lo_borr) dec -= 0x06;
+		int hi = (int)(A >> 4) - (int)(m >> 4) - lo_borr;
+		if (hi < 0) { dec -= 0x60; P &= ~F_C; }
+		else { P |= F_C; }
+		A = (uint8_t)dec;
+	}
+	else
+	{
+		if (!(diff & 0x0100)) P |= F_C;
+		A = bin;
+	}
+	set_nz(bin); // NMOS: Flags on Binary Result
+}
+
 inline void cpu_6502::slo6502()
 {
 	value = get6502memory(savepc);
@@ -1918,28 +2130,38 @@ inline void cpu_6502::slo6502()
 }
 
 // -----------------------------------------------------------------------------
-// RRA Instruction (Undocumented)
-//
-// Rotates memory right (ROR), then adds it to A with carry (ADC).
-// Affects: N, Z, C, V
+// NMOS Undocumented: RRA (With BCD Support)
 // -----------------------------------------------------------------------------
-inline void cpu_6502::rra6502()
+void cpu_6502::rra6502()
 {
-	value = get6502memory(savepc);
 	uint8_t carry_in = (P & F_C) ? 0x80 : 0;
+	value = get6502memory(savepc);
 	P = (P & ~F_C) | (value & 1);
 	value = (value >> 1) | carry_in;
 	put6502memory(savepc, value);
 
-	int c = (P & F_C) ? 1 : 0;
-	int sum = A + value + c;
+	// ADC Logic (NMOS)
+	const uint8_t m = value;
+	const int     cin = (P & F_C) ? 1 : 0;
+	const uint16_t sum = (uint16_t)A + m + cin;
+	const uint8_t  bin = (uint8_t)sum;
 
 	P &= ~(F_V | F_C);
-	if (~(A ^ value) & (A ^ sum) & 0x80) P |= F_V;
-	if (sum > 0xFF) P |= F_C;
+	if ((~(A ^ m) & (A ^ bin) & 0x80) != 0) P |= F_V;
 
-	A = (uint8_t)(sum);
-	set_nz(A);
+	if (P & F_D)
+	{
+		uint16_t dec = sum;
+		if (((A & 0x0F) + (m & 0x0F) + cin) > 9) dec += 0x06;
+		if (dec > 0x0099) { dec += 0x60; P |= F_C; }
+		A = (uint8_t)dec;
+	}
+	else
+	{
+		if (sum & 0x0100) P |= F_C;
+		A = bin;
+	}
+	set_nz(bin); // NMOS: Flags on Binary Result
 }
 
 // -----------------------------------------------------------------------------
@@ -1952,10 +2174,23 @@ inline void cpu_6502::rra6502()
 inline void cpu_6502::rla6502()
 {
 	value = get6502memory(savepc);
-	P = (P & ~F_C) | (value >> 7); // Set Carry from old bit 7
-	value <<= 1;
+
+	// Save the bit that will become the new carry
+	uint8_t new_carry = (value >> 7) & 1;
+
+	// Get the old carry to rotate into bit 0
+	uint8_t old_carry = (P & F_C) ? 1 : 0;
+
+	// Perform ROL: shift left and rotate old carry into bit 0
+	value = (value << 1) | old_carry;
+
+	// Update carry flag with bit that was shifted out
+	P = (P & ~F_C) | (new_carry ? F_C : 0);
+
+	// Write back to memory
 	put6502memory(savepc, value);
 
+	// AND with accumulator
 	A &= value;
 	set_nz(A);
 }
@@ -1979,7 +2214,68 @@ inline void cpu_6502::sre6502()
 }
 
 // -----------------------------------------------------------------------------
-// Undocumented NMOS Instructions
+// RMB0-7 and SMB0-7 (65C02)
+// Reset/Set Memory Bit. 
+// Cycle count: 5
+// -----------------------------------------------------------------------------
+void cpu_6502::rmb_smb_6502()
+{
+	// savepc contains the Zero Page address (fetched by zp6502 mode)
+	uint8_t val = get6502memory(savepc);
+
+	// Decode Bit (High nibble 0-7) and Action (High nibble bit 3)
+	// RMB: 0x07, 17, 27... SMB: 0x87, 97, A7...
+	uint8_t bit_mask = 1 << ((opcode >> 4) & 7);
+
+	if (opcode & 0x80) {
+		val |= bit_mask;  // SMB (Set)
+	}
+	else {
+		val &= ~bit_mask; // RMB (Reset)
+	}
+
+	put6502memory(savepc, val);
+}
+
+// -----------------------------------------------------------------------------
+// BBR0-7 and BBS0-7 (65C02)
+// Branch on Bit Reset/Set.
+// Cycle count: 5 + 1 if branch + 1 if page cross
+// -----------------------------------------------------------------------------
+void cpu_6502::bbr_bbs_6502()
+{
+	// Hardware base is 5 cycles. 
+   // The ticks[] table for 'xF' (SLO abs) is usually 6.
+   // Correction:
+	clockticks6502 -= 1;
+
+	// help contains ZP address, savepc contains relative offset (fetched by zprel6502)
+	uint8_t val = get6502memory(help);
+
+	// Decode Bit
+	uint8_t bit_mask = 1 << ((opcode >> 4) & 7);
+
+	// Check condition
+	// BBR (0x0F..7F): Branch if Clear. BBS (0x8F..FF): Branch if Set.
+	bool condition = (val & bit_mask);
+
+	// If Opcode has bit 7 set (BBS), we want condition true.
+	// If Opcode has bit 7 clear (BBR), we want condition false.
+	if (((opcode & 0x80) != 0) == condition)
+	{
+		oldpc = PC;
+		PC += (int8_t)savepc;
+
+		// Standard branch timing: +1 for taking it
+		clockticks6502++;
+
+		// +1 for page crossing (standard behavior for 65C02 branches)
+		if ((oldpc ^ PC) & 0xFF00)
+			clockticks6502++;
+	}
+}
+// -----------------------------------------------------------------------------
+// More undocumented NMOS Instructions
 // -----------------------------------------------------------------------------
 
 // ANC - AND with immediate, then set C = N
@@ -2002,28 +2298,145 @@ void cpu_6502::alr6502()
 	set_nz(A);
 }
 
-// ARR - AND immediate, then ROR A
-// V = C xor bit6(A) after rotate
 void cpu_6502::arr6502()
 {
 	value = get6502memory(savepc);
 	A &= value;
+
+	// Perform ROR on A (rotate right through carry)
 	uint8_t old_carry = (P & F_C) ? 0x80 : 0;
-	P = (P & ~F_C) | (A & 0x01 ? F_C : 0);
 	A = (A >> 1) | old_carry;
+
 	set_nz(A);
-	// Set overflow: bit6 xor bit7
-	if (((A >> 6) ^ (A >> 7)) & 1)
+
+	// ARR has unique flag behavior in binary mode:
+	// C = bit 6 of result
+	// V = bit 6 XOR bit 5 of result
+	P &= ~(F_C | F_V);
+
+	if (A & 0x40)
+		P |= F_C;
+
+	if (((A >> 6) ^ (A >> 5)) & 0x01)
 		P |= F_V;
+
+	// Note: Decimal mode ARR is even more complex. (TODO: SO FIX THIS)
+	// If you need full BCD ARR accuracy, the flags and result
+	// calculation changes significantly. Most software doesn't use it.
+}
+
+void cpu_6502::axs6502()
+{
+	// AXS: X = (A & X) - immediate, sets flags like CMP
+	// Does NOT use borrow (like CMP, not SBC)
+	value = get6502memory(savepc);
+	uint8_t temp = A & X;
+	uint16_t result = (uint16_t)temp - value;
+
+	X = (uint8_t)result;
+
+	// Set carry if no borrow (like CMP)
+	if (temp >= value)
+		P |= F_C;
 	else
-		P &= ~F_V;
+		P &= ~F_C;
+
+	set_nz(X);
+}
+
+
+// -----------------------------------------------------------------------------
+// ANE / XAA (0x8B)
+// -----------------------------------------------------------------------------
+void cpu_6502::ane6502()
+{
+	value = get6502memory(savepc);
+	A = (A | 0xEE) & X & value;  // Magic constant 0xEE
+	set_nz(A);
 }
 
 // -----------------------------------------------------------------------------
-// Log Instruction Usage
-// Logs the number of times each opcode was executed during the current frame.
-// Intended for profiling or debugging purposes.
+// LXA / ATX (0xAB)
 // -----------------------------------------------------------------------------
+void cpu_6502::lxa6502()
+{
+	value = get6502memory(savepc);
+	A = X = (A | 0xEE) & value;  // Magic constant 0xEE
+	set_nz(A);
+}
+
+// -----------------------------------------------------------------------------
+// SHS / TAS (0x9B)
+// -----------------------------------------------------------------------------
+void cpu_6502::shs6502()
+{
+	S = A & X;
+	uint16_t addr_before_index = savepc - Y;
+	uint8_t high_byte = (addr_before_index >> 8) & 0xFF;
+	uint8_t store_value = A & X & ((high_byte + 1) & 0xFF);
+	put6502memory(savepc, store_value);
+}
+
+// -----------------------------------------------------------------------------
+// SHY / SAY (0x9C)
+// -----------------------------------------------------------------------------
+void cpu_6502::shy6502()
+{
+	uint16_t addr_before_index = savepc - X;
+	uint8_t high_byte = (addr_before_index >> 8) & 0xFF;
+	uint8_t store_value = Y & ((high_byte + 1) & 0xFF);
+	put6502memory(savepc, store_value);
+}
+
+// -----------------------------------------------------------------------------
+// SHX / SXA (0x9E)
+// -----------------------------------------------------------------------------
+void cpu_6502::shx6502()
+{
+	uint16_t addr_before_index = savepc - Y;
+	uint8_t high_byte = (addr_before_index >> 8) & 0xFF;
+	uint8_t store_value = X & ((high_byte + 1) & 0xFF);
+	put6502memory(savepc, store_value);
+}
+
+// -----------------------------------------------------------------------------
+// AHX / SHA (0x93, 0x9F)
+// -----------------------------------------------------------------------------
+void cpu_6502::ahx6502()
+{
+	// 0x93 is AHX (ZP), Y
+	uint8_t zp_ptr = get6502memory(savepc++);
+
+	// 1. Fetch the base address from Zero Page
+	uint8_t low = get6502memory(zp_ptr);
+	uint8_t high = get6502memory((zp_ptr + 1) & 0xFF);
+	uint16_t base_addr = (high << 8) | low;
+
+	// 2. Compute the store value
+	// Logic: A & X & (HighByte + 1)
+	uint8_t store_value = A & X & (high + 1);
+
+	// 3. Final Address Calculation
+	uint16_t target_addr = base_addr + Y;
+
+	// 4. Page Cross Corruption (Crucial for AccuracyCoin)
+	// If Y causes a page cross, the high byte of the address 
+	// written to is often A & X & (high + 1).
+	if ((base_addr >> 8) != (target_addr >> 8)) {
+		target_addr = (store_value << 8) | (target_addr & 0xFF);
+	}
+
+	put6502memory(target_addr, store_value);
+}
+
+void cpu_6502::las6502()
+{
+	value = get6502memory(savepc);
+	S &= value;
+	A = X = S;
+	set_nz(A);
+}
+
 void cpu_6502::log_instruction_usage()
 {
 	LOG_INFO("Instruction Usage This Frame:");
@@ -2036,42 +2449,30 @@ void cpu_6502::log_instruction_usage()
 	}
 }
 
-// -----------------------------------------------------------------------------
-// Reset Instruction Counts
-// Resets the instruction execution counters to zero.
-// Typically called at the start of a new profiling frame.
-// -----------------------------------------------------------------------------
 void cpu_6502::reset_instruction_counts()
 {
 	std::fill(std::begin(instruction_count), std::end(instruction_count), 0);
 }
 
-/*
-Usage:
-int used = 0;
-std::string disasm = cpu->disassemble(cpu->get_pc(), &used);
-LOG_INFO("%04X: %-20s  A:%02X X:%02X Y:%02X P:%02X", cpu->get_pc(), disasm.c_str(), cpu->A, cpu->X, cpu->Y, cpu->P);
-*/
-
 std::string cpu_6502::disassemble(uint16_t pc, int* bytesUsed)
 {
 	static const uint8_t length[256] = {
-		2,2,1,1,2,2,2,1,1,2,1,1,3,3,3,1,  // 00–0F
-		2,2,2,1,2,2,2,1,1,3,1,1,3,3,3,1,  // 10–1F
-		3,2,1,1,2,2,2,1,1,2,1,1,3,3,3,1,  // 20–2F
-		2,2,2,1,2,2,2,1,1,3,1,1,3,3,3,1,  // 30–3F
-		1,2,1,1,1,2,2,1,1,2,1,1,3,3,3,1,  // 40–4F
-		2,2,2,1,1,2,2,1,1,3,1,1,1,3,3,1,  // 50–5F
-		1,2,1,1,2,2,2,1,1,2,1,1,3,3,3,1,  // 60–6F
-		2,2,2,1,2,2,2,1,1,3,1,1,3,3,3,1,  // 70–7F
-		2,2,1,1,2,2,2,1,1,2,1,1,3,3,3,1,  // 80–8F
-		2,2,2,1,2,2,2,1,1,3,1,1,3,3,3,1,  // 90–9F
-		2,2,2,1,2,2,2,1,1,2,1,1,3,3,3,1,  // A0–AF
-		2,2,1,1,2,2,2,1,1,3,1,1,3,3,3,1,  // B0–BF
-		2,2,1,1,2,2,2,1,1,2,1,1,3,3,3,1,  // C0–CF
-		2,2,2,1,1,2,2,1,1,3,1,1,3,3,3,1,  // D0–DF
-		2,2,1,2,2,2,2,2,1,2,1,2,3,3,3,3,  // E0–EF
-		2,2,2,2,2,2,2,2,1,3,1,3,3,3,3,3   // F0–FF
+		2,2,1,1,2,2,2,1,1,2,1,1,3,3,3,1,  // 00-0F
+		2,2,2,1,2,2,2,1,1,3,1,1,3,3,3,1,  // 10-1F
+		3,2,1,1,2,2,2,1,1,2,1,1,3,3,3,1,  // 20-2F
+		2,2,2,1,2,2,2,1,1,3,1,1,3,3,3,1,  // 30-3F
+		1,2,1,1,1,2,2,1,1,2,1,1,3,3,3,1,  // 40-4F
+		2,2,2,1,1,2,2,1,1,3,1,1,1,3,3,1,  // 50-5F
+		1,2,1,1,2,2,2,1,1,2,1,1,3,3,3,1,  // 60-6F
+		2,2,2,1,2,2,2,1,1,3,1,1,3,3,3,1,  // 70-7F
+		2,2,1,1,2,2,2,1,1,2,1,1,3,3,3,1,  // 80-8F
+		2,2,2,1,2,2,2,1,1,3,1,1,3,3,3,1,  // 90-9F
+		2,2,2,1,2,2,2,1,1,2,1,1,3,3,3,1,  // A0-AF
+		2,2,1,1,2,2,2,1,1,3,1,1,3,3,3,1,  // B0-BF
+		2,2,1,1,2,2,2,1,1,2,1,1,3,3,3,1,  // C0-CF
+		2,2,2,1,1,2,2,1,1,3,1,1,3,3,3,1,  // D0-DF
+		2,2,1,2,2,2,2,2,1,2,1,2,3,3,3,3,  // E0-EF
+		2,2,2,2,2,2,2,2,1,3,1,3,3,3,3,3   // F0-FF
 	};
 
 	char buffer[64] = {};

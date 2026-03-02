@@ -1,47 +1,58 @@
 // -----------------------------------------------------------------------------
-// vector_draw.h - Modern OpenGL 4.3+ Vector Line/Point Rendering System
-// Self-contained replacement for emu_vector_draw
+// vector_draw.h
 // -----------------------------------------------------------------------------
-
 #pragma once
-#ifndef VECTOR_DRAW_H
-#define VECTOR_DRAW_H
-
-#include <glm/glm.hpp>
 #include <vector>
 #include <GL/glew.h>
+#include "colordefs.h"  // rgb_t, MAKE_RGBA etc.
+#include "MathUtils.h"
+
+using namespace aae::math;
 
 enum BlendMode {
-    BLEND_STANDARD,
-    BLEND_ADDITIVE
+    BLEND_STANDARD, // Alpha blending (transparency)
+    BLEND_ADDITIVE  // CRT style (light accumulation)
 };
 
 struct VectorConfig {
-    float fire_point_size = 4.0f;
-    BlendMode blend_mode = BLEND_STANDARD;
+   
+    BlendMode blend_mode = BLEND_ADDITIVE; // Default to additive for vectors
     GLuint fire_texture = 0;
+
+    // Global width multiplier (default 1.0)
+    float line_width_scale = 1.0f;
+
+    // --- SHOT TUNING ---
+    float fire_point_size = 3.5f;      // GEOMETRY SIZE (Smaller = 3.5, Standard = 4.0)
+
+    // Shader Uniforms
+    float shot_core_power = 6.0f;      // Higher = Sharper/Smaller hot center
+    float shot_bloom_power = 2.5f;     // Higher = Smaller Halo (was 2.0)
+    float shot_bloom_intensity = 0.3f; // Lower = Dimmer Halo (was 0.4)
+    float shot_overdrive = 3.0f;       // Brightness Multiplier (was 4.0)
 };
 
 struct VecLine {
-    glm::vec2 p0, p1;
+    vec2 p0;
+    vec2 p1;
     float thickness;
-    glm::vec4 color;
+    rgb_t color;      // packed RGBA
 };
 
 struct VecPoint {
-    glm::vec2 pos;
+    vec2 pos;
     float size;
-    glm::vec4 color;
+    rgb_t color;
 };
 
 void vector_draw_init(const VectorConfig& config);
 void vector_draw_shutdown();
-//vector_add_junction_points(15.0f, 2.0f); // 15° minimum angle, 2px min segment length
-void vector_add_line(glm::vec2 p0, glm::vec2 p1, float thickness, glm::vec4 color);
-void vector_add_point(glm::vec2 pos, float size, glm::vec4 color);
-void vector_add_fire(glm::vec2 pos, glm::vec4 color); // uses config.fire_point_size
-void vector_add_junction_points(float angleThresholdDegrees = 10.0f, float minSegmentLength = 1.0f);
-void vector_draw_all(const glm::mat4& projection);
-void vector_clear();
 
-#endif // VECTOR_DRAW_H
+// Core drawing functions
+void vector_add_line(vec2 p0, vec2 p1, float thickness, rgb_t rgba);
+void vector_add_point(vec2 pos, float size, rgb_t rgba);
+void vector_add_fire(vec2 pos, rgb_t rgba);
+
+// Render everything
+void vector_draw_all(const mat4& projection);
+void vector_clear();

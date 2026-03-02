@@ -255,7 +255,7 @@ int dvg_generate_vector_list(void)
 
 					if (z != 4)
 					{
-						z = (z << 4) | 0x0f;
+						z = (z << 4) + 0x0f;
 						if (ASTEROID_DVG) {
 							add_tex(currentx >> VEC_SHIFT, currenty >> VEC_SHIFT, z, MAKE_RGBA(z, z, z, z));
 						}

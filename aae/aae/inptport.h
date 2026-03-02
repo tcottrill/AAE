@@ -19,7 +19,7 @@
 
 // -----------------------------------------------------------------------------
 // Legacy MAME-Derived Module
-// This file contains code originally developed as part of the M.A.M.E.™ Project.
+// This file contains code originally developed as part of the M.A.M.E.(TM) Project.
 // Portions of this file remain under the copyright of the original MAME authors
 // and contributors. It has since been adapted and merged into the AAE (Another
 // Arcade Emulator) project, with modernizations and enhancements applied.
@@ -29,9 +29,9 @@
 //   and is integrated with its rendering, input, and emulation subsystems.
 //
 // Licensing Notice:
-//   - Original portions of this code remain © the M.A.M.E.™ Project and its
+//   - Original portions of this code remain @ the M.A.M.E.(TM) Project and its
 //     respective contributors under their original terms of distribution.
-//   - Modifications, enhancements, and new code are © 2025 Tim Cottrill and
+//   - Modifications, enhancements, and new code are @ 2025 Tim Cottrill and
 //     released under the GNU General Public License v3 (GPLv3) or later.
 //   - Redistribution must preserve both this notice and the original MAME
 //     copyright acknowledgement.
@@ -51,7 +51,7 @@
 //   along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // Original Copyright:
-//   This file is originally part of and copyright the M.A.M.E.™ Project.
+//   This file is originally part of and copyright the M.A.M.E.(TM) Project.
 //   For more information about MAME licensing, see the original MAME source
 //   distribution and its associated license files.
 //
@@ -126,7 +126,8 @@ IPT_UI_PAUSE,
 //////////////////////////////////////////////////////
 //Added for AAE GUI ///////////////////
 //////////////////////////////////////////////////////
-IPT_EXIT
+IPT_EXIT,
+IPT_SPULSE
 //////////////////////////////////////////////////////
 //END of Additions.                ///////////////////
 //////////////////////////////////////////////////////
@@ -364,6 +365,19 @@ int input_port_joy(const struct InputPort* in);
 void update_analog_port(int port);
 void update_input_ports(void);	/* called by cpuintrf.c - not for external use */
 void inputport_vblank_end(void);	/* called by cpuintrf.c - not for external use */
+void reset_custom_input_state(void); /* reset accelerating-repeat state on game switch */
+
+// Joystick/key repeat and single-pulse checker. 
+// index: slot 0-249 used by MAME inputs, 250-259 reserved for menu joystick navigation.
+int  Check_Input(int index, int state);
+int  KeyFlip(int keynum, int state);
+
+#define JOY_INPUT_UP     250
+#define JOY_INPUT_DOWN   251
+#define JOY_INPUT_LEFT   252
+#define JOY_INPUT_RIGHT  253
+#define JOY_INPUT_SELECT 254
+#define JOY_INPUT_BACK   255
 
 UINT32 readinputportbytag(const char* tag);
 int port_tag_to_index(const char* tag);

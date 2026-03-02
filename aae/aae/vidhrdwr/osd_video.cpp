@@ -1,6 +1,6 @@
 // -----------------------------------------------------------------------------
 // Legacy MAME-Derived Module
-// This file contains code originally developed as part of the M.A.M.E.™ Project.
+// This file contains code originally developed as part of the M.A.M.E.(TM) Project.
 // Portions of this file remain under the copyright of the original MAME authors
 // and contributors. It has since been adapted and merged into the AAE (Another
 // Arcade Emulator) project.
@@ -10,7 +10,7 @@
 //   and is integrated with its rendering, input, and emulation subsystems.
 //
 // Licensing Notice:
-//   - Original portions of this code remain © the M.A.M.E.™ Project and its
+//   - Original portions of this code remain @ the M.A.M.E.(TM) Project and its
 //     respective contributors under their original terms of distribution.
 //   - Redistribution must preserve both this notice and the original MAME
 //     copyright acknowledgement.
@@ -30,7 +30,7 @@
 //   along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // Original Copyright:
-//   This file is originally part of and copyright the M.A.M.E.™ Project.
+//   This file is originally part of and copyright the M.A.M.E.(TM) Project.
 //   For more information about MAME licensing, see the original MAME source
 //   distribution and its associated license files.
 //
@@ -85,6 +85,111 @@ static int            g_total_colors = 0;
 //int gfx_mode;
 //int gfx_width;
 //int gfx_height;
+
+
+// -----------------------------------------------------------------------------
+// Palette debug helpers
+// Writes deterministic per-entry dumps so you can diff logs across versions.
+// Enable by setting PALETTE_DEBUG 1.
+// -----------------------------------------------------------------------------
+#ifndef PALETTE_DEBUG
+#define PALETTE_DEBUG 0
+#endif
+
+#if PALETTE_DEBUG
+
+static void DumpPaletteRGB(const char* tag, const unsigned char* palRGB, int totalColors)
+{
+	if (!tag || !palRGB || totalColors <= 0)
+		return;
+
+	LOG_INFO("PALDUMP_BEGIN tag=%s total=%d", tag, totalColors);
+	for (int i = 0; i < totalColors; i++)
+	{
+		const unsigned char r = palRGB[i * 3 + 0];
+		const unsigned char g = palRGB[i * 3 + 1];
+		const unsigned char b = palRGB[i * 3 + 2];
+		LOG_INFO("PALDUMP tag=%s i=%03d rgb=%02X%02X%02X", tag, i, r, g, b);
+	}
+	LOG_INFO("PALDUMP_END tag=%s", tag);
+}
+
+static void DumpPensMap(const char* tag, const unsigned char* pensMap, int totalColors)
+{
+	if (!tag || !pensMap || totalColors <= 0)
+		return;
+
+	LOG_INFO("PENMAP_BEGIN tag=%s total=%d", tag, totalColors);
+	for (int i = 0; i < totalColors; i++)
+	{
+		LOG_INFO("PENMAP tag=%s i=%03d pen=%03d", tag, i, (int)pensMap[i]);
+	}
+	LOG_INFO("PENMAP_END tag=%s", tag);
+}
+
+static void DumpCurrentPaletteByIndex(const char* tag, int maxIndex)
+{
+	if (!tag || maxIndex <= 0)
+		return;
+
+	LOG_INFO("CURPAL_BEGIN tag=%s maxIndex=%d", tag, maxIndex);
+	for (int pen = 0; pen < maxIndex; pen++)
+	{
+		const unsigned char r = (unsigned char)current_palette[pen][0];
+		const unsigned char g = (unsigned char)current_palette[pen][1];
+		const unsigned char b = (unsigned char)current_palette[pen][2];
+		LOG_INFO("CURPAL tag=%s pen=%03d rgb=%02X%02X%02X", tag, pen, r, g, b);
+	}
+	LOG_INFO("CURPAL_END tag=%s", tag);
+}
+
+static void DumpEffectivePaletteViaPens(const char* tag, const unsigned char* palRGB, const unsigned char* pensMap, int totalColors)
+{
+	if (!tag || !palRGB || !pensMap || totalColors <= 0)
+		return;
+
+	LOG_INFO("EFPAL_BEGIN tag=%s total=%d", tag, totalColors);
+	for (int i = 0; i < totalColors; i++)
+	{
+		const int pen = (int)pensMap[i];
+		const unsigned char r = palRGB[i * 3 + 0];
+		const unsigned char g = palRGB[i * 3 + 1];
+		const unsigned char b = palRGB[i * 3 + 2];
+		LOG_INFO("EFPAL tag=%s i=%03d pen=%03d rgb=%02X%02X%02X", tag, i, pen, r, g, b);
+	}
+	LOG_INFO("EFPAL_END tag=%s", tag);
+}
+
+static void DumpTableBytes(const char* tag, const unsigned char* table, int count)
+{
+	if (!tag || !table || count <= 0)
+		return;
+
+	LOG_INFO("TBL_BEGIN tag=%s count=%d", tag, count);
+	for (int i = 0; i < count; i++)
+	{
+		// Print one entry per line for easy diff.
+		LOG_INFO("TBL tag=%s i=%03d v=%02X", tag, i, (unsigned int)table[i]);
+	}
+	LOG_INFO("TBL_END tag=%s", tag);
+}
+
+#endif // PALETTE_DEBUG
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // -----------------------------------------------------------------------------
 // Required globals (as requested)
@@ -336,6 +441,11 @@ int vh_open(void)
 		palette = convpalette;
 		colortable = convtable;
 		using_convpalette = true;
+#if PALETTE_DEBUG
+		DumpPaletteRGB("vh_open.raw_convpalette", palette, (int)Machine->gamedrv->total_colors);
+		if (colortable && Machine->gamedrv->color_table_len)
+			DumpTableBytes("vh_open.colortable_out", colortable, (int)Machine->gamedrv->color_table_len);
+#endif
 	}
 	LOG_INFO("VH_OPEN_4");
 	/* create the display bitmap, and allocate the palette */
@@ -362,6 +472,10 @@ int vh_open(void)
 	for (i = 0; i < MAX_PENS; i++) //totalcolors
 	{
 		Machine->pens[i] = i;// 255 - i;
+#if PALETTE_DEBUG
+		DumpPensMap("vh_open.pens_map", Machine->pens, (int)Machine->gamedrv->total_colors);
+		DumpEffectivePaletteViaPens("vh_open.effective_via_pens", palette, Machine->pens, (int)Machine->gamedrv->total_colors);
+#endif
 	}
 	LOG_INFO("TotalColors here is %d", Machine->gamedrv->total_colors);
 	for (i = 0; i < (int)Machine->gamedrv->total_colors; i++)
@@ -375,6 +489,9 @@ int vh_open(void)
 	if (colortable) {
 		for (i = 0; i < (int)Machine->gamedrv->color_table_len; i++)
 			remappedtable[i] = Machine->pens[colortable[i]];
+#if PALETTE_DEBUG
+		DumpTableBytes("vh_open.remappedtable", (unsigned char*)remappedtable, (int)Machine->gamedrv->color_table_len);
+#endif
 	}
 	else if (Machine->gamedrv->color_table_len) {
 		LOG_INFO("No colortable provided by vh_convert_color_prom; skipping remap of %d entries", (int)Machine->gamedrv->color_table_len);
@@ -398,7 +515,7 @@ int vh_open(void)
 		}
 	}
 
-	// after you’ve filled current_palette from the game’s palette:
+	// after you've filled current_palette from the game's palette:
 	if (Machine->drv->video_attributes & VIDEO_MODIFIES_PALETTE)
 	{
 		// from palette
@@ -503,8 +620,8 @@ void palette_change_color(int color,
 //   nullptr if nothing changed,
 //   else a pointer to g_just_remapped[] (nonzero entries indicate which colors).
 //
-// This mirrors MAME .36’s “return non-null if any visible/cached colors were
-// remapped”, which Millipede uses to trigger a full redraw when needed. 
+// This mirrors MAME .36's "return non-null if any visible/cached colors were
+// remapped", which Millipede uses to trigger a full redraw when needed. 
 // -----------------------------------------------------------------------------
 const unsigned char* palette_recalc(void)
 {

@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------------- -
 // Legacy MAME-Derived Module
-// This file contains code originally developed as part of the M.A.M.E.™ Project.
+// This file contains code originally developed as part of the M.A.M.E.(TM) Project.
 // Portions of this file remain under the copyright of the original MAME authors
 // and contributors. It has since been adapted and merged into the AAE (Another
 // Arcade Emulator) project, with modernizations and enhancements applied.
@@ -10,9 +10,9 @@
 //   and is integrated with its rendering, input, and emulation subsystems.
 //
 // Licensing Notice:
-//   - Original portions of this code remain © the M.A.M.E.™ Project and its
+//   - Original portions of this code remain @ the M.A.M.E.(TM) Project and its
 //     respective contributors under their original terms of distribution.
-//   - Modifications, enhancements, and new code are © 2025 Tim Cottrill and
+//   - Modifications, enhancements, and new code are @ 2025 Tim Cottrill and
 //     released under the GNU General Public License v3 (GPLv3) or later.
 //   - Redistribution must preserve both this notice and the original MAME
 //     copyright acknowledgement.
@@ -32,7 +32,7 @@
 //   along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // Original Copyright:
-//   This file is originally part of and copyright the M.A.M.E.™ Project.
+//   This file is originally part of and copyright the M.A.M.E.(TM) Project.
 //   For more information about MAME licensing, see the original MAME source
 //   distribution and its associated license files.
 //
@@ -102,6 +102,20 @@ typedef struct {
 	int timer;
 } GM_Input;
 GM_Input theinput[260];
+
+// Reset accelerating-repeat and single-pulse state.
+// Call this when switching games so stale key state doesn't carry over.
+void reset_custom_input_state()
+{
+	for (int i = 0; i < 260; i++)
+	{
+		theinput[i].now = 0;
+		theinput[i].prev = 0;
+		theinput[i].s2 = 0;
+		theinput[i].s3 = 0;
+		theinput[i].timer = 0;
+	}
+}
 //////////////////////////////////////////////////////
 //END of Additions.                ///////////////////
 //////////////////////////////////////////////////////
@@ -260,6 +274,8 @@ struct ipd inputport_defaults[] =
 	{ (IPT_AD_STICK_Y | IPF_PLAYER4) + IPT_EXTENSION,                "AD Stick Y 4", 0, 0 },
 
 	{ IPT_UNKNOWN,             "UNKNOWN",         IP_KEY_NONE,     IP_JOY_NONE },
+	{ IPT_EXIT,                "Exit",            IP_KEY_NONE,     IP_JOY_NONE },
+	{ IPT_SPULSE,              "GUI Input",       IP_KEY_NONE,     IP_JOY_NONE },
 	{ IPT_END,                 0,                 0,     0 }	/* returned when there is no match */
 };
 
@@ -363,6 +379,9 @@ int load_input_port_settings(void)
 	LOG_INFO("Setting Default Keys");
 
 	load_default_keys();
+
+	// Reset accelerating-repeat and single-pulse state for the new game.
+	reset_custom_input_state();
 
 	LOG_INFO("opening File");
 
@@ -821,24 +840,23 @@ void scale_analog_port(int port)
 //////////////////////////////////////////////////////
 int KeyFlip(int keynum, int state)
 {
-	static int keys[256];
+	static int keys[256] = {};
 	static int init = 0;
-	int i;
 
 	if (init == 0) //INIT
 	{
-		for (i = 0; i < 256; i++)
+		for (int i = 0; i < 256; i++)
 		{
 			keys[i] = 0;
 		}
 		init = 1;
 	}
-	if (!keys[keynum] && state) //Return True if not in que
+	if (!keys[keynum] && state) //Return True if not in queue
 	{
 		keys[keynum] = 1;
 		return 1;
 	}
-	else if (keys[keynum] && !state) //Return False if in que
+	else if (keys[keynum] && !state) //Return False if in queue
 		keys[keynum] = 0;
 	return 0;
 }
@@ -1062,7 +1080,33 @@ void update_input_ports(void)
 					key = input_port_key(in);
 					joy = input_port_joy(in);
 
-					if ((key != 0 && key != IP_KEY_NONE && osd_key_pressed(key)) ||
+					int basetype = (in->type & ~IPF_MASK);
+
+					//////////////////////////////////////////////////////
+					// IPT_SPULSE handling (standalone type for GUI)
+					// Accelerating auto-repeat: immediate on first press,
+					// then repeats with increasing speed while held.
+					//////////////////////////////////////////////////////
+					if (basetype == IPT_SPULSE)
+					{
+						int pressed = 0;
+						if ((key != 0 && key != IP_KEY_NONE && osd_key_pressed(key)) ||
+							(joy != 0 && joy != IP_JOY_NONE && osd_joy_pressed(joy)))
+						{
+							pressed = 1;
+						}
+
+						set = Check_Input(ib, pressed);
+
+						if (set)
+							input_port_value[port] ^= in->mask;
+
+						waspressed[ib] = pressed;
+					}
+					//////////////////////////////////////////////////////
+					// Standard MAME input handling for all other types
+					//////////////////////////////////////////////////////
+					else if ((key != 0 && key != IP_KEY_NONE && osd_key_pressed(key)) ||
 						(joy != 0 && joy != IP_JOY_NONE && osd_joy_pressed(joy)))
 					{
 						/* skip if coin input and it's locked out
@@ -1093,8 +1137,8 @@ void update_input_ports(void)
 								input_port_value[port] ^= in->mask;
 							}
 						}
-						else if ((in->type & ~IPF_MASK) >= IPT_JOYSTICK_UP &&
-							(in->type & ~IPF_MASK) <= IPT_JOYSTICKLEFT_RIGHT)
+						else if (basetype >= IPT_JOYSTICK_UP &&
+							basetype <= IPT_JOYSTICKLEFT_RIGHT)
 						{
 #ifndef MAME_NET
 							int joynum, joydir, mask, player;
@@ -1107,8 +1151,8 @@ void update_input_ports(void)
 							int joynum, joydir, mask;
 #endif /* !MAME_NET */
 							joynum = player * MMAX_JOYSTICKS +
-								((in->type & ~IPF_MASK) - IPT_JOYSTICK_UP) / 4;
-							joydir = ((in->type & ~IPF_MASK) - IPT_JOYSTICK_UP) % 4;
+								(basetype - IPT_JOYSTICK_UP) / 4;
+							joydir = (basetype - IPT_JOYSTICK_UP) % 4;
 
 							mask = in->mask;
 
@@ -1165,9 +1209,8 @@ void update_input_ports(void)
 						waspressed[ib] = 0;
 
 					//////////////////////////////////////////////////////
-					//Added for AAE Counter and Spulse ///////////////////
+					// IPF_COUNTER flag: accelerating repeat on any type
 					//////////////////////////////////////////////////////
-
 					if (in->type & IPF_COUNTER)
 					{
 						set = Check_Input(ib, waspressed[ib]);
@@ -1178,6 +1221,9 @@ void update_input_ports(void)
 						}
 					}
 
+					//////////////////////////////////////////////////////
+					// IPF_SPULSE flag: single-pulse on any type
+					//////////////////////////////////////////////////////
 					if (in->type & IPF_SPULSE)
 					{
 						set = KeyFlip(ib, waspressed[ib]);
@@ -1187,10 +1233,6 @@ void update_input_ports(void)
 							waspressed[ib] = set;
 						}
 					}
-
-					//////////////////////////////////////////////////////
-					//END of Additions.                ///////////////////
-					//////////////////////////////////////////////////////
 
 					if ((in->type & IPF_IMPULSE) && impulsecount[ib] > 0)
 					{

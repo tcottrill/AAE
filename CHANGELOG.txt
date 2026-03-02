@@ -245,12 +245,37 @@ Added the equivalent of MAME timer_alloc and timer_adjust to timer.cpp. Added a 
 9/5/25-9/7/25 
 Did another big pass at the vector rendering. This time I fixed multiple issues, all vectors should look better on must screens, at least with tweaking. The asteroid and asteroid deluxe shots still look like crap, I'll get that corrected on the next rendering update. 
 Added an non-mame oki6295 adpcm chip emulation after 7 iterations and 2 complete restarts with ChatGPT. mhavocpe no longer requires separate samples, it's all decoded from the roms properly now. Added a new low pass filter to use, I'll use it in more code in the future. Made another pass at the LFO code in galaxian, it's better but still not 100%. I'm going to dig out my galaxian pcb and put it in my pacman cocktail to compare to for the final adjustments. I think I have all the sound code fixes out of my system, next is to finish the driver updates, centralize the CPU setup ala MAME, and then move on to the complete rendering overhaul. 
-Temporarily reinstated the depricated code in render_blur_image_fbo3() to help with the asteroids texture issue. 
+Temporarily reinstated the deprecated code in render_blur_image_fbo3() to help with the asteroids texture issue. 
 Expect the graphics overhaul to add correct scaling and rotation, as well as a new set of menu options for maximum number of knobs to tune for  every graphics piece. 
 9/8/25 Finished the CPU code cutover to MAME style, still cleaning up.
 9/9/25 Corrected Tempest Menu (Clay Cowgill)
 9/12/25 Finally fixed the DD and FD opcodes in the Z80, now finally fully passes zexdoc. 
 
+1/1/26 to 3/2/26
+Finally got back to work on this, changes are below:
+@@ All code updated have been assisted with Claude Code, ChatGPT and Gemini
+- Updated and validated my 6502 core, now passes all tests, all undocumented opcodes supported and validated. Supports MOS 6502, CMOS 65C02, 6510 and 2A03 chips all in the same file. Tested with NES, PET and Commodore 64 Emulators. 
+- Fixed a bug in the Timer code accumulation error in timer_update.
+- updated the scanline code in cpu_control.cpp, still not happy with it. TBD
+- added scanline support to the raster rendering, it's not great, I'll move to shaders when I get time.
+- Massive overhaul validation and various updates of the joystick, rawinput and xaudio code. Input and Audio code are multithreaded, XAudio now supports stereo streaming, all resampling and filters.
+- Major rewrite of the Menu code, now much cleaner and easier to support on the backend.
+- Updates to the vector font rendering, It's now a proportional font with all scaling and rotation support, with special characters for graphics.
+- Mostly dissected and unraveled the crazy rendering code. It still needs major work, Never EVER let the needs of 2 games dictate the entire rendering scheme. Removed the artwork from the main shader rendering, everything is in layers now, more bezels and art is supported. Some games are still being rendered upside down on the wrong part of the 1024x1024 texture causing overlay issues, this will be corrected by moving to a fully resizable, rotate-able, scalable image rendering system that will replace the current system, eventually. I already have it working with my space invaders example emulator, new version still to be uploaded to GitHub.
+- Xinput Joystick 0 (Xbox Controller) can now control the entire game, including menu navigation and the GUI. Help file coming with controls. These do not match MAME, I am working on my own input handling and remapping system for other programs that I am using for the Menu and GUI.
+- Readded a more appropriate vector GUI now that I have all the rendering and memory leaks corrected (fingers crossed). 
+- Corrected the sound resampling in the namco games, they sounds much better now at 44100, perfect if you force the games to 96000 though.
+- Got frustrated and added overengineered, multithreaded keyboard led support so my ultimarc keyboard controller could pick them up correctly. 
+- TODO: I have not texted any of these changes in Windows 7 yet, I may have broken several things. With Tiny 11, I have moved to that for my arcade machines so it's more of a pain to test. 
+- Completely remapped and corrected every game in video.ini, so it needs to be replaced. And soon I hope to do away with it altogether.
+- Revamped the game sorting and listing code, it no longer requires the legacy driver code, removed. 
+- Touched about all the main files, cleaned up where I could but a deeper review is needed, coming by summer.
+- Todo still, update all the rendering to opengl 4, I have a complete Vulcan rendering system done, but not sure if/when it will make it in.
+- Add a confirm to exit popup with the new joystick code. To disable for arcade cabinets, edit aae.ini and set confirm_exit=0
+ 
+
+
+ 
 
 
 

@@ -13,16 +13,7 @@
 
 #ifndef OSDEPEND_H
 #define OSDEPEND_H
-/*
-struct osd_bitmap
-{
-	int width, height;       
-	int depth;		
-	void* privatebm; 
-	unsigned char **line; 
 
-};
-*/
 
 #define    OSD_KEY_NONE		     0
 #define    OSD_KEY_A             0x41

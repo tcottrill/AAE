@@ -57,6 +57,8 @@ static UINT8 last_control;
 
 void cinemat_vector_callback(INT16 sx, INT16 sy, INT16 ex, INT16 ey, UINT8 shift)
 {
+	//LOG_INFO("CINEMAT DRAW %d, %d, %d, %d", sx, sy, ex, sy);
+
 	sx = sx - Machine->drv->visible_area.min_x;
 	ex = ex - Machine->drv->visible_area.min_x;
 	sy = sy - Machine->drv->visible_area.min_y;

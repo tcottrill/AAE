@@ -6,6 +6,10 @@
 #include "osd_video.h"
 #include "namco.h"
 
+ART_START(rallyx_art)
+ART_LOAD("rallyx.zip", "rallyx_bezel.png", ART_TEX, 3)
+ART_END
+
 static const char* rallyx_samples[] =
 {
 	"rallyx.zip",
@@ -350,7 +354,7 @@ AAE_DRIVER_ROM(rom_rallyx)
 AAE_DRIVER_FUNCS(&init_rallyx, &run_rallyx, &end_rallyx)
 AAE_DRIVER_INPUT(input_ports_rallyx)
 AAE_DRIVER_SAMPLES(rallyx_samples)
-AAE_DRIVER_ART_NONE()
+AAE_DRIVER_ART(rallyx_art)
 
 AAE_DRIVER_CPUS(
 	AAE_CPU_ENTRY(

@@ -1,56 +1,25 @@
 
-// -----------------------------------------------------------------------------
-// Game Engine Alpha - Generic Module
-// Generic component or utility file for the Game Engine Alpha project. This
-// file may contain helpers, shared utilities, or subsystems that integrate
-// seamlessly with the engine's rendering, audio, and gameplay frameworks.
-//
-// Integration:
-//   This library is part of the **Game Engine Alpha** project and is tightly
-//   integrated with its texture management, logging, and math utility systems.
-//
-// Usage:
-//   Include this module where needed. It is designed to work as a building block
-//   for engine subsystems such as rendering, input, audio, or game logic.
-//
-// License:
-//   This program is free software: you can redistribute it and/or modify
-//   it under the terms of the GNU General Public License as published by
-//   the Free Software Foundation, either version 3 of the License, or
-//   (at your option) any later version.
-//
-//   This program is distributed in the hope that it will be useful,
-//   but WITHOUT ANY WARRANTY; without even the implied warranty of
-//   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//   GNU General Public License for more details.
-//
-//   You should have received a copy of the GNU General Public License
-//   along with this program. If not, see <https://www.gnu.org/licenses/>.
-//
-// -----------------------------------------------------------------------------
-
-
 /*============================================================================
   game_list.h
   ----------------------------------------------------------------------------
   Circular, doubly-linked, alphabetically-sorted list of games for AAE
   ============================================================================
 
-  • Builds itself from the null-terminated AAEDriver[] table that the
+  * Builds itself from the null-terminated AAEDriver[] table that the
     AAE emulator core already defines.
 
-  • Each entry is stored in a contiguous std::vector<GameNode> so you can
-    access items by index *in sorted order* via operator[] — just like the
+  * Each entry is stored in a contiguous std::vector<GameNode> so you can
+    access items by index *in sorted order* via operator[] - just like the
     old C array.
 
-  • The list is also linked into a circular ring (next/prev pointers) so
+  * The list is also linked into a circular ring (next/prev pointers) so
     traversal forward or backward is O(1) with seamless wrap-around.
 
-  • Helper indexOfGameNum() lets you pass an original driver index
+  * Helper indexOfGameNum() lets you pass an original driver index
     (gamenum) and get back the position of that game in the sorted list,
-    or -1 if it isn’t present.
+    or -1 if it isn't present.
 
-  • C++11-only: uses std::vector, std::string, emplace_back, nullptr,
+  * C++11-only: uses std::vector, std::string, emplace_back, nullptr,
     but no lambdas or auto in the public API for maximum readability.
 
   ----------------------------------------------------------------------------
@@ -111,7 +80,7 @@
           struct AAEDriver;
 
       // ---------------------------------------------------------------------------
-      // GameNode – single entry in the game list
+      // GameNode - single entry in the game list
       // ---------------------------------------------------------------------------
       struct GameNode
       {
@@ -130,7 +99,7 @@
       };
 
       // ---------------------------------------------------------------------------
-      // GameList – owns storage, sorting, and circular links
+      // GameList - owns storage, sorting, and circular links
       // ---------------------------------------------------------------------------
       class GameList
       {

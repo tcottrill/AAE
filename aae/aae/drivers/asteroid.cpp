@@ -26,7 +26,6 @@ int get_bit(int num, int bit_position) {
 	return (num >> bit_position) & 1; // Shift right and AND with 1 to isolate the bit
 }
 
-
 static const char* asteroidsamples[] =
 {
 	"asteroid.zip",
@@ -164,7 +163,6 @@ WRITE_HANDLER(astdelux_sounds_w)
 		sample_start(4, kThrust, 1);
 	}
 	lastthrust = data;
-
 }
 
 WRITE_HANDLER(asteroid_thump_w)
@@ -274,7 +272,7 @@ WRITE_HANDLER(asteroid_explode_w)
 				sound = kExplode3;
 				break;
 			}
-		
+
 			//LOG_INFO("Calling sample start explode");
 			sample_start(8, sound, 0);
 		}
@@ -285,8 +283,6 @@ WRITE_HANDLER(asteroid_explode_w)
 	if (data == 0x3d) { sample_start(8, 0, 0); }
 	if (data == 0xfd) { sample_start(8, 1, 0); }
 	if (data == 0xbd) { sample_start(8, 2, 0); }
-
-
 }
 ///////////////////////////////////////////////////////////////////////////////
 WRITE_HANDLER(astdelux_led_w)
@@ -294,16 +290,16 @@ WRITE_HANDLER(astdelux_led_w)
 	static int led0 = 0;
 	static int led1 = 0;
 
-	if (address & 0xff) 
+	if (address & 0xff)
 	{
-		led1 = (data & 0x80) ? 0 : 1; 
+		led1 = (data & 0x80) ? 0 : 1;
 	}
-	else 
+	else
 	{
-		led0 = (data & 0x80) ? 0 : 1; 
+		led0 = (data & 0x80) ? 0 : 1;
 	}
-		
-	set_led_status(0,led0);
+
+	set_led_status(0, led0);
 	set_led_status(1, led1);
 }
 
@@ -314,7 +310,7 @@ WRITE_HANDLER(astdelux_bank_switch_w)
 	unsigned char* RAM = Machine->memory_region[CPU0];
 
 	astdelux_newbank = (data >> 7) & 1;
-	
+
 	if (readinputportbytag("COCKTAIL") & 0x01) set_screen_flipping(astdelux_newbank);
 
 	if (astdelux_bank != astdelux_newbank) {
@@ -331,8 +327,6 @@ WRITE_HANDLER(astdelux_bank_switch_w)
 	}
 }
 
-
-
 ////////////  CALL ASTEROIDS SWAPRAM  ////////////////////////////////////////////
 WRITE_HANDLER(asteroid_bank_switch_w)
 {
@@ -340,9 +334,9 @@ WRITE_HANDLER(asteroid_bank_switch_w)
 	static int asteroid_bank = 0;
 	int asteroid_newbank;
 	asteroid_newbank = (data >> 2) & 1;
-	
+
 	if (readinputportbytag("COCKTAIL") & 0x01) set_screen_flipping(asteroid_newbank);
-	 
+
 	if (asteroid_bank != asteroid_newbank) {
 		/* Perform bankswitching on page 2 and page 3 */
 		asteroid_bank = asteroid_newbank;
@@ -350,7 +344,7 @@ WRITE_HANDLER(asteroid_bank_switch_w)
 		memcpy(Machine->memory_region[CPU0] + 0x200, Machine->memory_region[CPU0] + 0x300, 0x100);
 		memcpy(Machine->memory_region[CPU0] + 0x300, buffer, 0x100);
 	}
-	
+
 	set_led_status(0, ~data & 0x02);
 	set_led_status(1, ~data & 0x01);
 }
@@ -387,7 +381,7 @@ READ_HANDLER(asterock_IN0_r)
 
 	res = readinputport(0);
 	bitmask = (1 << address);
-	
+
 	if (get_eterna_ticks(0) & 0x100)
 		res |= 0x04;
 	if (!dvg_done())
@@ -399,7 +393,6 @@ READ_HANDLER(asterock_IN0_r)
 		res = 0x80;
 	if (address == 7) return 0;
 	return res;
-	
 }
 
 READ_HANDLER(asteroid_IN1_r)
@@ -431,14 +424,59 @@ READ_HANDLER(asteroid_DSW1_r)
 	return res;
 }
 
+READ_HANDLER(Pokey_read_test)
+{
+	uint8_t val = 0;
+	static int first_time = 0;
+	static int test_read = 1;
+	address = address & 0xf;
+
+	if ((readinputport(0) & 0x80))
+	{
+		val = pokey1_r(address);
+		//LOG_INFO("Pokey Read: Addr %x data:%x", address, val);
+
+		if ((address) == 0x0a)
+		{
+			val = rand() & 0xff;
+			test_read = 1;
+		}
+
+		if ((address) == 0x08)
+		{
+			if (test_read)
+			{
+				test_read = 0;
+				val = 0x0;
+			}
+			else
+			{
+				val = pokey1_r(address);
+			}
+			//LOG_INFO("Pokey Read: Addr %x data:%x", address, val);
+		}
+	}
+	else
+	{
+		val = pokey1_r(address);
+	}
+
+	//LOG_INFO("Returning %d for Pokey Addr %d", val, address);
+	//Log the code being read.
+	//int used = 0;
+	//std::string disasm = m_cpu_6502[0]->disassemble(m_cpu_6502[0]->get_pc(), &used);
+	//LOG_INFO("%04X: %-20s  A:%02X X:%02X Y:%02X P:%02X", m_cpu_6502[0]->get_pc(), disasm.c_str(), m_cpu_6502[0]->A, m_cpu_6502[0]->X, m_cpu_6502[0]->Y, m_cpu_6502[0]->P);
+
+	return val;
+}
+
 void run_asteroid()
 {
-	
 }
 
 void run_astdelux()
 {
-	pokey_sh_update(); 
+	pokey_sh_update();
 }
 /////////////////END MAIN LOOP/////////////////////////////////////////////
 
@@ -466,7 +504,7 @@ MEM_READ(AsteroidDeluxeRead)
 MEM_ADDR(0x2000, 0x2007, asteroid_IN0_r)
 MEM_ADDR(0x2400, 0x2407, asteroid_IN1_r)
 MEM_ADDR(0x2800, 0x2803, asteroid_DSW1_r)
-MEM_ADDR(0x2c00, 0x2c0f, pokey_1_r)
+MEM_ADDR(0x2c00, 0x2c0f, Pokey_read_test)//pokey_1_r)
 MEM_ADDR(0x2c40, 0x2c7f, EaromRead)
 MEM_END
 
@@ -528,7 +566,7 @@ void end_astdelux()
 int init_asteroid(void)
 {
 	//init6502(AsteroidRead, AsteroidWrite, 0x7fff, CPU0);
-	
+
 	dvg_start_asteroid();
 	//timer_set(TIME_IN_HZ(MASTER_CLOCK / 4096), 0, clock3k_update);
 
@@ -628,7 +666,7 @@ PORT_DIPSETTING(0x80, DEF_STR(1C_1C))
 PORT_DIPSETTING(0x40, DEF_STR(1C_2C))
 PORT_DIPSETTING(0x00, DEF_STR(Free_Play))
 
-PORT_START("COCKTAIL")// Fake Cocktail Switch 
+PORT_START("COCKTAIL")// Fake Cocktail Switch
 PORT_DIPNAME(0x01, 0x00, "Cabinet")
 PORT_DIPSETTING(0x00, "Upright")
 PORT_DIPSETTING(0x01, "Cocktail")
@@ -637,7 +675,7 @@ INPUT_PORTS_END
 
 INPUT_PORTS_START(asterock)
 PORT_START("IN0")
-// Bit 0 is VG_HALT, handled in the machine dependent part 
+// Bit 0 is VG_HALT, handled in the machine dependent part
 PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_UNKNOWN)
 /* Bit 2 and 3 are handled in the machine dependent part. */
 /* Bit 2 is the 3 KHz source and Bit 3 the VG_HALT bit    */
@@ -682,8 +720,7 @@ PORT_DIPSETTING(0x80, DEF_STR(1C_1C))
 PORT_DIPSETTING(0x40, DEF_STR(1C_2C))
 PORT_DIPSETTING(0x00, DEF_STR(Free_Play))
 
-
-PORT_START("COCKTAIL")// Fake Cocktail Switch 
+PORT_START("COCKTAIL")// Fake Cocktail Switch
 PORT_DIPNAME(0x01, 0x00, "Cabinet")
 PORT_DIPSETTING(0x00, "Upright")
 PORT_DIPSETTING(0x01, "Cocktail")
@@ -759,7 +796,7 @@ PORT_DIPSETTING(0xa0, "1 each 4")
 PORT_DIPSETTING(0xc0, "1 each 2")
 PORT_DIPSETTING(0xe0, "None")
 
-PORT_START("COCKTAIL")// Fake Cocktail Switch 
+PORT_START("COCKTAIL")// Fake Cocktail Switch
 PORT_DIPNAME(0x01, 0x00, "Cabinet")
 PORT_DIPSETTING(0x00, "Upright")
 PORT_DIPSETTING(0x01, "Cocktail")
@@ -779,7 +816,6 @@ ROM_REGION(0x100, REGION_PROMS, 0)
 ROM_LOAD("034602-01.c8", 0x0000, 0x0100, CRC(97953db8) SHA1(8cbded64d1dd35b18c4d5cece00f77e7b2cab2ad))
 ROM_END
 
-
 ROM_START(asteroidb)
 ROM_REGION(0x10000, REGION_CPU1, 0)
 ROM_LOAD("035127-02.np3", 0x5000, 0x0800, CRC(8b71fd9e) SHA1(8cd5005e531eafa361d6b7e9eed159d164776c70))
@@ -791,7 +827,6 @@ ROM_RELOAD(0xf800, 0x800)
 ROM_REGION(0x100, REGION_PROMS, 0)
 ROM_LOAD("034602-01.c8", 0x0000, 0x0100, CRC(97953db8) SHA1(8cbded64d1dd35b18c4d5cece00f77e7b2cab2ad))
 ROM_END
-
 
 ROM_START(asterock)
 ROM_REGION(0x10000, REGION_CPU1, 0)
@@ -877,8 +912,8 @@ ROM_LOAD("034602-01.c8", 0x0000, 0x0100, CRC(97953db8) SHA1(8cbded64d1dd35b18c4d
 ROM_END
 //////////////////////////////////////////////////////////////////////////////////////////////
 // DRIVERS
-// 
-// 
+//
+//
 
 // Meteorites (Asteroids bootleg)
 AAE_DRIVER_BEGIN(drv_meteorts, "meteorts", "Meteorites (Asteroids Bootleg)")
@@ -1053,11 +1088,11 @@ AAE_DRIVER_INPUT(input_ports_astdelux)
 AAE_DRIVER_SAMPLES(deluxesamples)
 AAE_DRIVER_ART(astdelu1art)
 AAE_DRIVER_CPUS(
-	AAE_CPU_ENTRY(CPU_M6502,1512000, 100,4, INT_TYPE_NMI,asteroid_interrupt,AsteroidDeluxeRead,AsteroidDeluxeWrite,
+	AAE_CPU_ENTRY(CPU_M6502, 1512000, 100, 4, INT_TYPE_NMI, asteroid_interrupt, AsteroidDeluxeRead, AsteroidDeluxeWrite,
 		nullptr,
 		nullptr,
 		nullptr,
-		nullptr	),
+		nullptr),
 	AAE_CPU_NONE_ENTRY(),
 	AAE_CPU_NONE_ENTRY(),
 	AAE_CPU_NONE_ENTRY()

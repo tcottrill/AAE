@@ -101,11 +101,16 @@ static int get_opcode_starwars(int avg_pc)
 static void draw_bzone(int sx, int sy, int ex, int ey, int z, int color)
 {
 	int clip;
-	int BZ_CLIP = 768 - 50;
+	int BZ_CLIP = 272; // The amount of pixels to clip from the bottom
+	// We are rendering flipped onto a 1024x1024 surface and cutting out 768 of it
+	// Which makes this truly a mess.
 
 	z = (z << 4);
-	
-	set_clip_rect(0, 0, 1024, BZ_CLIP);
+
+	// set_clip_rect(xmin, ymin, xmax, ymax)
+	// By setting ymin to BZ_CLIP (50), anything below y=50 is chopped off.
+	// ymax is set to 1024 so the rest of the screen draws normally.
+	set_clip_rect(0, BZ_CLIP, 1024, 1024);
 
 	if (vector_engine == USE_AVG_RBARON)
 		add_line(sx, sy, ex, ey, z, MAKE_RGBA(z, z, z, z));
@@ -121,7 +126,6 @@ static void draw_bzone(int sx, int sy, int ex, int ey, int z, int color)
 		}
 	}
 }
-
 static void draw_avg(int sx, int sy, int ex, int ey, int z, int color)
 {
 	z = ((z & 0xf) << 4) | 0xf;
@@ -490,7 +494,7 @@ int avg_init(int type)
 
 	case USE_AVG_BZONE:
 	{
-		YFLIP = 1;
+		YFLIP = 0;
 		AVG_BUSY = 1;
 		scale_adj = 2;
 		NO_CACHE = 1;
@@ -502,7 +506,7 @@ int avg_init(int type)
 
 	case USE_AVG_RBARON:
 	{
-		YFLIP = 1;
+		YFLIP = 0;
 		AVG_BUSY = 1;
 		scale_adj = 2;
 		NO_CACHE = 1;

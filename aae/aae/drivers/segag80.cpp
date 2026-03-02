@@ -21,6 +21,11 @@
 #include "driver_registry.h"
 
 
+ART_START(elim2art)
+ART_LOAD("elim2.zip", "eliminator_bezel.png", ART_TEX, 3)
+ART_END
+
+
 ART_START(spacfuryart)
 ART_LOAD("spacfury.zip", "space_fury_bezel.png", ART_TEX, 3)
 ART_END
@@ -31,7 +36,11 @@ ART_LOAD("startrek.zip", "startrek.png", ART_TEX, 3)
 ART_END
 
 ART_START(tacscanart)
-ART_LOAD("custom.zip", "vert_mask.png", ART_TEX, 2)
+ART_LOAD("tacscan.zip", "tacscan_bezel.png", ART_TEX, 3)
+ART_END
+
+ART_START(zektorart)
+ART_LOAD("zektor.zip", "zektor_bezel.png", ART_TEX, 3)
 ART_END
 
 void sega_interrupt() {
@@ -752,7 +761,7 @@ PORT_DIPSETTING(0x00, DEF_STR(Cocktail))
 COINAGE
 
 PORT_START("IN8")		/* IN8 - FAKE port for the dial */
-PORT_ANALOG(0xff, 0x00, IPT_DIAL | IPF_CENTER, 100, 10, 0, 0, 0)
+PORT_ANALOG(0xff, 0x00, IPT_DIAL | IPF_CENTER, 50, 10, 0, 0, 0)
 INPUT_PORTS_END
 
 INPUT_PORTS_START(startrek)
@@ -1269,7 +1278,7 @@ AAE_DRIVER_ROM(rom_zektor)
 AAE_DRIVER_FUNCS(&init_zektor, &run_segag80, &end_segag80)
 AAE_DRIVER_INPUT(input_ports_zektor)
 AAE_DRIVER_SAMPLES(zektor_samples)
-AAE_DRIVER_ART_NONE()
+AAE_DRIVER_ART(zektorart)
 
 AAE_DRIVER_CPUS(
 	AAE_CPU_ENTRY(
@@ -1485,7 +1494,7 @@ AAE_DRIVER_ROM(rom_elim2)
 AAE_DRIVER_FUNCS(&init_elim2, &run_segag80, &end_segag80)
 AAE_DRIVER_INPUT(input_ports_elim2)
 AAE_DRIVER_SAMPLES(elim_samples)
-AAE_DRIVER_ART_NONE()
+AAE_DRIVER_ART(elim2art)
 
 AAE_DRIVER_CPUS(
 	AAE_CPU_ENTRY(
@@ -1521,7 +1530,7 @@ AAE_DRIVER_ROM(rom_elim2a)
 AAE_DRIVER_FUNCS(&init_elim2, &run_segag80, &end_segag80)
 AAE_DRIVER_INPUT(input_ports_elim2)
 AAE_DRIVER_SAMPLES(elim_samples)
-AAE_DRIVER_ART_NONE()
+AAE_DRIVER_ART(elim2art)
 
 AAE_DRIVER_CPUS(
 	AAE_CPU_ENTRY(
@@ -1557,7 +1566,7 @@ AAE_DRIVER_ROM(rom_elim2c)
 AAE_DRIVER_FUNCS(&init_elim2, &run_segag80, &end_segag80)
 AAE_DRIVER_INPUT(input_ports_elim2)
 AAE_DRIVER_SAMPLES(elim_samples)
-AAE_DRIVER_ART_NONE()
+AAE_DRIVER_ART(elim2art)
 
 AAE_DRIVER_CPUS(
 	AAE_CPU_ENTRY(

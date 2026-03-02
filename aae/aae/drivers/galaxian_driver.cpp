@@ -11,6 +11,13 @@ extern unsigned char* galaxian_attributesram;
 extern unsigned char* galaxian_bulletsram;
 extern int galaxian_bulletsram_size;
 
+static int sound_init = 0;
+
+ART_START(galaxian_art)
+ART_LOAD("galaxian.zip", "galaxian_bezel.png", ART_TEX, 3)
+ART_END
+
+
 static const char* galaxian_samples[] =
 {
 	"galaxian.zip",
@@ -123,7 +130,7 @@ WRITE_HANDLER(galaxian_stream_pitch_w)
 //////////////////////////////////////////////////////////////
 //MAIN HANDLERS
 //////////////////////////////////////////////////////////////
-// 0x6805 — SHOOT: rising edge -> play sample once
+// 0x6805 - SHOOT: rising edge -> play sample once
 WRITE_HANDLER(galaxian_sample_shoot_w)
 {
 	static int last = 0;
@@ -135,7 +142,7 @@ WRITE_HANDLER(galaxian_sample_shoot_w)
 	last = bit;
 }
 
-// 0x6803 — BANG/HIT: rising edge -> play sample once
+// 0x6803 - BANG/HIT: rising edge -> play sample once
 WRITE_HANDLER(galaxian_sample_bang_w)
 {
 	static int last = 0;
@@ -162,6 +169,24 @@ WRITE_HANDLER(galaxian_flip_screen_y_w)
 
 void run_galaxian()
 {
+	//Temp Fix, init sound after CPU's have been initialized. 
+	// Need to rethink the sound setup
+
+	if (!sound_init) {
+		galaxian_sh_start_stream(nullptr);
+
+		// Mid LFO and make sure background is on from frame 0:
+		galaxian_lfo_freq_w(0, 0);  // bit0 = 0
+		galaxian_lfo_freq_w(1, 0);  // bit1 = 0
+		galaxian_lfo_freq_w(2, 0);  // bit2 = 0
+		galaxian_lfo_freq_w(3, 1);  // bit3 = 1  => value 8
+
+		galaxian_background_enable_w(0, 1);
+		galaxian_background_enable_w(1, 1);
+		galaxian_background_enable_w(2, 1);
+		sound_init = 1;
+	}
+
 	watchdog_reset_w(0, 0, 0);
 	galaxian_vh_screenrefresh();
 	galaxian_sh_update_stream();
@@ -220,26 +245,27 @@ int init_galaxian(void)
 {
 	//init_z80(galaxian_readmem, galaxian_writemem, galaxian_readport, galaxian_writeport, CPU0);
 	//FOR RASTER, VIDEORAM POINTER, SPRITERAM POINTER NEED TO BE SET MANUALLY
-	galaxian_attributesram = &Machine->memory_region[0][0x5800];
-	galaxian_bulletsram = &Machine->memory_region[0][0x5860];
-	galaxian_bulletsram_size = 0x20;
-	videoram = &Machine->memory_region[0][0x5000];
-	videoram_size = 0x400;
-	spriteram = &Machine->memory_region[0][0x5840];
-	spriteram_size = 0x20;
+	//galaxian_attributesram = &Machine->memory_region[0][0x5800];
+	//galaxian_bulletsram = &Machine->memory_region[0][0x5860];
+	//galaxian_bulletsram_size = 0x20;
+	//videoram = &Machine->memory_region[0][0x5000];
+	//videoram_size = 0x400;
+	//spriteram = &Machine->memory_region[0][0x5840];
+	//spriteram_size = 0x20;
 
-	galaxian_sh_start_stream(nullptr);
+//	galaxian_sh_start_stream(nullptr);
 	// Mid LFO and make sure background is on from frame 0:
     //galaxian_lfo_freq_w(0, 0);  // bit0 = 0
 //	galaxian_lfo_freq_w(1, 0);  // bit1 = 0
 //	galaxian_lfo_freq_w(2, 0);  // bit2 = 0
 //	galaxian_lfo_freq_w(3, 1);  // bit3 = 1  => value 8
-
-	galaxian_background_enable_w(0, 1);
-	galaxian_background_enable_w(1, 1);
-	galaxian_background_enable_w(2, 1);
+	LOG_INFO("1");
+//	galaxian_background_enable_w(0, 1);
+//	galaxian_background_enable_w(1, 1);
+//	galaxian_background_enable_w(2, 1);
+	LOG_INFO("2");
 	galaxian_vh_start();
-
+	LOG_INFO("3");
 	return 0;
 }
 
@@ -314,7 +340,7 @@ AAE_DRIVER_ROM(rom_galaxian)
 AAE_DRIVER_FUNCS(&init_galaxian, &run_galaxian, &end_galaxian)
 AAE_DRIVER_INPUT(input_ports_galaxian)
 AAE_DRIVER_SAMPLES(galaxian_samples)
-AAE_DRIVER_ART_NONE()
+AAE_DRIVER_ART(galaxian_art)
 
 AAE_DRIVER_CPUS(
 	AAE_CPU_ENTRY(

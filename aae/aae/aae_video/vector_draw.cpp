@@ -1,40 +1,67 @@
 // -----------------------------------------------------------------------------
 // vector_draw.cpp - Modern OpenGL 4.3+ Vector Renderer
-// This is test code, it's not prime time yet. 
 // -----------------------------------------------------------------------------
 #define GLM_ENABLE_EXPERIMENTAL
 #include "vector_draw.h"
-#include <GL/glew.h>
-#include <glm/gtc/type_ptr.hpp>
+#include "MathUtils.h"
 #include <vector>
-#include <string>
-#include <fstream>
-#include <sstream>
-#include <iostream>
-#include "sys_log.h"
-#include <map>
-#include <unordered_map>
-#include <glm/gtx/hash.hpp>  // for hashing glm::ivec2
-#include "shader_util.h"
+#include "shader_util.h" 
+#include <algorithm>
+
+using namespace aae::math;
 
 // -----------------------------------------------------------------------------
-// Inline GLSL shaders
+// Shaders
 // -----------------------------------------------------------------------------
+
+// =============================================================================
+// 1. INSTANCED LINE SHADER (SDF Capsules)
+// =============================================================================
 static const char* vs_line = R"GLSL(
 #version 430 core
-layout(location = 0) in vec2 inPos;
-layout(location = 1) in float inOffset;
-layout(location = 2) in vec4 inColor;
+
+const vec2 kQuadVerts[4] = vec2[](
+    vec2(0.0, -1.0), 
+    vec2(1.0, -1.0), 
+    vec2(0.0,  1.0), 
+    vec2(1.0,  1.0) 
+);
+
+layout(location = 0) in vec2 inP0;
+layout(location = 1) in vec2 inP1;
+layout(location = 2) in float inThickness;
+layout(location = 3) in vec4 inColor;
 
 uniform mat4 uProj;
 
-out float vOffset;
+out vec2 vLocalPos;
+out float vLen;
+out float vWidth;
 out vec4 vColor;
 
 void main()
 {
-    gl_Position = uProj * vec4(inPos, 0.0, 1.0);
-    vOffset = inOffset;
+    vec2 delta = inP1 - inP0;
+    float len = length(delta);
+    vec2 dir = (len > 0.0001) ? (delta / len) : vec2(1.0, 0.0);
+    vec2 norm = vec2(-dir.y, dir.x);
+
+    float width = inThickness * 0.5; 
+    float feather = 1.5; 
+    float expansion = width + feather;
+
+    vec2 rawUV = kQuadVerts[gl_VertexID]; 
+
+    float u_pos = (rawUV.x * (len + 2.0 * expansion)) - expansion;
+    float v_pos = rawUV.y * expansion;
+
+    vec2 worldPos = inP0 + (dir * u_pos) + (norm * v_pos);
+
+    gl_Position = uProj * vec4(worldPos, 0.0, 1.0);
+
+    vLocalPos = vec2(u_pos, v_pos);
+    vLen = len;
+    vWidth = width;
     vColor = inColor;
 }
 )GLSL";
@@ -42,30 +69,43 @@ void main()
 static const char* fs_line = R"GLSL(
 #version 430 core
 
-in float vOffset;
+in vec2 vLocalPos;
+in float vLen;
+in float vWidth;
 in vec4 vColor;
-out vec4 fragColor;
 
-uniform float uLineWidth;
-uniform float uEdgeSmooth;
+out vec4 fragColor;
 
 void main()
 {
-    float edgeStart = uLineWidth * 0.5;
-    float edgeEnd   = edgeStart - uEdgeSmooth;
-   // float alpha = exp(-pow(distance / uEdgeSmooth, 2.0));
+    float t = clamp(vLocalPos.x, 0.0, vLen);
+    float dist = distance(vLocalPos, vec2(t, 0.0));
 
-    float distance = abs(vOffset * 0.5 * uLineWidth);
-    float alpha = smoothstep(edgeStart, edgeEnd, distance);
+    // Cap Trim to reduce "bulbous" joints
+    const float kCapTrim = 0.90; 
+    float effectiveDist = dist;
+    if (vLocalPos.x < 0.0 || vLocalPos.x > vLen) {
+        effectiveDist /= kCapTrim; 
+    }
 
-    // Fade RGB toward black for smoother edges (optional)
-    //vec3 fadedRGB = mix(vec3(0.0), vColor.rgb, alpha);
+    float aa_size = 1.0; 
+    float alpha = 1.0 - smoothstep(vWidth - (aa_size * 0.5), 
+                                   vWidth + (aa_size * 0.5), 
+                                   effectiveDist);
 
-   // fragColor = vec4(fadedRGB, vColor.a * alpha);
-fragColor = vec4(vColor.rgb, vColor.a * alpha);
+    if (alpha <= 0.0) discard;
+
+    // Optional gamma correction for sharpness
+    alpha = pow(alpha, 1.2); 
+
+    fragColor = vec4(vColor.rgb, vColor.a * alpha);
 }
 )GLSL";
 
+
+// =============================================================================
+// 2. POINT SHADERS
+// =============================================================================
 static const char* vs_point = R"GLSL(
 #version 430 core
 layout(location = 0) in vec2 inPos;
@@ -98,9 +138,11 @@ void main()
    float alpha = smoothstep(edgeStart, edgeEnd, dist);
    fragColor = vec4(vColor.rgb, vColor.a * alpha);
 }
-
 )GLSL";
 
+// =============================================================================
+// 3. PROCEDURAL FIRE/SHOT SHADERS (TUNABLE)
+// =============================================================================
 static const char* vs_fire = R"GLSL(
 #version 430 core
 layout(location = 0) in vec2 inPos;
@@ -126,27 +168,45 @@ in vec2 vUV;
 in vec4 vColor;
 out vec4 fragColor;
 
-uniform sampler2D uTex;
+// Tuning Uniforms
+uniform float uCorePower;      
+uniform float uBloomPower;     
+uniform float uBloomIntensity; 
+uniform float uOverdrive;      
 
 void main()
 {
-    float alpha = texture(uTex, vUV).r;
-    fragColor = vec4(vColor.rgb, vColor.a * alpha);
+    float brightness = max(vColor.r, max(vColor.g, vColor.b));
+    brightness = max(0.1, brightness); // Safety floor
+
+    // --- DYNAMICS ---
+    // 1. Core Power: Static (No shrinking for dim shots)
+    float dynCorePower = uCorePower; 
+
+    // 2. Bloom Intensity: Dampened drop-off (Floor of 50%)
+    float dynBloomInt = uBloomIntensity * (0.5 + (brightness * 0.5));
+
+    // 3. Overdrive: Proportional
+    float dynOverdrive = uOverdrive * brightness;
+
+    // --- RENDER ---
+    float d = distance(vUV, vec2(0.5));
+    float r = clamp(d * 2.0, 0.0, 1.0);
+    float glowBase = 1.0 - r;
+
+    float core = pow(glowBase, dynCorePower);
+    float halo = pow(glowBase, uBloomPower) * dynBloomInt;
+
+    float totalIntensity = core + halo;
+    vec3 hotColor = vColor.rgb * dynOverdrive;
+
+    fragColor = vec4(hotColor * totalIntensity, totalIntensity);
 }
 )GLSL";
 
-
-struct QuadVertex {
-    glm::vec2 pos;
-    float offset;
-    glm::vec4 color;
-};
-
-struct FireVertex {
-    glm::vec2 pos;
-    glm::vec2 uv;
-    glm::vec4 color;
-};
+// -----------------------------------------------------------------------------
+// Data Management
+// -----------------------------------------------------------------------------
 
 static std::vector<VecLine> g_lines;
 static std::vector<VecPoint> g_points;
@@ -159,170 +219,59 @@ static GLuint vaoFire = 0, vboFire = 0;
 static GLuint shaderLine = 0;
 static GLuint shaderPoint = 0;
 static GLuint shaderFire = 0;
-
 static VectorConfig g_config;
 
 // -----------------------------------------------------------------------------
-
-static std::string load_file(const char* path) {
-    std::ifstream in(path);
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
-
-static GLuint compile_shader(GLenum type, const char* path) {
-    std::string code = load_file(path);
-    const char* src = code.c_str();
-
-    GLuint shader = glCreateShader(type);
-    glShaderSource(shader, 1, &src, nullptr);
-    glCompileShader(shader);
-
-    GLint ok = 0;
-    glGetShaderiv(shader, GL_COMPILE_STATUS, &ok);
-    if (!ok) {
-        char log[512];
-        glGetShaderInfoLog(shader, 512, nullptr, log);
-        LOG_ERROR("compile_shader - failed to compile %s:\n%s", path, log);
-    }
-    else {
-        LOG_INFO("compile_shader - successfully compiled %s", path);
-    }
-
-    return shader;
-}
-
-static GLuint create_program(const char* vs, const char* fs) {
-    LOG_INFO("create_program - creating shader program with: %s and %s", vs, fs);
-
-    GLuint vert = compile_shader(GL_VERTEX_SHADER, vs);
-    GLuint frag = compile_shader(GL_FRAGMENT_SHADER, fs);
-
-    if (!vert || !frag) {
-        LOG_ERROR("create_program - skipping link due to failed shader compile");
-        return 0;
-    }
-
-    GLuint p = glCreateProgram();
-    glAttachShader(p, vert);
-    glAttachShader(p, frag);
-    glLinkProgram(p);
-
-    GLint linked = 0;
-    glGetProgramiv(p, GL_LINK_STATUS, &linked);
-    if (!linked) {
-        char log[512];
-        glGetProgramInfoLog(p, 512, nullptr, log);
-        LOG_ERROR("create_program - failed to link program with %s and %s:\n%s", vs, fs, log);
-        glDeleteProgram(p);
-        return 0;
-    }
-
-    LOG_INFO("create_program - successfully linked program with %s and %s", vs, fs);
-    return p;
-}
-
-void vector_add_junction_points(float angleThresholdDegrees, float minSegmentLength)
-{
-    if (g_lines.size() < 2)
-        return;
-
-    float angleThresholdDot = cos(glm::radians(180.0f - angleThresholdDegrees));
-    std::unordered_map<glm::ivec2, std::vector<size_t>> endpointMap;
-
-    // Step 1: map endpoints to their integer pixel coords
-    for (size_t i = 0; i < g_lines.size(); ++i) {
-        const auto& l = g_lines[i];
-        if (glm::length(l.p1 - l.p0) < minSegmentLength)
-            continue;
-
-        endpointMap[glm::ivec2(l.p0)].push_back(i);
-        endpointMap[glm::ivec2(l.p1)].push_back(i);
-    }
-
-    // Step 2: check angle at shared junctions
-    for (const auto& [pix, indices] : endpointMap)
-    {
-        if (indices.size() < 2)
-            continue;
-
-        glm::vec2 point = glm::vec2(pix);
-
-        for (size_t a = 0; a < indices.size(); ++a) {
-            for (size_t b = a + 1; b < indices.size(); ++b) {
-                const auto& la = g_lines[indices[a]];
-                const auto& lb = g_lines[indices[b]];
-
-                glm::vec2 da = (glm::length(la.p0 - point) < 0.1f) ? (la.p1 - la.p0) : (la.p0 - la.p1);
-                glm::vec2 db = (glm::length(lb.p0 - point) < 0.1f) ? (lb.p1 - lb.p0) : (lb.p0 - lb.p1);
-
-                if (glm::length(da) < minSegmentLength || glm::length(db) < minSegmentLength)
-                    continue;
-
-                float dot = glm::dot(glm::normalize(da), glm::normalize(db));
-               // LOG_INFO("Testing dot at (%.1f, %.1f): dot = %.4f", point.x, point.y, dot);
-                if (dot < 0.996f){
-                    float avgSize = 2.3f;// 0.5f * (la.thickness + lb.thickness);
-                    glm::vec4 avgColor = 0.5f * (la.color + lb.color);
-                    vector_add_point(point, avgSize, avgColor);
-
-                    // Optional: Log junction
-                    //LOG_INFO("Junction added at (%.1f, %.1f) with dot %.3f", point.x, point.y, dot);
-                    goto next_point;
-                }
-            }
-        }
-
-    next_point:;
-    }
-}
-
+// Implementation
 // -----------------------------------------------------------------------------
 
 void vector_draw_init(const VectorConfig& config) {
     g_config = config;
 
-    // Enable sRGB blending (gamma correct)
-  //  glEnable(GL_FRAMEBUFFER_SRGB);
-
-   // ***************** Or manually created FBOs using formats like GL_SRGB8_ALPHA8 *********************
-
-    // Create VAOs and VBOs
+    // --- LINE INIT ---
     glGenVertexArrays(1, &vaoLine);
     glGenBuffers(1, &vboLine);
     glBindVertexArray(vaoLine);
     glBindBuffer(GL_ARRAY_BUFFER, vboLine);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(QuadVertex), (void*)offsetof(QuadVertex, pos));
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, sizeof(QuadVertex), (void*)offsetof(QuadVertex, offset));
-    glEnableVertexAttribArray(1);
-    glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(QuadVertex), (void*)offsetof(QuadVertex, color));
-    glEnableVertexAttribArray(2);
 
+    GLsizei stride = sizeof(VecLine);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, stride, (void*)offsetof(VecLine, p0));
+    glEnableVertexAttribArray(0); glVertexAttribDivisor(0, 1);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, stride, (void*)offsetof(VecLine, p1));
+    glEnableVertexAttribArray(1); glVertexAttribDivisor(1, 1);
+    glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, stride, (void*)offsetof(VecLine, thickness));
+    glEnableVertexAttribArray(2); glVertexAttribDivisor(2, 1);
+    glVertexAttribPointer(3, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride, (void*)offsetof(VecLine, color));
+    glEnableVertexAttribArray(3); glVertexAttribDivisor(3, 1);
+
+    // --- POINT INIT ---
     glGenVertexArrays(1, &vaoPoint);
     glGenBuffers(1, &vboPoint);
     glBindVertexArray(vaoPoint);
     glBindBuffer(GL_ARRAY_BUFFER, vboPoint);
+
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(VecPoint), (void*)offsetof(VecPoint, pos));
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, sizeof(VecPoint), (void*)offsetof(VecPoint, size));
     glEnableVertexAttribArray(1);
-    glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(VecPoint), (void*)offsetof(VecPoint, color));
+    glVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(VecPoint), (void*)offsetof(VecPoint, color));
     glEnableVertexAttribArray(2);
 
+    // --- FIRE INIT ---
     glGenVertexArrays(1, &vaoFire);
     glGenBuffers(1, &vboFire);
     glBindVertexArray(vaoFire);
     glBindBuffer(GL_ARRAY_BUFFER, vboFire);
+
+    struct FireVertex { vec2 pos; vec2 uv; rgb_t color; };
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(FireVertex), (void*)offsetof(FireVertex, pos));
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(FireVertex), (void*)offsetof(FireVertex, uv));
     glEnableVertexAttribArray(1);
-    glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(FireVertex), (void*)offsetof(FireVertex, color));
+    glVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(FireVertex), (void*)offsetof(FireVertex, color));
     glEnableVertexAttribArray(2);
 
-    // ------------------- SHADER COMPILATION -------------------
+    // --- COMPILE SHADERS ---
     shaderLine = LinkShaderProgram(
         CompileShader(GL_VERTEX_SHADER, vs_line, "vector_line.vert"),
         CompileShader(GL_FRAGMENT_SHADER, fs_line, "vector_line.frag"));
@@ -334,30 +283,31 @@ void vector_draw_init(const VectorConfig& config) {
     shaderFire = LinkShaderProgram(
         CompileShader(GL_VERTEX_SHADER, vs_fire, "vector_fire.vert"),
         CompileShader(GL_FRAGMENT_SHADER, fs_fire, "vector_fire.frag"));
-
 }
 
 void vector_draw_shutdown() {
     glDeleteBuffers(1, &vboLine);
-    glDeleteBuffers(1, &vboPoint);
-    glDeleteBuffers(1, &vboFire);
     glDeleteVertexArrays(1, &vaoLine);
-    glDeleteVertexArrays(1, &vaoPoint);
-    glDeleteVertexArrays(1, &vaoFire);
     glDeleteProgram(shaderLine);
+    glDeleteBuffers(1, &vboPoint);
+    glDeleteVertexArrays(1, &vaoPoint);
     glDeleteProgram(shaderPoint);
+    glDeleteBuffers(1, &vboFire);
+    glDeleteVertexArrays(1, &vaoFire);
     glDeleteProgram(shaderFire);
 }
 
-void vector_add_line(glm::vec2 p0, glm::vec2 p1, float thickness, glm::vec4 color) {
-    g_lines.push_back({ p0, p1, thickness, color });
+void vector_add_line(vec2 p0, vec2 p1, float thickness, rgb_t color) {
+    float th = thickness * g_config.line_width_scale;
+    if (th < 1.0f) th = 1.0f;
+    g_lines.push_back({ p0, p1, th, color });
 }
 
-void vector_add_point(glm::vec2 pos, float size, glm::vec4 color) {
+void vector_add_point(vec2 pos, float size, rgb_t color) {
     g_points.push_back({ pos, size, color });
 }
 
-void vector_add_fire(glm::vec2 pos, glm::vec4 color) {
+void vector_add_fire(vec2 pos, rgb_t color) {
     g_fire.push_back({ pos, g_config.fire_point_size, color });
 }
 
@@ -367,102 +317,72 @@ void vector_clear() {
     g_fire.clear();
 }
 
-void vector_draw_all(const glm::mat4& projection)
+void vector_draw_all(const mat4& projection)
 {
-    // Step 1: Count how many lines share each endpoint
-    std::unordered_map<glm::ivec2, int> endpointCount;
-    auto toPix = [](const glm::vec2& p) { return glm::ivec2((int)roundf(p.x), (int)roundf(p.y)); };
+    glEnable(GL_BLEND);
+    GLenum srcFactor = GL_SRC_ALPHA;
+    GLenum dstFactor = (g_config.blend_mode == BLEND_ADDITIVE) ? GL_ONE : GL_ONE_MINUS_SRC_ALPHA;
 
-    for (const auto& l : g_lines) {
-        endpointCount[toPix(l.p0)]++;
-        endpointCount[toPix(l.p1)]++;
-    }
-
-    // -------------------- Render Lines --------------------
-    std::vector<QuadVertex> lineVerts;
-    /*
-    for (const auto& l : g_lines)
-    {
-        glm::vec2 dir = glm::normalize(l.p1 - l.p0);
-        glm::vec2 normal = glm::vec2(-dir.y, dir.x) * (l.thickness * 0.5f);
-
-        glm::vec2 v0 = l.p0 + normal;
-        glm::vec2 v1 = l.p0 - normal;
-        glm::vec2 v2 = l.p1 + normal;
-        glm::vec2 v3 = l.p1 - normal;
-
-        lineVerts.push_back({ v0, +1.0f, l.color });
-        lineVerts.push_back({ v1, -1.0f, l.color });
-        lineVerts.push_back({ v2, +1.0f, l.color });
-        lineVerts.push_back({ v2, +1.0f, l.color });
-        lineVerts.push_back({ v1, -1.0f, l.color });
-        lineVerts.push_back({ v3, -1.0f, l.color });
-    }
-    */
-    for (const auto& l : g_lines)
-    {
-        glm::vec2 dir = glm::normalize(l.p1 - l.p0);
-        glm::vec2 normal = glm::vec2(-dir.y, dir.x) * (l.thickness * 0.5f);
-
-        float extend = l.thickness * 0.25f;
-
-        // Step 2: Extend only endpoints that are free (count == 1)
-        glm::vec2 p0_ext = (endpointCount[toPix(l.p0)] == 1) ? (l.p0 - dir * extend) : l.p0;
-        glm::vec2 p1_ext = (endpointCount[toPix(l.p1)] == 1) ? (l.p1 + dir * extend) : l.p1;
-
-        glm::vec2 v0 = p0_ext + normal;
-        glm::vec2 v1 = p0_ext - normal;
-        glm::vec2 v2 = p1_ext + normal;
-        glm::vec2 v3 = p1_ext - normal;
-
-        lineVerts.push_back({ v0, +1.0f, l.color });
-        lineVerts.push_back({ v1, -1.0f, l.color });
-        lineVerts.push_back({ v2, +1.0f, l.color });
-        lineVerts.push_back({ v2, +1.0f, l.color });
-        lineVerts.push_back({ v1, -1.0f, l.color });
-        lineVerts.push_back({ v3, -1.0f, l.color });
-    }
-    if (!lineVerts.empty())
+    // 1. Lines (Instanced)
+    if (!g_lines.empty())
     {
         glUseProgram(shaderLine);
-        glUniformMatrix4fv(glGetUniformLocation(shaderLine, "uProj"), 1, GL_FALSE, glm::value_ptr(projection));
-        glUniform1f(glGetUniformLocation(shaderLine, "uLineWidth"), 6.0f);
-        glUniform1f(glGetUniformLocation(shaderLine, "uEdgeSmooth"), 2.0f);
+        glUniformMatrix4fv(glGetUniformLocation(shaderLine, "uProj"), 1, GL_FALSE, value_ptr(projection));
+        glBlendFunc(srcFactor, dstFactor);
 
         glBindBuffer(GL_ARRAY_BUFFER, vboLine);
-        glBufferData(GL_ARRAY_BUFFER, lineVerts.size() * sizeof(QuadVertex), lineVerts.data(), GL_DYNAMIC_DRAW);
-
+        glBufferData(GL_ARRAY_BUFFER, g_lines.size() * sizeof(VecLine), g_lines.data(), GL_STREAM_DRAW);
         glBindVertexArray(vaoLine);
-        glBlendFunc(GL_SRC_ALPHA, g_config.blend_mode == BLEND_ADDITIVE ? GL_ONE : GL_ONE_MINUS_SRC_ALPHA);
-        glDrawArrays(GL_TRIANGLES, 0, (GLsizei)lineVerts.size());
+        glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, (GLsizei)g_lines.size());
     }
 
-    // -------------------- Render Points --------------------
+    // 2. Points
     if (!g_points.empty())
     {
         glUseProgram(shaderPoint);
-        glUniformMatrix4fv(glGetUniformLocation(shaderPoint, "uProj"), 1, GL_FALSE, glm::value_ptr(projection));
-        glUniform1f(glGetUniformLocation(shaderPoint, "uEdgeSoftness"), 0.15f); //AA Falloff setting
+        glUniformMatrix4fv(glGetUniformLocation(shaderPoint, "uProj"), 1, GL_FALSE, value_ptr(projection));
+        glUniform1f(glGetUniformLocation(shaderPoint, "uEdgeSoftness"), 0.15f);
+        glBlendFunc(srcFactor, dstFactor);
 
         glBindBuffer(GL_ARRAY_BUFFER, vboPoint);
-        glBufferData(GL_ARRAY_BUFFER, g_points.size() * sizeof(VecPoint), g_points.data(), GL_DYNAMIC_DRAW);
-
+        glBufferData(GL_ARRAY_BUFFER, g_points.size() * sizeof(VecPoint), g_points.data(), GL_STREAM_DRAW);
         glBindVertexArray(vaoPoint);
-        glBlendFunc(GL_SRC_ALPHA, g_config.blend_mode == BLEND_ADDITIVE ? GL_ONE : GL_ONE_MINUS_SRC_ALPHA);
+        glEnable(GL_PROGRAM_POINT_SIZE);
         glDrawArrays(GL_POINTS, 0, (GLsizei)g_points.size());
     }
 
-    // -------------------- Render Fire Quads --------------------
-    if (!g_fire.empty() && g_config.fire_texture)
+    // 3. Fire / Shots (Procedural & Tunable)
+    if (!g_fire.empty())
     {
+        struct FireVertex {
+            vec2 pos;
+            vec2 uv;
+            rgb_t color;
+        };
+
+        // CPU Generation with Constricted Scaling (0.9 - 1.1)
         std::vector<FireVertex> fireVerts;
+        fireVerts.reserve(g_fire.size() * 6);
+
         for (const auto& p : g_fire)
         {
-            float x0 = p.pos.x - p.size;
-            float y0 = p.pos.y - p.size;
-            float x1 = p.pos.x + p.size;
-            float y1 = p.pos.y + p.size;
-            glm::vec4 c = p.color;
+            float r = RGB_RED(p.color) / 255.0f;
+            float g = RGB_GREEN(p.color) / 255.0f;
+            float b = RGB_BLUE(p.color) / 255.0f;
+            float intensity = std::max({ r, g, b });
+
+            // Scale geometry slightly based on intensity
+            float minScale = 0.90f;
+            float maxScale = 1.10f;
+            float sizeScale = minScale + ((maxScale - minScale) * intensity);
+
+            float currentSize = p.size * sizeScale;
+
+            float x0 = p.pos.x - currentSize;
+            float y0 = p.pos.y - currentSize;
+            float x1 = p.pos.x + currentSize;
+            float y1 = p.pos.y + currentSize;
+            rgb_t c = p.color;
 
             fireVerts.push_back({ {x0, y0}, {0, 0}, c });
             fireVerts.push_back({ {x1, y0}, {1, 0}, c });
@@ -471,22 +391,23 @@ void vector_draw_all(const glm::mat4& projection)
             fireVerts.push_back({ {x0, y1}, {0, 1}, c });
             fireVerts.push_back({ {x0, y0}, {0, 0}, c });
         }
-        glEnable(GL_TEXTURE_2D);
-      //  glDisable(GL_ALPHA_TEST);
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-       // glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+
         glUseProgram(shaderFire);
-        glUniformMatrix4fv(glGetUniformLocation(shaderFire, "uProj"), 1, GL_FALSE, glm::value_ptr(projection));
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, g_config.fire_texture);
-        glUniform1i(glGetUniformLocation(shaderFire, "uTex"), 0);
+        glUniformMatrix4fv(glGetUniformLocation(shaderFire, "uProj"), 1, GL_FALSE, value_ptr(projection));
+
+        // --- SEND TUNING UNIFORMS ---
+        glUniform1f(glGetUniformLocation(shaderFire, "uCorePower"), g_config.shot_core_power);
+        glUniform1f(glGetUniformLocation(shaderFire, "uBloomPower"), g_config.shot_bloom_power);
+        glUniform1f(glGetUniformLocation(shaderFire, "uBloomIntensity"), g_config.shot_bloom_intensity);
+        glUniform1f(glGetUniformLocation(shaderFire, "uOverdrive"), g_config.shot_overdrive);
 
         glBindBuffer(GL_ARRAY_BUFFER, vboFire);
-        glBufferData(GL_ARRAY_BUFFER, fireVerts.size() * sizeof(FireVertex), fireVerts.data(), GL_DYNAMIC_DRAW);
-
+        glBufferData(GL_ARRAY_BUFFER, fireVerts.size() * sizeof(FireVertex), fireVerts.data(), GL_STREAM_DRAW);
         glBindVertexArray(vaoFire);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE); // always additive like original
+
+        // Force Additive for shots
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+
         glDrawArrays(GL_TRIANGLES, 0, (GLsizei)fireVerts.size());
     }
 }

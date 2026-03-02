@@ -9,9 +9,13 @@
 
 // audio + resampling
 #include "mixer.h"
-#include "wav_resample.h"
+//#include "wav_resample.h"
 #include <vector>
 #include <string>
+
+ART_START(bosco_art)
+ART_LOAD("bosco.zip", "bosconian_bezel.png", ART_TEX, 3)
+ART_END
 
 static const char* bosco_samples[] =
 {
@@ -301,9 +305,6 @@ void bosco_vh_convert_color_prom(unsigned char* palette, unsigned char* colortab
 //MAIN bosco HANDLERS
 //////////////////////////////////////////////////////////////
 
-//////////////////////////////////////////////////////////////
-//MAIN bosco HANDLERS
-//////////////////////////////////////////////////////////////
 
 WRITE_HANDLER(bosco_flipscreen_w)
 {
@@ -429,7 +430,7 @@ static int customio_command_2 = 0;
 static int mode, credits;
 static int coinpercred, credpercoin;
 static unsigned char customio_1[16] = { 0 };
-static unsigned char customio_2[16] = { 0 };;
+static unsigned char customio_2[16] = { 0 };
 
 WRITE_HANDLER(bosco_customio_data_1_w)
 {
@@ -1469,7 +1470,7 @@ AAE_DRIVER_ROM(rom_bosco)
 AAE_DRIVER_FUNCS(&init_bosco, &run_bosco, &end_bosco)
 AAE_DRIVER_INPUT(input_ports_bosco)
 AAE_DRIVER_SAMPLES(bosco_samples)
-AAE_DRIVER_ART_NONE()
+AAE_DRIVER_ART(bosco_art)
 AAE_DRIVER_CPUS(
 	AAE_CPU_ENTRY(CPU_MZ80, 3072000, 400, 1, INT_TYPE_INT, &boscoint1, boscoCPU1_Read, boscoCPU1_Write, boscoPortRead, boscoPortWrite, nullptr, nullptr),
 	AAE_CPU_ENTRY(CPU_MZ80, 3072000, 400, 1, INT_TYPE_INT, &boscoint2, boscoCPU2_Read, boscoCPU2_Write, boscoPortRead, boscoPortWrite, nullptr, nullptr),

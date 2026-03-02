@@ -1,26 +1,5 @@
-// -----------------------------------------------------------------------------
-// File: rawinput.cpp
-//
-// Description:
-//   Raw Input handler for Windows providing low-level access to keyboard and
-//   mouse input. Implements modern C++ wrappers and callback systems inspired
-//   by GLFW, with compatibility for Allegro-style key/mouse state tracking.
-//
-// Features:
-//   - GLFW-style key and mouse button callbacks
-//   - Cursor position tracking with adjustable scaling
-//   - Allegro-compatible input state arrays for legacy support
-//
-// Requirements:
-//   - Windows XP or later
-//   - Single keyboard and mouse device (multi-device not supported)
-//
-// Authors:
-//   - Jay Tennant (original implementation)
-//   - TC (Allegro Compatibility, Full Keyboard Key Support, Modernization and GLFW style callback system)
-// -----------------------------------------------------------------------------
-
 //Note: Updated bad mouse handling code. 8/5/25
+// Updated 2/28/26 to support Lost Focus and Pausing Input.
 
 #include "rawinput.h"
 #include "sys_log.h"
@@ -35,16 +14,10 @@
 #undef _WIN32_WINNT
 #define _WIN32_WINNT 0x0501
 
- // GLFW-style modifier flags (non-conflicting)
-enum MouseModifiers {
-	MMOD_NONE = 0,
-	MMOD_SHIFT = 0x01,
-	MMOD_CONTROL = 0x02,
-	MMOD_ALT = 0x04,
-	MMOD_SUPER = 0x08
-};
+ // GLFW-style modifier flags -- use the RI_MOD_* values from the header
+ // to keep internal and public modifier naming consistent.
+ // (RI_MOD_SHIFT=0x01, RI_MOD_CONTROL=0x02, RI_MOD_ALT=0x04, RI_MOD_SUPER=0x08)
 
-char buf[256];
 HWND windowHandle;
 unsigned char key[256];
 unsigned int lastkey[256];
@@ -68,7 +41,6 @@ static std::queue<RAWINPUT> inputQueue;
 // --------------------
 static void RawInput_ProcessInternal(const RAWINPUT& input);
 static void input_thread_func();
-
 
 // -----------------------------------------------------------------------------
 // set_mouse_mickey_scale
@@ -98,22 +70,61 @@ static MouseButtonCallback g_mouseButtonCallback = nullptr;
 static CursorPositionCallback g_cursorPositionCallback = nullptr;
 static KeyCallback g_keyCallback = nullptr;
 
+static std::atomic<bool> isInputPaused{ false };
+
+// Track whether we have been initialized (thread is running)
+static std::atomic<bool> s_initialized{ false };
+
+// -----------------------------------------------------------------------------
+// RawInput_SetPaused
+// Description:
+//  Pauses raw input processing and flushes current states so keys/buttons
+//  don't get stuck down when losing focus.
+// -----------------------------------------------------------------------------
+void RawInput_SetPaused(bool paused) {
+	bool wasPaused = isInputPaused.exchange(paused);
+
+	if (paused && !wasPaused) {
+		std::lock_guard<std::mutex> lock(inputQueueMutex);
+
+		// Clear any queued raw inputs
+		std::queue<RAWINPUT> emptyQueue;
+		std::swap(inputQueue, emptyQueue);
+
+		// Clear keyboard states to prevent stuck keys
+		SecureZeroMemory(key, sizeof(key));
+		SecureZeroMemory(lastkey, sizeof(lastkey));
+
+		// Clear mouse button states
+		mouse_b = 0;
+		m_mouseStateRaw.left = UP;
+		m_mouseStateRaw.right = UP;
+		m_mouseStateRaw.middle = UP;
+
+		// Clear relative motion deltas so the camera doesn't jump on return
+		m_mouseStateRaw.dx = 0;
+		m_mouseStateRaw.dy = 0;
+		m_mouseStateRaw.dwheel = 0;
+	}
+}
+
 // -----------------------------------------------------------------------------
 // GetModifierFlags
 // Description:
-//   TODO: Describe this function.
+//   Returns a bitmask of currently-held modifier keys via GetAsyncKeyState().
+//   Uses RI_MOD_SHIFT/CONTROL/ALT/SUPER flags.
 // -----------------------------------------------------------------------------
 int GetModifierFlags()
 {
 	int mods = 0;
 	if (GetAsyncKeyState(VK_SHIFT) & 0x8000)
-		mods |= MMOD_SHIFT;
+		mods |= RI_MOD_SHIFT;
 	if (GetAsyncKeyState(VK_CONTROL) & 0x8000)
-		mods |= MMOD_CONTROL;
+		mods |= RI_MOD_CONTROL;
 	if (GetAsyncKeyState(VK_MENU) & 0x8000)
-		mods |= MMOD_ALT;
+		mods |= RI_MOD_ALT;
 	if ((GetAsyncKeyState(VK_LWIN) & 0x8000) || (GetAsyncKeyState(VK_RWIN) & 0x8000))
-		mods |= MMOD_SUPER;
+		mods |= RI_MOD_SUPER;
 	return mods;
 }
 
@@ -133,6 +144,12 @@ void SetKeyCallback(KeyCallback callback) {
 // -----------------------------------------------------------------------------
 HRESULT RawInput_Initialize(HWND hWnd)
 {
+	// Guard against double-init: shut down previous instance first
+	if (s_initialized.load()) {
+		LOG_INFO("RawInput_Initialize: already initialized, shutting down previous instance");
+		RawInput_Shutdown();
+	}
+
 	RAWINPUTDEVICE Rid[2]{};
 
 	Rid[0].usUsagePage = 0x01;
@@ -149,7 +166,6 @@ HRESULT RawInput_Initialize(HWND hWnd)
 	ZeroMemory(lastkey, sizeof(lastkey));
 	ZeroMemory(&m_mouseStateRaw, sizeof(m_mouseStateRaw));
 
-	ShowCursor(TRUE);
 	windowHandle = hWnd;
 	if (FALSE == RegisterRawInputDevices(Rid, 2, sizeof(Rid[0]))) //registers both mouse and keyboard
 		return E_FAIL;
@@ -157,6 +173,7 @@ HRESULT RawInput_Initialize(HWND hWnd)
 	inputThreadExit = false;
 	inputThreadRun = false;
 	inputThread = std::thread(input_thread_func);
+	s_initialized = true;
 	LOG_INFO("RawInput thread: started");
 	return S_OK;
 }
@@ -165,6 +182,11 @@ HRESULT RawInput_Initialize(HWND hWnd)
 // RawInput_ProcessInput - now only enqueues input and signals worker
 // -----------------------------------------------------------------------------
 LRESULT RawInput_ProcessInput(HWND hWnd, WPARAM wParam, LPARAM lParam) {
+	// If input is paused, discard the event to Windows Default Proc
+	if (isInputPaused.load()) {
+		return DefWindowProc(hWnd, WM_INPUT, wParam, lParam);
+	}
+
 	RAWINPUT input;
 	UINT size = sizeof(input);
 	GetRawInputData((HRAWINPUT)lParam, RID_INPUT, &input, &size, sizeof(RAWINPUTHEADER));
@@ -208,14 +230,17 @@ static void input_thread_func() {
 // Shutdown helper
 // -----------------------------------------------------------------------------
 void RawInput_Shutdown() {
+	if (!s_initialized.load()) return;
+
 	{
 		std::lock_guard<std::mutex> lock(inputQueueMutex);
 		inputThreadExit = true;
 	}
 	inputCV.notify_one();
 	if (inputThread.joinable()) inputThread.join();
+	s_initialized = false;
+	LOG_INFO("RawInput_Shutdown: complete");
 }
-
 
 // -----------------------------------------------------------------------------
 // RawInput_ProcessInput
@@ -223,9 +248,9 @@ void RawInput_Shutdown() {
 //   Processes WM_INPUT messages and updates internal key and mouse state.
 // -----------------------------------------------------------------------------
 //LRESULT RawInput_ProcessInput(HWND hWnd, WPARAM wParam, LPARAM lParam)
-static void RawInput_ProcessInternal(const RAWINPUT& input) 
+static void RawInput_ProcessInternal(const RAWINPUT& input)
 {
-		if (input.header.dwType == RIM_TYPEKEYBOARD) {
+	if (input.header.dwType == RIM_TYPEKEYBOARD) {
 		const auto& kbd = input.data.keyboard;
 		UINT virtualKey = kbd.VKey;
 		UINT scanCode = kbd.MakeCode;
@@ -280,13 +305,12 @@ static void RawInput_ProcessInternal(const RAWINPUT& input)
 			int action = (kbd.Flags & RI_KEY_BREAK) ? 0 : 1;
 			g_keyCallback((int)virtualKey, (int)scanCode, action, mods);
 		}
-
 	}
 	else if (input.header.dwType == RIM_TYPEMOUSE)
 	{
 		int mods = GetModifierFlags();
 
-		// 
+		//
 		// Explicitly accumulate all WM_INPUT deltas per frame.
 		m_mouseStateRaw.dx += input.data.mouse.lLastX;
 		m_mouseStateRaw.dy += input.data.mouse.lLastY;
@@ -297,38 +321,39 @@ static void RawInput_ProcessInternal(const RAWINPUT& input)
 		if (g_cursorPositionCallback)
 			g_cursorPositionCallback((double)m_mouseStateRaw.x, (double)m_mouseStateRaw.y);
 
-		switch (input.data.mouse.usButtonFlags)
-		{
-		case RI_MOUSE_LEFT_BUTTON_DOWN:
+		// usButtonFlags is a bitmask -- multiple flags can be set in one message.
+		// Use if-chains instead of switch to handle simultaneous button events.
+		USHORT btnFlags = input.data.mouse.usButtonFlags;
+
+		if (btnFlags & RI_MOUSE_LEFT_BUTTON_DOWN) {
 			m_mouseStateRaw.left = DOWN;
-			if (g_mouseButtonCallback) g_mouseButtonCallback(0, 1, mods);  // Left button pressed
-			break;
-		case RI_MOUSE_LEFT_BUTTON_UP:
+			if (g_mouseButtonCallback) g_mouseButtonCallback(0, 1, mods);
+		}
+		if (btnFlags & RI_MOUSE_LEFT_BUTTON_UP) {
 			m_mouseStateRaw.left = UP;
-			if (g_mouseButtonCallback) g_mouseButtonCallback(0, 0, mods);  // Left button released
-			break;
+			if (g_mouseButtonCallback) g_mouseButtonCallback(0, 0, mods);
+		}
 
-		case RI_MOUSE_RIGHT_BUTTON_DOWN:
+		if (btnFlags & RI_MOUSE_RIGHT_BUTTON_DOWN) {
 			m_mouseStateRaw.right = DOWN;
-			if (g_mouseButtonCallback) g_mouseButtonCallback(1, 1, mods);  // Right button pressed
-			break;
-		case RI_MOUSE_RIGHT_BUTTON_UP:
+			if (g_mouseButtonCallback) g_mouseButtonCallback(1, 1, mods);
+		}
+		if (btnFlags & RI_MOUSE_RIGHT_BUTTON_UP) {
 			m_mouseStateRaw.right = UP;
-			if (g_mouseButtonCallback) g_mouseButtonCallback(1, 0, mods);  // Right button released
-			break;
+			if (g_mouseButtonCallback) g_mouseButtonCallback(1, 0, mods);
+		}
 
-		case RI_MOUSE_MIDDLE_BUTTON_DOWN:
+		if (btnFlags & RI_MOUSE_MIDDLE_BUTTON_DOWN) {
 			m_mouseStateRaw.middle = DOWN;
-			if (g_mouseButtonCallback) g_mouseButtonCallback(2, 1, mods);  // Middle button pressed
-			break;
-		case RI_MOUSE_MIDDLE_BUTTON_UP:
+			if (g_mouseButtonCallback) g_mouseButtonCallback(2, 1, mods);
+		}
+		if (btnFlags & RI_MOUSE_MIDDLE_BUTTON_UP) {
 			m_mouseStateRaw.middle = UP;
-			if (g_mouseButtonCallback) g_mouseButtonCallback(2, 0, mods);  // Middle button released
-			break;
+			if (g_mouseButtonCallback) g_mouseButtonCallback(2, 0, mods);
+		}
 
-		case RI_MOUSE_WHEEL:
+		if (btnFlags & RI_MOUSE_WHEEL) {
 			m_mouseStateRaw.dwheel += input.data.mouse.usButtonData;
-			break;
 		}
 
 		// Allegro Mouse button support.
@@ -336,7 +361,6 @@ static void RawInput_ProcessInternal(const RAWINPUT& input)
 		if (m_mouseStateRaw.right)  bset(mouse_b, 0x02); else  bclr(mouse_b, 0x02);
 		if (m_mouseStateRaw.middle) bset(mouse_b, 0x04); else  bclr(mouse_b, 0x04);
 	}
-
 }
 
 // -----------------------------------------------------------------------------
@@ -364,9 +388,8 @@ void SetCursorPositionCallback(CursorPositionCallback callback) {
 // -----------------------------------------------------------------------------
 void test_clr()
 {
-	char buf[256];
-	SecureZeroMemory(buf, 256);
-	SecureZeroMemory(key, 256);
+	SecureZeroMemory(key, sizeof(key));
+	SecureZeroMemory(lastkey, sizeof(lastkey));
 }
 
 // Function to get the window size
@@ -423,19 +446,18 @@ int isKeyHeld(INT vkCode) { return lastkey[vkCode]; }
 // Description:
 //   Returns true if the specified key is currently pressed.
 // -----------------------------------------------------------------------------
-bool IsKeyDown(INT vkCode) { return key[vkCode & 0xff] & 0x80 ? TRUE : FALSE; }
+bool IsKeyDown(INT vkCode) { return key[vkCode & 0xff] ? true : false; }
 // -----------------------------------------------------------------------------
 // IsKeyUp
 // Description:
 //   Returns true if the specified key is currently released.
 // -----------------------------------------------------------------------------
-bool IsKeyUp(INT vkCode) { return  key[vkCode & 0xff] & 0x80 ? FALSE : TRUE; }
+bool IsKeyUp(INT vkCode) { return key[vkCode & 0xff] ? false : true; }
 
 //summed mouse state checks/sets;
 //use as convenience, ie. keeping track of movements without needing to maintain separate data set
 //naming is left to C style for compatibility
 
-void get_mouse_mickeys(int* mickeyx, int* mickeyy);
 // -----------------------------------------------------------------------------
 // GetMouseX
 // Description:

@@ -1,99 +1,123 @@
 #include "framework.h"
 #include "gl_prim_debug.h"
-//#include "rotation_table.h"
 #include <algorithm>
+#include <cmath>
+#include <vector>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846f
+#endif
 
 // OpenGL Code Goes here.....-------------------------------------------------------------------------
+
 void glCircle(float cx, float cy, float r, int num_segments)
 {
-	glBegin(GL_LINE_LOOP);
+	if (num_segments <= 0) return;
+
+	std::vector<float> vertices;
+	vertices.reserve(num_segments * 2);
+
 	for (int ii = 0; ii < num_segments; ii++) {
-		float theta = 2.0f * 3.1415926f * ii / num_segments;//get the current angle
-		float x = r * cosf(theta);//calculate the x component
-		float y = r * sinf(theta);//calculate the y component
-		glVertex2f(x + cx, y + cy);//output vertex
+		float theta = 2.0f * M_PI * float(ii) / float(num_segments); // get the current angle
+		vertices.push_back(cx + r * cosf(theta)); // x component
+		vertices.push_back(cy + r * sinf(theta)); // y component
 	}
-	glEnd();
+
+	glEnableClientState(GL_VERTEX_ARRAY);
+	glVertexPointer(2, GL_FLOAT, 0, vertices.data());
+	glDrawArrays(GL_LINE_LOOP, 0, num_segments);
+	glDisableClientState(GL_VERTEX_ARRAY);
 }
 
 void glPoint(float x, float y)
 {
+	float pt[2] = { x, y };
+
 	glDisable(GL_TEXTURE_2D);
-	glColor3f(.5f, 1.0f, .5f);
+	glColor3f(0.5f, 1.0f, 0.5f);
 	glPointSize(4.0f);
-	glBegin(GL_POINTS);
-	glVertex2f(x, y);
-	glEnd();
+
+	glEnableClientState(GL_VERTEX_ARRAY);
+	glVertexPointer(2, GL_FLOAT, 0, pt);
+	glDrawArrays(GL_POINTS, 0, 1);
+	glDisableClientState(GL_VERTEX_ARRAY);
 }
 
 void glLine(float sx, float sy, float ex, float ey)
 {
-	glBegin(GL_LINES);
-	glVertex2f(sx, sy);
-	glVertex2f(ex, ey);
-	glEnd();
+	float pts[4] = { sx, sy, ex, ey };
+
+	glEnableClientState(GL_VERTEX_ARRAY);
+	glVertexPointer(2, GL_FLOAT, 0, pts);
+	glDrawArrays(GL_LINES, 0, 2);
+	glDisableClientState(GL_VERTEX_ARRAY);
 }
 
 void glRectfromCenter(float x, float y, float size)
 {
-	float MinX = 0.0f;
-	float MinY = 0.0f;
-	float MaxX = 0.0f;
-	float MaxY = 0.0f;
+	float half = size / 2.0f;
+	float pts[8] = {
+		x - half, y - half,
+		x + half, y - half,
+		x + half, y + half,
+		x - half, y + half
+	};
 
-	//Set Origin to Center of Texture
-	MinX = x - (size / 2.0f);
-	MinY = y - (size / 2.0f);
-	MaxX = x + (size / 2.0f);
-	MaxY = y + (size / 2.0f);
-
-	glBegin(GL_LINE_LOOP);
-	glVertex2f(MinX, MinY);
-	glVertex2f(MaxX, MinY);
-	glVertex2f(MaxX, MaxY);
-	glVertex2f(MinX, MaxY);
-	glEnd();
+	glEnableClientState(GL_VERTEX_ARRAY);
+	glVertexPointer(2, GL_FLOAT, 0, pts);
+	glDrawArrays(GL_LINE_LOOP, 0, 4);
+	glDisableClientState(GL_VERTEX_ARRAY);
 }
 
 void glRect(float xmin, float xmax, float ymin, float ymax)
 {
-	glBegin(GL_QUADS);
-	glVertex2f(xmin, ymin);
-	glVertex2f(xmin, ymax);
-	glVertex2f(xmax, ymax);
-	glVertex2f(xmax, ymin);
-	glEnd();
+	float pts[8] = {
+		xmin, ymin,
+		xmin, ymax,
+		xmax, ymax,
+		xmax, ymin
+	};
+
+	glEnableClientState(GL_VERTEX_ARRAY);
+	glVertexPointer(2, GL_FLOAT, 0, pts);
+	// Changed GL_QUADS to GL_TRIANGLE_FAN for better modern/forward compatibility
+	glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+	glDisableClientState(GL_VERTEX_ARRAY);
 }
 
-void glRectR(float x, float y, float size, int angle)
+void glRectR(float x, float y, float size, float angle)
 {
-	//Set Origin to Center of Texture
-	float MinX = x - (size / 2.0f);
-	float MinY = y - (size / 2.0f);
-	float MaxX = x + (size / 2.0f);
-	float MaxY = y + (size / 2.0f);
+	float half = size / 2.0f;
 
-	if (angle)
-	{
-		//Vec2 p0 = RotateAroundPoint(MinX, MinY, x, y, _cos[angle], _sin[angle]);
-		//Vec2 p1 = RotateAroundPoint(MaxX, MinY, x, y, _cos[angle], _sin[angle]);
-		//Vec2 p2 = RotateAroundPoint(MaxX, MaxY, x, y, _cos[angle], _sin[angle]);
-		//Vec2 p3 = RotateAroundPoint(MinX, MaxY, x, y, _cos[angle], _sin[angle]);
+	// Create base square coordinates
+	float pts[8] = {
+		x - half, y - half,
+		x + half, y - half,
+		x + half, y + half,
+		x - half, y + half
+	};
 
-		//glBegin(GL_LINE_LOOP);
-		//glVertex2f(p0.x, p0.y);
-		//glVertex2f(p1.x, p1.y);
-		//glVertex2f(p2.x, p2.y);
-		//glVertex2f(p3.x, p3.y);
-		//glEnd();
-	}
-	else
+	// Apply rotation if required
+	if (angle != 0.0f)
 	{
-		glBegin(GL_LINE_LOOP);
-		glVertex2f(MinX, MinY);
-		glVertex2f(MaxX, MinY);
-		glVertex2f(MaxX, MaxY);
-		glVertex2f(MinX, MaxY);
-		glEnd();
+		float rad = angle * (M_PI / 180.0f);
+		float c = cosf(rad);
+		float s = sinf(rad);
+
+		for (int i = 0; i < 4; i++)
+		{
+			// Translate point back to origin
+			float px = pts[i * 2] - x;
+			float py = pts[i * 2 + 1] - y;
+
+			// Rotate and translate back
+			pts[i * 2] = x + (px * c - py * s);
+			pts[i * 2 + 1] = y + (px * s + py * c);
+		}
 	}
+
+	glEnableClientState(GL_VERTEX_ARRAY);
+	glVertexPointer(2, GL_FLOAT, 0, pts);
+	glDrawArrays(GL_LINE_LOOP, 0, 4);
+	glDisableClientState(GL_VERTEX_ARRAY);
 }

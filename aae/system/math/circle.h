@@ -15,7 +15,7 @@ public:
     // Constructors
     Circle() : radius(1.0f), _x(0.0f), _y(0.0f) {}
     Circle(float x, float y, float radi) : radius(radi), _x(x), _y(y) {}
-    Circle(const Vec2& v, float radi) : radius(radi), _x(v.x), _y(v.y) {}
+    Circle(const aae::math::vec2& v, float radi) : radius(radi), _x(v.x), _y(v.y) {}
 
     // Set the circle radius
     void setRadius(float r) { radius = r; }
@@ -24,13 +24,13 @@ public:
     float getRadius() const { return radius; }
 
     // Compute the area of the circle
-    float getArea() const { return k_pi * radius * radius; }
+    float getArea() const { return aae::math::pi * radius * radius; }
 
     // Compute the diameter of the circle
     float getDiameter() const { return radius * 2.0f; }
 
     // Compute the circumference of the circle
-    float getCircumference() const { return 2.0f * k_pi * radius; }
+    float getCircumference() const { return 2.0f * aae::math::pi * radius; }
 
     // -------------------------------------------------------------------------
     // isInRectangle
@@ -56,7 +56,7 @@ public:
     // isLineInCircle
     // Returns true if either endpoint of the line is within the circle.
     // -------------------------------------------------------------------------
-    bool isLineInCircle(const Vec2& p1, const Vec2& p2) const {
+    bool isLineInCircle(const aae::math::vec2& p1, const aae::math::vec2& p2) const {
         return isPointInCircle(p1.x, p1.y) || isPointInCircle(p2.x, p2.y);
     }
 

@@ -17,11 +17,101 @@ float xoffset;
 float yoffset;
 GLuint* tex;
 
+// Scales only the textured shot alpha; 1.0 = current, lower = dimmer
+static float g_texShotAlphaScale = 1.0f; // trying 0.50-0.75
+void set_tex_shot_alpha_scale(float s) { g_texShotAlphaScale = (s < 0.f) ? 0.f : (s > 1.f ? 1.f : s); }
+
 colors vec_colors[256];
 
 std::vector<fpoint> linelist;
 std::vector<txdata> texlist;
 
+#include <algorithm> // for std::sort
+
+// -----------------------------------------------------------------------------
+// sort_lines_by_color_desc
+// Sorts linelist by raw rgb_t value (interpreted as uint32_t), highest first.
+// Each line is two consecutive fpoints in linelist; endpoint order preserved.
+//
+// Notes:
+// - If you want to ignore alpha when sorting, set MASK = 0x00FFFFFF.
+// - Uses std::sort (not stable) for speed.
+// -----------------------------------------------------------------------------
+
+void sort_lines_by_color()
+{
+    const size_t n = linelist.size();
+    if (n < 2) return;
+
+    struct LineKey { size_t i0; uint32_t key; };
+    constexpr uint32_t MASK = 0xFFFFFFFFu; // use 0x00FFFFFFu to ignore alpha
+
+    std::vector<LineKey> keys;
+    keys.reserve(n / 2);
+
+    for (size_t i = 0; i + 1 < n; i += 2) {
+        uint32_t c = static_cast<uint32_t>(linelist[i].color);
+        keys.push_back({ i, c & MASK });
+    }
+
+    // Ascending: darker (smaller key) first
+    std::sort(keys.begin(), keys.end(),
+        [](const LineKey& a, const LineKey& b) { return a.key < b.key; });
+
+    std::vector<fpoint> out;
+    out.reserve((keys.size() * 2) + (n & 1));
+
+    for (const auto& k : keys) {
+        out.push_back(linelist[k.i0 + 0]);
+        out.push_back(linelist[k.i0 + 1]);
+    }
+    if (n & 1) out.push_back(linelist.back()); // keep any stray vertex
+
+    linelist.swap(out);
+}
+/*
+void sort_lines_by_color()
+{
+    const size_t n = linelist.size();
+    if (n < 2) return;
+
+    const size_t m = n >> 1; // number of line pairs
+
+    struct LineKey { size_t i0; uint32_t key; };
+
+    // Reused scratch buffers (safe per-thread; change to static if single-threaded)
+    static thread_local std::vector<LineKey> keys;
+    static thread_local std::vector<LineKey> tmp;   // optional (radix variant below)
+    static thread_local std::vector<fpoint>  out;
+
+    keys.resize(m);
+    out.resize(n);
+
+    // If you want to ignore alpha, flip MASK to 0x00FFFFFFu.
+    constexpr uint32_t MASK = 0xFFFFFFFFu;
+
+    // Build keys
+    for (size_t j = 0, i = 0; j < m; ++j, i += 2) {
+        uint32_t c = static_cast<uint32_t>(linelist[i].color);
+        keys[j] = { i, c & MASK };
+    }
+
+    // Ascending: darker first
+    std::sort(keys.begin(), keys.end(),
+        [](const LineKey& a, const LineKey& b) { return a.key < b.key; });
+
+    // Repack in new order
+    for (size_t j = 0; j < m; ++j) {
+        const size_t dst = (j << 1);
+        const size_t src = keys[j].i0;
+        out[dst + 0] = linelist[src + 0];
+        out[dst + 1] = linelist[src + 1];
+    }
+    if (n & 1) out[n - 1] = linelist[n - 1]; // preserve stray vertex if present
+
+    linelist.swap(out);
+}
+*/
 void set_texture_id(GLuint* id)
 {
     tex = id;
@@ -34,73 +124,41 @@ void set_blendmode(GLenum sfactor, GLenum dfactor)
 
 rgb_t modulate_color(rgb_t col, int intensity, int gain)
 {
-    if ((col & 0x00FFFFFF) == 0) {return 0; }
+    if ((col & 0x00FFFFFF) == 0) { return 0; }
 
-    uint16_t a;
-    uint16_t r = (col >> 0) & 0xFF;
-    uint16_t g = (col >> 8) & 0xFF;
-    uint16_t b = (col >> 16) & 0xFF;
-    
-    if (Machine->gamedrv->video_attributes & VECTOR_USES_COLOR)
-       a = intensity & 0xFF;
-    else
-       a = 0xff;
+    uint8_t r = (col >> 0) & 0xFF;
+    uint8_t g = (col >> 8) & 0xFF;
+    uint8_t b = (col >> 16) & 0xFF;
+    uint8_t a = 0xff;// (col >> 24) & 0xFF;
 
-   r = clip((r & intensity) + gain, 0, 255);
-   g = clip((g & intensity) + gain, 0, 255);
-   b = clip((b & intensity) + gain, 0, 255);
-   
-   if (Machine->gamedrv->video_attributes & VECTOR_USES_COLOR)
-       a = clip((a & intensity) + gain, 0, 255);
-   else
-       a = 0xff;
- 
-   
-   r = (r > 255) ? 255 : r;
-   g = (g > 255) ? 255 : g;
-   b = (b > 255) ? 255 : b;
-   a = (a > 255) ? 255 : a;
+    r = clip((r & intensity) + gain, 0, 255);
+    g = clip((g & intensity) + gain, 0, 255);
+    b = clip((b & intensity) + gain, 0, 255);
 
-   return  (a << 24) | ((uint8_t) b << 16) | ((uint8_t) g << 8) | (uint8_t) r;
+    return  (a << 24) | (b << 16) | (g << 8) | r;
 }
 
 /*
-rgb_t modulate_color(rgb_t col, int intensity, int gain)
-{
-    // Extract channels (assumes colordefs.h defines these)
-    uint32_t r0 = RGB_RED(col);
-    uint32_t g0 = RGB_GREEN(col);
-    uint32_t b0 = RGB_BLUE(col);
-    uint32_t a0 = RGB_ALPHA(col);
-
-
-
-    // Clamp intensity to 0..255
-    uint32_t I = (intensity < 0) ? 0u : (intensity > 255 ? 255u : (uint32_t)intensity);
-
-    auto clamp255 = [](int v) -> uint32_t {
-        return (v < 0) ? 0u : (v > 255) ? 255u : (uint32_t)v;
-        };
-
-    // Rule: if original > 0 => set to intensity, else 0; then add gain and clamp
-    uint32_t r = clamp255(((r0 > 0) ? (int)I : 0) + gain);
-    uint32_t g = clamp255(((g0 > 0) ? (int)I : 0) + gain);
-    uint32_t b = clamp255(((b0 > 0) ? (int)I : 0) + gain);
-    uint32_t a = clamp255(((a0 > 0) ? (int)I : 0) + gain);
-
-    return MAKE_RGBA((uint8_t)r, (uint8_t)g, (uint8_t)b, (uint8_t)a);
-}
-*/
-
 rgb_t cache_tex_color(int intensity, rgb_t col)
 {
     rgb_t result = modulate_color(col, intensity, config.gain);
-    return col;//(result & 0x00FFFFFF) | (intensity << 24);
+    return (result & 0x00FFFFFF) | (intensity << 24);
+}
+*/
+rgb_t cache_tex_color(int intensity, rgb_t col)
+{
+    rgb_t result = modulate_color(col, intensity, config.gain);
+
+    // Scale only the alpha used for textured shots
+    int a = (int)(intensity * g_texShotAlphaScale + 0.5f);
+    if (a < 0) a = 0; else if (a > 255) a = 255;
+
+    return (result & 0x00FFFFFF) | (a << 24);
 }
 
 void cache_texpoint(float ex, float ey, float tx, float ty, int intensity, rgb_t col)
 {
-    texlist.emplace_back(ex - xoffset, ey - yoffset, tx, ty, 0xff7f7f7f);
+    texlist.emplace_back(ex - xoffset, ey - yoffset, tx, ty, cache_tex_color(intensity, col));
 }
 
 void add_line(float sx, float sy, float ex, float ey, int intensity, rgb_t col)
@@ -150,7 +208,11 @@ void draw_all()
     if (Machine->gamedrv->video_attributes & VECTOR_USES_COLOR)
         glBlendFunc(GL_SRC_ALPHA, GL_ONE);
     else
+    {
+        // This fixes Battlezone and Red Baron, but costs a lot of cpu time
+        sort_lines_by_color();
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    }
 
     glDisable(GL_TEXTURE_2D);
 
@@ -174,10 +236,9 @@ void draw_all()
     {
         glEnable(GL_TEXTURE_2D);
         glBindTexture(GL_TEXTURE_2D, *tex);
-        glBlendFunc(GL_ONE, GL_ONE);
-       // glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+       // glBlendFunc(GL_ONE, GL_ONE);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE);
        //glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ONE, GL_ONE);
-       // glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
         glEnableClientState(GL_VERTEX_ARRAY);
         glVertexPointer(2, GL_FLOAT, sizeof(txdata), &texlist[0].x);

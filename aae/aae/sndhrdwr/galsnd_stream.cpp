@@ -1,5 +1,5 @@
 ﻿// -----------------------------------------------------------------------------
-// galsnd_stream.cpp — Galaxian-style streaming (tone + LFO,  NE555 path)
+// galsnd_stream.cpp - Galaxian-style streaming (tone + LFO,  NE555 path)
 // Mono S16, integer FPS.
 //
 // Tone path is :
@@ -14,7 +14,7 @@
 //   - The 555 astable period is T = 0.693 * (Ra + 2*Rb) * C, with C = 1uF.
 //     We use rx as (Ra + 2*Rb) and distribute that period evenly across the
 //     sweep range [MINFREQ..MAXFREQ], stepping freq by 1 per "tick".
-//   - Three square-wave background lines run at freq × ratios (as in original).
+//   - Three square-wave background lines run at freq x ratios (as in original).
 //   - Background enable bits gate the three lines independently.
 //   - A tunable runtime sweep multiplier lets you speed up/slow down the sweep.
 //
@@ -49,8 +49,8 @@ static constexpr int MAXFREQ = 170;//(139 + 139 / 3);    // ~185
 //static constexpr double LFO_RATIO_2 = (100.0 + 2.0 * 220.0) / (100.0 + 2.0 * 470.0);
 
 static constexpr double LFO_RATIO_0 = .9;
-static constexpr double LFO_RATIO_1 = 4.0 / 3.0;   // ≈ 1.3333
-static constexpr double LFO_RATIO_2 = 5.0 / 3.0;   // ≈ 1.6667
+static constexpr double LFO_RATIO_1 = 4.0 / 3.0;   // ~ 1.3333
+static constexpr double LFO_RATIO_2 = 5.0 / 3.0;   // ~ 1.6667
 static constexpr int    LFO_OUT_DIVIDE = 8;        // try 8 (or 9) for closer loudness
 // Live-tunable working copy (defaults to compile-time constants)
 static double g_ratio[3] = { LFO_RATIO_0, LFO_RATIO_1, LFO_RATIO_2 };
@@ -380,6 +380,18 @@ int galaxian_sh_start_stream(const MachineSound* /*msound*/)
     // ADJUSTMENT for LFO Speed!!!!!!!!!!!!!!!!!!!
     galaxian_set_lfo_speed_scale(1.25 / 1.35);
     // Start stream
+    
+    // Start stream
+    LOG_INFO("GALAXIAN stream_start: chan=%d sys_rate=%d fps=%d buf_len=%d bits=%d step=%d shift=%d lfo_scale=%.6f",
+        (int)g_stream_chan_id,
+        (int)g_sys_rate,
+        (int)g_fps_rounded,
+        (int)g_buffer_len,
+        16,
+        (int)g_GalStep,
+        (int)g_GalShift,
+        (double)(1.25 / 1.35));
+
     stream_start(g_stream_chan_id, 0, /*bits*/16, g_fps_rounded);
 
     //Debug
@@ -398,7 +410,7 @@ int galaxian_sh_start_stream(const MachineSound* /*msound*/)
     g_bg_enable = { 0,0,0 };
     g_freq = MAXFREQ;
 
-    // LFO init (legacy resistor net, 1.0× speed by default)
+    // LFO init (legacy resistor net, 1.0x speed by default)
     g_lfobit[0] = g_lfobit[1] = g_lfobit[2] = g_lfobit[3] = 0;
     g_lfo_tick_accum_s = 0.0;
     g_lfo_speed_mult = 1.0;   // stock sweep rate
@@ -410,7 +422,7 @@ int galaxian_sh_start_stream(const MachineSound* /*msound*/)
 
     t_counter = 0;
     t_countdown = 0;
-
+    LOG_INFO("STREAM CREATION COMPLETE");
     return 0;
 }
 
@@ -470,7 +482,7 @@ void galaxian_doupdate_stream(void)
 void galaxian_pitch_w(int data)
 {
     galaxian_doupdate_stream();
-    g_pitch = 0xff;//data & 0xff; // 0xff => mute
+    g_pitch =data & 0xff; // 0xff => mute
 }
 
 void galaxian_vol_w(int offset, int data)

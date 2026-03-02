@@ -1,53 +1,3 @@
-// -----------------------------------------------------------------------------
-// Legacy MAME-Derived Module
-// This file contains code originally developed as part of the M.A.M.E.™ Project.
-// Portions of this file remain under the copyright of the original MAME authors
-// and contributors. It has since been adapted and merged into the AAE (Another
-// Arcade Emulator) project.
-//
-// Integration:
-//   This module is now part of the **AAE (Another Arcade Emulator)** codebase
-//   and is integrated with its rendering, input, and emulation subsystems.
-//
-// Licensing Notice:
-//   - Original portions of this code remain © the M.A.M.E.™ Project and its
-//     respective contributors under their original terms of distribution.
-//   - Redistribution must preserve both this notice and the original MAME
-//     copyright acknowledgement.
-//
-// License:
-//   This program is free software: you can redistribute it and/or modify
-//   it under the terms of the GNU General Public License as published by
-//   the Free Software Foundation, either version 3 of the License, or
-//   (at your option) any later version.
-//
-//   This program is distributed in the hope that it will be useful,
-//   but WITHOUT ANY WARRANTY; without even the implied warranty of
-//   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//   GNU General Public License for more details.
-//
-//   You should have received a copy of the GNU General Public License
-//   along with this program. If not, see <https://www.gnu.org/licenses/>.
-//
-// Original Copyright:
-//   This file is originally part of and copyright the M.A.M.E.™ Project.
-//   For more information about MAME licensing, see the original MAME source
-//   distribution and its associated license files.
-//
-// -----------------------------------------------------------------------------
-
-//============================================================================
-// AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME
-// code, 0.29 through .90 mixed with code of my own. This emulator was
-// created solely for my amusement and learning and is provided only
-// as an archival experience.
-//
-// All MAME code used and abused in this emulator remains the copyright
-// of the dedicated people who spend countless hours creating it. All
-// MAME code should be annotated as belonging to the MAME TEAM.
-//
-// SOME CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.
-//============================================================================
 
 // Note, thanks to Charles McDonald for the skeleton code and how to for the 68000 emulation
 
@@ -58,7 +8,6 @@
 #include "ccpu.h"
 #include "timer.h"
 
-static int cpu_configured = 0;
 static int cyclecount[4];
 static int reset_cpu_status[4];
 //Time counters (To Be Removed)
@@ -68,9 +17,7 @@ static int vid_tickcount;
 //Interrupt Variables
 static int interrupt_enable[4];
 static int interrupt_vector[4] = { 0xff,0xff,0xff,0xff };
-static int interrupt_count[4];
 static int interrupt_pending[4];
-static int intcnt = 0;
 
 static int s_lines_per_frame = 262; // VIC Dual visible raster; use 262 for NTSC-ish timing
 static int cpu_framecounter = 0; //This is strictly for the cinematronics games.
@@ -79,12 +26,9 @@ static int cpu_framecounter = 0; //This is strictly for the cinematronics games.
 
 //static int cpu_enabled[MAX_CPU];
 static int cpurunning[MAX_CPU];
-static int totalcycles[MAX_CPU];
 static int ran_this_frame[MAX_CPU];
 static int current_slice;
-static int running;	/* number of cycles that the CPU emulation was requested to run */
 /* (needed by cpu_getfcount) */
-static int next_interrupt;	/* cycle count (relative to start of frame) when next interrupt will happen */
 static int iloops[MAX_CPU];
 //
 // End of new code.
@@ -216,20 +160,19 @@ int get_exact_cyclecount(int cpu)
 }
 
 // **************************************************************************
-// Used by several games
+// Still used by several games
 void add_eterna_ticks(int cpunum, int ticks)
 {
 	eternaticks[cpunum] += ticks;
-	if (eternaticks[cpunum] > 0xffffff) eternaticks[cpunum] = 0;
+	eternaticks[cpunum] &= 0xffffff;
 }
-
 int get_eterna_ticks(int cpunum)
 {
 	return eternaticks[cpunum];
 }
 // *************************************************************************
 
-// THis one is needed, OmegaRace, AVG Code.
+// This is also still needed, OmegaRace, AVG Code.
 int get_elapsed_ticks(int cpunum)
 {
 	return tickcount[cpunum];
@@ -243,34 +186,27 @@ int get_elapsed_ticks(int cpunum)
 // This one is needed, OmegaRace, AVG Code and Asteroids.
 int get_video_ticks(int reset)
 {
-	int temp = 0;
 	int v = vid_tickcount;
 	if (reset) {
 		vid_tickcount = 0;
 	}
-	else {
-		switch (Machine->gamedrv->cpu[0].cpu_type) {
-		case CPU_MZ80:  temp = m_cpu_z80[0]->mz80GetElapsedTicks(0); break;
-		case CPU_M6502: temp = m_cpu_6502[0]->get6502ticks(0); break;
-		case CPU_68000: temp = m68k_cycles_run(); break;
-		case CPU_M6809: temp = m_cpu_6809[0]->get6809ticks(0); break;
-		}
-	}
-	return v + temp;
+	return v;
 }
 
 void aae_set_lines_per_frame(int lines) {
 	if (lines > 0) s_lines_per_frame = lines;
 }
 
+// cycles-per-frame for CPU0 (unchanged)
 static inline int aae_cycles_per_frame_cpu0(void) {
-	const int fps = Machine->gamedrv->fps;          // frames per second
-	const int cpu_hz = Machine->gamedrv->cpu[0].cpu_freq;  // CPU0 clock
+	const int fps = Machine->gamedrv->fps;
+	const int cpu_hz = Machine->gamedrv->cpu[0].cpu_freq;
 	if (fps <= 0 || cpu_hz <= 0) return 1;
 	int cpf = cpu_hz / fps;
 	return (cpf > 0) ? cpf : 1;
 }
 
+// approximate cycles per scanline — kept as a convenience for callers
 int aae_cpu_getscanlinecycles(void) {
 	int cpf = aae_cycles_per_frame_cpu0();
 	int cpl = cpf / s_lines_per_frame;
@@ -278,18 +214,23 @@ int aae_cpu_getscanlinecycles(void) {
 }
 
 // cycles since the beginning of THIS frame (CPU0-based)
+// Uses ran_this_frame which is the scheduler's definitive count,
+// avoiding double-count from pending CPU ticks outside execution.
 int aae_cpu_getcurrentcycles_in_frame(void) {
 	const int cpf = aae_cycles_per_frame_cpu0();
-	const int now = get_exact_cyclecount(0);   // scheduler’s monotonic CPU0 cycle counter
-	//LOG_INFO("Now with get_elapsed_ticks %d with exact_ticks %d", now, get_exact_cyclecount(0));
 	if (cpf <= 0) return 0;
-	return now % cpf;                       // phase-within-frame in cycles
+	return ran_this_frame[0] % cpf;
 }
 
+// current scanline: multiply-first to avoid truncation drift,
+// clamped to valid range
 int aae_cpu_getscanline(void) {
-	const int cpl = aae_cpu_getscanlinecycles();
+	const int cpf = aae_cycles_per_frame_cpu0();
+	if (cpf <= 0) return 0;
 	const int cyc = aae_cpu_getcurrentcycles_in_frame();
-	return cyc / cpl;                       // 0 .. s_lines_per_frame-1
+	int line = (cyc * s_lines_per_frame) / cpf;
+	if (line >= s_lines_per_frame) line = s_lines_per_frame - 1;
+	return line;
 }
 
 /* cpu change op-code memory base */
@@ -531,37 +472,7 @@ void cpu_do_int_imm(int cpunum, int int_type)
 		break;
 	}
 }
-/*
-void cpu_do_interrupt(int int_type, int cpunum)
-{
-	if (interrupt_enable[cpunum] == 0) return;
 
-	interrupt_count[cpunum]++;
-
-	if (interrupt_count[cpunum] == Machine->gamedrv->cpu_intpass_per_frame[cpunum])
-	{
-		switch (Machine->gamedrv->cpu_type[cpunum])
-		{
-		case CPU_MZ80:
-			if (int_type == INT_TYPE_NMI) m_cpu_z80[cpunum]->mz80nmi();
-			else                          m_cpu_z80[cpunum]->mz80int(interrupt_vector[cpunum]);
-			break;
-		case CPU_M6502:
-			if (int_type == INT_TYPE_NMI) m_cpu_6502[cpunum]->nmi6502();
-			else                          m_cpu_6502[cpunum]->irq6502();
-			break;
-		case CPU_M6809:
-			if (int_type == INT_TYPE_NMI) m_cpu_6809[cpunum]->m6809_Cause_Interrupt(M6809_INT_NMI);
-			else                          m_cpu_6809[cpunum]->m6809_Cause_Interrupt(M6809_INT_IRQ);
-			break;
-		case CPU_68000:
-			m68k_set_irq(int_type);
-			break;
-		}
-		interrupt_count[cpunum] = 0;
-	}
-}
-*/
 //***************************************************************************
 int cpu_getiloops(void)
 {
@@ -582,7 +493,6 @@ void cpu_cause_interrupt(int cpu, int type)
 	}
 }
 
-//TBD SOON AS POSSIBLE, add a check to make sure every scheduled interrupt per pass per cpu has been taken, if not take it at the end of the run.
 int cpu_exec_now(int cpu, int cycles)
 {
 	int ticks = 0;
@@ -597,7 +507,7 @@ int cpu_exec_now(int cpu, int cycles)
 
 	case CPU_M6502:
 		m_cpu_6502[cpu]->exec6502(cycles);
-		ticks = m_cpu_6502[active_cpu]->get6502ticks(0xff);
+		ticks = m_cpu_6502[cpu]->get6502ticks(0xff);
 		break;
 
 	case CPU_8080:
@@ -612,8 +522,6 @@ int cpu_exec_now(int cpu, int cycles)
 		break;
 	case CPU_68000:
 		ticks = m68k_execute(cycles);
-		//LOG_INFO("Cycles Executed here %d", cycles);
-		//LOG_INFO("PC:%08X\tSP:%08X\n", m68k_get_reg(NULL, M68K_REG_PC), m68k_get_reg(NULL, M68K_REG_SP));
 		timer_update(ticks, active_cpu);
 		break;
 	case CPU_CCPU:
@@ -621,11 +529,8 @@ int cpu_exec_now(int cpu, int cycles)
 		break;
 	}
 	// Update the cyclecount and the interrupt timers.
-
-	//if (Machine->gamedrv->cpu_type[active_cpu] != CPU_M6502)
 	cyclecount[cpu] += ticks;
 	// NOTE THE CPU CODE ITSELF IS UPDATING THE TIMERS NOW, except for the 68000 and the 8080
-	//timer_update(ticks, active_cpu);
 	return ticks;
 }
 
@@ -635,7 +540,6 @@ void cpu_run(void)
 
 	// reset per-frame accumulators
 	tickcount[0] = tickcount[1] = tickcount[2] = tickcount[3] = 0;
-	totalcycles[0] = totalcycles[1] = totalcycles[2] = totalcycles[3] = 0;
 	ran_this_frame[0] = ran_this_frame[1] = ran_this_frame[2] = ran_this_frame[3] = 0;
 
 	active_cpu = 0;
@@ -707,7 +611,7 @@ void cpu_run(void)
 					(cycles_per_frame[active_cpu] * (intpasses[active_cpu] - iloops[active_cpu])) / intpasses[active_cpu];
 			}
 			else {
-				// No interrupt expected; push boundary past our target so it won’t trigger
+				// No interrupt expected; push boundary past our target so it won't trigger
 				next_interrupt_cycles = target_cycles;
 			}
 
@@ -731,13 +635,12 @@ void cpu_run(void)
 				if (active_cpu == 0) { vid_tickcount += ran; }
 
 				ran_this_frame[active_cpu] += ran;
-				totalcycles[active_cpu] += ran;
-
+			
 				// Handle interrupt pass boundary
 				if (iloops[active_cpu] >= 0 && intpasses[active_cpu] > 0 &&
 					ran_this_frame[active_cpu] >= next_interrupt_cycles)
 				{
-					if (Machine->gamedrv->cpu[active_cpu].int_cpu){
+					if (Machine->gamedrv->cpu[active_cpu].int_cpu) {
 						Machine->gamedrv->cpu[active_cpu].int_cpu();
 					}
 					iloops[active_cpu]--;
@@ -762,12 +665,11 @@ void cpu_run(void)
 
 	// End of CPU Update, update and check frame counter
 	cpu_framecounter++;
-	if (cpu_framecounter > 0xffff) { cpu_framecounter = 0; }
 }
 
 void cpu_reset(int cpunum)
 {
-	LOG_INFO("CPU RESET CALLED!!----------");
+	LOG_INFO("CPU RESET CALLED ON cpu %d !!----------", cpunum);
 
 	switch (Machine->gamedrv->cpu[cpunum].cpu_type)
 	{
@@ -835,9 +737,9 @@ int cpu_scale_by_cycles(int val, int clock)
 	const int sclock = (clock > 0) ? clock : Machine->gamedrv->cpu[cpu].cpu_freq;
 	const int max = (sclock > 0 && Machine->gamedrv->fps > 0)
 		? (sclock / Machine->gamedrv->fps) : 1;
-	const int cur = get_exact_cyclecount(cpu);
+	const int cur = ran_this_frame[cpu];
 	double t = (max > 0) ? (double)cur / (double)max : 0.0;
-	if (t > 1.0) t = 0.99;
+	if (t > 1.0) t = .99;
 	return (int)(val * t);
 }
 
@@ -857,7 +759,7 @@ void free_cpu_memory()
 		case CPU_M6502:  delete m_cpu_6502[x];  m_cpu_6502[x] = nullptr; break;
 		case CPU_8080:   delete m_cpu_i8080[x]; m_cpu_i8080[x] = nullptr; break;
 		case CPU_M6809:  delete m_cpu_6809[x];  m_cpu_6809[x] = nullptr; break;
-		case CPU_68000:  /* nothing allocated here per-CPU */             break;
+		case CPU_68000:  /* nothing allocated here per-CPU */  break;
 		default: break;
 		}
 	}
@@ -870,15 +772,13 @@ void init_cpu_config()
 	int x;
 	LOG_INFO("Starting CPU init");
 	totalcpu = 0;
-	cpu_configured = 0;
 	active_cpu = 0;
 
 	for (x = 0; x < 4; x++)
 	{
 		reset_cpu_status[x] = 0;
 		cpurunning[x] = 1;
-		interrupt_count[x] = 0;
-		interrupt_pending[x] = 0;
+	    interrupt_pending[x] = 0;
 		interrupt_enable[x] = 1;
 		interrupt_vector[x] = 0xff;
 		cyclecount[x] = 0;
@@ -963,7 +863,7 @@ READ_HANDLER(watchdog_reset_r)
 }
 
 // Write Rom
-void watchdog_reset_w16(UINT32 address, UINT16 data, struct MemoryWriteWord* pMemWrite)
+void watchdog_reset_w16(UINT32 address, UINT16 data, struct MemoryWriteWord* psMemWrite)
 {
 	timer_reset(watchdog_timer, TIME_IN_HZ(4));
 }
@@ -971,15 +871,17 @@ void watchdog_reset_w16(UINT32 address, UINT16 data, struct MemoryWriteWord* pMe
 //Read Ram
 UINT8 MRA_RAM(UINT32 address, struct MemoryReadByte* psMemRead)
 {
+	//LOG_INFO("Active CPU here is %d", active_cpu);
+	//LOG_INFO("Address here is %x reading address %x data %x", address, address + psMemRead->lowAddr, Machine->memory_region[active_cpu][address + psMemRead->lowAddr]);
 	return Machine->memory_region[active_cpu][address + psMemRead->lowAddr];
 }
 
 //Write Ram
-void MWA_RAM(UINT32 address, UINT8 data, struct MemoryWriteByte* pMemWrite)
+void MWA_RAM(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite)
 {
-	//LOG_INFO("Address here is %x Writing address %x ", address, address + pMemWrite->lowAddr);
+	//LOG_INFO("Address here is %x Writing address %x ", address, address + psMemWrite->lowAddr);
 
-	Machine->memory_region[active_cpu][address + pMemWrite->lowAddr] = data;
+	Machine->memory_region[active_cpu][address + psMemWrite->lowAddr] = data;
 	//LOG_INFO("Active CPU here is %d", active_cpu);
 }
 

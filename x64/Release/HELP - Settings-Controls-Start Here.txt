@@ -1,0 +1,56 @@
+Note, many items are still in flux, some config settings do not work, some need to be hand edited. Graphics and gameplay have taken priority.
+To Start:
+Place all MAME Non-Merged! Roms in the Roms folder, OR point to your MAME roms folder in the AAE.ini file. 
+Place all MAME artwork in the artwork folder, OR point to your MAME artwork folder in the AAE.ini file. 
+All required samples are included.
+ 
+All games that have full bezels are now available. I don't support MAME Lay files yet, but I have the code, waiting for the graphics revamp completion.
+
+All controls are now usable with an Xbox Controller with your choice of big screen gaming. 
+
+All controls are currently FIXED and are not remappable through the Menu settings. This is intentional, I am writing a new input/remapper for other programs, and it's going to fit in here at a later date. 
+
+Fixed Keyboard Input:
+F1 - Test Step for most games
+F2 - Test mode for most games
+F3 - Reset for most games
+F9 - Window Focus attach/detach
+F10 - Unthrottled
+F11 - Show framerate
+F12 - Take a Screenshot
+5/6 - Coin in
+1 - Start player 1
+2 - Start Player 2
+TAB - Enter Menu
+P - Pause
+Up,Down,Left, Right - Movement in the menu system
+Escape - Back
+Left Control Key - Select (Button 1 in MAME) 
+<ALT><ENTER> - Switch between fullscreen and windowed.
+Fixed Joystick 1 input. 
+
+All basic controls are mapped to the Win32 Joystick code, but the extra controls are only available through Xinput, and that's on my TODO to get them manually configurable.
+
+Player 1
+Left Analog Stick/DPAD - Right, Left Up, Down
+RIGHT OR LEFT STICK <CLICK> - Coin IN.
+A Button - Button 1
+B Button - Button 2
+X Button - Button 3
+MENU and VIEW (BACK) Buttons together - PAUSE
+Left Analog Stick <CLICK> and MENU - MENU SCREEN
+Left Analog Stick <CLICK> and VIEW/BACK = ESCAPE/BACK/EXIT
+
+Player 2
+Left Analog Stick/DPAD - Right, Left Up, Down
+RIGHT OR LEFT STICK <CLICK> - Coin IN.
+A Button - Button 1
+B Button - Button 2
+X Button - Button 3
+
+
+
+Notes:
+- I added a confirm to exit popup with the new joystick code. To disable for arcade cabinets, edit aae.ini and set confirm_exit=0
+- Windows 7 build is not extensively tested, but neither is the Win11 build, I'm too busy fixing things. 
+- To swap the GUI Controsl for arcade cabinets that do not have up and down for the GUI, use flip_gui_controls=1 in the aae.ini file.

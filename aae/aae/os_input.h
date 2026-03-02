@@ -2,7 +2,7 @@
 
 // -----------------------------------------------------------------------------
 // This file is part of the AAE (Another Arcade Emulator) project.
-// Portions are derived from the M.A.M.E.™ Project and remain under their
+// Portions are derived from the M.A.M.E.(TM) Project and remain under their
 // original copyright terms. See the accompanying source files for full
 // license details.
 // -----------------------------------------------------------------------------

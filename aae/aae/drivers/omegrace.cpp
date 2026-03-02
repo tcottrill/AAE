@@ -209,9 +209,9 @@ Sound Commands:
 
 
 ART_START(omegarace_art)
-ART_LOAD("omegrace.zip", "omegbkdp3.png", ART_TEX, 0)
-ART_LOAD("omegrace.zip", "omegrace_overlay.png", ART_TEX, 1)
-ART_LOAD("omegrace.zip", "omegbezlcroped.png", ART_TEX, 3)
+ART_LOAD("omegrace_aae.zip", "omegbkdp3.png", ART_TEX, 0)
+ART_LOAD("omegrace_aae.zip", "omegrace_overlay.png", ART_TEX, 1)
+ART_LOAD("omegrace_aae.zip", "omegbezlcroped.png", ART_TEX, 3)
 ART_END
 
 static struct AY8910interface ay8910_interface =

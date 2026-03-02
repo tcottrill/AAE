@@ -9,7 +9,7 @@
 //   - Original Zilog Z80 emulator by Edward Massey (1997), ported to C by Jeff Mitchell.
 //   - Based on and API-compatible with Neil Bradley's MZ80 for legacy ports.
 //   - Revisions and fixes by EAM (1997), including Time Pilot and Gyruss fixes.
-//   - Modern C++ refactor, cycle-accurate execution, and additional features by TC (2015–2025)
+//   - Modern C++ refactor, cycle-accurate execution, and additional features by TC (2015-2025)
 //     for integration with the AAE emulator.
 //   - Additional guidance and documentation provided by ChatGPT.
 //   - References and improvements adapted from OldSpark (Vedder Bruno) and Superzazu Z80.
@@ -4058,7 +4058,7 @@ void cpu_z80::HandleED() {
 		}
 
 	case 0xAA: { // IND
-		uint8_t data = InRaw(m_regC);           // <— use InRaw: no flag side-effects
+		uint8_t data = InRaw(m_regC);           // <- use InRaw: no flag side-effects
 		MemWriteByte(m_regHL, data);
 		--m_regHL;
 		--m_regB;

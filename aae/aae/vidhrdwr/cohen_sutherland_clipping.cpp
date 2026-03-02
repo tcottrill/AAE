@@ -56,7 +56,7 @@ int ClipLine(int* x1, int* y1, int* x2, int* y2)
 	// Initialize line as outside the rectangular window
 	int accept = 0;
 
-	while (true) 
+	while (true)
 	{
 		if ((code1 == 0) && (code2 == 0))
 		{
@@ -66,7 +66,7 @@ int ClipLine(int* x1, int* y1, int* x2, int* y2)
 		}
 		else if (code1 & code2) {
 			// If both endpoints are outside rectangle,
-			// in same region - DON"T DRAW ANY LINES, TODO: find a better way to do this. 
+			// in same region - DON"T DRAW ANY LINES, TODO: find a better way to do this.
 			//*x1 = -100;
 			//*x2 = -100;
 			//*y1 = -100;

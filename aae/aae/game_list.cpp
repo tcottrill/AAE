@@ -1,6 +1,7 @@
 /*============================================================================
-  game_list.cpp  –  see game_list.h for overview & license
+  game_list.cpp  -  see game_list.h for overview & license
   ============================================================================*/
+
 #include "aae_mame_driver.h"
 #include "game_list.h"
 #include <algorithm>
@@ -38,23 +39,23 @@ void GameList::build(const AAEDriver* drivers)
 		node.gameNum = idx;
 
 		//--------------------------------------------------------------
-		// 1) Copy the short name and capitalize its first letter.
+		// 1) Get the display title and capitalize its first letter.
 		//--------------------------------------------------------------
-		std::string shortName(drivers[idx].name ? drivers[idx].name : "");
-		if (!shortName.empty())
+		std::string dispName(drivers[idx].desc ? drivers[idx].desc : (drivers[idx].name ? drivers[idx].name : ""));
+		if (!dispName.empty())
 		{
-			unsigned char ch = static_cast<unsigned char>(shortName[0]);
+			unsigned char ch = static_cast<unsigned char>(dispName[0]);
 			if (std::islower(ch))
-				shortName[0] = static_cast<char>(std::toupper(ch));
+				dispName[0] = static_cast<char>(std::toupper(ch));
 		}
 
 		//--------------------------------------------------------------
 		// 2) Populate node fields.
 		//--------------------------------------------------------------
-		node.displayName = shortName;                      // used for sorting/UI
+		node.displayName = dispName;                       // used for sorting/UI
 		node.description = drivers[idx].desc               // long title
 			? drivers[idx].desc
-			: shortName;
+			: (drivers[idx].name ? drivers[idx].name : "");
 		// node.extraOptions remains 0 (default constructor)
 
 		nodes_.emplace_back(node);   // vector now holds a capitalized name
@@ -88,16 +89,20 @@ void GameList::build(const std::vector<const AAEDriver*>& reg)
 		if (!d || !d->name) continue;
 		GameNode node;
 		node.gameNum = static_cast<int>(idx);  // preserve original index
-		std::string shortName(d->name);
-		if (!shortName.empty()) {
-			unsigned char ch = static_cast<unsigned char>(shortName[0]);
-			if (std::islower(ch)) shortName[0] = static_cast<char>(std::toupper(ch));
+
+		std::string dispName = d->desc ? d->desc : d->name;
+		if (!dispName.empty()) {
+			unsigned char ch = static_cast<unsigned char>(dispName[0]);
+			if (std::islower(ch)) dispName[0] = static_cast<char>(std::toupper(ch));
 		}
-		node.displayName = shortName;
-		node.description = d->desc ? d->desc : shortName;
+
+		node.displayName = dispName;
+		node.description = d->desc ? d->desc : d->name;
 		nodes_.emplace_back(node);
 	}
+
 	if (nodes_.empty()) return;
+
 	std::sort(nodes_.begin(), nodes_.end(), compareNodes);
 	linkCircular();
 	head_ = &nodes_.front();
@@ -110,23 +115,6 @@ bool GameList::compareNodes(const GameNode& a, const GameNode& b)
 {
 	return a.displayName < b.displayName;
 }
-
-// Case insensitive comparison code
-/*
-static bool compareNodes(const GameNode& a, const GameNode& b)
-{
-	const std::string& s1 = a.displayName;
-	const std::string& s2 = b.displayName;
-
-	for (std::size_t i = 0; i < s1.size() && i < s2.size(); ++i)
-	{
-		char c1 = std::tolower(static_cast<unsigned char>(s1[i]));
-		char c2 = std::tolower(static_cast<unsigned char>(s2[i]));
-		if (c1 != c2) return c1 < c2;
-	}
-	return s1.size() < s2.size();
-}
-*/
 
 void GameList::linkCircular()
 {
@@ -170,7 +158,7 @@ const GameNode& GameList::operator[](std::size_t index) const
 }
 
 // ---------------------------------------------------------------------------
-// indexOfGameNum – sorted index for given driver index, or -1
+// indexOfGameNum - sorted index for given driver index, or -1
 // ---------------------------------------------------------------------------
 int GameList::indexOfGameNum(int gamenum) const
 {

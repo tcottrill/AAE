@@ -26,6 +26,11 @@
 #define READ_WORD16(a)    (*(UINT16 *)(a))
 #define WRITE_WORD16(a,d) (*(UINT16 *)(a) = (d))
 
+ART_START(aztarac_art)
+ART_LOAD("aztarac.zip", "aztarac_bezel.png", ART_TEX, 3)
+ART_END
+
+
 #pragma warning(disable : 4838)
 
 // Video Variables
@@ -430,7 +435,8 @@ AAE_DRIVER_ROM(rom_aztarac)
 AAE_DRIVER_FUNCS(&init_aztarac, &run_aztarac, &end_aztarac)
 AAE_DRIVER_INPUT(input_ports_aztarac)
 AAE_DRIVER_SAMPLES_NONE()
-AAE_DRIVER_ART_NONE()
+AAE_DRIVER_ART(aztarac_art)
+
 //AAE_DRIVER_CPU2(CPU_68000, 8000000, 100, 1, INT_TYPE_68K4, &aztarac_interrupt, CPU_MZ80, 2000000, 100, 100, INT_TYPE_NONE, &aztarac_sound_interrupt)
 AAE_DRIVER_CPUS(
 	// CPU0: MC68000 @ 8 MHz, byte+word handlers, 1 interrupt pass/frame (level 4)

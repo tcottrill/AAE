@@ -1,7 +1,7 @@
 #ifndef EAROM_H
 #define EAROM_H
 
-#include "../osd_cpu.h"
+#include "osd_cpu.h"
 //Copyright "The M.A.M.E Team"
 
 //Todo, rename to match mame code.

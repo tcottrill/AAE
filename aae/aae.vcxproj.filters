@@ -4,55 +4,13 @@
     <Manifest Include="app.manifest" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="system\util\allegro_timer.cpp">
-      <Filter>Source Files\system\util</Filter>
-    </ClCompile>
-    <ClCompile Include="system\util\anim_timer.cpp">
-      <Filter>Source Files\system\util</Filter>
-    </ClCompile>
-    <ClCompile Include="system\font\bmfont.cpp">
-      <Filter>Source Files\system\font</Filter>
-    </ClCompile>
     <ClCompile Include="system\3rdparty\glew.c">
       <Filter>Source Files\system\3rdparty</Filter>
     </ClCompile>
     <ClCompile Include="system\3rdparty\miniz.c">
       <Filter>Source Files\system\3rdparty</Filter>
     </ClCompile>
-    <ClCompile Include="system\audio\helper_functions.cpp">
-      <Filter>Source Files\system\audio</Filter>
-    </ClCompile>
-    <ClCompile Include="system\audio\mixer.cpp">
-      <Filter>Source Files\system\audio</Filter>
-    </ClCompile>
-    <ClCompile Include="system\audio\wav_file.cpp">
-      <Filter>Source Files\system\audio</Filter>
-    </ClCompile>
-    <ClCompile Include="system\audio\wav_filters.cpp">
-      <Filter>Source Files\system\audio</Filter>
-    </ClCompile>
-    <ClCompile Include="system\audio\wav_resample.cpp">
-      <Filter>Source Files\system\audio</Filter>
-    </ClCompile>
-    <ClCompile Include="system\audio\XAudio2Stream.cpp">
-      <Filter>Source Files\system\audio</Filter>
-    </ClCompile>
-    <ClCompile Include="system\graphics\fbo_modern.cpp">
-      <Filter>Source Files\system\graphics</Filter>
-    </ClCompile>
     <ClCompile Include="system\graphics\sys_gl.cpp">
-      <Filter>Source Files\system\graphics</Filter>
-    </ClCompile>
-    <ClCompile Include="system\graphics\sprite_anim.cpp">
-      <Filter>Source Files\system\graphics</Filter>
-    </ClCompile>
-    <ClCompile Include="system\graphics\sprite_anim_manager.cpp">
-      <Filter>Source Files\system\graphics</Filter>
-    </ClCompile>
-    <ClCompile Include="system\graphics\spritesheet.cpp">
-      <Filter>Source Files\system\graphics</Filter>
-    </ClCompile>
-    <ClCompile Include="system\graphics\spritesheet_ogl4.cpp">
       <Filter>Source Files\system\graphics</Filter>
     </ClCompile>
     <ClCompile Include="system\graphics\sys_texture.cpp">
@@ -64,12 +22,6 @@
     <ClCompile Include="system\input\Joystick.cpp">
       <Filter>Source Files\system\input</Filter>
     </ClCompile>
-    <ClCompile Include="system\input\joystick_win32.cpp">
-      <Filter>Source Files\system\input</Filter>
-    </ClCompile>
-    <ClCompile Include="system\input\joystick_xinput.cpp">
-      <Filter>Source Files\system\input</Filter>
-    </ClCompile>
     <ClCompile Include="system\window\win10_win11_required_code.cpp">
       <Filter>Source Files\system\window</Filter>
     </ClCompile>
@@ -79,12 +31,6 @@
     <ClCompile Include="system\window\winmain.cpp">
       <Filter>Source Files\system\window</Filter>
     </ClCompile>
-    <ClCompile Include="system\util\collision_tests.cpp">
-      <Filter>Source Files\system\util</Filter>
-    </ClCompile>
-    <ClCompile Include="system\util\hotspot.cpp">
-      <Filter>Source Files\system\util</Filter>
-    </ClCompile>
     <ClCompile Include="system\util\wintimer.cpp">
       <Filter>Source Files\system\util</Filter>
     </ClCompile>
@@ -92,9 +38,6 @@
       <Filter>Source Files\system\util</Filter>
     </ClCompile>
     <ClCompile Include="system\util\sys_fileio.cpp">
-      <Filter>Source Files\system\util</Filter>
-    </ClCompile>
-    <ClCompile Include="system\input\rawinput.cpp">
       <Filter>Source Files\system\util</Filter>
     </ClCompile>
     <ClCompile Include="system\util\path_helper.cpp">
@@ -196,17 +139,11 @@
     <ClCompile Include="aae\aae_video\vector_fonts.cpp">
       <Filter>Source Files\aae\aae_video</Filter>
     </ClCompile>
-    <ClCompile Include="aae\aae_video\fbo.cpp">
-      <Filter>Source Files\aae\aae_video</Filter>
-    </ClCompile>
     <ClCompile Include="aae\aae_video\gl_fbo.cpp">
       <Filter>Source Files\aae\aae_video</Filter>
     </ClCompile>
     <ClCompile Include="aae\aae_video\gl_texturing.cpp">
       <Filter>Source Files\aae\aae_video</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\fpsclass.cpp">
-      <Filter>Source Files\aae</Filter>
     </ClCompile>
     <ClCompile Include="aae\game_list.cpp">
       <Filter>Source Files\aae</Filter>
@@ -218,9 +155,6 @@
       <Filter>Source Files\aae</Filter>
     </ClCompile>
     <ClCompile Include="aae\menu.cpp">
-      <Filter>Source Files\aae</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\newfbo.cpp">
       <Filter>Source Files\aae</Filter>
     </ClCompile>
     <ClCompile Include="aae\os_basic.cpp">
@@ -238,15 +172,6 @@
     <ClCompile Include="aae\config.cpp">
       <Filter>Source Files\aae</Filter>
     </ClCompile>
-    <ClCompile Include="aae\rand.cpp">
-      <Filter>Source Files\aae</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\aae_video\vector_draw.cpp">
-      <Filter>Source Files\aae\aae_video</Filter>
-    </ClCompile>
-    <ClCompile Include="system\audio\wav_sweep.cpp">
-      <Filter>Source Files\system\audio</Filter>
-    </ClCompile>
     <ClCompile Include="aae\aae_video\tiled_effect.cpp">
       <Filter>Source Files\aae\aae_video</Filter>
     </ClCompile>
@@ -258,9 +183,6 @@
     </ClCompile>
     <ClCompile Include="aae\cpu_code\cpu_6502.cpp">
       <Filter>Source Files\aae\cpu_code</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\driver_compat.cpp">
-      <Filter>Source Files\aae</Filter>
     </ClCompile>
     <ClCompile Include="aae\driver_registry.cpp">
       <Filter>Source Files\aae</Filter>
@@ -364,19 +286,31 @@
     <ClCompile Include="aae\drivers\bosco.cpp">
       <Filter>Source Files\aae\drivers\raster</Filter>
     </ClCompile>
+    <ClCompile Include="aae\machine\pacplus_decode.cpp">
+      <Filter>Source Files\aae\machine</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\drivers\yiear.cpp">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\drivers\centiped.cpp">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\vidhrdwr\centiped_vid.cpp">
+      <Filter>Source Files\aae\vidhrdwr</Filter>
+    </ClCompile>
+    <ClCompile Include="system\audio\mixer.cpp">
+      <Filter>Source Files\system\audio</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\gui\driver_gui.cpp">
+      <Filter>Source Files\aae\gui</Filter>
+    </ClCompile>
+    <ClCompile Include="system\input\rawinput.cpp">
+      <Filter>Source Files\system\input</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="resource.h">
       <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="system\util\allegro_timer.h">
-      <Filter>Source Files\system\util</Filter>
-    </ClInclude>
-    <ClInclude Include="system\util\anim_timer.h">
-      <Filter>Source Files\system\util</Filter>
-    </ClInclude>
-    <ClInclude Include="system\font\bmfont.h">
-      <Filter>Source Files\system\font</Filter>
     </ClInclude>
     <ClInclude Include="system\3rdparty\glew.h">
       <Filter>Source Files\system\3rdparty</Filter>
@@ -399,37 +333,10 @@
     <ClInclude Include="system\3rdparty\wglew.h">
       <Filter>Source Files\system\3rdparty</Filter>
     </ClInclude>
-    <ClInclude Include="system\audio\emptywav.h">
-      <Filter>Source Files\system\audio</Filter>
-    </ClInclude>
-    <ClInclude Include="system\audio\error_wav.h">
-      <Filter>Source Files\system\audio</Filter>
-    </ClInclude>
-    <ClInclude Include="system\audio\helper_functions.h">
-      <Filter>Source Files\system\audio</Filter>
-    </ClInclude>
-    <ClInclude Include="system\audio\mixer.h">
-      <Filter>Source Files\system\audio</Filter>
-    </ClInclude>
-    <ClInclude Include="system\audio\wav_file.h">
-      <Filter>Source Files\system\audio</Filter>
-    </ClInclude>
-    <ClInclude Include="system\audio\wav_filters.h">
-      <Filter>Source Files\system\audio</Filter>
-    </ClInclude>
-    <ClInclude Include="system\audio\wav_resample.h">
-      <Filter>Source Files\system\audio</Filter>
-    </ClInclude>
-    <ClInclude Include="system\audio\XAudio2Stream.h">
-      <Filter>Source Files\system\audio</Filter>
-    </ClInclude>
     <ClInclude Include="system\graphics\colordefs.h">
       <Filter>Source Files\system\graphics</Filter>
     </ClInclude>
     <ClInclude Include="system\graphics\debug_draw.h">
-      <Filter>Source Files\system\graphics</Filter>
-    </ClInclude>
-    <ClInclude Include="system\graphics\fbo_modern.h">
       <Filter>Source Files\system\graphics</Filter>
     </ClInclude>
     <ClInclude Include="system\graphics\sys_gl.h">
@@ -438,31 +345,13 @@
     <ClInclude Include="system\graphics\shader_util.h">
       <Filter>Source Files\system\graphics</Filter>
     </ClInclude>
-    <ClInclude Include="system\graphics\sprite_anim.h">
-      <Filter>Source Files\system\graphics</Filter>
-    </ClInclude>
-    <ClInclude Include="system\graphics\sprite_anim_manager.h">
-      <Filter>Source Files\system\graphics</Filter>
-    </ClInclude>
-    <ClInclude Include="system\graphics\spritesheet.h">
-      <Filter>Source Files\system\graphics</Filter>
-    </ClInclude>
     <ClInclude Include="system\graphics\sys_texture.h">
       <Filter>Source Files\system\graphics</Filter>
     </ClInclude>
     <ClInclude Include="system\graphics\texrect.h">
       <Filter>Source Files\system\graphics</Filter>
     </ClInclude>
-    <ClInclude Include="system\graphics\Vertex_Helpers.h">
-      <Filter>Source Files\system\graphics</Filter>
-    </ClInclude>
     <ClInclude Include="system\input\joystick.h">
-      <Filter>Source Files\system\input</Filter>
-    </ClInclude>
-    <ClInclude Include="system\input\joystick_win32.h">
-      <Filter>Source Files\system\input</Filter>
-    </ClInclude>
-    <ClInclude Include="system\input\joystick_xinput.h">
       <Filter>Source Files\system\input</Filter>
     </ClInclude>
     <ClInclude Include="system\math\circle.h">
@@ -486,12 +375,6 @@
     <ClInclude Include="system\window\utf8conv.h">
       <Filter>Source Files\system\window</Filter>
     </ClInclude>
-    <ClInclude Include="system\util\collision_tests.h">
-      <Filter>Source Files\system\util</Filter>
-    </ClInclude>
-    <ClInclude Include="system\util\hotspot.h">
-      <Filter>Source Files\system\util</Filter>
-    </ClInclude>
     <ClInclude Include="system\util\wintimer.h">
       <Filter>Source Files\system\util</Filter>
     </ClInclude>
@@ -499,9 +382,6 @@
       <Filter>Source Files\system\util</Filter>
     </ClInclude>
     <ClInclude Include="system\util\sys_fileio.h">
-      <Filter>Source Files\system\util</Filter>
-    </ClInclude>
-    <ClInclude Include="system\input\rawinput.h">
       <Filter>Source Files\system\util</Filter>
     </ClInclude>
     <ClInclude Include="system\util\path_helper.h">
@@ -612,9 +492,6 @@
     <ClInclude Include="aae\aae_video\vector_fonts.h">
       <Filter>Source Files\aae\aae_video</Filter>
     </ClInclude>
-    <ClInclude Include="aae\aae_video\fbo.h">
-      <Filter>Source Files\aae\aae_video</Filter>
-    </ClInclude>
     <ClInclude Include="aae\aae_video\gl_fbo.h">
       <Filter>Source Files\aae\aae_video</Filter>
     </ClInclude>
@@ -624,13 +501,7 @@
     <ClInclude Include="aae\aae_video\gl_texturing.h">
       <Filter>Source Files\aae\aae_video</Filter>
     </ClInclude>
-    <ClInclude Include="aae\fpsclass.h">
-      <Filter>Source Files\aae</Filter>
-    </ClInclude>
     <ClInclude Include="aae\game_list.h">
-      <Filter>Source Files\aae</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\gameart.h">
       <Filter>Source Files\aae</Filter>
     </ClInclude>
     <ClInclude Include="aae\inptport.h">
@@ -640,9 +511,6 @@
       <Filter>Source Files\aae</Filter>
     </ClInclude>
     <ClInclude Include="aae\menu.h">
-      <Filter>Source Files\aae</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\newfbo.h">
       <Filter>Source Files\aae</Filter>
     </ClInclude>
     <ClInclude Include="aae\os_basic.h">
@@ -675,18 +543,6 @@
     <ClInclude Include="aae\deftypes.h">
       <Filter>Source Files\aae</Filter>
     </ClInclude>
-    <ClInclude Include="aae\rand.h">
-      <Filter>Source Files\aae</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\aae_video\vector_draw.h">
-      <Filter>Source Files\aae\aae_video</Filter>
-    </ClInclude>
-    <ClInclude Include="system\audio\mixer_volume.h">
-      <Filter>Source Files\system\audio</Filter>
-    </ClInclude>
-    <ClInclude Include="system\audio\wav_sweep.h">
-      <Filter>Source Files\system\audio</Filter>
-    </ClInclude>
     <ClInclude Include="system\util\FrameLimiter.h">
       <Filter>Source Files\system\util</Filter>
     </ClInclude>
@@ -695,9 +551,6 @@
     </ClInclude>
     <ClInclude Include="aae\vidhrdwr\osd_video.h">
       <Filter>Source Files\aae\vidhrdwr</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\driver_compat.h">
-      <Filter>Source Files\aae</Filter>
     </ClInclude>
     <ClInclude Include="aae\driver_registry.h">
       <Filter>Source Files\aae</Filter>
@@ -807,6 +660,33 @@
     <ClInclude Include="aae\drivers\bosco.h">
       <Filter>Source Files\aae\drivers\raster</Filter>
     </ClInclude>
+    <ClInclude Include="aae\machine\pacplus_decode.h">
+      <Filter>Source Files\aae\machine</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\drivers\yiear.h">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\drivers\centiped.h">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\vidhrdwr\centiped_vid.h">
+      <Filter>Source Files\aae\vidhrdwr</Filter>
+    </ClInclude>
+    <ClInclude Include="system\audio\emptywav.h">
+      <Filter>Source Files\system\audio</Filter>
+    </ClInclude>
+    <ClInclude Include="system\audio\error_wav.h">
+      <Filter>Source Files\system\audio</Filter>
+    </ClInclude>
+    <ClInclude Include="system\audio\mixer.h">
+      <Filter>Source Files\system\audio</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\gui\driver_gui.h">
+      <Filter>Source Files\aae\gui</Filter>
+    </ClInclude>
+    <ClInclude Include="system\input\rawinput.h">
+      <Filter>Source Files\system\input</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Image Include="appicon.ico" />
@@ -827,9 +707,6 @@
     </Filter>
     <Filter Include="Source Files\system\3rdparty">
       <UniqueIdentifier>{28bea16f-76a9-4319-8103-08aa026eaf9e}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\system\font">
-      <UniqueIdentifier>{8910404c-72ff-499c-8a69-bbf51c82976f}</UniqueIdentifier>
     </Filter>
     <Filter Include="Source Files\system\graphics">
       <UniqueIdentifier>{07d65e8f-88fa-4efd-a1a0-4a502ea755e0}</UniqueIdentifier>
@@ -873,14 +750,14 @@
     <Filter Include="Source Files\aae\aae_video">
       <UniqueIdentifier>{7fcaf12f-f667-46fb-a91b-1111313e4a36}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\aae\drivers\raster">
+      <UniqueIdentifier>{d3b1a532-181d-44f4-92aa-3fd58d1c1e7c}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Source Files\aae\cpu_code">
       <UniqueIdentifier>{da058008-a727-4d5f-bb3f-a3335773c65c}</UniqueIdentifier>
     </Filter>
     <Filter Include="Source Files\aae\cpu_code\68000">
       <UniqueIdentifier>{11feed3f-610f-4067-84af-657828dfa47a}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\aae\drivers\raster">
-      <UniqueIdentifier>{d3b1a532-181d-44f4-92aa-3fd58d1c1e7c}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>

@@ -1,5 +1,5 @@
 //==========================================================================
-// AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME
+// AAE is a poorly written M.A.M.E (TM) derivative based on early MAME
 // code, 0.29 through .90 mixed with code of my own. This emulator was
 // created solely for my amusement and learning and is provided only
 // as an archival experience.
@@ -11,160 +11,184 @@
 // SOME CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.
 //==========================================================================
 
-#include "framework.h"
+// ---------------------------------------------------------------------------
+// Standard C++ headers
+// ---------------------------------------------------------------------------
+#include <cstdlib>      // malloc, free, srand, exit
+#include <cstring>      // strcmp, strlen, memcpy, memset
+#include <string>
+#include <vector>
+#include <sstream>      // ostringstream (list_all_roms)
+#include <iomanip>      // hex, setw, setfill (list_all_roms)
+#include <algorithm>    // transform (to_lowercase)
+#include <chrono>       // steady_clock (profiling)
+
+// ---------------------------------------------------------------------------
+// Windows / platform headers
+// ---------------------------------------------------------------------------
+#include "framework.h"  // pulls in Windows.h with correct defines
+
+#ifndef WIN7BUILD
+#include "win10_win11_required_code.h"
+#endif
+
+// ---------------------------------------------------------------------------
+// AAE headers
+// ---------------------------------------------------------------------------
 #include "aae_emulator.h"
 #include "aae_mame_driver.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <malloc.h>
 #include "wintimer.h"
 #include "acommon.h"
 #include "fileio/texture_handler.h"
 #include "config.h"
-#include <mmsystem.h>
-#include "rand.h"
 #include "glcode.h"
+#include "gl_fbo.h"
 #include "menu.h"
 #include "aae_avg.h"
-#include "fpsclass.h"
 #include "os_input.h"
+#include "os_basic.h"
 #include "timer.h"
 #include "vector_fonts.h"
 #include "gl_texturing.h"
 #include "mixer.h"
-#include <string>
-#include <vector>
-#include <sstream>
-#include <iomanip>
-#include <cstring>   // strlen
 #include "utf8conv.h"
 #include "old_mame_raster.h"
 #include "osd_video.h"
 #include "game_list.h"
-//#include <thread>
-//New 2024
-#include "os_basic.h"
-#include <chrono>
-
-#ifndef WIN7BUILD
-#include "win10_win11_required_code.h"
-#endif // WIN7BUILD
-
-#include <algorithm>
 #include "FrameLimiter.h"
-#include "driver_compat.h"
 #include "driver_registry.h"   // AllDrivers(), FindDriverByName(), AAE_REGISTER_DRIVER
+#include "joystick.h"
 
-static double g_lastFrameTimestampMs = 0.0;
-
-//#include <cctype>
-//#include <cstdlib>     // for exit()
-//#include <iostream>    // optional logging
+#pragma warning(disable : 4996 4244)
 
 using namespace std;
 using namespace chrono;
 
-//TEST VARIABLES
-static int res_reset;
-static int x_override;
-static int y_override;
+// ---------------------------------------------------------------------------
+// Module globals
+// ---------------------------------------------------------------------------
+
+static double g_lastFrameTimestampMs = 0.0;
+
+// Command-line resolution override requested by -WxH flag
+static int x_override = 0;
+static int y_override = 0;
+// -window / -nowindow override (3=window, 2=nowindow, 0=no override)
 static int win_override = 0;
 
-#pragma warning( disable : 4996 4244)
-
+// 1 when the user launched with a game name argument (e.g. "aae asteroid")
+// Used to skip the GUI and exit directly on ESC instead of returning to GUI.
 static int started_from_command_line = 0;
-int hiscoreloaded;
-//int sys_paused = 0;
-int show_fps = 0;
-FpsClass* m_frame; //For frame counting. Prob needs moved out of here really.
 
+int  hiscoreloaded = 0;
+int  show_fps = 0;
+
+// Per-game frame throttle flag. 1=throttle to game FPS, 0=run uncapped.
 static int throttle = 1;
-//New 2025
-static bool game_loaded_sentinel = 0;
+
+// True only after run_game() has fully initialized a game.
+// Used as the authoritative "is a game actually running?" flag.
+static bool game_loaded_sentinel = false;
+
+// Artwork layer loaded flags (indexed 0..5, matching art_tex[] slots).
 int art_loaded[6] = {};
+
+// leds_status is defined in acommon.cpp and written by game drivers (e.g. llander).
+// ResetPerGameRuntimeState() resets it to 0 between games.
 extern int leds_status;
 
-//GameList gList(&driver[0]);
+// Complete list of all supported games, built from the driver registry.
 GameList gList;
 
-//AAEDriver* driver = nullptr;
-
-// M.A.M.E. (TM) Variables for testing
+// Runtime GUI driver index (resolved from the registry at startup, not hardcoded).
+static int g_guiGameIndex = -1;
+// Index of the game to switch to at the next safe frame boundary (-1 = none).
+static int g_pendingSwitchGameNum = -1;
+// Command-line debug override (-1 = no override)
+static int debug_override = -1;
+// ---------------------------------------------------------------------------
+// MAME compatibility: RunningMachine and driver pointers.
+// Machine is the globally visible pointer to the current running game state.
+// gamedrv is the module-level alias used by init_machine().
+// ---------------------------------------------------------------------------
 static struct RunningMachine machine;
 struct RunningMachine* Machine = &machine;
-static const struct AAEDriver* gamedrv;
-static const struct AAEDriver* drv;
-//static const struct MachineDriver* drv;
-struct GameOptions	options;
+static const struct AAEDriver* gamedrv = nullptr;
 
-// --- Optional MMCSS ---
-static HANDLE mmcssHandle = nullptr;
+struct GameOptions options;
 
-struct
+// ---------------------------------------------------------------------------
+// Volume change-filter state (avoid spamming SetVolume every frame).
+// ---------------------------------------------------------------------------
+static int g_lastAppliedMainVol255 = -1;
+
+// -----------------------------------------------------------------------------
+// Exit confirmation dialog state
+//
+// g_exitConfirmActive: 1 while the YES/NO dialog is visible, 0 otherwise.
+// g_exitConfirmSel:    0 = YES is highlighted, 1 = NO is highlighted.
+//
+// Default selection is YES. The dialog is only shown when the player has
+// already made a deliberate input to exit, so defaulting to YES is appropriate.
+// Input is handled in msg_loop() each frame while g_exitConfirmActive is set.
+// glcode.cpp reads these via get_exit_confirm_status() /
+// get_exit_confirm_selection() to draw the overlay on top of the dim layer.
+// -----------------------------------------------------------------------------
+static int g_exitConfirmActive = 0;
+static int g_exitConfirmSel = 0;  // default highlight: YES
+
+int get_exit_confirm_status() { return g_exitConfirmActive; }
+int get_exit_confirm_selection() { return g_exitConfirmSel; }
+
+// ---------------------------------------------------------------------------
+// Supported command-line resolution overrides (matched by gameparse()).
+// ---------------------------------------------------------------------------
+static const struct { const char* desc; int x, y; } gfx_res[] =
 {
-	const char* desc;
-	int x, y;
-}
-
-gfx_res[] =
-{
-	{ "-320x240"	, 320, 240 },
-	{ "-512x384"	, 512, 384 },
-	{ "-640x480"	, 640, 480 },
-	{ "-800x600"	, 800, 600 },
-	{ "-1024x768"	, 1024, 768 },
-	{ "-1152x720"	, 1152, 720 },
-	{ "-1152x864"	, 1152, 864 },
-	{ "-1280x768"	, 1280, 768 },
-	{ "-1280x1024"	, 1280, 1024 },
-	{ "-1600x1200"	, 1600, 1200 },
-	{ "-1680x1050"	, 1680, 1050 },
-	{ "-1920x1080"	, 1920, 1080 },
-	{ "-1920x1200"	, 1920, 1200 },
-	{ NULL		, 0, 0 }
+	{ "-320x240",   320,  240 },
+	{ "-512x384",   512,  384 },
+	{ "-640x480",   640,  480 },
+	{ "-800x600",   800,  600 },
+	{ "-1024x768", 1024,  768 },
+	{ "-1152x720", 1152,  720 },
+	{ "-1152x864", 1152,  864 },
+	{ "-1280x768", 1280,  768 },
+	{ "-1280x1024",1280, 1024 },
+	{ "-1600x1200",1600, 1200 },
+	{ "-1680x1050",1680, 1050 },
+	{ "-1920x1080",1920, 1080 },
+	{ "-1920x1200",1920, 1200 },
+	{ nullptr, 0, 0 }
 };
 
-double gametime = 0.0;// = TimerGetTimeMS();
-static double starttime = 0.0;
+// Scale factor for the raster polygon renderer (pixels -> GL units).
+float vid_scale = 3.0f;
 
-///////////////////////////////////////  RASTER CODE START  ////////////////////////////////////////////////////
-// This is only a test. Trying out new things.
+// ---------------------------------------------------------------------------
+// Forward declarations for static helpers defined later in this file.
+// ---------------------------------------------------------------------------
+static void ResetPerGameRuntimeState();
+static int  FindGuiGameIndex();
 
-float vid_scale = 3.0;
-
-// -----------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 // SetGamePerformanceMode
-// -----------------------------------------------------------------------------
-void SetGamePerformanceMode(const settings& config)
+// Applies the configured Windows process/thread priority for game play.
+// Called once per game start, after the game has fully initialized.
+// ---------------------------------------------------------------------------
+void SetGamePerformanceMode(const settings& cfg)
 {
-	// --- Process Priority ---
-	DWORD procPriority = NORMAL_PRIORITY_CLASS;
+	DWORD      procPriority = NORMAL_PRIORITY_CLASS;
 	const char* priorityName = "NORMAL_PRIORITY_CLASS";
 
-	switch (config.priority)
+	switch (cfg.priority)
 	{
-	case 4:
-		procPriority = REALTIME_PRIORITY_CLASS;
-		priorityName = "REALTIME_PRIORITY_CLASS";
-		break;
-	case 3:
-		procPriority = HIGH_PRIORITY_CLASS;
-		priorityName = "HIGH_PRIORITY_CLASS";
-		break;
-	case 2:
-		procPriority = ABOVE_NORMAL_PRIORITY_CLASS;
-		priorityName = "ABOVE_NORMAL_PRIORITY_CLASS";
-		break;
-	case 1:
-		procPriority = NORMAL_PRIORITY_CLASS;
-		priorityName = "NORMAL_PRIORITY_CLASS";
-		break;
-	case 0:
-		procPriority = IDLE_PRIORITY_CLASS;
-		priorityName = "IDLE_PRIORITY_CLASS";
-		break;
+	case 4: procPriority = REALTIME_PRIORITY_CLASS;      priorityName = "REALTIME_PRIORITY_CLASS";      break;
+	case 3: procPriority = HIGH_PRIORITY_CLASS;          priorityName = "HIGH_PRIORITY_CLASS";          break;
+	case 2: procPriority = ABOVE_NORMAL_PRIORITY_CLASS;  priorityName = "ABOVE_NORMAL_PRIORITY_CLASS";  break;
+	case 1: procPriority = NORMAL_PRIORITY_CLASS;        priorityName = "NORMAL_PRIORITY_CLASS";        break;
+	case 0: procPriority = IDLE_PRIORITY_CLASS;          priorityName = "IDLE_PRIORITY_CLASS";          break;
 	default:
-		LOG_INFO("Unknown priority level: %d", config.priority);
+		LOG_INFO("SetGamePerformanceMode: unknown priority level %d", cfg.priority);
 		break;
 	}
 
@@ -173,87 +197,179 @@ void SetGamePerformanceMode(const settings& config)
 	else
 		LOG_INFO("Process priority set to %s", priorityName);
 
-	// --- Optional Thread Boost ---
-	if (config.boostThread)
+	if (cfg.boostThread)
 	{
 		if (!SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL))
 			LOG_INFO("Failed to boost thread priority. Error: %lu", GetLastError());
 		else
-			LOG_INFO("Main thread boosted to THREAD_PRIORITY_ABOVE_NORMAL");
-	}
-
-	//DWORD_PTR cores = (1ULL << std::thread::hardware_concurrency()) - 1;
-	//SetThreadAffinityMask(GetCurrentThread(), cores);
-}
-
-///////////////////////////////////////  RASTER CODE END    ////////////////////////////////////////////////////
-
-/*************************************
- *
- *	To lower: helper function.
- *
- *************************************/
-
-void toLowerCase(char* str) {
-	while (*str) {
-		*str = tolower((unsigned char)*str); // Convert each character to lowercase
-		str++;
+			LOG_INFO("Main thread boosted to THREAD_PRIORITY_ABOVE_NORMAL.");
 	}
 }
 
-/*************************************
- *
- *	Set's up the pointers to
- *  link to MAME Code.
- *
- *************************************/
+// ---------------------------------------------------------------------------
+// FindGuiGameIndex  (static helper)
+// Searches the driver registry for the "gui" named driver and returns its
+// index. Returns -1 if the GUI driver is not registered.
+// Result is NOT cached here - use g_guiGameIndex for the startup-resolved value.
+// ---------------------------------------------------------------------------
+static int FindGuiGameIndex()
+{
+	const auto& reg = aae::AllDrivers();
+	for (int i = 0; i < (int)reg.size(); ++i)
+	{
+		if (reg[i] && reg[i]->name && std::strcmp(reg[i]->name, "gui") == 0)
+			return i;
+	}
+	return -1;
+}
 
+// ---------------------------------------------------------------------------
+// emulator_apply_pending_switch
+// Call once per frame from WinMain after emulator_run().
+// Applies a deferred game switch that was requested mid-frame via
+// emulator_request_switch(). If the target game fails to start, falls back
+// to the GUI driver automatically.
+// ---------------------------------------------------------------------------
+bool emulator_apply_pending_switch()
+{
+	if (g_pendingSwitchGameNum < 0)
+		return false;
+
+	const int target = g_pendingSwitchGameNum;
+	g_pendingSwitchGameNum = -1;
+	done = 0;
+
+	const auto& reg = aae::AllDrivers();
+	const char* targetName =
+		(target >= 0 && target < (int)reg.size() && reg[target] && reg[target]->name)
+		? reg[target]->name : "INVALID";
+
+	LOG_INFO("ApplyPendingSwitch: target=%d (%s)", target, targetName);
+
+	if (emulator_start_game(target))
+		return true;
+
+	LOG_INFO("ApplyPendingSwitch: start FAILED for %d (%s). Returning to GUI.", target, targetName);
+
+	const int guiIdx = FindGuiGameIndex();
+	if (guiIdx >= 0)
+	{
+		done = 0;
+		emulator_start_game(guiIdx);
+		done = 0;
+		return true;
+	}
+
+	LOG_INFO("ApplyPendingSwitch: GUI driver not found; cannot recover.");
+	return false;
+}
+
+// ---------------------------------------------------------------------------
+// emulator_request_switch
+// Request a deferred game switch. The switch is applied at the next safe
+// frame boundary by emulator_apply_pending_switch(). Setting done=1 ends
+// the current session cleanly before the switch happens.
+// ---------------------------------------------------------------------------
+void emulator_request_switch(int gameNum)
+{
+	g_pendingSwitchGameNum = gameNum;
+	done = 1;
+}
+
+// ---------------------------------------------------------------------------
+// RequestReturnToGui  (static helper)
+// Converts a "quit this title" action into a "switch to GUI" request.
+// If already in the GUI, does nothing (caller must set done=1 explicitly
+// if they want to exit the application from the GUI).
+// ---------------------------------------------------------------------------
+static void RequestReturnToGui(const char* reason)
+{
+	const int guiIdx = FindGuiGameIndex();
+	if (guiIdx < 0)
+	{
+		LOG_INFO("RequestReturnToGui: GUI driver not found. reason=%s", reason ? reason : "NULL");
+		done = 1;   // fallback: no GUI to return to, just exit
+		return;
+	}
+
+	if (gamenum == guiIdx)
+	{
+		LOG_INFO("RequestReturnToGui: already in GUI. reason=%s", reason ? reason : "NULL");
+		return;
+	}
+
+	LOG_INFO("RequestReturnToGui: switching to GUI. reason=%s (gamenum=%d -> gui=%d)",
+		reason ? reason : "NULL", gamenum, guiIdx);
+
+	glcode_vector_hard_clear_fbo1();
+	g_pendingSwitchGameNum = guiIdx;
+	done = 1;
+}
+
+// ---------------------------------------------------------------------------
+// AAE_ApplyAudioVolumesFromConfig
+// Applies config.mainvol to the mixer. Uses a change-filter to avoid
+// calling mixer_set_master_volume_255() every single frame.
+//   force - if non-zero, always apply regardless of whether value changed.
+// ---------------------------------------------------------------------------
+void AAE_ApplyAudioVolumesFromConfig(int force)
+{
+	const int v255 = (config.mainvol < 0) ? 0 : (config.mainvol > 255) ? 255 : (int)config.mainvol;
+
+	if (force || v255 != g_lastAppliedMainVol255)
+	{
+		mixer_set_master_volume_255(v255);
+		g_lastAppliedMainVol255 = v255;
+	}
+}
+
+// ---------------------------------------------------------------------------
+// toLowerCase
+// In-place ASCII lowercase conversion. Operates on the raw char buffer
+// passed in (used for normalizing argv before parsing).
+// ---------------------------------------------------------------------------
+void toLowerCase(char* str)
+{
+	for (; *str; ++str)
+		*str = (char)tolower((unsigned char)*str);
+}
+
+// ---------------------------------------------------------------------------
+// to_lowercase  (static helper)
+// Returns a lowercase copy of a C string as a std::string.
+// Used by gameparse() and the -debug option parser.
+// ---------------------------------------------------------------------------
+static std::string to_lowercase(const char* str)
+{
+	std::string s(str ? str : "");
+	std::transform(s.begin(), s.end(), s.begin(),
+		[](unsigned char c) { return (char)std::tolower(c); });
+	return s;
+}
+
+// ---------------------------------------------------------------------------
+// run_a_game
+// Sets up Machine->gamedrv and the module-level gamedrv alias to point at
+// the requested game's driver. Must be called before any game-specific
+// code that reads Machine->gamedrv.
+// ---------------------------------------------------------------------------
 int run_a_game(int game)
 {
-	//Machine->gamedrv = gamedrv = &driver[game];
 	Machine->gamedrv = gamedrv = aae::AllDrivers().at(game);
 	Machine->drv = gamedrv;
-	LOG_INFO("Starting game, Driver name now is %s", Machine->gamedrv->name);
+	LOG_INFO("Driver set to: %s", Machine->gamedrv->name);
 	return 0;
 }
 
-/*************************************
- *
- *	Clamp to 255, not used?
- *
- *************************************/
+// ---------------------------------------------------------------------------
+// list_all_roms
+// Enumerates all registered drivers and writes a text dump of every ROM
+// entry to "AAE All Game Roms List.txt". Called from emulator_init() when
+// the -listromstotext command-line option is given.
+// ---------------------------------------------------------------------------
 
-static int clamp(int value)
-{
-	if (value < 0) return 0;
-	if (value > 255) return 255;
-	return value;
-}
-
-/*************************************
- *
- *	Compare Helper function
- *
- *************************************/
-
-int mystrcmp(const char* s1, const char* s2)
-{
-	while (*s1 && *s2 && *s1 == *s2) {
-		s1++;
-		s2++;
-	}
-
-	return *s1 - *s2;
-}
-
-/****************************************
- *
- *	Output a full romlist as a text file
- *
- *
- ****************************************/
-
-constexpr int REGION_TAG = 999;
+// Sentinel value in RomModule.loadAddr that marks a ROM_REGION() header entry.
+static constexpr int REGION_TAG = 999;
 
 void list_all_roms()
 {
@@ -261,15 +377,10 @@ void list_all_roms()
 	const int game_count = static_cast<int>(reg.size());
 	if (game_count <= 0) return;
 
-	// ---------------------------------------------------------------------
-	// Dynamic buffer (pre-reserve old malloc size to avoid realloc churn)
-	// ---------------------------------------------------------------------
 	std::vector<char> buf;
 	buf.reserve(0x150000);
 
-	// ---------------------------------------------------------------------
-	// Local helpers – lambdas capture buf by reference
-	// ---------------------------------------------------------------------
+	// Lambda helpers that append into the flat char buffer.
 	const auto append_cstr = [&](const char* s) {
 		if (!s) return;
 		buf.insert(buf.end(), s, s + std::strlen(s));
@@ -277,32 +388,23 @@ void list_all_roms()
 	const auto append_str = [&](const std::string& s) {
 		buf.insert(buf.end(), s.begin(), s.end());
 		};
-	const auto append_chr = [&](char c) {
-		buf.push_back(c);
-		};
 
-	// ---------------------------------------------------------------------
-	// Start of file
-	// ---------------------------------------------------------------------
 	append_cstr("AAE All Games RomList\n");
 
 	for (int g = 0; g < game_count; ++g)
 	{
-		const AAEDriver* drv = reg[g];
-		if (!drv || !drv->name || !drv->desc || !drv->rom) continue;
+		const AAEDriver* d = reg[g];
+		if (!d || !d->name || !d->desc || !d->rom) continue;
 
 		append_cstr("\nGame Name: ");
-		append_cstr(drv->desc);
+		append_cstr(d->desc);
 		append_cstr(":\nRom  Name: ");
-		append_cstr(drv->name);
+		append_cstr(d->name);
 		append_cstr(".zip\n");
 
-		LOG_INFO("gamename %s", drv->name);
-		LOG_INFO("gamedesc %s", drv->desc);
-
-		for (int r = 0; drv->rom[r].romSize > 0; ++r)
+		for (int r = 0; d->rom[r].romSize > 0; ++r)
 		{
-			const RomModule& rm = drv->rom[r];
+			const RomModule& rm = d->rom[r];
 
 			if (rm.loadAddr == REGION_TAG)
 			{
@@ -325,87 +427,62 @@ void list_all_roms()
 				append_cstr(rm.filename ? rm.filename : "NULL");
 
 			std::ostringstream oss;
-			oss << " Size: 0x"
-				<< std::hex << std::uppercase << std::setw(4) << std::setfill('0') << rm.romSize
-				<< " Load Addr: 0x"
-				<< std::hex << std::uppercase << std::setw(4) << std::setfill('0') << rm.loadAddr
-				<< " CRC: 0x"
-				<< std::hex << std::uppercase << std::setw(8) << std::setfill('0') << rm.crc
+			oss << " Size: 0x" << std::hex << std::uppercase << std::setw(4) << std::setfill('0') << rm.romSize
+				<< " Load: 0x" << std::hex << std::uppercase << std::setw(4) << std::setfill('0') << rm.loadAddr
+				<< " CRC: 0x" << std::hex << std::uppercase << std::setw(8) << std::setfill('0') << rm.crc
 				<< " SHA1: " << (rm.sha ? rm.sha : "NULL") << '\n';
-
 			append_str(oss.str());
 		}
 	}
 
-	// Footer (use actual registry size; drop “-1” unless you intentionally skip an entry)
 	std::ostringstream footer;
-	footer << "\n\nNumber of Games/Clones supported: " << game_count << '\n';
+	footer << "\n\nGames/Clones supported: " << game_count << '\n';
 	append_str(footer.str());
+	buf.push_back('\0');    // null-terminate for save_file_char
 
-	// Ensure C-string termination for save routine
-	append_chr('\0');
-
-	// ---------------------------------------------------------------------
-	// Save to file
-	// ---------------------------------------------------------------------
-	LOG_INFO("SAVING Romlist");
+	LOG_INFO("Saving ROM list...");
 	save_file_char("AAE All Game Roms List.txt",
 		buf.data(),
-		static_cast<int>(buf.size() - 1));   // exclude null
-
-	// release memory (optional)
-	std::vector<char>().swap(buf);
+		static_cast<int>(buf.size() - 1));  // exclude the null terminator
 }
 
-/*************************************
- *
- *	Command Line Parsing Function
- *
- *************************************/
-
- // -----------------------------------------------------------------------------
- // Helper: convert to lowercase
- // -----------------------------------------------------------------------------
-static std::string to_lowercase(const char* str) {
-	std::string s(str ? str : "");
-	std::transform(s.begin(), s.end(), s.begin(),
-		[](unsigned char c) { return std::tolower(c); });
-	return s;
-}
-
-// -----------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 // gameparse
-// Secure, modern version of the original gameparse().
-// - Uses lowercase args to simplify comparisons
-// - Uses std::string for safe concatenation
-// - Avoids all unsafe functions (malloc/strcpy/strcat)
-// -----------------------------------------------------------------------------
+// Parses command-line arguments for the currently selected game.
+// Handles -listroms, -verifyroms, -listsamples, -verifysamples, -window,
+// -nowindow, and resolution override flags (-WxH).
+//
+// Only called from emulator_init() when a matching game name was found on
+// the command line AND additional arguments follow the game name.
+// ---------------------------------------------------------------------------
 void gameparse(int argc, char* argv[])
 {
-	int x = 0;
-	int w = 0;
 	int list = 0;
+	int w = 0;
 	int retval = 0;
 
-	win_override = 0; // Set default before parsing
+	win_override = 0;
 
-	// ------------------------------
-	// Parse command-line arguments
-	// ------------------------------
-	for (int i = 1; i < argc; i++) {
-		std::string arg = to_lowercase(argv[i]); // lowercase once
+	const AAEDriver* drv = aae::AllDrivers().at(gamenum);
+	Machine->gamedrv = drv;
+	Machine->drv = drv;
 
-		if (arg == "-listroms")        list = 1;
-		else if (arg == "-verifyroms") list = 2;
-		else if (arg == "-listsamples") list = 3;
-		else if (arg == "-verifysamples") list = 4;
-		else if (arg == "-window")     win_override = 3;
-		else if (arg == "-nowindow")   win_override = 2;
+	// Parse all arguments to find option flags and resolution overrides.
+	for (int i = 1; i < argc; i++)
+	{
+		std::string arg = to_lowercase(argv[i]);
 
-		// Match against gfx_res (also lowercase for comparison)
-		for (int j = 0; gfx_res[j].desc != nullptr; j++) {
-			std::string res = to_lowercase(gfx_res[j].desc);
-			if (arg == res) {
+		if (arg == "-listroms")       list = 1;
+		else if (arg == "-verifyroms")     list = 2;
+		else if (arg == "-listsamples")    list = 3;
+		else if (arg == "-verifysamples")  list = 4;
+		else if (arg == "-window")         win_override = 3;
+		else if (arg == "-nowindow")       win_override = 2;
+
+		for (int j = 0; gfx_res[j].desc != nullptr; j++)
+		{
+			if (arg == to_lowercase(gfx_res[j].desc))
+			{
 				x_override = gfx_res[j].x;
 				y_override = gfx_res[j].y;
 				break;
@@ -413,230 +490,554 @@ void gameparse(int argc, char* argv[])
 		}
 	}
 
-	// ------------------------------
-	// Build log output safely
-	// ------------------------------
 	std::string logOutput;
-	logOutput.reserve(65536); // reserve to avoid reallocations
+	logOutput.reserve(4096);
 
-	// ------------------------------
-	// Process requested operation
-	// ------------------------------
 	switch (list)
 	{
 		// -------------------------------------------------------------------------
-	case 1: // List ROMs
-		logOutput.clear();
-		x = 0;
-		LOG_INFO("%s rom list:", driver[gamenum].name);
-
-		while (driver[gamenum].rom[x].romSize > 0) {
-			const auto& rom = driver[gamenum].rom[x];
+	case 1: // -listroms: print each ROM file name and CRC for this game
+		LOG_INFO("%s rom list:", drv->name);
+		for (int x = 0; drv->rom[x].romSize > 0; ++x)
+		{
+			const auto& rom = drv->rom[x];
 			const char* fname = rom.filename;
 
-			// If this is a ROM_REGION marker, log region name
-			if (rom.loadAddr == ROM_REGION_START && rom.loadtype >= 0 && rom.loadtype < REGION_MAX) {
+			if (rom.loadAddr == ROM_REGION_START && rom.loadtype >= 0 && rom.loadtype < REGION_MAX)
 				LOG_INFO("Region: %s", rom_regions[rom.loadtype]);
-			}
 
-			// Skip ROM_RELOAD and ROM_CONTINUE
 			if (fname && fname != (char*)-1 && fname != (char*)-2 &&
-				rom.loadAddr != ROM_REGION_START &&
-				rom.loadAddr != 0x999)
+				rom.loadAddr != ROM_REGION_START && rom.loadAddr != 0x999)
 			{
-				// Format CRC string
 				char crcbuf[16];
 				snprintf(crcbuf, sizeof(crcbuf), "%08X", rom.crc);
-
-				// Compose full line
-				logOutput = std::string(fname) +
-					" | CRC: " + crcbuf +
-					" | SHA1: " + (rom.sha ? rom.sha : "NULL");
-
-				LOG_INFO("%s", logOutput.c_str());
-				logOutput.clear();
+				LOG_INFO("%s | CRC: %s | SHA1: %s", fname, crcbuf, rom.sha ? rom.sha : "NULL");
 			}
-			x++;
 		}
-
 		LogClose();
-		exit(1);
-		break;
+		exit(0);
 
 		// -------------------------------------------------------------------------
-	case 2: // Verify ROMs
-		//setup_game_config();
-		//sanity_check_config();
-
-		logOutput.clear();
-		x = 0;
-		LOG_INFO("Starting ROM verification for %s", driver[gamenum].name);
-
-		while (driver[gamenum].rom[x].romSize > 0) {
-			const char* fname = driver[gamenum].rom[x].filename;
+	case 2: // -verifyroms: check each ROM file against expected CRC
+		LOG_INFO("Starting ROM verification for %s", drv->name);
+		for (int x = 0; drv->rom[x].romSize > 0; ++x)
+		{
+			const char* fname = drv->rom[x].filename;
 			if (fname && fname != (char*)-1 && fname != (char*)-2 &&
-				driver[gamenum].rom[x].loadAddr != ROM_REGION_START &&
-				driver[gamenum].rom[x].loadAddr != 0x999)
+				drv->rom[x].loadAddr != ROM_REGION_START && drv->rom[x].loadAddr != 0x999)
 			{
-				logOutput += fname;
-				LOG_INFO("LOOP ");
-				retval = verify_rom(driver[gamenum].name, driver[gamenum].rom, x);
-				switch (retval) {
-				case 0: logOutput += " BAD? "; break;
-				case 1: logOutput += " OK "; break;
-				case 3: logOutput += " BADSIZE "; break;
-				case 4: logOutput += " NOFILE "; break;
-				case 5: logOutput += " NOZIP "; break;
-				default: logOutput += " UNKNOWN "; break;
-				}
-
-				logOutput += (w > 1) ? "\n" : " ";
-				w = (w > 1) ? 0 : w + 1;
-				LOG_INFO("%s", logOutput.c_str());
-				logOutput.clear();
-			}
-			x++;
-		}
-		LogClose();
-		exit(1);
-		break;
-
-		// -------------------------------------------------------------------------
-	case 3: // List Samples
-		logOutput.clear();
-		if (Machine->gamedrv->game_samples) {
-			const char** samples = Machine->gamedrv->game_samples;
-			for (int i = 0; samples[i] && std::strcmp(samples[i], "NULL") != 0; ++i) {
-				logOutput += samples[i];
-			}
-		}
-		LOG_INFO("%s sample list: %s", Machine->gamedrv->name, logOutput.c_str());
-		LogClose();
-		exit(1);
-		break;
-
-		// -------------------------------------------------------------------------
-	case 4: // Verify Samples
-		logOutput.clear();
-		LOG_INFO("Starting sample verification...");
-		LOG_INFO("Starting sample verification.");
-		if (Machine->gamedrv->game_samples) {
-			const char** samples = Machine->gamedrv->game_samples;
-			for (int i = 0; samples[i] && std::strcmp(samples[i], "NULL") != 0; ++i) {
-				logOutput += samples[i];
-
-				retval = verify_sample(samples, i);
-				switch (retval) {
-				case 0: logOutput += " BAD? "; break;
-				case 1: logOutput += " OK ";    break;
+				logOutput = fname;
+				retval = verify_rom(drv->name, drv->rom, x);
+				switch (retval)
+				{
+				case 0: logOutput += " BAD? ";    break;
+				case 1: logOutput += " OK ";      break;
 				case 3: logOutput += " BADSIZE "; break;
 				case 4: logOutput += " NOFILE ";  break;
 				case 5: logOutput += " NOZIP ";   break;
 				default: logOutput += " UNKNOWN "; break;
 				}
+				logOutput += (w > 1) ? "\n" : " ";
+				w = (w > 1) ? 0 : w + 1;
+				LOG_INFO("%s", logOutput.c_str());
+			}
+		}
+		LogClose();
+		exit(0);
 
+		// -------------------------------------------------------------------------
+	case 3: // -listsamples: list sample names for this game
+		if (drv->game_samples)
+		{
+			const char** samples = drv->game_samples;
+			for (int i = 0; samples[i] && std::strcmp(samples[i], "NULL") != 0; ++i)
+				logOutput += samples[i];
+		}
+		LOG_INFO("%s sample list: %s", drv->name, logOutput.c_str());
+		LogClose();
+		exit(0);
+
+		// -------------------------------------------------------------------------
+	case 4: // -verifysamples: check sample files for this game
+		LOG_INFO("Starting sample verification for %s", drv->name);
+		if (drv->game_samples)
+		{
+			const char** samples = drv->game_samples;
+			for (int i = 0; samples[i] && std::strcmp(samples[i], "NULL") != 0; ++i)
+			{
+				logOutput = samples[i];
+				retval = verify_sample(samples, i);
+				switch (retval)
+				{
+				case 0: logOutput += " BAD? ";    break;
+				case 1: logOutput += " OK ";      break;
+				case 3: logOutput += " BADSIZE "; break;
+				case 4: logOutput += " NOFILE ";  break;
+				case 5: logOutput += " NOZIP ";   break;
+				default: logOutput += " UNKNOWN "; break;
+				}
 				logOutput += (w > 1) ? "\n" : " ";
 				w = (w > 1) ? 0 : w + 1;
 			}
 		}
-		LOG_INFO("%s sample verify: %s", Machine->gamedrv->name, logOutput.c_str());
+		LOG_INFO("%s sample verify: %s", drv->name, logOutput.c_str());
+		break;
+
+	default:
+		break;
 	}
 }
 
-/*************************************
- *
- *	MAME Shadow input port creation for
- * the Menu system and save
- *
- *************************************/
-
+// ---------------------------------------------------------------------------
+// init_machine
+// Allocates a shadow copy of the game's input port table in Machine->input_ports.
+// The shadow copy is what the menu system reads and modifies; the original
+// in the driver struct is read-only.
+// Returns 0 on success, 1 if malloc fails.
+// ---------------------------------------------------------------------------
 int init_machine(void)
 {
-	LOG_INFO("Calling init machine to build shadow input ports");
+	LOG_INFO("init_machine: building shadow input port table");
 
-	if (gamedrv->input_ports)
+	if (!gamedrv->input_ports)
+		return 0;
+
+	// Count entries including the IPT_END terminator.
+	int total = 0;
+	const struct InputPort* from = gamedrv->input_ports;
+	do { ++total; } while ((from++)->type != IPT_END);
+
+	Machine->input_ports = (InputPort*)malloc(total * sizeof(struct InputPort));
+	if (!Machine->input_ports)
 	{
-		int total = 1;
-		const struct InputPort* from;
-		struct InputPort* to;
-
-		from = gamedrv->input_ports;
-
-		total = 0;
-		do
-		{
-			total++;
-		} while ((from++)->type != IPT_END);
-
-		if ((Machine->input_ports = (InputPort*)malloc(total * sizeof(struct InputPort))) == 0)
-			return 1;
-
-		from = gamedrv->input_ports;
-		to = Machine->input_ports;
-
-		do
-		{
-			memcpy(to, from, sizeof(struct InputPort));
-
-			to++;
-		} while ((from++)->type != IPT_END);
+		LOG_ERROR("init_machine: malloc failed for %d InputPort entries", total);
+		return 1;
 	}
+
+	from = gamedrv->input_ports;
+	struct InputPort* to = Machine->input_ports;
+	do
+	{
+		memcpy(to, from, sizeof(struct InputPort));
+		++to;
+	} while ((from++)->type != IPT_END);
+
 	return 0;
 }
 
-/*************************************
- *
- *	Main Message Loop to handle other
- * input during the emulation loop
- *
- *************************************/
+// ---------------------------------------------------------------------------
+// ResetPerGameRuntimeState  (static helper)
+// Clears all per-game globals so nothing leaks between game sessions.
+// Called from both emulator_stop_game() and emulator_init().
+// ---------------------------------------------------------------------------
+static void ResetPerGameRuntimeState()
+{
+	paused = 0;
+	done = 0;
+	have_error = 0;
+	hiscoreloaded = 0;
+	frameavg = 0;
+	fps_count = 0.0;
+	frames = 0;
 
+	leds_status = 0;
+	osd_set_leds(0);
+
+	x_override = 0;
+	y_override = 0;
+	win_override = 0;
+
+	for (int i = 0; i < 6; ++i)
+		art_loaded[i] = 0;
+
+	// Artwork enable flags are per-game; reset them so the next game starts clean.
+	config.artwork = 0;
+	config.bezel = 0;
+	config.overlay = 0;
+
+	game_loaded_sentinel = false;
+}
+
+// ---------------------------------------------------------------------------
+// run_game
+// Main per-game initialization sequence. Sets up all subsystems in order,
+// then returns. The actual frame loop runs in emulator_run() which is called
+// repeatedly by WinMain until done != 0.
+//
+// Uses a single goto-based fail path for early-exit cleanup so the teardown
+// order is always consistent regardless of where initialization fails.
+//
+// Subsystem init order:
+//   1. Driver pointers (run_a_game)
+//   2. Config (setup_game_config / sanity_check_config)
+//   3. ROM loading
+//   4. OpenGL (init_gl - one-time only, guarded internally)
+//   5. Scanlines texture (init_raster_overlay)
+//   6. Raster FBO allocation (fbo_init_raster)
+//   7. Artwork loading and resize
+//   8. Video config (setup_video_config)
+//   9. Audio (mixer_init, samples, ambient)
+//  10. Input ports
+//  11. VH open (raster games only)
+//  12. Timers
+//  13. Driver init_game()
+//  14. CPU config
+//  15. NVRAM load
+//  16. Performance mode
+// ---------------------------------------------------------------------------
+void run_game(void)
+{
+	const int cx = GetSystemMetrics(SM_CXSCREEN);
+	const int cy = GetSystemMetrics(SM_CYSCREEN);
+
+	// Track which subsystems started so the fail path tears down correctly.
+	bool did_init_gl = false;
+	bool did_mixer_init = false;
+	bool did_loaded_artwork = false;
+	bool did_vh_open = false;
+	bool did_timer_init = false;
+	bool did_driver_init = false;
+
+	num_samples = 0;
+	errorlog = 0;
+
+	game_loaded_sentinel = false;
+
+	// Step 1: Bind Machine to the chosen driver.
+	run_a_game(gamenum);
+
+	// Step 2: Per-game configuration.
+	setup_game_config();
+	sanity_check_config();
+		
+	// Re-apply the command line debug override over the INI file
+	if (debug_override != -1)
+	{
+		config.debug = debug_override;
+	}
+
+	LOG_INFO("Starting game: %s", Machine->gamedrv->desc);
+
+	if (config.screenh > cy || config.screenw > cx)
+		allegro_message("MESSAGE", "Warning: physical screen size smaller than config setting.");
+
+	options.cheat = 1;
+	leds_status = 0;
+	osd_set_leds(0);
+
+	// Scale stored volume byte values to the internal mixer range.
+	// Guard prevents double-scaling if run_game() is called more than once.
+	if (config.mainvol <= 1.0f && config.pokeyvol <= 1.0f && config.noisevol <= 1.0f)
+	{
+		config.mainvol *= 12.75f;
+		config.pokeyvol *= 12.75f;
+		config.noisevol *= 12.75f;
+	}
+
+	init_machine();
+	reset_memory_tracking();    // must be before any ROM/memory allocations
+
+	// Copy the driver's read-only visible_area into the running machine.
+	Machine->visible_area = Machine->gamedrv->visible_area;
+
+	// Step 3: ROM loading.
+	if (Machine->gamedrv->rom)
+	{
+		if (load_roms(Machine->gamedrv->name, Machine->gamedrv->rom) == EXIT_FAILURE)
+		{
+			LOG_ERROR("ROM loading failed.");
+			have_error = 10;
+			goto fail;
+		}
+	}
+
+	// Step 4: OpenGL init (guarded - only runs once per process lifetime).
+	LOG_INFO("OpenGL init...");
+	init_gl();
+	did_init_gl = true;
+	if (have_error != 0) goto fail;
+
+	// Step 5: Scanlines/raster-effect overlay texture (per-game).
+	// Must be after init_gl() (GL context) and setup_game_config() (config.raster_effect).
+	init_raster_overlay();
+
+	// Step 6: Game-native raster FBO (per-game, sized to this game's resolution).
+	// GUI driver skips this - fbo_init_raster() is a no-op safe call if Machine is valid.
+	fbo_init_raster();
+
+	// Step 7: Artwork loading and texture resize.
+	if (Machine->gamedrv->artwork)
+	{
+		load_artwork(Machine->gamedrv->artwork);
+		did_loaded_artwork = true;
+		if (have_error != 0) goto fail;
+	}
+
+	// Step 8: Video configuration (bezel/crop layout, scale, offsets).
+	setup_video_config();
+	if (have_error != 0) goto fail;
+
+	frameavg = 0;
+	fps_count = 0.0;
+	frames = 0;
+
+	// Step 9: Audio.
+	mixer_init(config.samplerate, Machine->gamedrv->fps);
+	did_mixer_init = true;
+	if (have_error != 0) goto fail;
+
+	AAE_ApplyAudioVolumesFromConfig(1);
+
+	if (Machine->gamedrv->game_samples)
+	{
+		load_samples_batch(Machine->gamedrv->game_samples);
+		if (have_error != 0) goto fail;
+	}
+
+	LOG_INFO("Samples loaded: %d", num_samples);
+
+	// Load optional ambient audio (flyback, psnoise, hiss) from samples\aae.zip.
+	// These get sequential IDs after game samples and are looked up by name.
+	load_ambient_samples();
+
+	setup_ambient(VECTOR);
+	if (have_error != 0) goto fail;
+
+	// Step 10: Input ports.
+	LOG_INFO("Loading input port settings...");
+	load_input_port_settings();
+	if (have_error != 0) goto fail;
+
+	// Step 11: VH open (raster games only - sets up color/palette tables).
+	if (!(Machine->gamedrv->video_attributes & VIDEO_TYPE_VECTOR))
+	{
+		vh_open();
+		did_vh_open = true;
+		if (have_error != 0) goto fail;
+	}
+
+	// Step 12: Timers (must exist before init_game()).
+	timer_init();
+	did_timer_init = true;
+	if (have_error != 0) goto fail;
+
+	// Step 13: Driver-specific initialization.
+	Machine->gamedrv->init_game();
+	did_driver_init = true;
+	if (have_error != 0) goto fail;
+
+	// Step 14: CPU configuration.
+	init_cpu_config();
+	if (have_error != 0) goto fail;
+
+	hiscoreloaded = 0;
+
+	// Step 15: NVRAM load. (from M.A.M.E. TM)
+	if (Machine->gamedrv->nvram_handler)
+	{
+		void* f = osd_fopen(Machine->gamedrv->name, 0, OSD_FILETYPE_NVRAM, 0);
+		(*Machine->gamedrv->nvram_handler)(f, 0);
+		if (f) osd_fclose(f);
+		if (have_error != 0) goto fail;
+	}
+
+	LOG_INFO("--- Game init complete ---");
+
+	// Step 16: Apply process/thread priority for game performance.
+	SetGamePerformanceMode(config);
+
+	game_loaded_sentinel = true;
+	return;
+
+fail:
+	// -------------------------------------------------------------------------
+	// Centralized cleanup. All paths converge here on any init failure.
+	// Tear down in reverse init order; each step is guarded so it is safe
+	// to call even if that step never started.
+	// -------------------------------------------------------------------------
+	game_loaded_sentinel = false;
+
+	LOG_INFO("run_game FAIL: game=%d (%s) have_error=%d",
+		gamenum,
+		(Machine && Machine->gamedrv && Machine->gamedrv->name) ? Machine->gamedrv->name : "UNKNOWN",
+		have_error);
+
+	done = 1;
+
+	save_input_port_settings();
+
+	if (did_driver_init && Machine && Machine->gamedrv && Machine->gamedrv->end_game)
+		Machine->gamedrv->end_game();
+
+	if (Machine && Machine->input_ports)
+	{
+		free(Machine->input_ports);
+		Machine->input_ports = nullptr;
+		LOG_INFO("Input ports freed (fail path).");
+	}
+
+	free_cpu_memory();
+	free_all_memory_regions();
+
+	if (did_mixer_init)
+		mixer_end();
+
+	if (did_init_gl)
+	{
+		shutdown_raster_overlay();
+		fbo_shutdown_raster();
+		destroy_all_textures();
+	}
+
+	FrameLimiter::Shutdown();
+
+	LOG_INFO("run_game: cleanup complete, returning to caller.");
+}
+
+// ---------------------------------------------------------------------------
+// msg_loop
+// Per-frame input handler for emulator-level hotkeys.
+// Called at the start of emulator_run() before any game logic runs.
+//
+// Handles: pause, FPS toggle, snapshot, throttle, exit confirm dialog,
+// menu toggle, cascading ESC/cancel, and menu navigation.
+//
+// All exit/cancel actions support both keyboard AND joystick:
+//   - Select (menu):    OSD_KEY_UI_SELECT  or  A button only (button 0)
+//   - Select (confirm): OSD_KEY_UI_SELECT  or  A button or Start (button 0 or 7)
+//   - Cancel:           OSD_KEY_CANCEL     or  JOY_COMBO_ESC (LS + Back)
+//   - Back (menu only): B button (button 1)
+//   - Menu:             OSD_KEY_CONFIGURE  or  JOY_COMBO_MENU (LS + Start)
+//   - Pause:            OSD_KEY_P          or  JOY_COMBO_PAUSE (Start + Back)
+// ---------------------------------------------------------------------------
 void msg_loop(void)
 {
 	if (osd_key_pressed_memory(OSD_KEY_RESET_MACHINE))
-	{
 		cpu_reset(0);
-	}
 
-	if (osd_key_pressed_memory(OSD_KEY_P))
+	// Pause: keyboard P  -OR-  joystick Start + Back
+	if (osd_key_pressed_memory(OSD_KEY_P) ||
+		joystick_check_combo(0, JOY_COMBO_PAUSE))
 	{
-		paused ^= 1;
-		if (paused) pause_audio(); else restore_audio();
-		//else resume_audio();
+		if (get_menu_status() == 0)
+		{
+			paused ^= 1;
+			if (paused) pause_audio(); else restore_audio();
+		}
 	}
 
 	if (osd_key_pressed_memory(OSD_KEY_SHOW_FPS))
-	{
 		show_fps ^= 1;
-	}
 
-	if (osd_key_pressed_memory(OSD_KEY_F12))
-	{
+	if (osd_key_pressed_memory(OSD_KEY_SNAPSHOT))
 		snapshot();
-	}
 
-	if (osd_key_pressed_memory(OSD_KEY_F10))
+	if (osd_key_pressed_memory(OSD_KEY_THROTTLE))
 	{
 		throttle ^= 1;
-		frameavg = 0; fps_count = 0;
+		frameavg = 0;
+		fps_count = 0;
 		SetvSync(throttle);
 	}
 
-	if (osd_key_pressed_memory(OSD_KEY_CONFIGURE))
+	// -------------------------------------------------------------------------
+	// Exit confirmation dialog input handling.
+	// When the confirm dialog is active, we consume all navigation and
+	// selection input here and return early so nothing else fires this frame.
+	//
+	// Joystick support mirrors the menu navigation pattern:
+	//   - A button or Start button acts as UI_SELECT (confirm)
+	//   - LS + Back combo acts as CANCEL (dismiss dialog)
+	//   - Left stick / D-pad left/right moves the highlight
+	//
+	// Start is permitted here as a confirm because the menu combo (LS + Start)
+	// cannot fire while the dialog is consuming all input, so there is no
+	// risk of Start accidentally reopening the menu.
+	// -------------------------------------------------------------------------
+	if (g_exitConfirmActive)
 	{
-		int m = get_menu_status();
-		m ^= 1;
-		set_menu_status(m);
+		// Read joystick directional state for left/right navigation.
+		// Use Check_Input for proper repeat timing on the stick.
+		const bool joyLeft = Check_Input(JOY_INPUT_LEFT, joy[0].stick[0].axis[0].d1) != 0;
+		const bool joyRight = Check_Input(JOY_INPUT_RIGHT, joy[0].stick[0].axis[0].d2) != 0;
+
+		// A button (0) or Start (7) for select in the confirm dialog.
+		// Start is safe here because the dialog consumes all input this frame.
+		const bool joySelect = KeyFlip(JOY_INPUT_SELECT,
+			(joy[0].button[0].b != 0) || (joy[0].button[7].b != 0)) != 0;
+
+		// Left/Right move the highlight between YES (0) and NO (1).
+		if (osd_key_pressed_memory(OSD_KEY_UI_LEFT) || joyLeft ||
+			osd_key_pressed_memory(OSD_KEY_UI_RIGHT) || joyRight)
+		{
+			g_exitConfirmSel ^= 1;  // toggle between 0 and 1
+		}
+
+		// Enter / A button / Start confirms the highlighted choice.
+		if (osd_key_pressed_memory(OSD_KEY_UI_SELECT) || joySelect)
+		{
+			if (g_exitConfirmSel == 0)
+			{
+				// YES selected - perform the exit action that originally triggered
+				// the dialog (same logic as the un-guarded path below).
+				g_exitConfirmActive = 0;
+				const int guiIdx = FindGuiGameIndex();
+				if (guiIdx >= 0 && gamenum != guiIdx && !started_from_command_line)
+					RequestReturnToGui("CONFIRM_EXIT");
+				else
+					done = 1;
+			}
+			else
+			{
+				// NO selected - dismiss the dialog, resume normally.
+				g_exitConfirmActive = 0;
+			}
+		}
+
+		// ESC/Cancel or joystick LS+Back always dismisses without exiting.
+		if (osd_key_pressed_memory(OSD_KEY_CANCEL) ||
+			joystick_check_combo(0, JOY_COMBO_ESC))
+		{
+			g_exitConfirmActive = 0;
+		}
+
+		// While the dialog is up, do not process any other input this frame.
+		return;
 	}
-	//This is the cascading exit code.
-	if (osd_key_pressed_memory(OSD_KEY_CANCEL))
+
+	// -------------------------------------------------------------------------
+	// Menu toggle: keyboard Tab (OSD_KEY_CONFIGURE)  -OR-  joystick LS + Start
+	// -------------------------------------------------------------------------
+	if (osd_key_pressed_memory(OSD_KEY_CONFIGURE) ||
+		joystick_check_combo(0, JOY_COMBO_MENU))
+	{
+		int newStatus = get_menu_status() ^ 1;
+		set_menu_status(newStatus);
+
+		// Reset the menu-open input guard so stick deflection from the
+		// combo press does not immediately trigger menu navigation.
+		// (The guard counter lives in the menu navigation block below.)
+	}
+
+	// -------------------------------------------------------------------------
+	// Cascading ESC / cancel: keyboard ESC  -OR-  joystick LS + Back
+	//
+	// Behavior depends on context:
+	//   1. Menu is open and at a sub-level (>100): collapse to top level
+	//   2. Menu is open at top level: close the menu
+	//   3. Menu is closed, playing a game launched from GUI:
+	//      return to GUI (no confirm needed, not actually exiting)
+	//   4. Menu is closed, at GUI or launched from command line:
+	//      exit the emulator (with optional confirm dialog)
+	// -------------------------------------------------------------------------
+	if (osd_key_pressed_memory(OSD_KEY_CANCEL) ||
+		joystick_check_combo(0, JOY_COMBO_ESC))
 	{
 		if (get_menu_status())
 		{
+			// In menu: collapse to top level, or close menu entirely.
 			if (get_menu_level() > 100)
-			{
 				set_menu_level_top();
-			}
 			else
 			{
 				set_menu_level_top();
@@ -645,476 +1046,538 @@ void msg_loop(void)
 		}
 		else
 		{
-			done = 1; // Exiting.
+			// Outside menu: decide whether this is an exit or a return-to-GUI.
+			const int guiIdx = FindGuiGameIndex();
+			const bool wouldExit = (guiIdx < 0 || gamenum == guiIdx || started_from_command_line);
+
+			if (wouldExit && config.confirm_exit)
+			{
+				// Show the YES/NO overlay instead of exiting immediately.
+				g_exitConfirmActive = 1;
+				g_exitConfirmSel = 0;  // default highlight: YES
+			}
+			else if (wouldExit)
+			{
+				done = 1;  // confirm_exit disabled - exit straight away
+			}
+			else
+			{
+				// Return to GUI (no confirm needed - not actually exiting).
+				RequestReturnToGui("CANCEL");
+			}
 		}
 	}
-	int a = get_menu_level();
-	if (a != 700)
+
+	// -------------------------------------------------------------------------
+	// Menu navigation (only active when the menu is visible).
+	// Uses Check_Input for joystick acceleration/repeat timing and
+	// KeyFlip for single-pulse button detection.
+	// -------------------------------------------------------------------------
+	if (get_menu_status())
 	{
-		if (get_menu_status()) // Work around for ALT-ENTER Issue. Only read these keys if IN MENU
+		// Suppress navigation for a few frames after menu open to avoid
+		// stick deflection from the combo press triggering movement.
+		// The counter resets each time the menu is opened (toggled on).
+		static int  s_menuOpenGuard = 0;
+		static bool s_wasMenuOpen = false;
+
+		const bool menuOpen = (get_menu_status() != 0);
+		if (menuOpen && !s_wasMenuOpen)
+			s_menuOpenGuard = 0;  // menu just opened: reset guard
+		s_wasMenuOpen = menuOpen;
+
+		if (s_menuOpenGuard < 6)
 		{
-			if (osd_key_pressed_memory_repeat(OSD_KEY_UI_UP, 4)) { change_menu_level(0); } //up
-			if (osd_key_pressed_memory_repeat(OSD_KEY_UI_DOWN, 4)) { change_menu_level(1); } //down
-			if (osd_key_pressed_memory(OSD_KEY_UI_LEFT)) { change_menu_item(0); } //left
-			if (osd_key_pressed_memory(OSD_KEY_UI_RIGHT)) { change_menu_item(1); } //right
-			if (osd_key_pressed_memory(OSD_KEY_UI_SELECT)) { select_menu_item(); }  // Enter
-		}
-	}
-}
-
-/*************************************
- *
- *	Main Game load and
- *  configuration function.
- *
- *************************************/
-
-void run_game(void)
-{
-	DEVMODE dvmd = { 0 };
-	int cx = GetSystemMetrics(SM_CXSCREEN);
-	// height
-	int cy = GetSystemMetrics(SM_CYSCREEN);
-	//width
-	int retval = 0;
-	int goodload = 99;
-	int testwidth = 0;
-	int testheight = 0;
-	int testwindow = 0;
-	double starttime = 0;
-	double gametime = 0;
-	double millsec = 0;
-
-	num_samples = 0;
-	errorlog = 0;
-
-	EnumDisplaySettings(NULL, ENUM_CURRENT_SETTINGS, &dvmd);
-	// ------------Setup all the aliases for Machine, gamedrv, drv, etc. -------------
-	run_a_game(gamenum);
-
-	setup_game_config();
-	sanity_check_config();
-
-	// Now before we run a game, we have to override any command line options that were previously set,
-	// because setup_game_config overrides everything.
-
-	LOG_INFO("Running game %s", Machine->gamedrv->desc);
-
-	//Check for setting greater then screen availability
-	if (config.screenh > cy || config.screenw > cx)
-	{
-		allegro_message("MESSAGE", "Warning: \nphysical size smaller then config setting");
-	}
-
-	//////////////////////////////////////////////////////////////INITIAL VARIABLES SETUP ///////////////////////////////////////////////////
-	options.cheat = 1;
-	//set_aae_leds(0, 0, 0);  //Reset LEDS
-	leds_status = 0;
-	osd_set_leds(0);
-	//force_all_kbdleds_off();
-
-	config.mainvol *= 12.75;
-	config.pokeyvol *= 12.75; //Adjust from menu values
-	//config.noisevol *= 12.75;
-
-	clamp(config.mainvol);
-	clamp(config.pokeyvol);
-	clamp(config.noisevol);
-	//set_volume(config.mainvol, 0);
-
-	art_loaded[5] = {};
-
-	init_machine();
-	reset_memory_tracking(); // Before loading Anything!!!
-	//////////////////////////////////////////////////////////////END VARIABLES SETUP ///////////////////////////////////////////////////
-	// Load Roms
-	if (Machine->gamedrv->rom)
-	{
-		goodload = load_roms(Machine->gamedrv->name, Machine->gamedrv->rom);
-		if (goodload == EXIT_FAILURE)
-		{
-			LOG_INFO("Rom loading failure, exiting...");
-
-			have_error = 10;
-
-			// We may have allocated regions before failing; free them so we exit cleanly.
-			free_all_memory_regions();
-
-			// Make sure we don't continue init. Mark app to quit and return out.
-			done = 1;
+			++s_menuOpenGuard;
 			return;
 		}
+
+		// Run joystick directional state through Check_Input for proper
+		// acceleration and repeat timing - same system used by the GUI driver.
+		// Slots JOY_INPUT_UP/DOWN/LEFT/RIGHT/SELECT/BACK are reserved for
+		// menu joystick navigation (see inptport.h).
+		const bool joyUp = Check_Input(JOY_INPUT_UP, joy[0].stick[0].axis[1].d1) != 0;
+		const bool joyDown = Check_Input(JOY_INPUT_DOWN, joy[0].stick[0].axis[1].d2) != 0;
+		const bool joyLeft = Check_Input(JOY_INPUT_LEFT, joy[0].stick[0].axis[0].d1) != 0;
+		const bool joyRight = Check_Input(JOY_INPUT_RIGHT, joy[0].stick[0].axis[0].d2) != 0;
+
+		// A button (0) only for select inside the menu.
+		// Start (7) is intentionally excluded here - it is reserved for the
+		// LS + Start combo that opens/closes the menu, and allowing it as a
+		// bare select would make it too easy to accidentally confirm items
+		// when attempting to close the menu with the combo.
+		const bool joySelect = KeyFlip(JOY_INPUT_SELECT,
+			joy[0].button[0].b != 0) != 0;
+
+		// B button (1) acts as Back/ESC within the menu only.
+		// Uses KeyFlip so it fires once per press rather than every frame.
+		const bool joyBack = KeyFlip(JOY_INPUT_BACK,
+			joy[0].button[1].b != 0) != 0;
+
+		if (osd_key_pressed_memory_repeat(OSD_KEY_UI_UP, 4) || joyUp)   change_menu_level(0);
+		if (osd_key_pressed_memory_repeat(OSD_KEY_UI_DOWN, 4) || joyDown) change_menu_level(1);
+
+		// LEFT/RIGHT: keyboard uses hold-to-ramp, joystick uses Check_Input ramp.
+		static int left_hold = 0, left_counter = 0;
+		static int right_hold = 0, right_counter = 0;
+
+		const bool left_key_down = (osd_key_pressed(OSD_KEY_UI_LEFT) != 0);
+		const bool right_key_down = (osd_key_pressed(OSD_KEY_UI_RIGHT) != 0);
+
+		if (!left_key_down) { left_hold = 0; left_counter = 0; }
+		if (!right_key_down) { right_hold = 0; right_counter = 0; }
+
+		// Joystick left handled entirely by Check_Input (has its own ramp).
+		if (joyLeft)
+		{
+			change_menu_item(0);
+		}
+		else if (osd_key_pressed_memory(OSD_KEY_UI_LEFT))
+		{
+			change_menu_item(0);
+			left_hold = left_counter = 0;
+		}
+		else if (left_key_down)
+		{
+			++left_hold;
+			if (left_hold > 10)
+			{
+				int div = (left_hold > 45) ? 2 : (left_hold > 25) ? 3 : 5;
+				if ((++left_counter % div) == 0) change_menu_item(0);
+			}
+		}
+
+		// Joystick right handled entirely by Check_Input (has its own ramp).
+		if (joyRight)
+		{
+			change_menu_item(1);
+		}
+		else if (osd_key_pressed_memory(OSD_KEY_UI_RIGHT))
+		{
+			change_menu_item(1);
+			right_hold = right_counter = 0;
+		}
+		else if (right_key_down)
+		{
+			++right_hold;
+			if (right_hold > 10)
+			{
+				int div = (right_hold > 45) ? 2 : (right_hold > 25) ? 3 : 5;
+				if ((++right_counter % div) == 0) change_menu_item(1);
+			}
+		}
+
+		if (osd_key_pressed_memory(OSD_KEY_UI_SELECT) || joySelect)
+			select_menu_item();
+
+		// -------------------------------------------------------------------------
+		// B button Back: collapse sub-menus or close the menu entirely.
+		// Mirrors exactly what keyboard ESC does when the menu is open.
+		// Only reachable here (inside get_menu_status() block) so it cannot
+		// accidentally trigger an exit when the menu is closed.
+		// -------------------------------------------------------------------------
+		if (joyBack)
+		{
+			if (get_menu_level() > 100)
+			{
+				// We are in a sub-menu: collapse back to the top level.
+				set_menu_level_top();
+			}
+			else
+			{
+				// Already at the top menu level: close the menu entirely.
+				set_menu_level_top();
+				set_menu_status(0);
+			}
+		}
 	}
-
-	LOG_INFO("OpenGL Init");
-	init_gl();
-	// Load Artwork
-	if (Machine->gamedrv->artwork)
-	{
-		load_artwork(Machine->gamedrv->artwork);
-		resize_art_textures();
-	}
-	// Load configs for Video.
-	setup_video_config();
-	if (config.bezel && gamenum) { msx = b1sx; msy = b1sy; esx = b2sx; esy = b2sy; }
-	else { msx = sx; msy = sy; esx = ex; esy = ey; }
-
-	frameavg = 0; fps_count = 0; frames = 0;
-	//////////////////////////
-
-	millsec = (double)1000 / (double)Machine->gamedrv->fps;
-
-	//Init the Mixer.
-	mixer_init(config.samplerate, Machine->gamedrv->fps);
-
-	// Load samples if the game has any. This needs to move!
-	if (Machine->gamedrv->game_samples)
-	{
-		goodload = read_samples(Machine->gamedrv->game_samples, 0);
-		if (goodload == EXIT_FAILURE) { LOG_INFO("Samples loading failure, please check error output for details..."); }
-	}
-
-	//Now load the Ambient and menu samples
-
-	//goodload = read_samples(noise_samples, 1);
-	//if (goodload == EXIT_FAILURE) { LOG_INFO("Noise Samples loading failure, not critical, continuing."); }
-
-	LOG_INFO("Number of samples for this game is %d", num_samples);
-	// Configure the Ambient Sounds.
-	setup_ambient(VECTOR);
-	// Setup for the first game.
-	LOG_INFO("Initializing Game");
-	LOG_INFO("Loading InputPort Settings");
-	load_input_port_settings();
-	
-
-	// At this point, we know we are running a game, so set this to true
-	game_loaded_sentinel = true;
-
-	//Run this before Driver Init.
-	if (!(Machine->gamedrv->video_attributes & VIDEO_TYPE_VECTOR))
-	{
-		vh_open();
-	}
-	// TO DO: Fix this Mess. 
-	//I have to make sure the Timers are initialized so I can set them in the init_gamexx function.
-	// But I have to setup the CPU's AFTER init_gamexxx so some drivers can futz with memory and encryption.
-	// I thing I need to add another init function that runs after the cpu's are setup?
-	timer_init();
-	Machine->gamedrv->init_game();
-	init_cpu_config(); ////////////////////-----------
-
-	hiscoreloaded = 0;
-
-	//If the game uses NVRAM, initalize/load it. . This code is from M.A.M.E. (TM)
-	if (Machine->gamedrv->nvram_handler)
-	{
-		void* f;
-
-		f = osd_fopen(Machine->gamedrv->name, 0, OSD_FILETYPE_NVRAM, 0);
-		(*Machine->gamedrv->nvram_handler)(f, 0);
-		if (f) osd_fclose(f);
-	}
-
-	LOG_INFO("\n\n----END OF INIT -----!\n\n");
-
-	SetGamePerformanceMode(config);
-
-	//	LOG_INFO("Gamelist here is %s   Desc: %s", gamelist[0].displayName.c_str(), gamelist[0].description.c_str());
 }
 
-/*************************************
- *
- *	Main Emulation Loop
- *
- *************************************/
-
+// ---------------------------------------------------------------------------
+// emulator_run
+// Per-frame update function. Called once per frame from WinMain's message
+// loop. Drives the full emulation cycle: input -> CPU -> video -> audio.
+//
+// NOTE: All ESC/cancel/exit logic is now unified in msg_loop() above.
+// The old duplicate OSD_KEY_ESC check that lived here has been removed
+// because msg_loop() already handles OSD_KEY_CANCEL (which maps to ESC)
+// with full joystick combo support and confirm_exit dialog integration.
+// ---------------------------------------------------------------------------
 void emulator_run()
 {
-	//wglSwapIntervalEXT(0);
-	auto begin = chrono::steady_clock::now();
+	// Handle hotkeys (pause, throttle, menu, ESC, etc.) before any game logic.
+	msg_loop();
 
-	if (get_menu_status() == 0 && !paused) { ClipAndHideCursor(win_get_window()); }
-	else UnclipAndShowCursor();
+	// If msg_loop() triggered an exit or game switch, bail out immediately.
+	if (done)
+		return;
 
-	if (config.debug_profile_code) {
-		LOG_INFO("Start of Frame");
+	static double s_lastAudioMs = 0.0;
+	const double  nowMs = TimerGetTimeMS();
+
+	chrono::steady_clock::time_point begin;
+	if (config.debug_profile_code)
+	{
+		begin = chrono::steady_clock::now();
+		LOG_INFO("Frame start");
 	}
-	// Load High Score
-	if (hiscoreloaded == 0 && Machine->gamedrv->hiscore_load)
-		hiscoreloaded = ((*Machine->gamedrv->hiscore_load))();
 
-	// Setup for rendering a frame.
+	// Try to load the high score table if not yet done.
+	if (hiscoreloaded == 0 && Machine->gamedrv->hiscore_load)
+		hiscoreloaded = (*Machine->gamedrv->hiscore_load)();
+
+	// Prepare the FBO render target for this frame.
 	set_render();
 
-	if (!paused && have_error == 0)
+	// ALWAYS poll inputs so that Hotkeys, the Menu, and Joystick mapping
+	// continue to function even when the game is paused!
+	if (have_error == 0)
 	{
 		update_input_ports();
 		osd_poll_joysticks();
-
-		if (config.debug_profile_code) {
-			LOG_INFO("Calling CPU Run");
-		}
-		auto start = chrono::steady_clock::now();
-		cpu_run();
-
-		if (config.debug_profile_code) {
-			auto end = chrono::steady_clock::now();
-			auto diff = end - start;
-			LOG_INFO("Profiler: CPU Time: %f ", chrono::duration <double, milli>(diff).count());
-		}
-
-		if (Machine->gamedrv->run_game) Machine->gamedrv->run_game();
 	}
 
-	// Complete and display the rendered frame after all video updates.
+	if (!paused && have_error == 0)
+	{
+		if (config.debug_profile_code) LOG_INFO("CPU run");
+
+		cpu_run();
+
+		if (Machine->gamedrv->run_game)
+			Machine->gamedrv->run_game();
+	}
+
+	// Complete rendering and composite to the screen.
 	render();
-
-	msg_loop();
-
 	inputport_vblank_end();
-	//timer_clear_all_eof();
 	cpu_clear_cyclecount_eof();
 
-	if (config.debug_profile_code) {
-		auto end = chrono::steady_clock::now();
-		auto diff = end - begin;
-		LOG_INFO("Profiler: Total Frame Time before throttle: %f ", chrono::duration <double, milli>(diff).count());
+	if (config.debug_profile_code)
+	{
+		auto diff = chrono::steady_clock::now() - begin;
+		LOG_INFO("Frame time (pre-throttle): %.3f ms",
+			chrono::duration<double, milli>(diff).count());
 	}
 
 	GLSwapBuffers();
 
 	if (throttle)
 	{
-		FrameLimiter::Throttle();   // waits until the next frame boundary
+		FrameLimiter::Throttle();
 		mixer_update();
 	}
+	else
+	{
+		// Uncapped (benchmark) mode: cap audio servicing to ~60 Hz.
+		if ((nowMs - s_lastAudioMs) >= (1000.0 / 60.0))
+		{
+			mixer_update();
+			s_lastAudioMs = nowMs;
+		}
+	}
 
-	// Update FPS counters just like throttle_speed() did, *after* pacing.
+	// Rolling FPS average (skip first 60 frames while things settle).
 	const double now = TimerGetTimeMS();
-	if (frames > 60) {
-		frameavg++;
+	if (frames > 60)
+	{
+		++frameavg;
 		if (frameavg > 10000) { frameavg = 0; fps_count = 0.0; }
 		const double dt = now - g_lastFrameTimestampMs;
-		if (dt > 0.0) {
-			fps_count += 1000.0 / dt;   // instantaneous FPS accumulator
-		}
+		if (dt > 0.0) fps_count += 1000.0 / dt;
 	}
 	g_lastFrameTimestampMs = now;
 
-	frames++;
-	if (frames > 0xfffffff) { frames = 0; }
+	if (++frames > 0x0fffffff) frames = 0;
 
-	if (config.debug_profile_code) {
-		LOG_INFO("End of Frame");
-	}
+	if (config.debug_profile_code) LOG_INFO("Frame end");
 }
 
-/*************************************
- *
- *	Init Code - Called from WinMain,
-	command line arguments are passed.
- *
- *************************************/
-
+// ---------------------------------------------------------------------------
+// emulator_init
+// Entry point called from WinMain. Parses command-line arguments, selects
+// the starting game (or GUI), and kicks off the first run_game() call.
+// ---------------------------------------------------------------------------
 void emulator_init(int argc, char** argv)
 {
-	//int i;
-	int loop = 0;
-	int loop2 = 0;
-	//char str[20];
-	//char* mylist;
-
-	//For resolution
-	int horizontal;
-	int vertical;
-
 	os_init_input();
-	// We start with the running game being the gui, unless overridden by the command line.
-	gamenum = 18;
-	x_override = 0;
-	y_override = 0;
-	// Build the supported game list.
-	//while (driver[loop].name != 0) { num_games++; loop++; }
-	//LOG_INFO("Number of supported games is: %d", num_games);
-	//num_games++;
-	// Build the supported game list from the registry.
+
 	const auto& reg = aae::AllDrivers();
 	num_games = static_cast<int>(reg.size());
-	LOG_INFO("Number of supported games is: %d", num_games);
+	LOG_INFO("Registered drivers: %d", num_games);
 
-	//Move this after command line processing is re-added
+	// Resolve the GUI driver index at runtime (not hardcoded).
+	g_guiGameIndex = -1;
+	{
+		const AAEDriver* guiDrv = aae::FindDriverByName("gui");
+		if (guiDrv)
+		{
+			for (int i = 0; i < (int)reg.size(); ++i)
+			{
+				if (reg[i] == guiDrv) { g_guiGameIndex = i; break; }
+			}
+		}
+	}
+
+	if (g_guiGameIndex < 0)
+	{
+		LOG_INFO("WARNING: GUI driver not found. Defaulting to gamenum=0.");
+		gamenum = 0;
+	}
+	else
+	{
+		gamenum = g_guiGameIndex;
+	}
+
+	// Force config screen dimensions to the current desktop resolution.
+	int horizontal = 0, vertical = 0;
 	GetDesktopResolution(horizontal, vertical);
-	LOG_INFO("Actual primary monitor desktop screen size %d  %d", horizontal, vertical);
-	//if (config.screenw == 0 && config.screenh == 0)
-	//{
+	LOG_INFO("Desktop resolution: %d x %d", horizontal, vertical);
 	config.screenw = horizontal;
 	config.screenh = vertical;
-	//}
 
-	// Disable ShortCut Keys
-	//AllowAccessibilityShortcutKeys(0);
-	// Just to make sure we know that we have not loaded a game yet.
 	game_loaded_sentinel = false;
 
-	// Normalize all command-line args to lowercase *before* any parsing.
-	// If an arg begins with '-' or '/', leave the prefix and lowercase the rest.
+	// Parse -debug flag early so it is active before run_game() starts.
+	// Minimal, correct parsing for "-debug [0|1]".
+	// -debug       => config.debug = 1
+	// -debug 0/1   => config.debug = 0/1
+
+	for (int i = 1; i < argc; ++i)
+	{
+		if (!argv[i]) continue;
+		const std::string arg = to_lowercase(argv[i]);
+		if (arg == "-debug")
+		{
+			int val = 1;
+			if (i + 1 < argc && argv[i + 1] &&
+				(std::strcmp(argv[i + 1], "0") == 0 || std::strcmp(argv[i + 1], "1") == 0))
+			{
+				val = (argv[i + 1][0] == '1') ? 1 : 0;
+			}
+			config.debug = val;
+			debug_override = val;
+		}
+	}
+
+	// Normalize all command-line args to lowercase before further parsing.
 	for (int i = 1; i < argc; ++i)
 	{
 		if (!argv[i]) continue;
 		if (argv[i][0] == '-' || argv[i][0] == '/')
-			toLowerCase(argv[i] + 1);  // skip the dash/slash, lowercase the rest
+			toLowerCase(argv[i] + 1);   // skip the dash/slash prefix
 		else
-			toLowerCase(argv[i]);      // lowercase whole token (e.g., game name)
+			toLowerCase(argv[i]);
 	}
 
-	LOG_INFO(" String %s Max Num %d", argv[1], argc);
-
-	if (argv[1] == NULL)
+	// Handle global utility options that do not require a game to be loaded.
+	for (int i = 1; i < argc; ++i)
 	{
-		LOG_INFO("Usage: aae gamename -argument, -argument, etc.");
-		//	show_mouse();
-		allegro_message("Error", "Please run from a command prompt. \nUsage: aae gamename -argument, -argument, etc.");
-		done = 1;
-		emulator_end();
+		if (argv[i] && std::strcmp(argv[i], "-listromstotext") == 0)
+		{
+			LOG_INFO("Listing all ROMs to text...");
+			list_all_roms();
+			exit(0);
+		}
+	}
+
+	// Pick the first non-option token as the game name (if any).
+	// If none is found, the GUI will start instead.
+	const char* gameArg = nullptr;
+	int         gameArgIndex = -1;
+	for (int i = 1; i < argc; ++i)
+	{
+		if (!argv[i] || argv[i][0] == '\0') continue;
+		if (argv[i][0] == '-' || argv[i][0] == '/') continue;
+		gameArg = argv[i];
+		gameArgIndex = i;
+		break;
+	}
+
+	started_from_command_line = 0;
+
+	if (gameArg)
+	{
+		LOG_INFO("Game argument: %s (argv[%d])", gameArg, gameArgIndex);
+		for (int i = 0; i < num_games; ++i)
+		{
+			if (reg[i] && reg[i]->name && std::strcmp(gameArg, reg[i]->name) == 0)
+			{
+				gamenum = i;
+				started_from_command_line = 1;
+				break;
+			}
+		}
+		if (!started_from_command_line)
+			LOG_INFO("Unknown game '%s' -> starting GUI.", gameArg);
+	}
+	else
+	{
+		LOG_INFO("No game on command line -> starting GUI (gamenum=%d).", gamenum);
+	}
+
+	// gameparse() handles -listroms, -verifyroms, resolution overrides, etc.
+	// Only call it when a matching game was found and extra args were provided.
+	if (started_from_command_line && argc > (gameArgIndex + 1))
+		gameparse(argc, argv);
+
+	frames = 0;
+	showinfo = 0;
+	done = 0;
+	have_error = 0;
+
+	srand((unsigned)time(nullptr));
+
+	FrameLimiter::Init(reg.at(gamenum)->fps);
+	g_lastFrameTimestampMs = TimerGetTimeMS();
+
+	// Build the game list used by the GUI for display/selection.
+	gList.build(aae::AllDrivers());
+
+	// Clear any stale per-game state before the first run.
+	ResetPerGameRuntimeState();
+
+	run_game();
+	LOG_INFO("run_game() returned.");
+}
+
+// ---------------------------------------------------------------------------
+// emulator_is_game_running
+// Returns true only when a game has successfully completed initialization.
+// ---------------------------------------------------------------------------
+bool emulator_is_game_running()
+{
+	return game_loaded_sentinel;
+}
+
+// ---------------------------------------------------------------------------
+// emulator_get_current_game
+// Returns the registry index of the currently running (or last started) game.
+// ---------------------------------------------------------------------------
+int emulator_get_current_game()
+{
+	return gamenum;
+}
+
+// ---------------------------------------------------------------------------
+// emulator_is_gui_active
+// Returns true when the currently running "game" is the GUI frontend driver.
+// Compares gamenum against the index of the driver named "gui" in the
+// registry. Any code that needs to distinguish GUI context from real gameplay
+// (e.g. deciding whether to save settings to aae.ini vs a per-game ini)
+// should call this rather than comparing gamenum directly.
+// ---------------------------------------------------------------------------
+bool emulator_is_gui_active()
+{
+	const int guiIdx = FindGuiGameIndex();
+	return (guiIdx >= 0 && gamenum == guiIdx);
+}
+
+// ---------------------------------------------------------------------------
+// emulator_stop_game
+// Stops the current game and releases all per-game resources.
+// Safe to call when no game is running.
+// ---------------------------------------------------------------------------
+void emulator_stop_game()
+{
+	if (!game_loaded_sentinel)
+	{
+		ResetPerGameRuntimeState();
 		return;
 	}
 
-	// Here is where we are checking command line for a supported game name.
-		// If not, it jumps straight into the GUI, bleh.
+	LOG_INFO("Stopping game: %s",
+		(Machine && Machine->gamedrv) ? Machine->gamedrv->name : "UNKNOWN");
 
-//	toLowerCase(argv[1]);
+	// 1) Save persistent data before teardown.
+	if (hiscoreloaded != 0 && Machine->gamedrv->hiscore_save)
+		(*Machine->gamedrv->hiscore_save)();
 
-	// Handle List all roms
-	for (int i = 1; i < argc; i++)
+	if (Machine->gamedrv->nvram_handler)
 	{
-		if (strcmp(argv[i], "-listromstotext") == 0)
+		void* f = osd_fopen(Machine->gamedrv->name, 0, OSD_FILETYPE_NVRAM, 1);
+		if (f)
 		{
-			LOG_INFO("Listing all roms");
-			list_all_roms();
-			exit(1);
+			(*Machine->gamedrv->nvram_handler)(f, 1);
+			osd_fclose(f);
 		}
 	}
-	
-	for (int i = 0; i < num_games; ++i) {
-		if (std::strcmp(argv[1], reg[i]->name) == 0) {
-			gamenum = i;
-			started_from_command_line = 1;
-			break;
-		}
-	}
-	//	gamenum = 83;
-	if (argc > 2) gameparse(argc, argv);
-	//}
 
-	//THIS IS WHERE THE CODING STARTS
-	//LOG_INFO("Number of supported joysticks: %d ", num_joysticks);
-	/*
-	if (num_joysticks)
+	// 2) Driver-specific shutdown.
+	if (Machine->gamedrv->end_game)
+		Machine->gamedrv->end_game();
+
+	// 3) Input ports.
+	save_input_port_settings();
+	if (Machine->input_ports)
 	{
-		poll_joystick();
-		for (loop = 0; loop < num_joysticks; loop++) {
-			LOG_INFO("joy %d number of sticks %d", loop, joy[loop].num_sticks);
-			for (loop2 = 0; loop2 < joy[loop].num_sticks; loop2++)
-			{
-				LOG_INFO("stick number  %d flag %d", loop2, joy[loop].stick[loop2].flags);
-				LOG_INFO("stick number  %d axis 0 pos %d", loop2, joy[loop].stick[loop2].axis[0].pos);
-				LOG_INFO("stick number  %d axis 1 pos %d", loop2, joy[loop].stick[loop2].axis[1].pos);
-			}
-		}
+		free(Machine->input_ports);
+		Machine->input_ports = nullptr;
+		LOG_INFO("Input ports freed.");
 	}
-	*/
-	frames = 0; //init frame counter
 
-	showinfo = 0;
-	done = 0;
-	//////////////////////////////////////////////////////
-	LOG_INFO("Number of supported games in this release: %d", num_games);
-	initrand();
-	//fillstars(stars);
-	have_error = 0;
-	FrameLimiter::Init(reg.at(gamenum)->fps);
-	g_lastFrameTimestampMs = TimerGetTimeMS();
-	// Build the Complete Driver List
-	gList.build(aae::AllDrivers());
-	run_game();
-	LOG_INFO("Finished Run Game");
+	// 4) CPU and memory.
+	free_cpu_memory();
+	free_all_memory_regions();
 
-	// This would be a really good time to parse the rest of the command line vars 
-	// and override anything loaded and set by the config. 
-	int val;
-	// ------------------------------ TEMP --
-	// Parse command-line arguments
-	// Move this to ANOTHER command 
-	// line handler, or something 
-	// else
-	// -------------------------------------
-	for (int i = 1; i < argc; i++) {
-		std::string arg = to_lowercase(argv[i]); // lowercase once
-			
-		 if (arg == "-debug")      
-		 val = 1;  // default if no explicit value
-		 if (i + 1 < argc && (std::strcmp(argv[i + 1], "0") == 0 || std::strcmp(argv[i + 1], "1") == 0)) {
-			 val = std::atoi(argv[i + 1]);
-			 ++i; // consume next token
-			 config.debug = val;
-		 }
-		
-	 }
+	// 5) Audio.
+	mixer_end();
+
+	// 6) Video and per-game GL assets.
+	shutdown_raster_overlay();
+	fbo_shutdown_raster();
+	destroy_all_textures();
+
+	// 7) Frame limiter (per-game because FPS varies between games).
+	FrameLimiter::Shutdown();
+
+	// 8) Reset the RunningMachine struct for the next game.
+	memset(&machine, 0, sizeof(machine));
+	Machine = &machine;
+
+	// 9) Clear all per-game globals.
+	ResetPerGameRuntimeState();
+
+	LOG_INFO("Game stopped.");
 }
 
-/*************************************
- *
- *	End of emulation, cleanup and get out.
- *
- *************************************/
+// ---------------------------------------------------------------------------
+// emulator_start_game
+// Stops any running game and starts the one at the given registry index.
+// Returns true on success, false if the index is invalid or init fails.
+// ---------------------------------------------------------------------------
+bool emulator_start_game(int newGameNum)
+{
+	const auto& reg = aae::AllDrivers();
+	if (newGameNum < 0 || newGameNum >= (int)reg.size())
+	{
+		LOG_INFO("emulator_start_game: invalid index %d", newGameNum);
+		return false;
+	}
 
+	emulator_stop_game();
+
+	gamenum = newGameNum;
+	have_error = 0;
+	done = 0;
+
+	FrameLimiter::Init(reg.at(gamenum)->fps);
+	g_lastFrameTimestampMs = TimerGetTimeMS();
+
+	LOG_INFO("emulator_start_game: %d (%s)", gamenum, reg.at(gamenum)->name);
+
+	run_game();
+
+	return (have_error == 0);
+}
+
+// ---------------------------------------------------------------------------
+// emulator_end
+// Final application teardown. Always safe to call.
+// ---------------------------------------------------------------------------
 void emulator_end()
 {
-	LOG_INFO("Emulator End Called.");
-
-	// We only want to shut down the game and run all the cleanup if we actually ran one.
-	if (game_loaded_sentinel == true)
-	{
-		// If we're using high scores, write them to disk.
-		if (hiscoreloaded != 0 && Machine->gamedrv->hiscore_save)
-			(*Machine->gamedrv->hiscore_save)();
-		LOG_INFO("End 1");
-		//If the game uses NVRAM, save it. This code is from M.A.M.E. (TM)
-		if (Machine->gamedrv->nvram_handler)
-		{
-			void* f;
-
-			if ((f = osd_fopen(Machine->gamedrv->name, 0, OSD_FILETYPE_NVRAM, 1)) != 0)
-			{
-				(*Machine->gamedrv->nvram_handler)(f, 1);
-				osd_fclose(f);
-			}
-		}
-		config.artwork = 0;
-		config.bezel = 0;
-		config.overlay = 0;
-
-		//END-----------------------------------------------------
-		if (Machine->gamedrv->end_game) Machine->gamedrv->end_game();
-		save_input_port_settings();
-		if (Machine->input_ports) {
-			free(Machine->input_ports);
-			LOG_INFO("Machine Input Ports Freed.");
-		}
-
-		free_cpu_memory();
-
-		free_all_memory_regions();
-
-		// Free samples and shutdown audio code
-		mixer_end();
-
-		// Free textures
-		destroy_all_textures();
-	}
-	FrameLimiter::Shutdown();
-	//force_all_kbdleds_off();
+	LOG_INFO("Emulator shutting down...");
+	emulator_stop_game();
 	osd_set_leds(0);
-	LOG_INFO("End Final");
+	LOG_INFO("Emulator shutdown complete.");
 }
