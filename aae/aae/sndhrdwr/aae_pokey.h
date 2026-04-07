@@ -42,35 +42,23 @@ constexpr uint8_t IRQST_C  = 0x0E;
 constexpr uint8_t SKSTAT_C = 0x0F;
 
 
-// Core clock frequency options (not currently used)
-//constexpr uint32_t FREQ_17_EXACT  = 1789790;
-//constexpr uint32_t FREQ_17_APPROX = 1787520;
-
 // -----------------------------------------------------------------------------
 // POKEY core API
 // -----------------------------------------------------------------------------
 int  Pokey_sound_init(uint32_t freq17, uint16_t playback_freq, uint8_t num_pokeys);
-void Update_pokey_sound(uint16_t addr, uint8_t val, uint8_t chip, uint8_t gain);
-void Pokey_process(short* buffer, uint16_t n);
+void Update_pokey_sound(uint16_t addr, uint8_t val, uint8_t chip); // Removed gain parameter
+void Pokey_process(int16_t** buffers, uint16_t n); // Accept array of multiple stream buffers
 void pokey_sound_stop();
 
 // -----------------------------------------------------------------------------
 // Interface layer 
 // -----------------------------------------------------------------------------
 
-// Clip settings (no longer used)
-constexpr int NO_CLIP   = 0;
-constexpr int USE_CLIP  = 1;
-constexpr int POKEY_DEFAULT_GAIN = 16;
-
-
 // POKEY interface configuration
 struct POKEYinterface {
     int num;    // number of pokey chips
     int clock;  // main clock
-    int volume;
-    int gain;
-    int clip;
+    int mixing_level[MAXPOKEYS]; // Replacing "volume", "gain", and "clip" to match new code
     // pot handlers
     int (*pot0_r[MAXPOKEYS]) (int offset);
     int (*pot1_r[MAXPOKEYS]) (int offset);
@@ -82,7 +70,6 @@ struct POKEYinterface {
     int (*pot7_r[MAXPOKEYS]) (int offset);
     int (*allpot_r[MAXPOKEYS]) (int offset);
 };
-
 // Start/stop
 int  pokey_sh_start(POKEYinterface* intf);
 void pokey_sh_stop(void);

@@ -87,8 +87,9 @@ namespace Log {
     enum class Level {
         Debug = 0,
         Info = 1,
-        Error = 2,
-        Off = 3
+        Warn = 2,  
+        Error = 3,
+        Off = 4
     };
 
     // Initializes the logging system and starts the background thread.
@@ -114,3 +115,4 @@ namespace Log {
 #define LOG_DEBUG(fmt, ...) Log::write(Log::Level::Debug, __FILE__, __func__, __LINE__, fmt, ##__VA_ARGS__)
 #define LOG_INFO(fmt, ...)  Log::write(Log::Level::Info,  __FILE__, __func__, __LINE__, fmt, ##__VA_ARGS__)
 #define LOG_ERROR(fmt, ...) Log::write(Log::Level::Error, __FILE__, __func__, __LINE__, fmt, ##__VA_ARGS__)
+#define LOG_WARN(fmt, ...)  Log::write(Log::Level::Warn,  __FILE__, __func__, __LINE__, fmt, ##__VA_ARGS__)

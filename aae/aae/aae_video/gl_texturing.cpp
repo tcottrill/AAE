@@ -1,18 +1,18 @@
 #include "aae_mame_driver.h"
 #include "gl_texturing.h"
-#include "glcode.h"
+#include "opengl_renderer.h"
 #include "texture_handler.h"
 #include "vector_fonts.h"
 #include "colordefs.h"
+#include "gl_shader.h" // Added to access the new basic shaders
 
 #pragma warning( disable : 4305 4244 )
 
-float wideadj = 1.0f;
 int errorsound = 0;
 
-// ---------------------------------------------------------------------------
+// ----
 // Texturing and drawing rectangle code Below.
-// ---------------------------------------------------------------------------
+// ----
 
 // Consolidated drawing routine. Uses standard OpenGL UVs (0=bottom, 1=top).
 // Set flip_v = true for FBO copies that need to be inverted.
@@ -59,6 +59,16 @@ void drawTexturedQuad(float left, float right, float bottom, float top, bool fli
 		memcpy(texCoords, standard, sizeof(standard));
 	}
 
+	// Check if a shader is already bound (e.g., fragMulti during final_render)
+	GLint current_prog = 0;
+	glGetIntegerv(GL_CURRENT_PROGRAM, &current_prog);
+	bool use_basic_shader = (current_prog == 0);
+
+	if (use_basic_shader) {
+		bind_shader(fragBasicTex);
+		set_uniform1i(fragBasicTex, "u_texture", 0);
+	}
+
 	glEnableClientState(GL_VERTEX_ARRAY);
 	glEnableClientState(GL_TEXTURE_COORD_ARRAY);
 
@@ -69,6 +79,10 @@ void drawTexturedQuad(float left, float right, float bottom, float top, bool fli
 
 	glDisableClientState(GL_TEXTURE_COORD_ARRAY);
 	glDisableClientState(GL_VERTEX_ARRAY);
+
+	if (use_basic_shader) {
+		unbind_shader();
+	}
 }
 
 void quad_from_center(float x, float y, float width, float height, int r, int g, int b, int alpha)
@@ -92,15 +106,27 @@ void quad_from_center(float x, float y, float width, float height, int r, int g,
 		minx, maxy
 	};
 
+	// Check if a shader is already bound
+	GLint current_prog = 0;
+	glGetIntegerv(GL_CURRENT_PROGRAM, &current_prog);
+	bool use_basic_shader = (current_prog == 0);
+
+	if (use_basic_shader) {
+		bind_shader(fragBasicColor);
+	}
+
 	glEnableClientState(GL_VERTEX_ARRAY);
 	glVertexPointer(2, GL_FLOAT, 0, vertices);
 	glDrawArrays(GL_TRIANGLES, 0, 6);
 	glDisableClientState(GL_VERTEX_ARRAY);
+
+	if (use_basic_shader) {
+		unbind_shader();
+	}
 }
 
 void Any_Rect(int facing, int left, int right, int bottom, int top)
 {
-	// Historically, Any_Rect copied FBOs to FBOs and required vertical flipping
 	drawTexturedQuad((float)left, (float)right, (float)bottom, (float)top, true);
 }
 
@@ -124,7 +150,6 @@ void Bezel_Rect(int left, int right, int bottom, int top)
 {
 	drawTexturedQuad((float)left, (float)right, (float)bottom, (float)top, false);
 }
-
 
 // Eventually I'll get back to this and re-enable it again in some fashion.
 void show_error(void)

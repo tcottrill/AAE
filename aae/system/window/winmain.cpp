@@ -16,6 +16,7 @@
 // - Modular game entry and exit flow: game_init(), game_run(), game_end()
 // - Robust joystick support with fallback logging
 // - Clean separation of platform-specific responsibilities
+// - Multi-monitor support: starting_monitor config key and -monitor N cmdline flag
 //
 // Notes:
 // - Uses CreateConfiguredWindow() and WindowSetup for centralized window creation
@@ -23,6 +24,8 @@
 // - Supports ALT+ENTER toggle to fullscreen
 // - Supports resize and aspect enforcement via WM_SIZING/WM_SIZE
 // - Saves valid client and window rects for FBO scaling and restoration
+// - starting_monitor is 1-based: 1 = primary, 2 = second monitor, etc.
+//   Values <= 0 or out of range fall back to primary with a log warning.
 //
 // -----------------------------------------------------------------------------
 
@@ -45,9 +48,9 @@
 #include "win10_win11_required_code.h"
 #endif
 #include "windows_util.h"
-#include "glcode.h"
+#include "opengl_renderer.h"
 #include "aae_mame_driver.h"  // for global 'done'
-#include "os_basic.h"   // for osd_led_service_start/stop
+#include "os_basic.h"         // for osd_led_service_start/stop
 
 // -----------------------------------------------------------------------------
 // Globals
@@ -86,6 +89,12 @@ static WindowSetup g_windowedFallbackSetup;
 // -----------------------------------------------------------------------------
 // Monitor helpers
 // -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// Win32_GetNearestMonitorRect
+// Returns the monitor rect for the monitor nearest to the given window.
+// Used at runtime when toggling fullscreen so we stay on the same monitor.
+// -----------------------------------------------------------------------------
 static RECT Win32_GetNearestMonitorRect(HWND hwnd)
 {
 	if (!hwnd) return RECT{ 0,0,0,0 };
@@ -95,12 +104,115 @@ static RECT Win32_GetNearestMonitorRect(HWND hwnd)
 	return RECT{ 0,0,0,0 };
 }
 
+// -----------------------------------------------------------------------------
+// Win32_GetPrimaryMonitorRect
+// Returns the RECT of the primary monitor (the one containing point 0,0).
+// -----------------------------------------------------------------------------
 static RECT Win32_GetPrimaryMonitorRect()
 {
 	MONITORINFO mi = { sizeof(mi) };
 	HMONITOR mon = MonitorFromPoint(POINT{ 0, 0 }, MONITOR_DEFAULTTOPRIMARY);
 	if (mon && GetMonitorInfo(mon, &mi)) return mi.rcMonitor;
 	return RECT{ 0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN) };
+}
+
+// -----------------------------------------------------------------------------
+// MonitorEnumData
+// Helper struct used by the EnumDisplayMonitors callback below.
+// Carries the 1-based target index and accumulates results during enumeration.
+// -----------------------------------------------------------------------------
+struct MonitorEnumData {
+	int targetIndex;   // 1-based index we are looking for
+	int currentIndex;  // counts up as monitors are enumerated
+	RECT foundRect;    // filled in when we find the target
+	bool found;
+};
+
+// -----------------------------------------------------------------------------
+// MonitorEnumProc
+// EnumDisplayMonitors callback. Counts monitors and captures the rect of the
+// one matching targetIndex (1-based).
+// -----------------------------------------------------------------------------
+static BOOL CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC /*hdcMonitor*/, LPRECT /*lprcMonitor*/, LPARAM dwData)
+{
+	MonitorEnumData* data = reinterpret_cast<MonitorEnumData*>(dwData);
+	data->currentIndex++;
+
+	if (data->currentIndex == data->targetIndex)
+	{
+		MONITORINFO mi = { sizeof(mi) };
+		if (GetMonitorInfo(hMonitor, &mi))
+		{
+			data->foundRect = mi.rcMonitor;
+			data->found = true;
+		}
+		// Return FALSE to stop enumeration early once found
+		return FALSE;
+	}
+	// Keep enumerating
+	return TRUE;
+}
+
+// -----------------------------------------------------------------------------
+// Win32_GetMonitorRectByIndex
+// Returns the monitor rect for a 1-based monitor index.
+//   index 1 = primary monitor (enumeration order, primary is usually first)
+//   index 2 = second monitor, etc.
+// If the index is out of range or enumeration fails, logs a warning and
+// returns the primary monitor rect as a fallback.
+// Note: Windows enumerates monitors in an order that typically places the
+// primary monitor first, but this is not strictly guaranteed. For most
+// desktop setups this works as expected.
+// -----------------------------------------------------------------------------
+static RECT Win32_GetMonitorRectByIndex(int index)
+{
+	// Clamp values <= 0 up to 1 (treat as primary)
+	if (index <= 0)
+		index = 1;
+
+	MonitorEnumData data = {};
+	data.targetIndex  = index;
+	data.currentIndex = 0;
+	data.found        = false;
+	data.foundRect    = Win32_GetPrimaryMonitorRect(); // default if not found
+
+	EnumDisplayMonitors(nullptr, nullptr, MonitorEnumProc, reinterpret_cast<LPARAM>(&data));
+
+	if (!data.found)
+	{
+		LOG_WARN("starting_monitor %d is out of range -- falling back to primary monitor", index);
+		return Win32_GetPrimaryMonitorRect();
+	}
+
+	LOG_INFO("Monitor %d selected: (%d,%d)-(%d,%d)",
+		index,
+		data.foundRect.left, data.foundRect.top,
+		data.foundRect.right, data.foundRect.bottom);
+
+	return data.foundRect;
+}
+
+// -----------------------------------------------------------------------------
+// Win32_GetWorkAreaForMonitorRect
+// Given a monitor rect (from GetMonitorInfo.rcMonitor), returns the work area
+// (monitor rect minus taskbar) for that monitor.
+// Falls back to the monitor rect itself if the query fails.
+// This is used by windowed-mode setup functions to avoid placing the window
+// under the taskbar on the target monitor.
+// -----------------------------------------------------------------------------
+static RECT Win32_GetWorkAreaForMonitorRect(const RECT& monitorRect)
+{
+	// Find the monitor handle for the center point of the given rect
+	POINT center = {
+		monitorRect.left + (monitorRect.right  - monitorRect.left) / 2,
+		monitorRect.top  + (monitorRect.bottom - monitorRect.top)  / 2
+	};
+	HMONITOR hMon = MonitorFromPoint(center, MONITOR_DEFAULTTONEAREST);
+	MONITORINFO mi = { sizeof(mi) };
+	if (hMon && GetMonitorInfo(hMon, &mi))
+		return mi.rcWork;
+	// Fallback: use the full monitor rect
+	return monitorRect;
 }
 
 // -----------------------------------------------------------------------------
@@ -120,10 +232,6 @@ void UpdateWindowTitle()
 	SetWindowTextW(g_hWnd, title.c_str());
 }
 
-// -----------------------------------------------------------------------------
-// Centralized Cursor State Logic
-// Adapted from WindowCode.cpp + Framework integration
-// -----------------------------------------------------------------------------
 // -----------------------------------------------------------------------------
 // Centralized Cursor State Logic
 // Adapted from WindowCode.cpp + Framework integration
@@ -176,6 +284,7 @@ void UpdateCursorState()
 		ClipCursor(nullptr);
 	}
 }
+
 // -----------------------------------------------------------------------------
 // Framework Compatibility Wrappers
 // These match the declarations in framework.h so the rest of the app compiles.
@@ -244,81 +353,99 @@ void GetWindowFrameSize(DWORD style, DWORD exStyle, int& frameW, int& frameH)
 	frameH = (tmp.bottom - tmp.top) - 100;
 }
 
-WindowSetup GetBorderlessFullscreenSetup()
+// -----------------------------------------------------------------------------
+// GetBorderlessFullscreenSetup
+// Builds a WindowSetup for borderless fullscreen on the specified monitor.
+// targetMonitor: the screen rect of the desired monitor, from
+//   Win32_GetMonitorRectByIndex() or Win32_GetPrimaryMonitorRect().
+// At startup, the target is chosen from config.starting_monitor. At runtime
+// when the user presses ALT+ENTER, Win32_GetNearestMonitorRect(hwnd) is used
+// instead so we stay on whichever monitor the window is currently on.
+// -----------------------------------------------------------------------------
+WindowSetup GetBorderlessFullscreenSetup(const RECT& targetMonitor)
 {
 	WindowSetup ws;
-	ws.style = WS_POPUP;
+	ws.style   = WS_POPUP;
 	ws.exStyle = WS_EX_APPWINDOW | WS_EX_TOPMOST;
 
-	// IMPORTANT: Do NOT use the virtual screen rect here. That spans all monitors
-	// and produces a giant "fullscreen" window across the entire desktop.
-	// Start fullscreen on the primary monitor by default. When toggling at runtime,
-	// we will use the monitor nearest to the current window.
-	ws.rect = Win32_GetPrimaryMonitorRect();
+	// Use the caller-supplied monitor rect
+	ws.rect = targetMonitor;
 
 	ws.borderlessFullscreen = true;
 	return ws;
 }
 
-WindowSetup GetClassicWindowSetup(int width, int height, bool center)
+// -----------------------------------------------------------------------------
+// GetClassicWindowSetup
+// Builds a WindowSetup for a plain overlapped window, centered on the
+// specified monitor's work area (the area excluding the taskbar).
+// targetMonitor: the monitor rect to center on.
+// -----------------------------------------------------------------------------
+WindowSetup GetClassicWindowSetup(int width, int height, bool center, const RECT& targetMonitor)
 {
 	WindowSetup ws;
-	ws.style = WS_OVERLAPPEDWINDOW | WS_CLIPSIBLINGS | WS_CLIPCHILDREN;
+	ws.style   = WS_OVERLAPPEDWINDOW | WS_CLIPSIBLINGS | WS_CLIPCHILDREN;
 	ws.exStyle = WS_EX_APPWINDOW | WS_EX_TOPMOST;
 
 	RECT wr = { 0, 0, width, height };
 	AdjustWindowRect(&wr, ws.style, FALSE);
 
-	int windowW = wr.right - wr.left;
+	int windowW = wr.right  - wr.left;
 	int windowH = wr.bottom - wr.top;
 
 	int x = CW_USEDEFAULT;
 	int y = CW_USEDEFAULT;
 
 	if (center) {
-		RECT workArea{};
-		SystemParametersInfo(SPI_GETWORKAREA, 0, &workArea, 0);
+		// Get the work area for the target monitor so we avoid the taskbar
+		RECT workArea = Win32_GetWorkAreaForMonitorRect(targetMonitor);
 
-		int screenW = workArea.right - workArea.left;
+		int screenW = workArea.right  - workArea.left;
 		int screenH = workArea.bottom - workArea.top;
 
 		x = workArea.left + (screenW - windowW) / 2;
-		y = workArea.top + (screenH - windowH) / 2;
+		y = workArea.top  + (screenH - windowH) / 2;
 	}
 
-	ws.rect.left = x;
-	ws.rect.top = y;
-	ws.rect.right = x + windowW;
+	ws.rect.left   = x;
+	ws.rect.top    = y;
+	ws.rect.right  = x + windowW;
 	ws.rect.bottom = y + windowH;
 
-	ws.windowWidth = width;
+	ws.windowWidth  = width;
 	ws.windowHeight = height;
-	// Force override the aspect ratio to the one that we are using at window creation time.
+
+	// Force override the aspect ratio to the one we are using at window creation time
 	ws.aspectRatio = static_cast<float>(width) / static_cast<float>(height);
 	LOG_INFO("Classic Window Aspect at start, %f", ws.aspectRatio);
 	ws.resizable = true;
 	return ws;
 }
 
-WindowSetup GetCenteredAspectWindowSetup(float aspectRatio, bool disableNC)
+// -----------------------------------------------------------------------------
+// GetCenteredAspectWindowSetup
+// Builds a WindowSetup that fills the target monitor's work area while
+// maintaining the given aspect ratio.
+// targetMonitor: the monitor rect to size and center the window against.
+// -----------------------------------------------------------------------------
+WindowSetup GetCenteredAspectWindowSetup(float aspectRatio, bool disableNC, const RECT& targetMonitor)
 {
 	WindowSetup ws;
-	ws.style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX;
+	ws.style   = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX;
 	ws.exStyle = WS_EX_APPWINDOW | WS_EX_TOPMOST;
 
-	// Get available desktop area (excludes taskbar)
-	RECT workArea{};
-	SystemParametersInfo(SPI_GETWORKAREA, 0, &workArea, 0);
+	// Get the work area for the target monitor (excludes taskbar on that monitor)
+	RECT workArea = Win32_GetWorkAreaForMonitorRect(targetMonitor);
 
-	int screenW = workArea.right - workArea.left;
+	int screenW = workArea.right  - workArea.left;
 	int screenH = workArea.bottom - workArea.top;
 
 	// Optional correction for Win11 visual padding
 	if (GetOsVersion() == Win11 && !disableNC) {
-		workArea.left -= 7;
-		workArea.right += 14;
+		workArea.left   -= 7;
+		workArea.right  += 14;
 		workArea.bottom += 7;
-		screenW = workArea.right - workArea.left;
+		screenW = workArea.right  - workArea.left;
 		screenH = workArea.bottom - workArea.top;
 	}
 
@@ -328,8 +455,8 @@ WindowSetup GetCenteredAspectWindowSetup(float aspectRatio, bool disableNC)
 
 	// Determine maximum client height we can use
 	int maxClientH = screenH - frameH;
-	int clientH = maxClientH;
-	int clientW = static_cast<int>(roundf(clientH * aspectRatio));
+	int clientH    = maxClientH;
+	int clientW    = static_cast<int>(roundf(clientH * aspectRatio));
 
 	// If too wide, clamp width and recompute height
 	if (clientW + frameW > screenW) {
@@ -341,23 +468,29 @@ WindowSetup GetCenteredAspectWindowSetup(float aspectRatio, bool disableNC)
 	int windowW = clientW + frameW;
 	int windowH = clientH + frameH;
 
-	// Center the full window on screen
+	// Center the full window on the target monitor's work area
 	int x = workArea.left + (screenW - windowW) / 2;
-	int y = workArea.top + (screenH - windowH) / 2;
+	int y = workArea.top  + (screenH - windowH) / 2;
 
-	ws.rect.left = x;
-	ws.rect.top = y;
-	ws.rect.right = x + windowW;
+	ws.rect.left   = x;
+	ws.rect.top    = y;
+	ws.rect.right  = x + windowW;
 	ws.rect.bottom = y + windowH;
 
-	ws.windowWidth = clientW;
+	ws.windowWidth  = clientW;
 	ws.windowHeight = clientH;
-	ws.aspectRatio = aspectRatio;
-	ws.disableNC = disableNC;
+	ws.aspectRatio  = aspectRatio;
+	ws.disableNC    = disableNC;
 
 	return ws;
 }
 
+// -----------------------------------------------------------------------------
+// LoadWindowIniConfig
+// Reads window and monitor settings from aae.ini into the given WindowSetup.
+// This runs early (before emulator_init), so it reads starting_monitor
+// directly from INI rather than relying on the main config system.
+// -----------------------------------------------------------------------------
 void LoadWindowIniConfig(WindowSetup& config)
 {
 	// Always point at the real aae.ini in the exe/root folder.
@@ -368,17 +501,17 @@ void LoadWindowIniConfig(WindowSetup& config)
 	// 1) Prefer [window] if present
 	// -----------------------------
 	const int win_fullscreen = get_config_int("window", "fullscreen", -1);
-	const int win_width = get_config_int("window", "width", -1);
-	const int win_height = get_config_int("window", "height", -1);
+	const int win_width      = get_config_int("window", "width", -1);
+	const int win_height     = get_config_int("window", "height", -1);
 
-	// Legacy keys saved by your menu/config system
+	// Legacy keys saved by the menu/config system
 	const int main_windowed = get_config_int("main", "windowed", -1);
-	const int main_screenw = get_config_int("main", "screenw", -1);
-	const int main_screenh = get_config_int("main", "screenh", -1);
+	const int main_screenw  = get_config_int("main", "screenw", -1);
+	const int main_screenh  = get_config_int("main", "screenh", -1);
 
 	// Fullscreen/windowed selection:
 	// - If [window].fullscreen exists, use it.
-	// - Else fall back to [main].windowed (your existing saved value).
+	// - Else fall back to [main].windowed (existing saved value).
 	if (win_fullscreen != -1) {
 		config.useFullscreen = (win_fullscreen != 0);
 	}
@@ -389,24 +522,25 @@ void LoadWindowIniConfig(WindowSetup& config)
 		config.useFullscreen = false; // safe default
 	}
 
-	config.centerWindow = get_config_int("window", "center", 1) != 0;
+	config.centerWindow   = get_config_int("window", "center", 1) != 0;
 	config.useAspectRatio = get_config_int("window", "use_aspect", 0) != 0;
-	config.disableNC = get_config_int("window", "disable_nc", 0) != 0;
+	config.aspectOverrideActive = config.useAspectRatio;
+	config.disableNC      = get_config_int("window", "disable_nc", 0) != 0;
 
 	// Width/Height selection:
 	// - Prefer [window].width/height if present
-	// - Else fall back to [main].screenw/screenh (what your menu saves)
-	if (win_width != -1) config.windowWidth = win_width;
-	else if (main_screenw != -1) config.windowWidth = main_screenw;
-	else config.windowWidth = 1024;
+	// - Else fall back to [main].screenw/screenh (what the menu saves)
+	if (win_width  != -1) config.windowWidth  = win_width;
+	else if (main_screenw != -1) config.windowWidth  = main_screenw;
+	else config.windowWidth  = 1024;
 
 	if (win_height != -1) config.windowHeight = win_height;
 	else if (main_screenh != -1) config.windowHeight = main_screenh;
 	else config.windowHeight = 768;
 
 	config.disableRoundedCorners = get_config_bool("window", "disable_rounded_corners", false);
-	config.dpiAware = get_config_bool("window", "dpi_aware", true);
-	config.cursorClipEnabled = get_config_bool("window", "cursor_clip", true);
+	config.dpiAware              = get_config_bool("window", "dpi_aware", true);
+	config.cursorClipEnabled     = get_config_bool("window", "cursor_clip", true);
 
 	// Aspect ratio string stays in [window] for now (fallback default is fine)
 	std::string aspect = get_config_string("window", "aspect_ratio", "4:3");
@@ -417,10 +551,30 @@ void LoadWindowIniConfig(WindowSetup& config)
 	}
 	config.aspectRatio = (float)ax / (float)ay;
 
-	LOG_INFO("Window config from %s: useFullscreen=%d window=%dx%d",
-		iniPath.c_str(), config.useFullscreen ? 1 : 0, config.windowWidth, config.windowHeight);
+	// -----------------------------
+	// Monitor selection
+	// -----------------------------
+	// Read from [main] starting_monitor (1-based, 1 = primary).
+	// This is loaded here directly because window setup runs before emulator_init.
+	// The value is also stored in config.starting_monitor by setup_config() later,
+	// but we need it now for window placement.
+	config.startingMonitor = get_config_int("main", "starting_monitor", 1);
+	if (config.startingMonitor <= 0)
+		config.startingMonitor = 1;
+
+	LOG_INFO("Window config from %s: useFullscreen=%d window=%dx%d monitor=%d",
+		iniPath.c_str(),
+		config.useFullscreen ? 1 : 0,
+		config.windowWidth, config.windowHeight,
+		config.startingMonitor);
 }
 
+// -----------------------------------------------------------------------------
+// ParseCommandLineArgs
+// Applies command-line overrides to the given WindowSetup.
+// -monitor N   sets the starting monitor (1-based, overrides INI)
+// All other flags work as before.
+// -----------------------------------------------------------------------------
 void ParseCommandLineArgs(WindowSetup& config)
 {
 	int argc = 0;
@@ -430,81 +584,127 @@ void ParseCommandLineArgs(WindowSetup& config)
 	for (int i = 1; i < argc; ++i)
 	{
 		std::wstring arg = argv[i];
-		if (arg == L"-fullscreen") config.useFullscreen = true;
-		else if (arg == L"-windowed") config.useFullscreen = false;
-		else if (arg == L"-nocenter") config.centerWindow = false;
-		else if (arg == L"-aspectwindow") config.useAspectRatio = true;
-		else if (arg == L"-disableNC") config.disableNC = true;
+		if      (arg == L"-fullscreen")    config.useFullscreen  = true;
+		else if (arg == L"-windowed")      config.useFullscreen  = false;
+		else if (arg == L"-nocenter")      config.centerWindow   = false;
+		else if (arg == L"-aspectwindow")  config.useAspectRatio = true;
+		else if (arg == L"-disableNC")     config.disableNC      = true;
+		else if (arg == L"-noclip")        config.cursorClipEnabled = false;
+		else if (arg == L"-clip")          config.cursorClipEnabled = true;
 		else if (arg == L"-aspect" && i + 1 < argc) {
 			std::wstring wide = argv[++i];
 			std::string val = win32::Utf16ToUtf8(wide);
 			int ax = 0, ay = 0;
 			if (sscanf_s(val.c_str(), "%d:%d", &ax, &ay) == 2 && ax > 0 && ay > 0)
+			{
 				config.aspectRatio = (float)ax / (float)ay;
+				config.aspectOverrideActive = true;
+				config.useAspectRatio = true;
+			}
 		}
-		else if (arg == L"-width" && i + 1 < argc)
-			config.windowWidth = _wtoi(argv[++i]);
+		else if (arg == L"-width"  && i + 1 < argc)
+			config.windowWidth  = _wtoi(argv[++i]);
 		else if (arg == L"-height" && i + 1 < argc)
 			config.windowHeight = _wtoi(argv[++i]);
-		else if (arg == L"-noclip")
-			config.cursorClipEnabled = false;
-		else if (arg == L"-clip")
-			config.cursorClipEnabled = true;
+		else if (arg == L"-monitor" && i + 1 < argc) {
+			// 1-based monitor index; 0 or negative treated as 1 (primary)
+			int mon = _wtoi(argv[++i]);
+			if (mon <= 0) mon = 1;
+			config.startingMonitor = mon;
+			LOG_INFO("Command-line override: starting_monitor = %d", config.startingMonitor);
+		}
 	}
 
 	LocalFree(argv);
 }
 
+// -----------------------------------------------------------------------------
+// GenerateFinalWindowSetup
+// Resolves the final window position, style, and size by:
+//   1. Reading INI config
+//   2. Resolving the target monitor rect from config.startingMonitor
+//   3. Computing windowed fallback on the same monitor (for ALT+ENTER restore)
+//   4. Applying command-line overrides
+//   5. Returning the appropriate WindowSetup for the chosen mode
+//
+// forceWindowed: when true, always returns a windowed setup regardless of
+//   config.useFullscreen. Used at startup so we have a valid windowed rect
+//   before toggling to fullscreen (see wWinMain).
+// -----------------------------------------------------------------------------
 WindowSetup GenerateFinalWindowSetup(bool forceWindowed = false)
 {
 	WindowSetup config;
 	LoadWindowIniConfig(config);
+
+	// Resolve which monitor to target based on the index read from INI.
+	// Command-line will be applied next and may override startingMonitor,
+	// so we re-resolve after ParseCommandLineArgs if needed.
+	// For the windowed fallback we must compute this before ParseCommandLineArgs
+	// because the fallback is needed for ALT+ENTER restore.
+	RECT targetMonitor = Win32_GetMonitorRectByIndex(config.startingMonitor);
+
 	// Always compute a windowed-mode fallback so ALT+ENTER restore works even
-	// when the app starts in fullscreen.
+	// when the app starts in fullscreen. Place the fallback on the same monitor.
 	if (config.useAspectRatio)
-		g_windowedFallbackSetup = GetCenteredAspectWindowSetup(config.aspectRatio, config.disableNC);
+		g_windowedFallbackSetup = GetCenteredAspectWindowSetup(config.aspectRatio, config.disableNC, targetMonitor);
 	else
-		g_windowedFallbackSetup = GetClassicWindowSetup(config.windowWidth, config.windowHeight, config.centerWindow);
+		g_windowedFallbackSetup = GetClassicWindowSetup(config.windowWidth, config.windowHeight, config.centerWindow, targetMonitor);
 
+	// Now apply command-line overrides (these may change startingMonitor)
 	ParseCommandLineArgs(config);
-	WindowSetup finalSetup;
 
-	finalSetup.aspectRatio = config.aspectRatio;
+	// If -monitor was passed on the command line, re-resolve the target monitor
+	// so the actual window is placed on the overridden monitor.
+	// We check by comparing: if startingMonitor changed, recompute.
+	// (LoadWindowIniConfig and ParseCommandLineArgs both write to config.startingMonitor)
+	targetMonitor = Win32_GetMonitorRectByIndex(config.startingMonitor);
+
 #ifndef Win7Build
 	if (config.dpiAware) {
 		EnableDPIAwareness(); // from win10_win11_required_code
 	}
 #endif
 
-	// Apply correct window setup based on (possibly forced) logic
+	WindowSetup finalSetup;
+	finalSetup.aspectRatio = config.aspectRatio;
+
+	// Apply correct window setup based on (possibly forced) mode
 	if (!forceWindowed && config.useFullscreen) {
-		finalSetup = GetBorderlessFullscreenSetup();
+		finalSetup = GetBorderlessFullscreenSetup(targetMonitor);
 	}
 	else if (config.useAspectRatio) {
-		finalSetup = GetCenteredAspectWindowSetup(config.aspectRatio, config.disableNC);
+		finalSetup = GetCenteredAspectWindowSetup(config.aspectRatio, config.disableNC, targetMonitor);
 	}
+	// ---- HACK: Fix for skipping ClassicWindowSetup ----- Added 4/5/2026 -- Get Real Fix.
 	else {
-		finalSetup = GetClassicWindowSetup(config.windowWidth, config.windowHeight, config.centerWindow);
+	//	finalSetup = GetClassicWindowSetup(config.windowWidth, config.windowHeight, config.centerWindow, targetMonitor);
+		finalSetup = GetCenteredAspectWindowSetup(config.aspectRatio, config.disableNC, targetMonitor);
 	}
-
+	// ------------------- END HACK ------------------------
 	// Copy override flags back into final setup
-	finalSetup.useFullscreen = config.useFullscreen;
-	finalSetup.useAspectRatio = config.useAspectRatio;
-	finalSetup.centerWindow = config.centerWindow;
-	finalSetup.disableNC = config.disableNC;
-	finalSetup.windowWidth = config.windowWidth;
-	finalSetup.windowHeight = config.windowHeight;
+	finalSetup.useFullscreen   = config.useFullscreen;
+	finalSetup.useAspectRatio  = config.useAspectRatio;
+	finalSetup.aspectOverrideActive = config.aspectOverrideActive;
+	finalSetup.centerWindow    = config.centerWindow;
+	finalSetup.disableNC       = config.disableNC;
+	finalSetup.windowWidth     = config.windowWidth;
+	finalSetup.windowHeight    = config.windowHeight;
 	finalSetup.disableRoundedCorners = config.disableRoundedCorners;
-
-	finalSetup.dpiAware = config.dpiAware;
+	finalSetup.dpiAware        = config.dpiAware;
 	finalSetup.cursorClipEnabled = config.cursorClipEnabled;
+	finalSetup.startingMonitor = config.startingMonitor;
 
 	return finalSetup;
 }
 
+// -----------------------------------------------------------------------------
+// CreateConfiguredWindow
+// Creates a Win32 window using position and style from the given WindowSetup.
+// Also applies Win11-specific visual tweaks and reads the initial DPI scale.
+// -----------------------------------------------------------------------------
 HWND CreateConfiguredWindow(HINSTANCE hInstance, const wchar_t* className, const wchar_t* title, WindowSetup& config)
 {
-	int w = config.rect.right - config.rect.left;
+	int w = config.rect.right  - config.rect.left;
 	int h = config.rect.bottom - config.rect.top;
 
 	HWND hwnd = CreateWindowExW(
@@ -538,7 +738,7 @@ HWND CreateConfiguredWindow(HINSTANCE hInstance, const wchar_t* className, const
 	}
 #endif
 
-	//Check for DPI Scaling.
+	// Check for DPI Scaling.
 #ifndef Win7Build
 	g_windowSetup.dpiScale = GetDPIScaleForWindow(hwnd);
 	LOG_INFO("Final DPI scale factor: %.2f", g_windowSetup.dpiScale);
@@ -549,13 +749,21 @@ HWND CreateConfiguredWindow(HINSTANCE hInstance, const wchar_t* className, const
 
 	RECT client{};
 	if (GetClientRect(hwnd, &client)) {
-		config.clientWidth = client.right - client.left;
+		config.clientWidth  = client.right  - client.left;
 		config.clientHeight = client.bottom - client.top;
 	}
 
 	return hwnd;
 }
 
+// -----------------------------------------------------------------------------
+// ToggleBorderlessFullscreen
+// Switches between borderless fullscreen and windowed mode.
+// When going fullscreen at runtime (ALT+ENTER), uses the monitor nearest to the
+// current window position rather than config.startingMonitor, so we stay on
+// whichever monitor the window currently lives on.
+// When restoring to windowed, uses the saved windowedRect (or fallback).
+// -----------------------------------------------------------------------------
 void ToggleBorderlessFullscreen(HWND hwnd, WindowSetup& config)
 {
 	LOG_INFO("Calling ToggleBorderlessFullscreen");
@@ -564,12 +772,13 @@ void ToggleBorderlessFullscreen(HWND hwnd, WindowSetup& config)
 		// Backup current window rect for restoration
 		GetWindowRect(hwnd, &config.windowedRect);
 
-		SetWindowLong(hwnd, GWL_STYLE, WS_POPUP);
+		SetWindowLong(hwnd, GWL_STYLE,   WS_POPUP);
 		SetWindowLong(hwnd, GWL_EXSTYLE, WS_EX_APPWINDOW | WS_EX_TOPMOST);
-		config.style = WS_POPUP;
+		config.style   = WS_POPUP;
 		config.exStyle = WS_EX_APPWINDOW | WS_EX_TOPMOST;
 
-		// MULTI-MONITOR SAFE: fullscreen on the monitor nearest to this window.
+		// MULTI-MONITOR SAFE: at runtime we fullscreen on the monitor the window
+		// is currently on, not necessarily the starting_monitor.
 		RECT screen = Win32_GetNearestMonitorRect(hwnd);
 		if ((screen.right <= screen.left) || (screen.bottom <= screen.top)) {
 			// Fallback if monitor query fails.
@@ -578,7 +787,7 @@ void ToggleBorderlessFullscreen(HWND hwnd, WindowSetup& config)
 
 		SetWindowPos(hwnd, HWND_TOPMOST,
 			screen.left, screen.top,
-			screen.right - screen.left,
+			screen.right  - screen.left,
 			screen.bottom - screen.top,
 			SWP_FRAMECHANGED | SWP_SHOWWINDOW);
 
@@ -590,19 +799,19 @@ void ToggleBorderlessFullscreen(HWND hwnd, WindowSetup& config)
 		// (e.g., the app started in fullscreen), fall back to the computed
 		// windowed setup from config/ini.
 		RECT wr = config.windowedRect;
-		int w = wr.right - wr.left;
+		int w = wr.right  - wr.left;
 		int h = wr.bottom - wr.top;
 		if (w <= 0 || h <= 0) {
 			wr = g_windowedFallbackSetup.rect;
-			w = wr.right - wr.left;
-			h = wr.bottom - wr.top;
+			w  = wr.right  - wr.left;
+			h  = wr.bottom - wr.top;
 		}
 
-		DWORD restoreStyle = g_windowedFallbackSetup.style;
+		DWORD restoreStyle   = g_windowedFallbackSetup.style;
 		DWORD restoreExStyle = g_windowedFallbackSetup.exStyle;
-		SetWindowLong(hwnd, GWL_STYLE, restoreStyle);
+		SetWindowLong(hwnd, GWL_STYLE,   restoreStyle);
 		SetWindowLong(hwnd, GWL_EXSTYLE, restoreExStyle);
-		config.style = restoreStyle;
+		config.style   = restoreStyle;
 		config.exStyle = restoreExStyle;
 
 		LOG_INFO("Restoring to windowed size in ToggleScreenSize: %d x %d", w, h);
@@ -616,7 +825,7 @@ void ToggleBorderlessFullscreen(HWND hwnd, WindowSetup& config)
 
 	RECT client{};
 	if (GetClientRect(hwnd, &client)) {
-		config.clientWidth = client.right - client.left;
+		config.clientWidth  = client.right  - client.left;
 		config.clientHeight = client.bottom - client.top;
 		ViewOrtho(config.clientWidth, config.clientHeight);
 		UpdateCursorState();
@@ -644,10 +853,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 	case WM_SIZE:
 	{
-		int width = LOWORD(lParam);
+		int width  = LOWORD(lParam);
 		int height = HIWORD(lParam);
 
-		g_windowSetup.clientWidth = width;
+		g_windowSetup.clientWidth  = width;
 		g_windowSetup.clientHeight = height;
 
 		g_windowSetup.isMinimized = (wParam == SIZE_MINIMIZED);
@@ -691,8 +900,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		frameH = (tmp.bottom - tmp.top) - 100;
 
 		// Compute current client size
-		int fullW = rect->right - rect->left;
-		int fullH = rect->bottom - rect->top;
+		int fullW   = rect->right  - rect->left;
+		int fullH   = rect->bottom - rect->top;
 		int clientW = fullW - frameW;
 		int clientH = fullH - frameH;
 
@@ -704,8 +913,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		fullW = clientW + frameW;
 		fullH = clientH + frameH;
 
-		rect->right = rect->left + fullW;
-		rect->bottom = rect->top + fullH;
+		rect->right  = rect->left + fullW;
+		rect->bottom = rect->top  + fullH;
 		return TRUE;
 	}
 
@@ -738,7 +947,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			g_windowSetup.isFocused = true;
 		}
 
-		// If they explicitly clicked inside the game view, auto-resume mouse capture 
+		// If they explicitly clicked inside the game view, auto-resume mouse capture
 		// just in case they had previously disabled it with F9.
 		if (!g_windowSetup.cursorClipEnabled) {
 			g_windowSetup.cursorClipEnabled = true;
@@ -746,7 +955,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 		UpdateCursorState();
 		return 0;
-
 
 	case WM_KEYDOWN:
 	{
@@ -849,25 +1057,31 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance,
 	));
 
 	WNDCLASSW wc = {};
-	wc.lpfnWndProc = WndProc;
-	wc.hInstance = hInstance;
+	wc.lpfnWndProc   = WndProc;
+	wc.hInstance     = hInstance;
 	wc.lpszClassName = CLASS_NAME;
-	wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
-	wc.hIcon = LoadIcon(wc.hInstance, MAKEINTRESOURCE(IDI_ICON1));
-	wc.style = CS_HREDRAW | CS_VREDRAW;
+	wc.hCursor       = LoadCursor(nullptr, IDC_ARROW);
+	wc.hIcon         = LoadIcon(wc.hInstance, MAKEINTRESOURCE(IDI_ICON1));
+	wc.style         = CS_HREDRAW | CS_VREDRAW;
 	RegisterClassW(&wc);
 
 	// -------------------------------------------------------------------------
-	// Step 1: Load config + cmdline into a temporary structure
+	// Step 1: Load config + cmdline into a temporary structure.
+	// LoadWindowIniConfig reads starting_monitor from [main] starting_monitor.
+	// ParseCommandLineArgs may override it with -monitor N.
 	// -------------------------------------------------------------------------
 	WindowSetup temp;
 	LoadWindowIniConfig(temp);
 	ParseCommandLineArgs(temp);
 	bool requestedFullscreen = temp.useFullscreen;
+
 	// -------------------------------------------------------------------------
-	// Step 2: Force windowed mode setup to ensure valid rect for restore
+	// Step 2: Force windowed mode setup to ensure valid rect for restore.
+	// GenerateFinalWindowSetup(true) builds the windowed rect on the correct
+	// monitor (from starting_monitor / -monitor) and saves g_windowedFallbackSetup.
 	// -------------------------------------------------------------------------
 	g_windowSetup = GenerateFinalWindowSetup(/* forceWindowed = */ true);
+
 	// -------------------------------------------------------------------------
 	// Step 3: Create window and show it
 	// -------------------------------------------------------------------------
@@ -875,7 +1089,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance,
 	if (!g_hWnd) return -1;
 
 	SendMessage(g_hWnd, WM_SETICON, ICON_SMALL, (LPARAM)hIcon);
-	SendMessage(g_hWnd, WM_SETICON, ICON_BIG, (LPARAM)hIcon);
+	SendMessage(g_hWnd, WM_SETICON, ICON_BIG,   (LPARAM)hIcon);
 
 	ShowWindow(g_hWnd, nCmdShow);
 	UpdateWindow(g_hWnd);
@@ -901,13 +1115,14 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance,
 		LOG_ERROR("No joysticks detected or initialization failed");
 	}
 
-	if (!InitOpenGLContext(true, false, false)) {
+	if (!InitOpenGLContext(false, false, false)) {
 		LOG_ERROR("Failed to initialize OpenGL");
 		return -1;
 	}
+
 	// -------------------------------------------------------------------------
-	// Step 4: Save a valid windowedRect for fullscreen restore, this does nothing, fix.
-	// This is actually the "Window" RECT
+	// Step 4: Save a valid windowedRect for fullscreen restore.
+	// This is the actual Window RECT before any fullscreen toggle.
 	// -------------------------------------------------------------------------
 	RECT wr{};
 	if (GetWindowRect(g_hWnd, &wr)) {
@@ -918,10 +1133,13 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance,
 	else {
 		LOG_ERROR("Failed to get windowedRect before fullscreen");
 	}
-	// Save a Fullscreen Window RECT so we can use it later:
-	g_windowSetup.screenRect.left = 0;
-	g_windowSetup.screenRect.top = 0;
-	g_windowSetup.screenRect.right = GetSystemMetrics(SM_CXSCREEN);
+
+	// Save a Fullscreen Window RECT so we can use it later.
+	// Note: this captures the primary monitor; ToggleBorderlessFullscreen uses
+	// Win32_GetNearestMonitorRect at runtime for correct multi-monitor behavior.
+	g_windowSetup.screenRect.left   = 0;
+	g_windowSetup.screenRect.top    = 0;
+	g_windowSetup.screenRect.right  = GetSystemMetrics(SM_CXSCREEN);
 	g_windowSetup.screenRect.bottom = GetSystemMetrics(SM_CYSCREEN);
 
 	// -------------------------------------------------------------------------
@@ -929,7 +1147,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance,
 	// -------------------------------------------------------------------------
 	RECT client{};
 	if (GetClientRect(g_hWnd, &client)) {
-		g_windowSetup.clientWidth = client.right - client.left;
+		g_windowSetup.clientWidth  = client.right  - client.left;
 		g_windowSetup.clientHeight = client.bottom - client.top;
 
 		LOG_INFO("Windowed Client size: %d x %d", g_windowSetup.clientWidth, g_windowSetup.clientHeight);
@@ -948,9 +1166,10 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance,
 		ToggleBorderlessFullscreen(g_hWnd, g_windowSetup);
 
 	// Now that all subsystems (Window, RawInput, OpenGL) are ready,
-   // enforce the cursor trap/hide logic.
+	// enforce the cursor trap/hide logic.
 	UpdateCursorState();
 	EnableCursorClip(1);
+
 	// This sets the High Performance timer.
 	TimerInit();
 
@@ -958,6 +1177,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance,
 	char** argv = nullptr;
 
 	BuildUTF8Args(argc, argv);
+
 	// Init Emulator Here.
 	emulator_init(argc, argv);
 
@@ -996,7 +1216,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance,
 	}
 
 exit_main:
-	//Shutdown Emulator Here
+	// Shutdown Emulator Here
 	emulator_end();
 	// Stop keyboard LED service thread
 	osd_led_service_stop();

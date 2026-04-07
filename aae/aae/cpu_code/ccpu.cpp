@@ -8,9 +8,6 @@
 
 ***************************************************************************/
 
-//#include "debugger.h"
-//#include "deprecat.h"
-//#include "cpuintfaae.h"
 #pragma warning( disable : 4244)
 /***************************************************************************
 	STRUCTURES & TYPEDEFS
@@ -19,8 +16,7 @@
 #include "basetsd.h"
 #include "ccpu.h"
 #include "aae_mame_driver.h"
-
-#include "glcode.h"
+#include "opengl_renderer.h"
 
 
 UINT8 MUX_VAL;
@@ -67,8 +63,23 @@ typedef struct
 static ccpuRegs ccpu;
 static int ccpu_icount;
 
+/* Standard CCPU data RAM -- 256 words used by most games */
 UINT16 CCPURAM[0x100];
+
+/* QB3 banked data RAM -- 4 banks of 256 words (1024 words total).
+   QB3 selects the active bank by writing to OUT port 0, which latches
+   the low 2 bits of the P register as the bank index.
+   The RDMEM/WRMEM helpers below route through this array when
+   qb3_mode is true. */
 UINT16 QB3RAM[0x400];
+
+/* QB3 bank selection state */
+static bool  qb3_mode = false;      /* true when running QB3 */
+static UINT8 qb3_ram_bank = 0;      /* current bank (0-3) */
+
+/* Cycles budget for the current frame -- captured at ccpu_execute entry
+   so qb3_frame_r can estimate how far into the frame we are. */
+static int ccpu_cycles_this_frame = 0;
 
 UINT8 outport[16];
 /***************************************************************************
@@ -77,8 +88,27 @@ UINT8 outport[16];
 
 #define READOP(a) 			(Machine->memory_region[CPU0][a])
 
-#define RDMEM(a)			(CCPURAM[a])       //(data_read_word_16be((a) * 2) & 0xfff)
-#define WRMEM(a,v)			(CCPURAM[a] = v )     //(data_write_word_16be((a) * 2, (v)))
+/* RDMEM / WRMEM -- data memory read/write.
+   In QB3 mode, data RAM is banked: 4 banks of 0x100 words selected
+   by qb3_ram_bank.  All other games use the flat 0x100-word CCPURAM. */
+static inline UINT16 ccpu_rdmem(UINT8 addr)
+{
+	if (qb3_mode)
+		return QB3RAM[(qb3_ram_bank << 8) | addr];
+	else
+		return CCPURAM[addr];
+}
+
+static inline void ccpu_wrmem(UINT8 addr, UINT16 val)
+{
+	if (qb3_mode)
+		QB3RAM[(qb3_ram_bank << 8) | addr] = val;
+	else
+		CCPURAM[addr] = val;
+}
+
+#define RDMEM(a)			ccpu_rdmem((UINT8)(a))
+#define WRMEM(a,v)			ccpu_wrmem((UINT8)(a), (v))
 
 #define READPORT(a)			(getport(a))
 #define WRITEPORT(a,v)		(outport[a]=v)
@@ -142,6 +172,7 @@ int cpunum_get_reg(int cpunum, int reg)
 {
 	if (reg == CCPU_X) return ccpu.X;
 	else if (reg == CCPU_Y) return ccpu.Y;
+	else if (reg == CCPU_P) return ccpu.P;
 
 	return 0;
 }
@@ -178,7 +209,7 @@ static void ccpu_init(int index, int clock, const void* _config, int (*irqcallba
 {
 	const struct CCPUConfig* config = (const CCPUConfig*)_config;
 
-	// copy input params 
+	// copy input params
 	ccpu.external_input = config->external_input ? config->external_input : read_jmi;
 	ccpu.vector_callback = config->vector_callback;
 }
@@ -209,6 +240,9 @@ void ccpu_reset(void)
 
 	ccpu.waiting = 0;
 	ccpu.watchdog = 0;
+
+	/* reset QB3 bank to 0 on CPU reset */
+	qb3_ram_bank = 0;
 }
 
 void init_ccpu(int val, int romsize)
@@ -222,6 +256,59 @@ void init_ccpu(int val, int romsize)
 }
 
 /***************************************************************************
+	QB3 RAM BANKING SUPPORT
+
+	QB3 uses 4 banks of 256 words of data RAM.  The active bank is
+	selected by writing to OUT port 0x00.  When that write occurs the
+	hardware latches the low 2 bits of the P register as the bank index.
+
+	This mirrors MAME's qb3_ram_bank_w handler:
+	  qb3_ram_bank = cpunum_get_reg(0, CCPU_P) & 3;
+	  cpu_setbank(1, &rambase[0x100 * qb3_ram_bank]);
+***************************************************************************/
+
+void ccpu_set_qb3_mode(bool enable)
+{
+	qb3_mode = enable;
+	qb3_ram_bank = 0;
+
+	/* clear all 4 banks of QB3 RAM on init */
+	if (enable)
+	{
+		for (int i = 0; i < 0x400; i++)
+			QB3RAM[i] = 0;
+	}
+}
+
+/* Called from the OUT port 0 handler -- latches the current P register
+   low 2 bits as the active RAM bank. */
+void ccpu_qb3_bank_switch()
+{
+	qb3_ram_bank = ccpu.P & 3;
+	//LOG_INFO("QB3 bank switch to bank %d (P=%02X)", qb3_ram_bank, ccpu.P);
+}
+
+/* QB3 frame position read -- replaces MAME's qb3_frame_r().
+   Returns 1 when we are in the first ~90% of the frame, 0 for the
+   last ~10%.  This is an approximation; the original hardware likely
+   derived this from a counter on the video timing chain.
+   MAME used:  return cpu_scalebyfcount(100) < 90;
+   We approximate by looking at how many cycles remain vs the total
+   budget for this frame. */
+int ccpu_qb3_frame_r()
+{
+	if (ccpu_cycles_this_frame <= 0)
+		return 1;  /* safety fallback */
+
+	/* cycles remaining / total cycles gives fraction of frame remaining.
+	   We want to return 1 when less than 90% of the frame has elapsed,
+	   i.e. when more than 10% of cycles remain. */
+	int elapsed = ccpu_cycles_this_frame - ccpu_icount;
+	int pct = (elapsed * 100) / ccpu_cycles_this_frame;
+	return (pct < 90) ? 1 : 0;
+}
+
+/***************************************************************************
 	CORE EXECUTION LOOP
 ***************************************************************************/
 
@@ -231,6 +318,7 @@ static int ccpu_execute(int cycles)
 		return cycles;
 
 	ccpu_icount = cycles;
+	ccpu_cycles_this_frame = cycles;  /* save for qb3_frame_r */
 
 	while (ccpu_icount >= 0)
 	{
@@ -465,6 +553,16 @@ static int ccpu_execute(int cycles)
 			if (ccpu.acc == &ccpu.A)
 			{
 				//LOG_INFO("CCPU Output");
+
+				/* QB3 RAM bank switch -- OUT port 0 triggers a bank switch
+				   based on the current P register value.  This must happen
+				   BEFORE the sound/coin/mux handlers so the bank is correct
+				   for any subsequent memory accesses this frame. */
+				if ((opcode & 0x07) == 0 && qb3_mode)
+				{
+					ccpu_qb3_bank_switch();
+				}
+
 				if ((opcode & 0x07) == 5) coin_handler(~*ccpu.acc & 1);
 				if ((opcode & 0x07) == 6) vec_control_write(~*ccpu.acc & 1);
 				if ((opcode & 0x07) == 7) MUX_VAL = ~*ccpu.acc & 1;
@@ -749,5 +847,6 @@ static int ccpu_execute(int cycles)
 int run_ccpu(int cycles)
 {
 	cache_clear();
+	vector_clear_list();
 	return ccpu_execute(cycles);
 }

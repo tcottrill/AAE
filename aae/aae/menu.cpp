@@ -1,7 +1,7 @@
 #include "menu.h"
 #include "framework.h"
 #include "aae_mame_driver.h"
-#include "glcode.h"
+#include "opengl_renderer.h"
 #include "vector_fonts.h"
 #include "gl_texturing.h"
 #include "inptport.h"

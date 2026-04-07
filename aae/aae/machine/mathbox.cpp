@@ -6,8 +6,6 @@
  * $Header: /usr2/eric/vg/atari/vecsim/RCS/mathbox.c,v 1.1 1996/08/29 07:23:59 eric Exp eric $
  */
 
-
- //#include "driver.h"
 #include "mathbox.h"
 
 /* math box scratch registers */
@@ -42,7 +40,7 @@ void mb_go(int addr, int data)
 	int msb;
 
 #ifdef MB_TEST
-	if (errorlog) fprintf(errorlog, "math box command %02x data %02x  ", addr, data);
+	LOG_DEBUG("math box command %02x data %02x  ", addr, data);
 #endif
 
 	switch (addr)
@@ -149,7 +147,7 @@ void mb_go(int addr, int data)
 
 	case 0x13:
 #ifdef MB_TEST
-		if (errorlog) fprintf(errorlog, "\nR7: %04x  R8: %04x  R9: %04x\n", REG7, REG8, REG9);
+		LOG_DEBUG( "\nR7: %04x  R8: %04x  R9: %04x", REG7, REG8, REG9);
 #endif
 
 		REGc = REG9;
@@ -259,13 +257,13 @@ void mb_go(int addr, int data)
 		break;
 
 	case 0x1f:
-		//  if (errorlog) fprintf (errorlog, "math box function 0x1f\n");
+		//LOG_DEBUG("math box function 0x1f\n");
 		  /* $$$ do some computation here (selftest? signature analysis? */
 		break;
 	}
 
 #ifdef MB_TEST
-	if (errorlog) fprintf(errorlog, "  result %04x\n", mb_result & 0xffff);
+	LOG_DEBUG("  result %04x\", mb_result & 0xffff);
 #endif
 }
 

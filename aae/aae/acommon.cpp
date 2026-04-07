@@ -13,7 +13,7 @@
 
 #include "framework.h"
 #include "osd_cpu.h"
-#include "glcode.h"
+#include "opengl_renderer.h"
 #include "menu.h"
 #include "iniFile.h"
 #include "os_input.h"
@@ -44,9 +44,9 @@ static int last_led_status = 0;
 void sanity_check_config(void)
 {
 	//SANITY CHECKS GO HERE
-	if (config.prescale < 1 || config.prescale > 2)
+	if (config.prescale < 1 || config.prescale > 5)
 	{
-		LOG_INFO("!!!!!Raster prescale set to unsupported value, supported values are 1 and 2!!!!!");
+		LOG_INFO("!!!!!Raster prescale set to unsupported value, supported values are 1 - 5");
 		config.prescale = 2; have_error = 3;
 	}
 

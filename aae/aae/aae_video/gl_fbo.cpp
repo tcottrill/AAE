@@ -331,7 +331,7 @@ void fbo_init()
 // ---------------------------------------------------------------------------
 // fbo_init_raster
 // Allocates fbo_raster and img5a at the current game's native resolution
-// scaled by the configured raster_scale value.
+// scaled by the configured prescale value.
 //
 // Must be called AFTER a game is fully set up (Machine->gamedrv valid).
 // Releases any previous fbo_raster allocation before creating new ones,
@@ -344,22 +344,46 @@ void fbo_init_raster()
     // Release any previous allocation from a prior game.
     fbo_shutdown_raster();
 
-    if (!Machine || !Machine->gamedrv)
+    if (!Machine || !Machine->gamedrv || !Machine->drv)
     {
-        LOG_ERROR("fbo_init_raster: Machine or gamedrv is null - cannot allocate raster FBO.");
+        LOG_ERROR("fbo_init_raster: Machine, gamedrv, or drv is null - cannot allocate raster FBO.");
         return;
     }
 
-    float raster_scale = get_config_float("main", "raster_scale", 3.0f);
+    const rectangle& va = Machine->drv->visible_area;
 
-    float rw = static_cast<float>(Machine->gamedrv->screen_width)  * raster_scale;
-    float rh = static_cast<float>(Machine->gamedrv->screen_height) * raster_scale;
+    int w = (va.max_x - va.min_x + 1);
+    int h = (va.max_y - va.min_y + 1);
 
-    LOG_INFO("fbo_init_raster: allocating fbo_raster at %.0f x %.0f (scale=%.1f)", rw, rh, raster_scale);
+    if (w <= 0 || h <= 0)
+    {
+        LOG_ERROR("fbo_init_raster: invalid visible area (%d,%d)-(%d,%d)",
+            va.min_x, va.min_y, va.max_x, va.max_y);
+        return;
+    }
+
+    // Match the final oriented raster image shape.
+    // If the game uses SWAP_XY (90/270 degree rotation), the output
+    // texture is transposed: width becomes height and vice versa.
+    if (Machine->drv->rotation & ORIENTATION_SWAP_XY)
+    {
+        const int t = w;
+        w = h;
+        h = t;
+    }
+
+    const float prescale = config.prescale;
+
+    const float rw = static_cast<float>(w) * prescale;
+    const float rh = static_cast<float>(h) * prescale;
+
+    LOG_INFO("fbo_init_raster: visible_area=(%d,%d)-(%d,%d) rotated_size=%d x %d scale=%.1f alloc=%.0f x %.0f rot=%d",
+        va.min_x, va.min_y, va.max_x, va.max_y,
+        w, h, prescale, rw, rh, Machine->drv->rotation);
 
     // RGBA - raster surface; alpha used by the blit/composite step.
     create_fbo(fbo_raster, {
-        { &img5a, { rw, rh }, true }                // attachment 0: game-native raster surface
+        { &img5a, { rw, rh }, true }                // attachment 0: scaled game-native raster surface
     });
 }
 

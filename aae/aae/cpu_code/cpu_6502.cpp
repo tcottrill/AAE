@@ -531,6 +531,30 @@ int cpu_6502::get6502ticks(int reset)
 }
 
 // -----------------------------------------------------------------------------
+// readop - Read opcode or operand bytes from the instruction stream.
+//
+// By default, reads directly from the MEM array, bypassing memory handlers.
+// This matches MAME's cpu_readop() / cpu_readop_arg() behavior and is
+// required for games like Missile Command where the read handler inspects
+// the current opcode and would misinterpret an instruction fetch as a
+// data access.
+//
+// When use_handler_for_opfetch is set (via opfetch_through_handlers(true)),
+// opcode fetches go through the full memory handler chain instead. This is
+// needed for games with bank-switched ROM (e.g. Major Havoc) where the
+// flat MEM array does not reflect the currently selected bank.
+//
+// All data reads (LDA effective address, etc.) always use get6502memory()
+// which routes through the memory handlers.
+// -----------------------------------------------------------------------------
+inline uint8_t cpu_6502::readop(uint16_t addr)
+{
+	if (use_handler_for_opfetch)
+		return get6502memory(addr);
+	return MEM[addr & addrmask];
+}
+
+// -----------------------------------------------------------------------------
 // get6502memory
 // -----------------------------------------------------------------------------
 uint8_t cpu_6502::get6502memory(uint16_t addr)
@@ -841,18 +865,23 @@ int cpu_6502::step6502()
 		return clockticks6502;
 	}
 
-	// Normal Instruction Fetch
-	opcode = get6502memory(PC++);
-	P |= F_T;
+	// Save the address of the current instruction BEFORE fetching the opcode.
+	// This is what cpu_getppc() / cpu_getpreviouspc() returns to drivers
+	// like Missile Command that need to inspect which opcode is executing
+	// (e.g. checking for STA ($ZZ,X) = 0x81 or LDA ($ZZ,X) = 0xA1).
+	PPC = PC;
 
+	// Normal Instruction Fetch -- use readop() to bypass memory handlers.
+	// This is equivalent to MAME's cpu_readop(PC) which reads from OP_ROM.
+	opcode = readop(PC++);
+	P |= F_T;
+	
 	if (debug) {
 		int bytes = 0;
-		std::string op = disassemble(PC - 1, &bytes);
+		std::string op = disassemble(PPC, &bytes);
 		LOG_INFO("%04X: %-20s A:%02X X:%02X Y:%02X S:%02X P:%02X",
-			PC - 1, op.c_str(), A, X, Y, S, P);
+			PPC, op.c_str(), A, X, Y, S, P);
 	}
-
-	PPC = PC;
 
 	(this->*opcode_table[opcode].addressing_mode)();
 	(this->*opcode_table[opcode].instruction)();
@@ -878,7 +907,8 @@ int cpu_6502::step6502()
 // -----------------------------------------------------------------------------
 void cpu_6502::abs6502()
 {
-	savepc = get6502memory(PC) | (get6502memory(PC + 1) << 8);
+	// Operand fetch from instruction stream - bypass handlers via readop()
+	savepc = readop(PC) | (readop(PC + 1) << 8);
 	PC += 2;
 }
 
@@ -894,14 +924,16 @@ void cpu_6502::implied6502()
 
 void cpu_6502::relative6502()
 {
-	savepc = get6502memory(PC++);
+	// Branch offset from instruction stream - bypass handlers via readop()
+	savepc = readop(PC++);
 	if (savepc & 0x80)
 		savepc |= 0xFF00;
 }
 
 void cpu_6502::indirect6502()
 {
-	uint16_t addr_ptr = get6502memory(PC) | (get6502memory(PC + 1) << 8);
+	// Pointer address from instruction stream - bypass handlers via readop()
+	uint16_t addr_ptr = readop(PC) | (readop(PC + 1) << 8);
 	uint16_t lo = addr_ptr;
 	uint16_t hi = addr_ptr + 1;
 
@@ -913,13 +945,15 @@ void cpu_6502::indirect6502()
 	if (cpu_model == CPU_CMOS_65C02) {
 		clockticks6502++;
 	}
+	// The actual pointer dereference reads from DATA memory, so use get6502memory()
 	savepc = get6502memory(lo) | (get6502memory(hi) << 8);
 	PC += 2;
 }
 
 void cpu_6502::absx6502()
 {
-	savepc = get6502memory(PC) | (get6502memory(PC + 1) << 8);
+	// Base address from instruction stream - bypass handlers via readop()
+	savepc = readop(PC) | (readop(PC + 1) << 8);
 	if (ticks[opcode] == 4 && ((savepc ^ (savepc + X)) & 0xFF00))
 		clockticks6502++;
 	savepc += X;
@@ -928,7 +962,8 @@ void cpu_6502::absx6502()
 
 void cpu_6502::absy6502()
 {
-	savepc = get6502memory(PC) | (get6502memory(PC + 1) << 8);
+	// Base address from instruction stream - bypass handlers via readop()
+	savepc = readop(PC) | (readop(PC + 1) << 8);
 	if (ticks[opcode] == 4 && ((savepc ^ (savepc + Y)) & 0xFF00))
 		clockticks6502++;
 	savepc += Y;
@@ -937,47 +972,58 @@ void cpu_6502::absy6502()
 
 void cpu_6502::zp6502()
 {
-	savepc = get6502memory(PC++);
+	// Zero-page address from instruction stream - bypass handlers via readop()
+	savepc = readop(PC++);
 }
 
 void cpu_6502::zpx6502()
 {
-	savepc = (get6502memory(PC++) + X) & 0xFF;
+	// Zero-page address from instruction stream - bypass handlers via readop()
+	savepc = (readop(PC++) + X) & 0xFF;
 }
 
 void cpu_6502::zpy6502()
 {
-	savepc = (get6502memory(PC++) + Y) & 0xFF;
+	// Zero-page address from instruction stream - bypass handlers via readop()
+	savepc = (readop(PC++) + Y) & 0xFF;
 }
 
 void cpu_6502::indx6502()
 {
-	value = (get6502memory(PC++) + X) & 0xFF;
+	// Zero-page base from instruction stream - bypass handlers via readop()
+	value = (readop(PC++) + X) & 0xFF;
+	// The pointer dereference reads from zero-page DATA memory, so use get6502memory()
 	savepc = get6502memory(value) | (get6502memory((value + 1) & 0xFF) << 8);
 }
 
 void cpu_6502::indy6502()
 {
 	uint16_t temp;
-	value = get6502memory(PC++);
+	// Zero-page base from instruction stream - bypass handlers via readop()
+	value = readop(PC++);
 	temp = (value & 0xFF00) | ((value + 1) & 0x00FF);  //zero-page wraparound
+	// The pointer dereference reads from zero-page DATA memory, so use get6502memory()
 	savepc = get6502memory(value) | (get6502memory(temp) << 8);
 	if (ticks[opcode] == 5)
 		if ((savepc >> 8) != ((savepc + Y) >> 8))
-			clockticks6502++; //one cycle penlty for page-crossing on some opcodes
+			clockticks6502++; //one cycle penalty for page-crossing on some opcodes
 	savepc += Y;
 }
 
 void cpu_6502::indabsx6502()
 {
-	help = get6502memory(PC) | (get6502memory(PC + 1) << 8);
+	// Base address from instruction stream - bypass handlers via readop()
+	help = readop(PC) | (readop(PC + 1) << 8);
 	help += X;
+	// Pointer dereference from DATA memory - use get6502memory()
 	savepc = get6502memory(help) | (get6502memory(help + 1) << 8);
 }
 
 void cpu_6502::indzp6502()
 {
-	value = get6502memory(PC++);
+	// Zero-page address from instruction stream - bypass handlers via readop()
+	value = readop(PC++);
+	// Pointer dereference from zero-page DATA memory - use get6502memory()
 	savepc = get6502memory(value) | (get6502memory((value + 1) & 0xFF) << 8);
 
 	// 65C02 Fix: These instructions take 5 cycles.
@@ -994,8 +1040,9 @@ void cpu_6502::indzp6502()
 // -----------------------------------------------------------------------------
 void cpu_6502::zprel6502()
 {
-	help = get6502memory(PC++); // Zero Page Address
-	savepc = get6502memory(PC++); // Relative Offset
+	// Both operands from instruction stream - bypass handlers via readop()
+	help = readop(PC++); // Zero Page Address
+	savepc = readop(PC++); // Relative Offset
 	if (savepc & 0x80)
 		savepc |= 0xFF00; // Sign extend
 }

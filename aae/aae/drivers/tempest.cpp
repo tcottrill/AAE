@@ -19,7 +19,7 @@
 #include "earom.h"
 #include "mathbox.h"
 #include "timer.h"
-#include "glcode.h"
+#include "opengl_renderer.h"
 #include "vector_fonts.h"
 #include "cpu_6502.h"
 //
@@ -312,10 +312,6 @@ Note: Roms for Tempest Analog Vector-Generator PCB Assembly A037383-03 or A03738
 
 ***************************************************************************/
 
-ART_START(tempestart)
-ART_LOAD("custom.zip", "vert_mask.png", ART_TEX, 2)
-ART_END
-
 static int flipscreen = 0;
 static int INMENU = 0;
 static int tempprot = 1;
@@ -330,10 +326,7 @@ static struct POKEYinterface pokey_interface =
 {
 	2,			/* 4 chips */
 	1512000,
-	100,	/* volume */
-	6, //POKEY_DEFAULT_GAIN/2
-	USE_CLIP,
-	/* The 8 pot handlers */
+	{ 150, 150 },
 	{ 0, 0 },
 	{ 0, 0 },
 	{ 0, 0 },
@@ -381,7 +374,7 @@ static void switch_game()
 	unsigned char* RAM = Machine->memory_region[CPU0];
 	memcpy(RAM, Machine->memory_region[REGION_CPU1] + b, 0x10000);
 
-	cache_clear();
+
 	cpu_reset(CPU0);
 }
 
@@ -451,36 +444,6 @@ WRITE_HANDLER(coin_write)
 	else { flipscreen = 0; }
 }
 
-// globals or static debug stash:
-static uint8_t A1 = 0, Y1 = 0, A2 = 0, Y2 = 0;
-
-// call this from your per-instruction hook (right after step) or wherever you log instructions
-void maybe_log_tempest_points()
-{
-	uint16_t ppc = m_cpu_6502[0]->get_ppc();  // just-executed instruction
-	switch (ppc) {
-	case 0xAE20:  // LDA $60CA
-		A1 = m_cpu_6502[0]->m6502_get_reg(cpu_6502::M6502_A);
-		break;
-	case 0xAE23:  // LDY $60CA
-		Y1 = m_cpu_6502[0]->m6502_get_reg(cpu_6502::M6502_Y);
-		break;
-	case 0xAE30:  // LDA $60DA
-		A2 = m_cpu_6502[0]->m6502_get_reg(cpu_6502::M6502_A);
-		break;
-	case 0xAE33:  // LDY $60DA
-		Y2 = m_cpu_6502[0]->m6502_get_reg(cpu_6502::M6502_Y);
-		break;
-	case 0xAE46:  // STA $011F
-	{
-		// You can read A here as well, but the write handler for $011F will have the final byte
-		uint8_t a_now = m_cpu_6502[0]->m6502_get_reg(cpu_6502::M6502_A);
-		LOG_INFO("TEMP PROT (trace): STA $011F about to write %02X  (A1=%02X Y1=%02X A2=%02X Y2=%02X)",
-			a_now, A1, Y1, A2, Y2);
-		break;
-	}
-	}
-}
 
 //////////////////////////////////////////////////////////////////////////
 
@@ -552,6 +515,7 @@ void run_tempest()
 {
 	watchdog_reset_w(0, 0, 0); // Required for protos.I should set this up so it is just here for those.
 	pokey_sh_update();
+	
 }
 
 int init_tempestm()
@@ -623,7 +587,7 @@ PORT_BIT(0x80, IP_ACTIVE_HIGH, IPT_UNKNOWN)
 
 PORT_START("IN1")	/* IN1/DSW0 */
 /* This is the Tempest spinner input. It only uses 4 bits. */
-PORT_ANALOG(0x0f, 0x00, IPT_DIAL | IPF_REVERSE, 25, 20, 0, 0, 0)
+PORT_ANALOG(0x0f, 0x00, IPT_DIAL | IPF_REVERSE, 25, 20, 0,  0)
 /* The next one is reponsible for cocktail mode.
  * According to the documentation, this is not a switch, although
  * it may have been planned to put it on the Math Box PCB, D/E2 )
@@ -977,7 +941,7 @@ PORT_ANALOG(0x0f, 0x00, IPT_DIAL | IPF_REVERSE, 25, 20, 0, 0, 0)
 	AAE_DRIVER_FUNCS(&init_tempestm, &run_tempest, &end_tempest)
 	AAE_DRIVER_INPUT(input_ports_tempest)
 	AAE_DRIVER_SAMPLES_NONE()
-	AAE_DRIVER_ART(tempestart)
+	AAE_DRIVER_ART_NONE()
 	AAE_DRIVER_CPUS(
 		AAE_CPU_ENTRY(
 			/*type*/     CPU_M6502,
@@ -997,7 +961,7 @@ PORT_ANALOG(0x0f, 0x00, IPT_DIAL | IPF_REVERSE, 25, 20, 0, 0, 0)
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY()
 	)
-	AAE_DRIVER_VIDEO_CORE(60, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_ROTATE_270)
+	AAE_DRIVER_VIDEO_CORE(60,DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_ROTATE_270)
 	AAE_DRIVER_SCREEN(1024, 768, 0, 580, 0, 570)
 	AAE_DRIVER_RASTER_NONE()
 	AAE_DRIVER_HISCORE_NONE()
@@ -1011,7 +975,7 @@ PORT_ANALOG(0x0f, 0x00, IPT_DIAL | IPF_REVERSE, 25, 20, 0, 0, 0)
 	AAE_DRIVER_FUNCS(&init_tempest, &run_tempest, &end_tempest)
 	AAE_DRIVER_INPUT(input_ports_tempest)
 	AAE_DRIVER_SAMPLES_NONE()
-	AAE_DRIVER_ART(tempestart)
+	AAE_DRIVER_ART_NONE()
 	AAE_DRIVER_CPUS(
 		AAE_CPU_ENTRY(
 			/*type*/     CPU_M6502,
@@ -1031,7 +995,7 @@ PORT_ANALOG(0x0f, 0x00, IPT_DIAL | IPF_REVERSE, 25, 20, 0, 0, 0)
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY()
 	)
-	AAE_DRIVER_VIDEO_CORE(60, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_ROTATE_270)
+	AAE_DRIVER_VIDEO_CORE(60,DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_ROTATE_270)
 	AAE_DRIVER_SCREEN(1024, 768, 0, 580, 0, 570)
 	AAE_DRIVER_RASTER_NONE()
 	AAE_DRIVER_HISCORE_NONE()
@@ -1045,7 +1009,7 @@ PORT_ANALOG(0x0f, 0x00, IPT_DIAL | IPF_REVERSE, 25, 20, 0, 0, 0)
 	AAE_DRIVER_FUNCS(&init_tempest, &run_tempest, &end_tempest)
 	AAE_DRIVER_INPUT(input_ports_tempest)
 	AAE_DRIVER_SAMPLES_NONE()
-	AAE_DRIVER_ART(tempestart)
+	AAE_DRIVER_ART_NONE()
 	AAE_DRIVER_CPUS(
 		AAE_CPU_ENTRY(
 			/*type*/     CPU_M6502,
@@ -1065,7 +1029,7 @@ PORT_ANALOG(0x0f, 0x00, IPT_DIAL | IPF_REVERSE, 25, 20, 0, 0, 0)
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY()
 	)
-	AAE_DRIVER_VIDEO_CORE(60, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_ROTATE_270)
+	AAE_DRIVER_VIDEO_CORE(60,DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_ROTATE_270)
 	AAE_DRIVER_SCREEN(1024, 768, 0, 580, 0, 570)
 	AAE_DRIVER_RASTER_NONE()
 	AAE_DRIVER_HISCORE_NONE()
@@ -1079,7 +1043,7 @@ PORT_ANALOG(0x0f, 0x00, IPT_DIAL | IPF_REVERSE, 25, 20, 0, 0, 0)
 	AAE_DRIVER_FUNCS(&init_tempest, &run_tempest, &end_tempest)
 	AAE_DRIVER_INPUT(input_ports_tempest)
 	AAE_DRIVER_SAMPLES_NONE()
-	AAE_DRIVER_ART(tempestart)
+	AAE_DRIVER_ART_NONE()
 	AAE_DRIVER_CPUS(
 		AAE_CPU_ENTRY(
 			/*type*/     CPU_M6502,
@@ -1099,7 +1063,7 @@ PORT_ANALOG(0x0f, 0x00, IPT_DIAL | IPF_REVERSE, 25, 20, 0, 0, 0)
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY()
 	)
-	AAE_DRIVER_VIDEO_CORE(60, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_ROTATE_270)
+	AAE_DRIVER_VIDEO_CORE(60,DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_ROTATE_270)
 	AAE_DRIVER_SCREEN(1024, 768, 0, 580, 0, 570)
 	AAE_DRIVER_RASTER_NONE()
 	AAE_DRIVER_HISCORE_NONE()
@@ -1113,7 +1077,7 @@ PORT_ANALOG(0x0f, 0x00, IPT_DIAL | IPF_REVERSE, 25, 20, 0, 0, 0)
 	AAE_DRIVER_FUNCS(&init_tempest, &run_tempest, &end_tempest)
 	AAE_DRIVER_INPUT(input_ports_tempest)
 	AAE_DRIVER_SAMPLES_NONE()
-	AAE_DRIVER_ART(tempestart)
+	AAE_DRIVER_ART_NONE()
 	AAE_DRIVER_CPUS(
 		AAE_CPU_ENTRY(
 			/*type*/     CPU_M6502,
@@ -1133,7 +1097,7 @@ PORT_ANALOG(0x0f, 0x00, IPT_DIAL | IPF_REVERSE, 25, 20, 0, 0, 0)
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY()
 	)
-	AAE_DRIVER_VIDEO_CORE(60, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_ROTATE_270)
+	AAE_DRIVER_VIDEO_CORE(60,DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_ROTATE_270)
 	AAE_DRIVER_SCREEN(1024, 768, 0, 580, 0, 570)
 	AAE_DRIVER_RASTER_NONE()
 	AAE_DRIVER_HISCORE_NONE()
@@ -1147,7 +1111,7 @@ PORT_ANALOG(0x0f, 0x00, IPT_DIAL | IPF_REVERSE, 25, 20, 0, 0, 0)
 	AAE_DRIVER_FUNCS(&init_tempest, &run_tempest, &end_tempest)
 	AAE_DRIVER_INPUT(input_ports_tempest)
 	AAE_DRIVER_SAMPLES_NONE()
-	AAE_DRIVER_ART(tempestart)
+	AAE_DRIVER_ART_NONE()
 	AAE_DRIVER_CPUS(
 		AAE_CPU_ENTRY(
 			/*type*/     CPU_M6502,
@@ -1167,7 +1131,7 @@ PORT_ANALOG(0x0f, 0x00, IPT_DIAL | IPF_REVERSE, 25, 20, 0, 0, 0)
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY()
 	)
-	AAE_DRIVER_VIDEO_CORE(60, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_ROTATE_270)
+	AAE_DRIVER_VIDEO_CORE(60,DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_ROTATE_270)
 	AAE_DRIVER_SCREEN(1024, 768, 0, 580, 0, 570)
 	AAE_DRIVER_RASTER_NONE()
 	AAE_DRIVER_HISCORE_NONE()
@@ -1181,7 +1145,7 @@ PORT_ANALOG(0x0f, 0x00, IPT_DIAL | IPF_REVERSE, 25, 20, 0, 0, 0)
 	AAE_DRIVER_FUNCS(&init_tempest, &run_tempest, &end_tempest)
 	AAE_DRIVER_INPUT(input_ports_tempest)
 	AAE_DRIVER_SAMPLES_NONE()
-	AAE_DRIVER_ART(tempestart)
+	AAE_DRIVER_ART_NONE()
 	AAE_DRIVER_CPUS(
 		AAE_CPU_ENTRY(
 			/*type*/     CPU_M6502,
@@ -1201,7 +1165,7 @@ PORT_ANALOG(0x0f, 0x00, IPT_DIAL | IPF_REVERSE, 25, 20, 0, 0, 0)
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY()
 	)
-	AAE_DRIVER_VIDEO_CORE(60, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_ROTATE_270)
+	AAE_DRIVER_VIDEO_CORE(60,DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_ROTATE_270)
 	AAE_DRIVER_SCREEN(1024, 768, 0, 580, 0, 570)
 	AAE_DRIVER_RASTER_NONE()
 	AAE_DRIVER_HISCORE_NONE()
@@ -1215,7 +1179,7 @@ PORT_ANALOG(0x0f, 0x00, IPT_DIAL | IPF_REVERSE, 25, 20, 0, 0, 0)
 	AAE_DRIVER_FUNCS(&init_vbrakout, &run_tempest, &end_tempest)
 	AAE_DRIVER_INPUT(input_ports_tempest)
 	AAE_DRIVER_SAMPLES_NONE()
-	AAE_DRIVER_ART(tempestart)
+	AAE_DRIVER_ART_NONE()
 	AAE_DRIVER_CPUS(
 		AAE_CPU_ENTRY(
 			/*type*/     CPU_M6502,
@@ -1235,7 +1199,7 @@ PORT_ANALOG(0x0f, 0x00, IPT_DIAL | IPF_REVERSE, 25, 20, 0, 0, 0)
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY()
 	)
-	AAE_DRIVER_VIDEO_CORE(60, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_ROTATE_270)
+	AAE_DRIVER_VIDEO_CORE(60,DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_ROTATE_270)
 	AAE_DRIVER_SCREEN(1024, 768, 0, 580, 0, 570)
 	AAE_DRIVER_RASTER_NONE()
 	AAE_DRIVER_HISCORE_NONE()
@@ -1249,7 +1213,7 @@ PORT_ANALOG(0x0f, 0x00, IPT_DIAL | IPF_REVERSE, 25, 20, 0, 0, 0)
 	AAE_DRIVER_FUNCS(&init_tempest, &run_tempest, &end_tempest)
 	AAE_DRIVER_INPUT(input_ports_tempest)
 	AAE_DRIVER_SAMPLES_NONE()
-	AAE_DRIVER_ART(tempestart)
+	AAE_DRIVER_ART_NONE()
 	AAE_DRIVER_CPUS(
 		AAE_CPU_ENTRY(
 			/*type*/     CPU_M6502,
@@ -1269,7 +1233,7 @@ PORT_ANALOG(0x0f, 0x00, IPT_DIAL | IPF_REVERSE, 25, 20, 0, 0, 0)
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY()
 	)
-	AAE_DRIVER_VIDEO_CORE(60, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_ROTATE_270)
+	AAE_DRIVER_VIDEO_CORE(60,DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_ROTATE_270)
 	AAE_DRIVER_SCREEN(1024, 768, 0, 580, 0, 570)
 	AAE_DRIVER_RASTER_NONE()
 	AAE_DRIVER_HISCORE_NONE()

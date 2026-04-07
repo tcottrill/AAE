@@ -232,6 +232,11 @@ void galaxian_vh_screenrefresh()
 	if (stars_on)
 	{
 		// Galaxian stars
+		// Stars are plotted in pre-rotation bitmap coordinates, just like
+		// tiles and sprites. raster_poly_update() applies the orientation
+		// transforms (SWAP_XY, FLIP_X, FLIP_Y) when reading main_bitmap.
+		// Applying orientation here would rotate the stars a second time,
+		// causing them to scroll sideways instead of top-to-bottom.
 		for (offs = 0; offs < total_stars; offs++)
 		{
 			int x, y;
@@ -241,22 +246,13 @@ void galaxian_vh_screenrefresh()
 
 			if ((y & 1) ^ ((x >> 4) & 1))
 			{
-				if (Machine->orientation & ORIENTATION_SWAP_XY)
+				if (x >= 0 && x < main_bitmap->width &&
+					y >= 0 && y < main_bitmap->height)
 				{
-					int temp;
-
-					temp = x;
-					x = y;
-					y = temp;
+					if (main_bitmap->line[y][x] == Machine->pens[0] ||
+						main_bitmap->line[y][x] == backcolour[x])
+						main_bitmap->line[y][x] = stars[offs].col;
 				}
-				if (Machine->orientation & ORIENTATION_FLIP_X)
-					x = 255 - x;
-				if (Machine->orientation & ORIENTATION_FLIP_Y)
-					y = 255 - y;
-
-				if (main_bitmap->line[y][x] == Machine->pens[0] ||
-					main_bitmap->line[y][x] == backcolour[x])
-					main_bitmap->line[y][x] = stars[offs].col;
 			}
 		}
 	}

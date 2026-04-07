@@ -1,14 +1,14 @@
 //============================================================================
-// AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME 
-// code, 0.29 through .90 mixed with code of my own. This emulator was 
-// created solely for my amusement and learning and is provided only 
-// as an archival experience. 
-// 
-// All MAME code used and abused in this emulator remains the copyright 
+// AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME
+// code, 0.29 through .90 mixed with code of my own. This emulator was
+// created solely for my amusement and learning and is provided only
+// as an archival experience.
+//
+// All MAME code used and abused in this emulator remains the copyright
 // of the dedicated people who spend countless hours creating it. All
 // MAME code should be annotated as belonging to the MAME TEAM.
-// 
-// SOME CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.  
+//
+// SOME CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.
 //============================================================================
 
 /***************************************************************************
@@ -21,12 +21,11 @@
 #include "ccpu.h"
 #include "cinematronics_video.h"
 
-UINT8 bSwapXY=0;
-UINT8 bFlipX=0;
-UINT8 bFlipY=0;
+UINT8 bSwapXY = 0;
+UINT8 bFlipX = 0;
+UINT8 bFlipY = 0;
 
 
-#define SWAPV(x,y) {int t;t=x;x=y;y=t;}
 /* an rgb_t is a single combined R,G,B (and optionally alpha) value */
 typedef UINT32 rgb_t;
 
@@ -49,6 +48,7 @@ static int color_mode;
 static INT16 lastx, lasty;
 static UINT8 last_control;
 
+
 /*************************************
  *
  *  Vector rendering
@@ -57,31 +57,27 @@ static UINT8 last_control;
 
 void cinemat_vector_callback(INT16 sx, INT16 sy, INT16 ex, INT16 ey, UINT8 shift)
 {
-	//LOG_INFO("CINEMAT DRAW %d, %d, %d, %d", sx, sy, ex, sy);
 
+	int intensity = 0xff;
+
+	/* adjust for slop */
 	sx = sx - Machine->drv->visible_area.min_x;
 	ex = ex - Machine->drv->visible_area.min_x;
 	sy = sy - Machine->drv->visible_area.min_y;
 	ey = ey - Machine->drv->visible_area.min_y;
 
-	int intensity = 0xff;
-	
-	if (bSwapXY)
-	{
-		SWAPV(sx, sy);
-		SWAPV(ex, ey);
-	}
-
-	if (sx == ex && sy == ey) 
-	{
+	/* point intensity is determined by the shift value */
+	if (sx == ex && sy == ey)
 		intensity = 0x1ff * shift / 8;
-	} 
 
+	/* move to the starting position if we're not there already */
 	if (sx != lastx || sy != lasty)
-		add_line(sx, sy, ex, ey, intensity, vector_color);
+		vector_add_point(sx << 16, sy << 16, 0, 0);
 
-	add_line(sx, sy, ex, ey, intensity, vector_color);
+	/* draw the vector */
+	vector_add_point(ex << 16, ey << 16, vector_color, intensity);
 
+	/* remember the last point */
 	lastx = ex;
 	lasty = ey;
 }
@@ -96,13 +92,11 @@ void vec_control_write(int data)
 {
 	int r, g, b, i;
 
-	//LOG_INFO("Video control write");
-
 	switch (color_mode)
 	{
 	case COLOR_BILEVEL:
 		/* color is either bright or dim, selected by the value sent to the port */
-		vector_color = (data & 1) ? MAKE_COL(0x80, 0x80, 0x80) : MAKE_COL(0xff, 0xff, 0xff);
+		vector_color = (data & 1) ? MAKE_RGB(0x80, 0x80, 0x80) : MAKE_RGB(0xff, 0xff, 0xff);
 		break;
 
 	case COLOR_16LEVEL:
@@ -112,7 +106,7 @@ void vec_control_write(int data)
 		{
 			int xval = cpunum_get_reg(0, CCPU_X) & 0x0f;
 			i = (xval + 1) * 255 / 16;
-			vector_color = MAKE_COL(i, i, i);
+			vector_color = MAKE_RGB(i, i, i);
 		}
 		break;
 
@@ -124,7 +118,7 @@ void vec_control_write(int data)
 			int xval = cpunum_get_reg(0, CCPU_X);
 			xval = (~xval >> 2) & 0x3f;
 			i = (xval + 1) * 255 / 64;
-			vector_color = MAKE_COL(i, i, i);
+			vector_color = MAKE_RGB(i, i, i);
 		}
 		break;
 
@@ -140,7 +134,7 @@ void vec_control_write(int data)
 			g = g * 255 / 15;
 			b = (~xval >> 8) & 0x0f;
 			b = b * 255 / 15;
-			vector_color = MAKE_COL(r, g, b);
+			vector_color = MAKE_RGB(r, g, b);
 		}
 		break;
 
@@ -169,7 +163,7 @@ void vec_control_write(int data)
 			g = g * 255 / 7;
 			b = (~yval >> 6) & 0x03;
 			b = b * 255 / 3;
-			vector_color = MAKE_COL(r, g, b);
+			vector_color = MAKE_RGB(r, g, b);
 
 			/* restore the original X,Y values */
 			cpunum_set_reg(0, CCPU_X, lastx);
@@ -193,6 +187,8 @@ void video_type_set(int type, int swap_xy)
 {
 	color_mode = type;
 	bSwapXY = swap_xy;
+
+	
 }
 
 /*

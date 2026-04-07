@@ -37,3 +37,9 @@ void allegro_message(const char* title, const char* message);
 std::string GetLastErrorStdStr();
 WindowsOS GetOsVersion();
 RECT GetOpenGLScreenRect(HWND hwnd);
+
+// Update the window size and position to match the given game aspect ratio.
+// Resizes the client area width to match the aspect while keeping the height,
+// then re-centers the window on its current monitor.
+// In borderless fullscreen mode, only updates the stored aspect ratio.
+void WindowUtil_UpdateAspect(float gameAspect);

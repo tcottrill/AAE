@@ -1,5 +1,17 @@
-#include "pacman.h"
+//============================================================================
+// AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME
+// code, 0.29 through .90 mixed with code of my own. This emulator was
+// created solely for my amusement and learning and is provided only
+// as an archival experience.
+//
+// All MAME code used and abused in this emulator remains the copyright
+// of the dedicated people who spend countless hours creating it. All
+// MAME code should be annotated as belonging to the MAME TEAM.
+//
+// SOME CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.
+//============================================================================
 
+#include "pacman.h"
 #include "aae_mame_driver.h"
 #include "old_mame_raster.h"
 #include "driver_registry.h"
@@ -12,7 +24,7 @@ static int flipscreen = 0;
 static int pacintvect = 0xfa;
 static int pacintenable = 1;
 static int mspac_activate = 0;
-extern unsigned char* pengo_soundregs;
+//extern unsigned char* pengo_soundregs;
 static int gfx_bank;
 static int xoffsethack;
 
@@ -40,12 +52,12 @@ static struct rectangle spritevisiblearea =
 	2 * 8, 34 * 8 - 1
 };
 
-static struct namco_interface pacman_namco_interface =
+static struct namco_interface namco_interface =
 {
-	3072000 / 32,	// sample rate
-	3,			// number of voices
-	32,			// gain adjustment
-	245			// playback volume
+	3072000 / 32,	/* sample rate */
+	3,			/* number of voices */
+	220,		/* playback volume */
+	REGION_SOUND1	/* memory region */
 };
 
 static struct GfxLayout charlayout =
@@ -520,7 +532,7 @@ int init_pacman()
 	spriteram_2_size = 0x0f;
 
 	//Start Namco Sound interface
-	namco_sh_start(&pacman_namco_interface);
+	namco_sh_start(&namco_interface);
     // Start Video Interface
 	pacman_vh_start();
 
@@ -551,7 +563,7 @@ int init_mspacman()
 	spriteram_2_size = 0x0f;
 
 	//Start Namco Sound interface
-	namco_sh_start(&pacman_namco_interface);
+	namco_sh_start(&namco_interface);
 	// Start Video Interface
 	pacman_vh_start();
 	
@@ -799,12 +811,13 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_NONE_ENTRY()
 )
 
-AAE_DRIVER_VIDEO_CORE(60, VIDEO_TYPE_RASTER_COLOR | VIDEO_SUPPORTS_DIRTY, ORIENTATION_DEFAULT)
+AAE_DRIVER_VIDEO_CORE(60,DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_RASTER_COLOR | VIDEO_SUPPORTS_DIRTY, ORIENTATION_DEFAULT)
 AAE_DRIVER_SCREEN(28 * 8, 36 * 8, 0, 224 - 1, 0, 288 - 1)
 AAE_DRIVER_RASTER(pacman_gfxdecodeinfo, 16, 4 * 32, pacman_vh_convert_color_prom)
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0, 0)
 AAE_DRIVER_NVRAM_NONE()
+AAE_DRIVER_LAYOUT_NONE()
 AAE_DRIVER_END()
 
 // Ms. Pac-Man
@@ -835,12 +848,14 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_NONE_ENTRY()
 )
 
-AAE_DRIVER_VIDEO_CORE(60, VIDEO_TYPE_RASTER_COLOR | VIDEO_SUPPORTS_DIRTY, ORIENTATION_DEFAULT)
+AAE_DRIVER_VIDEO_CORE(60,DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_RASTER_COLOR | VIDEO_SUPPORTS_DIRTY, ORIENTATION_DEFAULT)
 AAE_DRIVER_SCREEN(28 * 8, 36 * 8, 0, 224 - 1, 0, 288 - 1)
 AAE_DRIVER_RASTER(pacman_gfxdecodeinfo, 16, 4 * 32, pacman_vh_convert_color_prom)
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0, 0)
 AAE_DRIVER_NVRAM_NONE()
+AAE_DRIVER_LAYOUT("default.lay", "Upright_Artwork")
+
 AAE_DRIVER_END()
 ///////////////////////////////////////////////////////////////////////
 // PacPlus
@@ -871,12 +886,14 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_NONE_ENTRY()
 )
 
-AAE_DRIVER_VIDEO_CORE(60, VIDEO_TYPE_RASTER_COLOR | VIDEO_SUPPORTS_DIRTY, ORIENTATION_DEFAULT)
+AAE_DRIVER_VIDEO_CORE(60,DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_RASTER_COLOR | VIDEO_SUPPORTS_DIRTY, ORIENTATION_DEFAULT)
 AAE_DRIVER_SCREEN(28 * 8, 36 * 8, 0, 224 - 1, 0, 288 - 1)
 AAE_DRIVER_RASTER(pacman_gfxdecodeinfo, 16, 4 * 32, pacman_vh_convert_color_prom)
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0, 0)
 AAE_DRIVER_NVRAM_NONE()
+AAE_DRIVER_LAYOUT("default.lay", "Upright_Artwork")
+
 AAE_DRIVER_END()
 //////////////////////////////////////////////////////////////////////////////////////////////////
 AAE_REGISTER_DRIVER(drv_pacman)

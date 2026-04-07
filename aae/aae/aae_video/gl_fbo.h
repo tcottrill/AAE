@@ -25,7 +25,7 @@
 //   fbo4  (1024x1024, GL_RGBA8) - final compositing target:
 //           img4a [attachment 0] - fully composited frame, blitted to screen
 //
-//   fbo_raster (game-native x raster_scale, GL_RGBA8) - per-game raster target:
+//   fbo_raster (game-native x prescale, GL_RGBA8) - per-game raster target:
 //           img5a [attachment 0] - game-size raster surface
 //           NOTE: Only allocated when a game is loaded (Machine != nullptr).
 //           NOT available during the GUI / no-game phase.
@@ -99,7 +99,7 @@ void fbo_init();
 // ---------------------------------------------------------------------------
 // fbo_init_raster
 // Allocates fbo_raster / img5a at the current game's native resolution
-// scaled by raster_scale (GL_RGBA8). Must be called AFTER a game is loaded
+// scaled by prescale (GL_RGBA8). Must be called AFTER a game is loaded
 // (Machine->gamedrv must be valid). Safe to call more than once - releases
 // any previous allocation first.
 // ---------------------------------------------------------------------------

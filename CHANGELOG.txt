@@ -266,12 +266,67 @@ Finally got back to work on this, changes are below:
 - Readded a more appropriate vector GUI now that I have all the rendering and memory leaks corrected (fingers crossed). 
 - Corrected the sound resampling in the namco games, they sounds much better now at 44100, perfect if you force the games to 96000 though.
 - Got frustrated and added overengineered, multithreaded keyboard led support so my ultimarc keyboard controller could pick them up correctly. 
-- TODO: I have not texted any of these changes in Windows 7 yet, I may have broken several things. With Tiny 11, I have moved to that for my arcade machines so it's more of a pain to test. 
+- TODO: I have not tested any of these changes in Windows 7 yet, I may have broken several things. With Tiny 11, I have moved to that for my arcade machines so it's more of a pain to test. 
 - Completely remapped and corrected every game in video.ini, so it needs to be replaced. And soon I hope to do away with it altogether.
 - Revamped the game sorting and listing code, it no longer requires the legacy driver code, removed. 
 - Touched about all the main files, cleaned up where I could but a deeper review is needed, coming by summer.
 - Todo still, update all the rendering to opengl 4, I have a complete Vulcan rendering system done, but not sure if/when it will make it in.
 - Add a confirm to exit popup with the new joystick code. To disable for arcade cabinets, edit aae.ini and set confirm_exit=0
+3/3/26 Added multi monitor support, -monitor 1/2/etc.
+
+3/4/26 Adjusted and added MAME's Z80fmly code for z80 daisy chaining. This allowed me to add preliminary emulation for Cosmic Chasm. This is the last vector game I am going to add. From a driver perspective for Vector Games, it's down to cleanup and enhancement. I'm done. 
+
+3/5/26 Fixed the Missile Command Driver by fixing the M6502 CPU core for the umpteenth time.
+
+3/5/26 Changed the 6502 cpu core AGAIN!!!. Stopped passing Addresses and the Opcode through the handlers by default, this fixed a number of issues with Atari Drivers. Changed the getppc code to actually work correctly. 
+Added a opfetch_through_handlers(true) so that everything could go through the handlers for games with banked roms, like Major Havoc.
+
+3/5/26 Discovered I needed a way to set this, so added a new driver macro override, AAE_CPU_ENTRY_EX which is Same as AAE_CPU_ENTRY but with a post-init callback that fires after the CPU core is created.
+Added void (*post_cpu_init)(int); to the MachineCPU for this task.
+Cleaned up the Aztarac driver to use this AAE_CPU_ENTRY_EX , along with the Major Havoc Driver. On the flip side, this speeds up all games a little bit that don't use this. 
+
+3/7/26 Fixed QB-3 in the Cinematronics driver, cleaned up the vector rendering. 
+Fixed the -listromstotext command line option and added -listallgames to generate a list of all supported games. 
+************************** ALL PRODUCTION VECTOR GAMES EMULATED (MORE OR LESS) !!!*****************
+3/9/26-3/12/26
+Added rumble support to the controller code. 
+Upgraded the shaders to OpenGL 3, (#330) and moved ALL rendering to shaders. There should be no (very) deprecated rendering code left, just slightly deprecated. Cleaned up the existing shaders to work with the current layered rendering code. 
+I still have multiple Y flipping going on, and in some cases it's flipped twice, cancelling itself out. It's still very confusing and I'm working on that. 
+Going to move the raster rendering onto it's own modern renderer since it's the easiest, we'll switch to using regular MAME (TM) .lay files then. It's going to take a bit longer to correct the vector rendering.
+Messed around with the pokey code, I moved each pokey to it's own audio stream, redid the pokey random code but even playing tempest for 2 days I'm not sure the protection code is working. Adding save states is a big lift and shift to the existing code across the board. 
+
+3/16/26 to 3/26/26 Went absolutely wild on the raster games, things I wasn't ever planning on supporting. I spent two days just getting the scanlines correct on the resizable raster fbo. I had messed around with AI generating MAME layout support, I added in that code, went round and round with about 30 AI revision so ended up getting mad and writing a bunch of code manually to use my resizable fbo code and to get the blending working correctly. Most code is in mame_layout.cpp. Current MAME Artwork is now supported on the Raster Games.
+Removed all raster config from video.ini
+Corrected the sound in the Millipede Driver. 
+AI assisted added a Mappy Driver, MOTOS doesn't work for some reason.
+AI Assisted added a JR Pacman Driver
+AI Assisted added a Super Pacman Driver, PACNPAL runs WAAYYY too fast. 
+AI Assisted added an Xevious Driver, it kinda sucks, I'll get back to it. 
+Used Mike Chambers 8080 CPU as a base and AI assist added a new 8085A driver with SOD callback capability for Pleiads shot sample triggering. (Missing from MAME)
+AI Assist added the mame .36 tmx36xx sound code for phoenix.
+AI Assist added a Phoenix/Pleiads driver. 
+IN process: Adding support for samples from the Epson 7910 Melody IC from my original pleiads pcb.I have the clean recordings of the samples but I can't figure out where they are triggered.
+TODO: ADD Rotation SUPPORT to the raster chain, now that the games are rendering more or less correctly. (DONE)
+
+3/26/26 to 4/7/26.
+Added Rotation to the vector subsystem, cleaned up a number of drivers and generally moved almost everything to the mame_vector.cpp code for intermediate rendering and scaling. The Asteroids drivers cannot be moved to that, the scaling code makes the dot crawl terrible and it's the reason this emulator started in the first place. 
+Added new samples from my original board to Pleiads but I am having trouble figuring out where the tunes start and end without disassembling the roms. I'll get there eventually. 
+Added rotation to the Raster Drivers, and added aspect correction throughout. Added many more command line options that I'll get around to documenting eventually. Aspect correction on the raster games needs work, and I need new LAY files just for AAE for the invaders/invaders deluxe drivers, I am not happy with the MAME ones. 
+Moved 99.9% of the rendering to OpenGL 3.3 compatible shaders over a period of 3 days.
+ 
+Finally time for a release. I have cleaned up the video.ini, most games are now rendering in their native orientation and MAME designed size and aspect ratio. I went through some major hoops to get Warlords working correctly in BW upright with artwork and color cocktail with scanlines. I believe this is pretty much every game I want to support. Other then cleanups and fixes, this is about it. 
+It took me over 2 years to clean up this code and make it, well, unfortunately, in the end it's just a MAME clone. 
+It has different Audio, input, timing , rendering, cpu cores, cpu handling, back end driver configuration from MAME, but at it's core, it's MAME. So that makes this a MAME derivative 100%. Oh Well, I am (mostly) happy with it, so here it is. I'm taking a break now. 
+
+
+
+
+
+
+
+
+
+
  
 
 

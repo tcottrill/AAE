@@ -27,6 +27,11 @@ struct WindowSetup {
 	bool useFullscreen = false;
 	bool centerWindow = true;
 	bool useAspectRatio = false;
+	// True when the user has explicitly requested an aspect ratio override,
+	// either via use_aspect=1 in the INI or -aspect N:M on the command line.
+	// When true, aspectRatio overrides the game-computed aspect in run_game().
+	// When false (default), every game uses its natural computed aspect ratio.
+	bool aspectOverrideActive = false;
 	float aspectRatio = 4.0f / 3.0f;
 	int windowWidth = 1024;
 	int windowHeight = 768;
@@ -41,6 +46,12 @@ struct WindowSetup {
 	bool isMinimized = false;
 	bool isFocused = true;
 	bool cursorClipEnabled = true;
+	// Which monitor to launch on (1-based: 1 = primary, 2 = second, etc.)
+	// Loaded from [main] starting_monitor in aae.ini.
+	// Can be overridden at the command line with -monitor N.
+	// Values <= 0 or out of range fall back to the primary monitor.
+	int startingMonitor = 1;
+
 };
 // -----------------------------------------------------------------------------
 // GetWindowSetup

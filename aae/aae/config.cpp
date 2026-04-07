@@ -30,7 +30,7 @@ void setup_config() {
 
     // Load all fields from aae.ini
     config.samplerate = get_config_int("main", "samplerate", 22050);
-    config.prescale = get_config_int("main", "prescale", 1);
+    config.prescale = get_config_float("main", "prescale", 1);
     config.vid_rotate = get_config_int("main", "vid_rotate", 1);
     config.anisfilter = get_config_int("main", "anisfilter", 0);
     config.translucent = get_config_int("main", "translucent", 0);
@@ -87,6 +87,19 @@ void setup_config() {
     config.hack = get_config_int("main", "hack", 0);
     config.raster_effect = get_config_string("main", "raster_effect", "NONE");
     config.flip_gui_controls = get_config_int("main", "flip_gui_controls", 0);
+    // Monitor selection (1-based: 1 = primary).
+    // Also read early in LoadWindowIniConfig() (winmain.cpp) before the window
+    // is created, so the window lands on the right monitor at startup.
+    // This copy in config.starting_monitor is available to the rest of the
+    // emulator after emulator_init() completes.
+    config.starting_monitor = get_config_int("main", "starting_monitor", 1);
+    if (config.starting_monitor <= 0)
+        config.starting_monitor = 1;
+
+    // System rotation: persisted as raw ORIENTATION_xxx flags.
+    // 0=none, 5=ROT90(-ror), 3=ROT180, 6=ROT270(-rol).
+    // Command-line -ror/-rol overrides this after loading.
+    config.system_rotation = get_config_int("main", "system_rotation", 0);
 
     // Load game-specific overrides for select fields
     temppath = getpathM("ini", 0) + std::string("\\") + Machine->gamedrv->name + ".ini";
@@ -105,7 +118,7 @@ void setup_config() {
         config.vecglow = get_config_int("main", "vectorglow", config.vecglow);
         config.vectrail = get_config_int("main", "vectortrail", config.vectrail);
         config.gain = get_config_int("main", "gain", config.gain);
-        config.prescale = get_config_int("main", "prescale", config.prescale);
+        config.prescale = get_config_float("main", "prescale", config.prescale);
         config.vid_rotate = get_config_int("main", "vid_rotate", config.vid_rotate);
         config.anisfilter = get_config_int("main", "anisfilter", config.anisfilter);
         config.translucent = get_config_int("main", "translucent", config.translucent);
@@ -114,6 +127,9 @@ void setup_config() {
         config.linewidth = get_config_float("main", "linewidth", config.linewidth);
         config.pointsize = get_config_float("main", "pointsize", config.pointsize);
         config.raster_effect = get_config_string("main", "raster_effect", config.raster_effect);
+
+        // Per-game system rotation override (e.g. for cab-specific setups)
+        config.system_rotation = get_config_int("main", "system_rotation", config.system_rotation);
 
         // somegame.ini available - sound override options
         config.psnoise = get_config_int("main", "psnoise", config.psnoise);
@@ -168,7 +184,7 @@ void setup_video_config() {
         bezelx = get_config_int(name.c_str(), "bezcropx", 0);
         bezely = get_config_int(name.c_str(), "bezcropy", 0);
     }
-
+    /*
     // Try reading new sane keys first (e.g. full_left, full_right)
     game_rect_left = get_config_int(name.c_str(), key("_left").c_str(), -9999);
 
@@ -184,9 +200,15 @@ void setup_video_config() {
         game_rect_bottom = get_config_int(name.c_str(), key("_bottom").c_str(), 0);
         game_rect_top = get_config_int(name.c_str(), key("_top").c_str(), 1024);
     }
+    */
+    game_rect_left = get_config_int(name.c_str(), key("_left").c_str(), 0);
+    game_rect_right = get_config_int(name.c_str(), key("_right").c_str(), 1024);
+    game_rect_bottom = get_config_int(name.c_str(), key("_bottom").c_str(), 0);
+    game_rect_top = get_config_int(name.c_str(), key("_top").c_str(), 1024);
 
     LOG_INFO("VIDEO CONFIG: Left %d, Right %d, Bottom %d, Top %d ", game_rect_left, game_rect_right, game_rect_bottom, game_rect_top);
 }
+
 
 void setup_game_config() {
     setup_config();

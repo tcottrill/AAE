@@ -2,7 +2,7 @@
 #include "emu_vector_draw.h"
 #include "colordefs.h"
 #include "sys_log.h"
-#include "glcode.h"
+#include "opengl_renderer.h"
 #include "gl_texturing.h" // For game_tex[0]
 #include <vector>
 

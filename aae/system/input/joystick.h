@@ -188,6 +188,74 @@
 //
 //==============================================================================
 
+//Rumble Support howto:
+/*
+#include "joystick.h"
+
+// Keep track of how many frames are left for each player's rumble
+static int s_rumble_timers[MAX_JOYSTICKS] = {0};
+
+// Flag to tell the main loop a controller just connected
+static bool s_controller_just_connected = false;
+
+// 1. Define the Callback
+void OnJoystickHotplug(int xinput_slot, bool connected, const char* message)
+{
+    if (connected) {
+        // Set the flag so our main loop knows to apply rumble
+        s_controller_just_connected = true;
+    }
+}
+
+// 2. Initialization
+void InitInput()
+{
+    install_joystick();
+    set_joystick_hotplug_callback(OnJoystickHotplug);
+}
+
+// 3. Your Main Frame Update Loop
+void UpdateInput()
+{
+    // Poll updates joy[] array and triggers the hotplug callback if hardware changed
+    poll_joystick();
+
+    // Check if the callback flagged a new connection this frame
+    if (s_controller_just_connected) {
+        s_controller_just_connected = false;
+
+        // Vibrate all currently connected controllers to acknowledge the hardware change.
+        for (int i = 0; i < num_joysticks; ++i) {
+            // joystick_set_rumble(player, left_motor, right_motor)
+            // Left motor is the low-frequency rumble (heavy).
+            // Right motor is the high-frequency rumble (sharp/buzzy).
+            joystick_set_rumble(i, 0.4f, 0.4f); // 40% strength
+
+            // Set timer for 15 frames (approx 0.25 seconds at 60 FPS)
+            s_rumble_timers[i] = 15;
+        }
+    }
+
+    // 4. Process all active rumble timers and turn them off when they expire
+    for (int i = 0; i < num_joysticks; ++i) {
+        if (s_rumble_timers[i] > 0) {
+            s_rumble_timers[i]--;
+
+            if (s_rumble_timers[i] == 0) {
+                // The timer hit 0, shut off the motors!
+                joystick_stop_rumble(i);
+            }
+        }
+    }
+}
+
+// 4. Clean Shutdown
+void ShutdownInput()
+{
+    remove_joystick(); // (This now safely stops any active rumbles automatically)
+}
+*/
+
 #pragma once
 
 #ifndef JOYSTICK_H
@@ -344,6 +412,18 @@ void remove_joystick();
 // Poll current joystick state. Returns 0 on success, -1 on failure.
 // Automatically handles hotplug detection for XInput controllers.
 int poll_joystick();
+
+//------------------------------------------------------------------------------
+// Rumble Support
+//------------------------------------------------------------------------------
+
+// Set vibration motors for a specific player (joy[] index).
+// Speeds are normalized from 0.0f (off) to 1.0f (max).
+// Returns true on success (XInput only).
+bool joystick_set_rumble(int player, float left_motor_speed, float right_motor_speed);
+
+// Stops all rumble on a specific player controller.
+void joystick_stop_rumble(int player);
 
 //------------------------------------------------------------------------------
 // Hotplug Callback Support

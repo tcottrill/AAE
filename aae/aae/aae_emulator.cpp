@@ -11,6 +11,8 @@
 // SOME CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.
 //==========================================================================
 
+
+
 // ---------------------------------------------------------------------------
 // Standard C++ headers
 // ---------------------------------------------------------------------------
@@ -41,7 +43,7 @@
 #include "acommon.h"
 #include "fileio/texture_handler.h"
 #include "config.h"
-#include "glcode.h"
+#include "opengl_renderer.h"
 #include "gl_fbo.h"
 #include "menu.h"
 #include "aae_avg.h"
@@ -58,6 +60,10 @@
 #include "FrameLimiter.h"
 #include "driver_registry.h"   // AllDrivers(), FindDriverByName(), AAE_REGISTER_DRIVER
 #include "joystick.h"
+#include "mame_layout.h"
+#include "windows_util.h"
+#include <filesystem>
+#include <path_helper.h>
 
 #pragma warning(disable : 4996 4244)
 
@@ -106,6 +112,16 @@ static int g_guiGameIndex = -1;
 static int g_pendingSwitchGameNum = -1;
 // Command-line debug override (-1 = no override)
 static int debug_override = -1;
+static int rotation_override = -1;  // -ror/-rol command-line override
+static int artwork_override = -1;   // -noartwork command-line override
+static int bezel_override = -1;     // -nobezel command-line override
+static int overlay_override = -1;   // -nooverlay command-line override
+static int prescale_override = -1;  // -prescale X command-line override
+// TEMPORARY VARIABLE
+// Tracks the last-applied bezel state for vertical vector games so we can
+// detect mid-game toggles and resize the window accordingly.
+static int g_lastBezelState = -1;  // -1 = not yet initialized
+
 // ---------------------------------------------------------------------------
 // MAME compatibility: RunningMachine and driver pointers.
 // Machine is the globally visible pointer to the current running game state.
@@ -301,7 +317,7 @@ static void RequestReturnToGui(const char* reason)
 	LOG_INFO("RequestReturnToGui: switching to GUI. reason=%s (gamenum=%d -> gui=%d)",
 		reason ? reason : "NULL", gamenum, guiIdx);
 
-	glcode_vector_hard_clear_fbo1();
+	//glcode_vector_hard_clear_fbo1();
 	g_pendingSwitchGameNum = guiIdx;
 	done = 1;
 }
@@ -479,6 +495,21 @@ void gameparse(int argc, char* argv[])
 		else if (arg == "-window")         win_override = 3;
 		else if (arg == "-nowindow")       win_override = 2;
 
+		// System rotation overrides (command line wins over INI)
+		else if (arg == "-ror")            rotation_override = ROT90;
+		else if (arg == "-rol")            rotation_override = ROT270;
+		else if (arg == "-norotate")       rotation_override = ROT0;
+
+		// Artwork layer overrides (command line wins over INI)
+		else if (arg == "-noartwork")      artwork_override = 0;
+		else if (arg == "-nobezel")        bezel_override = 0;
+		else if (arg == "-nooverlay")      overlay_override = 0;
+		else if (arg == "-prescale" && i + 1 < argc)
+		{
+			prescale_override = std::atoi(argv[++i]);
+			if (prescale_override < 1) prescale_override = 1;
+		}
+
 		for (int j = 0; gfx_res[j].desc != nullptr; j++)
 		{
 			if (arg == to_lowercase(gfx_res[j].desc))
@@ -586,6 +617,60 @@ void gameparse(int argc, char* argv[])
 	default:
 		break;
 	}
+}
+
+// ---------------------------------------------------------------------------
+// list_all_games
+// Writes a plain-text list of every registered driver to
+// "AAE All Games List.txt". Each line contains the short ROM name and the
+// human-readable description, tab-separated for easy parsing.
+// Called from emulator_init() when the -listallgames option is given.
+// ---------------------------------------------------------------------------
+void list_all_games()
+{
+	const auto& reg = aae::AllDrivers();
+	const int game_count = static_cast<int>(reg.size());
+	if (game_count <= 0) return;
+
+	std::vector<char> buf;
+	buf.reserve(65536);
+
+	const auto append_cstr = [&](const char* s) {
+		if (!s) return;
+		buf.insert(buf.end(), s, s + std::strlen(s));
+		};
+
+	append_cstr("AAE Game List\n");
+	append_cstr("Name            Description\n");
+	append_cstr("----            -----------\n");
+
+	int listed = 0;
+	for (int g = 0; g < game_count; ++g)
+	{
+		const AAEDriver* d = reg[g];
+		// Skip null entries and the internal GUI driver.
+		if (!d || !d->name || !d->desc) continue;
+		if (std::strcmp(d->name, "gui") == 0) continue;
+
+		// Left-pad the short name to 16 chars for a tidy column.
+		char namebuf[32];
+		snprintf(namebuf, sizeof(namebuf), "%-16s", d->name);
+		append_cstr(namebuf);
+		append_cstr(d->desc);
+		append_cstr("\n");
+		++listed;
+	}
+
+	// Footer with total count.
+	char footer[64];
+	snprintf(footer, sizeof(footer), "\nTotal games: %d\n", listed);
+	append_cstr(footer);
+	buf.push_back('\0');    // null-terminate for save_file_char
+
+	LOG_INFO("Saving game list (%d entries)...", listed);
+	save_file_char("AAE All Games List.txt",
+		buf.data(),
+		static_cast<int>(buf.size() - 1));  // exclude the null terminator
 }
 
 // ---------------------------------------------------------------------------
@@ -700,8 +785,10 @@ void run_game(void)
 
 	num_samples = 0;
 	errorlog = 0;
-
 	game_loaded_sentinel = false;
+	float gameAspect = 0;
+
+	auto& ws = GetWindowSetup();
 
 	// Step 1: Bind Machine to the chosen driver.
 	run_a_game(gamenum);
@@ -709,12 +796,25 @@ void run_game(void)
 	// Step 2: Per-game configuration.
 	setup_game_config();
 	sanity_check_config();
-		
-	// Re-apply the command line debug override over the INI file
+
+	// Re-apply the command line debug override over the INI file.
 	if (debug_override != -1)
-	{
 		config.debug = debug_override;
-	}
+	// Re-apply the command line rotation override over the INI file.
+	if (rotation_override != -1)
+		config.system_rotation = rotation_override;
+	// Re-apply artwork layer overrides over the INI file.
+	if (artwork_override != -1)
+		config.artwork = artwork_override;
+	if (bezel_override != -1)
+		config.bezel = bezel_override;
+	if (overlay_override != -1)
+		config.overlay = overlay_override;
+	if (prescale_override != -1)
+		config.prescale = prescale_override;
+
+	// Reset per-game rendering suppression flags.
+	g_scanline_override = 0;
 
 	LOG_INFO("Starting game: %s", Machine->gamedrv->desc);
 
@@ -724,6 +824,15 @@ void run_game(void)
 	options.cheat = 1;
 	leds_status = 0;
 	osd_set_leds(0);
+
+	// Compose driver rotation with system rotation (command-line -ror/-rol).
+		// Per MAME convention, orientation flags compose with XOR, not OR.
+		// FLIP is applied after SWAP_XY, so XOR gives correct results for
+		// all combinations (e.g. vertical game + ror = landscape again).
+	Machine->orientation = Machine->drv->rotation ^ config.system_rotation;
+
+	LOG_INFO("Orientation: driver=0x%X system=0x%X composed=0x%X",
+		Machine->drv->rotation, config.system_rotation, Machine->orientation);
 
 	// Scale stored volume byte values to the internal mixer range.
 	// Guard prevents double-scaling if run_game() is called more than once.
@@ -757,21 +866,28 @@ void run_game(void)
 	did_init_gl = true;
 	if (have_error != 0) goto fail;
 
-	// Step 5: Scanlines/raster-effect overlay texture (per-game).
-	// Must be after init_gl() (GL context) and setup_game_config() (config.raster_effect).
-	init_raster_overlay();
+	// Step 5: Initialize the raster rendering pipeline (raster games only).
+	// Creates the screen quad shader and VAO/VBO (one-time init, safe to call
+	// multiple times). Vector games use the existing FBO pipeline instead.
+	if (!(Machine->gamedrv->video_attributes & VIDEO_TYPE_VECTOR))
+	{
+		fbo_init_raster();
+		init_raster_overlay();
+	}
 
-	// Step 6: Game-native raster FBO (per-game, sized to this game's resolution).
-	// GUI driver skips this - fbo_init_raster() is a no-op safe call if Machine is valid.
-	fbo_init_raster();
-
-	// Step 7: Artwork loading and texture resize.
+	// Step 6: Legacy artwork loading and texture resize.
 	if (Machine->gamedrv->artwork)
 	{
 		load_artwork(Machine->gamedrv->artwork);
 		did_loaded_artwork = true;
 		if (have_error != 0) goto fail;
 	}
+
+	// Step 7: MAME .lay layout loading (raster games only).
+	// Searches external and local artwork paths for ZIP or loose .lay files.
+	// Falls back to a synthetic screen-only layout if nothing is found.
+	if (!(Machine->gamedrv->video_attributes & VIDEO_TYPE_VECTOR))
+		Layout_LoadForGame(Machine->gamedrv);
 
 	// Step 8: Video configuration (bezel/crop layout, scale, offsets).
 	setup_video_config();
@@ -786,18 +902,20 @@ void run_game(void)
 	did_mixer_init = true;
 	if (have_error != 0) goto fail;
 
+	// Apply initial volume settings from config. This also sets the g_lastAppliedMainVol255
 	AAE_ApplyAudioVolumesFromConfig(1);
 
+	// Load game samples from the driver's game_samples list. These are typically
+	// used for discrete sound effects or voice samples. Music is usually streamed
+	// from ROM or loaded as artwork assets instead, but there are exceptions.
 	if (Machine->gamedrv->game_samples)
 	{
 		load_samples_batch(Machine->gamedrv->game_samples);
 		if (have_error != 0) goto fail;
 	}
-
 	LOG_INFO("Samples loaded: %d", num_samples);
 
 	// Load optional ambient audio (flyback, psnoise, hiss) from samples\aae.zip.
-	// These get sequential IDs after game samples and are looked up by name.
 	load_ambient_samples();
 
 	setup_ambient(VECTOR);
@@ -816,23 +934,87 @@ void run_game(void)
 		if (have_error != 0) goto fail;
 	}
 
-	// Step 12: Timers (must exist before init_game()).
+	// Step 12: Compute game dimensions and update window aspect ratio.
+	// InitGameDimensions computes the oriented output size and pixel aspect
+	// from the driver's visible_area. ComputeGameAspect returns the display
+	// aspect considering the active layout, bezel settings, and pixel aspect.
+	//if (!(Machine->gamedrv->video_attributes & VIDEO_TYPE_VECTOR))
+	//{
+	//	Layout_InitGameDimensions();
+	//	gameAspect = Layout_ComputeGameAspect();
+	//	if (gameAspect > 0.0f)	WindowUtil_UpdateAspect(gameAspect);
+	//}
+	/*
+	else	// Reset for vector
+	{
+		const rectangle& va = Machine->drv->visible_area;
+		int scrW = (va.max_x - va.min_x + 1);
+		int scrH = (va.max_y - va.min_y + 1);
+		if (scrW > 0 && scrH > 0)
+		{
+			gameAspect = (float)scrW / (float)scrH;
+			LOG_INFO("Window aspect from driver screen: %.3f (%dx%d)",	gameAspect, scrW, scrH);
+		}
+
+		if (gameAspect > 0.0f)		{ WindowUtil_UpdateAspect(gameAspect); }
+	}
+	*/
+
+	// Step 12: Compute game dimensions and update window aspect ratio.
+	Layout_InitGameDimensions();
+	gameAspect = Layout_ComputeGameAspect();
+	{
+		bool isVector = (Machine->gamedrv->video_attributes & VIDEO_TYPE_VECTOR) != 0;
+		bool isVertical = (Machine->gamedrv->rotation & ORIENTATION_SWAP_XY) != 0;
+		bool hasBezel = (g_bezelAvailable != 0);
+		bool bezelOn = (config.bezel != 0);
+
+		// User aspect override: INI use_aspect=1 with aspect_ratio, or
+		// command-line -aspect N:M. Command line wins over INI (handled
+		// in winmain.cpp ParseCommandLineArgs). This overrides the
+		// game-computed aspect entirely.
+		// When aspectOverrideActive is false (the default), every game
+		// uses its natural computed aspect — yiear gets its narrow window,
+		// rotated games get portrait, etc. Nothing changes.
+		if (ws.aspectOverrideActive && ws.aspectRatio > 0.0f)
+		{
+			LOG_INFO("Step 12: user aspect override: %.3f (game was %.3f)", ws.aspectRatio, gameAspect);
+			gameAspect = ws.aspectRatio;
+		}
+
+		if (isVector && isVertical && hasBezel && bezelOn)
+		{
+			LOG_INFO("Step 12: vertical vector with bezel art active - keeping 4:3 window");
+		}
+		else if (gameAspect > 0.0f)
+		{
+			WindowUtil_UpdateAspect(gameAspect);
+		}
+
+		// Seed the per-frame tracker so emulator_run() can detect toggles.
+		if (isVector && isVertical && hasBezel)
+			g_lastBezelState = bezelOn ? 1 : 0;
+		else
+			g_lastBezelState = -1;  // not tracking
+	}
+
+	// Step 13: Timers (must exist before init_game()).
 	timer_init();
 	did_timer_init = true;
 	if (have_error != 0) goto fail;
 
-	// Step 13: Driver-specific initialization.
+	// Step 14: Driver-specific initialization.
 	Machine->gamedrv->init_game();
 	did_driver_init = true;
 	if (have_error != 0) goto fail;
 
-	// Step 14: CPU configuration.
+	// Step 15: CPU configuration.
 	init_cpu_config();
 	if (have_error != 0) goto fail;
 
 	hiscoreloaded = 0;
 
-	// Step 15: NVRAM load. (from M.A.M.E. TM)
+	// Step 16: NVRAM load.
 	if (Machine->gamedrv->nvram_handler)
 	{
 		void* f = osd_fopen(Machine->gamedrv->name, 0, OSD_FILETYPE_NVRAM, 0);
@@ -843,7 +1025,7 @@ void run_game(void)
 
 	LOG_INFO("--- Game init complete ---");
 
-	// Step 16: Apply process/thread priority for game performance.
+	// Step 17: Apply process/thread priority for game performance.
 	SetGamePerformanceMode(config);
 
 	game_loaded_sentinel = true;
@@ -1212,6 +1394,46 @@ void emulator_run()
 	if (done)
 		return;
 
+	//-------------------- THIS IS A TEMPORARY HACK - REMOVE WHEN MOVED TO LAYOUTS FOR VECTOR --------------------------
+	// --- Vertical vector bezel toggle detection ---
+	// When the player toggles bezel art on/off for a vertical vector game,
+	// the window needs to resize: 4:3 with bezel, thinner without.
+	// Raster games handle this through the layout system; vector games
+	// don't use layouts yet, so we detect the change here per-frame.
+	{
+		bool isVector = (Machine->gamedrv->video_attributes & VIDEO_TYPE_VECTOR) != 0;
+		bool isVertical = (Machine->gamedrv->rotation & ORIENTATION_SWAP_XY) != 0;
+
+		if (isVector && isVertical && g_bezelAvailable)
+		{
+			int curBezel = (config.bezel != 0) ? 1 : 0;
+			if (g_lastBezelState != curBezel)
+			{
+				g_lastBezelState = curBezel;
+
+				// If user has an aspect override active, always use that
+				auto& ws = GetWindowSetup();
+				if (ws.aspectOverrideActive && ws.aspectRatio > 0.0f)
+				{
+					WindowUtil_UpdateAspect(ws.aspectRatio);
+				}
+				else if (curBezel)
+				{
+					// Bezel turned ON -> force 4:3
+					WindowUtil_UpdateAspect(4.0f / 3.0f);
+				}
+				else
+				{
+					// Bezel turned OFF -> use natural game aspect
+					float aspect = Layout_ComputeGameAspect();
+					if (aspect > 0.0f)
+						WindowUtil_UpdateAspect(aspect);
+				}
+			}
+		}
+	}
+	//-------------------- THIS IS A TEMPORARY HACK - REMOVE WHEN MOVED TO LAYOUTS FOR VECTOR --------------------------
+
 	static double s_lastAudioMs = 0.0;
 	const double  nowMs = TimerGetTimeMS();
 
@@ -1226,11 +1448,13 @@ void emulator_run()
 	if (hiscoreloaded == 0 && Machine->gamedrv->hiscore_load)
 		hiscoreloaded = (*Machine->gamedrv->hiscore_load)();
 
-	// Prepare the FBO render target for this frame.
+	// For vector games, prepare the FBO render target before CPU/game runs.
+	// Raster games also call set_render() now -- it binds fbo_raster with the
+	// correct Y-down ortho so raster_poly_update() lands in the right place.
 	set_render();
 
-	// ALWAYS poll inputs so that Hotkeys, the Menu, and Joystick mapping
-	// continue to function even when the game is paused!
+	// ALWAYS poll inputs so that hotkeys, menu, and joystick mapping
+	// continue to function even when the game is paused.
 	if (have_error == 0)
 	{
 		update_input_ports();
@@ -1247,8 +1471,11 @@ void emulator_run()
 			Machine->gamedrv->run_game();
 	}
 
-	// Complete rendering and composite to the screen.
+	// Complete rendering and present to the screen.
+	// render() dispatches to final_render() (vector) or final_render_raster()
+	// (raster) which handles all compositing, artwork, overlays, and the blit.
 	render();
+
 	inputport_vblank_end();
 	cpu_clear_cyclecount_eof();
 
@@ -1370,12 +1597,22 @@ void emulator_init(int argc, char** argv)
 	}
 
 	// Handle global utility options that do not require a game to be loaded.
+	// These run before any game is selected and exit immediately when done.
 	for (int i = 1; i < argc; ++i)
 	{
-		if (argv[i] && std::strcmp(argv[i], "-listromstotext") == 0)
+		if (!argv[i]) continue;
+
+		if (std::strcmp(argv[i], "-listromstotext") == 0)
 		{
 			LOG_INFO("Listing all ROMs to text...");
 			list_all_roms();
+			exit(0);
+		}
+
+		if (std::strcmp(argv[i], "-listallgames") == 0)
+		{
+			LOG_INFO("Listing all games to text...");
+			list_all_games();
 			exit(0);
 		}
 	}
@@ -1417,7 +1654,7 @@ void emulator_init(int argc, char** argv)
 
 	// gameparse() handles -listroms, -verifyroms, resolution overrides, etc.
 	// Only call it when a matching game was found and extra args were provided.
-	if (started_from_command_line && argc > (gameArgIndex + 1))
+	if (started_from_command_line)
 		gameparse(argc, argv);
 
 	frames = 0;
@@ -1527,6 +1764,13 @@ void emulator_stop_game()
 	fbo_shutdown_raster();
 	destroy_all_textures();
 
+	// 6.5) Layout teardown (new artwork system).
+	Layout_FreeTextures(g_layoutData);
+	g_layoutData.elements.clear();
+	g_layoutData.views.clear();
+	g_activeView = nullptr;
+	g_layoutEnabled = false;
+
 	// 7) Frame limiter (per-game because FPS varies between games).
 	FrameLimiter::Shutdown();
 
@@ -1536,6 +1780,9 @@ void emulator_stop_game()
 
 	// 9) Clear all per-game globals.
 	ResetPerGameRuntimeState();
+	// Layout state is per-game; reset for the next game.
+	g_activeView = nullptr;
+	g_layoutEnabled = false;
 
 	LOG_INFO("Game stopped.");
 }

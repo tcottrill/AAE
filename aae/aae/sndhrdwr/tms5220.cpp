@@ -662,7 +662,7 @@ int tms5220_sh_start(struct TMS5220interface* iinterface)
 		return 1;
 	}
 
-	stream_start(2, 2, 16, Machine->gamedrv->fps);
+	stream_start(7, 7, 16, Machine->gamedrv->fps);
 
 	tms5220_reset();
 	tms5220_set_irq(iinterface->irq);
@@ -678,7 +678,7 @@ void tms5220_sh_stop(void)
 {
 	LOG_INFO("Stopping and cleaning up TMS5220 Audio");
 
-	stream_stop(2, 2);
+	stream_stop(7, 7);
 	if (buffer) free(buffer);
 	buffer = nullptr;
 	if (stream_buffer) free(stream_buffer);
@@ -704,7 +704,7 @@ void tms5220_sh_update(void)
 	// (swap to cubic for higher quality)
 	cubic_interpolation_16(buffer, buffer_len, &stream_buffer, &stream_buffer_len, resample_ratio);
 
-	stream_update(2, stream_buffer);
+	stream_update(7, stream_buffer);
 }
 
 // Legacy I/O entrypoints

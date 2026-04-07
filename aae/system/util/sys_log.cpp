@@ -118,6 +118,7 @@ static WORD levelToColor(Log::Level level) {
 	switch (level) {
 	case Log::Level::Debug: return FOREGROUND_INTENSITY;
 	case Log::Level::Info:  return FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY; // bright white
+	case Log::Level::Warn:  return FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_INTENSITY; // bright yellow
 	case Log::Level::Error: return FOREGROUND_RED | FOREGROUND_INTENSITY;
 	default:                return FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE;
 	}
@@ -148,6 +149,7 @@ namespace {
 		switch (level) {
 		case Log::Level::Debug: return "DEBUG";
 		case Log::Level::Info:  return "INFO ";
+		case Log::Level::Warn:  return "WARN ";
 		case Log::Level::Error: return "ERROR";
 		default:                return "UNKNOWN";
 		}

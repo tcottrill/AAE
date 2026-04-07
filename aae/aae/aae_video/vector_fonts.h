@@ -1,13 +1,13 @@
-// -----------------------------------------------------------------------------
+// ----
 // This file is part of the AAE (Another Arcade Emulator) project.
 // This Code is copyright (C) 2025/2026 Tim Cottrill and released
 // under the GNU GPL v3 or later. See the accompanying source files for full
 // license details.
-// -----------------------------------------------------------------------------
+// ----
 
-// ============================================================================
+// ====
 // vector_fonts.h
-// ============================================================================
+// ====
 #ifndef VECTOR_FONTS_H
 #define VECTOR_FONTS_H
 
@@ -15,25 +15,25 @@
 #include <cstddef>   // offsetof
 #include <vector>
 
-#include "glcode.h"
+#include "opengl_renderer.h"
 #include "colordefs.h"
 #include "MathUtils.h" // aae::math::{vec2, mat4, ortho, value_ptr}
 
-// -----------------------------------------------------------------------------
+// ----
 // Description
 // VectorFont is a singleton class for rendering vector-based bitmap fonts
-// using OpenGL 2.1 shaders. It supports batched text rendering with per-vertex
+// using OpenGL 3.3 shaders. It supports batched text rendering with per-vertex
 // color, deferred drawing, and 360-degree rotation.
 //
 // Integration:
 // - Uses aae::math for vector/matrix operations.
-// -----------------------------------------------------------------------------
+// ----
 
-// -----------------------------------------------------------------------------
+// ----
 // VFVertex
 // Vertex structure for VectorFont.
 // Includes position (vec2), rotation origin (vec2), angle, and packed color.
-// -----------------------------------------------------------------------------
+// ----
 struct VFVertex
 {
     aae::math::vec2 pos;     // Current vertex position (unrotated world coords)
@@ -42,9 +42,9 @@ struct VFVertex
     rgb_t color;             // Packed RGBA
 };
 
-// -----------------------------------------------------------------------------
+// ----
 // VectorFont Singleton Class
-// -----------------------------------------------------------------------------
+// ----
 class VectorFont
 {
 public:
@@ -54,7 +54,11 @@ public:
     // Initialization / Cleanup
     void Initialize(int width, int height);
     void Resize(int width, int height);
-
+    // When true (default), Begin() sets glViewport to screenWidth x screenHeight.
+    // When false, Begin() leaves the viewport alone so the caller controls it.
+    // Use SetOverrideViewport(false) when rendering overlays onto the backbuffer
+    // at full window size while keeping the 1024x768 coordinate space.
+    void SetOverrideViewport(bool enable);
     // Rendering control
     void Begin();
     void End();
@@ -95,7 +99,10 @@ private:
 private:
     // OpenGL state
     GLuint vfProgram = 0;
+    GLuint vfVAO = 0;
     GLuint vfVBO = 0;
+    GLuint quadVAO = 0;
+    GLuint quadVBO = 0;
 
     GLint attrPos = -1;
     GLint attrColor = -1;
@@ -106,6 +113,7 @@ private:
     aae::math::mat4 proj; // Using aae::math::mat4
     int screenWidth = 0;
     int screenHeight = 0;
+    bool overrideViewport = true;
 
     // Accumulated vertex data
     std::vector<VFVertex> drawVerts;

@@ -7,10 +7,6 @@
 #include "namco.h"
 #include "timer.h"
 
-ART_START(galaga_art)
-ART_LOAD("galaga.zip", "galaga_bezel.png", ART_TEX, 3)
-ART_END
-
 static const char* galaga_samples[] =
 {
 	"galaga.zip",
@@ -39,23 +35,14 @@ static struct namco_interface namco_interface =
 	245			// playback volume
 };
 
-/// // Video Settings
-const rectangle visible_area =
-{
- 0,
- 224,
- 0,
- 288
-};
-
 static struct GfxLayout charlayout =
 {
 	8,8,           /* 8*8 characters */
-	128,           /* 128 characters */
+	128, /* 128 characters */
 	2,             /* 2 bits per pixel */
 	{ 0, 4 },       /* the two bitplanes for 4 pixels are packed into one byte */
-	{ 7 * 8, 6 * 8, 5 * 8, 4 * 8, 3 * 8, 2 * 8, 1 * 8, 0 * 8 },   /* characters are rotated 90 degrees */
 	{ 8 * 8 + 0, 8 * 8 + 1, 8 * 8 + 2, 8 * 8 + 3, 0, 1, 2, 3 },   /* bits are packed in groups of four */
+	{ 0 * 8, 1 * 8, 2 * 8, 3 * 8, 4 * 8, 5 * 8, 6 * 8, 7 * 8 },   /* characters are rotated 90 degrees */
 	16 * 8           /* every char takes 16 bytes */
 };
 
@@ -65,10 +52,10 @@ static struct GfxLayout spritelayout =
 	128,            /* 128 sprites */
 	2,              /* 2 bits per pixel */
 	{ 0, 4 },       /* the two bitplanes for 4 pixels are packed into one byte */
-	{ 39 * 8, 38 * 8, 37 * 8, 36 * 8, 35 * 8, 34 * 8, 33 * 8, 32 * 8,
-			7 * 8, 6 * 8, 5 * 8, 4 * 8, 3 * 8, 2 * 8, 1 * 8, 0 * 8 },
 	{ 0, 1, 2, 3, 8 * 8, 8 * 8 + 1, 8 * 8 + 2, 8 * 8 + 3, 16 * 8 + 0, 16 * 8 + 1, 16 * 8 + 2, 16 * 8 + 3,
 			24 * 8 + 0, 24 * 8 + 1, 24 * 8 + 2, 24 * 8 + 3 },
+	{ 0 * 8, 1 * 8, 2 * 8, 3 * 8, 4 * 8, 5 * 8, 6 * 8, 7 * 8,
+			32 * 8, 33 * 8, 34 * 8, 35 * 8, 36 * 8, 37 * 8, 38 * 8, 39 * 8 },
 	64 * 8    /* every sprite takes 64 bytes */
 };
 
@@ -142,12 +129,13 @@ static void draw_stars(struct osd_bitmap* bitmap, const struct rectangle* clipre
 	/* draw the stars */
 
 	/* $a005 controls the stars ON/OFF */
+
 	if (galaga_starcontrol[5] == 1)
 	{
-		//int bpen;
+		int bpen;
 		int star_cntr;
 		int set_a, set_b;
-		//bpen = Machine->pens[0x1f];
+		bpen = Machine->pens[0x1f];
 
 		/* two sets of stars controlled by these bits */
 
@@ -160,15 +148,14 @@ static void draw_stars(struct osd_bitmap* bitmap, const struct rectangle* clipre
 
 			if ((set_a == star_seed_tab[star_cntr].set) || (set_b == star_seed_tab[star_cntr].set))
 			{
-				y = (star_seed_tab[star_cntr].x + stars_scrollx) % 256 + 16;
-				x = (112 + star_seed_tab[star_cntr].y + stars_scrolly) % 256;
+				x = (star_seed_tab[star_cntr].x + stars_scrollx) % 256 + 16;
+				y = (112 + star_seed_tab[star_cntr].y + stars_scrolly) % 256;
 				/* 112 is a tweak to get alignment about perfect */
 
-				if (x >= 0 && x <= 224)
+				if (y >= Machine->visible_area.min_y && y <= Machine->visible_area.max_y)
 				{
-					if (read_pixel(bitmap, x, y) == 0) {
+					if (read_pixel(bitmap, x, y) == 0)
 						plot_pixel(bitmap, x, y, STARS_COLOR_BASE + star_seed_tab[star_cntr].col);
-					}
 				}
 			}
 		}
@@ -182,7 +169,7 @@ static void draw_stars(struct osd_bitmap* bitmap, const struct rectangle* clipre
   the main emulation engine.
 
 ***************************************************************************/
-void galaga_vh_screenrefresh()//struct osd_bitmap* bitmap)
+static void galaga_vh_screenrefresh(struct osd_bitmap* bitmap, int full_refresh)
 {
 	//LOG_INFO("Video Update started");
 
@@ -200,88 +187,83 @@ void galaga_vh_screenrefresh()//struct osd_bitmap* bitmap)
 		// don't map to a screen position. We don't check that here, however: range
 		// checking is performed by drawgfx().
 
-		mx = offs / 32;
-		my = offs % 32;
+		mx = offs % 32;
+		my = offs / 32;
 
-		if (mx <= 1)
+		if (my <= 1)
 		{
-			sx = 29 - my;
-			sy = mx + 34;
+			sx = my + 34;
+			sy = mx - 2;
 		}
-		else if (mx >= 30)
+		else if (my >= 30)
 		{
-			sx = 29 - my;
-			sy = mx - 30;
+			sx = my - 30;
+			sy = mx - 2;
 		}
 		else
 		{
-			sx = 29 - mx;
-			sy = my + 2;
+			sx = mx + 2;
+			sy = my - 2;
 		}
 
-		drawgfx(tmpbitmap, Machine->gfx[0], videoram[offs], colorram[offs] & 0x3f, 0, 0, 8 * sx, 8 * sy, &visible_area, TRANSPARENCY_NONE, 0);
-	}
-
-	osd_clearbitmap(main_bitmap);
-
-	// Draw the sprites.
-
-	for (offs = 0; offs < spriteram_size; offs += 2)
-	{
-		if ((spriteram_3[offs + 1] & 2) == 0)
+		if (flip_screen)
 		{
-			int code, color, flipx, flipy, sx, sy, sfa, sfb;
+			sx = 35 - sx;
+			sy = 27 - sy;
+		}
 
-			code = spriteram[offs];
-			color = spriteram[offs + 1];
-			flipx = spriteram_3[offs] & 2;
-			flipy = spriteram_3[offs] & 1;
-			sx = spriteram_2[offs] - 16;
-			sy = spriteram_2[offs + 1] - 40 + 0x100 * (spriteram_3[offs + 1] & 1);
-			sfa = 0;
-			sfb = 16;
+		drawgfx(tmpbitmap, Machine->gfx[0], videoram[offs], colorram[offs] & 0x3f, 0, 0, 8 * sx, 8 * sy, &Machine->drv->visible_area, TRANSPARENCY_NONE, 0);
+	}
 
-			if (flipscreen)
-			{
-				flipx = !flipx;
-				flipy = !flipy;
-				sfa = 16;
-				sfb = 0;
-			}
-			//LOG_INFO("3");
+	osd_clearbitmap(bitmap);
 
-			if ((spriteram_3[offs] & 0x0c) == 0x0c)		// double width, double height
+	for (offs = 0; offs < 0x80; offs += 2)
+	{
+		static int gfx_offs[2][2] =
+		{
+			{ 0, 1 },
+			{ 2, 3 }
+		};
+		int sprite = spriteram[offs] & 0x7f;
+		int color = spriteram[offs + 1] & 0x3f;
+		int sx = spriteram_2[offs + 1] - 40 + 0x100 * (spriteram_3[offs + 1] & 3);
+		int sy = 256 - spriteram_2[offs] + 1;	// sprites are buffered and delayed by one scanline
+		int flipx = (spriteram_3[offs] & 0x01);
+		int flipy = (spriteram_3[offs] & 0x02) >> 1;
+		int sizex = (spriteram_3[offs] & 0x04) >> 2;
+		int sizey = (spriteram_3[offs] & 0x08) >> 3;
+		int x, y;
+
+		if (flip_screen)
+		{
+			flipx ^= 1;
+			flipy ^= 1;
+		}
+
+		sy -= 16 * sizey;
+		sy = (sy & 0xff) - 32;	// fix wraparound
+
+		for (y = 0; y <= sizey; y++)
+		{
+			for (x = 0; x <= sizex; x++)
 			{
-				drawgfx(main_bitmap, Machine->gfx[1], code + 2, color, flipx, flipy, sx + sfa, sy + sfa, &visible_area, TRANSPARENCY_COLOR, 0);
-				drawgfx(main_bitmap, Machine->gfx[1], code, color, flipx, flipy, sx + sfb, sy + sfa, &visible_area, TRANSPARENCY_COLOR, 0);
-				drawgfx(main_bitmap, Machine->gfx[1], code + 3, color, flipx, flipy, sx + sfa, sy + sfb, &visible_area, TRANSPARENCY_COLOR, 0);
-				drawgfx(main_bitmap, Machine->gfx[1], code + 1, color, flipx, flipy, sx + sfb, sy + sfb, &visible_area, TRANSPARENCY_COLOR, 0);
+				drawgfx(bitmap, Machine->gfx[1],
+					sprite + gfx_offs[y ^ (sizey * flipy)][x ^ (sizex * flipx)],
+					color,
+					flipx, flipy,
+					sx + 16 * x, sy + 16 * y,
+					&Machine->drv->visible_area, TRANSPARENCY_COLOR, 0x0);
 			}
-			else if (spriteram_3[offs] & 8)	// double width
-			{
-				drawgfx(main_bitmap, Machine->gfx[1], code + 2, color, flipx, flipy, sx + sfa, sy, &Machine->drv->visible_area, TRANSPARENCY_COLOR, 0);
-				drawgfx(main_bitmap, Machine->gfx[1], code, color, flipx, flipy, sx + sfb, sy, &Machine->drv->visible_area, TRANSPARENCY_COLOR, 0);
-			}
-			else if (spriteram_3[offs] & 4)	// double height
-			{
-				drawgfx(main_bitmap, Machine->gfx[1], code, color, flipx, flipy, sx, sy + sfa, &Machine->drv->visible_area, TRANSPARENCY_COLOR, 0);
-				drawgfx(main_bitmap, Machine->gfx[1], code + 1, color, flipx, flipy, sx, sy + sfb, &Machine->drv->visible_area, TRANSPARENCY_COLOR, 0);
-			}
-			else { drawgfx(main_bitmap, Machine->gfx[1], code, color, flipx, flipy, sx, sy, &visible_area, TRANSPARENCY_COLOR, 0); } // normal TRANSPARENCY_THROUGH
 		}
 	}
-	copybitmap(main_bitmap, tmpbitmap, 0, 0, 0, 0, &visible_area, TRANSPARENCY_COLOR, 0);
-	draw_stars(main_bitmap, &Machine->drv->visible_area);
+
+	copybitmap(bitmap, tmpbitmap, 0, 0, 0, 0, &Machine->drv->visible_area, TRANSPARENCY_COLOR, 0);
+	draw_stars(bitmap, &Machine->drv->visible_area);
 }
 
 int galaga_vh_start(void)
 {
 	videoram_size = 0x400;
-	LOG_INFO("TEMP BITMAP 1 CREATED");
-	//if ((tmpbitmap1 = osd_create_bitmap(32 * 8, 32 * 8)) == 0)	return 1;
-	//if ((tmpbitmap1 = osd_create_bitmap(Machine->drv->screen_width, Machine->drv->screen_height)) == 0)
-		//return 1;
-
 	return generic_vh_start();
 }
 
@@ -292,7 +274,7 @@ int galaga_vh_start(void)
 ***************************************************************************/
 void galaga_vh_stop(void)
 {
-	//osd_free_bitmap(tmpbitmap1);
+	generic_vh_stop();
 }
 
 /***************************************************************************
@@ -571,8 +553,7 @@ READ_HANDLER(galagasharer)
 
 void run_galaga()
 {
-	watchdog_reset_w(0, 0, 0);
-	galaga_vh_screenrefresh();
+	galaga_vh_screenrefresh(Machine->scrbitmap, 0);
 	namco_sh_update();
 }
 
@@ -594,7 +575,7 @@ MEM_ADDR(0x0000, 0x3fff, NO_WRITE)
 MEM_ADDR(0x6820, 0x6820, galaga_interrupt_enable_1_w)
 MEM_ADDR(0x6822, 0x6822, galaga_interrupt_enable_3_w)
 MEM_ADDR(0x6823, 0x6823, galagahaltw)
-MEM_ADDR(0x6830, 0x6830, NO_WRITE)
+MEM_ADDR(0x6830, 0x6830, watchdog_reset_w)
 MEM_ADDR(0x7000, 0x700f, galaga_customio_data_w)
 MEM_ADDR(0x7100, 0x7100, galaga_customio_w)
 MEM_ADDR(0xa000, 0xa005, galaga_starcontrol_w)
@@ -629,10 +610,6 @@ MEM_END
 
 int init_galaga()
 {
-	//Init CPU's
-	//init_z80(GalagaCPU1_Read, GalagaCPU1_Write,GalagaPortRead, GalagaPortWrite, CPU0);
-	//init_z80(GalagaCPU2_Read, GalagaCPU2_Write, GalagaPortRead, GalagaPortWrite, CPU1);
-	//init_z80(GalagaCPU3_Read, GalagaCPU3_Write, GalagaPortRead, GalagaPortWrite, CPU2);
 	LOG_INFO("Galaga Init called");
 	//FOR RASTER, VIDEORAM POINTER, SPRITERAM POINTER NEED TO BE SET MANUALLY
 	videoram = &Machine->memory_region[CPU0][0x8000];
@@ -643,10 +620,6 @@ int init_galaga()
 	spriteram_2_size = 0x7f;
 	spriteram_3 = &Machine->memory_region[CPU0][0x9b80];
 	spriteram_3_size = 0x7f;
-	//Special CPU Interrupt Timers set manually.
-//	j = timer_set(TIME_IN_CYCLES((3125000 / 60), CPU0), CPU0,   galagaint);
-//	k = timer_set(TIME_IN_CYCLES((3125000 / 60 ), CPU1), CPU1,   galagaint2);
-//	l = timer_set(TIME_IN_CYCLES((3125000 / 60 / 2) , CPU2), CPU2, galagaint3);
 
 	//Start with CPU's 2 and 3 off.
 	cpu_enable(1, 0);
@@ -661,6 +634,7 @@ int init_galaga()
 
 void end_galaga()
 {
+	generic_vh_stop();
 }
 
 INPUT_PORTS_START(galaga)
@@ -782,7 +756,7 @@ AAE_DRIVER_ROM(rom_galaga)
 AAE_DRIVER_FUNCS(&init_galaga, &run_galaga, &end_galaga)
 AAE_DRIVER_INPUT(input_ports_galaga)
 AAE_DRIVER_SAMPLES(galaga_samples)
-AAE_DRIVER_ART(galaga_art)
+AAE_DRIVER_ART_NONE()
 
 AAE_DRIVER_CPUS(
 	// CPU0
@@ -817,12 +791,13 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_NONE_ENTRY()
 )
 
-AAE_DRIVER_VIDEO_CORE(60, VIDEO_TYPE_RASTER_COLOR | VIDEO_SUPPORTS_DIRTY, ORIENTATION_DEFAULT)
-AAE_DRIVER_SCREEN(28 * 8, 36 * 8, 0, 224 - 1, 0, 288 - 1)
+AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_RASTER_COLOR | VIDEO_SUPPORTS_DIRTY, ORIENTATION_ROTATE_90)
+AAE_DRIVER_SCREEN(36 * 8, 28 * 8, 0 * 8, 36 * 8 - 1, 0 * 8, 28 * 8 - 1)
 AAE_DRIVER_RASTER(galaga_gfxdecodeinfo, 32 + 64, 64 * 4, galaga_vh_convert_color_prom)
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0, 0)
 AAE_DRIVER_NVRAM_NONE()
+AAE_DRIVER_LAYOUT("default.lay", "Upright_Artwork")
 AAE_DRIVER_END()
 
 AAE_REGISTER_DRIVER(drv_galaga)

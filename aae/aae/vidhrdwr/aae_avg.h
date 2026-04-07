@@ -98,15 +98,20 @@ extern unsigned char vec_ram[0x8000];
 extern UINT8* tempest_colorram;
 extern UINT16 quantum_colorram[0x20];
 extern UINT16* quantum_vectorram;
+extern UINT8* mhavoc_colorram;
 
 int vector_timer(int deltax, int deltay);
-//void set_new_frame();
 int avg_init(int type);
-void AVG_RUN();
+void avg_video_update(void);
 int avg_go();
 int avg_clear();
 int avg_check();
 
+// Flipping and X/Y swap - called by Tempest / Quantum drivers
+void avg_set_flip_x(int flip);
+void avg_set_flip_y(int flip);
+void avg_apply_flipping_and_swapping(int *x, int *y);
+void avg_add_point(int x, int y, rgb_t color, int intensity);
 
 void advdvg_go_w(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite);
 void avgdvg_go_word_w(UINT32 address, UINT16 data, struct MemoryWriteWord* psMemWrite);

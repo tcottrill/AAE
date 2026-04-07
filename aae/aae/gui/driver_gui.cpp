@@ -2,6 +2,37 @@
 // driver_gui.cpp - AAE Frontend GUI Driver
 //============================================================================
 
+// -----------------------------------------------------------------------------
+// Game Engine Alpha - Generic Module
+// Generic component or utility file for the Game Engine Alpha project. This
+// file may contain helpers, shared utilities, or subsystems that integrate
+// seamlessly with the engine's rendering, audio, and gameplay frameworks.
+//
+// Integration:
+//   This library is part of the **Game Engine Alpha** project and is tightly
+//   integrated with its texture management, logging, and math utility systems.
+//
+// Usage:
+//   Include this module where needed. It is designed to work as a building block
+//   for engine subsystems such as rendering, input, audio, or game logic.
+//
+// License:
+//   This program is free software: you can redistribute it and/or modify
+//   it under the terms of the GNU General Public License as published by
+//   the Free Software Foundation, either version 3 of the License, or
+//   (at your option) any later version.
+//
+//   This program is distributed in the hope that it will be useful,
+//   but WITHOUT ANY WARRANTY; without even the implied warranty of
+//   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+//   GNU General Public License for more details.
+//
+//   You should have received a copy of the GNU General Public License
+//   along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// -----------------------------------------------------------------------------
+
+
 #include <cstdlib>
 #include <cstring>
 #include <cctype>
@@ -18,6 +49,7 @@
 #include "menu.h"
 #include "game_list.h"
 #include "emu_vector_draw.h"
+#include "gl_shader.h"
 
 // =============================================================================
 // Constants
@@ -59,7 +91,7 @@ static constexpr float kTitleHueMax = 300.0f;  // End of hue range (magenta)
 
 // Flash sweep
 static constexpr float kFlashDuration = 1.0f;    // Seconds for full left-to-right sweep
-static constexpr float kFlashWidth = 0.15f;   // Width of bright band (0–1 of text width)
+static constexpr float kFlashWidth = 0.15f;   // Width of bright band (0-1 of text width)
 static constexpr int   kFlashCooldownMin = 280;     // Min frames between flashes (~3 s at 60 fps)
 static constexpr int   kFlashCooldownMax = 580;     // Max frames between flashes (~8 s)
 static constexpr int   kFlashR = 255;     // Flash color R
@@ -95,13 +127,21 @@ static constexpr int   kBlinkRateMax = 30;   // Slowest blink
 // =============================================================================
 // Starfield
 // =============================================================================
+static GLuint s_starVAO = 0;
+static GLuint s_starVBO = 0;
+
+struct StarVertex {
+	GLfloat x, y;
+	GLfloat r, g, b, a;
+};
+
 struct Star
 {
 	int x, y;
 	int r, g, b;
 	int speed;
 	int blink;          // 0 = steady, 1 = blinks
-	int blinkRate;      // Frames per half-cycle (on→off or off→on)
+	int blinkRate;      // Frames per half-cycle (on->off or off->on)
 	int blinkTimer;     // Counts down each frame; toggles visibility at 0
 	int blinkVisible;   // Current phase: 1 = visible, 0 = hidden
 };
@@ -158,31 +198,68 @@ static void moveStars(Star stars[], int count)
 
 static void drawStars(Star stars[], int count)
 {
+	static StarVertex buf[256];
+	int n = 0;
+
 	for (int i = 0; i < count; ++i)
 	{
 		if (stars[i].blink && !stars[i].blinkVisible)
 			continue;
 
-		glPointSize(3);
-		glColor4ub((GLubyte)stars[i].r, (GLubyte)stars[i].g, (GLubyte)stars[i].b, 255);
-		glBegin(GL_POINTS);
-		glVertex2i(stars[i].x, stars[i].y);
-		glEnd();
-		glPointSize(config.pointsize);
+		buf[n].x = (GLfloat)stars[i].x;
+		buf[n].y = (GLfloat)stars[i].y;
+		buf[n].r = stars[i].r / 255.0f;
+		buf[n].g = stars[i].g / 255.0f;
+		buf[n].b = stars[i].b / 255.0f;
+		buf[n].a = 1.0f;
+		n++;
 	}
+
+	if (n == 0) return;
+
+	glPointSize(3.0f);
+	bind_shader(fragStarPoint);
+
+	glBindVertexArray(s_starVAO);
+	glBindBuffer(GL_ARRAY_BUFFER, s_starVBO);
+	glBufferSubData(GL_ARRAY_BUFFER, 0, n * sizeof(StarVertex), buf);
+	glDrawArrays(GL_POINTS, 0, n);
+	glBindVertexArray(0);
+
+	unbind_shader();
+	glPointSize(config.pointsize);
+}
+
+static void initStarGPU()
+{
+	glGenVertexArrays(1, &s_starVAO);
+	glGenBuffers(1, &s_starVBO);
+
+	glBindVertexArray(s_starVAO);
+	glBindBuffer(GL_ARRAY_BUFFER, s_starVBO);
+	glBufferData(GL_ARRAY_BUFFER, kNumStars * sizeof(StarVertex), nullptr, GL_DYNAMIC_DRAW);
+
+	// Attribute 0: position (2 floats)
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(StarVertex), (void*)0);
+	// Attribute 1: color (4 floats)
+	glEnableVertexAttribArray(1);
+	glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(StarVertex), (void*)(2 * sizeof(float)));
+
+	glBindVertexArray(0);
 }
 
 // =============================================================================
 // GUI Input Ports
-//   IN0: buttons (all IPF_SPULSE — single pulse per press)
+//   IN0: buttons (all IPF_SPULSE - single pulse per press)
 //     bit0 = Select/Start (Button1 / Joy Fire1)
 //     bit1 = Exit
 //     bit2 = Menu (Button2)
 //   IN1: navigation
-//     bit0 = Up    (IPF_COUNTER — accelerating repeat for list scrolling)
-//     bit1 = Down  (IPF_COUNTER — accelerating repeat for list scrolling)
-//     bit2 = Left  (IPF_SPULSE  — single pulse for letter jumping)
-//     bit3 = Right (IPF_SPULSE  — single pulse for letter jumping)
+//     bit0 = Up    (IPF_COUNTER - accelerating repeat for list scrolling)
+//     bit1 = Down  (IPF_COUNTER - accelerating repeat for list scrolling)
+//     bit2 = Left  (IPF_SPULSE  - single pulse for letter jumping)
+//     bit3 = Right (IPF_SPULSE  - single pulse for letter jumping)
 // =============================================================================
 
 INPUT_PORTS_START(gui)
@@ -279,10 +356,10 @@ static GuiInputState s_in = {};
 // Helpers
 // =============================================================================
 
-// Convert a hue (0–360) to an RGBA color at full saturation and value.
+// Convert a hue (0-360) to an RGBA color at full saturation and value.
 static rgb_t hueToRGBA(float hue, int alpha)
 {
-	// HSV→RGB with S=1, V=1
+	// HSV->RGB with S=1, V=1
 	float h = hue;
 	while (h >= 360.0f) h -= 360.0f;
 	while (h < 0.0f)    h += 360.0f;
@@ -467,7 +544,7 @@ static void updateGlyphAnimation()
 
 	glColor4ub(255, 255, 255, 255);
 
-	// VectorFont rotation convention: subtract 90° so 0° faces right
+	// VectorFont rotation convention: subtract 90 so 0 faces right
 	VF.DrawGlyph((float)(kGlyphBaseX - texOffset * 4), (float)kGlyphY,
 		glyphId, RGB_WHITE, kGlyphScale, (float)s_rotLeft - 90.0f);
 	VF.DrawGlyph((float)(kGlyphRightX + texOffset * 4), (float)kGlyphY,
@@ -532,7 +609,7 @@ static void updateShotAnimation()
 		}
 	}
 
-	// Animation complete — request game switch
+	// Animation complete - request game switch
 	if (s_shot.textScale > kMaxScale)
 	{
 		const auto& reg = aae::AllDrivers();
@@ -570,7 +647,7 @@ static const GameNode* jumpToPrevLetterGroup(const GameNode* start)
 
 		char letter = nodeFirstLetter(n);
 		if (letter != curLetter) {
-			// Found a different letter — walk to the first entry in that letter group.
+			// Found a different letter - walk to the first entry in that letter group.
 			while (n->prev && n->prev != start) {
 				if (s_guiDriverIndex >= 0 && n->prev->gameNum == s_guiDriverIndex) break;
 				if (nodeFirstLetter(n->prev) != letter) break;
@@ -615,7 +692,7 @@ static void drawGameList()
 	VF.DrawQuad((float)(kScreenW / 2), (float)kSelectedY + kSelBarYOffset,
 		kSelBarWidth, kSelBarHeight, kSelBarColor);
 
-	// Draw the selected title (only when not in shot animation — shot draws its own)
+	// Draw the selected title (only when not in shot animation - shot draws its own)
 	if (!s_shot.active)
 		VF.PrintCentered(kSelectedY, RGB_SOFTRED, kSelectedScale, 0, s_selection->description.c_str());
 
@@ -727,6 +804,7 @@ int init_gui()
 	}
 
 	fillStars(s_stars, kNumStars);
+	initStarGPU();
 
 	// Build selection list from the driver registry.
 	{
@@ -775,6 +853,7 @@ int init_gui()
 void run_gui()
 {
 	cache_clear();
+	vector_clear_list();
 
 	moveStars(s_stars, kNumStars);
 	drawStars(s_stars, kNumStars);
@@ -796,6 +875,8 @@ void end_gui()
 {
 	LOG_INFO("EXITING GUI");
 	sample_stop(1);
+	if (s_starVAO) { glDeleteVertexArrays(1, &s_starVAO); s_starVAO = 0; }
+	if (s_starVBO) { glDeleteBuffers(1, &s_starVBO);       s_starVBO = 0; }
 }
 
 // =============================================================================
@@ -828,12 +909,13 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_NONE_ENTRY()
 )
 
-AAE_DRIVER_VIDEO_CORE(60, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT)
+AAE_DRIVER_VIDEO_CORE(60,DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT)
 AAE_DRIVER_SCREEN(1024, 768, 0, 1024, 0, 768)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0, 0)
 AAE_DRIVER_NVRAM_NONE()
+AAE_DRIVER_LAYOUT_NONE()
 AAE_DRIVER_END()
 
 AAE_REGISTER_DRIVER(gui)

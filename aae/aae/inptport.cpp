@@ -642,10 +642,23 @@ int input_port_joy(const struct InputPort* in)
 		return inputport_defaults[i].joystick;
 }
 
+void inputport_vblank_begin(void)
+{
+	int port;
+
+	for (port = 0; port < MAX_INPUT_PORTS; port++)
+	{
+		if (input_vblank[port])
+		{
+			input_port_value[port] ^= input_vblank[port];
+		}
+	}
+}
+
 void update_analog_port(int port)
 {
 	struct InputPort* in;
-	int current, delta, type, sensitivity, clip, min, max, default_value;
+	int current, delta, type, sensitivity, min, max, default_value;
 	int axis, is_stick, check_bounds;
 	int inckey, deckey, keydelta, incjoy, decjoy;
 	int player;
@@ -653,7 +666,7 @@ void update_analog_port(int port)
 	/* get input definition */
 	in = input_analog[port];
 
-	/* if we're not cheating and this is a cheat-only port, bail */
+	/* if this is a cheat-only port, bail */
 	if (in->type & IPF_CHEAT) return;
 	type = (in->type & ~IPF_MASK);
 
@@ -681,15 +694,13 @@ void update_analog_port(int port)
 	default:
 		/* Use some defaults to prevent crash */
 		axis = X_AXIS; is_stick = 0; check_bounds = 0;
-		//if (errorlog)
-		//	fprintf (errorlog,"Oops, polling non analog device in update_analog_port()????\n");
 	}
 
 	sensitivity = IP_GET_SENSITIVITY(in);
-	clip = IP_GET_CLIP(in);
 	min = IP_GET_MIN(in);
 	max = IP_GET_MAX(in);
 	default_value = in->default_value * 100 / sensitivity;
+
 	/* extremes can be either signed or unsigned */
 	if (min > max)
 	{
@@ -727,14 +738,6 @@ void update_analog_port(int port)
 	if (osd_key_pressed(inckey)) delta += keydelta;
 	if (osd_joy_pressed(decjoy)) delta -= keydelta;
 	if (osd_joy_pressed(incjoy)) delta += keydelta;
-
-	if (clip != 0)
-	{
-		if (delta * sensitivity / 100 < -clip)
-			delta = -clip * 100 / sensitivity;
-		else if (delta * sensitivity / 100 > clip)
-			delta = clip * 100 / sensitivity;
-	}
 
 	if (in->type & IPF_REVERSE) delta = -delta;
 
@@ -1056,10 +1059,11 @@ void update_input_ports(void)
 				if ((in->type & ~IPF_MASK) == IPT_VBLANK)
 				{
 					input_vblank[port] ^= in->mask;
-					input_port_value[port] ^= in->mask;
-					//if (errorlog && Machine->drv->vblank_duration == 0)
-					//	write_to_log("Warning: you are using IPT_VBLANK with vblank_duration = 0. You need to increase vblank_duration for IPT_VBLANK to work.\n");
+
+					if (Machine->drv->vblank_duration == 0)
+						LOG_DEBUG("Warning: you are using IPT_VBLANK with vblank_duration = 0. You need to increase vblank_duration for IPT_VBLANK to work.\n");
 				}
+
 				/* If it's an analog control, handle it appropriately */
 				else if (((in->type & ~IPF_MASK) > IPT_ANALOG_START)
 					&& ((in->type & ~IPF_MASK) < IPT_ANALOG_END)) /* LBO 120897 */
@@ -1255,6 +1259,8 @@ void inputport_vblank_end(void)
 {
 	int port;
 	int i;
+
+	cpu_clear_vblank();
 
 	for (port = 0; port < MAX_INPUT_PORTS; port++)
 	{

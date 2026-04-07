@@ -20,7 +20,7 @@
 #include "starwars_machine.h"
 #include "starwars_snd.h"
 #include "slapstic.h"
-#include "glcode.h"
+#include "opengl_renderer.h"
 
 #define MASTER_CLOCK (12096000)
 #define CLOCK_3KHZ  (MASTER_CLOCK / 4096)
@@ -30,7 +30,6 @@ int catch_nextBranch;
 extern int m6809_slapstic;
 
 static UINT8 nvram[0x100];
-
 
 int bank1 = 0x06000;
 int bank2 = 0x0a000;
@@ -79,28 +78,8 @@ READ_HANDLER(nvram_r)
 static struct TMS5220interface tms5220_interface =
 {
 	640000,     // clock speed (80*samplerate) */
-	255,        // volume */
+	240,        // volume */
 	0           // IRQ handler */
-};
-
-static struct POKEYinterface pokey_interface =
-{
-	4,			/* 4 chips */
-	1512000,	/* 1.5 MHz? */
-	255,    /* volume */
-	6,//POKEY_DEFAULT_GAIN/4,
-	USE_CLIP,
-	/* The 8 pot handlers */
-	{ 0, 0, 0, 0 },
-	{ 0, 0, 0, 0 },
-	{ 0, 0, 0, 0 },
-	{ 0, 0, 0, 0 },
-	{ 0, 0, 0, 0 },
-	{ 0, 0, 0, 0 },
-	{ 0, 0, 0, 0 },
-	{ 0, 0, 0, 0 },
-	/* The allpot handler */
-	{ 0, 0, 0, 0 },
 };
 
 ////////////////////////////////////////////////////////////// SLAPSTIC
@@ -201,9 +180,9 @@ static int esb_setopbase(int address)
 
 void esb_init_machine(void)
 {
-  /* Reset all the banks */
-  //starwars_out_w(4, 0);
-  //init_swmathbox();
+	/* Reset all the banks */
+	//starwars_out_w(4, 0);
+	//init_swmathbox();
 }
 
 /// ////////////////////////////////////////////////////////////////////////
@@ -362,8 +341,7 @@ int init_esb()
 
 	swmathbox_init();
 	avg_start_starwars();
-	// TODO: This is temporary, figure it out.
-	config.gain = 0;
+	
 
 	return 0;
 }
@@ -374,12 +352,12 @@ int init_starwars(void)
 	starwars_sh_start();
 	swmathbox_init();
 	avg_start_starwars();
+	LOG_INFO("Star Wars Init Completed");
 	return 0;
 }
 
-
 INPUT_PORTS_START(starwars)
-PORT_START("IN0")//// IN0 
+PORT_START("IN0")//// IN0
 PORT_BIT(0x01, IP_ACTIVE_LOW, IPT_COIN2)
 PORT_BIT(0x02, IP_ACTIVE_LOW, IPT_COIN1)
 PORT_BIT(0x04, IP_ACTIVE_LOW, IPT_COIN3)
@@ -391,18 +369,18 @@ PORT_BIT(0x20, IP_ACTIVE_HIGH, IPT_UNUSED)
 PORT_BIT(0x40, IP_ACTIVE_LOW, IPT_START2)
 PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_START1)
 
-PORT_START("IN1")	// IN1 
+PORT_START("IN1")	// IN1
 PORT_BIT(0x03, IP_ACTIVE_HIGH, IPT_UNUSED)
 PORT_BITX(0x04, IP_ACTIVE_LOW, IPT_SERVICE, "Diagnostic Step", OSD_KEY_F1, IP_JOY_NONE)
 PORT_BIT(0x08, IP_ACTIVE_HIGH, IPT_UNUSED)
 PORT_BIT(0x10, IP_ACTIVE_LOW, IPT_BUTTON2)
 PORT_BIT(0x20, IP_ACTIVE_LOW, IPT_BUTTON1)
-// Bit 6 is MATH_RUN - see machine/starwars.c 
+// Bit 6 is MATH_RUN - see machine/starwars.c
 PORT_BIT(0x40, IP_ACTIVE_HIGH, IPT_UNUSED)
-// Bit 7 is VG_HALT - see machine/starwars.c 
+// Bit 7 is VG_HALT - see machine/starwars.c
 PORT_BIT(0x80, IP_ACTIVE_HIGH, IPT_UNUSED)
 
-PORT_START("DSW")	// DSW0 
+PORT_START("DSW")	// DSW0
 PORT_DIPNAME(0x03, 0x00, "Shields")
 PORT_DIPSETTING(0x00, "6")
 PORT_DIPSETTING(0x01, "7")
@@ -425,7 +403,7 @@ PORT_DIPNAME(0x80, 0x80, "Game Mode")
 PORT_DIPSETTING(0x00, "Freeze")
 PORT_DIPSETTING(0x80, "Normal")
 
-PORT_START("DS1")// DSW1 
+PORT_START("DS1")// DSW1
 PORT_DIPNAME(0x03, 0x02, "Credits/Coin")
 PORT_DIPSETTING(0x00, "Free Play")
 PORT_DIPSETTING(0x01, "2")
@@ -433,13 +411,12 @@ PORT_DIPSETTING(0x02, "1")
 PORT_DIPSETTING(0x03, "1/2")
 PORT_BIT(0xfc, IP_ACTIVE_HIGH, IPT_UNKNOWN)
 
-PORT_START("IN4")	// IN4 
-PORT_ANALOG(0xff, 0x80, IPT_AD_STICK_Y, 70, 30, 0, 0, 255)
+PORT_START("IN4")	// IN4
+PORT_ANALOG(0xff, 0x80, IPT_AD_STICK_Y, 70, 30, 0, 255)
 
-PORT_START("IN5")	// IN5 
-PORT_ANALOG(0xff, 0x80, IPT_AD_STICK_X, 50, 30, 0, 0, 255)
+PORT_START("IN5")	// IN5
+PORT_ANALOG(0xff, 0x80, IPT_AD_STICK_X, 50, 30, 0, 255)
 INPUT_PORTS_END
-
 
 INPUT_PORTS_START(esb)
 PORT_START("IN0")	/* IN0 */
@@ -510,13 +487,11 @@ PORT_DIPSETTING(0x80, "5 gives 1")
 PORT_DIPSETTING(0xe0, "None")
 /* 0xc0 and 0x00 None */
 PORT_START("IN4")	/* IN4 */
-PORT_ANALOG(0xff, 0x80, IPT_AD_STICK_Y, 70, 30, 0, 0, 255)
+PORT_ANALOG(0xff, 0x80, IPT_AD_STICK_Y, 70, 30, 0, 255)
 
-PORT_START("IN5")	// IN5 
-PORT_ANALOG(0xff, 0x80, IPT_AD_STICK_X, 50, 30, 0, 0, 255)
+PORT_START("IN5")	// IN5
+PORT_ANALOG(0xff, 0x80, IPT_AD_STICK_X, 50, 30, 0, 255)
 INPUT_PORTS_END
-
-
 
 ROM_START(starwars)
 ROM_REGION(0x14000, REGION_CPU1, 0)
@@ -575,7 +550,6 @@ ROM_REGION(0x100, REGION_PROMS, 0)
 ROM_LOAD("136021-109.4b", 0x0000, 0x0100, CRC(82fc3eb2) SHA1(184231c7baef598294860a7d2b8a23798c5c7da6)) /* AVG PROM */
 ROM_END
 
-
 ROM_START(esb)
 ROM_REGION(0x22000, REGION_CPU1, 0)
 ROM_LOAD("136031.111", 0x03000, 0x1000, CRC(b1f9bd12) SHA1(76f15395c9fdcd80dd241307a377031a1f44e150))    // 3000-3fff is 4k vector rom
@@ -608,7 +582,6 @@ ROM_LOAD("136031.107", 0x0c00, 0x0400, CRC(afbf6e01) SHA1(0a6438e6c106d98e5d67a0
 ROM_REGION(0x100, REGION_PROMS, 0)
 ROM_LOAD("136021-109.4b", 0x0000, 0x0100, CRC(82fc3eb2) SHA1(184231c7baef598294860a7d2b8a23798c5c7da6)) /* AVG PROM */
 ROM_END
-
 
 // Star Wars (Revision 2)
 AAE_DRIVER_BEGIN(drv_starwars, "starwars", "Star Wars (Revision 2)")
@@ -653,12 +626,14 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_NONE_ENTRY()
 )
 
-AAE_DRIVER_VIDEO_CORE(30, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT)
-AAE_DRIVER_SCREEN(1024, 768, 0, 240, 0, 280)
+AAE_DRIVER_VIDEO_CORE(30, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT)
+//AAE_DRIVER_SCREEN(1024, 768, 0, 285, 0, 280)
+AAE_DRIVER_SCREEN(1024, 768, 0, 250, 0, 280)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x000, 0x3000)
 AAE_DRIVER_NVRAM(starwars_nvram_handler)
+AAE_DRIVER_LAYOUT_NONE()
 AAE_DRIVER_END()
 
 // Star Wars (Revision 1)
@@ -686,12 +661,15 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_NONE_ENTRY()
 )
 
-AAE_DRIVER_VIDEO_CORE(30, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT)
-AAE_DRIVER_SCREEN(1024, 768, 0, 240, 0, 280)
+AAE_DRIVER_VIDEO_CORE(30, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT)
+//AAE_DRIVER_SCREEN(1024, 768, 0, 285, 0, 280)
+AAE_DRIVER_SCREEN(1024, 768, 0, 250, 0, 280)
+
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x0, 0x3000)
 AAE_DRIVER_NVRAM(starwars_nvram_handler)
+AAE_DRIVER_LAYOUT_NONE()
 AAE_DRIVER_END()
 
 // Star Wars: Empire Strike Back
@@ -719,12 +697,15 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_NONE_ENTRY()
 )
 
-AAE_DRIVER_VIDEO_CORE(30, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT)
-AAE_DRIVER_SCREEN(1024, 768, 0, 240, 0, 280)
+AAE_DRIVER_VIDEO_CORE(30, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT)
+//AAE_DRIVER_SCREEN(1024, 768, 0, 281, 0, 280)
+AAE_DRIVER_SCREEN(1024, 768, 0, 250, 0, 280)
+
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x000, 0x3000)
-AAE_DRIVER_NVRAM_NONE()
+AAE_DRIVER_NVRAM(starwars_nvram_handler)
+AAE_DRIVER_LAYOUT_NONE()
 AAE_DRIVER_END()
 
 AAE_REGISTER_DRIVER(drv_starwars)

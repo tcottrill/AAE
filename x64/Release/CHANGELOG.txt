@@ -1,0 +1,352 @@
+Changelog:
+
+Started:
+Code cleanup, moving to a more sane directory structure
+Build the last revision of allegro 4 and added it to the build. (This should get completely removed at a later date)
+Updated/Changed the input with code from an early revision of MAME. This fixes many of the biggest play issues. Some fixes still need to be implemented.
+Added the 6809 CPU Class
+Started updating and fixing the CPU code and adding the timer code.
+Updating all the sound code. 
+
+TBD: 08092024
+Add back in StarWars. (done)
+Fix the remaing issues with input. (done)
+Finish fixing the menu and config options code. 
+Add in more driver settings so my newer code will work with what's here.
+Add in my 6502 CPU Class. (done) (Requires the cpu_control code to be rewritten, and this will require all the atari drivers to completely reworked.)
+Add in the Z80 class I am still working on. (done)
+Fix emulation in Omega Race to be real. (sort of done)
+Add in the later MAME (TM) avg vector code. This requires just about all the Atari drivers to be completely rebuilt mame style, and the cpu_control code to be completely changed. See Star Wars above. This is a major cleanup effort and will take a while.
+Add in the correct widescreen support class, cleanup the gl code. 
+Update all ROM files to match current MAME naming.
+
+Completed 09272024
+All Inputs should now be corrected. 
+All Cinematronics games should be working correctly with correct dipswitches.
+Started Cleanup and Reorganization of just about every file. 
+Working on cleaning up and merging the current atart avg/dvg video code. 
+Just fixed the last glaring issue in my Z80 core, with that core the Sega decryption issues are fixed. TBD
+
+Completed 10192024
+Swapped out the 6502 Assembly code for my new 6502 core, one step closer to a 64 bit compile.
+Starwars is back in and working correctly with a really old style emulation ala M.A.M.E(TM)
+All games should be working now with correct input, even if you can't save the settings. 
+Omega Race is fixed, if not emulated correctly, at least it plays well.
+Next is to fix the menu system, fix some pokey sound issues and start chipping away at the more insane spagetti code.
+The GUI is still an issue, with at least two memory leaks.
+
+
+10/27/24 to 11/28/24
+
+Major Fix: found and corrected a serious memory leak in the graphics core, this has been plaguing the emulator for so many years, fixes many small and (large) crashes and issues. error_tex[2], not error_tex[1]! 
+
+Redid the PPC code on the Retrocade CMZ80 core, invalidated the PPC on Interrupt, this fixed all the decryption on the SegaG80 games. So that's what "Spurious Interrupts" means in the M.A.M.E(tm) driver. :(
+Redid most of the SegaG80 driver, all games should be working correctly. 
+More Z80 changes, they are in their own changelog.
+Changed the 6502 cpu core back to mame style address handling, had to touch most of the drivers to fix issues. Fixed a pokey addressing issue with Black Widow, did a lot of cleanup on Major Havoc. 
+Started cleanup of the graphics code, what a mess. Lots more to do. 
+General cleanup everywhere, touched nearly every driver. 
+Added back Star Wars, had to use very old M.A.M.E.(TM) driver code to get Luke to speak every time, I have this running in AAE2014 with modern drivers in other, cycle accurate timing code, and it still doesn't work there 100% either. I'll come back to it, at least it's working now, if not very accurate. Added different CPU handling to accomidate this. 
+Now that the games are working mostly correctly, it's back to cleanup, consolidation, improving accuracy, and getting the menu system back working for sound and video. 
+
+11/28/24 to 12/01/24
+
+Cleaned up and added a new AY8910 core, added it to Omega Race and added nvram handling to all drivers that support it. Omega Race should be at least fairly accurate now.  
+Reorganized all the OpenGl code in an attempt to make some sense of it. Added the Mushai 68000 core to maybe use with Quantum.
+
+12/01/2024
+
+Corrected the artwork sizing issues, this is the first build I would consider "mostly working" since 2007.
+
+12/08/24
+
+Made "major" changes to the Major Havoc driver, fixed nvram saving, added Major Havoc - The Promised End v1.01 to the driver. Will further split out everything and refine at a later date. Going back to graphics fixes.
+
+12/11/24
+
+Corrected the Menu System, first pass. Sound and Graphics Menus are working again, more or less. Still more work to do here with individual game configuration saves. Moved everything around to make it look at least a little bit better. 
+
+12/12/14 Increased rendering time with another FBO, but it worked around a major rendering flaw allowing me to composite the menu and FPS onto the screen without doing any crazy scaling everywhere to compensate for screen sizes.
+The menu system still needs work, I recommend not touching it except on the gui screen.
+
+12/17/24 Many config and Menu changes, hopefully all the menu issues are resolved. 
+
+12/21/24 Fixed main volume being too low, made too many changes to the menu system to list. More config changes to fix sound and graphics setting issues. Now the screen resolution can only be set in the gui, or by manually editing the config file.
+Adjusted sound in asteroids and asteroids deluxe. Added clipping to tempest to stop the lines from going around the bezel in certain resolutions. Made a few graphic code changes to prep for more changes. Moved the game specific INI files to their own folder. 
+
+12/22/24 Squashed the last rendering bug affecting the vertical games and battlezone. At this point, I think all the rendering is fixed, time to add a couple of features before completely changing the cpu and atari vector rendering.
+
+12/26/24
+Cleaned up video tick counting Code, adjusted AVG timing code for Major Havoc, this seems to clear up the issue with not being able to put in the secret code in mhavocpe. Or i'm way off base and I've made things worse, I don't have a real major havoc pcb to test with.
+
+12/27/24
+Found a ridiclous bug with counting the total cycles executed in the 6502 core. It was consistently underreporting the number of executed cycles, throwing everything off. Corrected.  
+
+12/28/24 More Major Havoc cleanups. At this point I'll call it "Meh". It works pretty well, it's only a couple of percent off now as far as cycle emulation compared to the real board. To get it near perfect is going to require a complete rewrite, working on it. 
+Cleaned up and removed dead code from cpu_control.h, trying to narrow down requirements for said rewrite.
+
+2/5/24
+Major Rewrite phase 1. Consolidated DVG code, moved everything to the mame style cpu/timing code, added mostly cycle accurate timing to most drivers. 
+Started adding code to forklift to a complete newer core codeset. 
+
+2/6/25
+Fixed DVG issues. Fixed remaining watchdog issues. Hacked back in pause function.
+
+2/12/25 Minor tweak to black widow size. Changed the zip loader to match other code I have written.
+
+2/17/25
+Merged the last of the old code out and cleaned up the Major Havoc driver. 
+Misc code updates and bug fixes. Added a flag to disable the code profiling to keep the log from filling up. 
+Input bugfix will require some tweaking on the analog sensitivity. This is an issue I am still battling in the new allegro free version with Rawinput.
+Fixed most remaining volume issues. 
+
+2/18/25
+Changed the sampling in BattleZone to work better with my new sound code. 
+
+2/22/25
+Started updating the Cinematronics Driver, fixed drone sounds for star castle and others. Major re-org of the code.
+
+2/25/25
+Replaced some of the horribly depricated opengl rendering code with slightly less depricated rendering code. No increase in rendering speed though. Bummer.
+
+2/28/25 
+Updated rendering code, added newer M.A.M.E. Rendering code as a placeholder 
+
+3/10/25 
+Minor fix to Major Havoc, added missing mhavoc_sh_stop to the end code to fix audio issue.
+
+3/11/25 - 4/3/25
+Removed all Allegro code, added my GL Windowing code, updated and fixed my Rawinput code and the Menu code I am using from M.A.M.E..
+Extended and used my mixing code with Xaudio2-2.9 for audio.
+Removed the Gui as it just wasn't working anymore with the new code. It might return later. I'll upload my custom arcade cabinet frontend in another repository.
+Corrected a directory issue with running from a 3rd party frontend in a different directory. 
+The only thing keeping this emulator 32 bit is the 68000 series asm core, and that will get changed out at a later date. 
+Made multiple audio corrections and biugfixes to the changes in the audio2 mixercode, it still needs quite a bit of work but it's functional.
+Corrected and verified that I can build for Windows 7-11 with no issues. Define WIN7BUILD to build for Windows 7 32/64 bit.
+ 
+4/4/25
+Removed unneeded sample code. Created a popup error message if you try to run the program without specifying a rom name. 
+
+4/8/25
+Discovered the LED code for the Atari games was completedly our of wack. 
+Cleaned up, updated and tested all led code. Switched to later M.A.M.E (TM) code and added code to guarantee all leds are off when starting or exiting a game. 
+
+4/26/25
+Removed the Starscream 68000 core and switched to a VERY old version of MUSASHI with the help of some code from Charles McDonald. This has been implemented for Quantum, I'll add aztarac in a future release once I refactor the memory handlers into something decent. 
+Now all code releases from this point will be a 64 bit build. This was my biggest milestone for this code, and I'm very happy to have reached it.
+
+4/27/25
+Cleaned up and rewrote the quantum driver. Completed the 68000 integration and wrote handler code like the rest of the cpu's and added it in. Ready to write and add a Aztarac driver now.  
+
+5/2/25
+Biggest re-write of the vector code to date. Completely rewrote the Atari AVG code, finished cleanup of the 68000 code, fixes to sound and video in all cinematronics games, fixed audio in Lunar Lander and Battlezone. Added skeleton Aztarac driver. Added vector clipping, removed the bezels from the vertical games, improving the video quality. Changed the color vector rendering, should be a slight improvement. 
+Fixed volume handling in my mixer code. 
+
+5/3/25 Small cleanups. TODO: Massive starwars rewrite to add ESB support., Finish adding Aztarac, fix broken menu items, fix command line arguments, add vertical game screen rotation. 
+
+5/4/25. Misc cleanups, Freq fixes for my Mixercode, added a debug option, added a finished Aztarac Driver. 
+
+5/5/25. Started ROM loading cleanup and code move and rewrite. Added MAME style CRC and SHA-1 handling, just for kicks. Started adding current MAME rom definitions to bring the games up to date.
+
+5/6/25 Finished updating all roms, rewrote the rom loader, added sha-1 and crc checksum, not using MAME code. Checked every single game, updated the video and inputs on all games. I never want to play asterock again. 
+
+5/8/25 Added ROM_CONTINUE Support to the load_roms function, updated ROM_RELOAD to allow for multiples, Updated the 6809, added MAME slapstic code, added an Empire Strikes Back driver to the Starwars driver but it's not working quite yet. 
+Added support for a couple of more alternate romsets to the Black Widow driver. 
+Readded the command line option -listromstotext to write a file of all supported games and romsets
+Fixed missing freeing of CPU instances and allocated memory regions, as well as sound memory.
+Added sample_get_freq(int chanid) to fix battlezone motor speed when using multiple emulator sound frequencies. 
+
+5/19/25. Spent way to many days working out the slapstic encryption in ESB, and I still don't understand MAME rom banking. 
+Rewrote the starwars driver, rewrote the 6809 cpu code from John Butler, twice. Figured out how the slapstic encryption works, but I still don't know how MAME figures out what to send to the slapstic code, but I worked around it. I'll clean it up on the next release, but it's finally working. 
+
+5/20/25
+ESB was the last game I ever wanted to emulate, and I am super happy to have finally made it here. It seems like a very small accomplishment, but having rewritten both the z80 and 6502 cpus, figured out all the games, written all my own window, graphic, sound and (mostly) input code, I feel like I've accomplished a lot, even with riding on the back of all the work done by so many people for MAME.
+What's next? Back to working on other things, then maybe a major rendering upgrade to newer technology, we'll see. That's after re-adding the gui and fixing all the missing command line functionality and various remaining bugs.! 
+
+5/20 - 5/26/25
+Added old MAME 3.1 Raster Video code. 
+Added new drivers for Midway Space Invaders and Space Invaders Deluxe just to have something that uses the 8080 Cpu. 
+More code cleanups, tried to remove the use of "gamenum" everywhere. 
+Reintroduced the Ambient Sound sample, fixed multiple Menu bugs in the process.
+You can now see changes again to linewidth and pointsize dynamically. 
+Cleaned up the Major Havoc driver to remove the gamenum use. 
+Started working on a cleanup and rewrite of all the legacy opengl code, working to move OpenGL 4/ shaders only. I've been reviewing Vulcan, but the amount of work right now exceeds my freetime. Maybe someday. 
+I hope to clean up enough eventually to be able to re-add the gui. 
+
+5/27/25
+Added cocktail screen flipping support to Asteroids and Asteroids Deluxe.
+
+5/28/25 Fixed the issue where the emulator would crash if the required samples were not found. Added the ability to unthrottle the emulation (F10)
+
+6/21/25 Took a small break. 
+Bought a ChatGPT subscription. 
+Rewrote the logging, ini file and emulation timer code. 
+Made major changes to the RawInput Code. 
+Started reorganizing the legacy rendering code, cleaned up a bit. I have broken up each section of the graphics and are working on upgrading them to modern openGL. The final version will use MAME lay files for artwork. 
+Shader code has been moved to a new header, the old files are no longer required and have been removed. The Shader code has also been updated.
+Started cleaning up the main win32 functions.
+I've been fighting with the LEDs on the Ultimarc I-PAC, so I'm also trying out new LED code. 
+Minor cleanup on the ay-8910 emulation. 
+
+6/22/25 Updated to the latest Audio Engine code. Verified against several games, should be ok. Uploaded latest Mixer code to GitHub
+
+6/23/25-6/24/25 C++ 17 is now required for this code to compile, FYI. Reworked most of the config, updated and moved the config options out of the main header. Still more work to do, focused on fixing menu system issues. 
+Cleaned up and updated the emu_vector_draw code, I think there is a slight graphics improvement on the color games. Still slowly trudging toward opengl4, but there are a ton of other things to fix first, now that I have at least of most of the games emulated more or less correctly. 
+
+6/25/25
+Got sidetracked working on the pokey code. Merged the MAME pokeyintf code with the pokey, made a few changes and added more or less cycle accurate random generation similar but not the same as MAME.Verified that it passes the 150,000 point test in Tempest. Removed all the tempest protection hacks. 
+Added a new cpu function, get_exact_cycles(int cpu_num) which gives the exact cycle count for that frame/cpu.
+
+6/26/25
+Continued Opengl Updates and cleanup. Going to release a new version since there have been so many quality changes since the last release.
+
+6/27/25
+More cleanup, no more GL_QUADS. Removed all traces of the GUI, it's most likely not coming back. 
+
+6/29/25. Broke Windows 7 compatibility, this got me: https://github.com/microsoft/STL/releases/tag/vs-2022-17.10 on std::mutex. Did a lot of testing, nothing seems to work except creating your own win32 code and ditching std::mutex, so for now added the preprocessor _DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR as a workaround.
+Fixed code crashing on Windows 7 when running without command line options.
+
+6/30/25
+Minor 6502 and z80 fixes, all documented functions should finally be emulated correctly. I don't know how I can keep doing optimizations and my 6502 code is about 20% slower.
+Removed more old code.Gui and old font code are gone. Removed all traces of gamenum[0] which was the gui. 
+
+7/26/25
+Life gets in the way sometime, but a major revamp of the win32 code coming soon. Removed the last bit of depricated opengl code with the tetrect.cpp code., moved it to a shader. Minor work on texturing but really prepping for a major code change, coming soonish.
+
+7/30/25
+Swapped out all the win32 code from my in progress game engine project. Swapped to unicode handling (incomplete). With the new engine it should be easy enough to add back the GUI. New command line options, I need to write a quick document but I haven't quite gotten to that yet. A lot of things are still in flux, I am still testing ways to render the lines and points with opengl4 shaders. 
+Added ALT-TAB switching from window to fullscreen. Reorganized the game code and separated it from the engine/system code. These changes pave the way for better graphics handling. Changed up the licensing a bit (still in progress) and made sure to try to document correctly all M.A.M.E code as copyright the team and the original authors. Next is still cleanup then a major effort to get rid of video.ini and correctly add (with non-MAME code) the MAME style layout handling. 
+
+8/1/25 In an effort to speed up the code as much as possible, I moved all audio and input processing to their own threads. Does it make a difference? I'm still running tests but it looks good so far. Also cleaned up a bit of the mixer code. 
+
+8/2/25 Fixed the most important part of the graphics code, the PAUSED screen. :)
+Finally defaulted the Coin in and START 1 and Start 2 to Xbox controls, eventually I'll make that configurable.LSB and RSB for Coin, MENU and VEIW to start.  Your config files will need to be deleted to get the updates.
+
+8/3/25 Replaced the depricated code in render_blur_image_fbo3()
+
+8/16/25. More massive changes. Fixed cascading menu exit since the new winmain change. The biggest change is fixing a greater then 10 year old bug with frame timing calcuation and throttling. I changed to default double buffering and no vsync and a new frame timer, so games SHOULD not tear and they seem to run MUCH smoother, so that is the new default until its proven otherwise to be a bad idea. Started doing some minor menu updates.
+Added my new audio engine and updated the TMS audio code to a new cubic resampler, no more crackling and most important, no more memory leaks on either the cubic or linear resampler. Updated the ay8910 code also, it should sound a little bit closer to what it does in MAME with new filters and volume table. 
+
+8/17/25 - 9/1/25
+Where to start. Reverted the vsync change above, it was a bad idea. 
+MAJOR REORGANIZATION: Completely changed every driver by adding a driver registry. Now the code has been reorganised to look like classic MAME with inputports and roms and samples and art in each driver, as well as a local driver config. This looks like MAME, but it's not the classic "C" style, this is a c++ object with no driver.c configuration required. To remove support for a driver, just remove the driver, no other changes needed. 
+Removed gamedriver.h, gamekeys.h, gameroms.h and gamesamp.h
+Made major changes to cpu_interface.cpp. Fixed several timing bugs as well as rewrote cpu_run. get_exact_cyclecount(), now actually returns the current cycle count for the cpu selected, like it's supposed to, go figure. Added 3 new functions, aae_cpu_getscanlinecycles, aae_cpu_getcurrentcycles_in_frame and aae_cpu_getscanline. These mimic the scanline functions in MAME, and were required for depthcharge to work correctly. Corrected some code issues in cpu_z80.cpp,see z80_cpu.h for more details. 
+Added raster drivers for pacman, mspacman, bosconian, galaga, galaxian (sound needs more work) depthcharge and missile command (not working yet)
+Corrected raster_poly_update to really honor the driver rotation. 
+Broke the games in Tempest Menu (Clay Cowgill) , still working on a fix. Made changes to the alpha channel and intensity handling on the AVG games, this fixed a few issues and added more. Still tweaking the settings but mostly affects battlezone and gravitar. 
+I'm getting closer to just forgetting everything and implementing the modern MAME vector engine by Mathis Rosenhauer.
+Added Raster Effects shadow mask shader and associated config setting, but it's slow and the whole graphics chain needs reworked.
+9/2/25
+Added Warlords driver. Still have not implemented vblank, but i'll get there, it's on the backburner. The raster games are just for fun anyways.
+Fixed missing  ret = EXIT_FAILURE's in the rom loaded, emulator now exits correctly if a rom file is not found or corrupt.
+9/4/25 
+Added the equivalent of MAME timer_alloc and timer_adjust to timer.cpp. Added a very simplified version of the MAME palette functions, for palette_recalc. But it didn't help the issues with the driver that has frustrated me for the last two days. Going back to verctor fixes. 
+9/5/25-9/7/25 
+Did another big pass at the vector rendering. This time I fixed multiple issues, all vectors should look better on must screens, at least with tweaking. The asteroid and asteroid deluxe shots still look like crap, I'll get that corrected on the next rendering update. 
+Added an non-mame oki6295 adpcm chip emulation after 7 iterations and 2 complete restarts with ChatGPT. mhavocpe no longer requires separate samples, it's all decoded from the roms properly now. Added a new low pass filter to use, I'll use it in more code in the future. Made another pass at the LFO code in galaxian, it's better but still not 100%. I'm going to dig out my galaxian pcb and put it in my pacman cocktail to compare to for the final adjustments. I think I have all the sound code fixes out of my system, next is to finish the driver updates, centralize the CPU setup ala MAME, and then move on to the complete rendering overhaul. 
+Temporarily reinstated the deprecated code in render_blur_image_fbo3() to help with the asteroids texture issue. 
+Expect the graphics overhaul to add correct scaling and rotation, as well as a new set of menu options for maximum number of knobs to tune for  every graphics piece. 
+9/8/25 Finished the CPU code cutover to MAME style, still cleaning up.
+9/9/25 Corrected Tempest Menu (Clay Cowgill)
+9/12/25 Finally fixed the DD and FD opcodes in the Z80, now finally fully passes zexdoc. 
+
+1/1/26 to 3/2/26
+Finally got back to work on this, changes are below:
+@@ All code updated have been assisted with Claude Code, ChatGPT and Gemini
+- Updated and validated my 6502 core, now passes all tests, all undocumented opcodes supported and validated. Supports MOS 6502, CMOS 65C02, 6510 and 2A03 chips all in the same file. Tested with NES, PET and Commodore 64 Emulators. 
+- Fixed a bug in the Timer code accumulation error in timer_update.
+- updated the scanline code in cpu_control.cpp, still not happy with it. TBD
+- added scanline support to the raster rendering, it's not great, I'll move to shaders when I get time.
+- Massive overhaul validation and various updates of the joystick, rawinput and xaudio code. Input and Audio code are multithreaded, XAudio now supports stereo streaming, all resampling and filters.
+- Major rewrite of the Menu code, now much cleaner and easier to support on the backend.
+- Updates to the vector font rendering, It's now a proportional font with all scaling and rotation support, with special characters for graphics.
+- Mostly dissected and unraveled the crazy rendering code. It still needs major work, Never EVER let the needs of 2 games dictate the entire rendering scheme. Removed the artwork from the main shader rendering, everything is in layers now, more bezels and art is supported. Some games are still being rendered upside down on the wrong part of the 1024x1024 texture causing overlay issues, this will be corrected by moving to a fully resizable, rotate-able, scalable image rendering system that will replace the current system, eventually. I already have it working with my space invaders example emulator, new version still to be uploaded to GitHub.
+- Xinput Joystick 0 (Xbox Controller) can now control the entire game, including menu navigation and the GUI. Help file coming with controls. These do not match MAME, I am working on my own input handling and remapping system for other programs that I am using for the Menu and GUI.
+- Readded a more appropriate vector GUI now that I have all the rendering and memory leaks corrected (fingers crossed). 
+- Corrected the sound resampling in the namco games, they sounds much better now at 44100, perfect if you force the games to 96000 though.
+- Got frustrated and added overengineered, multithreaded keyboard led support so my ultimarc keyboard controller could pick them up correctly. 
+- TODO: I have not tested any of these changes in Windows 7 yet, I may have broken several things. With Tiny 11, I have moved to that for my arcade machines so it's more of a pain to test. 
+- Completely remapped and corrected every game in video.ini, so it needs to be replaced. And soon I hope to do away with it altogether.
+- Revamped the game sorting and listing code, it no longer requires the legacy driver code, removed. 
+- Touched about all the main files, cleaned up where I could but a deeper review is needed, coming by summer.
+- Todo still, update all the rendering to opengl 4, I have a complete Vulcan rendering system done, but not sure if/when it will make it in.
+- Add a confirm to exit popup with the new joystick code. To disable for arcade cabinets, edit aae.ini and set confirm_exit=0
+3/3/26 Added multi monitor support, -monitor 1/2/etc.
+
+3/4/26 Adjusted and added MAME's Z80fmly code for z80 daisy chaining. This allowed me to add preliminary emulation for Cosmic Chasm. This is the last vector game I am going to add. From a driver perspective for Vector Games, it's down to cleanup and enhancement. I'm done. 
+
+3/5/26 Fixed the Missile Command Driver by fixing the M6502 CPU core for the umpteenth time.
+
+3/5/26 Changed the 6502 cpu core AGAIN!!!. Stopped passing Addresses and the Opcode through the handlers by default, this fixed a number of issues with Atari Drivers. Changed the getppc code to actually work correctly. 
+Added a opfetch_through_handlers(true) so that everything could go through the handlers for games with banked roms, like Major Havoc.
+
+3/5/26 Discovered I needed a way to set this, so added a new driver macro override, AAE_CPU_ENTRY_EX which is Same as AAE_CPU_ENTRY but with a post-init callback that fires after the CPU core is created.
+Added void (*post_cpu_init)(int); to the MachineCPU for this task.
+Cleaned up the Aztarac driver to use this AAE_CPU_ENTRY_EX , along with the Major Havoc Driver. On the flip side, this speeds up all games a little bit that don't use this. 
+
+3/7/26 Fixed QB-3 in the Cinematronics driver, cleaned up the vector rendering. 
+Fixed the -listromstotext command line option and added -listallgames to generate a list of all supported games. 
+************************** ALL PRODUCTION VECTOR GAMES EMULATED (MORE OR LESS) !!!*****************
+3/9/26-3/12/26
+Added rumble support to the controller code. 
+Upgraded the shaders to OpenGL 3, (#330) and moved ALL rendering to shaders. There should be no (very) deprecated rendering code left, just slightly deprecated. Cleaned up the existing shaders to work with the current layered rendering code. 
+I still have multiple Y flipping going on, and in some cases it's flipped twice, cancelling itself out. It's still very confusing and I'm working on that. 
+Going to move the raster rendering onto it's own modern renderer since it's the easiest, we'll switch to using regular MAME (TM) .lay files then. It's going to take a bit longer to correct the vector rendering.
+Messed around with the pokey code, I moved each pokey to it's own audio stream, redid the pokey random code but even playing tempest for 2 days I'm not sure the protection code is working. Adding save states is a big lift and shift to the existing code across the board. 
+
+3/16/26 to 3/26/26 Went absolutely wild on the raster games, things I wasn't ever planning on supporting. I spent two days just getting the scanlines correct on the resizable raster fbo. I had messed around with AI generating MAME layout support, I added in that code, went round and round with about 30 AI revision so ended up getting mad and writing a bunch of code manually to use my resizable fbo code and to get the blending working correctly. Most code is in mame_layout.cpp. Current MAME Artwork is now supported on the Raster Games.
+Removed all raster config from video.ini
+Corrected the sound in the Millipede Driver. 
+AI assisted added a Mappy Driver, MOTOS doesn't work for some reason.
+AI Assisted added a JR Pacman Driver
+AI Assisted added a Super Pacman Driver, PACNPAL runs WAAYYY too fast. 
+AI Assisted added an Xevious Driver, it kinda sucks, I'll get back to it. 
+Used Mike Chambers 8080 CPU as a base and AI assist added a new 8085A driver with SOD callback capability for Pleiads shot sample triggering. (Missing from MAME)
+AI Assist added the mame .36 tmx36xx sound code for phoenix.
+AI Assist added a Phoenix/Pleiads driver. 
+IN process: Adding support for samples from the Epson 7910 Melody IC from my original pleiads pcb.I have the clean recordings of the samples but I can't figure out where they are triggered.
+TODO: ADD Rotation SUPPORT to the raster chain, now that the games are rendering more or less correctly. 
+
+3/26/26 to 4/7/26.
+Added Rotation to the vector subsystem, cleaned up a number of drivers and generally moved almost everything to the mame_vector.cpp code for intermediate rendering and scaling. The Asteroids drivers cannot be moved to that, the scaling code makes the dot crawl terrible and it's the reason this emulator started in the first place. 
+Added new samples from my original board to Pleiads but I am having trouble figuring out where the tunes start and end without disassembling the roms. I'll get there eventually. 
+Added rotation to the Raster Drivers, and added aspect correction throughout. Added many more command line options that I'll get around to documenting eventually. Aspect correction on the raster games needs work, and I need new LAY files just for me for the invaders/invaders deluxe drivers, I am not happy with the MAME ones. 
+Moved 99.9% of the rendering to OpenGL 3.3 compatible shaders over a period of 3 days.
+ 
+Finally time for a release. I have cleaned up the video.ini, most games are now rendering in their native orientation and MAME designed size and aspect ratio. I went through some major hoops to get Warlords working correctly in BW upright with artwork and color cocktail with scanlines. I believe this is pretty much every game I want to support. Other then cleanups and fixes, this is about it. 
+It took me over 2 years to clean up this code and make it, well, unfortunately, in the end it's just a MAME clone. 
+It has different Audio, input, timing , rendering, cpu cores, cpu handling, back end driver configuration from MAME, but at it's core, it's MAME. So that makes this a MAME derivative 100%. Oh Well, I am (mostly) happy with it, so here it is. I'm taking a break now. 
+
+
+
+
+
+
+
+
+
+
+ 
+
+
+ 
+
+
+
+
+ 
+
+
+
+
+
+ 
+
+ 
+
+
+ 
+
+
+

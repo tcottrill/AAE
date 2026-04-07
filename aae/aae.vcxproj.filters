@@ -103,22 +103,13 @@
     <ClCompile Include="aae\sndhrdwr\tms5220.cpp">
       <Filter>Source Files\aae\sndhrdwr</Filter>
     </ClCompile>
-    <ClCompile Include="aae\sndhrdwr\aae_pokey.cpp">
-      <Filter>Source Files\aae\sndhrdwr</Filter>
-    </ClCompile>
     <ClCompile Include="aae\sndhrdwr\ay8910.cpp">
       <Filter>Source Files\aae\sndhrdwr</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\vidhrdwr\cohen_sutherland_clipping.cpp">
-      <Filter>Source Files\aae\vidhrdwr</Filter>
     </ClCompile>
     <ClCompile Include="aae\vidhrdwr\emu_vector_draw.cpp">
       <Filter>Source Files\aae\vidhrdwr</Filter>
     </ClCompile>
     <ClCompile Include="aae\vidhrdwr\fast_poly.cpp">
-      <Filter>Source Files\aae\vidhrdwr</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\vidhrdwr\mhavoc_custom_video.cpp">
       <Filter>Source Files\aae\vidhrdwr</Filter>
     </ClCompile>
     <ClCompile Include="aae\vidhrdwr\old_mame_raster.cpp">
@@ -171,12 +162,6 @@
     </ClCompile>
     <ClCompile Include="aae\config.cpp">
       <Filter>Source Files\aae</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\aae_video\tiled_effect.cpp">
-      <Filter>Source Files\aae\aae_video</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\aae_video\glcode.cpp">
-      <Filter>Source Files\aae\aae_video</Filter>
     </ClCompile>
     <ClCompile Include="aae\vidhrdwr\osd_video.cpp">
       <Filter>Source Files\aae\vidhrdwr</Filter>
@@ -306,6 +291,72 @@
     </ClCompile>
     <ClCompile Include="system\input\rawinput.cpp">
       <Filter>Source Files\system\input</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\drivers\cchasm.cpp">
+      <Filter>Source Files\aae\drivers</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\cpu_code\z80fmly.cpp">
+      <Filter>Source Files\aae\cpu_code</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\sndhrdwr\aae_pokey.cpp">
+      <Filter>Source Files\aae\sndhrdwr</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\vidhrdwr\mappy_video.cpp">
+      <Filter>Source Files\aae\vidhrdwr</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\drivers\mappy.cpp">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\sndhrdwr\dac.cpp">
+      <Filter>Source Files\aae\sndhrdwr</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\sndhrdwr\sn76477.cpp">
+      <Filter>Source Files\aae\sndhrdwr</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\drivers\superpac.cpp">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\drivers\jrpacman.cpp">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\drivers\circus.cpp">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\aae_video\mame_layout.cpp">
+      <Filter>Source Files\aae\aae_video</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\cpu_code\cpu_i8085.cpp">
+      <Filter>Source Files\aae\cpu_code</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\drivers\phoenix.cpp">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\sndhrdwr\tms36xx.cpp">
+      <Filter>Source Files\aae\sndhrdwr</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\sndhrdwr\phoenix_audio.cpp">
+      <Filter>Source Files\aae\sndhrdwr</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\sndhrdwr\pleiads_audio.cpp">
+      <Filter>Source Files\aae\sndhrdwr</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\drivers\xevious.cpp">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\vidhrdwr\xevious_video.cpp">
+      <Filter>Source Files\aae\vidhrdwr</Filter>
+    </ClCompile>
+    <ClCompile Include="system\3rdparty\tinyxml2.cpp">
+      <Filter>Source Files\system\3rdparty</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\drivers\digdug.cpp">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\aae_video\opengl_renderer.cpp">
+      <Filter>Source Files\aae\aae_video</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\aae_video\mame_vector.cpp">
+      <Filter>Source Files\aae\aae_video</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -453,22 +504,13 @@
     <ClInclude Include="aae\sndhrdwr\tms5220.h">
       <Filter>Source Files\aae\sndhrdwr</Filter>
     </ClInclude>
-    <ClInclude Include="aae\sndhrdwr\aae_pokey.h">
-      <Filter>Source Files\aae\sndhrdwr</Filter>
-    </ClInclude>
     <ClInclude Include="aae\sndhrdwr\ay8910.h">
       <Filter>Source Files\aae\sndhrdwr</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\vidhrdwr\cohen_sutherland_clipping.h">
-      <Filter>Source Files\aae\vidhrdwr</Filter>
     </ClInclude>
     <ClInclude Include="aae\vidhrdwr\emu_vector_draw.h">
       <Filter>Source Files\aae\vidhrdwr</Filter>
     </ClInclude>
     <ClInclude Include="aae\vidhrdwr\fast_poly.h">
-      <Filter>Source Files\aae\vidhrdwr</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\vidhrdwr\mhavoc_custom_video.h">
       <Filter>Source Files\aae\vidhrdwr</Filter>
     </ClInclude>
     <ClInclude Include="aae\vidhrdwr\old_mame_raster.h">
@@ -493,9 +535,6 @@
       <Filter>Source Files\aae\aae_video</Filter>
     </ClInclude>
     <ClInclude Include="aae\aae_video\gl_fbo.h">
-      <Filter>Source Files\aae\aae_video</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\aae_video\glcode.h">
       <Filter>Source Files\aae\aae_video</Filter>
     </ClInclude>
     <ClInclude Include="aae\aae_video\gl_texturing.h">
@@ -545,9 +584,6 @@
     </ClInclude>
     <ClInclude Include="system\util\FrameLimiter.h">
       <Filter>Source Files\system\util</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\aae_video\tiled_effect.h">
-      <Filter>Source Files\aae\aae_video</Filter>
     </ClInclude>
     <ClInclude Include="aae\vidhrdwr\osd_video.h">
       <Filter>Source Files\aae\vidhrdwr</Filter>
@@ -686,6 +722,72 @@
     </ClInclude>
     <ClInclude Include="system\input\rawinput.h">
       <Filter>Source Files\system\input</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\drivers\cchasm.h">
+      <Filter>Source Files\aae\drivers</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\cpu_code\z80fmly.h">
+      <Filter>Source Files\aae\cpu_code</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\sndhrdwr\aae_pokey.h">
+      <Filter>Source Files\aae\sndhrdwr</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\drivers\mappy.h">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\sndhrdwr\dac.h">
+      <Filter>Source Files\aae\sndhrdwr</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\sndhrdwr\sn76477.h">
+      <Filter>Source Files\aae\sndhrdwr</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\drivers\superpac.h">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\drivers\jrpacman.h">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\drivers\circus.h">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\aae_video\mame_layout.h">
+      <Filter>Source Files\aae\aae_video</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\cpu_code\cpu_i8085.h">
+      <Filter>Source Files\aae\cpu_code</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\drivers\phoenix.h">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\sndhrdwr\tms36xx.h">
+      <Filter>Source Files\aae\sndhrdwr</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\sndhrdwr\phoenix_audio.h">
+      <Filter>Source Files\aae\sndhrdwr</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\sndhrdwr\pleiads_audio.h">
+      <Filter>Source Files\aae\sndhrdwr</Filter>
+    </ClInclude>
+    <ClInclude Include="system\3rdparty\stb_truetype.h">
+      <Filter>Source Files\system\3rdparty</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\aae_video\winfont_gl4.h">
+      <Filter>Source Files\aae\aae_video</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\drivers\xevious.h">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClInclude>
+    <ClInclude Include="system\3rdparty\tinyxml2.h">
+      <Filter>Source Files\system\3rdparty</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\drivers\digdug.h">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\aae_video\opengl_renderer.h">
+      <Filter>Source Files\aae\aae_video</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\aae_video\mame_vector.h">
+      <Filter>Source Files\aae\aae_video</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

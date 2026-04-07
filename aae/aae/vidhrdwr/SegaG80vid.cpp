@@ -14,7 +14,7 @@
 #include "segag80.h"
 #include <math.h>
 #include "aae_mame_driver.h"
-#include "cohen_sutherland_clipping.h"
+
 
 #pragma warning( disable : 4996 4244)
 
@@ -56,10 +56,12 @@ static int e1y;
 int sega_vh_start(int r)
 {
 	//LOG_INFO("Sega Video Init");
-	sega_rotate = r;
+	sega_rotate = 0;
 
-	min_x = 512;
-	min_y = 512;
+	//min_x = 512;
+	//min_y = 512;
+	min_x = Machine->drv->visible_area.min_x;
+	min_y = Machine->drv->visible_area.min_y; 
 	return 0;
 }
 
@@ -159,15 +161,15 @@ int adjust_xy(int rawx, int rawy, int* outx, int* outy)
 
 void sega_vh_update(void)
 {
-	//LOG_INFO("Starting Sega Video Update");
-	//sintable = Machine->memory_region[REGION_PROMS];
 	sintable = memory_region(REGION_PROMS);
 	double total_time = 1.0 / (double)IRQ_CLOCK;
 	UINT16 symaddr = 0;
 	int sx = 0;
 	int sy = 0;
 
+	vector_clear_list();
 	cache_clear();
+
 	/* Loop until we run out of time. */
 	while (total_time > 0)
 	{
@@ -192,7 +194,7 @@ void sega_vh_update(void)
 		/* up/down counters at U18/U19 during phase 3. */
 		cury = sega_vectorram[symaddr++ & 0xfff];
 
-		/* The low 3 bits of the high byte of the X coordinate are     */
+		/* The low 3 bits of the high byte of the Y coordinate are     */
 		/* latched into the up/down counter at U17 during phase 4.     */
 		/* Bit 2 of the input is latched as both bit 2 and 3. */
 		cury |= (sega_vectorram[symaddr++ & 0xfff] & 7) << 8;
@@ -228,11 +230,11 @@ void sega_vh_update(void)
 
 			/* Add a starting point to the vector list. */
 			clipped = adjust_xy(curx, cury, &adjx, &adjy);
-			if (!clipped) 
-              sx = adjx; sy = adjy;
-			//vector_add_point(adjx, adjy, 0, 0);
+			if (sega_rotate) { int tmp = adjx; adjx = adjy; adjy = tmp; }
+			if (!clipped)
+				vector_add_point(adjx, adjy, 0, 0);
 
-		/* Loop until we run out of time. */
+			/* Loop until we run out of time. */
 			while (total_time > 0)
 			{
 				UINT16 vecangle, length, deltax, deltay;
@@ -282,6 +284,7 @@ void sega_vh_update(void)
 				/* before it is used; this separates sin from cos. The output  */
 				/* from the PROM is latched into U49. */
 				deltay = sintable[((vecangle + symangle + 0x100) & 0x1ff) << 1];
+
 				/* Account for the 4 phases for data fetching. */
 				total_time -= 4.0 / (double)U51_CLOCK;
 
@@ -295,112 +298,68 @@ void sega_vh_update(void)
 
 				/* Loop over the length of the vector. */
 				clipped = adjust_xy(curx, cury, &adjx, &adjy);
+				if (sega_rotate) { int tmp = adjx; adjx = adjy; adjy = tmp; }
 				sx = adjx;
 				sy = adjy;
 				xaccum = 0;
 				yaccum = 0;
+
 				while (length-- != 0 && total_time > 0)
 				{
 					int newclip;
 
-					/* The adders at U44/U45 are used as X accumulators. The value */
-					/* from U48 is repeatedly added to itself here. The carry out  */
-					/* of bit 8 clocks the up/down counters at U15/U16/U17. Bit 7  */
-					/* of the input value from U48 is used as a carry in to round  */
-					/* small values downward and larger values upward. */
+					/* X accumulator: value from U48 is repeatedly added.      */
+					/* Carry out of bit 8 clocks the up/down counters.         */
+					/* Bit 7 of input rounds small values down, large values up. */
 					xaccum += deltax + (deltax >> 7);
 
-					/* Bit 9 of the summed angles controls the direction the up/   */
-					/* down counters at U15/U16/U17. */
 					if (((vecangle + symangle) & 0x200) == 0)
 						curx += xaccum >> 8;
 					else
 						curx -= xaccum >> 8;
 					xaccum &= 0xff;
 
-					/* The adders at U46/U47 are used as Y accumulators. The value */
-					/* from U49 is repeatedly added to itself here. The carry out  */
-					/* of bit 8 clocks the up/down counters at U18/U19/U20. Bit 7  */
-					/* of the input value from U49 is used as a carry in to round  */
-					/* small values downward and larger values upward. */
+					/* Y accumulator: value from U49 is repeatedly added.      */
+					/* Carry out of bit 8 clocks the up/down counters.         */
+					/* Bit 7 of input rounds small values down, large values up. */
 					yaccum += deltay + (deltay >> 7);
 
-					/* Bit 9 of the summed angles controls the direction the up/   */
-					/* down counters at U18/U19/U20. */
 					if (((vecangle + symangle + 0x100) & 0x200) == 0)
 						cury += yaccum >> 8;
 					else
 						cury -= yaccum >> 8;
 					yaccum &= 0xff;
 
-					/* Apply the clipping from the DAC circuit. If the values clip */
-					/* the beam is turned off, but the computations continue right */
-					/* on going. */
+					/* Apply clipping from the DAC circuit. If values clip,    */
+					/* the beam is turned off but computations continue. */
 					newclip = adjust_xy(curx, cury, &adjx, &adjy);
-					set_clip_rect(0, 100, 1536, 900); // bottom, right, top, left
+					if (sega_rotate) { int tmp = adjx; adjx = adjy; adjy = tmp; }
+
 					if (newclip != clipped)
 					{
-						/* if we're just becoming unclipped, add an empty point */
 						if (!newclip)
-						{
-							//vector_add_point(adjx, adjy, 0, 0);
-						}
-						/* otherwise, add a colored point */
-						else { //vector_add_point(adjx, adjy, color, intensity);
-							if (intensity)
-							{
-								if (sega_rotate)
-								{
-									s1x = sx >> 16;
-									s1y = sy >> 16;
-									e1x = adjx >> 16;
-									e1y = adjy >> 16;
-									int clip = ClipLine(&s1x, &s1y, &e1x, &e1y);
-									if (clip) add_line(s1y, s1x, e1y, e1x, (intensity << 4) | 0x0f, color);
-								}
-								else 
-								{
-								add_line((sx >> 16), (sy >> 16), (adjx >> 16), (adjy >> 16), (intensity << 4) | 0x0f, color);
-								}
-							}
-						}
+							vector_add_point(adjx, adjy, 0, 0);
+						else
+							vector_add_point(adjx, adjy, color, intensity);
 					}
 					clipped = newclip;
 
-					/* account for vector drawing time */
+					/* Account for vector drawing time */
 					total_time -= 1.0 / (double)VCL_CLOCK;
 				}
 
-				/* We're done; if we are not clipped, add a final point. */
-				if (!clipped) { //vector_add_point(adjx, adjy, color, intensity);
-					if (intensity)
-					{
-						if (sega_rotate)
-						{
-							s1x = sx >> 16;
-							s1y = sy >> 16;
-							e1x = adjx >> 16;
-							e1y = adjy >> 16; 
-							//set_clip_rect(0, 100, 1500, 900);
-							int clip = ClipLine(&s1x, &s1y, &e1x, &e1y);
-							if (clip) add_line(s1y, s1x, e1y, e1x, (intensity << 4) | 0x0f, color);
-                        }
-						else {
-							add_line((sx >> 16), (sy >> 16), (adjx >> 16), (adjy >> 16), (intensity << 4) | 0x0f, color);
-							
-						}
-					}
-				}
+				/* If not clipped, add a final point. */
+				if (!clipped)
+					vector_add_point(adjx, adjy, color, intensity);
 
-				/* if the high bit of the attribute is set, we break out of   */
-				/* this loop and fetch another symbol */
+				/* If high bit of attribute is set, break out and fetch */
+				/* another symbol. */
 				if (attrib & 0x80)
 					break;
 			}
 		}
 
-		/* if the high bit of the draw flag is set, we break out of this loop */
-		/* and stop the rendering altogether for this frame. */
+		/* If high bit of draw flag is set, stop rendering this frame. */
 		if (draw & 0x80)
 			break;
 	}

@@ -1,3 +1,16 @@
+//============================================================================
+// AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME
+// code, 0.29 through .90 mixed with code of my own. This emulator was
+// created solely for my amusement and learning and is provided only
+// as an archival experience.
+//
+// All MAME code used and abused in this emulator remains the copyright
+// of the dedicated people who spend countless hours creating it. All
+// MAME code should be annotated as belonging to the MAME TEAM.
+//
+// SOME CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.
+//============================================================================
+
 #include "aae_mame_driver.h"
 #include "yiear.h"
 #include "old_mame_raster.h"
@@ -647,12 +660,13 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_NONE_ENTRY()
 )
 
-AAE_DRIVER_VIDEO_CORE(60, VIDEO_TYPE_RASTER_COLOR | VIDEO_SUPPORTS_DIRTY, ORIENTATION_DEFAULT)
+AAE_DRIVER_VIDEO_CORE(60,DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_RASTER_COLOR | VIDEO_SUPPORTS_DIRTY, ORIENTATION_DEFAULT)
 AAE_DRIVER_SCREEN(256, 256, 0, 255, 16, 239 )
 AAE_DRIVER_RASTER(yiear_gfxdecodeinfo,32, 32, yiear_vh_convert_color_prom)
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0, 0)
 AAE_DRIVER_NVRAM_NONE()
+AAE_DRIVER_LAYOUT_NONE()
 AAE_DRIVER_END()
 
 AAE_REGISTER_DRIVER(drv_yiear)

@@ -2,9 +2,9 @@
 // Note, thanks to Charles McDonald for the skeleton code and how to for the 68000 emulation
 
 #include "cpu_control.h"
+#include "inptport.h"
 #include "./68000/m68k.h"
 #include "aae_mame_driver.h"
-#include "cpu_i8080.h"
 #include "ccpu.h"
 #include "timer.h"
 
@@ -18,6 +18,15 @@ static int vid_tickcount;
 static int interrupt_enable[4];
 static int interrupt_vector[4] = { 0xff,0xff,0xff,0xff };
 static int interrupt_pending[4];
+
+// ---------------------------------------------------------------------------
+// IPT_VBLANK state
+// Tracks whether we are currently inside the VBLANK period.
+// Games that use IPT_VBLANK poll an input bit to detect vertical blank.
+// Set to 1 inside cpu_run() when CPU0 reaches the vblank_start_cycle,
+// cleared by cpu_clear_vblank() called from inputport_vblank_end().
+// ---------------------------------------------------------------------------
+static int vblank = 0;
 
 static int s_lines_per_frame = 262; // VIC Dual visible raster; use 262 for NTSC-ish timing
 static int cpu_framecounter = 0; //This is strictly for the cinematronics games.
@@ -47,6 +56,7 @@ cpu_6809* m_cpu_6809[MAX_CPU];
 cpu_i8080* m_cpu_i8080[MAX_CPU];
 cpu_z80* m_cpu_z80[MAX_CPU];
 cpu_6502* m_cpu_6502[MAX_CPU];
+cpu_i8085* m_cpu_i8085[MAX_CPU];
 
 /* override OP base handler */
 static int (*setOPbasefunc)(int);
@@ -65,7 +75,7 @@ MemoryWriteWord* M_MemoryWrite16 = nullptr;
 void init_z80(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum)
 {
 	LOG_INFO("Z80 Init Started");
-	active_cpu = cpunum;
+	//active_cpu = cpunum;
 	m_cpu_z80[cpunum] = new cpu_z80(Machine->memory_region[cpunum],
 		read,
 		write,
@@ -79,7 +89,7 @@ void init_z80(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct
 
 void init8080(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum)
 {
-	active_cpu = cpunum;
+	//active_cpu = cpunum;
 	m_cpu_i8080[cpunum] = new cpu_i8080(Machine->memory_region[cpunum],
 		read,
 		write,
@@ -89,9 +99,20 @@ void init8080(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct
 	m_cpu_i8080[cpunum]->reset();
 }
 
+void init8085(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum)
+{
+	m_cpu_i8085[cpunum] = new cpu_i8085(Machine->memory_region[cpunum],
+		read, 
+		write, 
+		portread, 
+		portwrite, 
+		0);
+	m_cpu_i8085[cpunum]->reset();
+}
+
 void init6502(struct MemoryReadByte* read, struct MemoryWriteByte* write, int mem_top, int cpunum)
 {
-	active_cpu = cpunum;
+	//active_cpu = cpunum;
 	m_cpu_6502[cpunum] = new cpu_6502(Machine->memory_region[cpunum], read, write, mem_top, cpunum);
 
 	//m_cpu_6502[cpunum]->enableDirectStackPage(true);
@@ -118,7 +139,7 @@ void init68k(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct 
 	M_MemoryWrite8 = write;
 	M_MemoryRead16 = read16;
 	M_MemoryWrite16 = write16;
-	active_cpu = cpunum;
+	//active_cpu = cpunum;
 	m68k_set_cpu_type(M68K_CPU_TYPE_68000);
 	cpu_context_size = m68k_context_size();
 	cpu_context[0] = (unsigned char*)malloc(cpu_context_size);
@@ -151,12 +172,13 @@ int get_exact_cyclecount(int cpu)
 	case CPU_MZ80:  pending = m_cpu_z80[cpu]->mz80GetElapsedTicks(0);   break;
 	case CPU_M6502: pending = m_cpu_6502[cpu]->get6502ticks(0);         break;
 	case CPU_8080:  pending = m_cpu_i8080[cpu]->get_ticks(0);           break;
+	case CPU_8085: pending = m_cpu_i8085[cpu]->get_ticks(0);			break;
 	case CPU_M6809: pending = m_cpu_6809[cpu]->get6809ticks(0);         break;
 	case CPU_68000: pending = 0; // avoid double count with Musashi
 		break;
 	default:        pending = 0; break;
 	}
-	return tickcount[cpu] + pending;
+	return cyclecount[cpu] + pending;
 }
 
 // **************************************************************************
@@ -206,7 +228,7 @@ static inline int aae_cycles_per_frame_cpu0(void) {
 	return (cpf > 0) ? cpf : 1;
 }
 
-// approximate cycles per scanline — kept as a convenience for callers
+// approximate cycles per scanline  kept as a convenience for callers
 int aae_cpu_getscanlinecycles(void) {
 	int cpf = aae_cycles_per_frame_cpu0();
 	int cpl = cpf / s_lines_per_frame;
@@ -280,6 +302,10 @@ int cpu_getpc()
 	{
 	case CPU_8080:
 		return m_cpu_i8080[active_cpu]->reg_PC;
+		break;
+
+	case CPU_8085:
+		return m_cpu_i8085[active_cpu]->reg_PC;
 		break;
 
 	case CPU_MZ80:
@@ -442,6 +468,12 @@ void cpu_do_int_imm(int cpunum, int int_type)
 		// else: silently ignore unsupported NMI on 8080
 		break;
 
+	case CPU_8085:
+		if (int_type == INT_TYPE_INT) {
+			m_cpu_i8085[cpunum]->interrupt(interrupt_vector[cpunum]);
+		}
+		break;
+
 	case CPU_MZ80:
 		if (int_type == INT_TYPE_NMI) m_cpu_z80[cpunum]->mz80nmi();
 		else                          m_cpu_z80[cpunum]->mz80int(interrupt_vector[cpunum]);
@@ -477,6 +509,26 @@ void cpu_do_int_imm(int cpunum, int int_type)
 int cpu_getiloops(void)
 {
 	return iloops[active_cpu];
+}
+
+// ---------------------------------------------------------------------------
+// cpu_getvblank
+// Returns 1 if we are currently in the VBLANK period, 0 otherwise.
+// ---------------------------------------------------------------------------
+int cpu_getvblank(void)
+{
+	return vblank;
+}
+
+// ---------------------------------------------------------------------------
+// cpu_clear_vblank
+// Called by inputport_vblank_end() or the frame loop to end the VBLANK
+// period. Clears the flag so cpu_getvblank() returns 0 until the next
+// frame's VBLANK boundary is reached inside cpu_run().
+// ---------------------------------------------------------------------------
+void cpu_clear_vblank(void)
+{
+	vblank = 0;
 }
 
 /***************************************************************************
@@ -516,6 +568,12 @@ int cpu_exec_now(int cpu, int cycles)
 		timer_update(ticks, active_cpu);
 		break;
 
+	case CPU_8085:
+		m_cpu_i8085[cpu]->exec(cycles);
+		ticks = m_cpu_i8085[cpu]->get_ticks(0xff);
+		timer_update(ticks, active_cpu);
+		break;
+
 	case CPU_M6809:
 		m_cpu_6809[cpu]->exec6809(cycles);
 		ticks = m_cpu_6809[cpu]->get6809ticks(0xff);
@@ -534,6 +592,22 @@ int cpu_exec_now(int cpu, int cycles)
 	return ticks;
 }
 
+// ---------------------------------------------------------------------------
+// cpu_run
+// Main per-frame CPU scheduler.
+//
+// IPT_VBLANK handling:
+//   In original MAME, the VBLANK bit is held active for vblank_duration
+//   microseconds at the END of the frame (after the visible region).
+//   We replicate this by:
+//     1. Setting vblank=1 when CPU0 reaches (cpf - vblank_cycles).
+//     2. The VBLANK bit stays set for the remainder of the frame.
+//     3. inputport_vblank_end() clears it (via cpu_clear_vblank()) at
+//        the top of the next frame.
+//
+//   If vblank_duration is 0, no VBLANK timing is done inside cpu_run.
+//   Games that don't use IPT_VBLANK are completely unaffected.
+// ---------------------------------------------------------------------------
 void cpu_run(void)
 {
 	int ran, target_cycles, next_interrupt_cycles;
@@ -579,7 +653,33 @@ void cpu_run(void)
 		}
 	}
 
-	// Track, per CPU, which per-CPU slice index we've already advanced to
+	// -----------------------------------------------------------------------
+	// IPT_VBLANK: compute the CPU0 cycle at which VBLANK begins.
+	// vblank_duration is in microseconds. Convert to CPU0 cycles.
+	// VBLANK starts at (cpf - vblank_cycles) and lasts until end of frame.
+	//
+	// If vblank_duration == 0, boundary is past end-of-frame so VBLANK
+	// never triggers inside cpu_run (backward compatible with all existing
+	// drivers that use DEFAULT_60HZ_VBLANK_DURATION which is 0).
+	// -----------------------------------------------------------------------
+	const int vblank_duration_us = Machine->gamedrv->vblank_duration;
+	int vblank_start_cycle = cycles_per_frame[0] + 1; // default: never triggers
+	bool vblank_handled_this_frame = false;
+
+	if (vblank_duration_us > 0 && cycles_per_frame[0] > 0)
+	{
+		// Convert microseconds to CPU0 cycles
+		const int cpu0_freq = Machine->gamedrv->cpu[0].cpu_freq;
+		int vblank_cycles = (int)((double)cpu0_freq * (double)vblank_duration_us * 0.000001);
+		if (vblank_cycles < 1) vblank_cycles = 1;
+		if (vblank_cycles > cycles_per_frame[0]) vblank_cycles = cycles_per_frame[0];
+
+		// VBLANK begins this many cycles before end of frame
+		vblank_start_cycle = cycles_per_frame[0] - vblank_cycles;
+		if (vblank_start_cycle < 0) vblank_start_cycle = 0;
+	}
+
+	// Track, per CPU, which per-CPU slice index we have already advanced to
 	int last_idx_for_cpu[4] = { 0,0,0,0 };
 
 	// Global slice loop: 0 .. max_divisions-1 (stable bound)
@@ -594,8 +694,7 @@ void cpu_run(void)
 			const int divs = divisions[active_cpu];
 			if (divs <= 0) continue; // nothing scheduled for this CPU
 
-			// Map global slice to this CPU's per-CPU slice index in [1..divs]
-			// We only run when this mapped index advances beyond what we've already done.
+			// Map global slice to this CPU per-CPU slice index in [1..divs]
 			const int next_idx_for_cpu = (int)(((current_slice + 1) * divs) / max_divisions);
 			if (next_idx_for_cpu <= last_idx_for_cpu[active_cpu]) continue;
 
@@ -604,25 +703,35 @@ void cpu_run(void)
 
 			if (totalcpu > 1) { cpu_setcontext(active_cpu); }
 
-			// Compute the next interrupt boundary (in cycles since frame start) for THIS CPU
-			// Only meaningful if we have interrupt passes this frame
+			// Compute the next interrupt boundary (in cycles since frame start)
 			if (iloops[active_cpu] >= 0 && intpasses[active_cpu] > 0) {
 				next_interrupt_cycles =
 					(cycles_per_frame[active_cpu] * (intpasses[active_cpu] - iloops[active_cpu])) / intpasses[active_cpu];
 			}
 			else {
-				// No interrupt expected; push boundary past our target so it won't trigger
 				next_interrupt_cycles = target_cycles;
 			}
 
-			// Run until we reach the per-CPU slice target, respecting the next interrupt boundary
+			// Run until we reach the per-CPU slice target
 			while (ran_this_frame[active_cpu] < target_cycles)
 			{
 				int running;
-				if (ran_this_frame[active_cpu] < next_interrupt_cycles && next_interrupt_cycles < target_cycles)
-					running = next_interrupt_cycles - ran_this_frame[active_cpu];
-				else
-					running = target_cycles - ran_this_frame[active_cpu];
+
+				// For CPU0, also respect the VBLANK start boundary so we
+				// can set the VBLANK flag at the right cycle count.
+				int effective_boundary = target_cycles;
+
+				if (ran_this_frame[active_cpu] < next_interrupt_cycles && next_interrupt_cycles < effective_boundary)
+					effective_boundary = next_interrupt_cycles;
+
+				// For CPU0 only: clamp to VBLANK start if not set yet
+				if (active_cpu == 0 && !vblank_handled_this_frame &&
+					ran_this_frame[0] < vblank_start_cycle && vblank_start_cycle < effective_boundary)
+				{
+					effective_boundary = vblank_start_cycle;
+				}
+
+				running = effective_boundary - ran_this_frame[active_cpu];
 
 				// Safety: avoid zero/negative runs
 				if (running <= 0) break;
@@ -635,7 +744,19 @@ void cpu_run(void)
 				if (active_cpu == 0) { vid_tickcount += ran; }
 
 				ran_this_frame[active_cpu] += ran;
-			
+
+				// IPT_VBLANK: check if CPU0 has reached the VBLANK boundary
+				if (active_cpu == 0 && !vblank_handled_this_frame &&
+					ran_this_frame[0] >= vblank_start_cycle &&
+					vblank_start_cycle <= cycles_per_frame[0])
+				{
+					// Enter VBLANK period now. Flip IPT_VBLANK bits at the
+					// actual VBLANK boundary, not at frame start.
+					vblank = 1;
+					inputport_vblank_begin();
+					vblank_handled_this_frame = true;
+				}
+
 				// Handle interrupt pass boundary
 				if (iloops[active_cpu] >= 0 && intpasses[active_cpu] > 0 &&
 					ran_this_frame[active_cpu] >= next_interrupt_cycles)
@@ -645,7 +766,7 @@ void cpu_run(void)
 					}
 					iloops[active_cpu]--;
 
-					// Recompute next interrupt boundary for this CPU (if more left this frame)
+					// Recompute next interrupt boundary (if more left this frame)
 					if (iloops[active_cpu] >= 0) {
 						next_interrupt_cycles =
 							(cycles_per_frame[active_cpu] * (intpasses[active_cpu] - iloops[active_cpu])) / intpasses[active_cpu];
@@ -658,14 +779,15 @@ void cpu_run(void)
 
 			if (totalcpu > 1) { cpu_getcontext(active_cpu); }
 
-			// We have advanced this CPU to its mapped per-CPU slice index
 			last_idx_for_cpu[active_cpu] = next_idx_for_cpu;
 		} // for each CPU
 	} // for each global slice
-
+	// Restore active_cpu to 0 after the scheduler loop.
+	active_cpu = 0;
 	// End of CPU Update, update and check frame counter
 	cpu_framecounter++;
 }
+
 
 void cpu_reset(int cpunum)
 {
@@ -684,8 +806,14 @@ void cpu_reset(int cpunum)
 	case CPU_8080:
 		m_cpu_i8080[cpunum]->reset();
 		break;
+
+	case CPU_8085:
+		m_cpu_i8085[cpunum]->reset();
+		break;
+
 	case CPU_68000:  m68k_pulse_reset();
 		break;
+
 	case CPU_M6809:
 		m_cpu_6809[cpunum]->reset6809();
 		break;
@@ -758,6 +886,7 @@ void free_cpu_memory()
 		case CPU_MZ80:   delete m_cpu_z80[x];   m_cpu_z80[x] = nullptr; break;
 		case CPU_M6502:  delete m_cpu_6502[x];  m_cpu_6502[x] = nullptr; break;
 		case CPU_8080:   delete m_cpu_i8080[x]; m_cpu_i8080[x] = nullptr; break;
+		case CPU_8085:   delete m_cpu_i8085[x]; m_cpu_i8085[x] = nullptr; break;
 		case CPU_M6809:  delete m_cpu_6809[x];  m_cpu_6809[x] = nullptr; break;
 		case CPU_68000:  /* nothing allocated here per-CPU */  break;
 		default: break;
@@ -794,6 +923,7 @@ void init_cpu_config()
 		switch (C.cpu_type)
 		{
 		case CPU_68000:
+			LOG_INFO("Init 68000 %d called", i);
 			init68k(C.memory_read, C.memory_write, C.read16, C.write16, i);
 			break;
 
@@ -812,6 +942,11 @@ void init_cpu_config()
 			init8080(C.memory_read, C.memory_write, C.port_read, C.port_write, i);
 			break;
 
+		case CPU_8085:
+			LOG_INFO("Init 8085 %d called", i);
+			init8085(C.memory_read, C.memory_write, C.port_read, C.port_write, i);
+			break;
+
 		case CPU_M6809:
 			LOG_INFO("Init 6809 %d called", i);
 			init6809(C.memory_read, C.memory_write, i);
@@ -821,9 +956,17 @@ void init_cpu_config()
 			// Unknown/unsupported CPU type in driver.
 			break;
 		}
+
+		// Fire the optional post-init callback if the driver provided one.
+		// This runs after the CPU core is fully created and reset, so the
+		// driver can configure per-instance settings like opfetch mode,
+		// bank switching, debug flags, etc.
+		if (C.post_cpu_init)
+			C.post_cpu_init(i);
 	}
 
 	cpu_framecounter = 0;
+	vblank = 0; // Clear VBLANK state on game init
 	vid_tickcount = 0;//Initalize video tickcount;
 
 	
@@ -871,6 +1014,7 @@ void watchdog_reset_w16(UINT32 address, UINT16 data, struct MemoryWriteWord* psM
 //Read Ram
 UINT8 MRA_RAM(UINT32 address, struct MemoryReadByte* psMemRead)
 {
+
 	//LOG_INFO("Active CPU here is %d", active_cpu);
 	//LOG_INFO("Address here is %x reading address %x data %x", address, address + psMemRead->lowAddr, Machine->memory_region[active_cpu][address + psMemRead->lowAddr]);
 	return Machine->memory_region[active_cpu][address + psMemRead->lowAddr];

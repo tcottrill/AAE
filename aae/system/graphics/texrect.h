@@ -36,7 +36,7 @@ public:
 
 	// Render the quad, scaling the y-coordinates of the top two verts by scaley
 	// Must have bound your GL_TEXTURE_2D before calling.
-	void Render(float scaley);
+	void Render();
 
 private:
 	void SetVertex(int idx, float x, float y, float tx, float ty);

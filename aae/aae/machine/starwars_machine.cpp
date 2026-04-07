@@ -73,7 +73,6 @@ extern int bank2;
 /* Debugging flag */
 #define MATHDEBUG	0
 
-
 /* Local variables */
 static UINT8 control_num = kPitch;
 
@@ -89,10 +88,8 @@ static UINT8 PROM_STR[1024]; /* Storage for instruction strobe only */
 static UINT8 PROM_MAS[1024]; /* Storage for direct address only */
 static UINT8 PROM_AM[1024]; /* Storage for address mode select only */
 
-
 /* Local function prototypes */
 static void run_mbox(void);
-
 
 /*************************************
  *
@@ -173,11 +170,6 @@ WRITE_HANDLER_NS(starwars_out_w)
 	}
 }
 
-
-
-
-
-
 /*************************************
  *
  *	ADC input and control
@@ -199,13 +191,10 @@ READ_HANDLER_NS(starwars_adc_r)
 		return 0;
 }
 
-
 WRITE_HANDLER_NS(starwars_adc_select_w)
 {
 	control_num = address;
 }
-
-
 
 /*************************************
  *
@@ -233,8 +222,6 @@ void swmathbox_init(void)
 	}
 }
 
-
-
 /*************************************
  *
  *	Mathbox reset
@@ -246,8 +233,6 @@ void swmathbox_reset(void)
 	MPA = BIC = 0;
 	PRN = 0;
 }
-
-
 
 /*************************************
  *
@@ -266,7 +251,6 @@ void run_mbox(void)
 	int M_STOP = 100000; /* Limit on number of instructions allowed before halt */
 	int MA;
 	int IP15_8, IP7, IP6_0; /* Instruction PROM values */
-
 
 	//LOG_INFO("Running Mathbox...\n");
 
@@ -359,8 +343,6 @@ void run_mbox(void)
 	}
 }
 
-
-
 /*************************************
  *
  *	Pseudo-RNG read
@@ -373,8 +355,6 @@ READ_HANDLER_NS(swmathbx_prng_r)
 	return PRN;
 }
 
-
-
 /*************************************
  *
  *	Mathbox divider
@@ -386,12 +366,10 @@ READ_HANDLER_NS(swmathbx_reh_r)
 	return (div_result & 0xff00) >> 8;
 }
 
-
 READ_HANDLER_NS(swmathbx_rel_r)
 {
 	return div_result & 0x00ff;
 }
-
 
 WRITE_HANDLER_NS(swmathbx_w)
 {

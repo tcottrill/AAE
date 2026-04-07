@@ -25,10 +25,15 @@ OTHER DEALINGS IN THE SOFTWARE.
 
 For more information, please refer to <http://unlicense.org/>
 --------------------------------------------------------------------------------
+
+/*
+ver .5 2026
+This is free and unencumbered software released into the public domain.
 */
 
 #include "fast_poly.h"
 #include "sys_gl.h"
+#include "gl_shader.h" 
 
 Fpoly::Fpoly() = default;
 
@@ -55,6 +60,16 @@ void Fpoly::addPoly(float x, float y, float size, uint32_t color) {
 void Fpoly::Render() {
 	if (vertices.empty()) return;
 
+	// Check if a shader is already bound
+	GLint current_prog = 0;
+	glGetIntegerv(GL_CURRENT_PROGRAM, &current_prog);
+	bool use_basic_shader = (current_prog == 0);
+
+	// Bind our new basic color shader if nothing else is active
+	if (use_basic_shader) {
+		bind_shader(fragBasicColor);
+	}
+
 	glEnableClientState(GL_VERTEX_ARRAY);
 	glVertexPointer(2, GL_FLOAT, sizeof(_fpdata), &vertices[0].x);
 
@@ -65,6 +80,11 @@ void Fpoly::Render() {
 
 	glDisableClientState(GL_COLOR_ARRAY);
 	glDisableClientState(GL_VERTEX_ARRAY);
+
+	// Unbind when done
+	if (use_basic_shader) {
+		unbind_shader();
+	}
 
 	vertices.clear();
 }

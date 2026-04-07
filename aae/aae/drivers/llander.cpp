@@ -25,6 +25,8 @@ static int lamp0 = 0;
 static int lastlamp0;
 static int a, b, c;
 
+static uint8_t* llander_zeropage;
+
 static const char* llander_samples[] = {
 	"llander.zip",
 	"lthrust.wav",
@@ -38,14 +40,13 @@ void llander_interrupt()
 	// Turn off interrupts if self-test is enabled
 	if (readinputport(0) & 0x02)
 	{
-		LOG_INFO("LANDER INT CALLED");
 		cpu_do_int_imm(CPU0, INT_TYPE_NMI);
 	}
 }
 
 READ_HANDLER(llander_zeropage_r)
 {
-	return Machine->memory_region[CPU0][address];
+	return llander_zeropage[address & 0xff];
 }
 
 READ_HANDLER(llander_DSW1_r)
@@ -61,8 +62,7 @@ READ_HANDLER(llander_DSW1_r)
 
 WRITE_HANDLER(llander_zeropage_w)
 {
-	Machine->memory_region[CPU0][address] = data;
-	Machine->memory_region[CPU0][0x0100 + address] = data;
+	llander_zeropage[address & 0xff] = data;
 }
 
 READ_HANDLER(llander_IN0_r)
@@ -172,8 +172,21 @@ WRITE_HANDLER(ll_led_write)
 	if (data == 0x01) { pic = 5; }
 }
 
+MEM_READ(LlanderRead)
+MEM_ADDR(0x0000, 0x01ff, llander_zeropage_r)
+MEM_ADDR(0x2000, 0x2000, llander_IN0_r)
+MEM_ADDR(0x2400, 0x2407, llander_IN1_r)
+MEM_ADDR(0x2800, 0x2803, llander_DSW1_r)
+MEM_ADDR(0x2c00, 0x2c00, ip_port_3_r)
+MEM_ADDR(0x4000, 0x47ff, MRA_RAM)
+MEM_ADDR(0x4800, 0x5fff, MRA_ROM) /* vector rom */
+MEM_ADDR(0x6000, 0x7fff, MRA_ROM)
+MEM_ADDR(0xf800, 0xffff, MRA_ROM)
+
+MEM_END
+
 MEM_WRITE(LlanderWrite)
-MEM_ADDR(0x0000, 0x00ff, llander_zeropage_w)
+MEM_ADDR(0x0000, 0x01ff, llander_zeropage_w)
 MEM_ADDR(0x3000, 0x3000, dvg_go_w)
 MEM_ADDR(0x3200, 0x3200, ll_led_write)
 MEM_ADDR(0x3400, 0x3400, watchdog_reset_w)
@@ -182,17 +195,6 @@ MEM_ADDR(0x3e00, 0x3e00, llander_snd_reset_w)
 MEM_ADDR(0x4000, 0x47ff, MWA_RAM)
 MEM_ADDR(0x4800, 0x5fff, MWA_ROM)
 MEM_ADDR(0x6000, 0x7fff, MWA_ROM)
-MEM_END
-
-MEM_READ(LlanderRead)
-MEM_ADDR(0x0000, 0x00ff, llander_zeropage_r)
-MEM_ADDR(0x2000, 0x2000, llander_IN0_r)
-MEM_ADDR(0x2400, 0x2407, llander_IN1_r)
-MEM_ADDR(0x2800, 0x2803, llander_DSW1_r)
-MEM_ADDR(0x2c00, 0x2c00, ip_port_3_r)
-MEM_ADDR(0x4000, 0x47ff, MRA_RAM)
-MEM_ADDR(0x4800, 0x5fff, MRA_ROM) /* vector rom */
-MEM_ADDR(0x6000, 0x7fff, MRA_ROM)
 MEM_END
 
 void run_llander()
@@ -225,7 +227,7 @@ void run_llander()
 		 }
 
 		*/
-	watchdog_reset_w(0, 0, 0);
+		//watchdog_reset_w(0, 0, 0);
 }
 
 /////////////////// MAIN() for program ///////////////////////////////////////////////////
@@ -244,6 +246,7 @@ int init_llander()
 	make_single_bitmap( &art_tex[6],"lunarcom.png","llander.zip");
 	}
 	*/
+	llander_zeropage = &Machine->memory_region[CPU0][0x00];
 	sample_start(1, 0, 1);
 	sample_set_volume(1, 5);
 
@@ -254,7 +257,6 @@ int init_llander()
 void end_llander()
 {
 }
-
 
 //Lunar Lander Input Ports
 INPUT_PORTS_START(llander)
@@ -305,7 +307,7 @@ PORT_DIPSETTING(0xd0, "1800")
 
 /* The next one is a potentiometer */
 PORT_START("IN3")/* IN3 */
-PORT_ANALOGX(0xff, 0x00, IPT_PADDLE | IPF_REVERSE, 100, 10, 0, 0, 255, OSD_KEY_UP, OSD_KEY_DOWN, OSD_JOY_UP, OSD_JOY_DOWN)
+PORT_ANALOGX(0xff, 0x00, IPT_PADDLE | IPF_REVERSE, 100, 10, 0, 255, OSD_KEY_UP, OSD_KEY_DOWN, OSD_JOY_UP, OSD_JOY_DOWN)
 INPUT_PORTS_END
 
 INPUT_PORTS_START(llander1)
@@ -352,7 +354,7 @@ PORT_DIPSETTING(0xc0, "900")
 
 /* The next one is a potentiometer */
 PORT_START("IN3") /* IN3 */
-PORT_ANALOGX(0xff, 0x00, IPT_PADDLE | IPF_REVERSE, 100, 10, 0, 0, 255, OSD_KEY_UP, OSD_KEY_DOWN, OSD_JOY_UP, OSD_JOY_DOWN)
+PORT_ANALOGX(0xff, 0x00, IPT_PADDLE | IPF_REVERSE, 100, 10, 0, 255, OSD_KEY_UP, OSD_KEY_DOWN, OSD_JOY_UP, OSD_JOY_DOWN)
 INPUT_PORTS_END
 
 // Lunar Lander ROMSETS
@@ -404,18 +406,18 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_NONE_ENTRY()
 )
 // Vector video
-AAE_DRIVER_VIDEO_CORE(40, VIDEO_TYPE_VECTOR | VECTOR_USES_BW, ORIENTATION_DEFAULT)
-AAE_DRIVER_SCREEN(1024, 768, 0, 1044, -80, 780)
+AAE_DRIVER_VIDEO_CORE(40, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW, ORIENTATION_DEFAULT)
+AAE_DRIVER_SCREEN(1024, 768, 0, 1050, 0, 900)
 // Vector game => no raster decode/palette conversion
 AAE_DRIVER_RASTER_NONE()
 // No hiscore yet
 AAE_DRIVER_HISCORE_NONE()
-// Vector RAM base/size (match your current values)
+// Vector RAM base/size
 AAE_DRIVER_VECTORRAM(0x4000, 0x800)
 // No NVRAM handler
 AAE_DRIVER_NVRAM_NONE()
+AAE_DRIVER_LAYOUT_NONE()
 AAE_DRIVER_END()
-
 
 AAE_DRIVER_BEGIN(llander1, "llander1", "Lunar Lander (Revision 1)")
 AAE_DRIVER_ROM(rom_llander1)
@@ -431,16 +433,17 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_NONE_ENTRY()
 )
 // Vector video
-AAE_DRIVER_VIDEO_CORE(40, VIDEO_TYPE_VECTOR | VECTOR_USES_BW, ORIENTATION_DEFAULT)
-AAE_DRIVER_SCREEN(1024, 768, 0, 1044, -80, 780)
+AAE_DRIVER_VIDEO_CORE(40, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW, ORIENTATION_DEFAULT)
+AAE_DRIVER_SCREEN(1024, 768, 0, 1050, 0, 900)
 // Vector game => no raster decode/palette conversion
 AAE_DRIVER_RASTER_NONE()
 // No hiscore yet
 AAE_DRIVER_HISCORE_NONE()
-// Vector RAM base/size (match your current values)
+// Vector RAM base/size
 AAE_DRIVER_VECTORRAM(0x4000, 0x800)
 // No NVRAM handler
 AAE_DRIVER_NVRAM_NONE()
+AAE_DRIVER_LAYOUT_NONE()
 AAE_DRIVER_END()
 
 AAE_REGISTER_DRIVER(llander)

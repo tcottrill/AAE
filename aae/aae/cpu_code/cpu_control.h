@@ -46,6 +46,7 @@
 #include "cpu_z80.h"
 #include "cpu_6809.h"
 #include "cpu_i8080.h"
+#include "cpu_i8085.h"
 
 
 #define NEW_INTERRUPT_SYSTEM    1
@@ -80,6 +81,7 @@ extern cpu_z80* m_cpu_z80[MAX_CPU];
 extern cpu_6502* m_cpu_6502[MAX_CPU];
 extern cpu_6809* m_cpu_6809[MAX_CPU];
 extern cpu_i8080* m_cpu_i8080[MAX_CPU];
+extern cpu_i8085* m_cpu_i8085[MAX_CPU];
 extern int cpu_context_size;
 extern uint8_t* cpu_context[2];
 
@@ -88,6 +90,7 @@ enum
 	CPU_NONE,
 	CPU_MZ80,
 	CPU_8080,
+	CPU_8085,
 	CPU_M6502,
 	CPU_M6502Z,
 	CPU_M6809,
@@ -130,6 +133,8 @@ void init6809(struct MemoryReadByte* read, struct MemoryWriteByte* write, int cp
 void init_z80(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum);
 void init8080(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum);
 void init68k(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct MemoryReadWord* read16, struct MemoryWriteWord* write16, int cpunum);
+void init8085(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum);
+
 
 void cpu_setOPbaseoverride(int (*f)(int));
 void cpu_setOPbase16(int apc);
@@ -178,6 +183,13 @@ void cpu_clear_pending_interrupts(int cpunum);
 void cpu_clear_pending_int(int int_type, int cpunum);
 
 int cpu_getiloops(void);
+
+// IPT_VBLANK support - returns 1 during VBLANK period, 0 otherwise
+int cpu_getvblank(void);
+
+// Clears the VBLANK flag. Called by inputport_vblank_end() or the frame loop
+// to signal the end of the vertical blanking period.
+void cpu_clear_vblank(void);
 int cpu_exec_now(int cpu, int cycles);
 void cpu_run(void);
 void free_cpu_memory();

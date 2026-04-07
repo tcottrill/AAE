@@ -1,3 +1,16 @@
+//============================================================================
+// AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME
+// code, 0.29 through .90 mixed with code of my own. This emulator was
+// created solely for my amusement and learning and is provided only
+// as an archival experience.
+//
+// All MAME code used and abused in this emulator remains the copyright
+// of the dedicated people who spend countless hours creating it. All
+// MAME code should be annotated as belonging to the MAME TEAM.
+//
+// SOME CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.
+//============================================================================
+
 #define NOMINMAX
 #include "bosco.h"
 //#include "bosco_vid.h"
@@ -9,13 +22,9 @@
 
 // audio + resampling
 #include "mixer.h"
-//#include "wav_resample.h"
 #include <vector>
 #include <string>
 
-ART_START(bosco_art)
-ART_LOAD("bosco.zip", "bosconian_bezel.png", ART_TEX, 3)
-ART_END
 
 static const char* bosco_samples[] =
 {
@@ -104,13 +113,6 @@ static struct rectangle radarvisibleareaflip =
 	0 * 8, 28 * 8 - 1
 };
 
-const rectangle visible_area =
-{
- 0,
- 224,
- 0,
- 288
-};
 
 //This bosco Uses the NAMCO Interface
 static struct namco_interface bosco_namco_interface =
@@ -847,7 +849,8 @@ WRITE_HANDLER(bosco_customio_2_w)
 	nmi_timer_2 = timer_set(TIME_IN_USEC(50), CPU1, bosco_nmi_generate_2);
 }
 
-void bosco_vh_screenrefresh()
+
+static void bosco_vh_screenrefresh(struct osd_bitmap* bitmap, int full_refresh)
 {
 	//clearbitmap(myscreen);
 
@@ -913,19 +916,19 @@ void bosco_vh_screenrefresh()
 			scrolly = -(bosco_scrolly + 16);
 		}
 
-		copyscrollbitmap(main_bitmap, tmpbitmap1, 1, &scrollx, 1, &scrolly, &Machine->drv->visible_area, TRANSPARENCY_NONE, 0);
+		copyscrollbitmap(bitmap, tmpbitmap1, 1, &scrollx, 1, &scrolly, &Machine->drv->visible_area, TRANSPARENCY_NONE, 0);
 	}
 
 	/* radar */
 	if (flipscreen)
-		copybitmap(main_bitmap, tmpbitmap, 0, 0, 0, 0, &radarvisibleareaflip, TRANSPARENCY_NONE, 0);
+		copybitmap(bitmap, tmpbitmap, 0, 0, 0, 0, &radarvisibleareaflip, TRANSPARENCY_NONE, 0);
 	else
-		copybitmap(main_bitmap, tmpbitmap, 0, 0, 28 * 8, 0, &radarvisiblearea, TRANSPARENCY_NONE, 0);
+		copybitmap(bitmap, tmpbitmap, 0, 0, 28 * 8, 0, &radarvisiblearea, TRANSPARENCY_NONE, 0);
 
 	/* draw the sprites */
 	for (offs = 0; offs < spriteram_size; offs += 2)
 	{
-		drawgfx(main_bitmap, Machine->gfx[1],
+		drawgfx(bitmap, Machine->gfx[1],
 			(spriteram[offs] & 0xfc) >> 2,
 			spriteram_2[offs + 1],
 			spriteram[offs] & 1, spriteram[offs] & 2,
@@ -946,7 +949,7 @@ void bosco_vh_screenrefresh()
 			y += 2;
 		}
 
-		drawgfx(main_bitmap, Machine->gfx[2],
+		drawgfx(bitmap, Machine->gfx[2],
 			((bosco_radarattr[offs] & 0x0e) >> 1) ^ 0x07,
 			0,
 			flipscreen, flipscreen,
@@ -1004,8 +1007,8 @@ int bosco_vh_start(void)
 
 			if (bit1 ^ bit2) generator |= 1;
 
-			if (x >= visible_area.min_x &&
-				x <= visible_area.max_x &&
+			if (x >= Machine->drv->visible_area.min_x &&
+				x <= Machine->drv->visible_area.max_x &&
 				((~generator >> 16) & 1) &&
 				(generator & 0xff) == 0xff)
 			{
@@ -1046,6 +1049,7 @@ int bosco_vh_start(void)
 void bosco_vh_stop(void)
 {
 	osd_free_bitmap(tmpbitmap1);
+	generic_vh_stop();
 }
 
 void bosco_vh_interrupt(void)
@@ -1089,7 +1093,7 @@ void boscoint3()
 void run_bosco()
 {
 	watchdog_reset_w(0, 0, 0);
-	bosco_vh_screenrefresh();
+	bosco_vh_screenrefresh(Machine->scrbitmap, 0);
 	namco_sh_update();
 }
 
@@ -1470,18 +1474,19 @@ AAE_DRIVER_ROM(rom_bosco)
 AAE_DRIVER_FUNCS(&init_bosco, &run_bosco, &end_bosco)
 AAE_DRIVER_INPUT(input_ports_bosco)
 AAE_DRIVER_SAMPLES(bosco_samples)
-AAE_DRIVER_ART(bosco_art)
+AAE_DRIVER_ART_NONE()
 AAE_DRIVER_CPUS(
 	AAE_CPU_ENTRY(CPU_MZ80, 3072000, 400, 1, INT_TYPE_INT, &boscoint1, boscoCPU1_Read, boscoCPU1_Write, boscoPortRead, boscoPortWrite, nullptr, nullptr),
 	AAE_CPU_ENTRY(CPU_MZ80, 3072000, 400, 1, INT_TYPE_INT, &boscoint2, boscoCPU2_Read, boscoCPU2_Write, boscoPortRead, boscoPortWrite, nullptr, nullptr),
 	AAE_CPU_ENTRY(CPU_MZ80, 3072000, 400, 2, INT_TYPE_INT, &boscoint3, boscoCPU3_Read, boscoCPU3_Write, boscoPortRead, boscoPortWrite, nullptr, nullptr),
 	AAE_CPU_NONE_ENTRY())
-	AAE_DRIVER_VIDEO_CORE(60, VIDEO_TYPE_RASTER_COLOR | VIDEO_SUPPORTS_DIRTY, ORIENTATION_DEFAULT)
+	AAE_DRIVER_VIDEO_CORE(60,DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_RASTER_COLOR | VIDEO_SUPPORTS_DIRTY, ORIENTATION_DEFAULT)
 	AAE_DRIVER_SCREEN(36 * 8, 28 * 8, 0 * 8, 36 * 8 - 1, 0 * 8, 28 * 8 - 1)
 	AAE_DRIVER_RASTER(bosco_gfxdecodeinfo, 32 + 64, 64 * 4 + 64 * 4 + 4, bosco_vh_convert_color_prom)
 	AAE_DRIVER_HISCORE_NONE()
 	AAE_DRIVER_VECTORRAM(0, 0)
 	AAE_DRIVER_NVRAM_NONE()
-	AAE_DRIVER_END()
+	AAE_DRIVER_LAYOUT("default.lay", "Upright_Artwork")
+AAE_DRIVER_END()
 
 	AAE_REGISTER_DRIVER(drv_bosco)

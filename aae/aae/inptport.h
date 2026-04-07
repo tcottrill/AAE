@@ -194,14 +194,12 @@ IPT_SPULSE
 /* The "arg" field contains 4 bytes fields */
 #define IPF_SENSITIVITY(percent)	((percent & 0xff) << 8)
 #define IPF_DELTA(val)				((val & 0xff) << 16)
-#define IPF_CLIP(clip)				((clip & 0xff) << 24)
 
 #define IP_GET_IMPULSE(port) (((port)->type >> 8) & 0xff)
 #define IP_GET_SENSITIVITY(port) ((((port)+1)->type >> 8) & 0xff)
 #define IP_SET_SENSITIVITY(port,val) ((port)+1)->type = ((port+1)->type & 0xffff00ff)|((val&0xff)<<8)
 #define IP_GET_DELTA(port) ((((port)+1)->type >> 16) & 0xff)
 #define IP_SET_DELTA(port,val) ((port)+1)->type = ((port+1)->type & 0xff00ffff)|((val&0xff)<<16)
-#define IP_GET_CLIP(port) ((((port)+1)->type >> 24) & 0xff)
 #define IP_GET_MIN(port) (((port)+1)->mask)
 #define IP_GET_MAX(port) (((port)+1)->default_value)
 
@@ -232,15 +230,17 @@ IPT_SPULSE
 		type | IPF_IMPULSE | ((duration & 0xff) << 8), IP_NAME_DEFAULT, IP_KEY_DEFAULT, IP_JOY_DEFAULT },
 /* input bit definition with extended fields */
 #define PORT_BITX(mask,default,type,name,key,joy) { mask, default, type, name, key, joy },
-/* analog input */
-#define PORT_ANALOG(mask,default,type,sensitivity,delta,clip,min,max) \
+
+/* analog input -- 7 params, no clip */
+#define PORT_ANALOG(mask,default,type,sensitivity,delta,min,max) \
 	{ mask, default, type, IP_NAME_DEFAULT, IP_KEY_DEFAULT, IP_JOY_DEFAULT }, \
-	{ min, max, IPT_EXTENSION | IPF_SENSITIVITY(sensitivity) | IPF_DELTA(delta) | IPF_CLIP(clip), \
+	{ min, max, IPT_EXTENSION | IPF_SENSITIVITY(sensitivity) | IPF_DELTA(delta), \
 			IP_NAME_DEFAULT, IP_KEY_DEFAULT, IP_JOY_DEFAULT },
-/* analog input with extended fields for defining default keys & sensitivities */
-#define PORT_ANALOGX(mask,default,type,sensitivity,delta,clip,min,max,keydec,keyinc,joydec,joyinc) \
+
+/* analog input with extended fields for defining default keys */
+#define PORT_ANALOGX(mask,default,type,sensitivity,delta,min,max,keydec,keyinc,joydec,joyinc) \
 	{ mask, default, type, IP_NAME_DEFAULT, keydec, joydec }, \
-	{ min, max, IPT_EXTENSION | IPF_SENSITIVITY(sensitivity) | IPF_DELTA(delta) | IPF_CLIP(clip), \
+	{ min, max, IPT_EXTENSION | IPF_SENSITIVITY(sensitivity) | IPF_DELTA(delta), \
 			IP_NAME_DEFAULT, keyinc, joyinc },
 
 #define PORT_SERVICE(mask,default)	\
@@ -355,6 +355,8 @@ enum {
 
 int load_input_port_settings(void);
 void save_input_port_settings(void);
+
+void inputport_vblank_begin(void);
 
 const char* input_port_name(const struct InputPort* in);
 int input_port_type_key(int type);

@@ -414,7 +414,6 @@ void cpu_6809::wr_slow_wd(int32_t addr, int32_t v)
 #define EXTBYTE(b) { EXTENDED;  b=M_RDMEM(eaddr);}
 #define EXTWORD(w) { EXTENDED;  w=M_RDMEM_WORD(eaddr);}
 
-
 /* macros for branch instructions */
 
 #define BRANCH(f) { 					\
@@ -3439,7 +3438,7 @@ void cpu_6809::pref11()
 	}
 }
 
-// These are just for debugging. 
+// These are just for debugging.
 
 uint8_t cpu_6809::get_last_ireg()
 {

@@ -56,6 +56,9 @@
 // 8/26/25 Fixed not adding the cycles taken during interrupt correctly to the cycle total. 
 // This code STILL does not meet ZexDoc for cycle counts (all functions pass), it runs over by ~38000 very frustrating and I can't find the bug.
 // 9/12/25 Finally fixed the DD and FD opcode cycle counting. Now passes all ZexDoc, finally!!.
+// 03/04/26  Added a function callback and made changes to support Z80 daisy chaining for Cosmic Chasm.
+// This doesn't affect the normal usage.
+// 
 //Most of my code verification is with:
 //[superzazu / z80](https://github.com/superzazu/z80)
 
@@ -142,9 +145,27 @@ public:
 	UINT32 mz80GetElapsedTicks(UINT32 dwClearIt);
 	void   mz80ReleaseTimeslice();
 	void   mz80ClearPendingInterrupt();
-	
+
+	// Assert the INT line without attempting immediate dispatch.
+	// Use when a peripheral wants to signal an interrupt but the vector
+	// should be fetched lazily via int_ack_fn rather than right now.
+	// mz80step() will pick it up on the next execution cycle.
+	void   mz80AssertInt() { m_irq_line = true; }
+
 	std::function<void()> reti_hook;  // optional: notify external daisy-chained device on RETI
 
+	// Optional callback invoked at the moment IM2 actually takes an interrupt
+	// (IFF1=1, CPU is ready to dispatch). If set, IM2 calls this to get the
+	// live interrupt vector from the daisy chain, instead of using the
+	// pre-stored irq_vector. This ensures irq_ack() -- which advances the
+	// CTC channel from INT to IEO -- only fires when the CPU is genuinely
+	// ready, preventing premature IEO state that would cause subsequent
+	// interrupts to be silently dropped while the first ISR has not yet
+	// executed RETI. If not set, IM2 falls back to irq_vector as before,
+	// preserving full backward compatibility with all existing drivers.
+	// Returns the 8-bit vector byte, or -1 if nothing is pending.
+	std::function<int()> int_ack_fn;
+	
 	cpu_z80(uint8_t* MEM, MemoryReadByte* read_mem, MemoryWriteByte* write_mem, z80PortRead* port_read, z80PortWrite* port_write, uint16_t addr, int num);
 	~cpu_z80();
 

@@ -1,7 +1,6 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-
 typedef struct {
 	char rompath[256];
 	char samplepath[256];
@@ -57,7 +56,7 @@ typedef struct {
 	int snappng;
 
 	char* aspect;
-	int prescale;
+	float prescale;
 	int anisfilter;
 	int priority;
 	int forcesync;
@@ -85,6 +84,14 @@ typedef struct {
 	// 0 = exit immediately with no prompt
 	int confirm_exit;
 	int flip_gui_controls;
+	int starting_monitor;
+	
+
+	// --- System rotation (command-line -ror / -rol) ---
+	// Stored as ORIENTATION_xxx flags (0 = none, ROT90, ROT180, ROT270).
+	// Composed with driver rotation via XOR into Machine->orientation.
+	// Persisted in aae.ini [main] system_rotation as an integer (0,1,3,5,6).
+	int system_rotation;
 
 }settings;
 

@@ -9,6 +9,9 @@
 #include "sys_log.h"
 #include "framework.h"
 #include "utf8conv.h"
+// For the UGLY framebuffer clear hacks for temporary vertical vector game artwork
+#include "opengl_renderer.h"   // emulator_on_window_resize
+
 
 WindowsOS GetOsVersion()
 {
@@ -198,4 +201,100 @@ RECT GetOpenGLScreenRect(HWND hwnd)
 
 	LOG_INFO("OpenGL drawable rect: (%d,%d)-(%d,%d)", glRect.left, glRect.top, glRect.right, glRect.bottom);
 	return glRect;
+}
+
+// -----------------------------------------------------------------------------
+// WindowUtil_UpdateAspect
+// Resize and re-center the window to match the given game aspect ratio.
+// Computes both client dimensions from scratch using the monitor work area
+// so that both landscape (aspect > 1) and portrait (aspect < 1) games are
+// sized correctly. Maximizes the larger axis within the work area, then
+// derives the other axis from the aspect ratio.
+// In borderless fullscreen mode, only the stored aspect ratio is updated
+// (the viewport letterboxing handles the rest).
+// -----------------------------------------------------------------------------
+void WindowUtil_UpdateAspect(float gameAspect)
+{
+	if (gameAspect <= 0.0f) return;
+
+	auto& ws = GetWindowSetup();
+	ws.aspectRatio = gameAspect;
+
+	if (ws.borderlessFullscreen)
+	{
+		emulator_on_window_resize(ws.clientWidth, ws.clientHeight);
+		return;
+	}
+
+	HWND hwnd = win_get_window();
+
+	// Compute frame overhead (difference between window rect and client rect)
+	int frameW = 0, frameH = 0;
+	RECT tmp = { 0, 0, 100, 100 };
+	AdjustWindowRectEx(&tmp, ws.style, FALSE, ws.exStyle);
+	frameW = (tmp.right - tmp.left) - 100;
+	frameH = (tmp.bottom - tmp.top) - 100;
+
+	// Get the work area of the monitor the window is currently on
+	MONITORINFO mi = { sizeof(MONITORINFO) };
+	GetMonitorInfo(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), &mi);
+	RECT workArea = mi.rcWork;
+	int monW = workArea.right - workArea.left;
+	int monH = workArea.bottom - workArea.top;
+
+	// Maximum client area available on this monitor
+	int maxClientW = monW - frameW;
+	int maxClientH = monH - frameH;
+
+	int clientW, clientH;
+
+	if (gameAspect >= 1.0f)
+	{
+		// Landscape or square: maximize height, derive width from aspect
+		clientH = maxClientH;
+		clientW = (int)(clientH * gameAspect);
+
+		// If too wide, clamp width and recompute height
+		if (clientW > maxClientW)
+		{
+			clientW = maxClientW;
+			clientH = (int)(clientW / gameAspect);
+		}
+	}
+	else
+	{
+		// Portrait: maximize height, derive width from aspect
+		// (portrait windows are tall and narrow, so height is the
+		// constraining dimension in most cases)
+		clientH = maxClientH;
+		clientW = (int)(clientH * gameAspect);
+
+		// If somehow too wide (very unlikely for portrait), clamp
+		if (clientW > maxClientW)
+		{
+			clientW = maxClientW;
+			clientH = (int)(clientW / gameAspect);
+		}
+	}
+
+	// Compute full window size and center on work area
+	int winW = clientW + frameW;
+	int winH = clientH + frameH;
+	int posX = workArea.left + (monW - winW) / 2;
+	int posY = workArea.top + (monH - winH) / 2;
+
+	SetWindowPos(hwnd, nullptr, posX, posY, winW, winH,
+		SWP_NOZORDER | SWP_NOACTIVATE);
+
+	// Update stored client dimensions from actual result
+	RECT rc;
+	GetClientRect(hwnd, &rc);
+	ws.clientWidth = rc.right - rc.left;
+	ws.clientHeight = rc.bottom - rc.top;
+
+	// Save the new windowed rect for ALT+ENTER restore
+	GetWindowRect(hwnd, &ws.windowedRect);
+
+	LOG_INFO("WindowUtil_UpdateAspect: aspect=%.3f client=%dx%d window=%dx%d",
+		gameAspect, ws.clientWidth, ws.clientHeight, winW, winH);
 }

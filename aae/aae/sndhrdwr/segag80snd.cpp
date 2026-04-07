@@ -35,6 +35,25 @@
 //   distribution and its associated license files.
 //
 // -----------------------------------------------------------------------------
+
+/* History:
+
+
+
+ * 4/25/99 Tac-Scan now makes Credit Noises with $2c                    (Jim Hernandez)
+ * 4/9/99 Zektor Discrete Sound Support mixed with voice samples.       (Jim Hernandez)
+		  Zektor uses some Eliminator sounds.
+
+ * 2/5/99 Extra Life sound constant found $1C after fixing main driver. (Jim Hernandez)
+ * 1/29/99 Supports Tac Scan new 44.1 kHz sample set.                    (Jim Hernandez)
+
+ * -Stuff to do -
+ * Find hex bit for warp.wav sound calls.
+ *
+ * 2/05/98 now using the new sample_*() functions. BW
+ *
+ */
+
 #include "segag80.h"
 #include "segag80snd.h"
 #include "aae_mame_driver.h"

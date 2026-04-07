@@ -1,42 +1,3 @@
-// -----------------------------------------------------------------------------
-// Legacy MAME-Derived Module
-// This file contains code originally developed as part of the M.A.M.E. Project.
-// Portions of this file remain under the copyright of the original MAME authors
-// and contributors. It has since been adapted and modernized for integration
-// with the Game Engine Alpha project.
-//
-// Integration:
-//   This library is part of the A.A.E emulator project and is tightly
-//   integrated with its texture management, logging, and math utility systems.
-//
-// Licensing Notice:
-//   - Original portions of this code remain (C) the M.A.M.E. Project and its
-//     respective contributors under their original terms of distribution.
-//   - Modifications, enhancements, and new code are (C) 2025/2026 Tim Cottrill and
-//     released under the GNU General Public License v3 (GPLv3) or later.
-//   - Redistribution must preserve both this notice and the original MAME
-//     copyright acknowledgement.
-//
-// License:
-//   This program is free software: you can redistribute it and/or modify
-//   it under the terms of the GNU General Public License as published by
-//   the Free Software Foundation, either version 3 of the License, or
-//   (at your option) any later version.
-//
-//   This program is distributed in the hope that it will be useful,
-//   but WITHOUT ANY WARRANTY; without even the implied warranty of
-//   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//   GNU General Public License for more details.
-//
-//   You should have received a copy of the GNU General Public License
-//   along with this program. If not, see <https://www.gnu.org/licenses/>.
-//
-// Original Copyright:
-//   This file is originally part of and copyright the M.A.M.E. Project.
-//   For more information about MAME licensing, see the original MAME source
-//   distribution and its associated license files.
-//
-// -----------------------------------------------------------------------------
 
 // Notes:
 // The timer pulse in this code doesn't work like mame, it's just a resettable one-shot timer
@@ -65,6 +26,11 @@ struct Timer {
 	// After the first firing, switch to this repeat period (in cycles).
 	// 0.0 means one-shot or no special repeat handling.
 	double repeat = 0.0;
+	// If true, timer_clear_all_eof() will NOT zero this timer's count.
+	// Used for rtimer-style elapsed-time trackers (e.g. POKEY RNG) that must
+	// accumulate across frame boundaries and are only reset by explicit
+	// timer_reset() calls.
+	bool elapsed_only = false;
 };
 
 static std::vector<std::optional<Timer>> timers;
@@ -136,6 +102,31 @@ int timer_pulse(double duration, int param, int data, std::function<void(int)> c
 	return timer_set(duration, ONE_SHOT + param, data, std::move(callback));
 }
 
+/* timer_set_elapsed - create an elapsed-time tracker timer.
+ * Like timer_set(TIME_NEVER,...) but marked elapsed_only=true so that
+ * timer_clear_all_eof() will never zero its count. The timer never fires
+ * (period = TIME_NEVER). Use timer_timeelapsed() to read accumulated time
+ * and timer_reset(id, TIME_NEVER) to restart the interval from zero.
+ * cpu_index selects which CPU's frequency is used for cycle conversion. */
+int timer_set_elapsed(int cpu_index)
+{
+	int index = timer_allocate_slot();
+	auto& timer = timers[index].emplace();
+	timer.cpu          = cpu_index & 0x0f;
+	timer.period       = Machine->gamedrv->cpu[timer.cpu].cpu_freq * TIME_NEVER;
+	timer.count        = 0;
+	timer.callback     = nullptr;
+	timer.callback_param = 0;
+	timer.one_shot     = false;
+	timer.enabled      = true;
+	timer.repeat       = 0.0;
+	timer.elapsed_only = true;
+	if (VERBOSE) {
+		LOG_INFO("Elapsed timer %d created for CPU %d", index, timer.cpu);
+	}
+	return index;
+}
+
 void timer_remove(int id)
 {
 	if (id >= 0 && id < static_cast<int>(timers.size())) {
@@ -167,12 +158,16 @@ int timer_is_timer_enabled(int id)
 
 void timer_update(int cycles, int cpunum)
 {
-	size_t count = timers.size();  // snapshot size — only process existing timers
+	size_t count = timers.size();  // snapshot size   only process existing timers
 	for (size_t i = 0; i < count; ++i) {
 		if (!timers[i] || !timers[i]->enabled || timers[i]->cpu != cpunum)
 			continue;
 
 		timers[i]->count += cycles;
+
+		/* elapsed_only timers just accumulate cycles and never fire */
+		if (timers[i]->elapsed_only)
+			continue;
 
 		while (timers[i] && timers[i]->count >= timers[i]->period)
 		{
@@ -216,6 +211,11 @@ void timer_clear_all_eof()
 {
 	for (size_t i = 0; i < timers.size(); ++i) {
 		if (timers[i]) {
+			/* Skip elapsed-only timers (e.g. POKEY rtimer) - they must
+			 * accumulate across frame boundaries and are only reset by
+			 * explicit timer_reset() calls from the owning subsystem. */
+			if (timers[i]->elapsed_only)
+				continue;
 			timers[i]->count = 0;
 			if (VERBOSE) {
 				LOG_INFO("Timer %zu count cleared (EOF)", i);
@@ -236,4 +236,97 @@ void timer_clear_end_of_game()
 	}
 }
 
+double timer_timeleft(int id)
+{
+	if (id >= 0 && id < static_cast<int>(timers.size()) && timers[id] && timers[id]->enabled) {
+		// Find remaining cycles
+		double cycles_left = timers[id]->period - timers[id]->count;
+		if (cycles_left < 0) cycles_left = 0;
 
+		// Convert to seconds
+		return cycles_left / Machine->gamedrv->cpu[timers[id]->cpu].cpu_freq;
+	}
+	return 0.0;
+}
+double timer_timeelapsed(int id)
+{
+	if (id >= 0 && id < static_cast<int>(timers.size()) && timers[id] && timers[id]->enabled) {
+		// Calculate the amount of time that has passed since the timer last fired or was reset.
+		// timers[id]->count tracks the elapsed cycles.
+		return timers[id]->count / Machine->gamedrv->cpu[timers[id]->cpu].cpu_freq;
+	}
+	return 0.0;
+}
+
+int timer_alloc(std::function<void(int)> callback)
+{
+	int index = timer_allocate_slot();
+	auto& timer = timers[index].emplace();
+
+	timer.cpu = 0;       // default CPU 0; timer_adjust will set real timing
+	timer.period = 0;
+	timer.count = 0;
+	timer.callback = std::move(callback);
+	timer.callback_param = 0;
+	timer.one_shot = true;    // dormant until timer_adjust is called
+	timer.enabled = false;   // not armed yet
+	timer.repeat = 0.0;
+	timer.elapsed_only = false;
+
+	if (VERBOSE) {
+		LOG_INFO("Timer %d allocated (dormant)", index);
+	}
+	return index;
+}
+
+void timer_adjust(int timer_id, double duration, int param, double period)
+{
+	if (timer_id < 0 || timer_id >= static_cast<int>(timers.size())
+		|| !timers[timer_id].has_value())
+		return;
+
+	auto& t = *timers[timer_id];
+
+	// Use CPU 0's frequency for cycle conversion, the duration is already in seconds via TIME_IN_HZ)
+	double freq = Machine->gamedrv->cpu[t.cpu].cpu_freq;
+
+	if (duration <= 0.0) {
+		// TIME_NOW: fire the callback immediately
+		if (t.callback) {
+			t.callback(param);
+		}
+		// If there's a repeat period, arm the timer for that period
+		if (period > 0.0) {
+			t.period = freq * period;
+			t.count = 0;
+			t.callback_param = param;
+			t.one_shot = false;
+			t.enabled = true;
+		}
+		else {
+			t.enabled = false;
+		}
+	}
+	else {
+		// Arm the timer to fire after 'duration' seconds
+		t.period = freq * duration;
+		t.count = 0;
+		t.callback_param = param;
+		t.enabled = true;
+
+		if (period > 0.0) {
+			// After the first firing, repeat at this interval
+			t.repeat = freq * period;
+			t.one_shot = false;
+		}
+		else {
+			t.repeat = 0.0;
+			t.one_shot = true;
+		}
+	}
+
+	if (VERBOSE) {
+		LOG_INFO("Timer %d adjusted: duration=%f, param=%d, period=%f, enabled=%d",
+			timer_id, duration, param, period, t.enabled);
+	}
+}

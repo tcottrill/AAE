@@ -188,8 +188,8 @@ Address  R / W  D7 D6 D5 D4 D3 D2 D1 D0   Function
  // ---------------------------------------------------------------------------
 static uint8_t g_in0_vblank_bit = 0x00;  /* starts outside vblank, bit 6 low */
 
-static inline void milliped_vblank_begin() { g_in0_vblank_bit = 0x00; } /* bit 6 HIGH = in vblank (ACTIVE_HIGH) */
-static inline void milliped_vblank_end() { g_in0_vblank_bit = 0x40; } /* bit 6 LOW  = not in vblank          */
+static inline void milliped_vblank_begin(int dum) { g_in0_vblank_bit = 0x00; } /* bit 6 HIGH = in vblank (ACTIVE_HIGH) */
+static inline void milliped_vblank_end(int dum) { g_in0_vblank_bit = 0x40; } /* bit 6 LOW  = not in vblank          */
 
 #pragma warning( disable : 4838 4003 )
 
@@ -197,7 +197,8 @@ static int dsw_select;
 
 unsigned char* milliped_paletteram;
 int full_refresh = 0;
-
+static int flip = 0;
+static int vblank_counter = 0;
 static struct rectangle spritevisiblearea =
 {
 	1 * 8, 31 * 8 - 1,
@@ -236,11 +237,9 @@ struct GfxDecodeInfo milliped_gfxdecodeinfo[] =
 
 static struct POKEYinterface milliped_pokey_interface =
 {
-	2,			/* 2 chips */
-	1512000,
-	240,	/* volume */
-	8,
-	NO_CLIP,
+	2,
+	12096000 / 8,
+	{ 128, 128 },
 	/* The 8 pot handlers */
 	{ 0, 0 },
 	{ 0, 0 },
@@ -250,7 +249,7 @@ static struct POKEYinterface milliped_pokey_interface =
 	{ 0, 0 },
 	{ 0, 0 },
 	{ 0, 0 },
-	/* allpot handler - Millipede reads DIP switches via POKEY ALLPOT register */
+	/* The allpot handler */
 	{ input_port_4_r, input_port_5_r },
 };
 
@@ -266,16 +265,16 @@ WRITE_HANDLER(milliped_irq_ack)
    then asserts the 6502 IRQ.  The game acks the IRQ by writing to 0x2600.
    run_milliped() clears the VBLANK latch at the end of each frame.
    --------------------------------------------------------------------------- */
-void milliped_interrupt(int dummy)
+
+void milliped_int()
 {
-	milliped_vblank_begin();              /* latch bit 6 HIGH for the game loop */
 	cpu_do_int_imm(CPU0, INT_TYPE_INT);   /* assert the 6502 IRQ               */
 }
 
 WRITE_HANDLER(milliped_input_select_w)
 {
 	/* 0x2505 selects whether reads from IN0/IN1 return DIP switches or trackball */
-	dsw_select = (data == 0);
+	dsw_select = (~data >> 7) & 1;
 }
 
 /* ---------------------------------------------------------------------------
@@ -306,6 +305,7 @@ READ_HANDLER(milliped_IN0_r)
 	/* bits 4-6 from port 0 (fire, start1, and the VBLANK latch override).
 	   bits 0-3 are the trackball delta counter.
 	   bit  7 is the trackball sign computed above. */
+	//LOG_INFO("ARE WE IN VBLANK? %x", g_in0_vblank_bit);
 	return ((readinputport(0) & 0x70) | (oldpos & 0x0f) | g_in0_vblank_bit | sign);
 }
 
@@ -377,7 +377,7 @@ void milliped_vh_convert_color_prom(unsigned char* palette, unsigned char* color
 
 	/* the palette will be initialized by the game. We just set it to some */
 	/* pre-cooked values so the startup copyright notice can be displayed. */
-	for (i = 0; i < Machine->drv->total_colors; i++)
+	for (i = 0; i < (signed int) Machine->drv->total_colors; i++)
 	{
 		*(palette++) = ((i & 1) >> 0) * 0xff;
 		*(palette++) = ((i & 2) >> 1) * 0xff;
@@ -385,7 +385,7 @@ void milliped_vh_convert_color_prom(unsigned char* palette, unsigned char* color
 	}
 
 	/* initialize the color table */
-	for (i = 0; i < Machine->drv->color_table_len; i++)
+	for (i = 0; i < (signed int) Machine->drv->color_table_len; i++)
 		colortable[i] = i;
 }
 
@@ -526,14 +526,10 @@ int milliped_vh_start(void)
    --------------------------------------------------------------------------- */
 void run_milliped()
 {
-	//if (cpu_getcycles(CPU0) > 2500)
-	//{
-	milliped_vblank_end();          /* clear bit 6 - frame work period begins  */
-	//m_cpu_6502[0]->m6502clearpendingint();
-//}
-//watchdog_reset_w(0, 0, 0);
 	milliped_vh_screenrefresh();
 	pokey_sh_update();              /* flush the POKEY buffer to the audio stream */
+	milliped_vblank_end(0);
+	timer_pulse(TIME_IN_CYCLES(1450, CPU0), CPU0, milliped_vblank_begin);
 }
 
 void end_milliped()
@@ -555,21 +551,21 @@ void milliped_init_machine(void)
 /* PORT HANDLERS */
 
 MEM_READ(milliped_readmem)
-//{0x0000, 0x03ff, MRA_RAM},
+{0x0000, 0x03ff, MRA_RAM},
 {0x0400, 0x040f, pokey_1_r},
 { 0x0800, 0x080f, pokey_2_r },
-//{ 0x1000, 0x13ff, MRA_RAM },
+{ 0x1000, 0x13ff, MRA_RAM },
 { 0x2000, 0x2000, milliped_IN0_r },
 { 0x2001, 0x2001, milliped_IN1_r },
 { 0x2010, 0x2010, ip_port_2_r },
 { 0x2011, 0x2011, ip_port_3_r },
 { 0x2030, 0x2030, EaromRead },
-//{ 0x4000, 0x7fff, MRA_ROM },
-//{ 0xf000, 0xffff, MRA_ROM },		/* for the reset / interrupt vectors */
+{ 0x4000, 0x7fff, MRA_ROM },
+{ 0xf000, 0xffff, MRA_ROM },		
 MEM_END
 
 MEM_WRITE(milliped_writemem)
-//{0x0000, 0x03ff, MWA_RAM },
+{0x0000, 0x03ff, MWA_RAM },
 {0x0400, 0x040f, pokey_1_w},
 { 0x0800, 0x080f, pokey_2_w },
 //{ 0x1000, 0x13ff, videoram_w, &videoram, &videoram_size },
@@ -579,7 +575,7 @@ MEM_WRITE(milliped_writemem)
 { 0x2503, 0x2504, milliped_led_w },
 { 0x2505, 0x2505, milliped_input_select_w },
 { 0x2506, 0x2507, MWA_NOP }, /* unused outputs */
-{ 0x2600, 0x2600, milliped_irq_ack }, /* IRQ ack - game writes here after servicing the interrupt */
+{ 0x2600, 0x2600, milliped_irq_ack }, 
 { 0x2680, 0x2680, watchdog_reset_w },
 { 0x2700, 0x2700, EaromCtrl },
 { 0x2780, 0x27bf, EaromWrite },
@@ -587,19 +583,11 @@ MEM_WRITE(milliped_writemem)
 MEM_END
 
 int  init_milliped(void)
-{
-	init6502(milliped_readmem, milliped_writemem, 0x8000, CPU0);
+{	
 	/* Ensure NTSC-like 262 scanlines per frame for 60 Hz scheduling */
 	aae_set_lines_per_frame(262);
 	pokey_sh_start(&milliped_pokey_interface);
 	milliped_vh_start();
-
-	/* Fire an IRQ at 60 Hz for VBLANK / game heartbeat.
-	   The game acks the interrupt by writing to 0x2600 (milliped_irq_ack).
-	   milliped_interrupt() also latches the VBLANK bit in IN0 so the game
-	   main loop can synchronize with the display. */
-	timer_set(TIME_IN_HZ(60), CPU0, milliped_interrupt);
-
 	return 0;
 }
 
@@ -706,10 +694,10 @@ PORT_DIPSETTING(0xa0, "4 credits/3 coins")
 PORT_DIPSETTING(0xc0, "Demo mode")
 
 PORT_START("IN6")	/* IN6: FAKE - used for trackball-x at $2000 */
-PORT_ANALOGX(0xff, 0x00, IPT_TRACKBALL_X | IPF_REVERSE, 50, 10, 0, 0, 0, IP_KEY_NONE, IP_KEY_NONE, IP_JOY_NONE, IP_JOY_NONE)
+PORT_ANALOGX(0xff, 0x00, IPT_TRACKBALL_X | IPF_REVERSE, 50, 10, 0, 0,  IP_KEY_NONE, IP_KEY_NONE, IP_JOY_NONE, IP_JOY_NONE)
 
 PORT_START("IN7")/* IN7: FAKE - used for trackball-y at $2001 */
-PORT_ANALOGX(0xff, 0x00, IPT_TRACKBALL_Y, 50, 10, 0, 0, 0, IP_KEY_NONE, IP_KEY_NONE, IP_JOY_NONE, IP_JOY_NONE)
+PORT_ANALOGX(0xff, 0x00, IPT_TRACKBALL_Y, 50, 10, 0, 0,  IP_KEY_NONE, IP_KEY_NONE, IP_JOY_NONE, IP_JOY_NONE)
 INPUT_PORTS_END
 
 ROM_START(milliped)
@@ -729,7 +717,7 @@ ROM_LOAD("136001-213.e7", 0x0000, 0x0100, CRC(6fa3093a) SHA1(2b7aeca74c1ae4156bf
 ROM_END
 
 /* Millipede */
-AAE_DRIVER_BEGIN(drv_milliped, "milliped", "Millipede - NO SOUND - HELP!")
+AAE_DRIVER_BEGIN(drv_milliped, "milliped", "Millipede")
 AAE_DRIVER_ROM(rom_milliped)
 AAE_DRIVER_FUNCS(&init_milliped, &run_milliped, &end_milliped)
 AAE_DRIVER_INPUT(input_ports_milliped)
@@ -741,9 +729,9 @@ AAE_DRIVER_CPUS(
 		/*type*/     CPU_M6502,
 		/*freq*/     1512000,
 		/*div*/      100,
-		/*ipf*/      1,
-		/*int type*/ INT_TYPE_NONE,
-		/*int cb*/   0,
+		/*ipf*/      4,
+		/*int type*/ INT_TYPE_INT,
+		/*int cb*/   milliped_int,
 		/*r8*/       milliped_readmem,
 		/*w8*/       milliped_writemem,
 		/*pr*/       nullptr,
@@ -756,12 +744,17 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_NONE_ENTRY()
 )
 
-AAE_DRIVER_VIDEO_CORE(60, VIDEO_TYPE_RASTER_COLOR | VIDEO_SUPPORTS_DIRTY | VIDEO_MODIFIES_PALETTE | VIDEO_UPDATE_AFTER_VBLANK, ORIENTATION_SWAP_XY)
+AAE_DRIVER_VIDEO_CORE(60, 0, VIDEO_TYPE_RASTER_COLOR | VIDEO_SUPPORTS_DIRTY | VIDEO_MODIFIES_PALETTE | VIDEO_UPDATE_AFTER_VBLANK, ORIENTATION_ROTATE_270)
 AAE_DRIVER_SCREEN(256, 256, 0, 255, 0, 239)
+//AAE_DRIVER_SCREEN(32 * 8, 32 * 8,0 * 8, 32 * 8 - 1, 0 * 8, 30 * 8 - 1)
+
 AAE_DRIVER_RASTER(milliped_gfxdecodeinfo, 32, 32, milliped_vh_convert_color_prom)
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0, 0)
 AAE_DRIVER_NVRAM(atari_vg_earom_handler)
+//AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_LAYOUT("default.lay", "Upright_Artwork")
+
 AAE_DRIVER_END()
 
 AAE_REGISTER_DRIVER(drv_milliped)

@@ -14,26 +14,22 @@
 // Shader program handles
 extern GLuint fragBlur;
 extern GLuint fragMulti;
+extern GLuint fragBasicTex;   
+extern GLuint fragBasicColor; 
+extern GLuint fragScanlineMultiply;
+extern GLuint fragStarPoint;
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+int init_shader();
+void bind_shader(GLuint program);
+void unbind_shader();
+void delete_shader(GLuint* program);
 
-	int init_shader();
-	void bind_shader(GLuint program);
-	void unbind_shader();
-	void delete_shader(GLuint* program);
-
-	void set_uniform1i(GLuint program, const char* name, int value);
-	void set_uniform1f(GLuint program, const char* name, float value);
-	void set_uniform2f(GLuint program, const char* name, float x, float y);
-	void set_uniform3f(GLuint program, const char* name, float x, float y, float z);
-	void set_uniform4f(GLuint program, const char* name, float x, float y, float z, float w);
-	//void set_uniform_mat4f(GLuint program, const char* name, const glm::mat4* matrix);
-
-#ifdef __cplusplus
-}
-#endif
+void set_uniform1i(GLuint program, const char* name, int value);
+void set_uniform1f(GLuint program, const char* name, float value);
+void set_uniform2f(GLuint program, const char* name, float x, float y);
+void set_uniform3f(GLuint program, const char* name, float x, float y, float z);
+void set_uniform4f(GLuint program, const char* name, float x, float y, float z, float w);
+void set_uniform_mat4f(GLuint program, const char* name, const float* matrix);
 
 #endif
 

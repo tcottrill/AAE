@@ -1,3 +1,16 @@
+//============================================================================
+// AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME
+// code, 0.29 through .90 mixed with code of my own. This emulator was
+// created solely for my amusement and learning and is provided only
+// as an archival experience.
+//
+// All MAME code used and abused in this emulator remains the copyright
+// of the dedicated people who spend countless hours creating it. All
+// MAME code should be annotated as belonging to the MAME TEAM.
+//
+// SOME CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.
+//============================================================================
+
 #include "rallyx.h"
 #include "rallyx_vid.h"
 #include "aae_mame_driver.h"
@@ -79,11 +92,12 @@ struct GfxDecodeInfo rallyx_gfxdecodeinfo[] =
 
 static struct namco_interface namco_interface =
 {
-	3072000 / 32,	// sample rate
-	3,			// number of voices
-	32,			// gain adjustment
-	245			// playback volume
+	3072000 / 32,	/* sample rate */
+	3,			/* number of voices */
+	220,		/* playback volume */
+	REGION_SOUND1	/* memory region */
 };
+
 /*
 void galaga_vh_convert_color_prom(unsigned char* palette, unsigned char* colortable, const unsigned char* color_prom)
 {
@@ -376,12 +390,14 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_NONE_ENTRY()
 )
 
-AAE_DRIVER_VIDEO_CORE(60, VIDEO_TYPE_RASTER_COLOR, ORIENTATION_DEFAULT)
+AAE_DRIVER_VIDEO_CORE(60,DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_RASTER_COLOR, ORIENTATION_DEFAULT)
 AAE_DRIVER_SCREEN(36 * 8, 28 * 8, 0 * 8, 36 * 8 - 1, 0 * 8, 28 * 8 - 1)
 AAE_DRIVER_RASTER(rallyx_gfxdecodeinfo, 32, 64 * 4 + 4 * 2, rallyx_vh_convert_color_prom)
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0, 0)
 AAE_DRIVER_NVRAM_NONE()
+AAE_DRIVER_LAYOUT("rallyx.lay", "Upright_Artwork")
+
 AAE_DRIVER_END()
 
 AAE_REGISTER_DRIVER(drv_rallyx)

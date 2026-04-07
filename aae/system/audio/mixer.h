@@ -1,5 +1,5 @@
 //==============================================================================
-// mixer.h -- Usage Guide & API Reference
+// mixer.h -- Usage Guide & API Reference 
 //==============================================================================
 //
 // OVERVIEW
@@ -417,6 +417,7 @@ static inline int Volume255ToPercent(int v255)
 // Implementation:
 //   0..5%   -> quadratic ramp in dB from -80 dB up to -12 dB
 //   5..100% -> linear in dB from -12 dB up to 0 dB
+
 static inline float VolumePercentToLinear(int percent)
 {
 	percent = std::clamp(percent, 0, 100);
@@ -490,12 +491,14 @@ sample_set_volume(ch, VolPercentToByte(uiPercent));
 */
 // Byte (0..255) -> linear gain, routed through the existing percent curve.
 // This preserves the loudness taper while moving call sites to 0..255.
+// -----------------------------------------------------------------------------
+// VolumeByteToLinear
+// Convert legacy 0..255 volume directly to linear gain 0.0f..1.0f.
+// -----------------------------------------------------------------------------
 inline float VolumeByteToLinear(int vol255) noexcept
 {
-	const int v = std::clamp(vol255, 0, 255);
-	// Round to nearest percent (0..100), then reuse the existing curve.
-	const int percent = (v * 100 + 127) / 255;
-	return VolumePercentToLinear(percent);
+	vol255 = std::clamp(vol255, 0, 255);
+	return static_cast<float>(vol255) / 255.0f;
 }
 
 // helper to map 0..100 -> 0..255 and forward
@@ -511,6 +514,7 @@ inline int VolByteToPercent(int vol255) noexcept {
 //Main Audio Mixer volume controls
 float mixer_get_master_volume();
 void mixer_set_master_volume(int volume);
+void sample_set_volume_mixer(int chanid, int volume255);
 // Master volume: 
 // Optional convenience wrapper if you want a 0..255 version without touching callers:
 inline void mixer_set_master_volume_255(int vol255) {

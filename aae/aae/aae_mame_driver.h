@@ -29,7 +29,10 @@
 #include "config.h"
 #include "memory.h"
 #include "mixer.h"
+
 #include "emu_vector_draw.h"
+#include "mame_vector.h"
+
 #include "osd_video.h"
 #include "driver_macros.h"
 #include "os_basic.h"   // for osd_led_service_start/stop
@@ -77,6 +80,8 @@ inline FILE* errorlog = nullptr;
 //#define bit_write(c,p,m) (c ? bit_set(p,m) : bit_clear(p,m))
 //#define BIT(x) (0x01 << (x))
 //#define LONGBIT(x) ((unsigned long)0x00000001 << (x))
+
+constexpr uint8_t BIT(uint8_t x, int n) { return (x >> n) & 0x1; }
 
 // These are for different translation units. Maybe bite the bullet and make them all non-static, or wrap in namespaces?
 // This is a temporary solution.
@@ -144,7 +149,13 @@ const struct RomModule
 #define ROM_CONTINUE(loadAddr,romSize) { (char *)-2, loadAddr,romSize, ROM_LOAD_NORMAL, 0 , 0 },
 #define ROM_END {NULL, 0, 0, 0, 0, 0}};
 
-///// Artwork Settings //////////////
+///// Artwork Settings (Legacy) ///////////
+// The old zip-based artwork system using art_tex[0..4] slots.
+// Backdrop: layer 0, Overlay: layer 1, Bezel Mask: layer 2,
+// Bezel: layer 3, Screen burn: layer 4.
+// This system is deprecated and will be replaced by MAME .lay
+// file layouts once vector games are migrated. New drivers should
+// use AAE_DRIVER_LAYOUT() instead of or in addition to ART_LOAD().
 const struct artworks
 {
 	const char* zipfile;
@@ -183,7 +194,7 @@ const struct artworks
 #define GAME_IMPERFECT_SOUND	0x0010	/* sound is known to be wrong */
 #define VECTOR_USES_OVERLAY1	0x0100  // Blending type 1 overlay
 #define VECTOR_USES_OVERLAY2	0x0200  // An overlay that is visible like a gel.
-#define VEC_OVER_HACK			0x0400  // An temporary hack to rescale the overlay JUST for solarq 
+//#define VEC_OVER_HACK			0x0400  // An temporary hack to rescale the overlay JUST for solarq 
 
 
 // This is not a flag that should be used by drivers, and will be removed once the vector overlay is properly implemented
@@ -268,7 +279,10 @@ struct MachineCPU
 	int cpu_divisions;          // Divisions per frame cycle
 	int cpu_intpass_per_frame;  // Passes from above before interrupt called.(Interrupt Period)
 	int cpu_int_type;           // Main type of CPU interrupt
-	void (*int_cpu)(); //Interrupt Handler CPU 0/4
+	void (*int_cpu)();          // Interrupt Handler
+	void (*post_cpu_init)(int); // Optional callback fired after the CPU core is created.
+	                            // Receives cpunum. Use for bank setup, opfetch mode, etc.
+	                            // Set to nullptr if not needed.
 };
 
 struct AAEDriver
@@ -285,10 +299,11 @@ struct AAEDriver
 	struct InputPort* input_ports;
 
 	const char** game_samples;
-	const struct artworks* artwork;
+	const struct artworks* artwork;          // Legacy artwork (zip-based, deprecated)
 	MachineCPU cpu[MAX_CPU];
 
 	const int fps;
+	const int vblank_duration;
 	const int video_attributes;
 	const int rotation;
 	int screen_width, screen_height;
@@ -305,6 +320,25 @@ struct AAEDriver
 	int vectorram; //Vectorram start address
 	unsigned int vectorram_size;
 	void (*nvram_handler)(void* file, int read_or_write);
+
+	// -----------------------------------------------------------------
+	// MAME .lay file artwork (new system)
+	//
+	// These fields point to the XML layout file, the directory
+	// containing the artwork PNGs, and the default view name to
+	// activate. All three are nullptr when no layout is available.
+	//
+	// The layout system renders backdrop, screen, overlay, and bezel
+	// layers with correct compositing and aspect-ratio-aware viewport
+	// placement. It will eventually replace the legacy zip-based
+	// artwork system above once all drivers are migrated.
+	//
+	// Use AAE_DRIVER_LAYOUT(file, dir, view) in the driver definition
+	// to set these, or AAE_DRIVER_LAYOUT_NONE() for games without
+	// layout artwork.
+	// -----------------------------------------------------------------
+	const char* layoutFile;     // path to .lay XML file, e.g. "artwork\\invaders\\default.lay"
+	const char* defaultView;    // view name to activate, e.g. "Upright_Artwork"
 };
 
 struct RunningMachine

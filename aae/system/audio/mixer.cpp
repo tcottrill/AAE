@@ -985,30 +985,32 @@ int sample_get_position(int chanid)
 
 // -----------------------------------------------------------------------------
 // sample_set_volume
-// Accepts 0..255 from older code; internally converts to 0..100 and uses
-// the shared curve so both sample voices and mixer path feel identical.
+// Convert a legacy 0..255 volume directly to an XAudio2 linear gain 0.0f..1.0f.
+// This is a straight linear mapping with no perceptual taper.
 // -----------------------------------------------------------------------------
 void sample_set_volume(int chanid, int volume)
 {
-	// Validate channel index against your fixed array
 	if (chanid < 0 || chanid >= MAX_CHANNELS) {
 		LOG_ERROR("sample_set_volume: invalid channel %d", chanid);
 		return;
 	}
+
 	std::scoped_lock lock(audioMutex);
 
 	auto& ch = channel[chanid];
 
-	// Convert 0..255 byte to linear gain using your existing taper
-	const float gain = static_cast<float>(VolumeByteToLinear(volume)); // avoid double->float warning
-	ch.vol = gain;
+	volume = std::clamp(volume, 0, 255);
+	ch.volume = volume;
 
-	// Update the live XAudio2 source voice if this channel uses one
+	LOG_DEBUG("VOLUME PASSED is : %d", volume);
+	const float gain = static_cast<float>(volume) / 255.0f;
+	ch.vol = static_cast<double>(gain);
+	LOG_DEBUG("NEW MIXER SAMPLE VOL: %f", gain);
+
 	if (ch.voice) {
-		ch.voice->SetVolume(static_cast<float>(ch.vol));
+		ch.voice->SetVolume(gain);
 	}
 }
-
 int sample_get_volume(int chanid)
 { // returns 0..255
 	if (chanid < 0 || chanid >= MAX_CHANNELS) return 0;
@@ -1159,10 +1161,10 @@ int sample_playing(int chanid)
 			ch.isPlaying = true;
 			ch.state = SoundState::Playing;
 		}
-
+		LOG_INFO("RETURNING SAMPLE PLAYING %d", ch.isPlaying);
 		return ch.isPlaying ? 1 : 0;
 	}
-
+	LOG_INFO("RETURNING SAMPLE PLAYING %d", ch.isPlaying);
 	// Fallback: software-mixer path (older behavior)
 	return ch.isPlaying ? 1 : 0;
 }
@@ -1237,8 +1239,11 @@ void sample_stop_mixer(int chanid)
 
 void sample_set_volume_mixer(int chanid, int volume255)
 {
-	const int percent = Volume255ToPercent(std::clamp(volume255, 0, 255));
-	channel[chanid].vol = VolumePercentToLinear(percent); // replaces db_volume[]
+	//const int percent = Volume255ToPercent(std::clamp(volume255, 0, 255));
+	//LOG_DEBUG("MIXER  VOL PERCENT: %d", percent);
+	channel[chanid].vol = VolumePercentToLinear(volume255); // replaces db_volume[]
+	LOG_DEBUG("NEW MIXER SAMPLE VOL: %f", channel[chanid].vol);
+	
 }
 
 // Stereo

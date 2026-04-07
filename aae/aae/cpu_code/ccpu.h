@@ -105,4 +105,14 @@ UINT16 get_ccpu_inputs(int offset);
 UINT16 get_ccpu_switches(int offset);
 int get_ccpu_ticks();
 
+/***************************************************************************
+	QB3 RAM BANKING SUPPORT
+	QB3 uses 4 banks of 256 words (0x100 each, 0x400 total) of data RAM.
+	The active bank is selected by writing to OUT port 0, which latches
+	the low 2 bits of the P register as the bank number.
+***************************************************************************/
+void ccpu_set_qb3_mode(bool enable);
+void ccpu_qb3_bank_switch();
+int  ccpu_qb3_frame_r();
+
 #endif

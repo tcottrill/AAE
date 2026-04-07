@@ -8,8 +8,6 @@
 #define M_PI 3.14159265358979323846f
 #endif
 
-// OpenGL Code Goes here.....-------------------------------------------------------------------------
-
 void glCircle(float cx, float cy, float r, int num_segments)
 {
 	if (num_segments <= 0) return;

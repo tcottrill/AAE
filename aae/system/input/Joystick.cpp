@@ -146,6 +146,10 @@ static void reset_single_joystick(int index)
 // XInput Implementation
 //==============================================================================
 
+//==============================================================================
+// XInput Implementation
+//==============================================================================
+
 namespace xinput {
 	static constexpr int MAX_CONTROLLERS = 4;
 	static constexpr int DIGITAL_THRESHOLD = 32;
@@ -158,6 +162,14 @@ namespace xinput {
 	static bool s_connected[MAX_CONTROLLERS] = {};
 	static DWORD s_last_packet[MAX_CONTROLLERS] = {};
 	static int s_stale_frames[MAX_CONTROLLERS] = {};
+
+	// Performance throttling for offline controllers and state caching
+	static int s_offline_check_timer[MAX_CONTROLLERS] = {};
+	static XINPUT_STATE s_cached_states[MAX_CONTROLLERS] = {};
+	static int s_joy_to_xinput[MAX_JOYSTICKS] = {};
+
+	// Keep track of rumble duration internally
+	static int s_rumble_timer[MAX_CONTROLLERS] = {};
 
 	static const char* const BUTTON_NAMES[16] = {
 		"A", "B", "X", "Y",
@@ -174,6 +186,11 @@ namespace xinput {
 			s_connected[i] = false;
 			s_last_packet[i] = 0;
 			s_stale_frames[i] = 0;
+			s_offline_check_timer[i] = 0;
+			s_rumble_timer[i] = 0;
+		}
+		for (int i = 0; i < MAX_JOYSTICKS; ++i) {
+			s_joy_to_xinput[i] = -1;
 		}
 	}
 
@@ -190,6 +207,9 @@ namespace xinput {
 	static int scale_thumb(SHORT v, int deadzone)
 	{
 		int iv = static_cast<int>(v);
+		// Fix: Prevent magnitude overflow when input is exactly -32768
+		if (iv < -32767) iv = -32767;
+
 		int av = (iv < 0) ? -iv : iv;
 
 		if (av <= deadzone)
@@ -303,14 +323,17 @@ namespace xinput {
 
 	static int poll()
 	{
-		XINPUT_STATE states[MAX_CONTROLLERS];
 		bool connected_now[MAX_CONTROLLERS];
-
-		std::memset(states, 0, sizeof(states));
 		std::memset(connected_now, 0, sizeof(connected_now));
 
 		// Query all controller slots
 		for (DWORD i = 0; i < MAX_CONTROLLERS; ++i) {
+			// Fix: Throttle polling disconnected slots to avoid thread starvation (stuttering)
+			if (!s_connected[i] && s_offline_check_timer[i] > 0) {
+				s_offline_check_timer[i]--;
+				continue;
+			}
+
 			XINPUT_STATE st = {};
 			DWORD res = XInputGetState(i, &st);
 
@@ -323,6 +346,7 @@ namespace xinput {
 						if (XInputGetCapabilities(i, 0, &caps) != ERROR_SUCCESS) {
 							connected_now[i] = false;
 							s_stale_frames[i] = 0;
+							s_offline_check_timer[i] = 60; // Wait 60 frames before checking again
 							continue;
 						}
 						s_stale_frames[i] = 0;
@@ -333,12 +357,14 @@ namespace xinput {
 					s_stale_frames[i] = 0;
 				}
 
-				states[i] = st;
+				s_cached_states[i] = st;
 				connected_now[i] = true;
+				s_offline_check_timer[i] = 0; // Reset timer since connected
 			}
 			else {
 				connected_now[i] = false;
 				s_stale_frames[i] = 0;
+				s_offline_check_timer[i] = 60; // Slot empty; wait 60 frames before checking again
 			}
 		}
 
@@ -348,18 +374,44 @@ namespace xinput {
 				LOG_INFO("XInput controller %d connected", i);
 				if (s_hotplug_callback)
 					s_hotplug_callback(i, true, nullptr);
+
+				// --- Trigger a crisp "connected" buzz on the right motor ---
+				XINPUT_VIBRATION vib;
+				vib.wLeftMotorSpeed = 0;
+				vib.wRightMotorSpeed = static_cast<WORD>(0.6f * 65535.0f); // 60% high-frequency buzz
+				XInputSetState(i, &vib);
+				s_rumble_timer[i] = 15; // Hold for 15 frames (~0.25 seconds)
+
 			}
 			else if (!connected_now[i] && s_connected[i]) {
 				LOG_INFO("XInput controller %d disconnected", i);
 				if (s_hotplug_callback)
 					s_hotplug_callback(i, false, "Controller disconnected");
+
+				// Ensure rumble shuts off if disconnected while rumbling
+				s_rumble_timer[i] = 0;
 			}
 			s_connected[i] = connected_now[i];
 		}
 
+		// --- NEW: Process internal rumble timers ---
+		for (int i = 0; i < MAX_CONTROLLERS; ++i) {
+			if (s_rumble_timer[i] > 0) {
+				s_rumble_timer[i]--;
+
+				if (s_rumble_timer[i] == 0) {
+					// Timer hit 0, stop the motors
+					XINPUT_VIBRATION vib = { 0, 0 };
+					XInputSetState(i, &vib);
+				}
+			}
+		}
+
 		// Rebuild sequential mapping
-		for (int j = 0; j < MAX_JOYSTICKS; ++j)
+		for (int j = 0; j < MAX_JOYSTICKS; ++j) {
 			reset_single_joystick(j);
+			s_joy_to_xinput[j] = -1; // Reset mapping
+		}
 
 		int joy_count = 0;
 		for (int i = 0; i < MAX_CONTROLLERS; ++i) {
@@ -370,12 +422,40 @@ namespace xinput {
 				break;
 
 			setup_descriptor(joy_count);
-			fill_state(joy[joy_count], states[i]);
+			fill_state(joy[joy_count], s_cached_states[i]);
+			s_joy_to_xinput[joy_count] = i; // Save physical slot mapping for combos & rumble
 			joy_count++;
 		}
 
 		num_joysticks = joy_count;
 		return 0;
+	}
+
+	// NEW: Expose cached buttons for combo system
+	static WORD get_cached_buttons(int player)
+	{
+		if (player < 0 || player >= MAX_JOYSTICKS) return 0;
+		int x_idx = s_joy_to_xinput[player];
+		if (x_idx < 0 || x_idx >= MAX_CONTROLLERS) return 0;
+		return s_cached_states[x_idx].Gamepad.wButtons;
+	}
+
+	// NEW: Rumble implementation
+	static bool set_rumble(int player, float left_motor, float right_motor)
+	{
+		if (player < 0 || player >= MAX_JOYSTICKS) return false;
+		int x_idx = s_joy_to_xinput[player];
+		if (x_idx < 0 || x_idx >= MAX_CONTROLLERS) return false;
+
+		// Clamp 0.0f to 1.0f
+		left_motor = left_motor < 0.0f ? 0.0f : (left_motor > 1.0f ? 1.0f : left_motor);
+		right_motor = right_motor < 0.0f ? 0.0f : (right_motor > 1.0f ? 1.0f : right_motor);
+
+		XINPUT_VIBRATION vibration;
+		vibration.wLeftMotorSpeed = static_cast<WORD>(left_motor * 65535.0f);
+		vibration.wRightMotorSpeed = static_cast<WORD>(right_motor * 65535.0f);
+
+		return XInputSetState(x_idx, &vibration) == ERROR_SUCCESS;
 	}
 
 	static bool init()
@@ -387,6 +467,11 @@ namespace xinput {
 
 	static void shutdown()
 	{
+		// Stop any active rumble before exiting
+		for (int i = 0; i < num_joysticks; ++i) {
+			set_rumble(i, 0.0f, 0.0f);
+		}
+
 		reset_state();
 		for (int j = 0; j < MAX_JOYSTICKS; ++j)
 			reset_single_joystick(j);
@@ -781,10 +866,9 @@ bool joystick_check_combo(int player, WORD buttonMask)
 	if (!joystick_using_xinput()) return false;
 	if (player < 0 || player >= MAX_JOYSTICKS) return false;
 
-	XINPUT_STATE state;
-	if (XInputGetState(player, &state) != ERROR_SUCCESS) return false;
-
-	WORD buttons = state.Gamepad.wButtons;
+	// Fix: Read from cached state instead of invoking XInputGetState again.
+	// This fixes a bug where `player` (joy index) was wrongly used as the physical XInput slot!
+	WORD buttons = xinput::get_cached_buttons(player);
 	bool comboHeld = (buttons & buttonMask) == buttonMask;
 
 	int idx = get_combo_index(buttonMask);
@@ -840,4 +924,22 @@ const char* joystick_driver_name()
 bool joystick_any_connected()
 {
 	return num_joysticks > 0;
+}
+
+
+//------------------------------------------------------------------------------
+// Rumble Implementation
+//------------------------------------------------------------------------------
+
+bool joystick_set_rumble(int player, float left_motor_speed, float right_motor_speed)
+{
+	if (!_joystick_installed || s_active_driver != JoystickDriver::XInput)
+		return false;
+
+	return xinput::set_rumble(player, left_motor_speed, right_motor_speed);
+}
+
+void joystick_stop_rumble(int player)
+{
+	joystick_set_rumble(player, 0.0f, 0.0f);
 }

@@ -1,11 +1,121 @@
+//============================================================================
+// AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME
+// code, 0.29 through .90 mixed with code of my own. This emulator was
+// created solely for my amusement and learning and is provided only
+// as an archival experience.
+//
+// All MAME code used and abused in this emulator remains the copyright
+// of the dedicated people who spend countless hours creating it. All
+// MAME code should be annotated as belonging to the MAME TEAM.
+//
+// SOME CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.
+//============================================================================
+
+
+/***************************************************************************
+Warlords Driver by Lee Taylor and John Clegg
+
+			  Warlords Memory map and Dip Switches
+			  ------------------------------------
+
+ Address  R/W  D7 D6 D5 D4 D3 D2 D1 D0   Function
+--------------------------------------------------------------------------------------
+0000-03FF       D  D  D  D  D  D  D  D   RAM
+--------------------------------------------------------------------------------------
+0400-07BF       D  D  D  D  D  D  D  D   Screen RAM (8x8 TILES, 32x32 SCREEN)
+07C0-07CF       D  D  D  D  D  D  D  D   Motion Object Picture
+07D0-07DF       D  D  D  D  D  D  D  D   Motion Object Vert.
+07E0-07EF       D  D  D  D  D  D  D  D   Motion Object Horiz.
+--------------------------------------------------------------------------------------
+0800       R    D  D  D  D  D  D  D  D   Option Switch 1 (0 = On) (DSW 1)
+0801       R    D  D  D  D  D  D  D  D   Option Switch 2 (0 = On) (DSW 2)
+--------------------------------------------------------------------------------------
+0C00       R    D                        Cocktail Cabinet  (0 = Cocktail)
+		   R       D                     VBLANK  (1 = VBlank)
+		   R          D                  SELF TEST
+		   R             D               DIAG STEP (Unused)
+0C01       R    D  D  D                  R,C,L Coin Switches (0 = On)
+		   R             D               Slam (0 = On)
+		   R                D            Player 4 Start Switch (0 = On)
+		   R                   D         Player 3 Start Switch (0 = On)
+		   R                      D      Player 2 Start Switch (0 = On)
+		   R                         D   Player 1 Start Switch (0 = On)
+--------------------------------------------------------------------------------------
+1000-100F  W   D  D  D  D  D  D  D  D    Pokey
+--------------------------------------------------------------------------------------
+1800       W                             IRQ Acknowledge
+--------------------------------------------------------------------------------------
+1C00-1C02  W    D  D  D  D  D  D  D  D   Coin Counters
+--------------------------------------------------------------------------------------
+1C03-1C06  W    D  D  D  D  D  D  D  D   LEDs
+--------------------------------------------------------------------------------------
+4000       W                             Watchdog
+--------------------------------------------------------------------------------------
+5000-7FFF  R                             Program ROM
+--------------------------------------------------------------------------------------
+
+Game Option Settings - J2 (DSW1)
+=========================
+
+8   7   6   5   4   3   2   1       Option
+------------------------------------------
+						On  On      English
+						On  Off     French
+						Off On      Spanish
+						Off Off     German
+					On              Music at end of each game
+					Off             Music at end of game for new highscore
+		On  On                      1 or 2 player game costs 1 credit
+		On  Off                     1 player game=1 credit, 2 player=2 credits
+		Off Off                     1 or 2 player game costs 2 credits
+		Off On                      Not used
+-------------------------------------------
+
+Game Price Settings - M2 (DSW2)
+========================
+
+8   7   6   5   4   3   2   1       Option
+------------------------------------------
+						On  On      Free play
+						On  Off     1 coin for 2 credits
+						Off On      1 coin for 1 credit
+						Off Off     2 coins for 1 credit
+				On  On              Right coin mech x 1
+				On  Off             Right coin mech x 4
+				Off On              Right coin mech x 5
+				Off Off             Right coin mech x 6
+			On                      Left coin mech x 1
+			Off                     Left coin mech x 2
+On  On  On                          No bonus coins
+On  On  Off                         For every 2 coins, add 1 coin
+On  Off On                          For every 4 coins, add 1 coin
+On  Off Off                         For every 4 coins, add 2 coins
+Off On  On                          For every 5 coins, add 1 coin
+------------------------------------------
+
+***************************************************************************/
+
+
 #include "aae_mame_driver.h"
 #include "warlord.h"
 #include "driver_registry.h"
 #include "old_mame_raster.h"
 #include "earom.h"
 #include "aae_pokey.h"
+#include "timer.h"
+
+#include "opengl_renderer.h"
 
 #pragma warning( disable : 4838 4003 )
+
+// ---------------------------------------------------------------------------
+// VBLANK latch: Warlords IN0 bit 6 is ACTIVE HIGH for VBLANK (per port def).
+// g_in0_vblank_bit holds the current state of bit 6 to merge into IN0 reads.
+// ---------------------------------------------------------------------------
+static uint8_t g_in0_vblank_bit = 0x00;
+
+static inline void warlords_vblank_begin(int dum) { g_in0_vblank_bit = 0x00; }
+static inline void warlords_vblank_end(int dum)   { g_in0_vblank_bit = 0x40; }
 
 const rectangle visible_area =
 {
@@ -33,13 +143,11 @@ struct GfxDecodeInfo warlords_gfxdecodeinfo[] =
 	{ -1 } /* end of array */
 };
 
-static struct POKEYinterface warlords_pokey_interface =
+static struct POKEYinterface pokey_interface =
 {
 	1,	/* 1 chip */
-	1512000,	/* 1.5 MHz??? */
-	{ 128 },
-	POKEY_DEFAULT_GAIN,
-	NO_CLIP,
+	12096000 / 8, /* 1.512 MHz */
+	{ 100 },
 	/* The 8 pot handlers */
 	{ input_port_4_r },
 	{ input_port_5_r },
@@ -50,8 +158,9 @@ static struct POKEYinterface warlords_pokey_interface =
 	{ 0 },
 	{ 0 },
 	/* The allpot handler */
-	{ 0 }
+	{ 0 },
 };
+
 
 void warlords_interrupt()
 {
@@ -211,6 +320,15 @@ WRITE_HANDLER(irq_ack)
 {
 }
 
+// ---------------------------------------------------------------------------
+// Custom IN0 read handler — merges the latched VBLANK bit into the port read.
+// Warlords has no trackball so this is simpler than Centipede's handler.
+// ---------------------------------------------------------------------------
+READ_HANDLER(warlords_IN0_r)
+{
+	return (readinputport(0) & ~0x40) | g_in0_vblank_bit;
+}
+
 //called on reset
 void warlords_init_machine(void)
 {
@@ -218,8 +336,25 @@ void warlords_init_machine(void)
 
 void run_warlords()
 {
+	static bool user_overlay = config.overlay;
+	static bool user_artwork = config.artwork;
+	bool upright = (readinputport(0) & 0x80) != 0;
+	if (upright)
+	{
+		config.overlay = user_overlay;
+		config.artwork = user_artwork;
+		g_scanline_override = -1;  // force off
+	}
+	else
+	{
+		config.overlay = false;
+		config.artwork = false;
+		g_scanline_override = 1;   // force on (punch through RASTER_BW block)
+	}
 	warlords_vh_screenrefresh();
 	pokey_sh_update();
+	warlords_vblank_end(0);
+	timer_pulse(TIME_IN_CYCLES(1450, CPU0), CPU0, warlords_vblank_begin);
 }
 
 void end_warlords()
@@ -287,17 +422,16 @@ PORT_DIPSETTING(0x80, "6 credits/5 coins")
 
 /* IN4-7 fake to control player paddles */
 PORT_START("IN4")
-PORT_ANALOG(0xff, 0x80, IPT_PADDLE | IPF_PLAYER1, 50, 10, 0x1d, 0, 0xcb, 0xbf)//191?
-//PORT_ANALOGX(0xff, 0x80, IPT_PADDLE | IPF_PLAYER1, 50, 10, 0x1d, 0xcb, OSD_KEY_LEFT, OSD_KEY_RIGHT, OSD_JOY_LEFT, OSD_JOY_RIGHT, 1)
+PORT_ANALOG(0xff, 0x80, IPT_PADDLE | IPF_PLAYER1, 50, 10, 0x1d, 0xcb)
 
 PORT_START("IN5")
-PORT_ANALOG(0xff, 0x80, IPT_PADDLE | IPF_PLAYER2, 50, 10, 0, 0x1d, 0xcb)
+PORT_ANALOG(0xff, 0x80, IPT_PADDLE | IPF_PLAYER2, 50, 10, 0x1d, 0xcb)
 
 PORT_START("IN6")
-PORT_ANALOG(0xff, 0x80, IPT_PADDLE | IPF_PLAYER3, 50, 10, 0, 0x1d, 0xcb)
+PORT_ANALOG(0xff, 0x80, IPT_PADDLE | IPF_PLAYER3, 50, 10, 0x1d, 0xcb)
 
 PORT_START("IN7")
-PORT_ANALOG(0xff, 0x80, IPT_PADDLE | IPF_PLAYER4, 50, 10, 0, 0x1d, 0xcb)
+PORT_ANALOG(0xff, 0x80, IPT_PADDLE | IPF_PLAYER4, 50, 10, 0x1d, 0xcb)
 INPUT_PORTS_END
 
 ///PORT HANDLERS
@@ -306,7 +440,7 @@ MEM_READ(warlords_readmem)
 MEM_ADDR(0x0000, 0x07ff, MRA_RAM)
 MEM_ADDR(0x0800, 0x0800, ip_port_2_r)	/* DSW1 */
 MEM_ADDR(0x0801, 0x0801, ip_port_3_r)	/* DSW2 */
-MEM_ADDR(0x0c00, 0x0c00, ip_port_0_r)	/* IN0 */
+MEM_ADDR(0x0c00, 0x0c00, warlords_IN0_r)	/* IN0 — custom handler for VBLANK latch */
 MEM_ADDR(0x0c01, 0x0c01, ip_port_1_r)	/* IN1 */
 MEM_ADDR(0x1000, 0x100f, pokey_1_r)  	/* Read the 4 paddle values & the random # gen */
 MEM_ADDR(0x5000, 0x7fff, MRA_ROM)
@@ -326,9 +460,7 @@ MEM_END
 
 int init_warlords()
 {
-	//init6502(warlords_readmem, warlords_writemem, 0xffff, CPU0);
-
-	pokey_sh_start(&warlords_pokey_interface);
+	pokey_sh_start(&pokey_interface);
 	warlords_vh_start();
 	return 0;
 }
@@ -389,95 +521,14 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_NONE_ENTRY()
 )
 
-AAE_DRIVER_VIDEO_CORE(60, VIDEO_TYPE_RASTER_COLOR | VIDEO_UPDATE_AFTER_VBLANK, ORIENTATION_FLIP_Y)
-AAE_DRIVER_SCREEN(256, 256, 0, 255, 0, 255)
+AAE_DRIVER_VIDEO_CORE(60,DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_RASTER_BW | VIDEO_UPDATE_AFTER_VBLANK | VECTOR_USES_OVERLAY1, ORIENTATION_DEFAULT)
+AAE_DRIVER_SCREEN(256, 256, 0 * 8, 32 * 8 - 1, 0 * 8, 30 * 8 - 1)
 AAE_DRIVER_RASTER(warlords_gfxdecodeinfo, 128, 8 * 4 + 8 * 4, warlords_vh_convert_color_prom)
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0, 0)
 AAE_DRIVER_NVRAM_NONE()
+AAE_DRIVER_LAYOUT("default.lay", "Upright_Artwork")
+
 AAE_DRIVER_END()
 
 AAE_REGISTER_DRIVER(drv_warlords)
-
-/***************************************************************************
-Warlords Driver by Lee Taylor and John Clegg
-
-			  Warlords Memory map and Dip Switches
-			  ------------------------------------
-
- Address  R/W  D7 D6 D5 D4 D3 D2 D1 D0   Function
---------------------------------------------------------------------------------------
-0000-03FF       D  D  D  D  D  D  D  D   RAM
---------------------------------------------------------------------------------------
-0400-07BF       D  D  D  D  D  D  D  D   Screen RAM (8x8 TILES, 32x32 SCREEN)
-07C0-07CF       D  D  D  D  D  D  D  D   Motion Object Picture
-07D0-07DF       D  D  D  D  D  D  D  D   Motion Object Vert.
-07E0-07EF       D  D  D  D  D  D  D  D   Motion Object Horiz.
---------------------------------------------------------------------------------------
-0800       R    D  D  D  D  D  D  D  D   Option Switch 1 (0 = On) (DSW 1)
-0801       R    D  D  D  D  D  D  D  D   Option Switch 2 (0 = On) (DSW 2)
---------------------------------------------------------------------------------------
-0C00       R    D                        Cocktail Cabinet  (0 = Cocktail)
-		   R       D                     VBLANK  (1 = VBlank)
-		   R          D                  SELF TEST
-		   R             D               DIAG STEP (Unused)
-0C01       R    D  D  D                  R,C,L Coin Switches (0 = On)
-		   R             D               Slam (0 = On)
-		   R                D            Player 4 Start Switch (0 = On)
-		   R                   D         Player 3 Start Switch (0 = On)
-		   R                      D      Player 2 Start Switch (0 = On)
-		   R                         D   Player 1 Start Switch (0 = On)
---------------------------------------------------------------------------------------
-1000-100F  W   D  D  D  D  D  D  D  D    Pokey
---------------------------------------------------------------------------------------
-1800       W                             IRQ Acknowledge
---------------------------------------------------------------------------------------
-1C00-1C02  W    D  D  D  D  D  D  D  D   Coin Counters
---------------------------------------------------------------------------------------
-1C03-1C06  W    D  D  D  D  D  D  D  D   LEDs
---------------------------------------------------------------------------------------
-4000       W                             Watchdog
---------------------------------------------------------------------------------------
-5000-7FFF  R                             Program ROM
---------------------------------------------------------------------------------------
-
-Game Option Settings - J2 (DSW1)
-=========================
-
-8   7   6   5   4   3   2   1       Option
-------------------------------------------
-						On  On      English
-						On  Off     French
-						Off On      Spanish
-						Off Off     German
-					On              Music at end of each game
-					Off             Music at end of game for new highscore
-		On  On                      1 or 2 player game costs 1 credit
-		On  Off                     1 player game=1 credit, 2 player=2 credits
-		Off Off                     1 or 2 player game costs 2 credits
-		Off On                      Not used
--------------------------------------------
-
-Game Price Settings - M2 (DSW2)
-========================
-
-8   7   6   5   4   3   2   1       Option
-------------------------------------------
-						On  On      Free play
-						On  Off     1 coin for 2 credits
-						Off On      1 coin for 1 credit
-						Off Off     2 coins for 1 credit
-				On  On              Right coin mech x 1
-				On  Off             Right coin mech x 4
-				Off On              Right coin mech x 5
-				Off Off             Right coin mech x 6
-			On                      Left coin mech x 1
-			Off                     Left coin mech x 2
-On  On  On                          No bonus coins
-On  On  Off                         For every 2 coins, add 1 coin
-On  Off On                          For every 4 coins, add 1 coin
-On  Off Off                         For every 4 coins, add 2 coins
-Off On  On                          For every 5 coins, add 1 coin
-------------------------------------------
-
-***************************************************************************/

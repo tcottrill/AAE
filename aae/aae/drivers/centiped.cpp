@@ -1,3 +1,16 @@
+//============================================================================
+// AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME
+// code, 0.29 through .90 mixed with code of my own. This emulator was
+// created solely for my amusement and learning and is provided only
+// as an archival experience.
+//
+// All MAME code used and abused in this emulator remains the copyright
+// of the dedicated people who spend countless hours creating it. All
+// MAME code should be annotated as belonging to the MAME TEAM.
+//
+// SOME CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.
+//============================================================================
+
 #include "aae_mame_driver.h"
 #include "warlord.h"
 #include "driver_registry.h"
@@ -5,19 +18,15 @@
 #include "earom.h"
 #include "aae_pokey.h"
 #include "centiped_vid.h"
+#include "timer.h"
 
 #pragma warning( disable : 4838 4003 )
 
-ART_START(centiped_art)
-ART_LOAD("centiped.zip", "centipede_bezel.png", ART_TEX, 3)
-ART_END
-
-
-constexpr auto IN0_VBLANK = (1<<6);
+constexpr auto IN0_VBLANK = (1 << 6);
 static int vblank = 0;
 extern unsigned char* centiped_charpalette, * centiped_spritepalette;
-int centiped_flipscreen=0;
-static int powerup_counter=20;
+int centiped_flipscreen = 0;
+static int powerup_counter = 20;
 unsigned char centiped_paletteram[0x0f];
 int j;
 UINT8 vsync;
@@ -25,6 +34,15 @@ UINT8 vsync;
 static int oldpos[4];
 static UINT8 sign[4];
 static UINT8 dsw_select;
+
+// ---------------------------------------------------------------------------
+// VBLANK latch: Centipede IN0 bit 6 is ACTIVE HIGH for VBLANK (per port def).
+// g_in0_vblank_bit holds the current state of bit 6 to merge into IN0 reads.
+// ---------------------------------------------------------------------------
+static uint8_t g_in0_vblank_bit = 0x00;
+
+static inline void centiped_vblank_begin(int dum) { g_in0_vblank_bit = 0x00; }
+static inline void centiped_vblank_end(int dum) { g_in0_vblank_bit = 0x40; }
 
 static struct rectangle spritevisiblearea =
 {
@@ -54,23 +72,19 @@ static struct GfxLayout spritelayout =
 	16 * 8	/* every sprite takes 16 consecutive bytes */
 };
 
-
 struct GfxDecodeInfo centiped_gfxdecodeinfo[] =
 {
 	{ REGION_GFX1, 0, &charlayout,   4, 4 },	/* 4 color codes to support midframe */
-												/* palette changes in test mode */
-	{ REGION_GFX1, 0, &spritelayout, 0, 1 },
-	{ -1 } /* end of array */
+	/* palette changes in test mode */
+{ REGION_GFX1, 0, &spritelayout, 0, 1 },
+{ -1 } /* end of array */
 };
-
 
 static struct POKEYinterface centiped_pokey_interface =
 {
 	1,	/* 1 chip */
-	1512000,	/* 1.5 MHz??? */
-	{ 128 },
-	POKEY_DEFAULT_GAIN,
-	NO_CLIP,
+	12096000 / 8,	/* 1.512 MHz */
+	{ 240 },
 	/* The 8 pot handlers */
 	{ 0 },
 	{ 0 },
@@ -81,16 +95,12 @@ static struct POKEYinterface centiped_pokey_interface =
 	{ 0 },
 	{ 0 },
 	/* The allpot handler */
-	{ 0 }
+	{ 0 },
 };
-
-
-
 
 static void setcolor(int pen, int data)
 {
 	int r, g, b;
-
 
 	r = 0xff * ((~data >> 0) & 1);
 	g = 0xff * ((~data >> 1) & 1);
@@ -117,8 +127,6 @@ void centiped_interrupt()
 		//return ignore_interrupt();
 	}
 }
-	
-
 
 //////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////
@@ -143,8 +151,7 @@ void centiped_interrupt()
  * to prevent the counter from wrapping around between reads.
  */
 
-
- int read_trackball(int idx, int switch_port)
+int read_trackball(int idx, int switch_port)
 {
 	int newpos;
 
@@ -168,13 +175,11 @@ void centiped_interrupt()
 	return (readinputport(switch_port) & 0x70) | (oldpos[idx] & 0x0f) | sign[idx];
 }
 
-
 WRITE_HANDLER(centiped_vh_charpalette_w)
 {
 	centiped_charpalette[address] = data;
 	Machine->gfx[0]->colortable[address] = Machine->pens[15 - data];
 }
-
 
 READ_HANDLER(centiped_IN0_r)
 {
@@ -188,54 +193,49 @@ READ_HANDLER(centiped_IN0_r)
 		oldpos = newpos;
 	}
 
-	return ((readinputport(0) & 0x70) | (oldpos & 0x0f) | sign);
-	//return read_trackball(0, 0);
+	return ((readinputport(0) & 0x30) | (oldpos & 0x0f) | g_in0_vblank_bit | sign);
 }
 
-
- READ_HANDLER(centiped_IN2_r)
+READ_HANDLER(centiped_IN2_r)
 {
-	 static int oldpos, sign;
-	 int newpos;
+	static int oldpos, sign;
+	int newpos;
 
-	 newpos = readinputport(2);
-	 if (newpos != oldpos)
-	 {
-		 sign = (newpos - oldpos) & 0x80;
-		 oldpos = newpos;
-	 }
+	newpos = readinputport(2);
+	if (newpos != oldpos)
+	{
+		sign = (newpos - oldpos) & 0x80;
+		oldpos = newpos;
+	}
 
-	 return ((oldpos & 0x0f) | sign);
-//	return read_trackball(1, 2);
+	return ((oldpos & 0x0f) | sign);
+	//	return read_trackball(1, 2);
 }
-
-
 
 READ_HANDLER(centiped_IN1_r)
 {
 	UINT8 data;
 	data = readinputportbytag("IN1");
-	return (UINT8) data;
+	return (UINT8)data;
 }
 
 READ_HANDLER(centiped_IN4_r)
 {
 	UINT8 data;
 	data = readinputportbytag("DSW1");
-	return (UINT8) data;
+	return (UINT8)data;
 }
 READ_HANDLER(centiped_IN5_r)
 {
 	UINT8 data;
 	data = readinputportbytag("DSW2");
-	return (UINT8) data;
+	return (UINT8)data;
 }
 
 WRITE_HANDLER(irq_ack)
 {
 	m_cpu_6502[0]->m6502clearpendingint();
 }
-
 
 WRITE_HANDLER(centiped_paletteram_w)
 {
@@ -244,9 +244,9 @@ WRITE_HANDLER(centiped_paletteram_w)
 
 	wrlog("Address here %d", address);
 
-	// the char palette will be effectively updated by the next interrupt handler 
+	// the char palette will be effectively updated by the next interrupt handler
 
-	if (address >= 12 && address < 16)	//sprites palette 
+	if (address >= 12 && address < 16)	//sprites palette
 	{
 		int start = Machine->drv->gfxdecodeinfo[1].color_codes_start;
 
@@ -275,12 +275,10 @@ WRITE_HANDLER(centiped_paletteram_w)
 	osd_modify_pen(Machine->pens[address], r, g, b);
 }
 
-
 WRITE_HANDLER(centiped_led_w)
 {
 	//set_led_status(offset, ~data & 0x80);
 }
-
 
 WRITE_HANDLER(centiped_vh_flipscreen_w)
 {
@@ -289,7 +287,6 @@ WRITE_HANDLER(centiped_vh_flipscreen_w)
 		centiped_flipscreen = data & 0x80;
 	}
 }
-
 
 //called on reset
 void centiped_init_machine(void)
@@ -301,9 +298,10 @@ void centiped_init_machine(void)
 void run_centiped()
 {
 	pokey_sh_update();
-	//watchdog_reset_w(0, 0, 0);
+//	watchdog_reset_w(0, 0, 0);
 	centiped_vh_screenrefresh();
-	
+	centiped_vblank_end(0);       // clear vblank latch (bit 6 goes HIGH)
+	timer_pulse(TIME_IN_CYCLES(1450, CPU0), CPU0, centiped_vblank_begin);
 }
 
 void end_centiped()
@@ -320,154 +318,146 @@ int init_centiped(void)
 	spriteram = &Machine->memory_region[CPU0][0x07c0];
 	videoram_size = 0x3c0;
 	//colorram = &Machine->memory_region[Machine->drv->cpu[0].memory_region][0x440];
-	
+
 	spriteram_size = 0x40;
 
 	centiped_spritepalette = &Machine->memory_region[CPU0][0x140c];
 	centiped_charpalette = &Machine->memory_region[CPU0][0x1404];
 	pokey_sh_start(&centiped_pokey_interface);
+	aae_set_lines_per_frame(262);
 
-	unsigned char* TRAM;
 	dsw_select = 0;
 	/* CPU ROMs */
 	powerup_counter = 25;
-	TRAM = memory_region(REGION_CPU1);
-	//TRAM[0x38a8] = 0xea;
-	//TRAM[0x38a9] = 0xea;
-	//TRAM[0x38ae] = 0xea;
-	//TRAM[0x38af] = 0xea;
 
 	centiped_vh_start();
 
-
 	return 0;
 }
-	
 
-	INPUT_PORTS_START(centiped)										
-	PORT_START	("IN0")/* IN0 */														
-	/* The lower 4 bits and bit 7 are for trackball x input. */					
-	/* They are handled by fake input port 6 and a custom routine. */			
-	PORT_BIT ( 0x0f, IP_ACTIVE_HIGH, IPT_UNKNOWN )								
-	PORT_DIPNAME(0x10, 0x00, DEF_STR( Cabinet ) )								
-	PORT_DIPSETTING (   0x00, DEF_STR( Upright ) )								
-	PORT_DIPSETTING (   0x10, DEF_STR( Cocktail ) )								
-	PORT_SERVICE( 0x20, IP_ACTIVE_LOW )											
-	PORT_BIT ( 0x40, IP_ACTIVE_HIGH, IPT_VBLANK )								
-	PORT_BIT ( 0x80, IP_ACTIVE_HIGH, IPT_UNKNOWN )								
-																				
-	PORT_START("IN1")														
-	PORT_BIT ( 0x01, IP_ACTIVE_LOW, IPT_START1 )								
-	PORT_BIT ( 0x02, IP_ACTIVE_LOW, IPT_START2 )								
-	PORT_BIT ( 0x04, IP_ACTIVE_LOW, IPT_BUTTON1 )								
-	PORT_BIT ( 0x08, IP_ACTIVE_LOW, IPT_BUTTON1 | IPF_PLAYER2 )					
-	PORT_BIT ( 0x10, IP_ACTIVE_LOW, IPT_TILT )									
-	PORT_BIT ( 0x20, IP_ACTIVE_LOW, IPT_COIN1 )									
-	PORT_BIT ( 0x40, IP_ACTIVE_LOW, IPT_COIN2 )									
-	PORT_BIT ( 0x80, IP_ACTIVE_LOW, IPT_COIN3 )									
-																				
-	PORT_START("IN2")	/* IN2 */
-	PORT_ANALOGX( 0xff, 0x00, IPT_TRACKBALL_Y , 50, 10, 0, 0, 0, IP_KEY_NONE, IP_KEY_NONE, IP_JOY_NONE, IP_JOY_NONE )
-	/* The lower 4 bits are the input, and bit 7 is the direction. */			
-	/* The state of bit 7 does not change if the trackball is not moved.*/		
-																				
-	PORT_START("IN3")	/* IN3 */
-	PORT_BIT ( 0x01, IP_ACTIVE_LOW, IPT_JOYSTICK_DOWN | IPF_8WAY | IPF_COCKTAIL )	
-	PORT_BIT ( 0x02, IP_ACTIVE_LOW, IPT_JOYSTICK_UP | IPF_8WAY | IPF_COCKTAIL )		
-	PORT_BIT ( 0x04, IP_ACTIVE_LOW, IPT_JOYSTICK_LEFT | IPF_8WAY | IPF_COCKTAIL )	
-	PORT_BIT ( 0x08, IP_ACTIVE_LOW, IPT_JOYSTICK_RIGHT | IPF_8WAY | IPF_COCKTAIL )	
-	PORT_BIT ( 0x10, IP_ACTIVE_LOW, IPT_JOYSTICK_UP | IPF_8WAY )				
-	PORT_BIT ( 0x20, IP_ACTIVE_LOW, IPT_JOYSTICK_DOWN | IPF_8WAY )				
-	PORT_BIT ( 0x40, IP_ACTIVE_LOW, IPT_JOYSTICK_LEFT | IPF_8WAY )				
-	PORT_BIT ( 0x80, IP_ACTIVE_LOW, IPT_JOYSTICK_RIGHT | IPF_8WAY )				
-																				
-	PORT_START("DSW1")	/* IN4 */
-	PORT_DIPNAME(0x03, 0x00, "Language" )										
-	PORT_DIPSETTING (   0x00, "English" )										
-	PORT_DIPSETTING (   0x01, "German" )										
-	PORT_DIPSETTING (   0x02, "French" )										
-	PORT_DIPSETTING (   0x03, "English" )									
-	PORT_DIPNAME(0x0c, 0x04, DEF_STR( Lives ) )									
-	PORT_DIPSETTING (   0x00, "2" )												
-	PORT_DIPSETTING (   0x04, "3" )												
-	PORT_DIPSETTING (   0x08, "4" )												
-	PORT_DIPSETTING (   0x0c, "5" )												
-	PORT_DIPNAME(0x30, 0x10, DEF_STR( Bonus_Life ) )							
-	PORT_DIPSETTING (   0x00, "10000" )											
-	PORT_DIPSETTING (   0x10, "12000" )											
-	PORT_DIPSETTING (   0x20, "15000" )											
-	PORT_DIPSETTING (   0x30, "20000" )											
-	PORT_DIPNAME(0x40, 0x40, DEF_STR( Difficulty ) )							
-	PORT_DIPSETTING (   0x40, "Easy" )											
-	PORT_DIPSETTING (   0x00, "Hard" )											
-	PORT_DIPNAME(0x80, 0x00, "Credit Minimum" )									
-	PORT_DIPSETTING (   0x00, "1" )												
-	PORT_DIPSETTING (   0x80, "2" )												
-																				
-	PORT_START("DSW2")	/* IN5 */
-	PORT_DIPNAME(0x03, 0x02, DEF_STR( Coinage ) )								
-	PORT_DIPSETTING (   0x03, DEF_STR( 2C_1C ) )								
-	PORT_DIPSETTING (   0x02, DEF_STR( 1C_1C ) )								
-	PORT_DIPSETTING (   0x01, DEF_STR( 1C_2C ) )								
-	PORT_DIPSETTING (   0x00, DEF_STR( Free_Play ) )							
-	PORT_DIPNAME(0x0c, 0x00, "Right Coin" )										
-	PORT_DIPSETTING (   0x00, "*1" )											
-	PORT_DIPSETTING (   0x04, "*4" )											
-	PORT_DIPSETTING (   0x08, "*5" )											
-	PORT_DIPSETTING (   0x0c, "*6" )											
-	PORT_DIPNAME(0x10, 0x00, "Left Coin" )										
-	PORT_DIPSETTING (   0x00, "*1" )											
-	PORT_DIPSETTING (   0x10, "*2" )											
-	PORT_DIPNAME(0xe0, 0x00, "Bonus Coins" )									
-	PORT_DIPSETTING (   0x00, "None" )											
-	PORT_DIPSETTING (   0x20, "3 credits/2 coins" )								
-	PORT_DIPSETTING (   0x40, "5 credits/4 coins" )								
-	PORT_DIPSETTING (   0x60, "6 credits/4 coins" )								
-	PORT_DIPSETTING (   0x80, "6 credits/5 coins" )								
-	PORT_DIPSETTING (   0xa0, "4 credits/3 coins" )								
-																				
-	PORT_START("IN6")	/* IN6, fake trackball input port. */
-	PORT_ANALOGX( 0xff, 0x00, IPT_TRACKBALL_X | IPF_REVERSE , 50, 10, 0, 0, 0,IP_KEY_NONE, IP_KEY_NONE, IP_JOY_NONE, IP_JOY_NONE )
+INPUT_PORTS_START(centiped)
+PORT_START("IN0")/* IN0 */
+/* The lower 4 bits and bit 7 are for trackball x input. */
+/* They are handled by fake input port 6 and a custom routine. */
+PORT_BIT(0x0f, IP_ACTIVE_HIGH, IPT_UNKNOWN)
+PORT_DIPNAME(0x10, 0x00, DEF_STR(Cabinet))
+PORT_DIPSETTING(0x00, DEF_STR(Upright))
+PORT_DIPSETTING(0x10, DEF_STR(Cocktail))
+PORT_SERVICE(0x20, IP_ACTIVE_LOW)
+PORT_BIT(0x40, IP_ACTIVE_HIGH, IPT_VBLANK)
+PORT_BIT(0x80, IP_ACTIVE_HIGH, IPT_UNKNOWN)
+
+PORT_START("IN1")
+PORT_BIT(0x01, IP_ACTIVE_LOW, IPT_START1)
+PORT_BIT(0x02, IP_ACTIVE_LOW, IPT_START2)
+PORT_BIT(0x04, IP_ACTIVE_LOW, IPT_BUTTON1)
+PORT_BIT(0x08, IP_ACTIVE_LOW, IPT_BUTTON1 | IPF_PLAYER2)
+PORT_BIT(0x10, IP_ACTIVE_LOW, IPT_TILT)
+PORT_BIT(0x20, IP_ACTIVE_LOW, IPT_COIN1)
+PORT_BIT(0x40, IP_ACTIVE_LOW, IPT_COIN2)
+PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_COIN3)
+
+PORT_START("IN2")	/* IN2 */
+PORT_ANALOGX(0xff, 0x00, IPT_TRACKBALL_Y, 50, 10, 0, 0, IP_KEY_NONE, IP_KEY_NONE, IP_JOY_NONE, IP_JOY_NONE)
+/* The lower 4 bits are the input, and bit 7 is the direction. */
+/* The state of bit 7 does not change if the trackball is not moved.*/
+
+PORT_START("IN3")	/* IN3 */
+PORT_BIT(0x01, IP_ACTIVE_LOW, IPT_JOYSTICK_DOWN | IPF_8WAY | IPF_COCKTAIL)
+PORT_BIT(0x02, IP_ACTIVE_LOW, IPT_JOYSTICK_UP | IPF_8WAY | IPF_COCKTAIL)
+PORT_BIT(0x04, IP_ACTIVE_LOW, IPT_JOYSTICK_LEFT | IPF_8WAY | IPF_COCKTAIL)
+PORT_BIT(0x08, IP_ACTIVE_LOW, IPT_JOYSTICK_RIGHT | IPF_8WAY | IPF_COCKTAIL)
+PORT_BIT(0x10, IP_ACTIVE_LOW, IPT_JOYSTICK_UP | IPF_8WAY)
+PORT_BIT(0x20, IP_ACTIVE_LOW, IPT_JOYSTICK_DOWN | IPF_8WAY)
+PORT_BIT(0x40, IP_ACTIVE_LOW, IPT_JOYSTICK_LEFT | IPF_8WAY)
+PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_JOYSTICK_RIGHT | IPF_8WAY)
+
+PORT_START("DSW1")	/* IN4 */
+PORT_DIPNAME(0x03, 0x00, "Language")
+PORT_DIPSETTING(0x00, "English")
+PORT_DIPSETTING(0x01, "German")
+PORT_DIPSETTING(0x02, "French")
+PORT_DIPSETTING(0x03, "English")
+PORT_DIPNAME(0x0c, 0x04, DEF_STR(Lives))
+PORT_DIPSETTING(0x00, "2")
+PORT_DIPSETTING(0x04, "3")
+PORT_DIPSETTING(0x08, "4")
+PORT_DIPSETTING(0x0c, "5")
+PORT_DIPNAME(0x30, 0x10, DEF_STR(Bonus_Life))
+PORT_DIPSETTING(0x00, "10000")
+PORT_DIPSETTING(0x10, "12000")
+PORT_DIPSETTING(0x20, "15000")
+PORT_DIPSETTING(0x30, "20000")
+PORT_DIPNAME(0x40, 0x40, DEF_STR(Difficulty))
+PORT_DIPSETTING(0x40, "Easy")
+PORT_DIPSETTING(0x00, "Hard")
+PORT_DIPNAME(0x80, 0x00, "Credit Minimum")
+PORT_DIPSETTING(0x00, "1")
+PORT_DIPSETTING(0x80, "2")
+
+PORT_START("DSW2")	/* IN5 */
+PORT_DIPNAME(0x03, 0x02, DEF_STR(Coinage))
+PORT_DIPSETTING(0x03, DEF_STR(2C_1C))
+PORT_DIPSETTING(0x02, DEF_STR(1C_1C))
+PORT_DIPSETTING(0x01, DEF_STR(1C_2C))
+PORT_DIPSETTING(0x00, DEF_STR(Free_Play))
+PORT_DIPNAME(0x0c, 0x00, "Right Coin")
+PORT_DIPSETTING(0x00, "*1")
+PORT_DIPSETTING(0x04, "*4")
+PORT_DIPSETTING(0x08, "*5")
+PORT_DIPSETTING(0x0c, "*6")
+PORT_DIPNAME(0x10, 0x00, "Left Coin")
+PORT_DIPSETTING(0x00, "*1")
+PORT_DIPSETTING(0x10, "*2")
+PORT_DIPNAME(0xe0, 0x00, "Bonus Coins")
+PORT_DIPSETTING(0x00, "None")
+PORT_DIPSETTING(0x20, "3 credits/2 coins")
+PORT_DIPSETTING(0x40, "5 credits/4 coins")
+PORT_DIPSETTING(0x60, "6 credits/4 coins")
+PORT_DIPSETTING(0x80, "6 credits/5 coins")
+PORT_DIPSETTING(0xa0, "4 credits/3 coins")
+
+PORT_START("IN6")	/* IN6, fake trackball input port. */
+PORT_ANALOGX(0xff, 0x00, IPT_TRACKBALL_X | IPF_REVERSE, 50, 10, 0, 0, IP_KEY_NONE, IP_KEY_NONE, IP_JOY_NONE, IP_JOY_NONE)
 INPUT_PORTS_END
-
 
 ///PORT HANDLERS
 
-MEM_READ( centiped_readmem)
-	//{ 0x0000, 0x03ff, MRA_RAM },
-	//{ 0x0400, 0x07ff, MRA_RAM },
-	{ 0x0800, 0x0800, ip_port_4_r},	/* DSW1 */
-	{ 0x0801, 0x0801, ip_port_5_r },	/* DSW2 */
-	{ 0x0c00, 0x0c00, centiped_IN0_r },	/* IN0 */
-	{ 0x0c01, 0x0c01, ip_port_1_r },	/* IN1 */
-	{ 0x0c02, 0x0c02, centiped_IN2_r },	/* IN2 */	/* JB 971220 */
-	{ 0x0c03, 0x0c03, ip_port_3_r },	/* IN3 */
-	{ 0x1000, 0x100f, pokey_1_r },
-	{ 0x1700, 0x173f, EaromRead },
-	//{ 0x2000, 0x3fff, MRA_ROM },
-	//{ 0xf800, 0xffff, MRA_ROM },	/* for the reset / interrupt vectors */
+MEM_READ(centiped_readmem)
+//{ 0x0000, 0x03ff, MRA_RAM },
+//{ 0x0400, 0x07ff, MRA_RAM },
+{
+	0x0800, 0x0800, ip_port_4_r
+},	/* DSW1 */
+{ 0x0801, 0x0801, ip_port_5_r },	/* DSW2 */
+{ 0x0c00, 0x0c00, centiped_IN0_r },	/* IN0 */
+{ 0x0c01, 0x0c01, ip_port_1_r },	/* IN1 */
+{ 0x0c02, 0x0c02, centiped_IN2_r },	/* IN2 */	/* JB 971220 */
+{ 0x0c03, 0x0c03, ip_port_3_r },	/* IN3 */
+{ 0x1000, 0x100f, pokey_1_r },
+{ 0x1700, 0x173f, EaromRead },
+//{ 0x2000, 0x3fff, MRA_ROM },
+//{ 0xf800, 0xffff, MRA_ROM },	/* for the reset / interrupt vectors */
 MEM_END
-
-
 
 MEM_WRITE(centiped_writemem)
-	//{ 0x0000, 0x03ff, MWA_RAM },
-	//{ 0x0400, 0x07bf, videoram_w },
-	//{ 0x07c0, 0x07ff, MWA_RAM, &spriteram },
-	{ 0x1000, 0x100f, pokey_1_w },
-	//{ 0x1400, 0x140f, centiped_paletteram_w },
-	{ 0x1404, 0x1407,centiped_vh_charpalette_w },
-	{ 0x1600, 0x163f, EaromWrite },
-	{ 0x1680, 0x1680, EaromCtrl },
-	{ 0x1800, 0x1800, irq_ack },	/* IRQ acknowldege */
-	//{ 0x1c00, 0x1c02, MWA_NOP },
-	{ 0x1c03, 0x1c04, centiped_led_w },
-	{ 0x1c07, 0x1c07, centiped_vh_flipscreen_w },
-	{ 0x2000, 0x2000, watchdog_reset_w },
-	{ 0x2000, 0x3fff, MWA_ROM },
+//{ 0x0000, 0x03ff, MWA_RAM },
+//{ 0x0400, 0x07bf, videoram_w },
+//{ 0x07c0, 0x07ff, MWA_RAM, &spriteram },
+{
+	0x1000, 0x100f, pokey_1_w
+},
+//{ 0x1400, 0x140f, centiped_paletteram_w },
+{ 0x1404, 0x1407,centiped_vh_charpalette_w },
+{ 0x1600, 0x163f, EaromWrite },
+{ 0x1680, 0x1680, EaromCtrl },
+{ 0x1800, 0x1800, irq_ack },	/* IRQ acknowldege */
+//{ 0x1c00, 0x1c02, MWA_NOP },
+{ 0x1c03, 0x1c04, centiped_led_w },
+{ 0x1c07, 0x1c07, centiped_vh_flipscreen_w },
+{ 0x2000, 0x2000, watchdog_reset_w },
+{ 0x2000, 0x3fff, MWA_ROM },
 MEM_END
-
-
 
 /***************************************************************************
 
@@ -490,15 +480,13 @@ ROM_REGION(0x0100, REGION_PROMS, 0)
 ROM_LOAD("136001-213.p4", 0x0000, 0x0100, CRC(6fa3093a) SHA1(2b7aeca74c1ae4156bf1878453a047330f96f0a8))
 ROM_END
 
-
-
 // centipede
 AAE_DRIVER_BEGIN(drv_centiped, "centiped", "Centipede")
 AAE_DRIVER_ROM(rom_centiped)
 AAE_DRIVER_FUNCS(&init_centiped, &run_centiped, &end_centiped)
 AAE_DRIVER_INPUT(input_ports_centiped)
 AAE_DRIVER_SAMPLES_NONE()
-AAE_DRIVER_ART(centiped_art)
+AAE_DRIVER_ART_NONE()
 
 AAE_DRIVER_CPUS(
 	AAE_CPU_ENTRY(
@@ -520,12 +508,13 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_NONE_ENTRY()
 )
 
-AAE_DRIVER_VIDEO_CORE(60, VIDEO_TYPE_RASTER_COLOR | VIDEO_SUPPORTS_DIRTY | VIDEO_MODIFIES_PALETTE | VIDEO_UPDATE_AFTER_VBLANK, ORIENTATION_SWAP_XY)
+AAE_DRIVER_VIDEO_CORE(60, 0, VIDEO_TYPE_RASTER_COLOR | VIDEO_SUPPORTS_DIRTY | VIDEO_MODIFIES_PALETTE | VIDEO_UPDATE_AFTER_VBLANK, ORIENTATION_ROTATE_270)
 AAE_DRIVER_SCREEN(256, 256, 0, 255, 0, 239)
 AAE_DRIVER_RASTER(centiped_gfxdecodeinfo, 4 + 4 * 4, 4 * 4 + 4 * 4 * 4 * 4, centiped_vh_convert_color_prom)
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0, 0)
 AAE_DRIVER_NVRAM(atari_vg_earom_handler)
+AAE_DRIVER_LAYOUT("default.lay", "Upright_Artwork")
 AAE_DRIVER_END()
 
 AAE_REGISTER_DRIVER(drv_centiped)

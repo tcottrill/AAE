@@ -115,13 +115,13 @@ static struct TMS5220interface tms5220_interface =
     255,        /* volume */
     0           /* IRQ handler */
 };
+
+
 static struct POKEYinterface pokey_interface =
 {
     4,			/* 4 chips */
-    1512000,	/* 1.5 MHz? */
-    255,    /* volume */
-    6,//POKEY_DEFAULT_GAIN/4,
-    USE_CLIP,
+    1500000,	/* 1.5 MHz? */
+    { 64, 64, 64, 64 },	/* volume */
     /* The 8 pot handlers */
     { 0, 0, 0, 0 },
     { 0, 0, 0, 0 },
@@ -134,6 +134,7 @@ static struct POKEYinterface pokey_interface =
     /* The allpot handler */
     { 0, 0, 0, 0 },
 };
+
 
 int starwars_sh_start(void)
 {

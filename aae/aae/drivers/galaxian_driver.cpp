@@ -1,3 +1,16 @@
+//============================================================================
+// AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME
+// code, 0.29 through .90 mixed with code of my own. This emulator was
+// created solely for my amusement and learning and is provided only
+// as an archival experience.
+//
+// All MAME code used and abused in this emulator remains the copyright
+// of the dedicated people who spend countless hours creating it. All
+// MAME code should be annotated as belonging to the MAME TEAM.
+//
+// SOME CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.
+//============================================================================
+
 #include "aae_mame_driver.h"
 #include "galaxian_driver.h"
 #include "old_mame_raster.h"
@@ -13,11 +26,6 @@ extern int galaxian_bulletsram_size;
 
 static int sound_init = 0;
 
-ART_START(galaxian_art)
-ART_LOAD("galaxian.zip", "galaxian_bezel.png", ART_TEX, 3)
-ART_END
-
-
 static const char* galaxian_samples[] =
 {
 	"galaxian.zip",
@@ -25,7 +33,6 @@ static const char* galaxian_samples[] =
 	"shot.wav",
 	0	/* end of array */
 };
-
 
 static struct rectangle spritevisiblearea =
 {
@@ -160,7 +167,7 @@ WRITE_HANDLER(galaxian_stars_enable_w)
 }
 WRITE_HANDLER(galaxian_flip_screen_x_w)
 {
-	galaxian_flipx_w(address,data);
+	galaxian_flipx_w(address, data);
 }
 WRITE_HANDLER(galaxian_flip_screen_y_w)
 {
@@ -169,7 +176,7 @@ WRITE_HANDLER(galaxian_flip_screen_y_w)
 
 void run_galaxian()
 {
-	//Temp Fix, init sound after CPU's have been initialized. 
+	//Temp Fix, init sound after CPU's have been initialized.
 	// Need to rethink the sound setup
 
 	if (!sound_init) {
@@ -192,19 +199,19 @@ void run_galaxian()
 	galaxian_sh_update_stream();
 }
 
-
 MEM_READ(galaxian_readmem)
 //{ 0x0000, 0x3fff, MRA_ROM},
 //{ 0x4000, 0x47ff, MRA_RAM },
 //{ 0x5000, 0x53ff, MRA_RAM },
 //{ 0x5400, 0x57ff, galaxian_videoram_r },
 //{ 0x5800, 0x58ff, MRA_RAM },
- {0x6000, 0x6000, ip_port_0_r},
+{
+	0x6000, 0x6000, ip_port_0_r
+},
 { 0x6800, 0x6800, ip_port_1_r },
 { 0x7000, 0x7000, ip_port_2_r },
 //{ 0x7800, 0x78ff, MRA_ROM },//watchdog_reset_r },
 MEM_END
-
 
 MEM_WRITE(galaxian_writemem)
 {
@@ -228,7 +235,7 @@ MEM_WRITE(galaxian_writemem)
 { 0x7004, 0x7004, galaxian_stars_enable_w },
 { 0x7006, 0x7006, galaxian_flip_screen_x_w },
 { 0x7007, 0x7007, galaxian_flip_screen_y_w },
-{ 0x7800, 0x7800, galaxian_stream_pitch_w }, 
+{ 0x7800, 0x7800, galaxian_stream_pitch_w },
 MEM_END
 
 PORT_READ(galaxian_readport)
@@ -239,45 +246,31 @@ PORT_WRITE(galaxian_writeport)
 
 PORT_END
 
-
-
 int init_galaxian(void)
 {
-	//init_z80(galaxian_readmem, galaxian_writemem, galaxian_readport, galaxian_writeport, CPU0);
-	//FOR RASTER, VIDEORAM POINTER, SPRITERAM POINTER NEED TO BE SET MANUALLY
-	//galaxian_attributesram = &Machine->memory_region[0][0x5800];
-	//galaxian_bulletsram = &Machine->memory_region[0][0x5860];
-	//galaxian_bulletsram_size = 0x20;
-	//videoram = &Machine->memory_region[0][0x5000];
-	//videoram_size = 0x400;
-	//spriteram = &Machine->memory_region[0][0x5840];
-	//spriteram_size = 0x20;
-
-//	galaxian_sh_start_stream(nullptr);
+	//	galaxian_sh_start_stream(nullptr);
 	// Mid LFO and make sure background is on from frame 0:
-    //galaxian_lfo_freq_w(0, 0);  // bit0 = 0
+	//galaxian_lfo_freq_w(0, 0);  // bit0 = 0
 //	galaxian_lfo_freq_w(1, 0);  // bit1 = 0
 //	galaxian_lfo_freq_w(2, 0);  // bit2 = 0
 //	galaxian_lfo_freq_w(3, 1);  // bit3 = 1  => value 8
 	LOG_INFO("1");
-//	galaxian_background_enable_w(0, 1);
-//	galaxian_background_enable_w(1, 1);
-//	galaxian_background_enable_w(2, 1);
+	//	galaxian_background_enable_w(0, 1);
+	//	galaxian_background_enable_w(1, 1);
+	//	galaxian_background_enable_w(2, 1);
 	LOG_INFO("2");
 	galaxian_vh_start();
 	LOG_INFO("3");
 	return 0;
 }
 
-
 void end_galaxian()
 {
 	galaxian_sh_stop_stream();
 }
 
-
 INPUT_PORTS_START(galaxian)
-PORT_START  ("IN0")    /* IN0 */
+PORT_START("IN0")    /* IN0 */
 PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_COIN1)
 PORT_BIT(0x02, IP_ACTIVE_HIGH, IPT_COIN2)
 PORT_BIT(0x04, IP_ACTIVE_HIGH, IPT_JOYSTICK_LEFT | IPF_2WAY)
@@ -302,7 +295,7 @@ PORT_DIPSETTING(0x00, DEF_STR(1C_1C))
 PORT_DIPSETTING(0x80, DEF_STR(1C_2C))
 PORT_DIPSETTING(0xc0, DEF_STR(Free_Play))
 
-PORT_START   ("DSW0")   /* DSW0 */
+PORT_START("DSW0")   /* DSW0 */
 PORT_DIPNAME(0x03, 0x00, DEF_STR(Bonus_Life))
 PORT_DIPSETTING(0x00, "7000")
 PORT_DIPSETTING(0x01, "10000")
@@ -333,14 +326,13 @@ ROM_REGION(0x0020, REGION_PROMS, 0)
 ROM_LOAD("6l.bpr", 0x0000, 0x0020, CRC(c3ac9467) SHA1(f382ad5a34d282056c78a5ec00c30ec43772bae2))
 ROM_END
 
-
 // Galaxian (Midway)
 AAE_DRIVER_BEGIN(drv_galaxian, "galaxian", "Galaxian (Midway)")
 AAE_DRIVER_ROM(rom_galaxian)
 AAE_DRIVER_FUNCS(&init_galaxian, &run_galaxian, &end_galaxian)
 AAE_DRIVER_INPUT(input_ports_galaxian)
 AAE_DRIVER_SAMPLES(galaxian_samples)
-AAE_DRIVER_ART(galaxian_art)
+AAE_DRIVER_ART_NONE()
 
 AAE_DRIVER_CPUS(
 	AAE_CPU_ENTRY(
@@ -362,17 +354,18 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_NONE_ENTRY()
 )
 
-AAE_DRIVER_VIDEO_CORE(60, VIDEO_TYPE_RASTER_COLOR | VIDEO_SUPPORTS_DIRTY, ORIENTATION_ROTATE_270 | ORIENTATION_FLIP_X)
+AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_RASTER_COLOR | VIDEO_SUPPORTS_DIRTY, ORIENTATION_ROTATE_90 | ORIENTATION_FLIP_X)
 AAE_DRIVER_SCREEN(32 * 8, 32 * 8, 0 * 8, 32 * 8 - 1, 2 * 8, 30 * 8 - 1)
 AAE_DRIVER_RASTER(galaxian_gfxdecodeinfo, 32 + 64, 8 * 4 + 2 * 2, galaxian_vh_convert_color_prom)
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0, 0)
 AAE_DRIVER_NVRAM_NONE()
+//AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_LAYOUT("default.lay", "Upright_Artwork_Midway")
+
 AAE_DRIVER_END()
 
-
 AAE_REGISTER_DRIVER(drv_galaxian)
-
 
 /***************************************************************************
 

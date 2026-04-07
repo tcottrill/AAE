@@ -21,7 +21,7 @@ extern GLuint game_tex[10];
 extern GLuint menu_tex[7];
 
 // Load
-GLuint load_texture(const char* filename, const char* archname, int numcomponents, int filter, bool modernGL = false);
+GLuint load_texture(const char* filename, const char* archname, int numcomponents, int filter, bool modernGL = true);
 // Use
 void set_texture(GLuint* texture, GLboolean linear, GLboolean mipmapping, GLboolean blending, GLboolean set_color);
 // Take snapshot

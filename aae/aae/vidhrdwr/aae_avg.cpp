@@ -11,16 +11,15 @@
 // THE CODE BELOW IS DERIVED FROM MAME and COPYRIGHT the MAME TEAM.
 //============================================================================
 
-
 #include "aae_avg.h"
 #include "timer.h"
-#include "cohen_sutherland_clipping.h"
+
 
 #pragma warning( disable : 4996 4244)
 
-
-unsigned char vec_ram[0x8000]; // Only used by aztarac and quantum, review. 
+unsigned char vec_ram[0x8000]; // Only used by aztarac and quantum, review.
 UINT8* tempest_colorram;
+UINT8* mhavoc_colorram;
 UINT16 quantum_colorram[0x20];
 UINT16* quantum_vectorram;
 unsigned char* vec_mem;
@@ -28,23 +27,33 @@ unsigned char* vec_mem;
 static int vector_engine = USE_AVG;
 static int pc = 0;
 
-static int XFLIP = 0;
-static int YFLIP = 0;
 static int AVG_BUSY = 0;
 static int TOTAL_LENGTH = 0;
-static int scale_adj = 2;
 
 static int vectorbank = 0x18000;
 static int lastbank = 0;
 static float sweep = 0;
 
-static int NO_CACHE = 0;
-static int cache_count = 0;
-
 static int (*opcode_handler)(int) = nullptr;
-static void (*draw_handler)(int, int, int, int, int, int) = nullptr;
+static void (*draw_handler)(int, int, int, int) = nullptr;
 static void (*stat_handler)(int) = nullptr;
 
+// ---------------------------------------------------------------------------
+// Flipping, swapping, and centering (from MAME avgdvg.c)
+//
+// For the flip/swap transform (Tempest, Quantum) we work in screen space
+// (post >> VEC_SHIFT) using screen-space center values.
+// ---------------------------------------------------------------------------
+static int xmin, xmax, ymin, ymax;
+static int width, height;
+static int xcenter, ycenter;          // fixed-point (<< VEC_SHIFT)
+static int xcenter_scr, ycenter_scr;  // screen-space (for flip/swap)
+static int flip_x, flip_y, swap_xy;
+
+// ---------------------------------------------------------------------------
+// Major Havoc sparkle LFSR state (persistent across frames, like hardware)
+// ---------------------------------------------------------------------------
+static int spkl_shift = 0;
 
 #define VCTR 0
 #define HALT 1
@@ -65,11 +74,10 @@ int vector_timer(int deltax, int deltay)
 {
 	deltax = abs(deltax);
 	deltay = abs(deltay);
-
 	if (deltax > deltay)
-		return deltax >> VEC_SHIFT;
+		return deltax >> 16;
 	else
-		return deltay >> VEC_SHIFT;
+		return deltay >> 16;
 }
 
 static void avg_clr_busy(int dummy)
@@ -77,6 +85,38 @@ static void avg_clr_busy(int dummy)
 	AVG_BUSY = 0;
 }
 
+void avg_set_flip_x(int flip)
+{
+	if (flip)
+		flip_x = 1;
+}
+
+void avg_set_flip_y(int flip)
+{
+	if (flip)
+		flip_y = 1;
+}
+
+void avg_apply_flipping_and_swapping(int* x, int* y)
+{
+	if (flip_x)
+		*x += (xcenter - *x) << 1;
+	if (flip_y)
+		*y += (ycenter - *y) << 1;
+
+	if (swap_xy)
+	{
+		int temp = *x;
+		*x = *y - ycenter + xcenter;
+		*y = temp - xcenter + ycenter;
+	}
+}
+
+void avg_add_point(int x, int y, rgb_t color, int intensity)
+{
+	avg_apply_flipping_and_swapping(&x, &y);
+	vector_add_point(x, y, color, intensity);
+}
 
 //
 //
@@ -98,51 +138,35 @@ static int get_opcode_starwars(int avg_pc)
 	return opcode;
 }
 
-static void draw_bzone(int sx, int sy, int ex, int ey, int z, int color)
+static void draw_bzone(int cx, int cy, int color, int z)
 {
-	int clip;
-	int BZ_CLIP = 272; // The amount of pixels to clip from the bottom
-	// We are rendering flipped onto a 1024x1024 surface and cutting out 768 of it
-	// Which makes this truly a mess.
-
+	if (z == 0) { avg_add_point(cx, cy, 0, 0); return; }
 	z = (z << 4);
-
-	// set_clip_rect(xmin, ymin, xmax, ymax)
-	// By setting ymin to BZ_CLIP (50), anything below y=50 is chopped off.
-	// ymax is set to 1024 so the rest of the screen draws normally.
-	set_clip_rect(0, BZ_CLIP, 1024, 1024);
-
 	if (vector_engine == USE_AVG_RBARON)
-		add_line(sx, sy, ex, ey, z, MAKE_RGBA(z, z, z, z));
+		avg_add_point(cx, cy, MAKE_RGBA(z, z, z, z), z);
 	else
 	{
-		if (color) add_line(sx, sy, ex, ey, z, MAKE_RGBA(z, z, z, z));
-		else
-		{
-			if (clip = ClipLine(&sx, &sy, &ex, &ey))
-			{
-				add_line(sx, sy, ex, ey, z, MAKE_RGBA(z, z, z, z));
-			}
-		}
+		int newymin = (color == 0) ? 0x0050 : ymin;
+		vector_add_clip(xmin << 16, newymin << 16, xmax << 16, ymax << 16);
+		avg_add_point(cx, cy, MAKE_RGBA(z, z, z, z), z);
 	}
 }
-static void draw_avg(int sx, int sy, int ex, int ey, int z, int color)
+static void draw_avg(int cx, int cy, int color, int z)
 {
+	if (z == 0) { avg_add_point(cx, cy, 0, 0); return; }
 	z = ((z & 0xf) << 4) | 0xf;
-
-	add_line(sx, sy, ex, ey, z, VECTOR_COLOR111(color));
+	avg_add_point(cx, cy, VECTOR_COLOR111(color), z);
 }
 
-static void draw_starwars(int sx, int sy, int ex, int ey, int z, int color)
+static void draw_starwars(int cx, int cy, int color, int z)
 {
-	add_line(sx, sy, ex, ey, z, VECTOR_COLOR111(color));
+	if (z == 0) { avg_add_point(cx, cy, 0, 0); return; }
+	avg_add_point(cx, cy, VECTOR_COLOR111(color), z);
 }
 
-static void draw_tempest(int sx, int sy, int ex, int ey, int z, int color)
+static void draw_tempest(int cx, int cy, int color, int z)
 {
-	if (z == 0) return; 
-
-
+	if (z == 0) { avg_add_point(cx, cy, 0, 0); return; }
 
 	uint8_t data = tempest_colorram[color];
 	int r, g, b;
@@ -154,18 +178,14 @@ static void draw_tempest(int sx, int sy, int ex, int ey, int z, int color)
 	r = bit1 * 0xf3 + bit0 * 0x0c;
 	g = bit3 * 0xf3;
 	b = bit2 * 0xf3;
-
-	set_clip_rect(230, 240, 785, 830);
-	int clip = ClipLine(&sx, &sy, &ex, &ey);
-	if (clip)
-	{
-		z = ((z & 0xf) << 4) | 0xf;
-		add_line(sx, sy, ex, ey, z , MAKE_RGBA(r, g, b, z ));
-	}
+	z = ((z & 0xf) << 4) | 0xf;
+	avg_add_point(cx, cy, MAKE_RGBA(r, g, b, z), z);
 }
 
-static void draw_quantum(int sx, int sy, int ex, int ey, int z, int color)
+static void draw_quantum(int cx, int cy, int color, int z)
 {
+	if (z == 0) { avg_add_point(cx, cy, 0, 0); return; }
+
 	UINT16 data;
 	int r, g, b;
 	data = quantum_colorram[color];
@@ -177,13 +197,80 @@ static void draw_quantum(int sx, int sy, int ex, int ey, int z, int color)
 	g = bit1 * 0xaa + bit0 * 0x54;
 	b = bit2 * 0xce;
 	r = bit3 * 0xce;
-
-	add_line(sx, sy, ex, ey, z << 4, MAKE_RGBA(r, g, b, z<<4));
+	avg_add_point(cx, cy, MAKE_RGBA(r, g, b, z), z << 4);
 }
 
-static void draw_mhavoc(int sx, int sy, int ex, int ey, int z, int color)
+// ---------------------------------------------------------------------------
+// Major Havoc colorram color lookup  (shared by normal draw and sparkle)
+// ---------------------------------------------------------------------------
+static inline rgb_t mhavoc_color_from_ram(int colorram_index)
 {
-	add_line(sx, sy, ex, ey, (z & 0xe) << 4, VECTOR_COLOR111(color));
+	int data = mhavoc_colorram[colorram_index];
+	int bit3 = (~data >> 3) & 1;
+	int bit2 = (~data >> 2) & 1;
+	int bit1 = (~data >> 1) & 1;
+	int bit0 = (~data >> 0) & 1;
+	int ar = bit3 * 0xcb + bit2 * 0x34;
+	int ag = bit1 * 0xcb;
+	int ab = bit0 * 0xcb;
+	return MAKE_RGBA(ar, ag, ab, 255);
+}
+
+// ---------------------------------------------------------------------------
+// Major Havoc sparkle draw
+//
+// The sparkle dot density needs to match the screen-space pixel density that
+// vector_update will produce after normalization to 1024.  We scale the step
+// count by (1024 / visible_area_extent) to restore the correct dot density.
+// ---------------------------------------------------------------------------
+static void mhavoc_sparkle_draw(int* pcurrentx, int* pcurrenty,
+	int deltax, int deltay, int z)
+{
+	int raw_steps = vector_timer(deltax, deltay);
+	int vis_extent = (xmax - xmin);
+	int steps = (vis_extent > 0) ? (raw_steps * 1024) / vis_extent : raw_steps;
+	if (steps < 1) steps = 1;
+	if (steps > 2048) steps = 2048; // safety clamp
+
+	// Target endpoint (exact, to avoid rounding drift)
+	int target_x = *pcurrentx + deltax;
+	int target_y = *pcurrenty - deltay;
+
+	int step_dx = deltax / steps;
+	int step_dy = deltay / steps;
+
+	for (int i = 0; i < steps; i++)
+	{
+		*pcurrentx += step_dx;
+		*pcurrenty -= step_dy;
+
+		int data = mhavoc_colorram[0xf +
+			(((spkl_shift & 1) << 3)
+				| (spkl_shift & 4)
+				| ((spkl_shift & 0x10) >> 3)
+				| ((spkl_shift & 0x40) >> 6))];
+
+		int bit3 = (~data >> 3) & 1;
+		int bit2 = (~data >> 2) & 1;
+		int bit1 = (~data >> 1) & 1;
+		int bit0 = (~data >> 0) & 1;
+		int ar = bit3 * 0xcb + bit2 * 0x34;
+		int ag = bit1 * 0xcb;
+		int ab = bit0 * 0xcb;
+
+		avg_add_point(*pcurrentx, *pcurrenty, MAKE_RGBA(ar, ag, ab, 255), z);
+
+		spkl_shift = (((spkl_shift & 0x40) >> 6)
+			^ ((spkl_shift & 0x20) >> 5)
+			^ 1)
+			| (spkl_shift << 1);
+		if ((spkl_shift & 0x7f) == 0x7f)
+			spkl_shift = 0;
+	}
+
+	// Snap to exact endpoint (absorb integer division remainder)
+	*pcurrentx = target_x;
+	*pcurrenty = target_y;
 }
 
 static void stat_avg(int word)
@@ -205,7 +292,7 @@ static void stat_mhavoc(int word)
 {
 }
 
-void AVG_RUN(void)
+void avg_video_update(void)
 {
 	int sp;
 	int stack[8];
@@ -215,9 +302,8 @@ void AVG_RUN(void)
 	int xflip = 0;
 	static int color;
 	static int  sparkle = 0;
-	static int spkl_shift = 0;
-	int currentx = 0;
-	int currenty = 0;
+	int currentx = xcenter;           
+	int currenty = ycenter;
 	int done = 0;
 	int firstwd = 0;
 	int secondwd = 0;
@@ -227,27 +313,51 @@ void AVG_RUN(void)
 	int COMPSHFT = 13;
 
 	int ywindow = 1;
-	int clip = 0;
-	int oldscale = 0;
+	int clip_y = 0;
 	int intensity = 0;
-
-	//int TEMP_CLIP = 240;
-	int sy = 0;
-	int ey = 0;
-	int sx = 0;
-	int ex = 0;
 	int data = 0;
 
-	pc = 0;// Machine->gamedrv->vectorram;
+	// Major Havoc / Alpha One use a specialized inline draw path
+	int is_mhavoc_type = (vector_engine == USE_AVG_MHAVOC || vector_engine == USE_AVG_ALPHAONE);
+
+	pc = 0;
 
 	if (vector_engine == USE_AVG_QUANTUM) COMPSHFT = 12;
 	sp = 0;
 	statz = 0;
 	scale = 0;
 	total_length = 0;
-	//if (NO_CACHE) 
+
+	// -----------------------------------------------------------------------
+	// Major Havoc early-out checks on vector RAM.
+	// If vector RAM is empty or contains halt-sentinel, return WITHOUT
+	// clearing the vector list so the previous frame stays visible.
+	// -----------------------------------------------------------------------
+	if (is_mhavoc_type)
+	{
+		int check_pc = 0;
+		int firstcheck = (vec_mem[check_pc]) | (vec_mem[check_pc + 1] << 8);
+		check_pc += 2;
+		int secondcheck = (vec_mem[check_pc]) | (vec_mem[check_pc + 1] << 8);
+
+		if ((firstcheck == 0) && (secondcheck == 0))
+		{
+			return;
+		}
+		if (firstcheck == 0xafe2)
+		{
+			total_length = 1;
+			return;
+		}
+	}
+
 	cache_clear();
-	
+	vector_clear_list();
+
+	// Seed the beam at center (dark move to establish lastx/lasty)
+	if (is_mhavoc_type)
+		avg_add_point(currentx, currenty, 0, 0);
+
 	while (!done)
 	{
 		firstwd = opcode_handler(pc);
@@ -267,7 +377,7 @@ void AVG_RUN(void)
 			x = twos_comp_val(secondwd, COMPSHFT);
 			y = twos_comp_val(firstwd, COMPSHFT);
 			z = (secondwd >> 12) & 0x0e;
-			if (sparkle) { color = rand() & 0xf; }
+			if (!is_mhavoc_type && sparkle) { color = rand() & 0xf; }
 			goto DRAWCODE;
 			break;
 
@@ -278,70 +388,131 @@ void AVG_RUN(void)
 
 		DRAWCODE:
 
-			total_length += vector_timer(x * oldscale, y * oldscale);
-
-			deltax = x * scale;
-			deltay = y * scale;
-			
-			if (xflip) deltax = -deltax;
-			if (YFLIP) deltay = -deltay;
-			if (XFLIP) deltax = -deltax;
-
-			sx = currentx >> VEC_SHIFT;
-			sy = currenty >> VEC_SHIFT;
-			ex = (currentx + deltax) >> VEC_SHIFT;
-			ey = ((currenty - deltay) >> VEC_SHIFT);
-
-			if (vector_engine == USE_AVG_SWARS)
+			if (is_mhavoc_type)
 			{
-				z = (z * statz) / 8;
-				if (z > 0xff)
-					z = 0xff;
-			}
-			else { if (z == 2)  z = statz; }
+				// ---------------------------------------------------------------
+				// Major Havoc / Alpha One draw path
+				// (merged from mhavoc_custom_video.cpp)
+				// ---------------------------------------------------------------
 
-			if (z)
+				// Resolve intensity: z==2 means "use persistent statz"
+				if (z == 2) z = statz;
+				if (z) z = z << 4;
+
+				// Compute deltas
+				deltax = x * scale;
+				if (xflip) deltax = -deltax;
+				deltay = y * scale;
+
+				// Timing
+				total_length += vector_timer(deltax, deltay);
+
+				if (sparkle && z)
+				{
+					// Sparkle draw
+					mhavoc_sparkle_draw(&currentx, &currenty, deltax, deltay, z);
+				}
+				else if (z)
+				{
+					// Normal lit vector: update position FIRST, then emit point.
+					// Y-window clipping via vector_add_clip
+					currentx += deltax;
+					currenty -= deltay;
+
+					if (ywindow)
+					{
+						vector_add_clip(xmin << VEC_SHIFT, clip_y << VEC_SHIFT, xmax << VEC_SHIFT, ymax << VEC_SHIFT);
+					}
+
+					avg_add_point(currentx, currenty, mhavoc_color_from_ram(color), z);
+				}
+				else
+				{
+					// Blank (dark) move: update position, emit zero-intensity
+					currentx += deltax;
+					currenty -= deltay;
+					avg_add_point(currentx, currenty, 0, 0);
+				}
+			}
+			else
 			{
-				draw_handler(sx, sy, ex, ey, z, color);
+				// ---------------------------------------------------------------
+				// Generic AVG draw path (all other vector engines)
+				// ---------------------------------------------------------------
+
+				/* compute the deltas */
+				deltax = x * scale;
+				deltay = y * scale;
+				if (xflip) deltax = -deltax;
+
+				/* adjust the current position and compute timing */
+				currentx += deltax;
+				currenty -= deltay;
+				total_length += vector_timer(deltax, deltay);
+
+				if (vector_engine == USE_AVG_SWARS)
+				{
+					z = (z * statz) / 8;
+					if (z > 0xff)
+						z = 0xff;
+				}
+				else { if (z == 2)  z = statz; }
+
+				draw_handler(currentx, currenty, color, z);
 			}
 
-			currentx += deltax; currenty -= deltay;
 			break;
 
 		case STAT: //(AVG STROBE2)
 
-			if (vector_engine == USE_AVG_BZONE)
+			if (is_mhavoc_type)
+			{
+				// ---------------------------------------------------------------
+				// Major Havoc / Alpha One STAT  
+				// ---------------------------------------------------------------
+				color = firstwd & 0x0f;
+				statz = (firstwd >> 4) & 0x0f;
+				sparkle = firstwd & 0x0800;
+
+				if (sparkle)
+				{
+					spkl_shift = ((firstwd >> 3) & 1)
+						| ((firstwd >> 1) & 2)
+						| ((firstwd << 1) & 4)
+						| ((firstwd << 2) & 8)
+						| ((rand() & 0x7) << 4);
+				}
+
+				xflip = firstwd & 0x0400;
+
+				// Vector bank switch from REGION_GFX1
+				int bank = ((firstwd >> 8) & 3) * 0x2000;
+
+				if (lastbank != bank) {
+					lastbank = bank;
+					memcpy(Machine->memory_region[CPU0] + 0x6000,
+						Machine->memory_region[REGION_GFX1] + bank, 0x2000);
+				}
+			}
+			else if (vector_engine == USE_AVG_BZONE)
 			{
 				statz = (firstwd >> 4) & 0xf;
 				color = (firstwd) & 0x7;
 			}
-
-			if (vector_engine == USE_AVG_SWARS)
+			else if (vector_engine == USE_AVG_SWARS)
 			{
 				color = (firstwd >> 8) & 7;
 				statz = (firstwd) & 0xff;
 			}
-			else {
-				statz = (firstwd >> 4) & 0xf; // This is intensity
-				color = (firstwd) & 0x7;
-			}
-			if (vector_engine == USE_AVG_TEMPEST)
+			else if (vector_engine == USE_AVG_TEMPEST)
 			{
 				sparkle = !(firstwd & 0x0800);
 				color = firstwd & 0xf;
 				statz = (firstwd >> 4) & 0xf;
 			}
-			if (vector_engine == USE_AVG_MHAVOC)
-			{
-				sparkle = (firstwd & 0x0800);
-				xflip = firstwd & 0x0400;
-				vectorbank = 0x18000 + ((firstwd >> 8) & 3) * 0x2000;
-				if (lastbank != vectorbank)
-				{
-					lastbank = vectorbank;
-					//LOG_INFO("Vector Bank Switch %x",0x18000 + ((firstwd >> 8) & 3) * 0x2000);
-					memcpy(Machine->memory_region[CPU0] + 0x6000, Machine->memory_region[CPU0] + vectorbank, 0x2000);
-				}
+			else {
+				statz = (firstwd >> 4) & 0xf; // This is intensity
+				color = (firstwd) & 0x7;
 			}
 			break;
 
@@ -349,14 +520,21 @@ void AVG_RUN(void)
 			b = ((firstwd >> 8) & 0x07) + 8;
 			l = (~firstwd) & 0xff;
 			scale = (l << VEC_SHIFT) >> b;
-			oldscale = scale; //Double the scale for 1024x768 resolution
-			scale *= scale_adj;
-			if (vector_engine == USE_AVG_MHAVOC)
+
+			if (is_mhavoc_type)
 			{
+				// Y-window toggle (from mhavoc_custom_video.cpp)
 				if (firstwd & 0x0800)
 				{
-					if (ywindow == 0) { ywindow = 1; clip = currenty >> VEC_SHIFT; }
-					else { ywindow = 0; }
+					if (ywindow == 0)
+					{
+						ywindow = 1;
+						clip_y = currenty >> VEC_SHIFT;
+					}
+					else
+					{
+						ywindow = 0;
+					}
 				}
 			}
 			break;
@@ -364,16 +542,9 @@ void AVG_RUN(void)
 			// STROBE3
 		case CNTR:
 			d = firstwd & 0xff;
-			if (vector_engine == USE_AVG_SWARS)
-			{
-				currentx = 379 << VEC_SHIFT;
-				currenty = 410 << VEC_SHIFT;
-			}
-			else
-			{
-				currentx = 512 << VEC_SHIFT;
-				currenty = 512 << VEC_SHIFT;
-			}
+			currentx = xcenter;
+			currenty = ycenter;
+			avg_add_point(currentx, currenty, 0, 0);
 			break;
 
 		case RTSL:
@@ -408,27 +579,27 @@ void AVG_RUN(void)
 
 int avg_go()
 {
-	//LOG_INFO("AVG GO CALLED");
+	LOG_INFO("AVG GO CALLED");
 	if (AVG_BUSY)
 	{
-		//LOG_INFO("AVG call with AVG Busy, returning and doing nothing.");
+		LOG_INFO("AVG call with AVG Busy, returning and doing nothing.");
 		return 1;
 	}
 	else {
-		
-		AVG_RUN();
+		avg_video_update();
+
 		if (total_length > 1)
 		{
 			if (config.debug_profile_code) {
 				LOG_INFO("Total AVG Draw Length here is %d at cpu0 cycles ran: %d, video_ticks %d", total_length, get_elapsed_ticks(CPU0), get_video_ticks(0));
 			}
 			AVG_BUSY = 1;
-		
+
 			timer_pulse(TIME_IN_NSEC(1500) * total_length, CPU0, avg_clr_busy);
 		}
 		else
 		{
-			//LOG_INFO("Erronious AVG Busy Clear, this should never happen.");
+			LOG_INFO("Erronious AVG Busy Clear, this should never happen.");
 			AVG_BUSY = 0;
 		}
 	}
@@ -474,19 +645,41 @@ void avgdvg_reset_word_w(UINT32 address, UINT16 data, struct MemoryWriteWord* pM
 int avg_init(int type)
 {
 	AVG_BUSY = 0;
-	XFLIP = 0;
-	YFLIP = 0;
 
 	vector_engine = type;
 	opcode_handler = get_opcode_avg;
+
+	// -----------------------------------------------------------------------
+	// Compute visible area dimensions.
+	// -----------------------------------------------------------------------
+	xmin = Machine->drv->visible_area.min_x;
+	ymin = Machine->drv->visible_area.min_y;
+	xmax = Machine->drv->visible_area.max_x;
+	ymax = Machine->drv->visible_area.max_y;
+	width = xmax - xmin;
+	height = ymax - ymin;
+
+	xcenter = ((Machine->drv->visible_area.max_x - Machine->drv->visible_area.min_x) / 2) << VEC_SHIFT;
+	ycenter = ((Machine->drv->visible_area.max_y - Machine->drv->visible_area.min_y) / 2) << VEC_SHIFT;
+
+	// Initialize to no flipping
+	flip_x = 0;
+	flip_y = 0;
+
+	// Tempest and Quantum have X and Y swapped
+	if ((type == USE_AVG_TEMPEST) || (type == USE_AVG_QUANTUM))
+	{
+		swap_xy = 1;
+		flip_y = 1;
+	}
+	else
+		swap_xy = 0;
 
 	switch (type)
 	{
 	case USE_AVG:
 	{
 		vec_mem = &Machine->memory_region[CPU0][Machine->gamedrv->vectorram];
-		NO_CACHE = 0;
-		scale_adj = 2;
 		draw_handler = draw_avg;
 		stat_handler = stat_avg;
 		break;
@@ -494,10 +687,7 @@ int avg_init(int type)
 
 	case USE_AVG_BZONE:
 	{
-		YFLIP = 0;
 		AVG_BUSY = 1;
-		scale_adj = 2;
-		NO_CACHE = 1;
 		vec_mem = &Machine->memory_region[CPU0][Machine->gamedrv->vectorram];
 		draw_handler = draw_bzone;
 		stat_handler = stat_bzone;
@@ -506,10 +696,7 @@ int avg_init(int type)
 
 	case USE_AVG_RBARON:
 	{
-		YFLIP = 0;
 		AVG_BUSY = 1;
-		scale_adj = 2;
-		NO_CACHE = 1;
 		vec_mem = &Machine->memory_region[CPU0][Machine->gamedrv->vectorram];
 		draw_handler = draw_bzone;
 		stat_handler = stat_bzone;
@@ -519,8 +706,6 @@ int avg_init(int type)
 	case USE_AVG_TEMPEST:
 	{
 		vec_mem = &Machine->memory_region[CPU0][Machine->gamedrv->vectorram];
-		scale_adj = 1; 
-		NO_CACHE = 1;
 		tempest_colorram = &memory_region(REGION_CPU1)[0x800];
 		draw_handler = draw_tempest;
 		break;
@@ -528,8 +713,6 @@ int avg_init(int type)
 	case USE_AVG_QUANTUM:
 	{
 		vec_mem = &vec_ram[0];
-		NO_CACHE = 1;
-		scale_adj = 1;
 		opcode_handler = get_opcode_avg;
 		draw_handler = draw_quantum;
 		break;
@@ -537,9 +720,6 @@ int avg_init(int type)
 	case USE_AVG_SWARS:
 	{
 		vec_mem = &Machine->memory_region[CPU0][Machine->gamedrv->vectorram];
-		YFLIP = 1;
-		NO_CACHE = 1;
-		scale_adj = 3;
 		opcode_handler = get_opcode_starwars;
 		draw_handler = draw_starwars;
 		break;
@@ -547,8 +727,22 @@ int avg_init(int type)
 	case USE_AVG_MHAVOC:
 	{
 		vec_mem = &Machine->memory_region[CPU0][Machine->gamedrv->vectorram];
-		scale_adj = 2;
-		draw_handler = draw_mhavoc;
+		// draw_handler not used; Major Havoc draw path is inline in avg_video_update
+		draw_handler = nullptr;
+		// Major Havoc colorram at 0x1400 in alpha CPU address space
+		mhavoc_colorram = &memory_region(REGION_CPU1)[0x1400];
+		lastbank = 0;
+		break;
+	}
+
+	case USE_AVG_ALPHAONE:
+	{
+		vec_mem = &Machine->memory_region[CPU0][Machine->gamedrv->vectorram];
+		// draw_handler not used; Alpha One draw path is inline in avg_video_update
+		draw_handler = nullptr;
+		// Alpha One colorram at 0x10e0
+		mhavoc_colorram = &memory_region(REGION_CPU1)[0x10e0];
+		lastbank = 0;
 		break;
 	}
 	}

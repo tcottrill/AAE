@@ -45,6 +45,19 @@
 // Added IRQ_HOLD for Emulators that need it like the Commodore PET. Default is IRQ_PULSE.
 // TESTED with the Commodore 64 and NES, see AI generated test emulators on my GitHub. 
 
+// 03/06/2026 Added readop() --an inline function that reads directly from the MEM[] array, bypassing the memory read handler chain.This separates instruction fetches from data fetches.
+// Previously, all memory reads -- opcode fetches, operand fetches, and data reads -- went through get6502memory() and the full handler chain.
+// This caused problems for drivers like Missile Command where the read handler inspects the currently executing opcode(via cpu_getppc()) to decide 
+// whether to return video RAM data or ROM data.When an opcode fetch itself went through that handler, the handler would misidentify it as a data access and return 
+// video RAM instead of ROM, corrupting the instruction stream. readop() is now used for the opcode fetch in step6502() and for all operand fetches from PC in the addressing modes : 
+// abs, absx, absy, relative, indirect, zp, zpx, zpy, indx, indy, indzp, indabsx, and zprel.Data reads from the effective address(the actual LDA / STA / CMP targets) remain routed 
+// through get6502memory() and the memory handlers as before.
+// Also moved PPC = PC to execute before the opcode fetch so that get_ppc() returns the address of the opcode itself, not the byte after it.
+// Both changes are MOSTLY! backward - compatible.For all existing drivers, MEM[addr] and get6502memory(addr) return the same value for ROM / RAM regions since the MRA_RAM / MRA_ROM handlers just 
+// read from MEM.Only drivers with custom read handlers that inspect execution context(like Missile Command) are affected. 
+// AND Major Havoc, which needed an override to be able to read banked rom data.m_cpu_6502[CPU0]->opfetch_through_handlers(true);
+
+
 #ifndef _6502_H_
 #define _6502_H_
 
@@ -145,6 +158,16 @@ public:
 	std::string disassemble(uint16_t pc, int* bytesUsed = nullptr);
 
 	// -------------------------------------------------------------------------
+	// Opcode fetch routing
+	// -------------------------------------------------------------------------
+	// When enabled, opcode and operand fetches go through the memory handler
+	// chain (get6502memory) instead of reading directly from MEM[].
+	// Required for games with bank-switched ROM (e.g. Major Havoc) where the
+	// flat MEM array does not reflect the currently selected bank.
+	// Default is false (direct MEM access, matching MAME cpu_readop behavior).
+	void opfetch_through_handlers(bool s) { use_handler_for_opfetch = s; }
+
+	// -------------------------------------------------------------------------
 	// Stack operations
 	// -------------------------------------------------------------------------
 	void push16(uint16_t val);
@@ -183,6 +206,7 @@ private:
 	bool debug = false;
 	bool mmem = false;
 	bool log_debug_rw = false;
+	bool use_handler_for_opfetch = false;
 
 	// 6510 Internal State
 	uint8_t io_port_data = 0; // $0001
@@ -214,6 +238,11 @@ private:
 	// -------------------------------------------------------------------------
 	uint8_t get6502memory(uint16_t addr);
 	void put6502memory(uint16_t addr, uint8_t byte);
+
+	// Direct read from MEM[] array, bypassing memory handlers.
+	// Used for opcode and operand fetches (equivalent to MAME cpu_readop).
+	// Data reads still go through get6502memory() and the handler chain.
+	inline uint8_t readop(uint16_t addr);
 
 	// -------------------------------------------------------------------------
 	// IRQ helper

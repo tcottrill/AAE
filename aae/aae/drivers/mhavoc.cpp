@@ -1,4 +1,4 @@
-﻿//============================================================================
+//============================================================================
 // AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME
 // code, 0.29 through .90 mixed with code of my own. This emulator was
 // created solely for my amusement and learning and is provided only
@@ -10,7 +10,6 @@
 //
 // THE CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.
 //============================================================================
-
 
 // license:BSD - 3 - Clause
 // copyright-holders:Mike Appolo
@@ -187,15 +186,14 @@
 #define NOMINMAX
 #include "mhavoc.h"
 #include "aae_mame_driver.h"
-#include "driver_registry.h" 
+#include "driver_registry.h"
 #include "aae_pokey.h"
 #include "earom.h"
 #include "tms5220.h"
 #include "timer.h"
-#include "mhavoc_custom_video.h"
-#include "glcode.h"
+#include "aae_avg.h"
+#include "opengl_renderer.h"
 #include "mixer.h"
-//#include "wav_resample.h"
 #include "okim6295_loader.h"
 
 #pragma warning( disable :  4244)
@@ -210,9 +208,7 @@ static struct POKEYinterface pokey_interface_alphaone =
 {
 	2,			/* 4 chips */
 	1250000,
-	200,	/* volume */
-	POKEY_DEFAULT_GAIN / 2,
-	NO_CLIP,
+	{ 128, 128 },
 	/* The 8 pot handlers */
 	{ 0, 0, 0, 0 },
 	{ 0, 0, 0, 0 },
@@ -228,11 +224,9 @@ static struct POKEYinterface pokey_interface_alphaone =
 
 static struct POKEYinterface pokey_interface =
 {
-	4,			/* 4 chips */
-	1250000,
-	200,	/* volume */
-	POKEY_DEFAULT_GAIN / 4,
-	NO_CLIP,
+	4,	/* 4 chips */
+	1250000,	/* 1.25 MHz??? */
+	{ 64, 64, 64, 64 },
 	/* The 8 pot handlers */
 	{ 0, 0, 0, 0 },
 	{ 0, 0, 0, 0 },
@@ -243,7 +237,7 @@ static struct POKEYinterface pokey_interface =
 	{ 0, 0, 0, 0 },
 	{ 0, 0, 0, 0 },
 	/* The allpot handler */
-	{ 0, 0, 0, 0 },
+	{ input_port_3_r, 0, 0, 0 },
 };
 
 static struct TMS5220interface tms5220_interface =
@@ -285,7 +279,7 @@ static UINT8 gamma_xmtd = 0;
 static UINT8 speech_write_buffer;
 static UINT8 player_1;
 
-// Version specific variables 
+// Version specific variables
 int is_mhavocpe = 0;
 int has_gamma_cpu = 0;
 int has_tms5220 = 0;
@@ -347,19 +341,19 @@ WRITE_HANDLER(speech_strobe_w)
 	}
 	else
 	{
-		sample_start(3,data - 0x80 , 0);
+		sample_start(3, data - 0x80, 0);
 	}
 }
 
 int mhavoc_sh_start(void)
 {
 	int rv;
-	
+
 	if (has_gamma_cpu) rv = pokey_sh_start(&pokey_interface);
 	else rv = pokey_sh_start(&pokey_interface_alphaone);
-	
+
 	if (has_tms5220) { tms5220_sh_start(&tms5220_interface); }
-	
+
 	unsigned char* RAM = memory_region(REGION_CPU4);
 	size_t ROM_SIZE = Machine->memory_region_length[REGION_CPU4];
 
@@ -368,7 +362,7 @@ int mhavoc_sh_start(void)
 
 	// Mixer/system output rate
 	const int out_rate = config.samplerate;
-		
+
 	const uint32_t max_scan = (uint32_t)std::min<size_t>(ROM_SIZE / 8, 4096);
 
 	const int count = load_okim6295_from_region(
@@ -383,14 +377,14 @@ void mhavoc_sh_stop(void)
 {
 	pokey_sh_stop();
 	if (has_tms5220)
-	tms5220_sh_stop();
+		tms5220_sh_stop();
 }
 
 void mhavoc_sh_update()
 {
 	pokey_sh_update();
 	if (has_tms5220)
-	 tms5220_sh_update();
+		tms5220_sh_update();
 }
 
 void end_mhavoc()
@@ -419,11 +413,9 @@ void run_reset()
 	gamma_xmtd = 0;
 	player_1 = 0;
 	cache_clear();
-	//cpu_reset(0);
 
 	if (has_gamma_cpu)
 	{
-		//cpu_reset(1);
 	}
 }
 
@@ -439,7 +431,7 @@ void mhavoc_interrupt()
 	if (alpha_irq_clock_enable)
 	{
 		alpha_irq_clock++;
-		if ((alpha_irq_clock & (0x0c)) == (0x0c)) //0x0c //0x30
+		if ((alpha_irq_clock & (0x0c)) == (0x0c))
 		{
 			//LOG_INFO("IRQ ALPHA CPU");
 			cpu_do_int_imm(CPU0, INT_TYPE_INT);
@@ -452,7 +444,7 @@ void mhavoc_interrupt()
 	if (has_gamma_cpu)
 	{
 		gamma_irq_clock++;
-		if ((gamma_irq_clock & (0x08)) == (0x08))//08 //0x20
+		if ((gamma_irq_clock & (0x08)) == (0x08))
 		{
 			//LOG_INFO("IRQ GAMMA CPU");
 			cpu_do_int_imm(CPU1, INT_TYPE_INT);
@@ -482,7 +474,7 @@ WRITE_HANDLER(mhavoc_gamma_irq_ack_w)
 
 static void mhavoc_clr_busy(int dummy)
 {
-    MHAVGDONE = 1;
+	MHAVGDONE = 1;
 }
 
 WRITE_HANDLER(avgdvg_reset_w)
@@ -495,20 +487,21 @@ WRITE_HANDLER(avg_mgo)
 {
 	if (!MHAVGDONE) { return; }
 
-	mhavoc_video_update();
+	avg_video_update();
 
 	if (total_length > 10)
 	{
 		MHAVGDONE = 0;
 		// Clear the video tick count.
 		get_video_ticks(0xff);
-	
-		// There is a method to this madness, the time for the sweep is what it should be if the game was running 30FPS instead of 50. 
+
+		// There is a method to this madness, the time for the sweep is what it should be if the game was running 30FPS instead of 50.
 		//That's why the multiplication by 1.666
+		// Alpha One is slower, it runs at a different scale causing a faster draw time.
 		sweep = (float)(TIME_IN_NSEC(1500) * total_length) * Machine->gamedrv->cpu[CPU0].cpu_freq; // This is the rough time for 50fps.
 		if (has_gamma_cpu)
-		sweep = sweep * 1.666; // Alpha One is slower, it actually seems to run 30fps.
-		
+			sweep = sweep * 1.666;
+
 		if (config.debug_profile_code) {
 			LOG_INFO("Sweep Timer %f", sweep);
 		}
@@ -520,8 +513,8 @@ WRITE_HANDLER(mhavoc_out_0_w)
 {
 	if (is_mhavocpe)
 	{
-		avg_set_flip_x_mh(data & 0x40);
-		avg_set_flip_y_mh(data & 0x80);
+		avg_set_flip_x(data & 0x40);
+		avg_set_flip_y(data & 0x80);
 	}
 
 	if (!(data & 0x08))
@@ -534,7 +527,7 @@ WRITE_HANDLER(mhavoc_out_0_w)
 		cpu_reset(1);   //RESET GAMMA CPU
 	}
 	player_1 = (data >> 5) & 1;
-	
+
 	// Bit 0 = Roller light (Blinks on fatal errors) //
 	set_led_status(0, data & 0x01);
 }
@@ -550,7 +543,7 @@ WRITE_HANDLER(mhavoc_out_1_w)
 READ_HANDLER(mhavoc_port_0_r)
 {
 	UINT8 res;
-	
+
 	if (!MHAVGDONE)
 	{
 		if (get_video_ticks(0) > sweep)
@@ -559,7 +552,7 @@ READ_HANDLER(mhavoc_port_0_r)
 			//LOG_INFO("Mhavoc DONE Set HERE %x at Frame %d Cycles %d", MHAVGDONE, cpu_getcurrentframe(), cpu_getcycles_cpu(0));
 		}
 	}
-	
+
 	// Bits 7-6 = selected based on Player 1
 		// Bits 5-4 = common
 	if (player_1)
@@ -569,8 +562,8 @@ READ_HANDLER(mhavoc_port_0_r)
 
 	// Emulate the 2.4Khz source on bit 2 (divide 2.5Mhz by 1024)  (EVERY 120 CYCLES)
 	// Note: Bigticks that was being used previously may actually be better and help the timing.
-	if (!(get_eterna_ticks(0) & 0x400)) 
-	 res |= 0x02; 
+	if (!(get_eterna_ticks(0) & 0x400))
+		res |= 0x02;
 
 	if (MHAVGDONE)
 		res |= 0x01;
@@ -617,20 +610,19 @@ READ_HANDLER(alphaone_port_0_r)
 
 	if (!MHAVGDONE)
 	{
-		if (get_video_ticks(0) > sweep) 
+		if (get_video_ticks(0) > sweep)
 		{
 			MHAVGDONE = 1;
 			total_length = 0;
 		}
 	}
-	
+
 	/* Emulate the 2.4Khz source on bit 2 (divide 2.5Mhz by 1024) */
-	if (!(get_eterna_ticks(0) & 0x400)) 
-	 res |= 0x02; 
+	if (!(get_eterna_ticks(0) & 0x400))
+		res |= 0x02;
 
 	if (MHAVGDONE)
 		res |= 0x01;
-	
 
 	return res;
 }
@@ -745,9 +737,9 @@ void run_mhavoc()
 	//m_cpu_6502[0]->log_instruction_usage();
 	//m_cpu_6502[0]->reset_instruction_counts();
 
-	if (!has_gamma_cpu) 
+	if (!has_gamma_cpu)
 	{
-		watchdog_reset_w(0, 0, 0);	
+		watchdog_reset_w(0, 0, 0);
 	}
 	mhavoc_sh_update();
 }
@@ -774,7 +766,7 @@ MEM_WRITE(AlphaWrite)
 MEM_ADDR(0x0200, 0x07ff, MWA_BANK1_W)			 /* 3K Paged Program RAM */
 //MEM_ADDR(0x0800, 0x09ff, MWA_RAM )			 /* 0.5K Program RAM */
 MEM_ADDR(0x1200, 0x1200, MWA_ROM)			     /* don't care */
-MEM_ADDR(0x1400, 0x141f, mhavoc_colorram_w)		 /* ColorRAM */
+MEM_ADDR(0x1400, 0x141f, MWA_RAM)				 /* ColorRAM */
 MEM_ADDR(0x1600, 0x1600, mhavoc_out_0_w)		 /* Control Signals */
 MEM_ADDR(0x1640, 0x1640, avg_mgo)			     /* Vector Generator GO */
 MEM_ADDR(0x1680, 0x1680, watchdog_reset_w)			 /* Watchdog Clear */
@@ -834,13 +826,18 @@ MEM_ADDR(0x10ac, 0x10ac, avgdvg_reset_w)			/* Vector Generator Reset */
 MEM_ADDR(0x10b0, 0x10b0, mhavoc_alpha_irq_ack_w)	/* IRQ ack */
 MEM_ADDR(0x10b4, 0x10b4, mhavoc_rom_banksel_w)		/* Program ROM Page Select */
 MEM_ADDR(0x10b8, 0x10b8, mhavoc_ram_banksel_w)		/* Program RAM Page Select */
-MEM_ADDR(0x10e0, 0x10ff, mhavoc_colorram_w)			/* ColorRAM */
+MEM_ADDR(0x10e0, 0x10ff, MWA_RAM)				    /* ColorRAM */
 MEM_ADDR(0x2000, 0x3fff, MWA_ROM)					/* Major Havoc writes here.*/
 MEM_ADDR(0x6000, 0xffff, MWA_ROM)
 MEM_END
 
 /////////////////// MAIN() for program ///////////////////////////////////////////////////
-
+// Post-init callback: enable opfetch through handlers for bank-switched ROM
+static void mhavoc_post_cpu_init(int cpunum)
+{
+	if (cpunum == CPU0)
+		m_cpu_6502[CPU0]->opfetch_through_handlers(true);
+}
 
 int init_mhavocpe()
 {
@@ -869,27 +866,22 @@ int init_alphone()
 	//Init the Sound
 	mhavoc_sh_start();
 	//Init the video
-	mhavoc_video_init(2);
+	avg_start_alphaone();
 	return 0;
 }
 
 int init_mhavoc(void)
 {
 	has_gamma_cpu = 1;
-
-	//init6502(AlphaRead, AlphaWrite, 0xffff, CPU0);
-	//init6502(GammaRead, GammaWrite, 0xbfff, CPU1);
-
 	run_reset();
 	//Init the Sound
 	mhavoc_sh_start();
 	//Init the video
-	mhavoc_video_init(3);
-	
+	avg_start_mhavoc();
+
 	LOG_INFO("MHAVOC Init complete");
 	return 0;
 }
-
 
 INPUT_PORTS_START(mhavoc)
 PORT_START("IN0")	/* IN0 - alpha (player_1 = 0) */
@@ -909,7 +901,7 @@ PORT_BIT(0x40, IP_ACTIVE_LOW, IPT_BUTTON2)
 PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_BUTTON1)
 
 PORT_START("IN2")	/* IN2 - gamma */
-PORT_ANALOG(0xff, 0x00, IPT_DIAL | IPF_REVERSE, 100, 40, 0, 0, 0)
+PORT_ANALOG(0xff, 0x00, IPT_DIAL | IPF_REVERSE, 100, 40, 0, 0)
 
 PORT_START("DIP1") /* DIP Switch at position 13/14S */
 PORT_DIPNAME(0x01, 0x00, "Adaptive Difficulty")
@@ -983,7 +975,7 @@ PORT_BIT(0x40, IP_ACTIVE_LOW, IPT_BUTTON2)
 PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_BUTTON1)
 
 PORT_START("IN2")	/* IN2 - gamma */
-PORT_ANALOG(0xff, 0x00, IPT_DIAL | IPF_REVERSE, 100, 10, 0, 0, 0)
+PORT_ANALOG(0xff, 0x00, IPT_DIAL | IPF_REVERSE, 100, 10, 0, 0)
 
 PORT_START("DIP1") /* DIP Switch at position 13/14S */
 PORT_DIPNAME(0x03, 0x00, DEF_STR(Lives))
@@ -1052,9 +1044,8 @@ PORT_BIT(0x40, IP_ACTIVE_LOW, IPT_COIN2)
 PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_COIN1)
 
 PORT_START("IN2")	/* IN2 - gamma */
-PORT_ANALOG(0xff, 0x00, IPT_DIAL | IPF_REVERSE, 100, 40, 0, 0, 0)
+PORT_ANALOG(0xff, 0x00, IPT_DIAL | IPF_REVERSE, 100, 40, 0, 0)
 INPUT_PORTS_END
-
 
 ROM_START(alphaone)
 ROM_REGION(0x22000, REGION_CPU1, 0)
@@ -1093,7 +1084,6 @@ ROM_REGION(0x100, REGION_PROMS, 0)
 ROM_LOAD("136002-125.6c", 0x0000, 0x0100, CRC(5903af03) SHA1(24bc0366f394ad0ec486919212e38be0f08d0239))
 ROM_END
 
-
 ROM_START(mhavoc2)
 ROM_REGION(0x22000, REGION_CPU1, 0)
 ROM_LOAD("136025.110", 0x5000, 0x2000, CRC(16eef583) SHA1(277252bd716dd96d5b98ec5e33a3a6a3bc1a9abf))
@@ -1128,7 +1118,6 @@ ROM_RELOAD(0x0c000, 0x4000) /* reset+interrupt vectors */
 ROM_REGION(0x100, REGION_PROMS, 0)
 ROM_LOAD("136002-125.6c", 0x0000, 0x0100, CRC(5903af03) SHA1(24bc0366f394ad0ec486919212e38be0f08d0239))
 ROM_END
-
 
 ROM_START(mhavocp)
 ROM_REGION(0x22000, REGION_CPU1, 0)
@@ -1165,7 +1154,7 @@ ROM_LOAD("136025.107", 0x4000, 0x4000, CRC(5f81c5f3) SHA1(be4055727a2d4536e37ec2
 ROM_REGION(0x10000, REGION_CPU2, 0)
 ROM_LOAD("136025.108", 0x8000, 0x4000, CRC(93faf210) SHA1(7744368a1d520f986d1c4246113a7e24fcdd6d04))
 //ROM_LOAD("136025.108", 0x0c000, 0x4000) /* reset+interrupt vectors */
- ROM_RELOAD(               0x0c000, 0x4000 ) /* reset+interrupt vectors */
+ROM_RELOAD(0x0c000, 0x4000) /* reset+interrupt vectors */
 // AVG PROM
 ROM_REGION(0x100, REGION_PROMS, 0)
 ROM_LOAD("136002-125.6c", 0x0000, 0x0100, CRC(5903af03) SHA1(24bc0366f394ad0ec486919212e38be0f08d0239))
@@ -1191,7 +1180,6 @@ ROM_REGION(0x100, REGION_PROMS, 0)
 ROM_LOAD("136002-125.6c", 0x0000, 0x0100, CRC(5903af03) SHA1(24bc0366f394ad0ec486919212e38be0f08d0239))
 ROM_END
 
-
 // Major Havoc (Revision 3)
 AAE_DRIVER_BEGIN(drv_mhavoc, "mhavoc", "Major Havoc (Revision 3)")
 AAE_DRIVER_ROM(rom_mhavoc)
@@ -1202,9 +1190,9 @@ AAE_DRIVER_ART_NONE()
 
 AAE_DRIVER_CPUS(
 	// CPU0: Alpha 6502 @ 2.5 MHz with interrupts
-	AAE_CPU_ENTRY(
+	AAE_CPU_ENTRY_EX(
 		CPU_M6502, 2500000, 400, 100, INT_TYPE_INT, &mhavoc_interrupt,
-		AlphaRead, AlphaWrite, nullptr, nullptr, nullptr, nullptr
+		AlphaRead, AlphaWrite, nullptr, nullptr, nullptr, nullptr, &mhavoc_post_cpu_init
 	),
 	// CPU1: Gamma 6502 @ 1.25 MHz, no interrupts
 	AAE_CPU_ENTRY(
@@ -1215,14 +1203,14 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_NONE_ENTRY()
 )
 
-AAE_DRIVER_VIDEO_CORE(50, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT)
-AAE_DRIVER_SCREEN(1024, 768, 0, 341, 0, 260)
+AAE_DRIVER_VIDEO_CORE(50, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT)
+AAE_DRIVER_SCREEN(1024, 768, 0, 300, 0, 260)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x4000, 0x1000)
 AAE_DRIVER_NVRAM(mhavoc_nvram_handler)
+AAE_DRIVER_LAYOUT_NONE()
 AAE_DRIVER_END()
-
 
 // Major Havoc (Revision 2)
 AAE_DRIVER_BEGIN(drv_mhavoc2, "mhavoc2", "Major Havoc (Revision 2)")
@@ -1233,9 +1221,9 @@ AAE_DRIVER_SAMPLES_NONE()
 AAE_DRIVER_ART_NONE()
 
 AAE_DRIVER_CPUS(
-	AAE_CPU_ENTRY(
+	AAE_CPU_ENTRY_EX(
 		CPU_M6502, 2500000, 400, 100, INT_TYPE_INT, &mhavoc_interrupt,
-		AlphaRead, AlphaWrite, nullptr, nullptr, nullptr, nullptr
+		AlphaRead, AlphaWrite, nullptr, nullptr, nullptr, nullptr, &mhavoc_post_cpu_init
 	),
 	AAE_CPU_ENTRY(
 		CPU_M6502, 1250000, 400, 100, INT_TYPE_NONE, nullptr,
@@ -1245,12 +1233,13 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_NONE_ENTRY()
 )
 
-AAE_DRIVER_VIDEO_CORE(50, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT)
-AAE_DRIVER_SCREEN(1024, 768, 0, 341, 0, 260)
+AAE_DRIVER_VIDEO_CORE(50, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT)
+AAE_DRIVER_SCREEN(1024, 768, 0, 300, 0, 260)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x4000, 0x1000)
 AAE_DRIVER_NVRAM(mhavoc_nvram_handler)
+AAE_DRIVER_LAYOUT_NONE()
 AAE_DRIVER_END()
 
 // Major Havoc (Return To VAX - Mod by Jeff Askey)
@@ -1262,9 +1251,9 @@ AAE_DRIVER_SAMPLES_NONE()
 AAE_DRIVER_ART_NONE()
 
 AAE_DRIVER_CPUS(
-	AAE_CPU_ENTRY(
+	AAE_CPU_ENTRY_EX(
 		CPU_M6502, 2500000, 400, 100, INT_TYPE_INT, &mhavoc_interrupt,
-		AlphaRead, AlphaWrite, nullptr, nullptr, nullptr, nullptr
+		AlphaRead, AlphaWrite, nullptr, nullptr, nullptr, nullptr, &mhavoc_post_cpu_init
 	),
 	AAE_CPU_ENTRY(
 		CPU_M6502, 1250000, 400, 100, INT_TYPE_NONE, nullptr,
@@ -1274,12 +1263,13 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_NONE_ENTRY()
 )
 
-AAE_DRIVER_VIDEO_CORE(50, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT)
-AAE_DRIVER_SCREEN(1024, 768, 0, 341, 0, 260)
+AAE_DRIVER_VIDEO_CORE(50, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT)
+AAE_DRIVER_SCREEN(1024, 768, 0, 300, 0, 260)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x4000, 0x1000)
 AAE_DRIVER_NVRAM(mhavoc_nvram_handler)
+AAE_DRIVER_LAYOUT_NONE()
 AAE_DRIVER_END()
 
 // Major Havoc (The Promised End 1.01 adpcm)
@@ -1291,9 +1281,9 @@ AAE_DRIVER_INPUT(input_ports_mhavoc)
 AAE_DRIVER_SAMPLES_NONE()
 AAE_DRIVER_ART_NONE()
 AAE_DRIVER_CPUS(
-	AAE_CPU_ENTRY(
+	AAE_CPU_ENTRY_EX(
 		CPU_M6502, 2500000, 400, 100, INT_TYPE_INT, &mhavoc_interrupt,
-		AlphaRead, AlphaWrite, nullptr, nullptr, nullptr, nullptr
+		AlphaRead, AlphaWrite, nullptr, nullptr, nullptr, nullptr, &mhavoc_post_cpu_init
 	),
 	AAE_CPU_ENTRY(
 		CPU_M6502, 1250000, 400, 100, INT_TYPE_NONE, nullptr,
@@ -1302,12 +1292,13 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_NONE_ENTRY(),
 	AAE_CPU_NONE_ENTRY()
 )
-AAE_DRIVER_VIDEO_CORE(50, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT)
-AAE_DRIVER_SCREEN(1024, 768, 0, 335, 0, 260)
+AAE_DRIVER_VIDEO_CORE(50, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT)
+AAE_DRIVER_SCREEN(1024, 768, 0, 300, 0, 260)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x4000, 0x1000)
 AAE_DRIVER_NVRAM(mhavoc_nvram_handler)
+AAE_DRIVER_LAYOUT_NONE()
 AAE_DRIVER_END()
 
 // Major Havoc (Prototype)
@@ -1318,25 +1309,25 @@ AAE_DRIVER_INPUT(input_ports_mhavocp)
 AAE_DRIVER_SAMPLES_NONE()
 AAE_DRIVER_ART_NONE()
 AAE_DRIVER_CPUS(
-AAE_CPU_ENTRY(
-CPU_M6502, 2500000, 400, 100, INT_TYPE_INT, &mhavoc_interrupt,
-AlphaRead, AlphaWrite, nullptr, nullptr, nullptr, nullptr
-),
-AAE_CPU_ENTRY(
-CPU_M6502, 1250000, 400, 100, INT_TYPE_NONE, nullptr,
-GammaRead, GammaWrite, nullptr, nullptr, nullptr, nullptr
-),
-AAE_CPU_NONE_ENTRY(),
-AAE_CPU_NONE_ENTRY()
+	AAE_CPU_ENTRY_EX(
+		CPU_M6502, 2500000, 400, 100, INT_TYPE_INT, &mhavoc_interrupt,
+		AlphaRead, AlphaWrite, nullptr, nullptr, nullptr, nullptr, &mhavoc_post_cpu_init
+	),
+	AAE_CPU_ENTRY(
+		CPU_M6502, 1250000, 400, 100, INT_TYPE_NONE, nullptr,
+		GammaRead, GammaWrite, nullptr, nullptr, nullptr, nullptr
+	),
+	AAE_CPU_NONE_ENTRY(),
+	AAE_CPU_NONE_ENTRY()
 )
-AAE_DRIVER_VIDEO_CORE(50, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT)
-AAE_DRIVER_SCREEN(1024, 768, 0, 341, 0, 260)
+AAE_DRIVER_VIDEO_CORE(50, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT)
+AAE_DRIVER_SCREEN(1024, 768, 0, 300, 0, 260)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x4000, 0x1000)
 AAE_DRIVER_NVRAM(mhavoc_nvram_handler)
+AAE_DRIVER_LAYOUT_NONE()
 AAE_DRIVER_END()
-
 
 // Alpha One (Major Havoc Prototype - 3 Lives)
 AAE_DRIVER_BEGIN(drv_alphaone, "alphaone", "Alpha One (Major Havoc Prototype - 3 Lives)")
@@ -1347,24 +1338,24 @@ AAE_DRIVER_SAMPLES_NONE()
 AAE_DRIVER_ART_NONE()
 
 AAE_DRIVER_CPUS(
-// Single 6502 using Alpha One maps
-AAE_CPU_ENTRY(
-CPU_M6502, 2500000, 400, 100, INT_TYPE_INT, &mhavoc_interrupt,
-AlphaOneRead, AlphaOneWrite, nullptr, nullptr, nullptr, nullptr
-),
-AAE_CPU_NONE_ENTRY(),
-AAE_CPU_NONE_ENTRY(),
-AAE_CPU_NONE_ENTRY()
+	// Single 6502 using Alpha One maps
+	AAE_CPU_ENTRY_EX(
+		CPU_M6502, 2500000, 400, 100, INT_TYPE_INT, &mhavoc_interrupt,
+		AlphaOneRead, AlphaOneWrite, nullptr, nullptr, nullptr, nullptr, &mhavoc_post_cpu_init
+	),
+	AAE_CPU_NONE_ENTRY(),
+	AAE_CPU_NONE_ENTRY(),
+	AAE_CPU_NONE_ENTRY()
 )
 
-AAE_DRIVER_VIDEO_CORE(50, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT)
-AAE_DRIVER_SCREEN(1024, 768, 0, 512, 2, 384)
+AAE_DRIVER_VIDEO_CORE(50, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT)
+AAE_DRIVER_SCREEN(1024, 768, 0, 580, 2, 500)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x4000, 0x1000)
 AAE_DRIVER_NVRAM(mhavoc_nvram_handler)
+AAE_DRIVER_LAYOUT_NONE()
 AAE_DRIVER_END()
-
 
 // Alpha One (Major Havoc Prototype - 5 Lives)
 AAE_DRIVER_BEGIN(drv_alphaonea, "alphaonea", "Alpha One (Major Havoc Prototype - 5 Lives)")
@@ -1375,23 +1366,23 @@ AAE_DRIVER_SAMPLES_NONE()
 AAE_DRIVER_ART_NONE()
 
 AAE_DRIVER_CPUS(
-AAE_CPU_ENTRY(
-CPU_M6502, 2500000, 400, 100, INT_TYPE_INT, &mhavoc_interrupt,
-AlphaOneRead, AlphaOneWrite, nullptr, nullptr, nullptr, nullptr
-),
-AAE_CPU_NONE_ENTRY(),
-AAE_CPU_NONE_ENTRY(),
-AAE_CPU_NONE_ENTRY()
+	AAE_CPU_ENTRY_EX(
+		CPU_M6502, 2500000, 400, 100, INT_TYPE_INT, &mhavoc_interrupt,
+		AlphaOneRead, AlphaOneWrite, nullptr, nullptr, nullptr, nullptr, &mhavoc_post_cpu_init
+	),
+	AAE_CPU_NONE_ENTRY(),
+	AAE_CPU_NONE_ENTRY(),
+	AAE_CPU_NONE_ENTRY()
 )
 
-AAE_DRIVER_VIDEO_CORE(50, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT)
-AAE_DRIVER_SCREEN(1024, 768, 0, 512, 2, 384)
+AAE_DRIVER_VIDEO_CORE(50, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT)
+AAE_DRIVER_SCREEN(1024, 768, 0, 580, 2, 500)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x4000, 0x1000)
 AAE_DRIVER_NVRAM(mhavoc_nvram_handler)
+AAE_DRIVER_LAYOUT_NONE()
 AAE_DRIVER_END()
-
 
 AAE_REGISTER_DRIVER(drv_mhavoc)
 AAE_REGISTER_DRIVER(drv_mhavoc2)

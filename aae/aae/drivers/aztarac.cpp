@@ -10,6 +10,15 @@
 //
 // THE CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.
 //==========================================================================
+// ORIGINAL MAME ATTRIB:
+/*
+ * Aztarac driver
+ *
+ * Jul 25 1999 by Mathis Rosenhauer
+ *
+ * Thanks to David Fish for additional hardware information.
+ *
+ */
 
 #include "aztarac.h"
 #include "./68000/m68k.h"
@@ -30,7 +39,6 @@ ART_START(aztarac_art)
 ART_LOAD("aztarac.zip", "aztarac_bezel.png", ART_TEX, 3)
 ART_END
 
-
 #pragma warning(disable : 4838)
 
 // Video Variables
@@ -39,20 +47,9 @@ static int last_y = 0;
 UINT8* aztarac_vectorram;
 static int xcenter, ycenter;
 
-#define YC 638
-
 static void add_vector(int x, int y, int color, int intensity)
 {
-	//LOG_INFO("ADD Vector Called, %x %x %x %x", x << 16 , y << 16, color, intensity);
-	int new_x = (((xcenter + (x << 16)) >> 16) + 512);
-	int new_y = (((ycenter - (y << 16)) >> 16) + YC);
-
-	//add_line(last_x+512, last_y+512, ((xcenter + (x << 16)) >> 16) +512, ((ycenter - (y << 16)) >> 16) + 512, intensity, color);
-	add_line((float) (last_x + 512), (float) (1024 - (last_y + YC)),(float)(new_x),(float)(1024 - new_y), intensity, color);
-
-	last_x = (xcenter + (x << 16)) >> 16;
-	last_y =  (ycenter - (y << 16)) >> 16;
-	//LOG_INFO("last_x %x last_y %x ", last_x, last_y);
+	vector_add_point(xcenter + ((x + 512) << 16), ycenter + ((y + 384) << 16), color, intensity);
 }
 
 unsigned char aztarac_program_rom[0x00c000];
@@ -152,14 +149,16 @@ WRITE16_HANDLER(aztarac_ubr_w)
 	int x, y, c, intensity, xoffset, yoffset, color;
 	int defaddr, objaddr = 0, ndefs;
 
-	if (data & 1) /* data is the global intensity (always 0xff in Aztarac). */
+	if (data & 1)// data is the global intensity (always 0xff in Aztarac).
 	{
+		vector_clear_list();
 		cache_clear();
 
 		while (1)
 		{
 			read_vectorram(objaddr, &xoffset, &yoffset, &c);
 			objaddr++;
+
 			if (c & 0x4000)
 				break;
 
@@ -173,7 +172,7 @@ WRITE16_HANDLER(aztarac_ubr_w)
 
 				if (c & 0xff00)
 				{
-					/* latch color only once */
+					// latch color only once
 					intensity = (c >> 8);
 					color = VECTOR_COLOR222(c & 0x3f);
 					while (ndefs--)
@@ -183,24 +182,25 @@ WRITE16_HANDLER(aztarac_ubr_w)
 						if ((c & 0xff00) == 0)
 							add_vector(x + xoffset, y + yoffset, 0, 0);
 						else
-							add_vector(x + xoffset, y + yoffset, color, intensity);
+							add_vector(x + xoffset, y + yoffset, color, intensity); //intensity
 					}
 				}
 				else
 				{
-					/* latch color for every definition */
+					// latch color for every definition
 					while (ndefs--)
 					{
 						defaddr++;
 						read_vectorram(defaddr, &x, &y, &c);
 						color = VECTOR_COLOR222(c & 0x3f);
-						add_vector(x + xoffset, y + yoffset, color, c >> 8);
+						add_vector(x + xoffset, y + yoffset, color, c >> 8); //c >> 8
 					}
 				}
 			}
 		}
 	}
 }
+
 
 WRITE_HANDLER(aztarac_ubr_wb)
 {
@@ -274,7 +274,6 @@ MEM_ADDR(0xffb000, 0xffb001, aztarac_ubr_wb)
 MEM_ADDR8(0xffe000, 0xffffff, NULL, aztarac_main_ram)
 MEM_END
 
-
 // 16-bit maps
 MEM_READ16(AztaracReadWord)
 MEM_ADDR16(0x000000, 0x00bfff, NULL, aztarac_program_rom)
@@ -328,14 +327,15 @@ PORT_END
 PORT_WRITE(AztaracSoundPortWrite)
 PORT_END
 
+// Post-init callback: set the 68000 IRQ ack handler
+static void aztarac_post_cpu_init(int cpunum)
+{
+	if (cpunum == CPU0)
+		m68k_set_int_ack_callback(aztarac_irq_callback);
+}
+
 void run_aztarac()
 {
-	// Hack I need to figure out a workaround for. I didn't code for this unfortunately.
-	// It  has to be called AFTER CPU init, and init_aztarac has to be called BEFORE init,
-	// and I don't have another place to init. 
-	static int poop = 0;
-	if (poop == 0) { poop = 1; m68k_set_int_ack_callback(aztarac_irq_callback);
-	}
 	AY8910_sh_update();
 	watchdog_reset_w(0, 0, 0);
 }
@@ -350,10 +350,8 @@ int init_aztarac()
 	memcpy(aztarac_program_rom, Machine->memory_region[CPU0], 0x00C000);
 	byteswap(aztarac_program_rom, 0x00C000);
 
-	//init68k(AztaracReadByte, AztaracWriteByte, AztaracReadWord, AztaracWriteWord, CPU0);
-	//init_z80(AztaracSoundMemRead, AztaracSoundMemWrite, AztaracSoundPortRead, AztaracSoundPortWrite, CPU1);
 	AY8910_sh_start(&ay8910_interface);
-	//m68k_set_int_ack_callback(aztarac_irq_callback);
+
 	aztarac_vectorram = vec_ram;
 	LOG_INFO("End aztarac Init");
 	return 0;
@@ -371,14 +369,9 @@ void aztarac_video_init(int scale)
 	int xmax = Machine->drv->visible_area.max_x;
 	int ymax = Machine->drv->visible_area.max_y;
 
-	//xcenter = ((xmax + xmin) / 2) << 16;
-	//ycenter = ((ymax + ymin) / 2) << 16;
+	xcenter = ((xmax + xmin) / 2) << 16;
+	ycenter = ((ymax + ymin) / 2) << 16;
 
-	xcenter = 512 << 16;
-	ycenter = 512 << 16;
-
-	//vector_set_shift(16);
-	//VECTOR_START();
 }
 
 /*************************************
@@ -388,15 +381,13 @@ void aztarac_video_init(int scale)
 	 *************************************/
 INPUT_PORTS_START(aztarac)
 PORT_START("IN0") /* IN0 */
-PORT_ANALOG(0x1f, 0xf, IPT_AD_STICK_X | IPF_CENTER, 100, 1, 0, 0, 0x1e)
-//PORT_ANALOG(0xff, 0x80, IPT_AD_STICK_X, 100, 5, 0, 0x20, 0xe0)
+PORT_ANALOG(0x1f, 0xf, IPT_AD_STICK_X | IPF_CENTER, 100, 1, 0, 0x1e)
+
 PORT_START("IN1") /* IN1 */
-//PORT_ANALOG(0x1f, 0xf, IPT_AD_STICK_Y | IPF_CENTER | IPF_REVERSE, 100, 1, 0, 0x1e)
-PORT_ANALOG(0x1f, 0xf, IPT_AD_STICK_Y | IPF_CENTER | IPF_REVERSE, 100, 1, 0, 0, 0xe1)
+PORT_ANALOG(0x1f, 0xf, IPT_AD_STICK_Y | IPF_CENTER | IPF_REVERSE, 100, 1, 0, 0x1e)
 
 PORT_START("IN2")
-//PORT_ANALOGX(0xff, 0x00, IPT_DIAL | IPF_REVERSE, 25, 10, 0, 0, ,0, KEYCODE_Z, KEYCODE_X,0,0)
-PORT_ANALOGX(0xff, 0x00, IPT_DIAL | IPF_REVERSE, 25, 10, 0, 0, 0, OSD_KEY_Z, OSD_KEY_X, 0, 0)
+PORT_ANALOGX(0xff, 0x00, IPT_DIAL | IPF_REVERSE, 25, 10, 0, 0, OSD_KEY_Z, OSD_KEY_X, 0, 0)
 
 PORT_START("IN3")
 PORT_BIT(0x02, IP_ACTIVE_LOW, IPT_BUTTON1)
@@ -408,7 +399,6 @@ PORT_BIT(0x20, IP_ACTIVE_LOW, IPT_UNKNOWN)
 PORT_BIT(0x40, IP_ACTIVE_LOW, IPT_UNKNOWN)
 PORT_BITX(0x80, IP_ACTIVE_LOW, IPT_SERVICE, "Service Mode", OSD_KEY_F2, IP_JOY_NONE)
 INPUT_PORTS_END
-
 
 ROM_START(aztarac)
 ROM_REGION(0xc000, REGION_CPU1, 0)
@@ -435,12 +425,12 @@ AAE_DRIVER_ROM(rom_aztarac)
 AAE_DRIVER_FUNCS(&init_aztarac, &run_aztarac, &end_aztarac)
 AAE_DRIVER_INPUT(input_ports_aztarac)
 AAE_DRIVER_SAMPLES_NONE()
-AAE_DRIVER_ART(aztarac_art)
+AAE_DRIVER_ART_NONE()
 
 //AAE_DRIVER_CPU2(CPU_68000, 8000000, 100, 1, INT_TYPE_68K4, &aztarac_interrupt, CPU_MZ80, 2000000, 100, 100, INT_TYPE_NONE, &aztarac_sound_interrupt)
 AAE_DRIVER_CPUS(
 	// CPU0: MC68000 @ 8 MHz, byte+word handlers, 1 interrupt pass/frame (level 4)
-	AAE_CPU_ENTRY(
+	AAE_CPU_ENTRY_EX(
 		/*type*/     CPU_68000,
 		/*freq*/     8000000,
 		/*div*/      100,
@@ -452,16 +442,17 @@ AAE_DRIVER_CPUS(
 		/*pr*/       nullptr,
 		/*pw*/       nullptr,
 		/*r16*/      AztaracReadWord,
-		/*w16*/      AztaracWriteWord
+		/*w16*/      AztaracWriteWord,
+		/*post_init*/ &aztarac_post_cpu_init
 	),
-	// CPU1: Z80 @ 2 MHz, sound CPU, 100 passes/frame, no core-driven INT 
+	// CPU1: Z80 @ 2 MHz, sound CPU, 100 passes/frame, no core-driven INT
 	AAE_CPU_ENTRY(
 		/*type*/     CPU_MZ80,
 		/*freq*/     2000000,
 		/*div*/      100,
 		/*ipf*/      100,
 		/*int type*/ INT_TYPE_NONE,
-		/*int cb*/   &aztarac_sound_interrupt, 
+		/*int cb*/   &aztarac_sound_interrupt,
 		/*r8*/       AztaracSoundMemRead,
 		/*w8*/       AztaracSoundMemWrite,
 		/*pr*/       AztaracSoundPortRead,
@@ -473,12 +464,13 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_NONE_ENTRY()
 )
 
-AAE_DRIVER_VIDEO_CORE(40, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT)
-AAE_DRIVER_SCREEN(1024, 768, 0, 400, 0, 300)
+AAE_DRIVER_VIDEO_CORE(40, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT | ORIENTATION_FLIP_Y)
+AAE_DRIVER_SCREEN(1024, 768, 0, 1024 - 1, 0, 768 - 1)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x0, 0x2000)
 AAE_DRIVER_NVRAM(aztarac_nvram_handler)
+AAE_DRIVER_LAYOUT_NONE()
 AAE_DRIVER_END()
 
 AAE_REGISTER_DRIVER(drv_aztarac)

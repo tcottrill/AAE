@@ -98,7 +98,7 @@
 // --- Core constants for audio generation ---
 #define NOTPOLY5    0x80
 #define POLY4       0x40
-#define PUREA        0x20
+#define PUREA       0x20
 #define VOL_ONLY    0x10
 #define VOLUME_MASK 0x0F
 
@@ -120,15 +120,18 @@
 #define CHAN4       3
 #define SAMPLE      127
 
+// Matching MAME's exact overdriven loudness factor (32767 / 11)
+constexpr int32_t POKEY_DEFAULT_GAIN = (32767 / 11);
+
 // Core state
 static uint8_t  Num_pokeys;
 static uint8_t  AUDF[4 * MAXPOKEYS];
 static uint8_t  AUDC[4 * MAXPOKEYS];
 static uint8_t  AUDCTL[MAXPOKEYS];
-static uint8_t  AUDV[4 * MAXPOKEYS];
+static int32_t  AUDV[4 * MAXPOKEYS]; 
 static uint8_t  Outbit[4 * MAXPOKEYS];
 static uint8_t  Outvol[4 * MAXPOKEYS];
-static uint8_t SKCTL[MAXPOKEYS] = { 0 };
+static uint8_t  SKCTL[MAXPOKEYS] = { 0 };
 
 static uint8_t* poly9;
 static uint8_t* poly17;
@@ -137,11 +140,14 @@ static uint8_t  poly5[0x1F];
 
 static uint8_t* rand9;
 static uint8_t* rand17;
+
 // Random tracking variables
 static uint64_t last_rng_cycle[MAXPOKEYS] = {};
-static uint32_t random_pos[MAXPOKEYS] = {};
+static uint32_t random_pos9[MAXPOKEYS] = {};   // Track 9-bit independently
+static uint32_t random_pos17[MAXPOKEYS] = {};  // Track 17-bit independently
+static uint64_t rng_cycle_remainder[MAXPOKEYS] = {}; 
 static uint8_t  pokey_random[MAXPOKEYS] = {};
-uint8_t rng[MAXPOKEYS];  // controls random enable
+uint8_t rng[MAXPOKEYS];
 
 static uint32_t Poly_adjust;
 static uint32_t P4 = 0, P5 = 0, P9 = 0, P17 = 0;
@@ -151,62 +157,6 @@ static uint32_t Div_n_max[4 * MAXPOKEYS];
 static uint32_t Samp_n_max;
 static uint32_t Samp_n_cnt[2];
 static uint32_t Base_mult[MAXPOKEYS];
-
-//Test - REMOVE
-// --- Tempest protection burst detector + 5-sample window (per chip) ---
-static uint8_t  temp_win[MAXPOKEYS][5] = { {0} };
-static uint32_t temp_cnt[MAXPOKEYS] = { 0 };
-static int      temp_burst[MAXPOKEYS] = { 0 };   // consecutive "tight" reads
-static bool     temp_mode[MAXPOKEYS] = { 0 };   // we're inside the protection window
-static int      temp_mode_left[MAXPOKEYS] = { 0 }; // how many reads to keep checking
-// Heuristics: "tight" = elapsed_cpu in this range (tune if needed)
-static const uint32_t TIGHT_MIN_CYC = 12;   // lower bound (avoid zero)
-static const uint32_t TIGHT_MAX_CYC = 80;   // upper bound (your logs showed ~38)
-static const int      TIGHT_BURST_N = 4;    // need N consecutive tight reads to arm
-static const int      MODE_READS = 40;   // keep checking next N reads once armed
-
-void test_tempest_rng_pattern()
-{
-	const int start = 0; // can be adjusted for broader testing
-	const int mask = 0x1FFFF;
-
-	bool passed = false;
-
-	for (int offset = 0; offset < 256; ++offset) {
-		int p0 = (start + offset + 0) & mask;
-		int p4 = (start + offset + 4) & mask;
-
-		uint8_t v0 = rand17[p0] ^ 0xFF;
-		uint8_t v4 = rand17[p4] ^ 0xFF;
-
-		uint8_t upper4 = (v0 >> 4) & 0x0F;
-		uint8_t lower4 = v4 & 0x0F;
-
-		if (upper4 == lower4) {
-			LOG_DEBUG("Tempest RNG match at offset %d: upper nibble 0x%X == lower nibble 0x%X",
-				offset, upper4, lower4);
-			passed = true;
-			break;
-		}
-	}
-
-	if (!passed)
-		LOG_DEBUG("Tempest RNG pattern test FAILED   upper nibble did not propagate.");
-}
-
-void dump_rand_sequence(uint8_t chip, bool use_poly9, int start_pos, int count) {
-	const uint8_t* table = use_poly9 ? rand9 : rand17;
-	const int mask = use_poly9 ? 0x1FF : 0x1FFFF;
-
-	LOG_DEBUG("POKEY[%d] RNG (%s) sequence starting at %d:",
-		chip, use_poly9 ? "rand9" : "rand17", start_pos);
-
-	for (int i = 0; i < count; ++i) {
-		int pos = (start_pos + i) & mask;
-		uint8_t value = table[pos] ^ 0xFF;  // same as returned from RANDOM_C
-		LOG_DEBUG("%04X: %02X\n", pos, value);
-	}
-}
 
 // ----------------------------------------------------------------------------
 // Polynomial & random initialization
@@ -275,42 +225,24 @@ int Pokey_sound_init(uint32_t freq17, uint16_t playback_freq, uint8_t num_pokeys
 	// Init our attempt at pokey cycle counting
 	// for the pseudo-random number generator
 	for (int i = 0; i < MAXPOKEYS; ++i) {
-		random_pos[i] = 0;
+		random_pos9[i] = 0;
+		random_pos17[i] = 0;
 		last_rng_cycle[i] = 0;
-		pokey_random[i] = 0x00; // shift reg = 0, so ^0xFF = 0xFF
+		rng_cycle_remainder[i] = 0; // Clear fractional time on init
+		pokey_random[i] = 0x00;     // so ^0xFF = 0xFF
 	}
+
 	LOG_DEBUG("POKEY SOUND INIT for %d pokeys", num_pokeys);
 	Num_pokeys = num_pokeys;
 	return 0;
 }
 
-/*****************************************************************************/
-/* Module:  Update_pokey_sound()                                             */
-/* Purpose: To process the latest control values stored in the AUDF, AUDC,   */
-/*          and AUDCTL registers.  It pre-calculates as much information as  */
-/*          possible for better performance.  This routine has not been      */
-/*          optimized.                                                       */
-/*                                                                           */
-/* Author:  Ron Fries                                                        */
-/* Date:    January 1, 1997                                                  */
-/*                                                                           */
-/* Inputs:  addr - the address of the parameter to be changed                */
-/*          val - the new value to be placed in the specified address        */
-/*          gain - specified as an 8-bit fixed point number - use 1 for no   */
-/*                 amplification (output is multiplied by gain)              */
-/*                                                                           */
-/* Outputs: Adjusts local globals - no return value                          */
-/*                                                                           */
-/*****************************************************************************/
-
-void Update_pokey_sound(uint16_t addr, uint8_t val, uint8_t chip, uint8_t gain)
+void Update_pokey_sound(uint16_t addr, uint8_t val, uint8_t chip)
 {
 	uint32_t new_val = 0;
 	uint8_t chan;
 	uint8_t chan_mask = 0;
 	uint8_t chip_offs = chip << 2;
-
-	LOG_DEBUG("Update Pokey Sound Addr: %x Data: %x Chip: %x", addr, val, chip);
 
 	switch (addr & 0x0f)
 	{
@@ -322,7 +254,7 @@ void Update_pokey_sound(uint16_t addr, uint8_t val, uint8_t chip, uint8_t gain)
 
 	case AUDC1_C:
 		AUDC[CHAN1 + chip_offs] = val;
-		AUDV[CHAN1 + chip_offs] = (val & VOLUME_MASK) * gain;
+		AUDV[CHAN1 + chip_offs] = (val & VOLUME_MASK) * POKEY_DEFAULT_GAIN;
 		chan_mask = 1 << CHAN1;
 		break;
 
@@ -333,7 +265,7 @@ void Update_pokey_sound(uint16_t addr, uint8_t val, uint8_t chip, uint8_t gain)
 
 	case AUDC2_C:
 		AUDC[CHAN2 + chip_offs] = val;
-		AUDV[CHAN2 + chip_offs] = (val & VOLUME_MASK) * gain;
+		AUDV[CHAN2 + chip_offs] = (val & VOLUME_MASK) * POKEY_DEFAULT_GAIN;
 		chan_mask = 1 << CHAN2;
 		break;
 
@@ -345,7 +277,7 @@ void Update_pokey_sound(uint16_t addr, uint8_t val, uint8_t chip, uint8_t gain)
 
 	case AUDC3_C:
 		AUDC[CHAN3 + chip_offs] = val;
-		AUDV[CHAN3 + chip_offs] = (val & VOLUME_MASK) * gain;
+		AUDV[CHAN3 + chip_offs] = (val & VOLUME_MASK) * POKEY_DEFAULT_GAIN;
 		chan_mask = 1 << CHAN3;
 		break;
 
@@ -356,7 +288,7 @@ void Update_pokey_sound(uint16_t addr, uint8_t val, uint8_t chip, uint8_t gain)
 
 	case AUDC4_C:
 		AUDC[CHAN4 + chip_offs] = val;
-		AUDV[CHAN4 + chip_offs] = (val & VOLUME_MASK) * gain;
+		AUDV[CHAN4 + chip_offs] = (val & VOLUME_MASK) * POKEY_DEFAULT_GAIN;
 		chan_mask = 1 << CHAN4;
 		break;
 
@@ -374,14 +306,15 @@ void Update_pokey_sound(uint16_t addr, uint8_t val, uint8_t chip, uint8_t gain)
 
 		if (!rng[chip])
 		{
-			// When SKCTL is reset, clear the RNG shift register
-			// This causes RANDOM_C to return 0xFF (due to XOR)
-			pokey_random[chip] = 0xa0;
-			random_pos[chip] = 0;
+			pokey_random[chip] = 0x00; // Fixed from 0xa0 to output 0xFF
+			random_pos9[chip] = 0;
+			random_pos17[chip] = 0;
 			last_rng_cycle[chip] = get_exact_cyclecount(get_active_cpu());
+			rng_cycle_remainder[chip] = 0;
 		}
 		return;
 	}
+
 	default:
 		return;
 	}
@@ -447,32 +380,16 @@ void Update_pokey_sound(uint16_t addr, uint8_t val, uint8_t chip, uint8_t gain)
 	}
 }
 
-/*****************************************************************************/
-/* Module:  Pokey_process()                                                  */
-/* Purpose: To fill the output buffer with the sound output based on the     */
-/*          pokey chip parameters.                                           */
-/*                                                                           */
-/* Author:  Ron Fries                                                        */
-/* Date:    January 1, 1997                                                  */
-/*                                                                           */
-/* Inputs:  *buffer - pointer to the buffer where the audio output will      */
-/*                    be placed                                              */
-/*          n - size of the playback buffer                                  */
-/*          num_pokeys - number of currently active pokeys to process        */
-/*                                                                           */
-/* Outputs: the buffer will be filled with n bytes of audio - no return val  */
-/*                                                                           */
-/*****************************************************************************/
-
-void Pokey_process(short* buffer, uint16_t n)
+void Pokey_process(int16_t** buffers, uint16_t n)
 {
 	uint32_t* samp_cnt_w_ptr = (uint32_t*)((uint8_t*)&Samp_n_cnt[0] + 1);
-	int16_t cur_val = 0;
+	int32_t cur_val[MAXPOKEYS] = { 0 }; 
 
 	// Initial output summation (subtract + add each active Outvol)
 	for (int i = 0; i < Num_pokeys * 4; ++i) {
-		cur_val -= AUDV[i] / 2;
-		if (Outvol[i]) cur_val += AUDV[i];
+		int chip = i >> 2;
+		cur_val[chip] -= AUDV[i] / 2;
+		if (Outvol[i]) cur_val[chip] += AUDV[i];
 	}
 
 	while (n)
@@ -534,7 +451,7 @@ void Pokey_process(short* buffer, uint16_t n)
 					uint8_t index = (chip << 2) | target_chan;
 					if (Outvol[index]) {
 						Outvol[index] = 0;
-						cur_val -= AUDV[index];
+						cur_val[chip] -= AUDV[index];
 					}
 				}
 				};
@@ -545,11 +462,11 @@ void Pokey_process(short* buffer, uint16_t n)
 			// Toggle output
 			if (toggle) {
 				if (*outp) {
-					cur_val -= AUDV[next_event];
+					cur_val[chip] -= AUDV[next_event];
 					*outp = 0;
 				}
 				else {
-					cur_val += AUDV[next_event];
+					cur_val[chip] += AUDV[next_event];
 					*outp = 1;
 				}
 			}
@@ -558,12 +475,16 @@ void Pokey_process(short* buffer, uint16_t n)
 		{
 			*Samp_n_cnt += Samp_n_max;
 
-			if (cur_val > 127)
-				*buffer++ = static_cast<int16_t>(0x7fff);
-			else if (cur_val < -128)
-				*buffer++ = static_cast<int16_t>(-32768);
-			else
-				*buffer++ = static_cast<int16_t>(cur_val << 8);
+			// Write separated streams out to the respective array pointers
+			for (int chip = 0; chip < Num_pokeys; ++chip) {
+				int32_t cv = cur_val[chip];
+
+				// Safely clamp the combined overdrive volume
+				if (cv > 32767) cv = 32767;
+				else if (cv < -32768) cv = -32768;
+
+				*(buffers[chip]++) = static_cast<int16_t>(cv);
+			}
 
 			--n;
 		}
@@ -587,48 +508,68 @@ void pokey_sound_stop() {
 
 static int    buffer_len;
 static int    emulation_rate;
-static int    sample_pos;
-static int    channel;
+static int    sample_pos[MAXPOKEYS];
 POKEYinterface* intf_ptr;
-static int16_t* buffer_ptr;
+static int16_t* buffer_ptr[MAXPOKEYS];
 
 int pokey_sh_start(POKEYinterface* intfa) {
 	intf_ptr = intfa;
 	buffer_len = config.samplerate / Machine->gamedrv->fps;
 	emulation_rate = buffer_len * Machine->gamedrv->fps;
-	sample_pos = 0;
 
 	LOG_INFO("Pokey stream size %d", (16 / 8) * buffer_len);
-	buffer_ptr = (int16_t*)std::malloc(buffer_len * sizeof(int16_t));
-	if (!buffer_ptr) {
-		LOG_ERROR("Pokey buffer allocation failed");
-		return 1;
+
+	for (int i = 0; i < intf_ptr->num; i++) {
+		buffer_ptr[i] = (int16_t*)std::malloc(buffer_len * sizeof(int16_t));
+		if (!buffer_ptr[i]) {
+			LOG_ERROR("Pokey buffer allocation failed");
+			return 1;
+		}
+		std::memset(buffer_ptr[i], 0, buffer_len * sizeof(int16_t));
+		sample_pos[i] = 0;
 	}
-	std::memset(buffer_ptr, 0, buffer_len * sizeof(int16_t));
 
 	if (Pokey_sound_init(intf_ptr->clock, emulation_rate, intf_ptr->num)) {
-		std::free(buffer_ptr);
+		for (int i = 0; i < intf_ptr->num; i++) {
+			if (buffer_ptr[i]) std::free(buffer_ptr[i]);
+		}
 		return 1;
 	}
 
-	stream_start(0, 0, 16, Machine->gamedrv->fps);
-	// Honor POKEYinterface.volume (0..255) on the POKEY streaming channel
-	sample_set_volume(0, intf_ptr->volume);
+	for (int i = 0; i < intf_ptr->num; i++) {
+		stream_start(i, 0, 16, Machine->gamedrv->fps, false);
+		sample_set_volume_mixer(i, intf_ptr->mixing_level[i]);
+	}
 	return 0;
 }
 
 void pokey_sh_stop(void) {
 	pokey_sound_stop();
-	stream_stop(0, 0);
-	std::free(buffer_ptr);
-	LOG_INFO("Pokey buffer freed");
+	for (int i = 0; i < intf_ptr->num; i++) {
+		stream_stop(i, 0);
+		if (buffer_ptr[i]) std::free(buffer_ptr[i]);
+		buffer_ptr[i] = nullptr;
+	}
+	LOG_INFO("Pokey buffers freed");
 }
 
 static void update_pokeys(void) {
 	int newpos = cpu_scale_by_cycles(buffer_len, intf_ptr->clock);
-	if (newpos - sample_pos < 10) { return; }
-	Pokey_process(buffer_ptr + sample_pos, newpos - sample_pos);
-	sample_pos = newpos;
+	if (newpos > buffer_len) newpos = buffer_len;
+
+	// Use 0 as reference time since they are all clocked together
+	if (newpos - sample_pos[0] < 10) { return; }
+
+	int16_t* bufs[MAXPOKEYS];
+	for (int i = 0; i < intf_ptr->num; i++) {
+		bufs[i] = buffer_ptr[i] + sample_pos[0];
+	}
+
+	Pokey_process(bufs, newpos - sample_pos[0]);
+
+	for (int i = 0; i < intf_ptr->num; i++) {
+		sample_pos[i] = newpos;
+	}
 }
 
 int Read_pokey_regs(uint16_t addr, uint8_t chip) {
@@ -655,33 +596,38 @@ int Read_pokey_regs(uint16_t addr, uint8_t chip) {
 	case RANDOM_C:
 	{
 		if (!rng[chip])
-			return pokey_random[chip] ^ 0xFF;  // SKCTL reset: returns 0xFF
+			return pokey_random[chip] ^ 0xFF;
 
-		uint64_t now = get_exact_cyclecount(get_active_cpu());
-		uint64_t last = last_rng_cycle[chip];
+		const int active_cpu = (get_active_cpu() >= 0) ? get_active_cpu() : 0;
+		const uint64_t now = (uint64_t)get_exact_cyclecount(active_cpu);
+		const uint64_t last = last_rng_cycle[chip];
 		last_rng_cycle[chip] = now;
 
-		uint64_t pokey_clocks = 0;
-
 		if (now > last) {
-			uint64_t elapsed_cycles = now - last;
+			const uint64_t elapsed_cycles = now - last;
+			const uint64_t cpu_hz = (uint64_t)Machine->gamedrv->cpu[active_cpu].cpu_freq;
+			const uint64_t pokey_hz = (uint64_t)intf_ptr->clock;
 
-			// Convert CPU cycles to POKEY clocks
-			pokey_clocks = elapsed_cycles * intf_ptr->clock / Machine->gamedrv->cpu[0].cpu_freq;
+			const uint64_t accum = rng_cycle_remainder[chip] + elapsed_cycles * pokey_hz;
+			const uint64_t pokey_clocks = accum / cpu_hz;
+			rng_cycle_remainder[chip] = accum % cpu_hz;
+
+			if (pokey_clocks > 0) {
+				// Advance both counters synchronously just like real hardware
+				random_pos9[chip] = (random_pos9[chip] + (uint32_t)pokey_clocks) % 0x1FF;
+				random_pos17[chip] = (random_pos17[chip] + (uint32_t)pokey_clocks) % 0x1FFFF;
+
+				if (AUDCTL[chip] & POLY9) {
+					pokey_random[chip] = rand9[random_pos9[chip]];
+				}
+				else {
+					pokey_random[chip] = rand17[random_pos17[chip]];
+				}
+			}
 		}
 
-		if (pokey_clocks > 0) {
-			if (AUDCTL[chip] & POLY9) {
-				random_pos[chip] = (random_pos[chip] + pokey_clocks) & 0x1FF;
-				pokey_random[chip] = rand9[random_pos[chip]];
-			}
-			else {
-				random_pos[chip] = (random_pos[chip] + pokey_clocks) & 0x1FFFF;
-				pokey_random[chip] = rand17[random_pos[chip]];
-			}
-		}
-
-		return pokey_random[chip] ^ 0xFF;
+		const uint8_t ret = (uint8_t)(pokey_random[chip] ^ 0xFF);
+		return ret;
 	}
 
 	default:
@@ -701,10 +647,10 @@ int quad_pokey_r(int offset) {
 	return Read_pokey_regs(reg, chip);
 }
 
-void pokey1_w(int offset, int data) { update_pokeys(); Update_pokey_sound(offset, data, 0, intf_ptr->gain); }
-void pokey2_w(int offset, int data) { update_pokeys(); Update_pokey_sound(offset, data, 1, intf_ptr->gain); }
-void pokey3_w(int offset, int data) { update_pokeys(); Update_pokey_sound(offset, data, 2, intf_ptr->gain); }
-void pokey4_w(int offset, int data) { update_pokeys(); Update_pokey_sound(offset, data, 3, intf_ptr->gain); }
+void pokey1_w(int offset, int data) { update_pokeys(); Update_pokey_sound(offset, data, 0); }
+void pokey2_w(int offset, int data) { update_pokeys(); Update_pokey_sound(offset, data, 1); }
+void pokey3_w(int offset, int data) { update_pokeys(); Update_pokey_sound(offset, data, 2); }
+void pokey4_w(int offset, int data) { update_pokeys(); Update_pokey_sound(offset, data, 3); }
 
 void quad_pokey_w(int offset, int data) {
 	int chip = (offset >> 3) & ~0x04;
@@ -751,9 +697,19 @@ void quadpokey_w(uint32_t address, uint8_t data, MemoryWriteByte*) {
 	quad_pokey_w(address, data);
 }
 
+
 void pokey_sh_update(void) {
-	if (sample_pos < buffer_len)
-		Pokey_process(buffer_ptr + sample_pos, buffer_len - sample_pos);
-	sample_pos = 0;
-	stream_update(0, buffer_ptr);
+	int remains = buffer_len - sample_pos[0];
+	if (remains > 0) {
+		int16_t* bufs[MAXPOKEYS];
+		for (int i = 0; i < intf_ptr->num; i++) {
+			bufs[i] = buffer_ptr[i] + sample_pos[0];
+		}
+		Pokey_process(bufs, remains);
+	}
+
+	for (int i = 0; i < intf_ptr->num; i++) {
+		sample_pos[i] = 0;
+		stream_update(i, buffer_ptr[i]);
+	}
 }

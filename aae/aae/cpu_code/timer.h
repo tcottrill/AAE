@@ -33,5 +33,13 @@ void timer_cpu_reset(int cpunum);
 int  timer_is_timer_enabled(int timer_id);
 void timer_clear_all_eof();
 void timer_clear_end_of_game();
+double timer_timeleft(int timer_id);
+double timer_timeelapsed(int timer_id);
+int  timer_set_elapsed(int cpu_index);
+// MAME-compatible timer_alloc / timer_adjust API
+// timer_alloc creates a dormant timer with a callback but doesn't start it.
+// timer_adjust arms/re-arms an allocated timer.
+int    timer_alloc(std::function<void(int)> callback);
+void   timer_adjust(int timer_id, double duration, int param, double period);
 
 #endif

@@ -4,7 +4,10 @@
 
 GLuint fragBlur = 0;
 GLuint fragMulti = 0;
-
+GLuint fragBasicTex = 0;   
+GLuint fragBasicColor = 0; 
+GLuint fragScanlineMultiply = 0;
+GLuint fragStarPoint = 0;
 
 // Write errors
 static void write_shader_error(GLuint obj, const char* label, bool isProgram)
@@ -96,9 +99,9 @@ void set_uniform4f(GLuint program, const char* name, float x, float y, float z, 
     glUniform4f(get_uniform_loc(program, name), x, y, z, w);
 }
 
-//void set_uniform_mat4f(GLuint program, const char* name, const glm::mat4* matrix) {
-//   glUniformMatrix4fv(get_uniform_loc(program, name), 1, GL_FALSE, &((*matrix)[0][0]));
-//}
+void set_uniform_mat4f(GLuint program, const char* name, const float* matrix) {
+    glUniformMatrix4fv(get_uniform_loc(program, name), 1, GL_FALSE, matrix);
+}
 
 
 int init_shader()
@@ -106,5 +109,15 @@ int init_shader()
     LOG_INFO("Shader Init Start");
     fragBlur = create_shader_program(vertText, fragText);
     fragMulti = create_shader_program(texvertText, texfragText);
+
+    // Compile and link the new basic shaders
+    fragBasicTex = create_shader_program(basicTexVert, basicTexFrag);
+    fragBasicColor = create_shader_program(basicColorVert, basicColorFrag);
+
+    // Scanline multiply overlay
+    fragScanlineMultiply = create_shader_program(scanlineMultiplyVert, scanlineMultiplyFrag);
+
+    //Gui Stars Shader
+    fragStarPoint = create_shader_program(starPointVert, starPointFrag);
     return 1;
 }

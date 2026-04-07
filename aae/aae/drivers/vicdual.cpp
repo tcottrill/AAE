@@ -1,11 +1,21 @@
+//============================================================================
+// AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME
+// code, 0.29 through .90 mixed with code of my own. This emulator was
+// created solely for my amusement and learning and is provided only
+// as an archival experience.
+//
+// All MAME code used and abused in this emulator remains the copyright
+// of the dedicated people who spend countless hours creating it. All
+// MAME code should be annotated as belonging to the MAME TEAM.
+//
+// SOME CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.
+//============================================================================
+
 #include "aae_mame_driver.h"
 #include "driver_registry.h"
 #include "old_mame_raster.h"
 #include "vicdual.h"
 
-ART_START(depthch_art)
-ART_LOAD("custom.zip", "astdelux_overlay.png", ART_TEX, 1)
-ART_END
 
 //Sound Section Start ---------------------------
 const char* depthch_samples[] =
@@ -409,7 +419,7 @@ AAE_DRIVER_ROM(rom_depthch)
 AAE_DRIVER_FUNCS(&init_vicdual, &run_vicdual, &end_vicdual)
 AAE_DRIVER_INPUT(input_ports_depthch)
 AAE_DRIVER_SAMPLES(depthch_samples)
-AAE_DRIVER_ART(depthch_art)
+AAE_DRIVER_ART_NONE()
 
 AAE_DRIVER_CPUS(
 	AAE_CPU_ENTRY(
@@ -431,12 +441,13 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_NONE_ENTRY()
 )
 
-AAE_DRIVER_VIDEO_CORE(60, VIDEO_TYPE_RASTER_BW | VIDEO_SUPPORTS_DIRTY | VECTOR_USES_OVERLAY1, ORIENTATION_DEFAULT)
-AAE_DRIVER_SCREEN(256, 256, 0, 255, 0, 255)
+AAE_DRIVER_VIDEO_CORE(60,DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_RASTER_BW | VIDEO_SUPPORTS_DIRTY | VECTOR_USES_OVERLAY1, ORIENTATION_DEFAULT)
+AAE_DRIVER_SCREEN(256, 256, 0, 255, 0,223)
 AAE_DRIVER_RASTER(vicdual_gfxdecodeinfo, 64, 64, vicdual_vh_convert_color_prom)
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0, 0)
 AAE_DRIVER_NVRAM_NONE()
+AAE_DRIVER_LAYOUT("default.lay", "Upright_Artwork")
 AAE_DRIVER_END()
 
 AAE_REGISTER_DRIVER(drv_depthch)

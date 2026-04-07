@@ -2059,9 +2059,26 @@ UINT32 cpu_z80::mz80int(UINT32 bVal)
 
 		case 2:
 			cCycles += 19;
-			//LOG_INFO("Interrupt Mode 2 Taken");
-			Push(GetPC());
-			SetPC(MemReadWord(irq_vector | (m_regI << 8)));
+			// IM2: vector table address = (I register << 8) | vector_byte.
+			// If int_ack_fn is set, call it now to perform the daisy-chain
+			// interrupt acknowledge at the correct moment -- when the CPU is
+			// actually ready to dispatch (IFF1=1). This prevents the premature
+			// INT->IEO state transition in the CTC that would cause subsequent
+			// CTC interrupts to be lost while the first ISR has not yet returned.
+			// If int_ack_fn is not set, fall back to the pre-stored irq_vector
+			// for full backward compatibility with all existing drivers.
+			{
+				int live_vec = int_ack_fn ? int_ack_fn() : (int)irq_vector;
+				if (live_vec < 0)
+				{
+					// Daisy chain returned nothing -- should not happen if
+					// cchasm_ctc_interrupt correctly checks has_pending_interrupt()
+					// before asserting, but guard against it just in case.
+					live_vec = (int)irq_vector;
+				}
+				Push(GetPC());
+				SetPC(MemReadWord((uint16_t)(live_vec | (m_regI << 8))));
+			}
 			m_irq_line = false;
 			break;
 

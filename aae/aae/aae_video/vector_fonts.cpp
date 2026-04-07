@@ -1,8 +1,7 @@
-// ============================================================================
+// ====
 // vector_fonts.cpp
-// ============================================================================
+// ====
 #include "vector_fonts.h"
-
 #include "shader_util.h"
 #include "colordefs.h"
 
@@ -17,16 +16,16 @@ static constexpr float CHAR_GAP = 2.0f;     // Inter-character gap (unscaled uni
 static constexpr float SPACE_WIDTH = 7.0f;   // Space character width (unscaled units)
 static constexpr int EOC = 256;
 
-// -----------------------------------------------------------------------------
-// Inline Shaders for OpenGL 2.1
-// -----------------------------------------------------------------------------
+// ----
+// Inline Shaders for OpenGL 3.3
+// ----
 static const char* vfVertexShader = R"glsl(
-#version 120
-attribute vec2 aPos;
-attribute vec2 aOrigin;
-attribute float aAngle;
-attribute vec4 aColor;
-varying vec4 vColor;
+#version 330 
+in vec2 aPos;
+in vec2 aOrigin;
+in float aAngle;
+in vec4 aColor;
+out vec4 vColor;
 uniform mat4 uMVP;
 void main() {
     vColor = aColor;
@@ -52,16 +51,18 @@ void main() {
 )glsl";
 
 static const char* vfFragmentShader = R"glsl(
-#version 120
-varying vec4 vColor;
+#version 330 
+in vec4 vColor;
+out vec4 FragColor;
 void main() {
-    gl_FragColor = vColor;
+    FragColor = vColor;
 }
 )glsl";
 
-// -----------------------------------------------------------------------------
+
+// ----
 // Full Embedded Font Data
-// -----------------------------------------------------------------------------
+// ----
 
 static float fontdata[] = {
 	// 0x1E (30) - UP TRIANGLE (outline)
@@ -177,7 +178,7 @@ static float fontdata[] = {
 	125, 5, 0, 6, 0, 6, 0, 7, 1, 7, 1, 7, 5, 7, 5, 6, 6, 6, 6, 5, 6, EOC,
 	// 126 '~'
 	126, 1, 4, 3, 5, 3, 5, 5, 4, 5, 4, 6.5, 5, EOC,
-	
+
 	127, // // Ship without thrust
 	 6, 2, 18, 6 ,   // top edge to nose
 	 18, 6, 6, 10 ,  // bottom edge from nose
@@ -197,44 +198,45 @@ static float fontdata[] = {
 	 7, 4, 3, 6,    // inner top to tail
 	 3, 6, 7, 8, EOC, // tail to inner bottom
 
-	// 0x81 (129) - Explosion (8 asterisks at compass points, 1.5 diameters apart)
-	// Bounding box: x=[6, 26] y=[6.5, 25.5]  Center: (16, 16)
-	129,
-	// N
-	16.0, 21.5, 16.0, 25.5,  13.5, 23.5, 18.5, 23.5,  14.0, 22.0, 18.0, 25.0,  14.0, 25.0, 18.0, 22.0,
-	// NE
-	21.3, 19.3, 21.3, 23.3,  18.8, 21.3, 23.8, 21.3,  19.3, 19.8, 23.3, 22.8,  19.3, 22.8, 23.3, 19.8,
-	// E
-	23.5, 14.0, 23.5, 18.0,  21.0, 16.0, 26.0, 16.0,  21.5, 14.5, 25.5, 17.5,  21.5, 17.5, 25.5, 14.5,
-	// SE
-	21.3, 8.7, 21.3, 12.7,  18.8, 10.7, 23.8, 10.7,  19.3, 9.2, 23.3, 12.2,  19.3, 12.2, 23.3, 9.2,
-	// S
-	16.0, 6.5, 16.0, 10.5,  13.5, 8.5, 18.5, 8.5,  14.0, 7.0, 18.0, 10.0,  14.0, 10.0, 18.0, 7.0,
-	// SW
-	10.7, 8.7, 10.7, 12.7,  8.2, 10.7, 13.2, 10.7,  8.7, 9.2, 12.7, 12.2,  8.7, 12.2, 12.7, 9.2,
-	// W
-	8.5, 14.0, 8.5, 18.0,  6.0, 16.0, 11.0, 16.0,  6.5, 14.5, 10.5, 17.5,  6.5, 17.5, 10.5, 14.5,
-	// NW
-	10.7, 19.3, 10.7, 23.3,  8.2, 21.3, 13.2, 21.3,  8.7, 19.8, 12.7, 22.8,  8.7, 22.8, 12.7, 19.8,
-	EOC,
+	 // 0x81 (129) - Explosion (8 asterisks at compass points, 1.5 diameters apart)
+	 // Bounding box: x=[6, 26] y=[6.5, 25.5]  Center: (16, 16)
+	 129,
+	 // N
+	 16.0, 21.5, 16.0, 25.5,  13.5, 23.5, 18.5, 23.5,  14.0, 22.0, 18.0, 25.0,  14.0, 25.0, 18.0, 22.0,
+	 // NE
+	 21.3, 19.3, 21.3, 23.3,  18.8, 21.3, 23.8, 21.3,  19.3, 19.8, 23.3, 22.8,  19.3, 22.8, 23.3, 19.8,
+	 // E
+	 23.5, 14.0, 23.5, 18.0,  21.0, 16.0, 26.0, 16.0,  21.5, 14.5, 25.5, 17.5,  21.5, 17.5, 25.5, 14.5,
+	 // SE
+	 21.3, 8.7, 21.3, 12.7,  18.8, 10.7, 23.8, 10.7,  19.3, 9.2, 23.3, 12.2,  19.3, 12.2, 23.3, 9.2,
+	 // S
+	 16.0, 6.5, 16.0, 10.5,  13.5, 8.5, 18.5, 8.5,  14.0, 7.0, 18.0, 10.0,  14.0, 10.0, 18.0, 7.0,
+	 // SW
+	 10.7, 8.7, 10.7, 12.7,  8.2, 10.7, 13.2, 10.7,  8.7, 9.2, 12.7, 12.2,  8.7, 12.2, 12.7, 9.2,
+	 // W
+	 8.5, 14.0, 8.5, 18.0,  6.0, 16.0, 11.0, 16.0,  6.5, 14.5, 10.5, 17.5,  6.5, 17.5, 10.5, 14.5,
+	 // NW
+	 10.7, 19.3, 10.7, 23.3,  8.2, 21.3, 13.2, 21.3,  8.7, 19.8, 12.7, 22.8,  8.7, 22.8, 12.7, 19.8,
+	 EOC,
 
-		-5, -5
+		 -5, -5
 };
 
-// -----------------------------------------------------------------------------
+// ----
 // Singleton Access
-// -----------------------------------------------------------------------------
+// ----
 VectorFont& VectorFont::Instance()
 {
 	static VectorFont instance;
 	return instance;
 }
 
-// -----------------------------------------------------------------------------
+// ----
 // Constructor / Destructor
-// -----------------------------------------------------------------------------
+// ----
 VectorFont::VectorFont()
 	: vfProgram(0)
+	, vfVAO(0)
 	, vfVBO(0)
 	, attrPos(-1)
 	, attrColor(-1)
@@ -252,22 +254,18 @@ VectorFont::VectorFont()
 
 VectorFont::~VectorFont()
 {
-	if (vfVBO)
-	{
-		glDeleteBuffers(1, &vfVBO);
-		vfVBO = 0;
-	}
+	if (vfVAO) { glDeleteVertexArrays(1, &vfVAO); vfVAO = 0; }
+	if (vfVBO) { glDeleteBuffers(1, &vfVBO); vfVBO = 0; }
 
-	if (vfProgram)
-	{
-		glDeleteProgram(vfProgram);
-		vfProgram = 0;
-	}
+	
+	if (quadVAO) { glDeleteVertexArrays(1, &quadVAO); quadVAO = 0; }
+	if (quadVBO) { glDeleteBuffers(1, &quadVBO); quadVBO = 0; }
+
+	if (vfProgram) { glDeleteProgram(vfProgram); vfProgram = 0; }
 }
-
-// -----------------------------------------------------------------------------
+// ----
 // Initialize
-// -----------------------------------------------------------------------------
+// ----
 void VectorFont::Initialize(int width, int height)
 {
 	InitGL();
@@ -288,12 +286,19 @@ void VectorFont::Resize(int width, int height)
 	glViewport(0, 0, screenWidth, screenHeight);
 }
 
-// -----------------------------------------------------------------------------
+void VectorFont::SetOverrideViewport(bool enable)
+{
+	overrideViewport = enable;
+}
+
+// ----
 // Begin
-// -----------------------------------------------------------------------------
+// ----
 void VectorFont::Begin()
 {
-	glViewport(0, 0, screenWidth, screenHeight);
+	if (overrideViewport) {
+		glViewport(0, 0, screenWidth, screenHeight);
+	}
 
 	glUseProgram(vfProgram);
 
@@ -304,9 +309,9 @@ void VectorFont::Begin()
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }
 
-// -----------------------------------------------------------------------------
+// ----
 // End
-// -----------------------------------------------------------------------------
+// ----
 void VectorFont::End()
 {
 	if (drawVerts.empty())
@@ -314,6 +319,7 @@ void VectorFont::End()
 		glUseProgram(0);
 		return;
 	}
+	glBindVertexArray(vfVAO);
 
 	glBindBuffer(GL_ARRAY_BUFFER, vfVBO);
 	glBufferData(GL_ARRAY_BUFFER, drawVerts.size() * sizeof(VFVertex), drawVerts.data(), GL_DYNAMIC_DRAW);
@@ -342,15 +348,16 @@ void VectorFont::End()
 	glDisableVertexAttribArray(attrAngle);
 	glDisableVertexAttribArray(attrColor);
 
+	glBindVertexArray(0);
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
 	glUseProgram(0);
 
 	drawVerts.clear();
 }
 
-// -----------------------------------------------------------------------------
+// ----
 // DrawQuad
-// -----------------------------------------------------------------------------
+// ----
 void VectorFont::DrawQuad(float x, float y, float width, float height, rgb_t color)
 {
 	const float minx = x - (width * 0.5f);
@@ -378,9 +385,9 @@ void VectorFont::DrawQuad(float x, float y, float width, float height, rgb_t col
 	glUseProgram(vfProgram);
 	glUniformMatrix4fv(uniMVP, 1, GL_FALSE, aae::math::value_ptr(proj));
 
-	GLuint tmpVBO = 0;
-	glGenBuffers(1, &tmpVBO);
-	glBindBuffer(GL_ARRAY_BUFFER, tmpVBO);
+	glBindVertexArray(quadVAO);
+
+	glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
 	glBufferData(GL_ARRAY_BUFFER, quadV.size() * sizeof(VFVertex), quadV.data(), GL_STREAM_DRAW);
 
 	glEnableVertexAttribArray(attrPos);
@@ -402,13 +409,13 @@ void VectorFont::DrawQuad(float x, float y, float width, float height, rgb_t col
 	glDisableVertexAttribArray(attrAngle);
 	glDisableVertexAttribArray(attrColor);
 
+	glBindVertexArray(0);
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
-	glDeleteBuffers(1, &tmpVBO);
 }
 
-// -----------------------------------------------------------------------------
+// ----
 // Print (Legacy Overload)
-// -----------------------------------------------------------------------------
+// ----
 void VectorFont::Print(float x, int y, rgb_t color, float scale, const char* fmt, ...)
 {
 	va_list ap;
@@ -423,9 +430,9 @@ void VectorFont::Print(float x, int y, rgb_t color, float scale, const char* fmt
 	Print(x, y, color, scale, 0.0f, "%s", text);
 }
 
-// -----------------------------------------------------------------------------
+// ----
 // PrintCentered
-// -----------------------------------------------------------------------------
+// ----
 void VectorFont::PrintCentered(int y, rgb_t color, float scale, const char* str)
 {
 	if (!str || str[0] == '\0') return;
@@ -437,9 +444,9 @@ void VectorFont::PrintCentered(int y, rgb_t color, float scale, const char* str)
 	Print(x, y, color, scale, 0.0f, "%s", str);
 }
 
-// -----------------------------------------------------------------------------
+// ----
 	// Private Internal Helper: Generates vertices with explicit rotation origin
-	// -----------------------------------------------------------------------------
+	// ----
 void VectorFont::DrawTextInternal(float x, float y, const aae::math::vec2& rotationOrigin,
 	rgb_t color, float scale, float angle, const char* text)
 {
@@ -485,10 +492,10 @@ void VectorFont::DrawTextInternal(float x, float y, const aae::math::vec2& rotat
 	lastscale = scale;
 }
 
-// -----------------------------------------------------------------------------
+// ----
 // Print (Standard)
 // Rotates around the STARTING (X,Y) position.
-// -----------------------------------------------------------------------------
+// ----
 void VectorFont::Print(float x, int y, rgb_t color, float scale, float angle, const char* fmt, ...)
 {
 	if (!fmt) return;
@@ -507,10 +514,10 @@ void VectorFont::Print(float x, int y, rgb_t color, float scale, float angle, co
 	DrawTextInternal(x, (float)y, origin, color, scale, angle, text);
 }
 
-// -----------------------------------------------------------------------------
+// ----
 // PrintCentered
 // Rotates around the GEOMETRIC CENTER of the text line.
-// -----------------------------------------------------------------------------
+// ----
 void VectorFont::PrintCentered(int y, rgb_t color, float scale, float angle, const char* str)
 {
 	if (!str || str[0] == '\0') return;
@@ -535,10 +542,10 @@ void VectorFont::PrintCentered(int y, rgb_t color, float scale, float angle, con
 	DrawTextInternal(startX, (float)y, center, color, scale, angle, str);
 }
 
-// -----------------------------------------------------------------------------
+// ----
 // DrawGlyph
 // Draws a single glyph centered exactly at (x,y), rotated around that center.
-// -----------------------------------------------------------------------------
+// ----
 void VectorFont::DrawGlyph(float x, float y, int glyph, rgb_t color, float scale, float angle)
 {
 	if (glyph < 0 || glyph > 255) return;
@@ -606,9 +613,9 @@ void VectorFont::DrawGlyph(float x, float y, int glyph, rgb_t color, float scale
 	DrawTextInternal(drawX, drawY, aae::math::vec2(x, y), color, scale, angle, str);
 }
 
-// -----------------------------------------------------------------------------
+// ----
 // GetStringPitch
-// -----------------------------------------------------------------------------
+// ----
 float VectorFont::GetStringPitch(const char* str, float scale, int set)
 {
 	(void)set;
@@ -626,9 +633,9 @@ float VectorFont::GetStringPitch(const char* str, float scale, int set)
 	return total;
 }
 
-// -----------------------------------------------------------------------------
+// ----
 // InitGL
-// -----------------------------------------------------------------------------
+// ----
 void VectorFont::InitGL()
 {
 	GLuint vs = CompileShader(GL_VERTEX_SHADER, vfVertexShader, "Vector Font VS");
@@ -642,19 +649,23 @@ void VectorFont::InitGL()
 	uniMVP = glGetUniformLocation(vfProgram, "uMVP");
 
 	glGenBuffers(1, &vfVBO);
+	glGenVertexArrays(1, &vfVAO);
+
+	glGenBuffers(1, &quadVBO);
+	glGenVertexArrays(1, &quadVAO);
 }
 
-// -----------------------------------------------------------------------------
+// ----
 // SetProjection
-// -----------------------------------------------------------------------------
+// ----
 void VectorFont::SetProjection(const aae::math::mat4& mvp)
 {
 	proj = mvp;
 }
 
-// -----------------------------------------------------------------------------
+// ----
 // InitFontData
-// -----------------------------------------------------------------------------
+// ----
 void VectorFont::InitFontData()
 {
 	int a = 0;
