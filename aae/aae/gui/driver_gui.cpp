@@ -60,6 +60,7 @@ static int input_cooldown = 0;
 // Virtual screen dimensions (must match AAE_DRIVER_SCREEN below)
 static constexpr int kScreenW = 1024;
 static constexpr int kScreenH = 768;
+static constexpr int kFBOHeight = 1024;
 
 // Vertical layout positions (Y-up coordinate system)
 static constexpr int kTitleY = 700;
@@ -152,7 +153,7 @@ static void fillStars(Star stars[], int count)
 {
 	for (int i = 0; i < count; ++i)
 	{
-		stars[i].y = rand() % kScreenH;
+		stars[i].y = rand() % kFBOHeight;
 		stars[i].x = rand() % kScreenW;
 		stars[i].speed = (rand() % kMaxStarSpeed) + 2;
 		stars[i].r = rand() % 256;
@@ -181,7 +182,7 @@ static void moveStars(Star stars[], int count)
 	{
 		stars[i].y -= stars[i].speed;
 		if (stars[i].y < 0)
-			stars[i].y = kScreenH;
+			stars[i].y = kFBOHeight;
 
 		// Tick blink timer
 		if (stars[i].blink)

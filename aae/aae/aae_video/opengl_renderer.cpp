@@ -1120,60 +1120,16 @@ void final_render(int left, int right, int bottom, int top)
 
 	unbind_shader();
 
-	glActiveTextureARB(GL_TEXTURE1_ARB); glBindTexture(GL_TEXTURE_2D, 0); glDisable(GL_TEXTURE_2D);
-	glActiveTextureARB(GL_TEXTURE2_ARB); glBindTexture(GL_TEXTURE_2D, 0); glDisable(GL_TEXTURE_2D);
-	glActiveTextureARB(GL_TEXTURE3_ARB); glBindTexture(GL_TEXTURE_2D, 0); glDisable(GL_TEXTURE_2D);
-	glActiveTextureARB(GL_TEXTURE0_ARB);
+	glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, 0); glDisable(GL_TEXTURE_2D);
+	glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, 0); glDisable(GL_TEXTURE_2D);
+	glActiveTexture(GL_TEXTURE3); glBindTexture(GL_TEXTURE_2D, 0); glDisable(GL_TEXTURE_2D);
+	glActiveTexture(GL_TEXTURE0);
 
 	//--------------------------------------------------------------------------
 	// LAYER 5B: VECTOR_USES_OVERLAY1 - colorize the CRT-only image in-place.
 	//--------------------------------------------------------------------------
 	if (config.overlay && art_loaded[1] && uses_overlay1)
 	{
-		GLint vp[4] = { 0,0,0,0 };
-		glGetIntegerv(GL_VIEWPORT, vp);
-
-		GLfloat proj[16] = { 0 };
-		glGetFloatv(GL_PROJECTION_MATRIX, proj);
-
-		GLint drawBuf = 0;
-		glGetIntegerv(GL_DRAW_BUFFER, &drawBuf);
-
-		GLint fboId = 0;
-		glGetIntegerv(GL_FRAMEBUFFER_BINDING_EXT, &fboId);
-
-		// Query the texture dimensions of art_tex[1]
-		int texW = 0, texH = 0;
-		glBindTexture(GL_TEXTURE_2D, art_tex[0]);
-		glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &texW);
-		glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &texH);
-
-		// Also query what's currently on the draw target (img4b)
-		int targetW = 0, targetH = 0;
-		glBindTexture(GL_TEXTURE_2D, img4b);
-		glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &targetW);
-		glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &targetH);
-
-		LOG_INFO("OVERLAY1 DEBUG: viewport=(%d,%d,%d,%d) drawbuf=0x%X fbo=%d",
-			vp[0], vp[1], vp[2], vp[3], drawBuf, fboId);
-		LOG_INFO("OVERLAY1 DEBUG: art_tex[1] size=%dx%d  img4b size=%dx%d",
-			texW, texH, targetW, targetH);
-		LOG_INFO("OVERLAY1 DEBUG: draw coords left=%d right=%d top=%d bottom=%d",
-			left, right, top, bottom);
-		LOG_INFO("OVERLAY1 DEBUG: proj row0=(%.3f, %.3f, %.3f, %.3f)",
-			proj[0], proj[4], proj[8], proj[12]);
-		LOG_INFO("OVERLAY1 DEBUG: proj row1=(%.3f, %.3f, %.3f, %.3f)",
-			proj[1], proj[5], proj[9], proj[13]);
-		LOG_INFO("OVERLAY1 DEBUG: proj row2=(%.3f, %.3f, %.3f, %.3f)",
-			proj[2], proj[6], proj[10], proj[14]);
-		LOG_INFO("OVERLAY1 DEBUG: proj row3=(%.3f, %.3f, %.3f, %.3f)",
-			proj[3], proj[7], proj[11], proj[15]);
-
-
-
-
-
-
 		//float overlay_height =  (Machine->drv->rotation & ORIENTATION_SWAP_XY) ? (float)bottom : ((float)bottom * 0.75f);
 
 		glEnable(GL_TEXTURE_2D);
@@ -1188,9 +1144,6 @@ void final_render(int left, int right, int bottom, int top)
 		glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
 
 		drawTexturedQuad((float)left, (float)right, (float)top, (float) bottom, false);
-
-
-		//drawTexturedQuad(0, 1024, 0, 1024, false);
 	}
 
 	//--------------------------------------------------------------------------
@@ -1258,8 +1211,7 @@ void final_render(int left, int right, int bottom, int top)
 		glBlendFunc(GL_ONE_MINUS_SRC_ALPHA, GL_SRC_COLOR);
 		glColor4f(1.0f, 1.0f, 1.0f, 0.5f);
 
-		//drawTexturedQuad((float)left, (float)right, (float)top, (float)bottom, false);
-		drawTexturedQuad(0, 1024, 0, 1024, false);
+		drawTexturedQuad((float)left, (float)right, (float)top, (float)bottom, false);
 	}
 
 	//--------------------------------------------------------------------------

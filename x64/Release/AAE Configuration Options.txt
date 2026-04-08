@@ -1,0 +1,242 @@
+================================================================================
+  AAE - Another Arcade Emulator
+  Configuration File Reference
+================================================================================
+
+  AAE uses three INI files, loaded in this order:
+
+    1. aae.ini        Global settings (program root folder).
+    2. <gamename>.ini  Per-game overrides (ini\ subfolder).  Optional.
+    3. video.ini       Per-game bezel / artwork positioning (program root).
+
+  Per-game INI files only need to contain the keys you want to override;
+  everything else falls through to the global aae.ini defaults.
+
+  Keys are case-insensitive.  All keys below show their INI section in
+  square brackets, the key name, type, default value, and description.
+
+
+================================================================================
+  aae.ini  -  [main] section
+================================================================================
+
+  RENDERING
+  ---------------------------------------------------------------------------
+
+  prescale              float     1.0       Render scale factor.
+  vid_rotate            int       1         Enable video rotation support.
+  anisfilter            int       0         Anisotropic filtering (0 = off).
+  colordepth            int       32        Color depth in bits per pixel.
+  doublebuffer          int       1         Double buffering (1 = on).
+  force_vsync           int       0         Force vertical sync (1 = on).
+  raster_effect         string    NONE      Raster shader effect name.
+
+  VECTOR RENDERING
+  ---------------------------------------------------------------------------
+
+  m_line                int       20        Vector line thickness multiplier
+                                            (x 0.1 = linewidth).
+  m_point               int       16        Vector point size multiplier
+                                            (x 0.1 = pointsize).
+  linewidth             float     2.0       Vector line width (overwritten by
+                                            m_line * 0.1 after loading).
+  pointsize             float     1.6       Vector point size (overwritten by
+                                            m_point * 0.1 after loading).
+  vectorglow            int       5         Vector glow intensity.
+  vectortrail           int       1         Vector phosphor trail (1 = on).
+  drawzero              int       0         Draw zero-intensity vectors.
+  explode_point_size    int       12        Point size for explosion effects.
+  fire_point_size       int       12        Point size for fire/shot effects.
+
+  ARTWORK / OVERLAYS
+  ---------------------------------------------------------------------------
+
+  bezel                 int       1         Enable bezel artwork (1 = on).
+  artwork               int       0         Enable backdrop artwork (1 = on).
+  artcrop               int       0         Crop artwork to screen area.
+  overlay               int       0         Enable color overlay gel.
+  translucent           int       0         Translucent rendering mode.
+
+  COLOR / IMAGE
+  ---------------------------------------------------------------------------
+
+  gamma                 int       127       Gamma correction (0-255).
+  bright                int       127       Brightness (0-255).
+  contrast              int       127       Contrast (0-255).
+  gain                  int       1         Color gain / intensity boost.
+  snappng               int       1         Save screenshots as PNG (1 = on).
+
+  AUDIO
+  ---------------------------------------------------------------------------
+
+  samplerate            int       22050     Audio sample rate in Hz.
+  mainvol               int       220       Master volume (0-255).
+  pokeyvol              int       200       POKEY chip volume (0-255).
+  noisevol              int       50        Background noise volume (0-255).
+  psnoise               int       0         Power-supply noise effect.
+  hvnoise               int       0         High-voltage noise effect.
+  pshiss                int       0         Power-supply hiss effect.
+  audio_force_resample  int       0         Force audio resampling (1 = on).
+
+  DISPLAY / WINDOW  (legacy keys, see also [window] section)
+  ---------------------------------------------------------------------------
+
+  screenw               int       1024      Window width in pixels.
+  screenh               int       768       Window height in pixels.
+  widescreen            int       0         Widescreen mode hint.
+  windowed              int       -         Legacy fullscreen toggle.
+                                            Prefer [window] fullscreen.
+
+  PATHS
+  ---------------------------------------------------------------------------
+
+  mame_rom_path         string    roms      Path to ROM files.
+  mame_artwork_path     string    artwork   Path to artwork files.
+
+  SYSTEM / PERFORMANCE
+  ---------------------------------------------------------------------------
+
+  priority              int       1         Raise process priority (1 = on).
+  boostThread           int       1         Boost main thread priority.
+  confirm_exit          int       1         Show exit confirmation dialog.
+  kbleds                int       1         Keyboard LED control (1 = on).
+  starting_monitor      int       1         Starting monitor (1-based).
+  flip_gui_controls     int       0         Invert GUI up/down controls.
+  showinfo              int       0         Show readme info on game start.
+  hack                  int       0         Enable game-specific hacks.
+
+  ROTATION
+  ---------------------------------------------------------------------------
+
+  system_rotation       int       0         System rotation as ORIENTATION
+                                            flags.  Raw flag values:
+                                              0 = none
+                                              5 = ROT90  (same as -ror)
+                                              3 = ROT180
+                                              6 = ROT270 (same as -rol)
+                                            Composed with driver rotation
+                                            via XOR.  Normally set by the
+                                            -ror / -rol command-line flags;
+                                            persisted here across sessions.
+
+  DEBUG
+  ---------------------------------------------------------------------------
+
+  debug                 int       0         Debug mode (1 = on).
+  debug_profile_code    int       0         Code profiling output (1 = on).
+
+
+================================================================================
+  aae.ini  -  [window] section
+================================================================================
+
+  These keys control window creation and are loaded early by winmain.cpp
+  before the emulator core initialises.  They take priority over the
+  legacy [main] keys (screenw, screenh, windowed) when present.
+
+  fullscreen            int       -1        Fullscreen mode (1 = fullscreen,
+                                            0 = windowed).  Falls back to
+                                            [main] windowed if absent.
+  width                 int       -1        Window width.  Falls back to
+                                            [main] screenw if absent.
+  height                int       -1        Window height.  Falls back to
+                                            [main] screenh if absent.
+  center                int       1         Center window on monitor.
+  use_aspect            int       0         Enable aspect-ratio-corrected
+                                            window sizing (1 = on).
+  aspect_ratio          string    4:3       Display aspect ratio (N:M).
+  disable_nc            int       0         Disable Windows 11 decorations
+  disable_rounded_corners  bool   false     Disable Win11 rounded corners.
+  dpi_aware             bool      true      DPI-aware window scaling.
+  cursor_clip           bool      true      Clip cursor to game window.
+
+
+================================================================================
+  <gamename>.ini  -  Per-Game Overrides
+================================================================================
+
+  Located in the ini\ subfolder (e.g. ini\asteroid.ini).  Optional.
+  Only keys that differ from aae.ini need to be present.
+
+  The following [main] keys can be overridden per game:
+
+  RENDERING / VECTOR
+  ---------------------------------------------------------------------------
+
+  bezel                 artwork             artcrop
+  overlay               explode_point_size  fire_point_size
+  vectorglow            vectortrail         gain
+  prescale              vid_rotate          anisfilter
+  translucent           m_line              m_point
+  linewidth             pointsize           raster_effect
+
+  AUDIO
+  ---------------------------------------------------------------------------
+
+  psnoise               hvnoise             pshiss
+  mainvol               pokeyvol            noisevol
+  samplerate
+
+  ROTATION
+  ---------------------------------------------------------------------------
+
+  system_rotation       (per-game cabinet rotation override)
+
+
+================================================================================
+  video.ini  -  Bezel / Artwork Positioning
+================================================================================
+
+  Located in the program root folder.  Contains per-game sections
+  identified by game name (e.g. [asteroid], [tempest]).
+
+  Keys are prefixed by the current scale mode:
+
+    "full_"   when bezel is off, or bezel is on with artcrop off
+    "bezel_"  when bezel is on and artcrop is off
+    "crop_"   when bezel is on and artcrop is on
+
+  The prefix is referred to as <mode> below.
+
+  [<gamename>]
+  ---------------------------------------------------------------------------
+
+  <mode>_left           int       0         Game rect left edge (0-1024).
+  <mode>_right          int       1024      Game rect right edge (0-1024).
+  <mode>_bottom         int       0         Game rect bottom edge (0-1024).
+  <mode>_top            int       1024      Game rect top edge (0-1024).
+
+  These define the game screen rectangle within the artwork/bezel
+  coordinate space (0-1024 range maps to the full artwork area).
+
+  CROP MODE ONLY (bezel=1, artcrop=1):
+  ---------------------------------------------------------------------------
+
+  bezcropzoom           float     1.0       Bezel crop zoom level.
+  bezcropx              int       0         Bezel crop X offset.
+  bezcropy              int       0         Bezel crop Y offset.
+
+
+================================================================================
+  NOTES
+================================================================================
+
+  - INI files use standard Windows INI format:
+      [section]
+      key=value
+
+  - Command-line flags (-ror, -nobezel, -prescale, etc.) override INI
+    values and survive INI reloads during the session.
+
+  - Volume values (mainvol, pokeyvol, noisevol) are clamped to 0-255.
+
+  - m_line and m_point are the authoritative line/point settings;
+    linewidth and pointsize are derived (multiplied by 0.1) after loading.
+
+  - The [window] section keys are the preferred way to configure the
+    window.  Legacy [main] keys (screenw, screenh, windowed) are still
+    read as fallbacks for backward compatibility.
+
+  - Bool keys in [window] accept: true/false, 1/0, yes/no.
+
+================================================================================

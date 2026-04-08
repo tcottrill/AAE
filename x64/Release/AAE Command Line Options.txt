@@ -1,0 +1,115 @@
+================================================================================
+  AAE - Another Arcade Emulator
+  Command-Line Reference
+================================================================================
+
+  Usage:  aae.exe [gamename] [options]
+
+  If no game name is given the GUI launcher starts.
+  If a game name is given (e.g. "aae asteroid") the game launches directly
+  and ESC exits the emulator instead of returning to the GUI.
+
+  All options are case-insensitive.  Both - and / prefixes are accepted.
+
+
+--------------------------------------------------------------------------------
+  WINDOW / DISPLAY
+--------------------------------------------------------------------------------
+
+  -fullscreen          Force fullscreen mode.
+  -windowed            Force windowed mode.
+  -window              Force windowed mode (alternate form).
+  -nowindow            Force fullscreen mode (alternate form).
+  -nocenter            Do not center the window on the monitor.
+  -aspectwindow        Enable aspect-ratio-corrected window sizing.
+  -aspect N:M          Override the display aspect ratio (e.g. -aspect 4:3).
+  -width N             Set window width in pixels.
+  -height N            Set window height in pixels.
+  -monitor N           Select starting monitor (1-based; 1 = primary).
+
+  -WxH                 Resolution override using a predefined set:
+                         -320x240    -512x384    -640x480    -800x600
+                         -1024x768   -1152x720   -1152x864   -1280x768
+                         -1280x1024  -1600x1200  -1680x1050
+                         -1920x1080  -1920x1200
+
+
+--------------------------------------------------------------------------------
+  ROTATION
+--------------------------------------------------------------------------------
+
+  -ror                 Rotate screen 90 degrees clockwise  (ROT90).
+  -rol                 Rotate screen 90 degrees counter-clockwise (ROT270).
+
+                       System rotation is composed with the driver's native
+                       rotation via XOR.  Command line overrides the INI value.
+
+
+--------------------------------------------------------------------------------
+  ARTWORK LAYERS
+--------------------------------------------------------------------------------
+
+  -noartwork           Disable the artwork layer.
+  -nobezel             Disable the bezel layer.
+  -nooverlay           Disable the color overlay layer.
+  -prescale N          Override the prescale factor (integer, minimum 1).
+
+                       These overrides survive INI reloads during the session.
+
+
+--------------------------------------------------------------------------------
+  INPUT
+--------------------------------------------------------------------------------
+
+  -clip                Force cursor clipping to the game window.
+  -noclip              Disable cursor clipping (cursor can leave the window).
+  -disableNC           Disable non-client area (title bar) hit testing.
+
+
+--------------------------------------------------------------------------------
+  DEBUG
+--------------------------------------------------------------------------------
+
+  -debug               Enable debug mode.
+  -debug 0             Explicitly disable debug mode.
+  -debug 1             Explicitly enable debug mode.
+
+                       Parsed early, before game initialisation begins.
+
+
+--------------------------------------------------------------------------------
+  ROM / SAMPLE VERIFICATION
+--------------------------------------------------------------------------------
+
+  -listroms            List all ROM files and CRCs for the selected game.
+  -verifyroms          Verify ROM files exist and match expected CRCs.
+  -listsamples         List all sample files for the selected game.
+  -verifysamples       Verify all sample files exist for the selected game.
+
+                       Output is written to the log; the emulator exits after.
+
+
+--------------------------------------------------------------------------------
+  GLOBAL UTILITIES
+--------------------------------------------------------------------------------
+
+  -listromstotext      Dump ROM lists for every game to a text file, then exit.
+  -listallgames        List all registered game drivers, then exit.
+
+                       These run before any game is loaded and do not require
+                       a game name argument.
+
+
+--------------------------------------------------------------------------------
+  EXAMPLES
+--------------------------------------------------------------------------------
+
+  aae asteroid                       Launch Asteroids with default settings.
+  aae asteroid -ror -window          Asteroids, rotated 90 CW, windowed.
+  aae tempest -nobezel -1920x1080    Tempest, no bezel, 1080p resolution.
+  aae galaga -aspect 3:4             Galaga with portrait aspect override.
+  aae -listallgames                  Print all supported games and exit.
+  aae asteroid -listroms             List Asteroids ROM files and exit.
+  aae bzone -debug -monitor 2        Battlezone in debug mode on monitor 2.
+
+================================================================================
