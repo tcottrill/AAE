@@ -259,17 +259,29 @@ bool InitOpenGLContext(bool forceLegacyGL2, bool enableMultisample, bool useCore
 	}
 	else {
 		LOG_INFO("Creating OpenGL 4.5 %s profile context", useCoreProfile ? "core" : "compatibility");
-
-		const int attribs[] = {
+		const int attribs45[] = {
 			WGL_CONTEXT_MAJOR_VERSION_ARB, 4,
 			WGL_CONTEXT_MINOR_VERSION_ARB, 5,
-			WGL_CONTEXT_FLAGS_ARB, WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB,
+			WGL_CONTEXT_FLAGS_ARB, useCoreProfile ? WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB : 0,
 			WGL_CONTEXT_PROFILE_MASK_ARB,
 				useCoreProfile ? WGL_CONTEXT_CORE_PROFILE_BIT_ARB : WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB,
 			0
 		};
 
-		hRC = wglCreateContextAttribsARB(hDC, 0, attribs);
+		hRC = wglCreateContextAttribsARB(hDC, 0, attribs45);
+
+		if (!hRC) {
+			LOG_INFO("OpenGL 4.5 not available, trying 3.3 compatibility...");
+			const int attribs33[] = {
+				WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
+				WGL_CONTEXT_MINOR_VERSION_ARB, 3,
+				WGL_CONTEXT_FLAGS_ARB, 0,
+				WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB,
+				0
+			};
+			hRC = wglCreateContextAttribsARB(hDC, 0, attribs33);
+		}
+
 		if (!hRC) {
 			LOG_ERROR("wglCreateContextAttribsARB failed - falling back to OpenGL 2.1");
 			hRC = tempContext;
