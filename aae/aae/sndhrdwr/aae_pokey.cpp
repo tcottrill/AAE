@@ -511,6 +511,8 @@ static int    emulation_rate;
 static int    sample_pos[MAXPOKEYS];
 POKEYinterface* intf_ptr;
 static int16_t* buffer_ptr[MAXPOKEYS];
+// Per-chip mixer channel, allocated at sh_start from the chip-stream range.
+static int      pokey_ch[MAXPOKEYS] = { -1, -1, -1, -1 };
 
 int pokey_sh_start(POKEYinterface* intfa) {
 	intf_ptr = intfa;
@@ -537,8 +539,13 @@ int pokey_sh_start(POKEYinterface* intfa) {
 	}
 
 	for (int i = 0; i < intf_ptr->num; i++) {
-		stream_start(i, 0, 16, Machine->gamedrv->fps, false);
-		sample_set_volume_mixer(i, intf_ptr->mixing_level[i]);
+		pokey_ch[i] = mixer_alloc_channel(MIXER_CHIP_STREAM_RANGE_LOW, MIXER_FIRST_RESERVED_CHANNEL);
+		if (pokey_ch[i] < 0) {
+			LOG_ERROR("pokey_sh_start: no free mixer channel for chip %d", i);
+			return 1;
+		}
+		stream_start(pokey_ch[i], 0, 16, Machine->gamedrv->fps, false);
+		sample_set_volume_mixer(pokey_ch[i], intf_ptr->mixing_level[i]);
 	}
 	return 0;
 }
@@ -546,7 +553,10 @@ int pokey_sh_start(POKEYinterface* intfa) {
 void pokey_sh_stop(void) {
 	pokey_sound_stop();
 	for (int i = 0; i < intf_ptr->num; i++) {
-		stream_stop(i, 0);
+		if (pokey_ch[i] >= 0) {
+			stream_stop(pokey_ch[i], 0);
+			pokey_ch[i] = -1;
+		}
 		if (buffer_ptr[i]) std::free(buffer_ptr[i]);
 		buffer_ptr[i] = nullptr;
 	}
@@ -710,6 +720,7 @@ void pokey_sh_update(void) {
 
 	for (int i = 0; i < intf_ptr->num; i++) {
 		sample_pos[i] = 0;
-		stream_update(i, buffer_ptr[i]);
+		if (pokey_ch[i] >= 0)
+			stream_update(pokey_ch[i], buffer_ptr[i]);
 	}
 }

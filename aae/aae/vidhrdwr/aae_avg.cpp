@@ -301,7 +301,7 @@ void avg_video_update(void)
 	int statz = 0;
 	int xflip = 0;
 	static int color;
-	static int  sparkle = 0;
+	int  sparkle = 0;
 	int currentx = xcenter;           
 	int currenty = ycenter;
 	int done = 0;
@@ -645,7 +645,7 @@ void avgdvg_reset_word_w(UINT32 address, UINT16 data, struct MemoryWriteWord* pM
 int avg_init(int type)
 {
 	AVG_BUSY = 0;
-
+	
 	vector_engine = type;
 	opcode_handler = get_opcode_avg;
 

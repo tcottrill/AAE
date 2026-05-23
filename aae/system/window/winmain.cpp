@@ -44,7 +44,7 @@
 #include "resource.h"
 #include "joystick.h"
 #include "wintimer.h"
-#ifndef Win7Build
+#ifndef WIN7BUILD
 #include "win10_win11_required_code.h"
 #endif
 #include "windows_util.h"
@@ -659,7 +659,7 @@ WindowSetup GenerateFinalWindowSetup(bool forceWindowed = false)
 	// (LoadWindowIniConfig and ParseCommandLineArgs both write to config.startingMonitor)
 	targetMonitor = Win32_GetMonitorRectByIndex(config.startingMonitor);
 
-#ifndef Win7Build
+#ifndef WIN7BUILD
 	if (config.dpiAware) {
 		EnableDPIAwareness(); // from win10_win11_required_code
 	}
@@ -725,7 +725,7 @@ HWND CreateConfiguredWindow(HINSTANCE hInstance, const wchar_t* className, const
 		return nullptr;
 	}
 
-#ifndef Win7Build
+#ifndef WIN7BUILD
 	if (GetOsVersion() == Win11)
 	{
 		if (config.disableNC == 0)
@@ -739,12 +739,12 @@ HWND CreateConfiguredWindow(HINSTANCE hInstance, const wchar_t* className, const
 #endif
 
 	// Check for DPI Scaling.
-#ifndef Win7Build
+#ifndef WIN7BUILD
 	g_windowSetup.dpiScale = GetDPIScaleForWindow(hwnd);
 	LOG_INFO("Final DPI scale factor: %.2f", g_windowSetup.dpiScale);
 #else
 	g_windowSetup.dpiScale = 1.0f;
-	LOG_INFO("DPI scale defaulted to 1.0 (Win7Build)");
+	LOG_INFO("DPI scale defaulted to 1.0 (WIN7BUILD)");
 #endif
 
 	RECT client{};
@@ -865,7 +865,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			RestoreWindowViewport();
 			ViewOrtho(width, height);
 			emulator_on_window_resize(width, height);
-#ifndef Win7Build
+#ifndef WIN7BUILD
 			g_windowSetup.dpiScale = GetDPIScaleForWindow(hWnd);
 #else
 			g_windowSetup.dpiScale = 1.0f;

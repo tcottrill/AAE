@@ -1,7 +1,9 @@
 // -----------------------------------------------------------------------------
 // Description
 // OpenGL Context Creation and Feature Reporting using GLEW/WGL on Windows
-// Supports fallback from 4.5 to 2.1, logs capabilities, enables vsync control
+// Default build requests OpenGL 4.2; WIN7BUILD requests OpenGL 3.3.
+// Falls back to 3.3 then 2.1 if the primary request fails.
+// Logs capabilities, enables vsync control.
 // -----------------------------------------------------------------------------
 
 #include <windows.h>
@@ -156,7 +158,8 @@ HGLRC GetGLRC()
 // InitOpenGLContext
 // Initializes the OpenGL rendering context using WGL, with support for:
 // - Legacy OpenGL 2.1 fallback
-// - Modern OpenGL 4.5 core or compatibility profile
+// - OpenGL 4.2 core or compatibility profile (default build)
+// - OpenGL 3.3 core or compatibility profile (WIN7BUILD)
 // - Optional multisampling (MSAA) via command-line switch
 //
 // Parameters:
@@ -171,7 +174,8 @@ HGLRC GetGLRC()
 // Behavior:
 //   - Uses a temporary OpenGL context to initialize GLEW and check WGL extensions
 //   - Attempts to set a multisample pixel format if requested and supported
-//   - Creates either a core or compatibility OpenGL 4.5 context, falling back to 2.1
+//   - Creates either a core or compatibility context at the build's target
+//     version (4.2 default / 3.3 under WIN7BUILD), falling back to 3.3 then 2.1
 //   - Enables GL_MULTISAMPLE if MSAA was successfully requested
 //
 // Usage:
@@ -258,20 +262,26 @@ bool InitOpenGLContext(bool forceLegacyGL2, bool enableMultisample, bool useCore
 		hRC = tempContext;
 	}
 	else {
-		LOG_INFO("Creating OpenGL 4.5 %s profile context", useCoreProfile ? "core" : "compatibility");
-		const int attribs45[] = {
-			WGL_CONTEXT_MAJOR_VERSION_ARB, 4,
-			WGL_CONTEXT_MINOR_VERSION_ARB, 5,
+#ifdef WIN7BUILD
+		const int reqMajor = 3, reqMinor = 3;
+#else
+		const int reqMajor = 4, reqMinor = 2;
+#endif
+		LOG_INFO("Creating OpenGL %d.%d %s profile context", reqMajor, reqMinor,
+			useCoreProfile ? "core" : "compatibility");
+		const int attribsPrimary[] = {
+			WGL_CONTEXT_MAJOR_VERSION_ARB, reqMajor,
+			WGL_CONTEXT_MINOR_VERSION_ARB, reqMinor,
 			WGL_CONTEXT_FLAGS_ARB, useCoreProfile ? WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB : 0,
 			WGL_CONTEXT_PROFILE_MASK_ARB,
 				useCoreProfile ? WGL_CONTEXT_CORE_PROFILE_BIT_ARB : WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB,
 			0
 		};
 
-		hRC = wglCreateContextAttribsARB(hDC, 0, attribs45);
+		hRC = wglCreateContextAttribsARB(hDC, 0, attribsPrimary);
 
 		if (!hRC) {
-			LOG_INFO("OpenGL 4.5 not available, trying 3.3 compatibility...");
+			LOG_INFO("OpenGL %d.%d not available, trying 3.3 compatibility...", reqMajor, reqMinor);
 			const int attribs33[] = {
 				WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
 				WGL_CONTEXT_MINOR_VERSION_ARB, 3,

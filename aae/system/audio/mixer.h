@@ -100,7 +100,10 @@
 //       The caller writes the buffer to disk.
 //
 //   void sample_remove(samplenum)
-//       STUB -- currently does nothing. Samples persist until mixer_end().
+//       Drop a sample from the registry. If any channel is still playing it,
+//       the SAMPLE memory stays alive (pinned by CHANNEL::playing_sample)
+//       until that channel stops/finishes. After remove, the sample ID
+//       cannot be reused -- load a new buffer to get a fresh ID.
 //
 //
 // VOICE PATH PLAYBACK
@@ -136,6 +139,13 @@
 //   void sample_end_mixer(chanid)
 //       Clear loop flag -- sample plays to end, then stops.
 //
+//   void sample_set_position(chanid, pos_frames)
+//       Seek the channel's playback position (in frames). Software-mixer
+//       path only -- logs an error and no-ops on voice-path channels.
+//
+//   int  sample_get_position(chanid)
+//       Current playback position in frames.
+//
 // Mono sources are centered (pan ignored). Stereo sources use equal-power
 // panning. The mixer accumulates in int32 and applies tanh soft clipping
 // per sample to avoid pumping artifacts.
@@ -166,8 +176,11 @@
 // ---------------------------------
 // All control functions work on both voice-path and software-mixer channels.
 //
-//   void sample_set_volume(chanid, vol)     // vol: 0..255
-//   int  sample_get_volume(chanid)          // returns 0..255
+//   void sample_set_volume(chanid, vol)            // vol: 0..255
+//   int  sample_get_volume(chanid)                 // returns 0..255
+//   void sample_set_volume_percent(chanid, pct)    // pct: 0..100
+//   int  sample_get_volume_percent(chanid)         // returns 0..100
+//   void sample_set_volume_mixer(chanid, vol)      // legacy alias of sample_set_volume
 //       Volume uses a perceptual dB-tapered curve:
 //         0-5%   : quadratic ramp in dB (-80 to -12 dB) -- fine control at low levels
 //         5-100% : linear in dB (-12 to 0 dB) -- smooth perceptual midrange
@@ -210,9 +223,10 @@
 //
 // MASTER VOLUME
 // -------------
-//   void  mixer_set_master_volume(int percent)   // 0..100
-//   float mixer_get_master_volume()              // returns raw XAudio2 linear gain
-//   void  mixer_set_master_volume_255(int v)     // convenience: 0..255 -> percent
+//   void  mixer_set_master_volume(int percent)        // 0..100
+//   float mixer_get_master_volume()                   // returns raw XAudio2 linear gain
+//   int   mixer_get_master_volume_percent()           // returns last-set percent (0..100, exact)
+//   void  mixer_set_master_volume_255(int v)          // convenience: 0..255 -> percent
 //
 // Master volume is applied on the XAudio2 mastering voice. Default is 0.80
 // linear (~-1.9 dB) set during xaudio2_init.
@@ -301,15 +315,14 @@
 //   double dBToAmplitude(double dB)       // dB -> linear amplitude
 //
 //
-// XAUDIO2 BACKEND (LOW-LEVEL)
-// ----------------------------
-// These are used internally by the mixer. Direct use is rarely needed.
-//
-//   HRESULT xaudio2_init(rate, fps)       // creates XAudio2 engine, mastering voice,
-//                                          // streaming source voice, ring buffers
-//   HRESULT xaudio2_update(buffer, len)   // submits one buffer to XAudio2 source voice
-//   void    xaudio2_stop()                // destroys voices, frees buffers, CoUninitialize
-//   BYTE*   GetNextBuffer()               // returns current ring buffer slot
+// STREAMING BACKEND
+// -----------------
+// The OS-level audio output is abstracted behind IAudioBackend (see
+// xaudio2_backend.h). The mixer holds a unique_ptr<IAudioBackend> internally
+// and routes the per-frame mix submission through it. XAudio2Backend is the
+// only concrete implementation today; a future WASAPI backend would slot in
+// here. The per-channel voice path (sample_start / sample_stop / etc.) still
+// talks to XAudio2 directly and would not work with a non-XAudio2 backend.
 //
 //   int WavLoadFileInternal(buffer, size, SAMPLE*)
 //       Parse WAV from memory into a SAMPLE struct. Returns 1 on success.
@@ -338,9 +351,10 @@
 //
 // WIN7 COMPATIBILITY
 // ------------------
-// Define Win7Build to use the Windows SDK's xaudio2.h instead of
-// xaudio2redist. The redistributable is preferred for Win10+ as it
-// provides consistent behavior across Windows versions.
+// Default build uses the Windows SDK's <xaudio2.h> + system xaudio2.lib
+// (Win8/10/11). Define WIN7BUILD to switch to <xaudio2redist.h> +
+// xaudio2_9redist.lib (NuGet package), which carries the XAudio2.9
+// runtime for Windows 7 / early Windows 10.
 //
 //
 // OPTIONAL FEATURES
@@ -367,8 +381,8 @@
 // DEPENDENCIES
 // ------------
 // Windows headers:  <windows.h>
-// XAudio2:          <xaudio2redist.h> (or <xaudio2.h> with Win7Build)
-// Link libraries:   xaudio2redist.lib (auto-linked via NuGet typically)
+// XAudio2:          <xaudio2.h> (default) or <xaudio2redist.h> (WIN7BUILD)
+// Link libraries:   xaudio2.lib (default) or xaudio2_9redist.lib (WIN7BUILD)
 // Project headers:  "framework.h", "error_wav.h", "sys_log.h"
 // C++ standard:     C++17 (scoped_lock, shared_ptr, optional, clamp)
 //
@@ -409,21 +423,22 @@ static inline int Volume255ToPercent(int v255)
 	return (v255 * 100 + 127) / 255;
 }
 
-// Game-friendly curve: 0..100% slider -> linear gain for XAudio2.
-// - Very quiet near the bottom (fast drop to ~-80 dB).
-// - Smooth, perceptual mid (50% ? -6 dB).
-// - 100% = 0 dB, 0% ? -80 dB.
+// Canonical perceptual volume curve. Takes normalized 0..1 input and returns
+// linear gain. Every volume API (byte, percent, master) routes through this
+// single function so all paths produce identical perceptual response.
+//
+//   0.00 -> ~-80 dB (effectively silent)
+//   0.05 -> -12 dB
+//   0.50 -> ~-6  dB
+//   1.00 -> 0   dB
 //
 // Implementation:
 //   0..5%   -> quadratic ramp in dB from -80 dB up to -12 dB
 //   5..100% -> linear in dB from -12 dB up to 0 dB
-
-static inline float VolumePercentToLinear(int percent)
+static inline float VolumeNormalizedToLinear(float x) noexcept
 {
-	percent = std::clamp(percent, 0, 100);
-	const float x = percent / 100.0f;
+	x = std::clamp(x, 0.0f, 1.0f);
 	float dB;
-
 	if (x <= 0.05f) {
 		// 0..0.05 -> -80..-12 dB (quadratic makes the very-low range feel controllable)
 		const float y = x / 0.05f;           // 0..1
@@ -434,9 +449,13 @@ static inline float VolumePercentToLinear(int percent)
 		const float y = (x - 0.05f) / 0.95f; // 0..1
 		dB = -12.0f + 12.0f * y;             // -12 dB at 5%, 0 dB at 100%
 	}
-
-	// Convert dB -> linear amplitude for XAudio2
 	return std::pow(10.0f, dB / 20.0f);
+}
+
+static inline float VolumePercentToLinear(int percent) noexcept
+{
+	percent = std::clamp(percent, 0, 100);
+	return VolumeNormalizedToLinear(percent / 100.0f);
 }
 
 // Enum for sound state
@@ -449,12 +468,20 @@ enum class SoundState {
 	Stream
 };
 
+struct SAMPLE; // fwd decl for playing_sample
+
 // Represents a playback channel
 struct CHANNEL {
 	IXAudio2SourceVoice* voice = nullptr;
 	XAUDIO2_BUFFER buffer = {};
 	SoundState state = SoundState::Stopped;
-	unsigned int pos = 0;
+	// Software-mixer playback position, in 32.32 fixed-point FRAMES (not interleaved samples).
+	// idx = pos_q32 >> 32 selects the source frame; the low 32 bits are the fractional offset
+	// used for linear interpolation between adjacent frames.
+	uint64_t pos_q32 = 0;
+	// 32.32 fixed-point source-frames-per-output-frame. Default 1<<32 = native rate (no
+	// rate conversion). Set by stream_set_native_rate or sample_set_freq on mixer channels.
+	uint64_t step_q32 = (1ull << 32);
 	int loaded_sample_num = -1;
 	int id = 0;
 	int looping = 0;
@@ -466,6 +493,15 @@ struct CHANNEL {
 	int frequency = 0;
 	int volume = 255;
 	int pan = 128;
+	std::shared_ptr<SAMPLE> playing_sample;     // pins SAMPLE memory while live; survives sample_remove
+
+	// Positional audio (voice path only). When is_positional is true, the per-
+	// frame positional update recomputes the X3DAudio output matrix from
+	// (world_x, world_y) against the current listener. sample_set_pan is
+	// ignored on positional voices.
+	bool is_positional = false;
+	float world_x = 0.0f;
+	float world_y = 0.0f;
 };
 
 // Represents a loaded audio sample
@@ -489,16 +525,14 @@ sample_set_volume(ch, vol255);
 If a UI gives 0-100:
 sample_set_volume(ch, VolPercentToByte(uiPercent));
 */
-// Byte (0..255) -> linear gain, routed through the existing percent curve.
-// This preserves the loudness taper while moving call sites to 0..255.
-// -----------------------------------------------------------------------------
-// VolumeByteToLinear
-// Convert legacy 0..255 volume directly to linear gain 0.0f..1.0f.
-// -----------------------------------------------------------------------------
+// Byte (0..255) -> linear gain, routed through the canonical perceptual curve.
+// Produces the same gain as VolumePercentToLinear for equivalent inputs
+// (e.g. byte 128 ~= 50%, both yield ~ -6 dB), so legacy 0..255 callers and
+// modern 0..100 callers stay in sync.
 inline float VolumeByteToLinear(int vol255) noexcept
 {
 	vol255 = std::clamp(vol255, 0, 255);
-	return static_cast<float>(vol255) / 255.0f;
+	return VolumeNormalizedToLinear(static_cast<float>(vol255) / 255.0f);
 }
 
 // helper to map 0..100 -> 0..255 and forward
@@ -512,9 +546,10 @@ inline int VolByteToPercent(int vol255) noexcept {
 }
 
 //Main Audio Mixer volume controls
-float mixer_get_master_volume();
-void mixer_set_master_volume(int volume);
-void sample_set_volume_mixer(int chanid, int volume255);
+float mixer_get_master_volume();             // raw linear gain (XAudio2 value)
+int   mixer_get_master_volume_percent();     // last-set percent (0..100), exact
+void  mixer_set_master_volume(int volume);
+void  sample_set_volume_mixer(int chanid, int volume255); // legacy alias; equivalent to sample_set_volume
 // Master volume: 
 // Optional convenience wrapper if you want a 0..255 version without touching callers:
 inline void mixer_set_master_volume_255(int vol255) {
@@ -528,6 +563,14 @@ int mixer_init(int rate, int fps);
 void mixer_update();
 // Shutdown
 void mixer_end();
+
+// Query the output device's actual channel layout (post-init). Useful for
+// diagnosing Atmos / surround setups and for sanity-checking that the OS is
+// presenting the expected layout to the application.
+//   - Channel count: 2 stereo, 6 = 5.1, 8 = 7.1 or Windows Sonic / Atmos.
+//   - Channel mask: SPEAKER_xxx bitfield (mmreg.h); 0x63F == KSAUDIO_SPEAKER_7POINT1_SURROUND.
+int      mixer_get_output_channels();
+uint32_t mixer_get_output_channel_mask();
 
 // -----------------------------------------------------------------------------
 // mixer_upload_sample16
@@ -588,9 +631,12 @@ bool save_sample_to_buffer(int samplenum, std::vector<uint8_t>& out_buffer);
 // Sample playback control
 void sample_stop(int chanid);
 void sample_start(int chanid, int samplenum, int loop);
-void sample_set_position(int chanid, int pos);
-void sample_set_volume(int chanid, int volume);
-int sample_get_volume(int chanid);
+void sample_set_position(int chanid, int pos_frames); // software-mixer path; voice path is a no-op
+int  sample_get_position(int chanid);                 // returns frames (per-channel sample count)
+void sample_set_volume(int chanid, int volume);     // 0..255 (legacy)
+int  sample_get_volume(int chanid);                 // 0..255
+void sample_set_volume_percent(int chanid, int pct);// 0..100
+int  sample_get_volume_percent(int chanid);         // 0..100
 void sample_set_freq(int chanid, int freq);
 int sample_get_freq(int chanid);
 void sample_set_pan(int chanid, int pan);
@@ -598,9 +644,68 @@ int sample_get_pan(int chanid);
 int sample_playing(int chanid);
 void sample_end(int chanid);
 
+// -----------------------------------------------------------------------------
+// Positional audio (voice path only, 2D camera-locked)
+// -----------------------------------------------------------------------------
+// Coordinate system: OpenGL-style. +X right, +Y up. The listener sits at the
+// camera with "forward" = screen-up. A source above the camera on screen
+// lands in the front speakers; a source below lands in the rear surrounds.
+// On stereo endpoints the OS downmixes; on stereo headphones with Windows
+// Sonic enabled the spatial cues are HRTF-rendered automatically.
+
+// Update listener (camera) position. Call this whenever the camera moves;
+// typically once per frame.
+void mixer_set_listener_2d(float x, float y);
+
+// Place a voice-path channel in the world. After this call, the channel's pan
+// is driven by X3DAudio instead of sample_set_pan. The matrix is refreshed
+// each frame from mixer_update, so it tracks listener and source motion
+// automatically (call this whenever the source moves).
+// Has no effect on software-mixer-path channels (which stay stereo).
+void sample_set_world_position(int chanid, float x, float y);
+
+// Revert a channel to flat pan/volume routing (undoes sample_set_world_position).
+void sample_clear_world_position(int chanid);
+
 int nameToNum(const std::string& name);
 std::string numToName(int num);
 int snumlookup(int snum);
+
+// -----------------------------------------------------------------------------
+// Channel allocation
+// -----------------------------------------------------------------------------
+// Channel layout convention.
+//
+//   [0, MIXER_CHIP_STREAM_RANGE_LOW)          driver-side voice / game SFX
+//   [MIXER_CHIP_STREAM_RANGE_LOW, 17)         chip emulator streams (alloc'd)
+//   [MIXER_FIRST_RESERVED_CHANNEL, 20)        ambient FX (flyback / psnoise / hiss)
+//
+// Drivers that hardcode sample_start channels for game SFX should stay in the
+// low range. Chip emulators (sndhrdwr/) should call
+//   mixer_alloc_channel(MIXER_CHIP_STREAM_RANGE_LOW, MIXER_FIRST_RESERVED_CHANNEL)
+// when standing up their stream voices. This keeps chip-stream channels out
+// of the way of driver-side sample_start so they don't get accidentally torn
+// down by a voice-path takeover.
+constexpr int MIXER_CHIP_STREAM_RANGE_LOW   = 9;
+constexpr int MIXER_FIRST_RESERVED_CHANNEL  = 17;
+
+// Return the lowest channel index in [low, high) that is currently free
+// (no XAudio2 voice attached, no sample pinned, not in the software mix
+// list). Returns -1 if no channel in the requested range is free.
+//
+// Typical use:
+//   const int ch = mixer_alloc_channel();             // anywhere in [0, 17)
+//   const int ch = mixer_alloc_channel(0, 8);         // restrict to low half
+//   stream_start(ch, 0, 16, fps);                     // claim the channel
+//
+// The "free" check inspects actual channel state, so a channel released by
+// sample_stop / sample_stop_mixer / stream_stop is immediately available
+// again. The caller owns the returned channel until they call the matching
+// stop function (or until samples_stop_all / mixer_end fires).
+//
+// Allocation is single-threaded by contract: call from the same thread that
+// drives mixer init / driver startup.
+int mixer_alloc_channel(int low = 0, int high = MIXER_FIRST_RESERVED_CHANNEL);
 
 unsigned char Make8bit(int16_t sample);
 short Make16bit(uint8_t sample);
@@ -618,20 +723,25 @@ void stream_stop(int chanid, int stream);
 void stream_update(int chanid, short* data);
 void stream_update(int chanid, unsigned char* data);
 
+// Tell the mixer that this stream's source data is at native_rate Hz, not SYS_FREQ.
+// Resizes the channel's sample buffer to native_rate / fps frames (preserving the
+// per-update duration), updates the SAMPLE format, and sets the channel's
+// resampling step so the mix loop interpolates source -> output rate inline.
+// After this call, stream_update should be passed buffers sized for native_rate.
+// Safe to call any time after stream_start. Has no effect on non-stream channels.
+void stream_set_native_rate(int chanid, int native_rate);
+
 // Stops all samples and clears the mixer list
 void samples_stop_all();
 
-// Stub for removing a sample (currently empty implementation)
+// Remove a sample from the registry. If any channel is still playing it, the
+// SAMPLE's memory stays alive (pinned by CHANNEL::playing_sample) until that
+// channel stops/finishes. Safe to call on a currently-playing sample.
+// After remove, the sample ID cannot be reused; load a new file to get a new ID.
 void sample_remove(int samplenum);
 
 void pause_audio();
 void restore_audio();
-
-// Xaudio2 Function Headers:
-HRESULT xaudio2_init(int rate, int fps);
-HRESULT xaudio2_update(BYTE* buffera, DWORD bufferLength);
-void xaudio2_stop();
-BYTE* GetNextBuffer();
 
 // Wav File Loader Header:
 int WavLoadFileInternal(unsigned char* buffer, int fileSize, SAMPLE* audioFile);
@@ -664,11 +774,10 @@ void adjust_volume_dB(int16_t* samples, size_t num_samples, float dB);
 //
 // Parameters:
 //   input        - pointer to 8-bit PCM (unsigned)
-//   input_size   - number of input samples
 //   output       - destination buffer
+//   input_size   - number of input samples
 //   output_size  - number of output samples to generate
 // -----------------------------------------------------------------------------
-// OLD ORDER: (input, output, input_size, output_size)
 void linear_interpolation_8(const uint8_t* input,
 	uint8_t* output,
 	int input_size,

@@ -1,5 +1,8 @@
 #include "framework.h"
 #include "win10_win11_required_code.h"
+
+#ifndef WIN7BUILD
+
 #include <dwmapi.h>
 #include <shellscalingapi.h>
 
@@ -157,3 +160,5 @@ HRESULT DisableNCRendering(HWND hWnd)
 
 	return hr;
 }
+
+#endif // !WIN7BUILD

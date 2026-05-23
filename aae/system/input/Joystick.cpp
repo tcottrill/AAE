@@ -16,7 +16,22 @@
 #include <cstring>
 
 #pragma comment(lib, "winmm.lib")
+#ifndef WIN7BUILD
+// Modern Win8+ build: link the full XInput 1.4 import library.  This pulls
+// in xinput1_4.dll at runtime which does not exist on Windows 7.
 #pragma comment(lib, "xinput.lib")
+#else
+// Windows 7 build: link the legacy XInput 9.1.0 import library so the
+// binary resolves against xinput9_1_0.dll, which ships with Win7.  All
+// three XInput functions used here -- XInputGetState, XInputSetState,
+// XInputGetCapabilities -- are present in xinput9_1_0.  Two compatibility
+// notes already satisfied by the code below:
+//   * XInputGetCapabilities must be called with dwFlags = 0 (no
+//     XINPUT_FLAG_GAMEPAD support).  See xinput::poll().
+//   * The Guide (Xbox) button is not reported in XInputGetState on this
+//     version.  The code never reads it.
+#pragma comment(lib, "xinput9_1_0.lib")
+#endif
 
 //------------------------------------------------------------------------------
 // Global State (Allegro-compatible)

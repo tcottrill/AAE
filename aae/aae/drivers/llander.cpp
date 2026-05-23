@@ -100,7 +100,7 @@ WRITE_HANDLER(llander_snd_reset_w)
 
 WRITE_HANDLER(llander_sounds_w)
 {
-	int tvol;
+	int tvol=10;
 	//volume    = data & 0x07;
 	//tone_3khz = data & 0x10;
 	//tone_6khz = data & 0x20; //Only used in Selftest
@@ -111,8 +111,6 @@ WRITE_HANDLER(llander_sounds_w)
 	if (data & 0x07)
 	{
 		tvol = Machine->memory_region[CPU0][0x01] << 4;
-		if (tvol < 10) { tvol = 10; }
-
 		sample_set_volume(1, tvol);
 		//LOG_INFO("tvol here %d", tvol);
 	}

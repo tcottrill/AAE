@@ -118,6 +118,8 @@ static struct z80PortWrite fakezpw;
 static struct AY8910interface* ayintf = nullptr;
 
 static int numchips = 0;
+// Per-chip mixer channel, allocated at sh_start from the chip-stream range.
+static int ay8910_ch[MAX_8910] = { 0 };
 static int aysamples = 0;
 
 // One stream per chip: single mixed buffer (signed 16-bit)
@@ -626,9 +628,16 @@ int AY8910_sh_start(struct AY8910interface* intf)
 		}
 	}
 
-	// Start one stream per chip (mono 16-bit)
-	for (int chip = 0; chip < numchips; ++chip)
-		stream_start(chip, chip, 16, Machine->gamedrv->fps);
+	// Start one stream per chip (mono 16-bit), allocating mixer channels from
+	// the chip-stream range so we don't collide with driver-side sample_start.
+	for (int chip = 0; chip < numchips; ++chip) {
+		ay8910_ch[chip] = mixer_alloc_channel(MIXER_CHIP_STREAM_RANGE_LOW, MIXER_FIRST_RESERVED_CHANNEL);
+		if (ay8910_ch[chip] < 0) {
+			LOG_ERROR("AY8910 init: no free mixer channel for chip %d", chip);
+			return 1;
+		}
+		stream_start(ay8910_ch[chip], chip, 16, Machine->gamedrv->fps);
+	}
 
 	return 0;
 }
@@ -643,8 +652,12 @@ void AY8910clear(void)
 			mixbuf[chip] = nullptr;
 		}
 	}
-	for (int chip = 0; chip < numchips; ++chip)
-		stream_stop(chip, chip);
+	for (int chip = 0; chip < numchips; ++chip) {
+		if (ay8910_ch[chip] >= 0) {
+			stream_stop(ay8910_ch[chip], chip);
+			ay8910_ch[chip] = -1;
+		}
+	}
 }
 
 // ----- Core mixer (single-stream) -----------------------------------------
@@ -861,7 +874,8 @@ void AY8910_sh_update(void)
 	for (int i = 0; i < numchips; ++i)
 	{
 		AY8910UpdateMixed(i, aysamples - updpos[i]);
-		stream_update(i, mixbuf[i]);
+		if (ay8910_ch[i] >= 0)
+			stream_update(ay8910_ch[i], mixbuf[i]);
 		updpos[i] = 0;
 		updlast[i] = 0;
 	}

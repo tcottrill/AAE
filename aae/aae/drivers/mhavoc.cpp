@@ -338,11 +338,26 @@ WRITE_HANDLER(speech_strobe_w)
 	if (has_tms5220)
 	{
 		tms5220_data_w(0, speech_write_buffer);
+		return;
 	}
-	else
-	{
-		sample_start(3, data - 0x80, 0);
-	}
+
+	// OKI MSM6295 command byte. Bit 7 high = "queue sample N (low 7 bits)";
+	// bytes without bit 7 are trigger / channel / volume / stop commands which
+	// we don't model here. Treating every byte as a play index (the previous
+	// behavior) underflows for low bytes (e.g. data=0x10 -> samplenum=-112)
+	// and silently misroutes valid plays because the OKI samples don't sit at
+	// mixer ids 0..N. Resolve via nameToNum so we always land on the actual
+	// "oki_<N>" sample the loader registered, regardless of what else was
+	// loaded earlier in the session.
+	if ((data & 0x80) == 0) return;
+
+	const int local_idx = data & 0x7F;
+	const std::string name = "oki_" + std::to_string(local_idx);
+	const int sid = nameToNum(name);
+	if (sid < 0) return;   // no such OKI sample in this ROM
+
+	sample_set_volume(7, config.mainvol);
+	sample_start(7, sid, 0);
 }
 
 int mhavoc_sh_start(void)

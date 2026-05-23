@@ -49,6 +49,12 @@ void oki_msm6295_decode(const uint8_t* src, size_t src_bytes,
 
 // Loads and registers all samples from a preloaded OKI ROM region.
 // Returns the number of samples successfully registered.
+//
+// Each loaded sample is registered with the mixer under the name
+// "oki_<rom_dir_idx>" (e.g. "oki_1", "oki_2"). Drivers should resolve them
+// via nameToNum("oki_<idx>") to translate a ROM-local sample index into the
+// global mixer sample id; that lookup is correct regardless of what else
+// was loaded earlier in the session (ambient, streams, other drivers).
 int load_okim6295_from_region(
     const unsigned char* rom_base, size_t rom_size,
     int out_rate,               // mixer/system rate, e.g. 44100

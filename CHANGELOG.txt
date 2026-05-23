@@ -306,19 +306,23 @@ Used Mike Chambers 8080 CPU as a base and AI assist added a new 8085A driver wit
 AI Assist added the mame .36 tmx36xx sound code for phoenix.
 AI Assist added a Phoenix/Pleiads driver. 
 IN process: Adding support for samples from the Epson 7910 Melody IC from my original pleiads pcb.I have the clean recordings of the samples but I can't figure out where they are triggered.
-TODO: ADD Rotation SUPPORT to the raster chain, now that the games are rendering more or less correctly. (DONE)
+TODO: ADD Rotation SUPPORT to the raster chain, now that the games are rendering more or less correctly. 
 
 3/26/26 to 4/7/26.
 Added Rotation to the vector subsystem, cleaned up a number of drivers and generally moved almost everything to the mame_vector.cpp code for intermediate rendering and scaling. The Asteroids drivers cannot be moved to that, the scaling code makes the dot crawl terrible and it's the reason this emulator started in the first place. 
 Added new samples from my original board to Pleiads but I am having trouble figuring out where the tunes start and end without disassembling the roms. I'll get there eventually. 
-Added rotation to the Raster Drivers, and added aspect correction throughout. Added many more command line options that I'll get around to documenting eventually. Aspect correction on the raster games needs work, and I need new LAY files just for AAE for the invaders/invaders deluxe drivers, I am not happy with the MAME ones. 
+Added rotation to the Raster Drivers, and added aspect correction throughout. Added many more command line options that I'll get around to documenting eventually. Aspect correction on the raster games needs work, and I need new LAY files just for me for the invaders/invaders deluxe drivers, I am not happy with the MAME ones. 
 Moved 99.9% of the rendering to OpenGL 3.3 compatible shaders over a period of 3 days.
  
 Finally time for a release. I have cleaned up the video.ini, most games are now rendering in their native orientation and MAME designed size and aspect ratio. I went through some major hoops to get Warlords working correctly in BW upright with artwork and color cocktail with scanlines. I believe this is pretty much every game I want to support. Other then cleanups and fixes, this is about it. 
 It took me over 2 years to clean up this code and make it, well, unfortunately, in the end it's just a MAME clone. 
 It has different Audio, input, timing , rendering, cpu cores, cpu handling, back end driver configuration from MAME, but at it's core, it's MAME. So that makes this a MAME derivative 100%. Oh Well, I am (mostly) happy with it, so here it is. I'm taking a break now. 
 
-
+5/22/26
+Updated the audio system to use the updated backend mixer code. 
+Updated all drivers to work with the new code. If I missed any let me know.
+Fixed and TESTED the Windows 7 build. It works on my Cabinet with Windows 7 64 Bit SP1. You MUST have direct9 SDK and proper OpenGL 3.3+ (preferably 4.2+) OpenGL drivers on a newer ATI or NVidia Video Card. AND WINDOWS 7 64 BIT!!!!
+Releases will be slower, I have to do this crazy thing of having to work to make money, and that's taking priority!
 
 
 

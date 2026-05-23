@@ -57,6 +57,9 @@ static int sound_enable = 1;
 static int samples_per_byte = 1;
 static int stereo_enabled = 0;
 
+/* Mixer channel allocated at sh_start out of the chip-stream range. */
+static int namco_channel = -1;
+
 /* per-voice state */
 static int freq[MAX_VOICES];
 static int volume[MAX_VOICES];
@@ -312,15 +315,25 @@ int namco_sh_start(struct namco_interface* intf)
 	stream_buffer = nullptr;
 	stream_buffer_len = 0;
 
+	/* Allocate a mixer channel out of the chip-stream range. */
+	namco_channel = mixer_alloc_channel(MIXER_CHIP_STREAM_RANGE_LOW, MIXER_FIRST_RESERVED_CHANNEL);
+	if (namco_channel < 0) {
+		LOG_ERROR("namco_sh_start: no free mixer channel in chip stream range");
+		return 1;
+	}
+
 	/* current AAE path is still mono */
-	stream_start(11, 0, 16, fps);
+	stream_start(namco_channel, 0, 16, fps);
+	/* Tell the mixer this stream is at emulation_rate, not SYS_FREQ. The mix
+	   loop will resample to the output rate inline via its fractional position. */
+	stream_set_native_rate(namco_channel, emulation_rate);
 
 	if (stereo_enabled)
 	{
 		LOG_INFO("namco_sh_start: stereo requested but current AAE stream path remains mono");
 	}
 
-	LOG_INFO("Finished Calling Namco SH Start");
+	LOG_INFO("Finished Calling Namco SH Start (mixer channel %d)", namco_channel);
 	return 0;
 }
 
@@ -348,11 +361,7 @@ void namco_sh_stop(void)
 		output_buffer = nullptr;
 	}
 
-	if (stream_buffer)
-	{
-		delete[] stream_buffer;
-		stream_buffer = nullptr;
-	}
+	stream_buffer = nullptr;
 	stream_buffer_len = 0;
 
 	if (namco_soundregs)
@@ -361,7 +370,10 @@ void namco_sh_stop(void)
 		namco_soundregs = nullptr;
 	}
 
-	stream_stop(11, 0);
+	if (namco_channel >= 0) {
+		stream_stop(namco_channel, 0);
+		namco_channel = -1;
+	}
 
 	soundinterface = nullptr;
 	sound_prom_data = nullptr;
@@ -376,24 +388,17 @@ void namco_sh_stop(void)
 
 // -----------------------------------------------------------------------------
 // namco_sh_update
-// Keeps your existing frame render + resample + stream_update path.
+// Generate any remaining samples for this frame and push the native-rate buffer.
+// The mixer resamples emulation_rate -> output rate inline via its fractional
+// position; we no longer need linear_interpolation_16 here.
 // -----------------------------------------------------------------------------
 void namco_sh_update(void)
 {
-	const float ratio = (float)config.samplerate / (float)emulation_rate;
-
+	if (namco_channel < 0) return;
 	namco_update(&output_buffer[sample_pos], buffer_len - sample_pos);
 	sample_pos = 0;
 
-	linear_interpolation_16(
-		output_buffer,
-		buffer_len,
-		&stream_buffer,
-		&stream_buffer_len,
-		ratio
-	);
-
-	stream_update(11, stream_buffer);
+	stream_update(namco_channel, output_buffer);
 }
 
 // -----------------------------------------------------------------------------

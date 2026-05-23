@@ -195,7 +195,8 @@ static int stream_buffer_len;
 static short* stream_buffer;
 
 static const TMS5220interface* intfa;
-static int channel;
+// Mixer channel allocated at sh_start out of the chip-stream range.
+static int tms5220_channel = -1;
 
 // Forward declarations
 static void tms5220_update(int force);
@@ -620,6 +621,11 @@ static void cause_interrupt(void)
 // Internal update function for syncing with CPU
 static void tms5220_update(int force)
 {
+	// Defend against any caller (legacy _w / _r entrypoints, mid-shutdown
+	// races) that reaches us after sh_stop has nulled intfa or before sh_start
+	// has set it. Also requires the emulation buffer to exist.
+	if (!intfa || !buffer) return;
+
 	int newpos = cpu_scale_by_cycles(buffer_len, intfa->clock);
 
 	// --- NEW: clamp to avoid overruns/negatives on spikes or clock changes ---
@@ -640,10 +646,20 @@ static void tms5220_update(int force)
 // Start the TMS5220 interface (MAME-style)
 int tms5220_sh_start(struct TMS5220interface* iinterface)
 {
+	if (!iinterface) {
+		LOG_ERROR("tms5220_sh_start: null interface");
+		return 1;
+	}
+	const int fps = Machine->gamedrv->fps;
+	if (iinterface->clock <= 0 || fps <= 0) {
+		LOG_ERROR("tms5220_sh_start: invalid clock=%d or fps=%d", iinterface->clock, fps);
+		return 1;
+	}
+
 	intfa = iinterface;
 
-	buffer_len = intfa->clock / 80 / Machine->gamedrv->fps;
-	emulation_rate = buffer_len * Machine->gamedrv->fps;
+	buffer_len = intfa->clock / 80 / fps;
+	emulation_rate = buffer_len * fps;
 	sample_pos = 0;
 
 	LOG_INFO("TMS5220: Emulation Rate %d, buffer len %d", emulation_rate, buffer_len);
@@ -652,24 +668,32 @@ int tms5220_sh_start(struct TMS5220interface* iinterface)
 	if (!buffer)
 		return 1;
 
-	stream_buffer_len = config.samplerate / Machine->gamedrv->fps;
-	stream_buffer = (short*)malloc(stream_buffer_len * sizeof(short));
-	if (!stream_buffer)
-	{
-		LOG_INFO("TMS5220 stream buffer allocation failed");
-		free(buffer);
-		buffer = nullptr;
+	// stream_buffer is no longer needed: the mixer resamples inline via
+	// stream_set_native_rate below. Keep the fields nulled for the dead
+	// cleanup branch in tms5220_sh_stop.
+	stream_buffer = nullptr;
+	stream_buffer_len = 0;
+
+	// Allocate a mixer channel out of the chip-stream range.
+	tms5220_channel = mixer_alloc_channel(MIXER_CHIP_STREAM_RANGE_LOW, MIXER_FIRST_RESERVED_CHANNEL);
+	if (tms5220_channel < 0) {
+		LOG_ERROR("tms5220_sh_start: no free mixer channel in chip stream range");
+		free(buffer); buffer = nullptr;
 		return 1;
 	}
 
-	stream_start(7, 7, 16, Machine->gamedrv->fps);
+	stream_start(tms5220_channel, 7, 16, Machine->gamedrv->fps);
+	// Tell the mixer this stream is at emulation_rate, not SYS_FREQ. The mix
+	// loop will resample to the output rate inline. Note: this drops the
+	// cubic interpolation we used to do here -- the mixer's inline path is
+	// linear, but for LPC speech the difference is below the noise floor of
+	// the synth itself.
+	stream_set_native_rate(tms5220_channel, emulation_rate);
 
 	tms5220_reset();
 	tms5220_set_irq(iinterface->irq);
 
-	LOG_INFO("TMS 5220 Init completed");
-
-	channel = 1;
+	LOG_INFO("TMS 5220 Init completed (mixer channel %d)", tms5220_channel);
 	return 0;
 }
 
@@ -678,11 +702,18 @@ void tms5220_sh_stop(void)
 {
 	LOG_INFO("Stopping and cleaning up TMS5220 Audio");
 
-	stream_stop(7, 7);
+	if (tms5220_channel >= 0) {
+		stream_stop(tms5220_channel, 7);
+		tms5220_channel = -1;
+	}
 	if (buffer) free(buffer);
 	buffer = nullptr;
-	if (stream_buffer) free(stream_buffer);
 	stream_buffer = nullptr;
+	stream_buffer_len = 0;
+	// Drop the user's interface pointer so a stray _w / _r call after stop
+	// doesn't dereference a possibly-freed struct.
+	intfa = nullptr;
+	irq_func = nullptr;
 
 #ifdef DEBUG_5220
 	if (f) { fclose(f); f = nullptr; }
@@ -690,21 +721,17 @@ void tms5220_sh_stop(void)
 }
 
 // Update the sound stream
+// Push native-rate PCM; the mixer resamples emulation_rate -> output rate
+// inline via its fractional mix loop (set via stream_set_native_rate).
 void tms5220_sh_update(void)
 {
+	if (!buffer || tms5220_channel < 0) return;
+
 	if (sample_pos < buffer_len)
 		tms5220_process(buffer + sample_pos, (unsigned int)(buffer_len - sample_pos));
 	sample_pos = 0;
 
-	float resample_ratio =
-		(emulation_rate > 0) ? ((float)config.samplerate / (float)emulation_rate) : 1.0f;
-	if (!(resample_ratio > 0.0f)) resample_ratio = 1.0f;
-
-	// linear_interpolation_16(buffer, buffer_len, &stream_buffer, &stream_buffer_len, resample_ratio);
-	// (swap to cubic for higher quality)
-	cubic_interpolation_16(buffer, buffer_len, &stream_buffer, &stream_buffer_len, resample_ratio);
-
-	stream_update(7, stream_buffer);
+	stream_update(tms5220_channel, buffer);
 }
 
 // Legacy I/O entrypoints

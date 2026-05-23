@@ -991,9 +991,14 @@ int SN76477_sh_start(const struct SN76477interface *intf_in)
         memset(sn76477[i]->frame_buf, 0,
                sn76477[i]->frame_len * sizeof(int16_t));
 
-        /* Register the streaming channel with the mixer.
-           stream_start(chanid, stream_unused, bits, frame_rate) */
-        sn76477[i]->channel = i; /* use chip index as chanid */
+        /* Register the streaming channel with the mixer. Allocate dynamically
+           out of the chip-stream range so we don't collide with driver-side
+           sample_start calls on low channels. */
+        sn76477[i]->channel = mixer_alloc_channel(MIXER_CHIP_STREAM_RANGE_LOW, MIXER_FIRST_RESERVED_CHANNEL);
+        if (sn76477[i]->channel < 0) {
+            LOG_DEBUG("SN76477 #%d: no free mixer channel in chip stream range", i);
+            return 1;
+        }
         stream_start(sn76477[i]->channel, 0, 16, fps, /*stereo=*/false);
 
         /* Apply interface defaults using the setter functions so that all
@@ -1048,7 +1053,10 @@ void SN76477_sh_stop(void)
             sn76477[i]->oneshot_timer = -1;
         }
 
-        stream_stop(sn76477[i]->channel, 0);
+        if (sn76477[i]->channel >= 0) {
+            stream_stop(sn76477[i]->channel, 0);
+            sn76477[i]->channel = -1;
+        }
 
         free(sn76477[i]->frame_buf);
         free(sn76477[i]);
@@ -1070,7 +1078,7 @@ void SN76477_sh_update(void)
         return;
     for (int i = 0; i < intf->num; i++)
     {
-        if (!sn76477[i])
+        if (!sn76477[i] || sn76477[i]->channel < 0)
             continue;
         SN76477_render_chip(i, sn76477[i]->frame_buf, sn76477[i]->frame_len);
         stream_update(sn76477[i]->channel, sn76477[i]->frame_buf);

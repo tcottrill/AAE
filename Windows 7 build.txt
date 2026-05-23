@@ -1,0 +1,8 @@
+Fixed and TESTED the Windows 7 build. It works on my Cabinet with Windows 7 64 Bit SP1. You MUST have direct9 SDK and proper OpenGL 3.3+ (preferably 4.2+) OpenGL drivers on a newer ATI or NVidia Video Card. AND WINDOWS 7 64 BIT!!!!
+
+
+**To activate the Win7 path:** define 'WIN7BUILD' for that build configuration (e.g., in your `.vcxproj` Preprocessor Definitions for the Win7 configuration, or `-DWIN7BUILD` on the command line).
+Also Set: 
+WINVER=0x0601
+_WIN32_WINNT=0x0601
+

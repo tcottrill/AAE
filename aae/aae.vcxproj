@@ -254,10 +254,12 @@
     <ClInclude Include="system\3rdparty\stb_truetype.h" />
     <ClInclude Include="system\3rdparty\tinyxml2.h" />
     <ClInclude Include="system\3rdparty\wglew.h" />
+    <ClInclude Include="system\audio\audio_3d.h" />
     <ClInclude Include="system\audio\emptywav.h" />
     <ClInclude Include="system\audio\error_wav.h" />
     <ClInclude Include="system\audio\mixer.h" />
     <ClInclude Include="system\audio\stb.h" />
+    <ClInclude Include="system\audio\xaudio2_backend.h" />
     <ClInclude Include="system\graphics\colordefs.h" />
     <ClInclude Include="system\graphics\debug_draw.h" />
     <ClInclude Include="system\graphics\sys_gl.h" />
@@ -392,7 +394,9 @@
     <ClCompile Include="system\3rdparty\glew.c" />
     <ClCompile Include="system\3rdparty\miniz.c" />
     <ClCompile Include="system\3rdparty\tinyxml2.cpp" />
+    <ClCompile Include="system\audio\audio_3d.cpp" />
     <ClCompile Include="system\audio\mixer.cpp" />
+    <ClCompile Include="system\audio\xaudio2_backend.cpp" />
     <ClCompile Include="system\graphics\sys_gl.cpp" />
     <ClCompile Include="system\graphics\sys_texture.cpp" />
     <ClCompile Include="system\graphics\texrect.cpp" />

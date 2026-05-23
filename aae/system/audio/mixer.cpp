@@ -139,7 +139,8 @@
  // Note for ME: This is the FULL INTEGER version of this code, for AAE only: 8/15/25
 
 #include "mixer.h"
-#include "framework.h"
+#include "xaudio2_backend.h"
+#include "audio_3d.h"
 #include "error_wav.h"
 #include "sys_log.h"
 #include <mutex>
@@ -180,27 +181,25 @@ constexpr int MAX_CHANNELS = 20;
 constexpr int MAX_SOUNDS = 255;
 static std::atomic<bool> sound_paused{ false };
 static int sound_id = -1;
-static float last_master_vol = 1.0f;
+static int g_master_pct = 80;          // canonical master volume in percent (0..100)
+static int last_master_pct = 80;       // saved by pause_audio, restored by restore_audio
 static std::mutex audioMutex;
 static std::list<int> audio_list;
 static std::vector<std::shared_ptr<SAMPLE>> lsamples;
 static CHANNEL channel[MAX_CHANNELS];
 
-//Xaudio2 Globals Section
-const int NUM_BUFFERS = 5;
-IXAudio2* pXAudio2 = nullptr;
-IXAudio2MasteringVoice* pMasterVoice = nullptr;
-IXAudio2SourceVoice* pSourceVoice = nullptr;
-BYTE* audioBuffers[NUM_BUFFERS];
-DWORD                   bufferSize = 0;
-static bool             g_comInitLocal = false;
-int UpdatesPerSecond = 60;
-int SamplesPerSecond = 22050;
-int BufferDurationMs = 1000 / UpdatesPerSecond;
-int SamplesPerBuffer = SamplesPerSecond / UpdatesPerSecond;
-int currentBufferIndex = 0;
-//
-// END XAudio2 Globals
+// Streaming backend - owns the engine, mastering voice, output source voice,
+// and ring buffers. Voice path uses g_xaudio2 (cached from g_backend at init)
+// to call CreateSourceVoice directly for per-channel XAudio2 playback.
+static std::unique_ptr<IAudioBackend> g_backend;
+static IXAudio2* g_xaudio2 = nullptr;
+
+// Positional audio listener (camera) in 2D world coords. Mirrored into
+// audio_3d module on every change so the per-frame update can read it without
+// querying back.
+static float g_listener_x = 0.0f;
+static float g_listener_y = 0.0f;
+static bool  g_3d_inited = false;
 
 #ifdef USE_VUMETER
 // VU METER ONLY
@@ -233,8 +232,9 @@ static std::atomic<bool> audioThreadActive{ false };
 static std::atomic<int> queuedFrames{ 0 };
 static std::chrono::steady_clock::time_point lastSignalTime;
 
-// Forward declaration
+// Forward declarations
 static void mixer_update_internal();
+static void stop_channel_locked(int chanid);
 
 // 0..255 (128=center).
 // Uses "Square Root" law for constant power (volume stays consistent across pan).
@@ -270,7 +270,7 @@ static void audio_thread_func() {
 			return audioThreadExit.load(std::memory_order_acquire) || audioThreadRun.load(std::memory_order_acquire);
 			});
 		
-		// FIX: Check exit flag immediately after waking
+		// Check exit flag immediately after waking
 		if (audioThreadExit.load(std::memory_order_acquire)) break;
 		
 		if (!woke) {
@@ -278,10 +278,10 @@ static void audio_thread_func() {
 			continue;
 		}
 
-		// FIX: Double-check exit flag before processing
+		// Double-check exit flag before processing
 		if (audioThreadExit.load(std::memory_order_acquire)) break;
 		
-		// FIX: Check if we should actually run (audioThreadRun may be false if we woke due to exit)
+		// Check if we should actually run (audioThreadRun may be false if we woke due to exit)
 		if (!audioThreadRun.load(std::memory_order_acquire)) continue;
 
 		// Check if frames are piling up
@@ -597,13 +597,26 @@ int mixer_init(int rate, int fps)  // <<< integer FPS
 
 	LOG_INFO("Mixer init, BUFFER SIZE = %d, freq %d framerate %d", BUFFER_SIZE, rate, fps);
 
-	// Initialize the xaudio2 backend at the correct rate.
-	const HRESULT hr = xaudio2_init(rate, fps);
+	// Stand up the streaming backend (XAudio2 today). Voice path also uses
+	// XAudio2 directly, so cache the engine handle here.
+	auto backend = std::make_unique<XAudio2Backend>();
+	const HRESULT hr = backend->Init(rate, fps);
 	if (FAILED(hr)) {
-		LOG_ERROR("mixer_init: xaudio2_init failed (hr=0x%08X)", (unsigned)hr);
-		xaudio2_stop(); // clean up any partial init
-		return 0;
+		LOG_ERROR("mixer_init: backend Init failed (hr=0x%08X)", (unsigned)hr);
+		return 0; // unique_ptr destructor calls Shutdown
 	}
+	g_xaudio2 = backend->GetEngine();
+	g_backend = std::move(backend);
+
+	// Apply the canonical 80% default through the perceptual curve so g_master_pct
+	// and the actual XAudio2 gain agree from the start.
+	mixer_set_master_volume(80);
+
+	// Bring up positional audio for the voice path. Failure is non-fatal -
+	// streaming + non-positional voices still work; sample_set_world_position
+	// will just be a logged no-op.
+	g_3d_inited = audio_3d_init(g_backend->OutputChannelMask(),
+		g_backend->OutputChannelCount());
 
 	// Reset channel state.
 	for (int i = 0; i < MAX_CHANNELS; ++i) {
@@ -620,17 +633,23 @@ int mixer_init(int rate, int fps)  // <<< integer FPS
 
 	try {
 		audioThread = std::thread(audio_thread_func);
-		// FIX: Mark mixer as active after thread starts successfully
+		// Mark mixer as active after thread starts successfully.
 		audioThreadActive.store(true, std::memory_order_release);
 	}
 	catch (const std::exception& e) {
 		LOG_ERROR("mixer_init: failed to start audio thread: %s", e.what());
-		xaudio2_stop();
+		audio_3d_shutdown();
+		g_3d_inited = false;
+		g_xaudio2 = nullptr;
+		g_backend.reset();
 		return 0;
 	}
 	catch (...) {
 		LOG_ERROR("mixer_init: failed to start audio thread (unknown exception)");
-		xaudio2_stop();
+		audio_3d_shutdown();
+		g_3d_inited = false;
+		g_xaudio2 = nullptr;
+		g_backend.reset();
 		return 0;
 	}
 
@@ -653,7 +672,9 @@ int mixer_init(int rate, int fps)  // <<< integer FPS
 // -----------------------------------------------------------------------------
 static void mixer_update_internal()
 {
-	BYTE* soundbuffer = GetNextBuffer();
+	if (!g_backend) return;
+
+	BYTE* soundbuffer = g_backend->GetNextBuffer();
 	int16_t* out = reinterpret_cast<int16_t*>(soundbuffer);
 
 	std::scoped_lock lock(audioMutex);
@@ -661,7 +682,7 @@ static void mixer_update_internal()
 	// Fixed number of samples each frame (integer FPS path)
 	const int samplesThisFrame = BUFFER_SIZE;
 	if (samplesThisFrame <= 0) {
-		xaudio2_update(soundbuffer, 0);
+		g_backend->Submit(soundbuffer, 0);
 		return;
 	}
 
@@ -691,69 +712,89 @@ static void mixer_update_internal()
 			{
 				int chan = *it;
 				auto& ch = channel[chan];
-				
-				// FIX: Validate sample index before accessing
-				if (ch.loaded_sample_num < 0 || ch.loaded_sample_num >= static_cast<int>(lsamples.size())) {
-					it = audio_list.erase(it);
-					continue;
-				}
-				
-				auto& sample = lsamples[ch.loaded_sample_num];
-				
-				// FIX: Validate sample pointer
+
+				// Sample lifetime is pinned by CHANNEL::playing_sample (shared_ptr).
+				// If the channel was started without a sample, drop it.
+				auto& sample = ch.playing_sample;
 				if (!sample) {
 					it = audio_list.erase(it);
 					continue;
 				}
 
-				// End-of-sample handling
-				if (ch.pos >= sample->sampleCount)
-				{
+				const int chCount   = sample->fx.nChannels;       // 1 or 2
+				const int bits      = sample->fx.wBitsPerSample;  // 8 or 16
+				const uint32_t totalFrames = sample->sampleCount / static_cast<uint32_t>((std::max)(1, chCount));
+				if (totalFrames == 0) { ++it; continue; }
+
+				// End-of-sample / loop-wrap handling at frame granularity.
+				// step_q32 == (1<<32) is the native-rate fast path; non-unity step means
+				// the channel is doing inline resampling (e.g. 96k chip -> 44.1k system).
+				uint32_t idx = static_cast<uint32_t>(ch.pos_q32 >> 32);
+				if (idx >= totalFrames) {
 					if (!ch.looping) {
 						ch.state = SoundState::Stopped;
 						ch.isPlaying = false;
+						ch.playing_sample.reset();
 						it = audio_list.erase(it);
 						continue;
 					}
-					ch.pos = 0;
+					// Wrap: keep fractional remainder, subtract one buffer's worth.
+					ch.pos_q32 -= static_cast<uint64_t>(totalFrames) << 32;
+					idx = static_cast<uint32_t>(ch.pos_q32 >> 32);
+					if (idx >= totalFrames) {
+						// Defensive: only triggers if step_q32 is absurdly large.
+						ch.pos_q32 = 0;
+						idx = 0;
+					}
 				}
 
-				// Decode one frame (mono or stereo)
-				int32_t sL = 0, sR = 0;
-				const int chCount = sample->fx.nChannels;     // 1 or 2
-				const int bits = sample->fx.wBitsPerSample; // 8 or 16
+				// Pick the second interp endpoint. For streams the buffer is overwritten
+				// every frame by stream_update, so the natural continuation across the
+				// buffer boundary (idx == totalFrames - 1) lives in a buffer we don't have
+				// yet -- sample-and-hold avoids click without needing 1-frame lookahead.
+				// For looping WAV samples the seam IS the loop point, so wrap to frame 0.
+				const bool isStream = (ch.stream_type == static_cast<int>(SoundState::Stream));
+				uint32_t nidx;
+				if (idx + 1 < totalFrames)        nidx = idx + 1;
+				else if (isStream)                nidx = idx;
+				else if (ch.looping)              nidx = 0;
+				else                              nidx = idx;
 
-				if (bits == 16 && sample->data16)
-				{
+				const int32_t frac_q15 = static_cast<int32_t>((ch.pos_q32 >> 17) & 0x7FFF);
+
+				// Read the two frames that bracket the fractional position.
+				int32_t aL = 0, aR = 0, bL = 0, bR = 0;
+				if (bits == 16 && sample->data16) {
+					const int16_t* d = sample->data16.get();
 					if (chCount == 2) {
-						if (ch.pos + 1 < sample->sampleCount) {
-							sL = static_cast<int32_t>(sample->data16[ch.pos + 0]);
-							sR = static_cast<int32_t>(sample->data16[ch.pos + 1]);
-						}
-					}
-					else {
-						const int32_t s = static_cast<int32_t>(sample->data16[ch.pos]);
-						sL = sR = s;
+						aL = d[idx  * 2 + 0];
+						aR = d[idx  * 2 + 1];
+						bL = d[nidx * 2 + 0];
+						bR = d[nidx * 2 + 1];
+					} else {
+						aL = aR = d[idx];
+						bL = bR = d[nidx];
 					}
 				}
-				else if (bits == 8 && sample->data8)
-				{
+				else if (bits == 8 && sample->data8) {
+					const uint8_t* d = sample->data8.get();
 					if (chCount == 2) {
-						sL = static_cast<int32_t>((sample->data8[ch.pos + 0] - 128) << 8);
-						sR = static_cast<int32_t>((sample->data8[ch.pos + 1] - 128) << 8);
-					}
-					else {
-						const int32_t s = static_cast<int32_t>((sample->data8[ch.pos] - 128) << 8);
-						sL = sR = s;
+						aL = (static_cast<int32_t>(d[idx  * 2 + 0]) - 128) << 8;
+						aR = (static_cast<int32_t>(d[idx  * 2 + 1]) - 128) << 8;
+						bL = (static_cast<int32_t>(d[nidx * 2 + 0]) - 128) << 8;
+						bR = (static_cast<int32_t>(d[nidx * 2 + 1]) - 128) << 8;
+					} else {
+						aL = aR = (static_cast<int32_t>(d[idx])  - 128) << 8;
+						bL = bR = (static_cast<int32_t>(d[nidx]) - 128) << 8;
 					}
 				}
 
-				// Channel gain
+				// Linear interpolation in Q15. Provably in int16 range, no saturate needed.
+				// When step_q32 == 1<<32, frac_q15 is always 0 and this collapses to sL=aL.
+				const int32_t sL = aL + (((bL - aL) * frac_q15) >> 15);
+				const int32_t sR = aR + (((bR - aR) * frac_q15) >> 15);
+
 				const float vol = static_cast<float>(ch.vol);
-
-				// Pan gains:
-				// - Mono: ignore pan entirely (center) -> gL=gR=1
-				// - Stereo: equal-power balance
 				float gL = 1.0f, gR = 1.0f;
 				if (chCount == 2) {
 					mixer_pan_gains(ch.pan, gL, gR);
@@ -762,7 +803,7 @@ static void mixer_update_internal()
 				fmixL += static_cast<int32_t>(sL * vol * gL);
 				fmixR += static_cast<int32_t>(sR * vol * gR);
 
-				ch.pos += chCount;
+				ch.pos_q32 += ch.step_q32;
 				++it;
 			}
 		}
@@ -845,12 +886,50 @@ static void mixer_update_internal()
 	}
 		
 	// Submit variable-length frame (stereo 16-bit = 4 bytes per frame)
-	xaudio2_update(soundbuffer, static_cast<DWORD>(samplesThisFrame * 4));
+	g_backend->Submit(soundbuffer, static_cast<DWORD>(samplesThisFrame * 4));
+}
+
+// -----------------------------------------------------------------------------
+// mixer_reap_voice_channels
+// Walks the voice-path channels and releases any whose XAudio2 buffers have
+// drained. The voice object itself is kept (cheap to reuse on the next
+// sample_start) but the SAMPLE reference is released so that, if the registry
+// slot was nulled by sample_remove, the PCM memory is freed promptly.
+//
+// Also refreshes the X3DAudio output matrix for any channel marked positional,
+// so the spatial placement tracks listener and source motion automatically.
+//
+// Called once per frame from mixer_update.
+// -----------------------------------------------------------------------------
+static void mixer_reap_voice_channels()
+{
+	std::scoped_lock lock(audioMutex);
+	for (int i = 0; i < MAX_CHANNELS; ++i) {
+		auto& ch = channel[i];
+		if (!ch.voice || !ch.playing_sample) continue;
+
+		XAUDIO2_VOICE_STATE st{};
+		ch.voice->GetState(&st, XAUDIO2_VOICE_NOSAMPLESPLAYED);
+		if (st.BuffersQueued == 0) {
+			ch.isPlaying = false;
+			ch.state = SoundState::Stopped;
+			ch.is_positional = false;       // sample is done; positional state goes with it
+			ch.playing_sample.reset();
+			continue;
+		}
+
+		// Still playing - refresh positional matrix if applicable.
+		if (ch.is_positional && g_3d_inited) {
+			audio_3d_apply_2d(ch.voice, ch.world_x, ch.world_y,
+				ch.playing_sample->fx.nChannels);
+		}
+	}
 }
 
 // -----------------------------------------------------------------------------
 // mixer_update
-// Now only signals the audio thread to run mixer_update_internal().
+// Reaps any drained voice-path channels (so removed SAMPLEs can be freed),
+// then signals the audio thread to run mixer_update_internal().
 // -----------------------------------------------------------------------------
 void mixer_update()
 {
@@ -858,11 +937,13 @@ void mixer_update()
 	if (!audioThreadActive.load(std::memory_order_acquire)) {
 		return;
 	}
-	
-	lastSignalTime = std::chrono::steady_clock::now();
+
+	mixer_reap_voice_channels();
+
 	queuedFrames++;
 	{
 		std::lock_guard<std::mutex> lock(audioCVMutex);
+		lastSignalTime = std::chrono::steady_clock::now(); // read by audio thread under the same lock
 		audioThreadRun.store(true, std::memory_order_release);
 	}
 	audioCV.notify_one();
@@ -895,45 +976,102 @@ void mixer_end()
 	
 	LOG_INFO("mixer_end: audio thread stopped, cleaning up resources...");
 
-	// FIX: Now it's safe to stop XAudio2 and clear resources
-	xaudio2_stop();
-	
-	// FIX: Clear resources under lock
+	// Tear down positional first so any matrix work in flight stops touching
+	// voices we're about to destroy.
+	audio_3d_shutdown();
+	g_3d_inited = false;
+
+	// Stop all channels under the mutex BEFORE destroying the backend. When
+	// the IXAudio2 engine goes away every IXAudio2SourceVoice* it owns becomes
+	// invalid; if we left them parked in CHANNEL::voice, every subsequent
+	// sample_set_volume / sample_set_pan / sample_set_freq / sample_playing
+	// call (between mixer_end and the next mixer_init) would deref freed
+	// memory. stop_channel_locked destroys each voice cleanly, clears
+	// ch.voice and ch.playing_sample, and removes the channel from
+	// audio_list -- leaving the channel array in the same default-constructed
+	// state that mixer_init expects.
 	{
 		std::scoped_lock lock(audioMutex);
+		for (int i = 0; i < MAX_CHANNELS; ++i) {
+			stop_channel_locked(i);
+		}
+		audio_list.clear();
 		for (auto& sample : lsamples) {
 			if (sample && sample->buffer)
 				LOG_INFO("Freeing sample #%d named %s", sample->num, sample->name.c_str());
 		}
 		lsamples.clear();
-		audio_list.clear();
 	}
-	
-	// FIX: Reset sound_id so new samples start fresh
+
+	// Tear down the backend. Voice path's cached engine handle goes invalid
+	// at the same moment - clear it before reset() so any racing caller fails fast.
+	g_xaudio2 = nullptr;
+	g_backend.reset();
+
+	// Reset sound_id so new samples start fresh on next init.
 	sound_id = -1;
 	
 	LOG_INFO("mixer_end: complete");
 }
 
-void sample_stop(int chanid)
+// -----------------------------------------------------------------------------
+// stop_channel_locked
+// Path-agnostic full stop of a single channel. Caller must already hold
+// audioMutex and have validated chanid in [0, MAX_CHANNELS).
+//
+// Destroys any XAudio2 voice on the channel, evicts the channel from the
+// software-mixer audio_list, resets all playback/position/rate/positional
+// bookkeeping, and releases the SAMPLE reference so sample_remove can free
+// memory. Used by sample_stop, sample_stop_mixer, stream_stop, and
+// samples_stop_all -- they all want the same cleanup regardless of which
+// start API the channel was originally launched with.
+// -----------------------------------------------------------------------------
+static void stop_channel_locked(int chanid)
 {
 	auto& ch = channel[chanid];
-	if (ch.isPlaying && ch.voice) {
+
+	if (ch.voice) {
 		ch.voice->Stop();
 		ch.voice->FlushSourceBuffers();
-		ch.isPlaying = false;
-		ch.state = SoundState::Stopped;
-		ch.looping = 0;
-		ch.pos = 0;
+		ch.voice->DestroyVoice();
+		ch.voice = nullptr;
 	}
+	audio_list.remove(chanid);
+
+	ch.state             = SoundState::Stopped;
+	ch.isPlaying         = false;
+	ch.looping           = 0;
+	ch.pos_q32           = 0;
+	ch.step_q32          = (1ull << 32);
+	ch.stream_type       = 0;
+	ch.is_positional     = false;
+	ch.world_x = ch.world_y = 0.0f;
+	ch.loaded_sample_num = -1;
+	ch.playing_sample.reset();
+}
+
+void sample_stop(int chanid)
+{
+	if (chanid < 0 || chanid >= MAX_CHANNELS) {
+		LOG_ERROR("sample_stop: invalid channel %d", chanid);
+		return;
+	}
+	std::scoped_lock lock(audioMutex);
+	stop_channel_locked(chanid);
 }
 
 // -----------------------------------------------------------------------------
 // SetPan
 // Applies panning/balance on a source voice's output matrix.
+//
+// Builds a srcCh x dstCh matrix where dstCh is the master's actual channel
+// count (possibly surround). Audio is routed to the front L/R only; surround
+// channels stay silent for non-positional voices. Positional voices skip this
+// path entirely and use X3DAudio's matrix via audio_3d_apply_2d.
+//
 // Behavior:
-//   - Mono source (1->2): pan is ignored; always centered (1.0, 1.0).
-//   - Stereo source (2->2): equal-power balance using mixer_pan_gains().
+//   - Mono source: pan is ignored; output is centered (L=R=1.0, others 0).
+//   - Stereo source: equal-power balance to front L / front R.
 // -----------------------------------------------------------------------------
 static void SetPan(IXAudio2SourceVoice* voice, int panByte)
 {
@@ -942,51 +1080,95 @@ static void SetPan(IXAudio2SourceVoice* voice, int panByte)
 	XAUDIO2_VOICE_DETAILS details{};
 	voice->GetVoiceDetails(&details);
 	const UINT32 srcCh = details.InputChannels;
-	const UINT32 dstCh = 2; // mastering voice is stereo now
+	const UINT32 dstCh = g_backend ? g_backend->OutputChannelCount() : 2;
+	if (dstCh == 0 || srcCh == 0) return;
 
-	if (srcCh == 1 && dstCh == 2)
-	{
-		// Mono -> Stereo: center (ignore pan)
-		const float m[2] = { 1.0f, 1.0f };
-		voice->SetOutputMatrix(nullptr, 1, 2, m);
+	// XAudio2 SetOutputMatrix layout (per official docs): the level sent from
+	// source channel S to destination channel D lives at
+	//   pLevelMatrix[SourceChannels * D + S]
+	// i.e. the matrix is laid out destination-major (one row per destination
+	// channel, columns are source channels). This is the OPPOSITE of what the
+	// "row-major rows=source" reading would suggest; getting it wrong puts
+	// stereo R onto the LFE channel and produces silence with no error.
+	std::vector<float> m(srcCh * dstCh, 0.0f);
+
+	if (srcCh == 1) {
+		// Mono -> front L + front R (center, pan ignored).
+		// For srcCh=1 the formula collapses to m[D], so this works regardless
+		// of which interpretation you assumed.
+		m[srcCh * 0 + 0] = 1.0f;                  // src 0 -> dst 0 (FL)
+		if (dstCh >= 2) m[srcCh * 1 + 0] = 1.0f;  // src 0 -> dst 1 (FR)
 	}
-	else if (srcCh == 2 && dstCh == 2)
-	{
-		// Stereo balance with equal-power gains
+	else if (srcCh == 2 && dstCh >= 2) {
+		// Stereo balance to front L / front R using equal-power gains.
 		float gL = 1.0f, gR = 1.0f;
 		mixer_pan_gains(panByte, gL, gR);
-
-		// 2x2 matrix (row-major): [L->L, L->R, R->L, R->R]
-		const float m[4] = {
-			gL, 0.0f,
-			0.0f, gR
-		};
-		voice->SetOutputMatrix(nullptr, 2, 2, m);
+		m[srcCh * 0 + 0] = gL; // src 0 (L) -> dst 0 (FL)
+		m[srcCh * 1 + 1] = gR; // src 1 (R) -> dst 1 (FR)
 	}
-	else
-	{
-		// Fallback: identity routing (no pan)
-		std::vector<float> m(srcCh * dstCh, 0.0f);
+	else {
+		// Unusual source layout: identity over min(src, dst), rest silent.
 		const UINT32 minCh = (srcCh < dstCh) ? srcCh : dstCh;
-		for (UINT32 c = 0; c < minCh; ++c) m[c * dstCh + c] = 1.0f;
-		voice->SetOutputMatrix(nullptr, srcCh, dstCh, m.data());
+		for (UINT32 c = 0; c < minCh; ++c) {
+			m[srcCh * c + c] = 1.0f;
+		}
 	}
-}
 
-void sample_remove(int samplenum)
-{
-}
-
-
-int sample_get_position(int chanid)
-{
-	return channel[chanid].pos;
+	voice->SetOutputMatrix(nullptr, srcCh, dstCh, m.data());
 }
 
 // -----------------------------------------------------------------------------
-// sample_set_volume
-// Convert a legacy 0..255 volume directly to an XAudio2 linear gain 0.0f..1.0f.
-// This is a straight linear mapping with no perceptual taper.
+// sample_remove
+// Removes a sample from the registry. The slot is nulled, NOT erased, so the
+// num == index invariant that the rest of the code relies on is preserved.
+// If any channel is still playing this sample, its CHANNEL::playing_sample
+// shared_ptr keeps the SAMPLE memory alive until the channel stops. The audio
+// thread reads through ch.playing_sample (not the registry), so playback in
+// progress continues uninterrupted.
+// -----------------------------------------------------------------------------
+void sample_remove(int samplenum)
+{
+	std::scoped_lock lock(audioMutex);
+
+	if (samplenum < 0 || samplenum >= static_cast<int>(lsamples.size())) {
+		LOG_ERROR("sample_remove: invalid samplenum %d", samplenum);
+		return;
+	}
+	auto& slot = lsamples[samplenum];
+	if (!slot) return; // already removed
+
+	const long uses = slot.use_count();
+	LOG_INFO("sample_remove: dropping sample #%d '%s' (registry ref count was %ld; channels still playing keep their reference)",
+		samplenum, slot->name.c_str(), uses);
+
+	slot.reset(); // null the slot; channels with playing_sample stay valid
+}
+
+// -----------------------------------------------------------------------------
+// sample_get_position
+// Returns playback position in FRAMES (per-channel sample ticks), not bytes
+// and not interleaved sample elements. 0 if the channel has no active sample.
+// -----------------------------------------------------------------------------
+int sample_get_position(int chanid)
+{
+	if (chanid < 0 || chanid >= MAX_CHANNELS) return 0;
+	std::scoped_lock lock(audioMutex);
+
+	auto& ch = channel[chanid];
+	if (!ch.playing_sample) return 0;
+
+	return static_cast<int>(ch.pos_q32 >> 32);
+}
+
+// -----------------------------------------------------------------------------
+// sample_set_volume / sample_get_volume         (0..255, legacy)
+// sample_set_volume_percent / sample_get_volume_percent  (0..100)
+//
+// Both APIs route through the same canonical perceptual curve
+// (VolumeNormalizedToLinear in mixer.h), so equivalent inputs produce the same
+// gain. The stored byte (ch.volume) is the source of truth; ch.vol holds the
+// derived linear gain used by both the XAudio2 voice path (SetVolume) and the
+// software-mixer per-sample multiply.
 // -----------------------------------------------------------------------------
 void sample_set_volume(int chanid, int volume)
 {
@@ -998,52 +1180,106 @@ void sample_set_volume(int chanid, int volume)
 	std::scoped_lock lock(audioMutex);
 
 	auto& ch = channel[chanid];
-
 	volume = std::clamp(volume, 0, 255);
 	ch.volume = volume;
 
-	LOG_DEBUG("VOLUME PASSED is : %d", volume);
-	const float gain = static_cast<float>(volume) / 255.0f;
+	const float gain = VolumeByteToLinear(volume);
 	ch.vol = static_cast<double>(gain);
-	LOG_DEBUG("NEW MIXER SAMPLE VOL: %f", gain);
 
 	if (ch.voice) {
 		ch.voice->SetVolume(gain);
 	}
 }
+
 int sample_get_volume(int chanid)
-{ // returns 0..255
+{
 	if (chanid < 0 || chanid >= MAX_CHANNELS) return 0;
-	double g = std::clamp(channel[chanid].vol, 0.0, 1.0);
-	return static_cast<int>(std::lround(g * 255.0));
+	std::scoped_lock lock(audioMutex);
+	return std::clamp(channel[chanid].volume, 0, 255);
 }
 
-void sample_set_position(int chanid, int pos)
+void sample_set_volume_percent(int chanid, int pct)
 {
-	// Placeholder: currently unused
+	sample_set_volume(chanid, VolPercentToByte(pct));
+}
+
+int sample_get_volume_percent(int chanid)
+{
+	return VolByteToPercent(sample_get_volume(chanid));
+}
+
+// -----------------------------------------------------------------------------
+// sample_set_position
+// Seek a channel to pos_frames. Software-mixer path: clamped to sample length
+// and written into pos_q32 (the 32.32 fixed-point position used by the mix loop).
+// Voice path: XAudio2 has no SetPosition; seeking requires Stop+FlushSourceBuffers
+// +resubmit-with-PlayBegin which we don't do today, so the voice path is a logged
+// no-op. Tell me if you need it.
+// -----------------------------------------------------------------------------
+void sample_set_position(int chanid, int pos_frames)
+{
+	if (chanid < 0 || chanid >= MAX_CHANNELS) {
+		LOG_ERROR("sample_set_position: invalid channel %d", chanid);
+		return;
+	}
+	std::scoped_lock lock(audioMutex);
+
+	auto& ch = channel[chanid];
+
+	if (ch.voice) {
+		LOG_ERROR("sample_set_position: channel %d is on the voice path; seek not implemented", chanid);
+		return;
+	}
+	if (!ch.playing_sample) {
+		LOG_ERROR("sample_set_position: channel %d has no active sample", chanid);
+		return;
+	}
+
+	const int nch = std::max<int>(1, ch.playing_sample->fx.nChannels);
+	const uint32_t total_frames = ch.playing_sample->sampleCount / static_cast<uint32_t>(nch);
+	if (pos_frames < 0) pos_frames = 0;
+	if (static_cast<uint32_t>(pos_frames) >= total_frames) pos_frames = static_cast<int>(total_frames > 0 ? total_frames - 1 : 0);
+
+	ch.pos_q32 = static_cast<uint64_t>(pos_frames) << 32;
 }
 
 int sample_get_freq(int chanid)
 {
-	if (channel[chanid].isPlaying)
-	{
-		return channel[chanid].frequency;
-	}
-	return 0;
+	if (chanid < 0 || chanid >= MAX_CHANNELS) return 0;
+	std::scoped_lock lock(audioMutex);
+	auto& ch = channel[chanid];
+	// Read native rate from the SAMPLE so the answer is correct on both the
+	// voice path (where ch.frequency mirrors this at start time) and the
+	// mixer/stream path (where ch.frequency is never set). Returns the BASE
+	// rate, not the currently-applied playback rate -- see header note.
+	if (!ch.playing_sample) return 0;
+	return static_cast<int>(ch.playing_sample->fx.nSamplesPerSec);
 }
 
 void sample_set_freq(int chanid, int freq)
 {
+	if (chanid < 0 || chanid >= MAX_CHANNELS || freq <= 0) return;
 	std::scoped_lock lock(audioMutex);
 	auto& ch = channel[chanid];
-	if (ch.voice && ch.frequency > 0 && freq > 0) {
-		float ratio = static_cast<float>(freq) / static_cast<float>(ch.frequency);
-		ch.voice->SetFrequencyRatio(ratio);
+	if (ch.voice) {
+		if (ch.frequency > 0) {
+			float ratio = static_cast<float>(freq) / static_cast<float>(ch.frequency);
+			ch.voice->SetFrequencyRatio(ratio);
+		}
+	} else if (SYS_FREQ > 0) {
+		// Mixer path: step is "source frames per output frame". Setting freq = F
+		// means "consume F source frames per second of output", so the mix loop
+		// resamples F -> SYS_FREQ inline.
+		ch.step_q32 = (static_cast<uint64_t>(freq) << 32) / static_cast<uint64_t>(SYS_FREQ);
 	}
 }
 
 void sample_set_pan(int chanid, int pan)
 {
+	if (chanid < 0 || chanid >= MAX_CHANNELS) {
+		LOG_ERROR("sample_set_pan: invalid channel %d", chanid);
+		return;
+	}
 	std::scoped_lock lock(audioMutex);
 	auto& ch = channel[chanid];
 	ch.pan = std::clamp(pan, 0, 255);
@@ -1055,7 +1291,59 @@ void sample_set_pan(int chanid, int pan)
 int sample_get_pan(int chanid)
 {
 	if (chanid < 0 || chanid >= MAX_CHANNELS) return 128;
+	std::scoped_lock lock(audioMutex);
 	return channel[chanid].pan;
+}
+
+// -----------------------------------------------------------------------------
+// Positional audio (2D, camera-locked listener)
+// -----------------------------------------------------------------------------
+void mixer_set_listener_2d(float x, float y)
+{
+	std::scoped_lock lock(audioMutex);
+	g_listener_x = x;
+	g_listener_y = y;
+	if (g_3d_inited) audio_3d_set_listener_2d(x, y);
+}
+
+void sample_set_world_position(int chanid, float x, float y)
+{
+	if (chanid < 0 || chanid >= MAX_CHANNELS) {
+		LOG_ERROR("sample_set_world_position: invalid channel %d", chanid);
+		return;
+	}
+	std::scoped_lock lock(audioMutex);
+
+	auto& ch = channel[chanid];
+	if (!ch.voice) {
+		LOG_ERROR("sample_set_world_position: channel %d is not on the voice path", chanid);
+		return;
+	}
+
+	ch.is_positional = true;
+	ch.world_x = x;
+	ch.world_y = y;
+
+	// Apply immediately so the first frame is already spatialized; the per-
+	// frame update keeps it current as the listener or source moves later.
+	if (g_3d_inited && ch.playing_sample) {
+		audio_3d_apply_2d(ch.voice, x, y, ch.playing_sample->fx.nChannels);
+	}
+}
+
+void sample_clear_world_position(int chanid)
+{
+	if (chanid < 0 || chanid >= MAX_CHANNELS) return;
+	std::scoped_lock lock(audioMutex);
+
+	auto& ch = channel[chanid];
+	ch.is_positional = false;
+	ch.world_x = ch.world_y = 0.0f;
+
+	// Restore the channel's stored pan via SetOutputMatrix.
+	if (ch.voice) {
+		SetPan(ch.voice, ch.pan);
+	}
 }
 
 void sample_start(int chanid, int samplenum, int loop)
@@ -1075,7 +1363,26 @@ void sample_start(int chanid, int samplenum, int loop)
 		return;
 	}
 
+	// Check the XAudio2 backend BEFORE tearing down any existing voice on this
+	// channel -- otherwise a post-shutdown call would leave the channel with
+	// a destroyed voice and no replacement.
+	if (!g_xaudio2) {
+		LOG_ERROR("sample_start: voice path unavailable (no XAudio2 backend)");
+		return;
+	}
+
 	auto& ch = channel[chanid];
+
+	// If this channel was previously running on the software-mixer / stream
+	// path (sample_start_mixer or stream_start) and the caller didn't call
+	// the matching stop, evict it from the mix list and clear mixer-path
+	// state -- otherwise the mix loop would keep mixing the channel via the
+	// new sample's data while XAudio2 also plays it, doubling output and
+	// corrupting state.
+	audio_list.remove(chanid);
+	ch.stream_type = 0;
+	ch.pos_q32     = 0;
+	ch.step_q32    = (1ull << 32);
 
 	// If there is an existing voice on this channel, stop and destroy it.
 	if (ch.voice) {
@@ -1088,9 +1395,14 @@ void sample_start(int chanid, int samplenum, int loop)
 	auto& sample = lsamples[samplenum];
 
 	// The 8.0f is really important here and required for the StarCastle drone.
-	if (FAILED(pXAudio2->CreateSourceVoice(&ch.voice, &sample->fx, 0, 8.0f)))
+	if (FAILED(g_xaudio2->CreateSourceVoice(&ch.voice, &sample->fx, 0, 8.0f)))
 	{
 		LOG_ERROR("Failed to create voice for sample %d", sample->num);
+		// We already tore down the previous voice; leave the channel in a
+		// clean stopped state so the next sample_playing call doesn't lie.
+		ch.isPlaying = false;
+		ch.state = SoundState::Stopped;
+		ch.playing_sample.reset();
 		return;
 	}
 
@@ -1104,6 +1416,9 @@ void sample_start(int chanid, int samplenum, int loop)
 	ch.pan = 128;
 	ch.frequency = sample->fx.nSamplesPerSec;
 	ch.loaded_sample_num = samplenum;
+	ch.playing_sample = sample;       // pin SAMPLE memory for XAudio2's buffer reads
+	ch.is_positional = false;         // fresh start; caller can opt in via sample_set_world_position
+	ch.world_x = ch.world_y = 0.0f;
 
 	// Build and submit the XAudio2 buffer.
 	std::memset(&ch.buffer, 0, sizeof(ch.buffer));
@@ -1115,58 +1430,69 @@ void sample_start(int chanid, int samplenum, int loop)
 		LOG_ERROR("sample_start: SubmitSourceBuffer failed (sample=%d chan=%d)", samplenum, chanid);
 		ch.isPlaying = false;
 		ch.state = SoundState::Stopped;
+		ch.playing_sample.reset();
 		ch.voice->DestroyVoice();
 		ch.voice = nullptr;
 		return;
 	}
 
 	// We have to set the volume manually here to avoid a scoped_lock recursive error.
-	const float gain = static_cast<float>(VolumeByteToLinear(ch.volume));
+	const float gain = VolumeByteToLinear(ch.volume);
 	ch.vol = gain;
-
-	if (ch.voice) {
-		ch.voice->SetVolume(static_cast<float>(ch.vol));
-	}
+	ch.voice->SetVolume(gain);
 
 	SetPan(ch.voice, ch.pan);
 
-	HR(ch.voice->Start());
+	// Start() can fail (rare, but possible on device reset, etc.). If it does,
+	// don't leave the channel claiming to be playing -- the buffer is still
+	// queued so BuffersQueued > 0 and sample_playing would return 1 forever.
+	if (FAILED(ch.voice->Start())) {
+		LOG_ERROR("sample_start: Start failed (sample=%d chan=%d)", samplenum, chanid);
+		ch.voice->FlushSourceBuffers();
+		ch.voice->DestroyVoice();
+		ch.voice = nullptr;
+		ch.isPlaying = false;
+		ch.state = SoundState::Stopped;
+		ch.playing_sample.reset();
+	}
 }
 
 int sample_playing(int chanid)
 {
-	// Validate channel index against your fixed array
 	if (chanid < 0 || chanid >= MAX_CHANNELS) {
 		LOG_ERROR("sample_playing: invalid channel %d", chanid);
 		return 0;
 	}
 
 	std::scoped_lock lock(audioMutex);
-
 	auto& ch = channel[chanid];
 
-	// If this channel is using an XAudio2 voice, isPlaying must reflect the real voice state.
-	// Otherwise, Sega speech queue logic (and any other queue logic) can get stuck forever.
-	if (ch.voice)
-	{
+	// Voice-path fix-up: if the XAudio2 queue has drained, the one-shot is
+	// finished. Update bookkeeping here so queue-based callers (Sega speech,
+	// etc.) don't get stuck waiting on an already-completed voice. The reap
+	// loop in mixer_update does the same fix-up; this is the defensive path
+	// for callers that poll sample_playing without driving mixer_update.
+	if (ch.voice) {
 		XAUDIO2_VOICE_STATE st{};
 		ch.voice->GetState(&st, XAUDIO2_VOICE_NOSAMPLESPLAYED);
-
-		// When no buffers are queued, the one-shot is finished.
 		if (st.BuffersQueued == 0) {
 			ch.isPlaying = false;
 			ch.state = SoundState::Stopped;
-		}
-		else {
+			// XAudio2 is no longer reading the buffer; release our reference
+			// so sample_remove can actually free memory if the slot was nulled.
+			ch.playing_sample.reset();
+		} else {
 			ch.isPlaying = true;
 			ch.state = SoundState::Playing;
 		}
-		LOG_INFO("RETURNING SAMPLE PLAYING %d", ch.isPlaying);
-		return ch.isPlaying ? 1 : 0;
 	}
-	LOG_INFO("RETURNING SAMPLE PLAYING %d", ch.isPlaying);
-	// Fallback: software-mixer path (older behavior)
-	return ch.isPlaying ? 1 : 0;
+
+	// ch.state is the canonical playback flag on both voice and mixer paths
+	// (sample_start, sample_start_mixer, stream_start all set Playing; the
+	// mix loop and end-of-sample logic transition to Stopped). ch.isPlaying
+	// is only maintained on the voice path, so reading state is the path-
+	// agnostic answer.
+	return (ch.state == SoundState::Playing) ? 1 : 0;
 }
 
 
@@ -1194,117 +1520,166 @@ void sample_end(int chanid)
 
 void sample_start_mixer(int chanid, int samplenum, int loop)
 {
+	if (chanid < 0 || chanid >= MAX_CHANNELS) {
+		LOG_ERROR("sample_start_mixer: invalid channel %d", chanid);
+		return;
+	}
+
 	std::scoped_lock lock(audioMutex);
 
 	if (samplenum < 0 || samplenum >= static_cast<int>(lsamples.size()) ||
+		!lsamples[samplenum] ||
 		lsamples[samplenum]->state != SoundState::Loaded) {
 		LOG_ERROR("Error: Attempting to play invalid sample %d on channel %d", samplenum, chanid);
 		return;
 	}
 
-	if (channel[chanid].state == SoundState::Playing) {
-		LOG_ERROR("Error: Sound already playing on channel %d", chanid);
-		return;
-	}
-
 	auto& ch = channel[chanid];
+
+	// Cross-path cleanup, symmetric with sample_start: tear down any prior
+	// voice on this channel so it doesn't linger as an orphan responding to
+	// volume/pan/freq updates, and evict any prior mix-list membership so the
+	// push_back below doesn't create a duplicate.
+	if (ch.voice) {
+		ch.voice->Stop();
+		ch.voice->FlushSourceBuffers();
+		ch.voice->DestroyVoice();
+		ch.voice = nullptr;
+	}
+	audio_list.remove(chanid);
+
 	ch.state = SoundState::Playing;
 	ch.stream_type = static_cast<int>(SoundState::PCM);
 	ch.loaded_sample_num = samplenum;
+	ch.playing_sample = lsamples[samplenum]; // pin lifetime; survives sample_remove
 	ch.looping = loop;
-	ch.pos = 0;
+	ch.pos_q32 = 0;
+	// step_q32 reflects sample-native-rate -> output-rate. For samples that were
+	// resampled to SYS_FREQ at load (the default), this is exactly 1<<32 and the
+	// mix loop's interp collapses to plain reads.
+	const uint32_t native = ch.playing_sample->fx.nSamplesPerSec;
+	ch.step_q32 = (native > 0 && SYS_FREQ > 0)
+		? (static_cast<uint64_t>(native) << 32) / static_cast<uint64_t>(SYS_FREQ)
+		: (1ull << 32);
+	// Voice-path positional state doesn't apply to the mixer path; clear it so
+	// a later transition back to voice path starts from a clean baseline.
+	ch.is_positional = false;
+	ch.world_x = ch.world_y = 0.0f;
 
 	audio_list.push_back(chanid);
-	LOG_INFO("Playing Sample #%d :%s", samplenum, lsamples[samplenum]->name.c_str());
-}
-
-int sample_playing_mixer(int chanid)
-{
-	return (channel[chanid].state == SoundState::Playing) ? 1 : 0;
+	LOG_INFO("Playing Sample #%d :%s", samplenum, ch.playing_sample->name.c_str());
 }
 
 void sample_end_mixer(int chanid)
 {
+	if (chanid < 0 || chanid >= MAX_CHANNELS) {
+		LOG_ERROR("sample_end_mixer: invalid channel %d", chanid);
+		return;
+	}
+	std::scoped_lock lock(audioMutex);
 	channel[chanid].looping = 0;
 }
 
 void sample_stop_mixer(int chanid)
 {
-	std::scoped_lock lock(audioMutex);
-	channel[chanid].state = SoundState::Stopped;
-	channel[chanid].looping = 0;
-	channel[chanid].pos = 0;
-	audio_list.remove(chanid);
-}
-
-void sample_set_volume_mixer(int chanid, int volume255)
-{
-	//const int percent = Volume255ToPercent(std::clamp(volume255, 0, 255));
-	//LOG_DEBUG("MIXER  VOL PERCENT: %d", percent);
-	channel[chanid].vol = VolumePercentToLinear(volume255); // replaces db_volume[]
-	LOG_DEBUG("NEW MIXER SAMPLE VOL: %f", channel[chanid].vol);
-	
-}
-
-// Stereo
-void stream_start(int chanid, int /*stream*/, int bits, int frame_rate, bool stereo)
-{
-	// FIX: Acquire lock for the entire operation
-	std::scoped_lock lock(audioMutex);
-	
-	auto& ch = channel[chanid];
-	if (ch.state == SoundState::Playing) {
-		LOG_ERROR("Error: Stream already playing on channel %d", chanid);
+	if (chanid < 0 || chanid >= MAX_CHANNELS) {
+		LOG_ERROR("sample_stop_mixer: invalid channel %d", chanid);
 		return;
 	}
-	
-	// len = frames per update; create_sample stores counts properly for 1 or 2 channels
-	// FIX: create_sample_unlocked to avoid recursive lock (or release lock temporarily)
-	// For now, we'll create the sample before taking the lock
-	int stream_sample = -1;
-	{
-		// Temporarily release the lock to call create_sample which takes its own lock
-		// Actually, we need to refactor this. Let's inline the sample creation.
-		auto sample = std::make_shared<SAMPLE>();
-		sample->num = ++sound_id;
-		sample->name = "STREAM" + std::to_string(sample->num);
-		
-		LOG_INFO("Creating Audio Sample with name %s and sound id %d", sample->name.c_str(), sample->num);
-		
-		sample->fx.wFormatTag = WAVE_FORMAT_PCM;
-		sample->fx.nChannels = stereo ? 2 : 1;
-		sample->fx.nSamplesPerSec = SYS_FREQ;
-		sample->fx.wBitsPerSample = static_cast<WORD>(bits);
-		sample->fx.nBlockAlign = static_cast<WORD>(sample->fx.nChannels * (bits / 8));
-		sample->fx.nAvgBytesPerSec = sample->fx.nSamplesPerSec * sample->fx.nBlockAlign;
-		sample->fx.cbSize = 0;
-		sample->state = SoundState::Loaded;
-		
-		int len = SYS_FREQ / frame_rate;
-		const uint32_t channels = sample->fx.nChannels;
-		sample->sampleCount = static_cast<uint32_t>(len) * channels;
-		sample->dataSize = sample->sampleCount * (bits / 8);
-		
-		if (bits == 8) {
-			sample->data8 = std::make_unique<uint8_t[]>(sample->dataSize);
-			std::memset(sample->data8.get(), 0, sample->dataSize);
-			sample->buffer = sample->data8.get();
-		}
-		else {
-			sample->data16 = std::make_unique<int16_t[]>(sample->sampleCount);
-			std::memset(sample->data16.get(), 0, sample->dataSize);
-			sample->buffer = sample->data16.get();
-		}
-		
-		stream_sample = sample->num;
-		lsamples.push_back(sample);
+	std::scoped_lock lock(audioMutex);
+	stop_channel_locked(chanid);
+}
+
+// Legacy alias - the previous implementation incorrectly fed a 0..255 value
+// into a 0..100 function. Now identical to sample_set_volume so both paths
+// use the same perceptual curve.
+void sample_set_volume_mixer(int chanid, int volume255)
+{
+	sample_set_volume(chanid, volume255);
+}
+
+// Start a stream on the given channel. bits must be 8 or 16; frame_rate > 0;
+// stereo selects mono (false) or interleaved stereo (true) buffer layout.
+void stream_start(int chanid, int /*stream*/, int bits, int frame_rate, bool stereo)
+{
+	if (chanid < 0 || chanid >= MAX_CHANNELS) {
+		LOG_ERROR("stream_start: invalid channel %d", chanid);
+		return;
+	}
+	if (frame_rate <= 0) {
+		LOG_ERROR("stream_start: invalid frame_rate %d (must be > 0)", frame_rate);
+		return;
+	}
+	if (bits != 8 && bits != 16) {
+		LOG_ERROR("stream_start: unsupported bits=%d (only 8 or 16 supported)", bits);
+		return;
 	}
 
-	ch.state = SoundState::Playing;
-	ch.loaded_sample_num = stream_sample;
-	ch.looping = 1;
-	ch.pos = 0;
-	ch.stream_type = static_cast<int>(SoundState::Stream);
+	std::scoped_lock lock(audioMutex);
+
+	auto& ch = channel[chanid];
+
+	// Cross-path cleanup, symmetric with sample_start / sample_start_mixer:
+	// tear down any prior voice so it doesn't linger as an orphan responding
+	// to volume/pan/freq updates, and evict any prior mix-list membership so
+	// the push_back below doesn't create a duplicate.
+	if (ch.voice) {
+		ch.voice->Stop();
+		ch.voice->FlushSourceBuffers();
+		ch.voice->DestroyVoice();
+		ch.voice = nullptr;
+	}
+	audio_list.remove(chanid);
+
+	// Build the per-frame stream SAMPLE inline -- create_sample takes its own
+	// lock so we can't call it from inside this scope without re-entering the
+	// mutex. The SAMPLE owns the buffer that stream_update writes into each
+	// frame; the channel pins its lifetime via playing_sample.
+	auto sample = std::make_shared<SAMPLE>();
+	sample->num  = ++sound_id;
+	sample->name = "STREAM" + std::to_string(sample->num);
+
+	LOG_INFO("Creating Audio Sample with name %s and sound id %d", sample->name.c_str(), sample->num);
+
+	sample->fx.wFormatTag     = WAVE_FORMAT_PCM;
+	sample->fx.nChannels      = stereo ? 2 : 1;
+	sample->fx.nSamplesPerSec = SYS_FREQ;
+	sample->fx.wBitsPerSample = static_cast<WORD>(bits);
+	sample->fx.nBlockAlign    = static_cast<WORD>(sample->fx.nChannels * (bits / 8));
+	sample->fx.nAvgBytesPerSec = sample->fx.nSamplesPerSec * sample->fx.nBlockAlign;
+	sample->fx.cbSize         = 0;
+	sample->state             = SoundState::Loaded;
+
+	const int len = SYS_FREQ / frame_rate;
+	const uint32_t channels = sample->fx.nChannels;
+	sample->sampleCount = static_cast<uint32_t>(len) * channels;
+	sample->dataSize    = sample->sampleCount * (bits / 8);
+
+	if (bits == 8) {
+		sample->data8 = std::make_unique<uint8_t[]>(sample->dataSize);
+		std::memset(sample->data8.get(), 0, sample->dataSize);
+		sample->buffer = sample->data8.get();
+	} else {
+		sample->data16 = std::make_unique<int16_t[]>(sample->sampleCount);
+		std::memset(sample->data16.get(), 0, sample->dataSize);
+		sample->buffer = sample->data16.get();
+	}
+
+	lsamples.push_back(sample);
+	ch.playing_sample = sample;
+
+	ch.state             = SoundState::Playing;
+	ch.loaded_sample_num = sample->num;
+	ch.looping           = 1;
+	ch.pos_q32           = 0;
+	// Default step: buffer is at SYS_FREQ, mixer reads at SYS_FREQ -> no rate conversion.
+	// Call stream_set_native_rate to override (e.g. for a 96 kHz chip emulator).
+	ch.step_q32          = (1ull << 32);
+	ch.stream_type       = static_cast<int>(SoundState::Stream);
+	// Voice-path positional state doesn't apply to streams; clear it so a
+	// later transition back to voice path starts from a clean baseline.
+	ch.is_positional     = false;
+	ch.world_x = ch.world_y = 0.0f;
 
 	audio_list.push_back(chanid);
 }
@@ -1318,16 +1693,12 @@ void stream_start(int chanid, int stream, int bits, int frame_rate)
 
 void stream_stop(int chanid, int /*stream*/)
 {
-	// FIX: Acquire lock FIRST, then modify all state atomically
+	if (chanid < 0 || chanid >= MAX_CHANNELS) {
+		LOG_ERROR("stream_stop: invalid channel %d", chanid);
+		return;
+	}
 	std::scoped_lock lock(audioMutex);
-	
-	auto& ch = channel[chanid];
-	ch.state = SoundState::Stopped;
-	ch.loaded_sample_num = -1;
-	ch.looping = 0;
-	ch.pos = 0;
-
-	audio_list.remove(chanid);
+	stop_channel_locked(chanid);
 }
 
 void stream_update(int chanid, short* data)
@@ -1349,7 +1720,7 @@ void stream_update(int chanid, unsigned char* data)
 	std::scoped_lock lock(audioMutex);
 	auto& ch = channel[chanid];
 	if (ch.state == SoundState::Playing &&
-	    ch.loaded_sample_num >= 0 && 
+	    ch.loaded_sample_num >= 0 &&
 	    ch.loaded_sample_num < static_cast<int>(lsamples.size())) {
 		auto& sample = lsamples[ch.loaded_sample_num];
 		if (sample && sample->data8) {
@@ -1358,17 +1729,79 @@ void stream_update(int chanid, unsigned char* data)
 	}
 }
 
+// -----------------------------------------------------------------------------
+// stream_set_native_rate
+// Resize a stream's buffer to native_rate frames-per-second (instead of SYS_FREQ)
+// and set the channel's resampling step so the mix loop does source->output rate
+// conversion inline. New buffer holds the same duration (1 / fps seconds) as
+// before, just at the new rate.
+//
+// After this call, the chip emulator should write native_rate / fps frames per
+// stream_update, and the mixer will interpolate them to SYS_FREQ on the fly.
+// -----------------------------------------------------------------------------
+void stream_set_native_rate(int chanid, int native_rate)
+{
+	if (chanid < 0 || chanid >= MAX_CHANNELS || native_rate <= 0 || SYS_FREQ <= 0) {
+		LOG_ERROR("stream_set_native_rate: invalid args (chanid=%d, rate=%d)", chanid, native_rate);
+		return;
+	}
+	std::scoped_lock lock(audioMutex);
+
+	auto& ch = channel[chanid];
+	if (ch.stream_type != static_cast<int>(SoundState::Stream) || !ch.playing_sample) {
+		LOG_ERROR("stream_set_native_rate: channel %d is not a stream", chanid);
+		return;
+	}
+
+	auto& sample = ch.playing_sample;
+	const uint32_t channels = std::max<uint32_t>(1, sample->fx.nChannels);
+	const uint32_t old_rate = std::max<uint32_t>(1, sample->fx.nSamplesPerSec);
+	const uint32_t old_frames = sample->sampleCount / channels;
+
+	// Preserve duration: new_frames / native_rate == old_frames / old_rate.
+	uint32_t new_frames = static_cast<uint32_t>(
+		(static_cast<uint64_t>(old_frames) * static_cast<uint64_t>(native_rate)) / old_rate);
+	if (new_frames == 0) new_frames = 1;
+
+	const uint32_t bits = sample->fx.wBitsPerSample;
+	const uint32_t new_sample_count = new_frames * channels;
+	const uint32_t new_data_size = new_sample_count * (bits / 8);
+
+	// Reallocate the PCM buffer at the new size.
+	if (bits == 8) {
+		sample->data8 = std::make_unique<uint8_t[]>(new_data_size);
+		std::memset(sample->data8.get(), 0, new_data_size);
+		sample->buffer = sample->data8.get();
+		sample->data16.reset();
+	} else {
+		sample->data16 = std::make_unique<int16_t[]>(new_sample_count);
+		std::memset(sample->data16.get(), 0, new_data_size);
+		sample->buffer = sample->data16.get();
+		sample->data8.reset();
+	}
+
+	sample->fx.nSamplesPerSec  = static_cast<DWORD>(native_rate);
+	sample->fx.nAvgBytesPerSec = sample->fx.nSamplesPerSec * sample->fx.nBlockAlign;
+	sample->sampleCount = new_sample_count;
+	sample->dataSize    = new_data_size;
+
+	// Reset position and set the resampling step (source frames per output frame).
+	ch.pos_q32  = 0;
+	ch.step_q32 = (static_cast<uint64_t>(native_rate) << 32) / static_cast<uint64_t>(SYS_FREQ);
+
+	LOG_INFO("stream_set_native_rate: chan %d -> %d Hz, buffer %u frames (step_q32=0x%llX)",
+		chanid, native_rate, new_frames, static_cast<unsigned long long>(ch.step_q32));
+}
+
 void restore_audio()
 {
-	// last_master_vol is linear (0..1). Convert to 0..100 percent.
-	int percent = static_cast<int>(std::lround(std::clamp(last_master_vol, 0.0f, 1.0f) * 100.0f));
-	mixer_set_master_volume(percent);
+	mixer_set_master_volume(last_master_pct);
 	sound_paused = false;
 }
 
 void pause_audio()
 {
-	last_master_vol = mixer_get_master_volume();
+	last_master_pct = g_master_pct;
 	mixer_set_master_volume(0);
 	sound_paused = true;
 #ifdef USE_VUMETER
@@ -1436,7 +1869,7 @@ std::string numToName(int num)
 {
 	std::scoped_lock lock(audioMutex);
 	for (const auto& sample : lsamples) {
-		if (sample->num == num) {
+		if (sample && sample->num == num) {
 			return sample->name;
 		}
 	}
@@ -1448,22 +1881,54 @@ int nameToNum(const std::string& name)
 {
 	std::scoped_lock lock(audioMutex);
 	for (const auto& sample : lsamples) {
-		if (sample->name == name) {
+		if (sample && sample->name == name) {
 			return sample->num;
 		}
 	}
 	return -1;
 }
 
+// Now that sample_remove can null slots, num and index are identical (the
+// invariant is preserved by never erasing). This is kept for API compat.
 int snumlookup(int snum)
 {
 	std::scoped_lock lock(audioMutex);
-	for (size_t i = 0; i < lsamples.size(); ++i) {
-		if (lsamples[i]->num == snum) {
-			return static_cast<int>(i);
-		}
+	if (snum < 0 || snum >= static_cast<int>(lsamples.size())) {
+		LOG_ERROR("Sample number not found in lookup: %d", snum);
+		return -1;
 	}
-	LOG_ERROR("Sample number not found in lookup: %d", snum);
+	if (!lsamples[snum]) {
+		LOG_ERROR("Sample number %d has been removed", snum);
+		return -1;
+	}
+	return snum;
+}
+
+// -----------------------------------------------------------------------------
+// mixer_alloc_channel
+// Find the lowest free channel in [low, high). "Free" = no XAudio2 voice, no
+// pinned playing_sample, not currently in the software mix list. The mutex
+// protects the lookup against concurrent state changes, but the gap between
+// returning the channel index and the caller's stream_start / sample_start
+// is unsynchronized -- callers should allocate from one thread.
+// -----------------------------------------------------------------------------
+int mixer_alloc_channel(int low, int high)
+{
+	if (low < 0) low = 0;
+	if (high > MAX_CHANNELS) high = MAX_CHANNELS;
+	if (low >= high) return -1;
+
+	std::scoped_lock lock(audioMutex);
+	for (int i = low; i < high; ++i) {
+		const auto& ch = channel[i];
+		if (ch.voice) continue;          // voice-path slot in use
+		if (ch.playing_sample) continue; // mixer-path slot in use
+		// Defensive: also exclude anything that's currently in the mix list.
+		if (std::find(audio_list.begin(), audio_list.end(), i) != audio_list.end())
+			continue;
+		return i;
+	}
+	LOG_ERROR("mixer_alloc_channel: no free channel in [%d, %d)", low, high);
 	return -1;
 }
 
@@ -1560,15 +2025,12 @@ void mixer_reset_vu()
 }
 #endif
 
-//
-// XAUDIO2 Buffer Section.
-//
-
 void mixer_set_master_volume(int volumePercent)
 {
 	volumePercent = std::clamp(volumePercent, 0, 100);
+	g_master_pct = volumePercent;
 	const float amplitude = VolumePercentToLinear(volumePercent);
-	if (pMasterVoice) pMasterVoice->SetVolume(amplitude);
+	if (g_backend) g_backend->SetMasterVolume(amplitude);
 
 	float dB = (amplitude > 0.0f) ? 20.0f * log10f(amplitude) : -1000.0f;
 	LOG_INFO("Master volume: %d%% -> %.2f dB -> %.6f linear", volumePercent, dB, amplitude);
@@ -1576,143 +2038,59 @@ void mixer_set_master_volume(int volumePercent)
 
 float mixer_get_master_volume()
 {
-	float vol = 1.0f;
-	if (pMasterVoice) pMasterVoice->GetVolume(&vol);
-	return vol;
+	return g_backend ? g_backend->GetMasterVolume() : 1.0f;
+}
+
+int mixer_get_master_volume_percent()
+{
+	return g_master_pct;
+}
+
+int mixer_get_output_channels()
+{
+	return g_backend ? static_cast<int>(g_backend->OutputChannelCount()) : 0;
+}
+
+uint32_t mixer_get_output_channel_mask()
+{
+	return g_backend ? g_backend->OutputChannelMask() : 0u;
 }
 
 void samples_stop_all()
 {
 	std::scoped_lock lock(audioMutex);
 	for (int i = 0; i < MAX_CHANNELS; ++i) {
-		auto& ch = channel[i];
-		if (ch.voice) {
-			ch.voice->Stop();
-			ch.voice->FlushSourceBuffers();
-		}
-		ch.isPlaying = false;
-		ch.state = SoundState::Stopped;
-		ch.looping = 0;
-		ch.pos = 0;
+		stop_channel_locked(i);
 	}
+	// stop_channel_locked removed each chanid from audio_list individually;
+	// clear() is cheap insurance against any membership drift.
 	audio_list.clear();
 }
 
-BYTE* GetNextBuffer()
-{
-	return audioBuffers[currentBufferIndex];
-}
-
-HRESULT xaudio2_init(int rate, int fps)  // <<< integer FPS
-{
-	HRESULT hr;
-
-	UpdatesPerSecond = fps;
-	SamplesPerSecond = rate;
-	SamplesPerBuffer = SamplesPerSecond / UpdatesPerSecond;      // fixed integer frames per update
-	BufferDurationMs = 1000 / UpdatesPerSecond;
-
-	const int remainder = SamplesPerSecond % UpdatesPerSecond;
-	if (remainder != 0) {
-		LOG_INFO("xaudio2_init: %d Hz / %d FPS leaves remainder %d (using %d frames per update)",
-			SamplesPerSecond, UpdatesPerSecond, remainder, SamplesPerBuffer);
-	}
-
-	HRESULT hrCI = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-	if (hrCI == S_OK || hrCI == S_FALSE) g_comInitLocal = true;
-
-	HR(XAudio2Create(&pXAudio2, 0, XAUDIO2_DEFAULT_PROCESSOR));
-	HR(pXAudio2->CreateMasteringVoice(&pMasterVoice, XAUDIO2_DEFAULT_CHANNELS, SamplesPerSecond, 0, 0));
-	// I am defaulting to 80 percent here.
-	pMasterVoice->SetVolume(.80f);
-
-	// Stereo 16-bit PCM source voice
-	WAVEFORMATEX wf = {};
-	wf.wFormatTag = WAVE_FORMAT_PCM;
-	wf.nChannels = 2;
-	wf.nSamplesPerSec = SamplesPerSecond;
-	wf.wBitsPerSample = 16;
-	wf.nBlockAlign = wf.nChannels * wf.wBitsPerSample / 8; // 4 bytes per stereo frame
-	wf.nAvgBytesPerSec = wf.nSamplesPerSec * wf.nBlockAlign;
-	wf.cbSize = 0;
-
-	hr = pXAudio2->CreateSourceVoice(&pSourceVoice, &wf, XAUDIO2_VOICE_NOPITCH,
-		XAUDIO2_DEFAULT_FREQ_RATIO, nullptr, nullptr, nullptr);
-	if (FAILED(hr)) {
-		LOG_INFO("Failed to create source voice: %#X", hr);
-		return hr;
-	}
-
-	LOG_INFO("Source Voice OK. SamplesPerBuffer=%d stereo frames (~%d ms per update)",
-		SamplesPerBuffer, BufferDurationMs);
-
-	// Allocate ring buffers: frames * 4 bytes
-	bufferSize = SamplesPerBuffer * wf.nBlockAlign;
-	for (int i = 0; i < NUM_BUFFERS; ++i) {
-		audioBuffers[i] = new BYTE[bufferSize];
-		std::memset(audioBuffers[i], 0, bufferSize);
-	}
-
-	HR(pSourceVoice->Start());
-	currentBufferIndex = 0;
-	return S_OK;
-}
-
-HRESULT xaudio2_update(BYTE* buffera, DWORD bufferLength)
-{
-	if (!pSourceVoice) return E_FAIL;
-	if (bufferLength == 0) return S_OK;
-
-	// Check voice state to prevent overwriting data currently being played
-	XAUDIO2_VOICE_STATE state;
-	pSourceVoice->GetState(&state);
-
-	// If we have too many buffers queued, the game loop is running too fast.
-	// We should drop this frame or wait. For a game engine, dropping/skipping
-	// update is usually better than stalling the main thread.
-	if (state.BuffersQueued >= NUM_BUFFERS - 1) {
-		LOG_INFO("Audio warning: Ring buffer full, skipping update to prevent overwrite.");
-		return S_OK;
-	}
-
-	BYTE* payload = buffera ? buffera : audioBuffers[currentBufferIndex];
-
-	// Safety clamp
-	if (!buffera && bufferLength > bufferSize) {
-		bufferLength = (DWORD)bufferSize;
-	}
-
-	XAUDIO2_BUFFER xb = {};
-	xb.AudioBytes = bufferLength;
-	xb.pAudioData = payload;
-
-	HRESULT hr = pSourceVoice->SubmitSourceBuffer(&xb);
-	if (FAILED(hr)) {
-		LOG_ERROR("xaudio2_update: SubmitSourceBuffer failed, hr=0x%08X", (unsigned)hr);
-		return hr;
-	}
-
-	// Only advance index if submission succeeded
-	currentBufferIndex = (currentBufferIndex + 1) % NUM_BUFFERS;
-	return hr;
-}
-
-void xaudio2_stop()
-{
-	if (pSourceVoice) { pSourceVoice->DestroyVoice(); pSourceVoice = nullptr; }
-	if (pMasterVoice) { pMasterVoice->DestroyVoice(); pMasterVoice = nullptr; }
-	if (pXAudio2) { pXAudio2->Release();          pXAudio2 = nullptr; }
-
-	for (int i = 0; i < NUM_BUFFERS; ++i) {
-		delete[] audioBuffers[i];
-		audioBuffers[i] = nullptr;
-	}
-	if (g_comInitLocal) { CoUninitialize(); g_comInitLocal = false; }
-}
-
-// End of Xaudio
-
 #pragma warning(disable : 4018)
+
+// ------------------ small helpers for MP3 detection -------------------------------
+// These are only used onthe off chance an MP3 doesn't strt with "MP3" in the ID tag.
+// ----------------------------------------------------------------------------------
+#ifdef MP3_DECODE
+static inline bool has_id3v2(const unsigned char* p, size_t n) {
+	return (n >= 10 && p[0] == 'I' && p[1] == 'D' && p[2] == '3');
+}
+
+static inline size_t skip_id3v2(const unsigned char* p, size_t n) {
+	if (!has_id3v2(p, n)) return 0;
+	// ID3v2 header is 10 bytes; size is syncsafe at bytes 6..9
+	if (n < 10) return 0;
+	size_t sz = ((p[6] & 0x7F) << 21) | ((p[7] & 0x7F) << 14) | ((p[8] & 0x7F) << 7) | (p[9] & 0x7F);
+	return (sz > n - 10) ? 10 : (10 + sz); // guard overflow
+}
+
+static inline bool looks_like_mpeg_frame(const unsigned char* p, size_t n) {
+	// Minimal sync: 0xFFF sync bits plus version/layer not all invalid
+	if (n < 2) return false;
+	return (p[0] == 0xFF) && ((p[1] & 0xE0) == 0xE0);
+}
+#endif
 
 // =====================================================================
 // WAV
@@ -1762,6 +2140,22 @@ int processWaveDataBuffer(const unsigned char* buffer, size_t bufferSize, SAMPLE
 			std::memcpy(&audioFile->fx.nAvgBytesPerSec, buffer + pos + 8, sizeof(uint32_t));
 			std::memcpy(&audioFile->fx.nBlockAlign, buffer + pos + 12, sizeof(uint16_t));
 			std::memcpy(&audioFile->fx.wBitsPerSample, buffer + pos + 14, sizeof(uint16_t));
+
+			// Reject anything that isn't plain integer PCM. Other tags
+			// (WAVE_FORMAT_IEEE_FLOAT=3, WAVE_FORMAT_EXTENSIBLE=0xFFFE,
+			// WAVE_FORMAT_ALAW=6, WAVE_FORMAT_MULAW=7, ADPCM variants, etc.)
+			// would silently feed non-PCM bytes through the 8/16-bit code paths
+			// and produce noise. Callers should pre-convert these files.
+			if (audioFile->fx.wFormatTag != WAVE_FORMAT_PCM) {
+				LOG_ERROR("WAV: unsupported wFormatTag 0x%04X (only WAVE_FORMAT_PCM/1 is supported)",
+					audioFile->fx.wFormatTag);
+				return -1;
+			}
+			if (audioFile->fx.nChannels < 1 || audioFile->fx.nChannels > 2) {
+				LOG_ERROR("WAV: unsupported channel count %u (only mono/stereo supported)",
+					audioFile->fx.nChannels);
+				return -1;
+			}
 			haveFmt = true;
 
 			pos += chunkSize;
@@ -1821,6 +2215,80 @@ int processWaveDataBuffer(const unsigned char* buffer, size_t bufferSize, SAMPLE
 }
 
 // =====================================================================
+// MP3
+// =====================================================================
+#ifdef MP3_DECODE
+int processMp3DataBuffer(const unsigned char* buffer, size_t bufferSize, SAMPLE* audioFile) {
+	mp3dec_t mp3d;
+	mp3dec_file_info_t info{};
+	mp3dec_init(&mp3d);
+
+	if (mp3dec_load_buf(&mp3d, buffer, bufferSize, &info, nullptr, nullptr) != 0) {
+		LOG_ERROR("MP3 decode failed.");
+		return -1;
+	}
+
+	audioFile->fx.wFormatTag = WAVE_FORMAT_PCM;
+	audioFile->fx.nChannels = info.channels;
+	audioFile->fx.nSamplesPerSec = info.hz;
+	audioFile->fx.wBitsPerSample = 16;
+	audioFile->fx.nBlockAlign = info.channels * 2;
+	audioFile->fx.nAvgBytesPerSec = info.hz * audioFile->fx.nBlockAlign;
+	audioFile->fx.cbSize = 0; // important for PCM
+
+	size_t sampleCount = info.samples; // total interleaved samples
+	audioFile->dataSize = sampleCount * sizeof(int16_t);
+	audioFile->data16 = std::make_unique<int16_t[]>(sampleCount);
+	std::memcpy(audioFile->data16.get(), info.buffer, audioFile->dataSize);
+	audioFile->buffer = audioFile->data16.get();
+	audioFile->sampleCount = static_cast<uint32_t>(sampleCount);
+
+	free(info.buffer);
+	return 0;
+}
+#endif
+
+// =====================================================================
+// OGG
+// =====================================================================
+#ifdef OGG_DECODE
+int processOggDataBuffer(const unsigned char* buffer, size_t bufferSize, SAMPLE* audioFile) {
+	int error = 0;
+	stb_vorbis* vorbis = stb_vorbis_open_memory(buffer, static_cast<int>(bufferSize), &error, nullptr);
+	if (!vorbis || error) {
+		LOG_ERROR("OGG decode failed.");
+		return -1;
+	}
+
+	stb_vorbis_info info = stb_vorbis_get_info(vorbis);
+
+	audioFile->fx.wFormatTag = WAVE_FORMAT_PCM;
+	audioFile->fx.nChannels = info.channels;
+	audioFile->fx.nSamplesPerSec = info.sample_rate;
+	audioFile->fx.wBitsPerSample = 16;
+	audioFile->fx.nBlockAlign = info.channels * 2;
+	audioFile->fx.nAvgBytesPerSec = info.sample_rate * audioFile->fx.nBlockAlign;
+	audioFile->fx.cbSize = 0;
+
+	// Total frames (per-channel samples), then convert to interleaved sample count
+	const int totalFrames = stb_vorbis_stream_length_in_samples(vorbis);
+	const size_t totalSamples = static_cast<size_t>(totalFrames) * info.channels;
+
+	audioFile->dataSize = totalSamples * sizeof(int16_t);
+	audioFile->data16 = std::make_unique<int16_t[]>(totalSamples);
+	audioFile->buffer = audioFile->data16.get();
+	audioFile->sampleCount = static_cast<uint32_t>(totalSamples);
+
+	// IMPORTANT: pass "frames" (per-channel count), not interleaved total samples
+	stb_vorbis_get_samples_short_interleaved(vorbis, info.channels,
+		audioFile->data16.get(), totalFrames);
+
+	stb_vorbis_close(vorbis);
+	return 0;
+}
+#endif
+
+// =====================================================================
 // Top-level loader: returns 1 on success, 0 on failure
 // =====================================================================
 int WavLoadFileInternal(unsigned char* buffer, int fileSize, SAMPLE* audioFile)
@@ -1834,7 +2302,29 @@ int WavLoadFileInternal(unsigned char* buffer, int fileSize, SAMPLE* audioFile)
 		return (processWaveDataBuffer(p, n, audioFile) == 0) ? 1 : 0;
 	}
 
-	LOG_ERROR("Unknown audio format (no RIFF/WAVE)");
+	// 2) OGG?
+#ifdef OGG_DECODE
+	if (n >= 4 && std::memcmp(p, "OggS", 4) == 0) {
+		LOG_INFO("Processing as OGG...");
+		return (processOggDataBuffer(p, n, audioFile) == 0) ? 1 : 0;
+	}
+#endif
+
+	// 3) MP3? (ID3 or raw MPEG frames)
+#ifdef MP3_DECODE
+	{
+		size_t off = skip_id3v2(p, n);
+		const unsigned char* q = (off < n) ? (p + off) : p;
+		const size_t m = (off < n) ? (n - off) : n;
+
+		if ((n >= 3 && std::memcmp(p, "ID3", 3) == 0) || looks_like_mpeg_frame(q, m)) {
+			LOG_INFO("Processing as MP3...");
+			return (processMp3DataBuffer(p, n, audioFile) == 0) ? 1 : 0;
+		}
+	}
+#endif
+
+	LOG_ERROR("Unknown audio format (no RIFF/WAVE, no OggS, no ID3/MPEG sync)");
 	return 0;
 }
 
@@ -1893,23 +2383,29 @@ static inline void linear_into_core(const int16_t* in, int32_t inN,
 	if (inN == 1) { std::fill(out, out + outN, in[0]); return; }
 	if (outN == 1) { out[0] = in[0]; return; }
 
-	const double scale = static_cast<double>(inN - 1) / static_cast<double>(outN - 1);
+	// 32.32 fixed-point position. step is chosen so that pos = i * step
+	// reaches (inN-1) << 32 at i = outN-1 (modulo integer-division rounding),
+	// giving the same endpoint-aligned mapping as the float reference.
+	// Linear interpolation between two int16 values is provably in int16
+	// range, so no saturation is needed; rounding is half-LSB-up.
+	const uint64_t step = (static_cast<uint64_t>(inN - 1) << 32)
+	                      / static_cast<uint64_t>(outN - 1);
+	uint64_t pos = 0;
 
+	const int32_t last_idx = inN - 1;
 	for (int32_t i = 0; i < outN; ++i) {
-		const double src_pos = static_cast<double>(i) * scale;
-		int32_t idx = static_cast<int32_t>(src_pos);
-		double  frac = src_pos - static_cast<double>(idx);
-
-		if (idx >= inN - 1) { idx = inN - 2; frac = 1.0; }
-
-		const int16_t a = in[idx + 0];
-		const int16_t b = in[idx + 1];
-
-		const int32_t a32 = static_cast<int32_t>(a);
-		const int32_t diff = static_cast<int32_t>(b) - a32;
-		const double  y = static_cast<double>(a32) + static_cast<double>(diff) * frac;
-
-		out[i] = saturate_i16(static_cast<int32_t>(std::llround(y)));
+		const int32_t idx = static_cast<int32_t>(pos >> 32);
+		if (idx >= last_idx) {
+			out[i] = in[last_idx];
+		} else {
+			// Q15 fraction = top 15 bits of the 32 fractional bits of pos.
+			const int32_t frac_q15 = static_cast<int32_t>((pos >> 17) & 0x7FFF);
+			const int32_t a = in[idx];
+			const int32_t b = in[idx + 1];
+			const int32_t scaled = (b - a) * frac_q15 + (1 << 14);
+			out[i] = static_cast<int16_t>(a + (scaled >> 15));
+		}
+		pos += step;
 	}
 }
 
@@ -2030,23 +2526,27 @@ void linear_interpolation_8(const uint8_t* input,
 	if (input_size == 1) { std::fill(output, output + output_size, input[0]); return; }
 	if (output_size == 1) { output[0] = input[0]; return; }
 
-	const double scale = static_cast<double>(input_size - 1)
-		/ static_cast<double>(output_size - 1);
+	// 32.32 fixed-point position; see linear_into_core for the rationale.
+	// Interpolating between two uint8 values produces a value in [0, 255],
+	// so no clamping is needed; rounding is half-LSB-up via the +(1<<14)
+	// offset before the Q15 shift.
+	const uint64_t step = (static_cast<uint64_t>(input_size - 1) << 32)
+	                      / static_cast<uint64_t>(output_size - 1);
+	uint64_t pos = 0;
 
+	const int last_idx = input_size - 1;
 	for (int i = 0; i < output_size; ++i) {
-		const double src_pos = static_cast<double>(i) * scale;
-		int idx = static_cast<int>(src_pos);
-		double frac = src_pos - static_cast<double>(idx);
-
-		if (idx >= input_size - 1) { idx = input_size - 2; frac = 1.0; }
-
-		const int a = input[idx + 0];
-		const int b = input[idx + 1];
-		const double y = static_cast<double>(a) + (static_cast<double>(b) - a) * frac;
-
-		int yi = static_cast<int>(std::llround(y));
-		yi = std::clamp(yi, 0, 255);
-		output[i] = static_cast<uint8_t>(yi);
+		const int idx = static_cast<int>(pos >> 32);
+		if (idx >= last_idx) {
+			output[i] = input[last_idx];
+		} else {
+			const int32_t frac_q15 = static_cast<int32_t>((pos >> 17) & 0x7FFF);
+			const int32_t a = input[idx];
+			const int32_t b = input[idx + 1];
+			const int32_t scaled = (b - a) * frac_q15 + (1 << 14);
+			output[i] = static_cast<uint8_t>(a + (scaled >> 15));
+		}
+		pos += step;
 	}
 }
 

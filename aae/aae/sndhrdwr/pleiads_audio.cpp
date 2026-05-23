@@ -21,7 +21,8 @@
 #include <cstdlib>
 #include <algorithm>
 
-static const int CUSTOM_SND_CHANNEL = 6;
+// Mixer channel allocated at sh_start out of the chip-stream range.
+static int CUSTOM_SND_CHANNEL = -1;
 #define VMIN    0
 #define VMAX    32767
 
@@ -486,13 +487,23 @@ int pleiads_audio_sh_start(void)
 
     snd.output_buffer = (int16_t*)std::malloc(snd.buffer_len * sizeof(int16_t));
     std::memset(snd.output_buffer, 0, snd.buffer_len * sizeof(int16_t));
+
+    CUSTOM_SND_CHANNEL = mixer_alloc_channel(MIXER_CHIP_STREAM_RANGE_LOW, MIXER_FIRST_RESERVED_CHANNEL);
+    if (CUSTOM_SND_CHANNEL < 0) {
+        LOG_ERROR("pleiads_audio_sh_start: no free mixer channel in chip stream range");
+        std::free(snd.output_buffer); snd.output_buffer = nullptr;
+        return 1;
+    }
     stream_start(CUSTOM_SND_CHANNEL, 0, 16, fps);
     return 0;
 }
 
 void pleiads_audio_sh_stop(void)
 {
-    stream_stop(CUSTOM_SND_CHANNEL, 0);
+    if (CUSTOM_SND_CHANNEL >= 0) {
+        stream_stop(CUSTOM_SND_CHANNEL, 0);
+        CUSTOM_SND_CHANNEL = -1;
+    }
     if (snd.poly18) std::free(snd.poly18);
     if (snd.output_buffer) std::free(snd.output_buffer);
     if (snd.stream_buffer_ptr) delete[] snd.stream_buffer_ptr;
@@ -501,7 +512,7 @@ void pleiads_audio_sh_stop(void)
 
 void pleiads_audio_sh_update(void)
 {
-    if (!snd.output_buffer) return;
+    if (!snd.output_buffer || CUSTOM_SND_CHANNEL < 0) return;
     if (snd.sample_pos < snd.buffer_len)
         audio_render(snd.output_buffer + snd.sample_pos, snd.buffer_len - snd.sample_pos);
     snd.sample_pos = 0;

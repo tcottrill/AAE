@@ -143,7 +143,13 @@ int DAC_sh_start(const struct DACinterface *intf_in)
     for (int i = 0; i < intf->num; i++)
     {
         dac_output[i]    = 0;
-        dac_channel[i]   = i;   /* use chip index as chanid, same as aae_pokey */
+
+        /* Allocate a mixer channel out of the chip-stream range. */
+        dac_channel[i] = mixer_alloc_channel(MIXER_CHIP_STREAM_RANGE_LOW, MIXER_FIRST_RESERVED_CHANNEL);
+        if (dac_channel[i] < 0) {
+            LOG_DEBUG("DAC #%d: no free mixer channel in chip stream range", i);
+            return 1;
+        }
 
         dac_frame_buf[i] = (int16_t *)malloc(dac_frame_len * sizeof(int16_t));
         if (!dac_frame_buf[i])
@@ -171,7 +177,10 @@ void DAC_sh_stop(void)
 
     for (int i = 0; i < intf->num; i++)
     {
-        stream_stop(dac_channel[i], 0);
+        if (dac_channel[i] >= 0) {
+            stream_stop(dac_channel[i], 0);
+            dac_channel[i] = -1;
+        }
 
         if (dac_frame_buf[i])
         {
@@ -179,7 +188,6 @@ void DAC_sh_stop(void)
             dac_frame_buf[i] = nullptr;
         }
         dac_output[i]  = 0;
-        dac_channel[i] = -1;
     }
 
     intf = nullptr;
@@ -199,7 +207,7 @@ void DAC_sh_update(void)
 
     for (int i = 0; i < intf->num; i++)
     {
-        if (!dac_frame_buf[i])
+        if (!dac_frame_buf[i] || dac_channel[i] < 0)
             continue;
 
         /* Fill the frame buffer with the current DC output level */

@@ -358,6 +358,12 @@
     <ClCompile Include="aae\aae_video\mame_vector.cpp">
       <Filter>Source Files\aae\aae_video</Filter>
     </ClCompile>
+    <ClCompile Include="system\audio\audio_3d.cpp">
+      <Filter>Source Files\system\audio</Filter>
+    </ClCompile>
+    <ClCompile Include="system\audio\xaudio2_backend.cpp">
+      <Filter>Source Files\system\audio</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="resource.h">
@@ -788,6 +794,12 @@
     </ClInclude>
     <ClInclude Include="aae\aae_video\mame_vector.h">
       <Filter>Source Files\aae\aae_video</Filter>
+    </ClInclude>
+    <ClInclude Include="system\audio\audio_3d.h">
+      <Filter>Source Files\system\audio</Filter>
+    </ClInclude>
+    <ClInclude Include="system\audio\xaudio2_backend.h">
+      <Filter>Source Files\system\audio</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
