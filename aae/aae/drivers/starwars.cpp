@@ -27,8 +27,6 @@
 
 int catch_nextBranch;
 
-extern int m6809_slapstic;
-
 static UINT8 nvram[0x100];
 
 int bank1 = 0x06000;
@@ -118,9 +116,12 @@ READ_HANDLER(esb_slapstic_r)
 {
 	int result = slapstic_base[address];
 
-	//LOG_INFO("Slapstic Read Called, CPU %x, PC: %04x, PPC %04x, OPCODE: %02X", get_active_cpu(),m_cpu_6809[0]->get_pc(), m_cpu_6809[0]->ppc, this_opcode);
+	//LOG_INFO("Slapstic Read Called, CPU %x, PC: %04x, PPC %04x, OPCODE: %02X", get_active_cpu(),m_cpu_6809[0]->get_pc(), m_cpu_6809[0]->get_ppc(), this_opcode);
 
-	if (slapstic_en) bank_switch_read(address, result);
+	// Only the final DATA read of an opcode drives the slapstic, never the
+	// instruction-stream fetches (opcode / postbyte / immediate). The core now
+	// reports the access kind per-CPU, replacing the old global 'slapstic_en'.
+	if (!m_cpu_6809[0]->in_opcode_fetch()) bank_switch_read(address, result);
 
 	return result;
 }
@@ -129,7 +130,7 @@ WRITE_HANDLER(esb_slapstic_w)
 {
 	int new_bank = 0;
 
-	if (slapstic_en)
+	if (!m_cpu_6809[0]->in_opcode_fetch())
 		new_bank = slapstic_tweak(address);
 
 	/* update for the new bank */
@@ -156,7 +157,11 @@ static int esb_setopbase(int address)
 	 /* if we're jumping into the slapstic region, tweak the new PC */
 	if ((address & 0xe000) == 0x8000)
 	{
-		esb_slapstic_r(address & 0x1fff, 0);
+		// This fires from the core's PC-change hook, where in_opcode_fetch() is
+		// still true, so call bank_switch_read directly (the read gate would
+		// otherwise suppress it). This is the region-entry equivalent of the old
+		// change_pc() forcing slapstic_en=1 before the setopbase call.
+		bank_switch_read(address & 0x1fff, 0);
 
 		//LOG_INFO("Slapstick in: PrevPC: %04x, address: %04x address adj: %04x, bank %d opcode %x", prevpc, address, (address & 0x1fff), current_bank, m_cpu_6809[0]->get_last_ireg());
 		/* make sure we catch the next branch as well */
@@ -171,7 +176,8 @@ static int esb_setopbase(int address)
 		if (prevpc != 0x8080 && prevpc != 0x8090 && prevpc != 0x80a0 && prevpc != 0x80b0)
 		{
 			//LOG_INFO("Calling esb_slapstic_read from esb_setopbase jump out");
-			esb_slapstic_r(prevpc & 0x1fff, 0);
+			// Region-exit: force the bank switch directly (see note above).
+			bank_switch_read(prevpc & 0x1fff, 0);
 		}
 	}
 
@@ -330,7 +336,6 @@ int init_esb()
 	slapstic_init(101);
 	slapstic_source = &memory_region(REGION_CPU1)[0x14000];
 	slapstic_base = &memory_region(REGION_CPU1)[0x08000];
-	m6809_slapstic = 1;
 	cpu_setOPbaseoverride(esb_setopbase);
 
 	slapstic_reset();

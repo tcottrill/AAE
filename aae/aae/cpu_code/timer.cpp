@@ -10,7 +10,7 @@
 #include <optional>
 #include <algorithm>
 
-#define VERBOSE 0
+#define VERBOSE 1
 
 double cycles_to_sec[MAX_CPU + 1]{};
 double sec_to_cycles[MAX_CPU + 1]{};

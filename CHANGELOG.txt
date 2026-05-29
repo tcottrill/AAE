@@ -324,6 +324,17 @@ Updated all drivers to work with the new code. If I missed any let me know.
 Fixed and TESTED the Windows 7 build. It works on my Cabinet with Windows 7 64 Bit SP1. You MUST have direct9 SDK and proper OpenGL 3.3+ (preferably 4.2+) OpenGL drivers on a newer ATI or NVidia Video Card. AND WINDOWS 7 64 BIT!!!!
 Releases will be slower, I have to do this crazy thing of having to work to make money, and that's taking priority!
 
+5/29/26
+Replaced John Butler's MAME 6809 core with a clean-room, non-MAME implementation that has Star Wars slapstic support built in as an add-on hook (no global state). Removed the global slapstic hack I had sprinkled all over the rest of the code as a result.
+
+Added a cpu_m68000 wrapper class around the Musashi engine. This let me remove all of the ad-hoc 68000 memory bridges, init code, and context juggling from cpu_control.cpp - the 68000 finally looks like the other CPU classes instead of being the odd one out. Encapsulation rule: no file outside cpu_m68000.{h,cpp} references Musashi directly. Should make swapping Musashi for my own 68000 core later a contained rewrite.
+
+Added the ability to reconfigure UI hotkeys (Cancel/Exit, Reset Machine, Open Menu, Toggle Throttle, Toggle FPS, Snapshot, menu navigation) through the in-game KEY CONFIG (GLOBAL) menu, alongside the existing game inputs. Bindings persist in the same default.cfg binary file. Joystick menu controls (A button, LS+Back, LS+Start) are still hardcoded for now - they need chord support in the menu poll loop, which is its own feature. Old default.cfg files should load cleanly (the new IPT_UI_* enum values were appended at the end to keep numeric IDs stable), but if you see weird key behavior after upgrading, delete default.cfg to reset to the compiled-in defaults.
+
+Fixed a bug where -ror / -rol command-line flags only worked if a game name was given on the command line, so "aae -ror" silently did nothing (the GUI never rotated). Moved the parsing to the global pre-game args loop so it works either way. Added -norotate while I was in there.
+
+Updated aae.ini and the INI / command-line reference docs with more explanation of the rotation values, the new UI key remap, and the [directory] section that was never documented. Cleaned up about 18 dead INI keys (kquit/kpause family, dead mouse/spinner placeholders, dotmask, accumlevel, screenburn, etc.) that no code has read for a long time.
+ 
 
 
 

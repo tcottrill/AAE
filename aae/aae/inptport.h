@@ -127,11 +127,59 @@ IPT_UI_PAUSE,
 //Added for AAE GUI ///////////////////
 //////////////////////////////////////////////////////
 IPT_EXIT,
-IPT_SPULSE
+IPT_SPULSE,
 //////////////////////////////////////////////////////
 //END of Additions.                ///////////////////
 //////////////////////////////////////////////////////
+
+// -----------------------------------------------------------------------------
+// AAE UI hotkey input types (added 2026-05-29 with the UI-key remap refactor).
+//
+// IMPORTANT: APPEND ONLY. Never insert new IPT_* values in the middle of this
+// enum. Saved cfg files (default.cfg and per-game .cfg) persist `type` as the
+// raw numeric enum value. Inserting in the middle shifts every subsequent
+// value and silently corrupts every existing cfg file on load — the loader
+// matches by number, finds the wrong row, and patches the wrong binding.
+// Always add new types to the end.
+//
+// These types are the user-rebindable UI hotkeys (Cancel/Exit, Reset Machine,
+// Open Menu, Toggle Throttle/FPS, Snapshot, menu navigation). They live in
+// inputport_defaults[] alongside game inputs and are rebound via the in-game
+// KEY CONFIG (GLOBAL) menu. See AAE-vs-MAME divergence note at the top of
+// inptport.cpp for the rationale.
+// -----------------------------------------------------------------------------
+IPT_UI_CANCEL,
+IPT_UI_RESET_MACHINE,
+IPT_UI_CONFIGURE,
+IPT_UI_THROTTLE,
+IPT_UI_SHOW_FPS,
+IPT_UI_SNAPSHOT,
+IPT_UI_LEFT,
+IPT_UI_RIGHT,
+IPT_UI_UP,
+IPT_UI_DOWN,
+IPT_UI_SELECT,
 };
+
+// True if 'type' is one of the global UI hotkey types. Used by menu.cpp to
+// emit a visual section divider between UI hotkeys and game inputs in the
+// KEY CONFIG (GLOBAL) screen.
+//
+// IPT_UI_PAUSE is checked by equality because it predates the rest of the
+// IPT_UI_* family and sits earlier in the enum (next to IPT_EXIT / IPT_SPULSE).
+// The new IPT_UI_* values added by the remap refactor are appended to the end
+// of the enum to preserve cfg-file backward compatibility — see the enum site
+// above and the append-only warning.
+inline bool is_ui_input_type(int type) {
+    return type == IPT_UI_PAUSE
+        || (type >= IPT_UI_CANCEL && type <= IPT_UI_SELECT);
+}
+
+// Returns the current keyboard binding for an input type with a row in
+// inputport_defaults[]. Returns OSD_KEY_NONE if no row found. Defined in
+// inptport.cpp. Used by os_input.cpp's pseudo_to_key_code() to route logical
+// UI keycodes through the user-rebindable table instead of a hardcoded switch.
+int input_type_key(int type);
 
 #define IPT_UNUSED     IPF_UNUSED
 

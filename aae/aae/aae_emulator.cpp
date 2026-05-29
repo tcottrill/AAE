@@ -495,10 +495,9 @@ void gameparse(int argc, char* argv[])
 		else if (arg == "-window")         win_override = 3;
 		else if (arg == "-nowindow")       win_override = 2;
 
-		// System rotation overrides (command line wins over INI)
-		else if (arg == "-ror")            rotation_override = ROT90;
-		else if (arg == "-rol")            rotation_override = ROT270;
-		else if (arg == "-norotate")       rotation_override = ROT0;
+		// Note: -ror / -rol / -norotate are parsed earlier in emulator_init()
+		// as global options so they work even without a game name on the
+		// command line (e.g. "aae -ror" rotates the GUI).
 
 		// Artwork layer overrides (command line wins over INI)
 		else if (arg == "-noartwork")      artwork_override = 0;
@@ -1584,6 +1583,21 @@ void emulator_init(int argc, char** argv)
 			config.debug = val;
 			debug_override = val;
 		}
+	}
+
+	// Parse rotation flags early as global options, so they work regardless of
+	// whether a game name was supplied on the command line.
+	//   aae -ror             => rotate right at the GUI
+	//   aae quantum -ror     => rotate right at the game
+	// Without this, -ror/-rol would only be picked up by gameparse(), which
+	// only runs when a known game name appears on the command line.
+	for (int i = 1; i < argc; ++i)
+	{
+		if (!argv[i]) continue;
+		const std::string arg = to_lowercase(argv[i]);
+		if      (arg == "-ror")      rotation_override = ROT90;
+		else if (arg == "-rol")      rotation_override = ROT270;
+		else if (arg == "-norotate") rotation_override = ROT0;
 	}
 
 	// Normalize all command-line args to lowercase before further parsing.

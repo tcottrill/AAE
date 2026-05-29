@@ -49,9 +49,6 @@
     <ClCompile Include="aae\cpu_code\ccpu.cpp">
       <Filter>Source Files\aae\cpu_code</Filter>
     </ClCompile>
-    <ClCompile Include="aae\cpu_code\cpu_6809.cpp">
-      <Filter>Source Files\aae\cpu_code</Filter>
-    </ClCompile>
     <ClCompile Include="aae\cpu_code\cpu_control.cpp">
       <Filter>Source Files\aae\cpu_code</Filter>
     </ClCompile>
@@ -364,6 +361,12 @@
     <ClCompile Include="system\audio\xaudio2_backend.cpp">
       <Filter>Source Files\system\audio</Filter>
     </ClCompile>
+    <ClCompile Include="aae\cpu_code\cpu_m6809.cpp">
+      <Filter>Source Files\aae\cpu_code</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\cpu_code\cpu_m68000.cpp">
+      <Filter>Source Files\aae\cpu_code</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="resource.h">
@@ -451,9 +454,6 @@
       <Filter>Source Files\aae\cpu_code</Filter>
     </ClInclude>
     <ClInclude Include="aae\cpu_code\cpu_6502.h">
-      <Filter>Source Files\aae\cpu_code</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\cpu_code\cpu_6809.h">
       <Filter>Source Files\aae\cpu_code</Filter>
     </ClInclude>
     <ClInclude Include="aae\cpu_code\cpu_control.h">
@@ -800,6 +800,12 @@
     </ClInclude>
     <ClInclude Include="system\audio\xaudio2_backend.h">
       <Filter>Source Files\system\audio</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\cpu_code\cpu_m6809.h">
+      <Filter>Source Files\aae\cpu_code</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\cpu_code\cpu_m68000.h">
+      <Filter>Source Files\aae\cpu_code</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

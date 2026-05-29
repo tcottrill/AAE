@@ -158,21 +158,31 @@
  * map to whatever they see fit
  * HJB 980812: added some more names and used higher values because
  * there were some clashes with Allegro's scancodes (see above)
+ *
+ * AAE 2026-05-29: the pseudo-keys below that have a live consumer (CANCEL,
+ * FAST_EXIT alias, RESET_MACHINE, CONFIGURE, THROTTLE, SHOW_FPS, SNAPSHOT,
+ * UI_LEFT/RIGHT/UP/DOWN/SELECT) are now resolved through a table lookup in
+ * pseudo_to_key_code() — see os_input.cpp. Each maps to an IPT_UI_* row in
+ * inputport_defaults[] (inptport.cpp) and is rebindable through KEY CONFIG
+ * (GLOBAL) in the menu. The numeric values of these defines are NOT stored
+ * anywhere persistent — only the resolved physical key is — so renumbering
+ * here is safe.
+ *
+ * The following seven pseudo-keys were REMOVED in the 2026-05-29 refactor
+ * because they had no consumer anywhere in the codebase:
+ *   OSD_KEY_SHOW_GFX, OSD_KEY_CHEAT_TOGGLE, OSD_KEY_FRAMESKIP_INC,
+ *   OSD_KEY_FRAMESKIP_DEC, OSD_KEY_SHOW_PROFILE, OSD_KEY_SHOW_TOTAL_COLORS,
+ *   OSD_KEY_ON_SCREEN_DISPLAY.
+ * If you wire up frameskip / a sprite viewer / etc. later, add the
+ * pseudo-key here AND a matching IPT_UI_* row in inputport_defaults[].
  */
 #define OSD_KEY_FAST_EXIT			200
 #define OSD_KEY_CANCEL				201
 #define OSD_KEY_RESET_MACHINE		202
 #define OSD_KEY_CONFIGURE			203
-#define OSD_KEY_ON_SCREEN_DISPLAY	204
-#define OSD_KEY_SHOW_GFX			205
-#define OSD_KEY_FRAMESKIP_INC	    206
-#define OSD_KEY_FRAMESKIP_DEC		207
 #define OSD_KEY_THROTTLE			208
 #define OSD_KEY_SHOW_FPS			209
-#define OSD_KEY_SHOW_PROFILE		210
-#define OSD_KEY_SHOW_TOTAL_COLORS	211
 #define OSD_KEY_SNAPSHOT			212
-#define OSD_KEY_CHEAT_TOGGLE		213
 #define OSD_KEY_DEBUGGER			214
 #define OSD_KEY_UI_LEFT				215
 #define OSD_KEY_UI_RIGHT			216

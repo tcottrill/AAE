@@ -3,7 +3,6 @@
 
 #include "cpu_control.h"
 #include "inptport.h"
-#include "./68000/m68k.h"
 #include "aae_mame_driver.h"
 #include "ccpu.h"
 #include "timer.h"
@@ -48,27 +47,17 @@ static int totalcpu = 0;
 static int watchdog_timer = 0;
 static int watchdog_counter = 0;
 
-// CPU Contexts
+// CPU instances
 
-int cpu_context_size;
-uint8_t* cpu_context[2]; // 68000 cpu
-cpu_6809* m_cpu_6809[MAX_CPU];
-cpu_i8080* m_cpu_i8080[MAX_CPU];
-cpu_z80* m_cpu_z80[MAX_CPU];
-cpu_6502* m_cpu_6502[MAX_CPU];
-cpu_i8085* m_cpu_i8085[MAX_CPU];
+cpu_m6809*  m_cpu_6809[MAX_CPU];
+cpu_i8080*  m_cpu_i8080[MAX_CPU];
+cpu_z80*    m_cpu_z80[MAX_CPU];
+cpu_6502*   m_cpu_6502[MAX_CPU];
+cpu_i8085*  m_cpu_i8085[MAX_CPU];
+cpu_m68000* m_cpu_68000[MAX_CPU];
 
 /* override OP base handler */
 static int (*setOPbasefunc)(int);
-
-//68000 Memory Constructs
-// 8 bit
-MemoryReadByte* M_MemoryRead8 = nullptr;
-MemoryWriteByte* M_MemoryWrite8 = nullptr;
-// 16 bit
-MemoryReadWord* M_MemoryRead16 = nullptr;
-MemoryWriteWord* M_MemoryWrite16 = nullptr;
-//32 bit is handled
 
 //Machine->gamedrv->cpu_type[0]
 
@@ -126,27 +115,18 @@ void init6809(struct MemoryReadByte* read, struct MemoryWriteByte* write, int cp
 {
 	active_cpu = cpunum;
 	LOG_INFO("Start Configuring CPU %d", cpunum);
-	m_cpu_6809[cpunum] = new cpu_6809(Machine->memory_region[cpunum], read, write, 0xffff, cpunum);
+	m_cpu_6809[cpunum] = new cpu_m6809(Machine->memory_region[cpunum], read, write, cpunum);
+
+	// Hand the main 6809 any PC-change override that was already registered
+	// (e.g. the Star Wars slapstic). Covers the case where the driver called
+	// cpu_setOPbaseoverride() before the CPU object existed. Only CPU 0 carries
+	// it, matching the historical "slapstic is main-CPU only" rule.
+	if (cpunum == 0)
+		m_cpu_6809[cpunum]->opbase_override = setOPbasefunc;
 
 	LOG_INFO("RESET");
 	m_cpu_6809[cpunum]->reset6809();
 	LOG_INFO("Finished Configuring CPU %d", cpunum);
-}
-
-void init68k(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct MemoryReadWord* read16, struct MemoryWriteWord* write16, int cpunum)
-{
-	M_MemoryRead8 = read;
-	M_MemoryWrite8 = write;
-	M_MemoryRead16 = read16;
-	M_MemoryWrite16 = write16;
-	//active_cpu = cpunum;
-	m68k_set_cpu_type(M68K_CPU_TYPE_68000);
-	cpu_context_size = m68k_context_size();
-	cpu_context[0] = (unsigned char*)malloc(cpu_context_size);
-	m68k_pulse_reset();
-	m68k_get_context(cpu_context[0]);
-	m68k_set_context(cpu_context[0]);
-	LOG_INFO("PC:%08X\tSP:%08X\n", m68k_get_reg(NULL, M68K_REG_PC), m68k_get_reg(NULL, M68K_REG_SP));
 }
 
 void special_tickcount_update_6502(int ticks, int cpu_num)
@@ -259,6 +239,13 @@ int aae_cpu_getscanline(void) {
 void cpu_setOPbaseoverride(int (*f)(int))
 {
 	setOPbasefunc = f;
+
+	// Push the override straight into the main 6809 core so it can fire on every
+	// non-sequential PC change (the core no longer calls cpu_setOPbase16). A null
+	// f (e.g. Mappy) clears it. Covers the case where the CPU already exists when
+	// the driver registers the handler.
+	if (m_cpu_6809[0])
+		m_cpu_6809[0]->opbase_override = f;
 }
 
 /* Need to called after CPU or PC changed (JP,JR,BRA,CALL,RET) */
@@ -321,7 +308,7 @@ int cpu_getpc()
 		break;
 
 	case CPU_68000:
-		LOG_INFO("PC:%08X\tSP:%08X\n", m68k_get_reg(NULL, M68K_REG_PC), m68k_get_reg(NULL, M68K_REG_SP));
+		LOG_INFO("PC:%08X\tSP:%08X\n", m_cpu_68000[active_cpu]->GetPC(), m_cpu_68000[active_cpu]->GetSP());
 		break;
 	}
 	return 0;
@@ -391,22 +378,15 @@ int get_current_cpu()
 	return active_cpu;
 }
 
-void cpu_setcontext(int cpunum)
+void cpu_setcontext(int /*cpunum*/)
 {
-	// Disabled for now, I have only single CPU 68000 games, and this was causing issues.
-	//switch (Machine->gamedrv->cpu_type[cpunum])
-	//{
-	//case CPU_68000: m68k_set_context(cpu_context[0]); break;
-	//}
+	// Single-instance 68000 means no Musashi context swap is needed.
+	// Other CPU cores are already per-instance and don't need context juggling.
 }
 
-void cpu_getcontext(int cpunum)
+void cpu_getcontext(int /*cpunum*/)
 {
-	// Disabled for now, I have only single CPU 68000 games, and this was causing issues.
-	//	switch (Machine->gamedrv->cpu_type[cpunum])
-	//	{
-	//	case CPU_68000: m68k_get_context(cpu_context[0]); break;
-	//	}
+	// See cpu_setcontext.
 }
 
 void interrupt_enable_w(UINT32 address, UINT8 data, struct MemoryWriteByte* pMemWrite)
@@ -490,14 +470,9 @@ void cpu_do_int_imm(int cpunum, int int_type)
 		);
 		break;
 
-	case CPU_68000: {
-		// m68k_set_irq expects a level 1..7; clamp anything outside that range.
-		int level = int_type;
-		if (level < 1) level = 1;
-		if (level > 7) level = 7;
-		m68k_set_irq(level);
+	case CPU_68000:
+		m_cpu_68000[cpunum]->irq_line(int_type);
 		break;
-	}
 
 	default:
 		// Unknown/unsupported CPU type: do nothing
@@ -577,9 +552,10 @@ int cpu_exec_now(int cpu, int cycles)
 	case CPU_M6809:
 		m_cpu_6809[cpu]->exec6809(cycles);
 		ticks = m_cpu_6809[cpu]->get6809ticks(0xff);
+		timer_update(ticks, active_cpu);
 		break;
 	case CPU_68000:
-		ticks = m68k_execute(cycles);
+		ticks = m_cpu_68000[cpu]->exec(cycles);
 		timer_update(ticks, active_cpu);
 		break;
 	case CPU_CCPU:
@@ -811,7 +787,8 @@ void cpu_reset(int cpunum)
 		m_cpu_i8085[cpunum]->reset();
 		break;
 
-	case CPU_68000:  m68k_pulse_reset();
+	case CPU_68000:
+		m_cpu_68000[cpunum]->reset();
 		break;
 
 	case CPU_M6809:
@@ -873,7 +850,7 @@ int cpu_scale_by_cycles(int val, int clock)
 
 // -----------------------------------------------------------------------------
 // free_cpu_memory
-// Pair delete with new; also free Musashi context.
+// Pair delete with new.
 // -----------------------------------------------------------------------------
 void free_cpu_memory()
 {
@@ -883,17 +860,15 @@ void free_cpu_memory()
 	{
 		switch (Machine->gamedrv->cpu[x].cpu_type)
 		{
-		case CPU_MZ80:   delete m_cpu_z80[x];   m_cpu_z80[x] = nullptr; break;
-		case CPU_M6502:  delete m_cpu_6502[x];  m_cpu_6502[x] = nullptr; break;
-		case CPU_8080:   delete m_cpu_i8080[x]; m_cpu_i8080[x] = nullptr; break;
-		case CPU_8085:   delete m_cpu_i8085[x]; m_cpu_i8085[x] = nullptr; break;
-		case CPU_M6809:  delete m_cpu_6809[x];  m_cpu_6809[x] = nullptr; break;
-		case CPU_68000:  /* nothing allocated here per-CPU */  break;
+		case CPU_MZ80:   delete m_cpu_z80[x];    m_cpu_z80[x]    = nullptr; break;
+		case CPU_M6502:  delete m_cpu_6502[x];   m_cpu_6502[x]   = nullptr; break;
+		case CPU_8080:   delete m_cpu_i8080[x];  m_cpu_i8080[x]  = nullptr; break;
+		case CPU_8085:   delete m_cpu_i8085[x];  m_cpu_i8085[x]  = nullptr; break;
+		case CPU_M6809:  delete m_cpu_6809[x];   m_cpu_6809[x]   = nullptr; break;
+		case CPU_68000:  delete m_cpu_68000[x];  m_cpu_68000[x]  = nullptr; break;
 		default: break;
 		}
 	}
-
-	if (cpu_context[0]) { free(cpu_context[0]); cpu_context[0] = nullptr; }
 }
 
 void init_cpu_config()
@@ -924,7 +899,7 @@ void init_cpu_config()
 		{
 		case CPU_68000:
 			LOG_INFO("Init 68000 %d called", i);
-			init68k(C.memory_read, C.memory_write, C.read16, C.write16, i);
+			m_cpu_68000[i] = new cpu_m68000(C.memory_read, C.memory_write, C.read16, C.write16, i);
 			break;
 
 		case CPU_MZ80:
@@ -1067,180 +1042,5 @@ void MWA_NOP(UINT32 address, UINT8 data, struct MemoryWriteByte* pMemWrite)
 	//If logging add here
 }
 
-/*--------------------------------------------------------------------------*/
-/* 68000 Memory handlers                                                          */
-/*--------------------------------------------------------------------------*/
-
-unsigned int m68k_read_bus_8(unsigned int address)
-{
-	return 0;
-}
-
-unsigned int m68k_read_bus_16(unsigned int address)
-{
-	return 0;
-}
-
-void m68k_unused_w(unsigned int address, unsigned int value)
-{
-	//error("Unused %08X = %08X (%08X)\n", address, value, Turbo68KReadPC());
-}
-
-void m68k_unused_8_w(unsigned int address, unsigned int value)
-{
-	//error("Unused %08X = %02X (%08X)\n", address, value, Turbo68KReadPC());
-}
-
-void m68k_unused_16_w(unsigned int address, unsigned int value)
-{
-	//error("Unused %08X = %04X (%08X)\n", address, value, Turbo68KReadPC());
-}
-
-void m68k_lockup_w_8(unsigned int address, unsigned int value)
-{
-	m68k_end_timeslice();
-}
-
-void m68k_lockup_w_16(unsigned int address, unsigned int value)
-{
-	m68k_end_timeslice();
-}
-
-unsigned int m68k_lockup_r_8(unsigned int address)
-{
-	m68k_end_timeslice();
-	return -1;
-}
-
-unsigned int m68k_lockup_r_16(unsigned int address)
-{
-	m68k_end_timeslice();
-	return -1;
-}
-
-/*--------------------------------------------------------------------------*/
-/* 68000 memory handlers                                                    */
-/*--------------------------------------------------------------------------*/
-
-unsigned int m68k_read_memory_8(unsigned int address)
-{
-	MemoryReadByte* MemRead = M_MemoryRead8;
-
-	while (MemRead->lowAddr != 0xffffffff)
-	{
-		if (address >= MemRead->lowAddr && address <= MemRead->highAddr)
-		{
-			if (MemRead->memoryCall)
-			{
-				return (UINT8)(MemRead->memoryCall(address - MemRead->lowAddr, MemRead));
-			}
-			else
-			{
-				return (UINT8)READ_BYTE((unsigned char*)MemRead->pUserArea, address - MemRead->lowAddr);
-			}
-		}
-		++MemRead;
-	}
-
-	LOG_INFO("Unhandled Memory 8 Read: addr: %x", address);
-	return 0;
-}
-
-void m68k_write_memory_8(unsigned int address, unsigned int value)
-{
-	//int k=0;
-	MemoryWriteByte* MemWrite = M_MemoryWrite8;
-	//LOG_INFO("Memory 8 Write: addr: %x value %x", address, value);
-	while (MemWrite->lowAddr != 0xffffffff)
-	{
-		if (address >= MemWrite->lowAddr && address <= MemWrite->highAddr)
-		{
-			if (MemWrite->memoryCall)
-			{
-				//k = 1;
-				MemWrite->memoryCall(address - MemWrite->lowAddr, (UINT8)value, MemWrite);
-			}
-			else
-			{
-				//k = 1;
-				WRITE_BYTE((unsigned char*)MemWrite->pUserArea, address - MemWrite->lowAddr, (UINT8)value);
-			}
-		}
-		MemWrite++;
-	}
-	//if (!k) { LOG_INFO("Unhandled Memory 8 Write: addr: %x value %x", address, value); }
-}
-
-unsigned int m68k_read_memory_16(unsigned int address)
-{
-	MemoryReadWord* MemRead = M_MemoryRead16;
-
-	while (MemRead->lowAddr != 0xffffffff)
-	{
-		if (address >= MemRead->lowAddr && address <= MemRead->highAddr)
-		{
-			if (MemRead->memoryCall)
-			{
-				//LOG_INFO("Handler 16 Read: addr: %x", address);
-				return (UINT16)(MemRead->memoryCall(address - MemRead->lowAddr, MemRead));
-			}
-			else
-			{
-				//LOG_INFO("MEM 16 Read: addr: %x", address);
-				return (UINT16)READ_WORD((unsigned char*)MemRead->pUserArea, address - MemRead->lowAddr);
-			}
-		}
-
-		++MemRead;
-	}
-
-	LOG_INFO("Unhandled Read 16: %x ", address); //exit(1);
-	return 0;
-}
-
-void m68k_write_memory_16(unsigned int address, unsigned int value)
-{
-	//LOG_INFO("Write Memory 16, addr: %x, data %x", address, value);
-//	int k = 0;
-	MemoryWriteWord* MemWrite = M_MemoryWrite16;
-
-	while (MemWrite->lowAddr != 0xffffffff)
-	{
-		if (address >= MemWrite->lowAddr && address <= MemWrite->highAddr)
-		{
-			if (MemWrite->memoryCall)
-			{
-				//	k = 1;
-					//LOG_INFO("Write Handler 16, addr: %x, data %x", address, value);
-				MemWrite->memoryCall(address - MemWrite->lowAddr, (UINT16)value, MemWrite);
-			}
-			else {
-				//k = 1;
-				//LOG_INFO("Write Memory 16, addr: %x, data %x", address, value);
-				WRITE_WORD((unsigned char*)MemWrite->pUserArea, address - MemWrite->lowAddr, (UINT16)value);
-			}
-		}
-		MemWrite++;
-	}
-	//if (!k)
-	//{
-	//	LOG_INFO("Unhandled Memory 16 Write: addr: %x data: %x", address, value);
-		//exit(1);
-	//}
-}
-
-unsigned int m68k_read_memory_32(unsigned int address)
-{
-	//LOG_INFO("Reading Memory 32, addr: %x", address);
-
-	/* Split into 2 reads */
-	return (UINT32)(m68k_read_memory_16(address + 0) << 16 | m68k_read_memory_16(address + 2));
-}
-
-void m68k_write_memory_32(unsigned int address, unsigned int value)
-{
-	//LOG_INFO("Write Memory 32, addr: %x, data %x\n", address, value);
-	/* Split into 2 writes */
-	m68k_write_memory_16(address, (value >> 16) & 0xFFFF);
-	m68k_write_memory_16(address + 2, value & 0xFFFF);
-}
+// 68000 memory bridges (m68k_read_memory_*, m68k_write_memory_*, m68k_lockup_*,
+// m68k_read_bus_*, m68k_unused_*) live in cpu_m68000.cpp.

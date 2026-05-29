@@ -13,6 +13,7 @@
 
 #include "os_input.h"
 #include "osdepend.h"
+#include "inptport.h"     // input_type_key(), IPT_UI_* enum values
 #include "joystick.h"
 #include "rawinput.h"
 #include "os_basic.h"
@@ -61,105 +62,51 @@ void os_shutdown_input(void)
 {
 }
 
-/* translate a pseudo key code to to a key code */
+// ---------------------------------------------------------------------------
+// pseudo_to_key_code
+// Translate a logical UI keycode (OSD_KEY_CANCEL, OSD_KEY_RESET_MACHINE,
+// OSD_KEY_UI_LEFT, etc.) into the physical key currently bound to it.
+//
+// AAE (2026-05-29): the original MAME-derived hardcoded switch is replaced
+// with a lookup into inputport_defaults[] via input_type_key(). The current
+// binding for each pseudo-keycode is whatever the user (or the compiled-in
+// default) has assigned to the corresponding IPT_UI_* row. See AAE-vs-MAME
+// divergence note at the top of inptport.cpp.
+//
+// Removed in the same pass: the modifier-dispatch logic for SHOW_FPS /
+// SHOW_PROFILE / SHOW_TOTAL_COLORS (the latter two had no consumers), and
+// the seven dead pseudo-key cases (SHOW_GFX, CHEAT_TOGGLE, FRAMESKIP_INC,
+// FRAMESKIP_DEC, SHOW_PROFILE, SHOW_TOTAL_COLORS, ON_SCREEN_DISPLAY).
+//
+// OSD_KEY_FAST_EXIT is kept as a source-compatibility alias for OSD_KEY_CANCEL
+// — both resolve through IPT_UI_CANCEL.
+// ---------------------------------------------------------------------------
 static int pseudo_to_key_code(int keycode)
 {
 	switch (keycode)
 	{
-	case OSD_KEY_CANCEL:
-		return OSD_KEY_ESC;
-
-	case OSD_KEY_RESET_MACHINE:
-		return OSD_KEY_F3;
-
-	case OSD_KEY_FAST_EXIT:
-		return OSD_KEY_ESC;
-
-	case OSD_KEY_SHOW_GFX:
-		return OSD_KEY_F4;
-
-	case OSD_KEY_CHEAT_TOGGLE:
-		return OSD_KEY_F5;
-
-	case OSD_KEY_FRAMESKIP_INC:
-		return OSD_KEY_F9;
-
-	case OSD_KEY_FRAMESKIP_DEC:
-		return OSD_KEY_F8;
-
-	case OSD_KEY_THROTTLE:
-		return OSD_KEY_F10;
-
-	case OSD_KEY_SHOW_FPS:
-		if (!key[KEY_LSHIFT] && !key[KEY_RSHIFT]
-			&& !key[KEY_LCONTROL] && !key[KEY_RCONTROL])
-			return OSD_KEY_F11;
-		else return OSD_KEY_NONE;
-
-	case OSD_KEY_SHOW_PROFILE:
-		if (key[KEY_LSHIFT] || key[KEY_RSHIFT])
-			return OSD_KEY_F11;
-		else return OSD_KEY_NONE;
-
-	case OSD_KEY_SHOW_TOTAL_COLORS:
-		if (key[KEY_LCONTROL] || key[KEY_RCONTROL])
-			return OSD_KEY_F11;
-		else return OSD_KEY_NONE;
-
-	case OSD_KEY_CONFIGURE:
-		return OSD_KEY_TAB;
-
-	case OSD_KEY_ON_SCREEN_DISPLAY:
-	{
-		return OSD_KEY_TILDE;
+	case OSD_KEY_CANCEL:        return input_type_key(IPT_UI_CANCEL);
+	case OSD_KEY_FAST_EXIT:     return input_type_key(IPT_UI_CANCEL);   // alias
+	case OSD_KEY_RESET_MACHINE: return input_type_key(IPT_UI_RESET_MACHINE);
+	case OSD_KEY_THROTTLE:      return input_type_key(IPT_UI_THROTTLE);
+	case OSD_KEY_SHOW_FPS:      return input_type_key(IPT_UI_SHOW_FPS);
+	case OSD_KEY_SNAPSHOT:      return input_type_key(IPT_UI_SNAPSHOT);
+	case OSD_KEY_CONFIGURE:     return input_type_key(IPT_UI_CONFIGURE);
+	case OSD_KEY_UI_LEFT:       return input_type_key(IPT_UI_LEFT);
+	case OSD_KEY_UI_RIGHT:      return input_type_key(IPT_UI_RIGHT);
+	case OSD_KEY_UI_UP:         return input_type_key(IPT_UI_UP);
+	case OSD_KEY_UI_DOWN:       return input_type_key(IPT_UI_DOWN);
+	case OSD_KEY_UI_SELECT:     return input_type_key(IPT_UI_SELECT);
 	}
-
-	case OSD_KEY_SNAPSHOT:
-		return OSD_KEY_F12;
-
-	case OSD_KEY_UI_SELECT:
-		return OSD_KEY_ENTER;
-		break;
-
-	case OSD_KEY_UI_LEFT:
-		return OSD_KEY_LEFT;
-		break;
-
-	case OSD_KEY_UI_RIGHT:
-		return OSD_KEY_RIGHT;
-		break;
-
-	case OSD_KEY_UI_UP:
-		return OSD_KEY_UP;
-		break;
-
-	case OSD_KEY_UI_DOWN:
-		return OSD_KEY_DOWN;
-		break;
-	}
-
-	return keycode;
+	return keycode;     // not a pseudo-key, pass through
 }
 
-int osd_key_invalid(int keycode)
-{
-	switch (keycode)
-	{
-	case OSD_KEY_ESC:
-	case OSD_KEY_F3:
-	case OSD_KEY_F4:
-	case OSD_KEY_F5:
-	case OSD_KEY_F9:
-	case OSD_KEY_F10:
-	case OSD_KEY_F11:
-	case OSD_KEY_TAB:
-	case OSD_KEY_TILDE:
-		return 1;
-
-	default:
-		return 0;
-	}
-}
+// osd_key_invalid() was removed in the UI-key remap refactor (2026-05-29).
+// It used to reserve a set of "system" keys (ESC/F3/F4/F5/F9/F10/F11/TAB/TILDE)
+// so they couldn't be assigned to game inputs. The reservation no longer makes
+// sense now that those keys are themselves rebindable through KEY CONFIG
+// (GLOBAL). If you bind ESC to a game input AND leave ESC bound to "Cancel",
+// both actions fire — that's the user's problem to resolve via the menu.
 
 /*
  * Check if a key is pressed. The keycode is the standard PC keyboard

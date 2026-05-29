@@ -154,12 +154,11 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
     </ClInclude>
     <ClInclude Include="aae\cpu_code\cpu_6502.h" />
-    <ClInclude Include="aae\cpu_code\cpu_6809.h">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
-    </ClInclude>
     <ClInclude Include="aae\cpu_code\cpu_control.h" />
     <ClInclude Include="aae\cpu_code\cpu_i8080.h" />
     <ClInclude Include="aae\cpu_code\cpu_i8085.h" />
+    <ClInclude Include="aae\cpu_code\cpu_m6809.h" />
+    <ClInclude Include="aae\cpu_code\cpu_m68000.h" />
     <ClInclude Include="aae\cpu_code\cpu_z80.h" />
     <ClInclude Include="aae\cpu_code\timer.h" />
     <ClInclude Include="aae\cpu_code\z80fmly.h" />
@@ -304,12 +303,11 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="aae\cpu_code\cpu_6502.cpp" />
-    <ClCompile Include="aae\cpu_code\cpu_6809.cpp">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
-    </ClCompile>
     <ClCompile Include="aae\cpu_code\cpu_control.cpp" />
     <ClCompile Include="aae\cpu_code\cpu_i8080.cpp" />
     <ClCompile Include="aae\cpu_code\cpu_i8085.cpp" />
+    <ClCompile Include="aae\cpu_code\cpu_m6809.cpp" />
+    <ClCompile Include="aae\cpu_code\cpu_m68000.cpp" />
     <ClCompile Include="aae\cpu_code\cpu_z80.cpp" />
     <ClCompile Include="aae\cpu_code\timer.cpp" />
     <ClCompile Include="aae\cpu_code\z80fmly.cpp" />

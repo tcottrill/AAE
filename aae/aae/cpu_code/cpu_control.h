@@ -44,9 +44,10 @@
 #include "deftypes.h"
 #include "cpu_6502.h"
 #include "cpu_z80.h"
-#include "cpu_6809.h"
+#include "cpu_m6809.h"   // defines class cpu_m6809 and 'typedef cpu_m6809 cpu_6809'
 #include "cpu_i8080.h"
 #include "cpu_i8085.h"
+#include "cpu_m68000.h"
 
 
 #define NEW_INTERRUPT_SYSTEM    1
@@ -79,11 +80,10 @@
 
 extern cpu_z80* m_cpu_z80[MAX_CPU];
 extern cpu_6502* m_cpu_6502[MAX_CPU];
-extern cpu_6809* m_cpu_6809[MAX_CPU];
+extern cpu_m6809* m_cpu_6809[MAX_CPU];
 extern cpu_i8080* m_cpu_i8080[MAX_CPU];
 extern cpu_i8085* m_cpu_i8085[MAX_CPU];
-extern int cpu_context_size;
-extern uint8_t* cpu_context[2];
+extern cpu_m68000* m_cpu_68000[MAX_CPU];
 
 enum
 {
@@ -132,7 +132,6 @@ void init6502(struct MemoryReadByte* read, struct MemoryWriteByte* write, int me
 void init6809(struct MemoryReadByte* read, struct MemoryWriteByte* write, int cpunum);
 void init_z80(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum);
 void init8080(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum);
-void init68k(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct MemoryReadWord* read16, struct MemoryWriteWord* write16, int cpunum);
 void init8085(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum);
 
 

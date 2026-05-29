@@ -5,11 +5,10 @@ typedef struct {
 	char rompath[256];
 	char samplepath[256];
 	char artpath[256];
-	int kreset;
-	int ktest;
-	int ktestadv;
-	int kpause;
-	int ksnap;
+	// (Old kreset/ktest/ktestadv/kpause/ksnap fields removed 2026-05-29 as
+	// part of the UI-key remap refactor — they had no consumers. UI hotkeys
+	// now live as IPT_UI_* rows in inputport_defaults[] and persist to
+	// default.cfg via the same path as game inputs.)
 
 	int drawzero;
 	int widescreen;

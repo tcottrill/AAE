@@ -43,9 +43,27 @@
 // created solely for my amusement and learning and is provided only 
 // as an archival experience. 
 // 
-// All MAME code used and abused in this emulator remains the copyright 
+// All MAME code used and abused in this emulator remains the copyright
 // of the dedicated people who spend countless hours creating it. All
-// MAME code should be annotated as belonging to the MAME TEAM. 
+// MAME code should be annotated as belonging to the MAME TEAM.
+//============================================================================
+//
+// AAE-vs-MAME divergence (2026-05-29): UI hotkeys (Cancel/Exit, Reset Machine,
+// Open Menu, Toggle Throttle, Toggle FPS, Snapshot, and menu navigation) are
+// represented as IPT_UI_* entries in inputport_defaults[] and are rebindable
+// through the in-game KEY CONFIG (GLOBAL) menu. MAME keeps these in a
+// separate ui-key configuration system. AAE bindings persist alongside game
+// inputs in the same binary default.cfg file via save_default_keys() /
+// load_default_keys(). The previously-hardcoded pseudo_to_key_code() switch
+// in os_input.cpp is replaced with a table lookup (input_type_key()).
+//
+// Consequence: AAE's default.cfg is no longer format- or content-compatible
+// with MAME's after a save round-trip from this build forward.
+//
+// IMPORTANT: New IPT_* enum values added in the future MUST be appended to
+// the end of the enum in inptport.h, never inserted in the middle. The cfg
+// file format stores 'type' as the raw numeric enum value; mid-enum inserts
+// silently corrupt every existing cfg file.
 //============================================================================
 
 
@@ -145,7 +163,20 @@ char ipdn_defaultstrings[][MAX_DEFSTR_LEN] =
 
 struct ipd inputport_defaults[] =
 {
-	{ IPT_UI_PAUSE, "Pause",         OSD_KEY_P, 0 },
+	// --- UI hotkeys (rebindable via KEY CONFIG (GLOBAL); see divergence note above) ---
+	{ IPT_UI_PAUSE,         "Pause",            OSD_KEY_P,     0 },
+	{ IPT_UI_CANCEL,        "Cancel / Exit",    OSD_KEY_ESC,   0 },
+	{ IPT_UI_RESET_MACHINE, "Reset Machine",    OSD_KEY_F3,    0 },
+	{ IPT_UI_CONFIGURE,     "Open Menu",        OSD_KEY_TAB,   0 },
+	{ IPT_UI_THROTTLE,      "Toggle Throttle",  OSD_KEY_F10,   0 },
+	{ IPT_UI_SHOW_FPS,      "Toggle FPS",       OSD_KEY_F11,   0 },
+	{ IPT_UI_SNAPSHOT,      "Snapshot",         OSD_KEY_F12,   0 },
+	{ IPT_UI_LEFT,          "Menu Left",        OSD_KEY_LEFT,  0 },
+	{ IPT_UI_RIGHT,         "Menu Right",       OSD_KEY_RIGHT, 0 },
+	{ IPT_UI_UP,            "Menu Up",          OSD_KEY_UP,    0 },
+	{ IPT_UI_DOWN,          "Menu Down",        OSD_KEY_DOWN,  0 },
+	{ IPT_UI_SELECT,        "Menu Select",      OSD_KEY_ENTER, 0 },
+	// --- Game inputs ---
 	{ IPT_COIN1,  "Coin 1",          OSD_KEY_5, OSD_JOY_FIRE10 },
 	{ IPT_COIN2,  "Coin 2",          OSD_KEY_6, OSD_JOY_FIRE9 },
 	{ IPT_COIN3,  "Coin 3",          OSD_KEY_3, 0 },
@@ -278,6 +309,22 @@ struct ipd inputport_defaults[] =
 	{ IPT_SPULSE,              "GUI Input",       IP_KEY_NONE,     IP_JOY_NONE },
 	{ IPT_END,                 0,                 0,     0 }	/* returned when there is no match */
 };
+
+// ---------------------------------------------------------------------------
+// input_type_key
+// Returns the current keyboard binding for an input type with a row in
+// inputport_defaults[]. Returns OSD_KEY_NONE if no row found. Used by
+// os_input.cpp's pseudo_to_key_code() to route logical UI keycodes through
+// the user-rebindable table instead of a hardcoded switch.
+// ---------------------------------------------------------------------------
+int input_type_key(int type)
+{
+	for (int i = 0; inputport_defaults[i].type != IPT_END; ++i) {
+		if (inputport_defaults[i].type == type)
+			return inputport_defaults[i].keyboard;
+	}
+	return OSD_KEY_NONE;
+}
 
 static void load_default_keys(void)
 {

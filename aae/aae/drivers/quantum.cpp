@@ -12,7 +12,6 @@
 //==========================================================================
 
 #include "quantum.h"
-#include "./68000/m68k.h"
 #include "aae_mame_driver.h"
 #include "driver_registry.h"
 #include "cpu_control.h"
@@ -227,10 +226,8 @@ int init_quantum()
 	memcpy(program_rom, Machine->memory_region[CPU0], 0x14000);
 	byteswap(program_rom, 0x14000);
 
-	//init68k(QuantumReadByte, QuantumWriteByte, QuantumReadWord, QuantumWriteWord, CPU0);
 	avg_start_quantum();
 
-	//timer_set(TIME_IN_HZ(246), 0, quantum_interrupt);
 	pokey_sh_start(&pokey_interface);
 	LOG_INFO("End Quantum Init");
 	return 0;

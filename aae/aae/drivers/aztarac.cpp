@@ -21,8 +21,6 @@
  */
 
 #include "aztarac.h"
-#include "./68000/m68k.h"
-#include "./68000/m68kcpu.h"
 #include "aae_mame_driver.h"
 #include "driver_registry.h"
 #include "cpu_control.h"
@@ -331,7 +329,7 @@ PORT_END
 static void aztarac_post_cpu_init(int cpunum)
 {
 	if (cpunum == CPU0)
-		m68k_set_int_ack_callback(aztarac_irq_callback);
+		m_cpu_68000[CPU0]->set_irq_ack_callback(aztarac_irq_callback);
 }
 
 void run_aztarac()

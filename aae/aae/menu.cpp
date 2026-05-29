@@ -980,7 +980,24 @@ void MenuManager::BuildAnalogMenu() {
 void MenuManager::BuildInputMenu(bool isGlobal, bool isJoystick) {
     if (isGlobal) {
         struct ipd* in = inputport_defaults;
+        // Visual section dividers (keyboard view only) separating UI hotkeys
+        // from game inputs. Joystick view skips this — UI hotkeys have
+        // joystick=0 and the filter below excludes them entirely.
+        bool emitted_ui_header   = false;
+        bool emitted_game_header = false;
         while (in->type != IPT_END) {
+            if (!isJoystick) {
+                if (!emitted_ui_header && is_ui_input_type(in->type)) {
+                    m_items.push_back(MenuItem::Disabled("--- UI HOTKEYS ---"));
+                    emitted_ui_header = true;
+                }
+                else if (emitted_ui_header && !emitted_game_header
+                         && !is_ui_input_type(in->type)
+                         && in->name && in->keyboard != IP_KEY_NONE) {
+                    m_items.push_back(MenuItem::Disabled("--- GAME INPUTS ---"));
+                    emitted_game_header = true;
+                }
+            }
             if (in->name &&
                 !(in->type & IPF_UNUSED) &&
                 !(!options.cheat && (in->type & IPF_CHEAT)) &&
@@ -997,11 +1014,12 @@ void MenuManager::BuildInputMenu(bool isGlobal, bool isJoystick) {
                     m_isPolling    = true;
                     m_pollingIsJoy = isJoystick;
                     m_inputAssignmentHandler = [in, isJoystick](int code) {
+                        // No osd_key_invalid() filter — UI hotkeys are now
+                        // rebindable via the same menu, so no keys are reserved.
+                        // Conflicts (binding the same key to two actions) make
+                        // both actions fire.
                         if (isJoystick) in->joystick = code;
-                        else {
-                            if (osd_key_invalid(code)) code = IP_KEY_DEFAULT;
-                            in->keyboard = code;
-                        }
+                        else            in->keyboard = code;
                     };
                 };
                 item.onAdjust = [in, isJoystick](int dir) {
@@ -1039,11 +1057,9 @@ void MenuManager::BuildInputMenu(bool isGlobal, bool isJoystick) {
                     m_isPolling    = true;
                     m_pollingIsJoy = isJoystick;
                     m_inputAssignmentHandler = [in, isJoystick](int code) {
+                        // No osd_key_invalid() filter — see global menu above.
                         if (isJoystick) in->joystick = code;
-                        else {
-                            if (osd_key_invalid(code)) code = IP_KEY_DEFAULT;
-                            in->keyboard = code;
-                        }
+                        else            in->keyboard = code;
                     };
                 };
                 item.onAdjust = [in, isJoystick](int dir) {

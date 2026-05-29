@@ -51,7 +51,6 @@
 #include "timer.h"
 
 #pragma warning( disable : 4838 4003 )
-extern int m6809_slapstic;
 
 // ---------------------------------------------------------------------------
 // Shared state
@@ -882,7 +881,7 @@ int init_digdug2(void)
     interrupt_enable_1 = 0;
     interrupt_enable_2 = 0;
     cpu_setOPbaseoverride(nullptr);
-    m6809_slapstic = 0;
+ 
 
     return 1;
 }
@@ -917,7 +916,7 @@ int init_motos(void)
     interrupt_enable_1 = 0;
     interrupt_enable_2 = 0;
     cpu_setOPbaseoverride(nullptr);
-    m6809_slapstic = 0;
+  
 
     return 1;
 }

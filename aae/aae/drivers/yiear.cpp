@@ -19,7 +19,6 @@
 #include "namco.h"
 #include "timer.h"
 
-extern int m6809_slapstic;
 
 #pragma warning( disable : 4838 4003 )
 
@@ -452,7 +451,6 @@ int init_yiear(void)
 //	timer_set(TIME_IN_HZ(80), 0, yiear_nmi_interrupt);
 
 	cpu_setOPbaseoverride(nullptr);
-	m6809_slapstic = 0;
 	yiear_vh_start();
 	yiear_sh_start();
 	irq_enable = 1;

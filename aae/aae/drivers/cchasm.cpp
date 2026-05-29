@@ -34,8 +34,6 @@
 #define CCHASM_CPP
 
 #include "cchasm.h"
-#include "./68000/m68k.h"
-#include "./68000/m68kcpu.h"
 #include "aae_mame_driver.h"
 #include "driver_registry.h"
 #include "cpu_control.h"
@@ -668,7 +666,7 @@ MEM_END
 
 static int cchasm_irq_callback(int irqline)
 {
-	return M68K_INT_ACK_AUTOVECTOR;
+	return CPU_M68000_INT_ACK_AUTOVECTOR;
 }
 
 void cchasm_interrupt() {}
