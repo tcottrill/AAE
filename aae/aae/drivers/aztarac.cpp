@@ -24,7 +24,7 @@
 #include "aae_mame_driver.h"
 #include "driver_registry.h"
 #include "cpu_control.h"
-#include "AY8910.H"
+#include "ay8910.h"
 #include "math.h"
 #include "timer.h"
 #include "emu_vector_draw.h"
@@ -57,15 +57,15 @@ unsigned char generic_nvram[0x200];
 static int sound_command = 0;
 static int sound_status = 0;
 
-static struct AY8910interface ay8910_interface =
+static AY8910Config ay8910_cfg =
 {
-	4,	/* 4 chips */
-	2000000,	/* 2 MHz */
-	{ 25, 25, 25, 25 },
-	{ 0, 0, 0, 0 },
-	{ 0, 0, 0, 0 },
-	{ 0, 0, 0, 0 },
-	{ 0, 0, 0, 0 }
+    4,                                                  // num_chips
+    2000000,                                            // base_clock Hz
+    { 64, 64, 64, 64 },                                 // mixing_level
+    { nullptr, nullptr, nullptr, nullptr },             // port_a_read
+    { nullptr, nullptr, nullptr, nullptr },             // port_b_read
+    { nullptr, nullptr, nullptr, nullptr },             // port_a_write
+    { nullptr, nullptr, nullptr, nullptr }              // port_b_write
 };
 
 int aztarac_irq_callback(int irqline)
@@ -298,24 +298,24 @@ MEM_READ(AztaracSoundMemRead)
 MEM_ADDR(0x0000, 0x1fff, MRA_ROM)
 MEM_ADDR(0x8000, 0x87ff, MRA_RAM)
 MEM_ADDR(0x8800, 0x8800, aztarac_snd_command_r)
-MEM_ADDR(0x8c00, 0x8c01, AY8910_read_port_0_r)
-MEM_ADDR(0x8c02, 0x8c03, AY8910_read_port_1_r)
-MEM_ADDR(0x8c04, 0x8c05, AY8910_read_port_2_r)
-MEM_ADDR(0x8c06, 0x8c07, AY8910_read_port_3_r)
+MEM_ADDR(0x8c00, 0x8c01, ay8910_0_data_r)
+MEM_ADDR(0x8c02, 0x8c03, ay8910_1_data_r)
+MEM_ADDR(0x8c04, 0x8c05, ay8910_2_data_r)
+MEM_ADDR(0x8c06, 0x8c07, ay8910_3_data_r)
 MEM_ADDR(0x9000, 0x9000, aztarac_snd_status_r)
 MEM_END
 
 MEM_WRITE(AztaracSoundMemWrite)
 MEM_ADDR(0x0000, 0x1fff, MWA_ROM)
 MEM_ADDR(0x8000, 0x87ff, MWA_RAM)
-MEM_ADDR(0x8c00, 0x8c00, AY8910_write_port_0_w)
-MEM_ADDR(0x8c01, 0x8c01, AY8910_control_port_0_w)
-MEM_ADDR(0x8c02, 0x8c02, AY8910_write_port_1_w)
-MEM_ADDR(0x8c03, 0x8c03, AY8910_control_port_1_w)
-MEM_ADDR(0x8c04, 0x8c04, AY8910_write_port_2_w)
-MEM_ADDR(0x8c05, 0x8c05, AY8910_control_port_2_w)
-MEM_ADDR(0x8c06, 0x8c06, AY8910_write_port_3_w)
-MEM_ADDR(0x8c07, 0x8c07, AY8910_control_port_3_w)
+MEM_ADDR(0x8c00, 0x8c00, ay8910_0_data_w)
+MEM_ADDR(0x8c01, 0x8c01, ay8910_0_control_w)
+MEM_ADDR(0x8c02, 0x8c02, ay8910_1_data_w)
+MEM_ADDR(0x8c03, 0x8c03, ay8910_1_control_w)
+MEM_ADDR(0x8c04, 0x8c04, ay8910_2_data_w)
+MEM_ADDR(0x8c05, 0x8c05, ay8910_2_control_w)
+MEM_ADDR(0x8c06, 0x8c06, ay8910_3_data_w)
+MEM_ADDR(0x8c07, 0x8c07, ay8910_3_control_w)
 MEM_ADDR(0x9000, 0x9000, aztarac_snd_status_w)
 MEM_END
 
@@ -334,7 +334,7 @@ static void aztarac_post_cpu_init(int cpunum)
 
 void run_aztarac()
 {
-	AY8910_sh_update();
+	ay8910_sh_update();
 	watchdog_reset_w(0, 0, 0);
 }
 
@@ -348,7 +348,7 @@ int init_aztarac()
 	memcpy(aztarac_program_rom, Machine->memory_region[CPU0], 0x00C000);
 	byteswap(aztarac_program_rom, 0x00C000);
 
-	AY8910_sh_start(&ay8910_interface);
+	ay8910_sh_start(&ay8910_cfg);
 
 	aztarac_vectorram = vec_ram;
 	LOG_INFO("End aztarac Init");
@@ -357,7 +357,7 @@ int init_aztarac()
 
 void end_aztarac()
 {
-	AY8910clear();
+	ay8910_sh_stop();
 }
 
 void aztarac_video_init(int scale)

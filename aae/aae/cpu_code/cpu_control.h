@@ -44,9 +44,10 @@
 #include "deftypes.h"
 #include "cpu_6502.h"
 #include "cpu_z80.h"
-#include "cpu_m6809.h"   // defines class cpu_m6809 and 'typedef cpu_m6809 cpu_6809'
+#include "cpu_m6809.h"
 #include "cpu_i8080.h"
 #include "cpu_i8085.h"
+#include "cpu_i8039.h"
 #include "cpu_m68000.h"
 
 
@@ -83,6 +84,7 @@ extern cpu_6502* m_cpu_6502[MAX_CPU];
 extern cpu_m6809* m_cpu_6809[MAX_CPU];
 extern cpu_i8080* m_cpu_i8080[MAX_CPU];
 extern cpu_i8085* m_cpu_i8085[MAX_CPU];
+extern cpu_i8039* m_cpu_i8039[MAX_CPU];
 extern cpu_m68000* m_cpu_68000[MAX_CPU];
 
 enum
@@ -96,6 +98,7 @@ enum
 	CPU_M6809,
 	CPU_68000,
 	CPU_CCPU,
+	CPU_8039,
 	CPU_COUNT
 };
 
@@ -133,6 +136,10 @@ void init6809(struct MemoryReadByte* read, struct MemoryWriteByte* write, int cp
 void init_z80(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum);
 void init8080(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum);
 void init8085(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum);
+void init8039(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum);
+
+// Point a CPU's opcode fetches at a decrypted buffer (MAME memory_set_opcode_base).
+void memory_set_opcode_base(int cpunum, unsigned char* base);
 
 
 void cpu_setOPbaseoverride(int (*f)(int));

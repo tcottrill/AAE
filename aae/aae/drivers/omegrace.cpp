@@ -204,7 +204,7 @@ Sound Commands:
 #include "omegrace.h"
 #include "aae_mame_driver.h"
 #include "driver_registry.h"
-#include "AY8910.H"
+#include "ay8910.h"
 #include "old_mame_vecsim_dvg.h"
 
 
@@ -214,16 +214,15 @@ ART_LOAD("omegrace_aae.zip", "omegrace_overlay.png", ART_TEX, 1)
 ART_LOAD("omegrace_aae.zip", "omegbezlcroped.png", ART_TEX, 3)
 ART_END
 
-static struct AY8910interface ay8910_interface =
+static AY8910Config ay8910_cfg =
 {
-	2,
-	1500000,
-	{ 25, 25 }, //7
-	{ 0, 0 }, //2
-	{ 0 },
-	{ 0 },
-	{ 0 },
-	{ 0 }
+    2,                                          // num_chips
+    1512000,                                    // base_clock Hz
+    { 128, 128, 0, 0 },                           // mixing_level
+    { nullptr, nullptr, nullptr, nullptr },     // port_a_read
+    { nullptr, nullptr, nullptr, nullptr },     // port_b_read
+    { nullptr, nullptr, nullptr, nullptr },     // port_a_write
+    { nullptr, nullptr, nullptr, nullptr }      // port_b_write
 };
 
 static unsigned char orace_nvram[256];
@@ -398,7 +397,7 @@ PORT_WRITE_HANDLER(omegrace_leds_w)
 ///////////////////////  MAIN LOOP /////////////////////////////////////
 void run_omega()
 {
-	AY8910_sh_update();
+	ay8910_sh_update();
 }
 
 MEM_READ(OmegaRead)
@@ -447,10 +446,10 @@ PORT_ADDR(0x00, 0x00, omegrace_soundlatch_r)
 PORT_END
 
 PORT_WRITE(SoundPortWrite)
-PORT_ADDR(0x00, 0x00, AY8910_control_port_0_w)
-PORT_ADDR(0x01, 0x01, AY8910_write_port_0_w)
-PORT_ADDR(0x02, 0x02, AY8910_control_port_1_w)
-PORT_ADDR(0x03, 0x03, AY8910_write_port_1_w)
+PORT_ADDR(0x00, 0x00, ay8910_0_control_port_w)
+PORT_ADDR(0x01, 0x01, ay8910_0_data_port_w)
+PORT_ADDR(0x02, 0x02, ay8910_1_control_port_w)
+PORT_ADDR(0x03, 0x03, ay8910_1_data_port_w)
 PORT_END
 
 /////////////////// MAIN() for program ///////////////////////////////////////////////////
@@ -459,7 +458,7 @@ int init_omega()
 	//init_z80(OmegaRead, OmegaWrite, OmegaPortRead, OmegaPortWrite, 0);
 	////init_z80((SoundMemRead, SoundMemWrite, SoundPortRead, SoundPortWrite, 1);
 	dvg_start();
-	AY8910_sh_start(&ay8910_interface);
+	ay8910_sh_start(&ay8910_cfg);
 
 	LOG_INFO("End of Omega Race Driver Init");
 	return 0;
@@ -468,7 +467,7 @@ int init_omega()
 void end_omega()
 {
 	LOG_INFO("OMEGA RACE END CALLED");
-	AY8910clear();
+	ay8910_sh_stop();
 }
 
 

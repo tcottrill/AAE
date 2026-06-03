@@ -6,6 +6,7 @@
 
 #include "cpu_m6809.h"
 #include "sys_log.h"
+#include "timer.h"
 #include <cstdlib>
 
 #pragma warning( disable : 4244 )
@@ -89,6 +90,12 @@ uint8_t cpu_m6809::bus_read8(uint16_t addr)
     else if (MemRead && mmem)
         if (log_debug_rw) LOG_INFO("CPU%d: Unhandled Read at %04X", cpu_num, addr);
 
+    // ---- DEBUG: trace CPU0 DATA reads only (not opcode/operand fetches) ----
+    // Shows what the boot POST reads from hardware/RAM. Set false to silence.
+    static bool trace_cpu0_rd = false;
+    if (trace_cpu0_rd && cpu_num == 0 && !m_in_opcode_fetch)
+        LOG_INFO("CPU0 RD [%04X]=%02X  (PC=%04X)", addr, temp, m_PPC);
+
     return temp;
 }
 
@@ -113,6 +120,12 @@ void cpu_m6809::bus_write8(uint16_t addr, uint8_t byte)
         MEM[addr] = byte;
     else if (MemWrite && mmem)
         if (log_debug_rw) LOG_INFO("CPU%d: Unhandled Write at %04X data: %02X", cpu_num, addr, byte);
+
+    // ---- DEBUG: trace CPU0 writes to the custom I/O chips (0x6800-0x682f) ---
+    // Reveals the mode/command the POST sends before reading. Set false to mute.
+    static bool trace_cpu0_io_wr = false;
+    if (trace_cpu0_io_wr && cpu_num == 0 && addr >= 0x6800 && addr <= 0x682f)
+        LOG_INFO("CPU0 IO WR [%04X]=%02X  (PC=%04X)", addr, byte, m_PPC);
 }
 
 // Data accessors: mark the access as NOT an opcode fetch, then walk the bus.
@@ -599,8 +612,11 @@ void cpu_m6809::branch_short(bool taken)
 int cpu_m6809::branch_long(bool taken)
 {
     int16_t off = (int16_t)fetch16();
-    if (taken) { m_PC = (uint16_t)(m_PC + off); return 6; }
-    return 5;
+    // NOTE: the caller (exec_page10) adds +1 for the 0x10 prefix byte, so these
+    // return the cost EXCLUDING the prefix. Canonical MC6809 long conditional
+    // branch = 5 (not taken) / 6 (taken) TOTAL -> 4 / 5 here. 
+    if (taken) { m_PC = (uint16_t)(m_PC + off); return 5; }
+    return 4;
 }
 
 // =============================================================================
@@ -659,48 +675,84 @@ void cpu_m6809::do_rti(int& cycles)
 // Main execution loop
 // =============================================================================
 
-int cpu_m6809::exec(int cycles)
+// -----------------------------------------------------------------------------
+// charge_cycles : add `c` cycles to the running total AND drive the AAE timer
+// subsystem for exactly that many cycles, then return `c`. Updating the timer
+// once per step (instruction or interrupt) -- instead of once per exec() batch
+// -- keeps interrupt timing cycle-accurate, matching cpu_6502 / cpu_z80.
+// -----------------------------------------------------------------------------
+int cpu_m6809::charge_cycles(int c)
 {
-    while (cycles > 0)
-    {
-        int last_cycles = cycles;
+    clocktickstotal += c;
+    timer_update(c, cpu_num);
+    if (clocktickstotal > 0xfffffff) clocktickstotal = 0;
+    return c;
+}
 
-        // ---- Interrupt / wait-state check (before fetch) ------------------
-        if (m_sync) {
-            if (m_nmi_line || m_firq_line || m_irq_line) {
-                m_sync = false;     // wake up; fall through to service if unmasked
-            } else {
-                clocktickstotal += abs(last_cycles - cycles);
-                break;              // still waiting; give back the timeslice
-            }
-        }
+// -----------------------------------------------------------------------------
+// step : run exactly ONE 6809 step and return the cycles it consumed:
+//   - service the highest-priority pending/unmasked interrupt, OR
+//   - fetch & execute one instruction, OR
+//   - idle one cycle while SYNC-waiting for an interrupt.
+// charge_cycles() advances the timer for that step. This is the unit Vectrex
+// (and any cycle-stepped driver) calls directly; exec() just loops it.
+// -----------------------------------------------------------------------------
+int cpu_m6809::step()
+{
+    // A "step" is an interrupt entry, an idle SYNC tick, or one instruction.
+    // exec() reads this flag so ONLY instruction cycles consume the slice budget
+    // -- interrupt cycles are accounted as overshoot. Default to "interrupt";
+    // the instruction path clears it below.
+    m_step_was_interrupt = true;
 
-        if (m_nmi_line && m_nmi_enabled) {
-            service_interrupt(0xFFFC, true, true);
-            m_nmi_line = false;     // latch lowered when taken
-            cycles -= 19;
-            clocktickstotal += abs(last_cycles - cycles);
-            continue;
-        }
-        else if (m_firq_line && !get_flag(CC_F)) {
-            service_interrupt(0xFFF6, true, false);
-            m_firq_line = false;    // latch lowered when taken (one-shot request)
-            cycles -= 10;
-            clocktickstotal += abs(last_cycles - cycles);
-            continue;
-        }
-        else if (m_irq_line && !get_flag(CC_I)) {
-            service_interrupt(0xFFF8, false, true);
-            m_irq_line = false;     // latch lowered when taken (one-shot request)
-            cycles -= 19;
-            clocktickstotal += abs(last_cycles - cycles);
-            continue;
-        }
+    // ---- SYNC wait-state: idle until an interrupt line is raised ----------
+    if (m_sync) {
+        if (m_nmi_line || m_firq_line || m_irq_line)
+            m_sync = false;             // wake; fall through to service below
+        else
+            return charge_cycles(1);    // still waiting: burn one idle cycle
+    }
+
+    // ---- Pending interrupts (priority: NMI, then FIRQ, then IRQ) ----------
+    if (m_nmi_line && m_nmi_enabled) {
+        service_interrupt(0xFFFC, true, true);
+        m_nmi_line = false;             // latch lowered when taken
+        return charge_cycles(19);
+    }
+    if (m_firq_line && !get_flag(CC_F)) {
+        service_interrupt(0xFFF6, true, false);
+        m_firq_line = false;            // latch lowered when taken (one-shot)
+        return charge_cycles(10);
+    }
+    if (m_irq_line && !get_flag(CC_I)) {
+        service_interrupt(0xFFF8, false, true);
+        m_irq_line = false;             // latch lowered when taken (one-shot)
+        return charge_cycles(19);
+    }
+
+    // A real instruction executes this step (it counts against the budget).
+    m_step_was_interrupt = false;
+
+    // The opcode switch below subtracts this instruction's cost from `cycles`,
+    // which starts at 0 and ends negative; consumed = -cycles (charged at the
+    // end of this function).
+    int cycles = 0;
 
         // ---- Fetch & decode ----------------------------------------------
         m_PPC = m_PC;
-        uint8_t op = fetch8();
+        uint8_t op = fetch_opcode();
         m_last_opcode = op;
+
+        // ---- DEBUG: per-instruction trace, selectable CPU (boot diagnosis) -
+        // Set trace_which_cpu to the CPU number to trace (-1 = off). Verbose.
+        static int trace_which_cpu = -1;    // -1 = off; 0/1/2 to trace a CPU
+        if (trace_which_cpu >= 0 && cpu_num == trace_which_cpu)
+        {
+            LOG_INFO("CPU%d PC=%04X OP=%02X  A=%02X B=%02X X=%04X Y=%04X S=%04X U=%04X DP=%02X CC=%02X",
+                     cpu_num, m_PPC, op,
+                     m_D.d8.A, m_D.d8.B, m_X, m_Y, m_S, m_U, m_DP, m_CC);
+        }
+
         int extra = 0;
 
         switch (op)
@@ -739,6 +791,7 @@ int cpu_m6809::exec(int cycles)
         case 0x33: m_U = ea_indexed(extra);                          cycles -= 4 + extra; break; // LEAU
 
         // ----- Push / pull -----
+        // Hardware-accurate: PSH/PUL cost 5 + 1 per byte moved (real MC6809).
         case 0x34: cycles -= 5 + push_post(fetch8(), false); break;  // PSHS
         case 0x35: cycles -= 5 + pull_post(fetch8(), false); break;  // PULS
         case 0x36: cycles -= 5 + push_post(fetch8(), true);  break;  // PSHU
@@ -921,11 +974,33 @@ int cpu_m6809::exec(int cycles)
         if (m_PC != m_pc_after_last_fetch)
             notify_pc_change();
 
-        clocktickstotal += abs(last_cycles - cycles);
-        if (clocktickstotal > 0xfffffff) clocktickstotal = 0;
-    }
+    // One instruction done: charge its cost (consumed = -cycles, since `cycles`
+    // started at 0 and the opcode switch subtracted from it) and drive the timer.
+    return charge_cycles(-cycles);
+}
 
-    return cycles;
+// -----------------------------------------------------------------------------
+// exec : run a batch of at least `cycles` cycles by repeatedly stepping, exactly
+// like cpu_6502::exec6502. Returns the total cycles actually run (the final step
+// may overshoot). The scheduler reads the precise consumed count via
+// get6809ticks(); the timer is already advanced per-step inside step().
+// -----------------------------------------------------------------------------
+int cpu_m6809::exec(int cycles)
+{
+    // SYNC/CWAI wait-state: idle the entire slice.
+    if (m_sync && !(m_nmi_line || m_firq_line || m_irq_line))
+        return charge_cycles(cycles);
+
+    // Run a full budget of INSTRUCTION cycles. 
+    int instr_budget = cycles;
+    int total = 0;
+    while (instr_budget > 0) {
+        int c = step();
+        total += c;
+        if (!m_step_was_interrupt)
+            instr_budget -= c;
+    }
+    return total;
 }
 
 // =============================================================================
@@ -935,7 +1010,7 @@ int cpu_m6809::exec(int cycles)
 
 int cpu_m6809::exec_page10()
 {
-    uint8_t op = fetch8();
+    uint8_t op = fetch_opcode();
     m_last_opcode = op;
     int extra = 0;
 
@@ -988,7 +1063,7 @@ int cpu_m6809::exec_page10()
 
 int cpu_m6809::exec_page11()
 {
-    uint8_t op = fetch8();
+    uint8_t op = fetch_opcode();
     m_last_opcode = op;
     int extra = 0;
 

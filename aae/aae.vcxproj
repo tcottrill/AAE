@@ -118,7 +118,7 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>NDEBUG;_WINDOWS;GLEW_STATIC;_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>NDEBUG;_WINDOWS;GLEW_STATIC;_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR;WIN7BUILD;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <LanguageStandard_C>stdc17</LanguageStandard_C>
@@ -145,18 +145,15 @@
     <ClInclude Include="aae\aae_video\winfont_gl4.h" />
     <ClInclude Include="aae\acommon.h" />
     <ClInclude Include="aae\config.h" />
-    <ClInclude Include="aae\cpu_code\68000\m68k.h" />
-    <ClInclude Include="aae\cpu_code\68000\m68kconf.h" />
-    <ClInclude Include="aae\cpu_code\68000\m68kcpu.h" />
-    <ClInclude Include="aae\cpu_code\68000\m68kops.h" />
-    <ClInclude Include="aae\cpu_code\68000\mem68k.h" />
     <ClInclude Include="aae\cpu_code\ccpu.h">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
     </ClInclude>
     <ClInclude Include="aae\cpu_code\cpu_6502.h" />
     <ClInclude Include="aae\cpu_code\cpu_control.h" />
+    <ClInclude Include="aae\cpu_code\cpu_i8039.h" />
     <ClInclude Include="aae\cpu_code\cpu_i8080.h" />
     <ClInclude Include="aae\cpu_code\cpu_i8085.h" />
+    <ClInclude Include="aae\cpu_code\cpu_lr35902.h" />
     <ClInclude Include="aae\cpu_code\cpu_m6809.h" />
     <ClInclude Include="aae\cpu_code\cpu_m68000.h" />
     <ClInclude Include="aae\cpu_code\cpu_z80.h" />
@@ -294,18 +291,15 @@
     <ClCompile Include="aae\aae_video\vector_fonts.cpp" />
     <ClCompile Include="aae\acommon.cpp" />
     <ClCompile Include="aae\config.cpp" />
-    <ClCompile Include="aae\cpu_code\68000\m68kcpu.cpp" />
-    <ClCompile Include="aae\cpu_code\68000\m68kopac.cpp" />
-    <ClCompile Include="aae\cpu_code\68000\m68kopdm.cpp" />
-    <ClCompile Include="aae\cpu_code\68000\m68kopnz.cpp" />
-    <ClCompile Include="aae\cpu_code\68000\m68kops.cpp" />
     <ClCompile Include="aae\cpu_code\ccpu.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="aae\cpu_code\cpu_6502.cpp" />
     <ClCompile Include="aae\cpu_code\cpu_control.cpp" />
+    <ClCompile Include="aae\cpu_code\cpu_i8039.cpp" />
     <ClCompile Include="aae\cpu_code\cpu_i8080.cpp" />
     <ClCompile Include="aae\cpu_code\cpu_i8085.cpp" />
+    <ClCompile Include="aae\cpu_code\cpu_lr35902.cpp" />
     <ClCompile Include="aae\cpu_code\cpu_m6809.cpp" />
     <ClCompile Include="aae\cpu_code\cpu_m68000.cpp" />
     <ClCompile Include="aae\cpu_code\cpu_z80.cpp" />
@@ -318,6 +312,8 @@
     <ClCompile Include="aae\drivers\bzone.cpp" />
     <ClCompile Include="aae\drivers\cchasm.cpp" />
     <ClCompile Include="aae\drivers\centiped.cpp" />
+    <ClCompile Include="aae\drivers\foodf.cpp" />
+    <ClCompile Include="aae\drivers\gyruss.cpp" />
     <ClCompile Include="aae\drivers\cinematronics_driver.cpp" />
     <ClCompile Include="aae\drivers\circus.cpp" />
     <ClCompile Include="aae\drivers\digdug.cpp" />
@@ -420,6 +416,7 @@
     <Image Include="appicon.ico" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="aae\cpu_code\cpu_m68000_ops.inc" />
     <None Include="packages.config" />
     <None Include="resource.aps" />
   </ItemGroup>

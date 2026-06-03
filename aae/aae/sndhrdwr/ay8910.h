@@ -1,94 +1,66 @@
-#ifndef _AY8910_H_
-#define _AY8910_H_
+#ifndef AY8910_H
+#define AY8910_H
 
-//==========================================================================
-// AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME 
-// code, 0.29 through .90 mixed with code of my own. This emulator was 
-// created solely for my amusement and learning and is provided only 
-// as an archival experience. 
-// 
-// All MAME code used and abused in this emulator remains the copyright 
-// of the dedicated people who spend countless hours creating it. All
-// MAME code should be annotated as belonging to the MAME TEAM.
-// 
-// THE CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.  
-//==========================================================================
-
-/***************************************************************************
-
-  ay8910.h/c
-
-  Emulation of the AY-3-8910 sound chip.
-
-  Based on various code snippets by Ville Hallik, Michael Cuddy,
-  Tatsuyuki Satoh, Fabrice Frances, Nicola Salmoria.
-
-***************************************************************************/
-
+#include <cstdint>
 #include "aae_mame_driver.h"
 
-#define MAX_8910 4
-#define ALL_8910_CHANNELS -1
+constexpr int MAX_8910 = 5;   // Gyruss uses 5 AY-3-8910s
 
-typedef unsigned char BYTE;
-typedef BYTE* pBYTE;
+using AY8910PortRead  = uint8_t (*)(void);
+using AY8910PortWrite = void    (*)(uint8_t value);
 
-struct AY8910interface
-{
-    int num;
-    int baseclock;
-    int vol[MAX_8910];        // Per-chip master gain numerator (see volshift)
-    int volshift[MAX_8910];   // Per-chip master gain right shift (>=0)
-    int (*portAread[MAX_8910])(void);
-    int (*portBread[MAX_8910])(void);
-    void (*portAwrite[MAX_8910])(int offset, int data);
-    void (*portBwrite[MAX_8910])(int offset, int data);
+struct AY8910Config {
+    int num_chips;                          // 1..MAX_8910
+    int base_clock;                         // master clock Hz
+    int mixing_level[MAX_8910];             // 0..255, fed to sample_set_volume_mixer
+    AY8910PortRead  port_a_read [MAX_8910]; // nullable
+    AY8910PortRead  port_b_read [MAX_8910]; // nullable
+    AY8910PortWrite port_a_write[MAX_8910]; // nullable
+    AY8910PortWrite port_b_write[MAX_8910]; // nullable
 };
 
-void AY8910_reset(int chip);
-void AY8910_set_clock(int chip, int _clock);
-void AY8910_set_volume(int chip, int channel, int volume);
+// Bank lifecycle
+int  ay8910_sh_start (const AY8910Config* cfg);
+void ay8910_sh_stop  (void);
+void ay8910_sh_update(void);
+void ay8910_reset    (int chip);    // -1 = all chips
 
-void AY8910Write(int chip, int a, int data);
-int  AY8910Read(int chip);
+// Direct register access
+void    ay8910_write(int chip, int addr, uint8_t data);
+uint8_t ay8910_read (int chip);
 
-UINT16 AY8910_read_port_0_r(UINT16 offset, struct z80PortRead* zpr);
-UINT16 AY8910_read_port_1_r(UINT16 offset, struct z80PortRead* zpr);
-UINT16 AY8910_read_port_2_r(UINT16 offset, struct z80PortRead* zpr);
-UINT16 AY8910_read_port_3_r(UINT16 offset, struct z80PortRead* zpr);
-UINT16 AY8910_read_port_4_r(UINT16 offset, struct z80PortRead* zpr);
+// MEM_ADDR trampolines (chip 0..4)
+void    ay8910_0_control_w(uint32_t addr, uint8_t data, struct MemoryWriteByte* mwb);
+void    ay8910_0_data_w   (uint32_t addr, uint8_t data, struct MemoryWriteByte* mwb);
+uint8_t ay8910_0_data_r   (uint32_t addr,               struct MemoryReadByte*  mrb);
+void    ay8910_1_control_w(uint32_t addr, uint8_t data, struct MemoryWriteByte* mwb);
+void    ay8910_1_data_w   (uint32_t addr, uint8_t data, struct MemoryWriteByte* mwb);
+uint8_t ay8910_1_data_r   (uint32_t addr,               struct MemoryReadByte*  mrb);
+void    ay8910_2_control_w(uint32_t addr, uint8_t data, struct MemoryWriteByte* mwb);
+void    ay8910_2_data_w   (uint32_t addr, uint8_t data, struct MemoryWriteByte* mwb);
+uint8_t ay8910_2_data_r   (uint32_t addr,               struct MemoryReadByte*  mrb);
+void    ay8910_3_control_w(uint32_t addr, uint8_t data, struct MemoryWriteByte* mwb);
+void    ay8910_3_data_w   (uint32_t addr, uint8_t data, struct MemoryWriteByte* mwb);
+uint8_t ay8910_3_data_r   (uint32_t addr,               struct MemoryReadByte*  mrb);
+void    ay8910_4_control_w(uint32_t addr, uint8_t data, struct MemoryWriteByte* mwb);
+void    ay8910_4_data_w   (uint32_t addr, uint8_t data, struct MemoryWriteByte* mwb);
+uint8_t ay8910_4_data_r   (uint32_t addr,               struct MemoryReadByte*  mrb);
 
-void AY8910_control_port_0_w(UINT16 offset, UINT8 value, struct z80PortWrite* zpw);
-void AY8910_control_port_1_w(UINT16 offset, UINT8 value, struct z80PortWrite* zpw);
-void AY8910_control_port_2_w(UINT16 offset, UINT8 value, struct z80PortWrite* zpw);
-void AY8910_control_port_3_w(UINT16 offset, UINT8 value, struct z80PortWrite* zpw);
-void AY8910_control_port_4_w(UINT16 offset, UINT8 value, struct z80PortWrite* zpw);
-
-void AY8910_write_port_0_w(UINT16 offset, UINT8 value, struct z80PortWrite* zpw);
-void AY8910_write_port_1_w(UINT16 offset, UINT8 value, struct z80PortWrite* zpw);
-void AY8910_write_port_2_w(UINT16 offset, UINT8 value, struct z80PortWrite* zpw);
-void AY8910_write_port_3_w(UINT16 offset, UINT8 value, struct z80PortWrite* zpw);
-void AY8910_write_port_4_w(UINT16 offset, UINT8 value, struct z80PortWrite* zpw);
-
-// MEM Port Handlers
-void AY8910_control_port_0_w(UINT32 offset, UINT8 value, struct MemoryWriteByte* mwb);
-void AY8910_control_port_1_w(UINT32 offset, UINT8 value, struct MemoryWriteByte* mwb);
-void AY8910_control_port_2_w(UINT32 offset, UINT8 value, struct MemoryWriteByte* mwb);
-void AY8910_control_port_3_w(UINT32 offset, UINT8 value, struct MemoryWriteByte* mwb);
-void AY8910_write_port_0_w(UINT32 offset, UINT8 value, struct MemoryWriteByte* mwb);
-void AY8910_write_port_1_w(UINT32 offset, UINT8 value, struct MemoryWriteByte* mwb);
-void AY8910_write_port_2_w(UINT32 offset, UINT8 value, struct MemoryWriteByte* mwb);
-void AY8910_write_port_3_w(UINT32 offset, UINT8 value, struct MemoryWriteByte* mwb);
-
-UINT8 AY8910_read_port_0_r(UINT32 address, struct MemoryReadByte* psMemRead);
-UINT8 AY8910_read_port_1_r(UINT32 address, struct MemoryReadByte* psMemRead);
-UINT8 AY8910_read_port_2_r(UINT32 address, struct MemoryReadByte* psMemRead);
-UINT8 AY8910_read_port_3_r(UINT32 address, struct MemoryReadByte* psMemRead);
-UINT8 AY8910_read_port_4_r(UINT32 address, struct MemoryReadByte* psMemRead);
-
-int  AY8910_sh_start(struct AY8910interface* ayinterface);
-void AY8910_sh_update(void);
-void AY8910clear(void);
-void AY8910partupdate(int chip);
+// PORT_ADDR (Z80 IO) trampolines
+uint16_t ay8910_0_data_port_r   (uint16_t off,                struct z80PortRead*  zpr);
+void     ay8910_0_control_port_w(uint16_t off, uint8_t value, struct z80PortWrite* zpw);
+void     ay8910_0_data_port_w   (uint16_t off, uint8_t value, struct z80PortWrite* zpw);
+uint16_t ay8910_1_data_port_r   (uint16_t off,                struct z80PortRead*  zpr);
+void     ay8910_1_control_port_w(uint16_t off, uint8_t value, struct z80PortWrite* zpw);
+void     ay8910_1_data_port_w   (uint16_t off, uint8_t value, struct z80PortWrite* zpw);
+uint16_t ay8910_2_data_port_r   (uint16_t off,                struct z80PortRead*  zpr);
+void     ay8910_2_control_port_w(uint16_t off, uint8_t value, struct z80PortWrite* zpw);
+void     ay8910_2_data_port_w   (uint16_t off, uint8_t value, struct z80PortWrite* zpw);
+uint16_t ay8910_3_data_port_r   (uint16_t off,                struct z80PortRead*  zpr);
+void     ay8910_3_control_port_w(uint16_t off, uint8_t value, struct z80PortWrite* zpw);
+void     ay8910_3_data_port_w   (uint16_t off, uint8_t value, struct z80PortWrite* zpw);
+uint16_t ay8910_4_data_port_r   (uint16_t off,                struct z80PortRead*  zpr);
+void     ay8910_4_control_port_w(uint16_t off, uint8_t value, struct z80PortWrite* zpw);
+void     ay8910_4_data_port_w   (uint16_t off, uint8_t value, struct z80PortWrite* zpw);
 
 #endif

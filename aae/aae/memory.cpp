@@ -74,6 +74,17 @@ unsigned char* memory_region(int num)
 	return 0;
 }
 
+/*-------------------------------------------------
+	memory_region_length - byte length of a region
+	(0 if the region is not allocated)
+-------------------------------------------------*/
+int memory_region_length(int num)
+{
+	if (num >= 0 && num < MAX_MEMORY_REGIONS)
+		return Machine->memory_region_length[num];
+	return 0;
+}
+
 void free_all_memory_regions()
 {
 	for (std::vector<int>::iterator it = memory_allocation_tracker.begin(); it != memory_allocation_tracker.end(); ++it)

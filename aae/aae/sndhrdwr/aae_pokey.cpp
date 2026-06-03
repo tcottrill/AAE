@@ -657,7 +657,11 @@ int quad_pokey_r(int offset) {
 	return Read_pokey_regs(reg, chip);
 }
 
-void pokey1_w(int offset, int data) { update_pokeys(); Update_pokey_sound(offset, data, 0); }
+void pokey1_w(int offset, int data) 
+{
+	update_pokeys();
+	Update_pokey_sound(offset, data, 0); 
+}
 void pokey2_w(int offset, int data) { update_pokeys(); Update_pokey_sound(offset, data, 1); }
 void pokey3_w(int offset, int data) { update_pokeys(); Update_pokey_sound(offset, data, 2); }
 void pokey4_w(int offset, int data) { update_pokeys(); Update_pokey_sound(offset, data, 3); }

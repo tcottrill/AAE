@@ -28,10 +28,9 @@
 #include <cstdint>
 #include "deftypes.h"
 
-// Legacy interrupt-type bitmask, kept only for source-level compatibility with
-// the AAE cpu_control layer (and the older cpu_6809 API it was written for).
-// New / portable code should prefer the level inputs nmi_line()/irq_line()/
-// firq_line() directly. 
+// Interrupt-type bitmask used by m6809_Cause_Interrupt(). The level inputs
+// nmi_line() / irq_line() / firq_line() are the preferred portable API; this
+// enum is kept for the AAE cpu_control layer that requests interrupts by type.
 enum {
     M6809_INT_NONE = 0x00,
     M6809_INT_IRQ  = 0x01,
@@ -65,9 +64,10 @@ public:
     cpu_m6809(uint8_t* mem, MemoryReadByte* read_mem, MemoryWriteByte* write_mem, int cpu_num);
    ~cpu_m6809() {}
 
-    // Main entry points (mirror cpu_i8080).
+    // Main entry points (mirror cpu_6502: step6502 / exec6502).
     void reset();                 // load PC from the RESET vector $FFFE/$FFFF
-    int  exec(int cycles);        // run ~cycles, return leftover (<= 0 on overshoot)
+    int  step();                  // run exactly ONE step; return cycles consumed
+    int  exec(int cycles);        // run >= cycles by looping step(); return total run
     int  get_ticks(int reset);    // running, resettable cycle total
 
     // Level-sensitive interrupt lines.
@@ -86,6 +86,13 @@ public:
     //  cpu_setOPbase16, keeping the core self-contained.
     int (*opbase_override)(int) = nullptr;
 
+    // Optional decrypted-opcode base. When set, instruction-stream fetches
+    // (fetch8/fetch16: opcode/postbyte/immediate/branch-offset) read from this
+    // flat 64K buffer instead of the normal bus, while DATA reads (read8/read16)
+    // still hit the original memory. This is the AAE equivalent of MAME's
+    // memory_set_opcode_base, used by the konami1 opcode-scramble (Gyruss 6809).
+    void set_opcode_base(uint8_t* base) { m_opcode_base = base; }
+
     // True while the most recent bus access was an instruction-stream fetch
     // (opcode / postbyte / immediate / branch-offset) rather than a data
     // load/store. The slapstic add-on queries this to decide whether an
@@ -101,8 +108,8 @@ public:
     void mame_memory_handling(bool s) { mmem = s; }
     void log_unhandled_rw(bool s)     { log_debug_rw = s; }
 
-    // ---- Legacy AAE / cpu_6809-compatible API ------------------------------
-    // Thin name-compatibility wrappers so the existing cpu_control.cpp,
+    // ---- AAE cpu_control bridge --------------------------------------------
+    // Thin name-compatibility wrappers used by the AAE scheduler.
     void     reset6809()          { reset(); }
     int      exec6809(int cycles) { return exec(cycles); }
     int      get6809ticks(int r)  { return get_ticks(r); }
@@ -168,9 +175,12 @@ private:
     bool m_nmi_enabled = false;  // NMI masked from reset until first write to S
     bool m_sync        = false;  // SYNC: waiting for any interrupt line
     bool m_cwai        = false;  // CWAI: registers pre-stacked, waiting
+    bool m_step_was_interrupt = false; // last step() serviced an int/idle, not an instruction
+                                       // (exec() excludes those cycles from the slice budget)
 
     // ---- Add-on hook support state ----------------------------------------
     bool     m_in_opcode_fetch     = false; // last bus access was a fetch (see in_opcode_fetch)
+    uint8_t* m_opcode_base         = nullptr; // decrypted-opcode base (see set_opcode_base)
     uint16_t m_pc_after_last_fetch = 0;     // PC right after the last fetch; used to detect non-sequential PC changes
 
     // ---- Debug / memory options -------------------------------------------
@@ -192,6 +202,14 @@ private:
     void     write8(uint16_t addr, uint8_t v);
     uint16_t read16(uint16_t addr);            // big-endian: hi @ addr, lo @ addr+1
     void     write16(uint16_t addr, uint16_t v);
+    // Opcode fetch: the instruction-selecting byte(s) (opcode + 0x10/0x11
+    // prefix sub-opcode). On a konami1-scrambled CPU these come from the
+    // decrypted opcode base; on a normal CPU m_opcode_base is null and this is
+    // identical to a raw fetch.
+    uint8_t  fetch_opcode() { m_in_opcode_fetch = true; uint8_t v = (m_opcode_base ? m_opcode_base[m_PC] : bus_read8(m_PC)); ++m_PC; m_pc_after_last_fetch = m_PC; return v; }
+    // Operand fetch: postbytes / immediates / offsets / addresses. konami1
+    // leaves these UN-encrypted, so they are always read raw (bus_read8). For a
+    // normal CPU this is the same memory the opcode came from.
     uint8_t  fetch8()  { m_in_opcode_fetch = true; uint8_t v = bus_read8(m_PC++); m_pc_after_last_fetch = m_PC; return v; }
     uint16_t fetch16() { m_in_opcode_fetch = true; uint16_t hi = bus_read8(m_PC++); uint16_t lo = bus_read8(m_PC++); m_pc_after_last_fetch = m_PC; return (uint16_t)((hi << 8) | lo); }
 
@@ -266,6 +284,10 @@ private:
     // ---- Prefix pages ------------------------------------------------------
     int      exec_page10();   // 0x10 prefix; returns cycles consumed by sub-op
     int      exec_page11();   // 0x11 prefix; returns cycles consumed by sub-op
+
+    // Charge `c` cycles to clocktickstotal and the AAE timer; returns `c`.
+    // Called once per step() so interrupt timing is cycle-accurate.
+    int      charge_cycles(int c);
 };
 
 #endif // _CPU_M6809_H_

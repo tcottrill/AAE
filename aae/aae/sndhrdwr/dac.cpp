@@ -24,6 +24,7 @@
 #include "dac.h"
 #include "mixer.h"           /* stream_start, stream_update, stream_stop */
 #include "aae_mame_driver.h" /* Machine, WRITE_HANDLER */
+#include "cpu_control.h"     /* cpu_scale_by_cycles - mid-frame write position */
 
 /* -------------------------------------------------------------------------
    Module-level state
@@ -36,8 +37,13 @@ static int dac_channel[MAX_DAC];
 /* Per-channel current DC output level (int16) */
 static int dac_output[MAX_DAC];
 
-/* Per-channel frame buffer: one flat DC level replicated for each sample */
+/* Per-channel frame buffer: the reconstructed waveform for the current frame */
 static int16_t *dac_frame_buf[MAX_DAC];
+
+/* Per-channel fill cursor: how far into this frame's buffer we've written.
+   Advanced on each level change (mid-frame catch-up) and flushed to the end
+   of the buffer in DAC_sh_update(). */
+static int dac_write_pos[MAX_DAC];
 
 /* Number of int16 samples per frame, shared across all channels */
 static int dac_frame_len = 0;
@@ -67,44 +73,52 @@ static void DAC_build_voltable(void)
    ========================================================================= */
 
 /*
- * DAC_data_w - unsigned 8-bit write.
- * data range 0..255 maps linearly to output 0..32767.
+ * dac_catch_up - write the CURRENT (about-to-change) output level into the
+ * frame buffer from the last cursor position up to the CPU's current position
+ * within the frame, then advance the cursor. This is the AAE equivalent of
+ * MAME's "stream_update() before changing the register": it samples-and-holds
+ * the old level for exactly the time it was active, so a CPU that writes the
+ * DAC many times per frame (e.g. the Gyruss i8039) reconstructs a real
+ * waveform instead of being decimated to one sample per frame.
  */
-void DAC_data_w(int num, int data)
+static void dac_catch_up(int num)
 {
-    int out = UnsignedVolTable[data & 0xff];
-    dac_output[num] = out;
+    if (!dac_frame_buf[num] || dac_frame_len <= 0)
+        return;
+
+    /* Current sample position within the frame for the writing CPU. clock=0
+       lets cpu_scale_by_cycles derive it from the active CPU's own clock. */
+    int pos = cpu_scale_by_cycles(dac_frame_len, 0);
+    if (pos > dac_frame_len) pos = dac_frame_len;
+    if (pos < dac_write_pos[num]) pos = dac_write_pos[num];   /* monotonic */
+
+    int16_t level = (int16_t)dac_output[num];
+    for (int s = dac_write_pos[num]; s < pos; s++)
+        dac_frame_buf[num][s] = level;
+    dac_write_pos[num] = pos;
 }
 
-/*
- * DAC_signed_data_w - signed 8-bit write.
- * data range 0..255 is treated as two's complement, mapping to -32768..32767.
- */
-void DAC_signed_data_w(int num, int data)
+/* Flush the old level up to now, then latch the new one (MAME order). */
+static void dac_set_level(int num, int out)
 {
-    int out = SignedVolTable[data & 0xff];
-    dac_output[num] = out;
+    if (dac_output[num] != out)
+    {
+        dac_catch_up(num);
+        dac_output[num] = out;
+    }
 }
 
-/*
- * DAC_data_16_w - unsigned 16-bit write.
- * data range 0..65535 maps to 0..32767 (top bit is dropped).
- */
-void DAC_data_16_w(int num, int data)
-{
-    int out = data >> 1;   /* 0..65535 -> 0..32767 */
-    dac_output[num] = out;
-}
+/* DAC_data_w - unsigned 8-bit; 0..255 -> 0..32767. */
+void DAC_data_w(int num, int data) { dac_set_level(num, UnsignedVolTable[data & 0xff]); }
 
-/*
- * DAC_signed_data_16_w - signed 16-bit write.
- * data range 0..65535 is recentred to -32768..32767.
- */
-void DAC_signed_data_16_w(int num, int data)
-{
-    int out = data - 0x8000;   /* 0..65535 -> -32768..32767 */
-    dac_output[num] = out;
-}
+/* DAC_signed_data_w - signed 8-bit (two's complement) -> -32768..32767. */
+void DAC_signed_data_w(int num, int data) { dac_set_level(num, SignedVolTable[data & 0xff]); }
+
+/* DAC_data_16_w - unsigned 16-bit; 0..65535 -> 0..32767 (top bit dropped). */
+void DAC_data_16_w(int num, int data) { dac_set_level(num, data >> 1); }
+
+/* DAC_signed_data_16_w - signed 16-bit; 0..65535 -> -32768..32767. */
+void DAC_signed_data_16_w(int num, int data) { dac_set_level(num, data - 0x8000); }
 
 /* =========================================================================
    Convenience write handlers for use directly in memory maps.
@@ -143,6 +157,7 @@ int DAC_sh_start(const struct DACinterface *intf_in)
     for (int i = 0; i < intf->num; i++)
     {
         dac_output[i]    = 0;
+        dac_write_pos[i] = 0;
 
         /* Allocate a mixer channel out of the chip-stream range. */
         dac_channel[i] = mixer_alloc_channel(MIXER_CHIP_STREAM_RANGE_LOW, MIXER_FIRST_RESERVED_CHANNEL);
@@ -197,8 +212,10 @@ void DAC_sh_stop(void)
  * DAC_sh_update - push one frame of audio to the mixer for every DAC channel.
  * Call once per emulated video frame.
  *
- * Each DAC holds a single DC level; the entire frame buffer is filled with
- * that constant value and handed to stream_update().
+ * Any mid-frame level changes were already written into the buffer by
+ * dac_catch_up(). Here we fill the remainder (from the last cursor to the end
+ * of the frame) with the current level - sample-and-hold for the tail of the
+ * frame - then push the buffer and reset the cursor for the next frame.
  */
 void DAC_sh_update(void)
 {
@@ -210,11 +227,12 @@ void DAC_sh_update(void)
         if (!dac_frame_buf[i] || dac_channel[i] < 0)
             continue;
 
-        /* Fill the frame buffer with the current DC output level */
+        /* Hold the current level from the last write to end-of-frame. */
         int16_t level = (int16_t)dac_output[i];
-        for (int s = 0; s < dac_frame_len; s++)
+        for (int s = dac_write_pos[i]; s < dac_frame_len; s++)
             dac_frame_buf[i][s] = level;
 
         stream_update(dac_channel[i], dac_frame_buf[i]);
+        dac_write_pos[i] = 0;   /* start the next frame at the buffer head */
     }
 }

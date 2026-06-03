@@ -18,7 +18,6 @@
 #include "aae_avg.h"
 #include "earom.h"
 #include "aae_pokey.h"
-#include "math.h"
 #include "timer.h"
 
 #pragma warning(disable : 4838)
@@ -50,8 +49,6 @@ QUANTUM MEMORY MAP (per schem):
 900000			DTACK1
 */
 
-//#define BYTESWAP(x) ((((uint16_t)(x))>>8) | (((uint16_t)(x))<<8))
-
 ART_START(quantumart)
 ART_LOAD("custom.zip", "vert_mask.png", ART_TEX, 2)
 ART_END
@@ -79,7 +76,7 @@ void quantum_nvram_handler(void* file, int read_or_write)
 		}
 		else
 		{
-			memset(nv_ram, 0, 0x200);
+			memset(nv_ram, 0xff, 0x200);
 		}
 	}
 }
@@ -124,7 +121,6 @@ WRITE16_HANDLER(quantum_led_write)
 
 READ16_HANDLER(MRA_NOP16)
 {
-	//LOG_INFO("--------------------Unhandled Read, %x data: %x", address);
 	return 0;
 }
 
@@ -138,18 +134,12 @@ READ16_HANDLER(quantum_snd_read)
 
 WRITE16_HANDLER(quantum_snd_write)
 {
-	unsigned int data1;
-	unsigned int data2;
-
-	data1 = (data & 0xff00) >> 8;
-	data2 = data & 0x00ff;
-
-	if (address & 0x1) {
-		pokey1_w((address >> 1) & 0xf, data1 & 0xff);
-	}
-	else {
-		pokey2_w((address >> 1) & 0xf, data2 & 0xff);
-	}
+	// A5 (address bit 5) selects the chip; address bits 4..1 are the register.
+	// Both POKEYs take the low data byte. 
+	if (address & 0x20)
+		pokey2_w((address >> 1) & 0x0f, data & 0xff);
+	else
+		pokey1_w((address >> 1) & 0x0f, data & 0xff);
 }
 
 
@@ -157,7 +147,7 @@ static struct POKEYinterface pokey_interface =
 {
 	2,	/* 2 chips */
 	600000,        /* .6 MHz? (hand tuned) */
-	{ 128,128 },
+	{ 80,80 },
 	/* The 8 pot handlers */
 	{ quantum_input_1_r, quantum_input_2_r },
 	{ quantum_input_1_r, quantum_input_2_r },
@@ -218,10 +208,10 @@ void run_quantum()
 int init_quantum()
 {
 	LOG_INFO("Starting Quantum Init");
-	memset(main_ram, 0x00, 0x4fff);
-	memset(vec_ram, 0x00, 0x1fff);
-	memset(program_rom, 0x00, 0x13fff);
-	memset(nv_ram, 0x00, 0x200);
+	memset(main_ram, 0x00, sizeof(main_ram));
+	memset(vec_ram, 0x00, 0x2000);            // driver uses vec_ram[0..0x1FFF]
+	memset(nv_ram, 0x00, sizeof(nv_ram));
+	// program_rom is fully overwritten by the memcpy below; no memset needed.
 
 	memcpy(program_rom, Machine->memory_region[CPU0], 0x14000);
 	byteswap(program_rom, 0x14000);
@@ -275,14 +265,6 @@ PORT_DIPSETTING(0x05, "1 each 3")
 PORT_DIPSETTING(0x06, "2 each 4")
 PORT_START("DSW1") /* DSW1 */
 PORT_BIT(0xff, IP_ACTIVE_HIGH, IPT_UNKNOWN)
-/*
-PORT_START("IN2")     // IN2
-PORT_ANALOG(0x0f, 0, IPT_TRACKBALL_Y | IPF_REVERSE, 20, 10, 7, 0, 0)
-PORT_START("IN3")      // IN3
-PORT_ANALOG(0x0f, 0, IPT_TRACKBALL_X, 20, 10, 7, 0, 0)
-INPUT_PORTS_END
-*/
-
 PORT_START("IN2")     // IN2
 PORT_ANALOG(0x0f, 0, IPT_TRACKBALL_Y | IPF_REVERSE, 10, 10, 0, 0)
 PORT_START("IN3")      // IN3
@@ -325,16 +307,16 @@ ROM_END
 
 ROM_START(quantump)
 ROM_REGION(0x14000, REGION_CPU1, 0)
-ROM_LOAD("quantump.2e", 0x0000, 0x2000, CRC(176d73d3) SHA1(b887ee50af5db6f6d43cc6ba57451173f996dedc))
-ROM_LOAD("quantump.3e", 0x0001, 0x2000, CRC(12fc631f) SHA1(327a44da897199536f43e5f792cb4a18d9055ac4))
-ROM_LOAD("quantump.2f", 0x4000, 0x2000, CRC(b64fab48) SHA1(d5a77a367d4f652261c381e6bdd55c2175ace857))
-ROM_LOAD("quantump.3f", 0x4001, 0x2000, CRC(a52a9433) SHA1(33787adb04864efebb04483353bbc96c966ec607))
-ROM_LOAD("quantump.2h", 0x8000, 0x2000, CRC(5b29cba3) SHA1(e83b68907bc397994ed51a39dfa241430a0adb0c))
-ROM_LOAD("quantump.3h", 0x8001, 0x2000, CRC(c64fc03a) SHA1(ab6cd710d01bc85432cc52021f27fd8f2a5e3168))
-ROM_LOAD("quantump.2k", 0xc000, 0x2000, CRC(854f9c09) SHA1(d908b8c7f6837e511004cbd45a8883c6c7b155dd))
-ROM_LOAD("quantump.3k", 0xc001, 0x2000, CRC(1aac576c) SHA1(28bdb5fcbd8cccc657d6e00ace3c083c21015564))
-ROM_LOAD("quantump.2l", 0x10000, 0x2000, CRC(1285b5e7) SHA1(0e01e361da2d9cf1fac1896f8f44c4c2e75a3061))
-ROM_LOAD("quantump.3l", 0x10001, 0x2000, CRC(e19de844) SHA1(cb4f9d80807b26d6b95405b2d830799984667f54))
+ROM_LOAD16_BYTE("quantump.2e", 0x0000, 0x2000, CRC(176d73d3) SHA1(b887ee50af5db6f6d43cc6ba57451173f996dedc))
+ROM_LOAD16_BYTE("quantump.3e", 0x0001, 0x2000, CRC(12fc631f) SHA1(327a44da897199536f43e5f792cb4a18d9055ac4))
+ROM_LOAD16_BYTE("quantump.2f", 0x4000, 0x2000, CRC(b64fab48) SHA1(d5a77a367d4f652261c381e6bdd55c2175ace857))
+ROM_LOAD16_BYTE("quantump.3f", 0x4001, 0x2000, CRC(a52a9433) SHA1(33787adb04864efebb04483353bbc96c966ec607))
+ROM_LOAD16_BYTE("quantump.2h", 0x8000, 0x2000, CRC(5b29cba3) SHA1(e83b68907bc397994ed51a39dfa241430a0adb0c))
+ROM_LOAD16_BYTE("quantump.3h", 0x8001, 0x2000, CRC(c64fc03a) SHA1(ab6cd710d01bc85432cc52021f27fd8f2a5e3168))
+ROM_LOAD16_BYTE("quantump.2k", 0xc000, 0x2000, CRC(854f9c09) SHA1(d908b8c7f6837e511004cbd45a8883c6c7b155dd))
+ROM_LOAD16_BYTE("quantump.3k", 0xc001, 0x2000, CRC(1aac576c) SHA1(28bdb5fcbd8cccc657d6e00ace3c083c21015564))
+ROM_LOAD16_BYTE("quantump.2l", 0x10000, 0x2000, CRC(1285b5e7) SHA1(0e01e361da2d9cf1fac1896f8f44c4c2e75a3061))
+ROM_LOAD16_BYTE("quantump.3l", 0x10001, 0x2000, CRC(e19de844) SHA1(cb4f9d80807b26d6b95405b2d830799984667f54))
 /* AVG PROM */
 ROM_REGION(0x100, REGION_PROMS, 0)
 ROM_LOAD("136002-125.6h", 0x0000, 0x0100, CRC(5903af03) SHA1(24bc0366f394ad0ec486919212e38be0f08d0239))
@@ -354,7 +336,7 @@ AAE_DRIVER_CPUS(
 		/*freq*/     6048000,
 		/*div*/      100,
 		/*ipf*/      3,
-		/*int type*/ INT_TYPE_INT,
+		/*int type*/ INT_TYPE_68K1,
 		/*int cb*/   &quantum_interrupt,
 		/*r8*/       QuantumReadByte,
 		/*w8*/       QuantumWriteByte,
@@ -428,7 +410,7 @@ AAE_DRIVER_CPUS(
 		/*freq*/     6048000,
 		/*div*/      100,
 		/*ipf*/      3,
-		/*int type*/ INT_TYPE_INT,
+		/*int type*/ INT_TYPE_68K1,
 		/*int cb*/   &quantum_interrupt,
 		/*r8*/       QuantumReadByte,
 		/*w8*/       QuantumWriteByte,

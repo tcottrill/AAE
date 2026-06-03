@@ -61,21 +61,6 @@
     <ClCompile Include="aae\cpu_code\timer.cpp">
       <Filter>Source Files\aae\cpu_code</Filter>
     </ClCompile>
-    <ClCompile Include="aae\cpu_code\68000\m68kcpu.cpp">
-      <Filter>Source Files\aae\cpu_code\68000</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\cpu_code\68000\m68kopac.cpp">
-      <Filter>Source Files\aae\cpu_code\68000</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\cpu_code\68000\m68kopdm.cpp">
-      <Filter>Source Files\aae\cpu_code\68000</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\cpu_code\68000\m68kopnz.cpp">
-      <Filter>Source Files\aae\cpu_code\68000</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\cpu_code\68000\m68kops.cpp">
-      <Filter>Source Files\aae\cpu_code\68000</Filter>
-    </ClCompile>
     <ClCompile Include="aae\drivers\llander.cpp">
       <Filter>Source Files\aae\drivers</Filter>
     </ClCompile>
@@ -277,6 +262,12 @@
     <ClCompile Include="aae\drivers\centiped.cpp">
       <Filter>Source Files\aae\drivers\raster</Filter>
     </ClCompile>
+    <ClCompile Include="aae\drivers\foodf.cpp">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\drivers\gyruss.cpp">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClCompile>
     <ClCompile Include="aae\vidhrdwr\centiped_vid.cpp">
       <Filter>Source Files\aae\vidhrdwr</Filter>
     </ClCompile>
@@ -365,6 +356,12 @@
       <Filter>Source Files\aae\cpu_code</Filter>
     </ClCompile>
     <ClCompile Include="aae\cpu_code\cpu_m68000.cpp">
+      <Filter>Source Files\aae\cpu_code</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\cpu_code\cpu_lr35902.cpp">
+      <Filter>Source Files\aae\cpu_code</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\cpu_code\cpu_i8039.cpp">
       <Filter>Source Files\aae\cpu_code</Filter>
     </ClCompile>
   </ItemGroup>
@@ -467,21 +464,6 @@
     </ClInclude>
     <ClInclude Include="aae\cpu_code\timer.h">
       <Filter>Source Files\aae\cpu_code</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\cpu_code\68000\m68k.h">
-      <Filter>Source Files\aae\cpu_code\68000</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\cpu_code\68000\m68kconf.h">
-      <Filter>Source Files\aae\cpu_code\68000</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\cpu_code\68000\m68kcpu.h">
-      <Filter>Source Files\aae\cpu_code\68000</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\cpu_code\68000\m68kops.h">
-      <Filter>Source Files\aae\cpu_code\68000</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\cpu_code\68000\mem68k.h">
-      <Filter>Source Files\aae\cpu_code\68000</Filter>
     </ClInclude>
     <ClInclude Include="aae\drivers\llander.h">
       <Filter>Source Files\aae\drivers</Filter>
@@ -807,6 +789,12 @@
     <ClInclude Include="aae\cpu_code\cpu_m68000.h">
       <Filter>Source Files\aae\cpu_code</Filter>
     </ClInclude>
+    <ClInclude Include="aae\cpu_code\cpu_lr35902.h">
+      <Filter>Source Files\aae\cpu_code</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\cpu_code\cpu_i8039.h">
+      <Filter>Source Files\aae\cpu_code</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Image Include="appicon.ico" />
@@ -876,9 +864,6 @@
     <Filter Include="Source Files\aae\cpu_code">
       <UniqueIdentifier>{da058008-a727-4d5f-bb3f-a3335773c65c}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Source Files\aae\cpu_code\68000">
-      <UniqueIdentifier>{11feed3f-610f-4067-84af-657828dfa47a}</UniqueIdentifier>
-    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="resource.rc">
@@ -890,5 +875,8 @@
       <Filter>Resource Files</Filter>
     </None>
     <None Include="packages.config" />
+    <None Include="aae\cpu_code\cpu_m68000_ops.inc">
+      <Filter>Source Files\aae\cpu_code</Filter>
+    </None>
   </ItemGroup>
 </Project>

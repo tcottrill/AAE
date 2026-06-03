@@ -37,7 +37,7 @@
 #include "aae_mame_driver.h"
 #include "driver_registry.h"
 #include "cpu_control.h"
-#include "AY8910.H"
+#include "ay8910.h"
 #include "timer.h"
 #include "emu_vector_draw.h"
 #include "z80fmly.h"
@@ -132,16 +132,15 @@ static bool ctc_tone_playing[2] = { false, false };
 // ===========================================================================
 // AY-3-8910 interface (2 chips @ 1.818182 MHz)
 // ===========================================================================
-static struct AY8910interface cchasm_ay8910_intf =
+static AY8910Config cchasm_ay8910_cfg =
 {
-	2,              // num: 2 chips
-	1818182,        // baseclock: 1.818182 MHz
-	{ 25, 25 },    // vol: per-chip master gain
-	{ 0, 0 },      // volshift: no shift
-	{ 0, 0 },      // portAread callbacks
-	{ 0, 0 },      // portBread callbacks
-	{ 0, 0 },      // portAwrite callbacks
-	{ 0, 0 }       // portBwrite callbacks
+    2,                                          // num_chips
+    1818182,                                    // base_clock Hz
+    { 128, 128, 0, 0 },                           // mixing_level (0..255, per chip)
+    { nullptr, nullptr, nullptr, nullptr },     // port_a_read
+    { nullptr, nullptr, nullptr, nullptr },     // port_b_read
+    { nullptr, nullptr, nullptr, nullptr },     // port_a_write
+    { nullptr, nullptr, nullptr, nullptr }      // port_b_write
 };
 
 static int fire_toggle = 0;
@@ -541,8 +540,8 @@ READ_HANDLER(cchasm_snd_io_r)
 		if (coin != 0x7) coin |= 0x8;
 		return sound_flags | coin;
 	}
-	case 0x01: return (UINT8)AY8910Read(0);
-	case 0x21: return (UINT8)AY8910Read(1);
+	case 0x01: return ay8910_read(0);
+	case 0x21: return ay8910_read(1);
 	case 0x40: return soundlatch;
 	case 0x41:
 		sound_flags &= ~0x80;
@@ -559,10 +558,10 @@ WRITE_HANDLER(cchasm_snd_io_w)
 	int sel = address & 0x61;
 	switch (sel)
 	{
-	case 0x00: AY8910Write(0, 0, data); break;
-	case 0x01: AY8910Write(0, 1, data); break;
-	case 0x20: AY8910Write(1, 0, data); break;
-	case 0x21: AY8910Write(1, 1, data); break;
+	case 0x00: ay8910_write(0, 0, data); break;
+	case 0x01: ay8910_write(0, 1, data); break;
+	case 0x20: ay8910_write(1, 0, data); break;
+	case 0x21: ay8910_write(1, 1, data); break;
 	case 0x40: soundlatch3 = data; break;
 	case 0x41:
 		sound_flags |= 0x40;
@@ -722,7 +721,7 @@ int init_cchasm()
 	ctc_cfg.zc2[0] = ctc_timer_2_w;
 	z80ctc_init(&ctc_cfg);
 
-	AY8910_sh_start(&cchasm_ay8910_intf);
+	ay8910_sh_start(&cchasm_ay8910_cfg);
 
 	// Reset CTC tone playback state
 	// WAV samples are loaded automatically by load_samples_batch() from cchasm_samples[]
@@ -793,7 +792,7 @@ void run_cchasm()
 	ctc_tone_active[1] = 0;
 	*/
 	// Update AY-3-8910 audio output
-	AY8910_sh_update();
+	ay8910_sh_update();
 
 	// Reset watchdog
 	watchdog_reset_w(0, 0, 0);
@@ -801,7 +800,7 @@ void run_cchasm()
 
 void end_cchasm()
 {
-	AY8910clear();
+	ay8910_sh_stop();
 
 	// Stop CTC tone samples if playing
 	if (ctc_tone_playing[0]) { sample_stop(CTC_PLAY_CH0); ctc_tone_playing[0] = false; }

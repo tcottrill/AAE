@@ -1,4 +1,3 @@
-
 // Note, thanks to Charles McDonald for the skeleton code and how to for the 68000 emulation
 
 #include "cpu_control.h"
@@ -31,7 +30,6 @@ static int s_lines_per_frame = 262; // VIC Dual visible raster; use 262 for NTSC
 static int cpu_framecounter = 0; //This is strictly for the cinematronics games.
 // We currently don't use this anywhere else.
 
-
 //static int cpu_enabled[MAX_CPU];
 static int cpurunning[MAX_CPU];
 static int ran_this_frame[MAX_CPU];
@@ -49,11 +47,12 @@ static int watchdog_counter = 0;
 
 // CPU instances
 
-cpu_m6809*  m_cpu_6809[MAX_CPU];
-cpu_i8080*  m_cpu_i8080[MAX_CPU];
-cpu_z80*    m_cpu_z80[MAX_CPU];
-cpu_6502*   m_cpu_6502[MAX_CPU];
-cpu_i8085*  m_cpu_i8085[MAX_CPU];
+cpu_m6809* m_cpu_6809[MAX_CPU];
+cpu_i8080* m_cpu_i8080[MAX_CPU];
+cpu_z80* m_cpu_z80[MAX_CPU];
+cpu_6502* m_cpu_6502[MAX_CPU];
+cpu_i8085* m_cpu_i8085[MAX_CPU];
+cpu_i8039* m_cpu_i8039[MAX_CPU];
 cpu_m68000* m_cpu_68000[MAX_CPU];
 
 /* override OP base handler */
@@ -91,12 +90,26 @@ void init8080(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct
 void init8085(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum)
 {
 	m_cpu_i8085[cpunum] = new cpu_i8085(Machine->memory_region[cpunum],
-		read, 
-		write, 
-		portread, 
-		portwrite, 
+		read,
+		write,
+		portread,
+		portwrite,
 		0);
 	m_cpu_i8085[cpunum]->reset();
+}
+
+void init8039(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum)
+{
+	m_cpu_i8039[cpunum] = new cpu_i8039(Machine->memory_region[cpunum],
+		read,
+		write,
+		portread,
+		portwrite,
+		0);
+	// AAE drivers use the MAME-style 8039 port map (P1=0x101 .. BUS=0x120,
+	// MOVX through ports 0x00..0xFF), so enable MAME-compat behaviour.
+	m_cpu_i8039[cpunum]->set_mame_compat(true);
+	m_cpu_i8039[cpunum]->reset();
 }
 
 void init6502(struct MemoryReadByte* read, struct MemoryWriteByte* write, int mem_top, int cpunum)
@@ -153,6 +166,7 @@ int get_exact_cyclecount(int cpu)
 	case CPU_M6502: pending = m_cpu_6502[cpu]->get6502ticks(0);         break;
 	case CPU_8080:  pending = m_cpu_i8080[cpu]->get_ticks(0);           break;
 	case CPU_8085: pending = m_cpu_i8085[cpu]->get_ticks(0);			break;
+	case CPU_8039: pending = m_cpu_i8039[cpu]->get_ticks(0);			break;
 	case CPU_M6809: pending = m_cpu_6809[cpu]->get6809ticks(0);         break;
 	case CPU_68000: pending = 0; // avoid double count with Musashi
 		break;
@@ -295,6 +309,10 @@ int cpu_getpc()
 		return m_cpu_i8085[active_cpu]->reg_PC;
 		break;
 
+	case CPU_8039:
+		return m_cpu_i8039[active_cpu]->reg_PC;
+		break;
+
 	case CPU_MZ80:
 		return m_cpu_z80[active_cpu]->GetPC();
 		break;
@@ -378,17 +396,6 @@ int get_current_cpu()
 	return active_cpu;
 }
 
-void cpu_setcontext(int /*cpunum*/)
-{
-	// Single-instance 68000 means no Musashi context swap is needed.
-	// Other CPU cores are already per-instance and don't need context juggling.
-}
-
-void cpu_getcontext(int /*cpunum*/)
-{
-	// See cpu_setcontext.
-}
-
 void interrupt_enable_w(UINT32 address, UINT8 data, struct MemoryWriteByte* pMemWrite)
 {
 	int cpunum = (active_cpu < 0) ? 0 : active_cpu;
@@ -454,6 +461,15 @@ void cpu_do_int_imm(int cpunum, int int_type)
 		}
 		break;
 
+	case CPU_8039:
+		// MCS-48 external interrupt pin (always vectors to 0x003); the
+		// timer interrupt is generated internally by the core. A plain
+		// INT request asserts the external line.
+		if (int_type == INT_TYPE_INT) {
+			m_cpu_i8039[cpunum]->interrupt(interrupt_vector[cpunum]);
+		}
+		break;
+
 	case CPU_MZ80:
 		if (int_type == INT_TYPE_NMI) m_cpu_z80[cpunum]->mz80nmi();
 		else                          m_cpu_z80[cpunum]->mz80int(interrupt_vector[cpunum]);
@@ -476,6 +492,24 @@ void cpu_do_int_imm(int cpunum, int int_type)
 
 	default:
 		// Unknown/unsupported CPU type: do nothing
+		break;
+	}
+}
+
+// Point a CPU's instruction-stream fetches at a decrypted-opcode buffer.
+// AAE equivalent of MAME's memory_set_opcode_base. Currently only the 6809
+// core supports it (used by the konami1 opcode scramble in Gyruss).
+void memory_set_opcode_base(int cpunum, unsigned char* base)
+{
+	if (cpunum < 0 || cpunum >= MAX_CPU) return;
+	switch (Machine->gamedrv->cpu[cpunum].cpu_type)
+	{
+	case CPU_M6809:
+		if (m_cpu_6809[cpunum]) m_cpu_6809[cpunum]->set_opcode_base(base);
+		break;
+	default:
+		LOG_ERROR("memory_set_opcode_base: CPU %d type %d does not support opcode base",
+			cpunum, Machine->gamedrv->cpu[cpunum].cpu_type);
 		break;
 	}
 }
@@ -549,14 +583,18 @@ int cpu_exec_now(int cpu, int cycles)
 		timer_update(ticks, active_cpu);
 		break;
 
+	case CPU_8039:
+		m_cpu_i8039[cpu]->exec(cycles);
+		ticks = m_cpu_i8039[cpu]->get_ticks(0xff);
+		timer_update(ticks, active_cpu);
+		break;
+
 	case CPU_M6809:
 		m_cpu_6809[cpu]->exec6809(cycles);
 		ticks = m_cpu_6809[cpu]->get6809ticks(0xff);
-		timer_update(ticks, active_cpu);
 		break;
 	case CPU_68000:
 		ticks = m_cpu_68000[cpu]->exec(cycles);
-		timer_update(ticks, active_cpu);
 		break;
 	case CPU_CCPU:
 		ticks = run_ccpu(cycles);
@@ -564,7 +602,7 @@ int cpu_exec_now(int cpu, int cycles)
 	}
 	// Update the cyclecount and the interrupt timers.
 	cyclecount[cpu] += ticks;
-	// NOTE THE CPU CODE ITSELF IS UPDATING THE TIMERS NOW, except for the 68000 and the 8080
+	// NOTE THE CPU CODE ITSELF IS UPDATING THE TIMERS NOW, except for the 8080/8085/8039
 	return ticks;
 }
 
@@ -605,7 +643,7 @@ void cpu_run(void)
 		if (reset_cpu_status[active_cpu]) {
 			cpu_reset(active_cpu);
 		}
-
+		LOG_INFO("Running CPU %d", active_cpu);
 		const int freq = Machine->gamedrv->cpu[active_cpu].cpu_freq;
 		const int fps = Machine->gamedrv->fps;
 		cycles_per_frame[active_cpu] = (fps > 0) ? (freq / fps) : 0;
@@ -676,8 +714,6 @@ void cpu_run(void)
 
 			// Target cycles for THIS CPU at end of its next per-CPU slice
 			target_cycles = (divs > 0) ? ((cycles_per_frame[active_cpu] * next_idx_for_cpu) / divs) : 0;
-
-			if (totalcpu > 1) { cpu_setcontext(active_cpu); }
 
 			// Compute the next interrupt boundary (in cycles since frame start)
 			if (iloops[active_cpu] >= 0 && intpasses[active_cpu] > 0) {
@@ -753,17 +789,13 @@ void cpu_run(void)
 				}
 			}
 
-			if (totalcpu > 1) { cpu_getcontext(active_cpu); }
-
 			last_idx_for_cpu[active_cpu] = next_idx_for_cpu;
 		} // for each CPU
 	} // for each global slice
 	// Restore active_cpu to 0 after the scheduler loop.
-	active_cpu = 0;
 	// End of CPU Update, update and check frame counter
 	cpu_framecounter++;
 }
-
 
 void cpu_reset(int cpunum)
 {
@@ -785,6 +817,10 @@ void cpu_reset(int cpunum)
 
 	case CPU_8085:
 		m_cpu_i8085[cpunum]->reset();
+		break;
+
+	case CPU_8039:
+		m_cpu_i8039[cpunum]->reset();
 		break;
 
 	case CPU_68000:
@@ -827,6 +863,7 @@ void cpu_clear_pending_int(int int_type, int cpunum)
 	{
 	case CPU_MZ80:  m_cpu_z80[cpunum]->mz80ClearPendingInterrupt(); break;
 	case CPU_M6502: m_cpu_6502[cpunum]->m6502clearpendingint();     break;
+	case CPU_8039:  m_cpu_i8039[cpunum]->clear_pending_interrupts(); break;
 	default: break;
 	}
 }
@@ -860,12 +897,13 @@ void free_cpu_memory()
 	{
 		switch (Machine->gamedrv->cpu[x].cpu_type)
 		{
-		case CPU_MZ80:   delete m_cpu_z80[x];    m_cpu_z80[x]    = nullptr; break;
-		case CPU_M6502:  delete m_cpu_6502[x];   m_cpu_6502[x]   = nullptr; break;
-		case CPU_8080:   delete m_cpu_i8080[x];  m_cpu_i8080[x]  = nullptr; break;
-		case CPU_8085:   delete m_cpu_i8085[x];  m_cpu_i8085[x]  = nullptr; break;
-		case CPU_M6809:  delete m_cpu_6809[x];   m_cpu_6809[x]   = nullptr; break;
-		case CPU_68000:  delete m_cpu_68000[x];  m_cpu_68000[x]  = nullptr; break;
+		case CPU_MZ80:   delete m_cpu_z80[x];    m_cpu_z80[x] = nullptr; break;
+		case CPU_M6502:  delete m_cpu_6502[x];   m_cpu_6502[x] = nullptr; break;
+		case CPU_8080:   delete m_cpu_i8080[x];  m_cpu_i8080[x] = nullptr; break;
+		case CPU_8085:   delete m_cpu_i8085[x];  m_cpu_i8085[x] = nullptr; break;
+		case CPU_8039:   delete m_cpu_i8039[x];  m_cpu_i8039[x] = nullptr; break;
+		case CPU_M6809:  delete m_cpu_6809[x];   m_cpu_6809[x] = nullptr; break;
+		case CPU_68000:  delete m_cpu_68000[x];  m_cpu_68000[x] = nullptr; break;
 		default: break;
 		}
 	}
@@ -882,7 +920,7 @@ void init_cpu_config()
 	{
 		reset_cpu_status[x] = 0;
 		cpurunning[x] = 1;
-	    interrupt_pending[x] = 0;
+		interrupt_pending[x] = 0;
 		interrupt_enable[x] = 1;
 		interrupt_vector[x] = 0xff;
 		cyclecount[x] = 0;
@@ -909,7 +947,7 @@ void init_cpu_config()
 
 		case CPU_M6502:
 			// You said: "I am going to just change the mem_top code so that it's always 0xffff"
-			LOG_INFO("Init 6502 %d called",i);
+			LOG_INFO("Init 6502 %d called", i);
 			init6502(C.memory_read, C.memory_write, /*mem_top*/0xFFFF, i);
 			break;
 
@@ -920,6 +958,11 @@ void init_cpu_config()
 		case CPU_8085:
 			LOG_INFO("Init 8085 %d called", i);
 			init8085(C.memory_read, C.memory_write, C.port_read, C.port_write, i);
+			break;
+
+		case CPU_8039:
+			LOG_INFO("Init 8039 %d called", i);
+			init8039(C.memory_read, C.memory_write, C.port_read, C.port_write, i);
 			break;
 
 		case CPU_M6809:
@@ -944,7 +987,6 @@ void init_cpu_config()
 	vblank = 0; // Clear VBLANK state on game init
 	vid_tickcount = 0;//Initalize video tickcount;
 
-	
 	watchdog_timer = timer_set(TIME_IN_HZ(4), 0, watchdog_callback);
 	LOG_INFO("NUMBER OF CPU'S to RUN: %d ", totalcpu);
 	LOG_INFO("Finished starting up cpu settings, defaults");
@@ -989,7 +1031,6 @@ void watchdog_reset_w16(UINT32 address, UINT16 data, struct MemoryWriteWord* psM
 //Read Ram
 UINT8 MRA_RAM(UINT32 address, struct MemoryReadByte* psMemRead)
 {
-
 	//LOG_INFO("Active CPU here is %d", active_cpu);
 	//LOG_INFO("Address here is %x reading address %x data %x", address, address + psMemRead->lowAddr, Machine->memory_region[active_cpu][address + psMemRead->lowAddr]);
 	return Machine->memory_region[active_cpu][address + psMemRead->lowAddr];
