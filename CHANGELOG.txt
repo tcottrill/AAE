@@ -334,6 +334,13 @@ Added the ability to reconfigure UI hotkeys (Cancel/Exit, Reset Machine, Open Me
 Fixed a bug where -ror / -rol command-line flags only worked if a game name was given on the command line, so "aae -ror" silently did nothing (the GUI never rotated). Moved the parsing to the global pre-game args loop so it works either way. Added -norotate while I was in there.
 
 Updated aae.ini and the INI / command-line reference docs with more explanation of the rotation values, the new UI key remap, and the [directory] section that was never documented. Cleaned up about 18 dead INI keys (kquit/kpause family, dead mouse/spinner placeholders, dotmask, accumlevel, screenburn, etc.) that no code has read for a long time.
+
+6/3/26
+Got on a bit of a roll. Fixed a timing bug in the new 6809 core, and reorged so I could single step it like the z80. This piece is for a different emulator. 
+Added a new, AI assist, clean room Motorola 68000 multi cpu emulator. It passes all the instruction tests, and has Interrupt stacking so it works with Cosmic Chasm. This is my last cpu core I needed to replace, I finally can modify and get into all the cpu cores however I want. The last MAME cpu core in my code is the ccpu core by Aaron Giles, and that is a work of art that will never be replaced.
+Updated the Ay8910 emulation, tried a clean room implementation, had to resort to using the same internal design as MAME, darn it. 
+Added a gyruss driver to test with, and updated the DAC core to work properly with that. 
+Added a food fight driver to help exercise the 68000 core, but that is a truly horrible "game" if you can even call it that. 
  
 
 
