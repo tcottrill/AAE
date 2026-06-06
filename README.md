@@ -144,10 +144,9 @@ The executable is produced at `x64\Release\aae.exe`.
 
 AAE is licensed under the **GNU General Public License v3.0** — see [COPYING](COPYING).
 
-The GPL covers **AAE's own source only**. It grants no rights to any Vectrex/arcade BIOS or game
-ROMs, and it does not cover the **MAME-derived portions** of the code, which remain the copyright of
-the MAME team and the original authors. You are responsible for the legality of any ROM images you
-use.
+The GPL covers **AAE's own source only**. It grants no rights to any arcade BIOS or game ROMs, and
+it does not cover the **MAME-derived portions** of the code, which remain the copyright of the MAME
+team and the original authors. You are responsible for the legality of any ROM images you use.
 
 *This is an independent, non-commercial, archival project and is not affiliated with or endorsed by
 any rights holder. MAME is a trademark of its respective owners.*
