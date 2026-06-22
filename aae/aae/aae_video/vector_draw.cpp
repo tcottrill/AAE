@@ -9,13 +9,26 @@
 #include "aae_mame_driver.h"             // Machine, VECTOR_USES_COLOR
 #include "config.h"                      // config.linewidth / gain / fire_point_size
 #include "emu_vector_draw.h"             // modulate_color
+#include "sys_log.h"                     // LOG_INFO
 #include <vector>
 #include <algorithm>
 #include <cstdint>
+#include <unordered_map>
 
 using namespace aae::math;
 
-static const float AA_PIXELS = 1.2f;     // edge feather in physical pixels (calibration knob)
+// Edge feather in PHYSICAL pixels. Lower = sharper. Tunable live via F8/F9.
+static float g_aaPixels = 1.0f;
+
+// Corner strength: round-join disc radius as a multiple of the beam half-width.
+// 1.0 = flush with the beam; lower = subtler; higher = more pronounced. Never
+// squared. Tunable live via F6/F7.
+static float g_cornerStrength = 0.85f;
+
+// End-cap scale for TRUE line terminations (vertices touched by a single segment,
+// e.g. the tips of an "I" or the ends of a "T" crossbar): round cap radius as a
+// multiple of the beam half-width. ~1.0 matches the legacy GL_POINTS tip length.
+static float g_endcap = 1.0f;
 
 static std::vector<BeamLine> g_lines;
 static std::vector<BeamJoin> g_joins;
@@ -28,7 +41,36 @@ static GLuint vaoShot = 0, vboShot = 0;
 static GLuint progLine = 0, progJoin = 0, progShot = 0;
 
 static int   g_ssaa = 1;
-static float g_uAA  = AA_PIXELS;         // feather in logical units (= AA_PIXELS / ssaa)
+static float g_uAA  = 1.0f;               // feather in logical units (= g_aaPixels / ssaa)
+
+// Connectivity for round joins: a join belongs at any vertex where two or more
+// VISIBLE segment endpoints coincide. This covers closed loops, T-junctions, fans
+// and chains regardless of the order the generator emits segments. Built each
+// frame from a vertex accumulator keyed by quantized position.
+struct VertAccum { int count; rgb_t color; float half; vec2 pos; };
+static std::unordered_map<int64_t, VertAccum> g_verts;
+
+static inline int beam_brightness(rgb_t c) {
+    int r = c & 0xFF, g = (c >> 8) & 0xFF, b = (c >> 16) & 0xFF;
+    return (r > g) ? (r > b ? r : b) : (g > b ? g : b);  // max channel
+}
+
+static inline int64_t beam_vkey(float x, float y) {
+    // Quantize to 0.1 logical units so coincident endpoints merge despite jitter.
+    int64_t qx = (int64_t)(x * 10.0f + 0.5f);
+    int64_t qy = (int64_t)(y * 10.0f + 0.5f);
+    return (qx << 32) ^ (qy & 0xffffffffLL);
+}
+
+static inline void beam_record_vert(int64_t k, vec2 p, rgb_t c, float half) {
+    VertAccum& v = g_verts[k];
+    if (v.count == 0) { v.pos = p; v.color = c; v.half = half; }
+    else {
+        if (beam_brightness(c) > beam_brightness(v.color)) v.color = c;
+        if (half > v.half) v.half = half;
+    }
+    v.count++;
+}
 
 // ----------------------------- shaders --------------------------------------
 static const char* vsLine = R"GLSL(
@@ -78,8 +120,8 @@ void main() {
 }
 )GLSL";
 
-// Join + shot programs (used in Phase 2 / Phase 4). Compiled now so the module is
-// self-contained; their draws are stubbed until then.
+// Round join: a disc centred on the shared vertex. uStrength scales its radius
+// relative to the beam half-width (corner emphasis); always round, never squared.
 static const char* vsJoin = R"GLSL(
 #version 330 core
 layout(location=0) in vec2  inCenter;
@@ -87,29 +129,35 @@ layout(location=1) in float inHalf;
 layout(location=2) in vec4  inColor;
 uniform mat4  uProj;
 uniform float uAA;
+uniform float uStrength;
 out vec2  vLocal;
-out float vHalf;
+out float vRad;
 out vec4  vColor;
 const vec2 kQuad[4] = vec2[](vec2(-1,-1), vec2(1,-1), vec2(-1,1), vec2(1,1));
 void main() {
+    float r = inHalf * uStrength;
     vec2 q = kQuad[gl_VertexID];
-    vec2 ext = q * (inHalf + uAA);
+    vec2 ext = q * (r + uAA);
     gl_Position = uProj * vec4(inCenter + ext, 0.0, 1.0);
-    vLocal = ext; vHalf = inHalf; vColor = inColor;
+    vLocal = ext; vRad = r; vColor = inColor;
 }
 )GLSL";
 
 static const char* fsJoin = R"GLSL(
 #version 330 core
 in vec2  vLocal;
-in float vHalf;
+in float vRad;
 in vec4  vColor;
 uniform float uAA;
+uniform float uPremult;   // 1 = premultiplied output for the GL_MAX (additive/color) path
 out vec4 frag;
 void main() {
-    float cov = clamp((vHalf - length(vLocal))/uAA + 0.5, 0.0, 1.0);
+    float cov = clamp((vRad - length(vLocal))/uAA + 0.5, 0.0, 1.0);
     if (cov <= 0.0) discard;
-    frag = vec4(vColor.rgb, vColor.a * cov);
+    if (uPremult > 0.5)
+        frag = vec4(vColor.rgb * cov, cov);        // GL_MAX: fills gaps, never sums over lines
+    else
+        frag = vec4(vColor.rgb, vColor.a * cov);   // straight alpha-over (B/W)
 }
 )GLSL";
 
@@ -158,16 +206,31 @@ static GLuint linkProg(const char* vs, const char* fs, const char* label) {
                              CompileShader(GL_FRAGMENT_SHADER, fs, label));
 }
 
-static void setAA(int ssaa) {
-    g_ssaa = (ssaa < 1) ? 1 : ssaa;
-    g_uAA  = AA_PIXELS / (float)g_ssaa;
+static void setAA() {
+    g_uAA = g_aaPixels / (float)((g_ssaa < 1) ? 1 : g_ssaa);
 }
 
 // ----------------------------- lifecycle ------------------------------------
-void beam_set_ssaa(int ssaa) { setAA(ssaa); }
+void beam_set_ssaa(int ssaa) { g_ssaa = (ssaa < 1) ? 1 : ssaa; setAA(); }
+
+void beam_adjust_sharpness(float delta) {
+    g_aaPixels += delta;
+    if (g_aaPixels < 0.3f) g_aaPixels = 0.3f;
+    if (g_aaPixels > 3.0f) g_aaPixels = 3.0f;
+    setAA();
+    LOG_INFO("Beam edge softness (AA feather): %.2f px (lower = sharper)", g_aaPixels);
+}
+
+void beam_adjust_corner_strength(float delta) {
+    g_cornerStrength += delta;
+    if (g_cornerStrength < 0.3f) g_cornerStrength = 0.3f;
+    if (g_cornerStrength > 2.5f) g_cornerStrength = 2.5f;
+    LOG_INFO("Beam corner strength: %.2f (1.0 = flush, higher = stronger corners)", g_cornerStrength);
+}
 
 void beam_init(int ssaa) {
-    setAA(ssaa);
+    g_ssaa = (ssaa < 1) ? 1 : ssaa;
+    setAA();
 
     progLine = linkProg(vsLine, fsLine, "beam_line");
     progJoin = linkProg(vsJoin, fsJoin, "beam_join");
@@ -218,13 +281,21 @@ void beam_shutdown() {
 }
 
 // ----------------------------- producer -------------------------------------
-void beam_add_line(float sx, float sy, float ex, float ey,
-                   int intensity, rgb_t col, bool joinPrev) {
+void beam_add_line(float sx, float sy, float ex, float ey, int intensity, rgb_t col) {
     rgb_t c = modulate_color(col, intensity, config.gain);
+
+    // Invisible (pen-up move): draw nothing, contribute no vertex.
+    if ((c & 0x00FFFFFFu) == 0) return;
+
+    vec2 p0(sx, sy), p1(ex, ey);
     float half = config.linewidth * 0.5f;
-    g_lines.push_back({ vec2(sx, sy), vec2(ex, ey), half, c });
-    if (joinPrev)
-        g_joins.push_back({ vec2(sx, sy), half, c });
+    g_lines.push_back({ p0, p1, half, c });
+
+    // Record both endpoints; a vertex shared by 2+ segments becomes a join.
+    int64_t k0 = beam_vkey(sx, sy), k1 = beam_vkey(ex, ey);
+    beam_record_vert(k0, p0, c, half);
+    if (k1 != k0)
+        beam_record_vert(k1, p1, c, half);
 }
 
 void beam_add_shot(float ex, float ey, int intensity, rgb_t col) {
@@ -236,10 +307,23 @@ void beam_clear() {
     g_lines.clear();
     g_joins.clear();
     g_shots.clear();
+    g_verts.clear();
 }
 
 // ----------------------------- draw -----------------------------------------
 void beam_draw_all(const mat4& proj) {
+    // Build join/cap discs from the vertex accumulator. A vertex shared by 2+
+    // segments is a corner (g_cornerStrength); a vertex with a single segment is a
+    // true line termination and gets a round end-cap (g_endcap). The radius is
+    // baked here so live F6/F7 tuning takes effect each frame.
+    g_joins.clear();
+    for (const auto& kv : g_verts) {
+        const VertAccum& v = kv.second;
+        float r = v.half * ((v.count >= 2) ? g_cornerStrength : g_endcap);
+        if (r > 0.01f)
+            g_joins.push_back({ v.pos, r, v.color });
+    }
+
     if (g_lines.empty() && g_joins.empty() && g_shots.empty()) return;
 
     const bool additive = (Machine->drv->video_attributes & VECTOR_USES_COLOR) != 0;
@@ -272,7 +356,26 @@ void beam_draw_all(const mat4& proj) {
         glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, (GLsizei)g_lines.size());
     }
 
-    // Joins + shots: implemented in Phase 2 / Phase 4.
+    // Corner joins + end-caps. Under additive (color) we draw them with GL_MAX and
+    // premultiplied coverage so they FILL gaps at the line's own brightness but
+    // never sum on top of the lines (which otherwise makes endpoints/corners
+    // brighter than the beam). Under B/W they use the same sorted alpha-over as the
+    // lines (where same-colour overlap already does not double).
+    if (!g_joins.empty()) {
+        glUseProgram(progJoin);
+        glUniformMatrix4fv(glGetUniformLocation(progJoin, "uProj"), 1, GL_FALSE, value_ptr(const_cast<mat4&>(proj)));
+        glUniform1f(glGetUniformLocation(progJoin, "uAA"), g_uAA);
+        glUniform1f(glGetUniformLocation(progJoin, "uStrength"), 1.0f);   // radius already baked per-disc
+        glUniform1f(glGetUniformLocation(progJoin, "uPremult"), additive ? 1.0f : 0.0f);
+        if (additive) glBlendEquation(GL_MAX);
+        glBindBuffer(GL_ARRAY_BUFFER, vboJoin);
+        glBufferData(GL_ARRAY_BUFFER, g_joins.size()*sizeof(BeamJoin), g_joins.data(), GL_STREAM_DRAW);
+        glBindVertexArray(vaoJoin);
+        glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, (GLsizei)g_joins.size());
+        if (additive) glBlendEquation(GL_FUNC_ADD);   // restore default for the rest of the pipeline
+    }
+
+    // Shots: implemented in Phase 4.
 
     glBindVertexArray(0);
     glBindBuffer(GL_ARRAY_BUFFER, 0);

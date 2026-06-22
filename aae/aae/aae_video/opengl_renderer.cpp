@@ -57,6 +57,7 @@
 #include "gl_texturing.h"
 #include "gl_shader.h"
 #include "emu_vector_draw.h"
+#include "vector_draw.h"
 #include "fast_poly.h"
 #include "os_basic.h"
 #include "MathUtils.h"
@@ -78,6 +79,10 @@ Rect2* screen_rect = nullptr;
 
 // Raster polygon renderer. One instance per application lifetime.
 Fpoly* sc;
+
+// Vector beam renderer A/B toggle: true = legacy GL_LINES draw_all(), false = new
+// shader beam renderer. Flipped at runtime with F5. Default legacy until cutover.
+bool g_beam_legacy = true;
 
 // Scale factor applied when mapping raster pixels to polygon positions.
 //extern float vid_scale;
@@ -392,6 +397,7 @@ int init_gl(void)
 		if (Machine->gamedrv->video_attributes & VIDEO_TYPE_VECTOR)
 		{
 			vector_start();
+			beam_init(1);          // ssaa = 1 (Phase 1); raised to 2 in Phase 6
 		}
 
 		// --- Shader compilation ---
@@ -966,9 +972,17 @@ void render()
 	{
 		if (Machine->drv->video_attributes & VIDEO_TYPE_VECTOR)
 		{
-			vector_update();  // Test, add conditions or move fully to it.
-			draw_all();
-			vector_clear_list(); // Test - Move this out of here.
+			vector_update();
+			if (g_beam_legacy)
+			{
+				draw_all();
+			}
+			else
+			{
+				aae::math::mat4 proj = aae::math::ortho(0.0f, 1024.0f, 0.0f, 1024.0f);
+				beam_draw_all(proj);
+			}
+			vector_clear_list();
 		}
 		else
 		{

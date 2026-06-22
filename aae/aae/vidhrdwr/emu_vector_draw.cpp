@@ -4,6 +4,7 @@
 #include "sys_log.h"
 #include "opengl_renderer.h"
 #include "gl_texturing.h" // For game_tex[0]
+#include "vector_draw.h"  // beam_clear (modern renderer shares the frame-clear cycle)
 #include <vector>
 
 #pragma warning( disable :  4244 )
@@ -163,6 +164,8 @@ void cache_texpoint(float ex, float ey, float tx, float ty, int intensity, rgb_t
 
 void add_line(float sx, float sy, float ex, float ey, int intensity, rgb_t col)
 {
+    if (!g_beam_legacy) { beam_add_line(sx, sy, ex, ey, intensity, col); return; }
+
     rgb_t temp_col = modulate_color(col, intensity, config.gain);
     rgb_t temp_half_col = 0;
 
@@ -178,6 +181,8 @@ void add_line(float sx, float sy, float ex, float ey, int intensity, rgb_t col)
 
 void add_tex(float ex, float ey, int intensity, rgb_t col)
 {
+    if (!g_beam_legacy) { beam_add_shot(ex, ey, intensity, col); return; }
+
     float xoff = config.fire_point_size;
     float yoff = config.fire_point_size;
 
@@ -201,6 +206,7 @@ void cache_clear()
 {
     texlist.clear();
     linelist.clear();
+    beam_clear();          // clear the modern beam lists on the same frame boundary
 }
 
 void draw_all()

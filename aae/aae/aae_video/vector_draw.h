@@ -31,13 +31,14 @@ struct BeamShot {
 // ssaa = supersample factor of the bound render target (1 in Phase 1, 2 in Phase 6).
 void beam_init(int ssaa);
 void beam_shutdown();
-void beam_set_ssaa(int ssaa);   // updates the AA feather if the factor changes
+void beam_set_ssaa(int ssaa);          // updates the AA feather if the factor changes
+void beam_adjust_sharpness(float delta);       // tune edge AA feather live (F8/F9); lower = sharper
+void beam_adjust_corner_strength(float delta); // tune round-corner size/strength live (F6/F7)
 
-// Mirrors the old add_line/add_tex signatures so the producer change is minimal.
-// joinPrev == true draws a round join at p0 (the shared vertex with the previous
-// connected segment).
-void beam_add_line(float sx, float sy, float ex, float ey,
-                   int intensity, rgb_t col, bool joinPrev);
+// Mirrors add_line / add_tex exactly. Join connectivity is inferred internally by
+// endpoint matching, so EVERY producer (vector_update, the DVG sim, cchasm) is
+// covered by routing through these from add_line()/add_tex().
+void beam_add_line(float sx, float sy, float ex, float ey, int intensity, rgb_t col);
 void beam_add_shot(float ex, float ey, int intensity, rgb_t col);
 
 void beam_clear();

@@ -44,6 +44,7 @@
 #include "fileio/texture_handler.h"
 #include "config.h"
 #include "opengl_renderer.h"
+#include "vector_draw.h"
 #include "gl_fbo.h"
 #include "menu.h"
 #include "aae_avg.h"
@@ -557,7 +558,7 @@ void gameparse(int argc, char* argv[])
 				drv->rom[x].loadAddr != ROM_REGION_START && drv->rom[x].loadAddr != 0x999)
 			{
 				logOutput = fname;
-				retval = verify_rom(drv->name, drv->rom, x);
+				retval = verify_rom(driver_rom_archive(drv), drv->rom, x);
 				switch (retval)
 				{
 				case 0: logOutput += " BAD? ";    break;
@@ -851,7 +852,7 @@ void run_game(void)
 	// Step 3: ROM loading.
 	if (Machine->gamedrv->rom)
 	{
-		if (load_roms(Machine->gamedrv->name, Machine->gamedrv->rom) == EXIT_FAILURE)
+		if (load_roms(driver_rom_archive(Machine->gamedrv), Machine->gamedrv->rom) == EXIT_FAILURE)
 		{
 			LOG_ERROR("ROM loading failed.");
 			have_error = 10;
@@ -1109,6 +1110,25 @@ void msg_loop(void)
 
 	if (osd_key_pressed_memory(OSD_KEY_SHOW_FPS))
 		show_fps ^= 1;
+
+	// F5 = toggle the modern vector beam renderer vs legacy GL_LINES (A/B compare)
+	if (osd_key_pressed_memory(OSD_KEY_F5))
+	{
+		g_beam_legacy = !g_beam_legacy;
+		LOG_INFO("Vector beam renderer: %s", g_beam_legacy ? "LEGACY (GL_LINES)" : "MODERN (shader)");
+	}
+
+	// F6 / F7 = corner strength (modern path): F6 stronger, F7 weaker
+	if (osd_key_pressed_memory(OSD_KEY_F6))
+		beam_adjust_corner_strength(+0.1f);
+	if (osd_key_pressed_memory(OSD_KEY_F7))
+		beam_adjust_corner_strength(-0.1f);
+
+	// F8 / F9 = edge softness (modern path): F8 sharper, F9 softer
+	if (osd_key_pressed_memory(OSD_KEY_F8))
+		beam_adjust_sharpness(-0.1f);
+	if (osd_key_pressed_memory(OSD_KEY_F9))
+		beam_adjust_sharpness(+0.1f);
 
 	if (osd_key_pressed_memory(OSD_KEY_SNAPSHOT))
 		snapshot();
