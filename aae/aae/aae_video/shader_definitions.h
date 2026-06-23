@@ -137,13 +137,16 @@ const char* basicTexFrag = R"glsl(
 
 uniform sampler2D u_texture;
 uniform vec4 uColor;
+uniform float uAlphaTest;   // 0 = no test; else discard fragments below this alpha
 
 in vec2 TexCoord;
 out vec4 FragColor;
 
 void main()
 {
-    FragColor = texture(u_texture, TexCoord) * uColor;
+    vec4 c = texture(u_texture, TexCoord) * uColor;
+    if (c.a < uAlphaTest) discard;
+    FragColor = c;
 }
 )glsl";
 

@@ -1174,7 +1174,7 @@ void final_render(int left, int right, int bottom, int top)
 	set_render_fbo4();
 
 	auto DrawCabinetScaledLayer = [&](GLuint tex, bool is_pre_squished,
-		float rT = 1.0f, float gT = 1.0f, float bT = 1.0f, float aT = 1.0f) {
+		float rT = 1.0f, float gT = 1.0f, float bT = 1.0f, float aT = 1.0f, float alphaTest = 0.0f) {
 		if (!tex) return;
 		glEnable(GL_TEXTURE_2D);
 		set_texture(&tex, 1, 0, 0, 0);
@@ -1186,10 +1186,10 @@ void final_render(int left, int right, int bottom, int top)
 			float y1 = (float)bezely;
 			float x2 = 1024.0f * bezelzoom + bezelx;
 			float y2 = base_h * bezelzoom + bezely;
-			drawTexturedQuad(x1, x2, y1, y2, false, rT, gT, bT, aT);
+			drawTexturedQuad(x1, x2, y1, y2, false, rT, gT, bT, aT, alphaTest);
 		}
 		else {
-			drawTexturedQuad(0.0f, 1024.0f, 0.0f, base_h, false, rT, gT, bT, aT);
+			drawTexturedQuad(0.0f, 1024.0f, 0.0f, base_h, false, rT, gT, bT, aT, alphaTest);
 		}
 		};
 
@@ -1239,15 +1239,13 @@ void final_render(int left, int right, int bottom, int top)
 	//--------------------------------------------------------------------------
 	if (config.bezel && art_loaded[3])
 	{
-		glEnable(GL_ALPHA_TEST);
 		glDisable(GL_BLEND);
-		glAlphaFunc(GL_GREATER, 0.2f);
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-		DrawCabinetScaledLayer(art_tex[3], false);
+		// Hard alpha cutoff via shader discard (replaces fixed-function GL_ALPHA_TEST).
+		DrawCabinetScaledLayer(art_tex[3], false, 1.0f, 1.0f, 1.0f, 1.0f, 0.2f);
 
 		glDisable(GL_DEPTH_TEST);
-		glDisable(GL_ALPHA_TEST);
 	}
 
 	render_ui_overlays(1024, 768);

@@ -59,7 +59,7 @@ static void ensure_tex_quad_buffers()
 }
 
 void drawTexturedQuad(float left, float right, float bottom, float top, bool flip_v,
-                      float rT, float gT, float bT, float aT)
+                      float rT, float gT, float bT, float aT, float alphaTest)
 {
 	// flip_v: 'bottom' maps to v=1 and 'top' to v=0 (used for FBO copies).
 	const float vb = flip_v ? 1.0f : 0.0f;
@@ -81,6 +81,7 @@ void drawTexturedQuad(float left, float right, float bottom, float top, bool fli
 		prog = fragBasicTex;
 		set_uniform1i(fragBasicTex, "u_texture", 0);
 		set_uniform4f(fragBasicTex, "uColor", rT, gT, bT, aT);
+		set_uniform1f(fragBasicTex, "uAlphaTest", alphaTest);
 	}
 	else
 	{
