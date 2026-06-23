@@ -5,6 +5,7 @@
 #include "sys_gl.h"
 #include "colordefs.h"     // rgb_t
 #include "MathUtils.h"     // aae::math::vec2 / mat4
+#include <vector>
 
 // Per-segment beam (butt-capped, coverage-AA rectangle).
 struct BeamLine {
@@ -41,5 +42,25 @@ void beam_add_shot(float ex, float ey, int intensity, rgb_t col);
 
 void beam_clear();
 void beam_draw_all(const aae::math::mat4& proj);
+
+// ---- Shared AA-line path (also used by the vector-font renderer) -----------
+// Draw a caller-owned batch of segments / caps with the beam's coverage-AA line
+// and round-disc shaders under an explicit projection. Resources are created
+// lazily, so these work even when beam_init() was never called (raster games and
+// the front-end GUI, where only the fonts need the line shader). 'additive'
+// selects blend: false = alpha-over (B/W text/menus), true = additive (color).
+// 'aaFeather' is the edge feather in the projection's logical units.
+void beam_draw_lines(const aae::math::mat4& proj, const BeamLine* lines, int count,
+                     float aaFeather, bool additive);
+void beam_draw_caps (const aae::math::mat4& proj, const BeamJoin* caps,  int count,
+                     float aaFeather, bool additive);
+
+// Build round end-caps / corner joins for a batch of segments via endpoint
+// coincidence: a vertex touched by a single segment is a true termination
+// (radius = half * endcapMul); two or more is a corner (half * cornerMul). This
+// is the same connectivity logic the beam uses internally, exposed so the fonts
+// get identical ties without duplicating it.
+void beam_build_caps(const BeamLine* lines, int count, float endcapMul, float cornerMul,
+                     std::vector<BeamJoin>& out);
 
 #endif // VECTOR_DRAW_H

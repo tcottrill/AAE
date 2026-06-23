@@ -764,16 +764,20 @@ void render_blur_image_fbo3()
 // render_ui_overlays()
 //
 // Draws the pause dim, PAUSED text, exit confirmation dialog, menu,
-// FPS counter, and debug overlays on top of the current backbuffer.
+// FPS counter, and debug overlays on top of the current game frame.
 //
 // Called by BOTH rendering paths:
-//   - Vector pipeline: from final_render() after FBO4 blit
-//   - Raster pipeline: from emulator_run() after RasterRender_Present()
+//   - Vector pipeline: from final_render() INTO fbo4, before the
+//     end_render_fbo4() screen_rect blit (so the overlay rotates with
+//     the frame).
+//   - Raster pipeline: from final_render_raster() onto the backbuffer.
+//     For a system-rotated game it is instead rendered into fbo4
+//     (fboSpace=true) so the same screen_rect blit rotates it to match.
 //
-// Sets up its own 1024x768 ortho projection on the backbuffer.
-// The caller must have already rendered the game frame before calling.
+// Projection: 1024x768 ortho normally, or the 1024x1024 FBO space when
+// fboSpace is set. The caller must have rendered the game frame first.
 // ====================================================================
-void render_ui_overlays(int winW, int winH)
+void render_ui_overlays(int winW, int winH, bool fboSpace)
 {
 	if (winW < 1 || winH < 1) return;
 
@@ -802,9 +806,11 @@ void render_ui_overlays(int winW, int winH)
 	// because glViewport stretches the output to the full window.
 	VF.SetOverrideViewport(false);
 
-	if (Machine->drv->video_attributes & VIDEO_TYPE_VECTOR)
+	if (fboSpace || (Machine->drv->video_attributes & VIDEO_TYPE_VECTOR))
 	{
-		// Vector overlays render onto the 1024x1024 FBO - switch ortho to match.
+		// Vector overlays -- and rotated raster overlays composited into fbo4 --
+		// render onto the 1024x1024 FBO, so switch the ortho to match. screen_rect
+		// then rotates/letterboxes the blit to the window.
 		set_ortho(1024, 1024);
 	}
 	// else: keep the 1024x768 ortho already set above for raster window overlays.
@@ -1406,8 +1412,32 @@ void final_render_raster()
 	glBindTexture(GL_TEXTURE_2D, 0);
 	glDisable(GL_BLEND);
 
-	//We need to check aspect here, if it's too wide, correct it.
-	render_ui_overlays(ws.clientWidth, ws.clientHeight);
+	// UI overlays. For a system-rotated raster game the menu must rotate to match
+	// the game (Layout_Render already rotated the game image). The vector path gets
+	// this for free -- its overlay lives in fbo4 and screen_rect rotates the blit --
+	// so when rotated we route the raster overlay through the SAME fbo4 + screen_rect
+	// blit. Non-rotated raster keeps the crisp, full-resolution direct draw.
+	if (orientation_to_rect2_rotation(config.system_rotation) != 0)
+	{
+		set_render_fbo4();                       // bind fbo4 (1024x1024), clear transparent
+		render_ui_overlays(1024, 768, true);     // draw overlay in fbo4 space (like vector)
+
+		glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);
+		glDrawBuffer(GL_BACK);
+		set_ortho(ws.clientWidth, ws.clientHeight);
+		glEnable(GL_BLEND);
+		// Premultiplied-over: the overlay was composited into fbo4 with premultiplied
+		// alpha (black dim => rgb already premultiplied), so the dim and AA text edges
+		// composite over the game without being darkened.
+		glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+		set_texture(&img4a, 1, 0, 0, 0);
+		glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+		screen_rect->Render();                   // rotated + letterboxed over the game
+	}
+	else
+	{
+		render_ui_overlays(ws.clientWidth, ws.clientHeight);
+	}
 
 	glDisable(GL_BLEND);
 	glDisable(GL_TEXTURE_2D);

@@ -4,10 +4,12 @@
 #include "vector_fonts.h"
 #include "shader_util.h"
 #include "colordefs.h"
+#include "vector_draw.h"   // shared coverage-AA beam line path (BeamLine/BeamJoin + draw)
 
 #include <cstdio>
 #include <cstring>
 #include <cstdarg>
+#include <cmath>           // cosf / sinf for CPU-side glyph rotation
 
 // Disable warnings about double-to-float conversions in the font data.
 #pragma warning(disable : 4305)
@@ -310,6 +312,33 @@ void VectorFont::Begin()
 }
 
 // ----
+// Modern AA stroke parameters (shared coverage-AA beam line path)
+// ----
+// Stroke half-width and feather are in the font's logical units (the active
+// projection, e.g. the 1024x768 overlay space). Because the strokes are real
+// geometry in glyph space, they scale WITH the text -- so they keep the same
+// proportions at 1280x1024 and 4K, unlike the old constant-pixel glLineWidth.
+static constexpr float kFontHalf   = 0.70f;  // stroke half-width  (logical units)
+static constexpr float kFontAA     = 0.80f;  // edge feather       (logical units)
+static constexpr float kFontEndcap = 1.0f;   // round cap at true terminations (x half)
+static constexpr float kFontCorner = 1.0f;   // round join at stroke corners   (x half)
+
+// Reused across frames to avoid per-call allocation.
+static std::vector<BeamLine> s_fontSegs;
+static std::vector<BeamJoin> s_fontCaps;
+
+// Rotate point p about origin o by 'deg' degrees (matches the old VF vertex
+// shader, moved to the CPU so the beam line shader can be reused unchanged).
+static inline aae::math::vec2 vf_rotate(aae::math::vec2 p, aae::math::vec2 o, float deg)
+{
+	if (deg == 0.0f) return p;
+	const float rad = deg * 0.01745329252f;
+	const float c = cosf(rad), s = sinf(rad);
+	const float lx = p.x - o.x, ly = p.y - o.y;
+	return aae::math::vec2(lx * c - ly * s + o.x, lx * s + ly * c + o.y);
+}
+
+// ----
 // End
 // ----
 void VectorFont::End()
@@ -319,39 +348,30 @@ void VectorFont::End()
 		glUseProgram(0);
 		return;
 	}
-	glBindVertexArray(vfVAO);
 
-	glBindBuffer(GL_ARRAY_BUFFER, vfVBO);
-	glBufferData(GL_ARRAY_BUFFER, drawVerts.size() * sizeof(VFVertex), drawVerts.data(), GL_DYNAMIC_DRAW);
+	// The font's glyph strokes ARE line segments, so render them with the beam's
+	// coverage-AA line shader instead of GL_LINES + GL_LINE_SMOOTH / GL_POINTS.
+	// The beam shader has no rotation of its own; apply each string's rotation here.
+	s_fontSegs.clear();
+	s_fontSegs.reserve(drawVerts.size() / 2);
+	for (size_t i = 0; i + 1 < drawVerts.size(); i += 2)
+	{
+		const VFVertex& a = drawVerts[i];
+		const VFVertex& b = drawVerts[i + 1];
+		const aae::math::vec2 p0 = vf_rotate(a.pos, a.origin, a.angle);
+		const aae::math::vec2 p1 = vf_rotate(b.pos, b.origin, b.angle);
+		s_fontSegs.push_back({ p0, p1, kFontHalf, a.color });
+	}
 
-	// Position (pos)
-	glEnableVertexAttribArray(attrPos);
-	glVertexAttribPointer(attrPos, 2, GL_FLOAT, GL_FALSE, sizeof(VFVertex), (void*)offsetof(VFVertex, pos));
+	// Round caps/joins tie the strokes together (replaces the per-vertex GL_POINTS).
+	s_fontCaps.clear();
+	beam_build_caps(s_fontSegs.data(), (int)s_fontSegs.size(), kFontEndcap, kFontCorner, s_fontCaps);
 
-	// Origin (origin)
-	glEnableVertexAttribArray(attrOrigin);
-	glVertexAttribPointer(attrOrigin, 2, GL_FLOAT, GL_FALSE, sizeof(VFVertex), (void*)offsetof(VFVertex, origin));
+	// Alpha-over (additive = false): text composites like the B/W beam path.
+	beam_draw_lines(proj, s_fontSegs.data(), (int)s_fontSegs.size(), kFontAA, false);
+	beam_draw_caps (proj, s_fontCaps.data(), (int)s_fontCaps.size(), kFontAA, false);
 
-	// Angle
-	glEnableVertexAttribArray(attrAngle);
-	glVertexAttribPointer(attrAngle, 1, GL_FLOAT, GL_FALSE, sizeof(VFVertex), (void*)offsetof(VFVertex, angle));
-
-	// Color
-	glEnableVertexAttribArray(attrColor);
-	glVertexAttribPointer(attrColor, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(VFVertex), (void*)offsetof(VFVertex, color));
-
-	glDrawArrays(GL_LINES, 0, (GLsizei)drawVerts.size());
-	glDrawArrays(GL_POINTS, 0, (GLsizei)drawVerts.size());
-
-	glDisableVertexAttribArray(attrPos);
-	glDisableVertexAttribArray(attrOrigin);
-	glDisableVertexAttribArray(attrAngle);
-	glDisableVertexAttribArray(attrColor);
-
-	glBindVertexArray(0);
-	glBindBuffer(GL_ARRAY_BUFFER, 0);
 	glUseProgram(0);
-
 	drawVerts.clear();
 }
 

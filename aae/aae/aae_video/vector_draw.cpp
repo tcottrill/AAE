@@ -199,12 +199,15 @@ static GLuint linkProg(const char* vs, const char* fs, const char* label) {
 // ----------------------------- lifecycle ------------------------------------
 void beam_set_ssaa(int ssaa) { g_ssaa = (ssaa < 1) ? 1 : ssaa; }
 
-void beam_init(int ssaa) {
-    g_ssaa = (ssaa < 1) ? 1 : ssaa;
+// Lazily create the line + join programs and their instanced VAOs. Idempotent
+// (guards on progLine) and safe to call from any path that needs the shared
+// coverage-AA line shader -- the beam itself OR the vector fonts -- regardless of
+// whether beam_init() ran (it only runs for vector games; fonts draw everywhere).
+static void beam_ensure_lines() {
+    if (progLine) return;
 
     progLine = linkProg(vsLine, fsLine, "beam_line");
     progJoin = linkProg(vsJoin, fsJoin, "beam_join");
-    progShot = linkProg(vsShot, fsShot, "beam_shot");
 
     // Lines: one instance per segment.
     glGenVertexArrays(1, &vaoLine);
@@ -224,6 +227,18 @@ void beam_init(int ssaa) {
     glVertexAttribPointer(0, 2, GL_FLOAT,         GL_FALSE, sizeof(BeamJoin), (void*)offsetof(BeamJoin, center)); glEnableVertexAttribArray(0); glVertexAttribDivisor(0,1);
     glVertexAttribPointer(1, 1, GL_FLOAT,         GL_FALSE, sizeof(BeamJoin), (void*)offsetof(BeamJoin, half));   glEnableVertexAttribArray(1); glVertexAttribDivisor(1,1);
     glVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_TRUE,  sizeof(BeamJoin), (void*)offsetof(BeamJoin, color));  glEnableVertexAttribArray(2); glVertexAttribDivisor(2,1);
+
+    glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+}
+
+void beam_init(int ssaa) {
+    g_ssaa = (ssaa < 1) ? 1 : ssaa;
+
+    beam_ensure_lines();   // line + join programs/VAOs (shared with the fonts)
+
+    if (progShot) return;  // shots already built (idempotent re-init)
+    progShot = linkProg(vsShot, fsShot, "beam_shot");
 
     // Shots.
     glGenVertexArrays(1, &vaoShot);
@@ -375,4 +390,95 @@ void beam_draw_all(const mat4& proj) {
     glBindVertexArray(0);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glUseProgram(0);
+}
+
+// ----------------------- shared AA-line path (fonts) ------------------------
+void beam_draw_lines(const mat4& proj, const BeamLine* lines, int count,
+                     float aaFeather, bool additive) {
+    if (count <= 0 || !lines) return;
+    beam_ensure_lines();
+
+    glDisable(GL_TEXTURE_2D);
+    glEnable(GL_BLEND);
+    // Separate alpha (src factor GL_ONE) so the accumulated alpha is correct when
+    // these are rendered into an offscreen RGBA target that is later alpha-blitted
+    // (the rotated raster overlay). RGB blending is unchanged, so every other target
+    // (vector fbo1 is RGB8; the backbuffer's alpha is unused) looks identical.
+    if (additive) glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+    else          glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+
+    glUseProgram(progLine);
+    glUniformMatrix4fv(glGetUniformLocation(progLine, "uProj"), 1, GL_FALSE, value_ptr(const_cast<mat4&>(proj)));
+    glUniform1f(glGetUniformLocation(progLine, "uAA"), (aaFeather > 0.0001f) ? aaFeather : 0.0001f);
+
+    glBindBuffer(GL_ARRAY_BUFFER, vboLine);
+    glBufferData(GL_ARRAY_BUFFER, count * sizeof(BeamLine), lines, GL_STREAM_DRAW);
+    glBindVertexArray(vaoLine);
+    glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, (GLsizei)count);
+
+    glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glUseProgram(0);
+}
+
+void beam_draw_caps(const mat4& proj, const BeamJoin* caps, int count,
+                    float aaFeather, bool additive) {
+    if (count <= 0 || !caps) return;
+    beam_ensure_lines();
+
+    const float aa = (aaFeather > 0.0001f) ? aaFeather : 0.0001f;
+
+    glDisable(GL_TEXTURE_2D);
+    glEnable(GL_BLEND);
+
+    glUseProgram(progJoin);
+    glUniformMatrix4fv(glGetUniformLocation(progJoin, "uProj"), 1, GL_FALSE, value_ptr(const_cast<mat4&>(proj)));
+    glUniform1f(glGetUniformLocation(progJoin, "uAA"), aa);
+    glUniform1f(glGetUniformLocation(progJoin, "uStrength"), 1.0f);   // radius baked per-disc
+    glUniform1f(glGetUniformLocation(progJoin, "uPremult"), additive ? 1.0f : 0.0f);
+
+    if (additive) glBlendEquation(GL_MAX);
+    else          glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+
+    glBindBuffer(GL_ARRAY_BUFFER, vboJoin);
+    glBufferData(GL_ARRAY_BUFFER, count * sizeof(BeamJoin), caps, GL_STREAM_DRAW);
+    glBindVertexArray(vaoJoin);
+    glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, (GLsizei)count);
+
+    if (additive) glBlendEquation(GL_FUNC_ADD);   // restore default for the rest of the pipeline
+
+    glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glUseProgram(0);
+}
+
+void beam_build_caps(const BeamLine* lines, int count, float endcapMul, float cornerMul,
+                     std::vector<BeamJoin>& out) {
+    if (count <= 0 || !lines) return;
+
+    std::unordered_map<int64_t, VertAccum> verts;
+    verts.reserve((size_t)count * 2);
+
+    auto rec = [&](int64_t k, vec2 p, rgb_t c, float half) {
+        VertAccum& v = verts[k];
+        if (v.count == 0) { v.pos = p; v.color = c; v.half = half; }
+        else {
+            if (beam_brightness(c) > beam_brightness(v.color)) v.color = c;
+            if (half > v.half) v.half = half;
+        }
+        v.count++;
+    };
+
+    for (int i = 0; i < count; ++i) {
+        const BeamLine& L = lines[i];
+        int64_t k0 = beam_vkey(L.p0.x, L.p0.y), k1 = beam_vkey(L.p1.x, L.p1.y);
+        rec(k0, L.p0, L.color, L.half);
+        if (k1 != k0) rec(k1, L.p1, L.color, L.half);
+    }
+
+    for (const auto& kv : verts) {
+        const VertAccum& v = kv.second;
+        float r = v.half * ((v.count >= 2) ? cornerMul : endcapMul);
+        if (r > 0.01f) out.push_back({ v.pos, r, v.color });
+    }
 }

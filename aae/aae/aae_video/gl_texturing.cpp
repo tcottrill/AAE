@@ -110,7 +110,11 @@ void quad_from_center(float x, float y, float width, float height, int r, int g,
 	float maxx = x + (width / 2.0f);
 	float maxy = y + (height / 2.0f);
 
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	// Separate alpha (src factor GL_ONE) so the accumulated alpha is correct when
+	// drawn into an offscreen RGBA target that is later alpha-blitted (the rotated
+	// raster overlay). RGB is unchanged, so backbuffer and straight-copied vector
+	// fbo4 paths are visually identical.
+	glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 	glEnable(GL_BLEND);
 
 	// Pack RGBA so GL_UNSIGNED_BYTE-normalized reads it as (r,g,b,a).

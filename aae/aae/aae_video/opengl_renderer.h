@@ -32,7 +32,10 @@ void end_render_fbo4();
 // Draw pause/menu/exit confirm overlays on top of the current backbuffer.
 // Called by both vector and raster rendering paths.
 // winW/winH are the current window client dimensions.
-void render_ui_overlays(int winW, int winH);
+// fboSpace: force the 1024x1024 FBO coordinate space (set_ortho(1024,1024))
+// regardless of game type. Used by the raster path when compositing the overlay
+// into fbo4 for a system-rotated game, so screen_rect can rotate the blit.
+void render_ui_overlays(int winW, int winH, bool fboSpace = false);
 void glcode_vector_hard_clear_fbo1();
 int init_gl(void);
 void end_gl();
