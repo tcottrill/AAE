@@ -5,10 +5,32 @@
 #include "vector_fonts.h"
 #include "colordefs.h"
 #include "gl_shader.h" // Added to access the new basic shaders
+#include "MathUtils.h"  // aae::math::mat4 / value_ptr for the core-profile quads
 
 #pragma warning( disable : 4305 4244 )
 
 int errorsound = 0;
+
+// Reusable VAO/VBO for the basic colored quads (core-profile path).
+// Per-vertex layout matches fragBasicColor: position (vec2) + packed RGBA color.
+struct QuadVtx { float x, y; unsigned int color; };
+static GLuint s_quadVAO = 0;
+static GLuint s_quadVBO = 0;
+static void ensure_quad_buffers()
+{
+	if (s_quadVAO) return;
+	glGenVertexArrays(1, &s_quadVAO);
+	glGenBuffers(1, &s_quadVBO);
+	glBindVertexArray(s_quadVAO);
+	glBindBuffer(GL_ARRAY_BUFFER, s_quadVBO);
+	glBufferData(GL_ARRAY_BUFFER, 6 * sizeof(QuadVtx), nullptr, GL_DYNAMIC_DRAW);
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(QuadVtx), (void*)offsetof(QuadVtx, x));
+	glEnableVertexAttribArray(1);
+	glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(QuadVtx), (void*)offsetof(QuadVtx, color));
+	glBindVertexArray(0);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+}
 
 // ----
 // Texturing and drawing rectangle code Below.
@@ -94,35 +116,27 @@ void quad_from_center(float x, float y, float width, float height, int r, int g,
 
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	glEnable(GL_BLEND);
-	glColor4ub(r, g, b, alpha);
 
-	GLfloat vertices[] = {
-		minx, miny,
-		maxx, miny,
-		maxx, maxy,
-
-		minx, miny,
-		maxx, maxy,
-		minx, maxy
+	// Pack RGBA so GL_UNSIGNED_BYTE-normalized reads it as (r,g,b,a).
+	unsigned int c = (unsigned int)(r & 0xFF) | ((unsigned int)(g & 0xFF) << 8) |
+	                 ((unsigned int)(b & 0xFF) << 16) | ((unsigned int)(alpha & 0xFF) << 24);
+	const QuadVtx verts[6] = {
+		{ minx, miny, c }, { maxx, miny, c }, { maxx, maxy, c },
+		{ minx, miny, c }, { maxx, maxy, c }, { minx, maxy, c }
 	};
 
-	// Check if a shader is already bound
-	GLint current_prog = 0;
-	glGetIntegerv(GL_CURRENT_PROGRAM, &current_prog);
-	bool use_basic_shader = (current_prog == 0);
+	ensure_quad_buffers();
+	bind_shader(fragBasicColor);
+	set_uniform_mat4f(fragBasicColor, "uProj", aae::math::value_ptr(g_proj));
 
-	if (use_basic_shader) {
-		bind_shader(fragBasicColor);
-	}
-
-	glEnableClientState(GL_VERTEX_ARRAY);
-	glVertexPointer(2, GL_FLOAT, 0, vertices);
+	glBindVertexArray(s_quadVAO);
+	glBindBuffer(GL_ARRAY_BUFFER, s_quadVBO);
+	glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(verts), verts);
 	glDrawArrays(GL_TRIANGLES, 0, 6);
-	glDisableClientState(GL_VERTEX_ARRAY);
+	glBindVertexArray(0);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-	if (use_basic_shader) {
-		unbind_shader();
-	}
+	unbind_shader();
 }
 
 void Any_Rect(int facing, int left, int right, int bottom, int top)

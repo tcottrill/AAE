@@ -13,6 +13,12 @@ extern int game_rect_top;
 // Custom flag(s) for Warlords, what a pain in the butt. I need to find a better way
 extern int g_scanline_override;
 
+// Current projection, mirrored from set_ortho*/set_ortho_raster so the core-profile
+// quad shaders can read it as a uniform (replaces the fixed-function GL_PROJECTION
+// matrix). Forward-declared to avoid pulling MathUtils into every includer.
+namespace aae { namespace math { struct mat4; } }
+extern aae::math::mat4 g_proj;
+
 void set_ortho(GLint width, GLint height);
 // Y-down ortho for the raster rendering path (origin top-left, Y increases downward).
 void set_ortho_raster(GLint width, GLint height);
