@@ -93,19 +93,19 @@ static float get_max_anisotropy()
 // ---------------------------------------------------------------------------
 GLenum CHECK_FRAMEBUFFER_STATUS()
 {
-    GLenum status = glCheckFramebufferStatusEXT(GL_FRAMEBUFFER_EXT);
+    GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
     switch (status)
     {
-    case GL_FRAMEBUFFER_COMPLETE_EXT:
+    case GL_FRAMEBUFFER_COMPLETE:
         LOG_INFO("FBO complete.");
         break;
-    case GL_FRAMEBUFFER_UNSUPPORTED_EXT:
+    case GL_FRAMEBUFFER_UNSUPPORTED:
         LOG_ERROR("FBO error: GL_FRAMEBUFFER_UNSUPPORTED_EXT");
         break;
-    case GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT_EXT:
+    case GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT:
         LOG_ERROR("FBO error: GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT_EXT");
         break;
-    case GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT_EXT:
+    case GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT:
         LOG_ERROR("FBO error: GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT_EXT");
         break;
     case GL_FRAMEBUFFER_INCOMPLETE_DIMENSIONS_EXT:
@@ -114,10 +114,10 @@ GLenum CHECK_FRAMEBUFFER_STATUS()
     case GL_FRAMEBUFFER_INCOMPLETE_FORMATS_EXT:
         LOG_ERROR("FBO error: GL_FRAMEBUFFER_INCOMPLETE_FORMATS_EXT");
         break;
-    case GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER_EXT:
+    case GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER:
         LOG_ERROR("FBO error: GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER_EXT");
         break;
-    case GL_FRAMEBUFFER_INCOMPLETE_READ_BUFFER_EXT:
+    case GL_FRAMEBUFFER_INCOMPLETE_READ_BUFFER:
         LOG_ERROR("FBO error: GL_FRAMEBUFFER_INCOMPLETE_READ_BUFFER_EXT");
         break;
     default:
@@ -207,7 +207,7 @@ static GLuint create_texture(float w, float h, bool mipmaps = true, bool use_alp
     {
         // Generate placeholder mips now. Real mips are rebuilt each frame
         // by fbo_generate_mipmaps() after rendering.
-        glGenerateMipmapEXT(GL_TEXTURE_2D);
+        glGenerateMipmap(GL_TEXTURE_2D);
     }
 
     return tex;
@@ -222,7 +222,7 @@ static GLuint create_texture(float w, float h, bool mipmaps = true, bool use_alp
 //   - An array of {width, height} for that attachment.
 //   - A bool indicating whether this attachment needs an alpha channel.
 //
-// Attachments are assigned to GL_COLOR_ATTACHMENT0_EXT, _1_EXT, _2_EXT, ...
+// Attachments are assigned to GL_COLOR_ATTACHMENT0, _1_EXT, _2_EXT, ...
 // in the order they appear in the list.
 //
 // The FBO completeness status is checked and logged after creation.
@@ -237,8 +237,8 @@ struct FboAttachment
 static void create_fbo(GLuint& fbo,
     std::initializer_list<FboAttachment> attachments)
 {
-    glGenFramebuffersEXT(1, &fbo);
-    glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo);
+    glGenFramebuffers(1, &fbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 
     int slot = 0;
     for (const auto& a : attachments)
@@ -247,15 +247,15 @@ static void create_fbo(GLuint& fbo,
 
         // Attach mip level 0. The rest of the mip chain is regenerated
         // separately after rendering (see fbo_generate_mipmaps).
-        glFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT,
-            GL_COLOR_ATTACHMENT0_EXT + slot,
+        glFramebufferTexture2D(GL_FRAMEBUFFER,
+            GL_COLOR_ATTACHMENT0 + slot,
             GL_TEXTURE_2D, *a.texOut, 0);
 
         ++slot;
     }
 
     CHECK_FRAMEBUFFER_STATUS();
-    glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -269,7 +269,7 @@ void fbo_generate_mipmaps(std::initializer_list<GLuint> textures)
     for (GLuint tex : textures)
     {
         glBindTexture(GL_TEXTURE_2D, tex);
-        glGenerateMipmapEXT(GL_TEXTURE_2D);
+        glGenerateMipmap(GL_TEXTURE_2D);
     }
     glBindTexture(GL_TEXTURE_2D, 0);
 }
@@ -406,7 +406,7 @@ void fbo_shutdown()
     img4b = 0;
 
     GLuint fbos[] = { fbo1, fbo2, fbo3, fbo4 };
-    glDeleteFramebuffersEXT(4, fbos);
+    glDeleteFramebuffers(4, fbos);
 
     fbo1 = fbo2 = fbo3 = fbo4 = 0;
 
@@ -431,7 +431,7 @@ void fbo_shutdown_raster()
 
     if (fbo_raster != 0)
     {
-        glDeleteFramebuffersEXT(1, &fbo_raster);
+        glDeleteFramebuffers(1, &fbo_raster);
         fbo_raster = 0;
     }
 }

@@ -512,27 +512,27 @@ void glcode_vector_hard_clear_fbo1()
 
 	GLint prevFbo = 0;
 	GLint prevVP[4] = { 0, 0, 0, 0 };
-	glGetIntegerv(GL_FRAMEBUFFER_BINDING_EXT, &prevFbo);
+	glGetIntegerv(GL_FRAMEBUFFER_BINDING, &prevFbo);
 	glGetIntegerv(GL_VIEWPORT, prevVP);
 
-	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo1);
+	glBindFramebuffer(GL_FRAMEBUFFER, fbo1);
 	glViewport(0, 0, 1024, 1024);
 
 	glDisable(GL_SCISSOR_TEST);
 	glDisable(GL_BLEND);
 	glClearColor(0, 0, 0, 0);
 
-	glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT);
+	glDrawBuffer(GL_COLOR_ATTACHMENT0);
 	glClear(GL_COLOR_BUFFER_BIT);
 
-	glDrawBuffer(GL_COLOR_ATTACHMENT1_EXT);
+	glDrawBuffer(GL_COLOR_ATTACHMENT1);
 	glClear(GL_COLOR_BUFFER_BIT);
 
-	glDrawBuffer(GL_COLOR_ATTACHMENT2_EXT);
+	glDrawBuffer(GL_COLOR_ATTACHMENT2);
 	glClear(GL_COLOR_BUFFER_BIT);
 
 	// Restore previous FBO and viewport.
-	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, (GLuint)prevFbo);
+	glBindFramebuffer(GL_FRAMEBUFFER, (GLuint)prevFbo);
 	glViewport(prevVP[0], prevVP[1], prevVP[2], prevVP[3]);
 }
 
@@ -544,8 +544,8 @@ void glcode_vector_hard_clear_fbo1()
 // ---------------------------------------------------------------------------
 void set_render_fbo4()
 {
-	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo4);
-	glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT);
+	glBindFramebuffer(GL_FRAMEBUFFER, fbo4);
+	glDrawBuffer(GL_COLOR_ATTACHMENT0);
 
 	set_ortho(1024, 1024);
 
@@ -568,7 +568,7 @@ void end_render_fbo4()
 {
 	check_gl_error_named("end_render_fbo4 (enter)");
 
-	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	glDrawBuffer(GL_BACK);
 	glActiveTexture(GL_TEXTURE0);
 
@@ -613,8 +613,8 @@ void copy_main_img_to_fbo2()
 
 	GLuint fbo2_tex = 0;
 	glLoadIdentity();
-	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo2);
-	glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT);
+	glBindFramebuffer(GL_FRAMEBUFFER, fbo2);
+	glDrawBuffer(GL_COLOR_ATTACHMENT0);
 	set_ortho(512, 512);
 	glDisable(GL_BLEND);
 
@@ -640,14 +640,14 @@ void copy_main_img_to_fbo2()
 void copy_fbo2_to_fbo3()
 {
 	GLuint fbo3_tex = 0;
-	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo3);
+	glBindFramebuffer(GL_FRAMEBUFFER, fbo3);
 
 	// Clear both pingpong buffers before each frame.
-	glDrawBuffer(GL_COLOR_ATTACHMENT1_EXT);
+	glDrawBuffer(GL_COLOR_ATTACHMENT1);
 	glClearColor(0.0, 0.0, 0.0, 0.0);
 	glClear(GL_COLOR_BUFFER_BIT);
 
-	glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT);
+	glDrawBuffer(GL_COLOR_ATTACHMENT0);
 	set_ortho(256, 256);
 	glDisable(GL_BLEND);
 
@@ -729,12 +729,12 @@ void render_blur_image_fbo3()
 	for (int pass = 0; pass < 4; ++pass)
 	{
 		// A -> B: draw img3a into attachment 1 (img3b) with near offset.
-		glDrawBuffer(GL_COLOR_ATTACHMENT1_EXT);
+		glDrawBuffer(GL_COLOR_ATTACHMENT1);
 		set_texture(&img3a, 1, 0, 0, 0);
 		DrawQuadOffset(fshifta[i], fshifta[i + 1]);
 
 		// B -> A: draw img3b into attachment 0 (img3a) with far offset.
-		glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT);
+		glDrawBuffer(GL_COLOR_ATTACHMENT0);
 		set_texture(&img3b, 1, 0, 0, 0);
 		DrawQuadOffset(fshiftb[i], fshiftb[i + 1]);
 
@@ -877,7 +877,7 @@ void render_ui_overlays(int winW, int winH, bool fboSpace)
 	video_loop();
 
 	// Restore GL state for the next frame's vector pipeline
-	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
@@ -902,8 +902,8 @@ void set_render()
 	// Set 1024x1024 ortho to match the FBO dimensions.
 	if (Machine->drv->video_attributes & VIDEO_TYPE_VECTOR)
 	{	// Bind FBO1 and direct output to attachment 0 (img1a).
-		glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo1);
-		glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT);
+		glBindFramebuffer(GL_FRAMEBUFFER, fbo1);
+		glDrawBuffer(GL_COLOR_ATTACHMENT0);
 		set_ortho(1024, 1024);
 		VF.SetOverrideViewport(false);
 	}
@@ -925,8 +925,8 @@ void set_render()
 		const int rw = static_cast<int>((float)vw * config.prescale);
 		const int rh = static_cast<int>((float)vh * config.prescale);
 
-		glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo_raster);
-		glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT);
+		glBindFramebuffer(GL_FRAMEBUFFER, fbo_raster);
+		glDrawBuffer(GL_COLOR_ATTACHMENT0);
 
 		// Y-down ortho: matches the raster bitmap layout (origin top-left).
 		// MUST match fbo_init_raster() dimensions exactly.
@@ -1022,8 +1022,8 @@ void final_render(int left, int right, int bottom, int top)
 	//--------------------------------------------------------------------------
 	// LAYER 1: Copy img1a (current frame) into img1b.
 	//--------------------------------------------------------------------------
-	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo1);
-	glDrawBuffer(GL_COLOR_ATTACHMENT1_EXT);
+	glBindFramebuffer(GL_FRAMEBUFFER, fbo1);
+	glDrawBuffer(GL_COLOR_ATTACHMENT1);
 	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -1042,7 +1042,7 @@ void final_render(int left, int right, int bottom, int top)
 	//--------------------------------------------------------------------------
 	if (config.vectrail && !emulator_is_gui_active()) //No vectrail for the gui
 	{
-		glDrawBuffer(GL_COLOR_ATTACHMENT2_EXT);
+		glDrawBuffer(GL_COLOR_ATTACHMENT2);
 		glDisable(GL_DITHER);
 		set_texture(&img1b, 1, 0, 0, 0);
 		glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_SRC_ALPHA);
@@ -1074,8 +1074,8 @@ void final_render(int left, int right, int bottom, int top)
 	//--------------------------------------------------------------------------
 	// LAYER 5A: Build the CRT/game image into img4b (FBO4 attachment 1).
 	//--------------------------------------------------------------------------
-	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo4);
-	glDrawBuffer(GL_COLOR_ATTACHMENT1_EXT);
+	glBindFramebuffer(GL_FRAMEBUFFER, fbo4);
+	glDrawBuffer(GL_COLOR_ATTACHMENT1);
 	set_ortho(1024, 1024);
 
 	glDisable(GL_SCISSOR_TEST);
@@ -1237,8 +1237,8 @@ void render_scanlines()
 	int scan_y = 0;
 	get_texture_size(g_scanrezTex, &scan_x, &scan_y);
 
-	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo_raster);
-	glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT);
+	glBindFramebuffer(GL_FRAMEBUFFER, fbo_raster);
+	glDrawBuffer(GL_COLOR_ATTACHMENT0);
 
 	glEnable(GL_BLEND);
 
@@ -1328,7 +1328,7 @@ void final_render_raster()
 	}
 
 	// 1. DISENGAGE FBO: Essential to "close" img5a so the GPU can read it.
-	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	glDrawBuffer(GL_BACK);
 
 	// 2. VIEWPORT RESCUE: Handle the case where rendering reset might have failed
@@ -1356,7 +1356,7 @@ void final_render_raster()
 	//   BW games:    pure multiply   (screen * overlay)
 	//   Color games: 2x multiply     (screen * overlay * 2, clamped)
 	// -----------------------------------------------------------------------
-	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	glDrawBuffer(GL_BACK);
 	glViewport(0, 0, ws.clientWidth, ws.clientHeight);
 	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
@@ -1384,7 +1384,7 @@ void final_render_raster()
 		set_render_fbo4();                       // bind fbo4 (1024x1024), clear transparent
 		render_ui_overlays(1024, 768, true);     // draw overlay in fbo4 space (like vector)
 
-		glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		glDrawBuffer(GL_BACK);
 		set_ortho(ws.clientWidth, ws.clientHeight);
 		glEnable(GL_BLEND);
