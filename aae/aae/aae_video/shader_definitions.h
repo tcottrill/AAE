@@ -255,6 +255,55 @@ void main()
 )glsl";
 
 
+// ---------------------------------------------------------
+// Textured + per-vertex-color shader
+// Replaces the fixed-function GL_MODULATE client-array path used by the legacy
+// textured shots (draw_textured_shots): FragColor = texture(uv) * vertexColor.
+// ---------------------------------------------------------
+const char* texColorVert = R"glsl(
+#version 330 core
+
+layout(location = 0) in vec2 aPos;
+layout(location = 1) in vec2 aUV;
+layout(location = 2) in vec4 aColor;
+
+uniform mat4 uProj;
+
+out vec2 TexCoord;
+out vec4 VertColor;
+
+void main()
+{
+    TexCoord  = aUV;
+    VertColor = aColor;
+    gl_Position = uProj * vec4(aPos, 0.0, 1.0);
+}
+)glsl";
+
+const char* texColorFrag = R"glsl(
+#version 330 core
+
+uniform sampler2D u_texture;
+uniform float uFadeInner;   // radius (0=center .. 1=edge) of the full-bright core
+uniform float uFadeOuter;   // radius where the edge fade reaches zero
+
+in vec2 TexCoord;
+in vec4 VertColor;
+out vec4 FragColor;
+
+void main()
+{
+    vec4 c = texture(u_texture, TexCoord) * VertColor;
+    // Radial edge fade: full brightness inside uFadeInner, ramping to 0 by
+    // uFadeOuter so the square texture/quad boundary disappears on the additive
+    // halo. The bright center is untouched (fade = 1 there).
+    float d = length(TexCoord - vec2(0.5)) * 2.0;   // 0 center, 1 edge, ~1.41 corner
+    float fade = 1.0 - smoothstep(uFadeInner, uFadeOuter, d);
+    FragColor = vec4(c.rgb * fade, c.a);
+}
+)glsl";
+
+
 
 
 

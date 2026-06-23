@@ -4,9 +4,12 @@
 #include "sys_log.h"
 #include "opengl_renderer.h"
 #include "gl_texturing.h" // For game_tex[0]
+#include "gl_shader.h"    // fragTexColor + bind_shader / set_uniform*
 #include "vector_draw.h"  // beam_add_line / beam_add_shot / beam_clear
+#include "MathUtils.h"    // aae::math::value_ptr
 #include <vector>
 #include <algorithm>       // std::min / std::max (clip)
+#include <cstddef>         // offsetof
 
 #pragma warning( disable :  4244 )
 
@@ -108,32 +111,63 @@ void cache_clear()
     beam_clear();          // clear the modern beam lists on the same frame boundary
 }
 
-// Legacy textured-shot pass (fixed-function quads via game_tex[0]). Used by the
-// modern beam path when textured shots are selected (config.shots_textured) -
-// e.g. Asteroids Deluxe with artwork.
-void draw_textured_shots()
+// Core-profile VAO/VBO for the textured shots (pos + uv + packed RGBA, matching
+// the txdata layout). Lazily created on first use.
+static GLuint s_shotVAO = 0, s_shotVBO = 0;
+static void ensure_shot_buffers()
+{
+    if (s_shotVAO) return;
+    glGenVertexArrays(1, &s_shotVAO);
+    glGenBuffers(1, &s_shotVBO);
+    glBindVertexArray(s_shotVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, s_shotVBO);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 2, GL_FLOAT,         GL_FALSE, sizeof(txdata), (void*)offsetof(txdata, x));
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 2, GL_FLOAT,         GL_FALSE, sizeof(txdata), (void*)offsetof(txdata, tx));
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_TRUE,  sizeof(txdata), (void*)offsetof(txdata, color));
+    glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+}
+
+// Legacy textured-shot pass (textured quads via game_tex[0]). Used by the modern
+// beam path when textured shots are selected (config.shots_textured) - e.g.
+// Asteroids Deluxe with artwork. Core-profile: VAO/VBO + the texColor shader
+// (texture * per-vertex color = the old GL_MODULATE), additive blend, drawn under
+// the same projection as the beams (proj).
+void draw_textured_shots(const aae::math::mat4& proj)
 {
     if (texlist.empty()) return;
 
-    glEnable(GL_TEXTURE_2D);
+    ensure_shot_buffers();
+
+    glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, *tex);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE);   // additive
 
-    glEnableClientState(GL_VERTEX_ARRAY);
-    glVertexPointer(2, GL_FLOAT, sizeof(txdata), &texlist[0].x);
+    // Radial edge fade to kill the square halo. Tune these:
+    //   kShotFadeInner = radius of the full-bright core (0=center .. 1=edge)
+    //   kShotFadeOuter = radius where the halo fully fades out (<=1 keeps it inside
+    //                    the quad; lower = tighter/rounder, higher = softer/larger)
+    static const float kShotFadeInner = 0.20f;
+    static const float kShotFadeOuter = 1.00f;
 
-    glEnableClientState(GL_TEXTURE_COORD_ARRAY);
-    glTexCoordPointer(2, GL_FLOAT, sizeof(txdata), &texlist[0].tx);
+    bind_shader(fragTexColor);
+    set_uniform1i(fragTexColor, "u_texture", 0);
+    set_uniform_mat4f(fragTexColor, "uProj", aae::math::value_ptr(proj));
+    set_uniform1f(fragTexColor, "uFadeInner", kShotFadeInner);
+    set_uniform1f(fragTexColor, "uFadeOuter", kShotFadeOuter);
 
-    glEnableClientState(GL_COLOR_ARRAY);
-    glColorPointer(4, GL_UNSIGNED_BYTE, sizeof(txdata), &texlist[0].color);
-
+    glBindVertexArray(s_shotVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, s_shotVBO);
+    glBufferData(GL_ARRAY_BUFFER, texlist.size() * sizeof(txdata), texlist.data(), GL_STREAM_DRAW);
     glDrawArrays(GL_TRIANGLES, 0, (GLsizei)texlist.size());
 
-    glDisableClientState(GL_TEXTURE_COORD_ARRAY);
-    glDisableClientState(GL_VERTEX_ARRAY);
-    glDisableClientState(GL_COLOR_ARRAY);
+    glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    unbind_shader();
 
-    glDisable(GL_TEXTURE_2D);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);   // restore default
 }

@@ -977,7 +977,7 @@ void render()
 			aae::math::mat4 proj = aae::math::ortho(0.0f, 1024.0f, 0.0f, 1024.0f);
 			beam_draw_all(proj);
 			if (config.shots_textured)
-				draw_textured_shots();   // legacy textured shots over the modern beam
+				draw_textured_shots(proj);   // legacy textured shots over the modern beam
 			vector_clear_list();
 		}
 		else
