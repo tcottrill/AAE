@@ -50,6 +50,8 @@
 #include "game_list.h"
 #include "emu_vector_draw.h"
 #include "gl_shader.h"
+#include "opengl_renderer.h"  // g_proj
+#include "MathUtils.h"        // aae::math::value_ptr
 
 // =============================================================================
 // Constants
@@ -220,6 +222,7 @@ static void drawStars(Star stars[], int count)
 
 	glPointSize(3.0f);
 	bind_shader(fragStarPoint);
+	set_uniform_mat4f(fragStarPoint, "uProj", aae::math::value_ptr(g_proj));
 
 	glBindVertexArray(s_starVAO);
 	glBindBuffer(GL_ARRAY_BUFFER, s_starVBO);

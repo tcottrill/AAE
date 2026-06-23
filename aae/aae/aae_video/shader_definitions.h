@@ -223,22 +223,24 @@ void main()
 // Star Point Shader (VBO/VAO point rendering for GUI stars)
 // ---------------------------------------------------------
 const char* starPointVert = R"glsl(
-#version 330 compatibility
+#version 330 core
 
 layout(location = 0) in vec2 aPos;
 layout(location = 1) in vec4 aColor;
+
+uniform mat4 uProj;
 
 out vec4 VertColor;
 
 void main()
 {
     VertColor = aColor;
-    gl_Position = gl_ModelViewProjectionMatrix * vec4(aPos, 0.0, 1.0);
+    gl_Position = uProj * vec4(aPos, 0.0, 1.0);
 }
 )glsl";
 
 const char* starPointFrag = R"glsl(
-#version 330 compatibility
+#version 330 core
 
 in vec4 VertColor;
 out vec4 FragColor;
