@@ -601,7 +601,7 @@ void end_render_fbo4()
 	// configured aspect ratio (1.33f = 4:3).
 	set_texture(&img4a, 1, 0, 0, 0);
 	glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-	screen_rect->Render();
+	screen_rect->Render(aae::math::value_ptr(g_proj));   // g_proj == the set_ortho above
 
 	check_gl_error_named("end_render_fbo4 (exit)");
 }
@@ -1432,7 +1432,7 @@ void final_render_raster()
 		glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 		set_texture(&img4a, 1, 0, 0, 0);
 		glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-		screen_rect->Render();                   // rotated + letterboxed over the game
+		screen_rect->Render(aae::math::value_ptr(g_proj));   // rotated + letterboxed over the game
 	}
 	else
 	{
