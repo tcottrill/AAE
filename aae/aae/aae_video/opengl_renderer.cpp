@@ -272,12 +272,11 @@ void Widescreen_calc()
 // ---------------------------------------------------------------------------
 void set_ortho(GLint width, GLint height)
 {
-	glMatrixMode(GL_PROJECTION);
-	glLoadIdentity();
+	// Core path: only the viewport and the g_proj projection (consumed via the
+	// uProj uniform by every draw) are needed. The fixed-function matrix stack is
+	// no longer read by anything (Rect2 + Layout_Render are core now), so it is
+	// not touched here -- which also keeps this valid under a core-profile context.
 	glViewport(0, 0, width, height);
-	glOrtho(0, width, 0, height, -1.0f, 1.0f);
-	glMatrixMode(GL_MODELVIEW);
-	glLoadIdentity();
 	g_proj = aae::math::ortho(0.0f, (float)width, 0.0f, (float)height);
 }
 
@@ -290,12 +289,8 @@ void set_ortho(GLint width, GLint height)
 // ---------------------------------------------------------------------------
 void set_ortho_raster(GLint width, GLint height)
 {
-	glMatrixMode(GL_PROJECTION);
-	glLoadIdentity();
+	// Core path (see set_ortho): viewport + g_proj only. Y-DOWN ortho for raster.
 	glViewport(0, 0, width, height);
-	glOrtho(0, width, height, 0, -1.0f, 1.0f);
-	glMatrixMode(GL_MODELVIEW);
-	glLoadIdentity();
 	g_proj = aae::math::ortho(0.0f, (float)width, (float)height, 0.0f);
 }
 
@@ -794,11 +789,6 @@ void render_ui_overlays(int winW, int winH, bool fboSpace)
 	}
 
 	glViewport(vpX, 0, vpW, winH);
-	glMatrixMode(GL_PROJECTION);
-	glLoadIdentity();
-	glOrtho(0, 1024, 0, 768, -1.0f, 1.0f);
-	glMatrixMode(GL_MODELVIEW);
-	glLoadIdentity();
 	g_proj = aae::math::ortho(0.0f, 1024.0f, 0.0f, 768.0f);
 
 	// Tell VF not to override our viewport when Begin() is called.
