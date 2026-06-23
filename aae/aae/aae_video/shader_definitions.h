@@ -3,23 +3,25 @@
 // Old Style Blur Shader
 // VS
 const char* vertText = R"glsl(
-#version 330 compatibility
+#version 330 core
+
+layout(location = 0) in vec2 aPos;
+layout(location = 1) in vec2 aUV;
+
+uniform mat4 uProj;
 
 out vec2 TexCoord;
 
 void main()
 {
-    // Pass through the texture coordinate
-    TexCoord = gl_MultiTexCoord0.xy;
-
-    // Use ftransform() for compatibility with fixed-function pipeline
-    gl_Position = ftransform();
+    TexCoord = aUV;
+    gl_Position = uProj * vec4(aPos, 0.0, 1.0);
 }
 )glsl";
 
 // FS
 const char* fragText = R"glsl(
-#version 330 compatibility
+#version 330 core
 
 uniform sampler2D colorMap;
 uniform float width;
@@ -60,25 +62,25 @@ void main()
 // Multitexturing Combining Shaders
 // VS
 const char* texvertText = R"glsl(
-#version 330 compatibility
+#version 330 core
+
+layout(location = 0) in vec2 aPos;
+layout(location = 1) in vec2 aUV;
+
+uniform mat4 uProj;
 
 out vec2 TexCoord0;
-out vec2 TexCoord1;
 
 void main(void)
 {
-    // Pass texture coordinates for multiple units
-    TexCoord0 = gl_MultiTexCoord0.xy;
-    TexCoord1 = gl_MultiTexCoord1.xy;
-
-    // Use fixed-function transform
-    gl_Position = gl_ModelViewProjectionMatrix * gl_Vertex;
+    TexCoord0 = aUV;
+    gl_Position = uProj * vec4(aPos, 0.0, 1.0);
 }
 )glsl";
 
 // FS
 const char* texfragText = R"glsl(
-#version 330 compatibility
+#version 330 core
 
 uniform int usefb;
 uniform int useglow;

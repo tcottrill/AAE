@@ -65,52 +65,41 @@ void drawTexturedQuad(float left, float right, float bottom, float top, bool fli
 	const float vb = flip_v ? 1.0f : 0.0f;
 	const float vt = flip_v ? 0.0f : 1.0f;
 
+	const TexQuadVtx verts[6] = {
+		{ left,  bottom, 0.0f, vb }, { left,  top, 0.0f, vt }, { right, top,    1.0f, vt },
+		{ left,  bottom, 0.0f, vb }, { right, top, 1.0f, vt }, { right, bottom, 1.0f, vb }
+	};
+
 	GLint current_prog = 0;
 	glGetIntegerv(GL_CURRENT_PROGRAM, &current_prog);
 
+	GLuint prog;
 	if (current_prog == 0)
 	{
-		// CORE standalone path: textured quad tinted by uColor.
-		const TexQuadVtx verts[6] = {
-			{ left,  bottom, 0.0f, vb }, { left,  top, 0.0f, vt }, { right, top,    1.0f, vt },
-			{ left,  bottom, 0.0f, vb }, { right, top, 1.0f, vt }, { right, bottom, 1.0f, vb }
-		};
-
-		ensure_tex_quad_buffers();
+		// Standalone: bind the basic textured shader and tint by uColor.
 		bind_shader(fragBasicTex);
+		prog = fragBasicTex;
 		set_uniform1i(fragBasicTex, "u_texture", 0);
-		set_uniform_mat4f(fragBasicTex, "uProj", aae::math::value_ptr(g_proj));
 		set_uniform4f(fragBasicTex, "uColor", rT, gT, bT, aT);
-
-		glBindVertexArray(s_texQuadVAO);
-		glBindBuffer(GL_ARRAY_BUFFER, s_texQuadVBO);
-		glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(verts), verts);
-		glDrawArrays(GL_TRIANGLES, 0, 6);
-		glBindVertexArray(0);
-		glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-		unbind_shader();
 	}
 	else
 	{
-		// LEGACY path: feed the currently-bound compat shader (fragMulti / fragBlur,
-		// ported in later sub-slices) via client arrays. The tint color is unused here.
-		const GLfloat pos[] = {
-			left, bottom, left, top, right, top,
-			left, bottom, right, top, right, bottom
-		};
-		const GLfloat tc[] = {
-			0.0f, vb, 0.0f, vt, 1.0f, vt,
-			0.0f, vb, 1.0f, vt, 1.0f, vb
-		};
-		glEnableClientState(GL_VERTEX_ARRAY);
-		glEnableClientState(GL_TEXTURE_COORD_ARRAY);
-		glVertexPointer(2, GL_FLOAT, 0, pos);
-		glTexCoordPointer(2, GL_FLOAT, 0, tc);
-		glDrawArrays(GL_TRIANGLES, 0, 6);
-		glDisableClientState(GL_TEXTURE_COORD_ARRAY);
-		glDisableClientState(GL_VERTEX_ARRAY);
+		// A composite shader (fragMulti / fragBlur) is already bound with its own
+		// samplers/uniforms; we just supply the projection and the geometry.
+		prog = (GLuint)current_prog;
 	}
+	set_uniform_mat4f(prog, "uProj", aae::math::value_ptr(g_proj));
+
+	ensure_tex_quad_buffers();
+	glBindVertexArray(s_texQuadVAO);
+	glBindBuffer(GL_ARRAY_BUFFER, s_texQuadVBO);
+	glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(verts), verts);
+	glDrawArrays(GL_TRIANGLES, 0, 6);
+	glBindVertexArray(0);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+	if (current_prog == 0)
+		unbind_shader();
 }
 
 void quad_from_center(float x, float y, float width, float height, int r, int g, int b, int alpha)
