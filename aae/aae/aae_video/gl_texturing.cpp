@@ -173,23 +173,15 @@ void show_error(void)
 
 	if (have_error) {
 		//if (!errorsound) { sample_start(5, num_samples - 4, 0); errorsound = 1; }
-		glPushMatrix();
-		glLoadIdentity();
-		glDisable(GL_TEXTURE_2D);
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-		glColor4ub(40, 0, 0, 220);
+		// drawTexturedQuad is core (VAO/VBO + uProj); legacy color/matrix removed.
 		drawTexturedQuad(282.0f, 234.0f, 742.0f, 534.0f);
-
-		glEnable(GL_TEXTURE_2D);
-		glColor4ub(255, 255, 255, 255);
 
 		//glBindTexture(GL_TEXTURE_2D, error_tex[0]);
 		//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 		//glBlendFunc(GL_SRC_ALPHA, GL_ONE); //PROPER
-		glTranslatef(375, 475, 0);
-
 		drawTexturedQuad(-24.0f, -24.0f, 24.0f, 24.0f);
 
 		//TODO: Replace this with Vector drawing calls.
@@ -220,8 +212,5 @@ void show_error(void)
 			fade += 5;
 			if (fade > 255) { fade = 255; dir = 0; }
 		}
-		glPopMatrix();
-		glLoadIdentity();
-		glDisable(GL_TEXTURE_2D);
 	}
 }

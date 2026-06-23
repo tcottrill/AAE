@@ -372,7 +372,6 @@ int init_gl(void)
 
 		glEnable(GL_BLEND);
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-		glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST);
 
 		// --- Screen rectangle (tracks window size and aspect ratio) ---
 		// --- Screen rectangle (tracks window size and aspect ratio) ---
@@ -553,7 +552,6 @@ void set_render_fbo4()
 	glClear(GL_COLOR_BUFFER_BIT);
 
 	glEnable(GL_BLEND);
-	glDisable(GL_LIGHTING);
 	glDisable(GL_DEPTH_TEST);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	glDisable(GL_DITHER);   // required for some older cards
@@ -612,7 +610,6 @@ void copy_main_img_to_fbo2()
 	fbo_generate_mipmaps({ img1b });
 
 	GLuint fbo2_tex = 0;
-	glLoadIdentity();
 	glBindFramebuffer(GL_FRAMEBUFFER, fbo2);
 	glDrawBuffer(GL_COLOR_ATTACHMENT0);
 	set_ortho(512, 512);
@@ -1080,7 +1077,6 @@ void final_render(int left, int right, int bottom, int top)
 
 	glDisable(GL_SCISSOR_TEST);
 	glDisable(GL_DEPTH_TEST);
-	glDisable(GL_LIGHTING);
 
 	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);

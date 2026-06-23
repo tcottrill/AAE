@@ -401,12 +401,10 @@ float ReSizeGLScene(GLsizei width, GLsizei height)
 // -----------------------------------------------------------------------------
 void ViewOrtho(int width, int height)
 {
-	//glViewport(0, 0, width, height);
-	glMatrixMode(GL_PROJECTION);
-	glLoadIdentity();
-	glOrtho(0, width, 0, height, -1, 1);
-	glMatrixMode(GL_MODELVIEW);
-	glLoadIdentity();
+	// Core profile: the fixed-function projection/modelview matrices are no longer
+	// used -- the renderer drives projection via g_proj / per-shader uProj uniforms.
+	// Kept as a no-op for its existing window-setup / resize call sites.
+	(void)width; (void)height;
 }
 
 // -----------------------------------------------------------------------------

@@ -1115,7 +1115,10 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance,
 		LOG_ERROR("No joysticks detected or initialization failed");
 	}
 
-	if (!InitOpenGLContext(false, false, false)) {
+	// useCoreProfile = true: request a forward-compatible OpenGL core context.
+	// The whole render path is now core-clean (no fixed-function matrix/state,
+	// no client arrays, core FBO calls, all #version 330 core shaders).
+	if (!InitOpenGLContext(false, false, true)) {
 		LOG_ERROR("Failed to initialize OpenGL");
 		return -1;
 	}
