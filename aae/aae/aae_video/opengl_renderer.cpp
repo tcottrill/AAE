@@ -372,12 +372,7 @@ int init_gl(void)
 
 		glEnable(GL_BLEND);
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-		glEnable(GL_LINE_SMOOTH);
-		glEnable(GL_POINT_SMOOTH);
 		glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST);
-
-		glLineWidth(config.linewidth);
-		glPointSize(config.pointsize);
 
 		// --- Screen rectangle (tracks window size and aspect ratio) ---
 		// --- Screen rectangle (tracks window size and aspect ratio) ---
@@ -561,8 +556,6 @@ void set_render_fbo4()
 	glDisable(GL_LIGHTING);
 	glDisable(GL_DEPTH_TEST);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	glEnable(GL_LINE_SMOOTH);
-	glEnable(GL_POINT_SMOOTH);
 	glDisable(GL_DITHER);   // required for some older cards
 }
 
@@ -595,7 +588,6 @@ void end_render_fbo4()
 	// screen_rect->Render() handles letterboxing / pillarboxing for the
 	// configured aspect ratio (1.33f = 4:3).
 	set_texture(&img4a, 1, 0, 0, 0);
-	glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
 	screen_rect->Render(aae::math::value_ptr(g_proj));   // g_proj == the set_ortho above
 
 	check_gl_error_named("end_render_fbo4 (exit)");
@@ -719,10 +711,8 @@ void render_blur_image_fbo3()
 	set_uniform1f(fragBlur, "width", 256.0f);
 	set_uniform1f(fragBlur, "height", 256.0f);
 
-	glEnable(GL_TEXTURE_2D);
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE);  // additive blend accumulates glow
-	glColor4f(0.1f, 0.1f, 0.1f, 0.1f);
 
 	// Lambda to draw one offset quad. Converts float offsets to screen-space
 	// by adding globalOffset and sizing to height3 (the FBO3 height, 256).
@@ -810,7 +800,6 @@ void render_ui_overlays(int winW, int winH, bool fboSpace)
 	//------------------------------------------------------------------
 	if (paused || get_menu_status())
 	{
-		glDisable(GL_TEXTURE_2D);
 		glEnable(GL_BLEND);
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
@@ -831,7 +820,6 @@ void render_ui_overlays(int winW, int winH, bool fboSpace)
 	{
 		if (!paused && !get_menu_status())
 		{
-			glDisable(GL_TEXTURE_2D);
 			glEnable(GL_BLEND);
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 			quad_from_center(512.0f, 384.0f, 1024.0f, 768.0f, 0, 0, 0, 216);
@@ -892,8 +880,6 @@ void render_ui_overlays(int winW, int winH, bool fboSpace)
 	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	glEnable(GL_TEXTURE_2D);
-	glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
 
 	// Restore VF to default behavior for the vector pipeline
 	VF.SetOverrideViewport(true);
@@ -1036,7 +1022,6 @@ void final_render(int left, int right, int bottom, int top)
 	//--------------------------------------------------------------------------
 	// LAYER 1: Copy img1a (current frame) into img1b.
 	//--------------------------------------------------------------------------
-	glEnable(GL_TEXTURE_2D);
 	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo1);
 	glDrawBuffer(GL_COLOR_ATTACHMENT1_EXT);
 	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
@@ -1125,15 +1110,14 @@ void final_render(int left, int right, int bottom, int top)
 	glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, img3a); set_texture(&img3b, 1, 0, 0, 0);
 	glActiveTexture(GL_TEXTURE3); set_texture(&img1c, 1, 0, 0, 0);
 
-	glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
 	//LOG_DEBUG("img4a into render: left=%d right=%d top=%d bottom=%d", left, right, top, bottom);
 	drawTexturedQuad((float)left, (float)right, (float)bottom, (float)top, true);
 
 	unbind_shader();
 
-	glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, 0); glDisable(GL_TEXTURE_2D);
-	glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, 0); glDisable(GL_TEXTURE_2D);
-	glActiveTexture(GL_TEXTURE3); glBindTexture(GL_TEXTURE_2D, 0); glDisable(GL_TEXTURE_2D);
+	glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, 0);
+	glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, 0);
+	glActiveTexture(GL_TEXTURE3); glBindTexture(GL_TEXTURE_2D, 0);
 	glActiveTexture(GL_TEXTURE0);
 
 	//--------------------------------------------------------------------------
@@ -1143,7 +1127,6 @@ void final_render(int left, int right, int bottom, int top)
 	{
 		//float overlay_height =  (Machine->drv->rotation & ORIENTATION_SWAP_XY) ? (float)bottom : ((float)bottom * 0.75f);
 
-		glEnable(GL_TEXTURE_2D);
 		set_texture(&art_tex[1], 1, 0, 0, 0);
 
 		glEnable(GL_BLEND);
@@ -1151,8 +1134,6 @@ void final_render(int left, int right, int bottom, int top)
 			glBlendFunc(GL_DST_COLOR, GL_ZERO);
 		else
 			glBlendFunc(GL_DST_COLOR, GL_SRC_COLOR);
-
-		glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
 
 		drawTexturedQuad((float)left, (float)right, (float)top, (float) bottom, false);
 	}
@@ -1165,7 +1146,6 @@ void final_render(int left, int right, int bottom, int top)
 	auto DrawCabinetScaledLayer = [&](GLuint tex, bool is_pre_squished,
 		float rT = 1.0f, float gT = 1.0f, float bT = 1.0f, float aT = 1.0f, float alphaTest = 0.0f) {
 		if (!tex) return;
-		glEnable(GL_TEXTURE_2D);
 		set_texture(&tex, 1, 0, 0, 0);
 
 		float base_h = 1024; //is_pre_squished ? 1024.0f : (1024.0f * 0.75f);
@@ -1191,11 +1171,9 @@ void final_render(int left, int right, int bottom, int top)
 	glDisable(GL_DITHER);
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_ONE, GL_ONE);
-	glEnable(GL_TEXTURE_2D);
 	set_texture(&img4b, 1, 0, 0, 0);
 
 	// Base draw of the CRT image
-	glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
 	FS_Rect(0, 1024);
 
 	// --- TWEAK: CRT Brightness Boost over Artwork ---
@@ -1214,7 +1192,6 @@ void final_render(int left, int right, int bottom, int top)
 	// VECTOR_USES_OVERLAY2 - visible overlay art on top of the CRT only.
 	if (config.overlay && art_loaded[1] && uses_overlay2)
 	{
-		glEnable(GL_TEXTURE_2D);
 		set_texture(&art_tex[1], 1, 0, 0, 0);
 
 		glEnable(GL_BLEND);
@@ -1240,8 +1217,6 @@ void final_render(int left, int right, int bottom, int top)
 	render_ui_overlays(1024, 768);
 
 	end_render_fbo4();
-
-	glDisable(GL_TEXTURE_2D);
 
 	if (config.debug_profile_code)
 	{
@@ -1360,7 +1335,6 @@ void final_render_raster()
 	int vW = (ws.clientWidth > 0) ? ws.clientWidth : 1024;
 	int vH = (ws.clientHeight > 0) ? ws.clientHeight : 768;
 	glViewport(0, 0, vW, vH);
-	glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
 
 	// 4. PROJECTION: Apply ortho Y-DOWN
 	set_ortho_raster(vW, vH);
@@ -1395,10 +1369,8 @@ void final_render_raster()
 	if (glBindVertexArray) glBindVertexArray(0);
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
 	glActiveTexture(GL_TEXTURE1);
-	glDisable(GL_TEXTURE_2D);
 	glBindTexture(GL_TEXTURE_2D, 0);
 	glActiveTexture(GL_TEXTURE0);
-	glEnable(GL_TEXTURE_2D);
 	glBindTexture(GL_TEXTURE_2D, 0);
 	glDisable(GL_BLEND);
 
@@ -1421,7 +1393,6 @@ void final_render_raster()
 		// composite over the game without being darkened.
 		glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 		set_texture(&img4a, 1, 0, 0, 0);
-		glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
 		screen_rect->Render(aae::math::value_ptr(g_proj));   // rotated + letterboxed over the game
 	}
 	else
@@ -1430,7 +1401,6 @@ void final_render_raster()
 	}
 
 	glDisable(GL_BLEND);
-	glDisable(GL_TEXTURE_2D);
 
 	check_gl_error_named("final_render_raster (exit)");
 

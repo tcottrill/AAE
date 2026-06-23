@@ -546,8 +546,6 @@ static void updateGlyphAnimation()
 	int texOffset = (s_rotLeft != kRotIdle) ? 1 : 0;
 	int glyphId = 127 + texOffset;
 
-	glColor4ub(255, 255, 255, 255);
-
 	// VectorFont rotation convention: subtract 90 so 0 faces right
 	VF.DrawGlyph((float)(kGlyphBaseX - texOffset * 4), (float)kGlyphY,
 		glyphId, RGB_WHITE, kGlyphScale, (float)s_rotLeft - 90.0f);

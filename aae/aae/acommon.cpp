@@ -129,7 +129,6 @@ void video_loop(void)
 	}
 	if (get_menu_status())
 	{
-		glColor4f(1, 1, 1, 1);
 		do_the_menu();
 	}
 	err = glGetError();

@@ -325,7 +325,6 @@ void beam_draw_all(const mat4& proj) {
 
     const bool additive = (Machine->drv->video_attributes & VECTOR_USES_COLOR) != 0;
 
-    glDisable(GL_TEXTURE_2D);
     glEnable(GL_BLEND);
 
     if (!additive) {
@@ -398,7 +397,6 @@ void beam_draw_lines(const mat4& proj, const BeamLine* lines, int count,
     if (count <= 0 || !lines) return;
     beam_ensure_lines();
 
-    glDisable(GL_TEXTURE_2D);
     glEnable(GL_BLEND);
     // Separate alpha (src factor GL_ONE) so the accumulated alpha is correct when
     // these are rendered into an offscreen RGBA target that is later alpha-blitted
@@ -428,7 +426,6 @@ void beam_draw_caps(const mat4& proj, const BeamJoin* caps, int count,
 
     const float aa = (aaFeather > 0.0001f) ? aaFeather : 0.0001f;
 
-    glDisable(GL_TEXTURE_2D);
     glEnable(GL_BLEND);
 
     glUseProgram(progJoin);

@@ -883,13 +883,10 @@ void Layout_Render(const LayoutView& view, GLuint screenTexture, int winW, int w
 	// Set the viewport to the (possibly constrained) rendering area
 	glViewport(vpX, vpY, vpW, vpH);
 
-	// Ensure fixed-function texture state doesn't interfere with our
-	// GLSL shaders. The caller (final_render_raster) may have enabled
-	// GL_TEXTURE_2D on unit 0 via the "nuclear sanitation" block.
+	// Ensure texture-unit selection is in a known state before binding our
+	// GLSL shaders.
 	glActiveTexture(GL_TEXTURE1);
-	glDisable(GL_TEXTURE_2D);
 	glActiveTexture(GL_TEXTURE0);
-	glDisable(GL_TEXTURE_2D);
 	glUseProgram(0);  // clean slate before we bind our own shaders
 
 	glEnable(GL_BLEND);
