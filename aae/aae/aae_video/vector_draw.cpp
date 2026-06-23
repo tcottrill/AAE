@@ -17,14 +17,6 @@
 
 using namespace aae::math;
 
-// Edge feather in PHYSICAL pixels. Lower = sharper. Tunable live via F8/F9.
-static float g_aaPixels = 1.0f;
-
-// Corner strength: round-join disc radius as a multiple of the beam half-width.
-// 1.0 = flush with the beam; lower = subtler; higher = more pronounced. Never
-// squared. Tunable live via F6/F7.
-static float g_cornerStrength = 0.85f;
-
 // End-cap scale for TRUE line terminations (vertices touched by a single segment,
 // e.g. the tips of an "I" or the ends of a "T" crossbar): round cap radius as a
 // multiple of the beam half-width. ~1.0 matches the legacy GL_POINTS tip length.
@@ -41,7 +33,7 @@ static GLuint vaoShot = 0, vboShot = 0;
 static GLuint progLine = 0, progJoin = 0, progShot = 0;
 
 static int   g_ssaa = 1;
-static float g_uAA  = 1.0f;               // feather in logical units (= g_aaPixels / ssaa)
+static float g_uAA  = 1.0f;               // feather in logical units (= config.line_smoothing / ssaa)
 
 // Connectivity for round joins: a join belongs at any vertex where two or more
 // VISIBLE segment endpoints coincide. This covers closed loops, T-junctions, fans
@@ -188,15 +180,13 @@ uniform float uBloomPower;
 uniform float uBloomIntensity;
 uniform float uOverdrive;
 void main() {
-    float br = max(vColor.r, max(vColor.g, vColor.b));
-    br = max(0.1, br);
-    float d  = distance(vUV, vec2(0.5));
-    float g  = clamp(1.0 - d*2.0, 0.0, 1.0);
-    float core = pow(g, uCorePower);
-    float halo = pow(g, uBloomPower) * (uBloomIntensity * (0.5 + br*0.5));
-    float ti = core + halo;
-    vec3 hot = vColor.rgb * (uOverdrive * br);
-    frag = vec4(hot * ti, ti);
+    float d = distance(vUV, vec2(0.5));
+    float g = clamp(1.0 - d*2.0, 0.0, 1.0);
+    float profile = pow(g, uCorePower) + pow(g, uBloomPower) * uBloomIntensity;
+    float z = vColor.a;   // clean linear intensity (no gain floor)
+    // GL_SRC_ALPHA, GL_ONE: the alpha re-multiplies profile, squaring it -> a sharp
+    // core (not a fuzzy ball); the z factor dims the shot linearly toward nothing.
+    frag = vec4(vColor.rgb * uOverdrive * profile, profile * z);
 }
 )GLSL";
 
@@ -206,31 +196,11 @@ static GLuint linkProg(const char* vs, const char* fs, const char* label) {
                              CompileShader(GL_FRAGMENT_SHADER, fs, label));
 }
 
-static void setAA() {
-    g_uAA = g_aaPixels / (float)((g_ssaa < 1) ? 1 : g_ssaa);
-}
-
 // ----------------------------- lifecycle ------------------------------------
-void beam_set_ssaa(int ssaa) { g_ssaa = (ssaa < 1) ? 1 : ssaa; setAA(); }
-
-void beam_adjust_sharpness(float delta) {
-    g_aaPixels += delta;
-    if (g_aaPixels < 0.3f) g_aaPixels = 0.3f;
-    if (g_aaPixels > 3.0f) g_aaPixels = 3.0f;
-    setAA();
-    LOG_INFO("Beam edge softness (AA feather): %.2f px (lower = sharper)", g_aaPixels);
-}
-
-void beam_adjust_corner_strength(float delta) {
-    g_cornerStrength += delta;
-    if (g_cornerStrength < 0.3f) g_cornerStrength = 0.3f;
-    if (g_cornerStrength > 2.5f) g_cornerStrength = 2.5f;
-    LOG_INFO("Beam corner strength: %.2f (1.0 = flush, higher = stronger corners)", g_cornerStrength);
-}
+void beam_set_ssaa(int ssaa) { g_ssaa = (ssaa < 1) ? 1 : ssaa; }
 
 void beam_init(int ssaa) {
     g_ssaa = (ssaa < 1) ? 1 : ssaa;
-    setAA();
 
     progLine = linkProg(vsLine, fsLine, "beam_line");
     progJoin = linkProg(vsJoin, fsJoin, "beam_join");
@@ -299,7 +269,16 @@ void beam_add_line(float sx, float sy, float ex, float ey, int intensity, rgb_t 
 }
 
 void beam_add_shot(float ex, float ey, int intensity, rgb_t col) {
-    rgb_t c = modulate_color(col, intensity, config.gain);
+    // Shots bake intensity into BOTH the colour and z, and modulate_color()'s
+    // line-gain (config.gain) lifts every shot toward max, flattening the z range.
+    // Separate hue from brightness: normalize the colour to a unit hue and pass z
+    // straight through (in alpha) so brightness scales linearly with intensity.
+    int r = col & 0xFF, g = (col >> 8) & 0xFF, b = (col >> 16) & 0xFF;
+    int mx = (r > g) ? (r > b ? r : b) : (g > b ? g : b);
+    int z  = intensity; if (z < 0) z = 0; else if (z > 255) z = 255;
+    if (mx <= 0 || z <= 0) return;
+    r = (r * 255) / mx; g = (g * 255) / mx; b = (b * 255) / mx;
+    rgb_t c = ((rgb_t)z << 24) | ((rgb_t)b << 16) | ((rgb_t)g << 8) | (rgb_t)r;
     g_shots.push_back({ vec2(ex, ey), (float)config.fire_point_size, c });
 }
 
@@ -312,14 +291,17 @@ void beam_clear() {
 
 // ----------------------------- draw -----------------------------------------
 void beam_draw_all(const mat4& proj) {
-    // Build join/cap discs from the vertex accumulator. A vertex shared by 2+
-    // segments is a corner (g_cornerStrength); a vertex with a single segment is a
-    // true line termination and gets a round end-cap (g_endcap). The radius is
-    // baked here so live F6/F7 tuning takes effect each frame.
+    // AA feather (logical units) from the configured smoothing, scaled by SSAA.
+    g_uAA = config.line_smoothing / (float)((g_ssaa < 1) ? 1 : g_ssaa);
+
+    // Build join/cap discs from the vertex accumulator: a vertex shared by 2+
+    // segments is a corner (config.corner_strength); a single-segment vertex is a
+    // true line termination and gets a round end-cap (g_endcap). Radius baked here
+    // so config changes take effect each frame.
     g_joins.clear();
     for (const auto& kv : g_verts) {
         const VertAccum& v = kv.second;
-        float r = v.half * ((v.count >= 2) ? g_cornerStrength : g_endcap);
+        float r = v.half * ((v.count >= 2) ? config.corner_strength : g_endcap);
         if (r > 0.01f)
             g_joins.push_back({ v.pos, r, v.color });
     }
@@ -375,7 +357,20 @@ void beam_draw_all(const mat4& proj) {
         if (additive) glBlendEquation(GL_FUNC_ADD);   // restore default for the rest of the pipeline
     }
 
-    // Shots: implemented in Phase 4.
+    // Shots: procedural radial core + halo, always additive.
+    if (!g_shots.empty()) {
+        glUseProgram(progShot);
+        glUniformMatrix4fv(glGetUniformLocation(progShot, "uProj"), 1, GL_FALSE, value_ptr(const_cast<mat4&>(proj)));
+        glUniform1f(glGetUniformLocation(progShot, "uCorePower"),      6.0f);
+        glUniform1f(glGetUniformLocation(progShot, "uBloomPower"),     2.5f);
+        glUniform1f(glGetUniformLocation(progShot, "uBloomIntensity"), 0.3f);
+        glUniform1f(glGetUniformLocation(progShot, "uOverdrive"),      1.5f);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+        glBindBuffer(GL_ARRAY_BUFFER, vboShot);
+        glBufferData(GL_ARRAY_BUFFER, g_shots.size()*sizeof(BeamShot), g_shots.data(), GL_STREAM_DRAW);
+        glBindVertexArray(vaoShot);
+        glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, (GLsizei)g_shots.size());
+    }
 
     glBindVertexArray(0);
     glBindBuffer(GL_ARRAY_BUFFER, 0);

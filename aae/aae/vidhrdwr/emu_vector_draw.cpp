@@ -164,7 +164,7 @@ void cache_texpoint(float ex, float ey, float tx, float ty, int intensity, rgb_t
 
 void add_line(float sx, float sy, float ex, float ey, int intensity, rgb_t col)
 {
-    if (!g_beam_legacy) { beam_add_line(sx, sy, ex, ey, intensity, col); return; }
+    if (!config.legacy_engine) { beam_add_line(sx, sy, ex, ey, intensity, col); return; }
 
     rgb_t temp_col = modulate_color(col, intensity, config.gain);
     rgb_t temp_half_col = 0;
@@ -181,7 +181,7 @@ void add_line(float sx, float sy, float ex, float ey, int intensity, rgb_t col)
 
 void add_tex(float ex, float ey, int intensity, rgb_t col)
 {
-    if (!g_beam_legacy) { beam_add_shot(ex, ey, intensity, col); return; }
+    if (!config.legacy_engine && !config.shots_textured) { beam_add_shot(ex, ey, intensity, col); return; }
 
     float xoff = config.fire_point_size;
     float yoff = config.fire_point_size;
@@ -207,6 +207,36 @@ void cache_clear()
     texlist.clear();
     linelist.clear();
     beam_clear();          // clear the modern beam lists on the same frame boundary
+}
+
+// Legacy textured-shot pass (fixed-function quads via game_tex[0]). Split out of
+// draw_all() so the modern beam path can also use it when textured shots are
+// selected (g_shots_textured) - e.g. Asteroids Deluxe with artwork.
+void draw_textured_shots()
+{
+    if (texlist.empty()) return;
+
+    glEnable(GL_TEXTURE_2D);
+    glBindTexture(GL_TEXTURE_2D, *tex);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+
+    glEnableClientState(GL_VERTEX_ARRAY);
+    glVertexPointer(2, GL_FLOAT, sizeof(txdata), &texlist[0].x);
+
+    glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+    glTexCoordPointer(2, GL_FLOAT, sizeof(txdata), &texlist[0].tx);
+
+    glEnableClientState(GL_COLOR_ARRAY);
+    glColorPointer(4, GL_UNSIGNED_BYTE, sizeof(txdata), &texlist[0].color);
+
+    glDrawArrays(GL_TRIANGLES, 0, (GLsizei)texlist.size());
+
+    glDisableClientState(GL_TEXTURE_COORD_ARRAY);
+    glDisableClientState(GL_VERTEX_ARRAY);
+    glDisableClientState(GL_COLOR_ARRAY);
+
+    glDisable(GL_TEXTURE_2D);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }
 
 void draw_all()
@@ -238,30 +268,5 @@ void draw_all()
     glDisableClientState(GL_VERTEX_ARRAY);
     glDisableClientState(GL_COLOR_ARRAY);
 
-    if (!texlist.empty())
-    {
-        glEnable(GL_TEXTURE_2D);
-        glBindTexture(GL_TEXTURE_2D, *tex);
-       // glBlendFunc(GL_ONE, GL_ONE);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-       //glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ONE, GL_ONE);
-
-        glEnableClientState(GL_VERTEX_ARRAY);
-        glVertexPointer(2, GL_FLOAT, sizeof(txdata), &texlist[0].x);
-
-        glEnableClientState(GL_TEXTURE_COORD_ARRAY);
-        glTexCoordPointer(2, GL_FLOAT, sizeof(txdata), &texlist[0].tx);
-
-        glEnableClientState(GL_COLOR_ARRAY);
-        glColorPointer(4, GL_UNSIGNED_BYTE, sizeof(txdata), &texlist[0].color);
-
-        glDrawArrays(GL_TRIANGLES, 0, (GLsizei)texlist.size());
-
-        glDisableClientState(GL_TEXTURE_COORD_ARRAY);
-        glDisableClientState(GL_VERTEX_ARRAY);
-        glDisableClientState(GL_COLOR_ARRAY);
-
-        glDisable(GL_TEXTURE_2D);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    }
+    draw_textured_shots();
 }

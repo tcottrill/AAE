@@ -31,9 +31,7 @@ struct BeamShot {
 // ssaa = supersample factor of the bound render target (1 in Phase 1, 2 in Phase 6).
 void beam_init(int ssaa);
 void beam_shutdown();
-void beam_set_ssaa(int ssaa);          // updates the AA feather if the factor changes
-void beam_adjust_sharpness(float delta);       // tune edge AA feather live (F8/F9); lower = sharper
-void beam_adjust_corner_strength(float delta); // tune round-corner size/strength live (F6/F7)
+void beam_set_ssaa(int ssaa);          // sets the supersample factor (affects AA feather)
 
 // Mirrors add_line / add_tex exactly. Join connectivity is inferred internally by
 // endpoint matching, so EVERY producer (vector_update, the DVG sim, cchasm) is

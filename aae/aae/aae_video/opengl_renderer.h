@@ -12,8 +12,6 @@ extern int game_rect_bottom;
 extern int game_rect_top;
 // Custom flag(s) for Warlords, what a pain in the butt. I need to find a better way
 extern int g_scanline_override;
-// Vector beam renderer A/B toggle (F5): true = legacy GL_LINES, false = modern shader path.
-extern bool g_beam_legacy;
 
 void set_ortho(GLint width, GLint height);
 // Y-down ortho for the raster rendering path (origin top-left, Y increases downward).

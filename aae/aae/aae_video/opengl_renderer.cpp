@@ -80,9 +80,8 @@ Rect2* screen_rect = nullptr;
 // Raster polygon renderer. One instance per application lifetime.
 Fpoly* sc;
 
-// Vector beam renderer A/B toggle: true = legacy GL_LINES draw_all(), false = new
-// shader beam renderer. Flipped at runtime with F5. Default legacy until cutover.
-bool g_beam_legacy = true;
+// Vector renderer engine + shot mode now live in config (config.legacy_engine /
+// config.shots_textured), loaded from aae.ini and the Video menu.
 
 // Scale factor applied when mapping raster pixels to polygon positions.
 //extern float vid_scale;
@@ -973,7 +972,7 @@ void render()
 		if (Machine->drv->video_attributes & VIDEO_TYPE_VECTOR)
 		{
 			vector_update();
-			if (g_beam_legacy)
+			if (config.legacy_engine)
 			{
 				draw_all();
 			}
@@ -981,6 +980,8 @@ void render()
 			{
 				aae::math::mat4 proj = aae::math::ortho(0.0f, 1024.0f, 0.0f, 1024.0f);
 				beam_draw_all(proj);
+				if (config.shots_textured)
+					draw_textured_shots();   // legacy textured shots over the modern beam
 			}
 			vector_clear_list();
 		}
