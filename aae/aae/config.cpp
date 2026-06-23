@@ -50,7 +50,6 @@ void setup_config() {
     config.line_smoothing  = get_config_float("main", "line_smoothing",  1.0f);
     config.corner_strength = get_config_float("main", "corner_strength", 0.85f);
     config.shots_textured  = get_config_int  ("main", "shots_textured",  0);
-    config.legacy_engine   = get_config_int  ("main", "legacy_engine",   0);
     config.debug = get_config_int("main", "debug", 0);
     config.debug_profile_code = get_config_int("main", "debug_profile_code", 0);
     config.audio_force_resample = get_config_int("main", "audio_force_resample", 0);

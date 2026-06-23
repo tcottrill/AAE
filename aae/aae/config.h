@@ -52,7 +52,6 @@ typedef struct {
 	float line_smoothing;   // edge AA feather in px (0.4..2.0)
 	float corner_strength;  // beam corner/point disc size (0.3..2.5)
 	int   shots_textured;   // 0 = procedural shots, 1 = legacy textured shots
-	int   legacy_engine;    // 0 = modern beam renderer, 1 = legacy GL_LINES (aae.ini only)
 
 	int psnoise;
 	int hvnoise;
