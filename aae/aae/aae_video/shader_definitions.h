@@ -114,31 +114,34 @@ void main(void)
 // Basic Texture Shader (Replaces fixed-function texturing)
 // ---------------------------------------------------------
 const char* basicTexVert = R"glsl(
-#version 330 compatibility
+#version 330 core
+
+layout(location = 0) in vec2 aPos;
+layout(location = 1) in vec2 aUV;
+
+uniform mat4 uProj;
 
 out vec2 TexCoord;
-out vec4 VertColor;
 
 void main()
 {
-    TexCoord = gl_MultiTexCoord0.xy;
-    VertColor = gl_Color;
-    gl_Position = gl_ModelViewProjectionMatrix * gl_Vertex;
+    TexCoord = aUV;
+    gl_Position = uProj * vec4(aPos, 0.0, 1.0);
 }
 )glsl";
 
 const char* basicTexFrag = R"glsl(
-#version 330 compatibility
+#version 330 core
 
 uniform sampler2D u_texture;
+uniform vec4 uColor;
 
 in vec2 TexCoord;
-in vec4 VertColor;
 out vec4 FragColor;
 
 void main()
 {
-    FragColor = texture(u_texture, TexCoord) * VertColor;
+    FragColor = texture(u_texture, TexCoord) * uColor;
 }
 )glsl";
 

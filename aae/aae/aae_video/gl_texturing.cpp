@@ -38,72 +38,78 @@ static void ensure_quad_buffers()
 
 // Consolidated drawing routine. Uses standard OpenGL UVs (0=bottom, 1=top).
 // Set flip_v = true for FBO copies that need to be inverted.
-void drawTexturedQuad(float left, float right, float bottom, float top, bool flip_v = false)
+// Reusable VAO/VBO for textured quads (core-profile path: position + texcoord).
+struct TexQuadVtx { float x, y, u, v; };
+static GLuint s_texQuadVAO = 0;
+static GLuint s_texQuadVBO = 0;
+static void ensure_tex_quad_buffers()
 {
-	GLfloat vertices[] = {
-		left,  bottom,
-		left,  top,
-		right, top,
+	if (s_texQuadVAO) return;
+	glGenVertexArrays(1, &s_texQuadVAO);
+	glGenBuffers(1, &s_texQuadVBO);
+	glBindVertexArray(s_texQuadVAO);
+	glBindBuffer(GL_ARRAY_BUFFER, s_texQuadVBO);
+	glBufferData(GL_ARRAY_BUFFER, 6 * sizeof(TexQuadVtx), nullptr, GL_DYNAMIC_DRAW);
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(TexQuadVtx), (void*)offsetof(TexQuadVtx, x));
+	glEnableVertexAttribArray(1);
+	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(TexQuadVtx), (void*)offsetof(TexQuadVtx, u));
+	glBindVertexArray(0);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+}
 
-		left,  bottom,
-		right, top,
-		right, bottom
-	};
+void drawTexturedQuad(float left, float right, float bottom, float top, bool flip_v,
+                      float rT, float gT, float bT, float aT)
+{
+	// flip_v: 'bottom' maps to v=1 and 'top' to v=0 (used for FBO copies).
+	const float vb = flip_v ? 1.0f : 0.0f;
+	const float vt = flip_v ? 0.0f : 1.0f;
 
-	GLfloat texCoords[12];
+	GLint current_prog = 0;
+	glGetIntegerv(GL_CURRENT_PROGRAM, &current_prog);
 
-	if (flip_v)
+	if (current_prog == 0)
 	{
-		// Flipped UVs (Bottom maps to 1.0, Top maps to 0.0)
-		const GLfloat flipped[] = {
-			0.0f, 1.0f,
-			0.0f, 0.0f,
-			1.0f, 0.0f,
-
-			0.0f, 1.0f,
-			1.0f, 0.0f,
-			1.0f, 1.0f
+		// CORE standalone path: textured quad tinted by uColor.
+		const TexQuadVtx verts[6] = {
+			{ left,  bottom, 0.0f, vb }, { left,  top, 0.0f, vt }, { right, top,    1.0f, vt },
+			{ left,  bottom, 0.0f, vb }, { right, top, 1.0f, vt }, { right, bottom, 1.0f, vb }
 		};
-		memcpy(texCoords, flipped, sizeof(flipped));
+
+		ensure_tex_quad_buffers();
+		bind_shader(fragBasicTex);
+		set_uniform1i(fragBasicTex, "u_texture", 0);
+		set_uniform_mat4f(fragBasicTex, "uProj", aae::math::value_ptr(g_proj));
+		set_uniform4f(fragBasicTex, "uColor", rT, gT, bT, aT);
+
+		glBindVertexArray(s_texQuadVAO);
+		glBindBuffer(GL_ARRAY_BUFFER, s_texQuadVBO);
+		glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(verts), verts);
+		glDrawArrays(GL_TRIANGLES, 0, 6);
+		glBindVertexArray(0);
+		glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+		unbind_shader();
 	}
 	else
 	{
-		// Standard OpenGL UVs (Bottom maps to 0.0, Top maps to 1.0)
-		const GLfloat standard[] = {
-			0.0f, 0.0f,
-			0.0f, 1.0f,
-			1.0f, 1.0f,
-
-			0.0f, 0.0f,
-			1.0f, 1.0f,
-			1.0f, 0.0f
+		// LEGACY path: feed the currently-bound compat shader (fragMulti / fragBlur,
+		// ported in later sub-slices) via client arrays. The tint color is unused here.
+		const GLfloat pos[] = {
+			left, bottom, left, top, right, top,
+			left, bottom, right, top, right, bottom
 		};
-		memcpy(texCoords, standard, sizeof(standard));
-	}
-
-	// Check if a shader is already bound (e.g., fragMulti during final_render)
-	GLint current_prog = 0;
-	glGetIntegerv(GL_CURRENT_PROGRAM, &current_prog);
-	bool use_basic_shader = (current_prog == 0);
-
-	if (use_basic_shader) {
-		bind_shader(fragBasicTex);
-		set_uniform1i(fragBasicTex, "u_texture", 0);
-	}
-
-	glEnableClientState(GL_VERTEX_ARRAY);
-	glEnableClientState(GL_TEXTURE_COORD_ARRAY);
-
-	glVertexPointer(2, GL_FLOAT, 0, vertices);
-	glTexCoordPointer(2, GL_FLOAT, 0, texCoords);
-
-	glDrawArrays(GL_TRIANGLES, 0, 6);
-
-	glDisableClientState(GL_TEXTURE_COORD_ARRAY);
-	glDisableClientState(GL_VERTEX_ARRAY);
-
-	if (use_basic_shader) {
-		unbind_shader();
+		const GLfloat tc[] = {
+			0.0f, vb, 0.0f, vt, 1.0f, vt,
+			0.0f, vb, 1.0f, vt, 1.0f, vb
+		};
+		glEnableClientState(GL_VERTEX_ARRAY);
+		glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+		glVertexPointer(2, GL_FLOAT, 0, pos);
+		glTexCoordPointer(2, GL_FLOAT, 0, tc);
+		glDrawArrays(GL_TRIANGLES, 0, 6);
+		glDisableClientState(GL_TEXTURE_COORD_ARRAY);
+		glDisableClientState(GL_VERTEX_ARRAY);
 	}
 }
 
@@ -144,9 +150,9 @@ void Any_Rect(int facing, int left, int right, int bottom, int top)
 	drawTexturedQuad((float)left, (float)right, (float)bottom, (float)top, true);
 }
 
-void FS_Rect(int facing, int size)
+void FS_Rect(int facing, int size, float rT, float gT, float bT, float aT)
 {
-	drawTexturedQuad(0.0f, (float)size, 0.0f, (float)size, false);
+	drawTexturedQuad(0.0f, (float)size, 0.0f, (float)size, false, rT, gT, bT, aT);
 }
 
 void Screen_Rect(int facing, int size)

@@ -1073,15 +1073,16 @@ void final_render(int left, int right, int bottom, int top)
 		set_texture(&img1b, 1, 0, 0, 0);
 		glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_SRC_ALPHA);
 
+		float tr = 1.0f, tg = 1.0f, tb = 1.0f, ta = 1.0f;
 		switch (config.vectrail)
 		{
-		case 1:  glColor4f(1.0f, 1.0f, 1.0f, 0.825f); break;
-		case 2:  glColor4f(1.0f, 1.0f, 1.0f, 0.86f);  break;
-		case 3:  glColor4f(1.0f, 1.0f, 1.0f, 0.93f);  break;
-		default: glColor4f(0.95f, 0.95f, 0.95f, 1.0f); break;
+		case 1:  ta = 0.825f; break;
+		case 2:  ta = 0.86f;  break;
+		case 3:  ta = 0.93f;  break;
+		default: tr = tg = tb = 0.95f; ta = 1.0f; break;
 		}
 
-		FS_Rect(0, 1024);
+		FS_Rect(0, 1024, tr, tg, tb, ta);
 		fbo_generate_mipmaps({ img1b });
 	}
 
@@ -1172,7 +1173,8 @@ void final_render(int left, int right, int bottom, int top)
 	//--------------------------------------------------------------------------
 	set_render_fbo4();
 
-	auto DrawCabinetScaledLayer = [&](GLuint tex, bool is_pre_squished) {
+	auto DrawCabinetScaledLayer = [&](GLuint tex, bool is_pre_squished,
+		float rT = 1.0f, float gT = 1.0f, float bT = 1.0f, float aT = 1.0f) {
 		if (!tex) return;
 		glEnable(GL_TEXTURE_2D);
 		set_texture(&tex, 1, 0, 0, 0);
@@ -1184,18 +1186,17 @@ void final_render(int left, int right, int bottom, int top)
 			float y1 = (float)bezely;
 			float x2 = 1024.0f * bezelzoom + bezelx;
 			float y2 = base_h * bezelzoom + bezely;
-			drawTexturedQuad(x1, x2, y1, y2, false);
+			drawTexturedQuad(x1, x2, y1, y2, false, rT, gT, bT, aT);
 		}
 		else {
-			drawTexturedQuad(0.0f, 1024.0f, 0.0f, base_h, false);
+			drawTexturedQuad(0.0f, 1024.0f, 0.0f, base_h, false, rT, gT, bT, aT);
 		}
 		};
 
 	if (config.artwork && art_loaded[0]) {
 		glEnable(GL_BLEND);
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-		glColor4f(0.5f, 0.5f, 0.5f, 1.0f);
-		DrawCabinetScaledLayer(art_tex[0], false);
+		DrawCabinetScaledLayer(art_tex[0], false, 0.5f, 0.5f, 0.5f, 1.0f);
 	}
 
 	glDisable(GL_DITHER);
@@ -1218,8 +1219,7 @@ void final_render(int left, int right, int bottom, int top)
 		// Around 0.4f - 0.6f usually gives vectors enough punch against dark artwork.
 		// TODO: Make this configurable per game, this sucks with certain artwork.
 		float crt_boost = (config.artwork && art_loaded[0]) ? 0.2f : 0.25f;
-		glColor4f(crt_boost, crt_boost, crt_boost, 1.0f);
-		FS_Rect(0, 1024);
+		FS_Rect(0, 1024, crt_boost, crt_boost, crt_boost, 1.0f);
 	}
 
 	// VECTOR_USES_OVERLAY2 - visible overlay art on top of the CRT only.
@@ -1230,9 +1230,8 @@ void final_render(int left, int right, int bottom, int top)
 
 		glEnable(GL_BLEND);
 		glBlendFunc(GL_ONE_MINUS_SRC_ALPHA, GL_SRC_COLOR);
-		glColor4f(1.0f, 1.0f, 1.0f, 0.5f);
 
-		drawTexturedQuad((float)left, (float)right, (float)top, (float)bottom, false);
+		drawTexturedQuad((float)left, (float)right, (float)top, (float)bottom, false, 1.0f, 1.0f, 1.0f, 0.5f);
 	}
 
 	//--------------------------------------------------------------------------
