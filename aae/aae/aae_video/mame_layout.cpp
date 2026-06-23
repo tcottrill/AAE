@@ -65,9 +65,9 @@ struct LayoutQuadVertex {
 // ====================================================================
 // Shader Init (called lazily on first Layout_Render)
 //
-// These shaders use explicit attribute locations and do not touch
-// any fixed-function GL state, so they coexist safely with the
-// existing compatibility-mode pipeline used by the vector renderer.
+// These shaders use explicit attribute locations, a VAO/VBO, and CPU-side NDC
+// positions (no matrix transform at all), so they are fully core-profile and
+// touch no fixed-function GL state.
 // ====================================================================
 static void InitLayoutShaders()
 {
@@ -77,7 +77,7 @@ static void InitLayoutShaders()
 	// Passes position and texcoord through. No matrix transforms --
 	// positions are computed as NDC on the CPU side.
 	const char* vsSrc = R"glsl(
-	#version 330 compatibility
+	#version 330 core
 	layout(location = 0) in vec2 inPos;
 	layout(location = 1) in vec2 inTex;
 	out vec2 TexCoord;
@@ -91,7 +91,7 @@ static void InitLayoutShaders()
 	// Samples one texture, multiplied by an alpha uniform.
 	// Used for backdrops, bezels, and screens without an overlay.
 	const char* fsSingleSrc = R"glsl(
-	#version 330 compatibility
+	#version 330 core
 	in vec2 TexCoord;
 	out vec4 FragColor;
 	uniform sampler2D tex0;
@@ -118,7 +118,7 @@ static void InitLayoutShaders()
 	// strips). Areas outside the overlay return white (multiply identity)
 	// so they are unaffected.
 	const char* fsDualSrc = R"glsl(
-	#version 330 compatibility
+	#version 330 core
 	in vec2 TexCoord;
 	out vec4 FragColor;
 	uniform sampler2D tex0;
@@ -199,7 +199,7 @@ static void InitLayoutShaders()
 	glBindVertexArray(0);
 
 	s_layoutShadersReady = true;
-	LOG_INFO("Layout shaders initialized (GLSL 330 compatibility)");
+	LOG_INFO("Layout shaders initialized (GLSL 330 core)");
 }
 
 // ====================================================================
