@@ -142,7 +142,6 @@ static int orientation_to_rect2_rotation(int orientation)
 	}
 }
 
-
 // ---------------------------------------------------------------------------
 // emulator_on_window_resize
 // Called by the OS message handler whenever the client area changes size.
@@ -568,11 +567,10 @@ void end_render_fbo4()
 	glActiveTexture(GL_TEXTURE0);
 
 	// Clear the backbuffer so pillarbox/letterbox bars are always clean.
-    // Without this, stale pixels persist outside the screen_rect quad
-    // when the aspect ratio changes in fullscreen.
+	// Without this, stale pixels persist outside the screen_rect quad
+	// when the aspect ratio changes in fullscreen.
 	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 	glClear(GL_COLOR_BUFFER_BIT);
-
 
 	auto& ws = GetWindowSetup();
 	set_ortho(ws.clientWidth, ws.clientHeight);
@@ -676,8 +674,9 @@ void render_blur_image_fbo3()
 	const float globalOffsetX = -0.05f;
 	const float globalOffsetY = -0.20f;
 
-	// Each row is: [x0, y0, x1, y1] for one half of a pingpong pass.
-	// 8 rows * 4 values = 32 floats. We step by 4 per pass (4 passes total).
+	// Each row's first pair (x0,y0) is the tap direction for one pingpong pass;
+	// (x1,y1) is currently unused. Rows 0-3 are the axis taps (E/W/N/S); rows 4-7
+	// are the diagonals (NE/SW/NW/SE). The BLUR_8TAP toggle below picks 4 or 8.
 	float fshifta[] = {
 		 v1,  0,  -v1,   0,
 		-v1,  0,   v1,   0,
@@ -714,13 +713,17 @@ void render_blur_image_fbo3()
 		float x1 = ox + globalOffsetX;
 		float y1 = oy + globalOffsetY;
 		float x2 = (float)height3 + x1;
+		float y2 = (float)height3 + y1;
+		// (left,right)=X span [x1,x2]; (bottom,top)=Y span [y2,y1].
 		// y2 maps size+y1 down to y1, matching the orientation of FS_Rect(0,size).
-		drawTexturedQuad(x1, (float)height3 + y1, x2, y1, 1);
+		drawTexturedQuad(x1, x2, y2, y1, 1);
 		};
+
+	const int kBlurPasses = 4;   // rows 0-3: axis only
 
 	int i = 0;
 
-	for (int pass = 0; pass < 4; ++pass)
+	for (int pass = 0; pass < kBlurPasses; ++pass)
 	{
 		// A -> B: draw img3a into attachment 1 (img3b) with near offset.
 		glDrawBuffer(GL_COLOR_ATTACHMENT1);
@@ -769,7 +772,6 @@ void render_ui_overlays(int winW, int winH, bool fboSpace)
 	{
 		vpW = (int)(winH * (4.0f / 3.0f));
 		vpX = (winW - vpW) / 2;
-
 	}
 
 	glViewport(vpX, 0, vpW, winH);
@@ -1133,7 +1135,7 @@ void final_render(int left, int right, int bottom, int top)
 		else
 			glBlendFunc(GL_DST_COLOR, GL_SRC_COLOR);
 
-		drawTexturedQuad((float)left, (float)right, (float)top, (float) bottom, false);
+		drawTexturedQuad((float)left, (float)right, (float)top, (float)bottom, false);
 	}
 
 	//--------------------------------------------------------------------------
@@ -1143,21 +1145,21 @@ void final_render(int left, int right, int bottom, int top)
 
 	auto DrawCabinetScaledLayer = [&](GLuint tex, bool is_pre_squished,
 		float rT = 1.0f, float gT = 1.0f, float bT = 1.0f, float aT = 1.0f, float alphaTest = 0.0f) {
-		if (!tex) return;
-		set_texture(&tex, 1, 0, 0, 0);
+			if (!tex) return;
+			set_texture(&tex, 1, 0, 0, 0);
 
-		float base_h = 1024; //is_pre_squished ? 1024.0f : (1024.0f * 0.75f);
+			float base_h = 1024; //is_pre_squished ? 1024.0f : (1024.0f * 0.75f);
 
-		if (config.artcrop) {
-			float x1 = (float)bezelx;
-			float y1 = (float)bezely;
-			float x2 = 1024.0f * bezelzoom + bezelx;
-			float y2 = base_h * bezelzoom + bezely;
-			drawTexturedQuad(x1, x2, y1, y2, false, rT, gT, bT, aT, alphaTest);
-		}
-		else {
-			drawTexturedQuad(0.0f, 1024.0f, 0.0f, base_h, false, rT, gT, bT, aT, alphaTest);
-		}
+			if (config.artcrop) {
+				float x1 = (float)bezelx;
+				float y1 = (float)bezely;
+				float x2 = 1024.0f * bezelzoom + bezelx;
+				float y2 = base_h * bezelzoom + bezely;
+				drawTexturedQuad(x1, x2, y1, y2, false, rT, gT, bT, aT, alphaTest);
+			}
+			else {
+				drawTexturedQuad(0.0f, 1024.0f, 0.0f, base_h, false, rT, gT, bT, aT, alphaTest);
+			}
 		};
 
 	if (config.artwork && art_loaded[0]) {
