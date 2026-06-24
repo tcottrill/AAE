@@ -1,413 +1,481 @@
 // -----------------------------------------------------------------------------
-// vector_draw.cpp - Modern OpenGL 4.3+ Vector Renderer
+// vector_draw.cpp - Modern shader-based vector beam renderer.
+// Butt-capped, coverage-AA'd instanced beams + round joins + procedural shots.
+// Draws into the currently bound FBO (fbo1/img1a) using an explicit uProj; no
+// fixed-function state. See docs/superpowers/specs/2026-06-22-vector-beam-renderer-design.md
 // -----------------------------------------------------------------------------
-#define GLM_ENABLE_EXPERIMENTAL
 #include "vector_draw.h"
-#include "MathUtils.h"
+#include "shader_util.h"                 // CompileShader / LinkShaderProgram
+#include "aae_mame_driver.h"             // Machine, VECTOR_USES_COLOR
+#include "config.h"                      // config.linewidth / gain / fire_point_size
+#include "emu_vector_draw.h"             // modulate_color
+#include "sys_log.h"                     // LOG_INFO
 #include <vector>
-#include "shader_util.h" 
 #include <algorithm>
+#include <cstdint>
+#include <unordered_map>
 
 using namespace aae::math;
 
-// -----------------------------------------------------------------------------
-// Shaders
-// -----------------------------------------------------------------------------
+// End-cap scale for TRUE line terminations (vertices touched by a single segment,
+// e.g. the tips of an "I" or the ends of a "T" crossbar): round cap radius as a
+// multiple of the beam half-width. ~1.0 matches the legacy GL_POINTS tip length.
+static float g_endcap = 1.0f;
 
-// =============================================================================
-// 1. INSTANCED LINE SHADER (SDF Capsules)
-// =============================================================================
-static const char* vs_line = R"GLSL(
-#version 430 core
-
-const vec2 kQuadVerts[4] = vec2[](
-    vec2(0.0, -1.0), 
-    vec2(1.0, -1.0), 
-    vec2(0.0,  1.0), 
-    vec2(1.0,  1.0) 
-);
-
-layout(location = 0) in vec2 inP0;
-layout(location = 1) in vec2 inP1;
-layout(location = 2) in float inThickness;
-layout(location = 3) in vec4 inColor;
-
-uniform mat4 uProj;
-
-out vec2 vLocalPos;
-out float vLen;
-out float vWidth;
-out vec4 vColor;
-
-void main()
-{
-    vec2 delta = inP1 - inP0;
-    float len = length(delta);
-    vec2 dir = (len > 0.0001) ? (delta / len) : vec2(1.0, 0.0);
-    vec2 norm = vec2(-dir.y, dir.x);
-
-    float width = inThickness * 0.5; 
-    float feather = 1.5; 
-    float expansion = width + feather;
-
-    vec2 rawUV = kQuadVerts[gl_VertexID]; 
-
-    float u_pos = (rawUV.x * (len + 2.0 * expansion)) - expansion;
-    float v_pos = rawUV.y * expansion;
-
-    vec2 worldPos = inP0 + (dir * u_pos) + (norm * v_pos);
-
-    gl_Position = uProj * vec4(worldPos, 0.0, 1.0);
-
-    vLocalPos = vec2(u_pos, v_pos);
-    vLen = len;
-    vWidth = width;
-    vColor = inColor;
-}
-)GLSL";
-
-static const char* fs_line = R"GLSL(
-#version 430 core
-
-in vec2 vLocalPos;
-in float vLen;
-in float vWidth;
-in vec4 vColor;
-
-out vec4 fragColor;
-
-void main()
-{
-    float t = clamp(vLocalPos.x, 0.0, vLen);
-    float dist = distance(vLocalPos, vec2(t, 0.0));
-
-    // Cap Trim to reduce "bulbous" joints
-    const float kCapTrim = 0.90; 
-    float effectiveDist = dist;
-    if (vLocalPos.x < 0.0 || vLocalPos.x > vLen) {
-        effectiveDist /= kCapTrim; 
-    }
-
-    float aa_size = 1.0; 
-    float alpha = 1.0 - smoothstep(vWidth - (aa_size * 0.5), 
-                                   vWidth + (aa_size * 0.5), 
-                                   effectiveDist);
-
-    if (alpha <= 0.0) discard;
-
-    // Optional gamma correction for sharpness
-    alpha = pow(alpha, 1.2); 
-
-    fragColor = vec4(vColor.rgb, vColor.a * alpha);
-}
-)GLSL";
-
-
-// =============================================================================
-// 2. POINT SHADERS
-// =============================================================================
-static const char* vs_point = R"GLSL(
-#version 430 core
-layout(location = 0) in vec2 inPos;
-layout(location = 1) in float inSize;
-layout(location = 2) in vec4 inColor;
-
-uniform mat4 uProj;
-
-out vec4 vColor;
-
-void main()
-{
-    gl_Position = uProj * vec4(inPos, 0.0, 1.0);
-    gl_PointSize = inSize;
-    vColor = inColor;
-}
-)GLSL";
-
-static const char* fs_point = R"GLSL(
-#version 430 core
-in vec4 vColor;
-out vec4 fragColor;
-uniform float uEdgeSoftness = 0.15;
-
-void main()
-{
-   float dist = length(gl_PointCoord - vec2(0.5));
-   float edgeStart = 0.5;
-   float edgeEnd = 0.5 - uEdgeSoftness;
-   float alpha = smoothstep(edgeStart, edgeEnd, dist);
-   fragColor = vec4(vColor.rgb, vColor.a * alpha);
-}
-)GLSL";
-
-// =============================================================================
-// 3. PROCEDURAL FIRE/SHOT SHADERS (TUNABLE)
-// =============================================================================
-static const char* vs_fire = R"GLSL(
-#version 430 core
-layout(location = 0) in vec2 inPos;
-layout(location = 1) in vec2 inUV;
-layout(location = 2) in vec4 inColor;
-
-uniform mat4 uProj;
-
-out vec2 vUV;
-out vec4 vColor;
-
-void main()
-{
-    gl_Position = uProj * vec4(inPos, 0.0, 1.0);
-    vUV = inUV;
-    vColor = inColor;
-}
-)GLSL";
-
-static const char* fs_fire = R"GLSL(
-#version 430 core
-in vec2 vUV;
-in vec4 vColor;
-out vec4 fragColor;
-
-// Tuning Uniforms
-uniform float uCorePower;      
-uniform float uBloomPower;     
-uniform float uBloomIntensity; 
-uniform float uOverdrive;      
-
-void main()
-{
-    float brightness = max(vColor.r, max(vColor.g, vColor.b));
-    brightness = max(0.1, brightness); // Safety floor
-
-    // --- DYNAMICS ---
-    // 1. Core Power: Static (No shrinking for dim shots)
-    float dynCorePower = uCorePower; 
-
-    // 2. Bloom Intensity: Dampened drop-off (Floor of 50%)
-    float dynBloomInt = uBloomIntensity * (0.5 + (brightness * 0.5));
-
-    // 3. Overdrive: Proportional
-    float dynOverdrive = uOverdrive * brightness;
-
-    // --- RENDER ---
-    float d = distance(vUV, vec2(0.5));
-    float r = clamp(d * 2.0, 0.0, 1.0);
-    float glowBase = 1.0 - r;
-
-    float core = pow(glowBase, dynCorePower);
-    float halo = pow(glowBase, uBloomPower) * dynBloomInt;
-
-    float totalIntensity = core + halo;
-    vec3 hotColor = vColor.rgb * dynOverdrive;
-
-    fragColor = vec4(hotColor * totalIntensity, totalIntensity);
-}
-)GLSL";
-
-// -----------------------------------------------------------------------------
-// Data Management
-// -----------------------------------------------------------------------------
-
-static std::vector<VecLine> g_lines;
-static std::vector<VecPoint> g_points;
-static std::vector<VecPoint> g_fire;
+static std::vector<BeamLine> g_lines;
+static std::vector<BeamJoin> g_joins;
+static std::vector<BeamShot> g_shots;
 
 static GLuint vaoLine = 0, vboLine = 0;
-static GLuint vaoPoint = 0, vboPoint = 0;
-static GLuint vaoFire = 0, vboFire = 0;
+static GLuint vaoJoin = 0, vboJoin = 0;
+static GLuint vaoShot = 0, vboShot = 0;
 
-static GLuint shaderLine = 0;
-static GLuint shaderPoint = 0;
-static GLuint shaderFire = 0;
-static VectorConfig g_config;
+static GLuint progLine = 0, progJoin = 0, progShot = 0;
 
-// -----------------------------------------------------------------------------
-// Implementation
-// -----------------------------------------------------------------------------
+static int   g_ssaa = 1;
+static float g_uAA  = 1.0f;               // feather in logical units (= config.line_smoothing / ssaa)
 
-void vector_draw_init(const VectorConfig& config) {
-    g_config = config;
+// Connectivity for round joins: a join belongs at any vertex where two or more
+// VISIBLE segment endpoints coincide. This covers closed loops, T-junctions, fans
+// and chains regardless of the order the generator emits segments. Built each
+// frame from a vertex accumulator keyed by quantized position.
+struct VertAccum { int count; rgb_t color; float half; vec2 pos; };
+static std::unordered_map<int64_t, VertAccum> g_verts;
 
-    // --- LINE INIT ---
+static inline int beam_brightness(rgb_t c) {
+    int r = c & 0xFF, g = (c >> 8) & 0xFF, b = (c >> 16) & 0xFF;
+    return (r > g) ? (r > b ? r : b) : (g > b ? g : b);  // max channel
+}
+
+static inline int64_t beam_vkey(float x, float y) {
+    // Quantize to 0.1 logical units so coincident endpoints merge despite jitter.
+    int64_t qx = (int64_t)(x * 10.0f + 0.5f);
+    int64_t qy = (int64_t)(y * 10.0f + 0.5f);
+    return (qx << 32) ^ (qy & 0xffffffffLL);
+}
+
+static inline void beam_record_vert(int64_t k, vec2 p, rgb_t c, float half) {
+    VertAccum& v = g_verts[k];
+    if (v.count == 0) { v.pos = p; v.color = c; v.half = half; }
+    else {
+        if (beam_brightness(c) > beam_brightness(v.color)) v.color = c;
+        if (half > v.half) v.half = half;
+    }
+    v.count++;
+}
+
+// ----------------------------- shaders --------------------------------------
+static const char* vsLine = R"GLSL(
+#version 330 core
+layout(location=0) in vec2  inP0;
+layout(location=1) in vec2  inP1;
+layout(location=2) in float inHalf;
+layout(location=3) in vec4  inColor;
+uniform mat4  uProj;
+uniform float uAA;
+out vec2  vLocal;   // x = longitudinal [0..len], y = perpendicular
+out float vLen;
+out float vHalf;
+out vec4  vColor;
+const vec2 kQuad[4] = vec2[](vec2(0,-1), vec2(1,-1), vec2(0,1), vec2(1,1));
+void main() {
+    vec2  d   = inP1 - inP0;
+    float len = length(d);
+    vec2  dir = (len > 0.0001) ? d/len : vec2(1.0,0.0);
+    vec2  nrm = vec2(-dir.y, dir.x);
+    vec2  q   = kQuad[gl_VertexID];
+    float along = q.x * (len + 2.0*uAA) - uAA;       // butt cap + feather past ends
+    float perp  = q.y * (inHalf + uAA);
+    vec2  pos   = inP0 + dir*along + nrm*perp;
+    gl_Position = uProj * vec4(pos, 0.0, 1.0);
+    vLocal = vec2(along, perp);
+    vLen = len; vHalf = inHalf; vColor = inColor;
+}
+)GLSL";
+
+static const char* fsLine = R"GLSL(
+#version 330 core
+in vec2  vLocal;
+in float vLen;
+in float vHalf;
+in vec4  vColor;
+uniform float uAA;
+out vec4 frag;
+void main() {
+    // Half-coverage exactly at the geometric edge -> width matches GL_LINES.
+    float covPerp = clamp((vHalf - abs(vLocal.y))/uAA + 0.5, 0.0, 1.0);
+    float covEnd0 = clamp((vLocal.x)/uAA + 0.5, 0.0, 1.0);
+    float covEnd1 = clamp((vLen - vLocal.x)/uAA + 0.5, 0.0, 1.0);
+    float cov = covPerp * covEnd0 * covEnd1;
+    if (cov <= 0.0) discard;
+    frag = vec4(vColor.rgb, vColor.a * cov);   // no pow(): linear coverage
+}
+)GLSL";
+
+// Round join: a disc centred on the shared vertex. uStrength scales its radius
+// relative to the beam half-width (corner emphasis); always round, never squared.
+static const char* vsJoin = R"GLSL(
+#version 330 core
+layout(location=0) in vec2  inCenter;
+layout(location=1) in float inHalf;
+layout(location=2) in vec4  inColor;
+uniform mat4  uProj;
+uniform float uAA;
+uniform float uStrength;
+out vec2  vLocal;
+out float vRad;
+out vec4  vColor;
+const vec2 kQuad[4] = vec2[](vec2(-1,-1), vec2(1,-1), vec2(-1,1), vec2(1,1));
+void main() {
+    float r = inHalf * uStrength;
+    vec2 q = kQuad[gl_VertexID];
+    vec2 ext = q * (r + uAA);
+    gl_Position = uProj * vec4(inCenter + ext, 0.0, 1.0);
+    vLocal = ext; vRad = r; vColor = inColor;
+}
+)GLSL";
+
+static const char* fsJoin = R"GLSL(
+#version 330 core
+in vec2  vLocal;
+in float vRad;
+in vec4  vColor;
+uniform float uAA;
+uniform float uPremult;   // 1 = premultiplied output for the GL_MAX (additive/color) path
+out vec4 frag;
+void main() {
+    float cov = clamp((vRad - length(vLocal))/uAA + 0.5, 0.0, 1.0);
+    if (cov <= 0.0) discard;
+    if (uPremult > 0.5)
+        frag = vec4(vColor.rgb * cov, cov);        // GL_MAX: fills gaps, never sums over lines
+    else
+        frag = vec4(vColor.rgb, vColor.a * cov);   // straight alpha-over (B/W)
+}
+)GLSL";
+
+static const char* vsShot = R"GLSL(
+#version 330 core
+layout(location=0) in vec2  inCenter;
+layout(location=1) in float inSize;
+layout(location=2) in vec4  inColor;
+uniform mat4 uProj;
+out vec2 vUV;
+out vec4 vColor;
+const vec2 kQuad[4] = vec2[](vec2(-1,-1), vec2(1,-1), vec2(-1,1), vec2(1,1));
+void main() {
+    vec2 q = kQuad[gl_VertexID];
+    gl_Position = uProj * vec4(inCenter + q*inSize, 0.0, 1.0);
+    vUV = q*0.5 + 0.5;
+    vColor = inColor;
+}
+)GLSL";
+
+static const char* fsShot = R"GLSL(
+#version 330 core
+in vec2 vUV;
+in vec4 vColor;
+out vec4 frag;
+uniform float uCorePower;
+uniform float uBloomPower;
+uniform float uBloomIntensity;
+uniform float uOverdrive;
+void main() {
+    float d = distance(vUV, vec2(0.5));
+    float g = clamp(1.0 - d*2.0, 0.0, 1.0);
+    float profile = pow(g, uCorePower) + pow(g, uBloomPower) * uBloomIntensity;
+    float z = vColor.a;   // clean linear intensity (no gain floor)
+    // GL_SRC_ALPHA, GL_ONE: the alpha re-multiplies profile, squaring it -> a sharp
+    // core (not a fuzzy ball); the z factor dims the shot linearly toward nothing.
+    frag = vec4(vColor.rgb * uOverdrive * profile, profile * z);
+}
+)GLSL";
+
+// ----------------------------- helpers --------------------------------------
+static GLuint linkProg(const char* vs, const char* fs, const char* label) {
+    return LinkShaderProgram(CompileShader(GL_VERTEX_SHADER,   vs, label),
+                             CompileShader(GL_FRAGMENT_SHADER, fs, label));
+}
+
+// ----------------------------- lifecycle ------------------------------------
+void beam_set_ssaa(int ssaa) { g_ssaa = (ssaa < 1) ? 1 : ssaa; }
+
+// Lazily create the line + join programs and their instanced VAOs. Idempotent
+// (guards on progLine) and safe to call from any path that needs the shared
+// coverage-AA line shader -- the beam itself OR the vector fonts -- regardless of
+// whether beam_init() ran (it only runs for vector games; fonts draw everywhere).
+static void beam_ensure_lines() {
+    if (progLine) return;
+
+    progLine = linkProg(vsLine, fsLine, "beam_line");
+    progJoin = linkProg(vsJoin, fsJoin, "beam_join");
+
+    // Lines: one instance per segment.
     glGenVertexArrays(1, &vaoLine);
     glGenBuffers(1, &vboLine);
     glBindVertexArray(vaoLine);
     glBindBuffer(GL_ARRAY_BUFFER, vboLine);
+    glVertexAttribPointer(0, 2, GL_FLOAT,         GL_FALSE, sizeof(BeamLine), (void*)offsetof(BeamLine, p0));    glEnableVertexAttribArray(0); glVertexAttribDivisor(0,1);
+    glVertexAttribPointer(1, 2, GL_FLOAT,         GL_FALSE, sizeof(BeamLine), (void*)offsetof(BeamLine, p1));    glEnableVertexAttribArray(1); glVertexAttribDivisor(1,1);
+    glVertexAttribPointer(2, 1, GL_FLOAT,         GL_FALSE, sizeof(BeamLine), (void*)offsetof(BeamLine, half));  glEnableVertexAttribArray(2); glVertexAttribDivisor(2,1);
+    glVertexAttribPointer(3, 4, GL_UNSIGNED_BYTE, GL_TRUE,  sizeof(BeamLine), (void*)offsetof(BeamLine, color)); glEnableVertexAttribArray(3); glVertexAttribDivisor(3,1);
 
-    GLsizei stride = sizeof(VecLine);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, stride, (void*)offsetof(VecLine, p0));
-    glEnableVertexAttribArray(0); glVertexAttribDivisor(0, 1);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, stride, (void*)offsetof(VecLine, p1));
-    glEnableVertexAttribArray(1); glVertexAttribDivisor(1, 1);
-    glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, stride, (void*)offsetof(VecLine, thickness));
-    glEnableVertexAttribArray(2); glVertexAttribDivisor(2, 1);
-    glVertexAttribPointer(3, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride, (void*)offsetof(VecLine, color));
-    glEnableVertexAttribArray(3); glVertexAttribDivisor(3, 1);
+    // Joins.
+    glGenVertexArrays(1, &vaoJoin);
+    glGenBuffers(1, &vboJoin);
+    glBindVertexArray(vaoJoin);
+    glBindBuffer(GL_ARRAY_BUFFER, vboJoin);
+    glVertexAttribPointer(0, 2, GL_FLOAT,         GL_FALSE, sizeof(BeamJoin), (void*)offsetof(BeamJoin, center)); glEnableVertexAttribArray(0); glVertexAttribDivisor(0,1);
+    glVertexAttribPointer(1, 1, GL_FLOAT,         GL_FALSE, sizeof(BeamJoin), (void*)offsetof(BeamJoin, half));   glEnableVertexAttribArray(1); glVertexAttribDivisor(1,1);
+    glVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_TRUE,  sizeof(BeamJoin), (void*)offsetof(BeamJoin, color));  glEnableVertexAttribArray(2); glVertexAttribDivisor(2,1);
 
-    // --- POINT INIT ---
-    glGenVertexArrays(1, &vaoPoint);
-    glGenBuffers(1, &vboPoint);
-    glBindVertexArray(vaoPoint);
-    glBindBuffer(GL_ARRAY_BUFFER, vboPoint);
-
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(VecPoint), (void*)offsetof(VecPoint, pos));
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, sizeof(VecPoint), (void*)offsetof(VecPoint, size));
-    glEnableVertexAttribArray(1);
-    glVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(VecPoint), (void*)offsetof(VecPoint, color));
-    glEnableVertexAttribArray(2);
-
-    // --- FIRE INIT ---
-    glGenVertexArrays(1, &vaoFire);
-    glGenBuffers(1, &vboFire);
-    glBindVertexArray(vaoFire);
-    glBindBuffer(GL_ARRAY_BUFFER, vboFire);
-
-    struct FireVertex { vec2 pos; vec2 uv; rgb_t color; };
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(FireVertex), (void*)offsetof(FireVertex, pos));
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(FireVertex), (void*)offsetof(FireVertex, uv));
-    glEnableVertexAttribArray(1);
-    glVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(FireVertex), (void*)offsetof(FireVertex, color));
-    glEnableVertexAttribArray(2);
-
-    // --- COMPILE SHADERS ---
-    shaderLine = LinkShaderProgram(
-        CompileShader(GL_VERTEX_SHADER, vs_line, "vector_line.vert"),
-        CompileShader(GL_FRAGMENT_SHADER, fs_line, "vector_line.frag"));
-
-    shaderPoint = LinkShaderProgram(
-        CompileShader(GL_VERTEX_SHADER, vs_point, "vector_point.vert"),
-        CompileShader(GL_FRAGMENT_SHADER, fs_point, "vector_point.frag"));
-
-    shaderFire = LinkShaderProgram(
-        CompileShader(GL_VERTEX_SHADER, vs_fire, "vector_fire.vert"),
-        CompileShader(GL_FRAGMENT_SHADER, fs_fire, "vector_fire.frag"));
+    glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
-void vector_draw_shutdown() {
-    glDeleteBuffers(1, &vboLine);
-    glDeleteVertexArrays(1, &vaoLine);
-    glDeleteProgram(shaderLine);
-    glDeleteBuffers(1, &vboPoint);
-    glDeleteVertexArrays(1, &vaoPoint);
-    glDeleteProgram(shaderPoint);
-    glDeleteBuffers(1, &vboFire);
-    glDeleteVertexArrays(1, &vaoFire);
-    glDeleteProgram(shaderFire);
+void beam_init(int ssaa) {
+    g_ssaa = (ssaa < 1) ? 1 : ssaa;
+
+    beam_ensure_lines();   // line + join programs/VAOs (shared with the fonts)
+
+    if (progShot) return;  // shots already built (idempotent re-init)
+    progShot = linkProg(vsShot, fsShot, "beam_shot");
+
+    // Shots.
+    glGenVertexArrays(1, &vaoShot);
+    glGenBuffers(1, &vboShot);
+    glBindVertexArray(vaoShot);
+    glBindBuffer(GL_ARRAY_BUFFER, vboShot);
+    glVertexAttribPointer(0, 2, GL_FLOAT,         GL_FALSE, sizeof(BeamShot), (void*)offsetof(BeamShot, pos));   glEnableVertexAttribArray(0); glVertexAttribDivisor(0,1);
+    glVertexAttribPointer(1, 1, GL_FLOAT,         GL_FALSE, sizeof(BeamShot), (void*)offsetof(BeamShot, size));  glEnableVertexAttribArray(1); glVertexAttribDivisor(1,1);
+    glVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_TRUE,  sizeof(BeamShot), (void*)offsetof(BeamShot, color)); glEnableVertexAttribArray(2); glVertexAttribDivisor(2,1);
+
+    glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
-void vector_add_line(vec2 p0, vec2 p1, float thickness, rgb_t color) {
-    float th = thickness * g_config.line_width_scale;
-    if (th < 1.0f) th = 1.0f;
-    g_lines.push_back({ p0, p1, th, color });
+void beam_shutdown() {
+    GLuint vaos[] = { vaoLine, vaoJoin, vaoShot };
+    GLuint vbos[] = { vboLine, vboJoin, vboShot };
+    glDeleteVertexArrays(3, vaos);
+    glDeleteBuffers(3, vbos);
+    glDeleteProgram(progLine);
+    glDeleteProgram(progJoin);
+    glDeleteProgram(progShot);
+    vaoLine = vaoJoin = vaoShot = vboLine = vboJoin = vboShot = 0;
+    progLine = progJoin = progShot = 0;
 }
 
-void vector_add_point(vec2 pos, float size, rgb_t color) {
-    g_points.push_back({ pos, size, color });
+// ----------------------------- producer -------------------------------------
+void beam_add_line(float sx, float sy, float ex, float ey, int intensity, rgb_t col) {
+    rgb_t c = modulate_color(col, intensity, config.gain);
+
+    // Invisible (pen-up move): draw nothing, contribute no vertex.
+    if ((c & 0x00FFFFFFu) == 0) return;
+
+    vec2 p0(sx, sy), p1(ex, ey);
+    float half = config.linewidth * 0.5f;
+    g_lines.push_back({ p0, p1, half, c });
+
+    // Record both endpoints; a vertex shared by 2+ segments becomes a join.
+    int64_t k0 = beam_vkey(sx, sy), k1 = beam_vkey(ex, ey);
+    beam_record_vert(k0, p0, c, half);
+    if (k1 != k0)
+        beam_record_vert(k1, p1, c, half);
 }
 
-void vector_add_fire(vec2 pos, rgb_t color) {
-    g_fire.push_back({ pos, g_config.fire_point_size, color });
+void beam_add_shot(float ex, float ey, int intensity, rgb_t col) {
+    // Shots bake intensity into BOTH the colour and z, and modulate_color()'s
+    // line-gain (config.gain) lifts every shot toward max, flattening the z range.
+    // Separate hue from brightness: normalize the colour to a unit hue and pass z
+    // straight through (in alpha) so brightness scales linearly with intensity.
+    int r = col & 0xFF, g = (col >> 8) & 0xFF, b = (col >> 16) & 0xFF;
+    int mx = (r > g) ? (r > b ? r : b) : (g > b ? g : b);
+    int z  = intensity; if (z < 0) z = 0; else if (z > 255) z = 255;
+    if (mx <= 0 || z <= 0) return;
+    r = (r * 255) / mx; g = (g * 255) / mx; b = (b * 255) / mx;
+    rgb_t c = ((rgb_t)z << 24) | ((rgb_t)b << 16) | ((rgb_t)g << 8) | (rgb_t)r;
+    g_shots.push_back({ vec2(ex, ey), (float)config.fire_point_size, c });
 }
 
-void vector_clear() {
+void beam_clear() {
     g_lines.clear();
-    g_points.clear();
-    g_fire.clear();
+    g_joins.clear();
+    g_shots.clear();
+    g_verts.clear();
 }
 
-void vector_draw_all(const mat4& projection)
-{
+// ----------------------------- draw -----------------------------------------
+void beam_draw_all(const mat4& proj) {
+    // AA feather (logical units) from the configured smoothing, scaled by SSAA.
+    g_uAA = config.line_smoothing / (float)((g_ssaa < 1) ? 1 : g_ssaa);
+
+    // Build join/cap discs from the vertex accumulator: a vertex shared by 2+
+    // segments is a corner (config.corner_strength); a single-segment vertex is a
+    // true line termination and gets a round end-cap (g_endcap). Radius baked here
+    // so config changes take effect each frame.
+    g_joins.clear();
+    for (const auto& kv : g_verts) {
+        const VertAccum& v = kv.second;
+        float r = v.half * ((v.count >= 2) ? config.corner_strength : g_endcap);
+        if (r > 0.01f)
+            g_joins.push_back({ v.pos, r, v.color });
+    }
+
+    if (g_lines.empty() && g_joins.empty() && g_shots.empty()) return;
+
+    const bool additive = (Machine->drv->video_attributes & VECTOR_USES_COLOR) != 0;
+
     glEnable(GL_BLEND);
-    GLenum srcFactor = GL_SRC_ALPHA;
-    GLenum dstFactor = (g_config.blend_mode == BLEND_ADDITIVE) ? GL_ONE : GL_ONE_MINUS_SRC_ALPHA;
 
-    // 1. Lines (Instanced)
-    if (!g_lines.empty())
-    {
-        glUseProgram(shaderLine);
-        glUniformMatrix4fv(glGetUniformLocation(shaderLine, "uProj"), 1, GL_FALSE, value_ptr(projection));
-        glBlendFunc(srcFactor, dstFactor);
+    if (!additive) {
+        // Black-and-white: painter's sort, darkest first, so brighter beams
+        // occlude darker ones under alpha-over.
+        std::sort(g_lines.begin(), g_lines.end(),
+            [](const BeamLine& a, const BeamLine& b) {
+                return (uint32_t)a.color < (uint32_t)b.color; });
+        std::sort(g_joins.begin(), g_joins.end(),
+            [](const BeamJoin& a, const BeamJoin& b) {
+                return (uint32_t)a.color < (uint32_t)b.color; });
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    } else {
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE);   // color: additive
+    }
 
+    // Lines.
+    if (!g_lines.empty()) {
+        glUseProgram(progLine);
+        glUniformMatrix4fv(glGetUniformLocation(progLine, "uProj"), 1, GL_FALSE, value_ptr(const_cast<mat4&>(proj)));
+        glUniform1f(glGetUniformLocation(progLine, "uAA"), g_uAA);
         glBindBuffer(GL_ARRAY_BUFFER, vboLine);
-        glBufferData(GL_ARRAY_BUFFER, g_lines.size() * sizeof(VecLine), g_lines.data(), GL_STREAM_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, g_lines.size()*sizeof(BeamLine), g_lines.data(), GL_STREAM_DRAW);
         glBindVertexArray(vaoLine);
         glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, (GLsizei)g_lines.size());
     }
 
-    // 2. Points
-    if (!g_points.empty())
-    {
-        glUseProgram(shaderPoint);
-        glUniformMatrix4fv(glGetUniformLocation(shaderPoint, "uProj"), 1, GL_FALSE, value_ptr(projection));
-        glUniform1f(glGetUniformLocation(shaderPoint, "uEdgeSoftness"), 0.15f);
-        glBlendFunc(srcFactor, dstFactor);
-
-        glBindBuffer(GL_ARRAY_BUFFER, vboPoint);
-        glBufferData(GL_ARRAY_BUFFER, g_points.size() * sizeof(VecPoint), g_points.data(), GL_STREAM_DRAW);
-        glBindVertexArray(vaoPoint);
-        glEnable(GL_PROGRAM_POINT_SIZE);
-        glDrawArrays(GL_POINTS, 0, (GLsizei)g_points.size());
+    // Corner joins + end-caps. Under additive (color) we draw them with GL_MAX and
+    // premultiplied coverage so they FILL gaps at the line's own brightness but
+    // never sum on top of the lines (which otherwise makes endpoints/corners
+    // brighter than the beam). Under B/W they use the same sorted alpha-over as the
+    // lines (where same-colour overlap already does not double).
+    if (!g_joins.empty()) {
+        glUseProgram(progJoin);
+        glUniformMatrix4fv(glGetUniformLocation(progJoin, "uProj"), 1, GL_FALSE, value_ptr(const_cast<mat4&>(proj)));
+        glUniform1f(glGetUniformLocation(progJoin, "uAA"), g_uAA);
+        glUniform1f(glGetUniformLocation(progJoin, "uStrength"), 1.0f);   // radius already baked per-disc
+        glUniform1f(glGetUniformLocation(progJoin, "uPremult"), additive ? 1.0f : 0.0f);
+        if (additive) glBlendEquation(GL_MAX);
+        glBindBuffer(GL_ARRAY_BUFFER, vboJoin);
+        glBufferData(GL_ARRAY_BUFFER, g_joins.size()*sizeof(BeamJoin), g_joins.data(), GL_STREAM_DRAW);
+        glBindVertexArray(vaoJoin);
+        glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, (GLsizei)g_joins.size());
+        if (additive) glBlendEquation(GL_FUNC_ADD);   // restore default for the rest of the pipeline
     }
 
-    // 3. Fire / Shots (Procedural & Tunable)
-    if (!g_fire.empty())
-    {
-        struct FireVertex {
-            vec2 pos;
-            vec2 uv;
-            rgb_t color;
-        };
-
-        // CPU Generation with Constricted Scaling (0.9 - 1.1)
-        std::vector<FireVertex> fireVerts;
-        fireVerts.reserve(g_fire.size() * 6);
-
-        for (const auto& p : g_fire)
-        {
-            float r = RGB_RED(p.color) / 255.0f;
-            float g = RGB_GREEN(p.color) / 255.0f;
-            float b = RGB_BLUE(p.color) / 255.0f;
-            float intensity = std::max({ r, g, b });
-
-            // Scale geometry slightly based on intensity
-            float minScale = 0.90f;
-            float maxScale = 1.10f;
-            float sizeScale = minScale + ((maxScale - minScale) * intensity);
-
-            float currentSize = p.size * sizeScale;
-
-            float x0 = p.pos.x - currentSize;
-            float y0 = p.pos.y - currentSize;
-            float x1 = p.pos.x + currentSize;
-            float y1 = p.pos.y + currentSize;
-            rgb_t c = p.color;
-
-            fireVerts.push_back({ {x0, y0}, {0, 0}, c });
-            fireVerts.push_back({ {x1, y0}, {1, 0}, c });
-            fireVerts.push_back({ {x1, y1}, {1, 1}, c });
-            fireVerts.push_back({ {x1, y1}, {1, 1}, c });
-            fireVerts.push_back({ {x0, y1}, {0, 1}, c });
-            fireVerts.push_back({ {x0, y0}, {0, 0}, c });
-        }
-
-        glUseProgram(shaderFire);
-        glUniformMatrix4fv(glGetUniformLocation(shaderFire, "uProj"), 1, GL_FALSE, value_ptr(projection));
-
-        // --- SEND TUNING UNIFORMS ---
-        glUniform1f(glGetUniformLocation(shaderFire, "uCorePower"), g_config.shot_core_power);
-        glUniform1f(glGetUniformLocation(shaderFire, "uBloomPower"), g_config.shot_bloom_power);
-        glUniform1f(glGetUniformLocation(shaderFire, "uBloomIntensity"), g_config.shot_bloom_intensity);
-        glUniform1f(glGetUniformLocation(shaderFire, "uOverdrive"), g_config.shot_overdrive);
-
-        glBindBuffer(GL_ARRAY_BUFFER, vboFire);
-        glBufferData(GL_ARRAY_BUFFER, fireVerts.size() * sizeof(FireVertex), fireVerts.data(), GL_STREAM_DRAW);
-        glBindVertexArray(vaoFire);
-
-        // Force Additive for shots
+    // Shots: procedural radial core + halo, always additive.
+    if (!g_shots.empty()) {
+        glUseProgram(progShot);
+        glUniformMatrix4fv(glGetUniformLocation(progShot, "uProj"), 1, GL_FALSE, value_ptr(const_cast<mat4&>(proj)));
+        glUniform1f(glGetUniformLocation(progShot, "uCorePower"),      6.0f);
+        glUniform1f(glGetUniformLocation(progShot, "uBloomPower"),     2.5f);
+        glUniform1f(glGetUniformLocation(progShot, "uBloomIntensity"), 0.3f);
+        glUniform1f(glGetUniformLocation(progShot, "uOverdrive"),      1.5f);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+        glBindBuffer(GL_ARRAY_BUFFER, vboShot);
+        glBufferData(GL_ARRAY_BUFFER, g_shots.size()*sizeof(BeamShot), g_shots.data(), GL_STREAM_DRAW);
+        glBindVertexArray(vaoShot);
+        glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, (GLsizei)g_shots.size());
+    }
 
-        glDrawArrays(GL_TRIANGLES, 0, (GLsizei)fireVerts.size());
+    glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glUseProgram(0);
+}
+
+// ----------------------- shared AA-line path (fonts) ------------------------
+void beam_draw_lines(const mat4& proj, const BeamLine* lines, int count,
+                     float aaFeather, bool additive) {
+    if (count <= 0 || !lines) return;
+    beam_ensure_lines();
+
+    glEnable(GL_BLEND);
+    // Separate alpha (src factor GL_ONE) so the accumulated alpha is correct when
+    // these are rendered into an offscreen RGBA target that is later alpha-blitted
+    // (the rotated raster overlay). RGB blending is unchanged, so every other target
+    // (vector fbo1 is RGB8; the backbuffer's alpha is unused) looks identical.
+    if (additive) glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+    else          glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+
+    glUseProgram(progLine);
+    glUniformMatrix4fv(glGetUniformLocation(progLine, "uProj"), 1, GL_FALSE, value_ptr(const_cast<mat4&>(proj)));
+    glUniform1f(glGetUniformLocation(progLine, "uAA"), (aaFeather > 0.0001f) ? aaFeather : 0.0001f);
+
+    glBindBuffer(GL_ARRAY_BUFFER, vboLine);
+    glBufferData(GL_ARRAY_BUFFER, count * sizeof(BeamLine), lines, GL_STREAM_DRAW);
+    glBindVertexArray(vaoLine);
+    glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, (GLsizei)count);
+
+    glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glUseProgram(0);
+}
+
+void beam_draw_caps(const mat4& proj, const BeamJoin* caps, int count,
+                    float aaFeather, bool additive) {
+    if (count <= 0 || !caps) return;
+    beam_ensure_lines();
+
+    const float aa = (aaFeather > 0.0001f) ? aaFeather : 0.0001f;
+
+    glEnable(GL_BLEND);
+
+    glUseProgram(progJoin);
+    glUniformMatrix4fv(glGetUniformLocation(progJoin, "uProj"), 1, GL_FALSE, value_ptr(const_cast<mat4&>(proj)));
+    glUniform1f(glGetUniformLocation(progJoin, "uAA"), aa);
+    glUniform1f(glGetUniformLocation(progJoin, "uStrength"), 1.0f);   // radius baked per-disc
+    glUniform1f(glGetUniformLocation(progJoin, "uPremult"), additive ? 1.0f : 0.0f);
+
+    if (additive) glBlendEquation(GL_MAX);
+    else          glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+
+    glBindBuffer(GL_ARRAY_BUFFER, vboJoin);
+    glBufferData(GL_ARRAY_BUFFER, count * sizeof(BeamJoin), caps, GL_STREAM_DRAW);
+    glBindVertexArray(vaoJoin);
+    glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, (GLsizei)count);
+
+    if (additive) glBlendEquation(GL_FUNC_ADD);   // restore default for the rest of the pipeline
+
+    glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glUseProgram(0);
+}
+
+void beam_build_caps(const BeamLine* lines, int count, float endcapMul, float cornerMul,
+                     std::vector<BeamJoin>& out) {
+    if (count <= 0 || !lines) return;
+
+    std::unordered_map<int64_t, VertAccum> verts;
+    verts.reserve((size_t)count * 2);
+
+    auto rec = [&](int64_t k, vec2 p, rgb_t c, float half) {
+        VertAccum& v = verts[k];
+        if (v.count == 0) { v.pos = p; v.color = c; v.half = half; }
+        else {
+            if (beam_brightness(c) > beam_brightness(v.color)) v.color = c;
+            if (half > v.half) v.half = half;
+        }
+        v.count++;
+    };
+
+    for (int i = 0; i < count; ++i) {
+        const BeamLine& L = lines[i];
+        int64_t k0 = beam_vkey(L.p0.x, L.p0.y), k1 = beam_vkey(L.p1.x, L.p1.y);
+        rec(k0, L.p0, L.color, L.half);
+        if (k1 != k0) rec(k1, L.p1, L.color, L.half);
+    }
+
+    for (const auto& kv : verts) {
+        const VertAccum& v = kv.second;
+        float r = v.half * ((v.count >= 2) ? cornerMul : endcapMul);
+        if (r > 0.01f) out.push_back({ v.pos, r, v.color });
     }
 }

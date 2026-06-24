@@ -4,7 +4,12 @@
 #include "sys_log.h"
 #include "opengl_renderer.h"
 #include "gl_texturing.h" // For game_tex[0]
+#include "gl_shader.h"    // fragTexColor + bind_shader / set_uniform*
+#include "vector_draw.h"  // beam_add_line / beam_add_shot / beam_clear
+#include "MathUtils.h"    // aae::math::value_ptr
 #include <vector>
+#include <algorithm>       // std::min / std::max (clip)
+#include <cstddef>         // offsetof
 
 #pragma warning( disable :  4244 )
 
@@ -18,100 +23,16 @@ float yoffset;
 GLuint* tex;
 
 // Scales only the textured shot alpha; 1.0 = current, lower = dimmer
-static float g_texShotAlphaScale = 1.0f; // trying 0.50-0.75
+static float g_texShotAlphaScale = 1.0f;
 void set_tex_shot_alpha_scale(float s) { g_texShotAlphaScale = (s < 0.f) ? 0.f : (s > 1.f ? 1.f : s); }
 
 colors vec_colors[256];
 
-std::vector<fpoint> linelist;
+// Textured-shot geometry (Asteroids/Deluxe shots). The modern beam renderer owns
+// the lines/points; this list feeds the legacy textured-shot pass selected by
+// config.shots_textured.
 std::vector<txdata> texlist;
 
-#include <algorithm> // for std::sort
-
-// -----------------------------------------------------------------------------
-// sort_lines_by_color_desc
-// Sorts linelist by raw rgb_t value (interpreted as uint32_t), highest first.
-// Each line is two consecutive fpoints in linelist; endpoint order preserved.
-//
-// Notes:
-// - If you want to ignore alpha when sorting, set MASK = 0x00FFFFFF.
-// - Uses std::sort (not stable) for speed.
-// -----------------------------------------------------------------------------
-
-void sort_lines_by_color()
-{
-    const size_t n = linelist.size();
-    if (n < 2) return;
-
-    struct LineKey { size_t i0; uint32_t key; };
-    constexpr uint32_t MASK = 0xFFFFFFFFu; // use 0x00FFFFFFu to ignore alpha
-
-    std::vector<LineKey> keys;
-    keys.reserve(n / 2);
-
-    for (size_t i = 0; i + 1 < n; i += 2) {
-        uint32_t c = static_cast<uint32_t>(linelist[i].color);
-        keys.push_back({ i, c & MASK });
-    }
-
-    // Ascending: darker (smaller key) first
-    std::sort(keys.begin(), keys.end(),
-        [](const LineKey& a, const LineKey& b) { return a.key < b.key; });
-
-    std::vector<fpoint> out;
-    out.reserve((keys.size() * 2) + (n & 1));
-
-    for (const auto& k : keys) {
-        out.push_back(linelist[k.i0 + 0]);
-        out.push_back(linelist[k.i0 + 1]);
-    }
-    if (n & 1) out.push_back(linelist.back()); // keep any stray vertex
-
-    linelist.swap(out);
-}
-/*
-void sort_lines_by_color()
-{
-    const size_t n = linelist.size();
-    if (n < 2) return;
-
-    const size_t m = n >> 1; // number of line pairs
-
-    struct LineKey { size_t i0; uint32_t key; };
-
-    // Reused scratch buffers (safe per-thread; change to static if single-threaded)
-    static thread_local std::vector<LineKey> keys;
-    static thread_local std::vector<LineKey> tmp;   // optional (radix variant below)
-    static thread_local std::vector<fpoint>  out;
-
-    keys.resize(m);
-    out.resize(n);
-
-    // If you want to ignore alpha, flip MASK to 0x00FFFFFFu.
-    constexpr uint32_t MASK = 0xFFFFFFFFu;
-
-    // Build keys
-    for (size_t j = 0, i = 0; j < m; ++j, i += 2) {
-        uint32_t c = static_cast<uint32_t>(linelist[i].color);
-        keys[j] = { i, c & MASK };
-    }
-
-    // Ascending: darker first
-    std::sort(keys.begin(), keys.end(),
-        [](const LineKey& a, const LineKey& b) { return a.key < b.key; });
-
-    // Repack in new order
-    for (size_t j = 0; j < m; ++j) {
-        const size_t dst = (j << 1);
-        const size_t src = keys[j].i0;
-        out[dst + 0] = linelist[src + 0];
-        out[dst + 1] = linelist[src + 1];
-    }
-    if (n & 1) out[n - 1] = linelist[n - 1]; // preserve stray vertex if present
-
-    linelist.swap(out);
-}
-*/
 void set_texture_id(GLuint* id)
 {
     tex = id;
@@ -138,13 +59,6 @@ rgb_t modulate_color(rgb_t col, int intensity, int gain)
     return  (a << 24) | (b << 16) | (g << 8) | r;
 }
 
-/*
-rgb_t cache_tex_color(int intensity, rgb_t col)
-{
-    rgb_t result = modulate_color(col, intensity, config.gain);
-    return (result & 0x00FFFFFF) | (intensity << 24);
-}
-*/
 rgb_t cache_tex_color(int intensity, rgb_t col)
 {
     rgb_t result = modulate_color(col, intensity, config.gain);
@@ -163,21 +77,15 @@ void cache_texpoint(float ex, float ey, float tx, float ty, int intensity, rgb_t
 
 void add_line(float sx, float sy, float ex, float ey, int intensity, rgb_t col)
 {
-    rgb_t temp_col = modulate_color(col, intensity, config.gain);
-    rgb_t temp_half_col = 0;
-
-    if (Machine->drv->video_attributes & VECTOR_USES_COLOR)
-    {
-        temp_half_col = modulate_color(col, intensity, config.gain / 2);
-        temp_half_col = (temp_half_col & 0x00FFFFFF) | (0x7F << 24);
-    }
-
-    linelist.emplace_back(sx, sy, temp_col, temp_half_col);
-    linelist.emplace_back(ex, ey, temp_col, temp_half_col);
+    // The modern beam renderer is the only vector engine.
+    beam_add_line(sx, sy, ex, ey, intensity, col);
 }
 
 void add_tex(float ex, float ey, int intensity, rgb_t col)
 {
+    // Procedural shots by default; legacy textured shots when selected.
+    if (!config.shots_textured) { beam_add_shot(ex, ey, intensity, col); return; }
+
     float xoff = config.fire_point_size;
     float yoff = config.fire_point_size;
 
@@ -200,62 +108,66 @@ void add_tex(float ex, float ey, int intensity, rgb_t col)
 void cache_clear()
 {
     texlist.clear();
-    linelist.clear();
+    beam_clear();          // clear the modern beam lists on the same frame boundary
 }
 
-void draw_all()
+// Core-profile VAO/VBO for the textured shots (pos + uv + packed RGBA, matching
+// the txdata layout). Lazily created on first use.
+static GLuint s_shotVAO = 0, s_shotVBO = 0;
+static void ensure_shot_buffers()
 {
-    if (Machine->gamedrv->video_attributes & VECTOR_USES_COLOR)
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-    else
-    {
-        // This fixes Battlezone and Red Baron, but costs a lot of cpu time
-        sort_lines_by_color();
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    }
+    if (s_shotVAO) return;
+    glGenVertexArrays(1, &s_shotVAO);
+    glGenBuffers(1, &s_shotVBO);
+    glBindVertexArray(s_shotVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, s_shotVBO);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 2, GL_FLOAT,         GL_FALSE, sizeof(txdata), (void*)offsetof(txdata, x));
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 2, GL_FLOAT,         GL_FALSE, sizeof(txdata), (void*)offsetof(txdata, tx));
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_TRUE,  sizeof(txdata), (void*)offsetof(txdata, color));
+    glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+}
 
-    glDisable(GL_TEXTURE_2D);
+// Legacy textured-shot pass (textured quads via game_tex[0]). Used by the modern
+// beam path when textured shots are selected (config.shots_textured) - e.g.
+// Asteroids Deluxe with artwork. Core-profile: VAO/VBO + the texColor shader
+// (texture * per-vertex color = the old GL_MODULATE), additive blend, drawn under
+// the same projection as the beams (proj).
+void draw_textured_shots(const aae::math::mat4& proj)
+{
+    if (texlist.empty()) return;
 
-    glEnableClientState(GL_VERTEX_ARRAY);
-    glEnableClientState(GL_COLOR_ARRAY);
+    ensure_shot_buffers();
 
-    glColorPointer(4, GL_UNSIGNED_BYTE, sizeof(fpoint), &linelist[0].color);
-    glVertexPointer(2, GL_FLOAT, sizeof(fpoint), &linelist[0].x);
-    glDrawArrays(GL_LINES, 0, (GLsizei)linelist.size());
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, *tex);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE);   // additive
 
-    if (Machine->drv->video_attributes & VECTOR_USES_COLOR)
-    {
-        glColorPointer(3, GL_UNSIGNED_BYTE, sizeof(fpoint), &linelist[0].colorshalf);
-    }
-    glDrawArrays(GL_POINTS, 0, (GLsizei)linelist.size());
+    // Radial edge fade to kill the square halo. Tune these:
+    //   kShotFadeInner = radius of the full-bright core (0=center .. 1=edge)
+    //   kShotFadeOuter = radius where the halo fully fades out (<=1 keeps it inside
+    //                    the quad; lower = tighter/rounder, higher = softer/larger)
+    static const float kShotFadeInner = 0.20f;
+    static const float kShotFadeOuter = 1.00f;
 
-    glDisableClientState(GL_VERTEX_ARRAY);
-    glDisableClientState(GL_COLOR_ARRAY);
+    bind_shader(fragTexColor);
+    set_uniform1i(fragTexColor, "u_texture", 0);
+    set_uniform_mat4f(fragTexColor, "uProj", aae::math::value_ptr(proj));
+    set_uniform1f(fragTexColor, "uFadeInner", kShotFadeInner);
+    set_uniform1f(fragTexColor, "uFadeOuter", kShotFadeOuter);
 
-    if (!texlist.empty())
-    {
-        glEnable(GL_TEXTURE_2D);
-        glBindTexture(GL_TEXTURE_2D, *tex);
-       // glBlendFunc(GL_ONE, GL_ONE);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-       //glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ONE, GL_ONE);
+    glBindVertexArray(s_shotVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, s_shotVBO);
+    glBufferData(GL_ARRAY_BUFFER, texlist.size() * sizeof(txdata), texlist.data(), GL_STREAM_DRAW);
+    glDrawArrays(GL_TRIANGLES, 0, (GLsizei)texlist.size());
 
-        glEnableClientState(GL_VERTEX_ARRAY);
-        glVertexPointer(2, GL_FLOAT, sizeof(txdata), &texlist[0].x);
+    glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    unbind_shader();
 
-        glEnableClientState(GL_TEXTURE_COORD_ARRAY);
-        glTexCoordPointer(2, GL_FLOAT, sizeof(txdata), &texlist[0].tx);
-
-        glEnableClientState(GL_COLOR_ARRAY);
-        glColorPointer(4, GL_UNSIGNED_BYTE, sizeof(txdata), &texlist[0].color);
-
-        glDrawArrays(GL_TRIANGLES, 0, (GLsizei)texlist.size());
-
-        glDisableClientState(GL_TEXTURE_COORD_ARRAY);
-        glDisableClientState(GL_VERTEX_ARRAY);
-        glDisableClientState(GL_COLOR_ARRAY);
-
-        glDisable(GL_TEXTURE_2D);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    }
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);   // restore default
 }

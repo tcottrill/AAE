@@ -979,7 +979,7 @@ PORT_ANALOG(0x0f, 0x00, IPT_DIAL | IPF_REVERSE, 25, 20, 0,  0)
 	AAE_DRIVER_CPUS(
 		AAE_CPU_ENTRY(
 			/*type*/     CPU_M6502,
-			/*freq*/     1515000,           // rev3
+			/*freq*/     1512000,           // rev3
 			/*div*/      100,
 			/*ipf*/      4,
 			/*int type*/ INT_TYPE_INT,

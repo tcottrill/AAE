@@ -122,6 +122,58 @@ int save_hi_aae(int start, int size, int image)
 }
 
 // -----------------------------------------------------------------------------
+// Generic NVRAM persistence (MAME generic_0fill / generic_1fill equivalent)
+//
+// A driver calls nvram_set_region(buf, size, fill) in its init() to register its
+// battery-backed RAM region, then uses AAE_DRIVER_NVRAM(generic_nvram_handler).
+// The emulator opens the per-game NVRAM file (osd_fopen / OSD_FILETYPE_NVRAM) on
+// game start/stop and calls the handler: read_or_write==0 loads it (or fills with
+// `fill` on a first boot with no file), ==1 saves it. `fill` defaults to 0x00
+// (MAME generic_0fill); pass 0xFF for chips that power up all-ones. Pass a
+// negative `fill` when the driver's init() already lays down factory defaults:
+// first boot then keeps whatever init() wrote instead of clearing the region.
+// -----------------------------------------------------------------------------
+static unsigned char* s_nvram_region = nullptr;
+static int            s_nvram_region_size = 0;
+static int            s_nvram_fill = 0x00;
+
+void nvram_set_region(void* ptr, int size, int fill)
+{
+    s_nvram_region      = (unsigned char*)ptr;
+    s_nvram_region_size = size;
+    s_nvram_fill        = fill;   // <0 => no fill: keep init()'s contents on first boot
+}
+
+void generic_nvram_handler(void* file, int read_or_write)
+{
+    if (!s_nvram_region || s_nvram_region_size <= 0)
+    {
+        LOG_INFO("generic_nvram_handler: no region registered (call nvram_set_region in init)");
+        return;
+    }
+
+    if (read_or_write)
+    {
+        osd_fwrite(file, s_nvram_region, s_nvram_region_size);
+        LOG_INFO("Saved %d bytes of NVRAM", s_nvram_region_size);
+    }
+    else if (file)
+    {
+        osd_fread(file, s_nvram_region, s_nvram_region_size);
+        LOG_INFO("Loaded %d bytes of NVRAM", s_nvram_region_size);
+    }
+    else if (s_nvram_fill >= 0)
+    {
+        memset(s_nvram_region, s_nvram_fill & 0xff, s_nvram_region_size);   // first boot: no file yet
+        LOG_INFO("Initialized %d bytes of NVRAM (fill 0x%02X)", s_nvram_region_size, s_nvram_fill & 0xff);
+    }
+    else
+    {
+        LOG_INFO("First-boot NVRAM: kept driver factory defaults (%d bytes)", s_nvram_region_size);
+    }
+}
+
+// -----------------------------------------------------------------------------
 // verify_rom
 // Uses sys_fileio::loadZip and getters to verify
 // -----------------------------------------------------------------------------
@@ -325,7 +377,7 @@ int load_roms(const char* archname, const struct RomModule* p)
             region = cpunum;
 
         gohere:
-            if (p[i].filename == (char*)-2) { skip = p[i - 1].romSize; }
+            if (p[i].filename == (char*)-2) { skip = 0; for (int k = i - 1; k >= 0; --k) { skip += p[k].romSize; if (p[k].filename != (char*)-2) break; } } // cumulative offset of preceding chunks; fixes multi-way ROM_CONTINUE (e.g. dkongjr 5c/5e), not just p[i-1]
             else skip = 0;
 
             switch (p[i].loadtype)
@@ -434,7 +486,14 @@ void load_samples_batch(const char* const* sample_list)
         std::string entryName = filename;
         std::string fullDiskPath = "samples\\" + subFolderName + "\\" + entryName;
 
-        load_sample_core(fullZipPath, entryName, fullDiskPath);
+        if (load_sample_core(fullZipPath, entryName, fullDiskPath) < 0) {
+            // Sample file missing/unloadable: register a silent placeholder so the
+            // remaining samples keep their expected indices. Drivers call
+            // sample_start() with hard-coded indices that must match the load
+            // order, so skipping a missing sample would shift every later sample
+            // down one slot and play the wrong sounds.
+            load_silent_sample(entryName.c_str());
+        }
         i++;
     }
 }

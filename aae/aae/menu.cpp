@@ -511,6 +511,9 @@ void MenuManager::SaveConfigIfRequired(MenuID fromId) {
         my_set_config_int("main", "m_line",      config.m_line,   vidPath);
         my_set_config_int("main", "m_point",     config.m_point,  vidPath);
         my_set_config_int("main", "gain",        config.gain,     vidPath);
+        my_set_config_float("main", "line_smoothing",  config.line_smoothing,  vidPath);
+        my_set_config_float("main", "corner_strength", config.corner_strength, vidPath);
+        my_set_config_int  ("main", "shots_textured",  config.shots_textured,  vidPath);
         my_set_config_int("main", "artwork",     config.artwork,  vidPath);
         my_set_config_int("main", "overlay",     config.overlay,  vidPath);
         my_set_config_int("main", "bezel",       config.bezel,    vidPath);
@@ -626,13 +629,13 @@ void MenuManager::BuildVideoMenu() {
     // To re-enable any of them once the rendering code is wired up,
     // swap the Disabled() call for the commented-out original below it.
     // ------------------------------------------------------------------
-    m_items.push_back(MenuItem::Disabled("GAMMA"));
+   // m_items.push_back(MenuItem::Disabled("GAMMA"));
     // m_items.push_back(MenuItem::Integer("GAMMA",      &config.gamma,    50, 200));
 
-    m_items.push_back(MenuItem::Disabled("BRIGHTNESS"));
+   // m_items.push_back(MenuItem::Disabled("BRIGHTNESS"));
     // m_items.push_back(MenuItem::Integer("BRIGHTNESS", &config.bright,   50, 200));
 
-    m_items.push_back(MenuItem::Disabled("CONTRAST"));
+   // m_items.push_back(MenuItem::Disabled("CONTRAST"));
     // m_items.push_back(MenuItem::Integer("CONTRAST",   &config.contrast, 50, 200));
 
     m_items.push_back(MenuItem::Disabled("VSYNC"));
@@ -649,7 +652,7 @@ void MenuManager::BuildVideoMenu() {
 
     {
         MenuItem lwItem;
-        lwItem.label = "LINEWIDTH";
+        lwItem.label = "BEAM WIDTH";
         lwItem.getValueDisplay = []() {
             char buf[32];
             snprintf(buf, 32, "%2.1f", config.m_line * 0.1f);
@@ -666,6 +669,25 @@ void MenuManager::BuildVideoMenu() {
         lwItem.onActivate = []() {};
         m_items.push_back(lwItem);
     }
+    {
+        MenuItem csItem;
+        csItem.label = "BEAM CORNERSIZE";
+        csItem.getValueDisplay = []() {
+            char buf[32];
+            snprintf(buf, 32, "%2.2f", config.corner_strength);
+            return std::string(buf);
+            };
+        csItem.onAdjust = [](int dir) {
+            config.corner_strength += dir * 0.05f;
+            if (config.corner_strength < 0.3f) config.corner_strength = 0.3f;
+            if (config.corner_strength > 2.5f) config.corner_strength = 2.5f;
+            };
+        csItem.hasLeft = []() { return config.corner_strength > 0.3f; };
+        csItem.hasRight = []() { return config.corner_strength < 2.5f; };
+        csItem.onActivate = []() {};
+        m_items.push_back(csItem);
+    }
+    /*
     {
         MenuItem psItem;
         psItem.label = "POINTSIZE";
@@ -685,6 +707,28 @@ void MenuManager::BuildVideoMenu() {
         psItem.onActivate = []() {};
         m_items.push_back(psItem);
     }
+    */
+    {
+        MenuItem smItem;
+        smItem.label = "BEAM SMOOTHING";
+        smItem.getValueDisplay = []() {
+            char buf[32];
+            snprintf(buf, 32, "%2.1f", config.line_smoothing);
+            return std::string(buf);
+            };
+        smItem.onAdjust = [](int dir) {
+            config.line_smoothing += dir * 0.1f;
+            if (config.line_smoothing < 0.4f) config.line_smoothing = 0.4f;
+            if (config.line_smoothing > 2.0f) config.line_smoothing = 2.0f;
+            };
+        smItem.hasLeft = []() { return config.line_smoothing > 0.4f; };
+        smItem.hasRight = []() { return config.line_smoothing < 2.0f; };
+        smItem.onActivate = []() {};
+        m_items.push_back(smItem);
+    }
+    
+    m_items.push_back(MenuItem::Integer("VECTOR SHOTS", &config.shots_textured, 0, 1,
+        { "PROCEDURAL", "TEXTURED" }));
 
     m_items.push_back(MenuItem::Integer("MONITOR GAIN", &config.gain, -127, 127));
 
@@ -1324,6 +1368,6 @@ void select_menu_item() {
 }
 
 void set_points_lines() {
-    glLineWidth(config.linewidth);
-    glPointSize(config.pointsize);
+   // glLineWidth(config.linewidth);
+   // glPointSize(config.pointsize);
 }

@@ -142,6 +142,7 @@
 #include "xaudio2_backend.h"
 #include "audio_3d.h"
 #include "error_wav.h"
+#include "emptywav.h"
 #include "sys_log.h"
 #include <mutex>
 #include <vector>
@@ -492,6 +493,23 @@ int load_sample_from_buffer(const uint8_t* data, size_t size, const char* name, 
 	}
 	LOG_INFO("Sample load completed");
 	return sample->num;
+}
+
+// -----------------------------------------------------------------------------
+// load_silent_sample
+// Register a silent placeholder sample (from the built-in emptywav data).
+//
+// Used when a game sample file cannot be found/loaded. Drivers trigger samples
+// by hard-coded index into the load order (see sample_start), so a missing
+// sample must still occupy its slot -- otherwise every later sample shifts down
+// one index and the wrong sounds play. emptywav is 8-bit unsigned silence
+// (0x80), which both the voice and software-mixer paths render as true silence.
+//
+// Returns the new sample ID (>= 0) on success, -1 on failure.
+// -----------------------------------------------------------------------------
+int load_silent_sample(const char* name)
+{
+	return load_sample_from_buffer(emptywav, sizeof(emptywav), name, true);
 }
 
 // -----------------------------------------------------------------------------

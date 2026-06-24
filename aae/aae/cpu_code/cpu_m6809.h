@@ -175,8 +175,6 @@ private:
     bool m_nmi_enabled = false;  // NMI masked from reset until first write to S
     bool m_sync        = false;  // SYNC: waiting for any interrupt line
     bool m_cwai        = false;  // CWAI: registers pre-stacked, waiting
-    bool m_step_was_interrupt = false; // last step() serviced an int/idle, not an instruction
-                                       // (exec() excludes those cycles from the slice budget)
 
     // ---- Add-on hook support state ----------------------------------------
     bool     m_in_opcode_fetch     = false; // last bus access was a fetch (see in_opcode_fetch)
@@ -278,7 +276,9 @@ private:
     int      branch_long(bool taken);        // signed 16-bit relative; returns 6 if taken else 5
 
     // ---- Interrupt handling -----------------------------------------------
-    void     service_interrupt(uint16_t vector, bool set_F, bool entire);
+    // Takes the interrupt (stacks the frame unless woken from CWAI) and returns
+    // the entry cycle cost, which is reduced when CWAI already stacked.
+    int      service_interrupt(uint16_t vector, bool set_F, bool entire);
     void     do_rti(int& cycles);
 
     // ---- Prefix pages ------------------------------------------------------

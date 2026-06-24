@@ -256,20 +256,39 @@ void mappy_vh_screenrefresh(struct osd_bitmap* bitmap, int full_refresh)
         }
     }
 
-    /* --- copy the tile layer to the screen with horizontal scroll --- */
+    /* --- copy the tile layer to the screen with horizontal scroll ---
+       Use copybitmap (which ignores Machine->orientation) instead of
+       copyscrollbitmap. copyscrollbitmap swaps src width/height when a
+       SWAP_XY display rotation is active, which mis-sizes this non-square
+       480x288 tile cache (row height 480/36=13 instead of 288/36=8) and
+       corrupts the tile layer when the game is rotated. The scroll here is
+       only a uniform middle-band shift -- the top 2 and bottom 2 HUD rows
+       never scroll -- so three clipped copybitmap passes reproduce the old
+       copyscrollbitmap output exactly while staying correct under rotation.
+       (This matches galaga, which also composites its tile layer with
+       copybitmap.) */
     {
-        int scroll[36];
+        const int srcw = tmpbitmap->width;          /* 480 */
+        int s = (mappy_scroll - 256) % srcw;        /* normalize to [0, srcw) */
+        if (s < 0) s += srcw;
 
-        /* top 2 and bottom 2 rows are unscrolled */
-        for (offs = 0;  offs < 2;  offs++) scroll[offs] = 0;
-        for (offs = 2;  offs < 34; offs++) scroll[offs] = mappy_scroll - 256;
-        for (offs = 34; offs < 36; offs++) scroll[offs] = 0;
+        struct rectangle clip;
 
-        copyscrollbitmap(bitmap, tmpbitmap,
-                         36, scroll,
-                         0, 0,
-                         &Machine->drv->visible_area,
-                         TRANSPARENCY_NONE, 0);
+        /* top 2 HUD rows (unscrolled) */
+        clip = Machine->drv->visible_area;
+        clip.min_y = 0;        clip.max_y = 2 * 8 - 1;
+        copybitmap(bitmap, tmpbitmap, 0, 0, 0, 0, &clip, TRANSPARENCY_NONE, 0);
+
+        /* middle 32 rows (scrolled horizontally, wrapped across srcw) */
+        clip = Machine->drv->visible_area;
+        clip.min_y = 2 * 8;    clip.max_y = 34 * 8 - 1;
+        copybitmap(bitmap, tmpbitmap, 0, 0, s,        0, &clip, TRANSPARENCY_NONE, 0);
+        copybitmap(bitmap, tmpbitmap, 0, 0, s - srcw, 0, &clip, TRANSPARENCY_NONE, 0);
+
+        /* bottom 2 HUD rows (unscrolled) */
+        clip = Machine->drv->visible_area;
+        clip.min_y = 34 * 8;   clip.max_y = 36 * 8 - 1;
+        copybitmap(bitmap, tmpbitmap, 0, 0, 0, 0, &clip, TRANSPARENCY_NONE, 0);
     }
 
     /* --- sprite pass --- */

@@ -104,12 +104,16 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>_DEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_DEBUG;_WINDOWS;GLEW_STATIC;_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <LanguageStandard_C>stdc17</LanguageStandard_C>
+      <AdditionalIncludeDirectories>./aae/aae_video;./aae;./aae/sndhrdwr;./aae/vidhrdwr;./aae/machine;./aae/gui;./aae/fileio;./aae/drivers;./aae/cpu_code;./system/audio;./;./system/graphics;./system/input;./system/window;./system/font;./system/math;./system/util;./system/3rdparty;./system/platform;./system/project</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <ManifestFile>$(ProjectDir)app.manifest</ManifestFile>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -118,7 +122,7 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>NDEBUG;_WINDOWS;GLEW_STATIC;_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR;WIN7BUILD;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>NDEBUG;_WINDOWS;GLEW_STATIC;_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <LanguageStandard_C>stdc17</LanguageStandard_C>
@@ -134,12 +138,12 @@
     <ClInclude Include="aae\aae_emulator.h" />
     <ClInclude Include="aae\aae_mame_driver.h" />
     <ClInclude Include="aae\aae_video\gl_fbo.h" />
-    <ClInclude Include="aae\aae_video\gl_prim_debug.h" />
     <ClInclude Include="aae\aae_video\gl_shader.h" />
     <ClInclude Include="aae\aae_video\gl_texturing.h" />
     <ClInclude Include="aae\aae_video\mame_layout.h" />
     <ClInclude Include="aae\aae_video\mame_vector.h" />
     <ClInclude Include="aae\aae_video\opengl_renderer.h" />
+    <ClInclude Include="aae\aae_video\vector_draw.h" />
     <ClInclude Include="aae\aae_video\shader_definitions.h" />
     <ClInclude Include="aae\aae_video\vector_fonts.h" />
     <ClInclude Include="aae\aae_video\winfont_gl4.h" />
@@ -172,6 +176,7 @@
     <ClInclude Include="aae\drivers\digdug.h" />
     <ClInclude Include="aae\drivers\galaga.h" />
     <ClInclude Include="aae\drivers\galaxian_driver.h" />
+    <ClInclude Include="aae\drivers\gaplus.h" />
     <ClInclude Include="aae\drivers\invaders.h" />
     <ClInclude Include="aae\drivers\jrpacman.h" />
     <ClInclude Include="aae\drivers\llander.h" />
@@ -189,6 +194,7 @@
     <ClInclude Include="aae\drivers\starwars.h" />
     <ClInclude Include="aae\drivers\superpac.h" />
     <ClInclude Include="aae\drivers\tempest.h" />
+    <ClInclude Include="aae\drivers\vertigo.h" />
     <ClInclude Include="aae\drivers\vicdual.h" />
     <ClInclude Include="aae\drivers\warlord.h" />
     <ClInclude Include="aae\drivers\xevious.h" />
@@ -202,9 +208,11 @@
     <ClInclude Include="aae\game_list.h" />
     <ClInclude Include="aae\gui\driver_gui.h" />
     <ClInclude Include="aae\inptport.h" />
+    <ClInclude Include="aae\machine\74148.h" />
     <ClInclude Include="aae\machine\earom.h" />
     <ClInclude Include="aae\machine\mathbox.h" />
     <ClInclude Include="aae\machine\pacplus_decode.h" />
+    <ClInclude Include="aae\machine\pit8253.h" />
     <ClInclude Include="aae\machine\SegaG80crypt.h" />
     <ClInclude Include="aae\machine\slapstic.h" />
     <ClInclude Include="aae\machine\starwars_machine.h" />
@@ -218,6 +226,7 @@
     <ClInclude Include="aae\sndhrdwr\ay8910.h" />
     <ClInclude Include="aae\sndhrdwr\cinematronics_sound.h" />
     <ClInclude Include="aae\sndhrdwr\dac.h" />
+    <ClInclude Include="aae\sndhrdwr\exidy440_sound.h" />
     <ClInclude Include="aae\sndhrdwr\galsnd_stream.h" />
     <ClInclude Include="aae\sndhrdwr\namco.h" />
     <ClInclude Include="aae\sndhrdwr\okim6295_loader.h" />
@@ -257,7 +266,6 @@
     <ClInclude Include="system\audio\stb.h" />
     <ClInclude Include="system\audio\xaudio2_backend.h" />
     <ClInclude Include="system\graphics\colordefs.h" />
-    <ClInclude Include="system\graphics\debug_draw.h" />
     <ClInclude Include="system\graphics\sys_gl.h" />
     <ClInclude Include="system\graphics\shader_util.h" />
     <ClInclude Include="system\graphics\sys_texture.h" />
@@ -282,12 +290,12 @@
   <ItemGroup>
     <ClCompile Include="aae\aae_emulator.cpp" />
     <ClCompile Include="aae\aae_video\gl_fbo.cpp" />
-    <ClCompile Include="aae\aae_video\gl_prim_debug.cpp" />
     <ClCompile Include="aae\aae_video\gl_shader.cpp" />
     <ClCompile Include="aae\aae_video\gl_texturing.cpp" />
     <ClCompile Include="aae\aae_video\mame_layout.cpp" />
     <ClCompile Include="aae\aae_video\mame_vector.cpp" />
     <ClCompile Include="aae\aae_video\opengl_renderer.cpp" />
+    <ClCompile Include="aae\aae_video\vector_draw.cpp" />
     <ClCompile Include="aae\aae_video\vector_fonts.cpp" />
     <ClCompile Include="aae\acommon.cpp" />
     <ClCompile Include="aae\config.cpp" />
@@ -313,6 +321,8 @@
     <ClCompile Include="aae\drivers\cchasm.cpp" />
     <ClCompile Include="aae\drivers\centiped.cpp" />
     <ClCompile Include="aae\drivers\foodf.cpp" />
+    <ClCompile Include="aae\drivers\gaplus.cpp" />
+    <ClCompile Include="aae\drivers\dkong.cpp" />
     <ClCompile Include="aae\drivers\gyruss.cpp" />
     <ClCompile Include="aae\drivers\cinematronics_driver.cpp" />
     <ClCompile Include="aae\drivers\circus.cpp" />
@@ -335,6 +345,7 @@
     <ClCompile Include="aae\drivers\starwars.cpp" />
     <ClCompile Include="aae\drivers\superpac.cpp" />
     <ClCompile Include="aae\drivers\tempest.cpp" />
+    <ClCompile Include="aae\drivers\vertigo.cpp" />
     <ClCompile Include="aae\drivers\vicdual.cpp" />
     <ClCompile Include="aae\drivers\warlord.cpp" />
     <ClCompile Include="aae\drivers\xevious.cpp" />
@@ -346,9 +357,11 @@
     <ClCompile Include="aae\game_list.cpp" />
     <ClCompile Include="aae\gui\driver_gui.cpp" />
     <ClCompile Include="aae\inptport.cpp" />
+    <ClCompile Include="aae\machine\74148.cpp" />
     <ClCompile Include="aae\machine\earom.cpp" />
     <ClCompile Include="aae\machine\mathbox.cpp" />
     <ClCompile Include="aae\machine\pacplus_decode.cpp" />
+    <ClCompile Include="aae\machine\pit8253.cpp" />
     <ClCompile Include="aae\machine\SegaG80crypt.cpp" />
     <ClCompile Include="aae\machine\slapstic.cpp" />
     <ClCompile Include="aae\machine\starwars_machine.cpp" />
@@ -360,6 +373,7 @@
     <ClCompile Include="aae\sndhrdwr\ay8910.cpp" />
     <ClCompile Include="aae\sndhrdwr\cinematronics_sound.cpp" />
     <ClCompile Include="aae\sndhrdwr\dac.cpp" />
+    <ClCompile Include="aae\sndhrdwr\exidy440_sound.cpp" />
     <ClCompile Include="aae\sndhrdwr\galsnd_stream.cpp" />
     <ClCompile Include="aae\sndhrdwr\namco.cpp" />
     <ClCompile Include="aae\sndhrdwr\okim6295_loader.cpp" />
@@ -376,6 +390,7 @@
     <ClCompile Include="aae\vidhrdwr\emu_vector_draw.cpp" />
     <ClCompile Include="aae\vidhrdwr\fast_poly.cpp" />
     <ClCompile Include="aae\vidhrdwr\galaxian_vid.cpp" />
+    <ClCompile Include="aae\vidhrdwr\gaplus_video.cpp" />
     <ClCompile Include="aae\vidhrdwr\mappy_video.cpp" />
     <ClCompile Include="aae\vidhrdwr\old_mame_raster.cpp" />
     <ClCompile Include="aae\vidhrdwr\old_mame_vecsim_dvg.cpp" />
@@ -384,6 +399,7 @@
     </ClCompile>
     <ClCompile Include="aae\vidhrdwr\rallyx_vid.cpp" />
     <ClCompile Include="aae\vidhrdwr\SegaG80vid.cpp" />
+    <ClCompile Include="aae\vidhrdwr\vertigo_video.cpp" />
     <ClCompile Include="aae\vidhrdwr\xevious_video.cpp" />
     <ClCompile Include="system\3rdparty\glew.c" />
     <ClCompile Include="system\3rdparty\miniz.c" />

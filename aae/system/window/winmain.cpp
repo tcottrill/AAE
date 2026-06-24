@@ -20,7 +20,7 @@
 //
 // Notes:
 // - Uses CreateConfiguredWindow() and WindowSetup for centralized window creation
-// - Requires utf8conv.h, sys_log.h, gl_basics.h, debug_draw.h, rawinput.h
+// - Requires utf8conv.h, sys_log.h, gl_basics.h, rawinput.h
 // - Supports ALT+ENTER toggle to fullscreen
 // - Supports resize and aspect enforcement via WM_SIZING/WM_SIZE
 // - Saves valid client and window rects for FBO scaling and restoration
@@ -38,7 +38,6 @@
 #include "utf8conv.h"
 #include "rawinput.h"
 #include "sys_gl.h"
-#include "debug_draw.h"
 #include "framework.h"
 #include "aae_emulator.h"
 #include "resource.h"
@@ -1115,7 +1114,10 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance,
 		LOG_ERROR("No joysticks detected or initialization failed");
 	}
 
-	if (!InitOpenGLContext(false, false, false)) {
+	// useCoreProfile = true: request a forward-compatible OpenGL core context.
+	// The whole render path is now core-clean (no fixed-function matrix/state,
+	// no client arrays, core FBO calls, all #version 330 core shaders).
+	if (!InitOpenGLContext(false, false, true)) {
 		LOG_ERROR("Failed to initialize OpenGL");
 		return -1;
 	}

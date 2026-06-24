@@ -1,58 +1,66 @@
-// -----------------------------------------------------------------------------
-// vector_draw.h
-// -----------------------------------------------------------------------------
 #pragma once
+#ifndef VECTOR_DRAW_H
+#define VECTOR_DRAW_H
+
+#include "sys_gl.h"
+#include "colordefs.h"     // rgb_t
+#include "MathUtils.h"     // aae::math::vec2 / mat4
 #include <vector>
-#include <GL/glew.h>
-#include "colordefs.h"  // rgb_t, MAKE_RGBA etc.
-#include "MathUtils.h"
 
-using namespace aae::math;
-
-enum BlendMode {
-    BLEND_STANDARD, // Alpha blending (transparency)
-    BLEND_ADDITIVE  // CRT style (light accumulation)
+// Per-segment beam (butt-capped, coverage-AA rectangle).
+struct BeamLine {
+    aae::math::vec2 p0;
+    aae::math::vec2 p1;
+    float           half;   // half-width, logical units
+    rgb_t           color;  // packed RGBA (a = 0xff); coverage supplies edge alpha
 };
 
-struct VectorConfig {
-   
-    BlendMode blend_mode = BLEND_ADDITIVE; // Default to additive for vectors
-    GLuint fire_texture = 0;
-
-    // Global width multiplier (default 1.0)
-    float line_width_scale = 1.0f;
-
-    // --- SHOT TUNING ---
-    float fire_point_size = 3.5f;      // GEOMETRY SIZE (Smaller = 3.5, Standard = 4.0)
-
-    // Shader Uniforms
-    float shot_core_power = 6.0f;      // Higher = Sharper/Smaller hot center
-    float shot_bloom_power = 2.5f;     // Higher = Smaller Halo (was 2.0)
-    float shot_bloom_intensity = 0.3f; // Lower = Dimmer Halo (was 0.4)
-    float shot_overdrive = 3.0f;       // Brightness Multiplier (was 4.0)
+// Round join disc placed at an interior shared vertex (radius == beam half-width).
+struct BeamJoin {
+    aae::math::vec2 center;
+    float           half;
+    rgb_t           color;
 };
 
-struct VecLine {
-    vec2 p0;
-    vec2 p1;
-    float thickness;
-    rgb_t color;      // packed RGBA
+// Procedural shot/fire point (radial core + halo in the shader).
+struct BeamShot {
+    aae::math::vec2 pos;
+    float           size;
+    rgb_t           color;
 };
 
-struct VecPoint {
-    vec2 pos;
-    float size;
-    rgb_t color;
-};
+// ssaa = supersample factor of the bound render target (1 in Phase 1, 2 in Phase 6).
+void beam_init(int ssaa);
+void beam_shutdown();
+void beam_set_ssaa(int ssaa);          // sets the supersample factor (affects AA feather)
 
-void vector_draw_init(const VectorConfig& config);
-void vector_draw_shutdown();
+// Mirrors add_line / add_tex exactly. Join connectivity is inferred internally by
+// endpoint matching, so EVERY producer (vector_update, the DVG sim, cchasm) is
+// covered by routing through these from add_line()/add_tex().
+void beam_add_line(float sx, float sy, float ex, float ey, int intensity, rgb_t col);
+void beam_add_shot(float ex, float ey, int intensity, rgb_t col);
 
-// Core drawing functions
-void vector_add_line(vec2 p0, vec2 p1, float thickness, rgb_t rgba);
-void vector_add_point(vec2 pos, float size, rgb_t rgba);
-void vector_add_fire(vec2 pos, rgb_t rgba);
+void beam_clear();
+void beam_draw_all(const aae::math::mat4& proj);
 
-// Render everything
-void vector_draw_all(const mat4& projection);
-void vector_clear();
+// ---- Shared AA-line path (also used by the vector-font renderer) -----------
+// Draw a caller-owned batch of segments / caps with the beam's coverage-AA line
+// and round-disc shaders under an explicit projection. Resources are created
+// lazily, so these work even when beam_init() was never called (raster games and
+// the front-end GUI, where only the fonts need the line shader). 'additive'
+// selects blend: false = alpha-over (B/W text/menus), true = additive (color).
+// 'aaFeather' is the edge feather in the projection's logical units.
+void beam_draw_lines(const aae::math::mat4& proj, const BeamLine* lines, int count,
+                     float aaFeather, bool additive);
+void beam_draw_caps (const aae::math::mat4& proj, const BeamJoin* caps,  int count,
+                     float aaFeather, bool additive);
+
+// Build round end-caps / corner joins for a batch of segments via endpoint
+// coincidence: a vertex touched by a single segment is a true termination
+// (radius = half * endcapMul); two or more is a corner (half * cornerMul). This
+// is the same connectivity logic the beam uses internally, exposed so the fonts
+// get identical ties without duplicating it.
+void beam_build_caps(const BeamLine* lines, int count, float endcapMul, float cornerMul,
+                     std::vector<BeamJoin>& out);
+
+#endif // VECTOR_DRAW_H

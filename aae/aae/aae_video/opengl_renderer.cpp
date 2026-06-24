@@ -57,6 +57,7 @@
 #include "gl_texturing.h"
 #include "gl_shader.h"
 #include "emu_vector_draw.h"
+#include "vector_draw.h"
 #include "fast_poly.h"
 #include "os_basic.h"
 #include "MathUtils.h"
@@ -76,8 +77,14 @@ extern int AVG_BUSY;
 // size and aspect ratio. Allocated in init_gl(), freed on shutdown.
 Rect2* screen_rect = nullptr;
 
+// Projection mirrored from set_ortho*/set_ortho_raster for the core-profile quad shaders.
+aae::math::mat4 g_proj;
+
 // Raster polygon renderer. One instance per application lifetime.
 Fpoly* sc;
+
+// Vector shot mode (procedural vs textured) lives in config.shots_textured, loaded
+// from aae.ini and the Video menu. The modern beam is the only vector engine.
 
 // Scale factor applied when mapping raster pixels to polygon positions.
 //extern float vid_scale;
@@ -265,12 +272,12 @@ void Widescreen_calc()
 // ---------------------------------------------------------------------------
 void set_ortho(GLint width, GLint height)
 {
-	glMatrixMode(GL_PROJECTION);
-	glLoadIdentity();
+	// Core path: only the viewport and the g_proj projection (consumed via the
+	// uProj uniform by every draw) are needed. The fixed-function matrix stack is
+	// no longer read by anything (Rect2 + Layout_Render are core now), so it is
+	// not touched here -- which also keeps this valid under a core-profile context.
 	glViewport(0, 0, width, height);
-	glOrtho(0, width, 0, height, -1.0f, 1.0f);
-	glMatrixMode(GL_MODELVIEW);
-	glLoadIdentity();
+	g_proj = aae::math::ortho(0.0f, (float)width, 0.0f, (float)height);
 }
 
 // ---------------------------------------------------------------------------
@@ -282,12 +289,9 @@ void set_ortho(GLint width, GLint height)
 // ---------------------------------------------------------------------------
 void set_ortho_raster(GLint width, GLint height)
 {
-	glMatrixMode(GL_PROJECTION);
-	glLoadIdentity();
+	// Core path (see set_ortho): viewport + g_proj only. Y-DOWN ortho for raster.
 	glViewport(0, 0, width, height);
-	glOrtho(0, width, height, 0, -1.0f, 1.0f);
-	glMatrixMode(GL_MODELVIEW);
-	glLoadIdentity();
+	g_proj = aae::math::ortho(0.0f, (float)width, (float)height, 0.0f);
 }
 
 GLuint glcode_get_scanrez_tex()
@@ -340,7 +344,7 @@ static void shutdown_scanline_quad()
 int init_gl(void)
 {
 	static int init_one = 0;
-
+	check_gl_error_named("init_gl start");
 	if (!init_one)
 	{
 		// --- VSync control ---
@@ -368,12 +372,6 @@ int init_gl(void)
 
 		glEnable(GL_BLEND);
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-		glEnable(GL_LINE_SMOOTH);
-		glEnable(GL_POINT_SMOOTH);
-		glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST);
-
-		glLineWidth(config.linewidth);
-		glPointSize(config.pointsize);
 
 		// --- Screen rectangle (tracks window size and aspect ratio) ---
 		// --- Screen rectangle (tracks window size and aspect ratio) ---
@@ -392,6 +390,7 @@ int init_gl(void)
 		if (Machine->gamedrv->video_attributes & VIDEO_TYPE_VECTOR)
 		{
 			vector_start();
+			beam_init(1);          // ssaa = 1 (Phase 1); raised to 2 in Phase 6
 		}
 
 		// --- Shader compilation ---
@@ -404,9 +403,6 @@ int init_gl(void)
 		LOG_INFO("Building vector font...");
 		VF.Initialize(1024, 768);
 
-		// --- Tiled scanlines effect ---
-		//TiledEffect_Init();
-
 		// --- Raster polygon renderer ---
 		sc = new Fpoly();
 
@@ -415,7 +411,7 @@ int init_gl(void)
 
 		init_one++;
 	}
-
+	check_gl_error_named("init_gl");
 	return 1;
 }
 
@@ -512,27 +508,27 @@ void glcode_vector_hard_clear_fbo1()
 
 	GLint prevFbo = 0;
 	GLint prevVP[4] = { 0, 0, 0, 0 };
-	glGetIntegerv(GL_FRAMEBUFFER_BINDING_EXT, &prevFbo);
+	glGetIntegerv(GL_FRAMEBUFFER_BINDING, &prevFbo);
 	glGetIntegerv(GL_VIEWPORT, prevVP);
 
-	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo1);
+	glBindFramebuffer(GL_FRAMEBUFFER, fbo1);
 	glViewport(0, 0, 1024, 1024);
 
 	glDisable(GL_SCISSOR_TEST);
 	glDisable(GL_BLEND);
 	glClearColor(0, 0, 0, 0);
 
-	glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT);
+	glDrawBuffer(GL_COLOR_ATTACHMENT0);
 	glClear(GL_COLOR_BUFFER_BIT);
 
-	glDrawBuffer(GL_COLOR_ATTACHMENT1_EXT);
+	glDrawBuffer(GL_COLOR_ATTACHMENT1);
 	glClear(GL_COLOR_BUFFER_BIT);
 
-	glDrawBuffer(GL_COLOR_ATTACHMENT2_EXT);
+	glDrawBuffer(GL_COLOR_ATTACHMENT2);
 	glClear(GL_COLOR_BUFFER_BIT);
 
 	// Restore previous FBO and viewport.
-	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, (GLuint)prevFbo);
+	glBindFramebuffer(GL_FRAMEBUFFER, (GLuint)prevFbo);
 	glViewport(prevVP[0], prevVP[1], prevVP[2], prevVP[3]);
 }
 
@@ -544,8 +540,8 @@ void glcode_vector_hard_clear_fbo1()
 // ---------------------------------------------------------------------------
 void set_render_fbo4()
 {
-	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo4);
-	glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT);
+	glBindFramebuffer(GL_FRAMEBUFFER, fbo4);
+	glDrawBuffer(GL_COLOR_ATTACHMENT0);
 
 	set_ortho(1024, 1024);
 
@@ -553,11 +549,8 @@ void set_render_fbo4()
 	glClear(GL_COLOR_BUFFER_BIT);
 
 	glEnable(GL_BLEND);
-	glDisable(GL_LIGHTING);
 	glDisable(GL_DEPTH_TEST);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	glEnable(GL_LINE_SMOOTH);
-	glEnable(GL_POINT_SMOOTH);
 	glDisable(GL_DITHER);   // required for some older cards
 }
 
@@ -570,7 +563,7 @@ void end_render_fbo4()
 {
 	check_gl_error_named("end_render_fbo4 (enter)");
 
-	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	glDrawBuffer(GL_BACK);
 	glActiveTexture(GL_TEXTURE0);
 
@@ -590,8 +583,7 @@ void end_render_fbo4()
 	// screen_rect->Render() handles letterboxing / pillarboxing for the
 	// configured aspect ratio (1.33f = 4:3).
 	set_texture(&img4a, 1, 0, 0, 0);
-	glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-	screen_rect->Render();
+	screen_rect->Render(aae::math::value_ptr(g_proj));   // g_proj == the set_ortho above
 
 	check_gl_error_named("end_render_fbo4 (exit)");
 }
@@ -615,9 +607,8 @@ void copy_main_img_to_fbo2()
 	fbo_generate_mipmaps({ img1b });
 
 	GLuint fbo2_tex = 0;
-	glLoadIdentity();
-	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo2);
-	glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT);
+	glBindFramebuffer(GL_FRAMEBUFFER, fbo2);
+	glDrawBuffer(GL_COLOR_ATTACHMENT0);
 	set_ortho(512, 512);
 	glDisable(GL_BLEND);
 
@@ -643,14 +634,14 @@ void copy_main_img_to_fbo2()
 void copy_fbo2_to_fbo3()
 {
 	GLuint fbo3_tex = 0;
-	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo3);
+	glBindFramebuffer(GL_FRAMEBUFFER, fbo3);
 
 	// Clear both pingpong buffers before each frame.
-	glDrawBuffer(GL_COLOR_ATTACHMENT1_EXT);
+	glDrawBuffer(GL_COLOR_ATTACHMENT1);
 	glClearColor(0.0, 0.0, 0.0, 0.0);
 	glClear(GL_COLOR_BUFFER_BIT);
 
-	glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT);
+	glDrawBuffer(GL_COLOR_ATTACHMENT0);
 	set_ortho(256, 256);
 	glDisable(GL_BLEND);
 
@@ -714,10 +705,8 @@ void render_blur_image_fbo3()
 	set_uniform1f(fragBlur, "width", 256.0f);
 	set_uniform1f(fragBlur, "height", 256.0f);
 
-	glEnable(GL_TEXTURE_2D);
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE);  // additive blend accumulates glow
-	glColor4f(0.1f, 0.1f, 0.1f, 0.1f);
 
 	// Lambda to draw one offset quad. Converts float offsets to screen-space
 	// by adding globalOffset and sizing to height3 (the FBO3 height, 256).
@@ -734,12 +723,12 @@ void render_blur_image_fbo3()
 	for (int pass = 0; pass < 4; ++pass)
 	{
 		// A -> B: draw img3a into attachment 1 (img3b) with near offset.
-		glDrawBuffer(GL_COLOR_ATTACHMENT1_EXT);
+		glDrawBuffer(GL_COLOR_ATTACHMENT1);
 		set_texture(&img3a, 1, 0, 0, 0);
 		DrawQuadOffset(fshifta[i], fshifta[i + 1]);
 
 		// B -> A: draw img3b into attachment 0 (img3a) with far offset.
-		glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT);
+		glDrawBuffer(GL_COLOR_ATTACHMENT0);
 		set_texture(&img3b, 1, 0, 0, 0);
 		DrawQuadOffset(fshiftb[i], fshiftb[i + 1]);
 
@@ -754,16 +743,20 @@ void render_blur_image_fbo3()
 // render_ui_overlays()
 //
 // Draws the pause dim, PAUSED text, exit confirmation dialog, menu,
-// FPS counter, and debug overlays on top of the current backbuffer.
+// FPS counter, and debug overlays on top of the current game frame.
 //
 // Called by BOTH rendering paths:
-//   - Vector pipeline: from final_render() after FBO4 blit
-//   - Raster pipeline: from emulator_run() after RasterRender_Present()
+//   - Vector pipeline: from final_render() INTO fbo4, before the
+//     end_render_fbo4() screen_rect blit (so the overlay rotates with
+//     the frame).
+//   - Raster pipeline: from final_render_raster() onto the backbuffer.
+//     For a system-rotated game it is instead rendered into fbo4
+//     (fboSpace=true) so the same screen_rect blit rotates it to match.
 //
-// Sets up its own 1024x768 ortho projection on the backbuffer.
-// The caller must have already rendered the game frame before calling.
+// Projection: 1024x768 ortho normally, or the 1024x1024 FBO space when
+// fboSpace is set. The caller must have rendered the game frame first.
 // ====================================================================
-void render_ui_overlays(int winW, int winH)
+void render_ui_overlays(int winW, int winH, bool fboSpace)
 {
 	if (winW < 1 || winH < 1) return;
 
@@ -780,21 +773,24 @@ void render_ui_overlays(int winW, int winH)
 	}
 
 	glViewport(vpX, 0, vpW, winH);
-	glMatrixMode(GL_PROJECTION);
-	glLoadIdentity();
-	glOrtho(0, 1024, 0, 768, -1.0f, 1.0f);
-	glMatrixMode(GL_MODELVIEW);
-	glLoadIdentity();
+	g_proj = aae::math::ortho(0.0f, 1024.0f, 0.0f, 768.0f);
 
 	// Tell VF not to override our viewport when Begin() is called.
 	// VF's internal 1024x768 ortho projection still maps correctly
 	// because glViewport stretches the output to the full window.
 	VF.SetOverrideViewport(false);
 
-	if (Machine->drv->video_attributes & VIDEO_TYPE_VECTOR)
+	// Overlay logical height: matches the active ortho (1024 in the square-FBO
+	// space, 768 on the raster backbuffer). The full-screen dim spans this so it
+	// covers the whole frame, not just the bottom 768 of a 1024 space.
+	float uiH = 768.0f;
+	if (fboSpace || (Machine->drv->video_attributes & VIDEO_TYPE_VECTOR))
 	{
-		// Vector overlays render onto the 1024x1024 FBO - switch ortho to match.
+		// Vector overlays -- and rotated raster overlays composited into fbo4 --
+		// render onto the 1024x1024 FBO, so switch the ortho to match. screen_rect
+		// then rotates/letterboxes the blit to the window.
 		set_ortho(1024, 1024);
+		uiH = 1024.0f;
 	}
 	// else: keep the 1024x768 ortho already set above for raster window overlays.
 
@@ -803,11 +799,10 @@ void render_ui_overlays(int winW, int winH)
 	//------------------------------------------------------------------
 	if (paused || get_menu_status())
 	{
-		glDisable(GL_TEXTURE_2D);
 		glEnable(GL_BLEND);
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-		quad_from_center(512.0f, 384.0f, 1024.0f, 768.0f, 0, 0, 0, 127);
+		quad_from_center(512.0f, uiH * 0.5f, 1024.0f, uiH, 0, 0, 0, 127);
 
 		if (get_menu_status() == 0)
 		{
@@ -824,10 +819,9 @@ void render_ui_overlays(int winW, int winH)
 	{
 		if (!paused && !get_menu_status())
 		{
-			glDisable(GL_TEXTURE_2D);
 			glEnable(GL_BLEND);
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-			quad_from_center(512.0f, 384.0f, 1024.0f, 768.0f, 0, 0, 0, 216);
+			quad_from_center(512.0f, uiH * 0.5f, 1024.0f, uiH, 0, 0, 0, 216);
 		}
 
 		const int sel = get_exit_confirm_selection();
@@ -882,11 +876,9 @@ void render_ui_overlays(int winW, int winH)
 	video_loop();
 
 	// Restore GL state for the next frame's vector pipeline
-	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	glEnable(GL_TEXTURE_2D);
-	glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
 
 	// Restore VF to default behavior for the vector pipeline
 	VF.SetOverrideViewport(true);
@@ -909,8 +901,8 @@ void set_render()
 	// Set 1024x1024 ortho to match the FBO dimensions.
 	if (Machine->drv->video_attributes & VIDEO_TYPE_VECTOR)
 	{	// Bind FBO1 and direct output to attachment 0 (img1a).
-		glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo1);
-		glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT);
+		glBindFramebuffer(GL_FRAMEBUFFER, fbo1);
+		glDrawBuffer(GL_COLOR_ATTACHMENT0);
 		set_ortho(1024, 1024);
 		VF.SetOverrideViewport(false);
 	}
@@ -932,8 +924,8 @@ void set_render()
 		const int rw = static_cast<int>((float)vw * config.prescale);
 		const int rh = static_cast<int>((float)vh * config.prescale);
 
-		glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo_raster);
-		glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT);
+		glBindFramebuffer(GL_FRAMEBUFFER, fbo_raster);
+		glDrawBuffer(GL_COLOR_ATTACHMENT0);
 
 		// Y-down ortho: matches the raster bitmap layout (origin top-left).
 		// MUST match fbo_init_raster() dimensions exactly.
@@ -966,9 +958,12 @@ void render()
 	{
 		if (Machine->drv->video_attributes & VIDEO_TYPE_VECTOR)
 		{
-			vector_update();  // Test, add conditions or move fully to it.
-			draw_all();
-			vector_clear_list(); // Test - Move this out of here.
+			vector_update();
+			aae::math::mat4 proj = aae::math::ortho(0.0f, 1024.0f, 0.0f, 1024.0f);
+			beam_draw_all(proj);
+			if (config.shots_textured)
+				draw_textured_shots(proj);   // legacy textured shots over the modern beam
+			vector_clear_list();
 		}
 		else
 		{
@@ -1026,9 +1021,8 @@ void final_render(int left, int right, int bottom, int top)
 	//--------------------------------------------------------------------------
 	// LAYER 1: Copy img1a (current frame) into img1b.
 	//--------------------------------------------------------------------------
-	glEnable(GL_TEXTURE_2D);
-	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo1);
-	glDrawBuffer(GL_COLOR_ATTACHMENT1_EXT);
+	glBindFramebuffer(GL_FRAMEBUFFER, fbo1);
+	glDrawBuffer(GL_COLOR_ATTACHMENT1);
 	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -1047,20 +1041,21 @@ void final_render(int left, int right, int bottom, int top)
 	//--------------------------------------------------------------------------
 	if (config.vectrail && !emulator_is_gui_active()) //No vectrail for the gui
 	{
-		glDrawBuffer(GL_COLOR_ATTACHMENT2_EXT);
+		glDrawBuffer(GL_COLOR_ATTACHMENT2);
 		glDisable(GL_DITHER);
 		set_texture(&img1b, 1, 0, 0, 0);
 		glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_SRC_ALPHA);
 
+		float tr = 1.0f, tg = 1.0f, tb = 1.0f, ta = 1.0f;
 		switch (config.vectrail)
 		{
-		case 1:  glColor4f(1.0f, 1.0f, 1.0f, 0.825f); break;
-		case 2:  glColor4f(1.0f, 1.0f, 1.0f, 0.86f);  break;
-		case 3:  glColor4f(1.0f, 1.0f, 1.0f, 0.93f);  break;
-		default: glColor4f(0.95f, 0.95f, 0.95f, 1.0f); break;
+		case 1:  ta = 0.825f; break;
+		case 2:  ta = 0.86f;  break;
+		case 3:  ta = 0.93f;  break;
+		default: tr = tg = tb = 0.95f; ta = 1.0f; break;
 		}
 
-		FS_Rect(0, 1024);
+		FS_Rect(0, 1024, tr, tg, tb, ta);
 		fbo_generate_mipmaps({ img1b });
 	}
 
@@ -1078,13 +1073,12 @@ void final_render(int left, int right, int bottom, int top)
 	//--------------------------------------------------------------------------
 	// LAYER 5A: Build the CRT/game image into img4b (FBO4 attachment 1).
 	//--------------------------------------------------------------------------
-	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo4);
-	glDrawBuffer(GL_COLOR_ATTACHMENT1_EXT);
+	glBindFramebuffer(GL_FRAMEBUFFER, fbo4);
+	glDrawBuffer(GL_COLOR_ATTACHMENT1);
 	set_ortho(1024, 1024);
 
 	glDisable(GL_SCISSOR_TEST);
 	glDisable(GL_DEPTH_TEST);
-	glDisable(GL_LIGHTING);
 
 	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -1114,15 +1108,14 @@ void final_render(int left, int right, int bottom, int top)
 	glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, img3a); set_texture(&img3b, 1, 0, 0, 0);
 	glActiveTexture(GL_TEXTURE3); set_texture(&img1c, 1, 0, 0, 0);
 
-	glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
 	//LOG_DEBUG("img4a into render: left=%d right=%d top=%d bottom=%d", left, right, top, bottom);
 	drawTexturedQuad((float)left, (float)right, (float)bottom, (float)top, true);
 
 	unbind_shader();
 
-	glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, 0); glDisable(GL_TEXTURE_2D);
-	glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, 0); glDisable(GL_TEXTURE_2D);
-	glActiveTexture(GL_TEXTURE3); glBindTexture(GL_TEXTURE_2D, 0); glDisable(GL_TEXTURE_2D);
+	glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, 0);
+	glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, 0);
+	glActiveTexture(GL_TEXTURE3); glBindTexture(GL_TEXTURE_2D, 0);
 	glActiveTexture(GL_TEXTURE0);
 
 	//--------------------------------------------------------------------------
@@ -1132,7 +1125,6 @@ void final_render(int left, int right, int bottom, int top)
 	{
 		//float overlay_height =  (Machine->drv->rotation & ORIENTATION_SWAP_XY) ? (float)bottom : ((float)bottom * 0.75f);
 
-		glEnable(GL_TEXTURE_2D);
 		set_texture(&art_tex[1], 1, 0, 0, 0);
 
 		glEnable(GL_BLEND);
@@ -1140,8 +1132,6 @@ void final_render(int left, int right, int bottom, int top)
 			glBlendFunc(GL_DST_COLOR, GL_ZERO);
 		else
 			glBlendFunc(GL_DST_COLOR, GL_SRC_COLOR);
-
-		glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
 
 		drawTexturedQuad((float)left, (float)right, (float)top, (float) bottom, false);
 	}
@@ -1151,9 +1141,9 @@ void final_render(int left, int right, int bottom, int top)
 	//--------------------------------------------------------------------------
 	set_render_fbo4();
 
-	auto DrawCabinetScaledLayer = [&](GLuint tex, bool is_pre_squished) {
+	auto DrawCabinetScaledLayer = [&](GLuint tex, bool is_pre_squished,
+		float rT = 1.0f, float gT = 1.0f, float bT = 1.0f, float aT = 1.0f, float alphaTest = 0.0f) {
 		if (!tex) return;
-		glEnable(GL_TEXTURE_2D);
 		set_texture(&tex, 1, 0, 0, 0);
 
 		float base_h = 1024; //is_pre_squished ? 1024.0f : (1024.0f * 0.75f);
@@ -1163,28 +1153,25 @@ void final_render(int left, int right, int bottom, int top)
 			float y1 = (float)bezely;
 			float x2 = 1024.0f * bezelzoom + bezelx;
 			float y2 = base_h * bezelzoom + bezely;
-			drawTexturedQuad(x1, x2, y1, y2, false);
+			drawTexturedQuad(x1, x2, y1, y2, false, rT, gT, bT, aT, alphaTest);
 		}
 		else {
-			drawTexturedQuad(0.0f, 1024.0f, 0.0f, base_h, false);
+			drawTexturedQuad(0.0f, 1024.0f, 0.0f, base_h, false, rT, gT, bT, aT, alphaTest);
 		}
 		};
 
 	if (config.artwork && art_loaded[0]) {
 		glEnable(GL_BLEND);
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-		glColor4f(0.5f, 0.5f, 0.5f, 1.0f);
-		DrawCabinetScaledLayer(art_tex[0], false);
+		DrawCabinetScaledLayer(art_tex[0], false, 0.5f, 0.5f, 0.5f, 1.0f);
 	}
 
 	glDisable(GL_DITHER);
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_ONE, GL_ONE);
-	glEnable(GL_TEXTURE_2D);
 	set_texture(&img4b, 1, 0, 0, 0);
 
 	// Base draw of the CRT image
-	glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
 	FS_Rect(0, 1024);
 
 	// --- TWEAK: CRT Brightness Boost over Artwork ---
@@ -1197,21 +1184,18 @@ void final_render(int left, int right, int bottom, int top)
 		// Around 0.4f - 0.6f usually gives vectors enough punch against dark artwork.
 		// TODO: Make this configurable per game, this sucks with certain artwork.
 		float crt_boost = (config.artwork && art_loaded[0]) ? 0.2f : 0.25f;
-		glColor4f(crt_boost, crt_boost, crt_boost, 1.0f);
-		FS_Rect(0, 1024);
+		FS_Rect(0, 1024, crt_boost, crt_boost, crt_boost, 1.0f);
 	}
 
 	// VECTOR_USES_OVERLAY2 - visible overlay art on top of the CRT only.
 	if (config.overlay && art_loaded[1] && uses_overlay2)
 	{
-		glEnable(GL_TEXTURE_2D);
 		set_texture(&art_tex[1], 1, 0, 0, 0);
 
 		glEnable(GL_BLEND);
 		glBlendFunc(GL_ONE_MINUS_SRC_ALPHA, GL_SRC_COLOR);
-		glColor4f(1.0f, 1.0f, 1.0f, 0.5f);
 
-		drawTexturedQuad((float)left, (float)right, (float)top, (float)bottom, false);
+		drawTexturedQuad((float)left, (float)right, (float)top, (float)bottom, false, 1.0f, 1.0f, 1.0f, 0.5f);
 	}
 
 	//--------------------------------------------------------------------------
@@ -1219,22 +1203,18 @@ void final_render(int left, int right, int bottom, int top)
 	//--------------------------------------------------------------------------
 	if (config.bezel && art_loaded[3])
 	{
-		glEnable(GL_ALPHA_TEST);
 		glDisable(GL_BLEND);
-		glAlphaFunc(GL_GREATER, 0.2f);
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-		DrawCabinetScaledLayer(art_tex[3], false);
+		// Hard alpha cutoff via shader discard (replaces fixed-function GL_ALPHA_TEST).
+		DrawCabinetScaledLayer(art_tex[3], false, 1.0f, 1.0f, 1.0f, 1.0f, 0.2f);
 
 		glDisable(GL_DEPTH_TEST);
-		glDisable(GL_ALPHA_TEST);
 	}
 
 	render_ui_overlays(1024, 768);
 
 	end_render_fbo4();
-
-	glDisable(GL_TEXTURE_2D);
 
 	if (config.debug_profile_code)
 	{
@@ -1255,8 +1235,8 @@ void render_scanlines()
 	int scan_y = 0;
 	get_texture_size(g_scanrezTex, &scan_x, &scan_y);
 
-	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo_raster);
-	glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT);
+	glBindFramebuffer(GL_FRAMEBUFFER, fbo_raster);
+	glDrawBuffer(GL_COLOR_ATTACHMENT0);
 
 	glEnable(GL_BLEND);
 
@@ -1346,14 +1326,13 @@ void final_render_raster()
 	}
 
 	// 1. DISENGAGE FBO: Essential to "close" img5a so the GPU can read it.
-	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	glDrawBuffer(GL_BACK);
 
 	// 2. VIEWPORT RESCUE: Handle the case where rendering reset might have failed
 	int vW = (ws.clientWidth > 0) ? ws.clientWidth : 1024;
 	int vH = (ws.clientHeight > 0) ? ws.clientHeight : 768;
 	glViewport(0, 0, vW, vH);
-	glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
 
 	// 4. PROJECTION: Apply ortho Y-DOWN
 	set_ortho_raster(vW, vH);
@@ -1375,7 +1354,7 @@ void final_render_raster()
 	//   BW games:    pure multiply   (screen * overlay)
 	//   Color games: 2x multiply     (screen * overlay * 2, clamped)
 	// -----------------------------------------------------------------------
-	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	glDrawBuffer(GL_BACK);
 	glViewport(0, 0, ws.clientWidth, ws.clientHeight);
 	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
@@ -1388,18 +1367,38 @@ void final_render_raster()
 	if (glBindVertexArray) glBindVertexArray(0);
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
 	glActiveTexture(GL_TEXTURE1);
-	glDisable(GL_TEXTURE_2D);
 	glBindTexture(GL_TEXTURE_2D, 0);
 	glActiveTexture(GL_TEXTURE0);
-	glEnable(GL_TEXTURE_2D);
 	glBindTexture(GL_TEXTURE_2D, 0);
 	glDisable(GL_BLEND);
 
-	//We need to check aspect here, if it's too wide, correct it.
-	render_ui_overlays(ws.clientWidth, ws.clientHeight);
+	// UI overlays. For a system-rotated raster game the menu must rotate to match
+	// the game (Layout_Render already rotated the game image). The vector path gets
+	// this for free -- its overlay lives in fbo4 and screen_rect rotates the blit --
+	// so when rotated we route the raster overlay through the SAME fbo4 + screen_rect
+	// blit. Non-rotated raster keeps the crisp, full-resolution direct draw.
+	if (orientation_to_rect2_rotation(config.system_rotation) != 0)
+	{
+		set_render_fbo4();                       // bind fbo4 (1024x1024), clear transparent
+		render_ui_overlays(1024, 768, true);     // draw overlay in fbo4 space (like vector)
+
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		glDrawBuffer(GL_BACK);
+		set_ortho(ws.clientWidth, ws.clientHeight);
+		glEnable(GL_BLEND);
+		// Premultiplied-over: the overlay was composited into fbo4 with premultiplied
+		// alpha (black dim => rgb already premultiplied), so the dim and AA text edges
+		// composite over the game without being darkened.
+		glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+		set_texture(&img4a, 1, 0, 0, 0);
+		screen_rect->Render(aae::math::value_ptr(g_proj));   // rotated + letterboxed over the game
+	}
+	else
+	{
+		render_ui_overlays(ws.clientWidth, ws.clientHeight);
+	}
 
 	glDisable(GL_BLEND);
-	glDisable(GL_TEXTURE_2D);
 
 	check_gl_error_named("final_render_raster (exit)");
 

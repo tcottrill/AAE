@@ -14,10 +14,11 @@
 // Shader program handles
 extern GLuint fragBlur;
 extern GLuint fragMulti;
-extern GLuint fragBasicTex;   
-extern GLuint fragBasicColor; 
+extern GLuint fragBasicTex;
+extern GLuint fragBasicColor;
 extern GLuint fragScanlineMultiply;
 extern GLuint fragStarPoint;
+extern GLuint fragTexColor;   // textured + per-vertex color (legacy textured shots)
 
 int init_shader();
 void bind_shader(GLuint program);

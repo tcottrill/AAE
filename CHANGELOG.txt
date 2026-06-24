@@ -343,6 +343,37 @@ Added a gyruss driver to test with, and updated the DAC core to work properly wi
 Added a food fight driver to help exercise the 68000 core, but that is a truly horrible "game" if you can even call it that. 
  
 
+6/3/26 to 6/23/26
+
+Wasted way too much time decrypting the Blaze Asteroids/Deluxe/Lunar Lander Multigame. I decrypted the roms, but it appears Blaze used some variation of the slapstic style code to encrypt all the addressing. Nice! After many permutations, I gave up on it. Hopefully they will eventually release the decrypted source in the future so it can be emulated. 
+Completely disassembled Lunar Lander, posted the sources on my github. Eventually I would like to modify the roms to show the current difficulty onscreen. 
+Clean room (mostly, kinda sorta) wrote a new, full pokey chip emulation for AAE. It uses the known good polynomials from MAME and the sound generation from Ron Frys original code. Everything else is new and written from the documentation and datasheets and verified with my timer code. It properly emulates all the Pokey registers now. Verified Tempest multiple ways with a new test rig.
+Corrected some timing with the 68000 cpu code
+Corrected a cycle counting bug and some interrupt handling with the 6809 CPU code. This fixed my Gaplus/Galaga 3 driver, now added. 
+Corrected a Z80 halt bug with multi-cpu implementations. This one was only hit with Cosmic Chasm, still trying to get that one working right.
+With a lot of help from the MAME code, I added a working emulation of Top Gunner from Exidy. This should be the last vector game made added to AAE. 
+Added Tomcat to the starwars driver, just for completeness. 
+Added a Donkey Kong driver because, why not?
+Fixed the Quantum driver to correctly read allpot now that the pokey is fully emulated. 
+
+Biggest Change!::::
+Removed all legacy rendering of GL_LINES and GL_POINTS. Replaced it with revision 7 of my vector line/point/textured shot rendering shader code. At 1080p it looks superior to the old code and is much more tunable for each game. Better 4k rendering with be next, as well as more knobs to turn to dial in the correct rendering for each game. 
+I need to better visually emulate the lower resolution color games like Space Duel and Gravitar. Someday?
+
+Removed all deprecated OpenGL legacy code, moved all existing rendering to OpenGL 4.x code only, core profile. This sets me up for the next phase, integrating my existing and well tested Vulkan offscreen supporting rendering code. Adding this and SRGB texturing (already written) will enable me to setup HDR support, and be able to (hopefully) make the vectors pop a little bit closer to the real thing. 
+
+Cleaned up and renamed some menu items to closer match the new vector code. 
+Added a centralized NVRAM handler to the fileio code, moved all the NVRAM supporting games to use it. 
+
+6/24/26 
+Corrected Xevious and Mappy driver rotation issues. 
+Added correct artwork rotation to the mame_layout code. All raster games correctly rotate and show the bezel/overlay graphics. 
+Fixed aspect ratio correction on raster games. Raster games now respect any forced aspect ratio setting, windowed or fullscreen
+Finally fixed the Debug build to build correctly. 
+
+
+
+
 
 
 

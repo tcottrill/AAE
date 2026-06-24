@@ -99,6 +99,7 @@ enum
 	CPU_68000,
 	CPU_CCPU,
 	CPU_8039,
+	CPU_8035,
 	CPU_COUNT
 };
 
@@ -137,6 +138,7 @@ void init_z80(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct
 void init8080(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum);
 void init8085(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum);
 void init8039(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum);
+void init8035(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum);
 
 // Point a CPU's opcode fetches at a decrypted buffer (MAME memory_set_opcode_base).
 void memory_set_opcode_base(int cpunum, unsigned char* base);

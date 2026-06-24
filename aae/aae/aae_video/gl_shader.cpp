@@ -4,10 +4,11 @@
 
 GLuint fragBlur = 0;
 GLuint fragMulti = 0;
-GLuint fragBasicTex = 0;   
-GLuint fragBasicColor = 0; 
+GLuint fragBasicTex = 0;
+GLuint fragBasicColor = 0;
 GLuint fragScanlineMultiply = 0;
 GLuint fragStarPoint = 0;
+GLuint fragTexColor = 0;
 
 // Write errors
 static void write_shader_error(GLuint obj, const char* label, bool isProgram)
@@ -119,5 +120,8 @@ int init_shader()
 
     //Gui Stars Shader
     fragStarPoint = create_shader_program(starPointVert, starPointFrag);
+
+    // Textured + per-vertex color (legacy textured shots)
+    fragTexColor = create_shader_program(texColorVert, texColorFrag);
     return 1;
 }

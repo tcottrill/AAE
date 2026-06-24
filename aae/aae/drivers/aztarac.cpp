@@ -105,25 +105,6 @@ READ16_HANDLER(nvram_r)
 	return ((int16_t*)generic_nvram)[address] | 0xfff0;
 }
 
-void aztarac_nvram_handler(void* file, int read_or_write)
-{
-	if (read_or_write)
-	{
-		osd_fwrite(file, generic_nvram, 0x200);
-	}
-	else
-	{
-		if (file)
-		{
-			osd_fread(file, generic_nvram, 0x200);
-		}
-		else
-		{
-			memset(generic_nvram, 0xff, 0x200);
-		}
-	}
-}
-
 /*************************************
  *
  *	Input ports
@@ -344,6 +325,7 @@ int init_aztarac()
 	memset(aztarac_main_ram, 0x00, 0x1fff);
 	memset(aztarac_program_rom, 0x00, 0x00C000);
 	memset(generic_nvram, 0xff, 0x200);
+	nvram_set_region(generic_nvram, 0x200, 0xff);
 
 	memcpy(aztarac_program_rom, Machine->memory_region[CPU0], 0x00C000);
 	byteswap(aztarac_program_rom, 0x00C000);
@@ -467,7 +449,7 @@ AAE_DRIVER_SCREEN(1024, 768, 0, 1024 - 1, 0, 768 - 1)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x0, 0x2000)
-AAE_DRIVER_NVRAM(aztarac_nvram_handler)
+AAE_DRIVER_NVRAM(generic_nvram_handler)
 AAE_DRIVER_LAYOUT_NONE()
 AAE_DRIVER_END()
 

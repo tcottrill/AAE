@@ -3,23 +3,25 @@
 // Old Style Blur Shader
 // VS
 const char* vertText = R"glsl(
-#version 330 compatibility
+#version 330 core
+
+layout(location = 0) in vec2 aPos;
+layout(location = 1) in vec2 aUV;
+
+uniform mat4 uProj;
 
 out vec2 TexCoord;
 
 void main()
 {
-    // Pass through the texture coordinate
-    TexCoord = gl_MultiTexCoord0.xy;
-
-    // Use ftransform() for compatibility with fixed-function pipeline
-    gl_Position = ftransform();
+    TexCoord = aUV;
+    gl_Position = uProj * vec4(aPos, 0.0, 1.0);
 }
 )glsl";
 
 // FS
 const char* fragText = R"glsl(
-#version 330 compatibility
+#version 330 core
 
 uniform sampler2D colorMap;
 uniform float width;
@@ -60,25 +62,25 @@ void main()
 // Multitexturing Combining Shaders
 // VS
 const char* texvertText = R"glsl(
-#version 330 compatibility
+#version 330 core
+
+layout(location = 0) in vec2 aPos;
+layout(location = 1) in vec2 aUV;
+
+uniform mat4 uProj;
 
 out vec2 TexCoord0;
-out vec2 TexCoord1;
 
 void main(void)
 {
-    // Pass texture coordinates for multiple units
-    TexCoord0 = gl_MultiTexCoord0.xy;
-    TexCoord1 = gl_MultiTexCoord1.xy;
-
-    // Use fixed-function transform
-    gl_Position = gl_ModelViewProjectionMatrix * gl_Vertex;
+    TexCoord0 = aUV;
+    gl_Position = uProj * vec4(aPos, 0.0, 1.0);
 }
 )glsl";
 
 // FS
 const char* texfragText = R"glsl(
-#version 330 compatibility
+#version 330 core
 
 uniform int usefb;
 uniform int useglow;
@@ -114,31 +116,37 @@ void main(void)
 // Basic Texture Shader (Replaces fixed-function texturing)
 // ---------------------------------------------------------
 const char* basicTexVert = R"glsl(
-#version 330 compatibility
+#version 330 core
+
+layout(location = 0) in vec2 aPos;
+layout(location = 1) in vec2 aUV;
+
+uniform mat4 uProj;
 
 out vec2 TexCoord;
-out vec4 VertColor;
 
 void main()
 {
-    TexCoord = gl_MultiTexCoord0.xy;
-    VertColor = gl_Color;
-    gl_Position = gl_ModelViewProjectionMatrix * gl_Vertex;
+    TexCoord = aUV;
+    gl_Position = uProj * vec4(aPos, 0.0, 1.0);
 }
 )glsl";
 
 const char* basicTexFrag = R"glsl(
-#version 330 compatibility
+#version 330 core
 
 uniform sampler2D u_texture;
+uniform vec4 uColor;
+uniform float uAlphaTest;   // 0 = no test; else discard fragments below this alpha
 
 in vec2 TexCoord;
-in vec4 VertColor;
 out vec4 FragColor;
 
 void main()
 {
-    FragColor = texture(u_texture, TexCoord) * VertColor;
+    vec4 c = texture(u_texture, TexCoord) * uColor;
+    if (c.a < uAlphaTest) discard;
+    FragColor = c;
 }
 )glsl";
 
@@ -146,19 +154,24 @@ void main()
 // Basic Color Shader (Replaces fixed-function colored quads)
 // ---------------------------------------------------------
 const char* basicColorVert = R"glsl(
-#version 330 compatibility
+#version 330 core
+
+layout(location = 0) in vec2 aPos;
+layout(location = 1) in vec4 aColor;
+
+uniform mat4 uProj;
 
 out vec4 VertColor;
 
 void main()
 {
-    VertColor = gl_Color;
-    gl_Position = gl_ModelViewProjectionMatrix * gl_Vertex;
+    VertColor = aColor;
+    gl_Position = uProj * vec4(aPos, 0.0, 1.0);
 }
 )glsl";
 
 const char* basicColorFrag = R"glsl(
-#version 330 compatibility
+#version 330 core
 
 in vec4 VertColor;
 out vec4 FragColor;
@@ -178,7 +191,7 @@ void main()
 // Replaces the fixed-function glBegin/glEnd scanline overlay.
 // ---------------------------------------------------------
 const char* scanlineMultiplyVert = R"glsl(
-#version 330 compatibility
+#version 330 core
 
 layout(location = 0) in vec2 inPos;
 layout(location = 1) in vec2 inTex;
@@ -195,7 +208,7 @@ void main()
 )glsl";
 
 const char* scanlineMultiplyFrag = R"glsl(
-#version 330 compatibility
+#version 330 core
 
 uniform sampler2D u_scanTex;
 
@@ -213,22 +226,24 @@ void main()
 // Star Point Shader (VBO/VAO point rendering for GUI stars)
 // ---------------------------------------------------------
 const char* starPointVert = R"glsl(
-#version 330 compatibility
+#version 330 core
 
 layout(location = 0) in vec2 aPos;
 layout(location = 1) in vec4 aColor;
+
+uniform mat4 uProj;
 
 out vec4 VertColor;
 
 void main()
 {
     VertColor = aColor;
-    gl_Position = gl_ModelViewProjectionMatrix * vec4(aPos, 0.0, 1.0);
+    gl_Position = uProj * vec4(aPos, 0.0, 1.0);
 }
 )glsl";
 
 const char* starPointFrag = R"glsl(
-#version 330 compatibility
+#version 330 core
 
 in vec4 VertColor;
 out vec4 FragColor;
@@ -236,6 +251,55 @@ out vec4 FragColor;
 void main()
 {
     FragColor = VertColor;
+}
+)glsl";
+
+
+// ---------------------------------------------------------
+// Textured + per-vertex-color shader
+// Replaces the fixed-function GL_MODULATE client-array path used by the legacy
+// textured shots (draw_textured_shots): FragColor = texture(uv) * vertexColor.
+// ---------------------------------------------------------
+const char* texColorVert = R"glsl(
+#version 330 core
+
+layout(location = 0) in vec2 aPos;
+layout(location = 1) in vec2 aUV;
+layout(location = 2) in vec4 aColor;
+
+uniform mat4 uProj;
+
+out vec2 TexCoord;
+out vec4 VertColor;
+
+void main()
+{
+    TexCoord  = aUV;
+    VertColor = aColor;
+    gl_Position = uProj * vec4(aPos, 0.0, 1.0);
+}
+)glsl";
+
+const char* texColorFrag = R"glsl(
+#version 330 core
+
+uniform sampler2D u_texture;
+uniform float uFadeInner;   // radius (0=center .. 1=edge) of the full-bright core
+uniform float uFadeOuter;   // radius where the edge fade reaches zero
+
+in vec2 TexCoord;
+in vec4 VertColor;
+out vec4 FragColor;
+
+void main()
+{
+    vec4 c = texture(u_texture, TexCoord) * VertColor;
+    // Radial edge fade: full brightness inside uFadeInner, ramping to 0 by
+    // uFadeOuter so the square texture/quad boundary disappears on the additive
+    // halo. The bright center is untouched (fade = 1 there).
+    float d = length(TexCoord - vec2(0.5)) * 2.0;   // 0 center, 1 edge, ~1.41 corner
+    float fade = 1.0 - smoothstep(uFadeInner, uFadeOuter, d);
+    FragColor = vec4(c.rgb * fade, c.a);
 }
 )glsl";
 

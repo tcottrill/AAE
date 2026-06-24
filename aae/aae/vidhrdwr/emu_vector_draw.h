@@ -19,6 +19,7 @@
 #include "colordefs.h"
 
 #include "sys_gl.h"
+#include "MathUtils.h"   // aae::math::mat4 for draw_textured_shots projection
 
 typedef struct colorsarray { int r, g, b; } colors;
 extern colors vec_colors[256];
@@ -48,7 +49,7 @@ public:
 
 void add_tex(float ex, float ey, int intensity, rgb_t col);
 void add_line(float sx, float sy, float ex, float ey, int intensity, rgb_t col);
-void draw_all();
+void draw_textured_shots(const aae::math::mat4& proj);
 void set_texture_id(GLuint* id);
 void set_blendmode(GLenum sfactor, GLenum dfactor);
 void cache_clear();

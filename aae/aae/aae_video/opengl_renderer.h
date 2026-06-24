@@ -13,6 +13,12 @@ extern int game_rect_top;
 // Custom flag(s) for Warlords, what a pain in the butt. I need to find a better way
 extern int g_scanline_override;
 
+// Current projection, mirrored from set_ortho*/set_ortho_raster so the core-profile
+// quad shaders can read it as a uniform (replaces the fixed-function GL_PROJECTION
+// matrix). Forward-declared to avoid pulling MathUtils into every includer.
+namespace aae { namespace math { struct mat4; } }
+extern aae::math::mat4 g_proj;
+
 void set_ortho(GLint width, GLint height);
 // Y-down ortho for the raster rendering path (origin top-left, Y increases downward).
 void set_ortho_raster(GLint width, GLint height);
@@ -26,7 +32,10 @@ void end_render_fbo4();
 // Draw pause/menu/exit confirm overlays on top of the current backbuffer.
 // Called by both vector and raster rendering paths.
 // winW/winH are the current window client dimensions.
-void render_ui_overlays(int winW, int winH);
+// fboSpace: force the 1024x1024 FBO coordinate space (set_ortho(1024,1024))
+// regardless of game type. Used by the raster path when compositing the overlay
+// into fbo4 for a system-rotated game, so screen_rect can rotate the blit.
+void render_ui_overlays(int winW, int winH, bool fboSpace = false);
 void glcode_vector_hard_clear_fbo1();
 int init_gl(void);
 void end_gl();

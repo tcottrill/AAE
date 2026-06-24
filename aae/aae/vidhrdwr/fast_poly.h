@@ -32,6 +32,7 @@ For more information, please refer to <http://unlicense.org/>
 
 #include <vector>
 #include <cstdint>
+#include "sys_gl.h"
 #include "aae_mame_driver.h"
 #include "colordefs.h"
 #include "MathUtils.h"
@@ -62,5 +63,7 @@ private:
 	std::vector<_fpdata> vertices;
 	uint32_t color = RGB_WHITE;
 	int angle = 0;
+	GLuint vao = 0;
+	GLuint vbo = 0;
 };
 #endif // __FPOLY__

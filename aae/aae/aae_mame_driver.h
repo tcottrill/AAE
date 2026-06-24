@@ -17,6 +17,7 @@
 #define GLOBALS_H
 
 #include "framework.h"
+#include <cstring>   // strncmp, used by driver_rom_archive()
 
 
 #include "sys_log.h"
@@ -290,6 +291,7 @@ struct AAEDriver
 	const char* name;
 	const char* desc;
 	const struct RomModule* rom;
+	const char* rom_name;       // stringized AAE_DRIVER_ROM arg, e.g. "rom_tomcatsw"; the zip name derives from this, not from `name`
 
 	int (*init_game)();
 	//void (*pre_run) (); //Things to set before each CPU run.
@@ -340,6 +342,19 @@ struct AAEDriver
 	const char* layoutFile;     // path to .lay XML file, e.g. "artwork\\invaders\\default.lay"
 	const char* defaultView;    // view name to activate, e.g. "Upright_Artwork"
 };
+
+// Resolves the ROM archive (zip) base name for a driver. AAE_DRIVER_ROM stores
+// the rom set's identifier (e.g. "rom_tomcatsw"); the on-disk zip is named after
+// the set ("tomcatsw.zip"), so we skip the leading "rom_". For normally named
+// drivers this equals the driver name; for "tomcat" it correctly yields
+// "tomcatsw". Used by both the ROM loader and the -verifyroms path.
+inline const char* driver_rom_archive(const AAEDriver* drv)
+{
+	if (!drv) return nullptr;
+	const char* n = drv->rom_name;
+	if (n && strncmp(n, "rom_", 4) == 0) return n + 4;
+	return n ? n : drv->name;
+}
 
 struct RunningMachine
 {

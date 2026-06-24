@@ -698,7 +698,11 @@ unsigned cpu_z80::mz80step()
 		cyc += exec_opcode(bOpcode);
 	}
 
-	if (m_irq_line && !m_fHalt)
+	// A pending interrupt must be allowed to dispatch even while halted: taking
+	// the interrupt is what wakes the CPU from HALT (mz80int clears m_fHalt and
+	// only dispatches when IFF1 is set). Gating this on !m_fHalt deadlocks any
+	// EI;HALT sound loop -- the halt would never be cleared.
+	if (m_irq_line)
 	{
 		unsigned before = cCycles;
 		mz80int(irq_vector);                 // adds to cCycles internally

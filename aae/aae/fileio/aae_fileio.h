@@ -52,6 +52,13 @@ int save_file_char(const char* filename, const char* buf, int size);
 int load_hi_aae(int start, int size, int image);
 int save_hi_aae(int start, int size, int image);
 
+// Generic NVRAM persistence (MAME generic_0fill equivalent). A driver points
+// nvram_set_region() at its battery-backed RAM region in its init(), then uses
+// AAE_DRIVER_NVRAM(generic_nvram_handler). The handler saves the region on exit,
+// reloads it on start, and 0-fills it on first boot (no file yet).
+void nvram_set_region(void* ptr, int size, int fill = 0x00);
+void generic_nvram_handler(void* file, int read_or_write);
+
 // Verification Logic
 int verify_rom(const char* archname, const struct RomModule* p, int romnum);
 int verify_sample(const char** p, int num);

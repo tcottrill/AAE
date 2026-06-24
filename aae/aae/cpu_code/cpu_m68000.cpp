@@ -133,15 +133,20 @@ void cpu_m68000::take_exception(int vector) {
 }
 int cpu_m68000::exec(int cycles) {
 	cycles_left = cycles;
+	m_slice_cycles = cycles;            // baseline for cycles_run_this_slice()
 	do {
 		if (irq_pending) { check_interrupts(); if (cycles_left <= 0) break; }
-		if (stopped || halted) { odometer += cycles_left; cycles_left = 0; timer_update(cycles, m_cpu_num); return cycles; }
+		if (stopped || halted) { odometer += cycles_left; cycles_left = 0; m_slice_cycles = 0; timer_update(cycles, m_cpu_num); return cycles; }
 		ppc = pc;
 		ir = (uint16_t)fetch16();
 		s_optable[ir](this);
 	} while (cycles_left > 0);
 	int ran = cycles - cycles_left;
 	odometer += ran;
+	// Collapse the intra-slice delta to 0 *before* timer_update so any timer
+	// callback it fires (e.g. the PIT OUT pin -> IRQ) sees a clock that already
+	// absorbed this slice rather than counting 'ran' a second time.
+	m_slice_cycles = cycles_left;
 	// Drive the AAE timer subsystem from inside the core (like cpu_z80 / cpu_6502
 	// / cpu_m6809). The scheduler must NOT also call timer_update for the 68000,
 	// or timers advance twice as fast.
@@ -185,6 +190,7 @@ void cpu_m68000::check_interrupts() {
 		int_mask = level;
 		pc = read32(vec * 4);
 		cycles_left -= 44;
+		//M68K_LOG("M68K IRQ svc L%d  ppc=%06X dst=%06X", level, (unsigned)ppc, (unsigned)pc);  // DEBUG (vertigo)
 		irq_pending &= ~(uint8_t)(1u << level);    // clear ONLY the serviced level; others stay pending
 	}
 }

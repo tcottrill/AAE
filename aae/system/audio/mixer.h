@@ -614,6 +614,17 @@ int mixer_upload_sample16(int samplenum,
 int load_sample_from_buffer(const uint8_t* data, size_t size, const char* name = nullptr, bool force_resample = true);
 
 // -----------------------------------------------------------------------------
+// load_silent_sample
+// Register a silent placeholder sample (built-in emptywav silence). Call this
+// when a game sample file is missing so it still occupies its load-order slot;
+// drivers reference samples by hard-coded index, so a skipped sample would
+// otherwise shift every later sample and play the wrong sounds.
+//
+// Returns the new sample ID (>= 0) on success, -1 on failure.
+// -----------------------------------------------------------------------------
+int load_silent_sample(const char* name = nullptr);
+
+// -----------------------------------------------------------------------------
 // save_sample_to_buffer
 // Export a loaded sample to a WAV file format buffer.
 // The caller is responsible for writing the buffer to disk using their

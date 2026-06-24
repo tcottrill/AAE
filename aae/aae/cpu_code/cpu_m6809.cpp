@@ -623,11 +623,22 @@ int cpu_m6809::branch_long(bool taken)
 // Interrupt handling
 // =============================================================================
 
-void cpu_m6809::service_interrupt(uint16_t vector, bool set_F, bool entire)
+int cpu_m6809::service_interrupt(uint16_t vector, bool set_F, bool entire)
 {
+    // Interrupt entry cost = a fixed non-stacking overhead plus the time to push
+    // the register frame. The core's nominal totals decompose exactly this way:
+    //   IRQ / NMI (entire, 12 bytes) = 7 + 12 = 19
+    //   FIRQ      (fast,    3 bytes) = 7 +  3 = 10
+    // When the interrupt terminates a CWAI, the frame was already stacked -- and
+    // paid for -- by the CWAI instruction (20 cycles), so only the 7-cycle
+    // overhead is charged here instead of re-counting the (skipped) stacking.
+    const int OVERHEAD = 7;
+    int cycles;
+
     if (m_cwai) {
         // Registers already stacked by CWAI; just take the vector.
         m_cwai = false;
+        cycles = OVERHEAD;
     } else {
         set_flag(CC_E, entire);
         if (entire) {
@@ -640,10 +651,12 @@ void cpu_m6809::service_interrupt(uint16_t vector, bool set_F, bool entire)
             push_s8(m_D.d8.B);
             push_s8(m_D.d8.A);
             push_s8(m_CC);
+            cycles = OVERHEAD + 12;
         } else {
             // Fast (FIRQ): PC,CC only.
             push_s16(m_PC);
             push_s8(m_CC);
+            cycles = OVERHEAD + 3;
         }
     }
     set_flag(CC_I, true);
@@ -651,6 +664,7 @@ void cpu_m6809::service_interrupt(uint16_t vector, bool set_F, bool entire)
     m_PC = read16(vector);
     m_pc_after_last_fetch = m_PC;
     notify_pc_change();     // entering the handler is a non-sequential PC change
+    return cycles;
 }
 
 void cpu_m6809::do_rti(int& cycles)
@@ -699,39 +713,49 @@ int cpu_m6809::charge_cycles(int c)
 // -----------------------------------------------------------------------------
 int cpu_m6809::step()
 {
-    // A "step" is an interrupt entry, an idle SYNC tick, or one instruction.
-    // exec() reads this flag so ONLY instruction cycles consume the slice budget
-    // -- interrupt cycles are accounted as overshoot. Default to "interrupt";
-    // the instruction path clears it below.
-    m_step_was_interrupt = true;
+   // ---- SYNC / CWAI wait-state: idle until an interrupt wakes us ----------------
+    // SYNC and CWAI differ on MASKED lines:
+    //   SYNC  resumes on ANY asserted line; if it's masked, execution simply
+    //         continues with the next instruction (no interrupt taken).
+    //   CWAI  resumes ONLY when an interrupt will actually be taken; a masked
+    //         line is ignored and the wait continues.
+    if (m_sync || m_cwai) {
+        // A line is "serviceable" only if its mask currently permits it.
+        bool serviceable = (m_nmi_line  && m_nmi_enabled)
+                         || (m_firq_line && !get_flag(CC_F))
+                         || (m_irq_line  && !get_flag(CC_I));
 
-    // ---- SYNC wait-state: idle until an interrupt line is raised ----------
-    if (m_sync) {
-        if (m_nmi_line || m_firq_line || m_irq_line)
-            m_sync = false;             // wake; fall through to service below
-        else
-            return charge_cycles(1);    // still waiting: burn one idle cycle
+        if (m_sync) {
+            if (m_nmi_line || m_firq_line || m_irq_line)
+                m_sync = false;         // any line wakes SYNC (masked -> fall through to next instr)
+            else
+                return charge_cycles(1);// still waiting: burn one idle cycle
+        }
+        else { // CWAI
+            if (!serviceable)
+                return charge_cycles(1);// still waiting: burn one idle cycle
+            // m_cwai remains true so service_interrupt doesn't restack.
+        }
     }
 
     // ---- Pending interrupts (priority: NMI, then FIRQ, then IRQ) ----------
+    // service_interrupt() returns the entry cost (19/10/19 normally, reduced to
+    // the bare overhead when it terminates a CWAI -- see that function).
     if (m_nmi_line && m_nmi_enabled) {
-        service_interrupt(0xFFFC, true, true);
+        int c = service_interrupt(0xFFFC, true, true);
         m_nmi_line = false;             // latch lowered when taken
-        return charge_cycles(19);
+        return charge_cycles(c);
     }
     if (m_firq_line && !get_flag(CC_F)) {
-        service_interrupt(0xFFF6, true, false);
+        int c = service_interrupt(0xFFF6, true, false);
         m_firq_line = false;            // latch lowered when taken (one-shot)
-        return charge_cycles(10);
+        return charge_cycles(c);
     }
     if (m_irq_line && !get_flag(CC_I)) {
-        service_interrupt(0xFFF8, false, true);
+        int c = service_interrupt(0xFFF8, false, true);
         m_irq_line = false;             // latch lowered when taken (one-shot)
-        return charge_cycles(19);
+        return charge_cycles(c);
     }
-
-    // A real instruction executes this step (it counts against the budget).
-    m_step_was_interrupt = false;
 
     // The opcode switch below subtracts this instruction's cost from `cycles`,
     // which starts at 0 and ends negative; consumed = -cycles (charged at the
@@ -807,7 +831,8 @@ int cpu_m6809::step()
             set_flag(CC_E, true);
             push_s16(m_PC); push_s16(m_U); push_s16(m_Y); push_s16(m_X);
             push_s8(m_DP); push_s8(m_D.d8.B); push_s8(m_D.d8.A); push_s8(m_CC);
-            m_cwai = true; m_sync = false;
+            m_cwai = true; 
+            m_sync = false;
             cycles -= 20;
         } break;
         case 0x3D: { // MUL
@@ -987,9 +1012,18 @@ int cpu_m6809::step()
 // -----------------------------------------------------------------------------
 int cpu_m6809::exec(int cycles)
 {
-    // SYNC/CWAI wait-state: idle the entire slice.
+    // SYNC/CWAI wait-state: fast-idle the entire slice when nothing can wake us.
+    // Mirrors step(): SYNC wakes on any asserted line, CWAI only on a line whose
+    // mask permits it (a masked line during CWAI must keep waiting, not run code).
     if (m_sync && !(m_nmi_line || m_firq_line || m_irq_line))
         return charge_cycles(cycles);
+    if (m_cwai) {
+        bool serviceable = (m_nmi_line  && m_nmi_enabled)
+                         || (m_firq_line && !get_flag(CC_F))
+                         || (m_irq_line  && !get_flag(CC_I));
+        if (!serviceable)
+            return charge_cycles(cycles);
+    }
 
     // Run a full budget of INSTRUCTION cycles. 
     int instr_budget = cycles;
@@ -997,8 +1031,7 @@ int cpu_m6809::exec(int cycles)
     while (instr_budget > 0) {
         int c = step();
         total += c;
-        if (!m_step_was_interrupt)
-            instr_budget -= c;
+        instr_budget -= c; // Standard cycle deduction
     }
     return total;
 }

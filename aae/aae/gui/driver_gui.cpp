@@ -50,6 +50,8 @@
 #include "game_list.h"
 #include "emu_vector_draw.h"
 #include "gl_shader.h"
+#include "opengl_renderer.h"  // g_proj
+#include "MathUtils.h"        // aae::math::value_ptr
 
 // =============================================================================
 // Constants
@@ -220,6 +222,7 @@ static void drawStars(Star stars[], int count)
 
 	glPointSize(3.0f);
 	bind_shader(fragStarPoint);
+	set_uniform_mat4f(fragStarPoint, "uProj", aae::math::value_ptr(g_proj));
 
 	glBindVertexArray(s_starVAO);
 	glBindBuffer(GL_ARRAY_BUFFER, s_starVBO);
@@ -542,8 +545,6 @@ static void updateGlyphAnimation()
 	// Select the "thrusting" ship glyph when tilted
 	int texOffset = (s_rotLeft != kRotIdle) ? 1 : 0;
 	int glyphId = 127 + texOffset;
-
-	glColor4ub(255, 255, 255, 255);
 
 	// VectorFont rotation convention: subtract 90 so 0 faces right
 	VF.DrawGlyph((float)(kGlyphBaseX - texOffset * 4), (float)kGlyphY,

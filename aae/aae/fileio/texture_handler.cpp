@@ -274,9 +274,8 @@ void set_texture(GLuint* texture, GLboolean linear, GLboolean mipmapping, GLbool
 		? GL_LINEAR_MIPMAP_LINEAR
 		: magFilter;
 
-	// Bind & env
+	// Bind
 	glBindTexture(GL_TEXTURE_2D, *texture);
-	glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
 
 	// Filtering
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, magFilter);
@@ -285,14 +284,6 @@ void set_texture(GLuint* texture, GLboolean linear, GLboolean mipmapping, GLbool
 	// Wrapping
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-	// Enable texturing
-	glEnable(GL_TEXTURE_2D);
-
-	// Optional color reset
-	if (set_color) {
-		glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-	}
 
 	if (blending) {
 		glEnable(GL_BLEND);

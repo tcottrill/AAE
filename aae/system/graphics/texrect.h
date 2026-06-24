@@ -34,16 +34,18 @@ public:
 	void TopRight(float x, float y);
 	void BottomRight(float x, float y);
 
-	// Render the quad, scaling the y-coordinates of the top two verts by scaley
-	// Must have bound your GL_TEXTURE_2D before calling.
-	void Render();
+	// Render the quad. Must have bound your GL_TEXTURE_2D (unit 0) before calling.
+	// mvp is a column-major 4x4 projection (pixel-space ortho) supplied by the
+	// caller -- replaces the old fixed-function gl_ModelViewProjectionMatrix.
+	void Render(const float* mvp);
 
 private:
 	void SetVertex(int idx, float x, float y, float tx, float ty);
 
 	_Point2DA  verts_[4];
 	GLuint     prog_;
-	GLint      pos_loc_, texcoord_loc_, sampler_loc_;
+	GLuint     vao_ = 0, vbo_ = 0;
+	GLint      sampler_loc_, uproj_loc_;
 };
 
 #endif // TEXRECT_H

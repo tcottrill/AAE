@@ -1,7 +1,7 @@
 // ====================================================================
 // mame_layout.cpp - MAME .lay file parser and OpenGL renderer
 //
-// Rendering uses GLSL 330 compatibility shaders with explicit VAO/VBO
+// Rendering uses GLSL 330 core shaders with explicit VAO/VBO
 // vertex submission. 
 //
 // Dependencies:
@@ -65,9 +65,9 @@ struct LayoutQuadVertex {
 // ====================================================================
 // Shader Init (called lazily on first Layout_Render)
 //
-// These shaders use explicit attribute locations and do not touch
-// any fixed-function GL state, so they coexist safely with the
-// existing compatibility-mode pipeline used by the vector renderer.
+// These shaders use explicit attribute locations, a VAO/VBO, and CPU-side NDC
+// positions (no matrix transform at all), so they are fully core-profile and
+// touch no fixed-function GL state.
 // ====================================================================
 static void InitLayoutShaders()
 {
@@ -77,7 +77,7 @@ static void InitLayoutShaders()
 	// Passes position and texcoord through. No matrix transforms --
 	// positions are computed as NDC on the CPU side.
 	const char* vsSrc = R"glsl(
-	#version 330 compatibility
+	#version 330 core
 	layout(location = 0) in vec2 inPos;
 	layout(location = 1) in vec2 inTex;
 	out vec2 TexCoord;
@@ -91,7 +91,7 @@ static void InitLayoutShaders()
 	// Samples one texture, multiplied by an alpha uniform.
 	// Used for backdrops, bezels, and screens without an overlay.
 	const char* fsSingleSrc = R"glsl(
-	#version 330 compatibility
+	#version 330 core
 	in vec2 TexCoord;
 	out vec4 FragColor;
 	uniform sampler2D tex0;
@@ -118,7 +118,7 @@ static void InitLayoutShaders()
 	// strips). Areas outside the overlay return white (multiply identity)
 	// so they are unaffected.
 	const char* fsDualSrc = R"glsl(
-	#version 330 compatibility
+	#version 330 core
 	in vec2 TexCoord;
 	out vec4 FragColor;
 	uniform sampler2D tex0;
@@ -199,7 +199,7 @@ static void InitLayoutShaders()
 	glBindVertexArray(0);
 
 	s_layoutShadersReady = true;
-	LOG_INFO("Layout shaders initialized (GLSL 330 compatibility)");
+	LOG_INFO("Layout shaders initialized (GLSL 330 core)");
 }
 
 // ====================================================================
@@ -622,47 +622,18 @@ static void DrawQuadNDC_FlipV(float nx0, float ny0, float nx1, float ny1)
 	glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 }
 
-// Rotated-UV variant for system rotation.
-// The quad geometry stays axis-aligned in NDC (landscape rectangle), but the
-// texture coordinates are rotated so the portrait FBO content appears rotated
-// on screen. This is equivalent to rotating the entire scene.
-//
-// sysRot is config.system_rotation (ORIENTATION_xxx flags).
-// ROT90  (SWAP_XY|FLIP_X): CW 90  - UVs: TL(0,1) TR(0,0) BR(1,0) BL(1,1)
-// ROT270 (SWAP_XY|FLIP_Y): CCW 90 - UVs: TL(1,0) TR(1,1) BR(0,1) BL(0,0)
-static void DrawQuadNDC_SysRot(float nx0, float ny0, float nx1, float ny1, int sysRot)
+// Draw a quad from 4 explicit NDC corners (TL, TR, BR, BL) using standard UVs.
+// Unlike DrawQuadNDC (which takes an axis-aligned rect and builds the corners
+// itself), this accepts arbitrary corner positions, so the quad can be rotated
+// in NDC while the texture rides along rigidly. Used by the system-rotation
+// path to rotate the whole layout (backdrop/screen/overlay/bezel) as one unit.
+static void DrawQuadCorners(const float c[4][2])
 {
-	// Default UVs (no rotation) - same as DrawQuadNDC
-	float tl_u = 0.0f, tl_v = 0.0f;  // top-left
-	float tr_u = 1.0f, tr_v = 0.0f;  // top-right
-	float br_u = 1.0f, br_v = 1.0f;  // bottom-right
-	float bl_u = 0.0f, bl_v = 1.0f;  // bottom-left
-
-	if (sysRot & ORIENTATION_SWAP_XY)
-	{
-		if (sysRot & ORIENTATION_FLIP_X)
-		{
-			// ROT90 (CW 90): left edge of texture goes to top of screen
-			tl_u = 0.0f; tl_v = 1.0f;
-			tr_u = 0.0f; tr_v = 0.0f;
-			br_u = 1.0f; br_v = 0.0f;
-			bl_u = 1.0f; bl_v = 1.0f;
-		}
-		else // FLIP_Y (ROT270, CCW 90)
-		{
-			// ROT270 (CCW 90): right edge of texture goes to top of screen
-			tl_u = 1.0f; tl_v = 0.0f;
-			tr_u = 1.0f; tr_v = 1.0f;
-			br_u = 0.0f; br_v = 1.0f;
-			bl_u = 0.0f; bl_v = 0.0f;
-		}
-	}
-
 	LayoutQuadVertex verts[4] = {
-		{ nx0, ny0,  tl_u, tl_v },   // top-left
-		{ nx1, ny0,  tr_u, tr_v },   // top-right
-		{ nx1, ny1,  br_u, br_v },   // bottom-right
-		{ nx0, ny1,  bl_u, bl_v }    // bottom-left
+		{ c[0][0], c[0][1],  0.0f, 0.0f },   // top-left
+		{ c[1][0], c[1][1],  1.0f, 0.0f },   // top-right
+		{ c[2][0], c[2][1],  1.0f, 1.0f },   // bottom-right
+		{ c[3][0], c[3][1],  0.0f, 1.0f }    // bottom-left
 	};
 
 	glBindBuffer(GL_ARRAY_BUFFER, s_layoutVBO);
@@ -670,18 +641,65 @@ static void DrawQuadNDC_SysRot(float nx0, float ny0, float nx1, float ny1, int s
 	glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 }
 
+// Map a layout-space rect to its 4 NDC corners (TL, TR, BR, BL), applying a
+// scale about the layout center (cx, cy), a rigid rotation, and then centering
+// the result in the window. Because the rotation is applied to the geometry
+// (not the UVs), every layer rotates together as one rigid body and each
+// texture rotates with its quad.
+//
+// sLx/sLy scale the layout X and Y axes to pixels. They are equal for the
+// normal fit, but differ when an aspect override stretches the layout to fill
+// the window (the caller cross-assigns them for 90/270, where layout X and Y
+// map to the opposite window axes).
+//
+// rotMode: 1 = CW 90 (ROT90), 2 = CCW 90 (ROT270), 3 = 180, 0 = none.
+// Pixel space here is y-down (matching the raster ortho), so the corner remaps
+// below reproduce the proven bare-screen rotation exactly: ROT90 sends the
+// game image's top edge to the window's right, ROT270 to the left.
+static void LayoutRotRectNDC(float x, float y, float w, float h,
+	float cx, float cy, float sLx, float sLy, int rotMode,
+	float winW, float winH, float out[4][2])
+{
+	const float lx[4] = { x,     x + w, x + w, x     };  // TL, TR, BR, BL
+	const float ly[4] = { y,     y,     y + h, y + h };
+
+	for (int i = 0; i < 4; ++i)
+	{
+		// Center on the layout midpoint and scale to pixels (y-down).
+		float ex = (lx[i] - cx) * sLx;
+		float ey = (ly[i] - cy) * sLy;
+
+		// Rigid rotation in y-down pixel space.
+		float rx, ry;
+		switch (rotMode)
+		{
+		case 1: rx = -ey; ry =  ex; break;  // CW 90  (top edge -> right)
+		case 2: rx =  ey; ry = -ex; break;  // CCW 90 (top edge -> left)
+		case 3: rx = -ex; ry = -ey; break;  // 180
+		default: rx = ex; ry = ey; break;   // no rotation
+		}
+
+		// Window-center origin -> pixel -> NDC (y flipped to NDC y-up).
+		float px = winW * 0.5f + rx;
+		float py = winH * 0.5f + ry;
+		out[i][0] = (px / winW) * 2.0f - 1.0f;
+		out[i][1] = 1.0f - (py / winH) * 2.0f;
+	}
+}
+
 // Convert layout coordinates to NDC given the current camera transform.
-// scale/offsetX/offsetY map layout-space to pixel-space,
+// scaleX/scaleY/offsetX/offsetY map layout-space to pixel-space (X and Y are
+// scaled independently so an aspect override can stretch the layout),
 // winW/winH convert pixel-space to NDC.
 static void LayoutToNDC(float x, float y, float w, float h,
-	float scale, float offsetX, float offsetY,
+	float scaleX, float scaleY, float offsetX, float offsetY,
 	float winW, float winH,
 	float& nx0, float& ny0, float& nx1, float& ny1)
 {
-	float x0 = offsetX + x * scale;
-	float y0 = offsetY + y * scale;
-	float x1 = offsetX + (x + w) * scale;
-	float y1 = offsetY + (y + h) * scale;
+	float x0 = offsetX + x * scaleX;
+	float y0 = offsetY + y * scaleY;
+	float x1 = offsetX + (x + w) * scaleX;
+	float y1 = offsetY + (y + h) * scaleY;
 
 	// Convert pixel coords to NDC: x -> [-1, +1], y -> [+1, -1] (top-down)
 	nx0 = (x0 / winW) * 2.0f - 1.0f;
@@ -692,13 +710,13 @@ static void LayoutToNDC(float x, float y, float w, float h,
 
 // Draw a single-textured quad at layout position with alpha
 static void DrawLayoutQuad(GLuint texID, float x, float y, float w, float h,
-	float alpha, float scale, float offsetX, float offsetY,
+	float alpha, float scaleX, float scaleY, float offsetX, float offsetY,
 	float winW, float winH)
 {
 	if (texID == 0 && alpha <= 0.0f) return;
 
 	float nx0, ny0, nx1, ny1;
-	LayoutToNDC(x, y, w, h, scale, offsetX, offsetY, winW, winH,
+	LayoutToNDC(x, y, w, h, scaleX, scaleY, offsetX, offsetY, winW, winH,
 		nx0, ny0, nx1, ny1);
 
 	glUseProgram(s_singleTexShader);
@@ -729,14 +747,22 @@ void Layout_Render(const LayoutView& view, GLuint screenTexture, int winW, int w
 	}
 
 	// ---- System Rotation Detection ----
-	// When config.system_rotation has SWAP_XY, the entire display is rotated
-	// 90 or 270 degrees. In this mode:
-	//   - Bezel is forced OFF (it doesn't compose well rotated)
-	//   - Screen aspect inverts (portrait -> landscape or vice versa)
-	//   - Backdrop uses "cover fill" to fill the rotated window
-	//   - Screen quad uses rotated UV mapping
+	// config.system_rotation is the user's display-time rotation (-ror/-rol).
+	// When set, the ENTIRE layout -- backdrop, screen, overlay, and bezel --
+	// is rotated together as one rigid unit (see the rotated path below), so
+	// the bezel keeps framing the screen and the composition just turns on its
+	// side. The layout aspect inverts for the 90/270 cases.
 	const int sysRot = config.system_rotation;
-	const bool sysRotated = (sysRot & ORIENTATION_SWAP_XY) != 0;
+
+	// Display-rotation index for the user's system rotation (-ror/-rol):
+	//   1 = CW 90 (ROT90), 2 = CCW 90 (ROT270), 3 = 180, 0 = none.
+	// This drives the whole-layout rotation below. It covers the 180 case too
+	// (the old SWAP_XY-only check missed it), so a 180 system rotation flips
+	// the entire layout instead of being silently ignored.
+	int rotMode = 0;
+	if      (sysRot == ROT90)  rotMode = 1;
+	else if (sysRot == ROT270) rotMode = 2;
+	else if (sysRot == ROT180) rotMode = 3;
 
 	// ---- Viewport / Camera Calculation ----
 	  // Determine which region of the layout to show.
@@ -745,15 +771,17 @@ void Layout_Render(const LayoutView& view, GLuint screenTexture, int winW, int w
 	  //   - The user explicitly enabled zoom-to-screen mode
 	  //   - Crop bezel is enabled (config.artcrop)
 	  //   - Both backdrop and bezel are hidden (only screen/overlay visible)
-	  //   - System rotation is active (bezel forced off)
+	  //
+	  // System rotation no longer forces this: the whole layout (including
+	  // the bezel) rotates as one unit, so a rotated game with its bezel on
+	  // shows the full framed artwork rather than a bare zoomed screen.
 	  //
 	  // When zoomed to screen, the game fills the window and any visible
 	  // overlay is stretched to match the screen bounds. When showing the
 	  // full layout, the game sits within the artwork at its defined position.
 	bool zoomToScreen = g_layoutZoomToScreen
 		|| (config.artcrop != 0)
-		|| (!g_layoutShowBezel)
-		|| sysRotated;
+		|| (!g_layoutShowBezel);
 
 	float camX, camY, camW, camH;
 	if (zoomToScreen && view.screenW > 0 && view.screenH > 0) {
@@ -766,10 +794,10 @@ void Layout_Render(const LayoutView& view, GLuint screenTexture, int winW, int w
 	}
 	if (camW <= 0 || camH <= 0) return;
 
-	// For system rotation with SWAP_XY, the camera aspect is inverted.
-	// A portrait layout (3:4) becomes landscape (4:3) in the window.
+	// Camera aspect for the non-rotated fit below. The system-rotated path
+	// computes its own fit (it rotates the whole layout as a unit), so this
+	// is never inverted here.
 	float aspectCam = camW / camH;
-	if (sysRotated) aspectCam = camH / camW;
 
 	// ---- Aspect Override: constrain rendering area ----
 	// When the user has an aspect override active (use_aspect=1 or -aspect),
@@ -782,10 +810,12 @@ void Layout_Render(const LayoutView& view, GLuint screenTexture, int winW, int w
 	// In fullscreen the window is the monitor's native shape, so this
 	// creates the correct pillarbox/letterbox.
 	int vpX = 0, vpY = 0, vpW = winW, vpH = winH;
+	bool aspectOverride = false;
 	{
 		auto& ws = GetWindowSetup();
 		if (ws.aspectOverrideActive && ws.aspectRatio > 0.0f)
 		{
+			aspectOverride = true;
 			float windowAspect = (float)winW / (float)winH;
 			if (windowAspect > ws.aspectRatio)
 			{
@@ -806,47 +836,37 @@ void Layout_Render(const LayoutView& view, GLuint screenTexture, int winW, int w
 	}
 	float aspectWin = (float)winW / (float)winH;
 
-	// Compute scale and offset to fit the camera region into the window
-	// while maintaining the (possibly inverted) aspect ratio.
-	float scale, offsetX, offsetY;
-
-	if (sysRotated)
-	{
-		// Rotated path: the screen area (camW x camH, portrait) is being
-		// displayed as landscape (camH x camW). Fit the rotated dimensions
-		// into the window.
-		float rotW = camH;  // what was height is now width
-		float rotH = camW;  // what was width is now height
-
-		if (aspectWin > aspectCam) {
-			// Window wider than rotated layout - pillarbox
-			scale = (float)winH / rotH;
-		}
-		else {
-			// Window taller than rotated layout - letterbox
-			scale = (float)winW / rotW;
-		}
-
-		// Center the rotated screen in the window.
-		// The screen quad NDC is computed directly below, not via LayoutToNDC.
-		offsetX = 0;
-		offsetY = 0;
+	// Fit the camera region into the window. This is the non-rotated path only;
+	// the system-rotated path returns from its own block below after computing
+	// its own fit.
+	//
+	// Normally we letterbox/pillarbox at the layout's own aspect (uniform
+	// scale). When an aspect override is active the viewport above is already
+	// the requested display aspect, so instead STRETCH the layout to fill it
+	// with independent X/Y scale -- matching the vector path, which stretches
+	// the whole frame onto the aspect-shaped screen_rect. Without this the
+	// raster game keeps its native aspect, letterboxed inside the resized
+	// window, and appears to ignore the forced aspect.
+	float scaleX, scaleY, offsetX, offsetY;
+	if (aspectOverride) {
+		scaleX = (float)winW / camW;
+		scaleY = (float)winH / camH;
+		offsetX = -camX * scaleX;
+		offsetY = -camY * scaleY;
 	}
-	else
-	{
-		// Normal (non-rotated) path - original letterbox/pillarbox logic.
-		if (aspectWin > aspectCam) {
-			// Window is wider than layout -- pillarbox (black bars on sides)
-			scale = (float)winH / camH;
-			offsetX = (winW - (camW * scale)) / 2.0f - camX * scale;
-			offsetY = -camY * scale;
-		}
-		else {
-			// Window is taller than layout -- letterbox (black bars top/bottom)
-			scale = (float)winW / camW;
-			offsetX = -camX * scale;
-			offsetY = (winH - (camH * scale)) / 2.0f - camY * scale;
-		}
+	else if (aspectWin > aspectCam) {
+		// Window is wider than layout -- pillarbox (black bars on sides)
+		float scale = (float)winH / camH;
+		scaleX = scaleY = scale;
+		offsetX = (winW - (camW * scale)) / 2.0f - camX * scale;
+		offsetY = -camY * scale;
+	}
+	else {
+		// Window is taller than layout -- letterbox (black bars top/bottom)
+		float scale = (float)winW / camW;
+		scaleX = scaleY = scale;
+		offsetX = -camX * scale;
+		offsetY = (winH - (camH * scale)) / 2.0f - camY * scale;
 	}
 
 	float fWinW = (float)winW;
@@ -883,13 +903,10 @@ void Layout_Render(const LayoutView& view, GLuint screenTexture, int winW, int w
 	// Set the viewport to the (possibly constrained) rendering area
 	glViewport(vpX, vpY, vpW, vpH);
 
-	// Ensure fixed-function texture state doesn't interfere with our
-	// GLSL shaders. The caller (final_render_raster) may have enabled
-	// GL_TEXTURE_2D on unit 0 via the "nuclear sanitation" block.
+	// Ensure texture-unit selection is in a known state before binding our
+	// GLSL shaders.
 	glActiveTexture(GL_TEXTURE1);
-	glDisable(GL_TEXTURE_2D);
 	glActiveTexture(GL_TEXTURE0);
-	glDisable(GL_TEXTURE_2D);
 	glUseProgram(0);  // clean slate before we bind our own shaders
 
 	glEnable(GL_BLEND);
@@ -898,85 +915,100 @@ void Layout_Render(const LayoutView& view, GLuint screenTexture, int winW, int w
 	// ====================================================================
 	// SYSTEM-ROTATED RENDERING PATH
 	//
-	// When the display is rotated 90/270 degrees:
-	//   1. Backdrop: "cover fill" - scale to fill the entire window,
-	//      center, let overflow crop. Uses standard (non-rotated) UVs
-	//      because the backdrop art is pre-authored in portrait and we
-	//      want it to fill the landscape window as atmosphere.
-	//   2. Screen: centered with correct aspect, UV-rotated so the
-	//      portrait game image appears landscape.
-	//   3. Overlay: applied to the screen via dual-tex shader with the
-	//      same rotated UVs.
-	//   4. Bezel: skipped entirely.
+	// When the user's system rotation is active (90/270/180) the ENTIRE
+	// layout -- backdrop, screen, overlay color gel, and bezel -- is rotated
+	// about the layout center as one rigid unit and centered in the window.
+	// The rotation is applied to each quad's geometry (its NDC corners) while
+	// the textures keep their standard UVs, so every layer rotates together
+	// and the bezel keeps framing the screen exactly as it was authored.
+	//
+	// camX/camY/camW/camH already hold the region to display (full bounds when
+	// the bezel is shown, screen-only when zoomed or bezel-off), chosen by the
+	// same zoomToScreen logic as the non-rotated path. Per-layer blend modes
+	// match the non-rotated path: backdrop/bezel alpha-over, screen additive,
+	// overlay merged into the screen via the dual-texture multiply shader.
 	// ====================================================================
-	if (sysRotated)
+	if (rotMode != 0)
 	{
-		// ---- BACKDROP: Disabled when system-rotated ----
-		// MAME .lay backdrops are positioned as partial regions within the
-		// bezel frame composition, not as standalone fullscreen backgrounds.
-		// They don't look right cover-filled into a rotated window.
-		// Future: support a custom fullscreen background element in the
-		// .lay format for rotation mode.
+		// Layout-space center that maps to the window center.
+		float cx = camX + camW * 0.5f;
+		float cy = camY + camH * 0.5f;
 
-		// ---- SCREEN: Rotated, centered, aspect-correct ----
-		// The screen area in the layout is portrait (e.g. 1308x1744).
-		// After rotation, it displays as landscape (1744x1308).
-		// Compute the pixel-space rectangle for the rotated screen,
-		// centered in the window with correct aspect.
+		// Per-layout-axis scale. Normally a single uniform scale that fits the
+		// rotated layout into the window (letterbox/pillarbox). When an aspect
+		// override is active, stretch to fill the override-shaped viewport
+		// instead: scale the layout X and Y axes independently. For 90/270 the
+		// layout axes map to the opposite window axes, so the fill factors are
+		// cross-assigned (layout X -> window height, layout Y -> window width).
+		float sLx, sLy;
+		if (aspectOverride)
 		{
-			// Find the screen drawable
-			for (const auto& d : view.drawables)
+			if (rotMode == 3) {            // 180: axes not swapped
+				sLx = fWinW / camW;
+				sLy = fWinH / camH;
+			}
+			else {                        // 90/270: layout X<->window Y, layout Y<->window X
+				sLx = fWinH / camW;
+				sLy = fWinW / camH;
+			}
+		}
+		else
+		{
+			float rbW = (rotMode == 3) ? camW : camH;
+			float rbH = (rotMode == 3) ? camH : camW;
+			float s = (aspectWin > (rbW / rbH)) ? (fWinH / rbH) : (fWinW / rbW);
+			sLx = sLy = s;
+		}
+
+		// Walk drawables in layer order (backdrop -> screen -> bezel); the
+		// overlay layer is merged into the screen, exactly as below.
+		for (const auto& d : view.drawables)
+		{
+			if (d.layer == LayerType::Bezel && !g_layoutShowBezel)    continue;
+			if (d.layer == LayerType::Backdrop && !g_layoutShowBackdrop) continue;
+			if (d.layer == LayerType::Overlay) continue;
+
+			float c[4][2];
+			LayoutRotRectNDC(d.x, d.y, d.w, d.h, cx, cy, sLx, sLy, rotMode, fWinW, fWinH, c);
+
+			// ---- BACKDROP / BEZEL ----
+			if (d.layer != LayerType::Screen)
 			{
-				if (d.layer != LayerType::Screen) continue;
-
-				// The screen's native shape is portrait (d.w x d.h).
-				// After rotation, display shape is (d.h x d.w).
-				float scrDispAspect = d.h / d.w;  // rotated aspect
-
-				float scrPixW, scrPixH;
-
-				if (aspectWin > scrDispAspect) {
-					// Window wider than rotated screen - fit to height
-					scrPixH = fWinH;
-					scrPixW = fWinH * scrDispAspect;
+				glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+				if (d.element && d.element->textureID != 0)
+				{
+					glUseProgram(s_singleTexShader);
+					glUniform1f(s_st_uAlpha, d.alpha);
+					glActiveTexture(GL_TEXTURE0);
+					glBindTexture(GL_TEXTURE_2D, d.element->textureID);
+					DrawQuadCorners(c);
 				}
-				else {
-					// Window taller than rotated screen - fit to width
-					scrPixW = fWinW;
-					scrPixH = fWinW / scrDispAspect;
-				}
-
-				float scrX0 = (fWinW - scrPixW) / 2.0f;
-				float scrY0 = (fWinH - scrPixH) / 2.0f;
-
-				// Convert to NDC
-				float snx0 = (scrX0 / fWinW) * 2.0f - 1.0f;
-				float sny0 = 1.0f - (scrY0 / fWinH) * 2.0f;
-				float snx1 = ((scrX0 + scrPixW) / fWinW) * 2.0f - 1.0f;
-				float sny1 = 1.0f - ((scrY0 + scrPixH) / fWinH) * 2.0f;
-
+			}
+			// ---- SCREEN (with optional overlay multiply) ----
+			else
+			{
 				glBlendFunc(GL_ONE, GL_ONE);
 
 				if (overlayTexID != 0)
 				{
-					// Overlay UV transform: the overlay bounds are in the same
-					// layout space as the screen. Since both rotate together,
-					// the relative UV mapping is unchanged.
+					// Screen and overlay share the same layout space and rotate
+					// together, so the screen->overlay UV transform is identical
+					// to the non-rotated path.
 					float scaleU = d.w / overlayW;
 					float scaleV = d.h / overlayH;
-					float offU = -(overlayX - d.x) / overlayW;
-					float offV = -(overlayY - d.y) / overlayH;
+					float offsetU = -(overlayX - d.x) / overlayW;
+					float offsetV = -(overlayY - d.y) / overlayH;
 
 					int overlayMode = (videoAttributes & VIDEO_TYPE_RASTER_BW) ? 0 : 1;
 					glUseProgram(s_dualTexShader);
 					glUniform1f(s_dt_uAlpha, d.alpha);
 					glUniform1i(s_dt_uOverlayMode, overlayMode);
-					glUniform4f(s_dt_uOverlayUVXform, scaleU, scaleV, offU, offV);
+					glUniform4f(s_dt_uOverlayUVXform, scaleU, scaleV, offsetU, offsetV);
 					glActiveTexture(GL_TEXTURE0);
 					glBindTexture(GL_TEXTURE_2D, screenTexture);
 					glActiveTexture(GL_TEXTURE1);
 					glBindTexture(GL_TEXTURE_2D, overlayTexID);
-					DrawQuadNDC_SysRot(snx0, sny0, snx1, sny1, sysRot);
+					DrawQuadCorners(c);
 					glActiveTexture(GL_TEXTURE0);
 				}
 				else
@@ -985,15 +1017,12 @@ void Layout_Render(const LayoutView& view, GLuint screenTexture, int winW, int w
 					glUniform1f(s_st_uAlpha, d.alpha);
 					glActiveTexture(GL_TEXTURE0);
 					glBindTexture(GL_TEXTURE_2D, screenTexture);
-					DrawQuadNDC_SysRot(snx0, sny0, snx1, sny1, sysRot);
+					DrawQuadCorners(c);
 				}
 
 				glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-				break;  // Only one screen
 			}
 		}
-
-		// ---- Bezel: skipped when system-rotated ----
 
 		// ---- Restore GL state ----
 		glBindVertexArray(0);
@@ -1026,7 +1055,7 @@ void Layout_Render(const LayoutView& view, GLuint screenTexture, int winW, int w
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 			if (d.element && d.element->textureID != 0) {
 				DrawLayoutQuad(d.element->textureID, d.x, d.y, d.w, d.h,
-					d.alpha, scale, offsetX, offsetY, fWinW, fWinH);
+					d.alpha, scaleX, scaleY, offsetX, offsetY, fWinW, fWinH);
 			}
 		}
 
@@ -1041,7 +1070,7 @@ void Layout_Render(const LayoutView& view, GLuint screenTexture, int winW, int w
 		// final_render_raster's img5a blit.
 		else if (d.layer == LayerType::Screen) {
 			float nx0, ny0, nx1, ny1;
-			LayoutToNDC(d.x, d.y, d.w, d.h, scale, offsetX, offsetY, fWinW, fWinH,
+			LayoutToNDC(d.x, d.y, d.w, d.h, scaleX, scaleY, offsetX, offsetY, fWinW, fWinH,
 				nx0, ny0, nx1, ny1);
 
 			glBlendFunc(GL_ONE, GL_ONE);
@@ -1125,8 +1154,13 @@ void Layout_UpdateAspect()
 
 	const bool sysRotated = (config.system_rotation & ORIENTATION_SWAP_XY) != 0;
 
-	// When system-rotated, always use screen-only aspect (bezel forced off).
-	bool zoomToScreen = g_layoutZoomToScreen || sysRotated;
+	// Same zoom condition as the renderer and Layout_ComputeGameAspect. System
+	// rotation no longer forces screen-only: with the bezel shown the whole
+	// layout rotates as a unit, so we use the bounds aspect (inverted for the
+	// 90/270 cases) so the window frames the full rotated layout.
+	bool zoomToScreen = g_layoutZoomToScreen
+		|| (config.artcrop != 0)
+		|| (!g_layoutShowBezel);
 
 	if (zoomToScreen) {
 		// Zoom mode: aspect ratio is the screen area only
@@ -1139,7 +1173,10 @@ void Layout_UpdateAspect()
 	else {
 		// Full layout: aspect ratio is the entire view bounding box
 		if (g_activeView->boundsW > 0 && g_activeView->boundsH > 0)
+		{
 			g_layoutAspect = g_activeView->boundsW / g_activeView->boundsH;
+			if (sysRotated) g_layoutAspect = 1.0f / g_layoutAspect;
+		}
 	}
 }
 
@@ -1374,41 +1411,7 @@ void Layout_LoadForGame(const AAEDriver* drv)
 static int   s_gameWidth = 0;
 static int   s_gameHeight = 0;
 static float s_pixelAspect = 1.0f;
-/*
-void Layout_InitGameDimensions()
-{
-	s_gameWidth = 0;
-	s_gameHeight = 0;
-	s_pixelAspect = 1.0f;
 
-	if (!Machine || !Machine->drv)
-		return;
-
-	const rectangle& va = Machine->drv->visible_area;
-	int srcW = va.max_x - va.min_x + 1;
-	int srcH = va.max_y - va.min_y + 1;
-
-	if (Machine->orientation & ORIENTATION_SWAP_XY) {
-		s_gameWidth = srcH;
-		s_gameHeight = srcW;
-	}
-	else {
-		s_gameWidth = srcW;
-		s_gameHeight = srcH;
-	}
-
-	if (s_gameWidth > 0 && s_gameHeight > 0) {
-		float nativeAspect = (float)s_gameWidth / (float)s_gameHeight;
-		float targetAspect = (s_gameHeight > s_gameWidth)
-			? (3.0f / 4.0f)
-			: (4.0f / 3.0f);
-		s_pixelAspect = targetAspect / nativeAspect;
-	}
-
-	LOG_INFO("Layout_InitGameDimensions: output=%dx%d pixelAspect=%.3f",
-		s_gameWidth, s_gameHeight, s_pixelAspect);
-}
-*/
 void Layout_InitGameDimensions()
 {
 	s_gameWidth = 0;
@@ -1481,11 +1484,14 @@ float Layout_ComputeGameAspect()
 		g_layoutShowBackdrop = (config.artwork != 0);
 		g_layoutShowOverlay = (config.overlay != 0);
 
-		// System rotation forces zoom-to-screen (bezel disabled).
+		// Zoom to the screen area when the user asked for it, art-crop is on,
+		// or the bezel is hidden -- same condition as the renderer. System
+		// rotation no longer forces this: when the bezel is shown we want the
+		// rotated *bounds* aspect so the window frames the whole layout (the
+		// aspect is inverted below for the 90/270 cases).
 		bool zoomToScreen = g_layoutZoomToScreen
 			|| (config.artcrop != 0)
-			|| (!g_layoutShowBezel)
-			|| sysRotated;
+			|| (!g_layoutShowBezel);
 
 		if (zoomToScreen && g_activeView->screenW > 0 && g_activeView->screenH > 0)
 		{

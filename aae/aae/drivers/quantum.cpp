@@ -62,25 +62,6 @@ void  quantum_interrupt()
 	cpu_do_int_imm(CPU0, INT_TYPE_68K1);
 }
 
-void quantum_nvram_handler(void* file, int read_or_write)
-{
-	if (read_or_write)
-	{
-		osd_fwrite(file, nv_ram, 0x200);
-	}
-	else
-	{
-		if (file)
-		{
-			osd_fread(file, nv_ram, 0x200);
-		}
-		else
-		{
-			memset(nv_ram, 0xff, 0x200);
-		}
-	}
-}
-
 READ16_HANDLER(quantum_trackball_r)
 {
 	return (readinputportbytag("IN3") << 4) | readinputportbytag("IN2");
@@ -99,6 +80,13 @@ static int quantum_input_2_r(int offset)
 {
 	return (readinputportbytag("DSW1") << (7 - (offset ))) & 0x80;
 }
+
+// Quantum reads its two DIP-switch banks through the POKEY ALLPOT register,
+// exactly like current MAME (pokey1->allpot_r = DSW0, pokey2->allpot_r = DSW1).
+// The POKEY core's ALLPOT read returns the driver's allpot handler whenever one
+// is present (value >= 0), so wiring these bypasses the internal pot-scan model.
+static int quantum_allpot_1_r(int offset) { return readinputportbytag("DSW0"); }
+static int quantum_allpot_2_r(int offset) { return readinputportbytag("DSW1"); }
 
 WRITE16_HANDLER(quantum_led_write)
 {
@@ -157,8 +145,8 @@ static struct POKEYinterface pokey_interface =
 	{ quantum_input_1_r, quantum_input_2_r },
 	{ quantum_input_1_r, quantum_input_2_r },
 	{ quantum_input_1_r, quantum_input_2_r },
-	/* The allpot handler */
-	{ 0, 0 },
+	/* The allpot handler: Quantum's DSWs are read here (MAME allpot handling) */
+	{ quantum_allpot_1_r, quantum_allpot_2_r },
 };
 
 
@@ -201,6 +189,7 @@ MEM_END
 
 void run_quantum()
 {
+	avg_clear();
 	watchdog_reset_w(0, 0, 0);
 	pokey_sh_update();
 }
@@ -211,6 +200,7 @@ int init_quantum()
 	memset(main_ram, 0x00, sizeof(main_ram));
 	memset(vec_ram, 0x00, 0x2000);            // driver uses vec_ram[0..0x1FFF]
 	memset(nv_ram, 0x00, sizeof(nv_ram));
+	nvram_set_region(nv_ram, 0x200, 0xff);
 	// program_rom is fully overwritten by the memcpy below; no memset needed.
 
 	memcpy(program_rom, Machine->memory_region[CPU0], 0x14000);
@@ -355,7 +345,7 @@ AAE_DRIVER_SCREEN(1024, 768, 0, 900, 0, 620)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x0, 0x2000)
-AAE_DRIVER_NVRAM(quantum_nvram_handler)
+AAE_DRIVER_NVRAM(generic_nvram_handler)
 AAE_DRIVER_LAYOUT_NONE()
 AAE_DRIVER_END()
 
@@ -392,7 +382,7 @@ AAE_DRIVER_SCREEN(1024, 768, 0, 900, 0, 620)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x0, 0x2000)
-AAE_DRIVER_NVRAM(quantum_nvram_handler)
+AAE_DRIVER_NVRAM(generic_nvram_handler)
 AAE_DRIVER_LAYOUT_NONE()
 AAE_DRIVER_END()
 
@@ -429,7 +419,7 @@ AAE_DRIVER_SCREEN(1024, 768, 0, 900, 0, 620)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x0, 0x2000)
-AAE_DRIVER_NVRAM(quantum_nvram_handler)
+AAE_DRIVER_NVRAM(generic_nvram_handler)
 AAE_DRIVER_LAYOUT_NONE()
 AAE_DRIVER_END()
 AAE_REGISTER_DRIVER(drv_quantum1)

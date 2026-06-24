@@ -44,6 +44,7 @@
 #include "fileio/texture_handler.h"
 #include "config.h"
 #include "opengl_renderer.h"
+#include "vector_draw.h"
 #include "gl_fbo.h"
 #include "menu.h"
 #include "aae_avg.h"
@@ -557,7 +558,7 @@ void gameparse(int argc, char* argv[])
 				drv->rom[x].loadAddr != ROM_REGION_START && drv->rom[x].loadAddr != 0x999)
 			{
 				logOutput = fname;
-				retval = verify_rom(drv->name, drv->rom, x);
+				retval = verify_rom(driver_rom_archive(drv), drv->rom, x);
 				switch (retval)
 				{
 				case 0: logOutput += " BAD? ";    break;
@@ -851,7 +852,7 @@ void run_game(void)
 	// Step 3: ROM loading.
 	if (Machine->gamedrv->rom)
 	{
-		if (load_roms(Machine->gamedrv->name, Machine->gamedrv->rom) == EXIT_FAILURE)
+		if (load_roms(driver_rom_archive(Machine->gamedrv), Machine->gamedrv->rom) == EXIT_FAILURE)
 		{
 			LOG_ERROR("ROM loading failed.");
 			have_error = 10;

@@ -579,10 +579,15 @@ void avg_video_update(void)
 
 int avg_go()
 {
-	LOG_INFO("AVG GO CALLED");
+	if (config.debug_profile_code) {
+		LOG_INFO("AVG GO CALLED");
+	}
 	if (AVG_BUSY)
 	{
-		LOG_INFO("AVG call with AVG Busy, returning and doing nothing.");
+		if (config.debug_profile_code) {
+			LOG_INFO("AVG call with AVG Busy, returning and doing nothing.");
+		}
+		
 		return 1;
 	}
 	else {
@@ -599,7 +604,9 @@ int avg_go()
 		}
 		else
 		{
-			LOG_INFO("Erronious AVG Busy Clear, this should never happen.");
+			if (config.debug_profile_code) {
+				LOG_INFO("Erronious AVG Busy Clear, this should never happen.");
+			}
 			AVG_BUSY = 0;
 		}
 	}

@@ -33,7 +33,10 @@ This is free and unencumbered software released into the public domain.
 
 #include "fast_poly.h"
 #include "sys_gl.h"
-#include "gl_shader.h" 
+#include "gl_shader.h"
+#include "opengl_renderer.h"  // g_proj
+#include "MathUtils.h"        // aae::math::value_ptr
+#include <cstddef>            // offsetof
 
 Fpoly::Fpoly() = default;
 
@@ -60,31 +63,30 @@ void Fpoly::addPoly(float x, float y, float size, uint32_t color) {
 void Fpoly::Render() {
 	if (vertices.empty()) return;
 
-	// Check if a shader is already bound
-	GLint current_prog = 0;
-	glGetIntegerv(GL_CURRENT_PROGRAM, &current_prog);
-	bool use_basic_shader = (current_prog == 0);
-
-	// Bind our new basic color shader if nothing else is active
-	if (use_basic_shader) {
-		bind_shader(fragBasicColor);
+	if (!vao) {
+		glGenVertexArrays(1, &vao);
+		glGenBuffers(1, &vbo);
+		glBindVertexArray(vao);
+		glBindBuffer(GL_ARRAY_BUFFER, vbo);
+		glEnableVertexAttribArray(0);
+		glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(_fpdata), (void*)offsetof(_fpdata, x));
+		glEnableVertexAttribArray(1);
+		glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(_fpdata), (void*)offsetof(_fpdata, color));
+		glBindVertexArray(0);
+		glBindBuffer(GL_ARRAY_BUFFER, 0);
 	}
 
-	glEnableClientState(GL_VERTEX_ARRAY);
-	glVertexPointer(2, GL_FLOAT, sizeof(_fpdata), &vertices[0].x);
+	bind_shader(fragBasicColor);
+	set_uniform_mat4f(fragBasicColor, "uProj", aae::math::value_ptr(g_proj));
 
-	glEnableClientState(GL_COLOR_ARRAY);
-	glColorPointer(4, GL_UNSIGNED_BYTE, sizeof(_fpdata), &vertices[0].color);
-
+	glBindVertexArray(vao);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo);
+	glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(_fpdata), vertices.data(), GL_DYNAMIC_DRAW);
 	glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(vertices.size()));
+	glBindVertexArray(0);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-	glDisableClientState(GL_COLOR_ARRAY);
-	glDisableClientState(GL_VERTEX_ARRAY);
-
-	// Unbind when done
-	if (use_basic_shader) {
-		unbind_shader();
-	}
+	unbind_shader();
 
 	vertices.clear();
 }

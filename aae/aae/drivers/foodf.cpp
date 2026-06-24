@@ -66,32 +66,14 @@ void foodf_interrupt()
 // ---------------------------------------------------------------------------
 READ16_HANDLER(foodf_nvram_r)
 {
-	LOG_INFO("NVRAM read: offset %03x data %03x", address, foodf_nvram[address]);
+	//LOG_INFO("NVRAM read: offset %03x data %03x", address, foodf_nvram[address]);
 	return RDWORD(&foodf_nvram[address]) & 0x0f;
 
 }
 WRITE16_HANDLER(foodf_nvram_w)
 {
-	LOG_INFO("NVRAM write: offset %03x, data %01x", address, data);
+	//LOG_INFO("NVRAM write: offset %03x, data %01x", address, data);
 	COMBINE_WORD_MEM(&foodf_nvram[address], data);
-}
-
-void foodf_nvram_handler(void* file, int read_or_write)
-{
-	
-	if (read_or_write)
-		osd_fwrite(file, foodf_nvram, 128);
-	else
-	{
-
-	}
-	{
-		if (file)
-			osd_fread(file, foodf_nvram, 128);
-		else
-			memset(foodf_nvram, 0xff, 128);
-	}
-	
 }
 
 // ---------------------------------------------------------------------------
@@ -361,62 +343,6 @@ MEM_END
 // Lifecycle
 // ---------------------------------------------------------------------------
 
-/***************************************************************************
-
-  High score save/load
-
-***************************************************************************/
-
-static int hiload(void)
-{
-	void* f;
-
-	f = osd_fopen(Machine->gamedrv->name, 0, OSD_FILETYPE_HIGHSCORE, 0);
-	if (f)
-	{
-		osd_fread(f, foodf_nvram, foodf_nvram_size);
-		osd_fclose(f);
-	}
-	else
-	{
-		static unsigned char factory_nvram[] =
-		{
-			0x10,0x00,0x10,0x00,0xf1,0x00,0xca,0xb8,0x00,0x00,0x10,0x20,0x00,0x00,0x00,0x00,
-			0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
-			0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
-			0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
-			0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xa1,0x20,0x00,0x00,0xcd,0x10,
-			0x14,0xa4,0x49,0x10,0x02,0x75,0x45,0x84,0x00,0xa4,0x24,0x25,0xe0,0x00,0xf0,0x00,
-			0x10,0x00,0xd0,0x00,0x50,0x00,0x10,0x00,0x10,0x00,0x41,0x00,0x10,0x00,0x10,0x00,
-			0x00,0x00,0x00,0x00,0x08,0x08,0x00,0x00,0x08,0x08,0x08,0x08,0x00,0x00,0x08,0x08
-		};
-		int i;
-
-		/* reset to factory defaults */
-		memset(foodf_nvram, 0, foodf_nvram_size);
-		for (i = 0; i < foodf_nvram_size; i += 4)
-		{
-			WRWORD(&foodf_nvram[i], factory_nvram[i / 4] >> 4);
-			WRWORD(&foodf_nvram[i + 2], factory_nvram[i / 4] & 0x0f);
-		}
-	}
-	return 1;
-}
-
-static void hisave(void)
-{
-	void* f;
-
-	f = osd_fopen(Machine->gamedrv->name, 0, OSD_FILETYPE_HIGHSCORE, 1);
-	if (f)
-	{
-		osd_fwrite(f, foodf_nvram, foodf_nvram_size);
-		osd_fclose(f);
-	}
-}
-
-
-
 void run_foodf()
 {
 	pokey_sh_update();
@@ -446,19 +372,17 @@ int init_foodf()
 	};
 	int i;
 
-	/* reset to factory defaults */
-	memset(foodf_nvram, 0, 128);
-	for (i = 0; i < 128; i += 4)
+	/* Lay down the full factory-default NVRAM (4 bits per location, two nibbles
+	   packed per factory byte). The generic NVRAM handler is registered below
+	   with fill = -1, so first boot keeps these defaults while later boots load
+	   the saved NVRAM file over them. */
+	memset(foodf_nvram, 0, foodf_nvram_size);
+	for (i = 0; i < foodf_nvram_size; i += 4)
 	{
-		WRITE_WORD_FF(&foodf_nvram[i], factory_nvram[i / 4] >> 4);
-		WRITE_WORD_FF(&foodf_nvram[i + 2], factory_nvram[i / 4] & 0x0f);
-		LOG_DEBUG("Foodf_nvram is %x", foodf_nvram[i]);
+		WRWORD(&foodf_nvram[i], factory_nvram[i / 4] >> 4);
+		WRWORD(&foodf_nvram[i + 2], factory_nvram[i / 4] & 0x0f);
 	}
-	
-	
-	
-	
-	//memset(foodf_nvram, 0xff, sizeof(foodf_nvram));
+	nvram_set_region(foodf_nvram, foodf_nvram_size, -1);
 
 	memcpy(foodf_program_rom, Machine->memory_region[CPU0], 0x10000);
 	byteswap(foodf_program_rom, 0x10000);
@@ -589,9 +513,9 @@ AAE_DRIVER_CPUS(
 AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_RASTER_COLOR | VIDEO_MODIFIES_PALETTE, ORIENTATION_DEFAULT)
 AAE_DRIVER_SCREEN(256, 256, 0, 255, 0, 223)
 AAE_DRIVER_RASTER(foodf_gfxdecodeinfo, 256, 256, foodf_vh_convert_color_prom)
-AAE_DRIVER_HISCORE(hiload, hisave)
+AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0, 0)
-AAE_DRIVER_NVRAM_NONE()
+AAE_DRIVER_NVRAM(generic_nvram_handler)
 AAE_DRIVER_LAYOUT_NONE()
 AAE_DRIVER_END()
 

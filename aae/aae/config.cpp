@@ -47,6 +47,9 @@ void setup_config() {
     config.vecglow = get_config_int("main", "vectorglow", 5);
     config.vectrail = get_config_int("main", "vectortrail", 1);
     config.gain = get_config_int("main", "gain", 1);
+    config.line_smoothing  = get_config_float("main", "line_smoothing",  1.0f);
+    config.corner_strength = get_config_float("main", "corner_strength", 0.85f);
+    config.shots_textured  = get_config_int  ("main", "shots_textured",  0);
     config.debug = get_config_int("main", "debug", 0);
     config.debug_profile_code = get_config_int("main", "debug_profile_code", 0);
     config.audio_force_resample = get_config_int("main", "audio_force_resample", 0);
@@ -118,6 +121,9 @@ void setup_config() {
         config.vecglow = get_config_int("main", "vectorglow", config.vecglow);
         config.vectrail = get_config_int("main", "vectortrail", config.vectrail);
         config.gain = get_config_int("main", "gain", config.gain);
+        config.line_smoothing  = get_config_float("main", "line_smoothing",  config.line_smoothing);
+        config.corner_strength = get_config_float("main", "corner_strength", config.corner_strength);
+        config.shots_textured  = get_config_int  ("main", "shots_textured",  config.shots_textured);
         config.prescale = get_config_float("main", "prescale", config.prescale);
         config.vid_rotate = get_config_int("main", "vid_rotate", config.vid_rotate);
         config.anisfilter = get_config_int("main", "anisfilter", config.anisfilter);
