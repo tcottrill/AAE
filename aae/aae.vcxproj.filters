@@ -388,6 +388,9 @@
     <ClCompile Include="aae\sndhrdwr\exidy440_sound.cpp">
       <Filter>Source Files\aae\sndhrdwr</Filter>
     </ClCompile>
+    <ClCompile Include="aae\led_service_handler.cpp">
+      <Filter>Source Files\aae</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="resource.h">
@@ -565,9 +568,6 @@
       <Filter>Source Files\aae</Filter>
     </ClInclude>
     <ClInclude Include="aae\os_input.h">
-      <Filter>Source Files\aae</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\osd_cpu.h">
       <Filter>Source Files\aae</Filter>
     </ClInclude>
     <ClInclude Include="aae\osdepend.h">
@@ -780,9 +780,6 @@
     <ClInclude Include="system\3rdparty\stb_truetype.h">
       <Filter>Source Files\system\3rdparty</Filter>
     </ClInclude>
-    <ClInclude Include="aae\aae_video\winfont_gl4.h">
-      <Filter>Source Files\aae\aae_video</Filter>
-    </ClInclude>
     <ClInclude Include="aae\drivers\xevious.h">
       <Filter>Source Files\aae\drivers\raster</Filter>
     </ClInclude>
@@ -830,6 +827,9 @@
     </ClInclude>
     <ClInclude Include="aae\sndhrdwr\exidy440_sound.h">
       <Filter>Source Files\aae\sndhrdwr</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\led_service_handler.h">
+      <Filter>Source Files\aae</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

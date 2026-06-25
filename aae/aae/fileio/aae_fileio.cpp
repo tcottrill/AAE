@@ -377,7 +377,14 @@ int load_roms(const char* archname, const struct RomModule* p)
             region = cpunum;
 
         gohere:
-            if (p[i].filename == (char*)-2) { skip = 0; for (int k = i - 1; k >= 0; --k) { skip += p[k].romSize; if (p[k].filename != (char*)-2) break; } } // cumulative offset of preceding chunks; fixes multi-way ROM_CONTINUE (e.g. dkongjr 5c/5e), not just p[i-1]
+            if (p[i].filename == (char*)-2) 
+            {
+                skip = 0; 
+                for (int k = i - 1; k >= 0; --k) 
+                {
+                    skip += p[k].romSize; 
+                    if (p[k].filename != (char*)-2) break; } 
+            } // cumulative offset of preceding chunks; fixes multi-way ROM_CONTINUE (e.g. dkongjr 5c/5e), not just p[i-1]
             else skip = 0;
 
             switch (p[i].loadtype)

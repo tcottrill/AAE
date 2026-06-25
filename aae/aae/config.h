@@ -103,8 +103,9 @@ typedef struct {
 inline settings config;
 
 void setup_video_config();
-void setup_config(void);
-void setup_game_config(void);
+void setup_config();
+void setup_game_config();
+void sanity_check_config();
 
 void my_set_config_int(const char* section, const char* key, int val, int path);
 void my_set_config_float(const char* section, const char* key, float val, int path);

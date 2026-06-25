@@ -51,7 +51,6 @@
 
 #include <stdio.h>
 #include "earom.h"
-#include "aae_mame_driver.h"
 
 #define EAROM_SIZE	0x40
 static int earom_offset;

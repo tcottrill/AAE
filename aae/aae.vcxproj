@@ -146,7 +146,6 @@
     <ClInclude Include="aae\aae_video\vector_draw.h" />
     <ClInclude Include="aae\aae_video\shader_definitions.h" />
     <ClInclude Include="aae\aae_video\vector_fonts.h" />
-    <ClInclude Include="aae\aae_video\winfont_gl4.h" />
     <ClInclude Include="aae\acommon.h" />
     <ClInclude Include="aae\config.h" />
     <ClInclude Include="aae\cpu_code\ccpu.h">
@@ -208,6 +207,7 @@
     <ClInclude Include="aae\game_list.h" />
     <ClInclude Include="aae\gui\driver_gui.h" />
     <ClInclude Include="aae\inptport.h" />
+    <ClInclude Include="aae\led_service_handler.h" />
     <ClInclude Include="aae\machine\74148.h" />
     <ClInclude Include="aae\machine\earom.h" />
     <ClInclude Include="aae\machine\mathbox.h" />
@@ -219,7 +219,6 @@
     <ClInclude Include="aae\memory.h" />
     <ClInclude Include="aae\menu.h" />
     <ClInclude Include="aae\osdepend.h" />
-    <ClInclude Include="aae\osd_cpu.h" />
     <ClInclude Include="aae\os_basic.h" />
     <ClInclude Include="aae\os_input.h" />
     <ClInclude Include="aae\sndhrdwr\aae_pokey.h" />
@@ -357,6 +356,7 @@
     <ClCompile Include="aae\game_list.cpp" />
     <ClCompile Include="aae\gui\driver_gui.cpp" />
     <ClCompile Include="aae\inptport.cpp" />
+    <ClCompile Include="aae\led_service_handler.cpp" />
     <ClCompile Include="aae\machine\74148.cpp" />
     <ClCompile Include="aae\machine\earom.cpp" />
     <ClCompile Include="aae\machine\mathbox.cpp" />

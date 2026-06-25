@@ -39,8 +39,41 @@ bool file_exists(const char* filename);
 // AAE Specific Functionality
 // =============================================================
 
-// RomModule structure defined in aae_mame_driver.h, assumed valid here
-struct RomModule;
+// RomModule structure defined here
+// Rom setting moved here temporarily
+const struct RomModule
+{
+	const char* filename;
+	unsigned int loadAddr;
+	int romSize;
+	int loadtype;
+	//Hashing Checksums
+	unsigned int crc;
+	const char* sha;
+	int disposable;
+};
+
+// HANDY ROM Definitions.
+
+#define COMMA ,
+#define CRC(n)            (0x ## n)
+#define SHA1(x)           COMMA#x
+#define ROM_LOAD_NORMAL 0
+#define ROM_LOAD_16     1
+#define ROM_REGION_START 999
+#define	ROMREGION_DISPOSE 0x10
+
+#define ROM_START(name) static struct RomModule rom_##name[] = {
+//#define ROM_REGION( romSize, loadtype, disposable) { NULL, ROM_REGION_START, romSize, loadtype, disposable },
+ // For regions: filename=NULL, loadAddr=ROM_REGION_START, romSize, loadtype=REGION_*, crc=0, sha=NULL, disposable=flag
+	// Note: second param is your REGION_* id (e.g., REGION_GFX1)
+#define ROM_REGION(romSize, regionId, disposableFlag) \
+    { NULL, ROM_REGION_START, (romSize), (regionId), 0, NULL, (disposableFlag) },
+#define ROM_LOAD(filename, loadAddr, romSize, ...) { filename, loadAddr, romSize, ROM_LOAD_NORMAL, __VA_ARGS__ },
+#define ROM_LOAD16_BYTE(filename,loadAddr,romSize, ...) { filename,loadAddr,romSize, ROM_LOAD_16, __VA_ARGS__ },
+#define ROM_RELOAD(loadAddr,romSize) { (char *)-1, loadAddr,romSize, ROM_LOAD_NORMAL , 0 , 0 },
+#define ROM_CONTINUE(loadAddr,romSize) { (char *)-2, loadAddr,romSize, ROM_LOAD_NORMAL, 0 , 0 },
+#define ROM_END {NULL, 0, 0, 0, 0, 0}};
 
 // Loads all ROMs defined in a RomModule list from a ZIP archive
 int load_roms(const char* archname, const struct RomModule* p);

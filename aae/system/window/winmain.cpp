@@ -49,7 +49,7 @@
 #include "windows_util.h"
 #include "opengl_renderer.h"
 #include "aae_mame_driver.h"  // for global 'done'
-#include "os_basic.h"         // for osd_led_service_start/stop
+#include "led_service_handler.h"
 
 // -----------------------------------------------------------------------------
 // Globals

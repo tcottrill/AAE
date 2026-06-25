@@ -231,43 +231,6 @@ int osd_read_key_immediate(void)
 	return res;
 }
 
-/* Wait for a key press and return keycode.  Support repeat
-int osd_read_keyrepeat(void)
-{
-	int res;
-
-	clear_keybuf();
-	res = readkey() >> 8;
-
-	if (res == KEY_RCONTROL) res = OSD_KEY_RCONTROL;
-	if (res == KEY_ALTGR) res = OSD_KEY_ALTGR;
-
-	return res;
-}
-
-int osd_debug_readkey(void)
-{
-	int i,res;
-
-	clear_keybuf();
-	res = readkey() >> 8;
-
-	if (res == KEY_RCONTROL) res = OSD_KEY_RCONTROL;
-	if (res == KEY_ALTGR) res = OSD_KEY_ALTGR;
-
-	/* avoid problems when exiting the debugger (e.g. F4)
-	for (i = OSD_MAX_KEY;i > OSD_KEY_NONE;i--)
-	{
-		if (osd_key_pressed(i))
-			memory[i] = 1;
-		else
-			memory[i] = 0;
-	}
-
-	return res;
-}
-*/
-
 /* return the name of a key */ //--ERROR KEY NAMES NEED TO GO TO 200
 const char* osd_key_name(int keycode)
 {

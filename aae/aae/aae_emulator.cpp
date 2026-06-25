@@ -11,8 +11,6 @@
 // SOME CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.
 //==========================================================================
 
-
-
 // ---------------------------------------------------------------------------
 // Standard C++ headers
 // ---------------------------------------------------------------------------
@@ -1596,7 +1594,7 @@ void emulator_init(int argc, char** argv)
 	{
 		if (!argv[i]) continue;
 		const std::string arg = to_lowercase(argv[i]);
-		if      (arg == "-ror")      rotation_override = ROT90;
+		if (arg == "-ror")      rotation_override = ROT90;
 		else if (arg == "-rol")      rotation_override = ROT270;
 		else if (arg == "-norotate") rotation_override = ROT0;
 	}
@@ -1788,6 +1786,7 @@ void emulator_stop_game()
 
 	// 7) Frame limiter (per-game because FPS varies between games).
 	FrameLimiter::Shutdown();
+	osd_set_leds(0); // Turn off LEDS
 
 	// 8) Reset the RunningMachine struct for the next game.
 	memset(&machine, 0, sizeof(machine));

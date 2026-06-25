@@ -221,6 +221,48 @@ void setup_game_config() {
     set_points_lines();
 }
 
+
+void sanity_check_config()
+{
+    //SANITY CHECKS GO HERE
+    if (config.prescale < 1 || config.prescale > 5)
+    {
+        LOG_INFO("!!!!!Raster prescale set to unsupported value, supported values are 1 - 5");
+        config.prescale = 2; have_error = 3;
+    }
+
+    if (config.anisfilter < 2 || config.anisfilter > 16 || (config.anisfilter % 2 != 0))
+    {
+        if (config.anisfilter != 0) { //FINAL CHECK
+            LOG_INFO("!!!!!Ansitropic Filterings set to unsupported value, supported values are 2,4,8,16 !!!!!");
+            have_error = 3;
+            config.anisfilter = 0; //RESET TIL FIXED
+        }
+    }
+
+    if (config.priority < 0 || config.priority > 4)
+    {
+        LOG_INFO("!!!!!Priority set to unsupported value, supported values are 0,1,2,3,4 - defaulted to 1!!!!!");
+        config.priority = 1;
+    }
+
+    // Vector glow and trail effects are only meaningful for vector games.
+    // Force them off for any raster game regardless of ini settings.
+    if (Machine && Machine->drv && (Machine->drv->video_attributes & VIDEO_RASTER_CLASS_MASK))
+    {
+        if (config.vecglow)
+        {
+            LOG_INFO("sanity_check_config: vecglow disabled (raster game).");
+            config.vecglow = 0;
+        }
+        if (config.vectrail)
+        {
+            LOG_INFO("sanity_check_config: vectrail disabled (raster game).");
+            config.vectrail = 0;
+        }
+    }
+
+}
 // Writes an int, float, or string value to either aae.ini or game.ini
 void my_set_config_value(const char* section, const char* key, const std::string& value, int path) {
     // path==0 writes to the global aae.ini in the program root.

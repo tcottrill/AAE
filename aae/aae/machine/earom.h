@@ -1,8 +1,8 @@
 #ifndef EAROM_H
 #define EAROM_H
 
-#include "osd_cpu.h"
 //Copyright "The M.A.M.E Team"
+#include "aae_mame_driver.h"
 
 //Todo, rename to match mame code.
 void EaromWrite(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite);

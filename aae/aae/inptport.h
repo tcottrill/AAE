@@ -2,7 +2,7 @@
 #define INPTPORT_H
 #include "osdepend.h"
 #include "aae_mame_driver.h"
-#include "osd_cpu.h"
+
 
 //============================================================================
 // AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME 
@@ -56,6 +56,8 @@
 //   distribution and its associated license files.
 //
 // -----------------------------------------------------------------------------
+
+#define COIN_COUNTERS	4	/* total # of coin counters */
 
 //Updated with Custom Counter and Single Pulse Key Settings for the GUI
 
