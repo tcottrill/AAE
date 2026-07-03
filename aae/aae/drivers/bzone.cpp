@@ -147,7 +147,11 @@ READ_HANDLER(BzoneIN0read)
 
 	res = readinputport(0);
 
-	if (get_eterna_ticks(0) & 0x100) res |= IN0_3KHZ;
+	// 3KHz clock: include the in-slice cycle count (get6502ticks(0), reset each
+	// slice by cpu_exec_now) since eternaticks only advances at slice boundaries -
+	// edge-waiting loops (self-test) need a real ~3KHz square wave. Same fix as
+	// llander_IN0_r.
+	if ((get_eterna_ticks(0) + m_cpu_6502[CPU0]->get6502ticks(0)) & 0x100) res |= IN0_3KHZ;
 	else res &= ~IN0_3KHZ;
 
 	if (avg_check())	res |= IN0_VG_HALT;

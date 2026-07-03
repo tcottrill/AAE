@@ -17,7 +17,7 @@
 #include "old_mame_raster.h"
 #include "rawinput.h"
 
-// This is only a test.
+
 
 uint8_t m_p1=0;
 uint8_t m_p2=0;
@@ -844,7 +844,7 @@ AAE_DRIVER_END()
 
 
 // Clowns1
-AAE_DRIVER_BEGIN(drv_clowns1, "clowns1", "Clowns")
+AAE_DRIVER_BEGIN(drv_clowns1, "clowns1", "Clowns Revision 1")
 AAE_DRIVER_ROM(rom_clowns1)
 AAE_DRIVER_FUNCS(&init_invaders, &run_invaders, &end_invaders)
 AAE_DRIVER_INPUT(input_ports_clowns)

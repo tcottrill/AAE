@@ -317,7 +317,6 @@ READ_HANDLER(gaplusa_customio_3_r)
 	}
 }
 
-
 READ_HANDLER(gaplus_customio_1_r)
 {
 	int mode, val, temp1, temp2;
@@ -527,9 +526,6 @@ READ_HANDLER(gaplus_customio_3_r)
 	}
 }
 
-
-
-
 // ---------------------------------------------------------------------------
 // Interrupt enable / generate for both CPUs
 // The hardware uses address lines (not data) to set enable state.
@@ -546,7 +542,7 @@ WRITE_HANDLER(gaplus_interrupt_enable_2_w)
 void gaplus_interrupt_1(void)
 {
 	gaplus_starfield_update(); /* update starfields */
-	LOG_DEBUG("Interrupt called on CPU 1 at %d cycles", cpu_getcycles_cpu(0));
+	//LOG_DEBUG("Interrupt called on CPU 1 at %d cycles", cpu_getcycles_cpu(0));
 	cpu_do_int_imm(CPU0, INT_TYPE_INT);
 }
 
@@ -555,23 +551,19 @@ void gaplus_interrupt_2(void)
 {
 	if (interrupt_enable_2)
 	{
-		LOG_DEBUG("Interrupt called on CPU 2 at %d cycles", cpu_getcycles_cpu(1));
+		//LOG_DEBUG("Interrupt called on CPU 2 at %d cycles", cpu_getcycles_cpu(1));
 		cpu_do_int_imm(CPU1, INT_TYPE_INT);
 	}
-	else { LOG_DEBUG("Interrupt NOT called on CPU 2 INT EN %d", interrupt_enable_2); }
 }
 
 void gaplus_interrupt_3(void)
 {
-	
 	if (interrupt_enable_3)
 	{
-		LOG_DEBUG("Interrupt called on CPU 3 at %d cycles", cpu_getcycles_cpu(2));
+		//LOG_DEBUG("Interrupt called on CPU 3 at %d cycles", cpu_getcycles_cpu(2));
 		cpu_do_int_imm(CPU2, INT_TYPE_INT);
 	}
-	else { LOG_DEBUG("Interrupt NOT called on CPU 3 INT EN %d", interrupt_enable_3); }
 }
-
 
 WRITE_HANDLER(gaplus_reset_2_3_w)
 {
@@ -641,8 +633,6 @@ WRITE_HANDLER(gaplus_colorram_w)
 		colorram[address] = (unsigned char)data;
 	}
 }
-
-
 
 // ---------------------------------------------------------------------------
 // GFX layouts
@@ -769,7 +759,7 @@ int init_gaplus(void)
 	gaplus_customio_2 = &Machine->memory_region[CPU0][0x6810];
 	gaplus_customio_3 = &Machine->memory_region[CPU0][0x6820];
 
-	gaplus_snd_sharedram=& Machine->memory_region[CPU0][0x6000];
+	gaplus_snd_sharedram = &Machine->memory_region[CPU0][0x6000];
 	interrupt_enable_2 = interrupt_enable_3 = 1;
 	credits = coincounter1 = coincounter2 = 0;
 
@@ -782,7 +772,7 @@ int init_gaplus(void)
 	gaplus_init_machine();
 	gaplus_vh_start();
 	namco_sh_start(&namco_interface);
-	
+
 	return 1;
 }
 
@@ -939,8 +929,6 @@ PORT_BITX(0x08, IP_ACTIVE_HIGH, IPT_BUTTON1 | IPF_PLAYER2, 0, IP_KEY_PREVIOUS, I
 
 INPUT_PORTS_END
 
-
-
 // ---------------------------------------------------------------------------
 // ROM definitions
 // The GFX region (REGION_GFX1) is used as a temporary decode buffer that
@@ -963,7 +951,7 @@ ROM_LOAD("gp2-1.64", 0xe000, 0x2000, CRC(e525d75d) SHA1(93fcd8b940491abf63441818
 ROM_REGION(0x2000, REGION_GFX1, ROMREGION_DISPOSE)
 ROM_LOAD("gp2-5.64", 0x0000, 0x2000, CRC(e525d75d) SHA1(93fcd8b940491abf6344181811d0b35765d7e45c))
 
-ROM_REGION(0xa000, REGION_GFX2,   REGIONFLAG_DISPOSE)
+ROM_REGION(0xa000, REGION_GFX2, REGIONFLAG_DISPOSE)
 ROM_LOAD("gp2-9.64", 0x0000, 0x2000, CRC(e525d75d) SHA1(93fcd8b940491abf6344181811d0b35765d7e45c))
 ROM_LOAD("gp2-11.64", 0x2000, 0x2000, CRC(e525d75d) SHA1(93fcd8b940491abf6344181811d0b35765d7e45c))
 ROM_LOAD("gp2-10.64", 0x4000, 0x2000, CRC(e525d75d) SHA1(93fcd8b940491abf6344181811d0b35765d7e45c))
@@ -981,7 +969,6 @@ ROM_LOAD("gp2-6n.bin", 0x0600, 0x0200, CRC(e525d75d) SHA1(93fcd8b940491abf634418
 ROM_REGION(0x0100, REGION_SOUND1, 0) /* sound prom */
 ROM_LOAD("gp2-3f.bin", 0x0000, 0x0100, CRC(e525d75d) SHA1(93fcd8b940491abf6344181811d0b35765d7e45c))
 ROM_END
-
 
 ROM_START(gaplusa)
 ROM_REGION(0x10000, REGION_CPU1, 0) /* 64k for the MAIN CPU */
@@ -1085,7 +1072,7 @@ AAE_DRIVER_CPUS(
 
 AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_RASTER_COLOR | VIDEO_SUPPORTS_DIRTY, ORIENTATION_DEFAULT)
 AAE_DRIVER_SCREEN(28 * 8, 36 * 8, 0, 28 * 8 - 1, 0, 36 * 8 - 1)
-AAE_DRIVER_RASTER(gaplus_gfxdecodeinfo, 256,64 * 4 + 64 * 8, gaplus_vh_convert_color_prom)
+AAE_DRIVER_RASTER(gaplus_gfxdecodeinfo, 256, 64 * 4 + 64 * 8, gaplus_vh_convert_color_prom)
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0, 0)
 AAE_DRIVER_NVRAM_NONE()

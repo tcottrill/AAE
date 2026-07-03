@@ -155,6 +155,19 @@ int timer_is_timer_enabled(int id)
 	return (id >= 0 && id < static_cast<int>(timers.size()) && timers[id].has_value() && timers[id]->enabled);
 }
 
+/* timer_enable - pause/resume a timer without disturbing its count, like
+ * MAME's timer_enable. Disabled timers are skipped by timer_update, so the
+ * count freezes and resumes where it left off on re-enable.
+ * Returns 1 if the timer exists, 0 otherwise. */
+int timer_enable(int id, int enable)
+{
+	if (id >= 0 && id < static_cast<int>(timers.size()) && timers[id].has_value()) {
+		timers[id]->enabled = (enable != 0);
+		return 1;
+	}
+	return 0;
+}
+
 
 void timer_update(int cycles, int cpunum)
 {

@@ -347,7 +347,7 @@ Added a food fight driver to help exercise the 68000 core, but that is a truly h
 
 Wasted way too much time decrypting the Blaze Asteroids/Deluxe/Lunar Lander Multigame. I decrypted the roms, but it appears Blaze used some variation of the slapstic style code to encrypt all the addressing. Nice! After many permutations, I gave up on it. Hopefully they will eventually release the decrypted source in the future so it can be emulated. 
 Completely disassembled Lunar Lander, posted the sources on my github. Eventually I would like to modify the roms to show the current difficulty onscreen. 
-Clean room (mostly, kinda sorta) wrote a new, full pokey chip emulation for AAE. It uses the known good polynomials from MAME and the sound generation from Ron Frys original code. Everything else is new and written from the documentation and datasheets and verified with my timer code. It properly emulates all the Pokey registers now. Verified Tempest multiple ways with a new test rig.
+Clean room (mostly) wrote a new, full pokey chip emulation for AAE. It uses the known good polynomials from MAME and the sound generation from Ron Frys original code. Everything else is new and written from the documentation and datasheets and verified with my timer code. It properly emulates all the Pokey registers now. Verified Tempest multiple ways.
 Corrected some timing with the 68000 cpu code
 Corrected a cycle counting bug and some interrupt handling with the 6809 CPU code. This fixed my Gaplus/Galaga 3 driver, now added. 
 Corrected a Z80 halt bug with multi-cpu implementations. This one was only hit with Cosmic Chasm, still trying to get that one working right.
@@ -369,15 +369,73 @@ Added a centralized NVRAM handler to the fileio code, moved all the NVRAM suppor
 Corrected Xevious and Mappy driver rotation issues. 
 Added correct artwork rotation to the mame_layout code. All raster games correctly rotate and show the bezel/overlay graphics. 
 Fixed aspect ratio correction on raster games. Raster games now respect any forced aspect ratio setting, windowed or fullscreen
-Finally fixed the Debug build to build correctly. 
 
+6/24-6/29/26
+Misc Cleanup. I didn't document it, maybe I'll remember and put it here. 
 
+6/30/26
+Changed the Pokey ALLPOT return its value only on the first ALLPOT read after a POTGO write. Otherwise it returns 0. (Updated again later below!!)
+Unfroze the Random per cycle updates, the combination of these two fixes the Asteroids Deluxe ERROR on self test. 
+This required extensive testing on Tempest to make sure it was still passing the protection checks. 
 
+7/1/26
+Added a code mod to lunar lander to simulate onscreen artwork , ala the Braze Multigame.
+Added a dipswitch in the llander romset to enable/disable the artwork. It crashes if used with llander1, I'll fix that eventually. 
+Fixed the test mode in Lunar Lander. 
+Fixed the 3Khz source in the llander, asteroid, bwidow, tempest and bzone drivers. 
+Verified test mode was now working correctly with no errors in each of them.  
 
+7/2/26
+POKEY sound core fixes (aae_pokey.cpp/h, timer.cpp):
 
+Fixed sound timing for games where the POKEY clock differs from the CPU clock (e.g. Warlords). Mid-frame sound register writes were being placed in the wrong part of the audio buffer; they now land at the correct time within the frame.
+Fixed a shutdown bug that could delete another subsystem's timer. The POKEY timer ID table started out zero-filled, and timer ID 0 is a real timer — so stopping a game could kill an unrelated timer. IDs now initialize to "none".
+Volume writes no longer reset the POKEY IRQ timers. Writing AUDC (volume/distortion) was restarting all three timer IRQs from scratch, so a game running a volume envelope could delay a pending timer IRQ forever.
+Frequency writes now only restart the timer they actually affect. An AUDF write used to restart all three IRQ timers; now AUDF1 only touches timer 1 (and timer 2 when channels are joined), AUDF2 touches timer 2, AUDF4 touches timer 4, etc.
+IRQEN writes now pause/resume timers instead of restarting them. Enabling or disabling a timer IRQ keeps the timer's place in its countdown (like real hardware and MAME's timer_enable), instead of starting the period over. Added a timer_enable() function to the AAE timer system to support this.
+ALLPOT now emulates the real POKEY pot scan timing (fixes Asteroids Deluxe self-test). While a pot scan is running, ALLPOT returns the DIP switches wired to the pot pins; once the scan finishes (~150 µs in fast-pot mode), it reads 0 like real hardware. This makes the Asteroids Deluxe option read and its later "should be 0" self-test check both pass naturally — a test that fails in MAME but passes on a real machine.
 
+mixer.cpp
+Fixed staticky noise when streaming sound (e.g. Namco games at 96 kHz) is resampled to 44100 Hz output. The mixer's read position drifted a hair short of the stream buffer's end at non-integer rate ratios, causing a tiny glitch and sample skip at every frame boundary (a 60 Hz static/buzz); the position is now re-anchored to the buffer each time it's refilled, so any input/output rate combination stays clean. (48000 Hz output was unaffected because 96000->48000 divides exactly.)
 
+Z80 CPU core fixes (cpu_z80.cpp/h) — affect all Z80 games:
 
+Fixed NMI delivery corrupting the Z80 stack when triggered by another CPU. An NMI fired from the main CPU's code (like a sound command) used to execute immediately in the wrong CPU's memory context, so the Z80's pushed return address vanished and RETN later returned to a stale address — the sound CPU would jump into data, run off the rails, and reset itself. NMIs are now latched like the real pin and taken at the Z80's next instruction, in its own context. (This was the root cause of Cosmic Chasm's sound corruption.)
+Fixed the INT line the same way. A maskable interrupt requested from outside the Z80 is now latched and taken at the next instruction boundary instead of executing immediately in the caller's context — matching how the real /INT pin is sampled.
+Fixed EI to match real hardware. EI now enables the interrupt flip-flops immediately and only delays acceptance by one instruction. The old version delayed the flags themselves, which could switch interrupts on in the middle of an NMI handler and allow impossible nested interrupts.
+Accepting a maskable interrupt now clears both IFF1 and IFF2 (documented Z80 behavior, same as MAME). Before, an NMI that arrived during an interrupt handler would re-enable interrupts on its RETN and let the handler be re-entered.
+
+Cosmic Chasm (cchasm.cpp) — full sound emulation, samples removed:
+
+The CTC square-wave tones (ship laser/thrust) are now properly emulated through the DAC module instead of WAV samples — each CTC zero-count toggles a square wave with correct mid-frame timing, like MAME.
+Fixed the CTC's timers running on the wrong CPU's clock. They now tick on the Z80's timeline, so sound interrupts fire at the right rate instead of bunching up once per frame.
+Fixed CPU interleave (was effectively zero). The 68000 and Z80 used to run in one big chunk each per frame, so sound commands and interrupts piled up; they now alternate finely and the sound handshake works like real hardware.
+Fixed the CTC daisy chain asserting the Z80 interrupt line for an in-service channel. The INT line now only asserts for a real pending request, preventing ghost interrupts with bogus vectors.
+Added DC-blocking to the DAC output (the emulated version of the board's AC-coupling capacitor) so the unipolar laser square wave no longer pushes a standing offset into the mixer's soft-clipper and ducks all the other audio.
+AY-3-8910 (ay8910.cpp) — affects Omega Race, Aztarac, Gyruss, Cosmic Chasm:
+
+Fixed sound register writes landing at the wrong time position in games where the CPU clock differs from the AY clock — write positions now scale by the executing CPU's own clock, so envelopes and note changes land where they should.
+
+Top Gunner / Vertigo (exidy440_sound.cpp):
+Sound DMA state now updates mid-frame. The sound 6809 used to see frozen DMA counters all frame, so short sounds started and replaced within one frame vanished and sequencing stalled; the mixer now catches up whenever the CPU touches the DMA registers, like MAME's stream updates.
+
+**MC6809 CPU core fixes (cpu_m6809.cpp/h) — affect Star Wars/ESB, Vertigo/Top Gunner, Gyruss:**
+
+- **Fixed interrupt wake-up latency during SYNC/CWAI waits.** A CPU waiting for an interrupt used to sleep through its entire time slice even if the interrupt arrived mid-slice; it now re-checks every 8 cycles and wakes almost immediately, like real hardware.
+
+- **Added the undocumented `$10 20` long-branch opcode (LBRA alias).** Real 6809s execute it; before, the core treated it as unknown and — worse — resumed execution inside the branch offset bytes, derailing the program.
+
+- **Illegal store-immediate opcodes no longer corrupt memory.** Malformed encodings like `STA #` used to write the register to address $0000 silently; they now log a warning and skip.
+
+Circus family driver (circus, robotbwl, crash, ripcord) — fixed
+Fixed garbage/inverted graphics in all four games: Colortable now set (0=black, 1=white).
+Fixed frozen tile graphics in crash/ripcord/robotbwl: video RAM ($4000-$43FF) was mapped as plain MWA_RAM, so the dirty-tile buffer was never marked and games honoring the dirty check never redrew the tile layer after frame one. VRAM writes now go through a videoram_w wrapper.
+Fixed vblank/IRQ phase (Crash gameplay): circus_in_vblank() reported vblank at the end of the frame while the scheduler fires the per-frame IRQ at the frame boundary — the opposite of the MAME 0.36–0.66 model where the IRQ fires at vblank start with the DSW vblank bit active for the following 3500µs. The vblank window now covers the first vblank_duration µs of the frame, and all four games use 3500µs per MAME 0.66. 
+
+Fixed display aspect ratio for games without .lay artwork: the synthetic layout fallback used raw pixel dimensions (Circus is 248×256 → rendered nearly square). It now stretches to the physical monitor aspect (4:3 horizontal / 3:4 vertical) like MAME's standard view. Applies to all no-artwork games.
+
+7/3/26
+Pleiads melody samples now trigger correctly (phoenix.cpp). AI assist disassembled the pleiads program ROMs and found how the game drives the Epson SVM7910E melody IC See pleiads_audio.cpp for the full description. 
 
 
  
@@ -400,6 +458,4 @@ Finally fixed the Debug build to build correctly.
 
 
  
-
-
 

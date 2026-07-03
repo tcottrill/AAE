@@ -147,9 +147,7 @@ int cpu_m68000::exec(int cycles) {
 	// callback it fires (e.g. the PIT OUT pin -> IRQ) sees a clock that already
 	// absorbed this slice rather than counting 'ran' a second time.
 	m_slice_cycles = cycles_left;
-	// Drive the AAE timer subsystem from inside the core (like cpu_z80 / cpu_6502
-	// / cpu_m6809). The scheduler must NOT also call timer_update for the 68000,
-	// or timers advance twice as fast.
+	// Drive the AAE timer subsystem from inside the core (like cpu_z80 / cpu_6502 / cpu_m6809). 
 	timer_update(ran, m_cpu_num);
 	return ran;
 }

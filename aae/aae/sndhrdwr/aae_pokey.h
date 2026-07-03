@@ -3,7 +3,7 @@
 // driver compiles unchanged.  The implementation lives in aae_pokey.cpp.
 //
 // Layout:
-//   1. Engine-free core (namespace pk, PokeyHost, Pokey, pokey_detail)
+//   1. Engine-free core (PokeyHost, Pokey, poly/RNG table accessors)
 //      -- compiled in ALL builds, including POKEY_TESTS.
 //   2. Engine-facing adapter (includes, constants, POKEYinterface, C API)
 //      -- compiled only when POKEY_TESTS is NOT defined.
@@ -57,6 +57,10 @@ struct PokeyHost {
 	// seconds, replacing any prior schedule for this `which`. which: 0,1,2 = TIMR1/2/4.
 	virtual void timer_schedule(int which, double period_s) = 0;
 	virtual void timer_cancel(int which) = 0;
+	// Pause/resume the timer for `which` WITHOUT resetting its phase (MAME's
+	// timer_enable on IRQEN writes). Returns false if no timer is scheduled,
+	// letting the core fall back to a fresh timer_schedule.
+	virtual bool timer_set_enabled(int /*which*/, bool /*on*/) { return false; }
 
 	// IRQ event bits that just triggered (1 = fired); matches mame_pokey's
 	// interrupt_cb(mask). The IRQST latch stays inside the core.
@@ -120,8 +124,8 @@ private:
 	uint8_t  KBCODE_ = 0, SERIN_ = 0, SEROUT_ = 0;
 	bool     kbd_pending_ = false;
 
-	// pots
-	uint8_t  allpot_ = 0xFF;     // 1 bit per pot: 1 = scan complete
+	// pots: ALLPOT is derived from the scan window (see R_ALLPOT) -- during a
+	// scan it reads the still-counting-line mask, after it 0x00.
 	uint64_t pot_scan_start_ = 0;
 	bool     pot_scanning_ = false;
 
@@ -133,7 +137,9 @@ private:
 	void recompute_channel(int ch);  // true period -> divisor_ (timer-facing)
 	void recompute_all();
 	void update_render_channel(int ch);  // maintain render rmax_/cnt_/out_ (Ron-Fries seeding)
-	void rearm_timers();
+	// Re-schedule the host IRQ timers named in which_mask (bit0=TIMR1, bit1=TIMR2,
+	// bit2=TIMR4); default rearms all three. Timers not in the mask keep their phase.
+	void rearm_timers(uint8_t which_mask = 0x07);
 	void fire_irq(uint8_t mask);
 	uint8_t read_random();
 	void scan_keyboard();
@@ -142,15 +148,13 @@ private:
 // Test-only accessors for the shared static poly/RNG tables (built on first use
 // or via pokey_init_tables()). Sizes: poly4=15, poly5=31, poly9=511,
 // poly17=131071, rand9=511, rand17=131071.
-namespace pokey_detail {
-	void           pokey_init_tables();
-	const uint8_t* poly4_table();
-	const uint8_t* poly5_table();
-	const uint8_t* poly9_table();
-	const uint8_t* poly17_table();
-	const uint8_t* rand9_table();
-	const uint8_t* rand17_table();
-}
+void           pokey_init_tables();
+const uint8_t* poly4_table();
+const uint8_t* poly5_table();
+const uint8_t* poly9_table();
+const uint8_t* poly17_table();
+const uint8_t* rand9_table();
+const uint8_t* rand17_table();
 
 // ---------------------------------------------------------------------------
 // Engine-facing adapter -- excluded from test builds

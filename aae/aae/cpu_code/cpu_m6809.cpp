@@ -938,6 +938,14 @@ int cpu_m6809::step()
 
                 #define RD8()  (mode == 0 ? fetch8()  : read8(ea))
                 #define RD16() (mode == 0 ? fetch16() : read16(ea))
+                // Store with immediate mode ($87/$C7/$8F/$CF/$DD-slot etc.) is
+                // an illegal encoding; ea would still be 0 and the store would
+                // silently corrupt address $0000. Log and skip instead.
+                #define ST_ILLEGAL_IMM() \
+                    if (mode == 0) { \
+                        LOG_INFO("CPU%d: illegal store-immediate opcode %02X @%04X", cpu_num, op, m_PPC); \
+                        cycles -= 2; break; \
+                    }
 
                 if (!bpag) { // 0x80-0xBF : A-page
                     switch (fn) {
@@ -948,7 +956,7 @@ int cpu_m6809::step()
                     case 0x4: op_and8(m_D.d8.A, RD8()); cycles -= c8[mode] + extra; break; // ANDA
                     case 0x5: op_bit8(m_D.d8.A, RD8()); cycles -= c8[mode] + extra; break; // BITA
                     case 0x6: op_ld8(m_D.d8.A, RD8());  cycles -= c8[mode] + extra; break; // LDA
-                    case 0x7: write8(ea, m_D.d8.A); set_NZ8(m_D.d8.A); set_flag(CC_V, false); cycles -= c8[mode] + extra; break; // STA
+                    case 0x7: ST_ILLEGAL_IMM(); write8(ea, m_D.d8.A); set_NZ8(m_D.d8.A); set_flag(CC_V, false); cycles -= c8[mode] + extra; break; // STA
                     case 0x8: op_eor8(m_D.d8.A, RD8()); cycles -= c8[mode] + extra; break; // EORA
                     case 0x9: op_adc8(m_D.d8.A, RD8()); cycles -= c8[mode] + extra; break; // ADCA
                     case 0xA: op_or8(m_D.d8.A, RD8());  cycles -= c8[mode] + extra; break; // ORA
@@ -959,7 +967,7 @@ int cpu_m6809::step()
                         else { push_s16(m_PC); m_PC = ea; cycles -= cjsr[mode] + extra; }
                         break;
                     case 0xE: op_ld16(m_X, RD16()); cycles -= c16l[mode] + extra; break; // LDX
-                    case 0xF: write16(ea, m_X); set_NZ16(m_X); set_flag(CC_V, false); cycles -= c16l[mode] + extra; break; // STX
+                    case 0xF: ST_ILLEGAL_IMM(); write16(ea, m_X); set_NZ16(m_X); set_flag(CC_V, false); cycles -= c16l[mode] + extra; break; // STX
                     }
                 } else { // 0xC0-0xFF : B-page
                     switch (fn) {
@@ -970,19 +978,20 @@ int cpu_m6809::step()
                     case 0x4: op_and8(m_D.d8.B, RD8()); cycles -= c8[mode] + extra; break; // ANDB
                     case 0x5: op_bit8(m_D.d8.B, RD8()); cycles -= c8[mode] + extra; break; // BITB
                     case 0x6: op_ld8(m_D.d8.B, RD8());  cycles -= c8[mode] + extra; break; // LDB
-                    case 0x7: write8(ea, m_D.d8.B); set_NZ8(m_D.d8.B); set_flag(CC_V, false); cycles -= c8[mode] + extra; break; // STB
+                    case 0x7: ST_ILLEGAL_IMM(); write8(ea, m_D.d8.B); set_NZ8(m_D.d8.B); set_flag(CC_V, false); cycles -= c8[mode] + extra; break; // STB
                     case 0x8: op_eor8(m_D.d8.B, RD8()); cycles -= c8[mode] + extra; break; // EORB
                     case 0x9: op_adc8(m_D.d8.B, RD8()); cycles -= c8[mode] + extra; break; // ADCB
                     case 0xA: op_or8(m_D.d8.B, RD8());  cycles -= c8[mode] + extra; break; // ORB
                     case 0xB: op_add8(m_D.d8.B, RD8()); cycles -= c8[mode] + extra; break; // ADDB
                     case 0xC: op_ld16(m_D.D, RD16()); cycles -= c16l[mode] + extra; break; // LDD
-                    case 0xD: write16(ea, m_D.D); set_NZ16(m_D.D); set_flag(CC_V, false); cycles -= c16l[mode] + extra; break; // STD
+                    case 0xD: ST_ILLEGAL_IMM(); write16(ea, m_D.D); set_NZ16(m_D.D); set_flag(CC_V, false); cycles -= c16l[mode] + extra; break; // STD
                     case 0xE: op_ld16(m_U, RD16()); cycles -= c16l[mode] + extra; break; // LDU
-                    case 0xF: write16(ea, m_U); set_NZ16(m_U); set_flag(CC_V, false); cycles -= c16l[mode] + extra; break; // STU
+                    case 0xF: ST_ILLEGAL_IMM(); write16(ea, m_U); set_NZ16(m_U); set_flag(CC_V, false); cycles -= c16l[mode] + extra; break; // STU
                     }
                 }
                 #undef RD8
                 #undef RD16
+                #undef ST_ILLEGAL_IMM
             }
             else {
                 LOG_INFO("CPU%d: Unrecognized opcode @%04X: %02X", cpu_num, (uint16_t)(m_PC - 1), op);
@@ -1012,22 +1021,32 @@ int cpu_m6809::step()
 // -----------------------------------------------------------------------------
 int cpu_m6809::exec(int cycles)
 {
-    // SYNC/CWAI wait-state: fast-idle the entire slice when nothing can wake us.
-    // Mirrors step(): SYNC wakes on any asserted line, CWAI only on a line whose
-    // mask permits it (a masked line during CWAI must keep waiting, not run code).
-    if (m_sync && !(m_nmi_line || m_firq_line || m_irq_line))
-        return charge_cycles(cycles);
-    if (m_cwai) {
-        bool serviceable = (m_nmi_line  && m_nmi_enabled)
-                         || (m_firq_line && !get_flag(CC_F))
-                         || (m_irq_line  && !get_flag(CC_I));
-        if (!serviceable)
-            return charge_cycles(cycles);
-    }
-
-    // Run a full budget of INSTRUCTION cycles. 
     int instr_budget = cycles;
     int total = 0;
+
+    // SYNC/CWAI wait-state: idle in SMALL CHUNKS, not the whole slice at once.
+    // charge_cycles() drives timer_update(), and a timer callback can assert an
+    // interrupt line MID-slice (e.g. Vertigo's PIT ch1 -> 6809 IRQ). Consuming
+    // the entire slice in one charge would delay the wake-up to the next slice
+    // -- up to a slice of latency/jitter that real hardware (which leaves SYNC
+    // within ~1 cycle of assertion) does not have. Re-check the wake condition
+    // between chunks. Mask rules mirror step(): SYNC wakes on any asserted
+    // line, CWAI only on a line whose mask permits service.
+    while (instr_budget > 0 && (m_sync || m_cwai)) {
+        bool wake;
+        if (m_sync)
+            wake = m_nmi_line || m_firq_line || m_irq_line;
+        else
+            wake = (m_nmi_line  && m_nmi_enabled)
+                 || (m_firq_line && !get_flag(CC_F))
+                 || (m_irq_line  && !get_flag(CC_I));
+        if (wake) break;   // step() below handles the actual wake/service
+        int chunk = (instr_budget < 8) ? instr_budget : 8;
+        total += charge_cycles(chunk);
+        instr_budget -= chunk;
+    }
+
+    // Run the remaining budget of INSTRUCTION cycles.
     while (instr_budget > 0) {
         int c = step();
         total += c;
@@ -1047,8 +1066,11 @@ int cpu_m6809::exec_page10()
     m_last_opcode = op;
     int extra = 0;
 
-    // Long conditional branches 0x21-0x2F.
-    if (op >= 0x21 && op <= 0x2F)
+    // Long conditional branches 0x21-0x2F, plus 0x20: $10 20 is the
+    // undocumented LBRA alias -- real hardware executes it (and MAME maps it).
+    // Excluding it would also leave the 2-byte offset unconsumed and desync
+    // the PC into the operand stream.
+    if (op >= 0x20 && op <= 0x2F)
         return branch_long(test_branch_cond(op & 0x0F));
 
     if (op == 0x3F) { // SWI2 (does not set I/F)
@@ -1076,12 +1098,16 @@ int cpu_m6809::exec_page10()
         case 0x3: op_cmp16(m_D.D, RD16()); return c16a[mode] + extra; // CMPD
         case 0xC: op_cmp16(m_Y,   RD16()); return c16a[mode] + extra; // CMPY
         case 0xE: op_ld16(m_Y,    RD16()); return c16l[mode] + extra; // LDY
-        case 0xF: write16(ea, m_Y); set_NZ16(m_Y); set_flag(CC_V, false); return c16l[mode] + extra; // STY
+        case 0xF: // STY (immediate form is illegal; ea would be 0)
+            if (mode == 0) { LOG_INFO("CPU%d: illegal STY immediate @%04X", cpu_num, m_PPC); return 2; }
+            write16(ea, m_Y); set_NZ16(m_Y); set_flag(CC_V, false); return c16l[mode] + extra;
         }
     } else {     // B-page columns: LDS / STS
         switch (fn) {
         case 0xE: op_ld16(m_S, RD16()); m_nmi_enabled = true; return c16l[mode] + extra; // LDS
-        case 0xF: write16(ea, m_S); set_NZ16(m_S); set_flag(CC_V, false); return c16l[mode] + extra; // STS
+        case 0xF: // STS (immediate form is illegal; ea would be 0)
+            if (mode == 0) { LOG_INFO("CPU%d: illegal STS immediate @%04X", cpu_num, m_PPC); return 2; }
+            write16(ea, m_S); set_NZ16(m_S); set_flag(CC_V, false); return c16l[mode] + extra;
         }
     }
     #undef RD16

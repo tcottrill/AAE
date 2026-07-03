@@ -112,8 +112,10 @@ static INT32 *mixer_buffer_right = nullptr;
 static short *stream_out = nullptr;   // interleaved stereo handed to stream_update
 static int    stream_buf_frames = 0;  // frames produced per update (== samples_per_frame)
 static int    g_stream_ch = -1;       // mixer channel for the board's stereo stream
+static int    mix_pos = 0;            // frames mixed so far this video frame
 
 // ---- forward decls ---------------------------------------------------------
+static void   exidy440_m6844_update(void);
 static void   m6844_finished(int ch);
 static void   play_cvsd(int ch);
 static void   stop_cvsd(int ch);
@@ -190,9 +192,13 @@ void exidy440_sound_init(int clock_hz)
     }
 
     // Per-frame mix accumulators + interleaved output (small margin for safety).
+    // Zeroed here and after each frame push; mix_channels_to accumulates (+=).
     mixer_buffer_left  = (INT32 *)malloc(sizeof(INT32) * (stream_buf_frames + 16));
     mixer_buffer_right = (INT32 *)malloc(sizeof(INT32) * (stream_buf_frames + 16));
     stream_out         = (short *)malloc(sizeof(short) * (stream_buf_frames + 16) * 2);
+    if (mixer_buffer_left)  memset(mixer_buffer_left,  0, sizeof(INT32) * (stream_buf_frames + 16));
+    if (mixer_buffer_right) memset(mixer_buffer_right, 0, sizeof(INT32) * (stream_buf_frames + 16));
+    mix_pos = 0;
 
     // Stereo chip-stream voice at the board's native rate; the mixer resamples
     // to the output rate inline (matches namco.cpp / pleiads_audio.cpp).
@@ -272,6 +278,7 @@ UINT8 exidy440_sound_volume_r(int offset) { return sound_volume[offset & 7]; }
 
 void exidy440_sound_volume_w(int offset, UINT8 data)
 {
+    exidy440_m6844_update();            // mix up to now so the change lands on time
     sound_volume[offset & 7] = ~data;   // stored inverted, as on the hardware
 }
 
@@ -300,9 +307,61 @@ static void m6844_finished(int ch)
     channel->control |=  0x80;   // set DMA-end
 }
 
-// The per-frame mix (exidy440_sound_update) keeps the MC6844 address/counter
-// current, so a register read just returns the latest snapshot.
-static void exidy440_m6844_update(void) {}
+// Mix the active channels forward to `target` (a frame offset within the
+// current video frame's accumulators), advancing each channel's offset and the
+// MC6844 address/counter as we go. This is MAME's channel_update() stream
+// callback split so it can run incrementally within a frame.
+static void mix_channels_to(int target)
+{
+    int ch;
+
+    if (!mixer_buffer_left || !mixer_buffer_right)
+        return;
+    if (target > stream_buf_frames) target = stream_buf_frames;
+    const int count = target - mix_pos;
+    if (count <= 0)
+        return;
+
+    for (ch = 0; ch < 4; ch++)
+    {
+        sound_channel_data *channel = &sound_channel[ch];
+        int samples, volume, effective_offset;
+
+        if (channel->remaining <= 0)
+            continue;
+
+        samples = (count > channel->remaining) ? channel->remaining : count;
+
+        volume = sound_volume[2 * ch + 0];
+        if (volume) add_and_scale_samples(ch, mixer_buffer_left + mix_pos, samples, volume);
+
+        volume = sound_volume[2 * ch + 1];
+        if (volume) add_and_scale_samples(ch, mixer_buffer_right + mix_pos, samples, volume);
+
+        channel->offset    += samples;
+        channel->remaining -= samples;
+
+        // keep the MC6844 address/counter in step with playback
+        effective_offset = (ch & 2) ? channel->offset / 2 : channel->offset;
+        m6844_channel[ch].address = m6844_channel[ch].start_address + effective_offset / 8;
+        m6844_channel[ch].counter = m6844_channel[ch].start_counter - effective_offset / 8;
+        if (m6844_channel[ch].counter <= 0)
+            m6844_finished(ch);
+    }
+
+    mix_pos = target;
+}
+
+// Mid-frame catch-up, the AAE equivalent of MAME's stream_update() pull: mix up
+// to the current position within the video frame so the 6809 sees the MC6844
+// address/counter/DMA-end advance in real time, and so channel starts/stops
+// and volume writes land at their true offsets. Without this every DMA state
+// change quantizes to frame boundaries -- short sounds started and replaced
+// within one frame vanish entirely, and ROM code polling for DMA-end stalls.
+static void exidy440_m6844_update(void)
+{
+    mix_channels_to(cpu_scale_by_cycles(stream_buf_frames, 0));
+}
 
 UINT8 exidy440_m6844_r(int offset)
 {
@@ -545,46 +604,20 @@ static void add_and_scale_samples(int ch, INT32 *dest, int samples, int volume)
     }
 }
 
-// Once per video frame: mix one frame of stereo PCM from the active channels and
-// push it to the chip-stream. Also advances each channel and the MC6844 counter
-// (mirrors MAME's stream callback, driven per-frame instead of on demand).
+// Once per video frame: finish mixing the frame (channels have already been
+// mixed up to the last mid-frame register access by mix_channels_to), push the
+// completed stereo frame to the chip-stream, then reset the accumulators for
+// the next frame.
 void exidy440_sound_update(void)
 {
-    int ch, i;
+    int i;
     int length = stream_buf_frames;
 
     if (!mixer_buffer_left || !mixer_buffer_right || !stream_out || length <= 0)
         return;
 
-    memset(mixer_buffer_left,  0, sizeof(INT32) * length);
-    memset(mixer_buffer_right, 0, sizeof(INT32) * length);
-
-    for (ch = 0; ch < 4; ch++)
-    {
-        sound_channel_data *channel = &sound_channel[ch];
-        int samples, volume, effective_offset;
-
-        if (channel->remaining <= 0)
-            continue;
-
-        samples = (length > channel->remaining) ? channel->remaining : length;
-
-        volume = sound_volume[2 * ch + 0];
-        if (volume) add_and_scale_samples(ch, mixer_buffer_left, samples, volume);
-
-        volume = sound_volume[2 * ch + 1];
-        if (volume) add_and_scale_samples(ch, mixer_buffer_right, samples, volume);
-
-        channel->offset    += samples;
-        channel->remaining -= samples;
-
-        // keep the MC6844 address/counter in step with playback
-        effective_offset = (ch & 2) ? channel->offset / 2 : channel->offset;
-        m6844_channel[ch].address = m6844_channel[ch].start_address + effective_offset / 8;
-        m6844_channel[ch].counter = m6844_channel[ch].start_counter - effective_offset / 8;
-        if (m6844_channel[ch].counter <= 0)
-            m6844_finished(ch);
-    }
+    // Mix whatever remains between the last mid-frame catch-up and frame end.
+    mix_channels_to(length);
 
     // clip to 16-bit and interleave L/R for the stream
     for (i = 0; i < length; i++)
@@ -599,6 +632,11 @@ void exidy440_sound_update(void)
 
     if (g_stream_ch >= 0)
         stream_update(g_stream_ch, stream_out);
+
+    // start the next frame's accumulation from zero
+    mix_pos = 0;
+    memset(mixer_buffer_left,  0, sizeof(INT32) * length);
+    memset(mixer_buffer_right, 0, sizeof(INT32) * length);
 }
 
 

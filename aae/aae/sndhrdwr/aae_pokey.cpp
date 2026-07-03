@@ -65,7 +65,6 @@ void Pokey::reset() {
 	samp_cnt_ = 0; samp_max_ = sys_freq_ ? ((base_clock_ << 8) / sys_freq_) : 0;
 	IRQEN_ = IRQST_ = SKCTL_ = SKSTAT_ = 0;
 	KBCODE_ = SERIN_ = SEROUT_ = 0; kbd_pending_ = false;
-	allpot_ = 0xFF;
 	pot_scanning_ = false;
 	pot_scan_start_ = 0;
 	rng_enabled_ = 0; pokey_random_ = 0;
@@ -82,33 +81,37 @@ void    Pokey::set_sample_rate(uint32_t f) { sys_freq_ = f ? f : 1; }
 void Pokey::write(uint8_t offset, uint8_t data) {
 	const uint8_t a = offset & 0x0F;
 	switch (a) {
+	// AUDF writes rearm only the timers whose period they can change:
+	// AUDF1 -> TIMR1 (+TIMR2 when ch1+2 joined), AUDF2 -> TIMR2,
+	// AUDF3 -> TIMR4 only when ch3+4 joined, AUDF4 -> TIMR4.
+	// AUDC writes never touch a divisor, so they must not reset timer phase.
 	case W_AUDF1:
 		AUDF_[0] = data;
 		recompute_channel(0); update_render_channel(0);
 		if (AUDCTL_ & CTL_CH12_JOIN) { recompute_channel(1); update_render_channel(1); }
-		rearm_timers(); break;
+		rearm_timers((AUDCTL_ & CTL_CH12_JOIN) ? 0x03 : 0x01); break;
 	case W_AUDF2:
-		AUDF_[1] = data; recompute_channel(1); update_render_channel(1); rearm_timers(); break;
+		AUDF_[1] = data; recompute_channel(1); update_render_channel(1); rearm_timers(0x02); break;
 	case W_AUDF3:
 		AUDF_[2] = data;
 		recompute_channel(2); update_render_channel(2);
-		if (AUDCTL_ & CTL_CH34_JOIN) { recompute_channel(3); update_render_channel(3); }
-		rearm_timers(); break;
+		if (AUDCTL_ & CTL_CH34_JOIN) { recompute_channel(3); update_render_channel(3); rearm_timers(0x04); }
+		break;
 	case W_AUDF4:
-		AUDF_[3] = data; recompute_channel(3); update_render_channel(3); rearm_timers(); break;
+		AUDF_[3] = data; recompute_channel(3); update_render_channel(3); rearm_timers(0x04); break;
 
 	case W_AUDC1:
 		AUDC_[0] = data; vol_[0] = (data & AUDC_VOLMASK) * POKEY_GAIN;
-		recompute_channel(0); update_render_channel(0); rearm_timers(); break;
+		recompute_channel(0); update_render_channel(0); break;
 	case W_AUDC2:
 		AUDC_[1] = data; vol_[1] = (data & AUDC_VOLMASK) * POKEY_GAIN;
-		recompute_channel(1); update_render_channel(1); rearm_timers(); break;
+		recompute_channel(1); update_render_channel(1); break;
 	case W_AUDC3:
 		AUDC_[2] = data; vol_[2] = (data & AUDC_VOLMASK) * POKEY_GAIN;
-		recompute_channel(2); update_render_channel(2); rearm_timers(); break;
+		recompute_channel(2); update_render_channel(2); break;
 	case W_AUDC4:
 		AUDC_[3] = data; vol_[3] = (data & AUDC_VOLMASK) * POKEY_GAIN;
-		recompute_channel(3); update_render_channel(3); rearm_timers(); break;
+		recompute_channel(3); update_render_channel(3); break;
 
 	case W_AUDCTL:
 		AUDCTL_ = data;
@@ -125,8 +128,26 @@ void Pokey::write(uint8_t offset, uint8_t data) {
 
 	case W_IRQEN: {
 		if (IRQST_ & (uint8_t)~data) IRQST_ &= data;  // clear pending bits being disabled
+		const uint8_t changed = IRQEN_ ^ data;
 		IRQEN_ = data;
-		rearm_timers();
+		// MAME semantics: IRQEN only gates the timers -- pause/resume on a bit
+		// change, preserving phase. Re-arming happens on AUDF/AUDCTL/STIMER.
+		// The IRQ_TIMR1/2/4 bits are 1<<w by definition, so `1 << w` is both
+		// the IRQEN bit and the rearm mask bit for timer w.
+		if (host_) {
+			for (int w = 0; w < 3; ++w) {
+				const uint8_t bit = (uint8_t)(1 << w);
+				if (!(changed & bit)) continue;
+				if (data & bit) {
+					// Resume with phase intact; if the timer was cancelled
+					// (e.g. never armed), schedule a fresh one.
+					if (!host_->timer_set_enabled(w, true)) rearm_timers(bit);
+				}
+				else {
+					host_->timer_set_enabled(w, false);
+				}
+			}
+		}
 		return;
 	}
 
@@ -142,7 +163,7 @@ void Pokey::write(uint8_t offset, uint8_t data) {
 
 	case W_SKREST: SKSTAT_ &= (uint8_t)~(ST_FRAME | ST_OVERRUN | ST_KBERR); return;
 	case W_POTGO:
-		allpot_ = 0x00; pot_scanning_ = true;
+		pot_scanning_ = true;
 		pot_scan_start_ = host_ ? host_->now_cpu_cycles() : 0;
 		return;
 	case W_SEROUT: SEROUT_ = data; if (host_) host_->serial_out(data); return;
@@ -182,20 +203,36 @@ uint8_t Pokey::read(uint8_t offset) {
 	case R_SKSTAT: return SKSTAT_;
 	case R_KBCODE: kbd_pending_ = false; return KBCODE_;
 	case R_ALLPOT: {
-		// Most arcade boards wire digital inputs (buttons/spinner) to the pot pins
-		// and read them through the driver's allpot handler — return that if present
-		// (matches aae_pokey). Only with no handler do we use the scan-status model.
-		if (host_) { const int v = host_->allpot_read(); if (v >= 0) return (uint8_t)v; }
+		// POKEY pot scanner, time-based like the real chip: each ALLPOT bit is 1
+		// while that pot line's counter is still running and 0 once its POT
+		// register has latched. Arcade boards strap DIP switches to the pot pins
+		// as digital levels -- an open (high) line trips on the first pot clock,
+		// a grounded line never trips and only latches when the scan ends at
+		// count 228. So while a scan is in progress ALLPOT reads the grounded-
+		// line mask (the driver's allpot handler value); once the scan completes
+		// every register is latched and ALLPOT reads 0x00.
+		//
+		// Asteroids Deluxe depends on the full sequence (DSTTST.MAC/DSTNMI.MAC):
+		// SKCTL=7 (fast pot), POTGO, then the game-price read on the very next
+		// instruction (~5us, mid-scan -> DSW), while PKYTST reads ALLPOT again
+		// milliseconds later and folds it into the PERR error byte -- the source
+		// comments it "S/B 0" (post-scan -> 0x00). MAME returns the handler on
+		// every read, which fails that self-test; real hardware passes.
 		if (pot_scanning_ && host_) {
 			const uint64_t elapsed = host_->now_cpu_cycles() - pot_scan_start_;
-			// Fast pot (SK_FASTPOT): 1 line; slow: 228 lines, each ~114 base-clock ticks.
-			const uint64_t lines = (SKCTL_ & SK_FASTPOT) ? 1 : 228;
+			// Scan = 228 counts of the pot clock. Fast pot (SK_FASTPOT): pot
+			// clock = base clock; slow: one count per 114-base-tick scan line.
+			const uint64_t need_pokey = (SKCTL_ & SK_FASTPOT) ? 228 : 228 * (uint64_t)DIV_15;
 			const uint64_t cpu_hz = host_->cpu_hz() ? host_->cpu_hz() : 1;
-			const uint64_t need_pokey = lines * DIV_15;
 			const uint64_t elapsed_pokey = elapsed * base_clock_ / cpu_hz;
-			if (elapsed_pokey >= need_pokey) { allpot_ = 0xFF; pot_scanning_ = false; }
+			if (elapsed_pokey >= need_pokey) pot_scanning_ = false;
 		}
-		return allpot_;
+		if (!pot_scanning_) return 0x00;   // pre-POTGO or scan complete: all latched
+		if (host_) {
+			const int v = host_->allpot_read();
+			if (v >= 0) return (uint8_t)v;   // mid-scan: grounded lines still counting
+		}
+		return 0xFF;   // no handler: treat all lines as still counting
 	}
 	case R_SERIN: SKSTAT_ &= (uint8_t)~ST_SERIN_BUSY; return SERIN_;
 	default:
@@ -374,9 +411,10 @@ static inline uint8_t timer_irq_bit(int which) {
 	return which == 0 ? IRQ_TIMR1 : which == 1 ? IRQ_TIMR2 : IRQ_TIMR4;
 }
 
-void Pokey::rearm_timers() {
+void Pokey::rearm_timers(uint8_t which_mask) {
 	if (!host_) return;
 	for (int w = 0; w < 3; ++w) {
+		if (!(which_mask & (1 << w))) continue;
 		const uint8_t bit = timer_irq_bit(w);
 		if (IRQEN_ & bit) {
 			const int ch = timer_channel(w);
@@ -419,7 +457,10 @@ namespace {
 	int             g_sample_pos = 0;
 	int16_t* g_buffer[POKEY_MAX] = { nullptr, nullptr, nullptr, nullptr };
 	int             g_mixer_ch[POKEY_MAX] = { -1, -1, -1, -1 };
-	int             g_timer_id[POKEY_MAX][3];  // AAE timer id per (chip, which); -1 = none
+	// AAE timer id per (chip, which); -1 = none. Must start at -1: 0 is a valid
+	// timer id, and pokey_sh_stop walks all POKEY_MAX chips including unstarted ones.
+	int             g_timer_id[POKEY_MAX][3] = {
+		{ -1, -1, -1 }, { -1, -1, -1 }, { -1, -1, -1 }, { -1, -1, -1 } };
 
 	// Host: bridges one Pokey core instance to the AAE engine.
 	class AaePokeyHost : public PokeyHost {
@@ -435,7 +476,20 @@ namespace {
 		uint64_t now_cpu_cycles() const override {
 			int c = get_active_cpu();
 			if (c < 0) c = 0;
-			return (uint64_t)get_exact_cyclecount(c);
+			// get_exact_cyclecount() is a per-frame counter: cpu_clear_cyclecount_eof()
+			// zeroes it every frame, so it sawtooths (0 -> cpf -> 0) instead of advancing
+			// monotonically. The RANDOM timing math uses now-last deltas, so a once-per-
+			// frame reader -- the Asteroids Deluxe self-test RNG check (PKYTST), which
+			// reads RANDOM once per frame at a near-constant intra-frame offset -- would
+			// otherwise see now == last every frame and the RNG would never advance,
+			// returning a constant value and failing the test. Rebase onto an absolute
+			// timeline: completed frames (framecounter) times cycles-per-frame, plus the
+			// current intra-frame count. Intra-frame deltas are unchanged, so pot timing
+			// and any sequential-read behaviour are unaffected.
+			const int fps = (Machine && Machine->gamedrv && Machine->gamedrv->fps > 0)
+				? Machine->gamedrv->fps : 1;
+			const uint64_t cpf = (uint64_t)Machine->gamedrv->cpu[c].cpu_freq / (uint64_t)fps;
+			return (uint64_t)cpu_getcurrentframe() * cpf + (uint64_t)get_exact_cyclecount(c);
 		}
 
 		void timer_schedule(int which, double period_s) override {
@@ -457,6 +511,12 @@ namespace {
 				timer_remove(g_timer_id[chip][which]);
 				g_timer_id[chip][which] = -1;
 			}
+		}
+
+		bool timer_set_enabled(int which, bool on) override {
+			if (which < 0 || which >= 3) return false;
+			if (g_timer_id[chip][which] < 0) return false;
+			return timer_enable(g_timer_id[chip][which], on ? 1 : 0) != 0;
 		}
 
 		void raise_irq(uint8_t mask) override {
@@ -509,7 +569,11 @@ namespace {
 	// Update all chips to the current cycle position within the frame buffer.
 	void update_to_now() {
 		if (g_num == 0) return;
-		int newpos = cpu_scale_by_cycles(g_buffer_len, g_intf->clock);
+		// Pass 0 so the position is scaled by the active CPU's own clock: newpos is
+		// a fraction-of-frame, and ran_this_frame[] counts CPU cycles, not POKEY
+		// ticks. Passing g_intf->clock breaks games where the POKEY clock differs
+		// from the CPU clock (warlords: 756 kHz CPU, 1.512 MHz POKEY).
+		int newpos = cpu_scale_by_cycles(g_buffer_len, 0);
 		if (newpos > g_buffer_len) newpos = g_buffer_len;
 		if (newpos < 0) newpos = 0;
 		const int delta = newpos - g_sample_pos;

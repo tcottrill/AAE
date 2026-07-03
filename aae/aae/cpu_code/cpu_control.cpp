@@ -124,10 +124,6 @@ void init6502(struct MemoryReadByte* read, struct MemoryWriteByte* write, int me
 {
 	//active_cpu = cpunum;
 	m_cpu_6502[cpunum] = new cpu_6502(Machine->memory_region[cpunum], read, write, mem_top, cpunum);
-
-	//m_cpu_6502[cpunum]->enableDirectStackPage(true);
-	//m_cpu_6502[cpunum]->enableDirectZeroPage(true);
-
 	m_cpu_6502[cpunum]->reset6502();
 	LOG_INFO("Finished Configuring CPU");
 }
@@ -160,9 +156,6 @@ void special_tickcount_update_6502(int ticks, int cpu_num)
 // Return scheduler-owned cycles for the requested CPU, plus any core-reported
 // "pending" cycles since the last scheduler accounting (non-destructive peek).
 //
-// Notes:
-// - Musashi does not expose a non-destructive "elapsed since last query" API,
-//   so for 68000 we do NOT add a pending component (avoid double counting).
 // -----------------------------------------------------------------------------
 int get_exact_cyclecount(int cpu)
 {

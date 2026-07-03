@@ -1390,6 +1390,17 @@ void Layout_LoadForGame(const AAEDriver* drv)
 			scrH = t;
 		}
 
+		// Stretch the synthetic view to the physical monitor aspect
+		// (4:3 landscape, 3:4 portrait), like MAME's standard view.
+		// Game pixels are rarely square: e.g. the Circus set is 248x256
+		// and would otherwise display nearly square instead of 4:3.
+		if (scrW > 0.0f && scrH > 0.0f)
+		{
+			const bool isVertical = (Machine->drv->rotation & ORIENTATION_SWAP_XY) != 0;
+			const float targetAspect = isVertical ? (3.0f / 4.0f) : (4.0f / 3.0f);
+			scrW = scrH * targetAspect;
+		}
+
 		Layout_CreateDefaultScreen(g_layoutData, scrW, scrH);
 		g_activeView = &g_layoutData.views[0];
 		g_layoutAspect = scrW / scrH;

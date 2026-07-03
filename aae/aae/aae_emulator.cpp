@@ -933,32 +933,6 @@ void run_game(void)
 	}
 
 	// Step 12: Compute game dimensions and update window aspect ratio.
-	// InitGameDimensions computes the oriented output size and pixel aspect
-	// from the driver's visible_area. ComputeGameAspect returns the display
-	// aspect considering the active layout, bezel settings, and pixel aspect.
-	//if (!(Machine->gamedrv->video_attributes & VIDEO_TYPE_VECTOR))
-	//{
-	//	Layout_InitGameDimensions();
-	//	gameAspect = Layout_ComputeGameAspect();
-	//	if (gameAspect > 0.0f)	WindowUtil_UpdateAspect(gameAspect);
-	//}
-	/*
-	else	// Reset for vector
-	{
-		const rectangle& va = Machine->drv->visible_area;
-		int scrW = (va.max_x - va.min_x + 1);
-		int scrH = (va.max_y - va.min_y + 1);
-		if (scrW > 0 && scrH > 0)
-		{
-			gameAspect = (float)scrW / (float)scrH;
-			LOG_INFO("Window aspect from driver screen: %.3f (%dx%d)",	gameAspect, scrW, scrH);
-		}
-
-		if (gameAspect > 0.0f)		{ WindowUtil_UpdateAspect(gameAspect); }
-	}
-	*/
-
-	// Step 12: Compute game dimensions and update window aspect ratio.
 	Layout_InitGameDimensions();
 	gameAspect = Layout_ComputeGameAspect();
 	{

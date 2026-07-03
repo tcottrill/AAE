@@ -12,8 +12,13 @@
 //   - Addressing modes (direct / extended / indexed-postbyte) are factored into
 //     shared helpers so the ~256 page-1 opcodes plus the 0x10 / 0x11 prefix
 //     pages reuse one indexed-postbyte decoder.
-//   - Interrupts are LEVEL-SENSITIVE: peripherals raise nmi_line()/irq_line()/
-//     firq_line(); the CPU services them on the next exec() iteration.
+//   - Interrupts are EDGE/ONE-SHOT, not level-sensitive: nmi_line()/irq_line()/
+//     firq_line() latch a request; the core LOWERS the latch when the interrupt
+//     is taken, so one assertion = one interrupt. A still-masked request stays
+//     pending until the mask clears, then fires exactly once. A device that
+//     holds its line asserted on real hardware (interrupting again if the
+//     handler re-enables interrupts before clearing the source) must RE-ASSERT
+//     here -- drivers relying on true level semantics need to account for this.
 //   - Per-instruction nominal cycle counts from the MC6809 datasheet.
 //   - The 6809 is BIG-ENDIAN; all 16-bit accesses go through read16()/write16().
 //

@@ -28,14 +28,8 @@
 // multiple games on a real tempest arcade machine.
 // Tempest Multigame emulation is setup with Aliens Enabled, and the optional "Reset Adapter" is installed.
 // Pressing Start 1 and Start 2 together resets the game and reenters the menu
-// Note: Aliens requires the Watchdog to be disabled to function.
-//
-// Regarding the Tempest random number generator protection:
-// No work has been done in this code to accurately emulate the Tempest PRNG, so the protection code is patched out
-// on all production varations of tempest that are emulated. This results in this emulator not being accurate as to real hardware.
-//
+// Supposedly Aliens needs the watchdog disabled, but I am not seeing any issues so I am leaving it alone.
 // Note for me:
-// Add the watchdog reset to this (ALL ATARI) code, fix the config menu colors on here,
 // fix the menu not coming up correctly when reset and a default game is selected with the spiker
 //
 
@@ -374,7 +368,6 @@ static void switch_game()
 	unsigned char* RAM = Machine->memory_region[CPU0];
 	memcpy(RAM, Machine->memory_region[REGION_CPU1] + b, 0x10000);
 
-
 	cpu_reset(CPU0);
 }
 
@@ -390,7 +383,7 @@ READ_HANDLER(pokey_2_tempest_read)
 	if ((val & (0x20 | 0x40)) == (0x20 | 0x40)) // Start1 + Start2 pressed together
 	{
 		//LOG_INFO("VAL HERE is %x", val);
-		if (val== 0x60) tempm_reset();
+		if (val == 0x60) tempm_reset();
 	}
 	return val;
 }
@@ -401,7 +394,11 @@ READ_HANDLER(TempestIN0read)
 
 	res = readinputportbytag("IN0");
 
-	if (get_eterna_ticks(0) & 0x100) //3Khz clock
+	// 3KHz clock on bit 7: include the in-slice cycle count (get6502ticks(0),
+	// reset each slice by cpu_exec_now) since eternaticks only advances at slice
+	// boundaries - edge-waiting loops (self-test) need a real ~3KHz square wave.
+	// Same fix as llander_IN0_r.
+	if ((get_eterna_ticks(0) + m_cpu_6502[CPU0]->get6502ticks(0)) & 0x100)
 		res |= 0x80;
 
 	if (avg_check()) res |= 0x40;
@@ -443,7 +440,6 @@ WRITE_HANDLER(coin_write)
 	if ((data & 0x08)) { flipscreen = 1; }
 	else { flipscreen = 0; }
 }
-
 
 //////////////////////////////////////////////////////////////////////////
 
@@ -513,9 +509,7 @@ MEM_END
 
 void run_tempest()
 {
-	watchdog_reset_w(0, 0, 0); // Required for protos.I should set this up so it is just here for those.
 	pokey_sh_update();
-	
 }
 
 int init_tempestm()
@@ -587,7 +581,7 @@ PORT_BIT(0x80, IP_ACTIVE_HIGH, IPT_UNKNOWN)
 
 PORT_START("IN1")	/* IN1/DSW0 */
 /* This is the Tempest spinner input. It only uses 4 bits. */
-PORT_ANALOG(0x0f, 0x00, IPT_DIAL | IPF_REVERSE, 25, 20, 0,  0)
+PORT_ANALOG(0x0f, 0x00, IPT_DIAL | IPF_REVERSE, 25, 20, 0, 0)
 /* The next one is reponsible for cocktail mode.
  * According to the documentation, this is not a switch, although
  * it may have been planned to put it on the Math Box PCB, D/E2 )
@@ -961,7 +955,7 @@ PORT_ANALOG(0x0f, 0x00, IPT_DIAL | IPF_REVERSE, 25, 20, 0,  0)
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY()
 	)
-	AAE_DRIVER_VIDEO_CORE(60,DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_ROTATE_270)
+	AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_ROTATE_270)
 	AAE_DRIVER_SCREEN(1024, 768, 0, 580, 0, 570)
 	AAE_DRIVER_RASTER_NONE()
 	AAE_DRIVER_HISCORE_NONE()
@@ -995,7 +989,7 @@ PORT_ANALOG(0x0f, 0x00, IPT_DIAL | IPF_REVERSE, 25, 20, 0,  0)
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY()
 	)
-	AAE_DRIVER_VIDEO_CORE(60,DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_ROTATE_270)
+	AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_ROTATE_270)
 	AAE_DRIVER_SCREEN(1024, 768, 0, 580, 0, 570)
 	AAE_DRIVER_RASTER_NONE()
 	AAE_DRIVER_HISCORE_NONE()
@@ -1029,7 +1023,7 @@ PORT_ANALOG(0x0f, 0x00, IPT_DIAL | IPF_REVERSE, 25, 20, 0,  0)
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY()
 	)
-	AAE_DRIVER_VIDEO_CORE(60,DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_ROTATE_270)
+	AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_ROTATE_270)
 	AAE_DRIVER_SCREEN(1024, 768, 0, 580, 0, 570)
 	AAE_DRIVER_RASTER_NONE()
 	AAE_DRIVER_HISCORE_NONE()
@@ -1063,7 +1057,7 @@ PORT_ANALOG(0x0f, 0x00, IPT_DIAL | IPF_REVERSE, 25, 20, 0,  0)
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY()
 	)
-	AAE_DRIVER_VIDEO_CORE(60,DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_ROTATE_270)
+	AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_ROTATE_270)
 	AAE_DRIVER_SCREEN(1024, 768, 0, 580, 0, 570)
 	AAE_DRIVER_RASTER_NONE()
 	AAE_DRIVER_HISCORE_NONE()
@@ -1097,7 +1091,7 @@ PORT_ANALOG(0x0f, 0x00, IPT_DIAL | IPF_REVERSE, 25, 20, 0,  0)
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY()
 	)
-	AAE_DRIVER_VIDEO_CORE(60,DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_ROTATE_270)
+	AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_ROTATE_270)
 	AAE_DRIVER_SCREEN(1024, 768, 0, 580, 0, 570)
 	AAE_DRIVER_RASTER_NONE()
 	AAE_DRIVER_HISCORE_NONE()
@@ -1131,7 +1125,7 @@ PORT_ANALOG(0x0f, 0x00, IPT_DIAL | IPF_REVERSE, 25, 20, 0,  0)
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY()
 	)
-	AAE_DRIVER_VIDEO_CORE(60,DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_ROTATE_270)
+	AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_ROTATE_270)
 	AAE_DRIVER_SCREEN(1024, 768, 0, 580, 0, 570)
 	AAE_DRIVER_RASTER_NONE()
 	AAE_DRIVER_HISCORE_NONE()
@@ -1165,7 +1159,7 @@ PORT_ANALOG(0x0f, 0x00, IPT_DIAL | IPF_REVERSE, 25, 20, 0,  0)
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY()
 	)
-	AAE_DRIVER_VIDEO_CORE(60,DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_ROTATE_270)
+	AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_ROTATE_270)
 	AAE_DRIVER_SCREEN(1024, 768, 0, 580, 0, 570)
 	AAE_DRIVER_RASTER_NONE()
 	AAE_DRIVER_HISCORE_NONE()
@@ -1199,7 +1193,7 @@ PORT_ANALOG(0x0f, 0x00, IPT_DIAL | IPF_REVERSE, 25, 20, 0,  0)
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY()
 	)
-	AAE_DRIVER_VIDEO_CORE(60,DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_ROTATE_270)
+	AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_ROTATE_270)
 	AAE_DRIVER_SCREEN(1024, 768, 0, 580, 0, 570)
 	AAE_DRIVER_RASTER_NONE()
 	AAE_DRIVER_HISCORE_NONE()
@@ -1233,7 +1227,7 @@ PORT_ANALOG(0x0f, 0x00, IPT_DIAL | IPF_REVERSE, 25, 20, 0,  0)
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY()
 	)
-	AAE_DRIVER_VIDEO_CORE(60,DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_ROTATE_270)
+	AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_ROTATE_270)
 	AAE_DRIVER_SCREEN(1024, 768, 0, 580, 0, 570)
 	AAE_DRIVER_RASTER_NONE()
 	AAE_DRIVER_HISCORE_NONE()

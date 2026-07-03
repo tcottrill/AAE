@@ -31,6 +31,7 @@ void timer_reset(int timer_id, double duration);
 void timer_update(int cycles, int cpunum);
 void timer_cpu_reset(int cpunum);
 int  timer_is_timer_enabled(int timer_id);
+int  timer_enable(int timer_id, int enable);
 void timer_clear_all_eof();
 void timer_clear_end_of_game();
 double timer_timeleft(int timer_id);

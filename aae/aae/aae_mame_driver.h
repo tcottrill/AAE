@@ -262,6 +262,7 @@ struct AAEDriver
 // the set ("tomcatsw.zip"), so we skip the leading "rom_". For normally named
 // drivers this equals the driver name; for "tomcat" it correctly yields
 // "tomcatsw". Used by both the ROM loader and the -verifyroms path.
+
 inline const char* driver_rom_archive(const AAEDriver* drv)
 {
 	if (!drv) return nullptr;

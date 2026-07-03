@@ -677,13 +677,29 @@ unsigned cpu_z80::mz80step()
 {
 	unsigned cyc = 0;
 
-	// Handle delayed EI activation
+	// EI acceptance shadow: EI already set IFF1/IFF2 (hardware-accurate); this
+	// counter only holds off interrupt ACCEPTANCE until after the instruction
+	// following EI. It must NOT set the flags itself -- an NMI can dispatch
+	// during the shadow, and a deferred flag-set would land inside the NMI
+	// handler and enable interrupts there.
 	if (iff_delay > 0) {
 		iff_delay--;
-		if (iff_delay == 0) {
-			m_iff1 = 1;
-			m_iff2 = 1;
-		}
+	}
+
+	// Dispatch a latched NMI at this instruction boundary, in THIS CPU's
+	// execution context (so the return-address push routes through the
+	// correct memory map). NMI has priority over maskable INT and ignores
+	// IFF1; it wakes HALT.
+	if (m_nmi_pending)
+	{
+		m_nmi_pending = false;
+		z80ppc = -1;
+		m_iff1 = 0;
+		IncR();
+		m_fHalt = false;
+		cCycles = 0;
+		Rst(z80nmiAddr);
+		cyc += cCycles + 11;
 	}
 
 	if (m_fHalt)
@@ -705,7 +721,7 @@ unsigned cpu_z80::mz80step()
 	if (m_irq_line)
 	{
 		unsigned before = cCycles;
-		mz80int(irq_vector);                 // adds to cCycles internally
+		mz80int_dispatch();                  // adds to cCycles internally
 		cyc += (cCycles - before);
 	}
 
@@ -2019,10 +2035,20 @@ unsigned cpu_z80::exec_opcode(uint8_t bOpcode)
 
 int cpu_z80::Ei()
 {
-	if (m_iff1 == 0) {
-		iff_delay = 2; // delay interrupts for 2 steps: EI + 1 instruction
-	}
-	// m_iff1 will be set later when iff_delay reaches 0
+	// Real Z80 EI: BOTH flip-flops are set IMMEDIATELY; only interrupt
+	// ACCEPTANCE is deferred until after the following instruction (so an
+	// EI;RETI epilogue cannot be interrupted between the two). The old code
+	// deferred setting the flags themselves, which broke NMI interactions two
+	// ways: an NMI arriving in the window snapshotted IFF2=0 (RETN then
+	// returned with interrupts wrongly off), and the deferred enable landed
+	// INSIDE the NMI handler -- letting a pending maskable interrupt dispatch
+	// mid-NMI-handler, impossible on hardware. Cosmic Chasm's sound CPU dies
+	// exactly that way (stack corruption -> execution runs off the end of RAM
+	// -> soft reboot via 0x0000).
+	m_iff1 = 1;
+	m_iff2 = 1;
+	iff_delay = 1;   // acceptance shadow: blocks the tail check of EI's own
+	                 // step and expires before the NEXT instruction's check
 	return 0;
 }
 
@@ -2030,15 +2056,39 @@ void cpu_z80::Di()
 {
 	m_iff1 = 0;
 	m_iff2 = 0;
+	iff_delay = 0;   // DI cancels any pending EI acceptance shadow
 }
 
+// Latch the INT line + vector. The dispatch happens in mz80step() at the next
+// instruction boundary, in THIS CPU's execution context -- same rationale as
+// the NMI latch (m_nmi_pending): a cross-CPU caller (cpu_do_int_imm from
+// another CPU's handler) would push the return address through MWA_RAM with
+// the wrong active_cpu and corrupt the stack. This also matches hardware:
+// /INT is a sampled line, never serviced mid-instruction from outside.
 UINT32 cpu_z80::mz80int(UINT32 bVal)
 {
 	irq_vector = bVal;
+	m_irq_line = true;
+	return 0;
+}
 
+// In-context interrupt dispatcher, called only from mz80step(). Consumes
+// m_irq_line when the interrupt is actually taken; leaves it pending when
+// IFF1 is clear or the EI acceptance shadow is active.
+UINT32 cpu_z80::mz80int_dispatch()
+{
 	if (m_iff1 && iff_delay == 0)
 	{
+		// Real Z80: accepting a maskable interrupt clears BOTH IFF1 and IFF2
+		// (MAME z80.cpp does the same). Leaving IFF2 set is a trap: an NMI
+		// arriving DURING an ISR ends with RETN restoring IFF1 from IFF2 -- if
+		// IFF2 wrongly stayed 1, interrupts re-enable inside the still-running
+		// ISR and the next tick nests into a non-reentrant handler. Cosmic
+		// Chasm's sound board (NMI per command + 200 Hz CTC ISR) corrupts its
+		// sequencer exactly this way under rapid fire, wedging until its CTC
+		// watchdog resets the sound CPU.
 		m_iff1 = 0;
+		m_iff2 = 0;
 		m_fHalt = false;
 		z80ppc = -1;
 		IncR();
@@ -2100,14 +2150,14 @@ UINT32 cpu_z80::mz80int(UINT32 bVal)
 	return(0);
 }
 
+// Latch the NMI edge. The actual dispatch happens in mz80step() at the next
+// instruction boundary, in this CPU's own execution context -- see the
+// m_nmi_pending comment in the header for why dispatching here is unsafe
+// when called from another CPU's handler.
 UINT32 cpu_z80::mz80nmi()
 {
-	z80ppc = -1;
-	m_iff1 = 0;
-	IncR();
-	m_fHalt = false;
-	cCycles += 11;
-	Rst(z80nmiAddr);
+	m_nmi_pending = true;
+	m_fHalt = false;      // NMI wakes a halted CPU
 	return(0);
 }
 

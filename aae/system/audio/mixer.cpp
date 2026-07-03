@@ -1719,16 +1719,35 @@ void stream_stop(int chanid, int /*stream*/)
 	stop_channel_locked(chanid);
 }
 
+// Re-anchor a stream channel's fractional read position to the buffer that was
+// just refilled. step_q32 is floor-truncated, so at non-integer rate ratios
+// (e.g. 96000 -> 44100) a frame's worth of steps lands a few 2^-32 ticks SHORT
+// of the buffer end instead of exactly on it. Without this snap the next mix
+// starts by reading the END of the fresh buffer (idx = last, frac ~1.0 --
+// audio from one frame in the future), then wraps and skips the buffer's first
+// couple of samples: an audible click every frame (60 Hz static). Integer
+// ratios (96k -> 48k) have an exact step and never exposed this.
+static void stream_reanchor_locked(CHANNEL& ch, const SAMPLE& sample)
+{
+	const uint32_t chans = std::max<uint32_t>(1, sample.fx.nChannels);
+	const uint64_t total_q32 = static_cast<uint64_t>(sample.sampleCount / chans) << 32;
+	if (total_q32 == 0) return;
+	// Clean overshoot: keep the sub-sample remainder. Truncation shortfall
+	// (or any larger lag -- that data is overwritten anyway): restart at 0.
+	ch.pos_q32 = (ch.pos_q32 >= total_q32) ? (ch.pos_q32 - total_q32) : 0;
+}
+
 void stream_update(int chanid, short* data)
 {
 	std::scoped_lock lock(audioMutex);
 	auto& ch = channel[chanid];
-	if (ch.state == SoundState::Playing && 
-	    ch.loaded_sample_num >= 0 && 
+	if (ch.state == SoundState::Playing &&
+	    ch.loaded_sample_num >= 0 &&
 	    ch.loaded_sample_num < static_cast<int>(lsamples.size())) {
 		auto& sample = lsamples[ch.loaded_sample_num];
 		if (sample && sample->data16) {
 			std::memcpy(sample->data16.get(), data, sample->dataSize);
+			stream_reanchor_locked(ch, *sample);
 		}
 	}
 }
@@ -1743,6 +1762,7 @@ void stream_update(int chanid, unsigned char* data)
 		auto& sample = lsamples[ch.loaded_sample_num];
 		if (sample && sample->data8) {
 			std::memcpy(sample->data8.get(), data, sample->dataSize);
+			stream_reanchor_locked(ch, *sample);
 		}
 	}
 }

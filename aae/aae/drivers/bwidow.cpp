@@ -57,9 +57,11 @@ READ_HANDLER(IN0read)
 {
 	int val = readinputport(0);
 
-	//Fix this mess below later
-	if (get_eterna_ticks(0) & 0x100) { bitset(val, 0x80); }
-	//	else { bitclr(val, 0x80); }
+	// 3KHz clock on bit 7. eternaticks only advances at scheduler-slice
+	// boundaries; add the in-slice cycle count (get6502ticks(0), reset each
+	// slice by cpu_exec_now) so edge-waiting loops (self-test) see a real
+	// ~3KHz square wave. Same fix as llander_IN0_r.
+	if ((get_eterna_ticks(0) + m_cpu_6502[CPU0]->get6502ticks(0)) & 0x100) { bitset(val, 0x80); }
 	if (!avg_check())
 	{
 		bitclr(val, 0x40);

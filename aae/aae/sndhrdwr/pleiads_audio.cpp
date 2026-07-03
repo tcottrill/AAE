@@ -528,7 +528,7 @@ void pleiads_audio_sh_update(void)
 
 WRITE_HANDLER_NS(pleiads_sound_control_a_w)
 {
-    LOG_INFO("SOUND CONTROL A WRITE address %x data %x", address, data);
+   // LOG_INFO("SOUND CONTROL A WRITE address %x data %x", address, data);
     if (data == snd.latch_a) return;
     audio_doupdate();
     snd.latch_a = data;

@@ -22,9 +22,24 @@
 #define MASTER_CLOCK (12096000)
 #define CLOCK_3KHZ   (MASTER_CLOCK / 4096)
 
-int get_bit(int num, int bit_position) {
-	return (num >> bit_position) & 1; // Shift right and AND with 1 to isolate the bit
-}
+static struct POKEYinterface pokey_interface =
+{
+	1,	/* 1 chip */
+	1512000,	/* 1.5 MHz??? */
+	{ 240 },
+	/* The 8 pot handlers */
+	{ 0 },
+	{ 0 },
+	{ 0 },
+	{ 0 },
+	{ 0 },
+	{ 0 },
+	{ 0 },
+	{ 0 },
+	/* The allpot handler */
+	{ input_port_3_r }
+};
+
 
 static const char* asteroidsamples[] =
 {
@@ -246,44 +261,34 @@ WRITE_HANDLER(asteroid_sounds_w)
 
 WRITE_HANDLER(asteroid_explode_w)
 {
-	/*
-	static int explosion = -1;
-	int explosion2;
-	int sound = -1;
+	// $3600 = the explosion SFX timer (ExpPitchVol). On a hit the ROM loads it to
+	// (size<<6)|0x3F  (ObjHitSFX @ L6B4A; the ship uses 0x3E @ L7074) and then writes
+	// it here every frame while counting DOWN (ChkExplTimer @ L75BF):
+	//   bits 6-7 = size/volume class (constant for one explosion)
+	//   bits 0-5 = pitch, which only sweeps DOWNWARD during one explosion
+	// So a new explosion is exactly the moment the pitch bits jump back up. That
+	// rising edge is a reliable one-shot trigger for every size and for back-to-back
+	// explosions of the same size (which a volume-only compare would miss).
 
-	if (data & 0x3c)
+	// size/volume class (data>>6, 0..3) -> which sample to play.
+	// Reorder these to taste if a given .wav sounds wrong for a class.
+	static const int explode_sample[4] = { kExplode1, kExplode2, kExplode3, kExplode4 };
+
+	static uint8_t prev = 0;
+	const uint8_t pitch = data & 0x3F;
+	const uint8_t prev_pitch = prev & 0x3F;
+
+	if (pitch > prev_pitch && pitch >= 0x3C)      // fresh timer loaded => explosion start
 	{
-		explosion2 = data >> 6;
-		if (explosion2 != explosion)
-		{
-			//Not Needed, done for us with reallocate in allegro code
-			//LOG_INFO("Calling sample stop explode");
-			//	sample_stop(7);
-			switch (explosion2)
-			{
-			case 0:
-			case 1:
-				sound = kExplode1;
-				break;
-			case 2:
-				sound = kExplode2;
-				break;
-			case 3:
-				sound = kExplode3;
-				break;
-			}
-
-			//LOG_INFO("Calling sample start explode");
-			sample_start(8, sound, 0);
-		}
-		explosion = explosion2;
+		const int cls = data >> 6;                // 0..3
+		sample_set_volume(8, config.mainvol);     // optional: lower volume for larger explosions
+		sample_start(8, explode_sample[cls], 0);
+		//LOG_INFO("explode: data=%02X class=%d sample=%d", data, cls, explode_sample[cls]);
 	}
-	else explosion = -1;
-	*/
-	if (data == 0x3d) { sample_start(8, 0, 0); }
-	if (data == 0xfd) { sample_start(8, 1, 0); }
-	if (data == 0xbd) { sample_start(8, 2, 0); }
+
+	prev = data;
 }
+
 ///////////////////////////////////////////////////////////////////////////////
 WRITE_HANDLER(astdelux_led_w)
 {  //From M.A.M.E. (TM)
@@ -358,7 +363,11 @@ READ_HANDLER(asteroid_IN0_r)
 
 	bitmask = (1 << (address));
 
-	if (get_eterna_ticks(0) & 0x100)
+	// 3KHz clock on bit 1. eternaticks only advances at scheduler-slice
+	// boundaries; add the in-slice cycle count (get6502ticks(0), reset each
+	// slice by cpu_exec_now) so edge-waiting loops (self-test) see a real
+	// ~3KHz square wave. Same fix as llander_IN0_r.
+	if ((get_eterna_ticks(0) + m_cpu_6502[CPU0]->get6502ticks(0)) & 0x100)
 		res |= 0x02;
 
 	if (!dvg_done())
@@ -382,7 +391,8 @@ READ_HANDLER(asterock_IN0_r)
 	res = readinputport(0);
 	bitmask = (1 << address);
 
-	if (get_eterna_ticks(0) & 0x100)
+	// 3KHz clock on bit 2 (see asteroid_IN0_r for the in-slice tick rationale).
+	if ((get_eterna_ticks(0) + m_cpu_6502[CPU0]->get6502ticks(0)) & 0x100)
 		res |= 0x04;
 	if (!dvg_done())
 		res |= 0x1;
@@ -424,53 +434,6 @@ READ_HANDLER(asteroid_DSW1_r)
 	return res;
 }
 
-READ_HANDLER(Pokey_read_test)
-{
-	// Correct the Pokey Error in test mode.
-	uint8_t val = 0;
-	static int first_time = 0;
-	static int test_read = 1;
-	address = address & 0xf;
-
-	if ((readinputport(0) & 0x80))
-	{
-		val = pokey1_r(address);
-		//LOG_INFO("Pokey Read: Addr %x data:%x", address, val);
-
-		if ((address) == 0x0a)
-		{
-			val = rand() & 0xff;
-			test_read = 1;
-		}
-
-		if ((address) == 0x08)
-		{
-			if (test_read)
-			{
-				test_read = 0;
-				val = 0x0;
-			}
-			else
-			{
-				val = pokey1_r(address);
-			}
-			//LOG_INFO("Pokey Read: Addr %x data:%x", address, val);
-		}
-	}
-	else
-	{
-		val = pokey1_r(address);
-	}
-
-	//LOG_INFO("Returning %d for Pokey Addr %d", val, address);
-	//Log the code being read.
-	//int used = 0;
-	//std::string disasm = m_cpu_6502[0]->disassemble(m_cpu_6502[0]->get_pc(), &used);
-	//LOG_INFO("%04X: %-20s  A:%02X X:%02X Y:%02X P:%02X", m_cpu_6502[0]->get_pc(), disasm.c_str(), m_cpu_6502[0]->A, m_cpu_6502[0]->X, m_cpu_6502[0]->Y, m_cpu_6502[0]->P);
-
-	return val;
-}
-
 void run_asteroid()
 {
 }
@@ -481,29 +444,11 @@ void run_astdelux()
 }
 /////////////////END MAIN LOOP/////////////////////////////////////////////
 
-static struct POKEYinterface pokey_interface =
-{
-	1,	/* 1 chip */
-	1512000,	/* 1.5 MHz??? */
-	{ 240 },
-	/* The 8 pot handlers */
-	{ 0 },
-	{ 0 },
-	{ 0 },
-	{ 0 },
-	{ 0 },
-	{ 0 },
-	{ 0 },
-	{ 0 },
-	/* The allpot handler */
-	{ input_port_3_r }
-};
-
 MEM_READ(AsteroidDeluxeRead)
 MEM_ADDR(0x2000, 0x2007, asteroid_IN0_r)
 MEM_ADDR(0x2400, 0x2407, asteroid_IN1_r)
 MEM_ADDR(0x2800, 0x2803, asteroid_DSW1_r)
-MEM_ADDR(0x2c00, 0x2c0f, Pokey_read_test)//pokey_1_r)
+MEM_ADDR(0x2c00, 0x2c0f, pokey_1_r)
 MEM_ADDR(0x2c40, 0x2c7f, EaromRead)
 MEM_END
 
@@ -942,7 +887,7 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_NONE_ENTRY()
 )
 
-AAE_DRIVER_VIDEO_CORE(60,DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_BW, ORIENTATION_DEFAULT)
+AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_BW, ORIENTATION_DEFAULT)
 AAE_DRIVER_SCREEN(1024, 768, 0, 1040, 0, 820)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
@@ -976,7 +921,7 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_NONE_ENTRY(),
 	AAE_CPU_NONE_ENTRY()
 )
-AAE_DRIVER_VIDEO_CORE(60,DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_BW, ORIENTATION_DEFAULT)
+AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_BW, ORIENTATION_DEFAULT)
 AAE_DRIVER_SCREEN(1024, 768, 0, 1040, 0, 820)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE(asteroid_hiload, asteroid_hisave)
@@ -1009,7 +954,7 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_NONE_ENTRY(),
 	AAE_CPU_NONE_ENTRY()
 )
-AAE_DRIVER_VIDEO_CORE(60,DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_BW, ORIENTATION_DEFAULT)
+AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_BW, ORIENTATION_DEFAULT)
 AAE_DRIVER_SCREEN(1024, 768, 0, 1040, 0, 820)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
@@ -1042,7 +987,7 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_NONE_ENTRY(),
 	AAE_CPU_NONE_ENTRY()
 )
-AAE_DRIVER_VIDEO_CORE(60,DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_BW, ORIENTATION_DEFAULT)
+AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_BW, ORIENTATION_DEFAULT)
 AAE_DRIVER_SCREEN(1024, 768, 0, 1040, 0, 820)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE(asteroid1_hiload, asteroid1_hisave)
@@ -1075,7 +1020,7 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_NONE_ENTRY(),
 	AAE_CPU_NONE_ENTRY()
 )
-AAE_DRIVER_VIDEO_CORE(60,DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_BW, ORIENTATION_DEFAULT)
+AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_BW, ORIENTATION_DEFAULT)
 AAE_DRIVER_SCREEN(1024, 768, 0, 1040, 70, 950)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE(asteroid_hiload, asteroid_hisave)
@@ -1102,7 +1047,7 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_NONE_ENTRY(),
 	AAE_CPU_NONE_ENTRY()
 )
-AAE_DRIVER_VIDEO_CORE(60,DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_BW | VECTOR_USES_OVERLAY1, ORIENTATION_DEFAULT)
+AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_BW | VECTOR_USES_OVERLAY1, ORIENTATION_DEFAULT)
 AAE_DRIVER_SCREEN(1024, 768, 0, 1040, 70, 950)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
@@ -1129,7 +1074,7 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_NONE_ENTRY()
 )
 
-AAE_DRIVER_VIDEO_CORE(60,DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_BW | VECTOR_USES_OVERLAY1, ORIENTATION_DEFAULT)
+AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_BW | VECTOR_USES_OVERLAY1, ORIENTATION_DEFAULT)
 AAE_DRIVER_SCREEN(1024, 768, 0, 1040, 70, 950)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
@@ -1155,7 +1100,7 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_NONE_ENTRY(),
 	AAE_CPU_NONE_ENTRY()
 )
-AAE_DRIVER_VIDEO_CORE(60,DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_BW | VECTOR_USES_OVERLAY1, ORIENTATION_DEFAULT)
+AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_BW | VECTOR_USES_OVERLAY1, ORIENTATION_DEFAULT)
 AAE_DRIVER_SCREEN(1024, 768, 0, 1040, 70, 950)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()

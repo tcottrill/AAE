@@ -93,6 +93,11 @@ void circus_init_palette(unsigned char* palette, unsigned char* colortable,  con
 {
    // memcpy(palette, circus_palette, sizeof(circus_palette));
     memcpy(palette, test_palette, sizeof(test_palette));
+
+    /* colortable must be filled too: vh_open builds the drawgfx remap table
+       from it, and the buffer arrives uninitialized (malloc) */
+    colortable[0] = 0;  /* pixel value 0 -> black */
+    colortable[1] = 1;  /* pixel value 1 -> white */
 }
 
 /*--------------------------------------------------------------------------
@@ -169,21 +174,23 @@ static struct DACinterface circus_dac_interface =
   VBLANK helper
 
   The Circus hardware exposes VBLANK as a bit in the DSW port.
-  We compute it from elapsed CPU cycles in the current frame.
-  At 57 fps with 705562 Hz CPU, one frame is ~12378 cycles.
-  VBLANK occupies roughly the last ~8% of the frame (about 16 scanlines
-  out of ~262 total NTSC lines).
+
+  This follows the old-MAME frame model (0.36-0.66, where all four games
+  work): the per-frame interrupt fires at the top of the frame and VBLANK
+  is active from that same moment for vblank_duration microseconds. Our
+  scheduler fires the ipf interrupt at the END of the frame, which is the
+  same instant as the START of the next frame -- so a window covering the
+  first vblank_duration us of the frame puts the IRQ exactly at vblank
+  start, matching the reference. Crash in particular relies on the IRQ /
+  vblank-bit phase being right.
 --------------------------------------------------------------------------*/
 static inline int circus_in_vblank(void)
 {
-    int cpf = 705562 / 57;  /* cycles per frame (~12378) */
-    int elapsed = get_exact_cyclecount(0);// get_elapsed_ticks(0);
-    /* VBLANK starts at about line 240 of 262, so roughly 91.6% through */
-    int vblank_start = (cpf * 200) / 262;
-    return (elapsed >= vblank_start) ? 1 : 0;
-
-    const int scan = aae_cpu_getscanline();
-    if (scan > 233) return 1; else return 0;
+    const int freq = Machine->gamedrv->cpu[0].cpu_freq;
+    const int vbl_cycles = (int)((double)freq *
+        (double)Machine->gamedrv->vblank_duration * 0.000001);
+    const int elapsed = get_exact_cyclecount(0);  /* per-frame counter */
+    return (elapsed < vbl_cycles) ? 1 : 0;
 }
 
 /*--------------------------------------------------------------------------
@@ -200,6 +207,12 @@ WRITE_HANDLER(circus_clown_x_w)
 WRITE_HANDLER(circus_clown_y_w)
 {
     clown_y = 240 - data;
+}
+
+/* $4000-$43FF: video RAM -- goes through videoram_w so dirtybuffer is marked */
+WRITE_HANDLER(circus_videoram_w)
+{
+    videoram_w(address, data);
 }
 
 /* $8000: Clown rotation (low nibble) + audio/event triggers (bits 4-6) + amp enable (bit 7)
@@ -253,14 +266,11 @@ READ_HANDLER(circus_IN0_r)
 READ_HANDLER(circus_DSW_r)
 {
     UINT8 dsw = (UINT8)readinputportbytag("DSW");
-    const int scan = aae_cpu_getscanline();   // 0..LINES_PER_FRAME-1
 
     /* For Circus: VBLANK is active LOW on bit 7 (IPT_VBLANK with IP_ACTIVE_LOW) */
     /* For Crash: VBLANK is active HIGH on bit 7 */
     if (game_id == GAME_CIRCUS || game_id == GAME_RIPCORD)
     {
-       
-        LOG_INFO("SCANLINE AT DSW READ IS %d", scan);
         /* Active low: bit 7 = 0 during vblank, 1 otherwise */
         if (circus_in_vblank())
             dsw &= ~0x80;
@@ -269,7 +279,6 @@ READ_HANDLER(circus_DSW_r)
     }
     else
     {
-        LOG_INFO("SCANLINE AT DSW READ NOT CIRCUS IS %d", scan);
         /* Active high: bit 7 = 1 during vblank */
         if (circus_in_vblank())
             dsw |= 0x80;
@@ -310,7 +319,7 @@ MEM_WRITE(circus_writemem)
     MEM_ADDR(0x0000, 0x01ff, MWA_RAM)
     MEM_ADDR(0x2000, 0x2000, circus_clown_x_w)
     MEM_ADDR(0x3000, 0x3000, circus_clown_y_w)
-    MEM_ADDR(0x4000, 0x43ff, MWA_RAM)        /* video RAM - written directly to MEM[] */
+    MEM_ADDR(0x4000, 0x43ff, circus_videoram_w)  /* video RAM + dirty tile tracking */
     MEM_ADDR(0x8000, 0x8000, circus_clown_z_w)
     MEM_ADDR(0x1000, 0x1fff, MWA_ROM)
     MEM_ADDR(0xF000, 0xFFFF, MWA_ROM )
@@ -628,13 +637,15 @@ int init_robotbwl(void)
     game_id = GAME_ROBOTBWL;
     clown_x = clown_y = clown_z = 0;
 
-    /* Robot Bowl GFX2 PROM data is bit-inverted; fix it at load time */
-    unsigned char* gfx2 = memory_region(REGION_GFX2);
-    if (gfx2)
+    /* Robot Bowl's ball PROM is stored inverted (ROMREGION_INVERT in MAME).
+       The gfx were already decoded in vh_open by the time init runs, so
+       flip the decoded 1bpp pixels rather than the ROM bytes. */
+    struct GfxElement* ball = Machine->gfx[1];
+    if (ball && ball->gfxdata)
     {
-        int len = Machine->memory_region_length[REGION_GFX2];
-        for (int i = 0; i < len; i++)
-            gfx2[i] ^= 0xFF;
+        for (int y = 0; y < ball->total_elements * ball->height; y++)
+            for (int x = 0; x < ball->width; x++)
+                ball->gfxdata->line[y][x] ^= 1;
     }
 
     circus_vh_start();
@@ -645,6 +656,7 @@ int init_robotbwl(void)
 
 void run_robotbwl(void)
 {
+    watchdog_reset_w(0, 0, 0);
     DAC_sh_update();
     robotbwl_vh_screenrefresh();
 }
@@ -669,6 +681,7 @@ int init_crash(void)
 
 void run_crash(void)
 {
+    watchdog_reset_w(0, 0, 0);
     DAC_sh_update();
     crash_vh_screenrefresh();
 }
@@ -693,6 +706,7 @@ int init_ripcord(void)
 
 void run_ripcord(void)
 {
+    watchdog_reset_w(0, 0, 0);
     DAC_sh_update();
     crash_vh_screenrefresh();  /* Ripcord uses the same refresh as Crash */
 }
@@ -969,7 +983,7 @@ AAE_DRIVER_CPUS(
     AAE_CPU_NONE_ENTRY()
 )
 
-AAE_DRIVER_VIDEO_CORE(57, 1000, VIDEO_TYPE_RASTER_BW | VIDEO_SUPPORTS_DIRTY, ORIENTATION_DEFAULT)
+AAE_DRIVER_VIDEO_CORE(57, 3500, VIDEO_TYPE_RASTER_BW | VIDEO_SUPPORTS_DIRTY, ORIENTATION_DEFAULT)  /* 3500 us vblank, per MAME 0.66 */
 AAE_DRIVER_SCREEN(32*8, 32*8, 0*8, 31*8-1, 0*8, 32*8-1)
 AAE_DRIVER_RASTER(circus_gfxdecodeinfo, 2, 2, circus_init_palette)
 AAE_DRIVER_HISCORE_NONE()
@@ -1006,7 +1020,7 @@ AAE_DRIVER_CPUS(
     AAE_CPU_NONE_ENTRY()
 )
 
-AAE_DRIVER_VIDEO_CORE(57, DEFAULT_REAL_60HZ_VBLANK_DURATION, VIDEO_TYPE_RASTER_BW | VIDEO_SUPPORTS_DIRTY, ORIENTATION_DEFAULT)
+AAE_DRIVER_VIDEO_CORE(57, 3500, VIDEO_TYPE_RASTER_BW | VIDEO_SUPPORTS_DIRTY, ORIENTATION_DEFAULT)  /* 3500 us vblank, per MAME 0.66 */
 AAE_DRIVER_SCREEN(32*8, 32*8, 0*8, 31*8-1, 0*8, 32*8-1)
 AAE_DRIVER_RASTER(robotbwl_gfxdecodeinfo, 2, 2, circus_init_palette)
 AAE_DRIVER_HISCORE_NONE()
@@ -1043,7 +1057,7 @@ AAE_DRIVER_CPUS(
     AAE_CPU_NONE_ENTRY()
 )
 
-AAE_DRIVER_VIDEO_CORE(57, DEFAULT_REAL_60HZ_VBLANK_DURATION, VIDEO_TYPE_RASTER_BW | VIDEO_SUPPORTS_DIRTY, ORIENTATION_DEFAULT)
+AAE_DRIVER_VIDEO_CORE(57, 3500, VIDEO_TYPE_RASTER_BW | VIDEO_SUPPORTS_DIRTY, ORIENTATION_DEFAULT)  /* 3500 us vblank, per MAME 0.66 */
 AAE_DRIVER_SCREEN(32*8, 32*8, 0*8, 31*8-1, 0*8, 32*8-1)
 AAE_DRIVER_RASTER(circus_gfxdecodeinfo, 2, 2, circus_init_palette)
 AAE_DRIVER_HISCORE_NONE()
@@ -1080,7 +1094,7 @@ AAE_DRIVER_CPUS(
     AAE_CPU_NONE_ENTRY()
 )
 
-AAE_DRIVER_VIDEO_CORE(57, DEFAULT_REAL_60HZ_VBLANK_DURATION, VIDEO_TYPE_RASTER_BW | VIDEO_SUPPORTS_DIRTY, ORIENTATION_DEFAULT)
+AAE_DRIVER_VIDEO_CORE(57, 3500, VIDEO_TYPE_RASTER_BW | VIDEO_SUPPORTS_DIRTY, ORIENTATION_DEFAULT)  /* 3500 us vblank, per MAME 0.66 */
 AAE_DRIVER_SCREEN(32*8, 32*8, 0*8, 31*8-1, 0*8, 32*8-1)
 AAE_DRIVER_RASTER(circus_gfxdecodeinfo, 2, 2, circus_init_palette)
 AAE_DRIVER_HISCORE_NONE()
