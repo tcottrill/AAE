@@ -17,6 +17,10 @@
 #include "framework.h"
 #include "sys_gl.h"
 
+#include "render_types.h"
+static_assert(sizeof(rtex_t) == sizeof(GLuint) && alignof(rtex_t) == alignof(GLuint),
+	"render handle types must be bit-identical to GLuint for the GL backend");
+
 #pragma comment(lib, "glu32.lib")
 #pragma comment(lib, "opengl32.lib")
 
