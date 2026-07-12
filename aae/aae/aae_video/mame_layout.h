@@ -30,7 +30,7 @@
 #include <vector>
 #include <map>
 
-#include "framework.h"  // pulls in glew.h, wglew.h, GL types
+#include "render_types.h"
 
 // ====================================================================
 // Layer types matching MAME draw order:
@@ -55,7 +55,7 @@ struct LayoutElement {
     std::string name;
     std::string imageFile;              // empty if procedural
     std::vector<LayoutRect> rects;      // non-empty if procedural
-    GLuint textureID = 0;               // generated texture (image or baked procedural)
+    rtex_t textureID = 0;               // generated texture (image or baked procedural)
     int texWidth = 0, texHeight = 0;
 };
 
@@ -113,14 +113,14 @@ LayoutView* Layout_FindView(LayoutData& data, const std::string& viewName);
 // Used to select the correct overlay blending mode:
 //   VIDEO_TYPE_RASTER_BW  -> pure multiply   (screen * overlay)
 //   VIDEO_TYPE_RASTER_COLOR -> 2x multiply   (screen * overlay * 2, clamped)
-void Layout_Render(const LayoutView& view, GLuint screenTexture,
+void Layout_Render(const LayoutView& view, rtex_t screenTexture,
     int winW, int winH, int videoAttributes = 0);
 
 void Layout_CreateDefaultScreen(LayoutData& outData, float screenW, float screenH);
 
 // Returns the GL texture ID of the first overlay element in the view,
 // or 0 if no overlay exists or overlays are disabled.
-GLuint Layout_GetOverlayTexture(const LayoutView& view);
+rtex_t Layout_GetOverlayTexture(const LayoutView& view);
 
 // Free all OpenGL textures owned by the layout, plus the layout
 // shader programs and VAO/VBO. Safe to call multiple times.

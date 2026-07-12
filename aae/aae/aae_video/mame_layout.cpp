@@ -13,6 +13,7 @@
 // ====================================================================
 
 #include "mame_layout.h"
+#include "framework.h"      // glew.h, wglew.h, GL calls, WindowSetup
 #include "shader_util.h"    // CompileShader(), LinkShaderProgram()
 #include "sys_log.h"
 #include "tinyxml2.h"
@@ -710,7 +711,7 @@ static void DrawLayoutQuad(GLuint texID, float x, float y, float w, float h,
 	DrawQuadNDC(nx0, ny0, nx1, ny1);
 }
 
-void Layout_Render(const LayoutView& view, GLuint screenTexture, int winW, int winH, int videoAttributes)
+void Layout_Render(const LayoutView& view, rtex_t screenTexture, int winW, int winH, int videoAttributes)
 {
 	if (winW < 1 || winH < 1) return;
 
@@ -1102,7 +1103,7 @@ void Layout_Render(const LayoutView& view, GLuint screenTexture, int winW, int w
 // Layout_GetOverlayTexture
 // Returns the GL texture ID of the first overlay element, or 0.
 // ====================================================================
-GLuint Layout_GetOverlayTexture(const LayoutView& view)
+rtex_t Layout_GetOverlayTexture(const LayoutView& view)
 {
 	if (!g_layoutShowOverlay) return 0;
 	for (const auto& d : view.drawables) {
