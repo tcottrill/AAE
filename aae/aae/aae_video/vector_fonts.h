@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "opengl_renderer.h"
+#include "render_types.h"
 #include "colordefs.h"
 #include "MathUtils.h" // aae::math::{vec2, mat4, ortho, value_ptr}
 
@@ -98,17 +99,17 @@ private:
 
 private:
     // OpenGL state
-    GLuint vfProgram = 0;
-    GLuint vfVAO = 0;
-    GLuint vfVBO = 0;
-    GLuint quadVAO = 0;
-    GLuint quadVBO = 0;
+    rprog_t vfProgram = 0;
+    rvao_t vfVAO = 0;
+    rbuf_t vfVBO = 0;
+    rvao_t quadVAO = 0;
+    rbuf_t quadVBO = 0;
 
-    GLint attrPos = -1;
-    GLint attrColor = -1;
-    GLint attrOrigin = -1;
-    GLint attrAngle = -1;
-    GLint uniMVP = -1;
+    std::int32_t attrPos = -1;
+    std::int32_t attrColor = -1;
+    std::int32_t attrOrigin = -1;
+    std::int32_t attrAngle = -1;
+    std::int32_t uniMVP = -1;
 
     aae::math::mat4 proj; // Using aae::math::mat4
     int screenWidth = 0;

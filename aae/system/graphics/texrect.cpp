@@ -31,6 +31,8 @@
 // -----------------------------------------------------------------------------
 
 #include "texrect.h"
+#include "sys_gl.h"
+#include "shader_util.h"
 
 #include <cstddef>   // offsetof
 

@@ -172,7 +172,7 @@ void TEX::SetBlendMode(bool alphaTest) const {
 	}
 }
 
-GLuint TEX::GetTexID() const {
+rtex_t TEX::GetTexID() const {
 	return texid;
 }
 
