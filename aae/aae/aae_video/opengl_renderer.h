@@ -3,7 +3,7 @@
 
 #include "framework.h"
 #include "texrect.h"
-#include "sys_gl.h"
+#include "render_types.h"
 
 // Sane Global Rectangle Coordinates
 extern int game_rect_left;
@@ -19,9 +19,9 @@ extern int g_scanline_override;
 namespace aae { namespace math { struct mat4; } }
 extern aae::math::mat4 g_proj;
 
-void set_ortho(GLint width, GLint height);
+void set_ortho(int width, int height);
 // Y-down ortho for the raster rendering path (origin top-left, Y increases downward).
-void set_ortho_raster(GLint width, GLint height);
+void set_ortho_raster(int width, int height);
 void set_render();
 void render();
 void final_render(int left, int right, int bottom, int top);
@@ -44,7 +44,7 @@ void Widescreen_calc();
 void init_raster_overlay();
 void shutdown_raster_overlay();
 // Returns the scanline overlay texture handle (0 if not loaded)
-GLuint glcode_get_scanrez_tex();
+rtex_t glcode_get_scanrez_tex();
 
 // Backend-neutral point-sprite drawing for the front-end GUI starfield.
 // Vertex layout: position (2 floats) + RGBA color (4 floats).

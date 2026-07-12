@@ -58,7 +58,7 @@ void CheckGLVersionSupport();
 // -----------------------------------------------------------------------------
 // Sets OpenGL viewport
 // -----------------------------------------------------------------------------
-float ReSizeGLScene(GLsizei width, GLsizei height);
+float ReSizeGLScene(int width, int height);
 
 // -----------------------------------------------------------------------------
 // Sets 2D orthographic projection for screen rendering

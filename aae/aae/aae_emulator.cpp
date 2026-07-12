@@ -44,6 +44,7 @@
 #include "fileio/texture_handler.h"
 #include "config.h"
 #include "opengl_renderer.h"
+#include "sys_gl.h"
 #include "vector_draw.h"
 #include "gl_fbo.h"
 #include "menu.h"

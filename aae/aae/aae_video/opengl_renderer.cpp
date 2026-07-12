@@ -50,6 +50,7 @@
 //==========================================================================
 
 #include "opengl_renderer.h"
+#include "sys_gl.h"
 #include "aae_mame_driver.h"
 #include "vector_fonts.h"
 #include "texture_handler.h"
@@ -270,7 +271,7 @@ void Widescreen_calc()
 // projection to the given dimensions. Used throughout the pipeline to
 // switch between 1024x1024 (FBO space) and window-size (backbuffer) spaces.
 // ---------------------------------------------------------------------------
-void set_ortho(GLint width, GLint height)
+void set_ortho(int width, int height)
 {
 	// Core path: only the viewport and the g_proj projection (consumed via the
 	// uProj uniform by every draw) are needed. The fixed-function matrix stack is
@@ -287,14 +288,14 @@ void set_ortho(GLint width, GLint height)
 // at top-left with Y increasing downward, matching the raster bitmap layout.
 // This fixes the Y-flip that would occur if the standard vector ortho were used.
 // ---------------------------------------------------------------------------
-void set_ortho_raster(GLint width, GLint height)
+void set_ortho_raster(int width, int height)
 {
 	// Core path (see set_ortho): viewport + g_proj only. Y-DOWN ortho for raster.
 	glViewport(0, 0, width, height);
 	g_proj = aae::math::ortho(0.0f, (float)width, (float)height, 0.0f);
 }
 
-GLuint glcode_get_scanrez_tex()
+rtex_t glcode_get_scanrez_tex()
 {
 	return g_scanrezTex;
 }
