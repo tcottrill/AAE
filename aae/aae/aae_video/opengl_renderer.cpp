@@ -1456,3 +1456,14 @@ void gui_points_shutdown()
 	if (s_guiPointVAO) { glDeleteVertexArrays(1, &s_guiPointVAO); s_guiPointVAO = 0; }
 	if (s_guiPointVBO) { glDeleteBuffers(1, &s_guiPointVBO); s_guiPointVBO = 0; }
 }
+
+// ---------------------------------------------------------------------------
+// glcode_get_gl_error
+// Backend-neutral wrapper around glGetError() for callers outside the
+// render .cpp files that just want to know if a GL error occurred, without
+// pulling in GL headers themselves.
+// ---------------------------------------------------------------------------
+int glcode_get_gl_error()
+{
+	return static_cast<int>(glGetError());
+}

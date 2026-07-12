@@ -1,8 +1,6 @@
 #pragma once
 
 #include <Windows.h>
-#include "glew.h"
-#include "wglew.h"
 #include "sys_log.h"
 
 // -----------------------------------------------------------------------------

@@ -19,6 +19,12 @@
 #include <functional>
 #include <algorithm>
 
+// Regression guard: this file must never see OpenGL headers. If this fires,
+// a render header re-leaked glew.h — fix the header, not this guard.
+#ifdef __glew_h__
+#error "OpenGL headers leaked into a non-render translation unit"
+#endif
+
 void AAE_ApplyAudioVolumesFromConfig(int force);
 void setup_ambient(int style);
 void init_raster_overlay();

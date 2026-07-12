@@ -23,6 +23,12 @@
 #include "colordefs.h"
 #include "rawinput.h"
 
+// Regression guard: this file must never see OpenGL headers. If this fires,
+// a render header re-leaked glew.h — fix the header, not this guard.
+#ifdef __glew_h__
+#error "OpenGL headers leaked into a non-render translation unit"
+#endif
+
 extern int errorsound;
 extern int show_fps;
 extern int menulevel;
@@ -122,7 +128,7 @@ void video_loop(void)
 	//If were displaying the menu, go ahead and show it.
 	VF.Begin();
 		
-	int err = glGetError();
+	int err = glcode_get_gl_error();
 	if (err != 0)
 	{
 		LOG_INFO("openglerror in video loop 1: %d", err);
@@ -131,7 +137,7 @@ void video_loop(void)
 	{
 		do_the_menu();
 	}
-	err = glGetError();
+	err = glcode_get_gl_error();
 	if (err != 0)
 	{
 		LOG_INFO("openglerror in video loop 2: %d", err);

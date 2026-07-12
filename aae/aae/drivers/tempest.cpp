@@ -22,6 +22,12 @@
 #include "opengl_renderer.h"
 #include "vector_fonts.h"
 #include "cpu_6502.h"
+
+// Regression guard: this file must never see OpenGL headers. If this fires,
+// a render header re-leaked glew.h — fix the header, not this guard.
+#ifdef __glew_h__
+#error "OpenGL headers leaked into a non-render translation unit"
+#endif
 //
 // Tempest Multigame Notes:
 // Tempest Multigame is Copyright 1999 Clay Cowgill, and provides a very nice menu system to run

@@ -1,5 +1,7 @@
 Changelog:
 
+- Render headers are now OpenGL-free (backend-neutral handle types in render_types.h); GL is confined to renderer .cpp files, in preparation for the Vulkan backend.
+
 Started:
 Code cleanup, moving to a more sane directory structure
 Build the last revision of allegro 4 and added it to the build. (This should get completely removed at a later date)

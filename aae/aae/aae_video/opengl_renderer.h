@@ -56,4 +56,12 @@ void gui_points_init(int maxPoints);
 void gui_points_draw(const GuiPointVertex* pts, int count, float pointSize);
 void gui_points_shutdown();
 
+// Backend window-swap / vsync wrappers (implemented by the GL backend in sys_gl.cpp).
+void GLSwapBuffers();
+void SetvSync(bool enabled);
+
+// Backend-neutral GL error check (returns 0 when no error). Lets non-render
+// TUs poll for GL errors without including GL headers.
+int glcode_get_gl_error();
+
 #endif

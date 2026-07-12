@@ -44,7 +44,6 @@
 #include "fileio/texture_handler.h"
 #include "config.h"
 #include "opengl_renderer.h"
-#include "sys_gl.h"
 #include "vector_draw.h"
 #include "gl_fbo.h"
 #include "menu.h"
@@ -66,6 +65,12 @@
 #include "windows_util.h"
 #include <filesystem>
 #include <path_helper.h>
+
+// Regression guard: this file must never see OpenGL headers. If this fires,
+// a render header re-leaked glew.h — fix the header, not this guard.
+#ifdef __glew_h__
+#error "OpenGL headers leaked into a non-render translation unit"
+#endif
 
 #pragma warning(disable : 4996 4244)
 
