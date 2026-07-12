@@ -761,13 +761,15 @@ void copyscrollbitmap(struct osd_bitmap* dest, struct osd_bitmap* src,
 }
 
 //------------------------------------------------------------------------------
-// fillbitmap (behavior preserved; orientation handled via helper)
+// fillbitmap
+// AAE convention: bitmaps live in game space and rotation is applied at the
+// GL blit, so the clip is used raw here -- exactly like drawgfx/plot_pixel.
+// (The old apply_orientation_clip swapped the rect for SWAP_XY games, which
+// left the far strip of a rotated screen unfilled, e.g. gaplus ROT90.)
 //------------------------------------------------------------------------------
 void fillbitmap(struct osd_bitmap* dest, int pen, const struct rectangle* clip_in)
 {
-    rectangle tmpClip{};
     const rectangle* clip = clip_in;
-    apply_orientation_clip(dest, clip, tmpClip);
 
     int sx = 0, sy = 0, ex = dest->width - 1, ey = dest->height - 1;
     if (clip)
