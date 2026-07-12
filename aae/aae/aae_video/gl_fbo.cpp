@@ -45,22 +45,22 @@
 // ---------------------------------------------------------------------------
 // FBO and texture handle definitions
 // ---------------------------------------------------------------------------
-GLuint fbo1       = 0;
-GLuint fbo2       = 0;
-GLuint fbo3       = 0;
-GLuint fbo4       = 0;
-GLuint fbo_raster = 0;
+rfbo_t fbo1       = 0;
+rfbo_t fbo2       = 0;
+rfbo_t fbo3       = 0;
+rfbo_t fbo4       = 0;
+rfbo_t fbo_raster = 0;
 
-GLuint img1a = 0;
-GLuint img1b = 0;
-GLuint img1c = 0;
-GLuint img2a = 0;
-GLuint img2b = 0;
-GLuint img3a = 0;
-GLuint img3b = 0;
-GLuint img4a = 0;
-GLuint img4b = 0;
-GLuint img5a = 0;
+rtex_t img1a = 0;
+rtex_t img1b = 0;
+rtex_t img1c = 0;
+rtex_t img2a = 0;
+rtex_t img2b = 0;
+rtex_t img3a = 0;
+rtex_t img3b = 0;
+rtex_t img4a = 0;
+rtex_t img4b = 0;
+rtex_t img5a = 0;
 
 // Pipeline texture dimensions (fixed for the whole pipeline).
 // FBO1/FBO4 : 1024x1024 - main render and final composite targets.
@@ -91,7 +91,7 @@ static float get_max_anisotropy()
 // Queries and logs the completeness status of the currently bound FBO.
 // Returns the raw GL status enum so callers can branch on it if needed.
 // ---------------------------------------------------------------------------
-GLenum CHECK_FRAMEBUFFER_STATUS()
+static GLenum CHECK_FRAMEBUFFER_STATUS()
 {
     GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
     switch (status)
@@ -229,12 +229,12 @@ static GLuint create_texture(float w, float h, bool mipmaps = true, bool use_alp
 // ---------------------------------------------------------------------------
 struct FboAttachment
 {
-    GLuint*               texOut;
+    rtex_t*               texOut;
     std::array<float, 2>  dims;
     bool                  use_alpha;
 };
 
-static void create_fbo(GLuint& fbo,
+static void create_fbo(rfbo_t& fbo,
     std::initializer_list<FboAttachment> attachments)
 {
     glGenFramebuffers(1, &fbo);
@@ -264,9 +264,9 @@ static void create_fbo(GLuint& fbo,
 // rendering into an FBO and before sampling from those textures so that
 // trilinear and anisotropic filtering work correctly.
 // ---------------------------------------------------------------------------
-void fbo_generate_mipmaps(std::initializer_list<GLuint> textures)
+void fbo_generate_mipmaps(std::initializer_list<rtex_t> textures)
 {
-    for (GLuint tex : textures)
+    for (rtex_t tex : textures)
     {
         glBindTexture(GL_TEXTURE_2D, tex);
         glGenerateMipmap(GL_TEXTURE_2D);
@@ -396,7 +396,7 @@ void fbo_shutdown()
 {
     LOG_INFO("fbo_shutdown: releasing fbo1..fbo4 and all textures.");
 
-    GLuint textures[] = { img1a, img1b, img1c, img2a, img2b, img3a, img3b, img4a, img4b };
+    rtex_t textures[] = { img1a, img1b, img1c, img2a, img2b, img3a, img3b, img4a, img4b };
     glDeleteTextures(9, textures);
 
     img1a = img1b = img1c = 0;
@@ -405,7 +405,7 @@ void fbo_shutdown()
     img4a = 0;
     img4b = 0;
 
-    GLuint fbos[] = { fbo1, fbo2, fbo3, fbo4 };
+    rfbo_t fbos[] = { fbo1, fbo2, fbo3, fbo4 };
     glDeleteFramebuffers(4, fbos);
 
     fbo1 = fbo2 = fbo3 = fbo4 = 0;
