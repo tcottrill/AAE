@@ -11,27 +11,28 @@
 #ifndef LOADERS_H
 #define LOADERS_H
 
+#include "render_types.h"
 #include "aae_mame_driver.h"
 
-extern GLuint error_tex[2];
-extern GLuint pause_tex[2];
-extern GLuint fun_tex[4];
-extern GLuint art_tex[8];
-extern GLuint game_tex[10];
-extern GLuint menu_tex[7];
+extern rtex_t error_tex[2];
+extern rtex_t pause_tex[2];
+extern rtex_t fun_tex[4];
+extern rtex_t art_tex[8];
+extern rtex_t game_tex[10];
+extern rtex_t menu_tex[7];
 
 // Load
-GLuint load_texture(const char* filename, const char* archname, int numcomponents, int filter, bool modernGL = true);
+rtex_t load_texture(const char* filename, const char* archname, int numcomponents, int filter, bool modernGL = true);
 // Use
-void set_texture(GLuint* texture, GLboolean linear, GLboolean mipmapping, GLboolean blending, GLboolean set_color);
+void set_texture(rtex_t* texture, bool linear, bool mipmapping, bool blending, bool set_color);
 // Take snapshot
 void snapshot();
 // Deletes all registered textures
 void destroy_all_textures();
 // Retrieve loaded texture size
-bool get_texture_size(GLuint tex, int* outW, int* outH);
+bool get_texture_size(rtex_t tex, int* outW, int* outH);
 // Texture handling:
 void load_artwork(const struct artworks* p);
-int make_single_bitmap(GLuint* texture, const char* filename, const char* archname, int mtype);
+int make_single_bitmap(rtex_t* texture, const char* filename, const char* archname, int mtype);
 
 #endif
