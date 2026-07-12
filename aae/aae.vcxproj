@@ -172,6 +172,7 @@
     <ClInclude Include="aae\drivers\digdug.h" />
     <ClInclude Include="aae\drivers\galaga.h" />
     <ClInclude Include="aae\drivers\galaxian_driver.h" />
+    <ClInclude Include="aae\drivers\gaplus.h" />
     <ClInclude Include="aae\drivers\invaders.h" />
     <ClInclude Include="aae\drivers\jrpacman.h" />
     <ClInclude Include="aae\drivers\llander.h" />
@@ -313,6 +314,7 @@
     <ClCompile Include="aae\drivers\cchasm.cpp" />
     <ClCompile Include="aae\drivers\centiped.cpp" />
     <ClCompile Include="aae\drivers\foodf.cpp" />
+    <ClCompile Include="aae\drivers\gaplus.cpp" />
     <ClCompile Include="aae\drivers\gyruss.cpp" />
     <ClCompile Include="aae\drivers\cinematronics_driver.cpp" />
     <ClCompile Include="aae\drivers\circus.cpp" />
@@ -376,6 +378,7 @@
     <ClCompile Include="aae\vidhrdwr\emu_vector_draw.cpp" />
     <ClCompile Include="aae\vidhrdwr\fast_poly.cpp" />
     <ClCompile Include="aae\vidhrdwr\galaxian_vid.cpp" />
+    <ClCompile Include="aae\vidhrdwr\gaplus_video.cpp" />
     <ClCompile Include="aae\vidhrdwr\mappy_video.cpp" />
     <ClCompile Include="aae\vidhrdwr\old_mame_raster.cpp" />
     <ClCompile Include="aae\vidhrdwr\old_mame_vecsim_dvg.cpp" />

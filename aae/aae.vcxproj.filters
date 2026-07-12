@@ -265,6 +265,9 @@
     <ClCompile Include="aae\drivers\foodf.cpp">
       <Filter>Source Files\aae\drivers\raster</Filter>
     </ClCompile>
+    <ClCompile Include="aae\drivers\gaplus.cpp">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClCompile>
     <ClCompile Include="aae\drivers\gyruss.cpp">
       <Filter>Source Files\aae\drivers\raster</Filter>
     </ClCompile>
@@ -288,6 +291,9 @@
     </ClCompile>
     <ClCompile Include="aae\sndhrdwr\aae_pokey.cpp">
       <Filter>Source Files\aae\sndhrdwr</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\vidhrdwr\gaplus_video.cpp">
+      <Filter>Source Files\aae\vidhrdwr</Filter>
     </ClCompile>
     <ClCompile Include="aae\vidhrdwr\mappy_video.cpp">
       <Filter>Source Files\aae\vidhrdwr</Filter>
@@ -655,6 +661,9 @@
       <Filter>Source Files\aae\drivers\raster</Filter>
     </ClInclude>
     <ClInclude Include="aae\drivers\galaxian_driver.h">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\drivers\gaplus.h">
       <Filter>Source Files\aae\drivers\raster</Filter>
     </ClInclude>
     <ClInclude Include="aae\drivers\invaders.h">
