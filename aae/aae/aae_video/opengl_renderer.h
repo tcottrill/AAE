@@ -46,4 +46,14 @@ void shutdown_raster_overlay();
 // Returns the scanline overlay texture handle (0 if not loaded)
 GLuint glcode_get_scanrez_tex();
 
+// Backend-neutral point-sprite drawing for the front-end GUI starfield.
+// Vertex layout: position (2 floats) + RGBA color (4 floats).
+struct GuiPointVertex {
+	float x, y;
+	float r, g, b, a;
+};
+void gui_points_init(int maxPoints);
+void gui_points_draw(const GuiPointVertex* pts, int count, float pointSize);
+void gui_points_shutdown();
+
 #endif

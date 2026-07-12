@@ -49,7 +49,6 @@
 #include "menu.h"
 #include "game_list.h"
 #include "emu_vector_draw.h"
-#include "gl_shader.h"
 #include "opengl_renderer.h"  // g_proj
 #include "MathUtils.h"        // aae::math::value_ptr
 
@@ -130,14 +129,6 @@ static constexpr int   kBlinkRateMax = 30;   // Slowest blink
 // =============================================================================
 // Starfield
 // =============================================================================
-static GLuint s_starVAO = 0;
-static GLuint s_starVBO = 0;
-
-struct StarVertex {
-	GLfloat x, y;
-	GLfloat r, g, b, a;
-};
-
 struct Star
 {
 	int x, y;
@@ -201,7 +192,7 @@ static void moveStars(Star stars[], int count)
 
 static void drawStars(Star stars[], int count)
 {
-	static StarVertex buf[256];
+	static GuiPointVertex buf[256];
 	int n = 0;
 
 	for (int i = 0; i < count; ++i)
@@ -209,8 +200,8 @@ static void drawStars(Star stars[], int count)
 		if (stars[i].blink && !stars[i].blinkVisible)
 			continue;
 
-		buf[n].x = (GLfloat)stars[i].x;
-		buf[n].y = (GLfloat)stars[i].y;
+		buf[n].x = (float)stars[i].x;
+		buf[n].y = (float)stars[i].y;
 		buf[n].r = stars[i].r / 255.0f;
 		buf[n].g = stars[i].g / 255.0f;
 		buf[n].b = stars[i].b / 255.0f;
@@ -218,39 +209,12 @@ static void drawStars(Star stars[], int count)
 		n++;
 	}
 
-	if (n == 0) return;
-
-	glPointSize(3.0f);
-	bind_shader(fragStarPoint);
-	set_uniform_mat4f(fragStarPoint, "uProj", aae::math::value_ptr(g_proj));
-
-	glBindVertexArray(s_starVAO);
-	glBindBuffer(GL_ARRAY_BUFFER, s_starVBO);
-	glBufferSubData(GL_ARRAY_BUFFER, 0, n * sizeof(StarVertex), buf);
-	glDrawArrays(GL_POINTS, 0, n);
-	glBindVertexArray(0);
-
-	unbind_shader();
-	glPointSize(config.pointsize);
+	gui_points_draw(buf, n, 3.0f);
 }
 
 static void initStarGPU()
 {
-	glGenVertexArrays(1, &s_starVAO);
-	glGenBuffers(1, &s_starVBO);
-
-	glBindVertexArray(s_starVAO);
-	glBindBuffer(GL_ARRAY_BUFFER, s_starVBO);
-	glBufferData(GL_ARRAY_BUFFER, kNumStars * sizeof(StarVertex), nullptr, GL_DYNAMIC_DRAW);
-
-	// Attribute 0: position (2 floats)
-	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(StarVertex), (void*)0);
-	// Attribute 1: color (4 floats)
-	glEnableVertexAttribArray(1);
-	glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(StarVertex), (void*)(2 * sizeof(float)));
-
-	glBindVertexArray(0);
+	gui_points_init(kNumStars);
 }
 
 // =============================================================================
@@ -877,8 +841,7 @@ void end_gui()
 {
 	LOG_INFO("EXITING GUI");
 	sample_stop(1);
-	if (s_starVAO) { glDeleteVertexArrays(1, &s_starVAO); s_starVAO = 0; }
-	if (s_starVBO) { glDeleteBuffers(1, &s_starVBO);       s_starVBO = 0; }
+	gui_points_shutdown();
 }
 
 // =============================================================================

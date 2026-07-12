@@ -1408,3 +1408,50 @@ void final_render_raster()
 			std::chrono::duration<double, std::milli>(diff).count());
 	}
 }
+
+// ---------------------------------------------------------------------------
+// GUI point sprites (starfield). GL lives here so gui code stays GL-free.
+// ---------------------------------------------------------------------------
+static GLuint s_guiPointVAO = 0;
+static GLuint s_guiPointVBO = 0;
+
+void gui_points_init(int maxPoints)
+{
+	glGenVertexArrays(1, &s_guiPointVAO);
+	glGenBuffers(1, &s_guiPointVBO);
+
+	glBindVertexArray(s_guiPointVAO);
+	glBindBuffer(GL_ARRAY_BUFFER, s_guiPointVBO);
+	glBufferData(GL_ARRAY_BUFFER, maxPoints * sizeof(GuiPointVertex), nullptr, GL_DYNAMIC_DRAW);
+
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(GuiPointVertex), (void*)0);
+	glEnableVertexAttribArray(1);
+	glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(GuiPointVertex), (void*)(2 * sizeof(float)));
+
+	glBindVertexArray(0);
+}
+
+void gui_points_draw(const GuiPointVertex* pts, int count, float pointSize)
+{
+	if (count <= 0 || !s_guiPointVAO) return;
+
+	glPointSize(pointSize);
+	bind_shader(fragStarPoint);
+	set_uniform_mat4f(fragStarPoint, "uProj", aae::math::value_ptr(g_proj));
+
+	glBindVertexArray(s_guiPointVAO);
+	glBindBuffer(GL_ARRAY_BUFFER, s_guiPointVBO);
+	glBufferSubData(GL_ARRAY_BUFFER, 0, count * sizeof(GuiPointVertex), pts);
+	glDrawArrays(GL_POINTS, 0, count);
+	glBindVertexArray(0);
+
+	unbind_shader();
+	glPointSize(config.pointsize);
+}
+
+void gui_points_shutdown()
+{
+	if (s_guiPointVAO) { glDeleteVertexArrays(1, &s_guiPointVAO); s_guiPointVAO = 0; }
+	if (s_guiPointVBO) { glDeleteBuffers(1, &s_guiPointVBO); s_guiPointVBO = 0; }
+}
