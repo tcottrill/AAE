@@ -53,16 +53,6 @@ enum slapstic_states
  *
  *************************************/
 
-void starwars_nvram_handler(void* file, int read_or_write)
-{
-	if (read_or_write)
-		osd_fwrite(file, nvram, 0x100);
-	else if (file)
-		osd_fread(file, nvram, 0x100);
-	else
-		memset(nvram, 0, 0x100);
-}
-
 WRITE_HANDLER(nvram_w)
 {
 	nvram[address] = data;
@@ -332,6 +322,7 @@ MEM_END
 int init_esb()
 {
 	LOG_INFO("Calling ESB Init");
+	nvram_set_region(nvram, 0x100, 0x00);
 	/* Set up the slapstic */
 	slapstic_init(101);
 	slapstic_source = &memory_region(REGION_CPU1)[0x14000];
@@ -354,6 +345,7 @@ int init_esb()
 /////////////////// MAIN() for program ///////////////////////////////////////////////////
 int init_starwars(void)
 {
+	nvram_set_region(nvram, 0x100, 0x00);
 	starwars_sh_start();
 	swmathbox_init();
 	avg_start_starwars();
@@ -588,6 +580,33 @@ ROM_REGION(0x100, REGION_PROMS, 0)
 ROM_LOAD("136021-109.4b", 0x0000, 0x0100, CRC(82fc3eb2) SHA1(184231c7baef598294860a7d2b8a23798c5c7da6)) /* AVG PROM */
 ROM_END
 
+
+ROM_START(tomcatsw)
+ROM_REGION(0x12000, REGION_CPU1, 0)
+ROM_LOAD("tcavg3.1l", 0x3000, 0x1000, CRC(27188aa9) SHA1(5d9a978a7ac1913b57586e81045a1b955db27b48))
+ROM_LOAD("tc6.1f", 0x6000, 0x2000, CRC(56e284ff) SHA1(a5fda9db0f6b8f7d28a4a607976fe978e62158cf))
+ROM_LOAD("tc8.1hj", 0x8000, 0x2000, CRC(7b7575e3) SHA1(bdb838603ffb12195966d0ce454900253bc0f43f))
+ROM_LOAD("tca.1jk", 0xa000, 0x2000, CRC(a1020331) SHA1(128745a2ec771ac818a8fbba59a08f0cf5f28e8f))
+ROM_LOAD("tce.1m", 0xe000, 0x2000, CRC(4a3de8a3) SHA1(e48fc17201326358317f6b428e583ecaa3ecb881))
+
+/* Sound ROMS */
+ROM_REGION(0x10000, REGION_CPU2, 0)
+//ROM_LOAD("136021-107.1jk", 0x4000, 0x2000, 0) /* Sound ROM 0 */
+//ROM_RELOAD(0xc000, 0x2000)
+//ROM_LOAD("136021-208.1h", 0x6000, 0x2000, 0) /* Sound ROM 0 */
+//ROM_RELOAD(0xe000, 0x2000)
+
+/* Mathbox PROMs */
+ROM_REGION(0x1000, REGION_GFX1, 0)
+ROM_LOAD("136021-110.7h", 0x0000, 0x0400, CRC(810e040e) SHA1(d247cbb0afb4538d5161f8ce9eab337cdb3f2da4)) /* PROM 0 */
+ROM_LOAD("136021-111.7j", 0x0400, 0x0400, CRC(ae69881c) SHA1(f3420c6e15602956fd94982a5d8d4ddd015ed977)) /* PROM 1 */
+ROM_LOAD("136021-112.7k", 0x0800, 0x0400, CRC(ecf22628) SHA1(4dcf5153221feca329b8e8d199bd4fc00b151d9c)) /* PROM 2 */
+ROM_LOAD("136021-113.7l", 0x0c00, 0x0400, CRC(83febfde) SHA1(e13541b09d1724204fdb171528e9a1c83c799c1c)) /* PROM 3 */
+
+ROM_REGION(0x100, REGION_PROMS, 0)
+ROM_LOAD("136021-109.4b", 0x0000, 0x0100, CRC(82fc3eb2) SHA1(184231c7baef598294860a7d2b8a23798c5c7da6)) /* AVG PROM */
+ROM_END
+
 // Star Wars (Revision 2)
 AAE_DRIVER_BEGIN(drv_starwars, "starwars", "Star Wars (Revision 2)")
 AAE_DRIVER_ROM(rom_starwars)
@@ -637,7 +656,7 @@ AAE_DRIVER_SCREEN(1024, 768, 0, 250, 0, 280)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x000, 0x3000)
-AAE_DRIVER_NVRAM(starwars_nvram_handler)
+AAE_DRIVER_NVRAM(generic_nvram_handler)
 AAE_DRIVER_LAYOUT_NONE()
 AAE_DRIVER_END()
 
@@ -673,7 +692,7 @@ AAE_DRIVER_SCREEN(1024, 768, 0, 250, 0, 280)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x0, 0x3000)
-AAE_DRIVER_NVRAM(starwars_nvram_handler)
+AAE_DRIVER_NVRAM(generic_nvram_handler)
 AAE_DRIVER_LAYOUT_NONE()
 AAE_DRIVER_END()
 
@@ -709,12 +728,47 @@ AAE_DRIVER_SCREEN(1024, 768, 0, 250, 0, 280)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x000, 0x3000)
-AAE_DRIVER_NVRAM(starwars_nvram_handler)
+AAE_DRIVER_NVRAM(generic_nvram_handler)
+AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_END()
+
+// Tomcat
+AAE_DRIVER_BEGIN(drv_tomcat, "tomcat", "TomCat (Star Wars hardware, prototype)")
+AAE_DRIVER_ROM(rom_tomcatsw)
+AAE_DRIVER_FUNCS(&init_starwars, &run_starwars, &end_starwars)
+AAE_DRIVER_INPUT(input_ports_starwars)
+AAE_DRIVER_SAMPLES_NONE()
+AAE_DRIVER_ART_NONE()
+
+AAE_DRIVER_CPUS(
+// CPU0: Main 6809 (hardware-compatible with Star Wars main)
+AAE_CPU_ENTRY(
+CPU_M6809, 1512000, 100, 6, INT_TYPE_INT, &starwars_interrupt,
+starwars_readmem, starwars_writemem,
+nullptr, nullptr, nullptr, nullptr
+),
+// CPU1: Audio 6809
+AAE_CPU_ENTRY(
+CPU_M6809, 1512000, 100, 24, INT_TYPE_INT, &starwars_snd_interrupt,
+starwars_audio_readmem, starwars_audio_writemem,
+nullptr, nullptr, nullptr, nullptr
+),
+AAE_CPU_NONE_ENTRY(),
+AAE_CPU_NONE_ENTRY()
+)
+
+AAE_DRIVER_VIDEO_CORE(30, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT)
+AAE_DRIVER_SCREEN(1024, 768, 0, 250, 0, 280)
+
+AAE_DRIVER_RASTER_NONE()
+AAE_DRIVER_HISCORE_NONE()
+AAE_DRIVER_VECTORRAM(0x000, 0x3000)
+AAE_DRIVER_NVRAM(generic_nvram_handler)
 AAE_DRIVER_LAYOUT_NONE()
 AAE_DRIVER_END()
 
 AAE_REGISTER_DRIVER(drv_starwars)
 AAE_REGISTER_DRIVER(drv_starwars1)
 AAE_REGISTER_DRIVER(drv_esb)
-
+AAE_REGISTER_DRIVER(drv_tomcat)
 //////////////////  END OF MAIN PROGRAM /////////////////////////////////////////////

@@ -441,7 +441,7 @@ READ_HANDLER(motos_customio_1_r)
 {
     int val, mode = mappy_customio_1[8];
    
-    LOG_DEBUG("I/O read 1: mode %d offset %d", mode, address);
+   // LOG_DEBUG("I/O read 1: mode %d offset %d", mode, address);
 
     // mode 1 is the standard, and returns actual important values 
     if (mode == 1)
@@ -499,7 +499,7 @@ READ_HANDLER(motos_customio_2_r)
 {
     int mode = mappy_customio_2[8];
    
-    LOG_DEBUG("I/O read 2: mode %d, offset %d", mode, address);
+   //LOG_DEBUG("I/O read 2: mode %d, offset %d", mode, address);
 
     // mode 9 is the standard, and returns actual important values 
     if (mode == 9)

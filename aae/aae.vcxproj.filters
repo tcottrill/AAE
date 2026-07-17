@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <Manifest Include="app.manifest" />
@@ -102,9 +102,6 @@
     </ClCompile>
     <ClCompile Include="aae\vidhrdwr\aae_avg.cpp">
       <Filter>Source Files\aae\vidhrdwr</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\aae_video\gl_prim_debug.cpp">
-      <Filter>Source Files\aae\aae_video</Filter>
     </ClCompile>
     <ClCompile Include="aae\aae_video\gl_shader.cpp">
       <Filter>Source Files\aae\aae_video</Filter>
@@ -265,7 +262,7 @@
     <ClCompile Include="aae\drivers\foodf.cpp">
       <Filter>Source Files\aae\drivers\raster</Filter>
     </ClCompile>
-    <ClCompile Include="aae\drivers\gaplus.cpp">
+    <ClCompile Include="aae\drivers\dkong.cpp">
       <Filter>Source Files\aae\drivers\raster</Filter>
     </ClCompile>
     <ClCompile Include="aae\drivers\gyruss.cpp">
@@ -291,9 +288,6 @@
     </ClCompile>
     <ClCompile Include="aae\sndhrdwr\aae_pokey.cpp">
       <Filter>Source Files\aae\sndhrdwr</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\vidhrdwr\gaplus_video.cpp">
-      <Filter>Source Files\aae\vidhrdwr</Filter>
     </ClCompile>
     <ClCompile Include="aae\vidhrdwr\mappy_video.cpp">
       <Filter>Source Files\aae\vidhrdwr</Filter>
@@ -349,6 +343,9 @@
     <ClCompile Include="aae\aae_video\opengl_renderer.cpp">
       <Filter>Source Files\aae\aae_video</Filter>
     </ClCompile>
+    <ClCompile Include="aae\aae_video\vector_draw.cpp">
+      <Filter>Source Files\aae\aae_video</Filter>
+    </ClCompile>
     <ClCompile Include="aae\aae_video\mame_vector.cpp">
       <Filter>Source Files\aae\aae_video</Filter>
     </ClCompile>
@@ -369,6 +366,45 @@
     </ClCompile>
     <ClCompile Include="aae\cpu_code\cpu_i8039.cpp">
       <Filter>Source Files\aae\cpu_code</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\drivers\gaplus.cpp">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\drivers\pong.cpp">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\drivers\breakout.cpp">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\vidhrdwr\gaplus_video.cpp">
+      <Filter>Source Files\aae\vidhrdwr</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\vidhrdwr\vertigo_video.cpp">
+      <Filter>Source Files\aae\vidhrdwr</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\drivers\vertigo.cpp">
+      <Filter>Source Files\aae\drivers</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\machine\74148.cpp">
+      <Filter>Source Files\aae\machine</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\machine\pit8253.cpp">
+      <Filter>Source Files\aae\machine</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\sndhrdwr\exidy440_sound.cpp">
+      <Filter>Source Files\aae\sndhrdwr</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\led_service_handler.cpp">
+      <Filter>Source Files\aae</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\vidhrdwr\astrocde_video.cpp">
+      <Filter>Source Files\aae\vidhrdwr</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\drivers\astrocade.cpp">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\sndhrdwr\astrocade_sound.cpp">
+      <Filter>Source Files\aae\sndhrdwr</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -397,9 +433,6 @@
       <Filter>Source Files\system\3rdparty</Filter>
     </ClInclude>
     <ClInclude Include="system\graphics\colordefs.h">
-      <Filter>Source Files\system\graphics</Filter>
-    </ClInclude>
-    <ClInclude Include="system\graphics\debug_draw.h">
       <Filter>Source Files\system\graphics</Filter>
     </ClInclude>
     <ClInclude Include="system\graphics\sys_gl.h">
@@ -504,6 +537,9 @@
     <ClInclude Include="aae\vidhrdwr\emu_vector_draw.h">
       <Filter>Source Files\aae\vidhrdwr</Filter>
     </ClInclude>
+    <ClInclude Include="aae\aae_video\vector_draw.h">
+      <Filter>Source Files\aae\aae_video</Filter>
+    </ClInclude>
     <ClInclude Include="aae\vidhrdwr\fast_poly.h">
       <Filter>Source Files\aae\vidhrdwr</Filter>
     </ClInclude>
@@ -515,9 +551,6 @@
     </ClInclude>
     <ClInclude Include="aae\vidhrdwr\aae_avg.h">
       <Filter>Source Files\aae\vidhrdwr</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\aae_video\gl_prim_debug.h">
-      <Filter>Source Files\aae\aae_video</Filter>
     </ClInclude>
     <ClInclude Include="aae\aae_video\gl_shader.h">
       <Filter>Source Files\aae\aae_video</Filter>
@@ -550,9 +583,6 @@
       <Filter>Source Files\aae</Filter>
     </ClInclude>
     <ClInclude Include="aae\os_input.h">
-      <Filter>Source Files\aae</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\osd_cpu.h">
       <Filter>Source Files\aae</Filter>
     </ClInclude>
     <ClInclude Include="aae\osdepend.h">
@@ -663,9 +693,6 @@
     <ClInclude Include="aae\drivers\galaxian_driver.h">
       <Filter>Source Files\aae\drivers\raster</Filter>
     </ClInclude>
-    <ClInclude Include="aae\drivers\gaplus.h">
-      <Filter>Source Files\aae\drivers\raster</Filter>
-    </ClInclude>
     <ClInclude Include="aae\drivers\invaders.h">
       <Filter>Source Files\aae\drivers\raster</Filter>
     </ClInclude>
@@ -768,9 +795,6 @@
     <ClInclude Include="system\3rdparty\stb_truetype.h">
       <Filter>Source Files\system\3rdparty</Filter>
     </ClInclude>
-    <ClInclude Include="aae\aae_video\winfont_gl4.h">
-      <Filter>Source Files\aae\aae_video</Filter>
-    </ClInclude>
     <ClInclude Include="aae\drivers\xevious.h">
       <Filter>Source Files\aae\drivers\raster</Filter>
     </ClInclude>
@@ -803,6 +827,30 @@
     </ClInclude>
     <ClInclude Include="aae\cpu_code\cpu_i8039.h">
       <Filter>Source Files\aae\cpu_code</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\drivers\gaplus.h">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\drivers\vertigo.h">
+      <Filter>Source Files\aae\drivers</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\machine\74148.h">
+      <Filter>Source Files\aae\machine</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\machine\pit8253.h">
+      <Filter>Source Files\aae\machine</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\sndhrdwr\exidy440_sound.h">
+      <Filter>Source Files\aae\sndhrdwr</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\led_service_handler.h">
+      <Filter>Source Files\aae</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\vidhrdwr\astrocde_video.h">
+      <Filter>Source Files\aae\vidhrdwr</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\sndhrdwr\astrocade_sound.h">
+      <Filter>Source Files\aae\sndhrdwr</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

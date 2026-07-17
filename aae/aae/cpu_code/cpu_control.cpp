@@ -1,5 +1,3 @@
-// Note, thanks to Charles McDonald for the skeleton code and how to for the 68000 emulation
-
 #include "cpu_control.h"
 #include "inptport.h"
 #include "aae_mame_driver.h"
@@ -112,14 +110,20 @@ void init8039(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct
 	m_cpu_i8039[cpunum]->reset();
 }
 
+// The 8035 is the ROM-less 8048: the same MCS-48 core as the 8039, differing
+// only in internal RAM size (64 bytes vs the 8039's 128). Reuse the 8039 core
+// and clamp the RAM to 64 bytes. (Donkey Kong / Donkey Kong Jr. drive their
+// sound hardware with an 8035.)
+void init8035(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum)
+{
+	init8039(read, write, portread, portwrite, cpunum);
+	m_cpu_i8039[cpunum]->set_ram_size(64);
+}
+
 void init6502(struct MemoryReadByte* read, struct MemoryWriteByte* write, int mem_top, int cpunum)
 {
 	//active_cpu = cpunum;
 	m_cpu_6502[cpunum] = new cpu_6502(Machine->memory_region[cpunum], read, write, mem_top, cpunum);
-
-	//m_cpu_6502[cpunum]->enableDirectStackPage(true);
-	//m_cpu_6502[cpunum]->enableDirectZeroPage(true);
-
 	m_cpu_6502[cpunum]->reset6502();
 	LOG_INFO("Finished Configuring CPU");
 }
@@ -152,9 +156,6 @@ void special_tickcount_update_6502(int ticks, int cpu_num)
 // Return scheduler-owned cycles for the requested CPU, plus any core-reported
 // "pending" cycles since the last scheduler accounting (non-destructive peek).
 //
-// Notes:
-// - Musashi does not expose a non-destructive "elapsed since last query" API,
-//   so for 68000 we do NOT add a pending component (avoid double counting).
 // -----------------------------------------------------------------------------
 int get_exact_cyclecount(int cpu)
 {
@@ -166,7 +167,8 @@ int get_exact_cyclecount(int cpu)
 	case CPU_M6502: pending = m_cpu_6502[cpu]->get6502ticks(0);         break;
 	case CPU_8080:  pending = m_cpu_i8080[cpu]->get_ticks(0);           break;
 	case CPU_8085: pending = m_cpu_i8085[cpu]->get_ticks(0);			break;
-	case CPU_8039: pending = m_cpu_i8039[cpu]->get_ticks(0);			break;
+	case CPU_8039:
+	case CPU_8035: pending = m_cpu_i8039[cpu]->get_ticks(0);			break;
 	case CPU_M6809: pending = m_cpu_6809[cpu]->get6809ticks(0);         break;
 	case CPU_68000: pending = 0; // avoid double count with Musashi
 		break;
@@ -310,6 +312,7 @@ int cpu_getpc()
 		break;
 
 	case CPU_8039:
+	case CPU_8035:
 		return m_cpu_i8039[active_cpu]->reg_PC;
 		break;
 
@@ -470,6 +473,7 @@ void cpu_do_int_imm(int cpunum, int int_type)
 		break;
 
 	case CPU_8039:
+	case CPU_8035:
 		// MCS-48 external interrupt pin (always vectors to 0x003); the
 		// timer interrupt is generated internally by the core. A plain
 		// INT request asserts the external line.
@@ -594,6 +598,7 @@ int cpu_exec_now(int cpu, int cycles)
 		break;
 
 	case CPU_8039:
+	case CPU_8035:
 		m_cpu_i8039[cpu]->exec(cycles);
 		ticks = m_cpu_i8039[cpu]->get_ticks(0xff);
 		timer_update(ticks, active_cpu);
@@ -653,7 +658,7 @@ void cpu_run(void)
 		if (reset_cpu_status[active_cpu]) {
 			cpu_reset(active_cpu);
 		}
-		LOG_INFO("Running CPU %d", active_cpu);
+		//LOG_INFO("Running CPU %d", active_cpu);
 		const int freq = Machine->gamedrv->cpu[active_cpu].cpu_freq;
 		const int fps = Machine->gamedrv->fps;
 		cycles_per_frame[active_cpu] = (fps > 0) ? (freq / fps) : 0;
@@ -802,7 +807,10 @@ void cpu_run(void)
 			last_idx_for_cpu[active_cpu] = next_idx_for_cpu;
 		} // for each CPU
 	} // for each global slice
-	// Restore active_cpu to 0 after the scheduler loop.
+	// Restore active_cpu to 0 after the scheduler loop. Anything that touches
+	// guest memory outside the loop (F3 reset in msg_loop, the watchdog, UI code)
+	// indexes memory_region[active_cpu]; leaving it at totalcpu reads a null region.
+	active_cpu = 0;
 	// End of CPU Update, update and check frame counter
 	cpu_framecounter++;
 }
@@ -840,6 +848,7 @@ void cpu_reset(int cpunum)
 		break;
 
 	case CPU_8039:
+	case CPU_8035:
 		m_cpu_i8039[cpunum]->reset();
 		break;
 
@@ -884,7 +893,8 @@ void cpu_clear_pending_int(int int_type, int cpunum)
 	{
 	case CPU_MZ80:  m_cpu_z80[cpunum]->mz80ClearPendingInterrupt(); break;
 	case CPU_M6502: m_cpu_6502[cpunum]->m6502clearpendingint();     break;
-	case CPU_8039:  m_cpu_i8039[cpunum]->clear_pending_interrupts(); break;
+	case CPU_8039:
+	case CPU_8035:  m_cpu_i8039[cpunum]->clear_pending_interrupts(); break;
 	default: break;
 	}
 }
@@ -922,7 +932,8 @@ void free_cpu_memory()
 		case CPU_M6502:  delete m_cpu_6502[x];   m_cpu_6502[x] = nullptr; break;
 		case CPU_8080:   delete m_cpu_i8080[x];  m_cpu_i8080[x] = nullptr; break;
 		case CPU_8085:   delete m_cpu_i8085[x];  m_cpu_i8085[x] = nullptr; break;
-		case CPU_8039:   delete m_cpu_i8039[x];  m_cpu_i8039[x] = nullptr; break;
+		case CPU_8039:
+		case CPU_8035:   delete m_cpu_i8039[x];  m_cpu_i8039[x] = nullptr; break;
 		case CPU_M6809:  delete m_cpu_6809[x];   m_cpu_6809[x] = nullptr; break;
 		case CPU_68000:  delete m_cpu_68000[x];  m_cpu_68000[x] = nullptr; break;
 		default: break;
@@ -984,6 +995,11 @@ void init_cpu_config()
 		case CPU_8039:
 			LOG_INFO("Init 8039 %d called", i);
 			init8039(C.memory_read, C.memory_write, C.port_read, C.port_write, i);
+			break;
+
+		case CPU_8035:
+			LOG_INFO("Init 8035 %d called", i);
+			init8035(C.memory_read, C.memory_write, C.port_read, C.port_write, i);
 			break;
 
 		case CPU_M6809:

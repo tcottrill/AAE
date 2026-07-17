@@ -47,6 +47,7 @@ struct z80ctc_interface
 {
     int num;                                      // number of CTCs to emulate
     int baseclock[MAX_CTC];                       // timer clock
+    int cpu[MAX_CTC];                             // owning CPU index (AAE per-CPU timer scheduling)
     int notimer[MAX_CTC];                         // timer disablers
     void (*intr[MAX_CTC])(int state);             // callback when change interrupt status
     std::function<void(int, int)> zc0[MAX_CTC];   // ZC/TO0 callback

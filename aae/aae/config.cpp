@@ -30,6 +30,51 @@ void setup_config() {
 
     // Load all fields from aae.ini
     config.samplerate = get_config_int("main", "samplerate", 22050);
+
+    // Per-player mouse assignment: player 1 defaults to the merged system
+    // mouse (legacy behavior), the rest to none. When a specific device is
+    // assigned, its PATH (stable across reboots) is stored alongside the
+    // index and takes precedence at resolution time.
+    config.mouse_player[0] = get_config_int("input", "mouse_player1", -1);
+    config.mouse_player[1] = get_config_int("input", "mouse_player2", -2);
+    config.mouse_player[2] = get_config_int("input", "mouse_player3", -2);
+    config.mouse_player[3] = get_config_int("input", "mouse_player4", -2);
+    for (int p = 0; p < 4; p++)
+    {
+        char keyname[32];
+        snprintf(keyname, sizeof(keyname), "mouse_player%d_path", p + 1);
+        const char* s = get_config_string("input", keyname, "");
+        strncpy_s(config.mouse_player_path[p], sizeof(config.mouse_player_path[p]),
+                  s ? s : "", _TRUNCATE);
+    }
+
+    // Per-player joystick assignment: AUTO (stick N -> player N) by default.
+    // Specific assignments carry a stable id string that wins over the index.
+    for (int p = 0; p < 4; p++)
+    {
+        char keyname[32];
+        snprintf(keyname, sizeof(keyname), "joy_player%d", p + 1);
+        config.joy_player[p] = get_config_int("input", keyname, -1);
+
+        snprintf(keyname, sizeof(keyname), "joy_player%d_id", p + 1);
+        const char* s = get_config_string("input", keyname, "");
+        strncpy_s(config.joy_player_id[p], sizeof(config.joy_player_id[p]),
+                  s ? s : "", _TRUNCATE);
+    }
+
+    // Per-player keyboard assignment: everyone defaults to the merged system
+    // keyboard (the classic several-players-one-keyboard model).
+    for (int p = 0; p < 4; p++)
+    {
+        char keyname[32];
+        snprintf(keyname, sizeof(keyname), "kbd_player%d", p + 1);
+        config.kbd_player[p] = get_config_int("input", keyname, -1);
+
+        snprintf(keyname, sizeof(keyname), "kbd_player%d_path", p + 1);
+        const char* s = get_config_string("input", keyname, "");
+        strncpy_s(config.kbd_player_path[p], sizeof(config.kbd_player_path[p]),
+                  s ? s : "", _TRUNCATE);
+    }
     config.prescale = get_config_float("main", "prescale", 1);
     config.vid_rotate = get_config_int("main", "vid_rotate", 1);
     config.anisfilter = get_config_int("main", "anisfilter", 0);
@@ -89,6 +134,7 @@ void setup_config() {
     config.exartpath = get_config_string("main", "mame_artwork_path", "artwork");
     config.hack = get_config_int("main", "hack", 0);
     config.raster_effect = get_config_string("main", "raster_effect", "NONE");
+    config.game_aspect = get_config_string("main", "game_aspect", "AUTO");
     config.flip_gui_controls = get_config_int("main", "flip_gui_controls", 0);
     // Monitor selection (1-based: 1 = primary).
     // Also read early in LoadWindowIniConfig() (winmain.cpp) before the window
@@ -103,6 +149,37 @@ void setup_config() {
     // 0=none, 5=ROT90(-ror), 3=ROT180, 6=ROT270(-rol).
     // Command-line -ror/-rol overrides this after loading.
     config.system_rotation = get_config_int("main", "system_rotation", 0);
+
+    // Mono monitor CRT effect (B/W raster games). Defaults are the accepted
+    // PET emulator look; tint default is P4 white for arcade monitors.
+    config.mono_enable          = get_config_int  ("monitormono", "mono_enable",          1);
+    config.mono_blur_h          = get_config_float("monitormono", "mono_blur_h",          0.8f);
+    config.mono_blur_v          = get_config_float("monitormono", "mono_blur_v",          0.35f);
+    config.mono_halation        = get_config_float("monitormono", "mono_halation",        0.15f);
+    config.mono_halation_radius = get_config_float("monitormono", "mono_halation_radius", 4.0f);
+    config.mono_scanline        = get_config_float("monitormono", "mono_scanline",        0.0f);
+    config.mono_contrast        = get_config_float("monitormono", "mono_contrast",        1.0f);
+    config.mono_brightness      = get_config_float("monitormono", "mono_brightness",      0.0f);
+    config.mono_tint            = get_config_int  ("monitormono", "mono_tint",            0);
+
+    // Color monitor CRT effect (color raster games). Defaults model a real
+    // 80s arcade cab at play distance: operators ran brightness high enough
+    // that the beam spot bloomed over the scanline gaps, and the shadow mask
+    // was invisible except nose-to-glass. So: soft bright spot with a touch
+    // of overdrive, barely-there scanlines and mask, subtle convergence.
+    config.color_enable          = get_config_int  ("monitorcolor", "color_enable",          1);
+    config.color_blur_h          = get_config_float("monitorcolor", "color_blur_h",          0.25f);
+    config.color_blur_v          = get_config_float("monitorcolor", "color_blur_v",          0.10f);
+    config.color_converge        = get_config_float("monitorcolor", "color_converge",        0.05f);
+    config.color_halation        = get_config_float("monitorcolor", "color_halation",        0.06f);
+    config.color_halation_radius = get_config_float("monitorcolor", "color_halation_radius", 4.0f);
+    config.color_scanline        = get_config_float("monitorcolor", "color_scanline",        0.10f);
+    config.color_contrast        = get_config_float("monitorcolor", "color_contrast",        1.15f);
+    config.color_brightness      = get_config_float("monitorcolor", "color_brightness",      0.0f);
+    config.color_saturation      = get_config_float("monitorcolor", "color_saturation",      1.0f);
+    config.color_mask_type       = get_config_int  ("monitorcolor", "color_mask_type",       1);
+    config.color_mask_strength   = get_config_float("monitorcolor", "color_mask_strength",   0.10f);
+    config.color_mask_scale      = get_config_float("monitorcolor", "color_mask_scale",      2.0f);
 
     // Load game-specific overrides for select fields
     temppath = getpathM("ini", 0) + std::string("\\") + Machine->gamedrv->name + ".ini";
@@ -133,6 +210,7 @@ void setup_config() {
         config.linewidth = get_config_float("main", "linewidth", config.linewidth);
         config.pointsize = get_config_float("main", "pointsize", config.pointsize);
         config.raster_effect = get_config_string("main", "raster_effect", config.raster_effect);
+        config.game_aspect = get_config_string("main", "game_aspect", config.game_aspect);
 
         // Per-game system rotation override (e.g. for cab-specific setups)
         config.system_rotation = get_config_int("main", "system_rotation", config.system_rotation);
@@ -148,7 +226,65 @@ void setup_config() {
         config.noisevol = clamp_int(get_config_int("main", "noisevol", config.noisevol), 0, 255);
 
         config.samplerate = get_config_int("main", "samplerate", config.samplerate);
+
+        // Per-game mono monitor overrides.
+        config.mono_enable          = get_config_int  ("monitormono", "mono_enable",          config.mono_enable);
+        config.mono_blur_h          = get_config_float("monitormono", "mono_blur_h",          config.mono_blur_h);
+        config.mono_blur_v          = get_config_float("monitormono", "mono_blur_v",          config.mono_blur_v);
+        config.mono_halation        = get_config_float("monitormono", "mono_halation",        config.mono_halation);
+        config.mono_halation_radius = get_config_float("monitormono", "mono_halation_radius", config.mono_halation_radius);
+        config.mono_scanline        = get_config_float("monitormono", "mono_scanline",        config.mono_scanline);
+        config.mono_contrast        = get_config_float("monitormono", "mono_contrast",        config.mono_contrast);
+        config.mono_brightness      = get_config_float("monitormono", "mono_brightness",      config.mono_brightness);
+        config.mono_tint            = get_config_int  ("monitormono", "mono_tint",            config.mono_tint);
+
+        // Per-game color monitor overrides.
+        config.color_enable          = get_config_int  ("monitorcolor", "color_enable",          config.color_enable);
+        config.color_blur_h          = get_config_float("monitorcolor", "color_blur_h",          config.color_blur_h);
+        config.color_blur_v          = get_config_float("monitorcolor", "color_blur_v",          config.color_blur_v);
+        config.color_converge        = get_config_float("monitorcolor", "color_converge",        config.color_converge);
+        config.color_halation        = get_config_float("monitorcolor", "color_halation",        config.color_halation);
+        config.color_halation_radius = get_config_float("monitorcolor", "color_halation_radius", config.color_halation_radius);
+        config.color_scanline        = get_config_float("monitorcolor", "color_scanline",        config.color_scanline);
+        config.color_contrast        = get_config_float("monitorcolor", "color_contrast",        config.color_contrast);
+        config.color_brightness      = get_config_float("monitorcolor", "color_brightness",      config.color_brightness);
+        config.color_saturation      = get_config_float("monitorcolor", "color_saturation",      config.color_saturation);
+        config.color_mask_type       = get_config_int  ("monitorcolor", "color_mask_type",       config.color_mask_type);
+        config.color_mask_strength   = get_config_float("monitorcolor", "color_mask_strength",   config.color_mask_strength);
+        config.color_mask_scale      = get_config_float("monitorcolor", "color_mask_scale",      config.color_mask_scale);
     }
+
+    // Clamp mono monitor knobs to the shader's designed ranges (same limits
+    // as the PET emulator's tuning table) so a hand-edited ini can't push
+    // the effect into broken territory.
+    auto clamp_float = [](float v, float lo, float hi) -> float {
+        if (v < lo) return lo;
+        if (v > hi) return hi;
+        return v;
+        };
+    config.mono_enable          = clamp_int  (config.mono_enable,          0, 1);
+    config.mono_blur_h          = clamp_float(config.mono_blur_h,          0.0f, 2.5f);
+    config.mono_blur_v          = clamp_float(config.mono_blur_v,          0.0f, 1.0f);
+    config.mono_halation        = clamp_float(config.mono_halation,        0.0f, 1.0f);
+    config.mono_halation_radius = clamp_float(config.mono_halation_radius, 1.0f, 16.0f);
+    config.mono_scanline        = clamp_float(config.mono_scanline,        0.0f, 1.0f);
+    config.mono_contrast        = clamp_float(config.mono_contrast,        1.0f, 3.0f);
+    config.mono_brightness      = clamp_float(config.mono_brightness,      0.0f, 0.25f);
+    config.mono_tint            = clamp_int  (config.mono_tint,            0, 2);
+
+    config.color_enable          = clamp_int  (config.color_enable,          0, 1);
+    config.color_blur_h          = clamp_float(config.color_blur_h,          0.0f, 2.5f);
+    config.color_blur_v          = clamp_float(config.color_blur_v,          0.0f, 1.0f);
+    config.color_converge        = clamp_float(config.color_converge,        0.0f, 2.0f);
+    config.color_halation        = clamp_float(config.color_halation,        0.0f, 1.0f);
+    config.color_halation_radius = clamp_float(config.color_halation_radius, 1.0f, 16.0f);
+    config.color_scanline        = clamp_float(config.color_scanline,        0.0f, 1.0f);
+    config.color_contrast        = clamp_float(config.color_contrast,        1.0f, 3.0f);
+    config.color_brightness      = clamp_float(config.color_brightness,      0.0f, 0.25f);
+    config.color_saturation      = clamp_float(config.color_saturation,      0.0f, 2.0f);
+    config.color_mask_type       = clamp_int  (config.color_mask_type,       0, 2);
+    config.color_mask_strength   = clamp_float(config.color_mask_strength,   0.0f, 1.0f);
+    config.color_mask_scale      = clamp_float(config.color_mask_scale,      1.0f, 6.0f);
 
     config.linewidth = config.m_line * 0.1f;
     config.pointsize = config.m_point * 0.1f;
@@ -221,6 +357,48 @@ void setup_game_config() {
     set_points_lines();
 }
 
+
+void sanity_check_config()
+{
+    //SANITY CHECKS GO HERE
+    if (config.prescale < 1 || config.prescale > 5)
+    {
+        LOG_INFO("!!!!!Raster prescale set to unsupported value, supported values are 1 - 5");
+        config.prescale = 2; have_error = 3;
+    }
+
+    if (config.anisfilter < 2 || config.anisfilter > 16 || (config.anisfilter % 2 != 0))
+    {
+        if (config.anisfilter != 0) { //FINAL CHECK
+            LOG_INFO("!!!!!Ansitropic Filterings set to unsupported value, supported values are 2,4,8,16 !!!!!");
+            have_error = 3;
+            config.anisfilter = 0; //RESET TIL FIXED
+        }
+    }
+
+    if (config.priority < 0 || config.priority > 4)
+    {
+        LOG_INFO("!!!!!Priority set to unsupported value, supported values are 0,1,2,3,4 - defaulted to 1!!!!!");
+        config.priority = 1;
+    }
+
+    // Vector glow and trail effects are only meaningful for vector games.
+    // Force them off for any raster game regardless of ini settings.
+    if (Machine && Machine->drv && (Machine->drv->video_attributes & VIDEO_RASTER_CLASS_MASK))
+    {
+        if (config.vecglow)
+        {
+            LOG_INFO("sanity_check_config: vecglow disabled (raster game).");
+            config.vecglow = 0;
+        }
+        if (config.vectrail)
+        {
+            LOG_INFO("sanity_check_config: vectrail disabled (raster game).");
+            config.vectrail = 0;
+        }
+    }
+
+}
 // Writes an int, float, or string value to either aae.ini or game.ini
 void my_set_config_value(const char* section, const char* key, const std::string& value, int path) {
     // path==0 writes to the global aae.ini in the program root.
@@ -242,4 +420,16 @@ void my_set_config_float(const char* section, const char* key, float val, int pa
 
 void my_set_config_string(const char* section, const char* key, const char* val, int path) {
     my_set_config_value(section, key, std::string(val), path);
+}
+
+// Parse a "W:H" aspect string ("4:3", "16:9"...). Returns w/h, or 0 for
+// "AUTO"/empty/unparsable (callers treat 0 as "no override").
+float aspect_from_string(const char* s)
+{
+    if (!s || !s[0]) return 0.0f;
+    if (_stricmp(s, "AUTO") == 0) return 0.0f;
+    float w = 0.0f, h = 0.0f;
+    if (sscanf_s(s, "%f:%f", &w, &h) == 2 && w > 0.0f && h > 0.0f)
+        return w / h;
+    return 0.0f;
 }

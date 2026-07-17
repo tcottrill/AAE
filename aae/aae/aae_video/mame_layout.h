@@ -122,6 +122,11 @@ void Layout_CreateDefaultScreen(LayoutData& outData, float screenW, float screen
 // or 0 if no overlay exists or overlays are disabled.
 rtex_t Layout_GetOverlayTexture(const LayoutView& view);
 
+// On-screen pixel size of the screen element as of the last Layout_Render
+// frame (0,0 before the first frame). Used by the CRT monitor passes to
+// size their FBO for 1:1 mask/scanline pixels.
+void Layout_GetScreenPixelSize(int* w, int* h);
+
 // Free all OpenGL textures owned by the layout, plus the layout
 // shader programs and VAO/VBO. Safe to call multiple times.
 void Layout_FreeTextures(LayoutData& data);

@@ -11,6 +11,8 @@ rprog_t fragScanlineMultiply = 0;
 rprog_t fragStarPoint = 0;
 rprog_t fragTexColor = 0;
 rprog_t fragMonoMonitor = 0;
+rprog_t fragColorMonitor = 0;
+rprog_t fragColorVector = 0;
 
 // Write errors
 static void write_shader_error(GLuint obj, const char* label, bool isProgram)
@@ -125,5 +127,15 @@ int init_shader()
 
     // Textured + per-vertex color (legacy textured shots)
     fragTexColor = create_shader_program(texColorVert, texColorFrag);
+
+    // Mono CRT simulation (B/W raster games)
+    fragMonoMonitor = create_shader_program(monoMonitorVert, monoMonitorFrag);
+
+    // Color vector monitor (WG6100 class: mask grain + misconvergence)
+    //fragColorVector = create_shader_program(monoMonitorVert, colorVectorFrag);
+    //return 1;
+
+    // Color CRT simulation with shadow mask (color raster games)
+    fragColorMonitor = create_shader_program(monoMonitorVert, colorMonitorFrag);
     return 1;
 }

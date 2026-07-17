@@ -781,8 +781,8 @@ void update_analog_port(int port)
 	else
 		delta = mouse_delta_y[player];
 
-	if (osd_key_pressed(deckey)) delta -= keydelta;
-	if (osd_key_pressed(inckey)) delta += keydelta;
+	if (osd_key_pressed_for(player, deckey)) delta -= keydelta;
+	if (osd_key_pressed_for(player, inckey)) delta += keydelta;
 	if (osd_joy_pressed(decjoy)) delta -= keydelta;
 	if (osd_joy_pressed(incjoy)) delta += keydelta;
 
@@ -1046,7 +1046,7 @@ void update_input_ports(void)
 						((in->type & ~IPF_MASK) - IPT_JOYSTICK_UP) / 4;
 					joydir = ((in->type & ~IPF_MASK) - IPT_JOYSTICK_UP) % 4;
 
-					if ((key != 0 && key != IP_KEY_NONE && osd_key_pressed(key)) ||
+					if ((key != 0 && key != IP_KEY_NONE && osd_key_pressed_for(player, key)) ||
 						(joy != 0 && joy != IP_JOY_NONE && osd_joy_pressed(joy)))
 					{
 						if (joyserial[joynum][joydir] == 0)
@@ -1126,10 +1126,21 @@ void update_input_ports(void)
 				}
 				else
 				{
-					int key, joy;
+					int key, joy, kplayer;
 
 					key = input_port_key(in);
 					joy = input_port_joy(in);
+
+					// multi-keyboard: route this bit's key check to the
+					// keyboard assigned to the bit's player (bits without a
+					// player tag carry IPF_PLAYER1 and follow player 1)
+					switch (in->type & IPF_PLAYERMASK)
+					{
+					case IPF_PLAYER2:          kplayer = 1; break;
+					case IPF_PLAYER3:          kplayer = 2; break;
+					case IPF_PLAYER4:          kplayer = 3; break;
+					case IPF_PLAYER1: default: kplayer = 0; break;
+					}
 
 					int basetype = (in->type & ~IPF_MASK);
 
@@ -1141,7 +1152,7 @@ void update_input_ports(void)
 					if (basetype == IPT_SPULSE)
 					{
 						int pressed = 0;
-						if ((key != 0 && key != IP_KEY_NONE && osd_key_pressed(key)) ||
+						if ((key != 0 && key != IP_KEY_NONE && osd_key_pressed_for(kplayer, key)) ||
 							(joy != 0 && joy != IP_JOY_NONE && osd_joy_pressed(joy)))
 						{
 							pressed = 1;
@@ -1157,7 +1168,7 @@ void update_input_ports(void)
 					//////////////////////////////////////////////////////
 					// Standard MAME input handling for all other types
 					//////////////////////////////////////////////////////
-					else if ((key != 0 && key != IP_KEY_NONE && osd_key_pressed(key)) ||
+					else if ((key != 0 && key != IP_KEY_NONE && osd_key_pressed_for(kplayer, key)) ||
 						(joy != 0 && joy != IP_JOY_NONE && osd_joy_pressed(joy)))
 					{
 						/* skip if coin input and it's locked out

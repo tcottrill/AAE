@@ -36,6 +36,7 @@ struct z80ctc
 {
     int vector;                 // interrupt vector
     int clock;                  // system clock
+    int cpu;                    // owning CPU index (AAE per-CPU timer scheduling)
     double invclock16;          // 16/system clock
     double invclock256;         // 256/system clock
     void (*intr)(int which);    // interrupt callback
@@ -96,6 +97,7 @@ void z80ctc_init(z80ctc_interface* intf)
     for (int i = 0; i < intf->num; i++)
     {
         ctcs[i].clock = intf->baseclock[i];
+        ctcs[i].cpu = intf->cpu[i];
         ctcs[i].invclock16 = 16.0 / (double)intf->baseclock[i];
         ctcs[i].invclock256 = 256.0 / (double)intf->baseclock[i];
         ctcs[i].notimer = intf->notimer[i];
@@ -120,11 +122,7 @@ double z80ctc_getperiod(int which, int ch)
     int mode = ctc->mode[ch];
 
     if ((mode & RESET) == RESET_ACTIVE) return 0;
-    if ((mode & MODE) == MODE_COUNTER)
-    {
-        LOG_INFO("CTC %d is CounterMode : Can't calculate period\n", ch);
-        return 0;
-    }
+    if ((mode & MODE) == MODE_COUNTER) return 0;   // counter mode: no fixed period (callers poll this each frame)
 
     double clock = ((mode & PRESCALER) == PRESCALER_16) ? ctc->invclock16 : ctc->invclock256;
     return clock * (double)ctc->tconst[ch];
@@ -184,7 +182,7 @@ void z80ctc_w(int which, int offset, int data)
                     ctc->timer[ch] = -1;
                 }
                 if (!(ctc->notimer & (1 << ch)))
-                    ctc->timer[ch] = timer_set(clock * (double)ctc->tconst[ch], (which << 2) + ch, z80ctc_timercallback);
+                    ctc->timer[ch] = timer_set(clock * (double)ctc->tconst[ch], ctc->cpu, (which << 2) + ch, z80ctc_timercallback);
             }
             else {
                 ctc->mode[ch] |= WAITING_FOR_TRIG;
@@ -329,7 +327,7 @@ void z80ctc_trg_w(int which, int trg, int offset, int data)
                     ctc->timer[ch] = -1;
                 }
                 if (!(ctc->notimer & (1 << ch)))
-                    ctc->timer[ch] = timer_set(clock * (double)ctc->tconst[ch], (which << 2) + ch, z80ctc_timercallback);
+                    ctc->timer[ch] = timer_set(clock * (double)ctc->tconst[ch], ctc->cpu, (which << 2) + ch, z80ctc_timercallback);
             }
             ctc->mode[ch] &= ~WAITING_FOR_TRIG;
 

@@ -8,7 +8,7 @@ void SetIniFile(const char* szFileName);
 int   get_config_int(const char* szSection, const char* szKey, int iDefaultValue);
 float get_config_float(const char* szSection, const char* szKey, float fltDefaultValue);
 bool  get_config_bool(const char* szSection, const char* szKey, bool bolDefaultValue);
-char* get_config_string(const char* szSection, const char* szKey, const char* szDefaultValue); // Caller must free()
+char* get_config_string(const char* szSection, const char* szKey, const char* szDefaultValue); // Caller must delete[] (allocated with new[])
 
 void set_config_int(const char* szSection, const char* szKey, int iValue);
 void set_config_float(const char* szSection, const char* szKey, float fltValue);

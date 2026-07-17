@@ -17,11 +17,8 @@
 #include "old_mame_raster.h"
 #include "rawinput.h"
 
-// This is only a test.
-
-uint8_t m_p1=0;
-uint8_t m_p2=0;
-
+uint8_t m_p1 = 0;
+uint8_t m_p2 = 0;
 
 #pragma warning( disable : 4838 4003 )
 
@@ -46,14 +43,22 @@ static const char* invaders_samples[] =
 static const char* clowns_samples[] =
 {
 	"clowns_aae.zip",
-	"springboard_hit.wav",	
-	"balloon_hit.wav",	
-	"miss.wav",	
-	"midway_music.wav",	
+	"springboard_hit.wav",
+	"balloon_hit.wav",
+	"miss.wav",
+	"midway_music.wav",
 	0       /* end of array */
 };
 
-
+static const char* boothill_samples[] =
+{
+	"boothill.zip",
+	"addcoin.wav",	/* index 0 */
+	"endgame.wav",	/* index 1 */
+	"gunshot.wav",	/* index 2 */
+	"killed.wav",	/* index 3 */
+	0       /* end of array */
+};
 
 #define BITSWAP8(val,B7,B6,B5,B4,B3,B2,B1,B0) \
 		(((((val) >> (B7)) & 1) << 7) | \
@@ -149,7 +154,7 @@ WRITE_HANDLER(invaders_videoram_w)
 
 	invaders_videoram[address] = data;
 
-	y = address / 32 + (256-224);
+	y = address / 32 + (256 - 224);
 	x = 8 * (address % 32);
 
 	plot_byte(x, y, data, WHITE, 0);
@@ -232,7 +237,6 @@ int invaders_shift_data_rev_r(int offset)
 	return ret;
 }
 
-
 /* Catch the write to unmapped I/O port 6 */
 PORT_WRITE_HANDLER(invaders_dummy_write)
 {
@@ -253,10 +257,10 @@ PORT_WRITE_HANDLER(invaders_shift_data_w)
 	Extra / Different functions for Boot Hill                (MJC 300198)
 ****************************************************************************/
 
-int boothill_shift_data_r(int address)
+PORT_READ_HANDLER(boothill_shift_data_r)
 {
 	if (shift_amount < 0x10)
-		return invaders_shift_data_r(0,0);
+		return invaders_shift_data_r(0, 0);
 	else
 		return invaders_shift_data_rev_r(0);
 }
@@ -275,6 +279,35 @@ PORT_READ_HANDLER(boothill_port_0_r)
 PORT_READ_HANDLER(boothill_port_1_r)
 {
 	return (input_port_1_r(0) & 0x8F) | BootHillTable[input_port_4_r(0) >> 5];
+}
+
+/* Boot Hill sound - ported from MAME sndhrdw/8080bw.c (samples on I/O ports 3 & 5) */
+PORT_WRITE_HANDLER(boothill_sh_port3_w)
+{
+	switch (data)
+	{
+	case 0x0c:				/* coin inserted */
+		sample_start(0, 0, 0);
+		break;
+	case 0x18:
+	case 0x28:				/* gun shot */
+		sample_start(1, 2, 0);
+		break;
+	case 0x48:
+	case 0x88:				/* man killed */
+		sample_start(2, 3, 0);
+		break;
+	}
+}
+
+PORT_WRITE_HANDLER(boothill_sh_port5_w)
+{
+	switch (data)
+	{
+	case 0x3b:				/* end of game */
+		sample_start(2, 1, 0);
+		break;
+	}
 }
 
 /*
@@ -311,8 +344,6 @@ PORT_READ_HANDLER(seawolf_port_0_r)
 {
 	return (input_port_0_r(0) & 0xe0) + ControllerTable[input_port_0_r(0) & 0x1f];
 }
-
-
 
 void invaders_interrupt()
 {
@@ -396,7 +427,6 @@ PORT_WRITE_HANDLER(invaders_sh_port5_w)
 	Sound = data;
 }
 
-
 PORT_WRITE_HANDLER(clowns_sh_port5_w)
 {
 	static int last_p5 = 0;
@@ -410,7 +440,6 @@ PORT_WRITE_HANDLER(clowns_sh_port5_w)
 	}
 	last_p5 = data;
 }
-
 
 PORT_WRITE_HANDLER(clowns_sh_port7_w)
 {
@@ -430,8 +459,6 @@ PORT_WRITE_HANDLER(clowns_sh_port7_w)
 		sample_start(2, 2, 0);
 }
 
-
-
 /*******************************************************/
 /*                                                     */
 /* Midway "Space Encounters"                           */
@@ -440,22 +467,24 @@ PORT_WRITE_HANDLER(clowns_sh_port7_w)
 /*******************************************************/
 
 PORT_WRITE(spcenctr_writeport)
-	{ 0x01, 0x01, invaders_shift_amount_w },
-	{ 0x02, 0x02, invaders_shift_data_w },
+{
+	0x01, 0x01, invaders_shift_amount_w
+},
+{ 0x02, 0x02, invaders_shift_data_w },
 PORT_END
 
 PORT_READ(spcenctr_readport)
-	{ 0x00, 0x00, gray6bit_controller0_r }, /* These 2 ports use Gray's binary encoding */
-	{ 0x01, 0x01, gray6bit_controller1_r },
-	{ 0x02, 0x02, invaders_ip_port_2_r },
+{
+	0x00, 0x00, gray6bit_controller0_r
+}, /* These 2 ports use Gray's binary encoding */
+{ 0x01, 0x01, gray6bit_controller1_r },
+{ 0x02, 0x02, invaders_ip_port_2_r },
 PORT_END
 
 PORT_WRITE(writeport_1_2)
-PORT_ADDR(0x01, 0x01, invaders_shift_amount_w )
-PORT_ADDR(0x02, 0x02, invaders_shift_data_w )
+PORT_ADDR(0x01, 0x01, invaders_shift_amount_w)
+PORT_ADDR(0x02, 0x02, invaders_shift_data_w)
 PORT_END
-
-
 
 MEM_READ(invaders_readmem)
 
@@ -505,6 +534,19 @@ PORT_ADDR(0x05, 0x05, clowns_sh_port5_w)
 PORT_ADDR(0x07, 0x07, clowns_sh_port7_w)
 PORT_END
 
+PORT_READ(boothill_readport)
+PORT_ADDR(0x00, 0x00, boothill_port_0_r)		/* P2 joy/fire + gun aim */
+PORT_ADDR(0x01, 0x01, boothill_port_1_r)		/* P1 joy/fire + gun aim */
+PORT_ADDR(0x02, 0x02, invaders_ip_port_2_r)		/* dips / coins / start (DSW0) */
+PORT_ADDR(0x03, 0x03, boothill_shift_data_r)	/* MB14241 shifter */
+PORT_END
+
+PORT_WRITE(boothill_writeport)
+PORT_ADDR(0x01, 0x01, invaders_shift_amount_w)
+PORT_ADDR(0x02, 0x02, invaders_shift_data_w)
+PORT_ADDR(0x03, 0x03, boothill_sh_port3_w)		/* sound */
+PORT_ADDR(0x05, 0x05, boothill_sh_port5_w)		/* sound */
+PORT_END
 
 void run_invaders()
 {
@@ -577,6 +619,13 @@ ROM_LOAD("clownsv1.d", 0x1000, 0x0400, CRC(37b6ff0e) SHA1(bf83bebb6c14b3663ca86a
 ROM_LOAD("clownsv1.c", 0x1400, 0x0400, CRC(12968e52) SHA1(71e4f09d30b992a4ac44b0e88e83b4f8a0f63caa))
 ROM_END
 
+ROM_START(boothill)
+ROM_REGION(0x10000, REGION_CPU1, 0)     /* 64k for code */
+ROM_LOAD("romh.cpu", 0x0000, 0x0800, CRC(1615d077) SHA1(e59a26c2f2fc67ab24301e22d2e3f33043acdf72))
+ROM_LOAD("romg.cpu", 0x0800, 0x0800, CRC(65a90420) SHA1(9f36c44b5ae5b912cdbbeb9ff11a42221b8362d2))
+ROM_LOAD("romf.cpu", 0x1000, 0x0800, CRC(3fdafd79) SHA1(b18e8ac9df40c4687ac1acd5174eb99f2ef60081))
+ROM_LOAD("rome.cpu", 0x1800, 0x0800, CRC(374529f4) SHA1(18c57b79df0c66052eef40a694779a5ade15d0e0))
+ROM_END
 
 INPUT_PORTS_START(invaders)
 PORT_START("IN0")      /* IN0 */
@@ -589,7 +638,7 @@ PORT_BIT(0x20, IP_ACTIVE_HIGH, IPT_UNKNOWN)
 PORT_BIT(0x40, IP_ACTIVE_HIGH, IPT_UNKNOWN)
 PORT_BIT(0x80, IP_ACTIVE_HIGH, IPT_UNKNOWN)
 
-PORT_START ("IN1")     /* IN1 */
+PORT_START("IN1")     /* IN1 */
 PORT_BIT(0x01, IP_ACTIVE_LOW, IPT_COIN1)
 PORT_BIT(0x02, IP_ACTIVE_HIGH, IPT_START2)
 PORT_BIT(0x04, IP_ACTIVE_HIGH, IPT_START1)
@@ -621,8 +670,6 @@ PORT_DIPNAME(0x01, 0x00, DEF_STR(Cabinet))
 PORT_DIPSETTING(0x00, DEF_STR(Upright))
 PORT_DIPSETTING(0x01, DEF_STR(Cocktail))
 INPUT_PORTS_END
-
-
 
 /*******************************************************/
 /*                                                     */
@@ -675,7 +722,6 @@ PORT_DIPSETTING(0x00, DEF_STR(Upright))
 PORT_DIPSETTING(0x01, DEF_STR(Cocktail))
 INPUT_PORTS_END
 
-
 /*******************************************************/
 /*                                                     */
 /* Midway "Clowns"                                     */
@@ -725,75 +771,117 @@ INPUT_PORTS_END
 	PORT_DIPSETTING(0x00, "Off")
 	INPUT_PORTS_END
 
+	/*******************************************************/
+	/*                                                     */
+	/* Midway "Boot Hill"                                  */
+	/*                                                     */
+	/*******************************************************/
 
-// Space Invaders
-AAE_DRIVER_BEGIN(drv_invaders, "invaders", "Space Invaders")
-AAE_DRIVER_ROM(rom_invaders)
-AAE_DRIVER_FUNCS(&init_invaders, &run_invaders, &end_invaders)
-AAE_DRIVER_INPUT(input_ports_invaders)
-AAE_DRIVER_SAMPLES(invaders_samples)
-AAE_DRIVER_ART_NONE()
+	INPUT_PORTS_START(boothill)
+	PORT_START("IN0")		/* index 0 - Player 2 joystick + fire */
+	PORT_BIT(0x01, IP_ACTIVE_LOW, IPT_JOYSTICK_UP | IPF_8WAY | IPF_PLAYER2)
+	PORT_BIT(0x02, IP_ACTIVE_LOW, IPT_JOYSTICK_DOWN | IPF_8WAY | IPF_PLAYER2)
+	PORT_BIT(0x04, IP_ACTIVE_LOW, IPT_JOYSTICK_LEFT | IPF_8WAY | IPF_PLAYER2)
+	PORT_BIT(0x08, IP_ACTIVE_LOW, IPT_JOYSTICK_RIGHT | IPF_8WAY | IPF_PLAYER2)
+	PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_BUTTON1 | IPF_PLAYER2)
 
-AAE_DRIVER_CPUS(
-	AAE_CPU_ENTRY(
-		/*type*/     CPU_8080,
-		/*freq*/     2000000,
-		/*div*/      100,
-		/*ipf*/      2,
-		/*int type*/ INT_TYPE_INT,
-		/*int cb*/   &invaders_interrupt,
-		/*r8*/       invaders_readmem,
-		/*w8*/       invaders_writemem,
-		/*pr*/       invaders_readport,
-		/*pw*/       invaders_writeport,
-		/*r16*/      nullptr,
-		/*w16*/      nullptr
-	),
-	AAE_CPU_NONE_ENTRY(),
-	AAE_CPU_NONE_ENTRY(),
-	AAE_CPU_NONE_ENTRY()
-)
+	PORT_START("IN1")		/* index 1 - Player 1 joystick + fire */
+	PORT_BIT(0x01, IP_ACTIVE_LOW, IPT_JOYSTICK_UP | IPF_8WAY)
+	PORT_BIT(0x02, IP_ACTIVE_LOW, IPT_JOYSTICK_DOWN | IPF_8WAY)
+	PORT_BIT(0x04, IP_ACTIVE_LOW, IPT_JOYSTICK_LEFT | IPF_8WAY)
+	PORT_BIT(0x08, IP_ACTIVE_LOW, IPT_JOYSTICK_RIGHT | IPF_8WAY)
+	PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_BUTTON1)
 
-AAE_DRIVER_VIDEO_CORE(60,DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_RASTER_BW | VECTOR_USES_OVERLAY1, ORIENTATION_ROTATE_270|ORIENTATION_FLIP_X)
-AAE_DRIVER_SCREEN(32 * 8, 32 * 8, 0 * 8, 32 * 8 - 1, 0 * 8, 28 * 8 - 1)
-AAE_DRIVER_RASTER(0, 21 / 3, 0, init_palette)
-AAE_DRIVER_HISCORE_NONE()
-AAE_DRIVER_VECTORRAM(0, 0)
-AAE_DRIVER_NVRAM_NONE()
-AAE_DRIVER_LAYOUT("default.lay", "Upright_Artwork")
-AAE_DRIVER_END()
+	PORT_START("DSW0")		/* index 2 - dips / coins / start (read via invaders_ip_port_2_r) */
+	PORT_DIPNAME(0x03, 0x00, DEF_STR(Coinage))
+	PORT_DIPSETTING(0x02, DEF_STR(2C_1C))
+	PORT_DIPSETTING(0x00, DEF_STR(1C_1C))
+	PORT_DIPSETTING(0x01, DEF_STR(1C_2C))
+	PORT_DIPNAME(0x0c, 0x00, "Time")
+	PORT_DIPSETTING(0x00, "64")
+	PORT_DIPSETTING(0x04, "74")
+	PORT_DIPSETTING(0x08, "84")
+	PORT_DIPSETTING(0x0c, "94")
+	PORT_SERVICE(0x10, IP_ACTIVE_HIGH)
+	PORT_BIT(0x20, IP_ACTIVE_LOW, IPT_START1)
+	PORT_BIT(0x40, IP_ACTIVE_LOW, IPT_COIN1)
+	PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_START2)
 
-// Space Invaders Deluxe
-AAE_DRIVER_BEGIN(drv_invaddlx, "invaddlx", "Space Invaders Deluxe")
-AAE_DRIVER_ROM(rom_invaddlx)
-AAE_DRIVER_FUNCS(&init_invaddlx, &run_invaders, &end_invaders)
-AAE_DRIVER_INPUT(input_ports_invadpt2)
-AAE_DRIVER_SAMPLES(invaders_samples)
-AAE_DRIVER_ART_NONE()
+	PORT_START("GUN2")		/* index 3 - Player 2 gun position (fake paddle) */
+	PORT_ANALOG(0xff, 0x00, IPT_PADDLE | IPF_PLAYER2, 50, 10, 0x01, 0xff)
 
-AAE_DRIVER_CPUS(
-	AAE_CPU_ENTRY(
-		/*type*/     CPU_8080,
-		/*freq*/     2000000,
-		/*div*/      100,
-		/*ipf*/      2,
-		/*int type*/ INT_TYPE_INT,
-		/*int cb*/   &invaders_interrupt,
-		/*r8*/       invaders_readmem,
-		/*w8*/       invaders_writemem,
-		/*pr*/       invaddlx_readport,   // deluxe ports
-		/*pw*/       invaddlx_writeport,
-		/*r16*/      nullptr,
-		/*w16*/      nullptr
-	),
-	AAE_CPU_NONE_ENTRY(),
-	AAE_CPU_NONE_ENTRY(),
-	AAE_CPU_NONE_ENTRY()
-)
+	PORT_START("GUN1")		/* index 4 - Player 1 gun position (fake paddle) */
+	PORT_ANALOG(0xff, 0x00, IPT_PADDLE, 50, 10, 0x01, 0xff)
+	INPUT_PORTS_END
 
-AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION,
-	VIDEO_TYPE_RASTER_BW | VECTOR_USES_OVERLAY1,
-	ORIENTATION_ROTATE_270 | ORIENTATION_FLIP_X)
+	// Space Invaders
+	AAE_DRIVER_BEGIN(drv_invaders, "invaders", "Space Invaders")
+	AAE_DRIVER_ROM(rom_invaders)
+	AAE_DRIVER_FUNCS(&init_invaders, &run_invaders, &end_invaders)
+	AAE_DRIVER_INPUT(input_ports_invaders)
+	AAE_DRIVER_SAMPLES(invaders_samples)
+	AAE_DRIVER_ART_NONE()
+
+	AAE_DRIVER_CPUS(
+		AAE_CPU_ENTRY(
+			/*type*/     CPU_8080,
+			/*freq*/     2000000,
+			/*div*/      100,
+			/*ipf*/      2,
+			/*int type*/ INT_TYPE_INT,
+			/*int cb*/   &invaders_interrupt,
+			/*r8*/       invaders_readmem,
+			/*w8*/       invaders_writemem,
+			/*pr*/       invaders_readport,
+			/*pw*/       invaders_writeport,
+			/*r16*/      nullptr,
+			/*w16*/      nullptr
+		),
+		AAE_CPU_NONE_ENTRY(),
+		AAE_CPU_NONE_ENTRY(),
+		AAE_CPU_NONE_ENTRY()
+	)
+
+	AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_RASTER_BW | VECTOR_USES_OVERLAY1, ORIENTATION_ROTATE_270 | ORIENTATION_FLIP_X)
+	AAE_DRIVER_SCREEN(32 * 8, 32 * 8, 0 * 8, 32 * 8 - 1, 0 * 8, 28 * 8 - 1)
+	AAE_DRIVER_RASTER(0, 21 / 3, 0, init_palette)
+	AAE_DRIVER_HISCORE_NONE()
+	AAE_DRIVER_VECTORRAM(0, 0)
+	AAE_DRIVER_NVRAM_NONE()
+	AAE_DRIVER_LAYOUT("default.lay", "Upright_Artwork")
+	AAE_DRIVER_END()
+
+	// Space Invaders Deluxe
+	AAE_DRIVER_BEGIN(drv_invaddlx, "invaddlx", "Space Invaders Deluxe")
+	AAE_DRIVER_ROM(rom_invaddlx)
+	AAE_DRIVER_FUNCS(&init_invaddlx, &run_invaders, &end_invaders)
+	AAE_DRIVER_INPUT(input_ports_invadpt2)
+	AAE_DRIVER_SAMPLES(invaders_samples)
+	AAE_DRIVER_ART_NONE()
+
+	AAE_DRIVER_CPUS(
+		AAE_CPU_ENTRY(
+			/*type*/     CPU_8080,
+			/*freq*/     2000000,
+			/*div*/      100,
+			/*ipf*/      2,
+			/*int type*/ INT_TYPE_INT,
+			/*int cb*/   &invaders_interrupt,
+			/*r8*/       invaders_readmem,
+			/*w8*/       invaders_writemem,
+			/*pr*/       invaddlx_readport,   // deluxe ports
+			/*pw*/       invaddlx_writeport,
+			/*r16*/      nullptr,
+			/*w16*/      nullptr
+		),
+		AAE_CPU_NONE_ENTRY(),
+		AAE_CPU_NONE_ENTRY(),
+		AAE_CPU_NONE_ENTRY()
+	)
+
+	AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION,
+		VIDEO_TYPE_RASTER_BW | VECTOR_USES_OVERLAY1,
+		ORIENTATION_ROTATE_270 | ORIENTATION_FLIP_X)
 	//AAE_DRIVER_SCREEN(32 * 8, 32 * 8, 0 * 8, 32 * 8 - 1, 0 * 8, 28 * 8 - 1)
 //AAE_DRIVER_SCREEN(32 * 8, 32 * 8, 0 * 8, 28 * 8 - 1, 0 * 8, 32 * 8 - 1)
 AAE_DRIVER_SCREEN(256, 256, 0, 255, 0, 223)
@@ -803,7 +891,6 @@ AAE_DRIVER_VECTORRAM(0, 0)
 AAE_DRIVER_NVRAM_NONE()
 AAE_DRIVER_LAYOUT("default.lay", "Upright_Artwork")
 AAE_DRIVER_END()
-
 
 // Clowns
 AAE_DRIVER_BEGIN(drv_clowns, "clowns", "Clowns")
@@ -842,9 +929,8 @@ AAE_DRIVER_NVRAM_NONE()
 AAE_DRIVER_LAYOUT("default.lay", "Upright_Artwork")
 AAE_DRIVER_END()
 
-
 // Clowns1
-AAE_DRIVER_BEGIN(drv_clowns1, "clowns1", "Clowns")
+AAE_DRIVER_BEGIN(drv_clowns1, "clowns1", "Clowns Revision 1")
 AAE_DRIVER_ROM(rom_clowns1)
 AAE_DRIVER_FUNCS(&init_invaders, &run_invaders, &end_invaders)
 AAE_DRIVER_INPUT(input_ports_clowns)
@@ -852,23 +938,23 @@ AAE_DRIVER_SAMPLES(clowns_samples)
 AAE_DRIVER_ART_NONE()
 
 AAE_DRIVER_CPUS(
-AAE_CPU_ENTRY(
-/*type*/     CPU_8080,
-/*freq*/     2000000,
-/*div*/      100,
-/*ipf*/      2,
-/*int type*/ INT_TYPE_INT,
-/*int cb*/   &invaders_interrupt,
-/*r8*/       invaders_readmem,
-/*w8*/       invaders_writemem,
-/*pr*/       invaders_readport,
-/*pw*/       clowns_writeport,
-/*r16*/      nullptr,
-/*w16*/      nullptr
-),
-AAE_CPU_NONE_ENTRY(),
-AAE_CPU_NONE_ENTRY(),
-AAE_CPU_NONE_ENTRY()
+	AAE_CPU_ENTRY(
+		/*type*/     CPU_8080,
+		/*freq*/     2000000,
+		/*div*/      100,
+		/*ipf*/      2,
+		/*int type*/ INT_TYPE_INT,
+		/*int cb*/   &invaders_interrupt,
+		/*r8*/       invaders_readmem,
+		/*w8*/       invaders_writemem,
+		/*pr*/       invaders_readport,
+		/*pw*/       clowns_writeport,
+		/*r16*/      nullptr,
+		/*w16*/      nullptr
+	),
+	AAE_CPU_NONE_ENTRY(),
+	AAE_CPU_NONE_ENTRY(),
+	AAE_CPU_NONE_ENTRY()
 )
 
 AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_RASTER_BW | VECTOR_USES_OVERLAY1, ORIENTATION_DEFAULT | ORIENTATION_FLIP_Y)
@@ -880,10 +966,45 @@ AAE_DRIVER_NVRAM_NONE()
 AAE_DRIVER_LAYOUT("default.lay", "Upright_Artwork")
 AAE_DRIVER_END()
 
+// Boot Hill
+AAE_DRIVER_BEGIN(drv_boothill, "boothill", "Boot Hill")
+AAE_DRIVER_ROM(rom_boothill)
+AAE_DRIVER_FUNCS(&init_invaders, &run_invaders, &end_invaders)
+AAE_DRIVER_INPUT(input_ports_boothill)
+AAE_DRIVER_SAMPLES(boothill_samples)
+AAE_DRIVER_ART_NONE()
 
+AAE_DRIVER_CPUS(
+	AAE_CPU_ENTRY(
+		/*type*/     CPU_8080,
+		/*freq*/     2000000,
+		/*div*/      100,
+		/*ipf*/      2,
+		/*int type*/ INT_TYPE_INT,
+		/*int cb*/   &invaders_interrupt,
+		/*r8*/       invaders_readmem,
+		/*w8*/       invaders_writemem,
+		/*pr*/       boothill_readport,
+		/*pw*/       boothill_writeport,
+		/*r16*/      nullptr,
+		/*w16*/      nullptr
+	),
+	AAE_CPU_NONE_ENTRY(),
+	AAE_CPU_NONE_ENTRY(),
+	AAE_CPU_NONE_ENTRY()
+)
 
+AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_RASTER_BW | VECTOR_USES_OVERLAY1, ORIENTATION_DEFAULT | ORIENTATION_FLIP_Y)
+AAE_DRIVER_SCREEN(32 * 8, 32 * 8, 0 * 8, 32 * 8 - 1, 0 * 8, 28 * 8 - 1)
+AAE_DRIVER_RASTER(0, 21 / 3, 0, init_palette)
+AAE_DRIVER_HISCORE_NONE()
+AAE_DRIVER_VECTORRAM(0, 0)
+AAE_DRIVER_NVRAM_NONE()
+AAE_DRIVER_LAYOUT("default.lay", "Upright_Artwork")
+AAE_DRIVER_END()
 
 AAE_REGISTER_DRIVER(drv_invaders)
 AAE_REGISTER_DRIVER(drv_invaddlx)
 AAE_REGISTER_DRIVER(drv_clowns)
 AAE_REGISTER_DRIVER(drv_clowns1)
+AAE_REGISTER_DRIVER(drv_boothill)

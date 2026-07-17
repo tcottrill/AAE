@@ -29,6 +29,11 @@ bradley         Bradley Trainer
 cchasm          Cosmic Chasm (set 2)
 cchasm1         Cosmic Chasm (set 1)
 centiped        Centipede
+foodf           Food Fight (Atari)
+gaplus          gaplus (US)
+dkong           Donkey Kong (US)
+dkongjr         Donkey Kong Junior (US)
+gyruss          Gyruss (Konami)
 solarq          Solar Quest
 starcas         Star Castle
 ripoff          RipOff
@@ -98,6 +103,7 @@ elim4p          Eliminator (4 Player Prototype)
 starwars        Star Wars (Revision 2)
 starwars1       Star Wars (Revision 1)
 esb             Star Wars: Empire Strike Back
+tomcat          TomCat (Star Wars hardware, prototype)
 superpac        Super Pac-Man
 superpcm        Super Pac-Man (Midway)
 pacnpal         Pac & Pal
@@ -112,9 +118,10 @@ temptube        Tempest Tubes
 aliensv         Aliens (Tempest Alpha)
 vbrakout        Vector Breakout (1999 Clay Cowgill)
 vortex          Vortex (Tempest Beta)
+topgunnr        Top Gunner
 depthch         Depth Charge
 warlords        Warlords
 xevious         Xevious (Namco)
 yiear           Yie Ar Kung-Fu (set 1)
 
-Total games: 115
+Total games: 122

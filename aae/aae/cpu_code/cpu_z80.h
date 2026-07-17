@@ -126,6 +126,11 @@ public:
 	void SetPC(uint16_t wAddr);
 	void AdjustPC(int8_t cb);
 
+	// BC register pair. Needed by the Astrocade sound block transfer (reg 8),
+	// where the hardware latches the Z80 B register during OTIR to select the
+	// target sound register (B rides the upper address bus on real hardware).
+	uint16_t GetBC();
+
 	UINT8	mz80GetMemory(uint16_t addr);
 	void	mz80PutMemory(uint16_t addr, uint8_t byte);
 	uint8_t In(uint8_t bPort);
@@ -139,6 +144,8 @@ public:
 	//Main Routines
 	unsigned mz80step();
 	unsigned long int mz80exec(unsigned long int cCyclesArg);
+	// Latches the INT line + vector; dispatched at the next instruction
+	// boundary inside mz80step() (see cpu_z80.cpp for why).
 	UINT32 mz80int(UINT32 bVal);
 	UINT32 mz80nmi(void);
 	void   mz80reset();
@@ -165,7 +172,7 @@ public:
 	// preserving full backward compatibility with all existing drivers.
 	// Returns the 8-bit vector byte, or -1 if nothing is pending.
 	std::function<int()> int_ack_fn;
-	
+
 	cpu_z80(uint8_t* MEM, MemoryReadByte* read_mem, MemoryWriteByte* write_mem, z80PortRead* port_read, z80PortWrite* port_write, uint16_t addr, int num);
 	~cpu_z80();
 
@@ -254,6 +261,14 @@ private:
 	int m_nIM;
 	// External INT line (level). Asserted by devices; CPU clears it when taken.
 	bool m_irq_line = false;
+	// NMI edge latch. mz80nmi() only sets this; the dispatch (push + jump to
+	// 0x66) happens inside mz80step() at the next instruction boundary, in
+	// THIS CPU's execution context. Dispatching directly from mz80nmi() is
+	// wrong when the caller is another CPU's handler (cpu_do_int_imm): the
+	// return-address push routes through MWA_RAM, which indexes memory by the
+	// global active_cpu -- the push lands in the OTHER CPU's memory and RETN
+	// later pops a stale value (Cosmic Chasm's sound CPU died exactly here).
+	bool m_nmi_pending = false;
 	bool debug = false;
 	uint8_t iff_delay;
 	// Contains the irq vector. 
@@ -275,6 +290,7 @@ private:
 
 
 	unsigned exec_opcode(uint8_t bOpcode);
+	UINT32 mz80int_dispatch();   // in-context INT dispatch (mz80step only)
 	void Push(uint16_t wArg);
 	uint16_t Pop();
 	uint16_t GetSP();

@@ -25,8 +25,12 @@
 // Orientation: ROT270 (vertical monitor, rotated 270 degrees)
 // ---------------------------------------------------------------------------
 
-// This is a bit of a hack right now, I can't get the Z80 CTC callbacks to work without screwing everything else
-// up, so I added some samples as a work around. I'll get this fixed at a later date.
+// Sound is fully emulated: 2x AY-3-8910 (chip streams) + the two CTC-driven
+// square-wave tones rendered through the DAC module (mid-frame sample-and-hold,
+// like MAME's streams). The CTC's timers tick on the Z80's timeline (see
+// ctc_cfg.cpu) and both CPUs run finely interleaved (see the div fields) --
+// with coarse interleave the soundlatch NMIs and CTC IRQs bunch up and sounds
+// get dropped.
 
 // Also, I am skipping the mame_vector.cpp code here, it looks better without the scaling imposed there. video,ini required for flipping.
 
@@ -38,6 +42,7 @@
 #include "driver_registry.h"
 #include "cpu_control.h"
 #include "ay8910.h"
+#include "dac.h"
 #include "timer.h"
 #include "emu_vector_draw.h"
 #include "z80fmly.h"
@@ -107,27 +112,20 @@ static int sound_flags = 0;   // handshaking flags
 
 // ===========================================================================
 // CTC square-wave tone output state
+//
+// CTC channels 1 and 2 zero-count outputs each drive a flip-flop whose output
+// is a square wave (fire / thrust effects). As in MAME, each rising zc edge
+// toggles the level and the result plays through a DAC channel -- AAE's DAC
+// module gives the same mid-frame sample-and-hold reconstruction MAME's
+// streams do, so no WAV samples are needed.
 // ===========================================================================
 static int ctc_tone_output[2] = { 0, 0 };
-static int ctc_tone_active[2] = { 0, 0 };
 
-// ---------------------------------------------------------------------------
-// CTC square-wave audio via WAV samples
-//
-// CTC channels 1 and 2 drive two independent tone generators used for the
-// firing and thrust sound effects. Instead of synthesizing square waves,
-// we use pre-recorded WAV samples that loop while the CTC tone is active.
-//
-// Playback channels 2 and 3 are used (0 and 1 are the two AY-3-8910 chips).
-// Sample indices match the order in cchasm_samples[] (0-based from first WAV).
-// ---------------------------------------------------------------------------
-#define CTC_PLAY_CH0     2    // mixer playback channel for CTC tone 0
-#define CTC_PLAY_CH1     3    // mixer playback channel for CTC tone 1
-#define CTC_SAMPLE_FIRE  0    // sample index: firing tone WAV
-#define CTC_SAMPLE_THRUST 1   // sample index: thrust tone WAV
-
-// Track whether each tone is currently playing to avoid redundant start/stop
-static bool ctc_tone_playing[2] = { false, false };
+static const struct DACinterface cchasm_dac_interface =
+{
+	2,            // one DAC per CTC tone channel
+	{ 100, 100 }  // mixing level (percent)
+};
 
 // ===========================================================================
 // AY-3-8910 interface (2 chips @ 1.818182 MHz)
@@ -141,22 +139,6 @@ static AY8910Config cchasm_ay8910_cfg =
     { nullptr, nullptr, nullptr, nullptr },     // port_b_read
     { nullptr, nullptr, nullptr, nullptr },     // port_a_write
     { nullptr, nullptr, nullptr, nullptr }      // port_b_write
-};
-
-static int fire_toggle = 0;
-static int thrust_toggle = 0;
-
-// ===========================================================================
-// WAV samples for CTC square-wave tones
-// These replace the synthesized square waves with pre-recorded sound effects.
-// Place these WAVs in a cchasm.zip file in the samples directory.
-// ===========================================================================
-static const char* cchasm_samples[] =
-{
-	"cchasm.zip",
-	"fire.wav",      // CTC_SAMPLE_FIRE  (0) - firing sound
-	"thrust.wav",    // CTC_SAMPLE_THRUST (1) - thrust sound
-	0
 };
 
 // ===========================================================================
@@ -379,8 +361,16 @@ static void cchasm_ctc_interrupt(int state)
 	if (m_cpu_z80[CPU1] == nullptr)
 		return;
 
-	// state contains any pending IRQ level across the CTC (Z80_INT_REQ)
-	if (state) {
+	// Assert the INT line only for a DELIVERABLE request (Z80_INT_REQ), never
+	// for IEO alone. state == Z80_INT_IEO means "a channel is being serviced,
+	// nothing new pending" -- it fires right as the ack converts REQ -> IEO.
+	// mz80AssertInt() latches and mz80int() CONSUMES the line on dispatch, so
+	// asserting on IEO plants a ghost interrupt: an ISR that does an early EI
+	// dispatches it with no REQ anywhere, z80ctc_interrupt() returns a bogus
+	// vector ("CTC entry INT : non IRQ"), and the Z80 walks into the wrong
+	// handler -- sound state degrades until a tone channel free-runs forever.
+	// This matches MAME's z80daisy: the CPU IRQ line reflects pending REQs only.
+	if (state & Z80_INT_REQ) {
 		m_cpu_z80[CPU1]->mz80AssertInt();
 	}
 	else {
@@ -388,25 +378,24 @@ static void cchasm_ctc_interrupt(int state)
 	}
 }
 
+// CTC zero-count outputs: each rising edge toggles the tone flip-flop and the
+// DAC reconstructs the square wave with mid-frame positioning (matches MAME's
+// sndhrdw/cchasm.c: output[n] ^= 0x7f on the rising zc edge).
 static void ctc_timer_1_w(int ch, int data_rising)
 {
-	LOG_INFO("CTC TIMER 1 WRITE");
 	if (data_rising)
 	{
-		LOG_INFO("SOUND 1 PLAYING");
 		ctc_tone_output[0] ^= 0x7f;
-		ctc_tone_active[0] = 1;
+		DAC_data_w(0, ctc_tone_output[0]);
 	}
 }
 
 static void ctc_timer_2_w(int ch, int data_rising)
 {
-	LOG_INFO("CTC TIMER 2 WRITE");
 	if (data_rising)
 	{
-		LOG_INFO("SOUND 2 PLAYING");
 		ctc_tone_output[1] ^= 0x7f;
-		ctc_tone_active[1] = 1;
+		DAC_data_w(1, ctc_tone_output[1]);
 	}
 }
 
@@ -437,26 +426,7 @@ static int cchasm_io_read_reg(int reg)
 		if (coin != 0x7) coin |= 0x8;
 		return (sound_flags | (input_port_3_r(0) & 0x07) | 0x08);
 	}
-	case 0x5:
-	{
-		int fire = (input_port_2_r(0) & 0x04);
-		int thrust = (input_port_2_r(0) & 0x08);
-
-		if (fire) { fire_toggle = 0; }
-		if (fire == 0 && fire_toggle == 0) {
-			fire_toggle = 1; sample_start(CTC_PLAY_CH0, CTC_SAMPLE_FIRE, 0);
-		}
-
-		if (thrust) {
-			thrust_toggle = 0; sample_stop(CTC_PLAY_CH1);
-		}
-		if (thrust == 0 && thrust_toggle == 0) {
-			thrust_toggle = 1;
-			//sample_start(CTC_PLAY_CH1, CTC_SAMPLE_THRUST, 1);
-		}
-
-		return input_port_2_r(0);
-	}
+	case 0x5: return input_port_2_r(0);
 	case 0x8: return input_port_1_r(0);
 	default: return 0xff;
 	}
@@ -474,6 +444,11 @@ static void cchasm_io_write_reg(int reg, int val)
 		sound_flags |= 0x80;
 		z80ctc_0_trg2_w(0, 1);
 		cpu_do_int_imm(CPU1, INT_TYPE_NMI);
+		// NOTE: do NOT "boost" the Z80 here with a reentrant mz80exec() call --
+		// the scheduler runs each CPU to absolute per-frame cycle targets, so
+		// cycles executed here are stolen from the Z80's scheduled slices and
+		// the whole sound board time-dilates (slow sound, laggy coin/command
+		// handling). Tried 2026-07-02, reverted.
 		break;
 	case 2:
 		break;
@@ -707,13 +682,17 @@ int init_cchasm()
 
 	ctc_tone_output[0] = 0;
 	ctc_tone_output[1] = 0;
-	ctc_tone_active[0] = 0;
-	ctc_tone_active[1] = 0;
 
-	// Configure Z80 CTC using the z80fmly struct and standard functions
+	// Configure Z80 CTC using the z80fmly struct and standard functions.
+	// cpu[0] = CPU1 (the Z80): the CTC's timers must tick on the Z80's own
+	// timeline so zc/interrupt events fire BETWEEN Z80 slices and interleave
+	// with its execution. Left at the default CPU0, every CTC event lands in
+	// the 68000's slices and gets bunched into one INT when the Z80 finally
+	// runs -- music tempo collapses and sound effects are dropped.
 	z80ctc_interface ctc_cfg = {};
 	ctc_cfg.num = 1;
 	ctc_cfg.baseclock[0] = 3584229;
+	ctc_cfg.cpu[0] = 1;
 	ctc_cfg.notimer[0] = 0;
 	ctc_cfg.intr[0] = cchasm_ctc_interrupt;
 	ctc_cfg.zc0[0] = nullptr;
@@ -722,11 +701,7 @@ int init_cchasm()
 	z80ctc_init(&ctc_cfg);
 
 	ay8910_sh_start(&cchasm_ay8910_cfg);
-
-	// Reset CTC tone playback state
-	// WAV samples are loaded automatically by load_samples_batch() from cchasm_samples[]
-	ctc_tone_playing[0] = false;
-	ctc_tone_playing[1] = false;
+	DAC_sh_start(&cchasm_dac_interface);   // 2 DACs render the CTC square waves
 
 	xcenter = ((1023 + 0) / 2) << VEC_SHIFT;
 	ycenter = ((767 + 0) / 2) << VEC_SHIFT;
@@ -739,6 +714,7 @@ int init_cchasm()
 
 void run_cchasm()
 {
+	watchdog_reset_w(0, 0, 0);
 	// Per-frame sound update: pulse CTC trigger 0 on coin insertion
 	cchasm_sound_frame_update();
 
@@ -760,39 +736,10 @@ void run_cchasm()
 
 		cchasm_reti_hooked = true;
 	}
-	/*
-	// CTC square-wave tones via WAV samples
-	// Start looping the sample when the CTC tone becomes active,
-	// stop it when the CTC stops toggling for a frame.
-	if (ctc_tone_active[0] && !ctc_tone_playing[0])
-	{
-		LOG_INFO("SAMPLE_START FIRE");
-		sample_start(CTC_PLAY_CH0, CTC_SAMPLE_FIRE, 0);
-		ctc_tone_playing[0] = true;
-	}
-	else if (!ctc_tone_active[0] && ctc_tone_playing[0])
-	{
-		sample_stop(CTC_PLAY_CH0);
-		ctc_tone_playing[0] = false;
-	}
 
-	if (ctc_tone_active[1] && !ctc_tone_playing[1])
-	{
-		sample_start(CTC_PLAY_CH1, CTC_SAMPLE_THRUST, 1);
-		ctc_tone_playing[1] = true;
-	}
-	else if (!ctc_tone_active[1] && ctc_tone_playing[1])
-	{
-		sample_stop(CTC_PLAY_CH1);
-		ctc_tone_playing[1] = false;
-	}
-
-	// Clear active flags; if the CTC keeps toggling, it will set them again
-	ctc_tone_active[0] = 0;
-	ctc_tone_active[1] = 0;
-	*/
-	// Update AY-3-8910 audio output
+	// Update AY-3-8910 audio output + flush the CTC square-wave DACs
 	ay8910_sh_update();
+	DAC_sh_update();
 
 	// Reset watchdog
 	watchdog_reset_w(0, 0, 0);
@@ -801,12 +748,7 @@ void run_cchasm()
 void end_cchasm()
 {
 	ay8910_sh_stop();
-
-	// Stop CTC tone samples if playing
-	if (ctc_tone_playing[0]) { sample_stop(CTC_PLAY_CH0); ctc_tone_playing[0] = false; }
-	if (ctc_tone_playing[1]) { sample_stop(CTC_PLAY_CH1); ctc_tone_playing[1] = false; }
-	ctc_tone_active[0] = 0;
-	ctc_tone_active[1] = 0;
+	DAC_sh_stop();
 	ctc_tone_output[0] = 0;
 	ctc_tone_output[1] = 0;
 
@@ -927,9 +869,14 @@ AAE_DRIVER_BEGIN(drv_cchasm, "cchasm", "Cosmic Chasm (set 2)")
 AAE_DRIVER_ROM(rom_cchasm)
 AAE_DRIVER_FUNCS(&init_cchasm, &run_cchasm, &end_cchasm)
 AAE_DRIVER_INPUT(input_ports_cchasm)
-AAE_DRIVER_SAMPLES(cchasm_samples)
+AAE_DRIVER_SAMPLES_NONE()
 AAE_DRIVER_ART_NONE()
 
+// Interleave note: the old div values (68000=5, Z80=1) gave effectively ZERO
+// interleave -- the scheduler ran the whole Z80 frame in one chunk after the
+// 68000 finished, so soundlatch NMIs piled up, CTC IRQs collapsed into one,
+// and the DAC tones quantized to a single level per frame. The Z80's div also
+// sets the CTC square-wave edge resolution (one slice = one DAC step).
 AAE_DRIVER_CPUS(
 	// CPU0: MC68000 @ 8 MHz
 	// 6840 PTM handles the main game timing interrupt (IRQ4).
@@ -937,7 +884,7 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_ENTRY(
 		/*type*/     CPU_68000,
 		/*freq*/     8000000,
-		/*div*/      5,
+		/*div*/      400,
 		/*ipf*/      1,
 		/*int type*/ INT_TYPE_68K4,
 		/*int cb*/   &cchasm_interrupt,
@@ -954,7 +901,7 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_ENTRY(
 		/*type*/     CPU_MZ80,
 		/*freq*/     3584229,
-		/*div*/      1,
+		/*div*/      400,
 		/*ipf*/      0,
 		/*int type*/ INT_TYPE_NONE,
 		/*int cb*/   nullptr,
@@ -982,17 +929,17 @@ AAE_DRIVER_BEGIN(drv_cchasm1, "cchasm1", "Cosmic Chasm (set 1)")
 AAE_DRIVER_ROM(rom_cchasm1)
 AAE_DRIVER_FUNCS(&init_cchasm, &run_cchasm, &end_cchasm)
 AAE_DRIVER_INPUT(input_ports_cchasm)
-AAE_DRIVER_SAMPLES(cchasm_samples)
+AAE_DRIVER_SAMPLES_NONE()
 AAE_DRIVER_ART_NONE()
 
 AAE_DRIVER_CPUS(
 	AAE_CPU_ENTRY(
-		CPU_68000, 8000000, 5, 1, INT_TYPE_68K4, &cchasm_interrupt,
+		CPU_68000, 8000000, 200, 1, INT_TYPE_68K4, &cchasm_interrupt,
 		CchasmReadByte, CchasmWriteByte, nullptr, nullptr,
 		CchasmReadWord, CchasmWriteWord
 	),
 	AAE_CPU_ENTRY(
-		CPU_MZ80, 3584229, 1, 0, INT_TYPE_NONE, nullptr,
+		CPU_MZ80, 3584229, 400, 0, INT_TYPE_NONE, nullptr,
 		CchasmSoundMemRead, CchasmSoundMemWrite,
 		CchasmSoundPortRead, CchasmSoundPortWrite,
 		nullptr, nullptr

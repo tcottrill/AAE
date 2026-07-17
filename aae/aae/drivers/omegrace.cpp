@@ -275,27 +275,6 @@ void  omega_nmi_interrupt()
 		//LOG_INFO("Omega Race NMI Interrupt");
 	}
 }
-void nvram_handler(void* file, int read_or_write)
-{
-	if (read_or_write)
-	{
-		LOG_INFO("Writing NVRAM File");
-		osd_fwrite(file, orace_nvram, 0xff);
-	}
-	else
-	{
-		if (file)
-		{
-			LOG_INFO("Reading NVRAM File");
-			osd_fread(file, orace_nvram, 0xff);
-		}
-		else
-		{
-			LOG_INFO("Creating NVRAM File");
-			memset(orace_nvram, 0, 0xff);
-		}
-	}
-}
 
 
 PORT_WRITE_HANDLER(omegrace_soundlatch_w)
@@ -457,6 +436,7 @@ int init_omega()
 {
 	//init_z80(OmegaRead, OmegaWrite, OmegaPortRead, OmegaPortWrite, 0);
 	////init_z80((SoundMemRead, SoundMemWrite, SoundPortRead, SoundPortWrite, 1);
+	nvram_set_region(orace_nvram, 0xff, 0x00);
 	dvg_start();
 	ay8910_sh_start(&ay8910_cfg);
 
@@ -630,7 +610,7 @@ AAE_DRIVER_SCREEN(1024, 768, 0, 1044, 0, 1024)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x8000, 0x1000)
-AAE_DRIVER_NVRAM(nvram_handler)
+AAE_DRIVER_NVRAM(generic_nvram_handler)
 AAE_DRIVER_LAYOUT_NONE()
 AAE_DRIVER_END()
 
@@ -682,7 +662,7 @@ AAE_DRIVER_SCREEN(1024, 768, 0, 1044, 0, 1024)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x8000, 0x1000)
-AAE_DRIVER_NVRAM(nvram_handler)
+AAE_DRIVER_NVRAM(generic_nvram_handler)
 AAE_DRIVER_LAYOUT_NONE()
 AAE_DRIVER_END()
 

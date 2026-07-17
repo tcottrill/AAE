@@ -20,7 +20,7 @@
 //
 // Notes:
 // - Uses CreateConfiguredWindow() and WindowSetup for centralized window creation
-// - Requires utf8conv.h, sys_log.h, gl_basics.h, debug_draw.h, rawinput.h
+// - Requires utf8conv.h, sys_log.h, gl_basics.h, rawinput.h
 // - Supports ALT+ENTER toggle to fullscreen
 // - Supports resize and aspect enforcement via WM_SIZING/WM_SIZE
 // - Saves valid client and window rects for FBO scaling and restoration
@@ -38,7 +38,6 @@
 #include "utf8conv.h"
 #include "rawinput.h"
 #include "sys_gl.h"
-#include "debug_draw.h"
 #include "framework.h"
 #include "aae_emulator.h"
 #include "resource.h"
@@ -50,7 +49,7 @@
 #include "windows_util.h"
 #include "opengl_renderer.h"
 #include "aae_mame_driver.h"  // for global 'done'
-#include "os_basic.h"         // for osd_led_service_start/stop
+#include "led_service_handler.h"
 
 // -----------------------------------------------------------------------------
 // Globals
@@ -987,6 +986,13 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 	case WM_INPUT:
 		return RawInput_ProcessInput(hWnd, wParam, lParam);
+
+	case WM_DEVICECHANGE:
+		// Joystick hotplug: flag a rescan (performed on the next
+		// poll_joystick). Fires for any device-tree change; the handler
+		// is cheap and idempotent, so no filtering is needed here.
+		joystick_device_change();
+		break;
 	}
 
 	return DefWindowProc(hWnd, msg, wParam, lParam);
@@ -1063,6 +1069,9 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance,
 	wc.hCursor       = LoadCursor(nullptr, IDC_ARROW);
 	wc.hIcon         = LoadIcon(wc.hInstance, MAKEINTRESOURCE(IDI_ICON1));
 	wc.style         = CS_HREDRAW | CS_VREDRAW;
+	// Black background so any GDI erase (e.g. during a resize before a GL frame
+	// lands) paints black, never white.
+	wc.hbrBackground = reinterpret_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
 	RegisterClassW(&wc);
 
 	// -------------------------------------------------------------------------
@@ -1091,11 +1100,10 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance,
 	SendMessage(g_hWnd, WM_SETICON, ICON_SMALL, (LPARAM)hIcon);
 	SendMessage(g_hWnd, WM_SETICON, ICON_BIG,   (LPARAM)hIcon);
 
-	ShowWindow(g_hWnd, nCmdShow);
-	UpdateWindow(g_hWnd);
-
-	// Assume focus because we just showed the window
-	g_windowSetup.isFocused = true;
+	// NOTE: the window is created hidden here on purpose. We do not ShowWindow()
+	// until after the OpenGL context exists and we have presented one black
+	// frame (see below), so the first pixels the user ever sees are black
+	// instead of an uninitialized white client area.
 
 	SaveAndDisableAccessibilityPopups();
 
@@ -1122,6 +1130,19 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance,
 		LOG_ERROR("Failed to initialize OpenGL");
 		return -1;
 	}
+
+	// Present one black frame into the front buffer *before* the window is ever
+	// visible, so the first thing the user sees is black, not white. Our
+	// WM_ERASEBKGND handler returns 1, so GDI never repaints over this.
+	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+	glClear(GL_COLOR_BUFFER_BIT);
+	GLSwapBuffers();
+
+	ShowWindow(g_hWnd, nCmdShow);
+	UpdateWindow(g_hWnd);
+
+	// Assume focus because we just showed the window
+	g_windowSetup.isFocused = true;
 
 	// -------------------------------------------------------------------------
 	// Step 4: Save a valid windowedRect for fullscreen restore.

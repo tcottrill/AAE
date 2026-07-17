@@ -4,7 +4,7 @@
 #include "aae_mame_driver.h"
 #include "colordefs.h"
 
-extern int translucency;  // translucent vectors  
+extern int translucency;  // translucent vectors
 
 int vector_update();
 int vector_start();
@@ -17,6 +17,4 @@ float vector_get_flicker(void);
 void vector_set_beam(float _beam);
 float vector_get_beam(void);
 
-
 #endif
-

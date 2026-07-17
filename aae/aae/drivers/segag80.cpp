@@ -1,14 +1,14 @@
 //==========================================================================
-// AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME 
-// code, 0.29 through .90 mixed with code of my own. This emulator was 
-// created solely for my amusement and learning and is provided only 
-// as an archival experience. 
-// 
-// All MAME code used and abused in this emulator remains the copyright 
+// AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME
+// code, 0.29 through .90 mixed with code of my own. This emulator was
+// created solely for my amusement and learning and is provided only
+// as an archival experience.
+//
+// All MAME code used and abused in this emulator remains the copyright
 // of the dedicated people who spend countless hours creating it. All
 // MAME code should be annotated as belonging to the MAME TEAM.
-// 
-// THE CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.  
+//
+// THE CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.
 //==========================================================================
 
 //NOTE: SegaG80 decryption fixed with new changes to the z80 ppc handling.
@@ -20,16 +20,13 @@
 #include "aae_mame_driver.h"
 #include "driver_registry.h"
 
-
 ART_START(elim2art)
 ART_LOAD("elim2.zip", "eliminator_bezel.png", ART_TEX, 3)
 ART_END
 
-
 ART_START(spacfuryart)
 ART_LOAD("spacfury.zip", "space_fury_bezel.png", ART_TEX, 3)
 ART_END
-
 
 ART_START(startrekart)
 ART_LOAD("startrek.zip", "startrek.png", ART_TEX, 3)
@@ -51,21 +48,13 @@ void sega_interrupt() {
 }
 
 extern void (*sega_decrypt)(int, unsigned int*);
-
 int NUM_SPEECH_SAMPLES;
-
-extern char* gamename[];
-extern int gamenum;
-
-
 unsigned char* sega_vectorram;
 
 //INPUT VARIABLES
 unsigned char mult1;
 unsigned short result;
 unsigned char ioSwitch;
-
-
 
 /***************************************************************************
 
@@ -81,7 +70,6 @@ static int coin_routine(int bits)
 }
 */
 
-
 READ_HANDLER(SoundRam)
 {
 	return 0x00;
@@ -92,10 +80,9 @@ WRITE_HANDLER(sega_mem_w)
 	int op = 0;
 	int page = 0;
 	int val = 0;
-	int offset = 0;
 	unsigned int bad = 0;
 
-	uint8_t *MEM = Machine->memory_region[CPU0];
+	uint8_t* MEM = Machine->memory_region[CPU0];
 
 	val = cpu_getppc();
 
@@ -108,15 +95,12 @@ WRITE_HANDLER(sega_mem_w)
 			page = (MEM[(val + 2)] & 0xFF) << 8;
 			(*sega_decrypt)(val, &bad);
 
-			offset = (page & 0xFF00) | (bad & 0x00FF);
-			//LOG_INFO("VAL %x, OP %x BAD %x PAGE %x ADDRESS %x OFFSET %x", val, op, bad, page, address, offset);
-			address = offset;
+			address = (page & 0xFF00) | (bad & 0x00FF);
 		}
 	}
-	if ((address >= 0x0000) && (address <= 0xbfff)) { ; }
-	else if (address >= 0xc800 && address <= 0xefff) { MEM[address] = data; }
+	if (address >= 0xc800 && address <= 0xefff)
+		MEM[address] = data;
 }
-
 
 PORT_READ_HANDLER(sega_sh_r)
 {
@@ -125,7 +109,6 @@ PORT_READ_HANDLER(sega_sh_r)
 	else
 		return 0x80;
 }
-
 
 PORT_READ_HANDLER(sega_mult_r)
 {
@@ -261,16 +244,15 @@ void run_tacscan(void)
 	tacscan_sh_update();
 }
 
-
 MEM_WRITE(SegaWrite)
-MEM_ADDR( 0x0000,  0xc7ff, MWA_ROM )
-MEM_ADDR( 0x0000,  0xffff, sega_mem_w )
+MEM_ADDR(0x0000, 0xc7ff, MWA_ROM)
+MEM_ADDR(0x0000, 0xffff, sega_mem_w)
 MEM_END
 
 MEM_READ(SegaRead)
-MEM_ADDR( 0xe000, 0xefff, MRA_RAM )
-MEM_ADDR( 0xd000, 0xdfff, SoundRam )
-MEM_ADDR( 0xf000, 0xffff, SoundRam )
+MEM_ADDR(0xe000, 0xefff, MRA_RAM)
+MEM_ADDR(0xd000, 0xdfff, SoundRam)
+MEM_ADDR(0xf000, 0xffff, SoundRam)
 MEM_END
 
 PORT_READ(SpacfuryPortRead)
@@ -354,7 +336,6 @@ PORT_END
 
 int init_spacfury()
 {
-	//init_z80((SegaRead, SegaWrite, SpacfuryPortRead, SpacfuryPortWrite, 0);
 	NUM_SPEECH_SAMPLES = NUM_SPACFURY_SPEECH;
 	sega_security(64);
 	sega_vh_start(0);
@@ -364,7 +345,6 @@ int init_spacfury()
 
 int init_tacscan()
 {
-	//init_z80((SegaRead, SegaWrite, G80SpinPortRead, TacScanPortWrite, CPU0);
 	sega_vh_start(1);
 	sega_security(76);
 	init_segag80();
@@ -373,7 +353,6 @@ int init_tacscan()
 
 int init_zektor()
 {
-	//init_z80((SegaRead, SegaWrite, G80SpinPortRead, ZektorPortWrite, CPU0);
 	NUM_SPEECH_SAMPLES = NUM_ZEKTOR_SPEECH;
 	sega_security(82);
 	sega_vh_start(0);
@@ -382,7 +361,6 @@ int init_zektor()
 }
 int init_startrek()
 {
-	//init_z80((SegaRead, SegaWrite, G80SpinPortRead, StarTrekPortWrite, 0);
 	NUM_SPEECH_SAMPLES = NUM_STARTREK_SPEECH;
 	sega_security(64);
 	sega_vh_start(0);
@@ -392,7 +370,6 @@ int init_startrek()
 
 int init_elim2()
 {
-	//init_z80((SegaRead, SegaWrite, Elim2PortRead, ElimPortWrite, 0);
 	sega_security(70);
 	sega_vh_start(0);
 	init_segag80();
@@ -401,7 +378,6 @@ int init_elim2()
 
 int init_elim4()
 {
-	//init_z80((SegaRead, SegaWrite, Elim4PortRead, ElimPortWrite, 0);
 	sega_security(76);
 	sega_vh_start(0);
 	init_segag80();
@@ -421,8 +397,8 @@ void end_segag80(void)
 	sega_sh_stop();
 	cache_clear();
 	vector_clear_list();
+	sega_vectorram = nullptr;
 }
-
 
 static const char* zektor_samples[] = {
 	"zektor.zip",
@@ -645,6 +621,14 @@ static const char* spacfury_samples[] = {
 		PORT_DIPSETTING(	0xe0, DEF_STR ( 1C_5C ) ) \
 		PORT_DIPSETTING(	0x10, DEF_STR ( 1C_6C ) )
 
+	/* Fake input port (no memory handler maps it) exposing the video renderer
+	   choice. Read once at reset by sega_vh_start(): Accurate (default) or
+	   Smoothed. See SegaG80vid.cpp. */
+#define VIDEOTYPE PORT_START("VIDEO") \
+		PORT_DIPNAME( 0x01, 0x00, "Video Type" ) \
+		PORT_DIPSETTING(	0x00, "Accurate" ) \
+		PORT_DIPSETTING(	0x01, "Smoothed" )
+
 INPUT_PORTS_START(spacfury)
 PORT_START("IN0")	/* IN0 - port 0xf8 */
 /* The next bit is referred to as the Service switch in the self test - it just adds a credit */
@@ -707,6 +691,8 @@ PORT_BIT(0x10, IP_ACTIVE_HIGH, IPT_BUTTON2 | IPF_PLAYER2)
 PORT_BIT(0x20, IP_ACTIVE_LOW, IPT_BUTTON1 | IPF_PLAYER2)
 PORT_BIT(0x40, IP_ACTIVE_LOW, IPT_JOYSTICK_LEFT | IPF_PLAYER2)
 PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_JOYSTICK_RIGHT | IPF_PLAYER2)
+
+VIDEOTYPE
 INPUT_PORTS_END
 
 INPUT_PORTS_START(zektor)
@@ -764,6 +750,8 @@ COINAGE
 
 PORT_START("IN8")		/* IN8 - FAKE port for the dial */
 PORT_ANALOG(0xff, 0x00, IPT_DIAL | IPF_CENTER, 50, 10, 0, 0)
+
+VIDEOTYPE
 INPUT_PORTS_END
 
 INPUT_PORTS_START(startrek)
@@ -824,6 +812,8 @@ COINAGE
 
 PORT_START("FAKE2")		/* IN8 - dummy port for the dial */
 PORT_ANALOG(0xff, 0x00, IPT_DIAL | IPF_CENTER, 100, 10, 0, 0)
+
+VIDEOTYPE
 INPUT_PORTS_END
 
 INPUT_PORTS_START(tacscan)
@@ -882,6 +872,8 @@ COINAGE
 
 PORT_START("FAKE2")		/* IN8 - FAKE port for the dial */
 PORT_ANALOG(0xff, 0x00, IPT_DIAL | IPF_CENTER, 100, 10, 0, 0)
+
+VIDEOTYPE
 INPUT_PORTS_END
 
 INPUT_PORTS_START(elim2)
@@ -940,6 +932,8 @@ PORT_DIPSETTING(0x80, DEF_STR(Upright))
 PORT_DIPSETTING(0x00, DEF_STR(Cocktail))
 
 COINAGE
+
+VIDEOTYPE
 INPUT_PORTS_END
 
 INPUT_PORTS_START(elim4)
@@ -1011,8 +1005,9 @@ PORT_BIT_IMPULSE(0x02, IP_ACTIVE_HIGH, IPT_COIN2, 3)
 PORT_BIT_IMPULSE(0x04, IP_ACTIVE_HIGH, IPT_COIN3, 3)
 PORT_BIT_IMPULSE(0x08, IP_ACTIVE_HIGH, IPT_COIN4, 3)
 PORT_BIT(0xf0, IP_ACTIVE_HIGH, IPT_UNUSED)
-INPUT_PORTS_END
 
+VIDEOTYPE
+INPUT_PORTS_END
 
 /////////////// SEGA G80 ROMS
 //
@@ -1273,7 +1268,6 @@ ROM_LOAD("s-c.xyt-u39", 0x0000, 0x0400, CRC(56484d19) SHA1(61f43126fdcfc230638ed
 ROM_LOAD("pr-82.cpu-u15", 0x0400, 0x0020, CRC(c609b79e) SHA1(49dbcbb607079a182d7eb396c0da097166ea91c9))   // CPU board addressing
 ROM_END
 
-
 // Zektor
 AAE_DRIVER_BEGIN(drv_zektor, "zektor", "Zektor")
 AAE_DRIVER_ROM(rom_zektor)
@@ -1302,9 +1296,9 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_NONE_ENTRY()
 )
 
-AAE_DRIVER_VIDEO_CORE(40,0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT)
+AAE_DRIVER_VIDEO_CORE(40, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT)
 //AAE_DRIVER_SCREEN(1024, 768, 512, 1536, 552, 1464)
-AAE_DRIVER_SCREEN(1024,768, 511, 1536, 640 - 32, 1408 + 32)
+AAE_DRIVER_SCREEN(1024, 768, 511, 1536, 640 - 32, 1408 + 32)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0, 0)
@@ -1340,7 +1334,7 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_NONE_ENTRY()
 )
 
-AAE_DRIVER_VIDEO_CORE(40,0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_SWAP_XY)
+AAE_DRIVER_VIDEO_CORE(40, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_SWAP_XY)
 //AAE_DRIVER_SCREEN(1024, 768, 512, 1536, 552, 1464)
 AAE_DRIVER_SCREEN(1024, 76, 512, 1536, 640 - 32, 1408 + 32)
 
@@ -1379,7 +1373,7 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_NONE_ENTRY()
 )
 
-AAE_DRIVER_VIDEO_CORE(40,0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT | ORIENTATION_FLIP_Y)
+AAE_DRIVER_VIDEO_CORE(40, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT | ORIENTATION_FLIP_Y)
 AAE_DRIVER_SCREEN(1024, 768, 511, 1536, 552, 1464)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
@@ -1416,7 +1410,7 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_NONE_ENTRY()
 )
 
-AAE_DRIVER_VIDEO_CORE(40,0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT | ORIENTATION_FLIP_Y)
+AAE_DRIVER_VIDEO_CORE(40, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT | ORIENTATION_FLIP_Y)
 AAE_DRIVER_SCREEN(1024, 768, 511, 1536, 640 - 32, 1408 + 32)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
@@ -1453,7 +1447,7 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_NONE_ENTRY()
 )
 
-AAE_DRIVER_VIDEO_CORE(40,0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT | ORIENTATION_FLIP_Y)
+AAE_DRIVER_VIDEO_CORE(40, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT | ORIENTATION_FLIP_Y)
 AAE_DRIVER_SCREEN(1024, 768, 511, 1536, 640 - 32, 1408 + 32)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
@@ -1490,7 +1484,7 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_NONE_ENTRY()
 )
 
-AAE_DRIVER_VIDEO_CORE(40,0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT | ORIENTATION_FLIP_Y)
+AAE_DRIVER_VIDEO_CORE(40, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT | ORIENTATION_FLIP_Y)
 AAE_DRIVER_SCREEN(1024, 768, 511, 1536, 640 - 32, 1408 + 32)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
@@ -1527,7 +1521,7 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_NONE_ENTRY()
 )
 
-AAE_DRIVER_VIDEO_CORE(40,0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT)
+AAE_DRIVER_VIDEO_CORE(40, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT)
 AAE_DRIVER_SCREEN(1024, 768, 505, 1536, 640 - 32, 1408 + 32)
 
 AAE_DRIVER_RASTER_NONE()
@@ -1565,7 +1559,7 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_NONE_ENTRY()
 )
 
-AAE_DRIVER_VIDEO_CORE(40,0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT)
+AAE_DRIVER_VIDEO_CORE(40, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT)
 AAE_DRIVER_SCREEN(1024, 768, 512, 1536, 640 - 32, 1408 + 32)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
@@ -1602,7 +1596,7 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_NONE_ENTRY()
 )
 
-AAE_DRIVER_VIDEO_CORE(40,0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT)
+AAE_DRIVER_VIDEO_CORE(40, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT)
 AAE_DRIVER_SCREEN(1024, 768, 512, 1536, 640 - 32, 1408 + 32)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
@@ -1639,7 +1633,7 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_NONE_ENTRY()
 )
 
-AAE_DRIVER_VIDEO_CORE(40,0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT)
+AAE_DRIVER_VIDEO_CORE(40, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT)
 AAE_DRIVER_SCREEN(1024, 768, 512, 1536, 640 - 32, 1408 + 32)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
@@ -1676,7 +1670,7 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_NONE_ENTRY()
 )
 
-AAE_DRIVER_VIDEO_CORE(40,0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT)
+AAE_DRIVER_VIDEO_CORE(40, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT)
 AAE_DRIVER_SCREEN(1024, 768, 512, 1536, 640 - 32, 1408 + 32)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()

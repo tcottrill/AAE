@@ -67,31 +67,33 @@ static int sound_latch_b = 0;
 //
 // The real Pleiads PCB has sounds that aren't part of the analog circuit:
 //   - Player shot: triggered by the i8085 SOD pin (SIM instruction)
-//   - Melody 1 (F r Elise): from Epson 7910E melody IC, stage 1
-//   - Melody 2 (Romance d'Amour): from Epson 7910E melody IC, stage 4
+//   - Melody 1 ("Two Minuets"): from Epson SVM7910E melody IC, stage 1
+//   - Melody 2 ("Dark Eyes"):   from Epson SVM7910E melody IC, stage 4
+//
+// The SVM7910E is a mask-programmed 2-tune melody IC. This variant holds
+//   Tune 1: "Two Minuets" -- the Minuet in G major / G minor pair from the
+//           Anna Magdalena Bach Notebook (Anh. 114/115, by Christian
+//           Petzold), played as a medley.
+//   Tune 2: "Dark Eyes" (Ochi Chornye), the Russian folk song.
+// (Same chip was also used on the Lupin III arcade board, and in Japanese
+// telephones/train chimes -- tunes confirmed from the chip's Japanese
+// documentation trail and pitch analysis of the PCB recordings.)
 //
 // None of these are emulated in MAME. We use WAV samples from PCB recordings.
 //
 // Sample list (indices are assigned in order, starting from 0):
 //   0 = shot.wav        - player laser shot (one-shot, SOD triggered)
-//   1 = melody1.wav     - F r Elise / stage 1 background music (looping)
-//   2 = melody2.wav     - Romance d'Amour / stage 4 music (looping)
+//   1 = melody1.wav     - Two Minuets / stage 1 background music (looping)
+//   2 = melody2.wav     - Dark Eyes / stage 4 landing music (looping)
 //
-// Add more samples as needed -- just add the filename to the list below
-// and use the corresponding index with the helper functions.
-//
-// Channels (voice-path, direct XAudio2):
-//   Channel 0 = shot
-//   Channel 1 = melody
-//   (Channels 5,6 are used by TMS36XX and pleiads custom audio streams)
 // ============================================================================
 
 static const char* pleiads_samples[] =
 {
 	"pleiads.zip",      // archive name (must be first)
 	"shot.wav",         // sample 0 - player shot
-	"melody1.wav",      // sample 1 - F r Elise
-	"melody2.wav",      // sample 2 - Romance d'Amour
+	"melody1.wav",      // sample 1 - Two Minuets (Petzold/Bach Anh. 114-115)
+	"melody2.wav",      // sample 2 - Dark Eyes (Ochi Chornye)
 	0                   // end of list
 };
 
@@ -143,56 +145,59 @@ static void pleiads_melody_stop(void)
 }
 
 // --- Wrapper for sound_control_b that also drives melody samples ---
-// Bits 6-7 of latch_b select the "pitch" / melody on real hardware.
-// On a Phoenix PCB with MM6221AA, these bits select tunes 0-3.
-// On a Pleiads PCB with Epson 7910E, these bits trigger the melody IC.
-// We intercept the write here, trigger melody samples, then forward
-// to the real pleiads_sound_control_b_w for analog sound processing.
-/*
+//
+// From disassembly of the Pleiads program ROMs (2026-07):
+// The game never writes the sound latches directly from game code. The
+// RST6.5 (vblank) handler calls $2740, which flushes RAM shadow copies to
+// the hardware every frame ($438C -> $6000, $438D -> $6800 at ROM $27A8),
+// resets both shadows to the idle value $0F, then recomputes them ($3B43).
+//
+// The melody select is bits 6-7 of latch B, computed at $3B00 from the
+// stage counter ($43B8 & 0x0E) and OR'd into the shadow at $3B55 every
+// gameplay frame:
+//   stage & 0x0E == 0 (phase 1, birds over city) -> 00 = Two Minuets
+//   stage & 0x0E == 6 (phase 4, landing)         -> 01 = Dark Eyes
+//   all other stages                             -> 10 = melody off
+//
+// Note the idle value $0F also has bits 6-7 = 00, aliasing "melody 1".
+// The real PCB is silent in attract mode (verified against the board), so
+// the melody chip must be gated by more than these two bits. We gate on
+// two of the game's own RAM variables:
+//   $43A4 = master game state (jump table at $040E). 3 = playing. The
+//           ROM's music routine ($3A70) only computes the melody bits in
+//           state 3. BUT the first half of attract mode is a live demo
+//           that also runs in state 3, so state alone is not enough.
+//   $43A2 = players in the current game. Written 1/2 by the start-button
+//           handler ($02D4), cleared to 0 by the attract handler ($0B85).
+//           The demo plays with 0 here -- this separates demo from game.
+// 
+// There might be a better way to gate the melody, but this works and matches the real PCB.
+// Hopefully someone can come up with a better solution later that checks address lines or 
+// the melody chip's enable pin(s), but for now this works.
+// The reset/game-over path ($03E0) writes $8F (bits = 10), stopping the
+// melody explicitly.
+
+static int pleiads_last_melody_select = -1;
+
 WRITE_HANDLER(pleiads_sound_control_b_wrapper)
 {
-	int melody_select = (data >> 6) & 3;
-	LOG_INFO("MELODY SELECT Data address %x data %x", address, data);
-	// Map pitch bits to melody samples:
-	//   0 = no melody (silence)
-	//   1 = melody 1 (F r Elise)
-	//   2 = melody 2 (Romance d'Amour)
-	//   3 = same as 2 (hardware ties them together)
-	switch (melody_select) {
-	case 0:
-		pleiads_melody_stop();
-		break;
-	case 1:
-		pleiads_melody_start(PLEIADS_SND_MELODY1);
-		break;
-	case 2:
-	case 3:
-		pleiads_melody_start(PLEIADS_SND_MELODY2);
-		break;
-	}
+	int state = current_ram_page ? current_ram_page[0x3A4] : -1;
+	int players = current_ram_page ? current_ram_page[0x3A2] : 0;
+	int select = (data >> 6) & 3;
 
-	// Forward to the real handler for TMS3615 notes + analog sound
-	pleiads_sound_control_b_w(address, data, psMemWrite);
-}
-*/
+	// Melody only sounds during a real game: state 3 (playing) with at
+	// least one credited player. The attract demo runs state 3 too, but
+	// with $43A2 == 0.
+	if (state != 3 || players == 0)
+		select = 2;
 
-WRITE_HANDLER(pleiads_sound_control_b_wrapper)
-{
-	static bool melody1_started = false;
-
-	LOG_INFO("MELODY SELECT Data address %x data %x", address, data);
-
-	if (data == 0x0f && !melody1_started) {
-		// First time we see 0x0f - start melody 1
-		melody1_started = true;
-		//pleiads_melody_start(PLEIADS_SND_MELODY1);
-		sample_start(1, 1, 1);
-	}
-	else if (data == 0x2f && melody1_started) {
-		// First time we see 0x8f after melody 1 started - stop it
-		melody1_started = false;
-		//pleiads_melody_stop();
-		sample_stop(1);
+	if (select != pleiads_last_melody_select) {
+		pleiads_last_melody_select = select;
+		switch (select) {
+		case 0:  pleiads_melody_start(PLEIADS_SND_MELODY1); break; // Two Minuets
+		case 1:  pleiads_melody_start(PLEIADS_SND_MELODY2); break; // Dark Eyes
+		default: pleiads_melody_stop(); break;                     // 10/11 = off
+		}
 	}
 
 	// Forward to the real handler for TMS3615 notes + analog sound
@@ -469,7 +474,8 @@ READ_HANDLER(pleiads_input_port_0_r)
 		ret |= 0x08;
 		break;
 	default:
-		LOG_INFO("Unknown protection question %02X at %04X", pleiads_protection_question, cpu_getpc());
+		//LOG_INFO("Unknown protection question %02X at %04X", pleiads_protection_question, cpu_getpc());
+		break;
 	}
 	return ret;
 }
@@ -909,6 +915,7 @@ int init_pleiads(void) {
 	pleiads_audio_sh_start();
 	pleiads_sod_hooked = false;
 	pleiads_current_melody = -1;
+	pleiads_last_melody_select = -1;
 	return 0;
 }
 

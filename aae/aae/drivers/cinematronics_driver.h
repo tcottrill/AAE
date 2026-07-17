@@ -1,7 +1,6 @@
 #ifndef CINEMAT_H
 #define CINEMAT_H
 
-#include "osd_cpu.h"
 #include "deftypes.h"
 
 int init_cinemat();

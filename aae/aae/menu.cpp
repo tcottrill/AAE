@@ -10,6 +10,11 @@
 #include "os_input.h"
 #include "config.h"
 #include "colordefs.h"
+#include "mame_layout.h"      // Layout_ComputeGameAspect (GAME ASPECT menu item)
+#include "windows_util.h"     // WindowUtil_UpdateAspect
+#include "sys_log.h"
+#include "rawinput.h"         // RawInput_GetMouseCount/Name (multi-mouse menu)
+#include "joystick.h"         // joystick_device_count/get_display_name (INPUT DEVICES)
 
 #include <cmath>
 #include <cstdio>
@@ -17,6 +22,7 @@
 #include <vector>
 #include <string>
 #include <functional>
+
 #include <algorithm>
 
 // Regression guard: this file must never see OpenGL headers. If this fires,
@@ -61,9 +67,13 @@ namespace {
         GlobalJoy = 400,
         LocalJoy = 500,
         Analog = 600,
+        InputDevices = 650,
         DipSwitch = 700,
         Video = 800,
-        Audio = 900
+        Audio = 900,
+        MonoMonitor = 1000,
+        ColorMonitor = 1050,
+        VectorMonitor = 1100
     };
 
     // Constants for Layout
@@ -71,6 +81,12 @@ namespace {
     constexpr float MENU_LINE_HEIGHT = 28.0f;
     constexpr int   VISIBLE_ITEMS   = 16;
     constexpr float VALUE_X_OFFSET  = 350.0f;
+    // Maximum width of the value column. Values longer than this (long HID
+    // device names) marquee-scroll within the field instead of being
+    // truncated, so every page keeps the standard left margin. Sized so
+    // MENU_X + VALUE_X_OFFSET + VALUE_W_MAX + ARROW_EXTRA + PAD_RIGHT stays
+    // inside the 1024-unit overlay.
+    constexpr float VALUE_W_MAX     = 370.0f;
 
     // Visual Styling Constants
     constexpr float TITLE_Y      = 650.0f;
@@ -154,6 +170,15 @@ struct MenuItem {
     // If true, this item cannot be adjusted. It is rendered in a dimmed color
     // and no arrows are drawn. Use this for artwork options that did not load.
     bool isDisabled = false;
+
+    // Optional LIVE disabled predicate, re-evaluated every draw/input. Use
+    // when the disabled state depends on another setting the user can change
+    // without leaving the menu (e.g. COLOR MONITOR SETUP greys out while a
+    // RASTER EFFECT texture is selected). Overrides isDisabled when set.
+    std::function<bool()> isDisabledFn;
+
+    // Effective disabled state: live predicate if present, else the baked flag.
+    bool disabled() const { return isDisabledFn ? isDisabledFn() : isDisabled; }
 
     // Optional short reason shown after the value when the item is disabled
     // (e.g. "NOT LOADED"). Keep it short -- it has to fit in the value column.
@@ -347,6 +372,7 @@ public:
     void SetStatus(int on);
     int  GetLevel() const   { return static_cast<int>(m_currentMenuId); }
     void SetLevelTop();
+    void NavigateBack();
 
     void Draw();
 
@@ -379,9 +405,13 @@ private:
     void RebuildCurrentMenu();
     void BuildRootMenu();
     void BuildVideoMenu();
+    void BuildVectorMonitorMenu();
+    void BuildMonoMonitorMenu();
+    void BuildColorMonitorMenu();
     void BuildSoundMenu();
     void BuildDipSwitchMenu();
     void BuildAnalogMenu();
+    void BuildInputDevicesMenu();
     void BuildInputMenu(bool isGlobal, bool isJoystick);
 
     // Helpers
@@ -419,6 +449,23 @@ void MenuManager::SetLevelTop() {
     TransitionTo(MenuID::Root);
 }
 
+// Go back ONE level: nested submenus return to their parent menu, top-level
+// submenus return to the root. Used by ESC / joypad-Back while the menu is
+// open, so leaving e.g. MONO MONITOR SETUP lands in VIDEO SETUP, not the
+// main menu. TransitionTo() saves the departing menu's settings.
+void MenuManager::NavigateBack() {
+    m_isPolling = false;
+    m_inputAssignmentHandler = nullptr;
+
+    MenuID parent = MenuID::Root;
+    if (m_currentMenuId == MenuID::VectorMonitor ||
+        m_currentMenuId == MenuID::MonoMonitor ||
+        m_currentMenuId == MenuID::ColorMonitor)
+        parent = MenuID::Video;
+
+    TransitionTo(parent);
+}
+
 void MenuManager::TransitionTo(MenuID newId) {
     // Save the menu we are leaving (unless we are rebuilding in place).
     if (m_currentMenuId != newId) {
@@ -444,11 +491,15 @@ std::string MenuManager::GetTitleText() const {
     if (m_currentMenuId == MenuID::Video) {
         return emulator_is_gui_active() ? "VIDEO SETUP (GLOBAL)" : "VIDEO SETUP";
     }
+    if (m_currentMenuId == MenuID::MonoMonitor) return "MONO MONITOR (B/W RASTER)";
+    if (m_currentMenuId == MenuID::ColorMonitor) return "COLOR MONITOR (COLOR RASTER)";
+    if (m_currentMenuId == MenuID::VectorMonitor) return "VECTOR MONITOR SETUP";
     if (m_currentMenuId == MenuID::GlobalKeys) return "KEY CONFIG (GLOBAL)";
     if (m_currentMenuId == MenuID::LocalKeys)  return "KEY CONFIG (THIS GAME)";
     if (m_currentMenuId == MenuID::GlobalJoy)  return "JOY CONFIG (GLOBAL)";
     if (m_currentMenuId == MenuID::LocalJoy)   return "JOY CONFIG (THIS GAME)";
     if (m_currentMenuId == MenuID::Analog)     return "ANALOG SETTINGS";
+    if (m_currentMenuId == MenuID::InputDevices) return "INPUT DEVICES";
     if (m_currentMenuId == MenuID::DipSwitch)  return "DIPSWITCH MENU";
     return "CONFIGURATION";
 }
@@ -473,10 +524,14 @@ void MenuManager::RecalculateLayout() {
         float totalW = labelW;
 
         if (!item.isLink && item.getValueDisplay) {
-            std::string val = item.isDisabled
+            std::string val = item.disabled()
                 ? item.disabledReason   // use the reason string for width calc
                 : item.getValueDisplay();
-            totalW = VALUE_X_OFFSET + (float)val.length() * CHAR_PITCH + ARROW_EXTRA;
+            // Values wider than VALUE_W_MAX marquee within the field, so the
+            // box never needs to grow past it.
+            float valW = (float)val.length() * CHAR_PITCH;
+            if (valW > VALUE_W_MAX) valW = VALUE_W_MAX;
+            totalW = VALUE_X_OFFSET + valW + ARROW_EXTRA;
         }
 
         if (totalW > maxW) maxW = totalW;
@@ -494,16 +549,18 @@ void MenuManager::SaveConfigIfRequired(MenuID fromId) {
 
     if (fromId == MenuID::Video) {
         // Global display options always go to aae.ini (path 0).
-        my_set_config_int("window", "fullscreen", config.windowed, 0);
-        my_set_config_string("window", "aspect_ratio",
-            config.aspect ? config.aspect : "4:3", 0);
+        // Window mode saves from the LIVE state (covers ALT+ENTER changes
+        // made outside the menu) and always globally -- never per-game.
+        my_set_config_int("window", "fullscreen",
+            GetWindowSetup().borderlessFullscreen ? 1 : 0, 0);
+        my_set_config_string("main", "game_aspect",
+            config.game_aspect ? config.game_aspect : "AUTO", inGui ? 0 : gamenum);
         my_set_config_int("main", "screenw",     config.screenw,   0);
         my_set_config_int("main", "screenh",     config.screenh,   0);
         my_set_config_int("main", "gamma",       config.gamma,     0);
         my_set_config_int("main", "bright",      config.bright,    0);
         my_set_config_int("main", "contrast",    config.contrast,  0);
         my_set_config_int("main", "force_vsync", config.forcesync, 0);
-        my_set_config_int("main", "drawzero",    config.drawzero,  0);
         my_set_config_int("main", "widescreen",  config.widescreen,0);
         my_set_config_int("main", "priority",    config.priority,  0);
         my_set_config_int("main", "kbleds",      config.kbleds,    0);
@@ -511,6 +568,37 @@ void MenuManager::SaveConfigIfRequired(MenuID fromId) {
         // Game-specific visual overrides.
         // In GUI mode these also go to aae.ini (path 0) so they become the
         // new global defaults rather than being silently written to gui.ini.
+        const int vidPath = inGui ? 0 : gamenum;
+        my_set_config_int("main", "artwork",     config.artwork,  vidPath);
+        my_set_config_int("main", "overlay",     config.overlay,  vidPath);
+        my_set_config_int("main", "bezel",       config.bezel,    vidPath);
+        my_set_config_int("main", "artcrop",     config.artcrop,  vidPath);
+    }
+    else if (fromId == MenuID::InputDevices) {
+        // Device-to-player assignments are machine-level settings: always
+        // global (aae.ini [input]). The device path is the stable identity;
+        // the index is a same-session convenience/fallback.
+        for (int p = 0; p < 4; p++) {
+            const std::string mbase = "mouse_player" + std::to_string(p + 1);
+            my_set_config_int("input", mbase.c_str(), config.mouse_player[p], 0);
+            my_set_config_string("input", (mbase + "_path").c_str(),
+                config.mouse_player_path[p], 0);
+
+            const std::string kbase = "kbd_player" + std::to_string(p + 1);
+            my_set_config_int("input", kbase.c_str(), config.kbd_player[p], 0);
+            my_set_config_string("input", (kbase + "_path").c_str(),
+                config.kbd_player_path[p], 0);
+
+            const std::string jbase = "joy_player" + std::to_string(p + 1);
+            my_set_config_int("input", jbase.c_str(), config.joy_player[p], 0);
+            my_set_config_string("input", (jbase + "_id").c_str(),
+                config.joy_player_id[p], 0);
+        }
+    }
+    else if (fromId == MenuID::VectorMonitor) {
+        // Vector monitor / beam settings. Same persistence rules as the old
+        // Video-menu placement: per-game overrides during gameplay, global
+        // defaults (aae.ini) when adjusted from the GUI frontend.
         const int vidPath = inGui ? 0 : gamenum;
         my_set_config_int("main", "vectortrail", config.vectrail, vidPath);
         my_set_config_int("main", "vectorglow",  config.vecglow,  vidPath);
@@ -520,12 +608,43 @@ void MenuManager::SaveConfigIfRequired(MenuID fromId) {
         my_set_config_float("main", "line_smoothing",  config.line_smoothing,  vidPath);
         my_set_config_float("main", "corner_strength", config.corner_strength, vidPath);
         my_set_config_int  ("main", "shots_textured",  config.shots_textured,  vidPath);
-        my_set_config_int("main", "artwork",     config.artwork,  vidPath);
-        my_set_config_int("main", "overlay",     config.overlay,  vidPath);
-        my_set_config_int("main", "bezel",       config.bezel,    vidPath);
-        my_set_config_int("main", "artcrop",     config.artcrop,  vidPath);
+        my_set_config_int("main", "drawzero", config.drawzero, 0);
+    }
+    else if (fromId == MenuID::MonoMonitor) {
+        // Same persistence rules as the Video menu: adjusted from the GUI
+        // frontend these save as global defaults (aae.ini [monitormono]);
+        // adjusted during gameplay they save to the game's own ini as
+        // per-game overrides (setup_config reads them back per game).
+        const int monoPath = inGui ? 0 : gamenum;
+        my_set_config_int  ("monitormono", "mono_enable",          config.mono_enable,          monoPath);
+        my_set_config_float("monitormono", "mono_blur_h",          config.mono_blur_h,          monoPath);
+        my_set_config_float("monitormono", "mono_blur_v",          config.mono_blur_v,          monoPath);
+        my_set_config_float("monitormono", "mono_halation",        config.mono_halation,        monoPath);
+        my_set_config_float("monitormono", "mono_halation_radius", config.mono_halation_radius, monoPath);
+        my_set_config_float("monitormono", "mono_scanline",        config.mono_scanline,        monoPath);
+        my_set_config_float("monitormono", "mono_contrast",        config.mono_contrast,        monoPath);
+        my_set_config_float("monitormono", "mono_brightness",      config.mono_brightness,      monoPath);
+        my_set_config_int  ("monitormono", "mono_tint",            config.mono_tint,            monoPath);
+    }
+    else if (fromId == MenuID::ColorMonitor) {
+        // Same persistence rules as the Video menu: global from the GUI
+        // frontend, per-game override ini during gameplay.
+        const int colPath = inGui ? 0 : gamenum;
         my_set_config_string("main", "raster_effect",
-            config.raster_effect ? config.raster_effect : "NONE", vidPath);
+            config.raster_effect ? config.raster_effect : "NONE", colPath);
+        my_set_config_int  ("monitorcolor", "color_enable",          config.color_enable,          colPath);
+        my_set_config_float("monitorcolor", "color_blur_h",          config.color_blur_h,          colPath);
+        my_set_config_float("monitorcolor", "color_blur_v",          config.color_blur_v,          colPath);
+        my_set_config_float("monitorcolor", "color_converge",        config.color_converge,        colPath);
+        my_set_config_float("monitorcolor", "color_halation",        config.color_halation,        colPath);
+        my_set_config_float("monitorcolor", "color_halation_radius", config.color_halation_radius, colPath);
+        my_set_config_float("monitorcolor", "color_scanline",        config.color_scanline,        colPath);
+        my_set_config_float("monitorcolor", "color_contrast",        config.color_contrast,        colPath);
+        my_set_config_float("monitorcolor", "color_brightness",      config.color_brightness,      colPath);
+        my_set_config_float("monitorcolor", "color_saturation",      config.color_saturation,      colPath);
+        my_set_config_int  ("monitorcolor", "color_mask_type",       config.color_mask_type,       colPath);
+        my_set_config_float("monitorcolor", "color_mask_strength",   config.color_mask_strength,   colPath);
+        my_set_config_float("monitorcolor", "color_mask_scale",      config.color_mask_scale,      colPath);
     }
     else if (fromId == MenuID::Audio) {
         // In GUI mode audio saves go to aae.ini (path 0) as global defaults.
@@ -551,9 +670,13 @@ void MenuManager::RebuildCurrentMenu() {
     switch (m_currentMenuId) {
     case MenuID::Root:       BuildRootMenu();              break;
     case MenuID::Video:      BuildVideoMenu();             break;
+    case MenuID::MonoMonitor: BuildMonoMonitorMenu();      break;
+    case MenuID::ColorMonitor: BuildColorMonitorMenu();    break;
+    case MenuID::VectorMonitor: BuildVectorMonitorMenu();  break;
     case MenuID::Audio:      BuildSoundMenu();             break;
     case MenuID::DipSwitch:  BuildDipSwitchMenu();         break;
-    case MenuID::Analog:     BuildAnalogMenu();            break;
+    case MenuID::Analog:       BuildAnalogMenu();          break;
+    case MenuID::InputDevices: BuildInputDevicesMenu();    break;
     case MenuID::GlobalKeys: BuildInputMenu(true,  false); break;
     case MenuID::LocalKeys:  BuildInputMenu(false, false); break;
     case MenuID::GlobalJoy:  BuildInputMenu(true,  true);  break;
@@ -572,6 +695,7 @@ void MenuManager::BuildRootMenu() {
     m_items.push_back(MenuItem::Link("JOY CONFIG (GLOBAL)", [this]() { TransitionTo(MenuID::GlobalJoy);  }));
     m_items.push_back(MenuItem::Link("JOY CONFIG (THIS GAME)", [this]() { TransitionTo(MenuID::LocalJoy);   }));
     m_items.push_back(MenuItem::Link("ANALOG CONFIG", [this]() { TransitionTo(MenuID::Analog);     }));
+    m_items.push_back(MenuItem::Link("INPUT DEVICES", [this]() { TransitionTo(MenuID::InputDevices); }));
     m_items.push_back(MenuItem::Link("DIPSWITCHES", [this]() { TransitionTo(MenuID::DipSwitch);  }));
     m_items.push_back(MenuItem::Link(inGui ? "VIDEO SETUP (GLOBAL)" : "VIDEO SETUP",
         [this]() { TransitionTo(MenuID::Video);      }));
@@ -580,22 +704,26 @@ void MenuManager::BuildRootMenu() {
 }
 
 void MenuManager::BuildVideoMenu() {
-    m_items.push_back(MenuItem::Bool("FULLSCREEN", &config.windowed));
-
-    // Window aspect ratio stored as a stable static string so config.aspect
-    // always points to valid memory while the menu is alive.
-    static std::string s_windowAspect;
-    if (config.aspect && config.aspect[0])
-        s_windowAspect = config.aspect;
-    else
-        s_windowAspect = "4:3";
-
-    m_items.push_back(MenuItem::String(
-        "WINDOW ASPECT",
-        &s_windowAspect,
-        { "4:3", "5:4", "6:5", "16:10", "16:9" },
-        [](const std::string& v) { config.aspect = (char*)v.c_str(); }
-    ));
+    // FULLSCREEN reflects and drives the LIVE window state via the same
+    // borderless toggle ALT+ENTER uses (the old item only flipped a config
+    // int that nothing applied). Displayed from ws.borderlessFullscreen so
+    // it can never drift from reality, and saved GLOBALLY on menu exit --
+    // window mode is a machine preference, never per-game.
+    {
+        MenuItem fs;
+        fs.label = "FULLSCREEN";
+        fs.getValueDisplay = []() {
+            return std::string(GetWindowSetup().borderlessFullscreen ? "YES" : "NO");
+        };
+        fs.onAdjust = [](int) {
+            ToggleBorderlessFullscreen(win_get_window(), GetWindowSetup());
+            config.windowed = GetWindowSetup().borderlessFullscreen ? 1 : 0;
+        };
+        fs.onActivate = []() {};
+        fs.hasLeft  = []() { return GetWindowSetup().borderlessFullscreen; };
+        fs.hasRight = []() { return !GetWindowSetup().borderlessFullscreen; };
+        m_items.push_back(fs);
+    }
 
     // Resolution preset binding. Static so the index survives redraws.
     static int resIndex = 0;
@@ -635,105 +763,92 @@ void MenuManager::BuildVideoMenu() {
     // To re-enable any of them once the rendering code is wired up,
     // swap the Disabled() call for the commented-out original below it.
     // ------------------------------------------------------------------
-    m_items.push_back(MenuItem::Disabled("GAMMA"));
+   // m_items.push_back(MenuItem::Disabled("GAMMA"));
     // m_items.push_back(MenuItem::Integer("GAMMA",      &config.gamma,    50, 200));
 
-    m_items.push_back(MenuItem::Disabled("BRIGHTNESS"));
+   // m_items.push_back(MenuItem::Disabled("BRIGHTNESS"));
     // m_items.push_back(MenuItem::Integer("BRIGHTNESS", &config.bright,   50, 200));
 
-    m_items.push_back(MenuItem::Disabled("CONTRAST"));
+   // m_items.push_back(MenuItem::Disabled("CONTRAST"));
     // m_items.push_back(MenuItem::Integer("CONTRAST",   &config.contrast, 50, 200));
 
     m_items.push_back(MenuItem::Disabled("VSYNC"));
     // m_items.push_back(MenuItem::Bool("VSYNC",         &config.forcesync));
 
-    m_items.push_back(MenuItem::Disabled("DRAW 0 LINES"));
-    // m_items.push_back(MenuItem::Bool("DRAW 0 LINES",  &config.drawzero));
+    // GAME ASPECT: display aspect override. AUTO (the default) applies
+    // nothing -- every game keeps its natural computed aspect (rotated
+    // games portrait, yiear narrow, etc.). The fixed ratios are the common
+    // tweaks: 4:3 / 5:4 / 16:9 for horizontal games, 3:4 / 9:16 for
+    // rotated ones. Applies live via the same WindowUtil_UpdateAspect path
+    // run_game uses at launch; persists per-game during gameplay.
+    {
+        static std::string s_gameAspect;
+        if (config.game_aspect && config.game_aspect[0])
+            s_gameAspect = config.game_aspect;
+        else
+            s_gameAspect = "AUTO";
 
-    m_items.push_back(MenuItem::Integer("GAME ASPECT", &config.widescreen, 0, 3,
-        { "4:3", "5:4", "14:10", "16:9" }));
-    m_items.push_back(MenuItem::Integer("PHOSPHOR TRAIL", &config.vectrail, 0, 3,
-        { "NONE", "LITTLE", "MORE", "MAX" }));
-    m_items.push_back(MenuItem::Integer("VECTOR GLOW", &config.vecglow, 0, 25));
+        MenuItem ga = MenuItem::String(
+            "GAME ASPECT",
+            &s_gameAspect,
+            { "AUTO", "4:3", "3:4", "5:4", "16:9", "9:16" },
+            [](const std::string& v) {
+                config.game_aspect = (char*)v.c_str();
+                // Apply immediately, every flip -- in-game AND in the GUI
+                // frontend (there AUTO resolves to the frontend's own
+                // natural aspect, so cycling back always restores it).
+                float f = aspect_from_string(config.game_aspect);
+                if (f <= 0.0f)
+                    f = Layout_ComputeGameAspect();   // AUTO: natural aspect
+                LOG_INFO("GAME ASPECT menu: %s -> %.3f", v.c_str(), f);
+                if (f > 0.0f)
+                    WindowUtil_UpdateAspect(f);
+            }
+        );
+        // A command-line -aspect (or ini use_aspect) override outranks ANY
+        // setting, including this one -- grey the item out so a live adjust
+        // cannot clobber the forced aspect mid-game.
+        ga.isDisabledFn = []() { return GetWindowSetup().aspectOverrideActive; };
+        ga.disabledReason = "-ASPECT FORCED";
+        m_items.push_back(ga);
+    }
 
-    {
-        MenuItem lwItem;
-        lwItem.label = "LINEWIDTH";
-        lwItem.getValueDisplay = []() {
-            char buf[32];
-            snprintf(buf, 32, "%2.1f", config.m_line * 0.1f);
-            return std::string(buf);
-            };
-        lwItem.onAdjust = [](int dir) {
-            config.m_line += dir;
-            if (config.m_line < 10) config.m_line = 10;
-            if (config.m_line > 70) config.m_line = 70;
-            config.linewidth = config.m_line * 0.1f;
-            };
-        lwItem.hasLeft = []() { return config.m_line > 10; };
-        lwItem.hasRight = []() { return config.m_line < 70; };
-        lwItem.onActivate = []() {};
-        m_items.push_back(lwItem);
-    }
-    {
-        MenuItem psItem;
-        psItem.label = "POINTSIZE";
-        psItem.getValueDisplay = []() {
-            char buf[32];
-            snprintf(buf, 32, "%2.1f", config.m_point * 0.1f);
-            return std::string(buf);
-            };
-        psItem.onAdjust = [](int dir) {
-            config.m_point += dir;
-            if (config.m_point < 10) config.m_point = 10;
-            if (config.m_point > 70) config.m_point = 70;
-            config.pointsize = config.m_point * 0.1f;
-            };
-        psItem.hasLeft = []() { return config.m_point > 10; };
-        psItem.hasRight = []() { return config.m_point < 70; };
-        psItem.onActivate = []() {};
-        m_items.push_back(psItem);
-    }
-    {
-        MenuItem smItem;
-        smItem.label = "LINE SMOOTHING";
-        smItem.getValueDisplay = []() {
-            char buf[32];
-            snprintf(buf, 32, "%2.1f", config.line_smoothing);
-            return std::string(buf);
-            };
-        smItem.onAdjust = [](int dir) {
-            config.line_smoothing += dir * 0.1f;
-            if (config.line_smoothing < 0.4f) config.line_smoothing = 0.4f;
-            if (config.line_smoothing > 2.0f) config.line_smoothing = 2.0f;
-            };
-        smItem.hasLeft = []() { return config.line_smoothing > 0.4f; };
-        smItem.hasRight = []() { return config.line_smoothing < 2.0f; };
-        smItem.onActivate = []() {};
-        m_items.push_back(smItem);
-    }
-    {
-        MenuItem csItem;
-        csItem.label = "BEAM POINTSIZE";
-        csItem.getValueDisplay = []() {
-            char buf[32];
-            snprintf(buf, 32, "%2.2f", config.corner_strength);
-            return std::string(buf);
-            };
-        csItem.onAdjust = [](int dir) {
-            config.corner_strength += dir * 0.05f;
-            if (config.corner_strength < 0.3f) config.corner_strength = 0.3f;
-            if (config.corner_strength > 2.5f) config.corner_strength = 2.5f;
-            };
-        csItem.hasLeft = []() { return config.corner_strength > 0.3f; };
-        csItem.hasRight = []() { return config.corner_strength < 2.5f; };
-        csItem.onActivate = []() {};
-        m_items.push_back(csItem);
-    }
-    m_items.push_back(MenuItem::Integer("VECTOR SHOTS", &config.shots_textured, 0, 1,
-        { "PROCEDURAL", "TEXTURED" }));
+    // Monitor setup submenus. Each one only applies to its monitor class,
+    // so during gameplay the entries for monitor types the running game
+    // does NOT use are greyed out (in the GUI frontend all three stay
+    // enabled -- there you are editing the global defaults).
+    auto gameUsesMonitor = [](int vattrMask) -> bool {
+        if (emulator_is_gui_active()) return true;
+        return Machine && Machine->drv &&
+            (Machine->drv->video_attributes & vattrMask) != 0;
+    };
 
-    m_items.push_back(MenuItem::Integer("MONITOR GAIN", &config.gain, -127, 127));
+    // Vector monitor / beam settings submenu (affects vector games only).
+    {
+        MenuItem link = MenuItem::Link("VECTOR MONITOR SETUP",
+            [this]() { TransitionTo(MenuID::VectorMonitor); });
+        link.isDisabledFn = [gameUsesMonitor]() { return !gameUsesMonitor(VIDEO_TYPE_VECTOR); };
+        link.disabledReason = "NOT A VECTOR GAME";
+        m_items.push_back(link);
+    }
+
+    // Mono monitor CRT simulation submenu (affects B/W raster games only).
+    {
+        MenuItem link = MenuItem::Link("MONO MONITOR SETUP",
+            [this]() { TransitionTo(MenuID::MonoMonitor); });
+        link.isDisabledFn = [gameUsesMonitor]() { return !gameUsesMonitor(VIDEO_TYPE_RASTER_BW); };
+        link.disabledReason = "NOT A B/W RASTER GAME";
+        m_items.push_back(link);
+    }
+
+    // Color monitor / screen effect submenu (affects color raster games only).
+    {
+        MenuItem link = MenuItem::Link("COLOR MONITOR SETUP",
+            [this]() { TransitionTo(MenuID::ColorMonitor); });
+        link.isDisabledFn = [gameUsesMonitor]() { return !gameUsesMonitor(VIDEO_TYPE_RASTER_COLOR); };
+        link.disabledReason = "NOT A COLOR RASTER GAME";
+        m_items.push_back(link);
+    }
 
     // ------------------------------------------------------------------
     // Artwork items -- conditionally disabled based on availability flags.
@@ -760,45 +875,210 @@ void MenuManager::BuildVideoMenu() {
             "CROP BEZEL", &config.artcrop, cropFlag, "NEEDS BEZEL"));
     }
 
-    // ------------------------------------------------------------------
-    // Raster / scanlines overlay effect.
-    // Cycles between "NONE" and known effect filenames stored under artwork\.
-    // onChange live-reloads the texture so the change is visible immediately.
-    // ------------------------------------------------------------------
-    {
-        static std::string s_rasterEffect;
-        if (config.raster_effect && config.raster_effect[0])
-            s_rasterEffect = config.raster_effect;
-        else
-            s_rasterEffect = "NONE";
-
-        std::vector<std::string> rasterOptions = {
-            "NONE", "aperture4x6.png", "scanlines.png", "scanrez2.png", "scanrez2r.png"
-        };
-        // Include any custom filename that came from the ini but is not in our list.
-        bool alreadyListed = false;
-        for (const auto& opt : rasterOptions) {
-            if (opt == s_rasterEffect) { alreadyListed = true; break; }
-        }
-        if (!alreadyListed)
-            rasterOptions.push_back(s_rasterEffect);
-
-        m_items.push_back(MenuItem::String(
-            "RASTER EFFECT",
-            &s_rasterEffect,
-            rasterOptions,
-            [](const std::string& v) {
-                config.raster_effect = (char*)v.c_str();
-                // Live reload so the change is visible without restarting.
-                init_raster_overlay();
-            }
-        ));
-    }
+    // (The raster/scanlines overlay selector moved into COLOR MONITOR SETUP
+    // as part of the combined SCREEN EFFECT control.)
 
     m_items.push_back(MenuItem::Integer("PRIORITY", &config.priority, 0, 4,
         { "LOW", "NORMAL", "ABOVE NORMAL", "HIGH", "REALTIME" }));
 
     m_items.push_back(MenuItem::Bool("KB LEDS", &config.kbleds));
+}
+
+// ----------------------------------------------------------------------
+// Vector Monitor submenu -- beam renderer settings for vector games.
+// Moved out of the main Video menu when the Mono Monitor submenu was
+// added; the two monitor-setup entries sit side by side there now.
+// All values live-adjust while a vector game runs.
+// ----------------------------------------------------------------------
+void MenuManager::BuildVectorMonitorMenu() {
+    m_items.push_back(MenuItem::Integer("PHOSPHOR TRAIL", &config.vectrail, 0, 3,
+        { "NONE", "LITTLE", "MORE", "MAX" }));
+    m_items.push_back(MenuItem::Integer("VECTOR GLOW", &config.vecglow, 0, 25));
+
+    {
+        MenuItem lwItem;
+        lwItem.label = "BEAM WIDTH";
+        lwItem.getValueDisplay = []() {
+            char buf[32];
+            snprintf(buf, 32, "%2.1f", config.m_line * 0.1f);
+            return std::string(buf);
+            };
+        lwItem.onAdjust = [](int dir) {
+            config.m_line += dir;
+            if (config.m_line < 10) config.m_line = 10;
+            if (config.m_line > 70) config.m_line = 70;
+            config.linewidth = config.m_line * 0.1f;
+            };
+        lwItem.hasLeft = []() { return config.m_line > 10; };
+        lwItem.hasRight = []() { return config.m_line < 70; };
+        lwItem.onActivate = []() {};
+        m_items.push_back(lwItem);
+    }
+    {
+        MenuItem csItem;
+        csItem.label = "BEAM CORNERSIZE";
+        csItem.getValueDisplay = []() {
+            char buf[32];
+            snprintf(buf, 32, "%2.2f", config.corner_strength);
+            return std::string(buf);
+            };
+        csItem.onAdjust = [](int dir) {
+            config.corner_strength += dir * 0.05f;
+            if (config.corner_strength < 0.3f) config.corner_strength = 0.3f;
+            if (config.corner_strength > 2.5f) config.corner_strength = 2.5f;
+            };
+        csItem.hasLeft = []() { return config.corner_strength > 0.3f; };
+        csItem.hasRight = []() { return config.corner_strength < 2.5f; };
+        csItem.onActivate = []() {};
+        m_items.push_back(csItem);
+    }
+    {
+        MenuItem smItem;
+        smItem.label = "BEAM SMOOTHING";
+        smItem.getValueDisplay = []() {
+            char buf[32];
+            snprintf(buf, 32, "%2.1f", config.line_smoothing);
+            return std::string(buf);
+            };
+        smItem.onAdjust = [](int dir) {
+            config.line_smoothing += dir * 0.1f;
+            if (config.line_smoothing < 0.4f) config.line_smoothing = 0.4f;
+            if (config.line_smoothing > 2.0f) config.line_smoothing = 2.0f;
+            };
+        smItem.hasLeft = []() { return config.line_smoothing > 0.4f; };
+        smItem.hasRight = []() { return config.line_smoothing < 2.0f; };
+        smItem.onActivate = []() {};
+        m_items.push_back(smItem);
+    }
+
+    m_items.push_back(MenuItem::Integer("VECTOR SHOTS", &config.shots_textured, 0, 1,
+        { "PROCEDURAL", "TEXTURED" }));
+
+    m_items.push_back(MenuItem::Integer("MONITOR GAIN", &config.gain, -127, 127));
+
+    // Not yet wired to the renderer -- kept as a grayed-out placeholder
+    // (was the same in the old Video menu placement).
+    m_items.push_back(MenuItem::Disabled("DRAW 0 LINES"));
+    // m_items.push_back(MenuItem::Bool("DRAW 0 LINES",  &config.drawzero));
+}
+
+// ----------------------------------------------------------------------
+// Mono Monitor submenu -- knobs for the mono CRT shader applied to B/W
+// raster games. All values live-adjust: the render pass reads config
+// every frame, so changes are visible immediately while the menu is up.
+// Ranges match the shader's designed limits (see config.cpp clamps).
+// ----------------------------------------------------------------------
+void MenuManager::BuildMonoMonitorMenu() {
+    m_items.push_back(MenuItem::Bool("MONO EFFECT", &config.mono_enable));
+
+    m_items.push_back(MenuItem::Integer("MONITOR COLOR", &config.mono_tint, 0, 2,
+        { "P4 WHITE", "P1 GREEN", "P3 AMBER" }));
+
+    m_items.push_back(MenuItem::Float("BEAM BLUR HORIZ", &config.mono_blur_h,
+        0.05f, 0.0f, 2.5f, "%.2f"));
+    m_items.push_back(MenuItem::Float("BEAM BLUR VERT", &config.mono_blur_v,
+        0.05f, 0.0f, 1.0f, "%.2f"));
+    m_items.push_back(MenuItem::Float("HALATION", &config.mono_halation,
+        0.02f, 0.0f, 1.0f, "%.2f"));
+    m_items.push_back(MenuItem::Float("HALATION RADIUS", &config.mono_halation_radius,
+        0.5f, 1.0f, 16.0f, "%.1f"));
+    m_items.push_back(MenuItem::Float("SCANLINE RIPPLE", &config.mono_scanline,
+        0.02f, 0.0f, 1.0f, "%.2f"));
+    m_items.push_back(MenuItem::Float("BEAM CONTRAST", &config.mono_contrast,
+        0.05f, 1.0f, 3.0f, "%.2f"));
+    m_items.push_back(MenuItem::Float("BLACK LEVEL LIFT", &config.mono_brightness,
+        0.01f, 0.0f, 0.25f, "%.2f"));
+}
+
+void MenuManager::BuildColorMonitorMenu() {
+    // SCREEN EFFECT: single selector for the color raster look. It drives
+    // the two underlying config fields so the render path and all existing
+    // inis keep working unchanged:
+    //   OFF    -> color_enable=0, raster_effect="NONE"  (raw pixels)
+    //   SHADER -> color_enable=1, raster_effect="NONE"  (color CRT shader)
+    //   *.png  -> color_enable=0, raster_effect=<file>  (texture overlay)
+    {
+        static std::string s_screenEffect;
+        if (config.raster_effect && config.raster_effect[0] &&
+            _stricmp(config.raster_effect, "NONE") != 0)
+            s_screenEffect = config.raster_effect;
+        else
+            s_screenEffect = config.color_enable ? "SHADER" : "OFF";
+
+        std::vector<std::string> fxOptions = {
+            "OFF", "SHADER", "aperture4x6.png", "scanlines.png", "scanrez2.png", "scanrez2r.png"
+        };
+        // Include any custom filename that came from the ini but is not listed.
+        bool alreadyListed = false;
+        for (const auto& opt : fxOptions) {
+            if (opt == s_screenEffect) { alreadyListed = true; break; }
+        }
+        if (!alreadyListed)
+            fxOptions.push_back(s_screenEffect);
+
+        m_items.push_back(MenuItem::String(
+            "SCREEN EFFECT",
+            &s_screenEffect,
+            fxOptions,
+            [](const std::string& v) {
+                if (v == "OFF") {
+                    config.color_enable = 0;
+                    config.raster_effect = (char*)"NONE";
+                }
+                else if (v == "SHADER") {
+                    config.color_enable = 1;
+                    config.raster_effect = (char*)"NONE";
+                }
+                else {
+                    // v aliases the static s_screenEffect above, so the
+                    // pointer stays valid (same trick the old Video-menu
+                    // RASTER EFFECT item used).
+                    config.color_enable = 0;
+                    config.raster_effect = (char*)v.c_str();
+                }
+                // Live texture load/unload so the change shows immediately.
+                init_raster_overlay();
+            }
+        ));
+    }
+
+    const size_t firstShaderKnob = m_items.size();
+
+    m_items.push_back(MenuItem::Integer("SHADOW MASK TYPE", &config.color_mask_type, 0, 2,
+        { "APERTURE GRILLE", "SLOT MASK", "DOT TRIAD" }));
+    m_items.push_back(MenuItem::Float("MASK STRENGTH", &config.color_mask_strength,
+        0.02f, 0.0f, 1.0f, "%.2f"));
+    m_items.push_back(MenuItem::Float("MASK SIZE", &config.color_mask_scale,
+        0.5f, 1.0f, 6.0f, "%.1f"));
+
+    m_items.push_back(MenuItem::Float("SCANLINE STRENGTH", &config.color_scanline,
+        0.02f, 0.0f, 1.0f, "%.2f"));
+
+    m_items.push_back(MenuItem::Float("BEAM BLUR HORIZ", &config.color_blur_h,
+        0.05f, 0.0f, 2.5f, "%.2f"));
+    m_items.push_back(MenuItem::Float("BEAM BLUR VERT", &config.color_blur_v,
+        0.05f, 0.0f, 1.0f, "%.2f"));
+    m_items.push_back(MenuItem::Float("CONVERGENCE ERROR", &config.color_converge,
+        0.05f, 0.0f, 2.0f, "%.2f"));
+
+    m_items.push_back(MenuItem::Float("HALATION", &config.color_halation,
+        0.02f, 0.0f, 1.0f, "%.2f"));
+    m_items.push_back(MenuItem::Float("HALATION RADIUS", &config.color_halation_radius,
+        0.5f, 1.0f, 16.0f, "%.1f"));
+
+    m_items.push_back(MenuItem::Float("BEAM CONTRAST", &config.color_contrast,
+        0.05f, 1.0f, 3.0f, "%.2f"));
+    m_items.push_back(MenuItem::Float("BLACK LEVEL LIFT", &config.color_brightness,
+        0.01f, 0.0f, 0.25f, "%.2f"));
+    m_items.push_back(MenuItem::Float("SATURATION", &config.color_saturation,
+        0.05f, 0.0f, 2.0f, "%.2f"));
+
+    // Everything below SCREEN EFFECT tunes the shader; grey it all out
+    // (live) whenever the shader is not the selected effect.
+    for (size_t i = firstShaderKnob; i < m_items.size(); ++i) {
+        m_items[i].isDisabledFn = []() { return config.color_enable == 0; };
+        m_items[i].disabledReason = "SHADER OFF";
+    }
 }
 void MenuManager::BuildSoundMenu() {
     auto clamp_int = [](int v, int lo, int hi) -> int {
@@ -954,6 +1234,183 @@ void MenuManager::BuildDipSwitchMenu() {
 
     if (m_items.empty()) {
         m_items.push_back(MenuItem::Link("NO DIPSWITCHES FOUND", []() {}));
+    }
+}
+
+// ----------------------------------------------------------------------
+// INPUT DEVICES: per-player physical device assignment (multi-mouse /
+// multi-keyboard). Machine-level settings, saved globally to aae.ini
+// [input] on leaving the page.
+// ----------------------------------------------------------------------
+void MenuManager::BuildInputDevicesMenu() {
+    // ------------------------------------------------------------------
+    // Per-player mouse device assignment (multi-mouse).
+    // Cycle: NONE (-2) / SYSTEM = all mice merged (-1) / MOUSE 1..N.
+    // Specific devices are remembered by PATH (stable identity), so the
+    // assignment survives reboots and enumeration-order changes; the index
+    // shown is just where the device happens to sit this session.
+    // Saved to aae.ini [input] mouse_player1..4(+_path) on leaving.
+    // ------------------------------------------------------------------
+
+    // effective selection: -2 none, -1 system, 0.. current index of the
+    // path-assigned device; -3 = path assigned but device not attached
+    auto effective_mouse = [](int p) -> int {
+        if (config.mouse_player_path[p][0]) {
+            int dev = RawInput_FindMouseByPath(config.mouse_player_path[p]);
+            return (dev >= 0) ? dev : -3;
+        }
+        int v = config.mouse_player[p];
+        return (v < -2) ? -2 : v;
+    };
+    auto assign_mouse = [](int p, int v) {
+        config.mouse_player[p] = v;
+        if (v >= 0)
+            strncpy_s(config.mouse_player_path[p], sizeof(config.mouse_player_path[p]),
+                      RawInput_GetMousePath(v), _TRUNCATE);
+        else
+            config.mouse_player_path[p][0] = 0;
+    };
+
+    for (int p = 0; p < 4; p++) {
+        MenuItem mi;
+        mi.label = "Player " + std::to_string(p + 1) + " Mouse";
+        mi.getValueDisplay = [p, effective_mouse]() -> std::string {
+            int v = effective_mouse(p);
+            if (v == -3) return "ASSIGNED DEVICE NOT ATTACHED";
+            if (v == -2) return "NONE";
+            if (v == -1) return "SYSTEM (ALL MICE)";
+            std::string s = "MOUSE " + std::to_string(v + 1) + ": " + RawInput_GetMouseName(v);
+            // '*' = this device has actually sent input (wiggle a mouse
+            // to identify it; phantom keyboard collections never move)
+            if (RawInput_MouseSeenInput(v)) s += " *";
+            return s;
+        };
+        mi.onAdjust = [p, effective_mouse, assign_mouse](int dir) {
+            int v = effective_mouse(p);
+            if (v == -3) v = -2;            // adjusting a missing device clears it
+            v += dir;
+            int hi = RawInput_GetMouseCount() - 1;
+            if (v < -2) v = -2;
+            if (v > hi) v = hi;
+            assign_mouse(p, v);
+        };
+        mi.hasLeft  = [p, effective_mouse]() { return effective_mouse(p) != -2; };
+        mi.hasRight = [p, effective_mouse]() {
+            int v = effective_mouse(p);
+            return v == -3 || v < RawInput_GetMouseCount() - 1;
+        };
+        mi.onActivate = []() {};
+        m_items.push_back(mi);
+    }
+
+    // ------------------------------------------------------------------
+    // Per-player keyboard device assignment (multi-keyboard), same scheme.
+    // Default is SYSTEM for everyone (several players sharing one keyboard,
+    // the classic model). Assign specific devices for multi-encoder setups
+    // (e.g. two Ultimarc I-PACs); coin/start follow player 1's keyboard,
+    // UI/menu keys always work from any keyboard.
+    // ------------------------------------------------------------------
+    auto effective_kbd = [](int p) -> int {
+        if (config.kbd_player_path[p][0]) {
+            int dev = RawInput_FindKeyboardByPath(config.kbd_player_path[p]);
+            return (dev >= 0) ? dev : -3;
+        }
+        int v = config.kbd_player[p];
+        return (v < -2) ? -2 : v;
+    };
+    auto assign_kbd = [](int p, int v) {
+        config.kbd_player[p] = v;
+        if (v >= 0)
+            strncpy_s(config.kbd_player_path[p], sizeof(config.kbd_player_path[p]),
+                      RawInput_GetKeyboardPath(v), _TRUNCATE);
+        else
+            config.kbd_player_path[p][0] = 0;
+    };
+
+    for (int p = 0; p < 4; p++) {
+        MenuItem mi;
+        mi.label = "Player " + std::to_string(p + 1) + " Keyboard";
+        mi.getValueDisplay = [p, effective_kbd]() -> std::string {
+            int v = effective_kbd(p);
+            // routing falls back to ALL KEYBOARDS while the device is away
+            if (v == -3) return "NOT ATTACHED (USING ALL KBDS)";
+            if (v == -2) return "NONE";
+            if (v == -1) return "SYSTEM (ALL KEYBOARDS)";
+            std::string s = "KBD " + std::to_string(v + 1) + ": " + RawInput_GetKeyboardName(v);
+            // '*' = this keyboard has actually sent a key (press one to identify)
+            if (RawInput_KeyboardSeenInput(v)) s += " *";
+            return s;
+        };
+        mi.onAdjust = [p, effective_kbd, assign_kbd](int dir) {
+            int v = effective_kbd(p);
+            if (v == -3) v = -2;            // adjusting a missing device clears it
+            v += dir;
+            int hi = RawInput_GetKeyboardCount() - 1;
+            if (v < -2) v = -2;
+            if (v > hi) v = hi;
+            assign_kbd(p, v);
+        };
+        mi.hasLeft  = [p, effective_kbd]() { return effective_kbd(p) != -2; };
+        mi.hasRight = [p, effective_kbd]() {
+            int v = effective_kbd(p);
+            return v == -3 || v < RawInput_GetKeyboardCount() - 1;
+        };
+        mi.onActivate = []() {};
+        m_items.push_back(mi);
+    }
+
+    // ------------------------------------------------------------------
+    // Per-player joystick assignment. AUTO = stick N drives player N (the
+    // legacy default). Specific devices are remembered by stable id --
+    // DirectInput instance GUID for generic sticks (survives reboots and
+    // enumeration-order changes; twin Ultimarc sticks stay pinned), XInput
+    // slot for pads.
+    // ------------------------------------------------------------------
+    auto effective_joy = [](int p) -> int {
+        if (config.joy_player_id[p][0]) {
+            int j = joystick_find_by_id(config.joy_player_id[p]);
+            return (j >= 0) ? j : -3;   // -3 = assigned but not attached
+        }
+        int v = config.joy_player[p];
+        return (v < -2) ? -2 : v;
+    };
+    auto assign_joy = [](int p, int v) {
+        config.joy_player[p] = v;
+        if (v >= 0)
+            strncpy_s(config.joy_player_id[p], sizeof(config.joy_player_id[p]),
+                      joystick_get_id(v), _TRUNCATE);
+        else
+            config.joy_player_id[p][0] = 0;
+    };
+
+    for (int p = 0; p < 4; p++) {
+        MenuItem mi;
+        mi.label = "Player " + std::to_string(p + 1) + " Joystick";
+        mi.getValueDisplay = [p, effective_joy]() -> std::string {
+            int v = effective_joy(p);
+            if (v == -3) return "ASSIGNED DEVICE NOT ATTACHED";
+            if (v == -2) return "NONE";
+            if (v == -1) return "AUTO (JOY " + std::to_string(p + 1) + ")";
+            std::string s = "JOY " + std::to_string(v + 1) + ": " + joystick_get_display_name(v);
+            s += joystick_is_connected(v) ? " *" : " (NOT CONNECTED)";
+            return s;
+        };
+        mi.onAdjust = [p, effective_joy, assign_joy](int dir) {
+            int v = effective_joy(p);
+            if (v == -3) v = -2;            // adjusting a missing device clears it
+            v += dir;
+            int hi = joystick_device_count() - 1;
+            if (v < -2) v = -2;
+            if (v > hi) v = hi;
+            assign_joy(p, v);
+        };
+        mi.hasLeft  = [p, effective_joy]() { return effective_joy(p) != -2; };
+        mi.hasRight = [p, effective_joy]() {
+            int v = effective_joy(p);
+            return v == -3 || v < joystick_device_count() - 1;
+        };
+        mi.onActivate = []() {};
+        m_items.push_back(mi);
     }
 }
 
@@ -1142,6 +1599,10 @@ void MenuManager::Draw() {
     if (visibleCount < 0) visibleCount = 0;
 
     // ---- Layout using cached max width ----
+    // All pages share the standard left margin; overlong values (HID device
+    // names) marquee-scroll within the value field instead of widening it.
+    const float menuX = MENU_X;
+
     float topY        = TITLE_Y + PAD_TOP;
     float firstItemY  = TITLE_Y - TITLE_GAP - MENU_LINE_HEIGHT;
     float lastItemY   = firstItemY - ((visibleCount > 0 ? visibleCount - 1 : 0) * MENU_LINE_HEIGHT);
@@ -1154,8 +1615,8 @@ void MenuManager::Draw() {
     float bottomY  = footerY - PAD_BOTTOM;
 
     float maxTextWidth = m_cachedMaxWidth;
-    float leftX        = MENU_X - PAD_LEFT;
-    float rightX       = MENU_X + maxTextWidth + PAD_RIGHT;
+    float leftX        = menuX - PAD_LEFT;
+    float rightX       = menuX + maxTextWidth + PAD_RIGHT;
     float bgCenterX    = (leftX + rightX) * 0.5f;
     float bgCenterY    = (topY + bottomY) * 0.5f;
     float bgWidth      = rightX - leftX;
@@ -1163,7 +1624,7 @@ void MenuManager::Draw() {
 
     // ---- Background + Title ----
     VF.DrawQuad(bgCenterX, bgCenterY, bgWidth, bgHeight, MAKE_RGBA(20, 20, 80, 255));
-    VF.Print(MENU_X, (int)TITLE_Y, RGB_WHITE, FONT_SCALE, title.c_str());
+    VF.Print(menuX, (int)TITLE_Y, RGB_WHITE, FONT_SCALE, title.c_str());
 
     // ---- Scroll indicator positions ----
     float scrollArrowX   = rightX - (PAD_RIGHT * 0.55f) - (CHAR_PITCH * 0.5f);
@@ -1190,41 +1651,46 @@ void MenuManager::Draw() {
 
         // Disabled items always draw gray regardless of selection.
         unsigned int color;
-        if (it.isDisabled) {
+        if (it.disabled()) {
             color = RGB_DISABLED;
         }
         else {
             color = isSelected ? RGB_PINK : RGB_WHITE;
         }
 
-        VF.Print(MENU_X, (int)y, color, FONT_SCALE, it.label.c_str());
+        VF.Print(menuX, (int)y, color, FONT_SCALE, it.label.c_str());
 
         if (!it.isLink && it.getValueDisplay) {
-            if (it.isDisabled) {
+            if (it.disabled()) {
                 // Show the reason string (e.g. "NOT LOADED") without arrows.
-                VF.Print(MENU_X + VALUE_X_OFFSET, (int)y,
+                VF.Print(menuX + VALUE_X_OFFSET, (int)y,
                     RGB_DISABLED, FONT_SCALE, it.disabledReason.c_str());
             }
             else {
                 std::string val = it.getValueDisplay();
 
+                // Width of the value as drawn; overlong values marquee inside
+                // a VALUE_W_MAX field, so nothing downstream exceeds it.
+                float valW = (float)val.length() * CHAR_PITCH;
+                if (valW > VALUE_W_MAX) valW = VALUE_W_MAX;
+
                 if (isSelected) {
                     // Left arrow
                     if (it.hasLeft && it.hasLeft()) {
-                        float arrowLeftX = MENU_X + VALUE_X_OFFSET - ARROW_GAP - CHAR_PITCH;
+                        float arrowLeftX = menuX + VALUE_X_OFFSET - ARROW_GAP - CHAR_PITCH;
                         VF.Print(arrowLeftX, (int)y, RGB_WHITE, FONT_SCALE, "<");
                     }
 
-                    VF.Print(MENU_X + VALUE_X_OFFSET, (int)y, color, FONT_SCALE, val.c_str());
+                    VF.PrintMarquee(menuX + VALUE_X_OFFSET, (int)y, VALUE_W_MAX, color, FONT_SCALE, "%s", val.c_str());
 
-                    // Right arrow
+                    // Right arrow sits at the end of the value field
                     if (it.hasRight && it.hasRight()) {
-                        float valEndX = MENU_X + VALUE_X_OFFSET + (float)val.length() * CHAR_PITCH + ARROW_GAP;
+                        float valEndX = menuX + VALUE_X_OFFSET + valW + ARROW_GAP;
                         VF.Print(valEndX, (int)y, RGB_WHITE, FONT_SCALE, ">");
                     }
                 }
                 else {
-                    VF.Print(MENU_X + VALUE_X_OFFSET, (int)y, color, FONT_SCALE, val.c_str());
+                    VF.PrintMarquee(menuX + VALUE_X_OFFSET, (int)y, VALUE_W_MAX, color, FONT_SCALE, "%s", val.c_str());
                 }
             }
         }
@@ -1239,13 +1705,13 @@ void MenuManager::Draw() {
 
     // ---- Input polling hint ----
     if (m_isPolling) {
-        VF.Print(MENU_X, (int)(y - POLL_GAP), RGB_YELLOW, FONT_SCALE,
+        VF.Print(menuX, (int)(y - POLL_GAP), RGB_YELLOW, FONT_SCALE,
             "PRESS KEY/BUTTON OR ESC TO CANCEL");
     }
 
     // ---- Footer ----
     std::string footerText = GetFooterText();
-    VF.Print(MENU_X, (int)footerY, RGB_YELLOW, FOOTER_SCALE, footerText.c_str());
+    VF.Print(menuX, (int)footerY, RGB_YELLOW, FOOTER_SCALE, footerText.c_str());
 }
 
 void MenuManager::DrawBackground() {}
@@ -1266,7 +1732,7 @@ void MenuManager::Adjust(int dir) {
         const MenuItem& it = m_items[m_selectedIndex];
 
         // Refuse to adjust disabled (unavailable art) items.
-        if (it.isDisabled) return;
+        if (it.disabled()) return;
 
         if (it.onAdjust) {
             it.onAdjust(dir);
@@ -1291,8 +1757,8 @@ void MenuManager::Adjust(int dir) {
 void MenuManager::Select() {
     if (m_isPolling) return;
     if (m_selectedIndex >= 0 && m_selectedIndex < (int)m_items.size()) {
-        // Allow activating disabled items as a no-op (onActivate is [](){} anyway).
-        // If you want to block Enter on disabled items, add: if (m_items[...].isDisabled) return;
+        // Block Enter on disabled items (e.g. a greyed-out submenu link).
+        if (m_items[m_selectedIndex].disabled()) return;
         if (m_items[m_selectedIndex].onActivate) {
             m_items[m_selectedIndex].onActivate();
         }
@@ -1348,6 +1814,7 @@ int  get_menu_status()        { return MenuManager::Instance().GetStatus(); }
 void set_menu_status(int on)  { MenuManager::Instance().SetStatus(on);      }
 int  get_menu_level()         { return MenuManager::Instance().GetLevel();   }
 void set_menu_level_top()     { MenuManager::Instance().SetLevelTop();       }
+void menu_navigate_back()     { MenuManager::Instance().NavigateBack();      }
 
 void do_the_menu() {
     // If we are waiting for a key/joy assignment, service that first.
@@ -1371,6 +1838,6 @@ void select_menu_item() {
 }
 
 void set_points_lines() {
-    glLineWidth(config.linewidth);
-    glPointSize(config.pointsize);
+   // glLineWidth(config.linewidth);
+   // glPointSize(config.pointsize);
 }

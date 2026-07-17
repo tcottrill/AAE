@@ -36,16 +36,16 @@
 //
 // -----------------------------------------------------------------------------
 //==========================================================================
-// AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME 
-// code, 0.29 through .90 mixed with code of my own. This emulator was 
-// created solely for my amusement and learning and is provided only 
-// as an archival experience. 
-// 
-// All MAME code used and abused in this emulator remains the copyright 
+// AAE is a poorly written M.A.M.E (TM) derivitave based on early MAME
+// code, 0.29 through .90 mixed with code of my own. This emulator was
+// created solely for my amusement and learning and is provided only
+// as an archival experience.
+//
+// All MAME code used and abused in this emulator remains the copyright
 // of the dedicated people who spend countless hours creating it. All
 // MAME code should be annotated as belonging to the MAME TEAM.
-// 
-// THE CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.  
+//
+// THE CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.
 //==========================================================================
 
 // -----------------------------------------------------------------------------
@@ -81,11 +81,9 @@ static unsigned char* g_palette_dirty = nullptr; // 1 byte per color (0/1)
 static unsigned char* g_just_remapped = nullptr; // 1 byte per color (0/1) return value
 static int            g_total_colors = 0;
 
-
 //int gfx_mode;
 //int gfx_width;
 //int gfx_height;
-
 
 // -----------------------------------------------------------------------------
 // Palette debug helpers
@@ -176,23 +174,8 @@ static void DumpTableBytes(const char* tag, const unsigned char* table, int coun
 
 #endif // PALETTE_DEBUG
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 // -----------------------------------------------------------------------------
-// Required globals (as requested)
+// Required globals 
 // -----------------------------------------------------------------------------
 unsigned char current_palette[640][3];
 
@@ -217,7 +200,6 @@ extern int vector_game; // 0 = raster, 1 = vector (set based on video_attributes
 // Small local helpers
 // -----------------------------------------------------------------------------
 static inline int clampi(int v, int lo, int hi) { return (v < lo) ? lo : (v > hi) ? hi : v; }
-
 
 // -----------------------------------------------------------------------------
 // osd_modify_pen
@@ -417,7 +399,6 @@ int vh_open(void)
 			}
 			LOG_INFO("I here at gfx convert is %d, memregion is %d", i, Machine->gamedrv->gfxdecodeinfo[i].memory_region);
 			Machine->gfx[i]->colortable = &remappedtable[Machine->gamedrv->gfxdecodeinfo[i].color_codes_start];
-
 
 			Machine->gfx[i]->total_colors = Machine->gamedrv->gfxdecodeinfo[i].total_color_codes;
 
@@ -621,7 +602,7 @@ void palette_change_color(int color,
 //   else a pointer to g_just_remapped[] (nonzero entries indicate which colors).
 //
 // This mirrors MAME .36's "return non-null if any visible/cached colors were
-// remapped", which Millipede uses to trigger a full redraw when needed. 
+// remapped", which Millipede uses to trigger a full redraw when needed.
 // -----------------------------------------------------------------------------
 const unsigned char* palette_recalc(void)
 {

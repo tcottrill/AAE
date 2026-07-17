@@ -261,11 +261,4 @@
 #define X_AXIS          1
 #define Y_AXIS          2
 
-#define COIN_COUNTERS	4	/* total # of coin counters */
-#define NUMVOICES 16 //SOUND - PUT SOMEWHERE ELSE
-
-
-int osd_get_leds(void);
-void osd_set_leds(int state);
-
 #endif

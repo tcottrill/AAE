@@ -186,7 +186,7 @@ void show_error(void)
 		drawTexturedQuad(-24.0f, -24.0f, 24.0f, 24.0f);
 
 		//TODO: Replace this with Vector drawing calls.
-
+		VF.Print(300, 330, MAKE_RGBA(fade, 255, 255, fade), 2.0, "AN ERROR OCCURED");
 		/*
 		glLoadIdentity();
 		glPrint(418, 457, 255, 255, 255, 255, 1.1, 0, 0, "An Error Occurred!!");

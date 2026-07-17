@@ -446,14 +446,15 @@ void cpu_6502::init6502(uint16_t addrmaskval, CpuModel model)
 			opcode_table[op].addressing_mode = &cpu_6502::implied6502;
 		}
 
-		// 2. Map 2-byte CMOS NOPs (Zero Page / Imm / Relative)
-		// 0x04 (TSB), 0x14 (TRB), 0x34 (BIT ZPX), 0x44, 0x54, 0x64 (STZ), 0x74 (STZ), 0xD4, 0xF4
-		// 0x80 (BRA), 0x89 (BIT Imm)
-		// 0x12, 0x32... (Ind ZP) - usually JAM on NMOS, but if NOP'd, must be 2 bytes
+		// 2. Map 2-byte NMOS NOPs.
+		// NOP zp / zp,X: 04, 14, 34, 44, 54, 64, 74, D4, F4
+		// NOP #imm:      80, 82, 89, C2, E2  (82/C2/E2 MUST be 2 bytes - as
+		// 1-byte NOPs the instruction stream desyncs and code runs wild)
 		static const uint8_t nops_2byte[] = {
-			0x04, 0x14, 0x34, 0x44, 0x54, 0x64, 0x74, 0xD4, 0xF4,
-			0x80, 0x89,
-			0x12, 0x32, 0x52, 0x72, 0x92, 0xB2, 0xD2, 0xF2
+			0x04, 0x14, 0x34, 0x44, 0x54, 0x64, 0x74, 0xD4, 0xF4
+		};
+		static const uint8_t nops_imm[] = {
+			0x80, 0x82, 0x89, 0xC2, 0xE2
 		};
 
 		for (uint8_t op : nops_2byte)
@@ -461,6 +462,24 @@ void cpu_6502::init6502(uint16_t addrmaskval, CpuModel model)
 			opcode_table[op].instruction = &cpu_6502::nop6502;
 			// Use zp6502 to consume the operand byte (PC+2 total)
 			opcode_table[op].addressing_mode = &cpu_6502::zp6502;
+		}
+		for (uint8_t op : nops_imm)
+		{
+			opcode_table[op].instruction = &cpu_6502::nop6502;
+			opcode_table[op].addressing_mode = &cpu_6502::immediate6502;
+		}
+
+		// 2b. NMOS JAM/KIL opcodes: 02,12,22,32,42,52,62,72,92,B2,D2,F2.
+		// Real hardware wedges the CPU; freezing the PC keeps crashed code at
+		// the jam point instead of free-running through memory.
+		static const uint8_t kil_ops[] = {
+			0x02, 0x12, 0x22, 0x32, 0x42, 0x52,
+			0x62, 0x72, 0x92, 0xB2, 0xD2, 0xF2
+		};
+		for (uint8_t op : kil_ops)
+		{
+			opcode_table[op].instruction = &cpu_6502::kil6502;
+			opcode_table[op].addressing_mode = &cpu_6502::implied6502;
 		}
 
 		// 3. Map 3-byte CMOS NOPs (Absolute / AbsX)
@@ -742,6 +761,7 @@ void cpu_6502::reset6502()
 	A = X = Y = 0;
 	P = F_T | F_I | F_Z;
 	_irqPending = 0;
+	kil_logged = false;
 
 	PC = PPC = 0;
 	_irqPending = 0;
@@ -1760,10 +1780,11 @@ inline void cpu_6502::rts6502()
 // -----------------------------------------------------------------------------
 void cpu_6502::rti6502()
 {
-	const bool was_I = (P & F_I) != 0;
+	// Unlike CLI/PLP, RTI has NO one-instruction IRQ delay on the real 6502:
+	// a pending IRQ is taken immediately after RTI restores I=0. Adding the
+	// delay here made every IRQ-driven loop run one mainline instruction late.
 	P = pull8() | F_T | F_B;
 	PC = pull16();
-	if (was_I && !(P & F_I)) irq_inhibit_one = 2;
 }
 
 // -----------------------------------------------------------------------------
@@ -1778,7 +1799,9 @@ void cpu_6502::brk6502()
 	push16(PC);
 	// Ensure both Bit 4 (B) and Bit 5 (T) are set
 	push8(P | F_B | F_T);
-	P = (P | F_I) & ~F_D;
+	P |= F_I;
+	if (cpu_model == CPU_CMOS_65C02)
+		P &= ~F_D;    // only the 65C02 clears decimal on interrupt entry
 	PC = get6502memory(0xFFFE & addrmask) | (get6502memory(0xFFFF & addrmask) << 8);
 }
 
@@ -1788,25 +1811,26 @@ void cpu_6502::brk6502()
 // Logs a warning if the NOP opcode is unofficial.
 // -----------------------------------------------------------------------------
 void cpu_6502::nop6502()
-	{
-		// Official NOP
-		if (opcode == 0xEA) return;
+{
+	// All NOP variants (official $EA plus the undocumented multi-byte ones)
+	// simply consume their operand bytes - the addressing mode already did
+	// that. No logging here: code that uses undocumented NOPs in hot loops
+	// turned a per-execution log line into massive spam.
+}
 
-		// Ignore known 65C02 valid NOPs to clean up logs
-		if (cpu_model == CPU_CMOS_65C02) {
-			// 1-byte NOPs (converted from NMOS undoc)
-			if ((opcode & 0x0F) == 0x03 || (opcode & 0x0F) == 0x0B) return;
-			// 2-byte and 3-byte NOPs
-			if ((opcode & 0x0F) == 0x02 || (opcode & 0x0F) == 0x04) return;
-			if (opcode == 0x5C || opcode == 0xDC || opcode == 0xFC) return;
-		}
-
-		LOG_INFO("!!!!WARNING UNHANDLED NO-OP CALLED: %02X CPU: %d", opcode, cpu_num);
-
-	// 2. Handle Cycle Adjustments (if any are missing from ticks table)
-	// Most standard NOP timings are handled by the ticks[] table, 
-	// but some NOPs referencing page boundaries might need +1 here if desired.
-	// For functional tests, base table timing is usually sufficient.
+// -----------------------------------------------------------------------------
+// KIL / JAM (NMOS $x2 opcodes)
+// A real NMOS 6502 wedges completely. Freeze the PC on the KIL opcode so the
+// machine visibly halts at the crash site (like real hardware) instead of
+// free-running through memory.
+// -----------------------------------------------------------------------------
+void cpu_6502::kil6502()
+{
+	PC--;                     // re-execute this opcode forever
+	if (!kil_logged) {
+		kil_logged = true;
+		LOG_INFO("6502 JAM (KIL opcode %02X) at %04X - CPU halted", opcode, PC);
+	}
 }
 
 // -----------------------------------------------------------------------------
@@ -2415,65 +2439,55 @@ void cpu_6502::lxa6502()
 // -----------------------------------------------------------------------------
 // SHS / TAS (0x9B)
 // -----------------------------------------------------------------------------
+// The SHx family stores reg & (high(base)+1). The addressing mode has already
+// resolved savepc = base + index. On a page cross, the high byte of the target
+// address itself is corrupted to the stored value (real NMOS quirk).
+uint16_t cpu_6502::sh_target(uint16_t base, uint8_t store_value)
+{
+	if ((base & 0xFF00) != (savepc & 0xFF00))
+		return (uint16_t)((store_value << 8) | (savepc & 0x00FF));
+	return savepc;
+}
+
 void cpu_6502::shs6502()
 {
 	S = A & X;
-	uint16_t addr_before_index = savepc - Y;
-	uint8_t high_byte = (addr_before_index >> 8) & 0xFF;
-	uint8_t store_value = A & X & ((high_byte + 1) & 0xFF);
-	put6502memory(savepc, store_value);
+	uint16_t base = savepc - Y;
+	uint8_t store_value = A & X & (uint8_t)((base >> 8) + 1);
+	put6502memory(sh_target(base, store_value), store_value);
 }
 
 // -----------------------------------------------------------------------------
-// SHY / SAY (0x9C)
+// SHY / SAY (0x9C): store Y & (H+1) at abs,X
 // -----------------------------------------------------------------------------
 void cpu_6502::shy6502()
 {
-	uint16_t addr_before_index = savepc - X;
-	uint8_t high_byte = (addr_before_index >> 8) & 0xFF;
-	uint8_t store_value = Y & ((high_byte + 1) & 0xFF);
-	put6502memory(savepc, store_value);
+	uint16_t base = savepc - X;
+	uint8_t store_value = Y & (uint8_t)((base >> 8) + 1);
+	put6502memory(sh_target(base, store_value), store_value);
 }
 
 // -----------------------------------------------------------------------------
-// SHX / SXA (0x9E)
+// SHX / SXA (0x9E): store X & (H+1) at abs,Y
 // -----------------------------------------------------------------------------
 void cpu_6502::shx6502()
 {
-	uint16_t addr_before_index = savepc - Y;
-	uint8_t high_byte = (addr_before_index >> 8) & 0xFF;
-	uint8_t store_value = X & ((high_byte + 1) & 0xFF);
-	put6502memory(savepc, store_value);
+	uint16_t base = savepc - Y;
+	uint8_t store_value = X & (uint8_t)((base >> 8) + 1);
+	put6502memory(sh_target(base, store_value), store_value);
 }
 
 // -----------------------------------------------------------------------------
-// AHX / SHA (0x93, 0x9F)
+// AHX / SHA (0x93 (zp),Y ; 0x9F abs,Y): store A & X & (H+1).
+// The addressing mode (indy/absy) already resolved savepc to base+Y - do NOT
+// re-fetch operands here (an earlier version re-read a pointer from savepc as
+// if it were the PC, corrupting an unrelated address on every execution).
 // -----------------------------------------------------------------------------
 void cpu_6502::ahx6502()
 {
-	// 0x93 is AHX (ZP), Y
-	uint8_t zp_ptr = get6502memory(savepc++);
-
-	// 1. Fetch the base address from Zero Page
-	uint8_t low = get6502memory(zp_ptr);
-	uint8_t high = get6502memory((zp_ptr + 1) & 0xFF);
-	uint16_t base_addr = (high << 8) | low;
-
-	// 2. Compute the store value
-	// Logic: A & X & (HighByte + 1)
-	uint8_t store_value = A & X & (high + 1);
-
-	// 3. Final Address Calculation
-	uint16_t target_addr = base_addr + Y;
-
-	// 4. Page Cross Corruption (Crucial for AccuracyCoin)
-	// If Y causes a page cross, the high byte of the address 
-	// written to is often A & X & (high + 1).
-	if ((base_addr >> 8) != (target_addr >> 8)) {
-		target_addr = (store_value << 8) | (target_addr & 0xFF);
-	}
-
-	put6502memory(target_addr, store_value);
+	uint16_t base = savepc - Y;
+	uint8_t store_value = A & X & (uint8_t)((base >> 8) + 1);
+	put6502memory(sh_target(base, store_value), store_value);
 }
 
 void cpu_6502::las6502()

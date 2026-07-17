@@ -86,6 +86,11 @@ static constexpr float kListScale = 2.0f;
 
 // Selection highlight bar (filled rectangle behind the selected title)
 static constexpr float kSelBarWidth = 910.0f;  // Sized to reach near the ship glyph tips
+
+// Marquee fields for long game names: names that fit render centered exactly
+// as before; longer ones scroll at constant speed within the field.
+static constexpr float kMarqueeFieldSel  = kSelBarWidth - 40.0f; // stay inside the highlight bar
+static constexpr float kMarqueeFieldList = 940.0f;               // list rows: near full screen width
 static constexpr float kSelBarHeight = 30.0f;   // Vertical padding around the text
 static constexpr float kSelBarYOffset = 8.0f;    // Nudge up to center on text (half font height * scale)
 static constexpr rgb_t kSelBarColor = MAKE_RGBA(18, 14, 55, 130);  // Dark indigo, semi-transparent
@@ -664,9 +669,11 @@ static void drawGameList()
 	VF.DrawQuad((float)(kScreenW / 2), (float)kSelectedY + kSelBarYOffset,
 		kSelBarWidth, kSelBarHeight, kSelBarColor);
 
-	// Draw the selected title (only when not in shot animation - shot draws its own)
+	// Draw the selected title (only when not in shot animation - shot draws its own).
+	// Long game names marquee-scroll inside the highlight bar instead of
+	// overflowing it (kMarqueeFieldSel keeps the text within the bar edges).
 	if (!s_shot.active)
-		VF.PrintCentered(kSelectedY, RGB_SOFTRED, kSelectedScale, 0, s_selection->description.c_str());
+		VF.PrintMarqueeCentered(kSelectedY, kMarqueeFieldSel, RGB_SOFTRED, kSelectedScale, 0.0f, s_selection->description.c_str());
 
 	// Draw surrounding entries above and below
 	int visibleCount = 1;
@@ -680,14 +687,14 @@ static void drawGameList()
 		{
 			fwd = advanceSkippingGui(fwd, true);
 			if (fwd)
-				VF.PrintCentered(kSelectedY - offset, RGB_WHITE, kListScale, fwd->description.c_str());
+				VF.PrintClippedCentered(kSelectedY - offset, kMarqueeFieldList, RGB_WHITE, kListScale, fwd->description.c_str());
 			visibleCount++;
 		}
 		if ((int)s_gameList.size() > visibleCount)
 		{
 			bwd = advanceSkippingGui(bwd, false);
 			if (bwd)
-				VF.PrintCentered(kSelectedY + offset, RGB_WHITE, kListScale, bwd->description.c_str());
+				VF.PrintClippedCentered(kSelectedY + offset, kMarqueeFieldList, RGB_WHITE, kListScale, bwd->description.c_str());
 			visibleCount++;
 		}
 		offset += kLineSpacing;

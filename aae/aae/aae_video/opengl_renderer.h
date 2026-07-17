@@ -27,6 +27,10 @@ void render();
 void final_render(int left, int right, int bottom, int top);
 // Raster-specific composite and present function.
 void final_render_raster();
+// True when the mono monitor CRT effect will run for the given
+// video_attributes (enabled in config AND the game is B/W raster).
+bool mono_monitor_active(int vattr);
+bool color_monitor_active(int vattr);
 void set_render_fbo4();
 void end_render_fbo4();
 // Draw pause/menu/exit confirm overlays on top of the current backbuffer.

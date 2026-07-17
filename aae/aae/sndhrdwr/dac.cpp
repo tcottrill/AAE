@@ -48,6 +48,17 @@ static int dac_write_pos[MAX_DAC];
 /* Number of int16 samples per frame, shared across all channels */
 static int dac_frame_len = 0;
 
+/* Per-channel DC-blocking one-pole high-pass state (~7 Hz at 44.1 kHz).
+   DAC sources are typically unipolar (e.g. cchasm's CTC tone toggling
+   0 <-> 0x7f), which leaves a large standing DC offset while active -- and
+   wherever the level parks when the sound stops. The mixer soft-clips the
+   summed output through tanh, so any standing DC shifts the operating point
+   up the curve and audibly compresses ("ducks") every other channel. Real
+   hardware AC-couples the DAC output; this filter is that capacitor. */
+static float dc_prev_in[MAX_DAC];
+static float dc_prev_out[MAX_DAC];
+#define DAC_DC_BLOCK_R 0.999f
+
 /* Pre-built linear volume lookup tables */
 static int UnsignedVolTable[256]; /* 0..255  -> 0..32767     */
 static int SignedVolTable[256];   /* 0..255  -> -32768..32767 */
@@ -158,6 +169,8 @@ int DAC_sh_start(const struct DACinterface *intf_in)
     {
         dac_output[i]    = 0;
         dac_write_pos[i] = 0;
+        dc_prev_in[i]    = 0.0f;
+        dc_prev_out[i]   = 0.0f;
 
         /* Allocate a mixer channel out of the chip-stream range. */
         dac_channel[i] = mixer_alloc_channel(MIXER_CHIP_STREAM_RANGE_LOW, MIXER_FIRST_RESERVED_CHANNEL);
@@ -231,6 +244,18 @@ void DAC_sh_update(void)
         int16_t level = (int16_t)dac_output[i];
         for (int s = dac_write_pos[i]; s < dac_frame_len; s++)
             dac_frame_buf[i][s] = level;
+
+        /* DC-block in place before pushing (safe: every sample is rewritten
+           from raw levels each frame by dac_catch_up + the tail fill above). */
+        for (int s = 0; s < dac_frame_len; s++)
+        {
+            float in  = (float)dac_frame_buf[i][s];
+            float out = in - dc_prev_in[i] + DAC_DC_BLOCK_R * dc_prev_out[i];
+            dc_prev_in[i]  = in;
+            dc_prev_out[i] = out;
+            if (out > 32767.0f) out = 32767.0f; else if (out < -32768.0f) out = -32768.0f;
+            dac_frame_buf[i][s] = (int16_t)out;
+        }
 
         stream_update(dac_channel[i], dac_frame_buf[i]);
         dac_write_pos[i] = 0;   /* start the next frame at the buffer head */

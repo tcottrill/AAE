@@ -51,7 +51,7 @@
 #include "cpu_m68000.h"
 
 
-#define NEW_INTERRUPT_SYSTEM    1
+
 #define MAX_IRQ_LINES   8       /* maximum number of IRQ lines per CPU */
 
 #define CLEAR_LINE		0		/* clear (a fired, held or pulsed) line */
@@ -99,8 +99,43 @@ enum
 	CPU_68000,
 	CPU_CCPU,
 	CPU_8039,
+	CPU_8035,
 	CPU_COUNT
 };
+
+
+// These are for different translation units. Maybe bite the bullet and make them all non-static, or wrap in namespaces?
+// This is a temporary solution.
+#define READ_HANDLER_NS(name)   UINT8 name(UINT32 address, struct MemoryReadByte *psMemRead)
+#define WRITE_HANDLER_NS(name)   void name(UINT32 address, UINT8 data, struct MemoryWriteByte *psMemWrite)
+
+//CPU and WRITE READ HANDLERS WHY ARE THESE HERE!!!!
+#define READ_HANDLER(name)  static UINT8 name(UINT32 address, struct MemoryReadByte *psMemRead)
+#define WRITE_HANDLER(name)  static void name(UINT32 address, UINT8 data, struct MemoryWriteByte *psMemWrite)
+
+#define READ16_HANDLER(name)  static UINT16 name(UINT32 address, struct MemoryReadWord *psMemRead)
+#define WRITE16_HANDLER(name)  static void name(UINT32 address, UINT16 data, struct MemoryWriteWord *psMemWrite)
+
+#define MEM_WRITE(name) struct MemoryWriteByte name[] = {
+#define MEM_READ(name)  struct MemoryReadByte name[] = {
+#define MEM_WRITE16(name) struct MemoryWriteWord name[] = {
+#define MEM_READ16(name)  struct MemoryReadWord name[] = {
+// For 8-bit memory handlers that also specify a base pointer
+#define MEM_ADDR8(start, end, routine, base) { (start), (end), (routine), (base) },
+// For 16-bit memory handlers (word access)
+#define MEM_ADDR16(start, end, routine, base) { (start), (end), (routine), (base) },
+
+#define MEM_ADDR(start,end,routine) {start,end,routine},
+#define MEM_END {(UINT32) -1,(UINT32) -1,NULL}};
+
+//CPU PORT HANDLERS FOR the Z80 AGAIN, WHY ARE THESE HERE?
+#define PORT_WRITE_HANDLER(name) static void name(UINT16 port, UINT8 data, struct z80PortWrite *pPW)
+#define PORT_READ_HANDLER(name) static UINT16 name(UINT16 port, struct z80PortRead *pPR)
+#define PORT_WRITE(name) struct z80PortWrite name[] = {
+#define PORT_READ(name) struct z80PortRead name[] = {
+#define PORT_ADDR(start,end,routine) {start,end,routine},
+#define PORT_END {(UINT16) -1, (UINT16) -1,NULL}};
+
 
 
 
@@ -137,6 +172,7 @@ void init_z80(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct
 void init8080(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum);
 void init8085(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum);
 void init8039(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum);
+void init8035(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum);
 
 // Point a CPU's opcode fetches at a decrypted buffer (MAME memory_set_opcode_base).
 void memory_set_opcode_base(int cpunum, unsigned char* base);

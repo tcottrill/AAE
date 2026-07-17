@@ -82,6 +82,14 @@ public:
     int  get_ticks(int reset); // running, resettable elapsed-cycle count (real, unlike Musashi)
     void end_timeslice();      // request an early bail out of exec() (zeroes the budget)
 
+    // Cycles consumed so far within the CURRENT exec() slice (slice budget minus
+    // what remains). odometer / the AAE timer clock only advance at slice
+    // boundaries; this exposes the per-instruction progress *inside* a slice so a
+    // slice-granular clock (e.g. the PIT) can read an accurate mid-slice value.
+    // Reads 0 between slices and during the end-of-slice timer_update (the base
+    // has already absorbed the slice by then), so callers never double-count.
+    int  cycles_run_this_slice() const { return m_slice_cycles - cycles_left; }
+
     // ---- Interrupt input ------------------------------------------------
     // 68000 IPL pins encode level 0..7. Level 0 = no interrupt; 1..6 are masked
     // by the SR interrupt level; level 7 is the NMI-like, always-serviced input.
@@ -179,6 +187,7 @@ private:
 
     int  m_cpu_num   = 0;          // CPU slot index (for logging / GetCpuNum)
     int  m_tick_base = 0;          // get_ticks() baseline (subtracted from odometer)
+    int  m_slice_cycles = 0;       // current exec() slice budget snapshot (for cycles_run_this_slice())
     int  (*m_int_ack_cb)(int) = nullptr;  // optional IACK vector callback
 };
 

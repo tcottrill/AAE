@@ -489,7 +489,13 @@ AY8910Bank g_bank;
 void update_bank_to_now()
 {
     if (!g_bank.active) return;
-    int newpos = cpu_scale_by_cycles(g_bank.buffer_len, g_bank.base_clock);
+    // Pass 0 so the position is scaled by the active CPU's own clock: newpos is
+    // a fraction-of-frame, and ran_this_frame[] counts CPU cycles, not AY
+    // clocks. Passing base_clock broke any game whose CPU clock differs from
+    // the AY clock (cchasm: 3.58 MHz Z80 vs 1.82 MHz AY -- the position
+    // saturated halfway through the frame and every later write piled up at
+    // the buffer end).
+    int newpos = cpu_scale_by_cycles(g_bank.buffer_len, 0);
     if (newpos > g_bank.buffer_len) newpos = g_bank.buffer_len;
     if (newpos < 0) newpos = 0;
     const int delta = newpos - g_bank.sample_pos;

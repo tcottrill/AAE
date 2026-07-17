@@ -207,6 +207,7 @@ private:
 	bool mmem = false;
 	bool log_debug_rw = false;
 	bool use_handler_for_opfetch = false;
+	bool kil_logged = false;   // one-shot log when a KIL/JAM opcode halts the CPU
 
 	// 6510 Internal State
 	uint8_t io_port_data = 0; // $0001
@@ -327,6 +328,8 @@ private:
 	//Lorentz Tests
 	void ane6502(); void lxa6502(); void shs6502(); void shy6502(); 
 	void shx6502(); void ahx6502(); void las6502();
+	void kil6502();                       // NMOS JAM/KIL: freezes the PC
+	uint16_t sh_target(uint16_t base, uint8_t store_value);  // SHx page-cross target
 	// C6502 Special Instructions
 	void rmb_smb_6502(); // Handles RMB0-7 and SMB0-7
 	void bbr_bbs_6502(); // Handles BBR0-7 and BBS0-7

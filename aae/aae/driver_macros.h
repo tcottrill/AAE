@@ -5,8 +5,11 @@
 #define AAE_DRIVER_BEGIN(sym, shortname, longname) \
     const AAEDriver sym = { (shortname), (longname),
 
+// Emits the rom-set pointer AND its stringized identifier (e.g. "rom_tomcatsw"),
+// so the loader can derive the on-disk zip name from the rom set itself rather
+// than the driver name. Keep the two fields adjacent: AAEDriver::rom, rom_name.
 #define AAE_DRIVER_ROM(romset) \
-    (romset),
+    (romset), #romset,
 
 #define AAE_DRIVER_FUNCS(init, run, end) \
     (init), (run), (end),

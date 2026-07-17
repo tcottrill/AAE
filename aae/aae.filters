@@ -108,9 +108,6 @@
     <ClInclude Include="system\graphics\colordefs.h">
       <Filter>Source Files\system\graphics</Filter>
     </ClInclude>
-    <ClInclude Include="system\graphics\debug_draw.h">
-      <Filter>Source Files\system\graphics</Filter>
-    </ClInclude>
     <ClInclude Include="system\graphics\fbo_modern.h">
       <Filter>Source Files\system\graphics</Filter>
     </ClInclude>

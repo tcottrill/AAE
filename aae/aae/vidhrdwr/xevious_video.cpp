@@ -43,6 +43,34 @@ static int fo_y_pos, fo_x_pos;
 static int flip;
 
 
+// ---------------------------------------------------------------------------
+// xevious_copy_scroll_xy
+// Composite a full-screen XY-scrolling playfield with copybitmap instead of
+// copyscrollbitmap. copyscrollbitmap swaps the source width/height when a
+// SWAP_XY display rotation is active, which mis-sizes these non-square
+// 256x512 tile caches and corrupts the scroll wrap when the game is rotated.
+// copybitmap ignores Machine->orientation, so wrapping against the real src
+// dimensions stays correct in any orientation. This reproduces the
+// rows==1, cols==1 path of copyscrollbitmap exactly (four wrapped passes).
+// ---------------------------------------------------------------------------
+static void xevious_copy_scroll_xy(struct osd_bitmap* dest, struct osd_bitmap* src,
+                                   int scrollx, int scrolly,
+                                   int transparency, int transparent_color)
+{
+    const int srcw = src->width;    /* 256 */
+    const int srch = src->height;   /* 512 */
+
+    scrollx %= srcw; if (scrollx < 0) scrollx += srcw;
+    scrolly %= srch; if (scrolly < 0) scrolly += srch;
+
+    const struct rectangle* clip = &Machine->drv->visible_area;
+    copybitmap(dest, src, 0, 0, scrollx,        scrolly,        clip, transparency, transparent_color);
+    copybitmap(dest, src, 0, 0, scrollx,        scrolly - srch, clip, transparency, transparent_color);
+    copybitmap(dest, src, 0, 0, scrollx - srcw, scrolly,        clip, transparency, transparent_color);
+    copybitmap(dest, src, 0, 0, scrollx - srcw, scrolly - srch, clip, transparency, transparent_color);
+}
+
+
 // ============================================================================
 // Embedded color PROM data
 //
@@ -452,10 +480,8 @@ void xevious_vh_screenrefresh(void)
         int scrollx = bg_x_pos - 16;
         int scrolly = -bg_y_pos - 20;
 
-        copyscrollbitmap(main_bitmap, tmpbitmap2,
-                         1, &scrollx, 1, &scrolly,
-                         &Machine->drv->visible_area,
-                         TRANSPARENCY_NONE, 0);
+        xevious_copy_scroll_xy(main_bitmap, tmpbitmap2, scrollx, scrolly,
+                               TRANSPARENCY_NONE, 0);
     }
 
     // --- Draw sprites ---
@@ -526,9 +552,7 @@ void xevious_vh_screenrefresh(void)
         int scrollx = fo_x_pos - 14;
         int scrolly = -fo_y_pos - 32;
 
-        copyscrollbitmap(main_bitmap, tmpbitmap1,
-                         1, &scrollx, 1, &scrolly,
-                         &Machine->drv->visible_area,
-                         TRANSPARENCY_COLOR, 0x80);
+        xevious_copy_scroll_xy(main_bitmap, tmpbitmap1, scrollx, scrolly,
+                               TRANSPARENCY_COLOR, 0x80);
     }
 }

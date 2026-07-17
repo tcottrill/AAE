@@ -1,5 +1,33 @@
 Changelog:
 
+- Marquee scrolling for long text, added globally to the vector font renderer (vector_fonts): PrintMarquee / PrintMarqueeCentered draw exactly like Print / PrintCentered when the string fits its field, and scroll it at constant speed (1 s dwell at each end, snap back) when it doesn't. Strokes are clipped GEOMETRICALLY in pre-rotation string-local space, so the clip window rotates with the text and no GL scissor state is involved; glyphs cut cleanly mid-stroke at the field edges. The scroll phase derives from a shared clock plus the string's overflow -- no per-string state. Consumers: the menu value column (long HID device names in INPUT DEVICES now scroll instead of being truncated at 20 chars -- clip_device_name is gone, and the page is back at the standard left margin instead of its special reduced one) and the GUI game list: only the SELECTED title scrolls (inside the highlight bar); non-selected rows use the static PrintClippedCentered variant -- same field clipping, no animation, overlong names just cut at the field edge. No more hand-truncating long game names. Tunables in vector_fonts.cpp: kMarqueeSpeed (60 units/s), kMarqueeDwellMs (1000).
+
+- Mixer fixes from the full mixer.cpp review: (1) load_sample_from_buffer tested WavLoadFileInternal's int 1/0 return with FAILED(), which never fires -- a corrupt WAV was registered as Loaded with null PCM and the error.wav fallback was dead code; now checked properly. (2) The rate/fps truncation drift is gone: at 57 fps (circus) 44100/57 shorted the output 0.68 samples per frame (-0.09%), underrunning the XAudio2 ring about every 20 seconds as an audible tick; the mixer now pays the remainder back N/N+1 style via an integer accumulator (exact long-term rate, zero drift), and the backend ring buffers carry one frame of headroom for the N+1 frames. (3) stream_update gained the channel-id bounds check every sibling API already had, and resolves the buffer through the channel's pinned sample instead of the lsamples registry (a registry lookup silently stops updating while the stale buffer keeps looping). (4) stream_stop now evicts the stream's private SAMPLE from the registry (slot nulled, never erased, preserving num==index) -- previously every stream start/stop cycle leaked a frame-sized buffer until mixer_end. (5) The audio thread no longer holds the CV mutex through the whole software mix (it claims the pending signal, unlocks, mixes, relocks), so an overlapping mixer_update on the main thread no longer blocks for the mix duration -- and a signal arriving mid-mix now triggers the next frame instead of being wiped by the post-mix clear. (6) Sample ids are assigned under the registry lock in load_sample_from_buffer and create_sample, closing a race that could break the num==index invariant on concurrent loads. Deliberately unchanged: the pre-existing per-frame chip-stream length truncation (absorbed by stream reanchoring).
+
+- Fixed a stutter regression from the audio-thread rework (heard as a choppy game-start jingle in Ms. Pac-Man at 48 kHz): the reworked thread collapsed a burst of frame signals into a single mix, dropping frames of chip-stream audio and leaving the XAudio2 ring unfilled after load/startup hitches -- the old code had serialized signals 1:1 with mixes as a side effect of blocking the main thread. The audio thread now claims the exact pending signal count and mixes once per signal (capped at 8 for stale backlogs), keeping both the 1:1 pacing and the non-blocking main thread. Also added a rate-limited underrun diagnostic: the backend logs "output ran dry before submit" whenever the output queue is empty at submit time, so audible gaps are now visible in systemlog.txt.
+
+- Mixer output stage: replaced the always-on tanh soft clip with a soft-knee saturator (mixer_soft_clip). Below the knee (-1.16 dBFS) the mix passes through BIT-EXACT; only genuine overmix is folded smoothly (tanh, C1-continuous at the knee) into the remaining headroom, never reaching digital full scale. The old curve compressed every sample -- full-scale legal audio lost ~2.4 dB (tanh(1.0)=0.762) and picked up harmonic distortion even with nothing clipping. Still per-sample, so a loud transient can't pump the whole frame. VU meter peak tracking kept as-is. Also swept the remaining review nits: the sweep worker now sleeps when no sweeps are active instead of ticking every 1 ms forever (wakes on start_sweep/shutdown); get_current_value's frequency lookup now locks g_mtx (it raced the worker's map writes); dead CHANNEL fields isAllocated/isReleased removed; and the mid-file #pragma warning(disable:4018) removed -- it was disabling signed/unsigned warnings for the rest of the file and no longer suppressed anything.
+
+- Ini system hardening (iniFile.cpp), closing out the silent-corruption class the device-path bug exposed: inline comment stripping is REMOVED -- comments are full-line only (';' or '#' at line start), since both characters are legal in Windows paths and device identity strings, and stripping them corrupted any such value on every reload (legacy numeric lines with inline comments still parse; atoi/atof stop at the first non-numeric character). Values may now contain spaces (rom paths do); keys still must not. Writes are validated instead of trusted: keys that would re-parse as comments/sections or contain space/'='/newline, and values with embedded newlines, are rejected with a logged error rather than written and corrupted on the next load. Saves are atomic (write to .tmp, then swap) so a crash or full disk mid-save can no longer gut the config back to defaults, and sections are separated by a real blank line (trailing blanks trimmed so files don't grow a line per save). Existing ini files with inline comments on STRING values will now keep the comment text in the value -- regenerate or hand-clean those lines.
+
+- Fixed persisted device assignments breaking across restarts ("assigned device not attached"): the ini parser strips everything after ';' or '#' as an inline comment, and Raw Input device paths are full of '#' -- saved paths came back truncated and never matched. Device identity strings are now sanitized (non-alphanumerics mapped to '_') at registration, so they survive the ini round-trip; re-assign devices once after updating. Also, an assigned-but-missing KEYBOARD now falls back to SYSTEM (all keyboards) instead of silencing the player -- unlike a mouse, the merged fallback can't route a wrong device's motion -- and the menu shows "NOT ATTACHED (USING ALL KBDS)". Mice and joysticks keep the strict no-input behavior.
+
+- Joystick stage 2: hybrid DirectInput8 + XInput driver. Generic HID sticks (Ultimarc UltraStik etc.) are served by DirectInput 8 -- identified by their instance GUID, which is stable per machine -- while Xbox-family pads are filtered out of DI enumeration (the classic "IG_" device-path check) and served by XInput simultaneously; the old either-or driver pick is gone. DI sticks occupy joy[0..], XInput slots follow. Specific player assignments now persist as stable id strings (aae.ini [input] joy_playerN_id: "DI:{guid}" / "XINPUT:n"), resolved to the current index at read time exactly like the mouse/keyboard paths -- two identical Ultimarc joysticks stay pinned to their players across reboots, and an unplugged stick means no input rather than someone else's. Hotplug rescans append new DI devices without moving existing ones and re-acquire re-plugged sticks. WinMM remains as the automatic fallback when DirectInput8 cannot initialize.
+- Joystick hotplug + per-player assignment (stage 1 of the joystick modernization): WM_DEVICECHANGE now flags a rescan handled on the next poll -- XInput re-probes all slots immediately (bypassing the empty-slot throttle), WinMM re-enumerates and APPENDS new devices without moving existing ones, and a passively-selected XInput driver hands over to WinMM when a non-XInput stick arrives (previously WinMM never rescanned and late-plugged sticks were invisible). XInput slots are now STABLE: joy[i] mirrors XInput slot i instead of compacting connected pads, so unplugging pad 1 no longer shifts pad 2 onto player 1. The INPUT DEVICES menu gained "Player N Joystick" rows (NONE / AUTO = stick N drives player N / a specific slot, with product names and connection markers), persisted in aae.ini [input] joy_player1..4 and routed in osd_joy_pressed/osd_analogjoy_read. RawInput was evaluated and deliberately NOT used for joysticks (raw HID report parsing burden, XInput pads misreport over HID; matches MAME, which uses RawInput only for kbd/mouse/lightgun). Stage 2, when needed: DirectInput 8 for generic sticks with instance-GUID path-style persistence, coexisting with XInput.
+- Multi-keyboard (per-device HID keyboard) support, completing the multi-HID input work: rawinput.cpp tracks VK-indexed key state per keyboard device (same registration, friendly-name, RDP-filter, seen-input and path machinery as the mice), with the merged key[] untouched for menus/hotkeys/UI. Game input bits route through the new osd_key_pressed_for(player, key): each bit's key check goes to the keyboard assigned to that bit's player in the INPUT DEVICES menu (NONE / SYSTEM = all keyboards, the default / a specific device by stable path). Bits without a player tag (coin/start/service) follow player 1's keyboard, matching how encoder-based cabinets are wired. Built for multi-encoder setups like twin Ultimarc I-PACs, where both devices send identical scancodes and only the source device distinguishes the players.
+- Path-based persistence for mouse-to-player assignments (MAME mapdevice-style): assigning a specific device stores its full Raw Input device path (aae.ini [input] mouse_playerN_path), which encodes the physical USB port and is stable across reboots -- unlike the enumeration index, which Windows can shuffle. At read time the path wins: the device is matched wherever it enumerated, and if unplugged the player gets NO input rather than someone else's mouse (menu (INPUT DEVICES) shows "ASSIGNED DEVICE NOT ATTACHED"; the assignment self-heals when it returns). Essential for cabinets with multiple identical devices (twin spinners, twin I-PACs).
+- Friendly device names for the multi-mouse list (algorithm from MAME's rawinput_device_improve_name): the registry DeviceDesc is resolved for each Raw Input device path (with a USB-tree ParentIdPrefix fallback), so the menu shows e.g. "ROG KERIS WIRELESS AIMPOINT" instead of a VID/PID string. RDP virtual devices (Root#RDP paths) are filtered out, and devices that have actually produced input are starred in the menu so real mice are distinguishable from the phantom mouse collections composite keyboards expose.
+- Multi-mouse (multiple HID pointer devices) support: rawinput.cpp now tracks state per Raw Input device (enumerated at init, hot-plug registered on first event, up to 8 mice) alongside the merged legacy stream, exposing RawInput_GetMouseCount/Name, get_mouse_mickeys_ex and per-device buttons. Each player's trackball/paddle routes through osd_trak_read to an assigned device -- NONE / SYSTEM (all mice) / a specific mouse -- configured per player in the INPUT DEVICES menu and persisted in aae.ini [input] mouse_player1..4. Player 1 defaults to SYSTEM so single-mouse setups behave exactly as before. Breakout gained a player-2 analog port as the first consumer (2-pot cocktail play). Also fixed the accumulated-position bug in the raw mouse handler (x/y compounded the running delta each message) and the delta-starvation bug where all four players read-and-reset the same shared mouse deltas. Keyboards-per-player is the planned follow-up.
+
+- Breakout: 2-player alternating game (START2, 2 credits; players alternate each miss with their own wall/score/ball count, like the two halves of the real brick RAM) and a Cabinet dip -- in Cocktail the whole video rotates 180 degrees while player 2 is up, per the P2_CONDITIONAL counter-XOR on the real board. The shared paddle control is mirrored while flipped until per-player HID devices land.
+- Breakout is now rendered as the B&W game it really is, colored by simulated monitor gel strips (5 full-width depth bands per the DICE video overlay: red/amber/green/yellow bricks, blue paddle). Everything draws white and is tinted positionally, so the side walls and the ball pick up strip colors where they cross -- matching MAME's overlay and the physical cabinet.
+- Breakout accuracy pass, driven by decoding the DICE gate-level netlist: the ball now bounces off the TOP WALL instead of the top of the brick field, so it can break through and rattle in the gap above the bricks (the signature mechanic, previously impossible); the half-paddle shrink resets every serve (F5 latch is cleared by SERVE_WAIT on real hardware, not once per game); attract mode plays itself with state-dependent behavior matching real-hardware footage (silent, bricks never break, wall persists until game start): at power-on the ball roams the whole screen ghosting through the bricks; after a game without a credit it gets trapped rattling between the top border and the top brick row; with a credit in it gets trapped between the reflecting full-width bottom bar and the bottom brick row -- a coin input (credits, START consumes one) was added to support this; the second wall paints on the first paddle touch after wall 1 completes (the FPD one-shots fire on score-complete AND paddle hit; until then the field stays empty -- verified on real-PCB footage), and after both walls (896 max) the field stays empty while remaining balls play out; added the S4 ball-count DIP (3/5); sound tones re-derived from the ball-counter taps (paddle ~1970 Hz, wall ~985 Hz, brick ~492 Hz) with 9602-accurate gate lengths (paddle/brick ~9 ms, wall ~23 ms).
+
+- Added Space Zap on new Bally Astrocade video hardware (vidhrdwr/astrocde_video.cpp, from MAME 0.57): magic RAM write processor, pattern board blitter, per-scanline color registers, fixed 256-color YUV palette, and a scanline interrupt driven by div=256/ipf=256 (AAE equivalent of MAME's wow_interrupt,256). Star field/sparkle generator included but dormant until Wizard of Wor / Gorf are added.
+- Space Zap defaults to its production-cabinet look: B&W monitor (pens masked to the 8 grayscale luminances) plus the Mr. Do color gel overlay/bezel via the layout system. A fake "Monitor" dip switches to Color, warlords-style (overlay/artwork off, scanlines forced on).
+- Fixed Space Zap ghost frames (attract graphics baked into gameplay): wow_videoram_w subtracted 0x4000 from an offset the Z80 memory dispatch had already made range-relative, so every direct video RAM write (the game's screen clears) was silently dropped. Handlers receive addr - lowAddr; only the magic RAM window at 0x0000 was immune. Also: the bitmap is wiped at the top of each display frame (scanline 0), so unscanned rows show black like a real CRT.
+- Fixed app.manifest: dpiAwareness now carries the SMI 2016 WindowsSettings namespace. The old manifest was rejected by Windows at process start ("side-by-side configuration is incorrect"), which prevented the exe from launching at all.
+- Added the Astrocade custom I/O sound chip driver (sndhrdwr/astrocade_sound.cpp, from MAME 0.90 - the bug-fixed revision with per-chip noise state) for Space Zap and the other Bally/Midway Astrocade games. Reg-8 sound block transfer reads the live Z80 B register via the new cpu_z80::GetBC(), since AAE port dispatch is 8-bit and can't carry B on the upper address bus like real hardware.
 - Render headers are now OpenGL-free (backend-neutral handle types in render_types.h); GL is confined to renderer .cpp files, in preparation for the Vulkan backend.
 
 Started:
@@ -345,8 +373,119 @@ Added a gyruss driver to test with, and updated the DAC core to work properly wi
 Added a food fight driver to help exercise the 68000 core, but that is a truly horrible "game" if you can even call it that. 
  
 
+6/3/26 to 6/23/26
+
+Wasted way too much time decrypting the Blaze Asteroids/Deluxe/Lunar Lander Multigame. I decrypted the roms, but it appears Blaze used some variation of the slapstic style code to encrypt all the addressing. Nice! After many permutations, I gave up on it. Hopefully they will eventually release the decrypted source in the future so it can be emulated. 
+Completely disassembled Lunar Lander, posted the sources on my github. Eventually I would like to modify the roms to show the current difficulty onscreen. 
+Clean room (mostly) wrote a new, full pokey chip emulation for AAE. It uses the known good polynomials from MAME and the sound generation from Ron Frys original code. Everything else is new and written from the documentation and datasheets and verified with my timer code. It properly emulates all the Pokey registers now. Verified Tempest multiple ways.
+Corrected some timing with the 68000 cpu code
+Corrected a cycle counting bug and some interrupt handling with the 6809 CPU code. This fixed my Gaplus/Galaga 3 driver, now added. 
+Corrected a Z80 halt bug with multi-cpu implementations. This one was only hit with Cosmic Chasm, still trying to get that one working right.
+With a lot of help from the MAME code, I added a working emulation of Top Gunner from Exidy. This should be the last vector game made added to AAE. 
+Added Tomcat to the starwars driver, just for completeness. 
+Added a Donkey Kong driver because, why not?
+Fixed the Quantum driver to correctly read allpot now that the pokey is fully emulated. 
+
+Biggest Change!::::
+Removed all legacy rendering of GL_LINES and GL_POINTS. Replaced it with revision 7 of my vector line/point/textured shot rendering shader code. At 1080p it looks superior to the old code and is much more tunable for each game. Better 4k rendering with be next, as well as more knobs to turn to dial in the correct rendering for each game. 
+I need to better visually emulate the lower resolution color games like Space Duel and Gravitar. Someday?
+
+Removed all deprecated OpenGL legacy code, moved all existing rendering to OpenGL 4.x code only, core profile. This sets me up for the next phase, integrating my existing and well tested Vulkan offscreen supporting rendering code. Adding this and SRGB texturing (already written) will enable me to setup HDR support, and be able to (hopefully) make the vectors pop a little bit closer to the real thing. 
+
+Cleaned up and renamed some menu items to closer match the new vector code. 
+Added a centralized NVRAM handler to the fileio code, moved all the NVRAM supporting games to use it. 
+
+6/24/26 
+Corrected Xevious and Mappy driver rotation issues. 
+Added correct artwork rotation to the mame_layout code. All raster games correctly rotate and show the bezel/overlay graphics. 
+Fixed aspect ratio correction on raster games. Raster games now respect any forced aspect ratio setting, windowed or fullscreen
+
+6/24-6/29/26
+Misc Cleanup. I didn't document it, maybe I'll remember and put it here. 
+
+6/30/26
+Changed the Pokey ALLPOT return its value only on the first ALLPOT read after a POTGO write. Otherwise it returns 0.
+Unfroze the Random per cycle updates, the combination of these two fixes the Asteroids Deluxe ERROR on self test. 
+This required extensive testing on Tempest to make sure it was still passing the protection checks. 
+
+7/1/26
+Added a code mod to lunar lander to simulate onscreen artwork , ala the Braze Multigame.
+Added a dipswitch in the llander romset to enable/disable the artwork. It crashes if used with llander1, I'll fix that eventually. 
+Fixed the test mode in Lunar Lander. 
+Fixed the 3Khz source in the llander, asteroid, bwidow, tempest and bzone drivers. 
+Verified test mode was now working correctly with no errors in each of them.  
+
+7/2/26
+POKEY sound core fixes (aae_pokey.cpp/h, timer.cpp):
+
+Fixed sound timing for games where the POKEY clock differs from the CPU clock (e.g. Warlords). Mid-frame sound register writes were being placed in the wrong part of the audio buffer; they now land at the correct time within the frame.
+Fixed a shutdown bug that could delete another subsystem's timer. The POKEY timer ID table started out zero-filled, and timer ID 0 is a real timer — so stopping a game could kill an unrelated timer. IDs now initialize to "none".
+Volume writes no longer reset the POKEY IRQ timers. Writing AUDC (volume/distortion) was restarting all three timer IRQs from scratch, so a game running a volume envelope could delay a pending timer IRQ forever. This matches original MAME behavior.
+Frequency writes now only restart the timer they actually affect. An AUDF write used to restart all three IRQ timers; now AUDF1 only touches timer 1 (and timer 2 when channels are joined), AUDF2 touches timer 2, AUDF4 touches timer 4, etc.
+IRQEN writes now pause/resume timers instead of restarting them. Enabling or disabling a timer IRQ keeps the timer's place in its countdown (like real hardware and MAME's timer_enable), instead of starting the period over. Added a timer_enable() function to the AAE timer system to support this.
+Removed a leftover namespace in the POKEY header. The poly/random table functions were declared in a namespace that didn't match their definitions, which would have caused link errors in test builds.
+ALLPOT now emulates the real POKEY pot scan timing (fixes Asteroids Deluxe self-test the "right way"). While a pot scan is running, ALLPOT returns the DIP switches wired to the pot pins; once the scan finishes (~150 µs in fast-pot mode), it reads 0 like real hardware. This makes the Asteroids Deluxe option read and its later "should be 0" self-test check both pass naturally — a test that fails in MAME but passes on a real machine.
+
+mixer.cpp
+Fixed staticky noise when streaming sound (e.g. Namco games at 96 kHz) is resampled to 44100 Hz output. The mixer's read position drifted a hair short of the stream buffer's end at non-integer rate ratios, causing a tiny glitch and sample skip at every frame boundary (a 60 Hz static/buzz); the position is now re-anchored to the buffer each time it's refilled, so any input/output rate combination stays clean. (48000 Hz output was unaffected because 96000→48000 divides exactly.)
+
+Z80 CPU core fixes (cpu_z80.cpp/h) — affect all Z80 games:
+
+Fixed NMI delivery corrupting the Z80 stack when triggered by another CPU. An NMI fired from the main CPU's code (like a sound command) used to execute immediately in the wrong CPU's memory context, so the Z80's pushed return address vanished and RETN later returned to a stale address — the sound CPU would jump into data, run off the rails, and reset itself. NMIs are now latched like the real pin and taken at the Z80's next instruction, in its own context. (This was the root cause of Cosmic Chasm's sound corruption.)
+Fixed the INT line the same way. A maskable interrupt requested from outside the Z80 is now latched and taken at the next instruction boundary instead of executing immediately in the caller's context — matching how the real /INT pin is sampled.
+Fixed EI to match real hardware. EI now enables the interrupt flip-flops immediately and only delays acceptance by one instruction. The old version delayed the flags themselves, which could switch interrupts on in the middle of an NMI handler and allow impossible nested interrupts.
+Accepting a maskable interrupt now clears both IFF1 and IFF2 (documented Z80 behavior, same as MAME). Before, an NMI that arrived during an interrupt handler would re-enable interrupts on its RETN and let the handler be re-entered.
+
+Cosmic Chasm (cchasm.cpp) — full sound emulation, samples removed:
+
+The CTC square-wave tones (ship laser/thrust) are now properly emulated through the DAC module instead of WAV samples — each CTC zero-count toggles a square wave with correct mid-frame timing, like MAME.
+Fixed the CTC's timers running on the wrong CPU's clock. They now tick on the Z80's timeline, so sound interrupts fire at the right rate instead of bunching up once per frame.
+Fixed CPU interleave (was effectively zero). The 68000 and Z80 used to run in one big chunk each per frame, so sound commands and interrupts piled up; they now alternate finely and the sound handshake works like real hardware.
+Fixed the CTC daisy chain asserting the Z80 interrupt line for an in-service channel. The INT line now only asserts for a real pending request, preventing ghost interrupts with bogus vectors.
+Added DC-blocking to the DAC output (the emulated version of the board's AC-coupling capacitor) so the unipolar laser square wave no longer pushes a standing offset into the mixer's soft-clipper and ducks all the other audio.
+AY-3-8910 (ay8910.cpp) — affects Omega Race, Aztarac, Gyruss, Cosmic Chasm:
+
+Fixed sound register writes landing at the wrong time position in games where the CPU clock differs from the AY clock — write positions now scale by the executing CPU's own clock, so envelopes and note changes land where they should.
+
+Top Gunner / Vertigo (exidy440_sound.cpp):
+Sound DMA state now updates mid-frame. The sound 6809 used to see frozen DMA counters all frame, so short sounds started and replaced within one frame vanished and sequencing stalled; the mixer now catches up whenever the CPU touches the DMA registers, like MAME's stream updates.
+
+**MC6809 CPU core fixes (cpu_m6809.cpp/h) — affect Star Wars/ESB, Vertigo/Top Gunner, Gyruss:**
+
+- **Fixed interrupt wake-up latency during SYNC/CWAI waits.** A CPU waiting for an interrupt used to sleep through its entire time slice even if the interrupt arrived mid-slice; it now re-checks every 8 cycles and wakes almost immediately, like real hardware.
+
+- **Added the undocumented `$10 20` long-branch opcode (LBRA alias).** Real 6809s execute it; before, the core treated it as unknown and — worse — resumed execution inside the branch offset bytes, derailing the program.
+
+- **Illegal store-immediate opcodes no longer corrupt memory.** Malformed encodings like `STA #` used to write the register to address $0000 silently; they now log a warning and skip.
+
+Circus family driver (circus, robotbwl, crash, ripcord) — fixed
+
+Fixed garbage/inverted graphics in all four games: Colortable now set (0=black, 1=white).
+Fixed frozen tile graphics in crash/ripcord/robotbwl: video RAM ($4000-$43FF) was mapped as plain MWA_RAM, so the dirty-tile buffer was never marked and games honoring the dirty check never redrew the tile layer after frame one. VRAM writes now go through a videoram_w wrapper.
+Fixed vblank/IRQ phase (Crash gameplay): circus_in_vblank() reported vblank at the end of the frame while the scheduler fires the per-frame IRQ at the frame boundary — the opposite of the MAME 0.36–0.66 model where the IRQ fires at vblank start with the DSW vblank bit active for the following 3500µs. The vblank window now covers the first vblank_duration µs of the frame, and all four games use 3500µs per MAME 0.66. 
+Fixed display aspect ratio for games without .lay artwork: the synthetic layout fallback used raw pixel dimensions (Circus is 248×256 → rendered nearly square). It now stretches to the physical monitor aspect (4:3 horizontal / 3:4 vertical) like MAME's standard view. Applies to all no-artwork games.
+
+7/3/26
+Pleiads melody samples now trigger correctly (phoenix.cpp). AI assist disassembled the pleiads program ROMs and found how the game drives the Epson SVM7910E melody IC See pleiads_audio.cpp for the full description. 
 
 
+7/3/26-7/10/26
+
+6502 Fixes:
+- Fixed AHX ($93/$9F) writing to a wrong address on every execution; SHX/SHY/SHS gained the
+  correct page-cross target behavior
+- NMOS $82/$C2/$E2 are now 2-byte NOPs (were 1-byte, desyncing the instruction stream)
+- RTI no longer delays a pending IRQ by one instruction
+- BRK no longer clears the decimal flag on NMOS (65C02-only behavior)
+- NMOS $x2 opcodes now JAM (halt at crash site) like real hardware
+- Removed per-execution log spam for undocumented NOPs
+
+winmain.cpp
+
+- Reorganized the boot process to minimize the white screen time before the game loads.  
+
+
+ 
 
 
 
@@ -354,14 +493,6 @@ Added a food fight driver to help exercise the 68000 core, but that is a truly h
  
 
 
- 
-
-
-
-
- 
-
-
 
 
 
@@ -371,6 +502,4 @@ Added a food fight driver to help exercise the 68000 core, but that is a truly h
 
 
  
-
-
 

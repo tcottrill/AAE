@@ -13,6 +13,7 @@
 
 #include "segag80.h"
 #include <math.h>
+#include <string.h>
 #include "aae_mame_driver.h"
 
 
@@ -34,10 +35,15 @@
  * TODO: use floating point math instead of fixed point.
  */
 
-static int sega_rotate = 0;
+
 extern unsigned char* sega_vectorram;
 UINT8* sintable = nullptr;
+//static int min_x, min_y;
+static int  min_x, min_y, max_x, max_y;
 
+/* Which renderer is active this session. Latched once at sega_vh_start() from   */
+/* the fake "Video Type" dipswitch; 0 = accurate (default), 1 = smoothed.        */
+static int use_smoothed_video = 0;
 
 #define VECTOR_CLOCK		15468480			/* master clock */
 #define U34_CLOCK			(VECTOR_CLOCK/3)	/* clock for interrupt chain */
@@ -45,23 +51,13 @@ UINT8* sintable = nullptr;
 #define U51_CLOCK			(VCL_CLOCK/16)		/* clock for phase generator */
 #define IRQ_CLOCK			(U34_CLOCK/0x1f788)	/* 40Hz interrupt */
 
-static int min_x, min_y;
 
 
-static int s1x;
-static int s1y;
-static int e1x;
-static int e1y;
 
-int sega_vh_start(int r)
+static int sega_vh_start_accurate(int r)
 {
-	//LOG_INFO("Sega Video Init");
-	sega_rotate = 0;
-
-	//min_x = 512;
-	//min_y = 512;
 	min_x = Machine->drv->visible_area.min_x;
-	min_y = Machine->drv->visible_area.min_y; 
+	min_y = Machine->drv->visible_area.min_y;
 	return 0;
 }
 
@@ -70,7 +66,7 @@ int sega_vh_start(int r)
   Stop the video hardware emulation.
 
 ***************************************************************************/
-void sega_vh_stop(void)
+static void sega_vh_stop_accurate(void)
 {
 }
 
@@ -159,7 +155,7 @@ int adjust_xy(int rawx, int rawy, int* outx, int* outy)
 
 */
 
-void sega_vh_update(void)
+static void sega_vh_update_accurate(void)
 {
 	sintable = memory_region(REGION_PROMS);
 	double total_time = 1.0 / (double)IRQ_CLOCK;
@@ -230,7 +226,7 @@ void sega_vh_update(void)
 
 			/* Add a starting point to the vector list. */
 			clipped = adjust_xy(curx, cury, &adjx, &adjy);
-			if (sega_rotate) { int tmp = adjx; adjx = adjy; adjy = tmp; }
+			
 			if (!clipped)
 				vector_add_point(adjx, adjy, 0, 0);
 
@@ -298,7 +294,7 @@ void sega_vh_update(void)
 
 				/* Loop over the length of the vector. */
 				clipped = adjust_xy(curx, cury, &adjx, &adjy);
-				if (sega_rotate) { int tmp = adjx; adjx = adjy; adjy = tmp; }
+			
 				sx = adjx;
 				sy = adjy;
 				xaccum = 0;
@@ -333,8 +329,7 @@ void sega_vh_update(void)
 					/* Apply clipping from the DAC circuit. If values clip,    */
 					/* the beam is turned off but computations continue. */
 					newclip = adjust_xy(curx, cury, &adjx, &adjy);
-					if (sega_rotate) { int tmp = adjx; adjx = adjy; adjy = tmp; }
-
+					
 					if (newclip != clipped)
 					{
 						if (!newclip)
@@ -363,4 +358,181 @@ void sega_vh_update(void)
 		if (draw & 0x80)
 			break;
 	}
+}
+
+
+static long* sinTable, * cosTable;
+static int intensity;
+
+
+static int sega_vh_start_smoothed(int r)
+{
+	int i;
+
+	//if (Machine->drv->vectorram_size == 0)	return 1;
+	min_x = Machine->visible_area.min_x;
+	min_y = Machine->visible_area.min_y;
+	max_x = Machine->visible_area.max_x;
+	max_y = Machine->visible_area.max_y;
+		
+	/* allocate memory for the sine and cosine lookup tables ASG 080697 */
+	sinTable = (long *) malloc(0x400 * sizeof(long));
+	if (!sinTable)
+		return 1;
+	cosTable = (long *) malloc(0x400 * sizeof(long));
+	if (!cosTable)
+		return 1;
+
+	/* generate the sine/cosine lookup tables */
+	for (i = 0; i < 0x400; i++)
+	{
+		double angle = ((2. * 3.14159265358979f) / (double)0x400) * (double)i;
+		double temp;
+
+		temp = sin(angle);
+		if (temp < 0)
+			sinTable[i] = (long)(temp * (double)(1 << 15) - 0.5);
+		else
+			sinTable[i] = (long)(temp * (double)(1 << 15) + 0.5);
+
+		temp = cos(angle);
+		if (temp < 0)
+			cosTable[i] = (long)(temp * (double)(1 << 15) - 0.5);
+		else
+			cosTable[i] = (long)(temp * (double)(1 << 15) + 0.5);
+	}
+
+	return 0;// video_start_vector();
+}
+
+static void sega_vh_update_smoothed(void)
+{
+	int deltax, deltay;
+	int currentX, currentY;
+
+	int vectorIndex;
+	int symbolIndex;
+
+	int rotate, scale;
+	int attrib;
+
+	int angle, length;
+	int color;
+
+	int draw;
+
+	vector_clear_list();
+	cache_clear();
+
+	symbolIndex = 0;	/* Reset vector PC to 0 */
+
+	/*
+	 * walk the symbol list until 'last symbol' set
+	 */
+
+	do {
+		draw = sega_vectorram[symbolIndex++];
+
+		if (draw & 1)	/* if symbol active */
+		{
+			currentX = sega_vectorram[symbolIndex + 0] | (sega_vectorram[symbolIndex + 1] << 8);
+			currentY = sega_vectorram[symbolIndex + 2] | (sega_vectorram[symbolIndex + 3] << 8);
+			vectorIndex = sega_vectorram[symbolIndex + 4] | (sega_vectorram[symbolIndex + 5] << 8);
+			rotate = sega_vectorram[symbolIndex + 6] | (sega_vectorram[symbolIndex + 7] << 8);
+			scale = sega_vectorram[symbolIndex + 8];
+
+			currentX = ((currentX & 0x7ff) - min_x) << 15;
+			currentY = ((currentY & 0x7ff) - min_y) << 15;
+			vector_add_point(currentX << 1, currentY << 1, 0, 0);
+			vectorIndex &= 0xfff;
+
+			/* walk the vector list until 'last vector' bit */
+			/* is set in attributes */
+
+			do
+			{
+				
+				attrib = sega_vectorram[vectorIndex + 0];
+				length = sega_vectorram[vectorIndex + 1];
+				angle = sega_vectorram[vectorIndex + 2] | (sega_vectorram[vectorIndex + 3] << 8);
+				LOG_INFO("Vector Ram Index Here %x angle: %x", vectorIndex, angle);
+				vectorIndex += 4;
+
+				/* calculate deltas based on len, angle(s), and scale factor */
+
+				angle = (angle + rotate) & 0x3ff;
+				deltax = sinTable[angle] * scale * length;
+				deltay = cosTable[angle] * scale * length;
+
+				currentX += deltax >> 7;
+				currentY += deltay >> 7;
+
+				color = VECTOR_COLOR222((attrib >> 1) & 0x3f);
+				if ((attrib & 1) && color)
+				{
+					if (translucency)
+						intensity = 0xa0; /* leave room for translucency */
+					else
+						intensity = 0xff;
+				}
+				else
+					intensity = 0;
+				vector_add_point(currentX << 1, currentY << 1, color, intensity);
+
+			} while (!(attrib & 0x80));
+		}
+
+		symbolIndex += 9;
+		if (symbolIndex >= 0xfff)
+			break;
+
+	} while (!(draw & 0x80));
+}
+
+static void sega_vh_stop_smoothed(void)
+{
+}
+
+
+/* Latch the fake "Video Type" dipswitch. Called from sega_vh_start() at init,   */
+/* where the per-frame input_port_value[] array (readinputportbytag) is not yet  */
+/* built, so we scan Machine->input_ports directly the way llander does. Returns  */
+/* 1 for "Smoothed", 0 for "Accurate" (also the default when the port is absent). */
+static int sega_video_use_smoothed(void)
+{
+	for (const InputPort* in = Machine->input_ports; in->type != IPT_END; in++)
+	{
+		if ((in->type & ~IPF_MASK) == IPT_DIPSWITCH_NAME &&
+			in->name && strcmp(in->name, "Video Type") == 0)
+			return (in->default_value & in->mask) != 0;
+	}
+	return 0;
+}
+
+/* Public entry points (declared in SegaG80vid.h). These stay stable so the      */
+/* drivers' run_init_* code is unchanged; they dispatch to whichever renderer  */
+/* the "Video Type" dipswitch selected at reset. */
+int sega_vh_start(int r)
+{
+	use_smoothed_video = sega_video_use_smoothed();
+	if (use_smoothed_video)
+		return sega_vh_start_smoothed(r);
+	else
+		return sega_vh_start_accurate(r);
+}
+
+void sega_vh_update(void)
+{
+	if (use_smoothed_video)
+		sega_vh_update_smoothed();
+	else
+		sega_vh_update_accurate();
+}
+
+void sega_vh_stop(void)
+{
+	if (use_smoothed_video)
+		sega_vh_stop_smoothed();
+	else
+		sega_vh_stop_accurate();
 }

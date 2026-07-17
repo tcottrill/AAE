@@ -15,7 +15,7 @@
 
 #include "aae_mame_driver.h"
 #include "mame_late_avgdvg.h"
-#include "newer_mame_vector.h"
+//#include "newer_mame_vector.h"
 #include "timer.h"
 #include "sys_log.h"
 #include <stdlib.h>

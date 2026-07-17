@@ -39,6 +39,9 @@ int  get_menu_status();
 void set_menu_status(int on);
 int  get_menu_level();
 void set_menu_level_top();
+// Go back one menu level (nested submenus return to their parent, e.g.
+// the monitor setups return to VIDEO SETUP; top-level submenus to root).
+void menu_navigate_back();
 void do_the_menu();
 void change_menu_level(int dir);
 void change_menu_item(int dir);

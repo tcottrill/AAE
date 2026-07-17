@@ -20,6 +20,7 @@ extern rprog_t fragScanlineMultiply;
 extern rprog_t fragStarPoint;
 extern rprog_t fragTexColor;   // textured + per-vertex color (legacy textured shots)
 extern rprog_t fragMonoMonitor; // mono CRT simulation for B/W raster games
+extern rprog_t fragColorMonitor; // color CRT simulation (shadow mask) for color raster games
 
 int init_shader();
 void bind_shader(rprog_t program);

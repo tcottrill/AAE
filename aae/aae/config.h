@@ -77,6 +77,9 @@ typedef struct {
 	int samplerate;
 
 	char* raster_effect;
+	// Display aspect override: "AUTO" (natural computed aspect, the default)
+	// or "W:H" (e.g. "4:3", "3:4"). [main] game_aspect; per-game overridable.
+	char* game_aspect;
 
 	// --- NEW FIELDS for performance options ---
 	int useMMCSS;         // 1 = enable MMCSS for main thread
@@ -91,6 +94,79 @@ typedef struct {
 	int starting_monitor;
 	
 
+	// --- Mono monitor CRT effect (B/W raster games only) ---
+	// Ported from the PET emulator's mono monitor shader. Applied as a
+	// post-process on img5a when the driver has VIDEO_TYPE_RASTER_BW.
+	// Persisted in aae.ini [monitormono]; per-game ini can override.
+	int   mono_enable;            // 0 = off, 1 = on
+	float mono_blur_h;            // horizontal beam sigma, source px (0..2.5)
+	float mono_blur_v;            // vertical beam sigma, source px (0..1)
+	float mono_halation;          // glow strength (0..1)
+	float mono_halation_radius;   // glow radius, source px (1..16)
+	float mono_scanline;          // beam ripple strength (0..1)
+	float mono_contrast;          // video gain / beam overdrive (1..3)
+	float mono_brightness;        // black-level lift (0..0.25)
+	int   mono_tint;              // 0 = P4 white, 1 = P1 green, 2 = P3 amber
+
+	// --- Multi-mouse: per-player device assignment ---
+	// -2 = none, -1 = system (all mice merged, the legacy behavior),
+	// 0..RI_MAX_MICE-1 = a specific Raw Input mouse device.
+	// Persisted in aae.ini [input] mouse_player1..4.
+	int mouse_player[4];
+
+	// Stable identity for specific-device assignments: the full Raw Input
+	// device path ("" when the player is NONE/SYSTEM). Windows does not
+	// guarantee enumeration order across boots, so when this is set it WINS
+	// over the index above -- the device is found wherever it enumerated,
+	// and if it is unplugged the player simply gets no input (never a wrong
+	// device). Persisted in aae.ini [input] mouse_player1..4_path.
+	char mouse_player_path[4][260];
+
+	// --- Joystick: per-player device assignment ---
+	// -2 = none, -1 = AUTO (joystick N drives player N, the legacy default),
+	// 0.. = a specific joystick slot. Persisted in aae.ini [input]
+	// joy_player1..4.
+	int joy_player[4];
+
+	// Stable identity for specific assignments ("" for NONE/AUTO): a
+	// "DI:{guid}" / "XINPUT:n" / "WINMM:n" string from joystick_get_id().
+	// When set it WINS over the index -- the device is found wherever it
+	// currently sits, and an unplugged device means no input rather than
+	// someone else's stick. DI instance GUIDs are stable per machine, so
+	// two identical Ultimarc sticks stay pinned to their players across
+	// reboots. Persisted in aae.ini [input] joy_player1..4_id.
+	char joy_player_id[4][64];
+
+	// --- Multi-keyboard: per-player device assignment ---
+	// Same scheme as the mice. ALL players default to -1 (SYSTEM = merged),
+	// which preserves the classic model of several players sharing one
+	// keyboard with different keys. Assign specific devices (e.g. two
+	// Ultimarc I-PACs) to route each player's GAME keys to its own encoder;
+	// coin/start/service bits carry the player-1 tag and follow player 1's
+	// device, and UI/menu keys always read the merged state.
+	// Persisted in aae.ini [input] kbd_player1..4(+_path).
+	int  kbd_player[4];
+	char kbd_player_path[4][260];
+
+	// --- Color monitor CRT effect (color raster games only) ---
+	// Sibling of the mono monitor pass: same beam/halation/scanline pipeline
+	// plus RGB misconvergence, saturation and shadow-mask emulation. Applied
+	// on img5a when the driver has VIDEO_TYPE_RASTER_COLOR.
+	// Persisted in aae.ini [monitorcolor]; per-game ini can override.
+	int   color_enable;           // 0 = off, 1 = on
+	float color_blur_h;           // horizontal beam sigma, source px (0..2.5)
+	float color_blur_v;           // vertical beam sigma, source px (0..1)
+	float color_converge;         // RGB misconvergence, source px (0..2)
+	float color_halation;         // glow strength (0..1)
+	float color_halation_radius;  // glow radius, source px (1..16)
+	float color_scanline;         // scanline strength (0..1)
+	float color_contrast;         // video gain / beam overdrive (1..3)
+	float color_brightness;       // black-level lift (0..0.25)
+	float color_saturation;       // 0 = grayscale, 1 = neutral, 2 = punchy
+	int   color_mask_type;        // 0 = aperture grille, 1 = slot mask, 2 = dot triad
+	float color_mask_strength;    // shadow-mask depth (0..1)
+	float color_mask_scale;       // phosphor stripe width in output px (1..6)
+
 	// --- System rotation (command-line -ror / -rol) ---
 	// Stored as ORIENTATION_xxx flags (0 = none, ROT90, ROT180, ROT270).
 	// Composed with driver rotation via XOR into Machine->orientation.
@@ -103,11 +179,16 @@ typedef struct {
 inline settings config;
 
 void setup_video_config();
-void setup_config(void);
-void setup_game_config(void);
+void setup_config();
+void setup_game_config();
+void sanity_check_config();
 
 void my_set_config_int(const char* section, const char* key, int val, int path);
 void my_set_config_float(const char* section, const char* key, float val, int path);
 void my_set_config_string(const char* section, const char* key, const char* val, int path);
+
+// Parse a "W:H" aspect string ("4:3", "16:9"...). Returns w/h, or 0 for
+// "AUTO"/empty/unparsable (callers treat 0 as "no override").
+float aspect_from_string(const char* s);
 
 #endif // CONFIG_H

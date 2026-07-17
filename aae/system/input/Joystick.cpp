@@ -13,7 +13,18 @@
 #include <windows.h>
 #include <mmsystem.h>
 #include <Xinput.h>
+#define DIRECTINPUT_VERSION 0x0800
+#include <dinput.h>
 #include <cstring>
+#include <cstdio>   // snprintf
+#include <atomic>   // device-change flag
+#include <new>      // std::nothrow
+#include <cstdlib>  // atoi
+
+#pragma comment(lib, "dinput8.lib")
+#pragma comment(lib, "dxguid.lib")
+
+extern HWND win_get_window();   // framework.h (system/window)
 
 #pragma comment(lib, "winmm.lib")
 #ifndef WIN7BUILD
@@ -51,26 +62,27 @@ static JoystickHotplugCallback s_hotplug_callback = nullptr;
 
 // Generalized combo edge-detection state.
 // Each distinct buttonMask gets its own slot so combos don't interfere.
-static WORD s_comboMasks[JOY_MAX_COMBOS]          = {};
-static int  s_numCombos                            = 0;
+static WORD s_comboMasks[JOY_MAX_COMBOS] = {};
+static int  s_numCombos = 0;
 static bool s_comboWasHeld[MAX_JOYSTICKS][JOY_MAX_COMBOS] = {};
 
 static int get_combo_index(WORD mask)
 {
-    for (int i = 0; i < s_numCombos; i++)
-        if (s_comboMasks[i] == mask) return i;
-    if (s_numCombos < JOY_MAX_COMBOS)
-    {
-        s_comboMasks[s_numCombos] = mask;
-        return s_numCombos++;
-    }
-    return 0; // table full: fall back to slot 0 rather than crash
+	for (int i = 0; i < s_numCombos; i++)
+		if (s_comboMasks[i] == mask) return i;
+	if (s_numCombos < JOY_MAX_COMBOS)
+	{
+		s_comboMasks[s_numCombos] = mask;
+		return s_numCombos++;
+	}
+	return 0; // table full: fall back to slot 0 rather than crash
 }
 
 enum class JoystickDriver {
 	None,
 	XInput,
-	WinMM
+	WinMM,
+	Hybrid    // DirectInput8 generic sticks + XInput pads simultaneously
 };
 
 static JoystickDriver s_active_driver = JoystickDriver::None;
@@ -156,10 +168,6 @@ static void reset_single_joystick(int index)
 		joy[index].button[b].name = NAME_UNUSED;
 	}
 }
-
-//==============================================================================
-// XInput Implementation
-//==============================================================================
 
 //==============================================================================
 // XInput Implementation
@@ -336,7 +344,11 @@ namespace xinput {
 		j.button[15].b = (g.bRightTrigger > TRIGGER_THRESHOLD) ? 1 : 0;
 	}
 
-	static int poll()
+	// joy_base: first joy[] slot this backend fills. 0 in XInput-only mode;
+	// the DirectInput device count in hybrid mode (sticks first, pads after).
+	// Returns highest connected slot + 1 (0 if none). Does NOT set
+	// num_joysticks -- the driver dispatch owns that.
+	static int poll(int joy_base)
 	{
 		bool connected_now[MAX_CONTROLLERS];
 		std::memset(connected_now, 0, sizeof(connected_now));
@@ -396,7 +408,6 @@ namespace xinput {
 				vib.wRightMotorSpeed = static_cast<WORD>(0.6f * 65535.0f); // 60% high-frequency buzz
 				XInputSetState(i, &vib);
 				s_rumble_timer[i] = 15; // Hold for 15 frames (~0.25 seconds)
-
 			}
 			else if (!connected_now[i] && s_connected[i]) {
 				LOG_INFO("XInput controller %d disconnected", i);
@@ -422,28 +433,42 @@ namespace xinput {
 			}
 		}
 
-		// Rebuild sequential mapping
-		for (int j = 0; j < MAX_JOYSTICKS; ++j) {
+		// STABLE mapping: joy[joy_base + i] mirrors XInput slot i directly
+		// (no compaction). If pad 0 drops, pad 1 stays in its slot --
+		// player assignments survive a mid-session unplug. Empty slots
+		// read as neutral state.
+		for (int j = joy_base; j < joy_base + MAX_CONTROLLERS && j < MAX_JOYSTICKS; ++j) {
 			reset_single_joystick(j);
-			s_joy_to_xinput[j] = -1; // Reset mapping
+			s_joy_to_xinput[j] = -1;
 		}
 
-		int joy_count = 0;
-		for (int i = 0; i < MAX_CONTROLLERS; ++i) {
+		int highest = -1;
+		for (int i = 0; i < MAX_CONTROLLERS && joy_base + i < MAX_JOYSTICKS; ++i) {
 			if (!connected_now[i])
 				continue;
 
-			if (joy_count >= MAX_JOYSTICKS)
-				break;
-
-			setup_descriptor(joy_count);
-			fill_state(joy[joy_count], s_cached_states[i]);
-			s_joy_to_xinput[joy_count] = i; // Save physical slot mapping for combos & rumble
-			joy_count++;
+			setup_descriptor(joy_base + i);
+			fill_state(joy[joy_base + i], s_cached_states[i]);
+			s_joy_to_xinput[joy_base + i] = i; // physical slot (combos & rumble)
+			highest = i;
 		}
 
-		num_joysticks = joy_count;
-		return 0;
+		return highest + 1;
+	}
+
+	// Force the next poll to re-probe every slot immediately (device-change
+	// notification): clears the empty-slot throttle timers.
+	static void request_reprobe()
+	{
+		for (int i = 0; i < MAX_CONTROLLERS; ++i)
+			s_offline_check_timer[i] = 0;
+	}
+
+	static bool any_connected()
+	{
+		for (int i = 0; i < MAX_CONTROLLERS; ++i)
+			if (s_connected[i]) return true;
+		return false;
 	}
 
 	// NEW: Expose cached buttons for combo system
@@ -476,15 +501,15 @@ namespace xinput {
 	static bool init()
 	{
 		reset_state();
-		poll(); // Prime initial state
 		return true; // Always return true to allow hotplug upgrading
 	}
 
 	static void shutdown()
 	{
 		// Stop any active rumble before exiting
-		for (int i = 0; i < num_joysticks; ++i) {
-			set_rumble(i, 0.0f, 0.0f);
+		for (int i = 0; i < MAX_JOYSTICKS; ++i) {
+			if (s_joy_to_xinput[i] >= 0)
+				set_rumble(i, 0.0f, 0.0f);
 		}
 
 		reset_state();
@@ -515,6 +540,8 @@ namespace winmm {
 		int device;
 		int axis_min[MAX_AXES];
 		int axis_max[MAX_AXES];
+		char pname[64];   // product name from JOYCAPS (for the menu)
+		int alive;        // last joyGetPosEx succeeded (hotplug display)
 	};
 
 	static DeviceInfo s_devices[MAX_JOYSTICKS];
@@ -694,6 +721,7 @@ namespace winmm {
 			js.dwFlags = JOY_RETURNALL;
 
 			if (joyGetPosEx(s_devices[n_joy].device, &js) == JOYERR_NOERROR) {
+				s_devices[n_joy].alive = 1;
 				s_devices[n_joy].axis[0] = js.dwXpos;
 				s_devices[n_joy].axis[1] = js.dwYpos;
 				int n_axis = 2;
@@ -719,6 +747,7 @@ namespace winmm {
 					s_devices[n_joy].button[n_but] = ((js.dwButtons & (1 << n_but)) != 0);
 			}
 			else {
+				s_devices[n_joy].alive = 0;
 				for (int n_axis = 0; n_axis < s_devices[n_joy].num_axes; n_axis++)
 					s_devices[n_joy].axis[n_axis] = 0;
 				if (s_devices[n_joy].caps & JOYCAPS_HASPOV)
@@ -731,6 +760,90 @@ namespace winmm {
 		return 0;
 	}
 
+	// Register one WinMM device id if it is present and not already known.
+	// Returns true if a new device was added.
+	static bool try_add_device(int n_dev)
+	{
+		if (s_num_devices >= MAX_JOYSTICKS) return false;
+
+		// already registered? (devices are never removed, so positions --
+		// and therefore player assignments -- stay stable across rescans)
+		for (int i = 0; i < s_num_devices; i++)
+			if (s_devices[i].device == n_dev) return false;
+
+		JOYCAPS caps;
+		if (joyGetDevCaps(n_dev, &caps, sizeof(caps)) != JOYERR_NOERROR) return false;
+
+		JOYINFOEX js;
+		js.dwSize = sizeof(js);
+		js.dwFlags = JOY_RETURNALL;
+		if (joyGetPosEx(n_dev, &js) == JOYERR_UNPLUGGED) return false;
+
+		LOG_INFO("Detected WinMM joystick %d: %s", n_dev, caps.szPname);
+
+		std::memset(&s_devices[s_num_devices], 0, sizeof(DeviceInfo));
+		s_devices[s_num_devices].device = n_dev;
+		s_devices[s_num_devices].caps = caps.wCaps;
+		s_devices[s_num_devices].num_buttons = MIN((int)caps.wNumButtons, MAX_JOYSTICK_BUTTONS);
+		s_devices[s_num_devices].num_axes = MIN((int)caps.wNumAxes, MAX_AXES);
+		s_devices[s_num_devices].alive = 1;
+		/* szPname is WCHAR under UNICODE builds; %ls narrows it */
+		snprintf(s_devices[s_num_devices].pname, sizeof(s_devices[s_num_devices].pname),
+			"%ls", caps.szPname);
+
+		s_devices[s_num_devices].axis_min[0] = caps.wXmin;
+		s_devices[s_num_devices].axis_max[0] = caps.wXmax;
+		s_devices[s_num_devices].axis_min[1] = caps.wYmin;
+		s_devices[s_num_devices].axis_max[1] = caps.wYmax;
+		int n_axis = 2;
+
+		if (caps.wCaps & JOYCAPS_HASZ) {
+			s_devices[s_num_devices].axis_min[n_axis] = caps.wZmin;
+			s_devices[s_num_devices].axis_max[n_axis] = caps.wZmax;
+			n_axis++;
+		}
+		if (caps.wCaps & JOYCAPS_HASR) {
+			s_devices[s_num_devices].axis_min[n_axis] = caps.wRmin;
+			s_devices[s_num_devices].axis_max[n_axis] = caps.wRmax;
+			n_axis++;
+		}
+		if (caps.wCaps & JOYCAPS_HASU) {
+			s_devices[s_num_devices].axis_min[n_axis] = caps.wUmin;
+			s_devices[s_num_devices].axis_max[n_axis] = caps.wUmax;
+			n_axis++;
+		}
+		if (caps.wCaps & JOYCAPS_HASV) {
+			s_devices[s_num_devices].axis_min[n_axis] = caps.wVmin;
+			s_devices[s_num_devices].axis_max[n_axis] = caps.wVmax;
+			n_axis++;
+		}
+
+		if (add_joystick(&s_devices[s_num_devices]) != 0) {
+			LOG_ERROR("Failed to register joystick %d (%s)", n_dev, caps.szPname);
+			return false;
+		}
+
+		LOG_INFO("Joystick %d registered: %d button(s), %d axis/axes",
+			n_dev, s_devices[s_num_devices].num_buttons, s_devices[s_num_devices].num_axes);
+
+		s_num_devices++;
+		return true;
+	}
+
+	// Re-enumerate after a device-change notification. New devices are
+	// APPENDED; existing entries are never removed or reordered (unplugged
+	// ones just read neutral until they return).
+	static bool rescan()
+	{
+		bool added = false;
+		int max_devs = joyGetNumDevs();
+		for (int n_dev = 0; n_dev < max_devs; n_dev++)
+			if (try_add_device(n_dev)) added = true;
+		if (added)
+			s_initialized = true;
+		return added;
+	}
+
 	static bool init()
 	{
 		if (s_initialized) return true;
@@ -740,62 +853,8 @@ namespace winmm {
 
 		s_num_devices = 0;
 
-		for (int n_dev = 0; n_dev < max_devs; n_dev++) {
-			if (s_num_devices >= MAX_JOYSTICKS) break;
-
-			JOYCAPS caps;
-			if (joyGetDevCaps(n_dev, &caps, sizeof(caps)) != JOYERR_NOERROR) continue;
-
-			JOYINFOEX js;
-			js.dwSize = sizeof(js);
-			js.dwFlags = JOY_RETURNALL;
-			if (joyGetPosEx(n_dev, &js) == JOYERR_UNPLUGGED) continue;
-
-			LOG_INFO("Detected WinMM joystick %d: %s", n_dev, caps.szPname);
-
-			std::memset(&s_devices[s_num_devices], 0, sizeof(DeviceInfo));
-			s_devices[s_num_devices].device = n_dev;
-			s_devices[s_num_devices].caps = caps.wCaps;
-			s_devices[s_num_devices].num_buttons = MIN((int)caps.wNumButtons, MAX_JOYSTICK_BUTTONS);
-			s_devices[s_num_devices].num_axes = MIN((int)caps.wNumAxes, MAX_AXES);
-
-			s_devices[s_num_devices].axis_min[0] = caps.wXmin;
-			s_devices[s_num_devices].axis_max[0] = caps.wXmax;
-			s_devices[s_num_devices].axis_min[1] = caps.wYmin;
-			s_devices[s_num_devices].axis_max[1] = caps.wYmax;
-			int n_axis = 2;
-
-			if (caps.wCaps & JOYCAPS_HASZ) {
-				s_devices[s_num_devices].axis_min[n_axis] = caps.wZmin;
-				s_devices[s_num_devices].axis_max[n_axis] = caps.wZmax;
-				n_axis++;
-			}
-			if (caps.wCaps & JOYCAPS_HASR) {
-				s_devices[s_num_devices].axis_min[n_axis] = caps.wRmin;
-				s_devices[s_num_devices].axis_max[n_axis] = caps.wRmax;
-				n_axis++;
-			}
-			if (caps.wCaps & JOYCAPS_HASU) {
-				s_devices[s_num_devices].axis_min[n_axis] = caps.wUmin;
-				s_devices[s_num_devices].axis_max[n_axis] = caps.wUmax;
-				n_axis++;
-			}
-			if (caps.wCaps & JOYCAPS_HASV) {
-				s_devices[s_num_devices].axis_min[n_axis] = caps.wVmin;
-				s_devices[s_num_devices].axis_max[n_axis] = caps.wVmax;
-				n_axis++;
-			}
-
-			if (add_joystick(&s_devices[s_num_devices]) != 0) {
-				LOG_ERROR("Failed to register joystick %d (%s)", n_dev, caps.szPname);
-				continue;
-			}
-
-			LOG_INFO("Joystick %d registered: %d button(s), %d axis/axes",
-				n_dev, s_devices[s_num_devices].num_buttons, s_devices[s_num_devices].num_axes);
-
-			s_num_devices++;
-		}
+		for (int n_dev = 0; n_dev < max_devs; n_dev++)
+			try_add_device(n_dev);
 
 		if (s_num_devices == 0) {
 			LOG_INFO("No WinMM joysticks detected");
@@ -816,6 +875,371 @@ namespace winmm {
 } // namespace winmm
 
 //==============================================================================
+// DirectInput 8 Implementation (generic HID sticks; XInput pads are filtered
+// out here and served by the XInput backend simultaneously -- hybrid mode).
+//
+// Device identity is the DirectInput INSTANCE GUID, which is stable per
+// machine: the INPUT DEVICES menu persists assignments as "DI:{guid}"
+// strings, so two identical Ultimarc sticks stay pinned to their players
+// across reboots regardless of enumeration order.
+//==============================================================================
+
+namespace dinput {
+	// leave headroom for the 4 XInput slots behind the DI devices in joy[]
+	static constexpr int MAX_DEVICES = MAX_JOYSTICKS - 4;
+
+	struct Device {
+		IDirectInputDevice8A* dev;
+		GUID  guid;
+		char  guid_str[48];
+		char  name[64];
+		int   alive;
+		int   num_buttons;
+		int   num_extra;              // extra 1-axis sticks after X/Y
+		LONG  DIJOYSTATE2::* extra[6];  // source members for the extras
+		int   has_pov;
+	};
+
+	static IDirectInput8A* s_di = nullptr;
+	static Device s_devices[MAX_DEVICES];
+	static int s_num_devices = 0;
+
+	static void guid_to_string(const GUID& g, char* out, size_t outlen)
+	{
+		snprintf(out, outlen, "{%08lX-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X}",
+			g.Data1, g.Data2, g.Data3,
+			g.Data4[0], g.Data4[1], g.Data4[2], g.Data4[3],
+			g.Data4[4], g.Data4[5], g.Data4[6], g.Data4[7]);
+	}
+
+	// Is this VID/PID an XInput device? Classic check: the matching HID
+	// interface path contains "IG_" (Microsoft's XInput marker). Those
+	// devices are skipped here and handled by the XInput backend.
+	static bool is_xinput_vidpid(unsigned short vid, unsigned short pid)
+	{
+		UINT count = 0;
+		if (GetRawInputDeviceList(nullptr, &count, sizeof(RAWINPUTDEVICELIST)) != 0 || count == 0)
+			return false;
+
+		RAWINPUTDEVICELIST* list = new (std::nothrow) RAWINPUTDEVICELIST[count];
+		if (!list) return false;
+
+		bool found = false;
+		count = GetRawInputDeviceList(list, &count, sizeof(RAWINPUTDEVICELIST));
+		if (count != (UINT)-1)
+		{
+			for (UINT i = 0; i < count && !found; i++)
+			{
+				if (list[i].dwType != RIM_TYPEHID) continue;
+
+				RID_DEVICE_INFO info;
+				info.cbSize = sizeof(info);
+				UINT sz = sizeof(info);
+				if (GetRawInputDeviceInfoA(list[i].hDevice, RIDI_DEVICEINFO, &info, &sz) == (UINT)-1)
+					continue;
+				if (info.hid.dwVendorId != vid || info.hid.dwProductId != pid)
+					continue;
+
+				char path[256] = { 0 };
+				sz = sizeof(path) - 1;
+				if (GetRawInputDeviceInfoA(list[i].hDevice, RIDI_DEVICENAME, path, &sz) != (UINT)-1)
+					if (strstr(path, "IG_")) found = true;
+			}
+		}
+		delete[] list;
+		return found;
+	}
+
+	static void set_axis_range(IDirectInputDevice8A* dev, DWORD ofs, LONG lo, LONG hi)
+	{
+		DIPROPRANGE pr;
+		pr.diph.dwSize = sizeof(pr);
+		pr.diph.dwHeaderSize = sizeof(pr.diph);
+		pr.diph.dwHow = DIPH_BYOFFSET;
+		pr.diph.dwObj = ofs;
+		pr.lMin = lo;
+		pr.lMax = hi;
+		dev->SetProperty(DIPROP_RANGE, &pr.diph);
+	}
+
+	// Build the joy[] descriptor for DI device d at joy index d (DI devices
+	// occupy joy[0..count-1]; layout mirrors the winmm model so downstream
+	// consumers see the same shapes: stick0 = signed X/Y, extra unsigned
+	// 1-axis sticks, then a digital hat).
+	static void setup_descriptor(int d)
+	{
+		JOYSTICK_INFO& j = joy[d];
+		Device& D = s_devices[d];
+
+		j.flags = JOYFLAG_DIGITAL | JOYFLAG_ANALOGUE | JOYFLAG_SIGNED;
+
+		int n_stick = 0;
+		j.stick[n_stick].flags = JOYFLAG_DIGITAL | JOYFLAG_ANALOGUE | JOYFLAG_SIGNED;
+		j.stick[n_stick].num_axis = 2;
+		j.stick[n_stick].name = "stick";
+		j.stick[n_stick].axis[0].name = "X";
+		j.stick[n_stick].axis[1].name = "Y";
+		n_stick++;
+
+		for (int e = 0; e < D.num_extra && n_stick < MAX_JOYSTICK_STICKS - 1; e++) {
+			j.stick[n_stick].flags = JOYFLAG_DIGITAL | JOYFLAG_ANALOGUE | JOYFLAG_UNSIGNED;
+			j.stick[n_stick].num_axis = 1;
+			j.stick[n_stick].axis[0].name = "";
+			j.stick[n_stick].name = "slider";
+			n_stick++;
+		}
+
+		if (D.has_pov && n_stick < MAX_JOYSTICK_STICKS) {
+			j.stick[n_stick].flags = JOYFLAG_DIGITAL | JOYFLAG_SIGNED;
+			j.stick[n_stick].num_axis = 2;
+			j.stick[n_stick].axis[0].name = "left/right";
+			j.stick[n_stick].axis[1].name = "up/down";
+			j.stick[n_stick].name = "hat";
+			n_stick++;
+		}
+
+		j.num_sticks = n_stick;
+		j.num_buttons = D.num_buttons;
+		for (int b = 0; b < j.num_buttons; b++)
+			j.button[b].name = "Button";
+	}
+
+	// EnumObjects callback: note which optional axes exist.
+	struct AxisProbe { bool z, rx, ry, rz; int sliders; };
+	static BOOL CALLBACK axis_cb(LPCDIDEVICEOBJECTINSTANCEA obj, LPVOID ref)
+	{
+		AxisProbe* p = (AxisProbe*)ref;
+		if (obj->guidType == GUID_ZAxis)  p->z = true;
+		else if (obj->guidType == GUID_RxAxis) p->rx = true;
+		else if (obj->guidType == GUID_RyAxis) p->ry = true;
+		else if (obj->guidType == GUID_RzAxis) p->rz = true;
+		else if (obj->guidType == GUID_Slider) p->sliders++;
+		return DIENUM_CONTINUE;
+	}
+
+	static BOOL CALLBACK enum_cb(LPCDIDEVICEINSTANCEA inst, LPVOID ref)
+	{
+		bool* added = (bool*)ref;
+
+		if (s_num_devices >= MAX_DEVICES)
+			return DIENUM_STOP;
+
+		// already registered? (rescan: positions never move)
+		for (int i = 0; i < s_num_devices; i++)
+			if (IsEqualGUID(s_devices[i].guid, inst->guidInstance))
+				return DIENUM_CONTINUE;
+
+		// XInput devices are served by the XInput backend
+		unsigned short vid = (unsigned short)(inst->guidProduct.Data1 & 0xffff);
+		unsigned short pid = (unsigned short)((inst->guidProduct.Data1 >> 16) & 0xffff);
+		if (is_xinput_vidpid(vid, pid))
+		{
+			LOG_INFO("DirectInput: skipping XInput device %s (handled by XInput)", inst->tszInstanceName);
+			return DIENUM_CONTINUE;
+		}
+
+		IDirectInputDevice8A* dev = nullptr;
+		if (FAILED(s_di->CreateDevice(inst->guidInstance, &dev, nullptr)) || !dev)
+			return DIENUM_CONTINUE;
+
+		if (FAILED(dev->SetDataFormat(&c_dfDIJoystick2)) ||
+			FAILED(dev->SetCooperativeLevel(win_get_window(), DISCL_BACKGROUND | DISCL_NONEXCLUSIVE)))
+		{
+			dev->Release();
+			return DIENUM_CONTINUE;
+		}
+
+		DIDEVCAPS caps;
+		caps.dwSize = sizeof(caps);
+		if (FAILED(dev->GetCapabilities(&caps)))
+		{
+			dev->Release();
+			return DIENUM_CONTINUE;
+		}
+
+		AxisProbe probe = {};
+		dev->EnumObjects(axis_cb, &probe, DIDFT_AXIS);
+
+		Device& D = s_devices[s_num_devices];
+		std::memset(&D, 0, sizeof(D));
+		D.dev = dev;
+		D.guid = inst->guidInstance;
+		guid_to_string(D.guid, D.guid_str, sizeof(D.guid_str));
+		snprintf(D.name, sizeof(D.name), "%s", inst->tszInstanceName);
+		D.num_buttons = MIN((int)caps.dwButtons, MAX_JOYSTICK_BUTTONS);
+		D.has_pov = (caps.dwPOVs > 0) ? 1 : 0;
+		D.alive = 1;
+
+		// map optional axes to extra 1-axis sticks (0..255)
+		D.num_extra = 0;
+		if (probe.z)           D.extra[D.num_extra++] = &DIJOYSTATE2::lZ;
+		if (probe.rx)          D.extra[D.num_extra++] = &DIJOYSTATE2::lRx;
+		if (probe.ry)          D.extra[D.num_extra++] = &DIJOYSTATE2::lRy;
+		if (probe.rz)          D.extra[D.num_extra++] = &DIJOYSTATE2::lRz;
+		// sliders handled through lRz-style members is device-specific;
+		// rglSlider needs array access -- covered separately in poll
+
+		// X/Y signed -128..127; optional axes 0..255
+		set_axis_range(dev, DIJOFS_X, -128, 127);
+		set_axis_range(dev, DIJOFS_Y, -128, 127);
+		if (probe.z)  set_axis_range(dev, DIJOFS_Z, 0, 255);
+		if (probe.rx) set_axis_range(dev, DIJOFS_RX, 0, 255);
+		if (probe.ry) set_axis_range(dev, DIJOFS_RY, 0, 255);
+		if (probe.rz) set_axis_range(dev, DIJOFS_RZ, 0, 255);
+
+		dev->Acquire();
+
+		setup_descriptor(s_num_devices);
+		s_num_devices++;
+		*added = true;
+
+		LOG_INFO("DirectInput: joystick %d registered: %s [%s] (%d buttons%s)",
+			s_num_devices, D.name, D.guid_str, D.num_buttons,
+			D.has_pov ? ", hat" : "");
+
+		return DIENUM_CONTINUE;
+	}
+
+	// Enumerate and APPEND unseen devices; existing entries never move.
+	static bool rescan()
+	{
+		if (!s_di) return false;
+		bool added = false;
+		s_di->EnumDevices(DI8DEVCLASS_GAMECTRL, enum_cb, &added, DIEDFL_ATTACHEDONLY);
+
+		// a re-plugged known device just needs re-acquiring
+		for (int i = 0; i < s_num_devices; i++)
+			if (!s_devices[i].alive && s_devices[i].dev)
+				if (SUCCEEDED(s_devices[i].dev->Acquire()))
+					s_devices[i].alive = 1;
+
+		return added;
+	}
+
+	static bool init()
+	{
+		if (s_di) return true;
+
+		HWND hwnd = win_get_window();
+		if (!hwnd)
+			return false;
+
+		if (FAILED(DirectInput8Create(GetModuleHandle(nullptr), DIRECTINPUT_VERSION,
+			IID_IDirectInput8A, (LPVOID*)&s_di, nullptr)) || !s_di)
+		{
+			LOG_INFO("DirectInput8Create failed; falling back to legacy joystick drivers");
+			s_di = nullptr;
+			return false;
+		}
+
+		s_num_devices = 0;
+		rescan();
+		LOG_INFO("DirectInput: %d generic joystick device(s)", s_num_devices);
+		return true;
+	}
+
+	// Fill joy[0..count-1] from device state. Returns the device count.
+	static int poll()
+	{
+		for (int d = 0; d < s_num_devices; d++)
+		{
+			Device& D = s_devices[d];
+			JOYSTICK_INFO& j = joy[d];
+
+			DIJOYSTATE2 st;
+			HRESULT hr = D.dev->Poll();
+			if (hr == DIERR_INPUTLOST || hr == DIERR_NOTACQUIRED)
+			{
+				D.dev->Acquire();
+				hr = D.dev->Poll();
+			}
+			if (SUCCEEDED(hr) || hr == DI_NOEFFECT)
+				hr = D.dev->GetDeviceState(sizeof(st), &st);
+
+			if (FAILED(hr))
+			{
+				// unplugged: neutral state, keep the slot
+				D.alive = 0;
+				for (int s = 0; s < j.num_sticks; s++)
+					for (int a = 0; a < j.stick[s].num_axis; a++)
+					{
+						j.stick[s].axis[a].pos = 0;
+						j.stick[s].axis[a].d1 = j.stick[s].axis[a].d2 = 0;
+					}
+				for (int b = 0; b < j.num_buttons; b++)
+					j.button[b].b = 0;
+				continue;
+			}
+			D.alive = 1;
+
+			// stick 0: signed X/Y with digital thresholds
+			j.stick[0].axis[0].pos = clamp_int((int)st.lX, -128, 127);
+			j.stick[0].axis[1].pos = clamp_int((int)st.lY, -128, 127);
+			for (int a = 0; a < 2; a++)
+			{
+				j.stick[0].axis[a].d1 = (j.stick[0].axis[a].pos < -64) ? 1 : 0;
+				j.stick[0].axis[a].d2 = (j.stick[0].axis[a].pos > 64) ? 1 : 0;
+			}
+
+			// extra unsigned axes
+			int n_stick = 1;
+			for (int e = 0; e < D.num_extra && n_stick < j.num_sticks; e++, n_stick++)
+			{
+				int p = clamp_int((int)(st.*(D.extra[e])), 0, 255);
+				j.stick[n_stick].axis[0].pos = p;
+				j.stick[n_stick].axis[0].d1 = (p < 64) ? 1 : 0;
+				j.stick[n_stick].axis[0].d2 = (p > 192) ? 1 : 0;
+			}
+
+			// hat (POV 0): centered = 0xFFFF/-1
+			if (D.has_pov && n_stick < j.num_sticks)
+			{
+				DWORD pov = st.rgdwPOV[0];
+				int px = 0, py = 0;
+				if ((pov & 0xFFFF) != 0xFFFF)
+				{
+					int deg = pov / 100;   // 0 = up, 90 = right ...
+					if (deg > 337 || deg < 23)        py = -1;
+					else if (deg < 68) { py = -1; px = 1; }
+					else if (deg < 113)                px = 1;
+					else if (deg < 158) { py = 1; px = 1; }
+					else if (deg < 203)                py = 1;
+					else if (deg < 248) { py = 1; px = -1; }
+					else if (deg < 293)                px = -1;
+					else { py = -1; px = -1; }
+				}
+				j.stick[n_stick].axis[0].pos = px * 128;
+				j.stick[n_stick].axis[0].d1 = (px < 0) ? 1 : 0;
+				j.stick[n_stick].axis[0].d2 = (px > 0) ? 1 : 0;
+				j.stick[n_stick].axis[1].pos = py * 128;
+				j.stick[n_stick].axis[1].d1 = (py < 0) ? 1 : 0;
+				j.stick[n_stick].axis[1].d2 = (py > 0) ? 1 : 0;
+			}
+
+			for (int b = 0; b < j.num_buttons; b++)
+				j.button[b].b = (st.rgbButtons[b] & 0x80) ? 1 : 0;
+		}
+
+		return s_num_devices;
+	}
+
+	static void shutdown()
+	{
+		for (int i = 0; i < s_num_devices; i++)
+		{
+			if (s_devices[i].dev)
+			{
+				s_devices[i].dev->Unacquire();
+				s_devices[i].dev->Release();
+				s_devices[i].dev = nullptr;
+			}
+		}
+		s_num_devices = 0;
+		if (s_di) { s_di->Release(); s_di = nullptr; }
+	}
+} // namespace dinput
+
+//==============================================================================
 // Public API Implementation
 //==============================================================================
 
@@ -829,7 +1253,17 @@ int install_joystick()
 
 	LOG_INFO("Initializing joystick system...");
 
-	if (xinput::is_available()) {
+	// Preferred: hybrid DirectInput8 + XInput. DI serves generic HID sticks
+	// (Ultimarc etc., identified by stable instance GUIDs); XInput serves
+	// Xbox-family pads, which DI enumeration filters out. Both run at once:
+	// DI devices occupy joy[0..], XInput slots follow.
+	if (dinput::init()) {
+		xinput::init();
+		s_active_driver = JoystickDriver::Hybrid;
+		LOG_INFO("Using hybrid DirectInput8 + XInput joystick driver");
+	}
+
+	if (s_active_driver == JoystickDriver::None && xinput::is_available()) {
 		if (xinput::init()) {
 			s_active_driver = JoystickDriver::XInput;
 			LOG_INFO("Using XInput joystick driver (supports hotplug)");
@@ -865,6 +1299,10 @@ void remove_joystick()
 	case JoystickDriver::WinMM:
 		winmm::shutdown();
 		break;
+	case JoystickDriver::Hybrid:
+		xinput::shutdown();
+		dinput::shutdown();
+		break;
 	default:
 		break;
 	}
@@ -873,8 +1311,6 @@ void remove_joystick()
 	s_active_driver = JoystickDriver::None;
 	_joystick_installed = 0;
 }
-
-
 
 bool joystick_check_combo(int player, WORD buttonMask)
 {
@@ -900,14 +1336,74 @@ bool joystick_check_combo(int player, WORD buttonMask)
 	return triggered;
 }
 
+// Set from WM_DEVICECHANGE (message-pump context); handled on the next
+// poll_joystick() so all device-list mutation happens on the polling thread.
+static std::atomic<bool> s_device_change_pending{ false };
+
+void joystick_device_change()
+{
+	s_device_change_pending = true;
+}
+
+static void handle_device_change()
+{
+	LOG_INFO("Joystick: device change notification, rescanning");
+
+	switch (s_active_driver) {
+	case JoystickDriver::Hybrid:
+		// append any new DI sticks (positions never move) and let the
+		// next poll re-probe every XInput slot immediately
+		dinput::rescan();
+		xinput::request_reprobe();
+		break;
+
+	case JoystickDriver::XInput:
+		// let the next poll re-probe every slot immediately
+		xinput::request_reprobe();
+
+		// XInput was selected passively (no pads found at install): if a
+		// non-XInput stick has appeared, hand over to WinMM.
+		if (!xinput::any_connected()) {
+			if (winmm::rescan()) {
+				xinput::shutdown();
+				s_active_driver = JoystickDriver::WinMM;
+				LOG_INFO("Joystick: switching to WinMM driver (non-XInput device arrived)");
+				winmm::poll();
+			}
+		}
+		break;
+
+	case JoystickDriver::WinMM:
+		// append any newly-arrived devices; existing slots never move
+		winmm::rescan();
+		break;
+
+	default:
+		break;
+	}
+}
+
 int poll_joystick()
 {
 	if (!_joystick_installed)
 		return -1;
 
+	if (s_device_change_pending.exchange(false))
+		handle_device_change();
+
 	switch (s_active_driver) {
+	case JoystickDriver::Hybrid:
+	{
+		// DI sticks fill joy[0..d-1]; XInput pads fill joy[d..d+3]
+		int d = dinput::poll();
+		int x = xinput::poll(d);
+		num_joysticks = (x > 0) ? (d + x) : d;
+		return 0;
+	}
+
 	case JoystickDriver::XInput:
-		return xinput::poll();
+		num_joysticks = xinput::poll(0);
+		return 0;
 
 	case JoystickDriver::WinMM:
 		return winmm::poll();
@@ -915,6 +1411,148 @@ int poll_joystick()
 	default:
 		return -1;
 	}
+}
+
+// -----------------------------------------------------------------------------
+// Device display info for the INPUT DEVICES menu
+// -----------------------------------------------------------------------------
+const char* joystick_get_display_name(int index)
+{
+	static char namebuf[80];
+
+	if (index < 0 || index >= MAX_JOYSTICKS) return "NONE";
+
+	switch (s_active_driver) {
+	case JoystickDriver::Hybrid:
+		if (index < dinput::s_num_devices)
+			return dinput::s_devices[index].name;
+		snprintf(namebuf, sizeof(namebuf), "XINPUT PAD %d",
+			index - dinput::s_num_devices + 1);
+		return namebuf;
+
+	case JoystickDriver::XInput:
+		snprintf(namebuf, sizeof(namebuf), "XINPUT PAD %d", index + 1);
+		return namebuf;
+
+	case JoystickDriver::WinMM:
+		if (index < winmm::s_num_devices && winmm::s_devices[index].pname[0])
+			return winmm::s_devices[index].pname;
+		snprintf(namebuf, sizeof(namebuf), "JOY %d", index + 1);
+		return namebuf;
+
+	default:
+		return "NONE";
+	}
+}
+
+int joystick_is_connected(int index)
+{
+	if (index < 0 || index >= MAX_JOYSTICKS) return 0;
+
+	switch (s_active_driver) {
+	case JoystickDriver::Hybrid:
+		if (index < dinput::s_num_devices)
+			return dinput::s_devices[index].alive;
+		{
+			int slot = index - dinput::s_num_devices;
+			return (slot < xinput::MAX_CONTROLLERS && xinput::s_connected[slot]) ? 1 : 0;
+		}
+
+	case JoystickDriver::XInput:
+		return (index < xinput::MAX_CONTROLLERS && xinput::s_connected[index]) ? 1 : 0;
+
+	case JoystickDriver::WinMM:
+		return (index < winmm::s_num_devices && winmm::s_devices[index].alive) ? 1 : 0;
+
+	default:
+		return 0;
+	}
+}
+
+int joystick_device_count()
+{
+	switch (s_active_driver) {
+	case JoystickDriver::Hybrid:
+		// DI devices + the 4 XInput slots (empty pads show disconnected)
+		return dinput::s_num_devices + xinput::MAX_CONTROLLERS;
+
+	case JoystickDriver::XInput:
+		// fixed slot space; empty slots show as disconnected
+		return (MAX_JOYSTICKS < xinput::MAX_CONTROLLERS) ? MAX_JOYSTICKS : xinput::MAX_CONTROLLERS;
+
+	case JoystickDriver::WinMM:
+		return winmm::s_num_devices;
+
+	default:
+		return 0;
+	}
+}
+
+// -----------------------------------------------------------------------------
+// Stable device identity for persisted assignments:
+//   "DI:{instance-guid}"  DirectInput stick (stable per machine)
+//   "XINPUT:n"            XInput pad slot n
+//   "WINMM:n"             WinMM device position (weak identity; best-effort)
+// joystick_find_by_id resolves an id string to the CURRENT joy[] index, or
+// -1 when that device is not present.
+// -----------------------------------------------------------------------------
+const char* joystick_get_id(int index)
+{
+	static char idbuf[64];
+
+	if (index < 0 || index >= MAX_JOYSTICKS) return "";
+
+	switch (s_active_driver) {
+	case JoystickDriver::Hybrid:
+		if (index < dinput::s_num_devices) {
+			snprintf(idbuf, sizeof(idbuf), "DI:%s", dinput::s_devices[index].guid_str);
+			return idbuf;
+		}
+		snprintf(idbuf, sizeof(idbuf), "XINPUT:%d", index - dinput::s_num_devices);
+		return idbuf;
+
+	case JoystickDriver::XInput:
+		snprintf(idbuf, sizeof(idbuf), "XINPUT:%d", index);
+		return idbuf;
+
+	case JoystickDriver::WinMM:
+		snprintf(idbuf, sizeof(idbuf), "WINMM:%d", index);
+		return idbuf;
+
+	default:
+		return "";
+	}
+}
+
+int joystick_find_by_id(const char* id)
+{
+	if (!id || !id[0]) return -1;
+
+	if (strncmp(id, "DI:", 3) == 0) {
+		if (s_active_driver != JoystickDriver::Hybrid) return -1;
+		for (int i = 0; i < dinput::s_num_devices; i++)
+			if (strcmp(dinput::s_devices[i].guid_str, id + 3) == 0)
+				return dinput::s_devices[i].alive ? i : -1;
+		return -1;
+	}
+
+	if (strncmp(id, "XINPUT:", 7) == 0) {
+		int slot = atoi(id + 7);
+		if (slot < 0 || slot >= xinput::MAX_CONTROLLERS) return -1;
+		if (s_active_driver == JoystickDriver::Hybrid)
+			return xinput::s_connected[slot] ? (dinput::s_num_devices + slot) : -1;
+		if (s_active_driver == JoystickDriver::XInput)
+			return xinput::s_connected[slot] ? slot : -1;
+		return -1;
+	}
+
+	if (strncmp(id, "WINMM:", 6) == 0) {
+		if (s_active_driver != JoystickDriver::WinMM) return -1;
+		int idx = atoi(id + 6);
+		return (idx >= 0 && idx < winmm::s_num_devices) ? idx : -1;
+	}
+
+	return -1;
 }
 
 void set_joystick_hotplug_callback(JoystickHotplugCallback callback)
@@ -932,6 +1570,7 @@ const char* joystick_driver_name()
 	switch (s_active_driver) {
 	case JoystickDriver::XInput: return "XInput";
 	case JoystickDriver::WinMM:  return "WinMM";
+	case JoystickDriver::Hybrid: return "DirectInput8+XInput";
 	default:                     return "None";
 	}
 }
@@ -940,7 +1579,6 @@ bool joystick_any_connected()
 {
 	return num_joysticks > 0;
 }
-
 
 //------------------------------------------------------------------------------
 // Rumble Implementation

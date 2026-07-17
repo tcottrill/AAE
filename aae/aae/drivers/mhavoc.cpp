@@ -249,25 +249,6 @@ static struct TMS5220interface tms5220_interface =
 
 static unsigned char mhavoc_nvram[0x200];
 
-void mhavoc_nvram_handler(void* file, int read_or_write)
-{
-	if (read_or_write)
-	{
-		osd_fwrite(file, mhavoc_nvram, 0x200);
-	}
-	else
-	{
-		if (file)
-		{
-			osd_fread(file, mhavoc_nvram, 0x200);
-		}
-		else
-		{
-			memset(mhavoc_nvram, 0, 0x200);
-		}
-	}
-}
-
 static UINT8 alpha_data = 0;
 static UINT8 alpha_rcvd = 0;
 static UINT8 alpha_xmtd = 0;
@@ -872,6 +853,8 @@ int init_alphone()
 {
 	has_gamma_cpu = 0;
 
+	nvram_set_region(mhavoc_nvram, 0x200, 0x00);
+
 	//init6502(AlphaOneRead, AlphaOneWrite, 0xffff, CPU0);
 	memset(Machine->memory_region[CPU0] + 0x1800, 0xff, 0xff);
 	//Load High Score table for Alpha One
@@ -888,6 +871,7 @@ int init_alphone()
 int init_mhavoc(void)
 {
 	has_gamma_cpu = 1;
+	nvram_set_region(mhavoc_nvram, 0x200, 0x00);
 	run_reset();
 	//Init the Sound
 	mhavoc_sh_start();
@@ -1223,7 +1207,7 @@ AAE_DRIVER_SCREEN(1024, 768, 0, 300, 0, 260)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x4000, 0x1000)
-AAE_DRIVER_NVRAM(mhavoc_nvram_handler)
+AAE_DRIVER_NVRAM(generic_nvram_handler)
 AAE_DRIVER_LAYOUT_NONE()
 AAE_DRIVER_END()
 
@@ -1253,7 +1237,7 @@ AAE_DRIVER_SCREEN(1024, 768, 0, 300, 0, 260)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x4000, 0x1000)
-AAE_DRIVER_NVRAM(mhavoc_nvram_handler)
+AAE_DRIVER_NVRAM(generic_nvram_handler)
 AAE_DRIVER_LAYOUT_NONE()
 AAE_DRIVER_END()
 
@@ -1283,7 +1267,7 @@ AAE_DRIVER_SCREEN(1024, 768, 0, 300, 0, 260)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x4000, 0x1000)
-AAE_DRIVER_NVRAM(mhavoc_nvram_handler)
+AAE_DRIVER_NVRAM(generic_nvram_handler)
 AAE_DRIVER_LAYOUT_NONE()
 AAE_DRIVER_END()
 
@@ -1312,7 +1296,7 @@ AAE_DRIVER_SCREEN(1024, 768, 0, 300, 0, 260)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x4000, 0x1000)
-AAE_DRIVER_NVRAM(mhavoc_nvram_handler)
+AAE_DRIVER_NVRAM(generic_nvram_handler)
 AAE_DRIVER_LAYOUT_NONE()
 AAE_DRIVER_END()
 
@@ -1340,7 +1324,7 @@ AAE_DRIVER_SCREEN(1024, 768, 0, 300, 0, 260)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x4000, 0x1000)
-AAE_DRIVER_NVRAM(mhavoc_nvram_handler)
+AAE_DRIVER_NVRAM(generic_nvram_handler)
 AAE_DRIVER_LAYOUT_NONE()
 AAE_DRIVER_END()
 
@@ -1368,7 +1352,7 @@ AAE_DRIVER_SCREEN(1024, 768, 0, 580, 2, 500)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x4000, 0x1000)
-AAE_DRIVER_NVRAM(mhavoc_nvram_handler)
+AAE_DRIVER_NVRAM(generic_nvram_handler)
 AAE_DRIVER_LAYOUT_NONE()
 AAE_DRIVER_END()
 
@@ -1395,7 +1379,7 @@ AAE_DRIVER_SCREEN(1024, 768, 0, 580, 2, 500)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x4000, 0x1000)
-AAE_DRIVER_NVRAM(mhavoc_nvram_handler)
+AAE_DRIVER_NVRAM(generic_nvram_handler)
 AAE_DRIVER_LAYOUT_NONE()
 AAE_DRIVER_END()
 

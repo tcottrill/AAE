@@ -37,6 +37,7 @@
 #include "sys_log.h"
 #include "aae_mame_driver.h"
 #include "iniFile.h"
+#include <algorithm>
 #include <array>
 #include <initializer_list>
 
@@ -50,6 +51,7 @@ rfbo_t fbo2       = 0;
 rfbo_t fbo3       = 0;
 rfbo_t fbo4       = 0;
 rfbo_t fbo_raster = 0;
+rfbo_t fbo_mono   = 0;
 
 rtex_t img1a = 0;
 rtex_t img1b = 0;
@@ -61,6 +63,12 @@ rtex_t img3b = 0;
 rtex_t img4a = 0;
 rtex_t img4b = 0;
 rtex_t img5a = 0;
+rtex_t img5b = 0;
+
+// img5b (mono effect target) dimensions, set by fbo_init_raster().
+// 4x native game size capped at 2048/axis - see the allocation comment.
+float mono_fbo_w = 0.0f;
+float mono_fbo_h = 0.0f;
 
 // Pipeline texture dimensions (fixed for the whole pipeline).
 // FBO1/FBO4 : 1024x1024 - main render and final composite targets.
@@ -385,6 +393,63 @@ void fbo_init_raster()
     create_fbo(fbo_raster, {
         { &img5a, { rw, rh }, true }                // attachment 0: scaled game-native raster surface
     });
+
+    // Mono monitor effect target: img5a run through the mono CRT shader lands
+    // here before Layout_Render composites it.
+    //
+    // Allocated at 4x the NATIVE game size (not the prescaled size), capped
+    // at 2048 per axis. The CRT shader reconstructs the Gaussian beam spot
+    // by evaluating it at every OUTPUT pixel with sub-texel bilinear taps --
+    // rendered 1:1 at img5a's size, the taps land exactly on texel centers
+    // and small blur sigmas do nothing until they snap into a chunky
+    // whole-pixel convolution. 4x native gives the shader enough output
+    // positions for the beam (and the scanline ripple) to resolve smoothly;
+    // Layout_Render then downsamples/upsamples to the window from there.
+    mono_fbo_w = (std::min)(static_cast<float>(w) * 4.0f, 2048.0f);
+    mono_fbo_h = (std::min)(static_cast<float>(h) * 4.0f, 2048.0f);
+
+    create_fbo(fbo_mono, {
+        { &img5b, { mono_fbo_w, mono_fbo_h }, true } // attachment 0: mono CRT shader output
+    });
+}
+
+// ---------------------------------------------------------------------------
+// fbo_resize_mono
+// Recreate the CRT effect target at a new size so the mono/color monitor
+// shaders evaluate mask and scanline patterns 1:1 with screen pixels (the
+// same reason MAME's HLSL chain runs at the final render-target size).
+// Cheap no-op when the size is unchanged; the callers pass the on-screen
+// game rectangle from Layout_GetScreenPixelSize() each frame.
+// ---------------------------------------------------------------------------
+void fbo_resize_mono(int w, int h)
+{
+    if (w < 64)   w = 64;
+    if (h < 64)   h = 64;
+    if (w > 4096) w = 4096;
+    if (h > 4096) h = 4096;
+
+    if ((int)mono_fbo_w == w && (int)mono_fbo_h == h)
+        return;
+
+    if (img5b != 0)
+    {
+        glDeleteTextures(1, &img5b);
+        img5b = 0;
+    }
+    if (fbo_mono != 0)
+    {
+        glDeleteFramebuffers(1, &fbo_mono);
+        fbo_mono = 0;
+    }
+
+    mono_fbo_w = (float)w;
+    mono_fbo_h = (float)h;
+
+    create_fbo(fbo_mono, {
+        { &img5b, { mono_fbo_w, mono_fbo_h }, true }
+    });
+
+    LOG_INFO("fbo_resize_mono: CRT effect target resized to %dx%d", w, h);
 }
 
 // ---------------------------------------------------------------------------
@@ -434,4 +499,19 @@ void fbo_shutdown_raster()
         glDeleteFramebuffers(1, &fbo_raster);
         fbo_raster = 0;
     }
+
+    if (img5b != 0)
+    {
+        glDeleteTextures(1, &img5b);
+        img5b = 0;
+    }
+
+    if (fbo_mono != 0)
+    {
+        glDeleteFramebuffers(1, &fbo_mono);
+        fbo_mono = 0;
+    }
+
+    mono_fbo_w = 0.0f;
+    mono_fbo_h = 0.0f;
 }

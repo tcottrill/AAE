@@ -11,8 +11,6 @@
 // SOME CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.
 //==========================================================================
 
-
-
 // ---------------------------------------------------------------------------
 // Standard C++ headers
 // ---------------------------------------------------------------------------
@@ -941,32 +939,6 @@ void run_game(void)
 	}
 
 	// Step 12: Compute game dimensions and update window aspect ratio.
-	// InitGameDimensions computes the oriented output size and pixel aspect
-	// from the driver's visible_area. ComputeGameAspect returns the display
-	// aspect considering the active layout, bezel settings, and pixel aspect.
-	//if (!(Machine->gamedrv->video_attributes & VIDEO_TYPE_VECTOR))
-	//{
-	//	Layout_InitGameDimensions();
-	//	gameAspect = Layout_ComputeGameAspect();
-	//	if (gameAspect > 0.0f)	WindowUtil_UpdateAspect(gameAspect);
-	//}
-	/*
-	else	// Reset for vector
-	{
-		const rectangle& va = Machine->drv->visible_area;
-		int scrW = (va.max_x - va.min_x + 1);
-		int scrH = (va.max_y - va.min_y + 1);
-		if (scrW > 0 && scrH > 0)
-		{
-			gameAspect = (float)scrW / (float)scrH;
-			LOG_INFO("Window aspect from driver screen: %.3f (%dx%d)",	gameAspect, scrW, scrH);
-		}
-
-		if (gameAspect > 0.0f)		{ WindowUtil_UpdateAspect(gameAspect); }
-	}
-	*/
-
-	// Step 12: Compute game dimensions and update window aspect ratio.
 	Layout_InitGameDimensions();
 	gameAspect = Layout_ComputeGameAspect();
 	{
@@ -974,6 +946,18 @@ void run_game(void)
 		bool isVertical = (Machine->gamedrv->rotation & ORIENTATION_SWAP_XY) != 0;
 		bool hasBezel = (g_bezelAvailable != 0);
 		bool bezelOn = (config.bezel != 0);
+
+		// Menu GAME ASPECT override ("AUTO" = keep the natural computed
+		// aspect). Loaded per-game from the game ini, globally from aae.ini.
+		{
+			const float menuAspect = aspect_from_string(config.game_aspect);
+			if (menuAspect > 0.0f)
+			{
+				LOG_INFO("Step 12: menu GAME ASPECT override: %s (%.3f, game was %.3f)",
+					config.game_aspect, menuAspect, gameAspect);
+				gameAspect = menuAspect;
+			}
+		}
 
 		// User aspect override: INI use_aspect=1 with aspect_ratio, or
 		// command-line -aspect N:M. Command line wins over INI (handled
@@ -1223,9 +1207,11 @@ void msg_loop(void)
 	{
 		if (get_menu_status())
 		{
-			// In menu: collapse to top level, or close menu entirely.
+			// In menu: back up one level, or close the menu from the root.
+			// menu_navigate_back() is parent-aware: the monitor setup
+			// submenus return to VIDEO SETUP rather than the main menu.
 			if (get_menu_level() > 100)
-				set_menu_level_top();
+				menu_navigate_back();
 			else
 			{
 				set_menu_level_top();
@@ -1368,8 +1354,8 @@ void msg_loop(void)
 		{
 			if (get_menu_level() > 100)
 			{
-				// We are in a sub-menu: collapse back to the top level.
-				set_menu_level_top();
+				// In a sub-menu: back up one level (parent-aware, matches ESC).
+				menu_navigate_back();
 			}
 			else
 			{
@@ -1602,7 +1588,7 @@ void emulator_init(int argc, char** argv)
 	{
 		if (!argv[i]) continue;
 		const std::string arg = to_lowercase(argv[i]);
-		if      (arg == "-ror")      rotation_override = ROT90;
+		if (arg == "-ror")      rotation_override = ROT90;
 		else if (arg == "-rol")      rotation_override = ROT270;
 		else if (arg == "-norotate") rotation_override = ROT0;
 	}
@@ -1794,6 +1780,7 @@ void emulator_stop_game()
 
 	// 7) Frame limiter (per-game because FPS varies between games).
 	FrameLimiter::Shutdown();
+	osd_set_leds(0); // Turn off LEDS
 
 	// 8) Reset the RunningMachine struct for the next game.
 	memset(&machine, 0, sizeof(machine));
