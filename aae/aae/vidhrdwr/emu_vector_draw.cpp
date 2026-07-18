@@ -2,6 +2,7 @@
 #include "emu_vector_draw.h"
 #include "colordefs.h"
 #include "sys_log.h"
+#include "sys_gl.h"
 #include "opengl_renderer.h"
 #include "gl_texturing.h" // For game_tex[0]
 #include "gl_shader.h"    // fragTexColor + bind_shader / set_uniform*
@@ -33,14 +34,9 @@ colors vec_colors[256];
 // config.shots_textured.
 std::vector<txdata> texlist;
 
-void set_texture_id(GLuint* id)
+void set_texture_id(rtex_t* id)
 {
     tex = id;
-}
-
-void set_blendmode(GLenum sfactor, GLenum dfactor)
-{
-    glBlendFunc(sfactor, dfactor);
 }
 
 rgb_t modulate_color(rgb_t col, int intensity, int gain)

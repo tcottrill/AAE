@@ -986,6 +986,13 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 	case WM_INPUT:
 		return RawInput_ProcessInput(hWnd, wParam, lParam);
+
+	case WM_DEVICECHANGE:
+		// Joystick hotplug: flag a rescan (performed on the next
+		// poll_joystick). Fires for any device-tree change; the handler
+		// is cheap and idempotent, so no filtering is needed here.
+		joystick_device_change();
+		break;
 	}
 
 	return DefWindowProc(hWnd, msg, wParam, lParam);
@@ -1062,6 +1069,9 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance,
 	wc.hCursor       = LoadCursor(nullptr, IDC_ARROW);
 	wc.hIcon         = LoadIcon(wc.hInstance, MAKEINTRESOURCE(IDI_ICON1));
 	wc.style         = CS_HREDRAW | CS_VREDRAW;
+	// Black background so any GDI erase (e.g. during a resize before a GL frame
+	// lands) paints black, never white.
+	wc.hbrBackground = reinterpret_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
 	RegisterClassW(&wc);
 
 	// -------------------------------------------------------------------------
@@ -1090,11 +1100,10 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance,
 	SendMessage(g_hWnd, WM_SETICON, ICON_SMALL, (LPARAM)hIcon);
 	SendMessage(g_hWnd, WM_SETICON, ICON_BIG,   (LPARAM)hIcon);
 
-	ShowWindow(g_hWnd, nCmdShow);
-	UpdateWindow(g_hWnd);
-
-	// Assume focus because we just showed the window
-	g_windowSetup.isFocused = true;
+	// NOTE: the window is created hidden here on purpose. We do not ShowWindow()
+	// until after the OpenGL context exists and we have presented one black
+	// frame (see below), so the first pixels the user ever sees are black
+	// instead of an uninitialized white client area.
 
 	SaveAndDisableAccessibilityPopups();
 
@@ -1121,6 +1130,19 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance,
 		LOG_ERROR("Failed to initialize OpenGL");
 		return -1;
 	}
+
+	// Present one black frame into the front buffer *before* the window is ever
+	// visible, so the first thing the user sees is black, not white. Our
+	// WM_ERASEBKGND handler returns 1, so GDI never repaints over this.
+	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+	glClear(GL_COLOR_BUFFER_BIT);
+	GLSwapBuffers();
+
+	ShowWindow(g_hWnd, nCmdShow);
+	UpdateWindow(g_hWnd);
+
+	// Assume focus because we just showed the window
+	g_windowSetup.isFocused = true;
 
 	// -------------------------------------------------------------------------
 	// Step 4: Save a valid windowedRect for fullscreen restore.

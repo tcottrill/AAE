@@ -2,8 +2,8 @@
 #ifndef TEXRECT_H
 #define TEXRECT_H
 
-#include "sys_gl.h"
-#include "shader_util.h"
+#include "render_types.h"
+#include <cstdint>
 
 // Simple 2D point + texcoord
 class _Point2DA {
@@ -43,9 +43,10 @@ private:
 	void SetVertex(int idx, float x, float y, float tx, float ty);
 
 	_Point2DA  verts_[4];
-	GLuint     prog_;
-	GLuint     vao_ = 0, vbo_ = 0;
-	GLint      sampler_loc_, uproj_loc_;
+	rprog_t    prog_;
+	rvao_t     vao_ = 0;
+	rbuf_t     vbo_ = 0;
+	std::int32_t sampler_loc_, uproj_loc_;
 };
 
 #endif // TEXRECT_H

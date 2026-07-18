@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <Manifest Include="app.manifest" />
@@ -370,6 +370,12 @@
     <ClCompile Include="aae\drivers\gaplus.cpp">
       <Filter>Source Files\aae\drivers\raster</Filter>
     </ClCompile>
+    <ClCompile Include="aae\drivers\pong.cpp">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\drivers\breakout.cpp">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClCompile>
     <ClCompile Include="aae\vidhrdwr\gaplus_video.cpp">
       <Filter>Source Files\aae\vidhrdwr</Filter>
     </ClCompile>
@@ -390,6 +396,15 @@
     </ClCompile>
     <ClCompile Include="aae\led_service_handler.cpp">
       <Filter>Source Files\aae</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\vidhrdwr\astrocde_video.cpp">
+      <Filter>Source Files\aae\vidhrdwr</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\drivers\astrocade.cpp">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\sndhrdwr\astrocade_sound.cpp">
+      <Filter>Source Files\aae\sndhrdwr</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -830,6 +845,12 @@
     </ClInclude>
     <ClInclude Include="aae\led_service_handler.h">
       <Filter>Source Files\aae</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\vidhrdwr\astrocde_video.h">
+      <Filter>Source Files\aae\vidhrdwr</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\sndhrdwr\astrocade_sound.h">
+      <Filter>Source Files\aae\sndhrdwr</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

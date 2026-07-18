@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "opengl_renderer.h"
+#include "render_types.h"
 #include "colordefs.h"
 #include "MathUtils.h" // aae::math::{vec2, mat4, ortho, value_ptr}
 
@@ -64,8 +65,11 @@ public:
     void End();
     void DrawQuad(float x, float y, float width, float height, rgb_t color);
 
-    // Text rendering
-    void DrawTextInternal(float x, float y, const aae::math::vec2& rotationOrigin, rgb_t color, float scale, float angle, const char* text);
+    // Text rendering. clipL/clipR bound the visible x range in UNROTATED
+    // string-local space (defaults = no clipping); strokes are clipped
+    // geometrically before rotation, so a clipped window rotates with the text.
+    void DrawTextInternal(float x, float y, const aae::math::vec2& rotationOrigin, rgb_t color, float scale, float angle, const char* text,
+                          float clipL = -1.0e9f, float clipR = 1.0e9f);
 
     // 'angle' parameter (in degrees)
     void Print(float x, int y, rgb_t color, float scale, float angle, const char* fmt, ...);
@@ -76,6 +80,21 @@ public:
     void PrintCentered(int y, rgb_t color, float scale, const char* str);
     // Overload with angle support
     void PrintCentered(int y, rgb_t color, float scale, float angle, const char* str);
+
+    // Marquee text: draws exactly like Print/PrintCentered when the string
+    // fits in fieldWidth (logical units); when it doesn't, the text scrolls
+    // horizontally at constant speed within the field (dwell at each end),
+    // clipped to the field box. Stateless -- the scroll phase is derived from
+    // a shared wall clock and the string's overflow, so no per-string state
+    // is kept. Rotation is fully supported (clipping happens pre-rotation).
+    void PrintMarquee(float x, int y, float fieldWidth, rgb_t color, float scale, float angle, const char* fmt, ...);
+    void PrintMarquee(float x, int y, float fieldWidth, rgb_t color, float scale, const char* fmt, ...);
+    void PrintMarqueeCentered(int y, float fieldWidth, rgb_t color, float scale, float angle, const char* str);
+    void PrintMarqueeCentered(int y, float fieldWidth, rgb_t color, float scale, const char* str);
+    // Static variant: same field clipping as the marquee but never scrolls --
+    // an overlong string shows its beginning, cut at the field edge. For rows
+    // that shouldn't animate (e.g. non-selected GUI list entries).
+    void PrintClippedCentered(int y, float fieldWidth, rgb_t color, float scale, const char* str);
     float GetStringPitch(const char* str, float scale, int set);
     int GetLastStringLength() const { return lastx + static_cast<int>(3.5f * lastscale); }
     // Draw a specific single character/glyph centered at (x,y)
@@ -98,17 +117,17 @@ private:
 
 private:
     // OpenGL state
-    GLuint vfProgram = 0;
-    GLuint vfVAO = 0;
-    GLuint vfVBO = 0;
-    GLuint quadVAO = 0;
-    GLuint quadVBO = 0;
+    rprog_t vfProgram = 0;
+    rvao_t vfVAO = 0;
+    rbuf_t vfVBO = 0;
+    rvao_t quadVAO = 0;
+    rbuf_t quadVBO = 0;
 
-    GLint attrPos = -1;
-    GLint attrColor = -1;
-    GLint attrOrigin = -1;
-    GLint attrAngle = -1;
-    GLint uniMVP = -1;
+    std::int32_t attrPos = -1;
+    std::int32_t attrColor = -1;
+    std::int32_t attrOrigin = -1;
+    std::int32_t attrAngle = -1;
+    std::int32_t uniMVP = -1;
 
     aae::math::mat4 proj; // Using aae::math::mat4
     int screenWidth = 0;

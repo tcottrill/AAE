@@ -22,6 +22,12 @@
 #include "opengl_renderer.h"
 #include "vector_fonts.h"
 #include "cpu_6502.h"
+
+// Regression guard: this file must never see OpenGL headers. If this fires,
+// a render header re-leaked glew.h — fix the header, not this guard.
+#ifdef __glew_h__
+#error "OpenGL headers leaked into a non-render translation unit"
+#endif
 //
 // Tempest Multigame Notes:
 // Tempest Multigame is Copyright 1999 Clay Cowgill, and provides a very nice menu system to run
@@ -307,9 +313,7 @@ Note: Roms for Tempest Analog Vector-Generator PCB Assembly A037383-03 or A03738
 ***************************************************************************/
 
 static int flipscreen = 0;
-static int INMENU = 0;
 static int tempprot = 1;
-static char* tbuffer = nullptr;
 
 void tempest_interrupt()
 {
@@ -333,52 +337,50 @@ static struct POKEYinterface pokey_interface =
 	{ input_port_1_r, input_port_2_r },
 };
 
-void tempm_reset()
+// Tempest Multigame bank register, modeled on the real Cowgill hardware
+// (see HBMAME tempmg: rombank_w mapped at 0xe000). The MENU ROM selects a
+// game by writing the bank number to 0xe000 and jumping through the new
+// bank's vectors -- no input snooping, no CPU reset. This also makes the
+// EAROM "default game" auto-launch work, since the menu performs it with
+// the same register write.
+//
+// Each bank in this romset is a full 64K image at bank*0x10000. Only the
+// three ROM windows are copied (like the real latch, which never touches
+// RAM): 0x3000-0x3fff vector ROM, 0x9000-0xdfff program, 0xf800-0xffff
+// vectors. Bank 0's home is the live low 64K itself, so the pristine menu
+// image is stashed in the spare region slot at 0x80000 by init_tempestm().
+static int tempestm_bank = 0;
+
+static void tempestm_setbank(int bank)
 {
 	unsigned char* RAM = Machine->memory_region[CPU0];
-	memcpy(RAM, tbuffer, 0x10000);
-	cpu_reset(CPU0);
-	INMENU = 1;
+	const unsigned char* src = (bank == 0) ? &RAM[0x80000] : &RAM[(unsigned)bank * 0x10000];
+
+	if (bank != tempestm_bank)
+		setup_video_config();
+	tempestm_bank = bank;
+
+	memcpy(&RAM[0x3000], &src[0x3000], 0x1000);	/* vector ROM */
+	memcpy(&RAM[0x9000], &src[0x9000], 0x5000);	/* program ROM */
+	memcpy(&RAM[0xf800], &src[0xf800], 0x0800);	/* reset/interrupt vectors */
 }
 
-static void switch_game()
+WRITE_HANDLER(tempestm_rombank_w)
 {
-	int a = 0;
-	int b = 0;
-	if (INMENU == 0) { return; }
+	tempestm_setbank(data & 7);
+}
 
-	a = (Machine->memory_region[CPU0][0x51]) + 1;
-	//	LOG_INFO("A here is %d", a);
-	switch (a)
-	{
-	case 1: b = 0x10000;  break;
-	case 2: b = 0x20000;  break;
-	case 3: b = 0x30000;  break;
-	case 4: b = 0x40000;  break;
-	case 5: b = 0x50000;  break;
-	case 6: b = 0x60000;  break;
-	case 7: b = 0x70000;  break;
-	default: LOG_INFO("Tempest Multigame - unhandled game number?");
-	}
-
-	setup_video_config();
-	INMENU = 0;
-
-	memset(&Machine->memory_region[REGION_CPU1], 0x10000, 0);
-	unsigned char* RAM = Machine->memory_region[CPU0];
-	memcpy(RAM, Machine->memory_region[REGION_CPU1] + b, 0x10000);
-
+void tempm_reset()
+{
+	// The optional "Reset Adapter" pulses the 6502 reset line; the bank
+	// latch returns to the menu bank (HBMAME: MACHINE_RESET -> rombank_w(0)).
+	tempestm_setbank(0);
 	cpu_reset(CPU0);
 }
 
 READ_HANDLER(pokey_2_tempest_read)
 {
 	int val = Read_pokey_regs(address, 1);
-
-	if ((val & 0x10))  //Fire
-	{
-		switch_game();
-	}
 
 	if ((val & (0x20 | 0x40)) == (0x20 | 0x40)) // Start1 + Start2 pressed together
 	{
@@ -468,6 +470,7 @@ MEM_ADDR(0x6040, 0x6040, EaromCtrl)
 MEM_ADDR(0x5000, 0x5000, watchdog_reset_w)
 MEM_ADDR(0x5800, 0x5800, avg_reset_w)
 MEM_ADDR(0x60e0, 0x60e0, tempest_led_w)
+MEM_ADDR(0xe000, 0xe000, tempestm_rombank_w)	/* multigame bank latch */
 MEM_ADDR(0x9000, 0xffff, MWA_ROM)
 MEM_ADDR(0x3000, 0x57ff, MWA_ROM)
 MEM_END
@@ -519,9 +522,13 @@ int init_tempestm()
 	cache_clear();
 
 	LOG_INFO("TEMPMG INIT CALLED");
-	tbuffer = (char*)malloc(0x10000);
-	memcpy(tbuffer, Machine->memory_region[REGION_CPU1], 0x10000);
-	INMENU = 1;
+	// Stash the pristine menu image in the spare region slot: the live low
+	// 64K doubles as bank 0's home and gets overwritten by game banks.
+	{
+		unsigned char* RAM = Machine->memory_region[CPU0];
+		memcpy(&RAM[0x80000], &RAM[0x00000], 0x10000);
+	}
+	tempestm_bank = 0;
 
 	pokey_sh_start(&pokey_interface);
 	avg_start_tempest();

@@ -463,6 +463,41 @@ bool joystick_using_xinput();
 // Returns the name of the active driver ("XInput", "WinMM", or "None")
 const char* joystick_driver_name();
 
+// -----------------------------------------------------------------------------
+// Device-change notification (call from WndProc on WM_DEVICECHANGE).
+// Sets a flag; the rescan happens on the next poll_joystick() so all device
+// mutation stays on the polling thread. XInput re-probes every slot
+// immediately (bypassing the empty-slot throttle); WinMM re-enumerates and
+// APPENDS new devices (existing slots never move, so player assignments
+// survive); a passively-selected XInput driver hands over to WinMM when a
+// non-XInput stick arrives.
+// -----------------------------------------------------------------------------
+void joystick_device_change();
+
+// -----------------------------------------------------------------------------
+// Device display info for the INPUT DEVICES menu.
+//   joystick_device_count()       -- devices/slots the active driver exposes
+//   joystick_get_display_name(i)  -- "XINPUT PAD 2" / WinMM product name
+//   joystick_is_connected(i)      -- 1 if slot i currently has hardware
+// Joystick slots are STABLE: XInput slot = joy index; WinMM devices keep
+// their position across unplug/replug and rescans.
+// -----------------------------------------------------------------------------
+int joystick_device_count();
+const char* joystick_get_display_name(int index);
+int joystick_is_connected(int index);
+
+// -----------------------------------------------------------------------------
+// Stable device identity (persisted player assignments):
+//   "DI:{instance-guid}" -- DirectInput stick, stable per machine across
+//                           reboots and enumeration-order changes
+//   "XINPUT:n"           -- XInput pad slot n
+//   "WINMM:n"            -- WinMM fallback position (weak, best-effort)
+//   joystick_get_id(i)      -- id string for the device at joy index i
+//   joystick_find_by_id(id) -- id -> CURRENT joy index, -1 if not present
+// -----------------------------------------------------------------------------
+const char* joystick_get_id(int index);
+int joystick_find_by_id(const char* id);
+
 // Returns true if any joystick is currently connected
 bool joystick_any_connected();
 

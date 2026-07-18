@@ -49,7 +49,7 @@
 // License: Unlicense / Public Domain
 // -----------------------------------------------------------------------------
 
-#include "glew.h"
+#include "render_types.h"
 #include <string>
 #include <vector>
 #include <mutex>
@@ -140,7 +140,7 @@ public:
 	// GetTexID()
 	// Returns the OpenGL texture ID (GLuint)
 	// -------------------------------------------------------------------------
-	GLuint GetTexID() const;
+	rtex_t GetTexID() const;
 
 	// -------------------------------------------------------------------------
 	// GetInfo()
@@ -170,7 +170,7 @@ public:
 	static void Snapshot(const std::string& filename, const std::string& folder);
 
 private:
-	GLuint texid = 0;              // OpenGL texture handle
+	rtex_t texid = 0;              // OpenGL texture handle
 	int width = 0;                 // Texture width in pixels
 	int height = 0;                // Texture height in pixels
 	int comp = 0;                  // Number of components (channels)

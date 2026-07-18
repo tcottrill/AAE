@@ -87,7 +87,6 @@ float vector_get_beam(void)
 	return beam_width;
 }
 
-
 /*
  * Initializes vector game video emulation
  */
@@ -207,19 +206,19 @@ void vector_add_point(int x, int y, unsigned int color, int intensity)
 
 	if (intensity > 0xff) intensity = 0xff;
 
-	 if (flicker && (intensity > 0))
-  	{
-  		intensity += (intensity * (0x80-(rand()&0xff)) * flicker) >> 16;
-  		if (intensity < 0)	intensity = 0;
-  		if (intensity > 0xff) intensity = 0xff;
-  	}
+	if (flicker && (intensity > 0))
+	{
+		intensity += (intensity * (0x80 - (rand() & 0xff)) * flicker) >> 16;
+		if (intensity < 0)	intensity = 0;
+		if (intensity > 0xff) intensity = 0xff;
+	}
 	newpoint = &vector_list[vector_index];
 	newpoint->x = x;
 	newpoint->y = y;
 	newpoint->col = color;
 	newpoint->intensity = intensity;
 	newpoint->status = VDIRTY; /* mark identical lines as clean later */
-	
+
 	if (x > 0 || y > 0)
 	{
 		//LOG_INFO("Point Added: %d %d %d %d intensity %d", x, y, color, intensity);
@@ -295,19 +294,19 @@ int vector_update()
 	curpoint = vector_list;
 	clip.x0 = clip.y0 = 0.0f;
 	clip.x1 = clip.y1 = 1024.0f;
-	
+
 	for (i = 0; i < vector_index; i++)
 	{
 		render_bounds coords;
 
 		if (curpoint->status == VCLIP)
 		{
-			coords.x0 = ((float)curpoint->x - xoffs) * xscale;    
-			coords.y0 = ((float)curpoint->y - yoffs) * yscale;    
-			coords.x1 = ((float)curpoint->arg1 - xoffs) * xscale; 
+			coords.x0 = ((float)curpoint->x - xoffs) * xscale;
+			coords.y0 = ((float)curpoint->y - yoffs) * yscale;
+			coords.x1 = ((float)curpoint->arg1 - xoffs) * xscale;
 			coords.y1 = ((float)curpoint->arg2 - yoffs) * yscale;
 
-			// Apply orientation to clip rect 
+			// Apply orientation to clip rect
 			if (rot & ORIENTATION_SWAP_XY)
 			{
 				float t;
@@ -334,12 +333,12 @@ int vector_update()
 		}
 		else
 		{
-			coords.x0 = ((float)lastx - xoffs) * xscale;      
-			coords.y0 = ((float)lasty - yoffs) * yscale;      
-			coords.x1 = ((float)curpoint->x - xoffs) * xscale; 
+			coords.x0 = ((float)lastx - xoffs) * xscale;
+			coords.y0 = ((float)lasty - yoffs) * yscale;
+			coords.x1 = ((float)curpoint->x - xoffs) * xscale;
 			coords.y1 = ((float)curpoint->y - yoffs) * yscale;
 
-			// Apply orientation to line endpoints 
+			// Apply orientation to line endpoints
 			/**/
 			if (rot & ORIENTATION_SWAP_XY)
 			{
@@ -358,7 +357,7 @@ int vector_update()
 				coords.y1 = 1024.0f - coords.y1;
 			}
 
-			if (curpoint->intensity != 0 && curpoint->col ) {
+			if (curpoint->intensity != 0 && curpoint->col) {
 				if (!render_clip_line(&coords, &clip))
 					if (curpoint->status == VTEX)
 					{

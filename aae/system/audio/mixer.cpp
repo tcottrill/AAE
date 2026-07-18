@@ -178,6 +178,17 @@
 
 static int SYS_FREQ = 44100;
 static int BUFFER_SIZE = 0;
+
+// Exact samples-per-frame bookkeeping. BUFFER_SIZE is the truncated nominal
+// (rate / fps); when rate isn't divisible by fps the mixer owes a fractional
+// sample every frame, paid back by mixing one extra sample whenever the
+// accumulated remainder reaches a whole one. Without this the supply deficit
+// is systematic -- at 57 fps (circus) 44100/57 truncates 0.68 samples/frame
+// (-0.09%), underrunning the XAudio2 ring roughly every 20 seconds as an
+// audible tick.
+static int g_spf_rem = 0;    // rate % fps
+static int g_spf_fps = 0;    // denominator for the accumulator
+static int g_spf_accum = 0;  // running remainder, only touched by the audio thread
 constexpr int MAX_CHANNELS = 20;
 constexpr int MAX_SOUNDS = 255;
 static std::atomic<bool> sound_paused{ false };
@@ -297,18 +308,45 @@ static void audio_thread_func() {
 			LOG_INFO("Audio thread: WARNING - late signal detected (%lld ms since last frame)", (long long)delta);
 		}
 
+		// Claim ALL pending frame signals BEFORE mixing, and mix once per
+		// signal. The frame loop can deliver several mixer_update calls in a
+		// tight burst (FrameLimiter passes straight through after a slow
+		// frame), and every signal represents one frame of stream audio the
+		// drivers have generated -- collapsing a burst to a single mix drops
+		// that content (the next stream_update overwrites it unplayed) and
+		// leaves the XAudio2 ring unfilled: audible stutter right after
+		// load/startup hitches. The old code got this right by accident
+		// (mixer_update blocked on the CV mutex through the whole mix, so
+		// signals serialized 1:1 with mixes); this keeps the 1:1 pacing
+		// without blocking the main thread.
+		int pending = queuedFrames.exchange(0);
+		audioThreadRun.store(false, std::memory_order_release);
+		lock.unlock();
+
+		// A huge backlog (>1 s stall) is stale audio the ring can't hold
+		// anyway -- refill the ring and drop the rest, like the old path
+		// effectively did via the backend's ring-full skip.
+		constexpr int kMaxCatchUpFrames = 8;
+		if (pending > kMaxCatchUpFrames) {
+			LOG_INFO("Audio thread: %d frames pending, mixing %d (dropping the rest)",
+				pending, kMaxCatchUpFrames);
+			pending = kMaxCatchUpFrames;
+		}
+		if (pending < 1) pending = 1; // woken with Run set but no count: mix one
+
 		// Measure execution time
 		auto start = std::chrono::high_resolution_clock::now();
-		mixer_update_internal();
+		for (int n = 0; n < pending; ++n) {
+			mixer_update_internal();
+		}
 		auto end = std::chrono::high_resolution_clock::now();
 		auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
 
 		if (elapsed > 2000) { // log if >2ms
-			LOG_INFO("Audio thread: mixer_update_internal() took %lld microseconds", (long long)elapsed);
+			LOG_INFO("Audio thread: mixer_update_internal() x%d took %lld microseconds", pending, (long long)elapsed);
 		}
 
-		queuedFrames = 0;
-		audioThreadRun.store(false, std::memory_order_release);
+		lock.lock();
 	}
 
 	LOG_INFO("Audio thread: exiting");
@@ -457,28 +495,29 @@ int load_sample_from_buffer(const uint8_t* data, size_t size, const char* name, 
 	}
 
 	auto sample = std::make_shared<SAMPLE>();
-	HRESULT result = S_OK;
 
-	result = WavLoadFileInternal(const_cast<unsigned char*>(data), static_cast<int>(size), sample.get());
+	// WavLoadFileInternal returns 1 on success, 0 on failure -- it is NOT an
+	// HRESULT. Testing it with FAILED() never fired, so a bad WAV was
+	// registered as Loaded with null PCM data and the error.wav fallback was
+	// dead code.
+	int result = WavLoadFileInternal(const_cast<unsigned char*>(data), static_cast<int>(size), sample.get());
 
-	if (FAILED(result)) {
+	if (result == 0) {
 		LOG_ERROR("Error loading WAV from buffer: %s", name ? name : "(unnamed)");
 		// Fallback to error.wav if provided
 		result = WavLoadFileInternal(error_wav, sizeof(error_wav), sample.get());
-		if (FAILED(result)) {
+		if (result == 0) {
 			LOG_ERROR("Failed to load fallback error.wav");
 			return -1;
 		}
 	}
 
 	sample->state = SoundState::Loaded;
-	sample->num = ++sound_id;
-	
-	// Use provided name if valid, otherwise auto-generate from sample ID
+
+	// Use provided name if valid; the auto-generated fallback needs the id,
+	// which isn't assigned until registration below.
 	if (name && name[0] != '\0') {
 		sample->name = name;
-	} else {
-		sample->name = "sample_" + std::to_string(sample->num);
 	}
 
 	if (force_resample && sample->fx.nSamplesPerSec != SYS_FREQ) {
@@ -486,12 +525,18 @@ int load_sample_from_buffer(const uint8_t* data, size_t size, const char* name, 
 		else                                resample_wav_16(sample.get(), SYS_FREQ, /*use_cubic=*/true);
 	}
 
-	LOG_INFO("Loaded sample '%s' with ID %d", sample->name.c_str(), sample->num);
+	// Assign the id under the same lock as the push_back: ++sound_id outside
+	// it can interleave with another load and break the num == index
+	// invariant the registry lookups rely on.
 	{
 		std::scoped_lock lock(audioMutex);
+		sample->num = ++sound_id;
+		if (sample->name.empty()) {
+			sample->name = "sample_" + std::to_string(sample->num);
+		}
 		lsamples.push_back(sample);
 	}
-	LOG_INFO("Sample load completed");
+	LOG_INFO("Loaded sample '%s' with ID %d", sample->name.c_str(), sample->num);
 	return sample->num;
 }
 
@@ -573,22 +618,22 @@ int mixer_upload_sample16(int samplenum,
 
 // -----------------------------------------------------------------------------
 // mixer_init
-// Initializes the mixer with an exact (possibly fractional) frames-per-second
-// clock and starts the audio worker thread. Audio generation remains frame-locked:
-// one call to mixer_update() per emulation/video frame produces and submits that
-// frame s audio. Variable samples-per-frame are handled via a 32.32 fixed-point
-// accumulator to ensure zero long-term drift.
+// Initializes the mixer with an integer frames-per-second clock and starts the
+// audio worker thread. Audio generation is frame-locked: one call to
+// mixer_update() per emulation/video frame produces and submits that frame's
+// audio.
 //
 // Parameters:
 //   rate - output sample rate in Hz (e.g., 44100 or 48000)
-//   fps  - exact emulation/video frame rate (supports fractional,
-//          e.g., 60000.0/1001.0 for 59.94, 24000.0/1001.0 for 23.976)
+//   fps  - emulation/video frame rate (integer)
 //
 // Behavior:
-//   - BUFFER_SIZE is kept as a nominal integer size using a rounded FPS; it s
-//     used only for logging and initial scratch sizing. The actual per-frame
-//     mix length is computed each frame from  fps  and may be N or N+1 samples.
-//   - XAudio2 is initialized with the rounded (nominal) FPS for sizing/logging.
+//   - BUFFER_SIZE = rate / fps is the nominal (truncated) per-frame length.
+//     When rate % fps != 0 the mix loop adds one extra sample on some frames
+//     via the g_spf_* remainder accumulator, so the long-term average is
+//     exactly  rate  with zero drift.
+//   - The XAudio2 backend allocates one frame of headroom for those N+1
+//     frames.
 // -----------------------------------------------------------------------------
 int mixer_init(int rate, int fps)  // <<< integer FPS
 {
@@ -604,8 +649,12 @@ int mixer_init(int rate, int fps)  // <<< integer FPS
 		return 0;
 	}
 
-	// Fixed buffer size for each frame/update.
+	// Nominal buffer size for each frame/update; the truncation remainder is
+	// paid back N/N+1 style in mixer_update_internal (see g_spf_* above).
 	BUFFER_SIZE = rate / fps;
+	g_spf_rem = rate % fps;
+	g_spf_fps = fps;
+	g_spf_accum = 0;
 	SYS_FREQ = rate;
 
 	if (BUFFER_SIZE <= 0) {
@@ -675,11 +724,33 @@ int mixer_init(int rate, int fps)  // <<< integer FPS
 }
 
 // -----------------------------------------------------------------------------
+// mixer_soft_clip
+// Soft-knee output saturation. Below the knee (-1.16 dBFS) the mix passes
+// through BIT-EXACT; only genuine overmix -- summed channels exceeding the
+// knee -- is folded smoothly (tanh, C1-continuous at the knee) into the
+// remaining headroom, approaching but never reaching digital full scale.
+// Replaces the old always-on tanh, which compressed EVERY sample: full-scale
+// legal audio lost ~2.4 dB (tanh(1.0) = 0.762) and picked up harmonic
+// distortion even when nothing was clipping.
+// -----------------------------------------------------------------------------
+static inline int16_t mixer_soft_clip(int32_t v)
+{
+	constexpr int32_t kKnee = 28672;    // 0.875 * 32768: start of the saturation region
+	constexpr float   kFold = 4096.0f;  // 32768 - kKnee: headroom the overshoot folds into
+	if (v >= -kKnee && v <= kKnee)
+		return static_cast<int16_t>(v);
+	const float over = static_cast<float>(std::abs(v) - kKnee) / kFold;
+	const float y = static_cast<float>(kKnee) + kFold * std::tanh(over);
+	const int32_t q = static_cast<int32_t>(y); // tanh < 1 keeps y < 32768; trunc caps at 32767
+	return static_cast<int16_t>(v < 0 ? -q : q);
+}
+
+// -----------------------------------------------------------------------------
 // mixer_update_internal
 // Software mix to an interleaved 16-bit stereo ring buffer for XAudio2.
 // - Runs once per emulation/video frame (frame-locked).
-// - Supports fractional FPS by mixing a variable number of samples per frame,
-//   computed via a 32.32 fixed-point accumulator (g_spf_fp/g_spf_accum).
+// - Mixes N or N+1 samples per frame via the g_spf_* remainder accumulator,
+//   so non-divisible rate/fps pairs (44100/57) don't drift.
 // - Mono sources: pan is IGNORED (centered). We duplicate to L/R pre-pan.
 // - Stereo sources: pan is applied as a post-balance using equal-power gains.
 //
@@ -697,8 +768,17 @@ static void mixer_update_internal()
 
 	std::scoped_lock lock(audioMutex);
 
-	// Fixed number of samples each frame (integer FPS path)
-	const int samplesThisFrame = BUFFER_SIZE;
+	// N or N+1 samples this frame: BUFFER_SIZE is the truncated base, and the
+	// remainder accumulator adds the extra sample whenever a whole one is
+	// owed, so long-term output exactly matches the sample rate.
+	int samplesThisFrame = BUFFER_SIZE;
+	if (g_spf_rem > 0) {
+		g_spf_accum += g_spf_rem;
+		if (g_spf_accum >= g_spf_fps) {
+			g_spf_accum -= g_spf_fps;
+			++samplesThisFrame;
+		}
+	}
 	if (samplesThisFrame <= 0) {
 		g_backend->Submit(soundbuffer, 0);
 		return;
@@ -715,7 +795,6 @@ static void mixer_update_internal()
 	}
 
 	// ---- mix and track peaks in the same pass ----
-	int32_t peak = 0; // max |L| or |R|
 	int32_t peakL = 0; // max |L|
 	int32_t peakR = 0; // max |R|
 
@@ -834,8 +913,6 @@ static void mixer_update_internal()
 		const int32_t b = std::abs(fmixR);
 		if (a > peakL) peakL = a;
 		if (b > peakR) peakR = b;
-		const int32_t p = (a > b) ? a : b;
-		if (p > peak) peak = p;
 	}
 
 #ifdef USE_VUMETER
@@ -851,56 +928,12 @@ static void mixer_update_internal()
 	g_vuR.store(vu_decay_step(prevR, curR, kDecay), std::memory_order_relaxed);
 #endif
 
-	/*
-	// ---- write out with limiter (one pass) ----
-	if (peak > INT16_MAX) {
-		const float g = 32767.0f / static_cast<float>(peak);
-		for (int i = 0; i < samplesThisFrame; ++i) {
-			out[2 * i + 0] = static_cast<int16_t>(std::lrintf(accumL[i] * g));
-			out[2 * i + 1] = static_cast<int16_t>(std::lrintf(accumR[i] * g));
-		}
-	}
-	else {
-		// No limiting needed; clamp just in case
-		for (int i = 0; i < samplesThisFrame; ++i) {
-			int32_t L = std::clamp(accumL[i], static_cast<int32_t>(INT16_MIN), static_cast<int32_t>(INT16_MAX));
-			int32_t R = std::clamp(accumR[i], static_cast<int32_t>(INT16_MIN), static_cast<int32_t>(INT16_MAX));
-			out[2 * i + 0] = static_cast<int16_t>(L);
-			out[2 * i + 1] = static_cast<int16_t>(R);
-		}
-	}
-	*/
-	// ---- write out with Soft Clipping (Per-Sample Saturation) ----
-
-	// We process every sample individually. This prevents the "pumping" 
-	// effect where a loud sound momentarily drops the volume of the entire frame.
-
+	// ---- write out with soft-knee saturation (see mixer_soft_clip) ----
+	// Per-sample, so a loud transient saturates only itself instead of
+	// pumping the whole frame's volume down.
 	for (int i = 0; i < samplesThisFrame; ++i) {
-		// 1. Get raw accumulated values (potentially much larger than 32767)
-		float mixL = static_cast<float>(accumL[i]);
-		float mixR = static_cast<float>(accumR[i]);
-
-		// --- OPTION 1: True Soft Clipping (Analog Style) ---
-		// Normalize to approx -1.0 to 1.0, apply tanh curve, scale back.
-		// This rounds off peaks smoothly. 
-		// Note: std::tanh is fast enough for audio on modern CPUs.
-
-		float normL = std::tanh(mixL / 32768.0f);
-		float normR = std::tanh(mixR / 32768.0f);
-
-		out[2 * i + 0] = static_cast<int16_t>(normL * 32767.0f);
-		out[2 * i + 1] = static_cast<int16_t>(normR * 32767.0f);
-
-
-		// --- OPTION 2: Hard Clamping (Crisp / Retro Standard) ---
-		// If you find Option 1 sounds too "muddy" or "quiet" for 8-bit games,
-		// comment out Option 1 and uncomment this block instead.
-		/*
-		int32_t L = std::clamp(accumL[i], -32768, 32767);
-		int32_t R = std::clamp(accumR[i], -32768, 32767);
-		out[2 * i + 0] = static_cast<int16_t>(L);
-		out[2 * i + 1] = static_cast<int16_t>(R);
-		*/
+		out[2 * i + 0] = mixer_soft_clip(accumL[i]);
+		out[2 * i + 1] = mixer_soft_clip(accumR[i]);
 	}
 		
 	// Submit variable-length frame (stereo 16-bit = 4 bytes per frame)
@@ -1425,8 +1458,6 @@ void sample_start(int chanid, int samplenum, int loop)
 	}
 
 	// Initialize channel state.
-	ch.isAllocated = true;
-	ch.isReleased = false;
 	ch.isPlaying = true;
 	ch.state = SoundState::Playing;   // Important: keep state consistent for voice channels
 	ch.looping = loop;
@@ -1716,6 +1747,19 @@ void stream_stop(int chanid, int /*stream*/)
 		return;
 	}
 	std::scoped_lock lock(audioMutex);
+	// Streams build a private SAMPLE in stream_start and register it in
+	// lsamples; evict it here or every start/stop cycle leaks a buffer-sized
+	// registry entry until mixer_end. Null the slot (never erase) so the
+	// other samples' num == index invariant stays intact -- same policy as
+	// sample_remove. Must run before stop_channel_locked, which clears the
+	// fields checked here.
+	auto& ch = channel[chanid];
+	if (ch.stream_type == static_cast<int>(SoundState::Stream) &&
+	    ch.loaded_sample_num >= 0 &&
+	    ch.loaded_sample_num < static_cast<int>(lsamples.size()) &&
+	    lsamples[ch.loaded_sample_num] == ch.playing_sample) {
+		lsamples[ch.loaded_sample_num].reset();
+	}
 	stop_channel_locked(chanid);
 }
 
@@ -1739,12 +1783,19 @@ static void stream_reanchor_locked(CHANNEL& ch, const SAMPLE& sample)
 
 void stream_update(int chanid, short* data)
 {
+	if (chanid < 0 || chanid >= MAX_CHANNELS) {
+		LOG_ERROR("stream_update: invalid channel %d", chanid);
+		return;
+	}
 	std::scoped_lock lock(audioMutex);
+	// Resolve through the channel's pinned sample, not the registry: the
+	// stream buffer belongs to this channel, and a registry lookup goes
+	// stale (updates silently stop while the old buffer keeps looping) if
+	// the lsamples slot is ever nulled.
 	auto& ch = channel[chanid];
 	if (ch.state == SoundState::Playing &&
-	    ch.loaded_sample_num >= 0 &&
-	    ch.loaded_sample_num < static_cast<int>(lsamples.size())) {
-		auto& sample = lsamples[ch.loaded_sample_num];
+	    ch.stream_type == static_cast<int>(SoundState::Stream)) {
+		auto& sample = ch.playing_sample;
 		if (sample && sample->data16) {
 			std::memcpy(sample->data16.get(), data, sample->dataSize);
 			stream_reanchor_locked(ch, *sample);
@@ -1754,12 +1805,15 @@ void stream_update(int chanid, short* data)
 
 void stream_update(int chanid, unsigned char* data)
 {
+	if (chanid < 0 || chanid >= MAX_CHANNELS) {
+		LOG_ERROR("stream_update: invalid channel %d", chanid);
+		return;
+	}
 	std::scoped_lock lock(audioMutex);
 	auto& ch = channel[chanid];
 	if (ch.state == SoundState::Playing &&
-	    ch.loaded_sample_num >= 0 &&
-	    ch.loaded_sample_num < static_cast<int>(lsamples.size())) {
-		auto& sample = lsamples[ch.loaded_sample_num];
+	    ch.stream_type == static_cast<int>(SoundState::Stream)) {
+		auto& sample = ch.playing_sample;
 		if (sample && sample->data8) {
 			std::memcpy(sample->data8.get(), data, sample->dataSize);
 			stream_reanchor_locked(ch, *sample);
@@ -1868,10 +1922,8 @@ int create_sample(int bits, bool is_stereo, int freq, int len, const std::string
 	}
 
 	auto sample = std::make_shared<SAMPLE>();
-	sample->num = ++sound_id;
-	sample->name = (name == "STREAM") ? name + std::to_string(sample->num) : name;
-
-	LOG_INFO("Creating Audio Sample with name %s and sound id %d", sample->name.c_str(), sample->num);
+	// num/name are assigned under audioMutex at registration below -- see
+	// load_sample_from_buffer (num == index invariant).
 
 	sample->fx.wFormatTag = WAVE_FORMAT_PCM;
 	sample->fx.nChannels = is_stereo ? 2 : 1;
@@ -1898,8 +1950,13 @@ int create_sample(int bits, bool is_stereo, int freq, int len, const std::string
 		sample->buffer = sample->data16.get();
 	}
 
-	std::scoped_lock lock(audioMutex);
-	lsamples.push_back(sample);
+	{
+		std::scoped_lock lock(audioMutex);
+		sample->num = ++sound_id;
+		sample->name = (name == "STREAM") ? name + std::to_string(sample->num) : name;
+		lsamples.push_back(sample);
+	}
+	LOG_INFO("Creating Audio Sample with name %s and sound id %d", sample->name.c_str(), sample->num);
 	return sample->num;
 }
 
@@ -2104,8 +2161,6 @@ void samples_stop_all()
 	// clear() is cheap insurance against any membership drift.
 	audio_list.clear();
 }
-
-#pragma warning(disable : 4018)
 
 // ------------------ small helpers for MP3 detection -------------------------------
 // These are only used onthe off chance an MP3 doesn't strt with "MP3" in the ID tag.
@@ -2749,8 +2804,14 @@ namespace {
 		case Param::Volume: return clamp_int(sample_get_volume(voice), 0, 255);
 		case Param::Pan:    return clamp_int(sample_get_pan(voice), 0, 255);
 		case Param::Freq: {
-			auto it = g_lastFreqHz.find(voice);
-			if (it != g_lastFreqHz.end()) return it->second;
+			// g_lastFreqHz is written by the worker thread under g_mtx; this
+			// runs on the caller's thread (start_sweep, before it takes the
+			// lock), so the lookup must lock too or it races a rehash.
+			{
+				std::lock_guard<std::mutex> lk(g_mtx);
+				auto it = g_lastFreqHz.find(voice);
+				if (it != g_lastFreqHz.end()) return it->second;
+			}
 			int base = sample_get_freq(voice);
 			return (base > 0) ? base : 0;
 		}
@@ -2799,8 +2860,18 @@ namespace {
 		std::unique_lock<std::mutex> lk(g_mtx);
 
 		while (!g_stop.load(std::memory_order_relaxed)) {
-			g_cv.wait_for(lk, std::chrono::milliseconds(kTickMs),
-				[] { return g_stop.load(std::memory_order_relaxed); });
+			if (g_sweeps.empty()) {
+				// Idle: sleep until a sweep is started (start_sweep notifies
+				// after inserting) or shutdown is requested, instead of
+				// spinning the 1 ms tick forever with nothing to do.
+				g_cv.wait(lk, [] {
+					return g_stop.load(std::memory_order_relaxed) || !g_sweeps.empty();
+					});
+			}
+			else {
+				g_cv.wait_for(lk, std::chrono::milliseconds(kTickMs),
+					[] { return g_stop.load(std::memory_order_relaxed); });
+			}
 			if (g_stop.load(std::memory_order_relaxed))
 				break;
 

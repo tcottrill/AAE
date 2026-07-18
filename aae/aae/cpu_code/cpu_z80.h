@@ -126,6 +126,11 @@ public:
 	void SetPC(uint16_t wAddr);
 	void AdjustPC(int8_t cb);
 
+	// BC register pair. Needed by the Astrocade sound block transfer (reg 8),
+	// where the hardware latches the Z80 B register during OTIR to select the
+	// target sound register (B rides the upper address bus on real hardware).
+	uint16_t GetBC();
+
 	UINT8	mz80GetMemory(uint16_t addr);
 	void	mz80PutMemory(uint16_t addr, uint8_t byte);
 	uint8_t In(uint8_t bPort);

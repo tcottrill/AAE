@@ -106,13 +106,8 @@ static void starfield_init(void) {
 	/* precalculate the star background */
 	/* this comes from the Galaxian hardware, Gaplus is probably different */
 
-	/* Portrait port: the starfield scrolls vertically, so the 2x off-screen
-	   reservoir lives on the Y (scroll) axis -- stars span y in [0, 2*height)
-	   and only y < height is visible; X spans just the visible width. This is
-	   the original landscape layout rotated 90 deg CW to match the rotated
-	   tiles and sprites. */
-	for (x = 0; x < width; x++) {
-		for (y = height * 2 - 1; y >= 0; y--) {
+	for (y = 0; y < height; y++) {
+		for (x = width * 2 - 1; x >= 0; x--) {
 			int bit1, bit2;
 
 			generator <<= 1;
@@ -154,11 +149,6 @@ void gaplus_starfield_update(void) {
 
 	/* update the starfields */
 	for (i = 0; i < total_stars; i++) {
-		/* Directions are named for the on-screen (portrait) result. The motion
-		   is the original landscape velocity rotated 90 deg CW: (vx,vy) ->
-		   (-vy, vx), i.e. landscape +x (down) becomes screen +y, landscape +y
-		   (left) becomes screen -x. So vertical scroll moves Y, horizontal
-		   scroll moves X. */
 		switch (gaplus_starfield_control[stars[i].set + 1]) {
 		case 0x87:
 			/* stand still */
@@ -166,58 +156,57 @@ void gaplus_starfield_update(void) {
 
 		case 0x86:
 			/* scroll down (speed 1) */
-			stars[i].y += SPEED_1;
+			stars[i].x += SPEED_1;
 			break;
 
 		case 0x85:
 			/* scroll down (speed 2) */
-			stars[i].y += SPEED_2;
+			stars[i].x += SPEED_2;
 			break;
 
 		case 0x06:
 			/* scroll down (speed 3) */
-			stars[i].y += SPEED_3;
+			stars[i].x += SPEED_3;
 			break;
 
 		case 0x80:
 			/* scroll up (speed 1) */
-			stars[i].y -= SPEED_1;
+			stars[i].x -= SPEED_1;
 			break;
 
 		case 0x82:
 			/* scroll up (speed 2) */
-			stars[i].y -= SPEED_2;
+			stars[i].x -= SPEED_2;
 			break;
 
 		case 0x81:
 			/* scroll up (speed 3) */
-			stars[i].y -= SPEED_3;
+			stars[i].x -= SPEED_3;
 			break;
 
 		case 0x9f:
 			/* scroll left (speed 2) */
-			stars[i].x -= SPEED_2;
+			stars[i].y += SPEED_2;
 			break;
 
 		case 0xaf:
 			/* scroll left (speed 1) */
-			stars[i].x -= SPEED_1;
+			stars[i].y += SPEED_1;
 			break;
 		}
 
-		/* wrap: Y is the scroll axis with the 2x reservoir (visible y < height,
-		   reservoir y in [height, 2*height)); X is just the visible width. */
+		/* wrap */
 		if (stars[i].x < 0)
-			stars[i].x = (float)(width) + stars[i].x;
+			stars[i].x = (float)(width * 2) + stars[i].x;
 
-		if (stars[i].x >= (float)(width))
-			stars[i].x -= (float)(width);
+		if (stars[i].x >= (float)(width * 2))
+			stars[i].x -= (float)(width * 2);
 
 		if (stars[i].y < 0)
-			stars[i].y = (float)(height * 2) + stars[i].y;
+			stars[i].y = (float)(height)+stars[i].y;
 
-		if (stars[i].y >= (float)(height * 2))
-			stars[i].y -= (float)(height * 2);
+		if (stars[i].y >= (float)(height))
+			stars[i].y -= (float)(height);
 	}
 }
 
@@ -275,18 +264,70 @@ void gaplus_vh_stop(void) {
 	generic_vh_stop();
 }
 
-void gaplus_draw_sprite(struct osd_bitmap* dest, unsigned int code, unsigned int color,
-	int flipx, int flipy, int sx, int sy)
+static void gaplus_draw_sprites(struct osd_bitmap* bitmap)
 {
-	if (code < 128)
-		drawgfx(dest, Machine->gfx[2], code, color, flipx, flipy, sx, sy, &Machine->drv->visible_area,
-			TRANSPARENCY_COLOR, 255);
-	else if (code < 256)
-		drawgfx(dest, Machine->gfx[3], code, color, flipx, flipy, sx, sy, &Machine->drv->visible_area,
-			TRANSPARENCY_COLOR, 255);
-	else
-		drawgfx(dest, Machine->gfx[4], code, color, flipx, flipy, sx, sy, &Machine->drv->visible_area,
-			TRANSPARENCY_COLOR, 255);
+	int offs;
+
+	for (offs = 0; offs < spriteram_size; offs += 2) {
+		if ((spriteram_3[offs + 1] & 2) == 0) {
+			int number = spriteram[offs] + 4 * (spriteram_3[offs] & 0x40);
+			int color = spriteram[offs + 1] & 0x3f;
+			int sx = (spriteram_2[offs + 1] - 71) + 0x100 * (spriteram_3[offs + 1] & 1);
+			int sy = (Machine->drv->screen_height) - spriteram_2[offs] - 24;
+			int flipy = spriteram_3[offs] & 2;
+			int flipx = spriteram_3[offs] & 1;
+			int width, height;
+
+			if (number >= 128 * 3) continue;
+
+			if (flipscreen)
+			{
+				flipx = !flipx;
+				flipy = !flipy;
+			}
+
+			if ((spriteram_3[offs] & 0xa8) == 0xa0) { /* draw the sprite twice in a row */
+				drawgfx(bitmap, Machine->gfx[2 + (number >> 7)],
+					number, color, flipx, flipy, sx, sy,
+					&Machine->drv->visible_area, TRANSPARENCY_COLOR, 255);
+				drawgfx(bitmap, Machine->gfx[2 + (number >> 7)],
+					number, color, flipx, flipy, sx, sy + 16,
+					&Machine->drv->visible_area, TRANSPARENCY_COLOR, 255);
+			}
+			else {
+				switch (spriteram_3[offs] & 0x28) {
+				case 0x28:	/* 2x both ways */
+					width = height = 2; number &= (~3); break;
+				case 0x20:	/* 2x vertical */
+					width = 1; height = 2; number &= (~2); break;
+				case 0x08:	/* 2x horizontal */
+					width = 2; height = 1; number &= (~1); sy += 16; break;
+				default:	/* normal sprite */
+					width = height = 1; sy += 16; break;
+				}
+				{
+					static int x_offset[2] = { 0x00, 0x01 };
+					static int y_offset[2] = { 0x00, 0x02 };
+					int x, y, ex, ey;
+
+					for (y = 0; y < height; y++) {
+						for (x = 0; x < width; x++) {
+							ex = flipx ? (width - 1 - x) : x;
+							ey = flipy ? (height - 1 - y) : y;
+
+							drawgfx(bitmap, Machine->gfx[2 + (number >> 7)],
+								(number)+x_offset[ex] + y_offset[ey],
+								color,
+								flipx, flipy,
+								sx + x * 16, sy + y * 16,
+								&Machine->drv->visible_area,
+								TRANSPARENCY_COLOR, 255);
+						}
+					}
+				}
+			}
+		}
+	}
 }
 
 /***************************************************************************
@@ -341,6 +382,9 @@ void gaplus_vh_screenrefresh(struct osd_bitmap* bitmap, int full_refresh)
 			sx = 27 - sx;
 			sy = 35 - sy;
 		}
+
+		sx = ((Machine->drv->screen_height - 1) / 8) - sx;
+
 		/* colorram layout: */
 		/* bit 7 = bank */
 		/* bit 6 = chars that go on top of sprites (unimplemented yet) */
@@ -348,110 +392,12 @@ void gaplus_vh_screenrefresh(struct osd_bitmap* bitmap, int full_refresh)
 
 		bank = (colorram[offs] & 0x80) ? 1 : 0;
 
-		/* portrait: sx is the horizontal tile column, sy the vertical row */
 		drawgfx(bitmap, Machine->gfx[bank],
 			videoram[offs],
 			colorram[offs] & 0x3f,
-			flipscreen, flipscreen, 8 * sx, 8 * sy,
+			flipscreen, flipscreen, 8 * sy, 8 * sx,
 			&Machine->drv->visible_area, TRANSPARENCY_PEN, 0);
 	}
 
-	/* Draw the sprites.
-	   Positions are rotated 90 degrees clockwise vs. the original MAME gaplus
-	   (landscape) code so they line up with the portrait playfield:
-	     landscape (x, y-16) -> portrait (x+16, y)
-	     landscape (x+16, y) -> portrait (x, y+16)
-	   and the flip axes are swapped (drawgfx flipx = hw flipy, flipy = hw flipx),
-	   matching the rotated GfxLayouts. */
-	for (offs = 0; offs < spriteram_size; offs += 2)
-	{
-		/* is it on? */
-		if ((spriteram_3[offs + 1] & 2) == 0)
-		{
-			int sprite = spriteram[offs] + 4 * (spriteram_3[offs] & 0x40);
-			int color = spriteram[offs + 1] & 0x3f;
-			int x = spriteram_2[offs] - 8;
-			int y = (spriteram_2[offs + 1] - 71) + 0x100 * (spriteram_3[offs + 1] & 1);
-			int flipy = spriteram_3[offs] & 2;	/* hw flip bits (used for branch logic) */
-			int flipx = spriteram_3[offs] & 1;
-
-			if (flipscreen)
-			{
-				flipx = !flipx;
-				flipy = !flipy;
-			}
-
-			switch (spriteram_3[offs] & 0xa8)
-			{
-			case 0:		/* normal size */
-				gaplus_draw_sprite(bitmap, sprite, color, flipy, flipx, x, y);
-				break;
-
-			case 0x20:     /* 2x (horizontal in portrait) */
-				sprite &= ~2;
-				if (!flipy)
-				{
-					gaplus_draw_sprite(bitmap, 2 + sprite, color, flipy, flipx, x, y);
-					gaplus_draw_sprite(bitmap, sprite, color, flipy, flipx, x + 16, y);
-				}
-				else
-				{
-					gaplus_draw_sprite(bitmap, sprite, color, flipy, flipx, x, y);
-					gaplus_draw_sprite(bitmap, 2 + sprite, color, flipy, flipx, x + 16, y);
-				}
-				break;
-
-			case 0x08:     /* 2x (vertical in portrait) */
-				sprite &= ~1;
-				if (!flipx)
-				{
-					gaplus_draw_sprite(bitmap, sprite, color, flipy, flipx, x, y);
-					gaplus_draw_sprite(bitmap, 1 + sprite, color, flipy, flipx, x, y + 16);
-				}
-				else
-				{
-					gaplus_draw_sprite(bitmap, sprite, color, flipy, flipx, x, y + 16);
-					gaplus_draw_sprite(bitmap, 1 + sprite, color, flipy, flipx, x, y);
-				}
-				break;
-
-			case 0x28:        /* 2x both ways */
-				sprite &= ~3;
-				if (!flipx && !flipy)
-				{
-					gaplus_draw_sprite(bitmap, 2 + sprite, color, flipy, flipx, x, y);
-					gaplus_draw_sprite(bitmap, 3 + sprite, color, flipy, flipx, x, y + 16);
-					gaplus_draw_sprite(bitmap, sprite, color, flipy, flipx, x + 16, y);
-					gaplus_draw_sprite(bitmap, 1 + sprite, color, flipy, flipx, x + 16, y + 16);
-				}
-				else if (flipx && flipy)
-				{
-					gaplus_draw_sprite(bitmap, 1 + sprite, color, flipy, flipx, x, y);
-					gaplus_draw_sprite(bitmap, sprite, color, flipy, flipx, x, y + 16);
-					gaplus_draw_sprite(bitmap, 3 + sprite, color, flipy, flipx, x + 16, y);
-					gaplus_draw_sprite(bitmap, 2 + sprite, color, flipy, flipx, x + 16, y + 16);
-				}
-				else if (flipy)
-				{
-					gaplus_draw_sprite(bitmap, sprite, color, flipy, flipx, x, y);
-					gaplus_draw_sprite(bitmap, 1 + sprite, color, flipy, flipx, x, y + 16);
-					gaplus_draw_sprite(bitmap, 2 + sprite, color, flipy, flipx, x + 16, y);
-					gaplus_draw_sprite(bitmap, 3 + sprite, color, flipy, flipx, x + 16, y + 16);
-				}
-				else /* flipx */
-				{
-					gaplus_draw_sprite(bitmap, 3 + sprite, color, flipy, flipx, x, y);
-					gaplus_draw_sprite(bitmap, 2 + sprite, color, flipy, flipx, x, y + 16);
-					gaplus_draw_sprite(bitmap, 1 + sprite, color, flipy, flipx, x + 16, y);
-					gaplus_draw_sprite(bitmap, sprite, color, flipy, flipx, x + 16, y + 16);
-				}
-				break;
-
-			case 0xa0:  /*  draw the sprite twice in a row */
-				gaplus_draw_sprite(bitmap, sprite, color, flipy, flipx, x, y);
-				gaplus_draw_sprite(bitmap, sprite, color, flipy, flipx, x + 16, y);
-				break;
-			}
-		}
-	}
+	gaplus_draw_sprites(bitmap);
 }

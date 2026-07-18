@@ -448,6 +448,14 @@ void cpu_do_int_imm(int cpunum, int int_type)
 	// Respect per-CPU interrupt enable
 	if (!interrupt_enable[cpunum]) return;
 
+	// Some cores (6502 NMI, 8080/8085/8039 INT) push state through the memory
+	// handlers immediately, and generic MRA_RAM/MWA_RAM index by active_cpu.
+	// Run the dispatch in the target CPU's context, then restore the caller's
+	// -- same hazard and same pattern as cpu_reset(). Latching cores (Z80,
+	// 6809, 68000, 6502 IRQ) touch no memory here, so this is harmless there.
+	const int prev_active_cpu = active_cpu;
+	active_cpu = cpunum;
+
 	switch (Machine->gamedrv->cpu[cpunum].cpu_type)
 	{
 	case CPU_8080:
@@ -498,6 +506,8 @@ void cpu_do_int_imm(int cpunum, int int_type)
 		// Unknown/unsupported CPU type: do nothing
 		break;
 	}
+
+	active_cpu = prev_active_cpu;
 }
 
 // Point a CPU's instruction-stream fetches at a decrypted-opcode buffer.
@@ -814,6 +824,9 @@ void cpu_reset(int cpunum)
 	// cpu_reset() is also called from OUTSIDE the scheduler loop (F3 via msg_loop,
 	// and the watchdog), where active_cpu is left at totalcpu -- for a single-CPU
 	// game that points memory_region[] at a null region and crashes the fetch.
+	// Restored below: when one CPU resets another mid-slice (mhavoc gamma reset,
+	// IPF_RESETCPU), the caller must finish its slice in its own memory context.
+	const int prev_active_cpu = active_cpu;
 	active_cpu = cpunum;
 
 	switch (Machine->gamedrv->cpu[cpunum].cpu_type)
@@ -859,6 +872,7 @@ void cpu_reset(int cpunum)
 	if (cpunum == 0)vid_tickcount = 0;
 	//Reset any timers on that CPU.
 	timer_cpu_reset(cpunum);
+	active_cpu = prev_active_cpu;
 }
 
 void cpu_reset_all()

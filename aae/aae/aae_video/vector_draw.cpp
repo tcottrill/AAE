@@ -5,6 +5,7 @@
 // fixed-function state. See docs/superpowers/specs/2026-06-22-vector-beam-renderer-design.md
 // -----------------------------------------------------------------------------
 #include "vector_draw.h"
+#include "sys_gl.h"
 #include "shader_util.h"                 // CompileShader / LinkShaderProgram
 #include "aae_mame_driver.h"             // Machine, VECTOR_USES_COLOR
 #include "config.h"                      // config.linewidth / gain / fire_point_size

@@ -24,6 +24,9 @@
 void os_init_input(void);
 static int pseudo_to_key_code(int keycode);
 int osd_key_pressed(int keycode);
+int osd_key_pressed_for(int player, int keycode);  // multi-keyboard: routes the
+                                                   // check to the player's
+                                                   // assigned device
 int osd_key_pressed_memory(int keycode);
 int osd_key_pressed_memory_repeat(int keycode, int speed);
 int osd_read_key_immediate(void);

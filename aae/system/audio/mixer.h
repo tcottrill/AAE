@@ -487,9 +487,7 @@ struct CHANNEL {
 	int looping = 0;
 	double vol = 1.0;
 	int stream_type = 0;
-	bool isAllocated = false;
 	bool isPlaying = false;
-	bool isReleased = false;
 	int frequency = 0;
 	int volume = 255;
 	int pan = 128;

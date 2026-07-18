@@ -18,7 +18,7 @@
 #include "aae_mame_driver.h"
 #include "colordefs.h"
 
-#include "sys_gl.h"
+#include "render_types.h"
 #include "MathUtils.h"   // aae::math::mat4 for draw_textured_shots projection
 
 typedef struct colorsarray { int r, g, b; } colors;
@@ -50,8 +50,7 @@ public:
 void add_tex(float ex, float ey, int intensity, rgb_t col);
 void add_line(float sx, float sy, float ex, float ey, int intensity, rgb_t col);
 void draw_textured_shots(const aae::math::mat4& proj);
-void set_texture_id(GLuint* id);
-void set_blendmode(GLenum sfactor, GLenum dfactor);
+void set_texture_id(rtex_t* id);
 void cache_clear();
 rgb_t cache_tex_color(int intensity, rgb_t col);
 void cache_texpoint(float ex, float ey, float tx, float ty, int intensity, rgb_t col);

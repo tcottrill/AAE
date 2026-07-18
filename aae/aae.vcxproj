@@ -222,6 +222,7 @@
     <ClInclude Include="aae\os_basic.h" />
     <ClInclude Include="aae\os_input.h" />
     <ClInclude Include="aae\sndhrdwr\aae_pokey.h" />
+    <ClInclude Include="aae\sndhrdwr\astrocade_sound.h" />
     <ClInclude Include="aae\sndhrdwr\ay8910.h" />
     <ClInclude Include="aae\sndhrdwr\cinematronics_sound.h" />
     <ClInclude Include="aae\sndhrdwr\dac.h" />
@@ -238,6 +239,7 @@
     <ClInclude Include="aae\sndhrdwr\tms5220.h" />
     <ClInclude Include="aae\targetver.h" />
     <ClInclude Include="aae\vidhrdwr\aae_avg.h" />
+    <ClInclude Include="aae\vidhrdwr\astrocde_video.h" />
     <ClInclude Include="aae\vidhrdwr\centiped_vid.h" />
     <ClInclude Include="aae\vidhrdwr\cinematronics_video.h" />
     <ClInclude Include="aae\vidhrdwr\emu_vector_draw.h" />
@@ -321,6 +323,8 @@
     <ClCompile Include="aae\drivers\centiped.cpp" />
     <ClCompile Include="aae\drivers\foodf.cpp" />
     <ClCompile Include="aae\drivers\gaplus.cpp" />
+    <ClCompile Include="aae\drivers\pong.cpp" />
+    <ClCompile Include="aae\drivers\breakout.cpp" />
     <ClCompile Include="aae\drivers\dkong.cpp" />
     <ClCompile Include="aae\drivers\gyruss.cpp" />
     <ClCompile Include="aae\drivers\cinematronics_driver.cpp" />
@@ -369,7 +373,9 @@
     <ClCompile Include="aae\menu.cpp" />
     <ClCompile Include="aae\os_basic.cpp" />
     <ClCompile Include="aae\os_input.cpp" />
+    <ClCompile Include="aae\drivers\astrocade.cpp" />
     <ClCompile Include="aae\sndhrdwr\aae_pokey.cpp" />
+    <ClCompile Include="aae\sndhrdwr\astrocade_sound.cpp" />
     <ClCompile Include="aae\sndhrdwr\ay8910.cpp" />
     <ClCompile Include="aae\sndhrdwr\cinematronics_sound.cpp" />
     <ClCompile Include="aae\sndhrdwr\dac.cpp" />
@@ -386,6 +392,7 @@
     <ClCompile Include="aae\sndhrdwr\tms5220.cpp" />
     <ClCompile Include="aae\vidhrdwr\aae_avg.cpp" />
     <ClCompile Include="aae\vidhrdwr\centiped_vid.cpp" />
+    <ClCompile Include="aae\vidhrdwr\astrocde_video.cpp" />
     <ClCompile Include="aae\vidhrdwr\cinematronics_video.cpp" />
     <ClCompile Include="aae\vidhrdwr\emu_vector_draw.cpp" />
     <ClCompile Include="aae\vidhrdwr\fast_poly.cpp" />

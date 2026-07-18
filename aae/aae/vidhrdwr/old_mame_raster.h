@@ -26,7 +26,7 @@
 //------------------------------------------------------------------------------
 // Public globals (kept for compatibility; moved impl details into .cpp)
 //------------------------------------------------------------------------------
-extern struct GfxElement* gfx[10];
+extern struct GfxElement* gfx[];	/* sized MAX_GFX_ELEMENTS in old_mame_raster.cpp */
 
 extern unsigned char* videoram;
 extern int videoram_size;

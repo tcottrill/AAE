@@ -1,5 +1,6 @@
 Changelog:
 
+
 Started:
 Code cleanup, moving to a more sane directory structure
 Build the last revision of allegro 4 and added it to the build. (This should get completely removed at a later date)
@@ -374,7 +375,7 @@ Fixed aspect ratio correction on raster games. Raster games now respect any forc
 Misc Cleanup. I didn't document it, maybe I'll remember and put it here. 
 
 6/30/26
-Changed the Pokey ALLPOT return its value only on the first ALLPOT read after a POTGO write. Otherwise it returns 0. (Updated again later below!!)
+Changed the Pokey ALLPOT return its value only on the first ALLPOT read after a POTGO write. Otherwise it returns 0.
 Unfroze the Random per cycle updates, the combination of these two fixes the Asteroids Deluxe ERROR on self test. 
 This required extensive testing on Tempest to make sure it was still passing the protection checks. 
 
@@ -390,13 +391,14 @@ POKEY sound core fixes (aae_pokey.cpp/h, timer.cpp):
 
 Fixed sound timing for games where the POKEY clock differs from the CPU clock (e.g. Warlords). Mid-frame sound register writes were being placed in the wrong part of the audio buffer; they now land at the correct time within the frame.
 Fixed a shutdown bug that could delete another subsystem's timer. The POKEY timer ID table started out zero-filled, and timer ID 0 is a real timer — so stopping a game could kill an unrelated timer. IDs now initialize to "none".
-Volume writes no longer reset the POKEY IRQ timers. Writing AUDC (volume/distortion) was restarting all three timer IRQs from scratch, so a game running a volume envelope could delay a pending timer IRQ forever.
+Volume writes no longer reset the POKEY IRQ timers. Writing AUDC (volume/distortion) was restarting all three timer IRQs from scratch, so a game running a volume envelope could delay a pending timer IRQ forever. This matches original MAME behavior.
 Frequency writes now only restart the timer they actually affect. An AUDF write used to restart all three IRQ timers; now AUDF1 only touches timer 1 (and timer 2 when channels are joined), AUDF2 touches timer 2, AUDF4 touches timer 4, etc.
 IRQEN writes now pause/resume timers instead of restarting them. Enabling or disabling a timer IRQ keeps the timer's place in its countdown (like real hardware and MAME's timer_enable), instead of starting the period over. Added a timer_enable() function to the AAE timer system to support this.
-ALLPOT now emulates the real POKEY pot scan timing (fixes Asteroids Deluxe self-test). While a pot scan is running, ALLPOT returns the DIP switches wired to the pot pins; once the scan finishes (~150 µs in fast-pot mode), it reads 0 like real hardware. This makes the Asteroids Deluxe option read and its later "should be 0" self-test check both pass naturally — a test that fails in MAME but passes on a real machine.
+Removed a leftover namespace in the POKEY header. The poly/random table functions were declared in a namespace that didn't match their definitions, which would have caused link errors in test builds.
+ALLPOT now emulates the real POKEY pot scan timing (fixes Asteroids Deluxe self-test the "right way"). While a pot scan is running, ALLPOT returns the DIP switches wired to the pot pins; once the scan finishes (~150 µs in fast-pot mode), it reads 0 like real hardware. This makes the Asteroids Deluxe option read and its later "should be 0" self-test check both pass naturally — a test that fails in MAME but passes on a real machine.
 
 mixer.cpp
-Fixed staticky noise when streaming sound (e.g. Namco games at 96 kHz) is resampled to 44100 Hz output. The mixer's read position drifted a hair short of the stream buffer's end at non-integer rate ratios, causing a tiny glitch and sample skip at every frame boundary (a 60 Hz static/buzz); the position is now re-anchored to the buffer each time it's refilled, so any input/output rate combination stays clean. (48000 Hz output was unaffected because 96000->48000 divides exactly.)
+Fixed staticky noise when streaming sound (e.g. Namco games at 96 kHz) is resampled to 44100 Hz output. The mixer's read position drifted a hair short of the stream buffer's end at non-integer rate ratios, causing a tiny glitch and sample skip at every frame boundary (a 60 Hz static/buzz); the position is now re-anchored to the buffer each time it's refilled, so any input/output rate combination stays clean. (48000 Hz output was unaffected because 96000→48000 divides exactly.)
 
 Z80 CPU core fixes (cpu_z80.cpp/h) — affect all Z80 games:
 
@@ -428,20 +430,53 @@ Sound DMA state now updates mid-frame. The sound 6809 used to see frozen DMA cou
 - **Illegal store-immediate opcodes no longer corrupt memory.** Malformed encodings like `STA #` used to write the register to address $0000 silently; they now log a warning and skip.
 
 Circus family driver (circus, robotbwl, crash, ripcord) — fixed
+
 Fixed garbage/inverted graphics in all four games: Colortable now set (0=black, 1=white).
 Fixed frozen tile graphics in crash/ripcord/robotbwl: video RAM ($4000-$43FF) was mapped as plain MWA_RAM, so the dirty-tile buffer was never marked and games honoring the dirty check never redrew the tile layer after frame one. VRAM writes now go through a videoram_w wrapper.
 Fixed vblank/IRQ phase (Crash gameplay): circus_in_vblank() reported vblank at the end of the frame while the scheduler fires the per-frame IRQ at the frame boundary — the opposite of the MAME 0.36–0.66 model where the IRQ fires at vblank start with the DSW vblank bit active for the following 3500µs. The vblank window now covers the first vblank_duration µs of the frame, and all four games use 3500µs per MAME 0.66. 
-
 Fixed display aspect ratio for games without .lay artwork: the synthetic layout fallback used raw pixel dimensions (Circus is 248×256 → rendered nearly square). It now stretches to the physical monitor aspect (4:3 horizontal / 3:4 vertical) like MAME's standard view. Applies to all no-artwork games.
 
 7/3/26
 Pleiads melody samples now trigger correctly (phoenix.cpp). AI assist disassembled the pleiads program ROMs and found how the game drives the Epson SVM7910E melody IC See pleiads_audio.cpp for the full description. 
 
 
- 
+7/3/26-7/10/26
+
+6502 Fixes:
+- Fixed AHX ($93/$9F) writing to a wrong address on every execution; SHX/SHY/SHS gained the
+  correct page-cross target behavior
+- NMOS $82/$C2/$E2 are now 2-byte NOPs (were 1-byte, desyncing the instruction stream)
+- RTI no longer delays a pending IRQ by one instruction
+- BRK no longer clears the decimal flag on NMOS (65C02-only behavior)
+- NMOS $x2 opcodes now JAM (halt at crash site) like real hardware
+- Removed per-execution log spam for undocumented NOPs
+
+winmain.cpp
+
+- Reorganized the boot process to minimize the white screen time before the game loads.  
 
 
- 
+7/10/26 - 7/18/26 
+I've given up programming, I am just the program director and head button pusher to Clause Fable. 
+With /superpowers, it's amazing. 
+
+1. Added in my Black and white monitor simulation shader from my PetGPT Commodore Pet emulator. 
+2. I liked that so much, I added a color raster monitor shader, decided to reorg the menu system and made each shader it's own menu option
+Can't find an option you like with the color raster shader? Use scanlines then, it's there as well
+3. I thought, well now I need some more black and white raster games. So I added the Bally Astrocade sample code from mame, and added a driver for spacezap.
+I also added the OLD, original version of pong from Jurgen Buchmueller, it looks nice, then I thought, I like breakout, lets add it, so I built a breakout simulation. It's fairly close, a little more tweaking and I think it'll be spot on. I also added Boot Hill from Midway. 
+4. For the color monitor code, I used to own a Clay Cowgill Multipac 1.5 addon pcb, so why not add it and the rest of the pacman based games? Done!
+5. Now that I had all this potentiometer game goodness, I thought gee I wish I could use multiple mice and keyboards, so several hundred lines of code later we have something similar to MAME and a new menu option, "Input Devices" Multiple Joysticks, Keyboards and Mice are all now supported with hotplug and location memory. All ultimarc devices should be correctly supported now. Switched to DirectInput 8 for the default for non Xinput controllers.
+6. Adding HID devices to my INI files brought up a new bug, so the INIFile comment handling code was rewritten to handle those.
+7. So with all this I found more issues with the Z80 code, and those have been fixed. I am getting tired of fixing CPU bugs after multiple code reviews!
+8. Discovered the HID Devices names were crazy long, so added marquee scrolling to vector_fonsts.cpp. Now the gui includes that as well. 
+9. What is a new release without more mixer audio fixes? Reverted back to fractional mixing, I think it's going to stay that way, everything sounds great now. Also made changes to the audio threading handler. 
+10. Cleaned up the Sega vector driver and added the ability to flip a dipswitch and use the old Smoothed Video Vector emulation, or the current proper one. 
+I like playing Star Trek with the old one, the bad vectors bug the crap out of me. 
+11. Started cleaning up the video menu with all these changes, fullscreen switching now works, aspect correction works in Vector Games only. I'll try to fix that next. Also specifying a startup resolution is totally broken. It's low priority for me, but I'll fix it eventually. 
+12. Corrected aspect ratio settings for Raster Games. 
+My next target is more vector monitor simulation settings, I want more knobs to tweak. I don't plan on adding any more raster games, except maybe for Sprint 1. 
+
 
 
 

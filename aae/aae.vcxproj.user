@@ -3,6 +3,6 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LocalDebuggerWorkingDirectory>$(OutDir)</LocalDebuggerWorkingDirectory>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
-    <LocalDebuggerCommandArguments>llander</LocalDebuggerCommandArguments>
+    <LocalDebuggerCommandArguments>zektor</LocalDebuggerCommandArguments>
   </PropertyGroup>
 </Project>

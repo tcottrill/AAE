@@ -18,6 +18,7 @@
 #include "rawinput.h"
 #include "os_basic.h"
 #include "sys_log.h"
+#include "config.h"       // config.mouse_player[] for osd_trak_read
 
 int joy_type = -1;
 int use_mouse = 1;
@@ -145,6 +146,54 @@ int osd_key_pressed(int keycode)
 	}
 	//if (key[keycode])LOG_INFO("read key immediate returning %d name: %s",keycode,osd_key_name(keycode));
 	return key[keycode];
+}
+
+/*
+ * Player-aware key check for GAME inputs (multi-keyboard). Routes the check
+ * to the keyboard assigned to `player` in the ANALOG CONFIG menu:
+ *   -2 = none, -1 = system (merged, the default -- identical to
+ *   osd_key_pressed), 0.. = a specific device, resolved by PATH first so
+ *   the assignment survives reboots. An assigned-but-unplugged keyboard
+ *   yields no input rather than falling back to someone else's.
+ * UI/menu keys and anything that isn't a per-player game bit should keep
+ * calling plain osd_key_pressed().
+ */
+int osd_key_pressed_for(int player, int keycode)
+{
+	int dev = -1;   // merged by default
+
+	if (player >= 0 && player < 4)
+	{
+		if (config.kbd_player_path[player][0])
+		{
+			dev = RawInput_FindKeyboardByPath(config.kbd_player_path[player]);
+			// Assigned keyboard not attached: fall back to the merged
+			// SYSTEM state (all keyboards) rather than locking the player
+			// out of their digital controls entirely. Unlike a mouse, a
+			// merged keyboard fallback can't feed a WRONG device's motion
+			// to the player -- worst case is the classic shared-keyboard
+			// behavior. The assignment self-heals when the device returns.
+			if (dev < 0) dev = -1;
+		}
+		else
+			dev = config.kbd_player[player];
+
+		if (dev == -2) return 0;                // explicitly no keyboard
+	}
+
+	if (dev < 0)
+		return osd_key_pressed(keycode);        // merged legacy path
+
+	// specific device: same translation as osd_key_pressed
+	if (keycode == OSD_KEY_ANY)
+		return osd_read_key_immediate();
+	keycode = pseudo_to_key_code(keycode);
+	if (keycode > OSD_MAX_KEY) return 0;
+	if (keycode == OSD_KEY_RCONTROL) keycode = KEY_RCONTROL;
+	if (keycode == OSD_KEY_ALTGR) keycode = KEY_ALTGR;
+	if (keycode == OSD_KEY_PAUSE) keycode = KEY_PAUSE;
+
+	return RawInput_IsKeyDownEx(dev, keycode);
 }
 
 static char memory[256];
@@ -286,6 +335,8 @@ void osd_poll_joysticks(void)
 		poll_joystick();
 }
 
+static int resolve_joy(int n);   /* defined below, near osd_analogjoy_read */
+
 /* check if the joystick is moved in the specified direction, defined in */
 /* osdepend.h. Return 0 if it is not pressed, nonzero otherwise. */
 int osd_joy_pressed(int joycode)
@@ -332,6 +383,11 @@ int osd_joy_pressed(int joycode)
 			if (mouse_b) return 1; break;
 		}
 	}
+
+	/* route through the INPUT DEVICES per-player assignment */
+	joy_num = resolve_joy(joy_num);
+	if (joy_num < 0)
+		return 0;
 
 	/* do we have as many sticks? */
 	if (joy_num + 1 > num_joysticks)
@@ -393,13 +449,33 @@ int osd_joy_pressed(int joycode)
 	return 0;
 }
 
+/* Map a player-facing joystick number through the INPUT DEVICES assignment.
+   A stable id string ("DI:{guid}" / "XINPUT:n") wins when set: the device is
+   found wherever it currently sits, and an unplugged device yields no input.
+   Otherwise: -1 = AUTO (stick N drives player N), -2 = none, 0.. = a
+   specific slot. Returns -1 for "no stick". */
+static int resolve_joy(int n)
+{
+	if (n < 0 || n >= 4) return n;
+
+	if (config.joy_player_id[n][0])
+		return joystick_find_by_id(config.joy_player_id[n]);   /* -1 if absent */
+
+	int v = config.joy_player[n];
+	if (v == -1) return n;      /* AUTO */
+	if (v < 0)  return -1;      /* NONE */
+	return v;
+}
+
 /* return a value in the range -128 .. 128 (yes, 128, not 127) */
 void osd_analogjoy_read(int player, int* analog_x, int* analog_y)
 {
 	*analog_x = *analog_y = 0;
 
+	player = resolve_joy(player);
+
 	/* is there an analog joystick at all? */
-	if (player + 1 > num_joysticks || joystick == JOY_TYPE_NONE)
+	if (player < 0 || player + 1 > num_joysticks || joystick == JOY_TYPE_NONE)
 		return;
 
 	*analog_x = joy[player].stick[0].axis[0].pos;
@@ -408,7 +484,34 @@ void osd_analogjoy_read(int player, int* analog_x, int* analog_y)
 
 void osd_trak_read(int player, int* deltax, int* deltay)
 {
-	//if (player != 0 || use_mouse == 0) *deltax = *deltay = 0; else
+	// Route each player's trackball/paddle to its assigned mouse device
+	// (set in the ANALOG CONFIG menu):
+	//   -2 = no device, -1 = merged system mouse, 0.. = specific mouse.
+	// A specific assignment is resolved by DEVICE PATH (stable identity)
+	// first, so it survives reboots and enumeration-order changes; if the
+	// device is unplugged the player gets no input rather than someone
+	// else's mouse. Note the merged read (-1) resets the shared deltas,
+	// so only one player should use it at a time -- the defaults do.
+	int dev = -2;
 
-	get_mouse_mickeys(deltax, deltay);
+	if (player >= 0 && player < 4)
+	{
+		if (config.mouse_player_path[player][0])
+			dev = RawInput_FindMouseByPath(config.mouse_player_path[player]);  // -1 if absent
+		else
+			dev = config.mouse_player[player];
+
+		// path set but device absent: FindMouseByPath returned -1, which
+		// would fall through to the merged mouse -- force silence instead
+		if (config.mouse_player_path[player][0] && dev < 0)
+			dev = -2;
+	}
+
+	if (dev == -2)
+	{
+		*deltax = *deltay = 0;
+		return;
+	}
+
+	get_mouse_mickeys_ex(dev, deltax, deltay);
 }

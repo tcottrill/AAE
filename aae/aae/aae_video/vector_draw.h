@@ -2,7 +2,6 @@
 #ifndef VECTOR_DRAW_H
 #define VECTOR_DRAW_H
 
-#include "sys_gl.h"
 #include "colordefs.h"     // rgb_t
 #include "MathUtils.h"     // aae::math::vec2 / mat4
 #include <vector>

@@ -638,11 +638,9 @@ WRITE_HANDLER(gaplus_colorram_w)
 // GFX layouts
 // ---------------------------------------------------------------------------
 
-/* All layouts are rotated 90 degrees vs. the original MAME gaplus layouts
-   (X/Y address arrays swapped, new X reversed) so the tiles/sprites decode
-   in portrait orientation -- matching the mappy convention, which lets the
-   driver draw upright with ORIENTATION_DEFAULT instead of relying on a
-   hardware ROT90 the AAE raster path does not apply. */
+/* Layouts match the original MAME gaplus driver (landscape decode); the
+   system-level ORIENTATION_ROTATE_90 in the video core rotates the final
+   image, same as MAME's ROT90. */
 
 static struct GfxLayout charlayout1 =
 {
@@ -650,8 +648,8 @@ static struct GfxLayout charlayout1 =
 	256,											/* 256 characters */
 	2,											  	/* 2 bits per pixel */
 	{ 4, 6 },				 						/* the 2 bitplanes are packed into one nibble */
-	{ 7 * 8, 6 * 8, 5 * 8, 4 * 8, 3 * 8, 2 * 8, 1 * 8, 0 * 8 },
 	{ 16 * 8, 16 * 8 + 1, 24 * 8, 24 * 8 + 1, 0, 1, 8 * 8, 8 * 8 + 1 },
+	{ 0 * 8, 1 * 8, 2 * 8, 3 * 8, 4 * 8, 5 * 8, 6 * 8, 7 * 8 },
 	32 * 8
 };
 
@@ -661,8 +659,8 @@ static struct GfxLayout charlayout2 =
 	256,											/* 256 characters */
 	2,												/* 2 bits per pixel */
 	{ 0, 2 },										/* the 2 bitplanes are packed into one nibble */
-	{ 7 * 8, 6 * 8, 5 * 8, 4 * 8, 3 * 8, 2 * 8, 1 * 8, 0 * 8 },
 	{ 16 * 8, 16 * 8 + 1, 24 * 8, 24 * 8 + 1, 0, 1, 8 * 8, 8 * 8 + 1 },
+	{ 0 * 8, 1 * 8, 2 * 8, 3 * 8, 4 * 8, 5 * 8, 6 * 8, 7 * 8 },
 	32 * 8
 };
 
@@ -672,10 +670,10 @@ static struct GfxLayout spritelayout1 =
 	128,			/* 128 sprites */
 	3,				/* 3 bits per pixel */
 	{ 0, 8192 * 8 + 0, 8192 * 8 + 4 },
-	{ 39 * 8, 38 * 8, 37 * 8, 36 * 8, 35 * 8, 34 * 8, 33 * 8, 32 * 8,
-	  7 * 8, 6 * 8, 5 * 8, 4 * 8, 3 * 8, 2 * 8, 1 * 8, 0 * 8 },
 	{ 0, 1, 2, 3, 8 * 8, 8 * 8 + 1, 8 * 8 + 2, 8 * 8 + 3,
 	  16 * 8 + 0, 16 * 8 + 1, 16 * 8 + 2, 16 * 8 + 3, 24 * 8 + 0, 24 * 8 + 1, 24 * 8 + 2, 24 * 8 + 3 },
+	{ 0 * 8, 1 * 8, 2 * 8, 3 * 8, 4 * 8, 5 * 8, 6 * 8, 7 * 8,
+	  32 * 8, 33 * 8, 34 * 8, 35 * 8, 36 * 8, 37 * 8, 38 * 8, 39 * 8 },
 	64 * 8		   /* every sprite takes 64 bytes */
 };
 
@@ -685,10 +683,10 @@ static struct GfxLayout spritelayout2 =
 	128,			/* 128 sprites */
 	3,				/* 3 bits per pixel */
 	{ 4, 8192 * 8 * 2 + 0, 8192 * 8 * 2 + 4 },
-	{ 39 * 8, 38 * 8, 37 * 8, 36 * 8, 35 * 8, 34 * 8, 33 * 8, 32 * 8,
-	  7 * 8, 6 * 8, 5 * 8, 4 * 8, 3 * 8, 2 * 8, 1 * 8, 0 * 8 },
 	{ 0, 1, 2, 3, 8 * 8, 8 * 8 + 1, 8 * 8 + 2, 8 * 8 + 3,
 	  16 * 8 + 0, 16 * 8 + 1, 16 * 8 + 2, 16 * 8 + 3, 24 * 8 + 0, 24 * 8 + 1, 24 * 8 + 2, 24 * 8 + 3 },
+	{ 0 * 8, 1 * 8, 2 * 8, 3 * 8, 4 * 8, 5 * 8, 6 * 8, 7 * 8,
+	  32 * 8, 33 * 8, 34 * 8, 35 * 8, 36 * 8, 37 * 8, 38 * 8, 39 * 8 },
 	64 * 8		   /* every sprite takes 64 bytes */
 };
 
@@ -697,10 +695,10 @@ static struct GfxLayout spritelayout3 = {
 	128,										   /* 128 sprites */
 	3,											   /* 3 bits per pixel (one is always 0) */
 	{ 8192 * 8 + 0, 0, 4 },							   /* the two bitplanes are packed into one byte */
-	{ 39 * 8, 38 * 8, 37 * 8, 36 * 8, 35 * 8, 34 * 8, 33 * 8, 32 * 8,
-	  7 * 8, 6 * 8, 5 * 8, 4 * 8, 3 * 8, 2 * 8, 1 * 8, 0 * 8 },
 	{ 0, 1, 2, 3, 8 * 8, 8 * 8 + 1, 8 * 8 + 2, 8 * 8 + 3,
 	  16 * 8 + 0, 16 * 8 + 1, 16 * 8 + 2, 16 * 8 + 3, 24 * 8 + 0, 24 * 8 + 1, 24 * 8 + 2, 24 * 8 + 3 },
+	{ 0 * 8, 1 * 8, 2 * 8, 3 * 8, 4 * 8, 5 * 8, 6 * 8, 7 * 8,
+	  32 * 8, 33 * 8, 34 * 8, 35 * 8, 36 * 8, 37 * 8, 38 * 8, 39 * 8 },
 	64 * 8											/* every sprite takes 64 bytes */
 };
 
@@ -1070,8 +1068,8 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_NONE_ENTRY()
 )
 
-AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_RASTER_COLOR | VIDEO_SUPPORTS_DIRTY, ORIENTATION_DEFAULT)
-AAE_DRIVER_SCREEN(28 * 8, 36 * 8, 0, 28 * 8 - 1, 0, 36 * 8 - 1)
+AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_RASTER_COLOR | VIDEO_SUPPORTS_DIRTY, ORIENTATION_ROTATE_90)
+AAE_DRIVER_SCREEN(36 * 8, 28 * 8, 0, 36 * 8 - 1, 0, 28 * 8 - 1)
 AAE_DRIVER_RASTER(gaplus_gfxdecodeinfo, 256, 64 * 4 + 64 * 8, gaplus_vh_convert_color_prom)
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0, 0)

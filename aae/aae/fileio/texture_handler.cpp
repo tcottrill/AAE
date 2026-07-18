@@ -10,18 +10,19 @@
 #include "aae_mame_driver.h"
 #include "menu.h" // This is just for load_texture
 #include "path_helper.h"
+#include "sys_gl.h"
 
 //#define STB_IMAGE_IMPLEMENTATION
 //#define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image.h"
 #include "stb_image_write.h" // https://github.com/nothings/stb
 
-GLuint error_tex[2];
-GLuint pause_tex[2];
-GLuint fun_tex[4];
-GLuint art_tex[8];
-GLuint game_tex[10];
-GLuint menu_tex[7]; // Now unused.
+rtex_t error_tex[2];
+rtex_t pause_tex[2];
+rtex_t fun_tex[4];
+rtex_t art_tex[8];
+rtex_t game_tex[10];
+rtex_t menu_tex[7]; // Now unused.
 
 // Keep track of every texture created.
 static std::vector<GLuint> g_textures;
@@ -55,7 +56,7 @@ void destroy_all_textures()
 	}
 }
 
-bool get_texture_size(GLuint tex, int* outW, int* outH)
+bool get_texture_size(rtex_t tex, int* outW, int* outH)
 {
 	if (!tex || !outW || !outH) return false;
 
@@ -97,7 +98,7 @@ bool get_texture_size(GLuint tex, int* outW, int* outH)
 
 // filter: 0 = linear, 1 = mipmap
 // modernGL: false = legacy (default), true = OpenGL3+ path
-GLuint load_texture(const char* filename,
+rtex_t load_texture(const char* filename,
 	const char* archname,
 	int numcomponents,
 	int filter,
@@ -266,7 +267,7 @@ void snapshot()
 /// @param blendMode   Enable Blending
 /// @param setColor    Reset current color to opaque white if true (default: false).
 
-void set_texture(GLuint* texture, GLboolean linear, GLboolean mipmapping, GLboolean blending, GLboolean set_color)
+void set_texture(rtex_t* texture, bool linear, bool mipmapping, bool blending, bool set_color)
 {
 	// Determine filters
 	GLenum magFilter = linear ? GL_LINEAR : GL_NEAREST;
@@ -307,7 +308,7 @@ void set_texture(GLuint* texture, GLboolean linear, GLboolean mipmapping, GLbool
 // Populates *texture with the GL handle.
 // Returns 1 on success, 0 on failure.
 // ---------------------------------------------------------------------------
-int make_single_bitmap(GLuint* texture, const char* filename, const char* archname, int mtype)
+int make_single_bitmap(rtex_t* texture, const char* filename, const char* archname, int mtype)
 {
 	std::string archivePath;
 

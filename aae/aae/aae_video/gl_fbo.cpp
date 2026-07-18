@@ -37,6 +37,7 @@
 #include "sys_log.h"
 #include "aae_mame_driver.h"
 #include "iniFile.h"
+#include <algorithm>
 #include <array>
 #include <initializer_list>
 
@@ -45,22 +46,29 @@
 // ---------------------------------------------------------------------------
 // FBO and texture handle definitions
 // ---------------------------------------------------------------------------
-GLuint fbo1       = 0;
-GLuint fbo2       = 0;
-GLuint fbo3       = 0;
-GLuint fbo4       = 0;
-GLuint fbo_raster = 0;
+rfbo_t fbo1       = 0;
+rfbo_t fbo2       = 0;
+rfbo_t fbo3       = 0;
+rfbo_t fbo4       = 0;
+rfbo_t fbo_raster = 0;
+rfbo_t fbo_mono   = 0;
 
-GLuint img1a = 0;
-GLuint img1b = 0;
-GLuint img1c = 0;
-GLuint img2a = 0;
-GLuint img2b = 0;
-GLuint img3a = 0;
-GLuint img3b = 0;
-GLuint img4a = 0;
-GLuint img4b = 0;
-GLuint img5a = 0;
+rtex_t img1a = 0;
+rtex_t img1b = 0;
+rtex_t img1c = 0;
+rtex_t img2a = 0;
+rtex_t img2b = 0;
+rtex_t img3a = 0;
+rtex_t img3b = 0;
+rtex_t img4a = 0;
+rtex_t img4b = 0;
+rtex_t img5a = 0;
+rtex_t img5b = 0;
+
+// img5b (mono effect target) dimensions, set by fbo_init_raster().
+// 4x native game size capped at 2048/axis - see the allocation comment.
+float mono_fbo_w = 0.0f;
+float mono_fbo_h = 0.0f;
 
 // Pipeline texture dimensions (fixed for the whole pipeline).
 // FBO1/FBO4 : 1024x1024 - main render and final composite targets.
@@ -91,7 +99,7 @@ static float get_max_anisotropy()
 // Queries and logs the completeness status of the currently bound FBO.
 // Returns the raw GL status enum so callers can branch on it if needed.
 // ---------------------------------------------------------------------------
-GLenum CHECK_FRAMEBUFFER_STATUS()
+static GLenum CHECK_FRAMEBUFFER_STATUS()
 {
     GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
     switch (status)
@@ -229,12 +237,12 @@ static GLuint create_texture(float w, float h, bool mipmaps = true, bool use_alp
 // ---------------------------------------------------------------------------
 struct FboAttachment
 {
-    GLuint*               texOut;
+    rtex_t*               texOut;
     std::array<float, 2>  dims;
     bool                  use_alpha;
 };
 
-static void create_fbo(GLuint& fbo,
+static void create_fbo(rfbo_t& fbo,
     std::initializer_list<FboAttachment> attachments)
 {
     glGenFramebuffers(1, &fbo);
@@ -264,9 +272,9 @@ static void create_fbo(GLuint& fbo,
 // rendering into an FBO and before sampling from those textures so that
 // trilinear and anisotropic filtering work correctly.
 // ---------------------------------------------------------------------------
-void fbo_generate_mipmaps(std::initializer_list<GLuint> textures)
+void fbo_generate_mipmaps(std::initializer_list<rtex_t> textures)
 {
-    for (GLuint tex : textures)
+    for (rtex_t tex : textures)
     {
         glBindTexture(GL_TEXTURE_2D, tex);
         glGenerateMipmap(GL_TEXTURE_2D);
@@ -385,6 +393,63 @@ void fbo_init_raster()
     create_fbo(fbo_raster, {
         { &img5a, { rw, rh }, true }                // attachment 0: scaled game-native raster surface
     });
+
+    // Mono monitor effect target: img5a run through the mono CRT shader lands
+    // here before Layout_Render composites it.
+    //
+    // Allocated at 4x the NATIVE game size (not the prescaled size), capped
+    // at 2048 per axis. The CRT shader reconstructs the Gaussian beam spot
+    // by evaluating it at every OUTPUT pixel with sub-texel bilinear taps --
+    // rendered 1:1 at img5a's size, the taps land exactly on texel centers
+    // and small blur sigmas do nothing until they snap into a chunky
+    // whole-pixel convolution. 4x native gives the shader enough output
+    // positions for the beam (and the scanline ripple) to resolve smoothly;
+    // Layout_Render then downsamples/upsamples to the window from there.
+    mono_fbo_w = (std::min)(static_cast<float>(w) * 4.0f, 2048.0f);
+    mono_fbo_h = (std::min)(static_cast<float>(h) * 4.0f, 2048.0f);
+
+    create_fbo(fbo_mono, {
+        { &img5b, { mono_fbo_w, mono_fbo_h }, true } // attachment 0: mono CRT shader output
+    });
+}
+
+// ---------------------------------------------------------------------------
+// fbo_resize_mono
+// Recreate the CRT effect target at a new size so the mono/color monitor
+// shaders evaluate mask and scanline patterns 1:1 with screen pixels (the
+// same reason MAME's HLSL chain runs at the final render-target size).
+// Cheap no-op when the size is unchanged; the callers pass the on-screen
+// game rectangle from Layout_GetScreenPixelSize() each frame.
+// ---------------------------------------------------------------------------
+void fbo_resize_mono(int w, int h)
+{
+    if (w < 64)   w = 64;
+    if (h < 64)   h = 64;
+    if (w > 4096) w = 4096;
+    if (h > 4096) h = 4096;
+
+    if ((int)mono_fbo_w == w && (int)mono_fbo_h == h)
+        return;
+
+    if (img5b != 0)
+    {
+        glDeleteTextures(1, &img5b);
+        img5b = 0;
+    }
+    if (fbo_mono != 0)
+    {
+        glDeleteFramebuffers(1, &fbo_mono);
+        fbo_mono = 0;
+    }
+
+    mono_fbo_w = (float)w;
+    mono_fbo_h = (float)h;
+
+    create_fbo(fbo_mono, {
+        { &img5b, { mono_fbo_w, mono_fbo_h }, true }
+    });
+
+    LOG_INFO("fbo_resize_mono: CRT effect target resized to %dx%d", w, h);
 }
 
 // ---------------------------------------------------------------------------
@@ -396,7 +461,7 @@ void fbo_shutdown()
 {
     LOG_INFO("fbo_shutdown: releasing fbo1..fbo4 and all textures.");
 
-    GLuint textures[] = { img1a, img1b, img1c, img2a, img2b, img3a, img3b, img4a, img4b };
+    rtex_t textures[] = { img1a, img1b, img1c, img2a, img2b, img3a, img3b, img4a, img4b };
     glDeleteTextures(9, textures);
 
     img1a = img1b = img1c = 0;
@@ -405,7 +470,7 @@ void fbo_shutdown()
     img4a = 0;
     img4b = 0;
 
-    GLuint fbos[] = { fbo1, fbo2, fbo3, fbo4 };
+    rfbo_t fbos[] = { fbo1, fbo2, fbo3, fbo4 };
     glDeleteFramebuffers(4, fbos);
 
     fbo1 = fbo2 = fbo3 = fbo4 = 0;
@@ -434,4 +499,19 @@ void fbo_shutdown_raster()
         glDeleteFramebuffers(1, &fbo_raster);
         fbo_raster = 0;
     }
+
+    if (img5b != 0)
+    {
+        glDeleteTextures(1, &img5b);
+        img5b = 0;
+    }
+
+    if (fbo_mono != 0)
+    {
+        glDeleteFramebuffers(1, &fbo_mono);
+        fbo_mono = 0;
+    }
+
+    mono_fbo_w = 0.0f;
+    mono_fbo_h = 0.0f;
 }

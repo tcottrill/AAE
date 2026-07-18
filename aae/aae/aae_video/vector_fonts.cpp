@@ -10,6 +10,7 @@
 #include <cstring>
 #include <cstdarg>
 #include <cmath>           // cosf / sinf for CPU-side glyph rotation
+#include <chrono>          // shared wall clock for marquee scrolling
 
 // Disable warnings about double-to-float conversions in the font data.
 #pragma warning(disable : 4305)
@@ -466,10 +467,61 @@ void VectorFont::PrintCentered(int y, rgb_t color, float scale, const char* str)
 }
 
 // ----
+// Marquee support
+// ----
+// Constant-speed scroll with a dwell at each end, then snap back and repeat.
+// Phase is derived from a shared steady clock and the string's overflow, so
+// marquees need no per-string state; strings with the same overflow scroll in
+// step, longer strings simply take longer per cycle.
+static constexpr float  kMarqueeSpeed   = 60.0f;   // logical units per second
+static constexpr double kMarqueeDwellMs = 1000.0;  // hold at each end
+
+static double vf_now_ms()
+{
+	using namespace std::chrono;
+	static const steady_clock::time_point t0 = steady_clock::now();
+	return duration<double, std::milli>(steady_clock::now() - t0).count();
+}
+
+static float vf_marquee_offset(float overflow)
+{
+	const double scrollMs = (overflow / kMarqueeSpeed) * 1000.0;
+	const double cycleMs  = kMarqueeDwellMs + scrollMs + kMarqueeDwellMs;
+	double phase = fmod(vf_now_ms(), cycleMs);
+	if (phase <= kMarqueeDwellMs) return 0.0f;             // dwell at start
+	phase -= kMarqueeDwellMs;
+	if (phase < scrollMs)
+		return (float)(phase * (kMarqueeSpeed / 1000.0));  // constant-speed scroll
+	return overflow;                                       // dwell at end
+}
+
+// Clip a stroke segment to the horizontal band [L, R] in unrotated local
+// space. Returns false when the segment lies entirely outside. Endpoints are
+// interpolated along the segment, so glyphs cut cleanly mid-stroke at the
+// field edges -- the classic marquee look.
+static inline bool vf_clip_seg_x(float& x0, float& y0, float& x1, float& y1, float L, float R)
+{
+	if (x0 <= x1) { if (x1 < L || x0 > R) return false; }
+	else          { if (x0 < L || x1 > R) return false; }
+
+	const float dx = x1 - x0;
+	if (dx != 0.0f)
+	{
+		const float slope = (y1 - y0) / dx;
+		if (x0 < L) { y0 += slope * (L - x0); x0 = L; }
+		else if (x0 > R) { y0 += slope * (R - x0); x0 = R; }
+		if (x1 < L) { y1 += slope * (L - x1); x1 = L; }
+		else if (x1 > R) { y1 += slope * (R - x1); x1 = R; }
+	}
+	return true;
+}
+
+// ----
 	// Private Internal Helper: Generates vertices with explicit rotation origin
 	// ----
 void VectorFont::DrawTextInternal(float x, float y, const aae::math::vec2& rotationOrigin,
-	rgb_t color, float scale, float angle, const char* text)
+	rgb_t color, float scale, float angle, const char* text,
+	float clipL, float clipR)
 {
 	for (int i = 0; text[i]; ++i)
 	{
@@ -482,24 +534,41 @@ void VectorFont::DrawTextInternal(float x, float y, const aae::math::vec2& rotat
 			continue;
 		}
 
+		// Glyph geometry spans [x, x + width*scale]; once the pen passes the
+		// right clip edge nothing further can be visible.
+		if (x > clipR)
+			break;
+
 		int idx = fstart[ch] + 1;
 		int bidx = idx + 1;
 		const float offset = fontoffset[ch];  // Shift glyph flush left
 
+		// Entirely left of the clip window: advance only, no geometry.
+		if (x + fontwidth[ch] * scale < clipL)
+		{
+			x += (fontwidth[ch] + CHAR_GAP) * scale;
+			continue;
+		}
+
 		while ((int)fontdata[idx] != EOC)
 		{
 			// Vertex positions shifted by -offset to remove left dead space
-			const float x0 = (fontdata[idx] - offset) * scale + x;
-			const float y0 = fontdata[bidx] * scale + y;
-			const float x1 = (fontdata[idx + 2] - offset) * scale + x;
-			const float y1 = fontdata[bidx + 2] * scale + y;
+			float x0 = (fontdata[idx] - offset) * scale + x;
+			float y0 = fontdata[bidx] * scale + y;
+			float x1 = (fontdata[idx + 2] - offset) * scale + x;
+			float y1 = fontdata[bidx + 2] * scale + y;
 
-			// Apply the specific pivot point passed by the caller
-			VFVertex v1 = { aae::math::vec2(x0, y0), rotationOrigin, angle, color };
-			VFVertex v2 = { aae::math::vec2(x1, y1), rotationOrigin, angle, color };
+			// Clip against the field edges in local (pre-rotation) space so a
+			// clipped window rotates with the string.
+			if (vf_clip_seg_x(x0, y0, x1, y1, clipL, clipR))
+			{
+				// Apply the specific pivot point passed by the caller
+				VFVertex v1 = { aae::math::vec2(x0, y0), rotationOrigin, angle, color };
+				VFVertex v2 = { aae::math::vec2(x1, y1), rotationOrigin, angle, color };
 
-			drawVerts.push_back(v1);
-			drawVerts.push_back(v2);
+				drawVerts.push_back(v1);
+				drawVerts.push_back(v2);
+			}
 
 			idx += 4;
 			bidx += 4;
@@ -561,6 +630,107 @@ void VectorFont::PrintCentered(int y, rgb_t color, float scale, float angle, con
 	aae::math::vec2 center(centerX, centerY);
 
 	DrawTextInternal(startX, (float)y, center, color, scale, angle, str);
+}
+
+// ----
+// PrintMarquee
+// Draws like Print when the text fits in fieldWidth; otherwise scrolls the
+// text at constant speed within [x, x + fieldWidth], clipped to the field.
+// Rotation pivots on (x, y) -- the field origin -- matching Print semantics.
+// ----
+void VectorFont::PrintMarquee(float x, int y, float fieldWidth, rgb_t color, float scale, float angle, const char* fmt, ...)
+{
+	if (!fmt) return;
+
+	char text[EOC];
+	va_list ap;
+	va_start(ap, fmt);
+	vsnprintf(text, sizeof(text), fmt, ap);
+	va_end(ap);
+
+	if (text[0] == '\0') return;
+
+	const aae::math::vec2 origin(x, (float)y);
+	const float w = GetStringPitch(text, scale, 0);
+
+	if (w <= fieldWidth)
+	{
+		DrawTextInternal(x, (float)y, origin, color, scale, angle, text);
+		return;
+	}
+
+	const float off = vf_marquee_offset(w - fieldWidth);
+	DrawTextInternal(x - off, (float)y, origin, color, scale, angle, text,
+		x, x + fieldWidth);
+}
+
+void VectorFont::PrintMarquee(float x, int y, float fieldWidth, rgb_t color, float scale, const char* fmt, ...)
+{
+	if (!fmt) return;
+
+	char text[EOC];
+	va_list ap;
+	va_start(ap, fmt);
+	vsnprintf(text, sizeof(text), fmt, ap);
+	va_end(ap);
+
+	PrintMarquee(x, y, fieldWidth, color, scale, 0.0f, "%s", text);
+}
+
+// ----
+// PrintMarqueeCentered
+// Centered when the text fits; otherwise the field itself is centered and the
+// text scrolls within it. Rotation pivots on the field's center, matching
+// PrintCentered semantics.
+// ----
+void VectorFont::PrintMarqueeCentered(int y, float fieldWidth, rgb_t color, float scale, float angle, const char* str)
+{
+	if (!str || str[0] == '\0') return;
+
+	const float w = GetStringPitch(str, scale, 0);
+	if (w <= fieldWidth)
+	{
+		PrintCentered(y, color, scale, angle, str);
+		return;
+	}
+
+	const float scrW = (screenWidth > 0) ? (float)screenWidth : 1024.0f;
+	const float fieldX = (scrW - fieldWidth) * 0.5f;
+	const aae::math::vec2 center(fieldX + fieldWidth * 0.5f, (float)y + 3.5f * scale);
+
+	const float off = vf_marquee_offset(w - fieldWidth);
+	DrawTextInternal(fieldX - off, (float)y, center, color, scale, angle, str,
+		fieldX, fieldX + fieldWidth);
+}
+
+void VectorFont::PrintMarqueeCentered(int y, float fieldWidth, rgb_t color, float scale, const char* str)
+{
+	PrintMarqueeCentered(y, fieldWidth, color, scale, 0.0f, str);
+}
+
+// ----
+// PrintClippedCentered
+// Field clipping without the animation: centered when the text fits,
+// otherwise the beginning of the string fills the centered field and the
+// overflow is cut at the edge. Used for rows that shouldn't scroll.
+// ----
+void VectorFont::PrintClippedCentered(int y, float fieldWidth, rgb_t color, float scale, const char* str)
+{
+	if (!str || str[0] == '\0') return;
+
+	const float w = GetStringPitch(str, scale, 0);
+	if (w <= fieldWidth)
+	{
+		PrintCentered(y, color, scale, 0.0f, str);
+		return;
+	}
+
+	const float scrW = (screenWidth > 0) ? (float)screenWidth : 1024.0f;
+	const float fieldX = (scrW - fieldWidth) * 0.5f;
+	const aae::math::vec2 center(fieldX + fieldWidth * 0.5f, (float)y + 3.5f * scale);
+
+	DrawTextInternal(fieldX, (float)y, center, color, scale, 0.0f, str,
+		fieldX, fieldX + fieldWidth);
 }
 
 // ----

@@ -1,5 +1,6 @@
 #include "aae_mame_driver.h"
 #include "gl_texturing.h"
+#include "sys_gl.h"
 #include "opengl_renderer.h"
 #include "texture_handler.h"
 #include "vector_fonts.h"

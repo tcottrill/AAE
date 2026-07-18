@@ -121,6 +121,7 @@ void cpu_z80::mz80reset()
 	cCycles = 0;
 	//Rbit7 = 0x0;
 	dwElapsedTicks = 0;
+	m_nmi_pending = false;
 }
 
 cpu_z80::cpu_z80(uint8_t* MEM, MemoryReadByte* read_mem, MemoryWriteByte* write_mem, z80PortRead* port_read, z80PortWrite* port_write, uint16_t addr, int num)
@@ -192,6 +193,11 @@ uint16_t cpu_z80::Pop()
 uint16_t cpu_z80::GetSP()
 {
 	return (uint16_t)(m_rgbStack - m_rgbStackBase);
+}
+
+uint16_t cpu_z80::GetBC()
+{
+	return m_regBC;
 }
 
 void cpu_z80::SetSP(uint16_t wAddr)

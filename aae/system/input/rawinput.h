@@ -550,6 +550,60 @@ void SetCursorPositionCallback(CursorPositionCallback callback);
 void set_mouse_mickey_scale(float scale);
 
 // -----------------------------------------------------------------------------
+// Multiple mice (per-device Raw Input)
+//
+// Every RAWINPUT mouse event carries the source device handle; state is
+// tracked per device in addition to the merged legacy state above. Devices
+// are enumerated at init and registered on the fly if they first appear at
+// runtime (hot-plug).
+//
+//   RawInput_GetMouseCount()    -- number of distinct mice seen
+//   RawInput_GetMouseName(i)    -- short display name ("HID#VID_046D&PID_C077")
+//   get_mouse_mickeys_ex(i,...) -- per-device relative motion, read-and-reset,
+//                                  scaled by the mickey scale. i = -1 reads the
+//                                  MERGED stream (all mice), identical to the
+//                                  legacy get_mouse_mickeys().
+//   RawInput_GetMouseButtons(i) -- bit0=left, bit1=right, bit2=middle;
+//                                  i = -1 returns the merged mouse_b.
+//
+// All existing single-mouse functions keep working on the merged stream.
+// -----------------------------------------------------------------------------
+#define RI_MAX_MICE 8
+
+int  RawInput_GetMouseCount();
+const char* RawInput_GetMouseName(int index);
+void get_mouse_mickeys_ex(int index, int* mickeyx, int* mickeyy);
+int  RawInput_GetMouseButtons(int index);
+int  RawInput_MouseSeenInput(int index);   // 1 once the device has sent input
+                                           // (identifies real vs phantom mice;
+                                           // RDP virtual devices are filtered)
+const char* RawInput_GetMousePath(int index);      // stable device identity
+int  RawInput_FindMouseByPath(const char* path);   // path -> current index, -1
+                                                   // if not attached
+
+// -----------------------------------------------------------------------------
+// Multiple keyboards (per-device Raw Input)
+//
+// Same model as the mice: every RAWINPUT keyboard event carries the source
+// device handle, and per-device key state is tracked alongside the merged
+// legacy key[] (which all existing consumers keep using). Devices are
+// enumerated at init and hot-plug registered; RDP virtual keyboards are
+// filtered; friendly names resolve through the registry.
+//
+//   RawInput_IsKeyDownEx(i, vk) -- key state on keyboard i (VK-indexed, same
+//                                  translation as the merged key[]); i = -1
+//                                  reads the merged state.
+// -----------------------------------------------------------------------------
+#define RI_MAX_KBDS 8
+
+int  RawInput_GetKeyboardCount();
+const char* RawInput_GetKeyboardName(int index);
+const char* RawInput_GetKeyboardPath(int index);
+int  RawInput_FindKeyboardByPath(const char* path);
+int  RawInput_KeyboardSeenInput(int index);
+int  RawInput_IsKeyDownEx(int index, int vk);
+
+// -----------------------------------------------------------------------------
 // Allegro compatible C style keystate buffers.
 // -----------------------------------------------------------------------------
 extern int mouse_b;

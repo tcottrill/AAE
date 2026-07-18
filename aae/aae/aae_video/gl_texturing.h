@@ -3,8 +3,6 @@
 #ifndef GL_TEX_H
 #define GL_TEX_H
 
-#include "sys_gl.h"
-
 extern float wideadj; // No longer used.
 extern int errorsound;
 

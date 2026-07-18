@@ -535,7 +535,6 @@ AAE_DRIVER_END()
 
 AAE_REGISTER_DRIVER(drv_dkong)
 
-
 // ===========================================================================
 // Donkey Kong Junior (Nintendo, 1982)
 //
@@ -786,9 +785,6 @@ ROM_LOAD("djr1-c-2f.2f", 0x0100, 0x0100, CRC(47ba0042) SHA1(dbec3f4b8013628c5b8f
 ROM_LOAD("djr1-v-2n.2n", 0x0200, 0x0100, CRC(dbf185bf) SHA1(2697a991a4afdf079dd0b7e732f71c7618f43b70))   /* character color codes on a per-column basis */
 ROM_END
 
-
-
-
 ROM_START(dkong3)
 ROM_REGION(0x10000, REGION_CPU1, 0)
 ROM_LOAD("dk3c.7b", 0x0000, 0x2000, CRC(38d5f38e) SHA1(5a6bb0e5070211515e3d56bd7d4c2d1655ac1621))
@@ -821,10 +817,6 @@ ROM_REGION(0x0020, REGION_USER1, 0)
 /* address decode prom 18s030 - this has inverted outputs. The dump does not reflect this. */
 ROM_LOAD("dkc1-v.5e", 0x0000, 0x0020, CRC(d3e2eaf8) SHA1(87bb298137c26570dafb4ac495c87e82441e70e5))
 ROM_END
-
-
-
-
 
 AAE_DRIVER_BEGIN(drv_dkongjr, "dkongjr", "Donkey Kong Junior (US)")
 AAE_DRIVER_ROM(rom_dkongjr)

@@ -74,8 +74,11 @@ HRESULT XAudio2Backend::Init(int rateHz, int fps)
 	LOG_INFO("XAudio2Backend::Init: FramesPerUpdate=%d (~%d ms per update)",
 		m_frames_per_update, buffer_duration_ms);
 
-	// Allocate ring buffers: frames * 4 bytes
-	m_buffer_size = m_frames_per_update * wf.nBlockAlign;
+	// Allocate ring buffers: frames * 4 bytes, plus one frame of headroom --
+	// when rateHz % fps != 0 the mixer pays back the truncation by mixing
+	// N+1 samples on some frames (see mixer_update_internal), and those
+	// frames must not overrun the buffer.
+	m_buffer_size = (m_frames_per_update + 1) * wf.nBlockAlign;
 	for (int i = 0; i < kNumBuffers; ++i) {
 		m_buffers[i] = new BYTE[m_buffer_size];
 		std::memset(m_buffers[i], 0, m_buffer_size);
@@ -99,6 +102,22 @@ HRESULT XAudio2Backend::Submit(BYTE* buffer, DWORD bufferLength)
 	// Check voice state to prevent overwriting data currently being played
 	XAUDIO2_VOICE_STATE state;
 	m_source->GetState(&state);
+
+	// Underrun diagnostic: an empty queue at submit time (after the first
+	// few frames) means the voice ran dry and played silence -- an audible
+	// gap. Rate-limited so a struggling system doesn't flood the log.
+	{
+		static int s_submits = 0;
+		static int s_underruns = 0;
+		++s_submits;
+		if (state.BuffersQueued == 0 && s_submits > 3) {
+			++s_underruns;
+			if (s_underruns <= 10 || (s_underruns % 100) == 0) {
+				LOG_INFO("XAudio2: output ran dry before submit #%d (underrun #%d)",
+					s_submits, s_underruns);
+			}
+		}
+	}
 
 	// If we have too many buffers queued, the game loop is running too fast.
 	// We should drop this frame or wait. For a game engine, dropping/skipping

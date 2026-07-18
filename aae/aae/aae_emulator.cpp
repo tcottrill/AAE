@@ -64,6 +64,12 @@
 #include <filesystem>
 #include <path_helper.h>
 
+// Regression guard: this file must never see OpenGL headers. If this fires,
+// a render header re-leaked glew.h — fix the header, not this guard.
+#ifdef __glew_h__
+#error "OpenGL headers leaked into a non-render translation unit"
+#endif
+
 #pragma warning(disable : 4996 4244)
 
 using namespace std;
@@ -941,6 +947,18 @@ void run_game(void)
 		bool hasBezel = (g_bezelAvailable != 0);
 		bool bezelOn = (config.bezel != 0);
 
+		// Menu GAME ASPECT override ("AUTO" = keep the natural computed
+		// aspect). Loaded per-game from the game ini, globally from aae.ini.
+		{
+			const float menuAspect = aspect_from_string(config.game_aspect);
+			if (menuAspect > 0.0f)
+			{
+				LOG_INFO("Step 12: menu GAME ASPECT override: %s (%.3f, game was %.3f)",
+					config.game_aspect, menuAspect, gameAspect);
+				gameAspect = menuAspect;
+			}
+		}
+
 		// User aspect override: INI use_aspect=1 with aspect_ratio, or
 		// command-line -aspect N:M. Command line wins over INI (handled
 		// in winmain.cpp ParseCommandLineArgs). This overrides the
@@ -1189,9 +1207,11 @@ void msg_loop(void)
 	{
 		if (get_menu_status())
 		{
-			// In menu: collapse to top level, or close menu entirely.
+			// In menu: back up one level, or close the menu from the root.
+			// menu_navigate_back() is parent-aware: the monitor setup
+			// submenus return to VIDEO SETUP rather than the main menu.
 			if (get_menu_level() > 100)
-				set_menu_level_top();
+				menu_navigate_back();
 			else
 			{
 				set_menu_level_top();
@@ -1334,8 +1354,8 @@ void msg_loop(void)
 		{
 			if (get_menu_level() > 100)
 			{
-				// We are in a sub-menu: collapse back to the top level.
-				set_menu_level_top();
+				// In a sub-menu: back up one level (parent-aware, matches ESC).
+				menu_navigate_back();
 			}
 			else
 			{

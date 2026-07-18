@@ -13,6 +13,7 @@
 // ====================================================================
 
 #include "mame_layout.h"
+#include "framework.h"      // glew.h, wglew.h, GL calls, WindowSetup
 #include "shader_util.h"    // CompileShader(), LinkShaderProgram()
 #include "sys_log.h"
 #include "tinyxml2.h"
@@ -728,7 +729,21 @@ static void DrawLayoutQuad(GLuint texID, float x, float y, float w, float h,
 	DrawQuadNDC(nx0, ny0, nx1, ny1);
 }
 
-void Layout_Render(const LayoutView& view, GLuint screenTexture, int winW, int winH, int videoAttributes)
+// On-screen pixel size of the screen element, captured each frame as the
+// screen quad is drawn. The CRT monitor passes (render_mono_monitor /
+// render_color_monitor) size their FBO to this so mask and scanline
+// patterns land 1:1 on screen pixels -- the same reason MAME's HLSL chain
+// runs at the final render-target size. 0 until the first layout frame.
+static float g_layoutScreenPxW = 0.0f;
+static float g_layoutScreenPxH = 0.0f;
+
+void Layout_GetScreenPixelSize(int* w, int* h)
+{
+	*w = (int)(g_layoutScreenPxW + 0.5f);
+	*h = (int)(g_layoutScreenPxH + 0.5f);
+}
+
+void Layout_Render(const LayoutView& view, rtex_t screenTexture, int winW, int winH, int videoAttributes)
 {
 	if (winW < 1 || winH < 1) return;
 
@@ -800,10 +815,21 @@ void Layout_Render(const LayoutView& view, GLuint screenTexture, int winW, int w
 	float aspectCam = camW / camH;
 
 	// ---- Aspect Override: constrain rendering area ----
-	// When the user has an aspect override active (use_aspect=1 or -aspect),
-	// compute a sub-rectangle of the window that has the override aspect.
-	// The layout renders into this constrained area; black bars from the
-	// glClear in final_render_raster fill the remainder.
+	// When a display-aspect override is in effect, compute a sub-rectangle
+	// of the window with that aspect. The layout renders into this
+	// constrained area; black bars from the glClear in final_render_raster
+	// fill the remainder.
+	//
+	// The override priority mirrors what run_game's Step 12 applies to the
+	// window itself:
+	//   1. -aspect / use_aspect=1 (ws.aspectOverrideActive) -- forced, wins
+	//   2. menu GAME ASPECT (config.game_aspect, any value but AUTO)
+	//   3. neither -- AUTO: natural layout fit, nothing below changes
+	// Previously only (1) reached the layout, so GAME ASPECT worked on the
+	// vector path (screen_rect stretches onto ws.aspectRatio) but did
+	// nothing visible for raster games: in windowed mode the window took
+	// the new shape while the layout letterboxed itself back to its own
+	// aspect inside it, and in fullscreen it was ignored outright.
 	//
 	// In windowed mode the window was already resized to match, so
 	// vpW==winW and vpH==winH (no visible letterboxing here).
@@ -813,20 +839,27 @@ void Layout_Render(const LayoutView& view, GLuint screenTexture, int winW, int w
 	bool aspectOverride = false;
 	{
 		auto& ws = GetWindowSetup();
+
+		float dispAspect = 0.0f;
 		if (ws.aspectOverrideActive && ws.aspectRatio > 0.0f)
+			dispAspect = ws.aspectRatio;
+		else if (config.game_aspect && config.game_aspect[0])
+			dispAspect = aspect_from_string(config.game_aspect); // 0 for AUTO
+
+		if (dispAspect > 0.0f)
 		{
 			aspectOverride = true;
 			float windowAspect = (float)winW / (float)winH;
-			if (windowAspect > ws.aspectRatio)
+			if (windowAspect > dispAspect)
 			{
 				// Window wider than target -- pillarbox
-				vpW = (int)((float)winH * ws.aspectRatio + 0.5f);
+				vpW = (int)((float)winH * dispAspect + 0.5f);
 				vpX = (winW - vpW) / 2;
 			}
-			else if (windowAspect < ws.aspectRatio)
+			else if (windowAspect < dispAspect)
 			{
 				// Window taller than target -- letterbox
-				vpH = (int)((float)winW / ws.aspectRatio + 0.5f);
+				vpH = (int)((float)winW / dispAspect + 0.5f);
 				vpY = (winH - vpH) / 2;
 			}
 			// Replace the effective window dimensions for all NDC math below.
@@ -987,6 +1020,11 @@ void Layout_Render(const LayoutView& view, GLuint screenTexture, int winW, int w
 			// ---- SCREEN (with optional overlay multiply) ----
 			else
 			{
+				// Rigid rotation preserves edge lengths, so the screen quad
+				// spans d.w*sLx x d.h*sLy PIXELS regardless of rotMode.
+				g_layoutScreenPxW = d.w * sLx;
+				g_layoutScreenPxH = d.h * sLy;
+
 				glBlendFunc(GL_ONE, GL_ONE);
 
 				if (overlayTexID != 0)
@@ -1073,6 +1111,9 @@ void Layout_Render(const LayoutView& view, GLuint screenTexture, int winW, int w
 			LayoutToNDC(d.x, d.y, d.w, d.h, scaleX, scaleY, offsetX, offsetY, fWinW, fWinH,
 				nx0, ny0, nx1, ny1);
 
+			g_layoutScreenPxW = d.w * scaleX;
+			g_layoutScreenPxH = d.h * scaleY;
+
 			glBlendFunc(GL_ONE, GL_ONE);
 
 			if (overlayTexID != 0) {
@@ -1134,7 +1175,7 @@ void Layout_Render(const LayoutView& view, GLuint screenTexture, int winW, int w
 // Layout_GetOverlayTexture
 // Returns the GL texture ID of the first overlay element, or 0.
 // ====================================================================
-GLuint Layout_GetOverlayTexture(const LayoutView& view)
+rtex_t Layout_GetOverlayTexture(const LayoutView& view)
 {
 	if (!g_layoutShowOverlay) return 0;
 	for (const auto& d : view.drawables) {

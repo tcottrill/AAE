@@ -3,7 +3,7 @@
 
 #include "framework.h"
 #include "texrect.h"
-#include "sys_gl.h"
+#include "render_types.h"
 
 // Sane Global Rectangle Coordinates
 extern int game_rect_left;
@@ -19,14 +19,18 @@ extern int g_scanline_override;
 namespace aae { namespace math { struct mat4; } }
 extern aae::math::mat4 g_proj;
 
-void set_ortho(GLint width, GLint height);
+void set_ortho(int width, int height);
 // Y-down ortho for the raster rendering path (origin top-left, Y increases downward).
-void set_ortho_raster(GLint width, GLint height);
+void set_ortho_raster(int width, int height);
 void set_render();
 void render();
 void final_render(int left, int right, int bottom, int top);
 // Raster-specific composite and present function.
 void final_render_raster();
+// True when the mono monitor CRT effect will run for the given
+// video_attributes (enabled in config AND the game is B/W raster).
+bool mono_monitor_active(int vattr);
+bool color_monitor_active(int vattr);
 void set_render_fbo4();
 void end_render_fbo4();
 // Draw pause/menu/exit confirm overlays on top of the current backbuffer.
@@ -44,6 +48,24 @@ void Widescreen_calc();
 void init_raster_overlay();
 void shutdown_raster_overlay();
 // Returns the scanline overlay texture handle (0 if not loaded)
-GLuint glcode_get_scanrez_tex();
+rtex_t glcode_get_scanrez_tex();
+
+// Backend-neutral point-sprite drawing for the front-end GUI starfield.
+// Vertex layout: position (2 floats) + RGBA color (4 floats).
+struct GuiPointVertex {
+	float x, y;
+	float r, g, b, a;
+};
+void gui_points_init(int maxPoints);
+void gui_points_draw(const GuiPointVertex* pts, int count, float pointSize);
+void gui_points_shutdown();
+
+// Backend window-swap / vsync wrappers (implemented by the GL backend in sys_gl.cpp).
+void GLSwapBuffers();
+void SetvSync(bool enabled);
+
+// Backend-neutral GL error check (returns 0 when no error). Lets non-render
+// TUs poll for GL errors without including GL headers.
+int glcode_get_gl_error();
 
 #endif

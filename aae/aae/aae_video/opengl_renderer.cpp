@@ -50,6 +50,7 @@
 //==========================================================================
 
 #include "opengl_renderer.h"
+#include "sys_gl.h"
 #include "aae_mame_driver.h"
 #include "vector_fonts.h"
 #include "texture_handler.h"
@@ -68,6 +69,7 @@
 #include "mame_vector.h"
 #include <chrono>   // for optional frame-time profiling
 #include <cstring>  // strcmp for raster_effect name check
+#include <cmath>    // log2f for the mono monitor halation mip bias
 #include "aae_avg.h"
 // ---------------------------------------------------------------------------
 // Module-level globals
@@ -372,7 +374,6 @@ int init_gl(void)
 		glEnable(GL_BLEND);
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-		// --- Screen rectangle (tracks window size and aspect ratio) ---
 		// --- Screen rectangle (tracks window size and aspect ratio) ---
 		auto& ws = GetWindowSetup();
 		int rot = orientation_to_rect2_rotation(config.system_rotation);
@@ -1308,6 +1309,239 @@ void render_scanlines()
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }
 
+// ---------------------------------------------------------------------------
+// Mono monitor CRT effect (B/W raster games only)
+//
+// Runs img5a through the mono CRT shader (Gaussian beam spot, beam
+// overdrive, mip-pyramid halation, optional beam ripple, black-level lift,
+// phosphor tint) into img5b. Layout_Render then composites img5b instead
+// of img5a, so overlays, bezels, and rotation all work unchanged.
+//
+// Ported from the PET emulator's mono monitor pass (pet_gl.cpp). The
+// halation trick needs no extra blur FBOs: it samples the source texture's
+// mip pyramid via textureLod, so the only per-frame cost beyond the quad is
+// one glGenerateMipmap on img5a.
+// ---------------------------------------------------------------------------
+
+// Monitor phosphor tint presets, indexed by config.mono_tint.
+static const float k_monoTints[3][3] = {
+	{ 1.00f, 1.00f, 1.00f },   // 0: P4 white
+	{ 0.30f, 1.00f, 0.40f },   // 1: P1 green
+	{ 1.00f, 0.75f, 0.20f },   // 2: P3 amber
+};
+
+bool mono_monitor_active(int vattr)
+{
+	return config.mono_enable != 0 &&
+		fragMonoMonitor != 0 &&
+		fbo_mono != 0 &&
+		(vattr & VIDEO_TYPE_RASTER_BW) != 0;
+}
+
+static void render_mono_monitor()
+{
+	// Oriented native visible-area size (game pixels) and the prescaled
+	// render size. Must match the fbo_init_raster() / set_render() math.
+	const rectangle& va = Machine->drv->visible_area;
+	int vw = (va.max_x - va.min_x + 1);
+	int vh = (va.max_y - va.min_y + 1);
+
+	if (Machine->drv->rotation & ORIENTATION_SWAP_XY)
+	{
+		const int t = vw;
+		vw = vh;
+		vh = t;
+	}
+
+	// Output size: track the on-screen game rectangle (MAME-HLSL-style
+	// output-sized post) so the scanline ripple lands 1:1 on screen pixels.
+	// Falls back to the 4x-native size from fbo_init_raster() until the
+	// first layout frame has reported a size.
+	{
+		int sw = 0, sh = 0;
+		Layout_GetScreenPixelSize(&sw, &sh);
+		if (sw > 0 && sh > 0)
+			fbo_resize_mono(sw, sh);
+	}
+	const int rw = static_cast<int>(mono_fbo_w);
+	const int rh = static_cast<int>(mono_fbo_h);
+
+	// Halation samples the source's mip pyramid via textureLod, so rebuild
+	// it now that the frame (and any scanline pass) is complete. Unbind the
+	// FBO first: generating mips of a still-attached render target stalls
+	// some drivers. img5a's MIN filter is already GL_LINEAR_MIPMAP_LINEAR
+	// from create_texture().
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	fbo_generate_mipmaps({ img5a });
+
+	glBindFramebuffer(GL_FRAMEBUFFER, fbo_mono);
+	glDrawBuffer(GL_COLOR_ATTACHMENT0);
+	glViewport(0, 0, rw, rh);
+	glDisable(GL_BLEND);   // straight replace into img5b
+
+	aae::math::mat4 proj = aae::math::ortho(0.0f, (float)rw, 0.0f, (float)rh);
+
+	const int   tintIdx = (config.mono_tint >= 0 && config.mono_tint <= 2) ? config.mono_tint : 0;
+	const float prescale = (config.prescale > 1.0f) ? config.prescale : 1.0f;
+
+	// GL state gets swapped aggressively elsewhere in the renderer, so set
+	// every uniform each frame rather than caching state (they're cheap).
+	bind_shader(fragMonoMonitor);
+	set_uniform1i(fragMonoMonitor, "uTex", 0);
+	set_uniform_mat4f(fragMonoMonitor, "uProj", aae::math::value_ptr(proj));
+	set_uniform2f(fragMonoMonitor, "uSrcSize", (float)vw, (float)vh);
+	set_uniform1f(fragMonoMonitor, "uLodBias", log2f(prescale));
+	set_uniform1f(fragMonoMonitor, "uBlurH", config.mono_blur_h);
+	set_uniform1f(fragMonoMonitor, "uBlurV", config.mono_blur_v);
+	set_uniform1f(fragMonoMonitor, "uHalation", config.mono_halation);
+	set_uniform1f(fragMonoMonitor, "uHalRadius", config.mono_halation_radius);
+	set_uniform1f(fragMonoMonitor, "uScanline", config.mono_scanline);
+	set_uniform1f(fragMonoMonitor, "uContrast", config.mono_contrast);
+	set_uniform1f(fragMonoMonitor, "uBright", config.mono_brightness);
+	set_uniform3f(fragMonoMonitor, "uTint",
+		k_monoTints[tintIdx][0], k_monoTints[tintIdx][1], k_monoTints[tintIdx][2]);
+
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, img5a);
+
+	// Full-target quad, UV 0..1. img5a and img5b share the same Y-down
+	// orientation, so no flip is needed here or downstream.
+	ScanQuadVert verts[4] = {
+		{ 0.0f,      0.0f,      0.0f, 0.0f },
+		{ (float)rw, 0.0f,      1.0f, 0.0f },
+		{ (float)rw, (float)rh, 1.0f, 1.0f },
+		{ 0.0f,      (float)rh, 0.0f, 1.0f }
+	};
+
+	glBindVertexArray(g_scanVAO);
+	glBindBuffer(GL_ARRAY_BUFFER, g_scanVBO);
+	glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(verts), verts);
+	glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+	glBindVertexArray(0);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+	unbind_shader();
+	glBindTexture(GL_TEXTURE_2D, 0);
+
+	// img5b is larger than the window's game area, so Layout_Render MINIFIES
+	// it (img5b has a trilinear mip filter from create_texture). Rebuild its
+	// mip chain now or the composite samples stale placeholder mips.
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	fbo_generate_mipmaps({ img5b });
+
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+	check_gl_error_named("render_mono_monitor");
+}
+
+// ---------------------------------------------------------------------------
+// Color CRT monitor pass. Sibling of render_mono_monitor(): same img5a ->
+// img5b chain (a game is either B/W or color raster, never both, so the
+// mono FBO is free to reuse), same Gaussian-beam/halation pipeline, plus
+// RGB misconvergence, saturation and shadow-mask emulation.
+// ---------------------------------------------------------------------------
+bool color_monitor_active(int vattr)
+{
+	// A selected texture-overlay raster effect (scanlines.png etc.) is the
+	// ALTERNATE to this shader: when one is chosen, the shader pass stands
+	// down. Twin of raster_effect_selected() in menu.cpp, which greys out
+	// the COLOR MONITOR SETUP menu entry for the same reason.
+	const bool overlay_selected = config.raster_effect && config.raster_effect[0] &&
+		_stricmp(config.raster_effect, "NONE") != 0;
+
+	return !overlay_selected &&
+		config.color_enable != 0 &&
+		fragColorMonitor != 0 &&
+		fbo_mono != 0 &&
+		(vattr & VIDEO_TYPE_RASTER_COLOR) != 0;
+}
+
+static void render_color_monitor()
+{
+	const rectangle& va = Machine->drv->visible_area;
+	int vw = (va.max_x - va.min_x + 1);
+	int vh = (va.max_y - va.min_y + 1);
+
+	if (Machine->drv->rotation & ORIENTATION_SWAP_XY)
+	{
+		const int t = vw;
+		vw = vh;
+		vh = t;
+	}
+
+	// Track the on-screen game rectangle so the shadow mask and scanlines
+	// land 1:1 on screen pixels (MAME-HLSL-style output-sized post).
+	{
+		int sw = 0, sh = 0;
+		Layout_GetScreenPixelSize(&sw, &sh);
+		if (sw > 0 && sh > 0)
+			fbo_resize_mono(sw, sh);
+	}
+	const int rw = static_cast<int>(mono_fbo_w);
+	const int rh = static_cast<int>(mono_fbo_h);
+
+	// Halation samples the source's mip pyramid; rebuild it with the frame
+	// complete (unbound first -- see render_mono_monitor).
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	fbo_generate_mipmaps({ img5a });
+
+	glBindFramebuffer(GL_FRAMEBUFFER, fbo_mono);
+	glDrawBuffer(GL_COLOR_ATTACHMENT0);
+	glViewport(0, 0, rw, rh);
+	glDisable(GL_BLEND);   // straight replace into img5b
+
+	aae::math::mat4 proj = aae::math::ortho(0.0f, (float)rw, 0.0f, (float)rh);
+
+	const float prescale = (config.prescale > 1.0f) ? config.prescale : 1.0f;
+
+	bind_shader(fragColorMonitor);
+	set_uniform1i(fragColorMonitor, "uTex", 0);
+	set_uniform_mat4f(fragColorMonitor, "uProj", aae::math::value_ptr(proj));
+	set_uniform2f(fragColorMonitor, "uSrcSize", (float)vw, (float)vh);
+	set_uniform1f(fragColorMonitor, "uLodBias", log2f(prescale));
+	set_uniform1f(fragColorMonitor, "uBlurH", config.color_blur_h);
+	set_uniform1f(fragColorMonitor, "uBlurV", config.color_blur_v);
+	set_uniform1f(fragColorMonitor, "uConverge", config.color_converge);
+	set_uniform1f(fragColorMonitor, "uHalation", config.color_halation);
+	set_uniform1f(fragColorMonitor, "uHalRadius", config.color_halation_radius);
+	set_uniform1f(fragColorMonitor, "uScanline", config.color_scanline);
+	set_uniform1f(fragColorMonitor, "uContrast", config.color_contrast);
+	set_uniform1f(fragColorMonitor, "uBright", config.color_brightness);
+	set_uniform1f(fragColorMonitor, "uSaturation", config.color_saturation);
+	set_uniform1i(fragColorMonitor, "uMaskType", config.color_mask_type);
+	set_uniform1f(fragColorMonitor, "uMaskStrength", config.color_mask_strength);
+	set_uniform1f(fragColorMonitor, "uMaskScale", config.color_mask_scale);
+
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, img5a);
+
+	ScanQuadVert verts[4] = {
+		{ 0.0f,      0.0f,      0.0f, 0.0f },
+		{ (float)rw, 0.0f,      1.0f, 0.0f },
+		{ (float)rw, (float)rh, 1.0f, 1.0f },
+		{ 0.0f,      (float)rh, 0.0f, 1.0f }
+	};
+
+	glBindVertexArray(g_scanVAO);
+	glBindBuffer(GL_ARRAY_BUFFER, g_scanVBO);
+	glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(verts), verts);
+	glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+	glBindVertexArray(0);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+	unbind_shader();
+	glBindTexture(GL_TEXTURE_2D, 0);
+
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	fbo_generate_mipmaps({ img5b });
+
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+	check_gl_error_named("render_color_monitor");
+}
+
 void final_render_raster()
 {
 	auto start = std::chrono::steady_clock::now();
@@ -1325,6 +1559,25 @@ void final_render_raster()
 			(g_scanline_override == 0 && !(Machine->drv->video_attributes & VIDEO_TYPE_RASTER_BW))))
 	{
 		render_scanlines();
+	}
+
+	// -----------------------------------------------------------------------
+	// PHASE B: Mono monitor CRT effect (B/W raster games only).
+	// Processes img5a -> img5b with the mono shader; Layout_Render below then
+	// composites the processed texture. Color raster games get the color
+	// CRT pass (shadow mask) through the same img5b chain when enabled.
+	// -----------------------------------------------------------------------
+	GLuint screenTex = img5a;
+
+	if (Machine && Machine->drv && mono_monitor_active(vattr))
+	{
+		render_mono_monitor();
+		screenTex = img5b;
+	}
+	else if (Machine && Machine->drv && color_monitor_active(vattr))
+	{
+		render_color_monitor();
+		screenTex = img5b;
 	}
 
 	// 1. DISENGAGE FBO: Essential to "close" img5a so the GPU can read it.
@@ -1362,7 +1615,7 @@ void final_render_raster()
 	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 	glClear(GL_COLOR_BUFFER_BIT);
 
-	Layout_Render(*g_activeView, img5a, ws.clientWidth, ws.clientHeight, vattr);
+	Layout_Render(*g_activeView, screenTex, ws.clientWidth, ws.clientHeight, vattr);
 
 	// State reset for UI overlay draws
 	glUseProgram(0);
@@ -1411,4 +1664,62 @@ void final_render_raster()
 		LOG_INFO("Profiler: final_render_raster took %.3f ms",
 			std::chrono::duration<double, std::milli>(diff).count());
 	}
+}
+
+// ---------------------------------------------------------------------------
+// GUI point sprites (starfield). GL lives here so gui code stays GL-free.
+// ---------------------------------------------------------------------------
+static GLuint s_guiPointVAO = 0;
+static GLuint s_guiPointVBO = 0;
+
+void gui_points_init(int maxPoints)
+{
+	glGenVertexArrays(1, &s_guiPointVAO);
+	glGenBuffers(1, &s_guiPointVBO);
+
+	glBindVertexArray(s_guiPointVAO);
+	glBindBuffer(GL_ARRAY_BUFFER, s_guiPointVBO);
+	glBufferData(GL_ARRAY_BUFFER, maxPoints * sizeof(GuiPointVertex), nullptr, GL_DYNAMIC_DRAW);
+
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(GuiPointVertex), (void*)0);
+	glEnableVertexAttribArray(1);
+	glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(GuiPointVertex), (void*)(2 * sizeof(float)));
+
+	glBindVertexArray(0);
+}
+
+void gui_points_draw(const GuiPointVertex* pts, int count, float pointSize)
+{
+	if (count <= 0 || !s_guiPointVAO) return;
+
+	glPointSize(pointSize);
+	bind_shader(fragStarPoint);
+	set_uniform_mat4f(fragStarPoint, "uProj", aae::math::value_ptr(g_proj));
+
+	glBindVertexArray(s_guiPointVAO);
+	glBindBuffer(GL_ARRAY_BUFFER, s_guiPointVBO);
+	glBufferSubData(GL_ARRAY_BUFFER, 0, count * sizeof(GuiPointVertex), pts);
+	glDrawArrays(GL_POINTS, 0, count);
+	glBindVertexArray(0);
+
+	unbind_shader();
+	glPointSize(config.pointsize);
+}
+
+void gui_points_shutdown()
+{
+	if (s_guiPointVAO) { glDeleteVertexArrays(1, &s_guiPointVAO); s_guiPointVAO = 0; }
+	if (s_guiPointVBO) { glDeleteBuffers(1, &s_guiPointVBO); s_guiPointVBO = 0; }
+}
+
+// ---------------------------------------------------------------------------
+// glcode_get_gl_error
+// Backend-neutral wrapper around glGetError() for callers outside the
+// render .cpp files that just want to know if a GL error occurred, without
+// pulling in GL headers themselves.
+// ---------------------------------------------------------------------------
+int glcode_get_gl_error()
+{
+	return static_cast<int>(glGetError());
 }

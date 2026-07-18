@@ -1,8 +1,6 @@
 #pragma once
 
 #include <Windows.h>
-#include "glew.h"
-#include "wglew.h"
 #include "sys_log.h"
 
 // -----------------------------------------------------------------------------
@@ -70,6 +68,9 @@ int GetClientHeight();
 // Global access to window handle
 // -----------------------------------------------------------------------------
 extern HWND win_get_window();
+// Runtime borderless-fullscreen toggle (same path as ALT+ENTER). Defined in
+// winmain.cpp; flips ws.borderlessFullscreen and restyles the window live.
+void ToggleBorderlessFullscreen(HWND hwnd, WindowSetup& ws);
 
 void RestoreWindowViewport();
 

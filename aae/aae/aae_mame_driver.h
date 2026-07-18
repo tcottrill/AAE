@@ -41,7 +41,7 @@
 inline FILE* errorlog = nullptr;
 
 // Raster Defines, new.
-#define MAX_GFX_ELEMENTS 10
+#define MAX_GFX_ELEMENTS 32	/* multipac decodes 16 tile+sprite bank pairs */
 #define MAX_MEMORY_REGIONS 16
 #define MAX_PENS 256	/* can't handle more than 256 colors on screen */
 #define MAX_LAYERS 4	/* MAX_LAYERS is the maximum number of gfx layers */

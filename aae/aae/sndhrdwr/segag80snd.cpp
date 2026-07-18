@@ -37,9 +37,6 @@
 // -----------------------------------------------------------------------------
 
 /* History:
-
-
-
  * 4/25/99 Tac-Scan now makes Credit Noises with $2c                    (Jim Hernandez)
  * 4/9/99 Zektor Discrete Sound Support mixed with voice samples.       (Jim Hernandez)
 		  Zektor uses some Eliminator sounds.
@@ -148,7 +145,6 @@ void sega_sh_stop()
 
 void sega_sh_speech_w(UINT16 port, UINT8 data, struct z80PortWrite* pPW)
 {
-	//int loop;
 	static int sound = 0;
 	static int newPtr = 0;
 	static int soundlatch = 0;
@@ -163,13 +159,10 @@ void sega_sh_speech_w(UINT16 port, UINT8 data, struct z80PortWrite* pPW)
 		return;
 	}
 	/* The sound numbers start at 1 but the sample name array starts at 0 */
-	//if (sound > 0x80 || sound ==0x97)
-	//{presound =1;return;}
 	if (soundlatch == 0x88 || soundlatch > 0x96) { ; }
 	if (data == 0x0a && soundlatch != 0x8c) { return; }
 
 	/* Queue the new sound */
-    //LOG_INFO("num samples %d",NUM_SPEECH_SAMPLES);
 	sound = data;
 	if (sound > NUM_SPEECH_SAMPLES) { return; }
 
@@ -186,39 +179,6 @@ void sega_sh_speech_w(UINT16 port, UINT8 data, struct z80PortWrite* pPW)
 	}
 
 	queue[newPtr] = sound;
-	// LOG_INFO("Sound queued %d",(sound));
-/*
-//allegro_message("Main Speech call");
-
-		if (data > 0x17)
-	{soundlatch =data;return;}
-
-	if (soundlatch==0xbf || soundlatch ==0x8a)
-	{return;}
-	// The sound numbers start at 1 but the sample name array starts at 0
-	//if (sound > 0x80 || sound ==0x97)
-	//{presound =1;return;}
-	if (soundlatch==0x88 ||soundlatch > 0x96 );
-	if (data==0x0a && soundlatch !=0x8c){return;}
-
-//	allegro_message("data %x",data);
-			// Queue the new sound //
-	sound=data;
-
-		newPtr = queuePtr;
-		while (queue[newPtr] != NOT_PLAYING) {
-			newPtr ++;
-			if (newPtr >= MAX_SPEECH)
-				newPtr = 0;
-			if (newPtr == queuePtr) {
-				// The queue has overflowed. Oops. //
-				allegro_message("Queue overflow");
-				return;
-				}
-			}
-
-		queue[newPtr] = sound;
-		*/
 }
 void spacfury1_sh_w(UINT16 port, UINT8 data, struct z80PortWrite* pPW)
 {
@@ -367,13 +327,10 @@ void Zektor_AY8910_w(UINT16 port, UINT8 data, struct z80PortWrite* pPW)
 			if (!sample_playing(9)) { sample_start(8, 31, 0); data = 0; toggle = 1; }
 		}
 	}
-
-	//LOG_INFO("Data Zektor AY %x",data);
 }
 
 void Zektor1_sh_w(UINT16 port, UINT8 data, struct z80PortWrite* pPW)
 {
-	//LOG_INFO("Data Zektor sh 1 %x",data);
 	data ^= 0xff;
 
 	/* Play fireball sample */
@@ -408,7 +365,6 @@ void Zektor2_sh_w(UINT16 port, UINT8 data, struct z80PortWrite* pPW)
 {
 	static int lastdata = 0;
 
-	//LOG_INFO("Data Zektor sh 2 %x", data);
 	data ^= 0xff;
 
 	/* Play thrust sample */
@@ -530,8 +486,6 @@ void StarTrek_sh_w(UINT16 port, UINT8 data, struct z80PortWrite* pPW)
 void TacScan_sh_w(UINT16 port, UINT8 data, struct z80PortWrite* pPW)
 {
 	static int lastsound = 0;
-	//static int lastvoice=0;
-	//static int lastkv=0;
 	int sound;   /* index into the sample name array in drivers/sega.c */
 	int voice = 0; /* which voice to play the sound on */
 	int loop;    /* is this sound continuous? */
@@ -640,7 +594,6 @@ void TacScan_sh_w(UINT16 port, UINT8 data, struct z80PortWrite* pPW)
 		if (voice == kVoiceExtra && sound == lastsound) { return; }
 		else { lastsound = sound; }
 		sample_stop(voice);
-		// sample_adjust(voice, PLAYMODE_PLAY);
 		/* If the game is over, turn off the stinger noise */
 		if (data == shipStop)
 		{

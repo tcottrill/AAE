@@ -49,9 +49,14 @@
 #include "menu.h"
 #include "game_list.h"
 #include "emu_vector_draw.h"
-#include "gl_shader.h"
 #include "opengl_renderer.h"  // g_proj
 #include "MathUtils.h"        // aae::math::value_ptr
+
+// Regression guard: this file must never see OpenGL headers. If this fires,
+// a render header re-leaked glew.h — fix the header, not this guard.
+#ifdef __glew_h__
+#error "OpenGL headers leaked into a non-render translation unit"
+#endif
 
 // =============================================================================
 // Constants
@@ -81,6 +86,11 @@ static constexpr float kListScale = 2.0f;
 
 // Selection highlight bar (filled rectangle behind the selected title)
 static constexpr float kSelBarWidth = 910.0f;  // Sized to reach near the ship glyph tips
+
+// Marquee fields for long game names: names that fit render centered exactly
+// as before; longer ones scroll at constant speed within the field.
+static constexpr float kMarqueeFieldSel  = kSelBarWidth - 40.0f; // stay inside the highlight bar
+static constexpr float kMarqueeFieldList = 940.0f;               // list rows: near full screen width
 static constexpr float kSelBarHeight = 30.0f;   // Vertical padding around the text
 static constexpr float kSelBarYOffset = 8.0f;    // Nudge up to center on text (half font height * scale)
 static constexpr rgb_t kSelBarColor = MAKE_RGBA(18, 14, 55, 130);  // Dark indigo, semi-transparent
@@ -130,14 +140,6 @@ static constexpr int   kBlinkRateMax = 30;   // Slowest blink
 // =============================================================================
 // Starfield
 // =============================================================================
-static GLuint s_starVAO = 0;
-static GLuint s_starVBO = 0;
-
-struct StarVertex {
-	GLfloat x, y;
-	GLfloat r, g, b, a;
-};
-
 struct Star
 {
 	int x, y;
@@ -201,7 +203,7 @@ static void moveStars(Star stars[], int count)
 
 static void drawStars(Star stars[], int count)
 {
-	static StarVertex buf[256];
+	static GuiPointVertex buf[256];
 	int n = 0;
 
 	for (int i = 0; i < count; ++i)
@@ -209,8 +211,8 @@ static void drawStars(Star stars[], int count)
 		if (stars[i].blink && !stars[i].blinkVisible)
 			continue;
 
-		buf[n].x = (GLfloat)stars[i].x;
-		buf[n].y = (GLfloat)stars[i].y;
+		buf[n].x = (float)stars[i].x;
+		buf[n].y = (float)stars[i].y;
 		buf[n].r = stars[i].r / 255.0f;
 		buf[n].g = stars[i].g / 255.0f;
 		buf[n].b = stars[i].b / 255.0f;
@@ -218,39 +220,12 @@ static void drawStars(Star stars[], int count)
 		n++;
 	}
 
-	if (n == 0) return;
-
-	glPointSize(3.0f);
-	bind_shader(fragStarPoint);
-	set_uniform_mat4f(fragStarPoint, "uProj", aae::math::value_ptr(g_proj));
-
-	glBindVertexArray(s_starVAO);
-	glBindBuffer(GL_ARRAY_BUFFER, s_starVBO);
-	glBufferSubData(GL_ARRAY_BUFFER, 0, n * sizeof(StarVertex), buf);
-	glDrawArrays(GL_POINTS, 0, n);
-	glBindVertexArray(0);
-
-	unbind_shader();
-	glPointSize(config.pointsize);
+	gui_points_draw(buf, n, 3.0f);
 }
 
 static void initStarGPU()
 {
-	glGenVertexArrays(1, &s_starVAO);
-	glGenBuffers(1, &s_starVBO);
-
-	glBindVertexArray(s_starVAO);
-	glBindBuffer(GL_ARRAY_BUFFER, s_starVBO);
-	glBufferData(GL_ARRAY_BUFFER, kNumStars * sizeof(StarVertex), nullptr, GL_DYNAMIC_DRAW);
-
-	// Attribute 0: position (2 floats)
-	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(StarVertex), (void*)0);
-	// Attribute 1: color (4 floats)
-	glEnableVertexAttribArray(1);
-	glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(StarVertex), (void*)(2 * sizeof(float)));
-
-	glBindVertexArray(0);
+	gui_points_init(kNumStars);
 }
 
 // =============================================================================
@@ -694,9 +669,11 @@ static void drawGameList()
 	VF.DrawQuad((float)(kScreenW / 2), (float)kSelectedY + kSelBarYOffset,
 		kSelBarWidth, kSelBarHeight, kSelBarColor);
 
-	// Draw the selected title (only when not in shot animation - shot draws its own)
+	// Draw the selected title (only when not in shot animation - shot draws its own).
+	// Long game names marquee-scroll inside the highlight bar instead of
+	// overflowing it (kMarqueeFieldSel keeps the text within the bar edges).
 	if (!s_shot.active)
-		VF.PrintCentered(kSelectedY, RGB_SOFTRED, kSelectedScale, 0, s_selection->description.c_str());
+		VF.PrintMarqueeCentered(kSelectedY, kMarqueeFieldSel, RGB_SOFTRED, kSelectedScale, 0.0f, s_selection->description.c_str());
 
 	// Draw surrounding entries above and below
 	int visibleCount = 1;
@@ -710,14 +687,14 @@ static void drawGameList()
 		{
 			fwd = advanceSkippingGui(fwd, true);
 			if (fwd)
-				VF.PrintCentered(kSelectedY - offset, RGB_WHITE, kListScale, fwd->description.c_str());
+				VF.PrintClippedCentered(kSelectedY - offset, kMarqueeFieldList, RGB_WHITE, kListScale, fwd->description.c_str());
 			visibleCount++;
 		}
 		if ((int)s_gameList.size() > visibleCount)
 		{
 			bwd = advanceSkippingGui(bwd, false);
 			if (bwd)
-				VF.PrintCentered(kSelectedY + offset, RGB_WHITE, kListScale, bwd->description.c_str());
+				VF.PrintClippedCentered(kSelectedY + offset, kMarqueeFieldList, RGB_WHITE, kListScale, bwd->description.c_str());
 			visibleCount++;
 		}
 		offset += kLineSpacing;
@@ -877,8 +854,7 @@ void end_gui()
 {
 	LOG_INFO("EXITING GUI");
 	sample_stop(1);
-	if (s_starVAO) { glDeleteVertexArrays(1, &s_starVAO); s_starVAO = 0; }
-	if (s_starVBO) { glDeleteBuffers(1, &s_starVBO);       s_starVBO = 0; }
+	gui_points_shutdown();
 }
 
 // =============================================================================
