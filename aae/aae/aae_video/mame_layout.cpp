@@ -815,10 +815,21 @@ void Layout_Render(const LayoutView& view, rtex_t screenTexture, int winW, int w
 	float aspectCam = camW / camH;
 
 	// ---- Aspect Override: constrain rendering area ----
-	// When the user has an aspect override active (use_aspect=1 or -aspect),
-	// compute a sub-rectangle of the window that has the override aspect.
-	// The layout renders into this constrained area; black bars from the
-	// glClear in final_render_raster fill the remainder.
+	// When a display-aspect override is in effect, compute a sub-rectangle
+	// of the window with that aspect. The layout renders into this
+	// constrained area; black bars from the glClear in final_render_raster
+	// fill the remainder.
+	//
+	// The override priority mirrors what run_game's Step 12 applies to the
+	// window itself:
+	//   1. -aspect / use_aspect=1 (ws.aspectOverrideActive) -- forced, wins
+	//   2. menu GAME ASPECT (config.game_aspect, any value but AUTO)
+	//   3. neither -- AUTO: natural layout fit, nothing below changes
+	// Previously only (1) reached the layout, so GAME ASPECT worked on the
+	// vector path (screen_rect stretches onto ws.aspectRatio) but did
+	// nothing visible for raster games: in windowed mode the window took
+	// the new shape while the layout letterboxed itself back to its own
+	// aspect inside it, and in fullscreen it was ignored outright.
 	//
 	// In windowed mode the window was already resized to match, so
 	// vpW==winW and vpH==winH (no visible letterboxing here).
@@ -828,20 +839,27 @@ void Layout_Render(const LayoutView& view, rtex_t screenTexture, int winW, int w
 	bool aspectOverride = false;
 	{
 		auto& ws = GetWindowSetup();
+
+		float dispAspect = 0.0f;
 		if (ws.aspectOverrideActive && ws.aspectRatio > 0.0f)
+			dispAspect = ws.aspectRatio;
+		else if (config.game_aspect && config.game_aspect[0])
+			dispAspect = aspect_from_string(config.game_aspect); // 0 for AUTO
+
+		if (dispAspect > 0.0f)
 		{
 			aspectOverride = true;
 			float windowAspect = (float)winW / (float)winH;
-			if (windowAspect > ws.aspectRatio)
+			if (windowAspect > dispAspect)
 			{
 				// Window wider than target -- pillarbox
-				vpW = (int)((float)winH * ws.aspectRatio + 0.5f);
+				vpW = (int)((float)winH * dispAspect + 0.5f);
 				vpX = (winW - vpW) / 2;
 			}
-			else if (windowAspect < ws.aspectRatio)
+			else if (windowAspect < dispAspect)
 			{
 				// Window taller than target -- letterbox
-				vpH = (int)((float)winW / ws.aspectRatio + 0.5f);
+				vpH = (int)((float)winW / dispAspect + 0.5f);
 				vpY = (winH - vpH) / 2;
 			}
 			// Replace the effective window dimensions for all NDC math below.
