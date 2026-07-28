@@ -201,10 +201,10 @@ static std::vector<std::shared_ptr<SAMPLE>> lsamples;
 static CHANNEL channel[MAX_CHANNELS];
 
 // Streaming backend - owns the engine, mastering voice, output source voice,
-// and ring buffers. Voice path uses g_xaudio2 (cached from g_backend at init)
-// to call CreateSourceVoice directly for per-channel XAudio2 playback.
+// ring buffers, and (as of Task 2) the per-channel voice path. mixer.cpp only
+// ever holds an opaque VoiceHandle* per channel and routes all voice
+// operations through g_backend.
 static std::unique_ptr<IAudioBackend> g_backend;
-static IXAudio2* g_xaudio2 = nullptr;
 
 // Positional audio listener (camera) in 2D world coords. Mirrored into
 // audio_3d module on every change so the per-frame update can read it without
@@ -664,15 +664,14 @@ int mixer_init(int rate, int fps)  // <<< integer FPS
 
 	LOG_INFO("Mixer init, BUFFER SIZE = %d, freq %d framerate %d", BUFFER_SIZE, rate, fps);
 
-	// Stand up the streaming backend (XAudio2 today). Voice path also uses
-	// XAudio2 directly, so cache the engine handle here.
+	// Stand up the streaming backend (XAudio2 today). Voice path routes
+	// through g_backend's Voice* methods, so no separate engine handle needed.
 	auto backend = std::make_unique<XAudio2Backend>();
 	const HRESULT hr = backend->Init(rate, fps);
 	if (FAILED(hr)) {
 		LOG_ERROR("mixer_init: backend Init failed (hr=0x%08X)", (unsigned)hr);
 		return 0; // unique_ptr destructor calls Shutdown
 	}
-	g_xaudio2 = backend->GetEngine();
 	g_backend = std::move(backend);
 
 	// Apply the canonical 80% default through the perceptual curve so g_master_pct
@@ -707,7 +706,6 @@ int mixer_init(int rate, int fps)  // <<< integer FPS
 		LOG_ERROR("mixer_init: failed to start audio thread: %s", e.what());
 		audio_3d_shutdown();
 		g_3d_inited = false;
-		g_xaudio2 = nullptr;
 		g_backend.reset();
 		return 0;
 	}
@@ -715,7 +713,6 @@ int mixer_init(int rate, int fps)  // <<< integer FPS
 		LOG_ERROR("mixer_init: failed to start audio thread (unknown exception)");
 		audio_3d_shutdown();
 		g_3d_inited = false;
-		g_xaudio2 = nullptr;
 		g_backend.reset();
 		return 0;
 	}
@@ -959,9 +956,7 @@ static void mixer_reap_voice_channels()
 		auto& ch = channel[i];
 		if (!ch.voice || !ch.playing_sample) continue;
 
-		XAUDIO2_VOICE_STATE st{};
-		ch.voice->GetState(&st, XAUDIO2_VOICE_NOSAMPLESPLAYED);
-		if (st.BuffersQueued == 0) {
+		if (g_backend->VoiceBuffersQueued(ch.voice) == 0) {
 			ch.isPlaying = false;
 			ch.state = SoundState::Stopped;
 			ch.is_positional = false;       // sample is done; positional state goes with it
@@ -971,8 +966,10 @@ static void mixer_reap_voice_channels()
 
 		// Still playing - refresh positional matrix if applicable.
 		if (ch.is_positional && g_3d_inited) {
-			audio_3d_apply_2d(ch.voice, ch.world_x, ch.world_y,
-				ch.playing_sample->fx.channels);
+			// TEMPORARY (Task 3 removes this cast): audio_3d still takes a raw
+			// XAudio2 voice pointer.
+			audio_3d_apply_2d(static_cast<XAudio2Backend*>(g_backend.get())->VoiceRawXAudio2(ch.voice),
+				ch.world_x, ch.world_y, ch.playing_sample->fx.channels);
 		}
 	}
 }
@@ -1054,9 +1051,8 @@ void mixer_end()
 		lsamples.clear();
 	}
 
-	// Tear down the backend. Voice path's cached engine handle goes invalid
-	// at the same moment - clear it before reset() so any racing caller fails fast.
-	g_xaudio2 = nullptr;
+	// Tear down the backend. All channels were already stopped above (which
+	// destroyed their voices through g_backend), so nothing races reset() here.
 	g_backend.reset();
 
 	// Reset sound_id so new samples start fresh on next init.
@@ -1082,9 +1078,9 @@ static void stop_channel_locked(int chanid)
 	auto& ch = channel[chanid];
 
 	if (ch.voice) {
-		ch.voice->Stop();
-		ch.voice->FlushSourceBuffers();
-		ch.voice->DestroyVoice();
+		g_backend->VoiceStop(ch.voice);
+		g_backend->VoiceFlush(ch.voice);
+		g_backend->VoiceDestroy(ch.voice);
 		ch.voice = nullptr;
 	}
 	audio_list.remove(chanid);
@@ -1124,14 +1120,12 @@ void sample_stop(int chanid)
 //   - Mono source: pan is ignored; output is centered (L=R=1.0, others 0).
 //   - Stereo source: equal-power balance to front L / front R.
 // -----------------------------------------------------------------------------
-static void SetPan(IXAudio2SourceVoice* voice, int panByte)
+static void SetPan(VoiceHandle* voice, int panByte)
 {
 	if (!voice) return;
 
-	XAUDIO2_VOICE_DETAILS details{};
-	voice->GetVoiceDetails(&details);
-	const UINT32 srcCh = details.InputChannels;
-	const UINT32 dstCh = g_backend ? g_backend->OutputChannelCount() : 2;
+	const uint32_t srcCh = g_backend->VoiceInputChannels(voice);
+	const uint32_t dstCh = g_backend ? g_backend->OutputChannelCount() : 2;
 	if (dstCh == 0 || srcCh == 0) return;
 
 	// XAudio2 SetOutputMatrix layout (per official docs): the level sent from
@@ -1159,13 +1153,13 @@ static void SetPan(IXAudio2SourceVoice* voice, int panByte)
 	}
 	else {
 		// Unusual source layout: identity over min(src, dst), rest silent.
-		const UINT32 minCh = (srcCh < dstCh) ? srcCh : dstCh;
-		for (UINT32 c = 0; c < minCh; ++c) {
+		const uint32_t minCh = (srcCh < dstCh) ? srcCh : dstCh;
+		for (uint32_t c = 0; c < minCh; ++c) {
 			m[srcCh * c + c] = 1.0f;
 		}
 	}
 
-	voice->SetOutputMatrix(nullptr, srcCh, dstCh, m.data());
+	g_backend->VoiceSetOutputMatrix(voice, srcCh, dstCh, m.data());
 }
 
 // -----------------------------------------------------------------------------
@@ -1238,7 +1232,7 @@ void sample_set_volume(int chanid, int volume)
 	ch.vol = static_cast<double>(gain);
 
 	if (ch.voice) {
-		ch.voice->SetVolume(gain);
+		g_backend->VoiceSetVolume(ch.voice, gain);
 	}
 }
 
@@ -1315,7 +1309,7 @@ void sample_set_freq(int chanid, int freq)
 	if (ch.voice) {
 		if (ch.frequency > 0) {
 			float ratio = static_cast<float>(freq) / static_cast<float>(ch.frequency);
-			ch.voice->SetFrequencyRatio(ratio);
+			g_backend->VoiceSetFrequencyRatio(ch.voice, ratio);
 		}
 	} else if (SYS_FREQ > 0) {
 		// Mixer path: step is "source frames per output frame". Setting freq = F
@@ -1378,7 +1372,10 @@ void sample_set_world_position(int chanid, float x, float y)
 	// Apply immediately so the first frame is already spatialized; the per-
 	// frame update keeps it current as the listener or source moves later.
 	if (g_3d_inited && ch.playing_sample) {
-		audio_3d_apply_2d(ch.voice, x, y, ch.playing_sample->fx.channels);
+		// TEMPORARY (Task 3 removes this cast): audio_3d still takes a raw
+		// XAudio2 voice pointer.
+		audio_3d_apply_2d(static_cast<XAudio2Backend*>(g_backend.get())->VoiceRawXAudio2(ch.voice),
+			x, y, ch.playing_sample->fx.channels);
 	}
 }
 
@@ -1414,11 +1411,11 @@ void sample_start(int chanid, int samplenum, int loop)
 		return;
 	}
 
-	// Check the XAudio2 backend BEFORE tearing down any existing voice on this
+	// Check the backend BEFORE tearing down any existing voice on this
 	// channel -- otherwise a post-shutdown call would leave the channel with
 	// a destroyed voice and no replacement.
-	if (!g_xaudio2) {
-		LOG_ERROR("sample_start: voice path unavailable (no XAudio2 backend)");
+	if (!g_backend) {
+		LOG_ERROR("sample_start: voice path unavailable (no audio backend)");
 		return;
 	}
 
@@ -1437,21 +1434,16 @@ void sample_start(int chanid, int samplenum, int loop)
 
 	// If there is an existing voice on this channel, stop and destroy it.
 	if (ch.voice) {
-		ch.voice->Stop();
-		ch.voice->FlushSourceBuffers();
-		ch.voice->DestroyVoice();
+		g_backend->VoiceStop(ch.voice);
+		g_backend->VoiceFlush(ch.voice);
+		g_backend->VoiceDestroy(ch.voice);
 		ch.voice = nullptr;
 	}
 
 	auto& sample = lsamples[samplenum];
 
-	// The 8.0f is really important here and required for the StarCastle drone.
-	// TEMPORARY: sample->fx is now a platform-neutral WaveFormat, but
-	// CreateSourceVoice still wants a WAVEFORMATEX. Task 2 moves voice
-	// creation into the backend and removes this conversion.
-	const WAVEFORMATEX wfx = ToWaveFormatEx(sample->fx);
-	if (FAILED(g_xaudio2->CreateSourceVoice(&ch.voice, &wfx, 0, 8.0f)))
-	{
+	ch.voice = g_backend->VoiceCreate(sample->fx);
+	if (!ch.voice) {
 		LOG_ERROR("Failed to create voice for sample %d", sample->num);
 		// We already tore down the previous voice; leave the channel in a
 		// clean stopped state so the next sample_playing call doesn't lie.
@@ -1469,22 +1461,18 @@ void sample_start(int chanid, int samplenum, int loop)
 	ch.pan = 128;
 	ch.frequency = sample->fx.rate;
 	ch.loaded_sample_num = samplenum;
-	ch.playing_sample = sample;       // pin SAMPLE memory for XAudio2's buffer reads
+	ch.playing_sample = sample;       // pin SAMPLE memory for the backend's buffer reads
 	ch.is_positional = false;         // fresh start; caller can opt in via sample_set_world_position
 	ch.world_x = ch.world_y = 0.0f;
 
-	// Build and submit the XAudio2 buffer.
-	std::memset(&ch.buffer, 0, sizeof(ch.buffer));
-	ch.buffer.AudioBytes = sample->dataSize;
-	ch.buffer.pAudioData = static_cast<BYTE*>(sample->buffer);
-	ch.buffer.LoopCount = loop ? XAUDIO2_LOOP_INFINITE : 0;
-
-	if (FAILED(ch.voice->SubmitSourceBuffer(&ch.buffer))) {
-		LOG_ERROR("sample_start: SubmitSourceBuffer failed (sample=%d chan=%d)", samplenum, chanid);
+	// Submit the sample buffer to the voice.
+	if (!g_backend->VoiceSubmit(ch.voice, static_cast<const uint8_t*>(sample->buffer),
+			sample->dataSize, loop != 0)) {
+		LOG_ERROR("sample_start: VoiceSubmit failed (sample=%d chan=%d)", samplenum, chanid);
 		ch.isPlaying = false;
 		ch.state = SoundState::Stopped;
 		ch.playing_sample.reset();
-		ch.voice->DestroyVoice();
+		g_backend->VoiceDestroy(ch.voice);
 		ch.voice = nullptr;
 		return;
 	}
@@ -1492,17 +1480,17 @@ void sample_start(int chanid, int samplenum, int loop)
 	// We have to set the volume manually here to avoid a scoped_lock recursive error.
 	const float gain = VolumeByteToLinear(ch.volume);
 	ch.vol = gain;
-	ch.voice->SetVolume(gain);
+	g_backend->VoiceSetVolume(ch.voice, gain);
 
 	SetPan(ch.voice, ch.pan);
 
 	// Start() can fail (rare, but possible on device reset, etc.). If it does,
 	// don't leave the channel claiming to be playing -- the buffer is still
 	// queued so BuffersQueued > 0 and sample_playing would return 1 forever.
-	if (FAILED(ch.voice->Start())) {
+	if (!g_backend->VoiceStart(ch.voice)) {
 		LOG_ERROR("sample_start: Start failed (sample=%d chan=%d)", samplenum, chanid);
-		ch.voice->FlushSourceBuffers();
-		ch.voice->DestroyVoice();
+		g_backend->VoiceFlush(ch.voice);
+		g_backend->VoiceDestroy(ch.voice);
 		ch.voice = nullptr;
 		ch.isPlaying = false;
 		ch.state = SoundState::Stopped;
@@ -1526,13 +1514,12 @@ int sample_playing(int chanid)
 	// loop in mixer_update does the same fix-up; this is the defensive path
 	// for callers that poll sample_playing without driving mixer_update.
 	if (ch.voice) {
-		XAUDIO2_VOICE_STATE st{};
-		ch.voice->GetState(&st, XAUDIO2_VOICE_NOSAMPLESPLAYED);
-		if (st.BuffersQueued == 0) {
+		if (g_backend->VoiceBuffersQueued(ch.voice) == 0) {
 			ch.isPlaying = false;
 			ch.state = SoundState::Stopped;
-			// XAudio2 is no longer reading the buffer; release our reference
-			// so sample_remove can actually free memory if the slot was nulled.
+			// The backend is no longer reading the buffer; release our
+			// reference so sample_remove can actually free memory if the
+			// slot was nulled.
 			ch.playing_sample.reset();
 		} else {
 			ch.isPlaying = true;
@@ -1567,7 +1554,7 @@ void sample_end(int chanid)
 	// If this channel is using an XAudio2 voice and was looping, exit the loop.
 	// Note: ExitLoop affects only buffers submitted with XAUDIO2_LOOP_INFINITE.
 	if (ch.voice) {
-		ch.voice->ExitLoop();
+		g_backend->VoiceExitLoop(ch.voice);
 	}
 }
 
@@ -1594,9 +1581,9 @@ void sample_start_mixer(int chanid, int samplenum, int loop)
 	// volume/pan/freq updates, and evict any prior mix-list membership so the
 	// push_back below doesn't create a duplicate.
 	if (ch.voice) {
-		ch.voice->Stop();
-		ch.voice->FlushSourceBuffers();
-		ch.voice->DestroyVoice();
+		g_backend->VoiceStop(ch.voice);
+		g_backend->VoiceFlush(ch.voice);
+		g_backend->VoiceDestroy(ch.voice);
 		ch.voice = nullptr;
 	}
 	audio_list.remove(chanid);
@@ -1677,9 +1664,9 @@ void stream_start(int chanid, int /*stream*/, int bits, int frame_rate, bool ste
 	// to volume/pan/freq updates, and evict any prior mix-list membership so
 	// the push_back below doesn't create a duplicate.
 	if (ch.voice) {
-		ch.voice->Stop();
-		ch.voice->FlushSourceBuffers();
-		ch.voice->DestroyVoice();
+		g_backend->VoiceStop(ch.voice);
+		g_backend->VoiceFlush(ch.voice);
+		g_backend->VoiceDestroy(ch.voice);
 		ch.voice = nullptr;
 	}
 	audio_list.remove(chanid);

@@ -16,11 +16,10 @@
 
 #define HR(hr) if (FAILED(hr)) { LOG_ERROR("Error at line %d: HRESULT = 0x%08X\n", __LINE__, hr); }
 
-// Temporary bridge (see declaration in xaudio2_backend.h): converts the
-// platform-neutral WaveFormat to the WAVEFORMATEX that XAudio2's
-// CreateSourceVoice still requires. Task 2 removes this once voice creation
-// moves into the backend.
-WAVEFORMATEX ToWaveFormatEx(const WaveFormat& f)
+// Converts the platform-neutral WaveFormat to the WAVEFORMATEX that XAudio2's
+// CreateSourceVoice requires. Used internally by VoiceCreate; mixer.cpp no
+// longer calls this directly (Task 2).
+static WAVEFORMATEX ToWaveFormatEx(const WaveFormat& f)
 {
 	WAVEFORMATEX w{};
 	w.wFormatTag      = f.format_tag;
@@ -32,6 +31,15 @@ WAVEFORMATEX ToWaveFormatEx(const WaveFormat& f)
 	w.cbSize          = f.cb_size;
 	return w;
 }
+
+// Opaque per-channel voice. mixer.cpp only ever holds a VoiceHandle*; the
+// concrete definition (an XAudio2 source voice + its submission buffer)
+// lives here. A backend with no per-voice concept (ALSA) would define this
+// differently, routing Submit/Start/Stop into its own software mixer.
+struct VoiceHandle {
+	IXAudio2SourceVoice* voice  = nullptr;
+	XAUDIO2_BUFFER       buffer = {};
+};
 
 HRESULT XAudio2Backend::Init(int rateHz, int fps)
 {
@@ -198,4 +206,118 @@ float XAudio2Backend::GetMasterVolume() const
 	float v = 1.0f;
 	if (m_master) m_master->GetVolume(&v);
 	return v;
+}
+
+// -----------------------------------------------------------------------------
+// Per-channel voice path (moved from mixer.cpp as part of Task 2). mixer.cpp
+// now only holds a VoiceHandle*; every XAudio2 call lives here.
+// -----------------------------------------------------------------------------
+
+VoiceHandle* XAudio2Backend::VoiceCreate(const WaveFormat& fmt)
+{
+	if (!m_xaudio2) return nullptr;
+
+	auto* h = new VoiceHandle();
+	const WAVEFORMATEX wfx = ToWaveFormatEx(fmt);
+
+	// The 8.0f max frequency ratio is important here and required for the
+	// StarCastle drone (extreme pitch shift).
+	if (FAILED(m_xaudio2->CreateSourceVoice(&h->voice, &wfx, 0, 8.0f))) {
+		delete h;
+		return nullptr;
+	}
+	return h;
+}
+
+void XAudio2Backend::VoiceDestroy(VoiceHandle* v)
+{
+	if (!v) return;
+	if (v->voice) v->voice->DestroyVoice();
+	delete v;
+}
+
+bool XAudio2Backend::VoiceSubmit(VoiceHandle* v, const uint8_t* data,
+                                 uint32_t bytes, bool loop)
+{
+	if (!v || !v->voice) return false;
+	std::memset(&v->buffer, 0, sizeof(v->buffer));
+	v->buffer.AudioBytes = bytes;
+	v->buffer.pAudioData = data;
+	v->buffer.LoopCount  = loop ? XAUDIO2_LOOP_INFINITE : 0;
+	if (FAILED(v->voice->SubmitSourceBuffer(&v->buffer))) {
+		LOG_ERROR("VoiceSubmit: SubmitSourceBuffer failed");
+		return false;
+	}
+	return true;
+}
+
+bool XAudio2Backend::VoiceStart(VoiceHandle* v)
+{
+	if (!v || !v->voice) return false;
+	if (FAILED(v->voice->Start())) {
+		LOG_ERROR("VoiceStart: Start failed");
+		return false;
+	}
+	return true;
+}
+
+void XAudio2Backend::VoiceStop(VoiceHandle* v)
+{
+	if (!v || !v->voice) return;
+	v->voice->Stop();
+}
+
+void XAudio2Backend::VoiceFlush(VoiceHandle* v)
+{
+	if (!v || !v->voice) return;
+	v->voice->FlushSourceBuffers();
+}
+
+void XAudio2Backend::VoiceExitLoop(VoiceHandle* v)
+{
+	if (!v || !v->voice) return;
+	// Affects only buffers submitted with XAUDIO2_LOOP_INFINITE; the current
+	// pass still plays to completion.
+	v->voice->ExitLoop();
+}
+
+void XAudio2Backend::VoiceSetVolume(VoiceHandle* v, float gain)
+{
+	if (!v || !v->voice) return;
+	v->voice->SetVolume(gain);
+}
+
+void XAudio2Backend::VoiceSetFrequencyRatio(VoiceHandle* v, float ratio)
+{
+	if (!v || !v->voice) return;
+	v->voice->SetFrequencyRatio(ratio);
+}
+
+uint32_t XAudio2Backend::VoiceBuffersQueued(VoiceHandle* v)
+{
+	if (!v || !v->voice) return 0;
+	XAUDIO2_VOICE_STATE st{};
+	v->voice->GetState(&st, XAUDIO2_VOICE_NOSAMPLESPLAYED);
+	return st.BuffersQueued;
+}
+
+uint32_t XAudio2Backend::VoiceInputChannels(VoiceHandle* v)
+{
+	if (!v || !v->voice) return 0;
+	XAUDIO2_VOICE_DETAILS details{};
+	v->voice->GetVoiceDetails(&details);
+	return details.InputChannels;
+}
+
+void XAudio2Backend::VoiceSetOutputMatrix(VoiceHandle* v, uint32_t srcChannels,
+                                          uint32_t dstChannels, const float* matrix)
+{
+	if (!v || !v->voice) return;
+	v->voice->SetOutputMatrix(nullptr, srcChannels, dstChannels, matrix);
+}
+
+// TEMPORARY (Task 3 removes this): audio_3d still takes a raw XAudio2 voice.
+IXAudio2SourceVoice* XAudio2Backend::VoiceRawXAudio2(VoiceHandle* v)
+{
+	return v ? v->voice : nullptr;
 }

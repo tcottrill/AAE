@@ -3,14 +3,14 @@
 // Audio streaming backend abstraction.
 //
 // IAudioBackend is the interface mixer.cpp uses to push interleaved S16 stereo
-// audio to the OS. It hides the engine (XAudio2 today, WASAPI / something else
+// audio to the OS, AND (as of Task 2) to drive the per-channel voice path --
+// mixer.cpp holds only an opaque VoiceHandle* per channel and never touches
+// XAudio2 types directly. It hides the engine (XAudio2 today, WASAPI / ALSA
 // tomorrow) from the software mixer.
 //
-// XAudio2Backend is the concrete implementation. It also exposes GetEngine()
-// for the voice-path code in mixer.cpp, which talks to XAudio2 directly
-// (per-channel IXAudio2SourceVoice with hardware pitch/loop/output matrix).
-// That accessor is XAudio2-specific by design; a future WASAPI backend would
-// not provide it, and the voice-path APIs would gate themselves off.
+// XAudio2Backend is the concrete implementation. A backend with no per-voice
+// concept (e.g. ALSA) implements the Voice* methods against its own software
+// mixer instead of a hardware voice.
 // =============================================================================
 #pragma once
 
@@ -26,10 +26,10 @@
 // the full definition is pulled in by xaudio2_backend.cpp where it's used.
 struct WaveFormat;
 
-// Temporary bridge for the voice path in mixer.cpp, which still calls
-// XAudio2's CreateSourceVoice(..., const WAVEFORMATEX*, ...) directly.
-// Task 2 moves voice creation into the backend and removes this.
-WAVEFORMATEX ToWaveFormatEx(const WaveFormat& f);
+// Opaque per-channel voice. The concrete definition lives in the backend
+// .cpp - mixer.cpp only ever holds a pointer. A backend with no per-voice
+// concept (ALSA) routes these into its own software mixer.
+struct VoiceHandle;
 
 class IAudioBackend {
 public:
@@ -62,6 +62,37 @@ public:
 	int OutputRate() const { return m_rate; }
 	int FramesPerUpdate() const { return m_frames_per_update; }
 
+	// --- Per-channel voice path -------------------------------------------
+	// Returns nullptr on failure. The backend owns the allocation; release
+	// it with VoiceDestroy.
+	virtual VoiceHandle* VoiceCreate(const WaveFormat& fmt) = 0;
+	virtual void         VoiceDestroy(VoiceHandle* v) = 0;
+
+	// Queue PCM for playback. loop=true repeats indefinitely.
+	virtual bool VoiceSubmit(VoiceHandle* v, const uint8_t* data,
+	                         uint32_t bytes, bool loop) = 0;
+	virtual bool VoiceStart(VoiceHandle* v) = 0;
+	virtual void VoiceStop(VoiceHandle* v) = 0;
+	virtual void VoiceFlush(VoiceHandle* v) = 0;
+
+	// Stop looping at the end of the current pass; the tail still plays.
+	virtual void VoiceExitLoop(VoiceHandle* v) = 0;
+
+	virtual void VoiceSetVolume(VoiceHandle* v, float gain) = 0;
+	virtual void VoiceSetFrequencyRatio(VoiceHandle* v, float ratio) = 0;
+
+	// Number of buffers still queued. 0 means playback has drained - this is
+	// how the mixer decides a one-shot has finished.
+	virtual uint32_t VoiceBuffersQueued(VoiceHandle* v) = 0;
+
+	// Source channel count of this voice (1 or 2).
+	virtual uint32_t VoiceInputChannels(VoiceHandle* v) = 0;
+
+	// Per-channel gain matrix, srcChannels*dstChannels floats, row-major.
+	virtual void VoiceSetOutputMatrix(VoiceHandle* v, uint32_t srcChannels,
+	                                  uint32_t dstChannels,
+	                                  const float* matrix) = 0;
+
 protected:
 	int m_rate = 0;
 	int m_fps = 0;
@@ -85,11 +116,25 @@ public:
 	uint32_t OutputChannelCount() const override { return m_output_channels; }
 	uint32_t OutputChannelMask() const override { return m_output_channel_mask; }
 
-	// XAudio2-specific accessor for the voice path in mixer.cpp. Returns the
-	// engine handle so mixer.cpp can CreateSourceVoice for per-channel direct
-	// playback. Not part of IAudioBackend - swapping backends means voice
-	// path must be adapted.
-	IXAudio2* GetEngine() const { return m_xaudio2; }
+	VoiceHandle* VoiceCreate(const WaveFormat& fmt) override;
+	void         VoiceDestroy(VoiceHandle* v) override;
+	bool VoiceSubmit(VoiceHandle* v, const uint8_t* data, uint32_t bytes, bool loop) override;
+	bool VoiceStart(VoiceHandle* v) override;
+	void VoiceStop(VoiceHandle* v) override;
+	void VoiceFlush(VoiceHandle* v) override;
+	void VoiceExitLoop(VoiceHandle* v) override;
+	void VoiceSetVolume(VoiceHandle* v, float gain) override;
+	void VoiceSetFrequencyRatio(VoiceHandle* v, float ratio) override;
+	uint32_t VoiceBuffersQueued(VoiceHandle* v) override;
+	uint32_t VoiceInputChannels(VoiceHandle* v) override;
+	void VoiceSetOutputMatrix(VoiceHandle* v, uint32_t srcChannels,
+	                          uint32_t dstChannels, const float* matrix) override;
+
+	// TEMPORARY (Task 3 removes this): audio_3d still takes a raw XAudio2
+	// voice pointer. Not part of IAudioBackend - it must not pollute the
+	// portable interface. mixer.cpp casts g_backend.get() to XAudio2Backend*
+	// to reach this until audio_3d is ported to VoiceHandle.
+	IXAudio2SourceVoice* VoiceRawXAudio2(VoiceHandle* v);
 
 private:
 	static constexpr int kNumBuffers = 5;

@@ -469,11 +469,11 @@ enum class SoundState {
 };
 
 struct SAMPLE; // fwd decl for playing_sample
+struct VoiceHandle; // opaque; owned by the audio backend (see xaudio2_backend.h)
 
 // Represents a playback channel
 struct CHANNEL {
-	IXAudio2SourceVoice* voice = nullptr;
-	XAUDIO2_BUFFER buffer = {};
+	VoiceHandle* voice = nullptr;   // opaque; owned by the audio backend
 	SoundState state = SoundState::Stopped;
 	// Software-mixer playback position, in 32.32 fixed-point FRAMES (not interleaved samples).
 	// idx = pos_q32 >> 32 selects the source frame; the low 32 bits are the fractional offset
