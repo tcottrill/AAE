@@ -18,6 +18,7 @@
 #include "os_input.h"
 #include "led_service_handler.h"
 #include "aae_mame_driver.h"
+#include "mixer.h"
 #include "vector_fonts.h"
 #include "gl_texturing.h"
 #include "colordefs.h"

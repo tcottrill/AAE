@@ -69,6 +69,7 @@
 
 #include "cinematronics_driver.h"
 #include "aae_mame_driver.h"
+#include "mixer.h"
 #include "ccpu.h"
 
 #pragma warning( disable : 4018 4244)

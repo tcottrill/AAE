@@ -19,6 +19,7 @@
 #include "xevious.h"
 
 #include "aae_mame_driver.h"
+#include "mixer.h"
 #include "old_mame_raster.h"
 #include "driver_registry.h"
 #include "namco.h"

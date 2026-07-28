@@ -18,6 +18,11 @@
 #include "sys_log.h"
 #include <vector>
 
+// Boundary guard: nothing a CPU core includes may drag in the audio mixer.
+#ifdef __XAUDIO2_INCLUDED__
+#error "xaudio2 leaked into a CPU core"
+#endif
+
 //TEMP
 const char* rom_regions[] = {
 	"REGION_CPU1",

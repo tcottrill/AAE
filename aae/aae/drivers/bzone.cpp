@@ -15,6 +15,7 @@
 
 #include "bzone.h"
 #include "aae_mame_driver.h"
+#include "mixer.h"
 #include "driver_registry.h"    // AAE_REGISTER_DRIVER
 #include "aae_avg.h"
 #include "earom.h"

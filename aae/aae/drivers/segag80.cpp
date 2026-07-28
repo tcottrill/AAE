@@ -18,6 +18,7 @@
 #include "SegaG80crypt.h"
 #include "segag80snd.h"
 #include "aae_mame_driver.h"
+#include "mixer.h"
 #include "driver_registry.h"
 
 ART_START(elim2art)

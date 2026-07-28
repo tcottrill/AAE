@@ -14,6 +14,7 @@
 #include "rallyx.h"
 #include "rallyx_vid.h"
 #include "aae_mame_driver.h"
+#include "mixer.h"
 #include "driver_registry.h"
 #include "old_mame_raster.h"
 #include "osd_video.h"

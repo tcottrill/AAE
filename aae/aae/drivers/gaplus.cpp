@@ -1,4 +1,5 @@
 #include "aae_mame_driver.h"
+#include "mixer.h"
 #include "gaplus.h"
 #include "old_mame_raster.h"
 #include "driver_registry.h"

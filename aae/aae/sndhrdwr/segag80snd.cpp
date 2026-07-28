@@ -54,6 +54,7 @@
 #include "segag80.h"
 #include "segag80snd.h"
 #include "aae_mame_driver.h"
+#include "mixer.h"
 
 
 //TACSCAN SOUND CONSTANTS

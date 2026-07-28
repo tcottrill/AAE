@@ -12,6 +12,7 @@
 //============================================================================
 
 #include "aae_mame_driver.h"
+#include "mixer.h"
 #include "galaxian_driver.h"
 #include "old_mame_raster.h"
 #include "driver_registry.h"

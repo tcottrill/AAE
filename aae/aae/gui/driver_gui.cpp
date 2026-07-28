@@ -39,6 +39,7 @@
 #include <cmath>
 
 #include "aae_mame_driver.h"
+#include "mixer.h"
 #include "driver_registry.h"
 #include "driver_macros.h"
 #include "inptport.h"

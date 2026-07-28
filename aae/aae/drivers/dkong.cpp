@@ -22,6 +22,7 @@
 //==========================================================================
 
 #include "aae_mame_driver.h"
+#include "mixer.h"
 #include "driver_registry.h"
 #include "cpu_control.h"
 #include "cpu_i8039.h"

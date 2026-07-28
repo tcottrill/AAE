@@ -82,6 +82,7 @@ Scores should be reset to 0 on I/O controller command C1h.
 ***************************************************************************/
 
 #include "aae_mame_driver.h"
+#include "mixer.h"
 #include "bosconian_machine.h"
 #include "cpu_control.h"
 #include "timer.h"

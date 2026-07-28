@@ -13,6 +13,7 @@
 /* Asteroid Emu */
 #include "asteroid.h"
 #include "aae_mame_driver.h"
+#include "mixer.h"
 #include "driver_registry.h"    // AAE_REGISTER_DRIVER
 #include "earom.h"
 #include "aae_pokey.h"

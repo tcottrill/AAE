@@ -53,6 +53,7 @@
 #include "sys_log.h"
 #include "tms5220.h"
 #include "aae_mame_driver.h"
+#include "mixer.h"
 //#include "wav_resample.h"
 
 #pragma warning(disable : 4838 4309)

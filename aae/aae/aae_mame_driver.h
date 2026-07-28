@@ -28,7 +28,6 @@
 #include "osdepend.h"
 #include "config.h"
 #include "memory.h"
-#include "mixer.h"
 
 #include "emu_vector_draw.h"
 #include "mame_vector.h"
