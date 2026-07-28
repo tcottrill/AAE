@@ -37,7 +37,15 @@ Six *lines* across five *files* — `pacman.cpp` contributes two. Any **seventh*
 
 **x86/Win32 configurations are known-broken** and are not a gate. Only `x64` matters.
 
-**TDD adaptation.** There is no unit-test framework here. Each task's "failing test" is a compile-time `#error` guard that proves the boundary is currently violated. Sequence is always: add the guard → build → observe the **expected failure** → do the refactor → build → observe **pass**. A guard that passes the moment you add it means you added it in the wrong file; find a translation unit that genuinely violates the boundary.
+**TDD adaptation.** There is no unit-test framework here. Each task's "failing test" is a compile-time `#error` guard that proves the boundary is currently violated. Sequence is always: add the guard → build → observe the **expected failure** → do the refactor → build → observe **pass**.
+
+**GUARD PLACEMENT — read this before writing any guard.** A guard goes **immediately after the file's own `#include` block**, never before it. The preprocessor is a single forward pass: a guard placed above the includes is evaluated before any header has been read, so the macro it tests cannot possibly be defined yet and the guard silently passes no matter what. It would be a test that can never fail — worse than no test.
+
+Placed *after* the includes, the guard asserts the thing we actually care about: **"nothing I include drags in the forbidden dependency."** That is exactly the boundary property each task establishes.
+
+For a **header**, the same rule applies to that header's own includes — put the guard after them, at the point where the header has finished declaring its dependencies.
+
+A guard that passes the moment you correctly place it means the boundary is already clean and the task has nothing to prove — stop and report that, do not proceed as if it failed.
 
 ---
 
@@ -97,10 +105,10 @@ The `KEY_*` macros collide with Linux's `<linux/input-event-codes.h>`, which def
 
 - [ ] **Step 1: Write the failing guard**
 
-Add to the very top of `aae/aae/acommon.cpp`, before any `#include`:
+Add to `aae/aae/acommon.cpp` **immediately after its last `#include`** (see *Guard placement* in Conventions — above the includes it can never fire):
 
 ```c
-// Boundary guard: acommon.cpp must use the AaeKey enum, not the legacy
+// Boundary guard: nothing acommon.cpp includes may still define the legacy
 // KEY_* macros, which collide with <linux/input-event-codes.h>.
 #ifdef KEY_A
 #error "legacy KEY_* macros still present - port this file to AaeKey"
@@ -286,10 +294,10 @@ converts implicitly to int so all call sites work unchanged."
 
 - [ ] **Step 1: Write the failing guard**
 
-Add to the top of `aae/aae/drivers/invaders.cpp`, before any `#include`:
+Add to `aae/aae/drivers/invaders.cpp` **immediately after its last `#include`** (see *Guard placement* in Conventions):
 
 ```c
-// Boundary guard: driver code must not see the Win32 API.
+// Boundary guard: nothing driver code includes may drag in the Win32 API.
 #ifdef _WINDOWS_
 #error "windows.h leaked into driver code"
 #endif
@@ -574,14 +582,16 @@ none of them."
 
 - [ ] **Step 1: Write the failing guard**
 
-Add to the top of `aae/aae/cpu_code/cpu_6502.cpp`, before any `#include`:
+Add to `aae/aae/cpu_code/cpu_6502.cpp` **immediately after its last `#include`** (see *Guard placement* in Conventions):
 
 ```c
-// Boundary guard: the CPU cores must not depend on the audio mixer.
+// Boundary guard: nothing a CPU core includes may drag in the audio mixer.
 #ifdef _XAUDIO2_INCLUDED_
 #error "xaudio2 leaked into a CPU core"
 #endif
 ```
+
+Verify `_XAUDIO2_INCLUDED_` is the macro `<xaudio2.h>` actually defines before relying on it — open the SDK header and check. If it defines something else, use that macro name and note the correction in your report.
 
 - [ ] **Step 2: Build and confirm it fails**
 
@@ -684,10 +694,10 @@ Expected: exit code 0, the six baseline warnings, and `invaders.cpp`'s `#ifdef _
 
 - [ ] **Step 7: Add guards to lock the boundary**
 
-Add the same block to the top of `aae/aae/cpu_code/cpu_6502.cpp`, `aae/aae/memory.cpp`, and `aae/aae/drivers/asteroid.cpp`:
+Add this block to `aae/aae/cpu_code/cpu_6502.cpp`, `aae/aae/memory.cpp` and `aae/aae/drivers/asteroid.cpp`, in each case **immediately after that file's last `#include`** (see *Guard placement* in Conventions):
 
 ```c
-// Boundary guard: the emulation core must not see the Win32 API.
+// Boundary guard: nothing the emulation core includes may drag in the Win32 API.
 #ifdef _WINDOWS_
 #error "windows.h leaked into the emulation core"
 #endif
@@ -723,7 +733,7 @@ The header mixes the emulation seam (`add_line`, `add_tex`) with renderer concer
 
 - [ ] **Step 1: Write the failing guard**
 
-Add to the top of `aae/aae/vidhrdwr/emu_vector_draw.h`, immediately after `#pragma once`:
+Add to `aae/aae/vidhrdwr/emu_vector_draw.h` **immediately after that header's own `#include` block** — i.e. below its current `#include "MathUtils.h"` at line 22, not up by `#pragma once` (see *Guard placement* in Conventions):
 
 ```c
 // Boundary guard: the emu-side vector header must not drag in render math.
