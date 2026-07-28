@@ -20,7 +20,18 @@
 "/c/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" aae/aae.vcxproj -p:Configuration=Release -p:Platform=x64 -v:q -nologo
 ```
 
-**Pass state:** exit code 0, and only these five pre-existing warnings — `cpu_i8085.cpp` C4101, `foodf.cpp` C4333, `pacman.cpp` C4018, `phoenix.cpp` C4018, `gaplus_video.cpp` C4018. Any *sixth* warning is a regression.
+**Pass state:** exit code 0, and exactly these **six** pre-existing warning lines (measured on this branch 2026-07-28, before any Phase 1 change):
+
+```
+cpu_i8085.cpp(452,11): warning C4101: 'temp32': unreferenced local variable
+foodf.cpp(76,2):       warning C4333: '>>': right shift by too large amount, data loss
+pacman.cpp(104,16):    warning C4018: '<': signed/unsigned mismatch
+pacman.cpp(716,16):    warning C4018: '<': signed/unsigned mismatch
+phoenix.cpp(392,12):   warning C4018: '<': signed/unsigned mismatch
+gaplus_video.cpp(23,16): warning C4018: '<': signed/unsigned mismatch
+```
+
+Six *lines* across five *files* — `pacman.cpp` contributes two. Any **seventh** warning line is a regression. Do not attempt to fix these six; they are out of scope.
 
 **Do NOT edit `aae/aae.vcxproj`.** It is tangled with driver work in progress. New headers do not need vcxproj entries to compile. New `.cpp` files would — this plan creates none.
 
@@ -65,18 +76,11 @@ Expected: `aae/aae.vcxproj`, `aae/aae/drivers/bwidow.cpp`, `aae/aae/led_service_
 - [ ] **Step 2: Run the build**
 
 Run the build command from *Conventions* above.
-Expected: exit code 0, exactly the five known warnings.
+Expected: exit code 0, exactly the six known warning lines listed in *Conventions*.
 
-- [ ] **Step 3: Record the baseline**
+**STATUS: Task 0 was completed by the controller on 2026-07-28.** Baseline confirmed: exit code 0, six warning lines across five files, on branch `refactor/osd-contract-phase1`. The carried-over WIP files (`aae.vcxproj`, `drivers/bwidow.cpp`, `led_service_handler.cpp` modified; `drivers/tempest_with_random_checks.cpp`, `sndhrdwr/generic.{cpp,h}` untracked) are pre-existing and must be left alone.
 
-```bash
-"/c/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" aae/aae.vcxproj -p:Configuration=Release -p:Platform=x64 -v:q -nologo 2>&1 | grep -i "warning" | sort > /tmp/baseline-warnings.txt
-cat /tmp/baseline-warnings.txt
-```
-
-Expected: five lines. Keep this file; later tasks diff against it.
-
-If the baseline build does **not** pass, stop. Do not start Task 1 on a broken tree.
+If a later build shows a seventh warning, that is a regression introduced by the task in progress.
 
 ---
 
@@ -252,7 +256,7 @@ Lines 192–194:
 - [ ] **Step 6: Build and confirm it passes**
 
 Run the build.
-Expected: exit code 0, five warnings, and the `#ifdef KEY_A` guard in `acommon.cpp` no longer trips.
+Expected: exit code 0, the six baseline warnings, and the `#ifdef KEY_A` guard in `acommon.cpp` no longer trips.
 
 If you get `error C2065: 'KEY_xxx': undeclared identifier` in a file not listed above, that file had a `KEY_*` use the inventory missed — rename it to `AAEKEY_*` and note it in the commit message.
 
@@ -542,7 +546,7 @@ Each file keeps all of its non-`osd_` content unchanged.
 - [ ] **Step 3: Build and confirm it passes**
 
 Run the build.
-Expected: exit code 0, five warnings (plus the still-red `invaders.cpp` guard from Task 2).
+Expected: exit code 0, the six baseline warnings (plus the still-red `invaders.cpp` guard from Task 2).
 
 If you get `error C2371: redefinition; different basic types`, a signature in `osdepend.h` does not match the original — go back to the original header, copy the signature character-for-character, and retry. Do **not** change the implementation to match your guess.
 
@@ -601,7 +605,7 @@ Add `#include "mixer.h"` to each, in the existing include block:
 - [ ] **Step 5: Build and confirm it passes**
 
 Run the build.
-Expected: exit code 0 (plus the still-red `invaders.cpp` guard), five warnings, and the `_XAUDIO2_INCLUDED_` guard clean.
+Expected: exit code 0 (plus the still-red `invaders.cpp` guard), the six baseline warnings, and the `_XAUDIO2_INCLUDED_` guard clean.
 
 Expect additional files to fail with `error C3861: 'sample_start': identifier not found`. The inventory was grep-based and could not prove every call site. For each, add `#include "mixer.h"` and list it in the commit message — that list is real data about how far audio had spread.
 
@@ -676,7 +680,7 @@ Keep fixing until the build is green. Record every file you touched — that lis
 - [ ] **Step 6: Verify the guard is now green**
 
 Run the build.
-Expected: exit code 0, five warnings, and `invaders.cpp`'s `#ifdef _WINDOWS_` guard passing for the first time.
+Expected: exit code 0, the six baseline warnings, and `invaders.cpp`'s `#ifdef _WINDOWS_` guard passing for the first time.
 
 - [ ] **Step 7: Add guards to lock the boundary**
 
@@ -818,7 +822,7 @@ Add `#include "vector_draw_gl.h"` to `aae/aae/aae_video/vector_draw.cpp` (uses `
 - [ ] **Step 7: Build and confirm it passes**
 
 Run the build.
-Expected: exit code 0, five warnings.
+Expected: exit code 0, the six baseline warnings.
 
 If you get `error C2065: 'txdata': undeclared identifier` in `emu_vector_draw.cpp`, Step 5's include was not added — `texlist` at line 35 is `std::vector<txdata>` and needs the new header.
 
