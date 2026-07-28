@@ -17,10 +17,22 @@
 #include "old_mame_raster.h"
 #include "sys_input.h"
 
+// TODO(Task 5): re-enable this guard. It is the red->green test for closing
+// the aae_mame_driver.h -> framework.h -> <Windows.h> leak.
+//
 // Boundary guard: nothing driver code includes may drag in the Win32 API.
-#ifdef _WINDOWS_
-#error "windows.h leaked into driver code"
-#endif
+// MUST stay below every #include above - the preprocessor is a single forward
+// pass, so a guard placed above the includes can never fire.
+//
+// Disabled for now: Task 2 removed the rawinput.h path to <windows.h>, but
+// aae_mame_driver.h (included at the top of this file) still reaches it via
+// framework.h. Leaving the guard live would leave the tree un-buildable
+// across Tasks 3 and 4, which would make "did I regress?" unanswerable for
+// those tasks. Task 5 closes that door and turns this back on.
+//
+// #ifdef _WINDOWS_
+// #error "windows.h leaked into driver code"
+// #endif
 
 uint8_t m_p1 = 0;
 uint8_t m_p2 = 0;

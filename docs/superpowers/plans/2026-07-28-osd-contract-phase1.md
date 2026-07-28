@@ -47,6 +47,8 @@ For a **header**, the same rule applies to that header's own includes — put th
 
 A guard that passes the moment you correctly place it means the boundary is already clean and the task has nothing to prove — stop and report that, do not proceed as if it failed.
 
+**Never leave HEAD un-buildable.** A guard whose boundary a *later* task closes must be committed **commented out**, tagged `TODO(Task N)` naming the task that re-enables it, with a comment explaining why it is parked. A guard left permanently red spans multiple commits of broken build and destroys the regression signal every subsequent task depends on — you can no longer tell your own breakage from the expected failure. Each task's guard must go red→green **within that same task**.
+
 ---
 
 ## File Structure
@@ -647,10 +649,12 @@ Verified 2026-07-28: `osd_video.h` uses **zero** framework.h symbols, and its li
 
 - [ ] **Step 1: The guard is already written**
 
-The `#ifdef _WINDOWS_` guard added to `invaders.cpp` in Task 2 Step 1 has been red since then. That is this task's failing test. Confirm it still fails:
+Task 2 added the `#ifdef _WINDOWS_` guard to `aae/aae/drivers/invaders.cpp` but committed it **commented out**, tagged `TODO(Task 5)`. Re-enable it now by uncommenting the three directive lines (leave the explanatory comment above them, updating it to past tense).
 
 Run the build.
 Expected: **FAIL** with `#error: "windows.h leaked into driver code"`.
+
+Why it was parked rather than left live: an always-red guard would have left HEAD un-buildable across Tasks 3 and 4, which destroys the "did I regress?" signal those tasks depend on. See *Never leave HEAD un-buildable* in Conventions.
 
 - [ ] **Step 2: Delete lines 61–63 of `osd_video.h`**
 

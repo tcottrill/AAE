@@ -2,6 +2,32 @@
 // sys_input.h -- Usage Guide & API Reference
 //==============================================================================
 //
+// READ THIS FIRST -- what is and is not part of this header
+// ---------------------------------------------------------
+// sys_input.h is the PLATFORM-NEUTRAL input contract. A backend (Win32 today;
+// Linux evdev and Teensy later) implements what is declared here.
+//
+// The guide below was written for the Win32-only predecessor of this file and
+// still describes that backend throughout. When reading it, treat as
+// WIN32-BACKEND-SPECIFIC, not part of this header's contract:
+//
+//   * The QUICK START and INITIALIZATION/SHUTDOWN sections. RawInput_Initialize,
+//     RawInput_ProcessInput and RawInput_Shutdown are declared in
+//     rawinput_win32.h, NOT here. Code copied from Quick Start will not
+//     compile against this header alone.
+//   * WM_INPUT MESSAGE HANDLING -- Win32 message-pump specific.
+//   * THREADING MODEL -- the worker-thread pump is a Win32-backend design
+//     choice, not a requirement. An evdev backend need not replicate it. The
+//     "safe on x86" claim there does not carry to ARM (Teensy Cortex-M7); a
+//     backend on a weaker memory model must provide its own ordering.
+//
+// Everything else -- the AaeKey codes, key[]/mouse_b, the query functions, the
+// callbacks and the multi-HID *_Ex API -- IS the neutral contract.
+//
+// NOTE: key[] and mouse_b are declared extern here but DEFINED in the backend
+// translation unit (rawinput.cpp on Win32). A new backend must define them or
+// it will fail at link time, not compile time.
+//
 // OVERVIEW
 // --------
 // Windows Raw Input wrapper providing low-level keyboard and mouse access
@@ -391,10 +417,13 @@
 
 #include <cstdint>
 
-#define bset(p,m) ((p) |= (m))
-#define bclr(p,m) ((p) &= ~(m))
-#define toUpper(ch) ((ch >= 'a' && ch <='z') ? ch & 0x5f : ch)
-#define RI_MOUSE_HWHEEL 0x0800
+// NOTE ON NAMING (tracked debt): most functions below still carry a
+// `RawInput_` prefix, after the *Windows* Raw Input API. On a neutral header
+// that is a misnomer - an evdev backend implementing RawInput_GetMouseCount()
+// is named after an API it has nothing to do with. Renaming touches call
+// sites in 9 files and is deliberately not in Phase 1's scope. When adding to
+// this header, do NOT extend the RawInput_ prefix by copy-paste inertia; the
+// longer it spreads, the larger the eventual rename.
 
 // ---------------------------------------------------------------------------
 // AaeKey - AAE's canonical physical key codes.

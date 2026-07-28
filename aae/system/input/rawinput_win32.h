@@ -8,6 +8,18 @@
 #include <windows.h>
 #include "sys_input.h"
 
+// Win32-implementation-detail macros. These lived in the neutral header until
+// 2026-07-28; they are used only by rawinput.cpp and mean nothing to a
+// non-Win32 backend (RI_MOUSE_HWHEEL mirrors a RAWMOUSE.usButtonFlags bit).
+//
+// toUpper() does not parenthesise its parameter - it is unsafe for arguments
+// with side effects or lower-precedence operators, e.g. toUpper(x++). It has
+// no call sites today; prefer std::toupper in new code.
+#define bset(p,m) ((p) |= (m))
+#define bclr(p,m) ((p) &= ~(m))
+#define toUpper(ch) ((ch >= 'a' && ch <='z') ? ch & 0x5f : ch)
+#define RI_MOUSE_HWHEEL 0x0800
+
 // Registers keyboard (HID usage 0x06) and mouse (0x02) for Raw Input with
 // RIDEV_INPUTSINK, zeroes state, starts the worker thread.
 // Returns S_OK on success, E_FAIL if registration fails.
