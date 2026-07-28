@@ -68,10 +68,12 @@ If not green, STOP — do not start Task 1 on a broken tree.
 - [ ] **Step 2: Confirm the parked guard is still parked**
 
 ```bash
-grep -n "TODO(Task 5)" aae/aae/drivers/invaders.cpp
+grep -n '^// #ifdef _WINDOWS_' aae/aae/drivers/invaders.cpp
 ```
 
-Expected: a hit. That guard is this plan's Task 4 acceptance test. (Its tag says "Task 5" — that referred to Phase 1's task numbering. Do not renumber it; Task 4 below deletes the tag when it turns the guard on.)
+Expected: one hit, around line 34. The guard sits commented-out beneath a comment block explaining that `invaders.cpp`'s own `#include "mixer.h"` reaches `<windows.h>` via `<xaudio2.h>`'s COM/objbase chain. That guard is this plan's Task 4 acceptance test.
+
+(There is no `TODO(...)` tag on it — Phase 1's Task 5 replaced the original tagged comment with the accurate explanation above. Do not go looking for one.)
 
 - [ ] **Step 3: Re-measure the voice-path inventory**
 
