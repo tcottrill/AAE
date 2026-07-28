@@ -98,7 +98,10 @@ public:
 	// A backend implementing this must honour that convention, and a caller
 	// building a matrix must fill it that way. See SetPan() in mixer.cpp for
 	// a worked example.
-	virtual void VoiceSetOutputMatrix(VoiceHandle* v, uint32_t srcChannels,
+	//
+	// Returns false on failure (and logs the underlying error); true on
+	// success.
+	virtual bool VoiceSetOutputMatrix(VoiceHandle* v, uint32_t srcChannels,
 	                                  uint32_t dstChannels,
 	                                  const float* matrix) = 0;
 
@@ -142,7 +145,7 @@ public:
 	void VoiceSetFrequencyRatio(VoiceHandle* v, float ratio) override;
 	uint32_t VoiceBuffersQueued(VoiceHandle* v) override;
 	uint32_t VoiceInputChannels(VoiceHandle* v) override;
-	void VoiceSetOutputMatrix(VoiceHandle* v, uint32_t srcChannels,
+	bool VoiceSetOutputMatrix(VoiceHandle* v, uint32_t srcChannels,
 	                          uint32_t dstChannels, const float* matrix) override;
 
 private:

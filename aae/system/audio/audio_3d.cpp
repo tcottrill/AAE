@@ -231,6 +231,9 @@ bool audio_3d_apply_2d(VoiceHandle* voice,
 		LOG_ERROR("audio_3d_apply_2d: no active audio backend");
 		return false;
 	}
-	backend->VoiceSetOutputMatrix(voice, src_channels, g_dst_channels, g_matrix);
+	if (!backend->VoiceSetOutputMatrix(voice, src_channels, g_dst_channels, g_matrix)) {
+		LOG_ERROR("audio_3d_apply_2d: VoiceSetOutputMatrix failed");
+		return false;
+	}
 	return true;
 }

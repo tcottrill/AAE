@@ -312,9 +312,14 @@ uint32_t XAudio2Backend::VoiceInputChannels(VoiceHandle* v)
 	return details.InputChannels;
 }
 
-void XAudio2Backend::VoiceSetOutputMatrix(VoiceHandle* v, uint32_t srcChannels,
+bool XAudio2Backend::VoiceSetOutputMatrix(VoiceHandle* v, uint32_t srcChannels,
                                           uint32_t dstChannels, const float* matrix)
 {
-	if (!v || !v->voice) return;
-	v->voice->SetOutputMatrix(nullptr, srcChannels, dstChannels, matrix);
+	if (!v || !v->voice) return false;
+	HRESULT hr = v->voice->SetOutputMatrix(nullptr, srcChannels, dstChannels, matrix);
+	if (FAILED(hr)) {
+		LOG_ERROR("VoiceSetOutputMatrix: SetOutputMatrix failed, hr=0x%08X", (unsigned)hr);
+		return false;
+	}
+	return true;
 }
