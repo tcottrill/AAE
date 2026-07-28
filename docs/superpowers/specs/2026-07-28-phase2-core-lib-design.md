@@ -105,10 +105,22 @@ struct CHANNEL {
 The XAudio2 members move to the definition of `VoiceHandle` inside the backend `.cpp`. `SAMPLE::fx` (`WAVEFORMATEX`) is replaced by a neutral POD declared in `mixer.h`:
 
 ```c
-struct WaveFormat { uint32_t rate; uint16_t channels; uint16_t bits; };
+struct WaveFormat {
+    uint16_t format_tag;      // WAVE_FORMAT_PCM (1)
+    uint16_t channels;
+    uint32_t rate;            // samples per second
+    uint32_t avg_bytes_sec;
+    uint16_t block_align;
+    uint16_t bits;            // bits per sample
+    uint16_t cb_size;         // 0 for PCM
+};
 ```
 
+**All seven fields are required — measured, not assumed.** `fx` is touched at ~80 sites in `mixer.cpp` and every field is read or written. A three-field POD (rate/channels/bits) would have been insufficient. Note `mixer.cpp:2082-2087` serialises the fields individually into a WAV header, so field *semantics* must be preserved exactly, though the struct layout need not match `WAVEFORMATEX` (each field is appended separately, not blitted).
+
 Conversion to `WAVEFORMATEX` happens only at the backend edge.
+
+**`audio_3d` is a third file in the blast radius.** `audio_3d_apply_2d(ch.voice, ...)` is called at `mixer.cpp:974` and `mixer.cpp:1381`, taking an `IXAudio2SourceVoice*` across into `system/audio/audio_3d.{h,cpp}`. That signature must become `VoiceHandle*` too, or the positional-audio path re-leaks XAudio2 into `mixer.h`'s consumers. Same for the file-local `SetPan(IXAudio2SourceVoice*, int)` helper at `mixer.cpp:1127`.
 
 **`mixer.cpp` drives XAudio2 directly, and that is the real work in this item.** Beyond `IAudioBackend`, `mixer.cpp` holds a `g_xaudio2` global and manages source voices itself:
 
@@ -163,17 +175,22 @@ This is deliberate, not incidental: a Linux backend needs exactly this interface
 
 **Goal:** make a core file's reach across the boundary a compile error.
 
-Add `aae/aae_core.vcxproj`, a static library (`.lib`) containing the core `.cpp` files, whose `AdditionalIncludeDirectories` **omits**:
+Add `aae/aae_core.vcxproj`, a static library (`.lib`) containing the core `.cpp` files, whose `AdditionalIncludeDirectories` **omits** `./system/window` (`framework.h`), `./aae/aae_video` (`opengl_renderer.h`, `sys_gl.h`, `vector_draw_gl.h`) and `./aae/gui` (`menu.h`). `./system/audio` is **not** excluded: after item 1, `mixer.h` is platform-neutral and the core legitimately uses it.
 
-- `./system/window` — `framework.h`
-- `./aae/aae_video` — `opengl_renderer.h`, `sys_gl.h`, `vector_draw_gl.h`
-- `./aae/gui` — `menu.h`
+**Membership rule — `aae/aae/**` is the core; `system/**` is the backend.**
 
-`./system/audio` is **not** excluded: after item 1, `mixer.h` is platform-neutral and the core legitimately uses it.
+An earlier draft of this spec proposed membership by "does the file include one of four disqualifying headers". Measurement showed that rule is wrong: it classifies `system/input/Joystick.cpp` (`<windows.h>`, `<Xinput.h>`, `<dinput.h>`), `system/input/rawinput.cpp`, `system/util/wintimer.cpp` (`<mmsystem.h>`), `system/util/path_helper.cpp`, `system/util/sys_fileio.cpp`, `system/util/sys_log.cpp`, `system/audio/mixer.cpp` and `system/3rdparty/glew.c` as CORE, because they reach Win32 and OpenGL *directly* rather than through those four headers. Every one of them is a platform backend.
 
-`aae.exe` links `aae_core.lib` and supplies the OSD side — the `osd_*` implementations (`os_input.cpp`, `mame_fileio.cpp`, `osd_video.cpp`, `led_service_handler.cpp`), the renderer, the window, the menu and the audio backend. Core→OSD calls resolve at link time through `osdepend.h`, which is exactly the contract Phase 1 established.
+The correct rule is simpler and matches the emu/OSD split the whole program is after:
 
-Expected membership after item 1: ~102 of 117 files. The ~15 that remain in the exe are genuine app/render glue — `acommon.cpp`, `menu.cpp`, `aae_emulator.cpp`, `gui/*`, `fileio/texture_handler.cpp`. That is the correct home for them, not a shortfall.
+- **CORE lib** — files under `aae/aae/`, **excluding** `aae_video/`, `gui/`, and any file including `framework.h` / `opengl_renderer.h` / `sys_gl.h` / `menu.h`.
+- **EXE** — everything under `system/` without exception, plus the excluded `aae/aae/` files.
+
+Putting all of `system/` in the exe costs nothing: its *headers* stay on the core's include path where they are neutral (`sys_log.h`, `mixer.h`, `sys_input.h`), so core code still calls `LOG_INFO`, `sample_start` and `IsKeyDown` freely — those symbols simply resolve at link time against the exe, which is precisely the contract model Phase 1 established for `osd_*`.
+
+**Measured membership: 86 core, 48 exe, of 134 `ClCompile` entries.** (99 files pass the header rule; 13 of those are under `system/` and move to the exe.)
+
+`aae.exe` links `aae_core.lib` and supplies the OSD side — the `osd_*` implementations, the renderer, the window, the menu, all of `system/`, and the audio backend.
 
 **Both configurations** (Debug|x64, Release|x64) get the new target. The `WIN7BUILD` define in Release must be preserved (§2.5). x86/Win32 remains known-broken and out of scope.
 
