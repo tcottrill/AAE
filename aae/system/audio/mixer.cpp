@@ -1122,10 +1122,10 @@ void sample_stop(int chanid)
 // -----------------------------------------------------------------------------
 static void SetPan(VoiceHandle* voice, int panByte)
 {
-	if (!voice) return;
+	if (!voice || !g_backend) return;
 
 	const uint32_t srcCh = g_backend->VoiceInputChannels(voice);
-	const uint32_t dstCh = g_backend ? g_backend->OutputChannelCount() : 2;
+	const uint32_t dstCh = g_backend->OutputChannelCount();
 	if (dstCh == 0 || srcCh == 0) return;
 
 	// XAudio2 SetOutputMatrix layout (per official docs): the level sent from

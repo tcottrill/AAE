@@ -88,7 +88,15 @@ public:
 	// Source channel count of this voice (1 or 2).
 	virtual uint32_t VoiceInputChannels(VoiceHandle* v) = 0;
 
-	// Per-channel gain matrix, srcChannels*dstChannels floats, row-major.
+	// Per-channel gain matrix, srcChannels*dstChannels floats.
+	//
+	// LAYOUT IS DESTINATION-MAJOR: the gain from source channel S to output
+	// channel D lives at matrix[srcChannels * D + S] - NOT [dstChannels*S + D].
+	// Getting this backwards does not error; it silently routes audio to the
+	// wrong speakers (e.g. stereo R onto the LFE channel, which is inaudible).
+	// A backend implementing this must honour that convention, and a caller
+	// building a matrix must fill it that way. See SetPan() in mixer.cpp for
+	// a worked example.
 	virtual void VoiceSetOutputMatrix(VoiceHandle* v, uint32_t srcChannels,
 	                                  uint32_t dstChannels,
 	                                  const float* matrix) = 0;
