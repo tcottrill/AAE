@@ -93,10 +93,12 @@ Removing line 19 alone is therefore a no-op: every consumer still receives `fram
 
 | symbol set | defines | external refs |
 |---|---|---|
-| `KEY_*` (`aae/system/input/rawinput.h`) | 140 | **18, in 4 files** — `acommon.cpp` (4), `osdepend.h` (4), `os_input.cpp` (6), `rawinput.cpp` (4) |
+| `KEY_*` (`aae/system/input/rawinput.h`) | 140 | **10, in 2 files** — `acommon.cpp:128-131` (4), `os_input.cpp:126,127,133,192,193,194` (6) |
 | `OSD_KEY_*` (`aae/aae/osdepend.h`) | 145 | ~270, across 30 files including every driver |
 
-`KEY_*` values are Windows VK codes. Linux's `<linux/input-event-codes.h>` defines the same identifiers with different values (`KEY_A` is `30` there, not `0x41`), so no translation unit can include both. `OSD_KEY_*` does **not** collide and drivers only ever use that set — so the collision is confined to 18 call sites. `KEY_*` appears nowhere as a string literal, so no config parsing is affected.
+`KEY_*` values are Windows VK codes. Linux's `<linux/input-event-codes.h>` defines the same identifiers with different values (`KEY_A` is `30` there, not `0x41`), so no translation unit can include both. `OSD_KEY_*` does **not** collide and drivers only ever use that set — so the collision is confined to 10 call sites. `KEY_*` appears nowhere as a string literal, so no config parsing is affected.
+
+Two near-misses to be aware of, both verified 2026-07-28 and both **not** work items: `osdepend.h:151-154` mention `KEY_RCONTROL`/`KEY_ALTGR`/`KEY_SLASH2`/`KEY_PAUSE` inside *comments* only; and `rawinput.cpp:219,231,242,282` use `KEY_READ`, which is the Win32 registry access mask from `<winreg.h>` and unrelated to this set. A naive grep counts both and reports 18.
 
 Key bindings persist as raw integers via `writeword()` (`aae/aae/inptport.cpp:388`) into `default.cfg` and per-game cfg.
 
@@ -144,7 +146,7 @@ Five work items. **No behavior change is intended by any of them.**
 
 `osdepend.h` must itself be platform-neutral: no `windows.h`, no GL, no STL beyond `<cstdint>`.
 
-**Relationship to the key sets.** `osdepend.h` keeps its existing `OSD_KEY_*` and `OSD_JOY_*` defines unchanged — those are the *logical* input names the 30 driver-side files use, they do not collide with anything on Linux, and they are not in scope for the rename. Its four current `KEY_*` references become `AAEKEY_*`, which makes `osdepend.h` depend on `sys_input.h`. That is acceptable because `sys_input.h` is platform-neutral by construction (§4.2); it must not be allowed to become a back door for `windows.h`, which the §4.3 leak guards enforce.
+**Relationship to the key sets.** `osdepend.h` keeps its existing `OSD_KEY_*` and `OSD_JOY_*` defines unchanged — those are the *logical* input names the 30 driver-side files use, they do not collide with anything on Linux, and they are not in scope for the rename. `osdepend.h` acquires **no** dependency on `sys_input.h`: its four apparent `KEY_*` references at lines 151–154 are inside comments, not code (verified 2026-07-28). It therefore stays fully self-contained and platform-neutral.
 
 `AaeKey` is declared in `sys_input.h`, not `osdepend.h`: it describes *physical* keys reported by a backend, which is input-system territory, whereas `OSD_KEY_*` describes logical keys the emulation asks about. Collapsing the two numbering sets is deliberately **not** attempted here — it is a candidate for Phase 2, once the linker can prove what actually depends on which.
 
