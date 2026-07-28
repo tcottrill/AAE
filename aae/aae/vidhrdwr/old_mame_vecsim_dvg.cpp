@@ -2,7 +2,6 @@
 #include "timer.h"
 #include "aae_avg.h"
 #include "emu_vector_draw.h"
-#include "gl_texturing.h"
 #include "texture_handler.h"
 #include "mame_vector.h"
 //============================================================================
