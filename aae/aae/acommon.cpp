@@ -28,16 +28,18 @@
 // MUST stay below every #include above - see the comment on the glew guard.
 //
 // Currently commented out: it fires, but not because acommon.cpp needs
-// Win32. This file includes "framework.h" (transitively via aae_mame_driver.h
-// and directly), and framework.h unconditionally #includes <Windows.h> for
-// its own HWND/RECT/DWORD declarations (win_get_window, WindowSetup, etc.).
+// Win32. Task 5 closed the aae_mame_driver.h -> framework.h -> <Windows.h>
+// leak this comment used to blame, so that path is gone. Two paths remain,
+// both direct rather than transitive: this file's own line 14
+// `#include "framework.h"`, and line 15's `#include "opengl_renderer.h"`,
+// which includes framework.h directly and is staying that way (render
+// headers are legitimately Win32-coupled for now - see Task 5 notes).
 // A grep of this file found zero calls to any Win32-touching symbol from
 // framework.h (win_get_window, allegro_message, osMessage, GetClientWidth/
 // Height, ClipAndHideCursor, ...) - acommon.cpp does not itself need Win32,
-// framework.h just leaks it to every one of its includers. That leak path
-// is the same shape as the aae_mame_driver.h leak Task 5 is scoped to close;
-// splitting framework.h is out of scope for Task 2 (input header only).
-// Re-enable this guard once framework.h stops dragging in windows.h.
+// framework.h just leaks it to every one of its includers, itself included.
+// Re-enable this guard once framework.h stops dragging in windows.h, or once
+// acommon.cpp's own dependency on it and on opengl_renderer.h are removed.
 //
 // #ifdef _WINDOWS_
 // #error "windows.h leaked into acommon.cpp"

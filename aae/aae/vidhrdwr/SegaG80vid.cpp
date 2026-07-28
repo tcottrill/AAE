@@ -15,6 +15,7 @@
 #include <math.h>
 #include <string.h>
 #include "aae_mame_driver.h"
+#include "framework.h"  // TRUE/FALSE; no longer pulled in via aae_mame_driver.h
 
 
 #pragma warning( disable : 4996 4244)

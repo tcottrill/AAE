@@ -20,6 +20,15 @@
 #include "centiped_vid.h"
 #include "timer.h"
 
+// Boundary guard: nothing this driver includes may drag in the Win32 API.
+// This driver has no audio dependency on mixer.h (unlike invaders.cpp, whose
+// mixer.h -> xaudio2.h -> Windows.h chain keeps that guard red), so it is a
+// clean sentinel for the aae_mame_driver.h/osd_video.h -> framework.h ->
+// <Windows.h> leak that Task 5 closed.
+#ifdef _WINDOWS_
+#error "windows.h leaked into the emulation core"
+#endif
+
 #pragma warning( disable : 4838 4003 )
 
 constexpr auto IN0_VBLANK = (1 << 6);

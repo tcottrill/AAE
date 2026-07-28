@@ -15,6 +15,10 @@
 #include "timer.h"
 #endif // USING_AAE_EMU
 
+// Boundary guard: nothing the emulation core includes may drag in the Win32 API.
+#ifdef _WINDOWS_
+#error "windows.h leaked into the emulation core"
+#endif
 
 #define bget(p,m) ((p) & (m))
 

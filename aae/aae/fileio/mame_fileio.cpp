@@ -6,6 +6,7 @@
 #include "mame_fileio.h"
 #include "iniFile.h"
 #include "path_helper.h"
+#include "framework.h"  // MAX_PATH; no longer pulled in via aae_mame_driver.h
 
 /* file handling routines from mame (TM) */
 

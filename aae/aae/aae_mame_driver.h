@@ -16,7 +16,6 @@
 #ifndef GLOBALS_H
 #define GLOBALS_H
 
-#include "framework.h"
 #include <cstring>   // strncmp, used by driver_rom_archive()
 
 #include "sys_log.h"

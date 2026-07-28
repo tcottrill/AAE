@@ -1,5 +1,6 @@
 #ifndef INPTPORT_H
 #define INPTPORT_H
+#include "deftypes.h"   // UINT8/UINT16/UINT32 used below; no longer transitively available via framework.h
 #include "osdepend.h"
 #include "aae_mame_driver.h"
 

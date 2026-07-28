@@ -18,6 +18,11 @@
 #include "sys_log.h"
 #include <vector>
 
+// Boundary guard: nothing the emulation core includes may drag in the Win32 API.
+#ifdef _WINDOWS_
+#error "windows.h leaked into the emulation core"
+#endif
+
 // Boundary guard: nothing a CPU core includes may drag in the audio mixer.
 #ifdef __XAUDIO2_INCLUDED__
 #error "xaudio2 leaked into a CPU core"

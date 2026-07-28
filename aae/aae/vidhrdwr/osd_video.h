@@ -58,10 +58,7 @@
 // callers (glcode, drivers, etc.) do not need any changes.
 // -----------------------------------------------------------------------------
 
-#include "framework.h"
 #include "osdepend.h"
-#include "aae_mame_driver.h"   // RunningMachine, Machine, MAX_GFX_ELEMENTS, MAX_PENS, etc.
-#include "old_mame_raster.h"   // GfxElement, GfxLayout, gfxdecodeinfo, decode/free helpers
 
 // -----------------------------------------------------------------------------
 // From MAME .30 for VH Hardware 

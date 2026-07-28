@@ -52,6 +52,7 @@
 #include "opengl_renderer.h"
 #include "sys_gl.h"
 #include "aae_mame_driver.h"
+#include "old_mame_raster.h"  // main_bitmap; no longer pulled in via osd_video.h
 #include "vector_fonts.h"
 #include "texture_handler.h"
 #include "gl_fbo.h"
