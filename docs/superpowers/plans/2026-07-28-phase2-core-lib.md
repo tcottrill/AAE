@@ -12,6 +12,48 @@
 
 ---
 
+## STATUS — completed 2026-07-28 on branch `refactor/phase2-core-lib`
+
+| task | commit(s) | outcome |
+|---|---|---|
+| 0 baseline | — | green; voice inventory confirmed 12 ops / 26 sites |
+| 1 `WaveFormat` | `3f88876` | 88 `fx.` sites; WAV read/write verified byte-identical field by field |
+| 2 `VoiceHandle` | `11ff247`, `29c5bd0` | 26 sites behind 12 interface methods; no leaks or double-frees |
+| 3 `audio_3d` | `8bd8b63` | last raw-XAudio2 escape hatch removed |
+| 4 **`mixer.h` neutral** | `1d0e329`, `e9d12ce` | **acceptance test green** — the `invaders.cpp` guard parked since Phase 1 is live |
+| 5 `aae_core.vcxproj` | `01b8a61`, `237dc94`, `096b472`, `8937dd4` | 86 files, builds clean alone |
+| 6 link it | `043dc72` | 48 + 86 = 134 |
+| 7 verification | — | **negative test passes**; smoke-tested, interactive audio pass still owed |
+
+**The negative test, which is the whole point of the phase:**
+
+```
+asteroid.cpp(1,10): error C1083: Cannot open include file: 'framework.h':
+No such file or directory [aae_core.vcxproj]
+```
+
+File-not-found, from the core project. Not a guard trip — the header is physically unreachable.
+
+### The finding that justified doing Phase 2 as enforcement rather than layout
+
+`aae/aae/aae_video/mame_vector.h` — 20 lines declaring the vector display-list API **drivers call** (`vector_add_point`, `vector_start`, `vector_clear_list`), including only neutral headers — was misfiled in the renderer directory. `aae_mame_driver.h` includes it unconditionally, so with `aae_video/` off the core's include path it broke **72 of 86** core translation units.
+
+No grep-based classification could have found this. The membership analysis asked "does this `.cpp` include one of four OSD headers"; the coupling was header→header, one level down inside the file 71 of 86 core units include. **The compiler found it on the first build.** Moving 300 files into `src/emu` would have left it fully intact and invisible.
+
+Fixed by moving the header to `aae/aae/vidhrdwr/` alongside the other emu-side video headers; `mame_vector.cpp` stays renderer-side and resolves at link time, exactly like `osd_*`. No `#include` statement anywhere needed changing, because every include in this codebase is flat.
+
+**Membership rule gap this exposes:** the spec's rule ("`aae/aae/` minus `aae_video/`/`gui/` minus files including the four headers") is necessary but not sufficient. It must also account for *headers* on the core's include path that reach into excluded directories. `mame_vector.h` was the only one, confirmed by the library building clean afterwards — but the rule as written would not have predicted it.
+
+### Corrections found during execution
+
+1. Task 0's guard check grepped for a `TODO(Task 5)` tag that Phase 1 had already replaced with prose (`9fb0698`).
+2. `WaveFormat` needed all seven fields, not three — `fx` is touched at ~80 sites and every field is used.
+3. `audio_3d.{h,cpp}` was a third file in the audio blast radius, unaccounted for in the first draft of the spec.
+4. The `__XAUDIO2_INCLUDED__` guard drafted for `mixer.h` was **dropped**: it false-fires in `xaudio2_backend.cpp`, which legitimately includes `<xaudio2.h>` before `mixer.h`. Same order-sensitive trap as the `MATHUTILS_H` guard removed in Phase 1 — a guard testing "was X seen earlier in this TU" cannot distinguish a leak from a legitimate prior include. `invaders.cpp`'s guard has no such ambiguity and is the real test.
+5. Two drivers (`vicdual.cpp`, `yiear.cpp`) were getting the Win32 `INT` typedef *through the audio header*; fixed to `int`.
+
+---
+
 ## Conventions for every task
 
 **The build:**
