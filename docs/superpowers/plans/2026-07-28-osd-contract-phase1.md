@@ -12,6 +12,34 @@
 
 ---
 
+## STATUS — completed 2026-07-28 on branch `refactor/osd-contract-phase1`
+
+| task | commit(s) | outcome |
+|---|---|---|
+| 0 baseline | — | green; baseline is **six** warning lines, not five |
+| 1 `AaeKey` enum | `aafe087`, `4de5224` | done; 120 values verified identical |
+| 2 header split | `2c35f5c`, `b6832f2` | done |
+| 3 `osdepend.h` contract | `0cd6ee3` | done; all 29 signatures matched first try |
+| 4 `mixer.h` removal | `b2cab85` | done; **20** files needed it, not 19 (`sndhrdwr/segag80snd.cpp` was missing from the inventory) |
+| 5 close `framework.h` doors | `5f564d2`, `46eecf8` | done; 6 fallout files |
+| 6 vector split | `56850a9`, `6e38e19` | done (header only — see below) |
+| 7 runtime verification | — | **smoke-tested only; interactive pass still owed** |
+
+Final build: exit 0, exactly six warning lines, independently reproduced from scratch by a reviewer.
+
+**Corrections to this plan found during execution — read before reusing it:**
+1. All five `#error` guards were originally specified *above* the include block, where they can never fire. Fixed (`1c227f3`); see *Guard placement* in Conventions.
+2. Task 4's guard macro was written `_XAUDIO2_INCLUDED_`; the real one is `__XAUDIO2_INCLUDED__` (double underscores). The wrong spelling is defined by nothing and the guard would have been inert (`196ef93`).
+3. Task 6's `MATHUTILS_H` guard was implemented then **removed** (`6e38e19`): it tested "was MathUtils.h seen earlier in this TU", not "did this header pull it in", so it fired on correct render code and forced two unrelated files to reorder includes. Order-sensitive guards are false-positive generators. The `_WINDOWS_` guards are principled because windows.h in a core TU is wrong *regardless* of order.
+4. `mixer.h` transitively pulls `windows.h` (→ `xaudio2.h` → `objbase.h`), so `invaders.cpp`'s guard can never go green while that file needs audio. `centiped.cpp` is the working driver sentinel instead.
+5. `_WINDOWS_` guards cannot detect a *narrow* Win32 SDK header included directly (`basetsd.h` etc.) — only `windows.h` defines `_WINDOWS_`. `ccpu.h`/`ccpu.cpp` did exactly that; fixed, and a tree-wide grep found no others.
+
+**Known gap carried into Phase 2:** Task 6 split the vector *header* only. `vidhrdwr/emu_vector_draw.cpp` still includes `sys_gl.h`/`opengl_renderer.h`/`gl_texturing.h`/`gl_shader.h`, uses raw `GLuint`, and implements render-side `draw_textured_shots` beside the emu-side `add_line`/`add_tex`. A Teensy backend cannot link it; it needs its own `.cpp`. This is Phase 2's first and hardest file.
+
+**Deferred smell (not a Phase 1 defect, forbidden by the no-behavior-change rule):** `sndhrdwr/segag80snd.cpp:178` calls `allegro_message()` — a modal Win32 message box — from a sound-queue-overflow path. One-line fix to `LOG_WARNING`.
+
+---
+
 ## Conventions for every task
 
 **The build command ("the build"):**
