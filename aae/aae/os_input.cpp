@@ -123,14 +123,14 @@ int osd_key_pressed(int keycode)
 
 	if (keycode > OSD_MAX_KEY) return 0;
 
-	if (keycode == OSD_KEY_RCONTROL) keycode = KEY_RCONTROL;
-	if (keycode == OSD_KEY_ALTGR) keycode = KEY_ALTGR;
+	if (keycode == OSD_KEY_RCONTROL) keycode = AAEKEY_RCONTROL;
+	if (keycode == OSD_KEY_ALTGR) keycode = AAEKEY_ALTGR;
 	if (keycode == OSD_KEY_PAUSE)
 	{
 		static int pressed, counter;
 		int res;
 
-		keycode = KEY_PAUSE;
+		keycode = AAEKEY_PAUSE;
 		res = key[keycode] ^ pressed;
 		if (res)
 		{
@@ -189,9 +189,9 @@ int osd_key_pressed_for(int player, int keycode)
 		return osd_read_key_immediate();
 	keycode = pseudo_to_key_code(keycode);
 	if (keycode > OSD_MAX_KEY) return 0;
-	if (keycode == OSD_KEY_RCONTROL) keycode = KEY_RCONTROL;
-	if (keycode == OSD_KEY_ALTGR) keycode = KEY_ALTGR;
-	if (keycode == OSD_KEY_PAUSE) keycode = KEY_PAUSE;
+	if (keycode == OSD_KEY_RCONTROL) keycode = AAEKEY_RCONTROL;
+	if (keycode == OSD_KEY_ALTGR) keycode = AAEKEY_ALTGR;
+	if (keycode == OSD_KEY_PAUSE) keycode = AAEKEY_PAUSE;
 
 	return RawInput_IsKeyDownEx(dev, keycode);
 }

@@ -387,127 +387,106 @@
 #define bset(p,m) ((p) |= (m))
 #define bclr(p,m) ((p) &= ~(m))
 
-#define KEY_A                 0x41  //65
-#define KEY_B                 0x42
-#define KEY_C                 0x43
-#define KEY_D                 0x44
-#define KEY_E                 0x45
-#define KEY_F                 0x46
-#define KEY_G                 0x47
-#define KEY_H                 0x48
-#define KEY_I                 0x49
-#define KEY_J                 0x4a
-#define KEY_K                 0x4b
-#define KEY_L                 0x4c
-#define KEY_M                 0x4d
-#define KEY_N                 0x4e
-#define KEY_O                 0x4f
-#define KEY_P                 0x50
-#define KEY_Q                 0x51
-#define KEY_R                 0x52
-#define KEY_S                 0x53
-#define KEY_T                 0x54
-#define KEY_U                 0x55
-#define KEY_V                 0x56
-#define KEY_W                 0x57
-#define KEY_X                 0x58
-#define KEY_Y                 0x59
-#define KEY_Z                 0x5a
-#define KEY_0                 0x30  //48
-#define KEY_1                 0x31
-#define KEY_2                 0x32
-#define KEY_3                 0x33
-#define KEY_4                 0x34
-#define KEY_5                 0x35
-#define KEY_6                 0x36
-#define KEY_7                 0x37
-#define KEY_8                 0x38
-#define KEY_9                 0x39
-#define KEY_0_PAD             VK_NUMPAD0  
-#define KEY_1_PAD             VK_NUMPAD1
-#define KEY_2_PAD             VK_NUMPAD2
-#define KEY_3_PAD             VK_NUMPAD3
-#define KEY_4_PAD             VK_NUMPAD4
-#define KEY_5_PAD             VK_NUMPAD5
-#define KEY_6_PAD             VK_NUMPAD6
-#define KEY_7_PAD             VK_NUMPAD7
-#define KEY_8_PAD             VK_NUMPAD8
-#define KEY_9_PAD             VK_NUMPAD9
-#define KEY_F1                VK_F1  
-#define KEY_F2                VK_F2  
-#define KEY_F3                VK_F3  
-#define KEY_F4                VK_F4  
-#define KEY_F5                VK_F5  
-#define KEY_F6                VK_F6  
-#define KEY_F7                VK_F7  
-#define KEY_F8                VK_F8  
-#define KEY_F9                VK_F9  
-#define KEY_F10               VK_F10  
-#define KEY_F11               VK_F11  
-#define KEY_F12               VK_F12  
-#define KEY_ESC               VK_ESCAPE  
-#define KEY_TILDE             0xc0
-#define KEY_MINUS             0xbd
-#define KEY_EQUALS            0xbb
-#define KEY_BACKSPACE         VK_BACK
-#define KEY_TAB               VK_TAB
-#define KEY_OPENBRACE         0xdb
-#define KEY_CLOSEBRACE        0xdd
-#define KEY_ENTER             VK_RETURN
-#define KEY_COLON             0xba
-#define KEY_QUOTE             0xde
-#define KEY_BACKSLASH         0xdc
-#define KEY_BACKSLASH2        0xdc
-#define KEY_COMMA             0xbc
-#define KEY_STOP              0xbe
-#define KEY_SLASH             0xbf
-#define KEY_SPACE             VK_SPACE
-#define KEY_INSERT            VK_INSERT
-#define KEY_DEL               VK_DELETE
-#define KEY_HOME              VK_HOME
-#define KEY_END               VK_END
-#define KEY_PGUP              VK_PRIOR
-#define KEY_PGDN              VK_NEXT
-#define KEY_LEFT              VK_LEFT
-#define KEY_RIGHT             VK_RIGHT
-#define KEY_UP                VK_UP
-#define KEY_DOWN              VK_DOWN
-#define KEY_SLASH_PAD         VK_DIVIDE
-#define KEY_ASTERISK          VK_MULTIPLY
-#define KEY_MINUS_PAD         VK_SUBTRACT
-#define KEY_PLUS_PAD          VK_ADD
-#define KEY_DEL_PAD           VK_DECIMAL
-#define KEY_ENTER_PAD         VK_SEPARATOR
-#define KEY_PRTSCR            VK_SNAPSHOT
-#define KEY_PAUSE             VK_PAUSE
-#define KEY_ABNT_C1           0xc1
-#define KEY_YEN               125
-#define KEY_KANA              VK_KANA
-#define KEY_CONVERT           121
-#define KEY_NOCONVERT         123
-#define KEY_AT                145
-#define KEY_CIRCUMFLEX        144
-#define KEY_COLON2            146
-#define KEY_KANJI             148
-#define KEY_EQUALS_PAD        0x00
-#define KEY_BACKQUOTE         192
-#define KEY_SEMICOLON         0xba
-#define KEY_LSHIFT            VK_LSHIFT
-#define KEY_RSHIFT            VK_RSHIFT
-#define KEY_LCONTROL          VK_LCONTROL
-#define KEY_RCONTROL          VK_RCONTROL
-#define KEY_ALT               VK_LMENU
-#define KEY_LMENU             VK_LMENU
-#define KEY_RMENU             VK_RMENU
-#define KEY_ALTGR             VK_RMENU
-#define KEY_LWIN              VK_LWIN
-#define KEY_RWIN              VK_RWIN
-#define KEY_MENU              VK_MENU
-#define KEY_SCRLOCK           VK_SCROLL
-#define KEY_NUMLOCK           VK_NUMLOCK
-#define KEY_CAPSLOCK          VK_CAPITAL
+// ---------------------------------------------------------------------------
+// AaeKey - AAE's canonical physical key codes.
+//
+// Values are historical Windows VK codes and MUST NOT change: they are what
+// gets written to default.cfg / per-game .cfg via writeword() in inptport.cpp,
+// and what menu.cpp's key_names[] table is indexed by.
+//
+// This is an UNSCOPED enum on purpose - the values implicitly convert to int,
+// so key[AAEKEY_A], IsKeyDown(AAEKEY_ESC) and the cfg write path all work with
+// no casts. It is an enum rather than macros because macros leak into every
+// downstream header; <linux/input-event-codes.h> defines KEY_A as 30, and the
+// two cannot coexist in one translation unit.
+//
+// Backends translate their native codes to these (Win32: 1:1 with VK codes;
+// Linux: an evdev -> AaeKey table in the evdev backend).
+//
+// Several enumerators deliberately share a value (AAEKEY_TILDE/BACKQUOTE,
+// AAEKEY_COLON/SEMICOLON, AAEKEY_BACKSLASH/BACKSLASH2, AAEKEY_ALT/LMENU,
+// AAEKEY_AT/SCRLOCK, AAEKEY_CIRCUMFLEX/NUMLOCK). These duplicates are
+// pre-existing and intentional - do not "fix" them.
+// ---------------------------------------------------------------------------
+enum AaeKey {
+    AAEKEY_A = 0x41, AAEKEY_B = 0x42, AAEKEY_C = 0x43, AAEKEY_D = 0x44,
+    AAEKEY_E = 0x45, AAEKEY_F = 0x46, AAEKEY_G = 0x47, AAEKEY_H = 0x48,
+    AAEKEY_I = 0x49, AAEKEY_J = 0x4a, AAEKEY_K = 0x4b, AAEKEY_L = 0x4c,
+    AAEKEY_M = 0x4d, AAEKEY_N = 0x4e, AAEKEY_O = 0x4f, AAEKEY_P = 0x50,
+    AAEKEY_Q = 0x51, AAEKEY_R = 0x52, AAEKEY_S = 0x53, AAEKEY_T = 0x54,
+    AAEKEY_U = 0x55, AAEKEY_V = 0x56, AAEKEY_W = 0x57, AAEKEY_X = 0x58,
+    AAEKEY_Y = 0x59, AAEKEY_Z = 0x5a,
 
-#define KEY_MAX               0xEF  //127 Not!
+    AAEKEY_0 = 0x30, AAEKEY_1 = 0x31, AAEKEY_2 = 0x32, AAEKEY_3 = 0x33,
+    AAEKEY_4 = 0x34, AAEKEY_5 = 0x35, AAEKEY_6 = 0x36, AAEKEY_7 = 0x37,
+    AAEKEY_8 = 0x38, AAEKEY_9 = 0x39,
+
+    AAEKEY_0_PAD = 0x60, AAEKEY_1_PAD = 0x61, AAEKEY_2_PAD = 0x62,
+    AAEKEY_3_PAD = 0x63, AAEKEY_4_PAD = 0x64, AAEKEY_5_PAD = 0x65,
+    AAEKEY_6_PAD = 0x66, AAEKEY_7_PAD = 0x67, AAEKEY_8_PAD = 0x68,
+    AAEKEY_9_PAD = 0x69,
+
+    AAEKEY_F1 = 0x70, AAEKEY_F2 = 0x71, AAEKEY_F3  = 0x72, AAEKEY_F4  = 0x73,
+    AAEKEY_F5 = 0x74, AAEKEY_F6 = 0x75, AAEKEY_F7  = 0x76, AAEKEY_F8  = 0x77,
+    AAEKEY_F9 = 0x78, AAEKEY_F10 = 0x79, AAEKEY_F11 = 0x7a, AAEKEY_F12 = 0x7b,
+
+    AAEKEY_ESC        = 0x1b,
+    AAEKEY_TILDE      = 0xc0,
+    AAEKEY_MINUS      = 0xbd,
+    AAEKEY_EQUALS     = 0xbb,
+    AAEKEY_BACKSPACE  = 0x08,
+    AAEKEY_TAB        = 0x09,
+    AAEKEY_OPENBRACE  = 0xdb,
+    AAEKEY_CLOSEBRACE = 0xdd,
+    AAEKEY_ENTER      = 0x0d,
+    AAEKEY_COLON      = 0xba,
+    AAEKEY_QUOTE      = 0xde,
+    AAEKEY_BACKSLASH  = 0xdc,
+    AAEKEY_BACKSLASH2 = 0xdc,
+    AAEKEY_COMMA      = 0xbc,
+    AAEKEY_STOP       = 0xbe,
+    AAEKEY_SLASH      = 0xbf,
+    AAEKEY_SPACE      = 0x20,
+
+    AAEKEY_INSERT = 0x2d, AAEKEY_DEL  = 0x2e, AAEKEY_HOME = 0x24,
+    AAEKEY_END    = 0x23, AAEKEY_PGUP = 0x21, AAEKEY_PGDN = 0x22,
+    AAEKEY_LEFT   = 0x25, AAEKEY_RIGHT = 0x27,
+    AAEKEY_UP     = 0x26, AAEKEY_DOWN  = 0x28,
+
+    AAEKEY_SLASH_PAD  = 0x6f,
+    AAEKEY_ASTERISK   = 0x6a,
+    AAEKEY_MINUS_PAD  = 0x6d,
+    AAEKEY_PLUS_PAD   = 0x6b,
+    AAEKEY_DEL_PAD    = 0x6e,
+    AAEKEY_ENTER_PAD  = 0x6c,
+    AAEKEY_PRTSCR     = 0x2c,
+    AAEKEY_PAUSE      = 0x13,
+
+    AAEKEY_ABNT_C1    = 0xc1,
+    AAEKEY_YEN        = 0x7d,
+    AAEKEY_KANA       = 0x15,
+    AAEKEY_CONVERT    = 0x79,
+    AAEKEY_NOCONVERT  = 0x7b,
+    AAEKEY_AT         = 0x91,
+    AAEKEY_CIRCUMFLEX = 0x90,
+    AAEKEY_COLON2     = 0x92,
+    AAEKEY_KANJI      = 0x94,
+    AAEKEY_EQUALS_PAD = 0x00,
+    AAEKEY_BACKQUOTE  = 0xc0,
+    AAEKEY_SEMICOLON  = 0xba,
+
+    AAEKEY_LSHIFT   = 0xa0, AAEKEY_RSHIFT   = 0xa1,
+    AAEKEY_LCONTROL = 0xa2, AAEKEY_RCONTROL = 0xa3,
+    AAEKEY_ALT      = 0xa4, AAEKEY_LMENU    = 0xa4,
+    AAEKEY_RMENU    = 0xa5, AAEKEY_ALTGR    = 0xa5,
+    AAEKEY_LWIN     = 0x5b, AAEKEY_RWIN     = 0x5c,
+    AAEKEY_MENU     = 0x12,
+    AAEKEY_SCRLOCK  = 0x91,
+    AAEKEY_NUMLOCK  = 0x90,
+    AAEKEY_CAPSLOCK = 0x14,
+
+    AAEKEY_MAX = 0xef
+};
 
 // Public modifier masks 
 enum RI_Modifiers {

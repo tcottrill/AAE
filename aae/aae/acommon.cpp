@@ -23,6 +23,12 @@
 #include "colordefs.h"
 #include "rawinput.h"
 
+// Boundary guard: nothing acommon.cpp includes may still define the legacy
+// KEY_* macros, which collide with <linux/input-event-codes.h>.
+#ifdef KEY_A
+#error "legacy KEY_* macros still present - port this file to AaeKey"
+#endif
+
 // Regression guard: this file must never see OpenGL headers. If this fires,
 // a render header re-leaked glew.h — fix the header, not this guard.
 #ifdef __glew_h__
@@ -125,10 +131,10 @@ void video_loop(void)
 		enum Side { NONE, LEFT, RIGHT, BOTTOM, TOP } moved = NONE;
 
 		// Apply movement
-		if (key[KEY_RIGHT]) { game_rect_right += (shift ? -STEP : +STEP); moved = RIGHT; }
-		else if (key[KEY_LEFT]) { game_rect_left += (shift ? +STEP : -STEP); moved = LEFT; }
-		else if (key[KEY_DOWN]) { game_rect_bottom += (shift ? -STEP : +STEP); moved = BOTTOM; }
-		else if (key[KEY_UP]) { game_rect_top += (shift ? +STEP : -STEP); moved = TOP; }
+		if (key[AAEKEY_RIGHT]) { game_rect_right += (shift ? -STEP : +STEP); moved = RIGHT; }
+		else if (key[AAEKEY_LEFT]) { game_rect_left += (shift ? +STEP : -STEP); moved = LEFT; }
+		else if (key[AAEKEY_DOWN]) { game_rect_bottom += (shift ? -STEP : +STEP); moved = BOTTOM; }
+		else if (key[AAEKEY_UP]) { game_rect_top += (shift ? +STEP : -STEP); moved = TOP; }
 
 		// Clamp each side to limits
 		auto clamp = [](int& v, int lo, int hi) { if (v < lo) v = lo; else if (v > hi) v = hi; };
