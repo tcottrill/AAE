@@ -1,6 +1,15 @@
 #ifndef __VECTORV__
 #define __VECTORV__
 
+// Emu-side vector display-list contract: drivers build the list via
+// vector_add_point/vector_start/vector_clear_list etc. The renderer-side
+// implementation (mame_vector.cpp) stays in aae_video/ and resolves these
+// at link time, the same way osd_* and LOG_INFO do. This header used to
+// live in aae_video/ despite declaring only emulation-side calls; moved
+// here (vidhrdwr, alongside aae_avg.h/emu_vector_draw.h/
+// old_mame_vecsim_dvg.h) so the aae_core static library's include path -
+// which deliberately excludes aae_video/gui/system/window - can still
+// reach it.
 #include "aae_mame_driver.h"
 #include "colordefs.h"
 
