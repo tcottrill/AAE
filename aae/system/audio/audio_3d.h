@@ -21,13 +21,10 @@
 
 #include <cstdint>
 
-#ifndef WIN7BUILD
-#include <xaudio2.h>
-#include <x3daudio.h>
-#else
-#include <xaudio2redist.h>
-#include <x3daudio.h>
-#endif
+// Opaque per-channel voice handle. Defined in xaudio2_backend.h / the backend
+// .cpp; this header only ever holds a pointer to it, same convention as
+// mixer.h's VoiceHandle* channels.
+struct VoiceHandle;
 
 // Initialize X3DAudio for the current master speaker layout. channel_mask is
 // SPEAKER_xxx bitmask from the mastering voice; dst_channels is its channel
@@ -46,7 +43,7 @@ void audio_3d_set_listener_2d(float x, float y);
 // Compute and apply X3DAudio output matrix for a source voice.
 // src_channels is the voice's input channel count (1 mono, 2 stereo); only
 // these two are supported. Returns true on success.
-bool audio_3d_apply_2d(IXAudio2SourceVoice* voice,
+bool audio_3d_apply_2d(VoiceHandle* voice,
 	float src_x, float src_y,
 	uint32_t src_channels);
 

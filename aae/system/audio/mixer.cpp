@@ -206,6 +206,9 @@ static CHANNEL channel[MAX_CHANNELS];
 // operations through g_backend.
 static std::unique_ptr<IAudioBackend> g_backend;
 
+// See declaration in xaudio2_backend.h.
+IAudioBackend* audio_backend_instance() { return g_backend.get(); }
+
 // Positional audio listener (camera) in 2D world coords. Mirrored into
 // audio_3d module on every change so the per-frame update can read it without
 // querying back.
@@ -966,9 +969,7 @@ static void mixer_reap_voice_channels()
 
 		// Still playing - refresh positional matrix if applicable.
 		if (ch.is_positional && g_3d_inited) {
-			// TEMPORARY (Task 3 removes this cast): audio_3d still takes a raw
-			// XAudio2 voice pointer.
-			audio_3d_apply_2d(static_cast<XAudio2Backend*>(g_backend.get())->VoiceRawXAudio2(ch.voice),
+			audio_3d_apply_2d(ch.voice,
 				ch.world_x, ch.world_y, ch.playing_sample->fx.channels);
 		}
 	}
@@ -1372,9 +1373,7 @@ void sample_set_world_position(int chanid, float x, float y)
 	// Apply immediately so the first frame is already spatialized; the per-
 	// frame update keeps it current as the listener or source moves later.
 	if (g_3d_inited && ch.playing_sample) {
-		// TEMPORARY (Task 3 removes this cast): audio_3d still takes a raw
-		// XAudio2 voice pointer.
-		audio_3d_apply_2d(static_cast<XAudio2Backend*>(g_backend.get())->VoiceRawXAudio2(ch.voice),
+		audio_3d_apply_2d(ch.voice,
 			x, y, ch.playing_sample->fx.channels);
 	}
 }

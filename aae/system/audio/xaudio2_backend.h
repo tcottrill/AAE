@@ -107,6 +107,12 @@ protected:
 	int m_frames_per_update = 0;
 };
 
+// Returns the active backend, or nullptr if the mixer hasn't initialized one
+// yet. Defined in mixer.cpp (which owns the single IAudioBackend instance).
+// Lets modules like audio_3d.cpp reach the backend's Voice* methods without
+// duplicating a global or growing IAudioBackend's own surface.
+IAudioBackend* audio_backend_instance();
+
 class XAudio2Backend : public IAudioBackend {
 public:
 	XAudio2Backend() = default;
@@ -137,12 +143,6 @@ public:
 	uint32_t VoiceInputChannels(VoiceHandle* v) override;
 	void VoiceSetOutputMatrix(VoiceHandle* v, uint32_t srcChannels,
 	                          uint32_t dstChannels, const float* matrix) override;
-
-	// TEMPORARY (Task 3 removes this): audio_3d still takes a raw XAudio2
-	// voice pointer. Not part of IAudioBackend - it must not pollute the
-	// portable interface. mixer.cpp casts g_backend.get() to XAudio2Backend*
-	// to reach this until audio_3d is ported to VoiceHandle.
-	IXAudio2SourceVoice* VoiceRawXAudio2(VoiceHandle* v);
 
 private:
 	static constexpr int kNumBuffers = 5;

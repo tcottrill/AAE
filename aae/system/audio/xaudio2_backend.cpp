@@ -315,9 +315,3 @@ void XAudio2Backend::VoiceSetOutputMatrix(VoiceHandle* v, uint32_t srcChannels,
 	if (!v || !v->voice) return;
 	v->voice->SetOutputMatrix(nullptr, srcChannels, dstChannels, matrix);
 }
-
-// TEMPORARY (Task 3 removes this): audio_3d still takes a raw XAudio2 voice.
-IXAudio2SourceVoice* XAudio2Backend::VoiceRawXAudio2(VoiceHandle* v)
-{
-	return v ? v->voice : nullptr;
-}

@@ -5,8 +5,21 @@
 // guarded by the mixer's audioMutex from the call sites.
 // =============================================================================
 #include "audio_3d.h"
+#include "xaudio2_backend.h"
 #include "sys_log.h"
 #include <cstdio>
+
+// This .cpp (unlike audio_3d.h) is implementation, not the portable
+// interface, so it may include XAudio2/X3DAudio headers directly for the
+// X3DAudio maths. Per-voice work (SetOutputMatrix) is routed through
+// IAudioBackend so this file doesn't touch IXAudio2SourceVoice itself.
+#ifndef WIN7BUILD
+#include <xaudio2.h>
+#include <x3daudio.h>
+#else
+#include <xaudio2redist.h>
+#include <x3daudio.h>
+#endif
 
 // Force-link X3DAudio. XAudio2's symbols are pulled in by mixer.cpp /
 // xaudio2_backend.cpp (or by xaudio2redist.h's own pragmas), but X3DAudio
@@ -161,7 +174,7 @@ void audio_3d_set_listener_2d(float x, float y)
 	g_listener.Position = { x, 0.0f, y };
 }
 
-bool audio_3d_apply_2d(IXAudio2SourceVoice* voice,
+bool audio_3d_apply_2d(VoiceHandle* voice,
 	float src_x, float src_y,
 	uint32_t src_channels)
 {
@@ -213,10 +226,11 @@ bool audio_3d_apply_2d(IXAudio2SourceVoice* voice,
 		std::fflush(stdout);
 	}
 
-	HRESULT hr = voice->SetOutputMatrix(nullptr, src_channels, g_dst_channels, g_matrix);
-	if (FAILED(hr)) {
-		LOG_ERROR("audio_3d_apply_2d: SetOutputMatrix failed: 0x%08X", (unsigned)hr);
+	IAudioBackend* backend = audio_backend_instance();
+	if (!backend) {
+		LOG_ERROR("audio_3d_apply_2d: no active audio backend");
 		return false;
 	}
+	backend->VoiceSetOutputMatrix(voice, src_channels, g_dst_channels, g_matrix);
 	return true;
 }
