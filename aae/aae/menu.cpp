@@ -13,7 +13,7 @@
 #include "mame_layout.h"      // Layout_ComputeGameAspect (GAME ASPECT menu item)
 #include "windows_util.h"     // WindowUtil_UpdateAspect
 #include "sys_log.h"
-#include "rawinput.h"         // RawInput_GetMouseCount/Name (multi-mouse menu)
+#include "sys_input.h"        // RawInput_GetMouseCount/Name (multi-mouse menu)
 #include "joystick.h"         // joystick_device_count/get_display_name (INPUT DEVICES)
 
 #include <cmath>

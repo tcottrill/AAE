@@ -20,7 +20,7 @@
 //
 // Notes:
 // - Uses CreateConfiguredWindow() and WindowSetup for centralized window creation
-// - Requires utf8conv.h, sys_log.h, gl_basics.h, rawinput.h
+// - Requires utf8conv.h, sys_log.h, gl_basics.h, rawinput_win32.h
 // - Supports ALT+ENTER toggle to fullscreen
 // - Supports resize and aspect enforcement via WM_SIZING/WM_SIZE
 // - Saves valid client and window rects for FBO scaling and restoration
@@ -36,7 +36,7 @@
 #include "path_helper.h"
 #include "sys_log.h"
 #include "utf8conv.h"
-#include "rawinput.h"
+#include "rawinput_win32.h"
 #include "sys_gl.h"
 #include "framework.h"
 #include "aae_emulator.h"

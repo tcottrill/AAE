@@ -14,7 +14,7 @@
 #include "aae_mame_driver.h"
 #include "yiear.h"
 #include "old_mame_raster.h"
-#include "rawinput.h"
+#include "sys_input.h"
 #include "driver_registry.h"
 #include "namco.h"
 #include "timer.h"

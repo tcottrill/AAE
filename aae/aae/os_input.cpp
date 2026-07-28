@@ -15,7 +15,7 @@
 #include "osdepend.h"
 #include "inptport.h"     // input_type_key(), IPT_UI_* enum values
 #include "joystick.h"
-#include "rawinput.h"
+#include "sys_input.h"
 #include "os_basic.h"
 #include "sys_log.h"
 #include "config.h"       // config.mouse_player[] for osd_trak_read

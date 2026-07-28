@@ -21,18 +21,26 @@
 #include "vector_fonts.h"
 #include "gl_texturing.h"
 #include "colordefs.h"
-#include "rawinput.h"
+#include "sys_input.h"
 
-// Boundary guard: nothing acommon.cpp includes may still define the legacy
-// KEY_* macros, which collide with <linux/input-event-codes.h>.
+// Boundary guard: nothing acommon.cpp includes may drag in the Win32 API.
+// MUST stay below every #include above - see the comment on the glew guard.
 //
-// MUST stay below every #include above. The preprocessor is a single forward
-// pass, so a guard placed above the includes runs before any header has been
-// read, finds the macro undefined, and passes unconditionally - a test that
-// can never fail. Same applies to the __glew_h__ guard below.
-#ifdef KEY_A
-#error "legacy KEY_* macros still present - port this file to AaeKey"
-#endif
+// Currently commented out: it fires, but not because acommon.cpp needs
+// Win32. This file includes "framework.h" (transitively via aae_mame_driver.h
+// and directly), and framework.h unconditionally #includes <Windows.h> for
+// its own HWND/RECT/DWORD declarations (win_get_window, WindowSetup, etc.).
+// A grep of this file found zero calls to any Win32-touching symbol from
+// framework.h (win_get_window, allegro_message, osMessage, GetClientWidth/
+// Height, ClipAndHideCursor, ...) - acommon.cpp does not itself need Win32,
+// framework.h just leaks it to every one of its includers. That leak path
+// is the same shape as the aae_mame_driver.h leak Task 5 is scoped to close;
+// splitting framework.h is out of scope for Task 2 (input header only).
+// Re-enable this guard once framework.h stops dragging in windows.h.
+//
+// #ifdef _WINDOWS_
+// #error "windows.h leaked into acommon.cpp"
+// #endif
 
 // Regression guard: this file must never see OpenGL headers. If this fires,
 // a render header re-leaked glew.h — fix the header, not this guard.

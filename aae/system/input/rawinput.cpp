@@ -1,7 +1,7 @@
 //Note: Updated bad mouse handling code. 8/5/25
 // Updated 2/28/26 to support Lost Focus and Pausing Input.
 
-#include "rawinput.h"
+#include "rawinput_win32.h"
 #include "sys_log.h"
 #include <queue>
 #include <thread>
@@ -981,19 +981,19 @@ int RawInput_IsKeyDownEx(int index, int vk)
 // Description:
 //   Returns non-zero if the given key has been pressed (held count).
 // -----------------------------------------------------------------------------
-int isKeyHeld(INT vkCode) { return lastkey[vkCode]; }
+int isKeyHeld(int vkCode) { return lastkey[vkCode]; }
 // -----------------------------------------------------------------------------
 // IsKeyDown
 // Description:
 //   Returns true if the specified key is currently pressed.
 // -----------------------------------------------------------------------------
-bool IsKeyDown(INT vkCode) { return key[vkCode & 0xff] ? true : false; }
+bool IsKeyDown(int vkCode) { return key[vkCode & 0xff] ? true : false; }
 // -----------------------------------------------------------------------------
 // IsKeyUp
 // Description:
 //   Returns true if the specified key is currently released.
 // -----------------------------------------------------------------------------
-bool IsKeyUp(INT vkCode) { return key[vkCode & 0xff] ? false : true; }
+bool IsKeyUp(int vkCode) { return key[vkCode & 0xff] ? false : true; }
 
 //summed mouse state checks/sets;
 //use as convenience, ie. keeping track of movements without needing to maintain separate data set
@@ -1004,37 +1004,37 @@ bool IsKeyUp(INT vkCode) { return key[vkCode & 0xff] ? false : true; }
 // Description:
 //   Returns the absolute X position of the mouse.
 // -----------------------------------------------------------------------------
-LONG GetMouseX() { return m_mouseStateRaw.x; }
+int32_t GetMouseX() { return m_mouseStateRaw.x; }
 // -----------------------------------------------------------------------------
 // GetMouseY
 // Description:
 //   Returns the absolute Y position of the mouse.
 // -----------------------------------------------------------------------------
-LONG GetMouseY() { return m_mouseStateRaw.y; }
+int32_t GetMouseY() { return m_mouseStateRaw.y; }
 // -----------------------------------------------------------------------------
 // GetMouseWheel
 // Description:
 //   Returns the absolute scroll wheel value.
 // -----------------------------------------------------------------------------
-LONG GetMouseWheel() { return m_mouseStateRaw.wheel; }
+int32_t GetMouseWheel() { return m_mouseStateRaw.wheel; }
 // -----------------------------------------------------------------------------
 // SetMouseX
 // Description:
 //   Sets the internal X position of the mouse.
 // -----------------------------------------------------------------------------
-void SetMouseX(LONG x) { m_mouseStateRaw.x = x; }
+void SetMouseX(int32_t x) { m_mouseStateRaw.x = x; }
 // -----------------------------------------------------------------------------
 // SetMouseY
 // Description:
 //   Sets the internal Y position of the mouse.
 // -----------------------------------------------------------------------------
-void SetMouseY(LONG y) { m_mouseStateRaw.y = y; }
+void SetMouseY(int32_t y) { m_mouseStateRaw.y = y; }
 // -----------------------------------------------------------------------------
 // SetMouseWheel
 // Description:
 //   Sets the internal scroll wheel value.
 // -----------------------------------------------------------------------------
-void SetMouseWheel(LONG wheel) { m_mouseStateRaw.wheel = wheel; }
+void SetMouseWheel(int32_t wheel) { m_mouseStateRaw.wheel = wheel; }
 
 //relative mouse state changes
 // -----------------------------------------------------------------------------
@@ -1042,19 +1042,19 @@ void SetMouseWheel(LONG wheel) { m_mouseStateRaw.wheel = wheel; }
 // Description:
 //   Returns the change in mouse X position since last reset.
 // -----------------------------------------------------------------------------
-LONG GetMouseXChange() { return m_mouseStateRaw.dx; }
+int32_t GetMouseXChange() { return m_mouseStateRaw.dx; }
 // -----------------------------------------------------------------------------
 // GetMouseYChange
 // Description:
 //   Returns the change in mouse Y position since last reset.
 // -----------------------------------------------------------------------------
-LONG GetMouseYChange() { return m_mouseStateRaw.dy; }
+int32_t GetMouseYChange() { return m_mouseStateRaw.dy; }
 // -----------------------------------------------------------------------------
 // GetMouseWheelChange
 // Description:
 //   Returns the change in scroll wheel value since last reset.
 // -----------------------------------------------------------------------------
-LONG GetMouseWheelChange() { return m_mouseStateRaw.dwheel; }
+int32_t GetMouseWheelChange() { return m_mouseStateRaw.dwheel; }
 
 //mouse button state checks
 // -----------------------------------------------------------------------------

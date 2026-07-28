@@ -1,5 +1,5 @@
 //==============================================================================
-// rawinput.h -- Usage Guide & API Reference
+// sys_input.h -- Usage Guide & API Reference
 //==============================================================================
 //
 // OVERVIEW
@@ -23,7 +23,7 @@
 //
 // QUICK START
 // -----------
-//   #include "rawinput.h"
+//   #include "sys_input.h"
 //
 //   // During window creation (after CreateWindow / HWND is valid):
 //   if (FAILED(RawInput_Initialize(hwnd))) {
@@ -36,15 +36,12 @@
 //       return RawInput_ProcessInput(hWnd, wParam, lParam);
 //
 //   // --- Polled access (in your frame loop) ---
-//   // TODO(Task 2): this usage guide still names the old KEY_* macros, which
-//   // no longer exist - they are AAEKEY_* now. Update the examples when this
-//   // block moves to sys_input.h, rather than copying them across as-is.
-//   if (key[KEY_ESC])          { quit(); }
-//   if (key[KEY_LEFT])         { move_left(); }
+//   if (key[AAEKEY_ESC])          { quit(); }
+//   if (key[AAEKEY_LEFT])         { move_left(); }
 //   if (mouse_b & 0x01)       { fire(); }     // left button
 //
 //   // --- Query functions ---
-//   if (IsKeyDown(KEY_SPACE))  { jump(); }
+//   if (IsKeyDown(AAEKEY_SPACE))  { jump(); }
 //
 //   // --- Relative mouse (mickeys) ---
 //   int mx, my;
@@ -84,6 +81,11 @@
 //       Safe to call multiple times -- if already initialized, automatically
 //       shuts down the previous instance before reinitializing.
 //
+//       NOTE: RawInput_Initialize, RawInput_ProcessInput, and the HWND/HRESULT/
+//       WPARAM/LPARAM types they use are declared in rawinput_win32.h, the
+//       Win32-only companion to this header (see rawinput_win32.h). This
+//       header only declares what is meaningful on every backend.
+//
 //   void RawInput_Shutdown()
 //       Signals the worker thread to exit, joins it. Safe to call if not
 //       initialized (no-ops). Does NOT unregister the Raw Input devices --
@@ -112,33 +114,33 @@
 //
 //   unsigned char key[256]    -- Allegro-compatible keystate buffer
 //       key[vkCode] = 1 when pressed, 0 when released.
-//       Read directly in your frame loop: if (key[KEY_A]) { ... }
-//       Indexed by virtual key code. Use the KEY_* defines for readability.
+//       Read directly in your frame loop: if (key[AAEKEY_A]) { ... }
+//       Indexed by virtual key code. Use the AAEKEY_* enumerators for readability.
 //
 //   unsigned int lastkey[256] -- Hold counter (internal)
 //       Increments each Raw Input message while a key is held. Useful for
 //       auto-repeat / hold detection. Read via isKeyHeld(vkCode).
 //       Returns 0 when released, 1+ when held (count of press messages).
 //
-// Key defines follow Allegro-4 naming mapped to Windows VK codes:
-//   KEY_A..KEY_Z         (0x41..0x5A)
-//   KEY_0..KEY_9         (0x30..0x39)
-//   KEY_0_PAD..KEY_9_PAD (VK_NUMPAD0..VK_NUMPAD9)
-//   KEY_F1..KEY_F12      (VK_F1..VK_F12)
-//   KEY_ESC, KEY_ENTER, KEY_SPACE, KEY_TAB, KEY_BACKSPACE
-//   KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN
-//   KEY_INSERT, KEY_DEL, KEY_HOME, KEY_END, KEY_PGUP, KEY_PGDN
-//   KEY_LSHIFT, KEY_RSHIFT, KEY_LCONTROL, KEY_RCONTROL
-//   KEY_ALT (VK_LMENU), KEY_ALTGR (VK_RMENU)
-//   KEY_LWIN, KEY_RWIN, KEY_CAPSLOCK, KEY_NUMLOCK, KEY_SCRLOCK
-//   KEY_TILDE, KEY_MINUS, KEY_EQUALS, KEY_COMMA, KEY_STOP, KEY_SLASH
-//   KEY_OPENBRACE, KEY_CLOSEBRACE, KEY_BACKSLASH, KEY_COLON, KEY_QUOTE
-//   KEY_PRTSCR, KEY_PAUSE
-//   KEY_MAX = 0xEF
+// Key enumerators follow Allegro-4 naming mapped to Windows VK codes:
+//   AAEKEY_A..AAEKEY_Z             (0x41..0x5A)
+//   AAEKEY_0..AAEKEY_9             (0x30..0x39)
+//   AAEKEY_0_PAD..AAEKEY_9_PAD     (VK_NUMPAD0..VK_NUMPAD9)
+//   AAEKEY_F1..AAEKEY_F12          (VK_F1..VK_F12)
+//   AAEKEY_ESC, AAEKEY_ENTER, AAEKEY_SPACE, AAEKEY_TAB, AAEKEY_BACKSPACE
+//   AAEKEY_LEFT, AAEKEY_RIGHT, AAEKEY_UP, AAEKEY_DOWN
+//   AAEKEY_INSERT, AAEKEY_DEL, AAEKEY_HOME, AAEKEY_END, AAEKEY_PGUP, AAEKEY_PGDN
+//   AAEKEY_LSHIFT, AAEKEY_RSHIFT, AAEKEY_LCONTROL, AAEKEY_RCONTROL
+//   AAEKEY_ALT (VK_LMENU), AAEKEY_ALTGR (VK_RMENU)
+//   AAEKEY_LWIN, AAEKEY_RWIN, AAEKEY_CAPSLOCK, AAEKEY_NUMLOCK, AAEKEY_SCRLOCK
+//   AAEKEY_TILDE, AAEKEY_MINUS, AAEKEY_EQUALS, AAEKEY_COMMA, AAEKEY_STOP, AAEKEY_SLASH
+//   AAEKEY_OPENBRACE, AAEKEY_CLOSEBRACE, AAEKEY_BACKSLASH, AAEKEY_COLON, AAEKEY_QUOTE
+//   AAEKEY_PRTSCR, AAEKEY_PAUSE
+//   AAEKEY_MAX = 0xEF
 //
 // Left/right modifier disambiguation: VK_SHIFT is resolved to VK_LSHIFT
 // or VK_RSHIFT via MapVirtualKey. VK_CONTROL and VK_MENU are resolved
-// using the E0 escape flag. This means key[KEY_LSHIFT] and key[KEY_RSHIFT]
+// using the E0 escape flag. This means key[AAEKEY_LSHIFT] and key[AAEKEY_RSHIFT]
 // work independently.
 //
 // Numpad vs. navigation: when NumLock is off, Insert/Home/PgUp/etc. are
@@ -148,15 +150,15 @@
 //
 // KEYBOARD QUERY FUNCTIONS
 // ------------------------
-//   int  isKeyHeld(INT vkCode)
+//   int  isKeyHeld(int vkCode)
 //       Returns the hold counter from lastkey[]. 0 = not held, 1+ = held.
 //       Useful for detecting key repeat (value increases each raw message
 //       while the key remains down).
 //
-//   bool IsKeyDown(INT vkCode)
+//   bool IsKeyDown(int vkCode)
 //       Returns true if key[vkCode] is nonzero (key is pressed).
 //
-//   bool IsKeyUp(INT vkCode)
+//   bool IsKeyUp(int vkCode)
 //       Returns true if key[vkCode] is zero (key is released).
 //
 //
@@ -218,17 +220,17 @@
 //
 // MOUSE QUERY FUNCTIONS -- Accumulated Raw Position
 // --------------------------------------------------
-//   LONG GetMouseX()  / void SetMouseX(LONG x)
-//   LONG GetMouseY()  / void SetMouseY(LONG y)
-//   LONG GetMouseWheel()  / void SetMouseWheel(LONG w)
+//   int32_t GetMouseX()  / void SetMouseX(int32_t x)
+//   int32_t GetMouseY()  / void SetMouseY(int32_t y)
+//   int32_t GetMouseWheel()  / void SetMouseWheel(int32_t w)
 //       Get/set the accumulated raw position. This is the running sum of
 //       all raw deltas, not the Windows cursor position. Useful if you want
 //       to maintain your own coordinate space (e.g., for a virtual cursor).
 //       SetMouse* can be used to reset or reposition the virtual origin.
 //
-//   LONG GetMouseXChange()
-//   LONG GetMouseYChange()
-//   LONG GetMouseWheelChange()
+//   int32_t GetMouseXChange()
+//   int32_t GetMouseYChange()
+//   int32_t GetMouseWheelChange()
 //       Returns current dx/dy/dwheel without resetting. Unlike
 //       get_mouse_mickeys(), these do NOT zero the deltas after read
 //       and do NOT apply the mickey scale factor.
@@ -371,7 +373,9 @@
 //
 // DEPENDENCIES
 // ------------
-// Windows headers:  <windows.h> (Raw Input API, GetAsyncKeyState)
+// Windows headers:  <windows.h> (Raw Input API, GetAsyncKeyState) -- only in
+//                   the Win32 backend (rawinput.cpp); NOT required by this
+//                   neutral header.
 // C++ standard:     C++11 (thread, mutex, condition_variable, atomic, queue)
 // Project headers:  "sys_log.h"
 //
@@ -385,10 +389,12 @@
 
 #pragma once
 
-#include <windows.h>
+#include <cstdint>
 
 #define bset(p,m) ((p) |= (m))
 #define bclr(p,m) ((p) &= ~(m))
+#define toUpper(ch) ((ch >= 'a' && ch <='z') ? ch & 0x5f : ch)
+#define RI_MOUSE_HWHEEL 0x0800
 
 // ---------------------------------------------------------------------------
 // AaeKey - AAE's canonical physical key codes.
@@ -502,16 +508,13 @@ enum AaeKey {
     AAEKEY_MAX = 0xef
 };
 
-// Public modifier masks 
+// Public modifier masks
 enum RI_Modifiers {
     RI_MOD_SHIFT = 0x01,
     RI_MOD_CONTROL = 0x02,
     RI_MOD_ALT = 0x04,
     RI_MOD_SUPER = 0x08
 };
-
-#define toUpper(ch) ((ch >= 'a' && ch <='z') ? ch & 0x5f : ch)
-#define RI_MOUSE_HWHEEL 0x0800 
 
 int GetModifierFlags();
 
@@ -601,14 +604,6 @@ int  RawInput_IsKeyDownEx(int index, int vk);
 // -----------------------------------------------------------------------------
 extern int mouse_b;
 extern unsigned char key[256];
-// -----------------------------------------------------------------------------
-// Registers a mouse and keyboard for raw input;
-// Usage: if (FAILED(RawInput_Initialize(hwnd))) {
-// MessageBox(hwnd, "Failed to initialize raw input", "Error", MB_ICONERROR);
-// return -1;
-// }
-// -----------------------------------------------------------------------------
-HRESULT RawInput_Initialize(HWND hWnd);
 
 // -----------------------------------------------------------------------------
 // Pauses/Resumes background input processing and clears stuck keys
@@ -616,21 +611,11 @@ HRESULT RawInput_Initialize(HWND hWnd);
 void RawInput_SetPaused(bool paused);
 
 // -----------------------------------------------------------------------------
-// Processes WM_INPUT messages
-// -----------------------------------------------------------------------------
-LRESULT RawInput_ProcessInput(HWND hWnd, WPARAM wParam, LPARAM lParam);
-
-// -----------------------------------------------------------------------------
-// NEW: Shuts down the raw input worker thread gracefully
-// -----------------------------------------------------------------------------
-void RawInput_Shutdown();
-
-// -----------------------------------------------------------------------------
 // Keyboard State Queries
 // -----------------------------------------------------------------------------
-int isKeyHeld(INT vkCode);
-bool IsKeyDown(INT vkCode);
-bool IsKeyUp(INT vkCode);
+int isKeyHeld(int vkCode);
+bool IsKeyDown(int vkCode);
+bool IsKeyUp(int vkCode);
 
 // -----------------------------------------------------------------------------
 // Summed mouse state checks/sets;
@@ -639,19 +624,19 @@ bool IsKeyUp(INT vkCode);
 // -----------------------------------------------------------------------------
 void get_mouse_win(int *mickeyx, int *mickeyy);
 void get_mouse_mickeys(int *mickeyx, int *mickeyy);
-LONG GetMouseX();
-LONG GetMouseY();
-LONG GetMouseWheel();
-void SetMouseX(LONG x);
-void SetMouseY(LONG y);
-void SetMouseWheel(LONG wheel);
+int32_t GetMouseX();
+int32_t GetMouseY();
+int32_t GetMouseWheel();
+void SetMouseX(int32_t x);
+void SetMouseY(int32_t y);
+void SetMouseWheel(int32_t wheel);
 
 // -----------------------------------------------------------------------------
 // Relative mouse state changes
 // -----------------------------------------------------------------------------
-LONG GetMouseXChange();
-LONG GetMouseYChange();
-LONG GetMouseWheelChange();
+int32_t GetMouseXChange();
+int32_t GetMouseYChange();
+int32_t GetMouseWheelChange();
 
 // -----------------------------------------------------------------------------
 // Mouse button state checks
@@ -667,3 +652,10 @@ bool IsMouseMButtonUp();
 // Utilities
 // -----------------------------------------------------------------------------
 void test_clr();
+
+// NOTE: no _WINDOWS_ boundary guard here. See rawinput_win32.h and the Task 2
+// report for why one was tried and removed: every one of this header's
+// current neutral consumers already has windows.h dragged in earlier in its
+// own include list (via aae_mame_driver.h -> framework.h, a Task 5 concern),
+// so a guard here would misattribute that pre-existing leak to this header
+// and fail universally instead of proving anything about THIS split.

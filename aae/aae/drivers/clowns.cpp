@@ -2,7 +2,7 @@
 #include "driver_registry.h"
 #include "clowns.h"
 #include "old_mame_raster.h"
-#include "rawinput.h"
+#include "sys_input.h"
 
 // This is only a test.
 

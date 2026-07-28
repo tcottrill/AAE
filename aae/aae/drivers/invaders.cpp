@@ -15,7 +15,12 @@
 #include "driver_registry.h"
 #include "invaders.h"
 #include "old_mame_raster.h"
-#include "rawinput.h"
+#include "sys_input.h"
+
+// Boundary guard: nothing driver code includes may drag in the Win32 API.
+#ifdef _WINDOWS_
+#error "windows.h leaked into driver code"
+#endif
 
 uint8_t m_p1 = 0;
 uint8_t m_p2 = 0;
