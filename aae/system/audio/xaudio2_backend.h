@@ -22,6 +22,15 @@
 #include <xaudio2redist.h>
 #endif
 
+// Defined in mixer.h. Only a reference/value round-trips through this header;
+// the full definition is pulled in by xaudio2_backend.cpp where it's used.
+struct WaveFormat;
+
+// Temporary bridge for the voice path in mixer.cpp, which still calls
+// XAudio2's CreateSourceVoice(..., const WAVEFORMATEX*, ...) directly.
+// Task 2 moves voice creation into the backend and removes this.
+WAVEFORMATEX ToWaveFormatEx(const WaveFormat& f);
+
 class IAudioBackend {
 public:
 	virtual ~IAudioBackend() = default;

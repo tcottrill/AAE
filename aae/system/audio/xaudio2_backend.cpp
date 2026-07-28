@@ -10,10 +10,28 @@
 // returns. Init only stands up the streaming infrastructure.
 // =============================================================================
 #include "xaudio2_backend.h"
+#include "mixer.h"
 #include "sys_log.h"
 #include <cstring>
 
 #define HR(hr) if (FAILED(hr)) { LOG_ERROR("Error at line %d: HRESULT = 0x%08X\n", __LINE__, hr); }
+
+// Temporary bridge (see declaration in xaudio2_backend.h): converts the
+// platform-neutral WaveFormat to the WAVEFORMATEX that XAudio2's
+// CreateSourceVoice still requires. Task 2 removes this once voice creation
+// moves into the backend.
+WAVEFORMATEX ToWaveFormatEx(const WaveFormat& f)
+{
+	WAVEFORMATEX w{};
+	w.wFormatTag      = f.format_tag;
+	w.nChannels       = f.channels;
+	w.nSamplesPerSec  = f.rate;
+	w.nAvgBytesPerSec = f.avg_bytes_sec;
+	w.nBlockAlign     = f.block_align;
+	w.wBitsPerSample  = f.bits;
+	w.cbSize          = f.cb_size;
+	return w;
+}
 
 HRESULT XAudio2Backend::Init(int rateHz, int fps)
 {

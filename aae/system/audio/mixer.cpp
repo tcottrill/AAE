@@ -389,12 +389,12 @@ void resample_wav_8(SAMPLE* sample, int new_freq)
 {
 	if (!sample || !sample->data8) return;
 
-	const int ch = std::max<int>(1, sample->fx.nChannels);
+	const int ch = std::max<int>(1, sample->fx.channels);
 	const int in_samples = static_cast<int>(sample->sampleCount);      // total samples (includes both channels)
 	const int in_frames = in_samples / ch;
-	if (in_frames <= 0 || sample->fx.nSamplesPerSec <= 0) return;
+	if (in_frames <= 0 || sample->fx.rate <= 0) return;
 
-	const int out_frames = static_cast<int>((int64_t)in_frames * new_freq / sample->fx.nSamplesPerSec);
+	const int out_frames = static_cast<int>((int64_t)in_frames * new_freq / sample->fx.rate);
 	if (out_frames <= 0) return;
 
 	// Deinterleave
@@ -414,15 +414,15 @@ void resample_wav_8(SAMPLE* sample, int new_freq)
 	// Publish
 	sample->data8 = std::move(out);
 	sample->data16.reset();
-	sample->fx.nSamplesPerSec = new_freq;
+	sample->fx.rate = new_freq;
 	sample->dataSize = out_frames * ch;                   // bytes (8-bit)
 	sample->sampleCount = out_frames * ch;               // total samples
-	sample->fx.nAvgBytesPerSec = sample->fx.nSamplesPerSec * sample->fx.nBlockAlign;
+	sample->fx.avg_bytes_sec = sample->fx.rate * sample->fx.block_align;
 	sample->buffer = sample->data8.get();
 
 	LOG_INFO("Resampled 8-bit Sample #%d (%s): %d ch, %d -> %d Hz, %d -> %d frames",
 		sample->num, sample->name.c_str(), ch,
-		(int)sample->fx.nSamplesPerSec, new_freq, in_frames, out_frames);
+		(int)sample->fx.rate, new_freq, in_frames, out_frames);
 }
 
 // 16-bit resample: cubic by default for better quality (falls back easy)
@@ -430,12 +430,12 @@ void resample_wav_16(SAMPLE* sample, int new_freq, bool use_cubic /*= true*/)
 {
 	if (!sample || !sample->data16) return;
 
-	const int ch = std::max<int>(1, sample->fx.nChannels);
+	const int ch = std::max<int>(1, sample->fx.channels);
 	const int in_samples = static_cast<int>(sample->sampleCount);      // total samples (includes both channels)
 	const int in_frames = in_samples / ch;
-	if (in_frames <= 0 || sample->fx.nSamplesPerSec <= 0) return;
+	if (in_frames <= 0 || sample->fx.rate <= 0) return;
 
-	const int out_frames = static_cast<int>((int64_t)in_frames * new_freq / sample->fx.nSamplesPerSec);
+	const int out_frames = static_cast<int>((int64_t)in_frames * new_freq / sample->fx.rate);
 	if (out_frames <= 0) return;
 
 	// Deinterleave
@@ -458,15 +458,15 @@ void resample_wav_16(SAMPLE* sample, int new_freq, bool use_cubic /*= true*/)
 	// Publish
 	sample->data16 = std::move(out);
 	sample->data8.reset();
-	sample->fx.nSamplesPerSec = new_freq;
+	sample->fx.rate = new_freq;
 	sample->dataSize = out_frames * ch * sizeof(int16_t);
 	sample->sampleCount = out_frames * ch;
-	sample->fx.nAvgBytesPerSec = sample->fx.nSamplesPerSec * sample->fx.nBlockAlign;
+	sample->fx.avg_bytes_sec = sample->fx.rate * sample->fx.block_align;
 	sample->buffer = sample->data16.get();
 
 	LOG_INFO("Resampled 16-bit Sample #%d (%s): %d ch, %s, %d -> %d Hz, %d -> %d frames",
 		sample->num, sample->name.c_str(), ch, (use_cubic ? "cubic" : "linear"),
-		(int)sample->fx.nSamplesPerSec, new_freq, in_frames, out_frames);
+		(int)sample->fx.rate, new_freq, in_frames, out_frames);
 }
 
 // -----------------------  END RESAMPLING CODE --------------------------------------------------
@@ -520,8 +520,8 @@ int load_sample_from_buffer(const uint8_t* data, size_t size, const char* name, 
 		sample->name = name;
 	}
 
-	if (force_resample && sample->fx.nSamplesPerSec != SYS_FREQ) {
-		if (sample->fx.wBitsPerSample == 8) resample_wav_8(sample.get(), SYS_FREQ);
+	if (force_resample && sample->fx.rate != SYS_FREQ) {
+		if (sample->fx.bits == 8) resample_wav_8(sample.get(), SYS_FREQ);
 		else                                resample_wav_16(sample.get(), SYS_FREQ, /*use_cubic=*/true);
 	}
 
@@ -592,15 +592,15 @@ int mixer_upload_sample16(int samplenum,
 	if (!s) return -1;
 
 	// (Re)configure format
-	s->fx.wFormatTag = WAVE_FORMAT_PCM;
-	s->fx.nChannels = stereo ? 2 : 1;
-	s->fx.wBitsPerSample = 16;
-	s->fx.nSamplesPerSec = freq;
-	s->fx.nBlockAlign = static_cast<WORD>(s->fx.nChannels * (s->fx.wBitsPerSample / 8));
-	s->fx.nAvgBytesPerSec = s->fx.nSamplesPerSec * s->fx.nBlockAlign;
-	s->fx.cbSize = 0;
+	s->fx.format_tag = AAE_WAVE_FORMAT_PCM;
+	s->fx.channels = stereo ? 2 : 1;
+	s->fx.bits = 16;
+	s->fx.rate = freq;
+	s->fx.block_align = s->fx.channels * (s->fx.bits / 8);
+	s->fx.avg_bytes_sec = s->fx.rate * s->fx.block_align;
+	s->fx.cb_size = 0;
 
-	const uint32_t channels = s->fx.nChannels;
+	const uint32_t channels = s->fx.channels;
 	s->sampleCount = frames * channels;
 	s->dataSize = s->sampleCount * sizeof(int16_t);
 
@@ -818,8 +818,8 @@ static void mixer_update_internal()
 					continue;
 				}
 
-				const int chCount   = sample->fx.nChannels;       // 1 or 2
-				const int bits      = sample->fx.wBitsPerSample;  // 8 or 16
+				const int chCount   = sample->fx.channels;       // 1 or 2
+				const int bits      = sample->fx.bits;  // 8 or 16
 				const uint32_t totalFrames = sample->sampleCount / static_cast<uint32_t>((std::max)(1, chCount));
 				if (totalFrames == 0) { ++it; continue; }
 
@@ -972,7 +972,7 @@ static void mixer_reap_voice_channels()
 		// Still playing - refresh positional matrix if applicable.
 		if (ch.is_positional && g_3d_inited) {
 			audio_3d_apply_2d(ch.voice, ch.world_x, ch.world_y,
-				ch.playing_sample->fx.nChannels);
+				ch.playing_sample->fx.channels);
 		}
 	}
 }
@@ -1286,7 +1286,7 @@ void sample_set_position(int chanid, int pos_frames)
 		return;
 	}
 
-	const int nch = std::max<int>(1, ch.playing_sample->fx.nChannels);
+	const int nch = std::max<int>(1, ch.playing_sample->fx.channels);
 	const uint32_t total_frames = ch.playing_sample->sampleCount / static_cast<uint32_t>(nch);
 	if (pos_frames < 0) pos_frames = 0;
 	if (static_cast<uint32_t>(pos_frames) >= total_frames) pos_frames = static_cast<int>(total_frames > 0 ? total_frames - 1 : 0);
@@ -1304,7 +1304,7 @@ int sample_get_freq(int chanid)
 	// mixer/stream path (where ch.frequency is never set). Returns the BASE
 	// rate, not the currently-applied playback rate -- see header note.
 	if (!ch.playing_sample) return 0;
-	return static_cast<int>(ch.playing_sample->fx.nSamplesPerSec);
+	return static_cast<int>(ch.playing_sample->fx.rate);
 }
 
 void sample_set_freq(int chanid, int freq)
@@ -1378,7 +1378,7 @@ void sample_set_world_position(int chanid, float x, float y)
 	// Apply immediately so the first frame is already spatialized; the per-
 	// frame update keeps it current as the listener or source moves later.
 	if (g_3d_inited && ch.playing_sample) {
-		audio_3d_apply_2d(ch.voice, x, y, ch.playing_sample->fx.nChannels);
+		audio_3d_apply_2d(ch.voice, x, y, ch.playing_sample->fx.channels);
 	}
 }
 
@@ -1446,7 +1446,11 @@ void sample_start(int chanid, int samplenum, int loop)
 	auto& sample = lsamples[samplenum];
 
 	// The 8.0f is really important here and required for the StarCastle drone.
-	if (FAILED(g_xaudio2->CreateSourceVoice(&ch.voice, &sample->fx, 0, 8.0f)))
+	// TEMPORARY: sample->fx is now a platform-neutral WaveFormat, but
+	// CreateSourceVoice still wants a WAVEFORMATEX. Task 2 moves voice
+	// creation into the backend and removes this conversion.
+	const WAVEFORMATEX wfx = ToWaveFormatEx(sample->fx);
+	if (FAILED(g_xaudio2->CreateSourceVoice(&ch.voice, &wfx, 0, 8.0f)))
 	{
 		LOG_ERROR("Failed to create voice for sample %d", sample->num);
 		// We already tore down the previous voice; leave the channel in a
@@ -1463,7 +1467,7 @@ void sample_start(int chanid, int samplenum, int loop)
 	ch.looping = loop;
 	ch.volume = 255;
 	ch.pan = 128;
-	ch.frequency = sample->fx.nSamplesPerSec;
+	ch.frequency = sample->fx.rate;
 	ch.loaded_sample_num = samplenum;
 	ch.playing_sample = sample;       // pin SAMPLE memory for XAudio2's buffer reads
 	ch.is_positional = false;         // fresh start; caller can opt in via sample_set_world_position
@@ -1606,7 +1610,7 @@ void sample_start_mixer(int chanid, int samplenum, int loop)
 	// step_q32 reflects sample-native-rate -> output-rate. For samples that were
 	// resampled to SYS_FREQ at load (the default), this is exactly 1<<32 and the
 	// mix loop's interp collapses to plain reads.
-	const uint32_t native = ch.playing_sample->fx.nSamplesPerSec;
+	const uint32_t native = ch.playing_sample->fx.rate;
 	ch.step_q32 = (native > 0 && SYS_FREQ > 0)
 		? (static_cast<uint64_t>(native) << 32) / static_cast<uint64_t>(SYS_FREQ)
 		: (1ull << 32);
@@ -1690,17 +1694,17 @@ void stream_start(int chanid, int /*stream*/, int bits, int frame_rate, bool ste
 
 	LOG_INFO("Creating Audio Sample with name %s and sound id %d", sample->name.c_str(), sample->num);
 
-	sample->fx.wFormatTag     = WAVE_FORMAT_PCM;
-	sample->fx.nChannels      = stereo ? 2 : 1;
-	sample->fx.nSamplesPerSec = SYS_FREQ;
-	sample->fx.wBitsPerSample = static_cast<WORD>(bits);
-	sample->fx.nBlockAlign    = static_cast<WORD>(sample->fx.nChannels * (bits / 8));
-	sample->fx.nAvgBytesPerSec = sample->fx.nSamplesPerSec * sample->fx.nBlockAlign;
-	sample->fx.cbSize         = 0;
+	sample->fx.format_tag     = AAE_WAVE_FORMAT_PCM;
+	sample->fx.channels      = stereo ? 2 : 1;
+	sample->fx.rate = SYS_FREQ;
+	sample->fx.bits = bits;
+	sample->fx.block_align    = sample->fx.channels * (bits / 8);
+	sample->fx.avg_bytes_sec = sample->fx.rate * sample->fx.block_align;
+	sample->fx.cb_size         = 0;
 	sample->state             = SoundState::Loaded;
 
 	const int len = SYS_FREQ / frame_rate;
-	const uint32_t channels = sample->fx.nChannels;
+	const uint32_t channels = sample->fx.channels;
 	sample->sampleCount = static_cast<uint32_t>(len) * channels;
 	sample->dataSize    = sample->sampleCount * (bits / 8);
 
@@ -1773,7 +1777,7 @@ void stream_stop(int chanid, int /*stream*/)
 // ratios (96k -> 48k) have an exact step and never exposed this.
 static void stream_reanchor_locked(CHANNEL& ch, const SAMPLE& sample)
 {
-	const uint32_t chans = std::max<uint32_t>(1, sample.fx.nChannels);
+	const uint32_t chans = std::max<uint32_t>(1, sample.fx.channels);
 	const uint64_t total_q32 = static_cast<uint64_t>(sample.sampleCount / chans) << 32;
 	if (total_q32 == 0) return;
 	// Clean overshoot: keep the sub-sample remainder. Truncation shortfall
@@ -1846,8 +1850,8 @@ void stream_set_native_rate(int chanid, int native_rate)
 	}
 
 	auto& sample = ch.playing_sample;
-	const uint32_t channels = std::max<uint32_t>(1, sample->fx.nChannels);
-	const uint32_t old_rate = std::max<uint32_t>(1, sample->fx.nSamplesPerSec);
+	const uint32_t channels = std::max<uint32_t>(1, sample->fx.channels);
+	const uint32_t old_rate = std::max<uint32_t>(1, sample->fx.rate);
 	const uint32_t old_frames = sample->sampleCount / channels;
 
 	// Preserve duration: new_frames / native_rate == old_frames / old_rate.
@@ -1855,7 +1859,7 @@ void stream_set_native_rate(int chanid, int native_rate)
 		(static_cast<uint64_t>(old_frames) * static_cast<uint64_t>(native_rate)) / old_rate);
 	if (new_frames == 0) new_frames = 1;
 
-	const uint32_t bits = sample->fx.wBitsPerSample;
+	const uint32_t bits = sample->fx.bits;
 	const uint32_t new_sample_count = new_frames * channels;
 	const uint32_t new_data_size = new_sample_count * (bits / 8);
 
@@ -1872,8 +1876,8 @@ void stream_set_native_rate(int chanid, int native_rate)
 		sample->data8.reset();
 	}
 
-	sample->fx.nSamplesPerSec  = static_cast<DWORD>(native_rate);
-	sample->fx.nAvgBytesPerSec = sample->fx.nSamplesPerSec * sample->fx.nBlockAlign;
+	sample->fx.rate  = native_rate;
+	sample->fx.avg_bytes_sec = sample->fx.rate * sample->fx.block_align;
 	sample->sampleCount = new_sample_count;
 	sample->dataSize    = new_data_size;
 
@@ -1925,17 +1929,17 @@ int create_sample(int bits, bool is_stereo, int freq, int len, const std::string
 	// num/name are assigned under audioMutex at registration below -- see
 	// load_sample_from_buffer (num == index invariant).
 
-	sample->fx.wFormatTag = WAVE_FORMAT_PCM;
-	sample->fx.nChannels = is_stereo ? 2 : 1;
-	sample->fx.nSamplesPerSec = freq;
-	sample->fx.wBitsPerSample = static_cast<WORD>(bits);
-	sample->fx.nBlockAlign = static_cast<WORD>(sample->fx.nChannels * (bits / 8));
-	sample->fx.nAvgBytesPerSec = sample->fx.nSamplesPerSec * sample->fx.nBlockAlign;
-	sample->fx.cbSize = 0; // PCM baseline
+	sample->fx.format_tag = AAE_WAVE_FORMAT_PCM;
+	sample->fx.channels = is_stereo ? 2 : 1;
+	sample->fx.rate = freq;
+	sample->fx.bits = bits;
+	sample->fx.block_align = sample->fx.channels * (bits / 8);
+	sample->fx.avg_bytes_sec = sample->fx.rate * sample->fx.block_align;
+	sample->fx.cb_size = 0; // PCM baseline
 	sample->state = SoundState::Loaded;
 
 	// len is in FRAMES; store "elements" (interleaved samples)
-	const uint32_t channels = sample->fx.nChannels;
+	const uint32_t channels = sample->fx.channels;
 	sample->sampleCount = static_cast<uint32_t>(len) * channels;
 	sample->dataSize = sample->sampleCount * (bits / 8);
 
@@ -2079,21 +2083,21 @@ bool save_sample_to_buffer(int samplenum, std::vector<uint8_t>& out_buffer)
 	// Write fmt chunk
 	append("fmt ", 4);
 	append(&subchunk1Size, 4);
-	append(&sample->fx.wFormatTag, 2);
-	append(&sample->fx.nChannels, 2);
-	append(&sample->fx.nSamplesPerSec, 4);
-	append(&sample->fx.nAvgBytesPerSec, 4);
-	append(&sample->fx.nBlockAlign, 2);
-	append(&sample->fx.wBitsPerSample, 2);
+	append(&sample->fx.format_tag, 2);
+	append(&sample->fx.channels, 2);
+	append(&sample->fx.rate, 4);
+	append(&sample->fx.avg_bytes_sec, 4);
+	append(&sample->fx.block_align, 2);
+	append(&sample->fx.bits, 2);
 	
 	// Write data chunk
 	append("data", 4);
 	append(&subchunk2Size, 4);
 	
-	if (sample->fx.wBitsPerSample == 8 && sample->data8) {
+	if (sample->fx.bits == 8 && sample->data8) {
 		append(sample->data8.get(), sample->dataSize);
 	}
-	else if (sample->fx.wBitsPerSample == 16 && sample->data16) {
+	else if (sample->fx.bits == 16 && sample->data16) {
 		append(sample->data16.get(), sample->dataSize);
 	}
 	else {
@@ -2227,26 +2231,26 @@ int processWaveDataBuffer(const unsigned char* buffer, size_t bufferSize, SAMPLE
 				return -1;
 			}
 
-			std::memcpy(&audioFile->fx.wFormatTag, buffer + pos, sizeof(uint16_t));
-			std::memcpy(&audioFile->fx.nChannels, buffer + pos + 2, sizeof(uint16_t));
-			std::memcpy(&audioFile->fx.nSamplesPerSec, buffer + pos + 4, sizeof(uint32_t));
-			std::memcpy(&audioFile->fx.nAvgBytesPerSec, buffer + pos + 8, sizeof(uint32_t));
-			std::memcpy(&audioFile->fx.nBlockAlign, buffer + pos + 12, sizeof(uint16_t));
-			std::memcpy(&audioFile->fx.wBitsPerSample, buffer + pos + 14, sizeof(uint16_t));
+			std::memcpy(&audioFile->fx.format_tag, buffer + pos, sizeof(uint16_t));
+			std::memcpy(&audioFile->fx.channels, buffer + pos + 2, sizeof(uint16_t));
+			std::memcpy(&audioFile->fx.rate, buffer + pos + 4, sizeof(uint32_t));
+			std::memcpy(&audioFile->fx.avg_bytes_sec, buffer + pos + 8, sizeof(uint32_t));
+			std::memcpy(&audioFile->fx.block_align, buffer + pos + 12, sizeof(uint16_t));
+			std::memcpy(&audioFile->fx.bits, buffer + pos + 14, sizeof(uint16_t));
 
 			// Reject anything that isn't plain integer PCM. Other tags
 			// (WAVE_FORMAT_IEEE_FLOAT=3, WAVE_FORMAT_EXTENSIBLE=0xFFFE,
 			// WAVE_FORMAT_ALAW=6, WAVE_FORMAT_MULAW=7, ADPCM variants, etc.)
 			// would silently feed non-PCM bytes through the 8/16-bit code paths
 			// and produce noise. Callers should pre-convert these files.
-			if (audioFile->fx.wFormatTag != WAVE_FORMAT_PCM) {
-				LOG_ERROR("WAV: unsupported wFormatTag 0x%04X (only WAVE_FORMAT_PCM/1 is supported)",
-					audioFile->fx.wFormatTag);
+			if (audioFile->fx.format_tag != AAE_WAVE_FORMAT_PCM) {
+				LOG_ERROR("WAV: unsupported wFormatTag 0x%04X (only AAE_WAVE_FORMAT_PCM/1 is supported)",
+					audioFile->fx.format_tag);
 				return -1;
 			}
-			if (audioFile->fx.nChannels < 1 || audioFile->fx.nChannels > 2) {
+			if (audioFile->fx.channels < 1 || audioFile->fx.channels > 2) {
 				LOG_ERROR("WAV: unsupported channel count %u (only mono/stereo supported)",
-					audioFile->fx.nChannels);
+					audioFile->fx.channels);
 				return -1;
 			}
 			haveFmt = true;
@@ -2261,14 +2265,14 @@ int processWaveDataBuffer(const unsigned char* buffer, size_t bufferSize, SAMPLE
 
 			audioFile->dataSize = chunkSize;
 
-			if (audioFile->fx.wBitsPerSample == 8) {
+			if (audioFile->fx.bits == 8) {
 				audioFile->data8 = std::make_unique<uint8_t[]>(chunkSize);
 				std::memcpy(audioFile->data8.get(), buffer + pos, chunkSize);
 				audioFile->buffer = audioFile->data8.get();
 				audioFile->sampleCount = static_cast<uint32_t>(chunkSize); // 8-bit = 1 byte/sample
 				haveData = true;
 			}
-			else if (audioFile->fx.wBitsPerSample == 16) {
+			else if (audioFile->fx.bits == 16) {
 				size_t sampleCount = chunkSize / sizeof(int16_t);
 				audioFile->data16 = std::make_unique<int16_t[]>(sampleCount);
 				std::memcpy(audioFile->data16.get(), buffer + pos, chunkSize);
@@ -2277,7 +2281,7 @@ int processWaveDataBuffer(const unsigned char* buffer, size_t bufferSize, SAMPLE
 				haveData = true;
 			}
 			else {
-				LOG_INFO("Unsupported bit depth: %d", audioFile->fx.wBitsPerSample);
+				LOG_INFO("Unsupported bit depth: %d", audioFile->fx.bits);
 				return -1;
 			}
 
@@ -2303,7 +2307,7 @@ int processWaveDataBuffer(const unsigned char* buffer, size_t bufferSize, SAMPLE
 		}
 	}
 
-	audioFile->fx.cbSize = 0; // PCM baseline
+	audioFile->fx.cb_size = 0; // PCM baseline
 	return haveData ? 0 : -1;
 }
 
@@ -2321,13 +2325,13 @@ int processMp3DataBuffer(const unsigned char* buffer, size_t bufferSize, SAMPLE*
 		return -1;
 	}
 
-	audioFile->fx.wFormatTag = WAVE_FORMAT_PCM;
-	audioFile->fx.nChannels = info.channels;
-	audioFile->fx.nSamplesPerSec = info.hz;
-	audioFile->fx.wBitsPerSample = 16;
-	audioFile->fx.nBlockAlign = info.channels * 2;
-	audioFile->fx.nAvgBytesPerSec = info.hz * audioFile->fx.nBlockAlign;
-	audioFile->fx.cbSize = 0; // important for PCM
+	audioFile->fx.format_tag = AAE_WAVE_FORMAT_PCM;
+	audioFile->fx.channels = info.channels;
+	audioFile->fx.rate = info.hz;
+	audioFile->fx.bits = 16;
+	audioFile->fx.block_align = info.channels * 2;
+	audioFile->fx.avg_bytes_sec = info.hz * audioFile->fx.block_align;
+	audioFile->fx.cb_size = 0; // important for PCM
 
 	size_t sampleCount = info.samples; // total interleaved samples
 	audioFile->dataSize = sampleCount * sizeof(int16_t);
@@ -2355,13 +2359,13 @@ int processOggDataBuffer(const unsigned char* buffer, size_t bufferSize, SAMPLE*
 
 	stb_vorbis_info info = stb_vorbis_get_info(vorbis);
 
-	audioFile->fx.wFormatTag = WAVE_FORMAT_PCM;
-	audioFile->fx.nChannels = info.channels;
-	audioFile->fx.nSamplesPerSec = info.sample_rate;
-	audioFile->fx.wBitsPerSample = 16;
-	audioFile->fx.nBlockAlign = info.channels * 2;
-	audioFile->fx.nAvgBytesPerSec = info.sample_rate * audioFile->fx.nBlockAlign;
-	audioFile->fx.cbSize = 0;
+	audioFile->fx.format_tag = AAE_WAVE_FORMAT_PCM;
+	audioFile->fx.channels = info.channels;
+	audioFile->fx.rate = info.sample_rate;
+	audioFile->fx.bits = 16;
+	audioFile->fx.block_align = info.channels * 2;
+	audioFile->fx.avg_bytes_sec = info.sample_rate * audioFile->fx.block_align;
+	audioFile->fx.cb_size = 0;
 
 	// Total frames (per-channel samples), then convert to interleaved sample count
 	const int totalFrames = stb_vorbis_stream_length_in_samples(vorbis);

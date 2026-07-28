@@ -502,9 +502,25 @@ struct CHANNEL {
 	float world_y = 0.0f;
 };
 
+// Platform-neutral replacement for WAVEFORMATEX. Field semantics are
+// identical; only the spelling changes, so a backend converts by field copy.
+// All seven members are used by mixer.cpp - do not trim this struct.
+struct WaveFormat {
+	uint16_t format_tag    = 1;   // AAE_WAVE_FORMAT_PCM
+	uint16_t channels      = 0;
+	uint32_t rate          = 0;   // samples per second   (was nSamplesPerSec)
+	uint32_t avg_bytes_sec = 0;   //                      (was nAvgBytesPerSec)
+	uint16_t block_align   = 0;   //                      (was nBlockAlign)
+	uint16_t bits          = 0;   // bits per sample      (was wBitsPerSample)
+	uint16_t cb_size       = 0;   // 0 for PCM
+};
+
+// Mirrors WAVE_FORMAT_PCM from <mmreg.h> so mixer.h needs no Windows header.
+#define AAE_WAVE_FORMAT_PCM 1
+
 // Represents a loaded audio sample
 struct SAMPLE {
-	WAVEFORMATEX fx = {};
+	WaveFormat fx = {};
 
 	uint32_t sampleCount = 0;
 	uint32_t dataSize = 0;
