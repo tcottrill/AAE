@@ -1,6 +1,8 @@
 #define NOMINMAX
 #include "emu_vector_draw.h"
+#include "vector_draw_gl.h" // txdata, modulate_color, draw_textured_shots
 #include "colordefs.h"
+#include "config.h"       // config.gain / shots_textured / fire_point_size
 #include "sys_log.h"
 #include "sys_gl.h"
 #include "opengl_renderer.h"
@@ -55,7 +57,7 @@ rgb_t modulate_color(rgb_t col, int intensity, int gain)
     return  (a << 24) | (b << 16) | (g << 8) | r;
 }
 
-rgb_t cache_tex_color(int intensity, rgb_t col)
+static rgb_t cache_tex_color(int intensity, rgb_t col)
 {
     rgb_t result = modulate_color(col, intensity, config.gain);
 
@@ -66,7 +68,7 @@ rgb_t cache_tex_color(int intensity, rgb_t col)
     return (result & 0x00FFFFFF) | (a << 24);
 }
 
-void cache_texpoint(float ex, float ey, float tx, float ty, int intensity, rgb_t col)
+static void cache_texpoint(float ex, float ey, float tx, float ty, int intensity, rgb_t col)
 {
     texlist.emplace_back(ex - xoffset, ey - yoffset, tx, ty, cache_tex_color(intensity, col));
 }

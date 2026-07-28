@@ -58,7 +58,7 @@
 #include "gl_fbo.h"
 #include "gl_texturing.h"
 #include "gl_shader.h"
-#include "emu_vector_draw.h"
+#include "vector_draw_gl.h"   // draw_textured_shots
 #include "vector_draw.h"
 #include "fast_poly.h"
 #include "os_basic.h"

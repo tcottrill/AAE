@@ -4,12 +4,12 @@
 // Draws into the currently bound FBO (fbo1/img1a) using an explicit uProj; no
 // fixed-function state. See docs/superpowers/specs/2026-06-22-vector-beam-renderer-design.md
 // -----------------------------------------------------------------------------
+#include "aae_mame_driver.h"             // Machine, VECTOR_USES_COLOR
 #include "vector_draw.h"
 #include "sys_gl.h"
 #include "shader_util.h"                 // CompileShader / LinkShaderProgram
-#include "aae_mame_driver.h"             // Machine, VECTOR_USES_COLOR
 #include "config.h"                      // config.linewidth / gain / fire_point_size
-#include "emu_vector_draw.h"             // modulate_color
+#include "vector_draw_gl.h"              // modulate_color
 #include "sys_log.h"                     // LOG_INFO
 #include <vector>
 #include <algorithm>

@@ -14,46 +14,30 @@
 #ifndef EMU_VECTOR_DRAW_H
 #define EMU_VECTOR_DRAW_H
 
+// ===========================================================================
+// emu_vector_draw.h - the emulation-side vector seam.
+//
+// Drivers and vector generators (DVG/AVG/CCPU) call add_line/add_tex. The
+// backend decides what that means: the GL/VK backend queues vertices; a
+// Teensy backend drives X/Y DACs directly. Nothing render-specific may be
+// declared here.
+// ===========================================================================
 
-#include "aae_mame_driver.h"
-#include "colordefs.h"
+#include "colordefs.h"      // rgb_t
+#include "render_types.h"   // rtex_t - already backend-neutral (plain uint32_t)
 
-#include "render_types.h"
-#include "MathUtils.h"   // aae::math::mat4 for draw_textured_shots projection
+// Boundary guard: the emu-side vector header must not drag in render math.
+// Only colordefs.h and render_types.h belong here.
+#ifdef MATHUTILS_H
+#error "MathUtils.h reached the emu-side vector header"
+#endif
 
 typedef struct colorsarray { int r, g, b; } colors;
 extern colors vec_colors[256];
 
-class fpoint
-{
-public:
-    float x;
-    float y;
-    rgb_t color;
-    rgb_t colorshalf;
-
-    fpoint(float x, float y, rgb_t color, rgb_t colorshalf) : x(x), y(y), color(color), colorshalf(colorshalf) {}
-    fpoint() : x(0), y(0), color(0), colorshalf(0) {}
-};
-
-class txdata
-{
-public:
-    float x, y;
-    float tx, ty;
-    rgb_t color;
-
-    txdata() : x(0), y(0), tx(0), ty(0), color(0) {}
-    txdata(float x, float y, float tx, float ty, rgb_t color) : x(x), y(y), tx(tx), ty(ty), color(color) {}
-};
-
 void add_tex(float ex, float ey, int intensity, rgb_t col);
 void add_line(float sx, float sy, float ex, float ey, int intensity, rgb_t col);
-void draw_textured_shots(const aae::math::mat4& proj);
 void set_texture_id(rtex_t* id);
 void cache_clear();
-rgb_t cache_tex_color(int intensity, rgb_t col);
-void cache_texpoint(float ex, float ey, float tx, float ty, int intensity, rgb_t col);
-rgb_t modulate_color(rgb_t col, int intensity, int gain);
 
 #endif

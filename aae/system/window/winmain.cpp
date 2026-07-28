@@ -46,9 +46,9 @@
 #ifndef WIN7BUILD
 #include "win10_win11_required_code.h"
 #endif
+#include "aae_mame_driver.h"  // for global 'done'
 #include "windows_util.h"
 #include "opengl_renderer.h"
-#include "aae_mame_driver.h"  // for global 'done'
 #include "led_service_handler.h"
 
 // -----------------------------------------------------------------------------

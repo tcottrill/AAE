@@ -1,5 +1,7 @@
 #pragma once
 
+#include "vector_draw_gl.h"  // draw_textured_shots (referenced in comments below)
+
 // Old Style Blur Shader
 // VS
 const char* vertText = R"glsl(
