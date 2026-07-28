@@ -303,111 +303,25 @@
     <ClCompile Include="aae\cpu_code\ccpu.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
     </ClCompile>
-    <ClCompile Include="aae\cpu_code\cpu_6502.cpp" />
-    <ClCompile Include="aae\cpu_code\cpu_control.cpp" />
-    <ClCompile Include="aae\cpu_code\cpu_i8039.cpp" />
-    <ClCompile Include="aae\cpu_code\cpu_i8080.cpp" />
-    <ClCompile Include="aae\cpu_code\cpu_i8085.cpp" />
-    <ClCompile Include="aae\cpu_code\cpu_lr35902.cpp" />
-    <ClCompile Include="aae\cpu_code\cpu_m6809.cpp" />
-    <ClCompile Include="aae\cpu_code\cpu_m68000.cpp" />
-    <ClCompile Include="aae\cpu_code\cpu_z80.cpp" />
-    <ClCompile Include="aae\cpu_code\timer.cpp" />
-    <ClCompile Include="aae\cpu_code\z80fmly.cpp" />
-    <ClCompile Include="aae\drivers\asteroid.cpp" />
-    <ClCompile Include="aae\drivers\aztarac.cpp" />
-    <ClCompile Include="aae\drivers\bosco.cpp" />
-    <ClCompile Include="aae\drivers\bwidow.cpp" />
-    <ClCompile Include="aae\drivers\bzone.cpp" />
-    <ClCompile Include="aae\drivers\cchasm.cpp" />
-    <ClCompile Include="aae\drivers\centiped.cpp" />
-    <ClCompile Include="aae\drivers\foodf.cpp" />
-    <ClCompile Include="aae\drivers\gaplus.cpp" />
-    <ClCompile Include="aae\drivers\pong.cpp" />
-    <ClCompile Include="aae\drivers\breakout.cpp" />
-    <ClCompile Include="aae\drivers\dkong.cpp" />
-    <ClCompile Include="aae\drivers\gyruss.cpp" />
-    <ClCompile Include="aae\drivers\cinematronics_driver.cpp" />
-    <ClCompile Include="aae\drivers\circus.cpp" />
-    <ClCompile Include="aae\drivers\digdug.cpp" />
-    <ClCompile Include="aae\drivers\galaga.cpp" />
-    <ClCompile Include="aae\drivers\galaxian_driver.cpp" />
-    <ClCompile Include="aae\drivers\invaders.cpp" />
-    <ClCompile Include="aae\drivers\jrpacman.cpp" />
-    <ClCompile Include="aae\drivers\llander.cpp" />
-    <ClCompile Include="aae\drivers\mappy.cpp" />
     <ClCompile Include="aae\drivers\mhavoc.cpp" />
-    <ClCompile Include="aae\drivers\milliped.cpp" />
-    <ClCompile Include="aae\drivers\missile.cpp" />
-    <ClCompile Include="aae\drivers\omegrace.cpp" />
-    <ClCompile Include="aae\drivers\pacman.cpp" />
-    <ClCompile Include="aae\drivers\phoenix.cpp" />
-    <ClCompile Include="aae\drivers\quantum.cpp" />
-    <ClCompile Include="aae\drivers\rallyx.cpp" />
-    <ClCompile Include="aae\drivers\segag80.cpp" />
     <ClCompile Include="aae\drivers\starwars.cpp" />
-    <ClCompile Include="aae\drivers\superpac.cpp" />
     <ClCompile Include="aae\drivers\tempest.cpp" />
-    <ClCompile Include="aae\drivers\vertigo.cpp" />
-    <ClCompile Include="aae\drivers\vicdual.cpp" />
     <ClCompile Include="aae\drivers\warlord.cpp" />
-    <ClCompile Include="aae\drivers\xevious.cpp" />
-    <ClCompile Include="aae\drivers\yiear.cpp" />
-    <ClCompile Include="aae\driver_registry.cpp" />
-    <ClCompile Include="aae\fileio\aae_fileio.cpp" />
     <ClCompile Include="aae\fileio\mame_fileio.cpp" />
     <ClCompile Include="aae\fileio\texture_handler.cpp" />
-    <ClCompile Include="aae\game_list.cpp" />
     <ClCompile Include="aae\gui\driver_gui.cpp" />
-    <ClCompile Include="aae\inptport.cpp" />
     <ClCompile Include="aae\led_service_handler.cpp" />
-    <ClCompile Include="aae\machine\74148.cpp" />
-    <ClCompile Include="aae\machine\earom.cpp" />
-    <ClCompile Include="aae\machine\mathbox.cpp" />
-    <ClCompile Include="aae\machine\pacplus_decode.cpp" />
-    <ClCompile Include="aae\machine\pit8253.cpp" />
-    <ClCompile Include="aae\machine\SegaG80crypt.cpp" />
-    <ClCompile Include="aae\machine\slapstic.cpp" />
-    <ClCompile Include="aae\machine\starwars_machine.cpp" />
-    <ClCompile Include="aae\memory.cpp" />
     <ClCompile Include="aae\menu.cpp" />
     <ClCompile Include="aae\os_basic.cpp" />
-    <ClCompile Include="aae\os_input.cpp" />
     <ClCompile Include="aae\drivers\astrocade.cpp" />
-    <ClCompile Include="aae\sndhrdwr\aae_pokey.cpp" />
-    <ClCompile Include="aae\sndhrdwr\astrocade_sound.cpp" />
-    <ClCompile Include="aae\sndhrdwr\ay8910.cpp" />
-    <ClCompile Include="aae\sndhrdwr\cinematronics_sound.cpp" />
-    <ClCompile Include="aae\sndhrdwr\dac.cpp" />
-    <ClCompile Include="aae\sndhrdwr\exidy440_sound.cpp" />
     <ClCompile Include="aae\sndhrdwr\galsnd_stream.cpp" />
     <ClCompile Include="aae\sndhrdwr\namco.cpp" />
-    <ClCompile Include="aae\sndhrdwr\okim6295_loader.cpp" />
-    <ClCompile Include="aae\sndhrdwr\phoenix_audio.cpp" />
-    <ClCompile Include="aae\sndhrdwr\pleiads_audio.cpp" />
     <ClCompile Include="aae\sndhrdwr\segag80snd.cpp" />
-    <ClCompile Include="aae\sndhrdwr\sn76477.cpp" />
-    <ClCompile Include="aae\sndhrdwr\starwars_snd.cpp" />
-    <ClCompile Include="aae\sndhrdwr\tms36xx.cpp" />
-    <ClCompile Include="aae\sndhrdwr\tms5220.cpp" />
-    <ClCompile Include="aae\vidhrdwr\aae_avg.cpp" />
-    <ClCompile Include="aae\vidhrdwr\centiped_vid.cpp" />
-    <ClCompile Include="aae\vidhrdwr\astrocde_video.cpp" />
-    <ClCompile Include="aae\vidhrdwr\cinematronics_video.cpp" />
     <ClCompile Include="aae\vidhrdwr\emu_vector_draw.cpp" />
     <ClCompile Include="aae\vidhrdwr\fast_poly.cpp" />
-    <ClCompile Include="aae\vidhrdwr\galaxian_vid.cpp" />
-    <ClCompile Include="aae\vidhrdwr\gaplus_video.cpp" />
-    <ClCompile Include="aae\vidhrdwr\mappy_video.cpp" />
-    <ClCompile Include="aae\vidhrdwr\old_mame_raster.cpp" />
-    <ClCompile Include="aae\vidhrdwr\old_mame_vecsim_dvg.cpp" />
     <ClCompile Include="aae\vidhrdwr\osd_video.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
     </ClCompile>
-    <ClCompile Include="aae\vidhrdwr\rallyx_vid.cpp" />
-    <ClCompile Include="aae\vidhrdwr\SegaG80vid.cpp" />
-    <ClCompile Include="aae\vidhrdwr\vertigo_video.cpp" />
-    <ClCompile Include="aae\vidhrdwr\xevious_video.cpp" />
     <ClCompile Include="system\3rdparty\glew.c" />
     <ClCompile Include="system\3rdparty\miniz.c" />
     <ClCompile Include="system\3rdparty\tinyxml2.cpp" />
@@ -453,4 +367,9 @@
     </PropertyGroup>
     <Error Condition="!Exists('..\packages\Microsoft.XAudio2.Redist.1.2.13\build\native\Microsoft.XAudio2.Redist.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\Microsoft.XAudio2.Redist.1.2.13\build\native\Microsoft.XAudio2.Redist.targets'))" />
   </Target>
+  <ItemGroup>
+    <ProjectReference Include="aae_core.vcxproj">
+      <Project>{F3062892-E013-44FF-A04E-C81133A4B5B9}</Project>
+    </ProjectReference>
+  </ItemGroup>
 </Project>
