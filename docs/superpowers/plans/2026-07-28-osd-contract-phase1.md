@@ -586,12 +586,14 @@ Add to `aae/aae/cpu_code/cpu_6502.cpp` **immediately after its last `#include`**
 
 ```c
 // Boundary guard: nothing a CPU core includes may drag in the audio mixer.
-#ifdef _XAUDIO2_INCLUDED_
+#ifdef __XAUDIO2_INCLUDED__
 #error "xaudio2 leaked into a CPU core"
 #endif
 ```
 
-Verify `_XAUDIO2_INCLUDED_` is the macro `<xaudio2.h>` actually defines before relying on it — open the SDK header and check. If it defines something else, use that macro name and note the correction in your report.
+`__XAUDIO2_INCLUDED__` is verified correct (controller checked 2026-07-28): it is the include guard in both `C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\um\xaudio2.h:11` and `packages\Microsoft.XAudio2.Redist.1.2.13\build\native\include\xaudio2Redist.h:11`, so the guard is valid for both the default and the `WIN7BUILD` configuration. `mixer.h:403-408` selects between them on `#ifndef WIN7BUILD`.
+
+Note the double underscores on **both** sides. `_XAUDIO2_INCLUDED_` (single) is not defined by anything and would make this guard inert.
 
 - [ ] **Step 2: Build and confirm it fails**
 
@@ -615,7 +617,7 @@ Add `#include "mixer.h"` to each, in the existing include block:
 - [ ] **Step 5: Build and confirm it passes**
 
 Run the build.
-Expected: exit code 0 (plus the still-red `invaders.cpp` guard), the six baseline warnings, and the `_XAUDIO2_INCLUDED_` guard clean.
+Expected: exit code 0 (plus the still-red `invaders.cpp` guard), the six baseline warnings, and the `__XAUDIO2_INCLUDED__` guard clean.
 
 Expect additional files to fail with `error C3861: 'sample_start': identifier not found`. The inventory was grep-based and could not prove every call site. For each, add `#include "mixer.h"` and list it in the commit message — that list is real data about how far audio had spread.
 
@@ -892,7 +894,7 @@ In any running game:
 - [ ] **Step 5: Confirm the guards are permanent**
 
 ```bash
-grep -rn "_WINDOWS_\|_XAUDIO2_INCLUDED_" --include=*.cpp --include=*.h aae/aae/ | grep -A1 error
+grep -rn "_WINDOWS_\|__XAUDIO2_INCLUDED__" --include=*.cpp --include=*.h aae/aae/ | grep -A1 error
 ```
 
 Expected: the guard blocks from Tasks 2, 4, 5 and 6 are all present. These are the regression test — leave them in.
@@ -914,7 +916,7 @@ If everything passed, there is nothing to commit — say so explicitly rather th
 
 - [ ] The build passes at x64 Release with exactly the five pre-existing warnings
 - [ ] `#ifdef _WINDOWS_` guards pass in `cpu_6502.cpp`, `memory.cpp`, `asteroid.cpp`, `invaders.cpp`
-- [ ] `#ifdef _XAUDIO2_INCLUDED_` guard passes in a CPU core
+- [ ] `#ifdef __XAUDIO2_INCLUDED__` guard passes in a CPU core
 - [ ] `osdepend.h` declares all 29 `osd_*` functions and nothing else declares them
 - [ ] `sys_input.h` exists, contains no `windows.h`, and is what all six neutral consumers include
 - [ ] `emu_vector_draw.h` includes only `colordefs.h` and `render_types.h`
