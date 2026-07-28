@@ -59,6 +59,7 @@
 // -----------------------------------------------------------------------------
 
 #include "framework.h"
+#include "osdepend.h"
 #include "aae_mame_driver.h"   // RunningMachine, Machine, MAX_GFX_ELEMENTS, MAX_PENS, etc.
 #include "old_mame_raster.h"   // GfxElement, GfxLayout, gfxdecodeinfo, decode/free helpers
 
@@ -93,20 +94,10 @@
 extern unsigned char current_palette[640][3];
 
 // -----------------------------------------------------------------------------
-// Palette helpers (used by raster code & conversions)
+// Palette helpers (used by raster code & conversions) and display creation are
+// declared in osdepend.h as part of the OSD video/palette contract:
+//   osd_modify_pen, osd_get_pen, osd_create_display
 // -----------------------------------------------------------------------------
-void osd_modify_pen(int pen, unsigned char r, unsigned char g, unsigned char b);
-void osd_get_pen(int pen, unsigned char* r, unsigned char* g, unsigned char* b);
-
-// -----------------------------------------------------------------------------
-// Display creation 
-//   - Returns an osd_bitmap* or nullptr on failure.
-// -----------------------------------------------------------------------------
-struct osd_bitmap* osd_create_display(int width, int height,
-	unsigned int totalcolors,
-	const unsigned char* palette,
-	unsigned char* pens,
-	int attributes);
 
 // -----------------------------------------------------------------------------
 // Old MAME-style video hardware open/close

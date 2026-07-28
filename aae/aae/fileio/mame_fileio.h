@@ -40,6 +40,7 @@
 // -----------------------------------------------------------------------------
 
 #include "deftypes.h"
+#include "osdepend.h"
 
 #define osd_fread_msbfirst osd_fread_swap
 #define osd_fwrite_msbfirst osd_fwrite_swap
@@ -64,15 +65,8 @@ enum
 
 /* gamename holds the driver name, filename is only used for ROMs and samples. */
 /* if 'write' is not 0, the file is opened for write. Otherwise it is opened */
-/* for read. */
-void *osd_fopen(const char *gamename, const char *filename, int filetype, int write);
-int osd_fread(void *file, void *buffer, int length);
-int osd_fread_swap(void *file, void *buffer, int length);
-int osd_fread_scatter(void *file, void *buffer, int length, int increment);
-int osd_fwrite(void *file, const void *buffer, int length);
-int osd_fseek(void *file, int offset, int whence);
-unsigned int osd_fcrc(void *file);
-void osd_fclose(void *file);
+/* for read. osd_fopen/fread/fread_swap/fread_scatter/fwrite/fseek/fcrc/fclose */
+/* are declared in osdepend.h as part of the OSD file I/O contract. */
 
 //From inputport.cpp, all file ops should be together!
 int readint(void *f, UINT32 *num);

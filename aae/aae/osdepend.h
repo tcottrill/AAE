@@ -261,4 +261,59 @@
 #define X_AXIS          1
 #define Y_AXIS          2
 
+// ===========================================================================
+// THE OSD CONTRACT
+//
+// Every function below must be provided by the platform backend. A new
+// target implements these and nothing else. Groups are marked with which
+// targets must supply a real implementation vs. a stub.
+//
+// This header must stay platform-neutral: no windows.h, no GL, no STL
+// beyond <cstdint>.
+// ===========================================================================
+#include <cstdint>
+
+struct osd_bitmap;   // full definition lives in vidhrdwr/old_mame_raster.h
+
+// --- INPUT ------------------------------------- win: yes  linux: yes  teensy: yes
+int         osd_key_pressed(int keycode);
+int         osd_key_pressed_for(int player, int keycode);
+int         osd_key_pressed_memory(int keycode);
+int         osd_key_pressed_memory_repeat(int keycode, int speed);
+int         osd_read_key_immediate(void);
+const char* osd_key_name(int keycode);
+const char* osd_joy_name(int joycode);
+void        osd_poll_joysticks(void);
+int         osd_joy_pressed(int joycode);
+void        osd_analogjoy_read(int player, int* analog_x, int* analog_y);
+void        osd_trak_read(int player, int* deltax, int* deltay);
+
+// --- FILE I/O ---------------------------------- win: yes  linux: yes  teensy: yes (SD/flash)
+void*        osd_fopen(const char* gamename, const char* filename, int filetype, int write);
+int          osd_fread(void* file, void* buffer, int length);
+int          osd_fread_swap(void* file, void* buffer, int length);
+int          osd_fread_scatter(void* file, void* buffer, int length, int increment);
+int          osd_fwrite(void* file, const void* buffer, int length);
+int          osd_fseek(void* file, int offset, int whence);
+unsigned int osd_fcrc(void* file);
+void         osd_fclose(void* file);
+
+// --- VIDEO / PALETTE --------------------------- win: yes  linux: yes  teensy: STUB
+// Teensy is vector-only and has no framebuffer; these may be no-ops there.
+void osd_modify_pen(int pen, unsigned char r, unsigned char g, unsigned char b);
+void osd_get_pen(int pen, unsigned char* r, unsigned char* g, unsigned char* b);
+struct osd_bitmap* osd_create_display(int width, int height,
+                                      unsigned int totalcolors,
+                                      const unsigned char* palette,
+                                      unsigned char* pens, int attributes);
+struct osd_bitmap* osd_create_bitmap(int width, int height);
+void osd_free_bitmap(struct osd_bitmap* bitmap);
+void osd_clearbitmap(struct osd_bitmap* bitmap);
+
+// --- LEDs -------------------------------------- win: yes  linux: STUB  teensy: STUB
+void osd_led_service_start();
+void osd_led_service_stop();
+void osd_set_leds(int state);
+int  osd_get_leds();
+
 #endif

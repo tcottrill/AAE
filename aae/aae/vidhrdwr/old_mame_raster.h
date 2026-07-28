@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <cstring>
 #include "sys_log.h"
+#include "osdepend.h"
 #include "aae_mame_driver.h"  // uses RunningMachine, orientation flags, MAX_GFX_ELEMENTS, etc.
 
 // Public constants (unchanged)
@@ -113,10 +114,9 @@ void colorram_w(int offset, int data);
 
 //------------------------------------------------------------------------------
 // Bitmap API (unchanged names; implementations optimized)
+//   osd_create_bitmap/osd_free_bitmap/osd_clearbitmap are declared in
+//   osdepend.h as part of the OSD video contract.
 //------------------------------------------------------------------------------
-struct osd_bitmap* osd_create_bitmap(int width, int height);
-void osd_free_bitmap(struct osd_bitmap* bitmap);
-void osd_clearbitmap(struct osd_bitmap* bitmap);
 void fillbitmap(struct osd_bitmap* dest, int pen, const struct rectangle* clip);
 void copybitmap(struct osd_bitmap* dest, struct osd_bitmap* src, int flipx, int flipy, int sx, int sy,
     const struct rectangle* clip, int transparency, int transparent_color);
