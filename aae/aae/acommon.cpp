@@ -25,6 +25,11 @@
 
 // Boundary guard: nothing acommon.cpp includes may still define the legacy
 // KEY_* macros, which collide with <linux/input-event-codes.h>.
+//
+// MUST stay below every #include above. The preprocessor is a single forward
+// pass, so a guard placed above the includes runs before any header has been
+// read, finds the macro undefined, and passes unconditionally - a test that
+// can never fail. Same applies to the __glew_h__ guard below.
 #ifdef KEY_A
 #error "legacy KEY_* macros still present - port this file to AaeKey"
 #endif

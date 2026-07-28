@@ -36,6 +36,9 @@
 //       return RawInput_ProcessInput(hWnd, wParam, lParam);
 //
 //   // --- Polled access (in your frame loop) ---
+//   // TODO(Task 2): this usage guide still names the old KEY_* macros, which
+//   // no longer exist - they are AAEKEY_* now. Update the examples when this
+//   // block moves to sys_input.h, rather than copying them across as-is.
 //   if (key[KEY_ESC])          { quit(); }
 //   if (key[KEY_LEFT])         { move_left(); }
 //   if (mouse_b & 0x01)       { fire(); }     // left button
@@ -403,10 +406,21 @@
 // Backends translate their native codes to these (Win32: 1:1 with VK codes;
 // Linux: an evdev -> AaeKey table in the evdev backend).
 //
-// Several enumerators deliberately share a value (AAEKEY_TILDE/BACKQUOTE,
-// AAEKEY_COLON/SEMICOLON, AAEKEY_BACKSLASH/BACKSLASH2, AAEKEY_ALT/LMENU,
-// AAEKEY_AT/SCRLOCK, AAEKEY_CIRCUMFLEX/NUMLOCK). These duplicates are
-// pre-existing and intentional - do not "fix" them.
+// Nine enumerator pairs share a value. All are pre-existing, inherited from
+// the macros this enum replaced - do NOT "fix" them, and note that a switch
+// over AaeKey cannot use both halves of any pair as case labels:
+//
+//   AAEKEY_TILDE      / AAEKEY_BACKQUOTE     0xc0
+//   AAEKEY_COLON      / AAEKEY_SEMICOLON     0xba
+//   AAEKEY_BACKSLASH  / AAEKEY_BACKSLASH2    0xdc
+//   AAEKEY_ALT        / AAEKEY_LMENU         0xa4
+//   AAEKEY_RMENU      / AAEKEY_ALTGR         0xa5
+//   AAEKEY_AT         / AAEKEY_SCRLOCK       0x91
+//   AAEKEY_CIRCUMFLEX / AAEKEY_NUMLOCK       0x90
+//   AAEKEY_F10        / AAEKEY_CONVERT       0x79   (old KEY_CONVERT was 121)
+//   AAEKEY_F12        / AAEKEY_NOCONVERT     0x7b   (old KEY_NOCONVERT was 123)
+//
+// This list is exhaustive as of 2026-07-28, verified against all 120 values.
 // ---------------------------------------------------------------------------
 enum AaeKey {
     AAEKEY_A = 0x41, AAEKEY_B = 0x42, AAEKEY_C = 0x43, AAEKEY_D = 0x44,
