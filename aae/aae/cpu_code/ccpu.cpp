@@ -13,7 +13,7 @@
 	STRUCTURES & TYPEDEFS
 ***************************************************************************/
 
-#include "basetsd.h"
+#include "deftypes.h"
 #include "ccpu.h"
 #include "aae_mame_driver.h"
 #include "opengl_renderer.h"

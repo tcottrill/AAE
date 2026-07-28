@@ -94,10 +94,10 @@ extern "C" {
 // -----------------------------------------------------------------------------
 // Boolean and Utility Macros
 // -----------------------------------------------------------------------------
-//#ifndef TRUE
-//#define TRUE  1
-//#define FALSE 0
-//#endif
+#ifndef TRUE
+#define TRUE  1
+#define FALSE 0
+#endif
 
 //#ifndef MIN
 //#define MIN(x, y)   (((x) < (y)) ? (x) : (y))

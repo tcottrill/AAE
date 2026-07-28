@@ -14,6 +14,10 @@
 #include "aae_avg.h"
 #include "timer.h"
 
+// Boundary guard: nothing the emulation core includes may drag in the Win32 API.
+#ifdef _WINDOWS_
+#error "windows.h leaked into the emulation core"
+#endif
 
 #pragma warning( disable : 4996 4244)
 

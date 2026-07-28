@@ -3,6 +3,7 @@
 #ifndef STARS_H
 #define STARS_H
 
+#include "deftypes.h"
 
 #define MAX_STARS 252
 #define STARS_COLOR_BASE 32

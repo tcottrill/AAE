@@ -51,7 +51,7 @@
 #ifndef _CCPU_H_
 #define	_CCPU_H_
 
-#include "basetsd.h"
+#include "deftypes.h"
 
 /***************************************************************************
 	REGISTER ENUMERATION

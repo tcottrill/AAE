@@ -15,8 +15,11 @@
 #include <math.h>
 #include <string.h>
 #include "aae_mame_driver.h"
-#include "framework.h"  // TRUE/FALSE; no longer pulled in via aae_mame_driver.h
 
+// Boundary guard: nothing the emulation core includes may drag in the Win32 API.
+#ifdef _WINDOWS_
+#error "windows.h leaked into the emulation core"
+#endif
 
 #pragma warning( disable : 4996 4244)
 
