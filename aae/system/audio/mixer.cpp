@@ -670,9 +670,8 @@ int mixer_init(int rate, int fps)  // <<< integer FPS
 	// Stand up the streaming backend (XAudio2 today). Voice path routes
 	// through g_backend's Voice* methods, so no separate engine handle needed.
 	auto backend = std::make_unique<XAudio2Backend>();
-	const HRESULT hr = backend->Init(rate, fps);
-	if (FAILED(hr)) {
-		LOG_ERROR("mixer_init: backend Init failed (hr=0x%08X)", (unsigned)hr);
+	if (!backend->Init(rate, fps)) {
+		LOG_ERROR("mixer_init: backend Init failed");
 		return 0; // unique_ptr destructor calls Shutdown
 	}
 	g_backend = std::move(backend);
@@ -763,7 +762,7 @@ static void mixer_update_internal()
 {
 	if (!g_backend) return;
 
-	BYTE* soundbuffer = g_backend->GetNextBuffer();
+	uint8_t* soundbuffer = g_backend->GetNextBuffer();
 	int16_t* out = reinterpret_cast<int16_t*>(soundbuffer);
 
 	std::scoped_lock lock(audioMutex);
@@ -937,7 +936,7 @@ static void mixer_update_internal()
 	}
 		
 	// Submit variable-length frame (stereo 16-bit = 4 bytes per frame)
-	g_backend->Submit(soundbuffer, static_cast<DWORD>(samplesThisFrame * 4));
+	g_backend->Submit(soundbuffer, static_cast<uint32_t>(samplesThisFrame * 4));
 }
 
 // -----------------------------------------------------------------------------

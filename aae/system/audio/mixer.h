@@ -4,16 +4,21 @@
 //
 // OVERVIEW
 // --------
-// XAudio2-based audio engine providing two playback paths:
+// Audio engine providing two playback paths. The OS-level engine is
+// abstracted behind IAudioBackend (see xaudio2_backend.h) -- XAudio2Backend
+// is the only concrete implementation today, but nothing in this header is
+// XAudio2-specific; a WASAPI or ALSA backend slots in without callers
+// changing:
 //
-//   1. VOICE PATH (direct XAudio2 per-channel playback)
-//      One IXAudio2SourceVoice per channel. Best for one-shot sound effects
-//      and looping samples where XAudio2 handles mixing and pitch natively.
-//      Supports real-time volume, pan, and frequency ratio changes.
+//   1. VOICE PATH (per-channel playback via IAudioBackend)
+//      One backend voice (opaque VoiceHandle) per channel. Best for one-shot
+//      sound effects and looping samples where the backend handles mixing
+//      and pitch natively. Supports real-time volume, pan, and frequency
+//      ratio changes.
 //
 //   2. SOFTWARE MIXER PATH (frame-locked mixing)
 //      All active channels are software-mixed into a single interleaved S16
-//      stereo buffer each frame, then submitted to XAudio2. Best for
+//      stereo buffer each frame, then submitted to the backend. Best for
 //      emulator-generated audio, streaming PCM, and scenarios requiring
 //      sample-level control. Supports 8-bit and 16-bit mono/stereo sources.
 //
@@ -21,7 +26,7 @@
 // and sample registry. Choose the path at playback time -- a sample loaded
 // once can be played on either path.
 //
-// Output: XAudio2 submits interleaved 16-bit stereo PCM via a ring of
+// Output: the backend submits interleaved 16-bit stereo PCM via a ring of
 // NUM_BUFFERS (5) submission buffers. Buffer size is rate/fps frames.
 //
 //
@@ -36,7 +41,7 @@
 //   std::vector<uint8_t> wav = read_file("shoot.wav");
 //   int snd = load_sample_from_buffer(wav.data(), wav.size(), "shoot");
 //
-//   // --- Voice path (direct XAudio2 playback) ---
+//   // --- Voice path (per-channel playback via IAudioBackend) ---
 //   sample_start(0, snd, 0);                    // channel 0, no loop
 //   sample_set_volume(0, 200);                   // 0..255
 //   sample_set_pan(0, 64);                       // pan left (0=full L, 128=center, 255=full R)
@@ -70,7 +75,7 @@
 // -----------------------
 //   MAX_CHANNELS  = 20    (fixed array, indices 0..19)
 //   MAX_SOUNDS    = 255   (soft limit on sample registry)
-//   NUM_BUFFERS   = 5     (XAudio2 ring buffer depth)
+//   NUM_BUFFERS   = 5     (backend ring buffer depth)
 //
 // Channels are identified by integer index (0..MAX_CHANNELS-1). Each channel
 // can be used for voice path OR software mixer path, but not both at once.
@@ -109,22 +114,24 @@
 // VOICE PATH PLAYBACK
 // -------------------
 //   void sample_start(chanid, samplenum, loop)
-//       Create an XAudio2 source voice on the channel, submit the sample
-//       buffer, and start playback. loop=1 for XAUDIO2_LOOP_INFINITE, 0
-//       for one-shot. Destroys any existing voice on that channel first.
-//       Initializes volume=255, pan=128 (center), freq=sample's native rate.
-//       Max frequency ratio is 8.0 (supports extreme pitch shifts).
+//       Create a backend voice (VoiceHandle) on the channel via
+//       IAudioBackend::VoiceCreate, submit the sample buffer, and start
+//       playback. loop=1 for infinite looping (backend-defined, e.g.
+//       XAUDIO2_LOOP_INFINITE on XAudio2Backend), 0 for one-shot. Destroys
+//       any existing voice on that channel first. Initializes volume=255,
+//       pan=128 (center), freq=sample's native rate. Max frequency ratio is
+//       8.0 (supports extreme pitch shifts).
 //
 //   void sample_stop(chanid)
 //       Immediate stop -- flushes buffers, resets state.
 //
 //   void sample_end(chanid)
-//       Graceful loop exit -- calls ExitLoop() so the current buffer plays
-//       to completion, then the voice stops naturally.
+//       Graceful loop exit -- calls IAudioBackend::VoiceExitLoop so the
+//       current buffer plays to completion, then the voice stops naturally.
 //
 //   int  sample_playing(chanid)
 //       Returns 1 if playing, 0 if stopped. For voice-path channels, queries
-//       XAudio2 BuffersQueued to detect one-shot completion.
+//       IAudioBackend::VoiceBuffersQueued to detect one-shot completion.
 //
 //
 // SOFTWARE MIXER PATH
@@ -185,7 +192,8 @@
 //         0-5%   : quadratic ramp in dB (-80 to -12 dB) -- fine control at low levels
 //         5-100% : linear in dB (-12 to 0 dB) -- smooth perceptual midrange
 //       The 0..255 byte value is mapped through this curve via VolumeByteToLinear().
-//       For voice-path channels, also updates the XAudio2 source voice gain.
+//       For voice-path channels, also updates the backend voice gain via
+//       IAudioBackend::VoiceSetVolume.
 //
 //       NOTE: get_volume() reverse-maps the float gain linearly, NOT through
 //       the inverse dB curve. This means set(X) -> get() may not return X.
@@ -201,7 +209,8 @@
 //
 //   void sample_set_freq(chanid, freq_hz)   // effective playback frequency
 //   int  sample_get_freq(chanid)            // returns BASE sample rate, not current
-//       For voice-path channels, sets XAudio2 FrequencyRatio = freq / base_rate.
+//       For voice-path channels, calls IAudioBackend::VoiceSetFrequencyRatio
+//       with ratio = freq / base_rate.
 //       NOTE: Does not update the stored frequency field, so get_freq() returns
 //       the original sample rate, not the currently-applied rate. The sweep system
 //       maintains its own last-known frequency via g_lastFreqHz.
@@ -224,12 +233,13 @@
 // MASTER VOLUME
 // -------------
 //   void  mixer_set_master_volume(int percent)        // 0..100
-//   float mixer_get_master_volume()                   // returns raw XAudio2 linear gain
+//   float mixer_get_master_volume()                   // returns raw backend linear gain
 //   int   mixer_get_master_volume_percent()           // returns last-set percent (0..100, exact)
 //   void  mixer_set_master_volume_255(int v)          // convenience: 0..255 -> percent
 //
-// Master volume is applied on the XAudio2 mastering voice. Default is 0.80
-// linear (~-1.9 dB) set during xaudio2_init.
+// Master volume is applied on the backend's mastering voice
+// (IAudioBackend::SetMasterVolume). Default is 0.80 linear (~-1.9 dB) set
+// during mixer_init.
 //
 //
 // PARAMETER SWEEPS (RAMPS)
@@ -319,10 +329,11 @@
 // -----------------
 // The OS-level audio output is abstracted behind IAudioBackend (see
 // xaudio2_backend.h). The mixer holds a unique_ptr<IAudioBackend> internally
-// and routes the per-frame mix submission through it. XAudio2Backend is the
-// only concrete implementation today; a future WASAPI backend would slot in
-// here. The per-channel voice path (sample_start / sample_stop / etc.) still
-// talks to XAudio2 directly and would not work with a non-XAudio2 backend.
+// and routes both the per-frame mix submission AND the per-channel voice
+// path (sample_start / sample_stop / etc., via the Voice* methods) through
+// it -- mixer.cpp never touches a concrete backend type directly.
+// XAudio2Backend is the only concrete implementation today; a future WASAPI
+// or ALSA backend would slot in here without callers changing.
 //
 //   int WavLoadFileInternal(buffer, size, SAMPLE*)
 //       Parse WAV from memory into a SAMPLE struct. Returns 1 on success.
@@ -351,8 +362,10 @@
 //
 // WIN7 COMPATIBILITY
 // ------------------
-// Default build uses the Windows SDK's <xaudio2.h> + system xaudio2.lib
-// (Win8/10/11). Define WIN7BUILD to switch to <xaudio2redist.h> +
+// This header is platform-neutral and carries no WIN7BUILD-dependent code.
+// WIN7BUILD only affects XAudio2Backend's own include/link choice (see
+// xaudio2_backend.h): default build uses the Windows SDK's <xaudio2.h> +
+// system xaudio2.lib (Win8/10/11); WIN7BUILD switches to <xaudio2redist.h> +
 // xaudio2_9redist.lib (NuGet package), which carries the XAudio2.9
 // runtime for Windows 7 / early Windows 10.
 //
@@ -368,11 +381,12 @@
 //
 // INIT / SHUTDOWN SEQUENCE
 // ------------------------
-//   mixer_init(rate, fps)   -- Initializes XAudio2, allocates buffers, starts
+//   mixer_init(rate, fps)   -- Initializes the audio backend (IAudioBackend::Init;
+//                              XAudio2Backend today), allocates buffers, starts
 //                              audio thread. Returns 1 on success, 0 on failure.
 //                              Safe to call only once; logs error if already active.
 //   mixer_end()             -- Signals audio thread exit, joins thread, destroys
-//                              XAudio2 resources, frees all samples. Safe to call
+//                              backend resources, frees all samples. Safe to call
 //                              if not active (no-ops). Resets sound_id so next
 //                              session starts with fresh sample IDs.
 //   wavsweep_shutdown()     -- Stops sweep worker. Also auto-registered with atexit().
@@ -380,10 +394,14 @@
 //
 // DEPENDENCIES
 // ------------
-// Windows headers:  <windows.h>
-// XAudio2:          <xaudio2.h> (default) or <xaudio2redist.h> (WIN7BUILD)
-// Link libraries:   xaudio2.lib (default) or xaudio2_9redist.lib (WIN7BUILD)
-// Project headers:  "framework.h", "error_wav.h", "sys_log.h"
+// mixer.h itself is platform-neutral: no Windows or XAudio2 headers, no
+// HRESULT/BYTE/DWORD/IXAudio2*/WAVEFORMATEX. The concrete backend is where
+// platform headers live:
+//   XAudio2Backend (xaudio2_backend.h/.cpp):
+//       Windows headers: <windows.h>
+//       XAudio2:         <xaudio2.h> (default) or <xaudio2redist.h> (WIN7BUILD)
+//       Link libraries:  xaudio2.lib (default) or xaudio2_9redist.lib (WIN7BUILD)
+// Project headers:  "error_wav.h", "sys_log.h"
 // C++ standard:     C++17 (scoped_lock, shared_ptr, optional, clamp)
 //
 // LICENSE: GPL-3.0-or-later -- Copyright (C) 2022-2025 Tim Cottrill
@@ -400,12 +418,6 @@
 
 #include <string>
 #include <cstdint>
-#ifndef WIN7BUILD 
-#include <xaudio2.h> 
-#else 
-#include <xaudio2redist.h> 
-#endif
-
 #include <memory>
 #include <vector>
 #include <thread>
@@ -956,8 +968,9 @@ void mixer_ramp_volume(int voice, int time_ms, int endvol);
 //   endfreq  - target frequency in Hz
 //
 // Note:
-//   Only effective for direct XAudio2 voices. Software-mixed channels ignore
-//   frequency changes by design, matching the underlying mixer behavior.
+//   Only effective for voice-path channels (backend voices). Software-mixed
+//   channels ignore frequency changes by design, matching the underlying
+//   mixer behavior.
 // -----------------------------------------------------------------------------
 void mixer_sweep_frequency(int voice, int time_ms, int endfreq);
 

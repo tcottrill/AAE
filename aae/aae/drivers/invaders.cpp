@@ -18,23 +18,15 @@
 #include "old_mame_raster.h"
 #include "sys_input.h"
 
-// Task 5 update: aae_mame_driver.h's own framework.h -> <Windows.h> leak is now
-// closed (see aae_mame_driver.h / osd_video.h). This file still can't take the
-// guard, though: this driver's own #include "mixer.h" above pulls in
-// <xaudio2.h>, which reaches <Windows.h> via its COM/objbase chain. Verified
-// empirically - uncommenting the guard here produces
-// "error C1189: windows.h leaked into driver code" even with both doors closed.
-// Any driver needing audio via mixer.h will hit the same wall, so this is not
-// the right sentinel file. The live guard lives in a driver with no mixer.h
-// dependency instead (see centiped.cpp).
-//
 // Boundary guard: nothing driver code includes may drag in the Win32 API.
 // MUST stay below every #include above - the preprocessor is a single forward
 // pass, so a guard placed above the includes can never fire.
 //
-// #ifdef _WINDOWS_
-// #error "windows.h leaked into driver code"
-// #endif
+// Parked through Phase 1: this driver's own mixer.h include reached
+// <windows.h> via <xaudio2.h>. Phase 2 made mixer.h neutral, so it passes now.
+#ifdef _WINDOWS_
+#error "windows.h leaked into driver code"
+#endif
 
 uint8_t m_p1 = 0;
 uint8_t m_p2 = 0;

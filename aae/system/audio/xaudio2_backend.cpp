@@ -41,7 +41,7 @@ struct VoiceHandle {
 	XAUDIO2_BUFFER       buffer = {};
 };
 
-HRESULT XAudio2Backend::Init(int rateHz, int fps)
+bool XAudio2Backend::Init(int rateHz, int fps)
 {
 	HRESULT hr;
 
@@ -91,9 +91,9 @@ HRESULT XAudio2Backend::Init(int rateHz, int fps)
 	hr = m_xaudio2->CreateSourceVoice(&m_source, &wf, XAUDIO2_VOICE_NOPITCH,
 		XAUDIO2_DEFAULT_FREQ_RATIO, nullptr, nullptr, nullptr);
 	if (FAILED(hr)) {
-		LOG_INFO("Failed to create source voice: %#X", hr);
+		LOG_ERROR("Failed to create source voice: hr=0x%08X", (unsigned)hr);
 		Shutdown();
-		return hr;
+		return false;
 	}
 
 	const int buffer_duration_ms = 1000 / fps;
@@ -112,18 +112,21 @@ HRESULT XAudio2Backend::Init(int rateHz, int fps)
 
 	HR(m_source->Start());
 	m_current = 0;
-	return S_OK;
+	return true;
 }
 
-BYTE* XAudio2Backend::GetNextBuffer()
+uint8_t* XAudio2Backend::GetNextBuffer()
 {
 	return m_buffers[m_current];
 }
 
-HRESULT XAudio2Backend::Submit(BYTE* buffer, DWORD bufferLength)
+bool XAudio2Backend::Submit(uint8_t* buffer, uint32_t bufferLength)
 {
-	if (!m_source) return E_FAIL;
-	if (bufferLength == 0) return S_OK;
+	if (!m_source) {
+		LOG_ERROR("XAudio2Backend::Submit: no source voice");
+		return false;
+	}
+	if (bufferLength == 0) return true;
 
 	// Check voice state to prevent overwriting data currently being played
 	XAUDIO2_VOICE_STATE state;
@@ -150,14 +153,14 @@ HRESULT XAudio2Backend::Submit(BYTE* buffer, DWORD bufferLength)
 	// update is usually better than stalling the main thread.
 	if (state.BuffersQueued >= kNumBuffers - 1) {
 		LOG_INFO("Audio warning: Ring buffer full, skipping update to prevent overwrite.");
-		return S_OK;
+		return true;
 	}
 
 	BYTE* payload = buffer ? buffer : m_buffers[m_current];
 
 	// Safety clamp
 	if (!buffer && bufferLength > m_buffer_size) {
-		bufferLength = (DWORD)m_buffer_size;
+		bufferLength = (uint32_t)m_buffer_size;
 	}
 
 	XAUDIO2_BUFFER xb = {};
@@ -167,12 +170,12 @@ HRESULT XAudio2Backend::Submit(BYTE* buffer, DWORD bufferLength)
 	HRESULT hr = m_source->SubmitSourceBuffer(&xb);
 	if (FAILED(hr)) {
 		LOG_ERROR("XAudio2Backend::Submit: SubmitSourceBuffer failed, hr=0x%08X", (unsigned)hr);
-		return hr;
+		return false;
 	}
 
 	// Only advance index if submission succeeded
 	m_current = (m_current + 1) % kNumBuffers;
-	return hr;
+	return true;
 }
 
 void XAudio2Backend::Shutdown()

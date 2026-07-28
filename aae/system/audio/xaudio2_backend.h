@@ -36,18 +36,19 @@ public:
 	virtual ~IAudioBackend() = default;
 
 	// Build engine + mastering voice + output streaming voice + ring buffers.
-	// Returns S_OK on success. On failure, internal state is fully torn down.
-	virtual HRESULT Init(int rateHz, int fps) = 0;
+	// Returns true on success. On failure, internal state is fully torn down
+	// and the underlying error is logged before returning.
+	virtual bool Init(int rateHz, int fps) = 0;
 
 	// Idempotent. Safe to call from destructors.
 	virtual void Shutdown() = 0;
 
 	// Returns the next ring-buffer slot for the mixer to fill.
-	virtual BYTE* GetNextBuffer() = 0;
+	virtual uint8_t* GetNextBuffer() = 0;
 
 	// Submit a filled buffer to the output device. If the device is backed up
-	// (ring buffer full), the backend may drop the frame and return S_OK.
-	virtual HRESULT Submit(BYTE* buffer, DWORD bytes) = 0;
+	// (ring buffer full), the backend may drop the frame and return true.
+	virtual bool Submit(uint8_t* buffer, uint32_t bytes) = 0;
 
 	// Master output gain, linear 0..1. SetMasterVolume(curve_applied_value).
 	virtual void  SetMasterVolume(float linear) = 0;
@@ -118,11 +119,11 @@ public:
 	XAudio2Backend() = default;
 	~XAudio2Backend() override { Shutdown(); }
 
-	HRESULT Init(int rateHz, int fps) override;
-	void    Shutdown() override;
+	bool Init(int rateHz, int fps) override;
+	void Shutdown() override;
 
-	BYTE*   GetNextBuffer() override;
-	HRESULT Submit(BYTE* buffer, DWORD bytes) override;
+	uint8_t* GetNextBuffer() override;
+	bool     Submit(uint8_t* buffer, uint32_t bytes) override;
 
 	void    SetMasterVolume(float linear) override;
 	float   GetMasterVolume() const override;

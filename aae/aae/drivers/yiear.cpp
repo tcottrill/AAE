@@ -255,7 +255,7 @@ void yiear_vh_convert_color_prom(unsigned char* palette, unsigned char* colortab
 	
 	LOG_INFO("Running convert color prom");
 
-	for (i = 0; i < (INT)Machine->drv->total_colors; i++)
+	for (i = 0; i < (int)Machine->drv->total_colors; i++)
 	{
 		int bit0, bit1, bit2;
 

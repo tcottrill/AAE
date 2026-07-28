@@ -142,7 +142,7 @@ void vicdual_vh_convert_color_prom(unsigned char* palette, unsigned char* colort
 
 	color_prom = bw_color_prom;
 
-	for (i = 0; i < (INT)(Machine->drv->total_colors / 2); i++)
+	for (i = 0; i < (int)(Machine->drv->total_colors / 2); i++)
 	{
 		int bit;
 
