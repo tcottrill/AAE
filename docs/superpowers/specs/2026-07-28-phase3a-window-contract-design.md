@@ -188,7 +188,24 @@ The 19 consumers switch to `sys_window.h`. Where a consumer genuinely needs Win3
 
 **If closing `opengl_renderer.h`'s `framework.h` include proves large, it is deferred**, and `acommon.cpp`'s guard stays parked one more phase. That is a scoping decision to make when the size is known, not now.
 
-### 3.4 CMake for Windows
+### 3.4 A headless target — proving the core is separable
+
+**Added at the user's request (2026-07-28): "make sure the core is truly separate for headless running."**
+
+Phase 2 established that the core *compiles* without the OSD. That is not the same as the core *running* without one. A small console target settles it:
+
+`aae_headless` links `aae_core` against a `NullWindow` (a real `ISystemWindow` whose `Presentation()` returns `nullptr`), stub `osd_*` services, and a local `add_line` that counts instead of drawing. It runs N frames of a vector game and prints the vector count.
+
+**A non-zero count is the proof**: the 6502 executed, the DVG walked its display list, and vectors were produced with no window, no renderer, no audio and no OS display. That is exactly the Teensy scenario, minus the DACs.
+
+Two things make this worth more than a test:
+
+1. **The link errors are the Teensy porting checklist.** Every `LNK2019` names something a bare-metal backend must supply. That list is a deliverable of this phase, not a by-product.
+2. **It will expose orchestration living on the wrong side.** `aae_emulator.cpp` (holding `emulator_init`/`run_a_game`) is executable-side, so the headless target cannot call it. Whether the core exposes enough to drive a driver directly is genuinely unknown; if it does not, that is a finding worth having early — a Teensy port hits the same wall.
+
+Teensy audio (a PT8211 16-bit DAC) is explicitly **not** in scope; the headless target stubs audio entirely.
+
+### 3.5 CMake for Windows
 
 `CMakeLists.txt` producing the same two targets as the vcxproj: `aae_core` (static lib, restricted include path) and `aae` (executable, linking it). Same C++17 standard, same preprocessor definitions including `WIN7BUILD`, same include directories.
 
