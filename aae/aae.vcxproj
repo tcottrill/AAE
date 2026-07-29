@@ -114,6 +114,27 @@
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <ManifestFile>$(ProjectDir)app.manifest</ManifestFile>
+      <!--
+        aae_core.lib is built entirely of self-registering game drivers (see
+        AAE_REGISTER_DRIVER in aae\aae\driver_registry.h): each driver .cpp
+        has a file-scope static object whose constructor calls
+        aae::RegisterDriver(), and nothing else in the program references
+        that object by symbol name. MSVC's linker only pulls a .lib member
+        when it resolves an outstanding symbol reference, so with nothing
+        outstanding for most driver .obj files, a plain link against
+        aae_core.lib silently drops them and aae::AllDrivers() comes back
+        with only the handful of drivers whose files happen to be compiled
+        directly into THIS project (mhavoc/starwars/tempest/warlord/
+        astrocade) - confirmed by rebuilding this exact target and running
+        "aae.exe -listallgames": only 49 of the real ~132 games appeared.
+        /WHOLEARCHIVE forces every object in aae_core.lib into the link
+        regardless of reference, matching the fix applied to the CMake build
+        (see CMakeLists.txt's target_link_libraries(aae ...) comment) so both
+        build systems produce the same, complete driver registry. Do not
+        remove this thinking it is redundant - the games it "adds" are most
+        of the emulator's driver roster.
+      -->
+      <AdditionalOptions>/WHOLEARCHIVE:aae_core.lib %(AdditionalOptions)</AdditionalOptions>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -132,6 +153,10 @@
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <ManifestFile>$(ProjectDir)app.manifest</ManifestFile>
+      <!-- See the Debug|x64 Link section above for why this is required:
+           aae_core.lib's self-registering drivers need the whole archive
+           force-linked or most games silently vanish from the registry. -->
+      <AdditionalOptions>/WHOLEARCHIVE:aae_core.lib %(AdditionalOptions)</AdditionalOptions>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -303,9 +328,6 @@
     <ClCompile Include="aae\aae_video\vector_fonts.cpp" />
     <ClCompile Include="aae\acommon.cpp" />
     <ClCompile Include="aae\config.cpp" />
-    <ClCompile Include="aae\cpu_code\ccpu.cpp">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
-    </ClCompile>
     <ClCompile Include="aae\drivers\mhavoc.cpp" />
     <ClCompile Include="aae\drivers\starwars.cpp" />
     <ClCompile Include="aae\drivers\tempest.cpp" />

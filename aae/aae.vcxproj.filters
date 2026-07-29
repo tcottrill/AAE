@@ -46,9 +46,6 @@
     <ClCompile Include="system\util\iniFile.cpp">
       <Filter>Source Files\system\util</Filter>
     </ClCompile>
-    <ClCompile Include="aae\cpu_code\ccpu.cpp">
-      <Filter>Source Files\aae\cpu_code</Filter>
-    </ClCompile>
     <ClCompile Include="aae\cpu_code\cpu_control.cpp">
       <Filter>Source Files\aae\cpu_code</Filter>
     </ClCompile>

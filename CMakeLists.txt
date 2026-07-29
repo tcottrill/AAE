@@ -7,17 +7,17 @@
 # without also having to invent build plumbing on a machine we cannot reach
 # from here.
 #
-# Source lists below are copy-pasted out of aae/aae_core.vcxproj (87 files,
-# 86 plus machine_state.cpp added in Task 6 - see the note above
-# AAE_CORE_SOURCES) and aae/aae.vcxproj (48 files) - NOT globbed. A
-# file(GLOB) would silently
+# Source lists below are copy-pasted out of aae/aae_core.vcxproj (88 files,
+# 86 plus machine_state.cpp added in Task 6, plus cpu_code/ccpu.cpp moved in
+# from aae.vcxproj in a later task - see the notes above AAE_CORE_SOURCES) and
+# aae/aae.vcxproj (47 files) - NOT globbed. A file(GLOB) would silently
 # let new files join whichever target picked them up first and the core/exe
 # split (the whole point of Phase 1-2's compiler-enforced boundary) would
 # drift without anyone noticing. If you add a source file, add it to the
 # vcxproj AND to the matching list below.
 #
 # Three targets:
-#   aae_core     - STATIC library, the 87 emulation-core translation units.
+#   aae_core     - STATIC library, the 88 emulation-core translation units.
 #                  Its include directories deliberately omit
 #                  aae/aae/aae_video, aae/aae/gui and aae/system/window - see
 #                  the comment above AAE_CORE_INCLUDE_DIRS.
@@ -35,11 +35,22 @@ cmake_minimum_required(VERSION 3.20)
 project(aae LANGUAGES CXX C)
 
 # -----------------------------------------------------------------------------
-# aae_core: 87 files from aae/aae_core.vcxproj's <ClCompile> list (86 as of
+# aae_core: 88 files from aae/aae_core.vcxproj's <ClCompile> list (86 as of
 # Task 5, plus aae/machine_state.cpp added in Task 6 - see the comment in
 # that file for why Machine's storage needed to move into the core).
 # vcxproj paths are relative to aae/, so aae\cpu_code\cpu_6502.cpp becomes
 # aae/aae/cpu_code/cpu_6502.cpp from the repo root.
+#
+# cpu_code/ccpu.cpp (the portable Cinematronics CPU core used by tempest/
+# quantum/qb3/cinematronics_driver.cpp) moved here from AAE_COMMON_SOURCES in
+# a later task: it is a pure CPU core like cpu_6502.cpp/cpu_z80.cpp, not OSD
+# code, and its only OSD-looking include - "opengl_renderer.h" - was dead
+# weight (nothing in the file used it; the file-scope __glew_h__ regression
+# guard added in the GL-header-scrub work only needed the file's *existing*
+# includes checked, not a new one added on purpose - see that plan's Task 9).
+# Removing the unused include let it compile clean under aae_core's
+# restricted include path, confirmed with a standalone cl.exe invocation
+# using only aae_core's -I list before moving it here.
 # -----------------------------------------------------------------------------
 set(AAE_CORE_SOURCES
     aae/aae/cpu_code/cpu_6502.cpp
@@ -50,6 +61,7 @@ set(AAE_CORE_SOURCES
     aae/aae/cpu_code/cpu_lr35902.cpp
     aae/aae/cpu_code/cpu_m6809.cpp
     aae/aae/cpu_code/cpu_m68000.cpp
+    aae/aae/cpu_code/ccpu.cpp
     aae/aae/cpu_code/cpu_z80.cpp
     aae/aae/cpu_code/timer.cpp
     aae/aae/cpu_code/z80fmly.cpp
@@ -131,13 +143,14 @@ set(AAE_CORE_SOURCES
     aae/aae/vidhrdwr/xevious_video.cpp
 )
 list(LENGTH AAE_CORE_SOURCES _aae_core_count)
-if(NOT _aae_core_count EQUAL 87)
-    message(FATAL_ERROR "aae_core source list has ${_aae_core_count} entries, expected 87 - it has drifted from aae/aae_core.vcxproj")
+if(NOT _aae_core_count EQUAL 88)
+    message(FATAL_ERROR "aae_core source list has ${_aae_core_count} entries, expected 88 - it has drifted from aae/aae_core.vcxproj")
 endif()
 
 # -----------------------------------------------------------------------------
-# aae (executable): 48 files from aae/aae.vcxproj's <ClCompile> list, split
-# into a platform-neutral part and a per-OS backend part.
+# aae (executable): 47 files from aae/aae.vcxproj's <ClCompile> list, split
+# into a platform-neutral part and a per-OS backend part. (cpu_code/ccpu.cpp
+# used to be the 48th; it moved to AAE_CORE_SOURCES - see the note there.)
 #
 # The split point is "does this file #include a Windows-only header
 # unconditionally (no #ifdef guard)". Verified file-by-file against the
@@ -178,7 +191,6 @@ set(AAE_COMMON_SOURCES
     aae/aae/aae_video/vector_fonts.cpp
     aae/aae/acommon.cpp
     aae/aae/config.cpp
-    aae/aae/cpu_code/ccpu.cpp
     aae/aae/drivers/astrocade.cpp
     aae/aae/drivers/mhavoc.cpp
     aae/aae/drivers/starwars.cpp
@@ -285,8 +297,8 @@ endif()
 list(LENGTH AAE_COMMON_SOURCES _aae_common_count)
 list(LENGTH AAE_PLATFORM_SOURCES _aae_platform_count)
 math(EXPR _aae_exe_count "${_aae_common_count} + ${_aae_platform_count}")
-if(WIN32 AND NOT _aae_exe_count EQUAL 48)
-    message(FATAL_ERROR "aae executable source count is ${_aae_exe_count} (common=${_aae_common_count} + platform=${_aae_platform_count}), expected 48 on Windows - it has drifted from aae/aae.vcxproj")
+if(WIN32 AND NOT _aae_exe_count EQUAL 47)
+    message(FATAL_ERROR "aae executable source count is ${_aae_exe_count} (common=${_aae_common_count} + platform=${_aae_platform_count}), expected 47 on Windows - it has drifted from aae/aae.vcxproj (ccpu.cpp moved to aae_core - see the comment above AAE_CORE_SOURCES)")
 endif()
 
 # =============================================================================
@@ -411,7 +423,64 @@ if(WIN32)
         UNICODE _UNICODE)
 endif()
 
-target_link_libraries(aae PRIVATE aae_core ${AAE_PLATFORM_LIBS})
+# -----------------------------------------------------------------------------
+# aae_core is a STATIC library made almost entirely of self-registering game
+# drivers (see AAE_REGISTER_DRIVER in aae/aae/driver_registry.h): each driver
+# .cpp defines a file-scope static object whose constructor calls
+# aae::RegisterDriver(). Nothing else in the program ever references that
+# object by symbol name - drivers are found purely at runtime, through
+# aae::FindDriverByName() / aae::AllDrivers().
+#
+# Both MSVC's linker and GNU/Clang's ld pull an object out of a static
+# archive (.lib/.a) ONLY when something still-unresolved references a symbol
+# in it. With nothing outstanding for the driver .obj files specifically,
+# ordinary `target_link_libraries(aae PRIVATE aae_core)` lets the linker
+# quietly drop every one of them: confirmed by building this exact target and
+# running `aae.exe -listallgames`, which came back with only the ~49 games
+# whose driver files happen to also be compiled directly into the aae
+# executable target (mhavoc/starwars/tempest/warlord/astrocade) and NONE of
+# the ~37 driver files that live only in aae_core.lib (asteroid, bzone,
+# dkong, pacman, digdug, galaga, centiped, ...).
+#
+# IMPORTANT: this is NOT a CMake-only bug. A from-scratch rebuild of the real
+# aae/aae.vcxproj (MSBuild.exe ... -t:Rebuild) hits the exact same problem -
+# it also came back with only 49 games until aae.vcxproj's own Release|x64
+# and Debug|x64 Link settings got an equivalent /WHOLEARCHIVE:aae_core.lib
+# (see the <AdditionalOptions> comment there for the matching fix). The
+# tracked x64/Release/aae.exe binary that ships in this repo predates the
+# aae_core.vcxproj split (commit 8937dd4) - it was last rebuilt at commit
+# 868ab01, when every driver file was still a loose .obj in one project - so
+# it happens to show all 132 games and gave the false impression that
+# MSBuild "escapes" this by accident. It does not, once actually rebuilt.
+#
+# Fix: force the WHOLE aae_core archive into the link, not just the members
+# some symbol happens to reference - the standard remedy for self-
+# registration living in a static library. CMake 3.24+ has first-class,
+# portable support for this via the LINK_LIBRARY genex, which picks the
+# right underlying flag per linker (MSVC's /WHOLEARCHIVE:, GNU/Apple ld's
+# --whole-archive). Below 3.24 (e.g. an older distro cmake on the Pi/Steam
+# Machine), fall back to spelling the flag out by hand per toolchain.
+#
+# DO NOT delete this thinking it's decorative or redundant with plain
+# target_link_libraries - removing it silently drops every driver that lives
+# only in aae_core.lib back out of the executable, and since CMake is the
+# ONLY build system on Linux, that means the Linux build ships with zero
+# playable games (only the handful of drivers compiled directly into the
+# exe target survive). The same is true of the MSBuild aae.exe without its
+# own /WHOLEARCHIVE fix.
+# -----------------------------------------------------------------------------
+if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.24)
+    target_link_libraries(aae PRIVATE $<LINK_LIBRARY:WHOLE_ARCHIVE,aae_core> ${AAE_PLATFORM_LIBS})
+elseif(MSVC)
+    target_link_libraries(aae PRIVATE aae_core ${AAE_PLATFORM_LIBS})
+    target_link_options(aae PRIVATE "/WHOLEARCHIVE:$<TARGET_FILE:aae_core>")
+else()
+    # GNU ld / Clang: bracket just aae_core so its transitive dependencies
+    # (OpenGL/ALSA/X11/pthread/dl) are not also force-included.
+    target_link_libraries(aae PRIVATE
+        -Wl,--whole-archive aae_core -Wl,--no-whole-archive
+        ${AAE_PLATFORM_LIBS})
+endif()
 
 if(WIN32)
     # Ship the XAudio2 redist DLL next to aae.exe, same as the vcxproj's
@@ -473,6 +542,18 @@ endif()
 # design that the Teensy port must solve properly (an explicit compiled-in
 # driver table, or per-platform force-linking) rather than route around
 # per-target the way this test does. See the Task 6 report.
+#
+# Re-checked once the `aae` target above got real WHOLE_ARCHIVE force-linking
+# (a later task): tried the same fix here (drop asteroid.cpp/bzone.cpp from
+# this list, whole-archive aae_core instead) and it makes things WORSE, not
+# better - 54 unresolved externals at link time (namco_sh_*, sega_sh_*,
+# mappy/galaxian/pengo sound entry points, init_ccpu/ccpu_qb3_*, palette_*,
+# osd_modify_pen, ...) because whole-archiving forces in every driver's .obj,
+# including ones whose sound/video calls into aae's OSD-side files
+# (namco.cpp, segag80snd.cpp, ccpu.cpp - none of which aae_headless links).
+# The direct-compile-just-these-two-files approach below has no such problem
+# because it never asks the linker to pull anything else out of aae_core.lib.
+# Keeping the workaround.
 add_executable(aae_headless
     aae/headless/headless_main.cpp
     aae/headless/null_backends.cpp

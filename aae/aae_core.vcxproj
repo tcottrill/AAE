@@ -76,6 +76,7 @@
   </ItemDefinitionGroup>
 
   <ItemGroup>
+    <ClCompile Include="aae\cpu_code\ccpu.cpp" />
     <ClCompile Include="aae\cpu_code\cpu_6502.cpp" />
     <ClCompile Include="aae\cpu_code\cpu_control.cpp" />
     <ClCompile Include="aae\cpu_code\cpu_i8039.cpp" />

@@ -16,7 +16,6 @@
 #include "deftypes.h"
 #include "ccpu.h"
 #include "aae_mame_driver.h"
-#include "opengl_renderer.h"
 
 // Regression guard: this file must never see OpenGL headers. If this fires,
 // a render header re-leaked glew.h — fix the header, not this guard.
