@@ -65,6 +65,23 @@ A native Wayland backend therefore stays a **later phase, if measurement ever ju
 
 **Not affected:** the Pi's eventual Vulkan path (Mesa v3d tops out near GL/GLES 3.1, below `#version 330 core`). That remains Phase 4 and is orthogonal to windowing.
 
+### 2.1a SDL: re-evaluated, and used as a reference only (user, 2026-07-29)
+
+SDL was explicitly rejected when this programme started, on the recorded grounds that **SDL2 cannot do per-device keyboards** — which would make the multi-HID goal in §2.2 impossible. That reason is now **out of date and should not be cited again**:
+
+- **SDL3 does support per-device keyboards and mice.** `SDL_GetKeyboards()` / `SDL_GetMice()` return per-device IDs and events carry a `which` field naming the source device.
+
+Two caveats survive, and neither is decisive on its own:
+
+- SDL3 exposes per-device **events**, not per-device **polled state** (an open feature request). AAE's contract is polled — `RawInput_IsKeyDownEx(index, vk)`, `get_mouse_mickeys_ex(index, …)`, `RawInput_GetMouseButtons(index)` — so that layer gets hand-written either way. It is the same work on top of SDL as on top of evdev.
+- Device enumeration is platform-variable (both functions return a single device on macOS). Not a target here, but a sign the abstraction is thinner than it looks.
+
+**The decision therefore rests on where SDL would live, not on what it can do.** Taking it on Linux only would leave two divergent implementations of the same 40-function contract — worse than one hand-written evdev backend that mirrors the Windows one. Taking it on both would discard a working, tuned Win32 stack (RawInput multi-HID, XAudio2 voice path) and Phase 3b's ALSA/voice-mixer/timer work.
+
+**Decision: SDL is a reference, not a dependency.** Its X11/GLX backend is the most battle-tested code in existence for GLX attribute selection, EWMH fullscreen, pointer grabs and evdev quirks, and it should be read freely while implementing §4. Nothing links against it.
+
+Worth recording because it is a common objection: **SDL would not have broken the Teensy target.** `ISystemWindow`/`IAudioBackend` already exist, so SDL would have been one more backend behind them rather than a replacement for the architecture. It was not rejected for that reason.
+
 ### 2.2 Full multi-HID parity (user, 2026-07-29)
 
 Per-device keyboards and mice with friendly names, path-stable identity, player routing, and gamepads with force-feedback rumble — the whole neutral input surface, not a merged-device subset.
