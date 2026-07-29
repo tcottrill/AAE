@@ -1,0 +1,51 @@
+# Drive the real AAE GUI with synthetic key presses.
+#
+#   sudo ./aae_uinput_test --script tools/linux/tests/drive_gui.txt \
+#        --exec "bash scripts/linux/run.sh"
+#
+# Exists because a WSL keyboard is not an evdev device: WSLg delivers real
+# keystrokes to the window through X11, and this backend reads /dev/input
+# directly, so nothing you type reaches the emulator. That is correct
+# behaviour and it works normally on SteamOS - but it means the only way to
+# watch input drive the actual GUI on this box is to fabricate the keyboard.
+#
+# Watch the window: the menu selection should move down, up, and back.
+
+sleep 6000
+
+echo Moving DOWN four times - watch the GUI selection move
+tap kbd1 KEY_DOWN
+sleep 700
+tap kbd1 KEY_DOWN
+sleep 700
+tap kbd1 KEY_DOWN
+sleep 700
+tap kbd1 KEY_DOWN
+sleep 1200
+
+echo Moving UP twice
+tap kbd1 KEY_UP
+sleep 700
+tap kbd1 KEY_UP
+sleep 1500
+
+echo Page down, then page up
+tap kbd1 KEY_PAGEDOWN
+sleep 1200
+tap kbd1 KEY_PAGEUP
+sleep 1500
+
+echo Holding DOWN so auto-repeat scrolls the list
+key kbd1 KEY_DOWN 1
+sleep 200
+key kbd1 KEY_DOWN 2
+sleep 200
+key kbd1 KEY_DOWN 2
+sleep 200
+key kbd1 KEY_DOWN 2
+sleep 200
+key kbd1 KEY_DOWN 0
+sleep 1500
+
+echo Done. The emulator keeps running - close its window when finished.
+sleep 2000

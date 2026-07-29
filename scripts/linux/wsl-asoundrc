@@ -1,0 +1,29 @@
+# ALSA configuration for running AAE under WSL. Copy to ~/.asoundrc:
+#
+#   cp scripts/linux/wsl-asoundrc ~/.asoundrc
+#
+# WHY THIS IS NEEDED
+#
+# /dev/snd under WSL contains only 'timer' - there is no PCM device at all - so
+# the stock "default" definition in /usr/share/alsa/pcm/default.conf resolves to
+# a sound card that does not exist and snd_pcm_open("default") fails with
+# ENOENT. alsa_backend.cpp reports that correctly and AAE runs silently.
+#
+# Installing libasound2-plugins is necessary but NOT sufficient. It supplies the
+# pulse plugin and /usr/share/alsa/alsa.conf.d/50-pulseaudio.conf, but that file
+# only defines a NAMED pcm.pulse - its own first line says "typically useful for
+# testing". The drop-in that redirects the DEFAULT PCM to PulseAudio ships with
+# the pulseaudio SERVER package, which is not installed under WSL because WSLg
+# provides the server externally over /mnt/wslg/PulseServer. So nothing ever
+# points "default" at pulse, and that is what this file does.
+#
+# Nothing here applies to SteamOS or a Pi, where a real PCM device exists and
+# "default" resolves on its own. This is WSL-only setup.
+
+pcm.!default {
+    type pulse
+}
+
+ctl.!default {
+    type pulse
+}
