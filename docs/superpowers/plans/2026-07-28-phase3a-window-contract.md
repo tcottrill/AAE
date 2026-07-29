@@ -141,6 +141,17 @@ For each function `framework.h` declares, list its callers and classify: `WINDOW
 
 No commit — this task produces a report that Tasks 2-4 consume. Include every table above plus any surprise.
 
+### STATUS: Task 1 completed 2026-07-28. Findings the later tasks depend on:
+
+1. **No WIN32-PRIVATE field leaks outside `system/window/`.** `style`, `exStyle`, `disableNC`, `disableRoundedCorners` are touched only by `winmain.cpp` and `windows_util.cpp`. Task 2 is a relocation, not a design problem.
+2. **`rect2d.h`'s `Rect2D` is extents-based** (x/y/width/height + cached half-extents, floats) while `RECT` and all ~15 touch sites are edge-based. **Define a new `SysRect{int left,top,right,bottom;}`** — converting edge arithmetic to extents risks a silent geometry inversion that compiles cleanly and misbehaves only at particular window sizes. All 15 sites are in two files, both under `system/window/`.
+3. **`opengl_renderer.h` is cheap to close** (Task 4) — and doing so retires `acommon.cpp`'s parked `_WINDOWS_` guard, since `acommon.cpp` needs nothing from `framework.h` by either path.
+4. **9 of 15 functions and 8 of 19 consumers are dead or side-effect-only** (Task 4).
+5. **The headless blocker is `Machine`'s storage**, not orchestration (Task 6 Step 1a).
+6. **`aae_emulator.cpp` has independent Win32 needs** beyond `WindowSetup` — `GetSystemMetrics(SM_CXSCREEN/CYSCREEN)` at `:779-780` and a raw `DWORD` at `:201`. It stays executable-side this phase regardless.
+
+**Latent bug found, deliberately NOT fixed here** (this phase changes no behaviour): `screenRect` is written at `winmain.cpp:1164-1167` and never read anywhere; `minWindowHeight` is never read or written at all; and `minWindowWidth` is applied as a clamp at `winmain.cpp:908` with **no corresponding height clamp** — so a window can be resized below its minimum height but not its minimum width. Worth a follow-up.
+
 ---
 
 ## Task 2: Neutralise `WindowSetup`
@@ -341,7 +352,15 @@ Provide `GetSystemWindow()` returning the singleton, mirroring how `GetWindowSet
 
 Switch each from `framework.h` to `sys_window.h` (plus `sys_dialog.h` where it used `allegro_message`/`osMessage`). Files that genuinely need Win32 — `winmain.cpp`, `win10_win11_required_code.cpp`, `windows_util.cpp` — include `win32/win32_private.h` instead. That is correct, not a shortfall.
 
-**`aae/aae/aae_video/opengl_renderer.h` is a header among the 19.** It is why `acommon.cpp`'s guard is still parked. Try it, but **if closing it cascades into the renderer, leave it and say so** — the spec explicitly permits deferring this. Do not let it swallow the task.
+**`aae/aae/aae_video/opengl_renderer.h` — Task 1 found this is CHEAP, not cascading.** The header itself uses nothing from `framework.h`; every symbol it declares is `int`/`bool`/`float`/`rtex_t`/`aae::math::mat4`. Only its own `.cpp` calls `GetWindowSetup()` (lines 157, 379, 577, 1552), and those are plain `bool`/`float` field reads. Of the 17 files including it, the 5 that are Win32-heavy already carry their own direct `framework.h` include.
+
+So: **move `#include "framework.h"` from `opengl_renderer.h` into `opengl_renderer.cpp`.** Expected to be a two-line change with no fan-out.
+
+**Nine of `framework.h`'s fifteen functions are dead** — `GetClientWidth`, `GetClientHeight`, `osMessage`, `GetLastErrorStdStr`, `ForceCursorClipUpdate`, `SetMousePos`, `GetMousePos`, and the two explicitly-deprecated `ClipAndHideCursor`/`UnclipAndShowCursor`. **Delete them rather than porting them onto the interface** — but grep once more for each before deleting, including for function-pointer references, and report anything that turns out to be live.
+
+That leaves the genuine cross-module surface at four: `GetWindowSetup()`, `win_get_window()`, `ToggleBorderlessFullscreen()`, `allegro_message()`.
+
+**Eight of the nineteen consumers are DEAD or side-effect-only** w.r.t. `framework.h`: `acommon.cpp`, `mame_fileio.cpp`, `config.cpp`, `osd_video.cpp`, `galsnd_stream.cpp`, `namco.cpp` use nothing from it; `led_service_handler.cpp` and `win10_win11_required_code.cpp` use nothing *declared* by it but do need the transitive `<Windows.h>` — those two get a direct `#include <windows.h>` instead of a deletion. `mame_fileio.cpp` and `config.cpp` need only `MAX_PATH`, likewise.
 
 - [ ] **Step 3: Build**
 
@@ -509,16 +528,28 @@ ISystemWindow& GetSystemWindow() { return g_null_window; }
 
 - [ ] **Step 2: Write the headless main**
 
-**First, resolve where orchestration lives — this is a real unknown.**
+**Task 1 already answered this, and the answer is better than feared.**
 
-The emulator loop (`emulator_init`, `run_a_game`, `emulator_stop_game`, `emulator_end`) is in `aae/aae/aae_emulator.cpp`, which is on the **executable** side (it includes `framework.h`), *not* in `aae_core`. So `aae_headless` cannot simply call `run_a_game()`.
+The blocker is **not** that orchestration lives in the exe. The CPU and driver primitives are already clean and already in `aae_core`: `cpu_run()` (`cpu_control.cpp:640`, one frame of CPU cycles, no video/audio/window dependency), `driver_registry.cpp`, `memory.cpp`, `timer_init()`, and every driver's own `init_game()`/`run_game()`/`end_game()` callbacks.
 
-Determine which applies and act accordingly:
+**The blocker is a single global's storage.** `aae/aae/aae_emulator.cpp:135-136`:
 
-- **If the core exposes enough to drive a driver directly** — locate the driver-init and per-frame-step entry points that *are* in `aae_core` (start from `driver_registry.h`, `cpu_control.h` and `aae/aae/memory.cpp`) and call those. Preferred.
-- **If orchestration genuinely only exists in `aae_emulator.cpp`** — that is a **finding, not a blocker**: it means the emulator loop is core logic sitting on the OSD side, and a Teensy port would hit exactly this wall. **Report it, state precisely which functions would need to move, and implement the smallest possible loop in `headless_main.cpp` to get the proof.** Do not move `aae_emulator.cpp` into the core in this task — that is a separate decision.
+```c
+static struct RunningMachine machine;
+struct RunningMachine* Machine = &machine;
+```
 
-Then write the main: init a vector driver, run N frames, count `add_line` calls, print, exit.
+`Machine` is declared `extern` in `aae_mame_driver.h:295` and dereferenced by `cpu_control.cpp`, `memory.cpp` and nearly every driver — but its *storage* exists only in `aae_emulator.cpp`, which is executable-side. **Linking `aae_core` alone therefore fails with an unresolved external for `Machine`**, not merely a missing convenience wrapper.
+
+- [ ] **Step 1a: Move `Machine`'s storage into the core**
+
+Move those two lines out of `aae_emulator.cpp` into a new small core-side file, `aae/aae/machine_state.cpp`, added to `aae_core.vcxproj`'s `ClCompile` list. Nothing else moves. `aae_emulator.cpp` keeps using `Machine` via the existing `extern` declaration.
+
+Build the executable afterwards and confirm exit 0 with the six warning lines — this must be behaviour-neutral, since it relocates a definition without changing it.
+
+**If a second unresolved global appears when you link the headless target, apply the same treatment and record it.** Task 1 found only `Machine`, but the linker is the authority.
+
+**Do NOT move `run_game()`, `emulator_init()` or `emulator_run()`.** Those interleave core steps with OSD ones (GL, artwork, audio, NVRAM, window aspect) and splitting them is a separate phase. `headless_main.cpp` implements its own minimal loop instead — see Step 2.
 
 ```c
 // Counts vectors emitted by the emulation core with no display anywhere.
