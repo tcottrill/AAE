@@ -113,6 +113,19 @@ enum
 #define READ_HANDLER(name)  static UINT8 name(UINT32 address, struct MemoryReadByte *psMemRead)
 #define WRITE_HANDLER(name)  static void name(UINT32 address, UINT8 data, struct MemoryWriteByte *psMemWrite)
 
+// Same signatures, but with EXTERNAL linkage - for the handful of handlers a
+// header exports to other translation units. Using the static macros above for
+// those is a latent defect: the header promises an external symbol while the
+// definition provides an internal one. MSVC accepts the contradiction; g++
+// rejects it ("declared 'extern' and later 'static'").
+//
+// Use these ONLY when a header really does declare the handler. If a driver
+// wants its own private version of an exported name, give it a driver-prefixed
+// name instead - two public definitions of the same symbol is a duplicate at
+// link time (see dkong_interrupt_enable_w, bwidow_avgdvg_reset_w).
+#define READ_HANDLER_PUBLIC(name)  UINT8 name(UINT32 address, struct MemoryReadByte *psMemRead)
+#define WRITE_HANDLER_PUBLIC(name)  void name(UINT32 address, UINT8 data, struct MemoryWriteByte *psMemWrite)
+
 #define READ16_HANDLER(name)  static UINT16 name(UINT32 address, struct MemoryReadWord *psMemRead)
 #define WRITE16_HANDLER(name)  static void name(UINT32 address, UINT16 data, struct MemoryWriteWord *psMemWrite)
 

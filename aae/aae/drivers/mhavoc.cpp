@@ -473,7 +473,13 @@ static void mhavoc_clr_busy(int dummy)
 	MHAVGDONE = 1;
 }
 
-WRITE_HANDLER(avgdvg_reset_w)
+// Driver-private, deliberately NOT the exported avgdvg_reset_w from
+// vidhrdwr/aae_avg.h (defined at aae_avg.cpp:644) - same reasoning as
+// bwidow_avgdvg_reset_w. This file is compiled into the aae executable
+// rather than aae_core, so it did not show up in the g++ survey of the core;
+// it has the identical defect and would have failed the first Linux build of
+// the exe in Phase 3c.
+WRITE_HANDLER(mhavoc_avgdvg_reset_w)
 {
 	LOG_INFO("---------------------------AVGDVG RESET ------------------------");
 	total_length = 0;
@@ -766,7 +772,7 @@ MEM_ADDR(0x1400, 0x141f, MWA_RAM)				 /* ColorRAM */
 MEM_ADDR(0x1600, 0x1600, mhavoc_out_0_w)		 /* Control Signals */
 MEM_ADDR(0x1640, 0x1640, avg_mgo)			     /* Vector Generator GO */
 MEM_ADDR(0x1680, 0x1680, watchdog_reset_w)			 /* Watchdog Clear */
-MEM_ADDR(0x16c0, 0x16c0, avgdvg_reset_w)		 /* Vector Generator Reset */
+MEM_ADDR(0x16c0, 0x16c0, mhavoc_avgdvg_reset_w)		 /* Vector Generator Reset */
 MEM_ADDR(0x1700, 0x1700, mhavoc_alpha_irq_ack_w) /* IRQ ack */
 MEM_ADDR(0x1740, 0x1740, mhavoc_rom_banksel_w)	 /* Program ROM Page Select */
 MEM_ADDR(0x1780, 0x1780, mhavoc_ram_banksel_w)	 /* Program RAM Page Select */
@@ -818,7 +824,7 @@ MEM_ADDR(0x1040, 0x1040, MWA_NOP)					/* don't care */
 MEM_ADDR(0x10a0, 0x10a0, mhavoc_out_0_w)			/* Control Signals */
 MEM_ADDR(0x10a4, 0x10a4, avg_mgo)					/* Vector Generator GO */
 MEM_ADDR(0x10a8, 0x10a8, MWA_NOP)					/* Watchdog Clear */
-MEM_ADDR(0x10ac, 0x10ac, avgdvg_reset_w)			/* Vector Generator Reset */
+MEM_ADDR(0x10ac, 0x10ac, mhavoc_avgdvg_reset_w)			/* Vector Generator Reset */
 MEM_ADDR(0x10b0, 0x10b0, mhavoc_alpha_irq_ack_w)	/* IRQ ack */
 MEM_ADDR(0x10b4, 0x10b4, mhavoc_rom_banksel_w)		/* Program ROM Page Select */
 MEM_ADDR(0x10b8, 0x10b8, mhavoc_ram_banksel_w)		/* Program RAM Page Select */

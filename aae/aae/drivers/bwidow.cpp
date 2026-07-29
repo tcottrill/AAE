@@ -123,10 +123,15 @@ READ_HANDLER(SDControls)
 WRITE_HANDLER(irq_ack_w)
 {
 	;//write_to_log("irq_ack_w this frame");
-	Machine->memory_region[CPU0][0x88c0] = data;
+	//Machine->memory_region[CPU0][0x88c0] = data;
 }
 
-WRITE_HANDLER(avgdvg_reset_w)
+// Driver-private, deliberately NOT the exported avgdvg_reset_w from
+// vidhrdwr/aae_avg.h (defined at aae_avg.cpp:644). It used to reuse that
+// name, so the extern declaration was in scope and then a static of the same
+// name was defined - MSVC accepts that, g++ rejects it. Renamed rather than
+// made public: two external definitions would collide at link time.
+WRITE_HANDLER(bwidow_avgdvg_reset_w)
 {
 //	LOG_INFO("AVG RESET");
 }
@@ -200,7 +205,7 @@ MEM_ADDR(0x1400, 0x140f, pokey_2_w)
 MEM_ADDR(0x0c80, 0x0c80, advdvg_go_w)
 MEM_ADDR(0x0c00, 0x0c00, spacduel_misc_w)
 MEM_ADDR(0x0d00, 0x0d00, watchdog_reset_w)
-MEM_ADDR(0x0d80, 0x0d80, avgdvg_reset_w)
+MEM_ADDR(0x0d80, 0x0d80, bwidow_avgdvg_reset_w)
 MEM_ADDR(0x0e00, 0x0e00, irq_ack_w)
 MEM_ADDR(0x0f00, 0x0f3f, EaromWrite)
 MEM_ADDR(0x0e80, 0x0e80, EaromCtrl)

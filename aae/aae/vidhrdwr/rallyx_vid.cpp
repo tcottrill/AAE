@@ -25,7 +25,12 @@ extern unsigned char* rallyx_scrollx;
 extern unsigned char* rallyx_scrolly;
 //static unsigned char* dirtybuffer2;	/* keep track of modified portions of the screen */
 extern unsigned char* rallyx_radarcarx, * rallyx_radarcary, * rallyx_radarcarcolor;
-static struct osd_bitmap* tmpbitmap1;
+// tmpbitmap1 is the shared global declared extern in old_mame_raster.h and
+// defined in old_mame_raster.cpp - the same one bosco, jrpacman and xevious
+// use. This file used to shadow it with a file-local `static` copy, which
+// MSVC accepted despite the extern declaration already being in scope; g++
+// rejects it outright. Only one game runs at a time, so sharing is exactly
+// what the header intends.
 extern int rallyx_flipscreen;
 
 static struct rectangle spritevisiblearea =

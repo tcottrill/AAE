@@ -74,7 +74,12 @@ void dkong_noop_interrupt() {}   // i8035: IRQ is externally triggered from main
 // ---------------------------------------------------------------------------
 WRITE_HANDLER(dkong_videoram_w) { videoram_w(address, data); }
 
-WRITE_HANDLER(interrupt_enable_w) { dkong_intenable = data & 1; }
+// Driver-private, deliberately NOT the exported interrupt_enable_w from
+// cpu_control.h (defined at cpu_control.cpp:402). It used to reuse that name,
+// which meant the extern declaration was in scope and then a static of the
+// same name was defined - accepted by MSVC, rejected by g++. Renamed rather
+// than made public: two external definitions would be a link-time duplicate.
+WRITE_HANDLER(dkong_interrupt_enable_w) { dkong_intenable = data & 1; }
 
 WRITE_HANDLER(dkong_flipscreen_w)
 {
@@ -334,7 +339,7 @@ MEM_ADDR(0x7d04, 0x7d04, dkong_sh_sound4)
 MEM_ADDR(0x7d05, 0x7d05, dkong_sh_sound5)
 MEM_ADDR(0x7d80, 0x7d80, dkong_sh_w)
 MEM_ADDR(0x7d82, 0x7d82, dkong_flipscreen_w)
-MEM_ADDR(0x7d84, 0x7d84, interrupt_enable_w)
+MEM_ADDR(0x7d84, 0x7d84, dkong_interrupt_enable_w)
 MEM_ADDR(0x7d86, 0x7d87, dkong_palettebank_w)
 MEM_END
 
@@ -673,7 +678,7 @@ MEM_ADDR(0x7d07, 0x7d07, dkongjr_sh_walk_w)
 MEM_ADDR(0x7d80, 0x7d80, dkongjr_sh_death_w)
 MEM_ADDR(0x7d81, 0x7d81, dkongjr_sh_drop_w)
 MEM_ADDR(0x7d82, 0x7d82, dkong_flipscreen_w)
-MEM_ADDR(0x7d84, 0x7d84, interrupt_enable_w)
+MEM_ADDR(0x7d84, 0x7d84, dkong_interrupt_enable_w)
 MEM_ADDR(0x7d86, 0x7d87, dkong_palettebank_w)
 MEM_END
 

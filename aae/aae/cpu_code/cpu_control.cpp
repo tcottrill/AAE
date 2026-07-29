@@ -1053,7 +1053,9 @@ void watchdog_reset_w(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemW
 	timer_reset(watchdog_timer, TIME_IN_HZ(4));
 }
 
-READ_HANDLER(watchdog_reset_r)
+// PUBLIC: cpu_control.h declares this extern (and it is the only definition
+// anywhere), so it must have external linkage to match.
+READ_HANDLER_PUBLIC(watchdog_reset_r)
 {
 	timer_reset(watchdog_timer, TIME_IN_HZ(4));
 	return 0;
