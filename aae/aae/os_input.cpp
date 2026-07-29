@@ -20,6 +20,27 @@
 #include "sys_log.h"
 #include "config.h"       // config.mouse_player[] for osd_trak_read
 
+//----------------------------------------------------------------------------
+// Build-time boundary test (the Phase 1 idiom, extended here in Phase 3b).
+//
+// os_input.cpp is aae_core code: it must build on Linux and, eventually, on a
+// freestanding Teensy. Nothing it includes may drag in windows.h.
+//
+// This is exactly the leak that went unnoticed until Phase 3b. joystick.h
+// included <windows.h> unconditionally, and Phase 2's boundary test could not
+// catch it - that test works by excluding include DIRECTORIES from aae_core's
+// search path, and system/input is legitimately on that path because the core
+// needs sys_input.h. Only a guard inside the translation unit closes the gap.
+//
+// _WINDOWS_ is windows.h's own include guard, so this fires on any path that
+// reaches it, however indirect. Verified to actually trigger, rather than
+// assumed - three guards shipped in Phase 1 could never fire because their
+// macro name was guessed.
+//----------------------------------------------------------------------------
+#ifdef _WINDOWS_
+#error "os_input.cpp is core code and must not see windows.h - check your includes"
+#endif
+
 int joy_type = -1;
 int use_mouse = 1;
 int joystick = 1;

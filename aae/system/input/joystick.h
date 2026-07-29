@@ -133,8 +133,9 @@
 //   if (joystick_check_combo(0, JOY_COMBO_ESC))
 //       return_to_gui();
 //
-//   // Custom combos (any XINPUT_GAMEPAD_* mask):
-//   #define MY_COMBO_SCREENSHOT  (XINPUT_GAMEPAD_BACK | XINPUT_GAMEPAD_Y)
+//   // Custom combos (any AAE_JOYBTN_* mask - do NOT use XINPUT_GAMEPAD_*
+//   // here; this header is included by core code that must not see Xinput.h):
+//   #define MY_COMBO_SCREENSHOT  (AAE_JOYBTN_BACK | AAE_JOYBTN_Y)
 //   if (joystick_check_combo(0, MY_COMBO_SCREENSHOT))
 //       take_screenshot();
 //
@@ -261,8 +262,12 @@ void ShutdownInput()
 #ifndef JOYSTICK_H
 #define JOYSTICK_H
 
-#include <windows.h>
-#include <Xinput.h>
+// NO Windows headers here. This header is reached from aae/aae/os_input.cpp,
+// which is aae_core code and must build on Linux and on a freestanding Teensy.
+// <windows.h>/<Xinput.h> used to sit here and were the ONLY thing keeping the
+// emulation core Windows-bound - the whole rest of this file is neutral. They
+// now live in the Win32 implementation, system/input/Joystick.cpp.
+#include <cstdint>
 
 //------------------------------------------------------------------------------
 // Configuration Constants
@@ -436,22 +441,43 @@ typedef void (*JoystickHotplugCallback)(int index, bool connected, const char* m
 void set_joystick_hotplug_callback(JoystickHotplugCallback callback);
 
 //------------------------------------------------------------------------------
-// Button Combo Support (XInput only)
+// Button Combo Support
 //
-// Predefined combo masks - pass to joystick_check_combo().
-// Additional combos can be defined inline using XINPUT_GAMEPAD_* flags.
+// Neutral gamepad button bits. The values are XInput's, so the Win32 backend
+// passes them straight through - Joystick.cpp static_asserts that they still
+// agree, so a future SDK renumbering fails the build instead of silently
+// breaking every combo. A Linux evdev backend (Phase 3c) maps its own BTN_*
+// codes onto these same bits.
+//
+// These replaced direct use of XINPUT_GAMEPAD_*, which forced <Xinput.h> into
+// a header the emulation core includes.
 //------------------------------------------------------------------------------
+
+#define AAE_JOYBTN_DPAD_UP        0x0001
+#define AAE_JOYBTN_DPAD_DOWN      0x0002
+#define AAE_JOYBTN_DPAD_LEFT      0x0004
+#define AAE_JOYBTN_DPAD_RIGHT     0x0008
+#define AAE_JOYBTN_START          0x0010
+#define AAE_JOYBTN_BACK           0x0020
+#define AAE_JOYBTN_LEFT_THUMB     0x0040
+#define AAE_JOYBTN_RIGHT_THUMB    0x0080
+#define AAE_JOYBTN_LEFT_SHOULDER  0x0100
+#define AAE_JOYBTN_RIGHT_SHOULDER 0x0200
+#define AAE_JOYBTN_A              0x1000
+#define AAE_JOYBTN_B              0x2000
+#define AAE_JOYBTN_X              0x4000
+#define AAE_JOYBTN_Y              0x8000
 
 #define JOY_MAX_COMBOS 16  // Max number of distinct combo masks tracked simultaneously
 
-#define JOY_COMBO_PAUSE   (XINPUT_GAMEPAD_START | XINPUT_GAMEPAD_BACK)       // Start + Back  : pause/unpause
-#define JOY_COMBO_ESC     (XINPUT_GAMEPAD_LEFT_THUMB | XINPUT_GAMEPAD_BACK)  // LS + Back     : ESC / return to GUI
-#define JOY_COMBO_MENU    (XINPUT_GAMEPAD_LEFT_THUMB | XINPUT_GAMEPAD_START) // LS + Start    : open/close menu
+#define JOY_COMBO_PAUSE   (AAE_JOYBTN_START      | AAE_JOYBTN_BACK)   // Start + Back  : pause/unpause
+#define JOY_COMBO_ESC     (AAE_JOYBTN_LEFT_THUMB | AAE_JOYBTN_BACK)   // LS + Back     : ESC / return to GUI
+#define JOY_COMBO_MENU    (AAE_JOYBTN_LEFT_THUMB | AAE_JOYBTN_START)  // LS + Start    : open/close menu
 
 // Edge-triggered combo check: returns true once per press (not every frame while held).
 // All bits in buttonMask must be simultaneously held to trigger.
 // Always returns false on the WinMM fallback path.
-bool joystick_check_combo(int player, WORD buttonMask);
+bool joystick_check_combo(int player, uint16_t buttonMask);
 
 //------------------------------------------------------------------------------
 // Query Functions

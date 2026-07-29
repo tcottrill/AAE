@@ -22,6 +22,27 @@
 #include <cstdlib>  // atoi
 #include "win32/win32_private.h"  // win_get_window
 
+// joystick.h declares the neutral AAE_JOYBTN_* bits so it can stay free of
+// <Xinput.h> - it is reached from aae/aae/os_input.cpp, which is core code
+// that must build on Linux and on a freestanding Teensy. The values ARE
+// XInput's, so this backend passes them through untouched. These assertions
+// are what makes that safe: if a future SDK ever renumbers the gamepad bits,
+// the build fails here instead of silently breaking every controller combo.
+static_assert(AAE_JOYBTN_DPAD_UP        == XINPUT_GAMEPAD_DPAD_UP,        "AAE_JOYBTN_DPAD_UP drifted from XInput");
+static_assert(AAE_JOYBTN_DPAD_DOWN      == XINPUT_GAMEPAD_DPAD_DOWN,      "AAE_JOYBTN_DPAD_DOWN drifted from XInput");
+static_assert(AAE_JOYBTN_DPAD_LEFT      == XINPUT_GAMEPAD_DPAD_LEFT,      "AAE_JOYBTN_DPAD_LEFT drifted from XInput");
+static_assert(AAE_JOYBTN_DPAD_RIGHT     == XINPUT_GAMEPAD_DPAD_RIGHT,     "AAE_JOYBTN_DPAD_RIGHT drifted from XInput");
+static_assert(AAE_JOYBTN_START          == XINPUT_GAMEPAD_START,          "AAE_JOYBTN_START drifted from XInput");
+static_assert(AAE_JOYBTN_BACK           == XINPUT_GAMEPAD_BACK,           "AAE_JOYBTN_BACK drifted from XInput");
+static_assert(AAE_JOYBTN_LEFT_THUMB     == XINPUT_GAMEPAD_LEFT_THUMB,     "AAE_JOYBTN_LEFT_THUMB drifted from XInput");
+static_assert(AAE_JOYBTN_RIGHT_THUMB    == XINPUT_GAMEPAD_RIGHT_THUMB,    "AAE_JOYBTN_RIGHT_THUMB drifted from XInput");
+static_assert(AAE_JOYBTN_LEFT_SHOULDER  == XINPUT_GAMEPAD_LEFT_SHOULDER,  "AAE_JOYBTN_LEFT_SHOULDER drifted from XInput");
+static_assert(AAE_JOYBTN_RIGHT_SHOULDER == XINPUT_GAMEPAD_RIGHT_SHOULDER, "AAE_JOYBTN_RIGHT_SHOULDER drifted from XInput");
+static_assert(AAE_JOYBTN_A              == XINPUT_GAMEPAD_A,              "AAE_JOYBTN_A drifted from XInput");
+static_assert(AAE_JOYBTN_B              == XINPUT_GAMEPAD_B,              "AAE_JOYBTN_B drifted from XInput");
+static_assert(AAE_JOYBTN_X              == XINPUT_GAMEPAD_X,              "AAE_JOYBTN_X drifted from XInput");
+static_assert(AAE_JOYBTN_Y              == XINPUT_GAMEPAD_Y,              "AAE_JOYBTN_Y drifted from XInput");
+
 #pragma comment(lib, "dinput8.lib")
 #pragma comment(lib, "dxguid.lib")
 
@@ -1311,7 +1332,7 @@ void remove_joystick()
 	_joystick_installed = 0;
 }
 
-bool joystick_check_combo(int player, WORD buttonMask)
+bool joystick_check_combo(int player, uint16_t buttonMask)
 {
 	if (!joystick_using_xinput()) return false;
 	if (player < 0 || player >= MAX_JOYSTICKS) return false;
