@@ -1,5 +1,18 @@
-#include "wintimer.h"
+//==============================================================================
+// wintimer.cpp -- the Win32 implementation of sys_timer.h.
+//
+// QueryPerformanceCounter with a timeGetTime fallback, and timeBeginPeriod(1)
+// for the multimedia timer resolution. Unchanged in behaviour from the version
+// that lived behind wintimer.h; only the type names moved (timer_t -> AaeTimer,
+// __int64 -> int64_t, BOOL -> bool), because timer_t collides head-on with
+// POSIX <time.h> and had to be renamed before Linux could have an
+// implementation at all. See sys_timer.h.
+//==============================================================================
+#include "sys_timer.h"
+
+#include <windows.h>   // QueryPerformanceCounter - previously supplied by wintimer.h
 #include <mmsystem.h>
+#include <cstring>     // memset
 
 #pragma comment(lib, "winmm.lib")  // Link to multimedia library
 
@@ -9,8 +22,8 @@ struct TimerScope {
 };
 static TimerScope _timerLifetime;
 
-BOOL bTimerInitialized = FALSE;
-timer_t g_timer;
+static bool bTimerInitialized = false;
+AaeTimer g_timer;
 
 void TimerInit(void)
 {
@@ -22,7 +35,7 @@ void TimerInit(void)
 	if (!QueryPerformanceFrequency((LARGE_INTEGER*)&g_timer.frequency))
 	{
 		// Fallback to multimedia timer
-		g_timer.performance_timer = FALSE;
+		g_timer.performance_timer = false;
 		g_timer.mm_timer_start = timeGetTime();
 		g_timer.resolution = 1.0f / 1000.0f;
 		g_timer.frequency = 1000;
@@ -32,12 +45,12 @@ void TimerInit(void)
 	{
 		// High-resolution performance counter available
 		QueryPerformanceCounter((LARGE_INTEGER*)&g_timer.performance_timer_start);
-		g_timer.performance_timer = TRUE;
+		g_timer.performance_timer = true;
 		g_timer.resolution = (float)(1.0 / (double)g_timer.frequency);
 		g_timer.performance_timer_elapsed = g_timer.performance_timer_start;
 	}
 
-	bTimerInitialized = TRUE;
+	bTimerInitialized = true;
 }
 
 static float lastTime = 0.0f;
@@ -63,7 +76,7 @@ void TimerReset(void)
 
 bool TimerIsHighResolution()
 {
-	return g_timer.performance_timer != FALSE;
+	return g_timer.performance_timer;
 }
 
 void TimerShutdown(void)
@@ -71,7 +84,7 @@ void TimerShutdown(void)
 	if (bTimerInitialized)
 	{
 		timeEndPeriod(1);
-		bTimerInitialized = FALSE;
+		bTimerInitialized = false;
 	}
 }
 

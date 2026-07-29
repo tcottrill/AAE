@@ -38,7 +38,7 @@
 // ---------------------------------------------------------------------------
 #include "aae_emulator.h"
 #include "aae_mame_driver.h"
-#include "wintimer.h"
+#include "sys_timer.h"
 #include "acommon.h"
 #include "fileio/texture_handler.h"
 #include "config.h"

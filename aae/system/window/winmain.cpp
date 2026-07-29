@@ -43,7 +43,7 @@
 #include "aae_emulator.h"
 #include "resource.h"
 #include "joystick.h"
-#include "wintimer.h"
+#include "sys_timer.h"
 #ifndef WIN7BUILD
 #include "win10_win11_required_code.h"
 #endif

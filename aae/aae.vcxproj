@@ -307,7 +307,7 @@
     <ClInclude Include="system\util\path_helper.h" />
     <ClInclude Include="system\util\sys_fileio.h" />
     <ClInclude Include="system\util\sys_log.h" />
-    <ClInclude Include="system\util\wintimer.h" />
+    <ClInclude Include="system\util\sys_timer.h" />
     <ClInclude Include="system\window\framework.h" />
     <ClInclude Include="system\window\sys_window.h" />
     <ClInclude Include="system\window\win32\win32_private.h" />
