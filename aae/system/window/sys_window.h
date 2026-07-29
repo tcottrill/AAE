@@ -70,3 +70,61 @@ struct WindowSetup {
 // Returns a reference to the global WindowSetup struct.
 // -----------------------------------------------------------------------------
 WindowSetup& GetWindowSetup();
+
+class IPresentSurface;
+
+// The window contract. Implemented by Win32 today; by a Wayland/X11 backend
+// for the Steam Machine and Pi; and by a headless backend on the Teensy,
+// which has no window and returns nullptr from Presentation().
+class ISystemWindow {
+public:
+	virtual ~ISystemWindow() = default;
+
+	virtual bool Create(const WindowSetup& setup) = 0;
+	virtual void Destroy() = 0;
+
+	// Drain the platform event queue. Returns false when the app should quit.
+	virtual bool PumpEvents() = 0;
+
+	virtual int   ClientWidth()  const = 0;
+	virtual int   ClientHeight() const = 0;
+	virtual float DpiScale()     const = 0;
+
+	virtual void ToggleBorderlessFullscreen() = 0;
+	virtual void RestoreViewport() = 0;
+
+	virtual void SetCursorVisible(bool visible) = 0;
+	virtual void EnableCursorClip(bool enable) = 0;
+	virtual void ForceCursorClipUpdate() = 0;
+	virtual void SetMousePos(int x, int y) = 0;
+	virtual void GetMousePos(int* x, int* y) const = 0;
+
+	// Presentation is OPTIONAL. nullptr means this backend does not present
+	// to a display - the headless/Teensy case, where video is redirected
+	// into the vector/DAC path. That is not an error condition, and callers
+	// must check rather than assume.
+	virtual IPresentSurface* Presentation() { return nullptr; }
+};
+
+// Implemented only by backends that actually present to a display. Kept
+// separate from ISystemWindow so a headless backend can satisfy the window
+// contract honestly instead of stubbing a swapchain it has no concept of.
+class IPresentSurface {
+public:
+	virtual ~IPresentSurface() = default;
+
+	virtual void SwapBuffers() = 0;
+	virtual void GetDrawableSize(int* w, int* h) const = 0;
+
+	// Instance extensions this platform requires (VK_KHR_surface plus one
+	// platform extension), returned as a NULL-terminated array.
+	virtual const char* const* RequiredVkInstanceExtensions(uint32_t* count) const = 0;
+
+	// The void* are VkInstance and VkSurfaceKHR*, kept opaque so this header
+	// needs no Vulkan include. Returns false on failure.
+	virtual bool CreateVkSurface(void* instance, void* outSurface) = 0;
+};
+
+// The active window. Never null after startup - a headless backend supplies
+// a real ISystemWindow whose Presentation() happens to be nullptr.
+ISystemWindow& GetSystemWindow();
