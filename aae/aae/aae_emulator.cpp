@@ -30,7 +30,9 @@
 #include "sys_dialog.h"  // allegro_message
 
 #ifndef WIN7BUILD
-#include "win10_win11_required_code.h"
+#ifdef _WIN32
+#include "win10_win11_required_code.h"   // Win10/11 version gate and DPI setup
+#endif
 #endif
 
 // ---------------------------------------------------------------------------
@@ -53,7 +55,9 @@
 #include "vector_fonts.h"
 #include "gl_texturing.h"
 #include "mixer.h"
-#include "utf8conv.h"
+#ifdef _WIN32
+#include "utf8conv.h"   // Win32 UTF-8/UTF-16 conversion
+#endif
 #include "old_mame_raster.h"
 #include "osd_video.h"
 #include "game_list.h"
@@ -61,7 +65,14 @@
 #include "driver_registry.h"   // AllDrivers(), FindDriverByName(), AAE_REGISTER_DRIVER
 #include "joystick.h"
 #include "mame_layout.h"
-#include "windows_util.h"
+#ifdef _WIN32
+#include "windows_util.h"   // Win32 dialog/monitor helpers
+#else
+// The Linux halves of the windows_util.h surface that portable code uses.
+// Defined in system/window/linux/linux_main.cpp.
+void WindowUtil_UpdateAspect(float gameAspect);
+void allegro_message(const char* title, const char* message);
+#endif
 #include <filesystem>
 #include <path_helper.h>
 
@@ -201,6 +212,17 @@ static int  FindGuiGameIndex();
 // ---------------------------------------------------------------------------
 void SetGamePerformanceMode(const settings& cfg)
 {
+#ifndef _WIN32
+	// POSIX has no process "priority class". The closest equivalent is the
+	// nice value, and raising priority (negative nice) needs CAP_SYS_NICE or
+	// root - which an emulator should not require. Deliberately a no-op that
+	// says so, rather than silently pretending the setting was applied.
+	(void)cfg;
+	LOG_INFO("SetGamePerformanceMode: process priority is not adjustable on "
+	         "this platform without elevated privileges - ignoring priority=%d",
+	         cfg.priority);
+}
+#else
 	DWORD      procPriority = NORMAL_PRIORITY_CLASS;
 	const char* priorityName = "NORMAL_PRIORITY_CLASS";
 
@@ -229,6 +251,7 @@ void SetGamePerformanceMode(const settings& cfg)
 			LOG_INFO("Main thread boosted to THREAD_PRIORITY_ABOVE_NORMAL.");
 	}
 }
+#endif // _WIN32
 
 // ---------------------------------------------------------------------------
 // FindGuiGameIndex  (static helper)
@@ -553,6 +576,11 @@ void gameparse(int argc, char* argv[])
 			}
 		}
 		LogClose();
+		// Log::close() first: exit() runs static destructors WITHOUT unwinding,
+		// and sys_log owns a still-joinable worker std::thread. Its destructor
+		// then calls std::terminate - "terminate called without an active
+		// exception", i.e. the process aborts after doing its job correctly.
+		Log::close();
 		exit(0);
 
 		// -------------------------------------------------------------------------
@@ -581,6 +609,11 @@ void gameparse(int argc, char* argv[])
 			}
 		}
 		LogClose();
+		// Log::close() first: exit() runs static destructors WITHOUT unwinding,
+		// and sys_log owns a still-joinable worker std::thread. Its destructor
+		// then calls std::terminate - "terminate called without an active
+		// exception", i.e. the process aborts after doing its job correctly.
+		Log::close();
 		exit(0);
 
 		// -------------------------------------------------------------------------
@@ -593,6 +626,11 @@ void gameparse(int argc, char* argv[])
 		}
 		LOG_INFO("%s sample list: %s", drv->name, logOutput.c_str());
 		LogClose();
+		// Log::close() first: exit() runs static destructors WITHOUT unwinding,
+		// and sys_log owns a still-joinable worker std::thread. Its destructor
+		// then calls std::terminate - "terminate called without an active
+		// exception", i.e. the process aborts after doing its job correctly.
+		Log::close();
 		exit(0);
 
 		// -------------------------------------------------------------------------
@@ -779,8 +817,11 @@ static void ResetPerGameRuntimeState()
 // ---------------------------------------------------------------------------
 void run_game(void)
 {
-	const int cx = GetSystemMetrics(SM_CXSCREEN);
-	const int cy = GetSystemMetrics(SM_CYSCREEN);
+	// Primary-monitor pixel size. GetSystemMetrics is Win32-only; the window
+	// backend already knows its screen, so this goes through GetWindowSetup()'s
+	// screenRect, which winmain/linux_main both populate at startup.
+	const int cx = GetWindowSetup().screenRect.right  - GetWindowSetup().screenRect.left;
+	const int cy = GetWindowSetup().screenRect.bottom - GetWindowSetup().screenRect.top;
 
 	// Track which subsystems started so the fail path tears down correctly.
 	bool did_init_gl = false;
@@ -1616,14 +1657,24 @@ void emulator_init(int argc, char** argv)
 		{
 			LOG_INFO("Listing all ROMs to text...");
 			list_all_roms();
-			exit(0);
+			// Log::close() first: exit() runs static destructors WITHOUT unwinding,
+		// and sys_log owns a still-joinable worker std::thread. Its destructor
+		// then calls std::terminate - "terminate called without an active
+		// exception", i.e. the process aborts after doing its job correctly.
+		Log::close();
+		exit(0);
 		}
 
 		if (std::strcmp(argv[i], "-listallgames") == 0)
 		{
 			LOG_INFO("Listing all games to text...");
 			list_all_games();
-			exit(0);
+			// Log::close() first: exit() runs static destructors WITHOUT unwinding,
+		// and sys_log owns a still-joinable worker std::thread. Its destructor
+		// then calls std::terminate - "terminate called without an active
+		// exception", i.e. the process aborts after doing its job correctly.
+		Log::close();
+		exit(0);
 		}
 	}
 

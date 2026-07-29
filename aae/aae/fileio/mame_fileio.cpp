@@ -6,7 +6,16 @@
 #include "mame_fileio.h"
 #include "iniFile.h"
 #include "path_helper.h"
-#include <windows.h>  // MAX_PATH; no longer pulled in via aae_mame_driver.h
+#include <cstring>       // strerror
+#include <cerrno>
+#ifdef _WIN32
+#include <windows.h>  // MAX_PATH
+#else
+#include <limits.h>
+#ifndef MAX_PATH
+#define MAX_PATH PATH_MAX
+#endif
+#endif
 
 /* file handling routines from mame (TM) */
 
@@ -38,17 +47,17 @@ void* osd_fopen(const char* gamename,
 
 	case OSD_FILETYPE_HIGHSCORE:
 		dirname = get_config_string("directory", "hi", "HI");
-		nchars = snprintf(name, sizeof(name), "%s\\%s.hi", dirname, gamename);
+		nchars = snprintf(name, sizeof(name), "%s/%s.hi", dirname, gamename);
 		break;
 
 	case OSD_FILETYPE_NVRAM:
 		dirname = get_config_string("directory", "hi", "HI");
-		nchars = snprintf(name, sizeof(name), "%s\\%s.nv", dirname, gamename);
+		nchars = snprintf(name, sizeof(name), "%s/%s.nv", dirname, gamename);
 		break;
 
 	case OSD_FILETYPE_CONFIG:
 		dirname = get_config_string("directory", "cfg", "cfg");
-		nchars = snprintf(name, sizeof(name), "%s\\%s.cfg", dirname, gamename);
+		nchars = snprintf(name, sizeof(name), "%s/%s.cfg", dirname, gamename);
 		LOG_INFO("Trying to open game config file: %s", name);
 		break;
 
@@ -67,10 +76,29 @@ void* osd_fopen(const char* gamename,
 		return nullptr;
 	}
 
-	if (fopen_s(&fp, name, write ? "wb" : "rb") != 0) {
+#ifdef _WIN32
+	// fopen_s on Windows: MSVC raises C4996 for plain fopen and this project
+	// builds with that as an error.
+	if (fopen_s(&fp, name, write ? "wb" : "rb") != 0) fp = nullptr;
+#else
+	fp = std::fopen(name, write ? "wb" : "rb");
+#endif
+	if (!fp) {
+		// strerror() rather than MSVC's strerror_s / POSIX's strerror_r: the
+		// two have different signatures AND glibc has two incompatible
+		// strerror_r variants depending on _GNU_SOURCE. Plain strerror is not
+		// thread-safe in principle, but this is a one-shot error path on the
+		// load thread and the message goes straight to the log.
+#ifdef _WIN32
 		char errbuf[128] = {};
 		strerror_s(errbuf, sizeof(errbuf), errno);
 		LOG_INFO("Failed to open file '%s' (%s)", name, errbuf);
+#else
+		// strerror() rather than POSIX strerror_r: glibc has two incompatible
+		// strerror_r variants depending on _GNU_SOURCE. This is a one-shot
+		// error path and the message goes straight to the log.
+		LOG_INFO("Failed to open file '%s' (%s)", name, strerror(errno));
+#endif
 		return nullptr;
 	}
 

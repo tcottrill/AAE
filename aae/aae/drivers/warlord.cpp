@@ -103,9 +103,8 @@ Off On  On                          For every 5 coins, add 1 coin
 #include "earom.h"
 #include "aae_pokey.h"
 #include "timer.h"
-#include <windows.h>  // INT (used below as a plain int cast); used to arrive
-                      // transitively via opengl_renderer.h -> framework.h,
-                      // which no longer includes framework.h (Task 4).
+// windows.h was included here solely for the Win32 typedef INT, used below as
+// a plain int cast. Casting to int directly needs no header at all.
 
 #include "opengl_renderer.h"
 
@@ -175,7 +174,7 @@ void warlords_vh_convert_color_prom(unsigned char* palette, unsigned char* color
 	int i, j;
 #define COLOR(gfxn,offs) (colortable[Machine->drv->gfxdecodeinfo[gfxn].color_codes_start + offs])
 
-	for (i = 0; i < (INT)Machine->drv->total_colors; i++)
+	for (i = 0; i < (int)Machine->drv->total_colors; i++)
 	{
 		int r, g, b;
 
@@ -185,7 +184,7 @@ void warlords_vh_convert_color_prom(unsigned char* palette, unsigned char* color
 
 		/* Colors 0x40-0x7f are converted to grey scale as it's used on the
 		   upright version that had an overlay */
-		if (i >= (INT)Machine->drv->total_colors / 2)
+		if (i >= (int)Machine->drv->total_colors / 2)
 		{
 			int grey;
 

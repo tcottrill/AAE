@@ -56,3 +56,8 @@ build-cmake/
 
 # Linux build tree (CMake + Ninja, produced by scripts/linux/build.sh)
 build-linux/
+
+# MSBuild intermediate/output trees (aae.vcxproj and aae_core.vcxproj build here)
+aae/x64/
+aae/aae/x64/
+aae/aae_core/

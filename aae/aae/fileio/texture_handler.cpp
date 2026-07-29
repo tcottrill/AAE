@@ -1,6 +1,8 @@
 #define NOMINMAX
 #include "stdio.h"
 #include "texture_handler.h"
+#include "sys_window.h"   // GetSystemWindow, for the snapshot size
+#include <cmath>         // floor, log2
 #include <time.h>
 #include <vector>
 #include <mutex>
@@ -11,7 +13,9 @@
 #include "menu.h" // This is just for load_texture
 #include "path_helper.h"
 #include "sys_gl.h"
-#include "win32/win32_private.h"  // win_get_window; no longer pulled in via aae_mame_driver.h
+#ifdef _WIN32
+#include "win32/win32_private.h"   // win_get_window
+#endif  // win_get_window; no longer pulled in via aae_mame_driver.h
 
 //#define STB_IMAGE_IMPLEMENTATION
 //#define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -219,10 +223,11 @@ rtex_t load_texture(const char* filename,
 // -----------------------------------------------------------------------------
 void snapshot()
 {
-	RECT rc{};
-	GetClientRect(win_get_window(), &rc);
-	int width = rc.right - rc.left;
-	int height = rc.bottom - rc.top;
+	// Portable: ISystemWindow reports its own client size, so no RECT and no
+	// platform window handle are needed.
+	ISystemWindow& win = GetSystemWindow();
+	int width  = win.ClientWidth();
+	int height = win.ClientHeight();
 
 	if (width <= 0 || height <= 0)
 	{
@@ -244,8 +249,15 @@ void snapshot()
 	// generate timestamp
 	const auto now = std::chrono::system_clock::to_time_t(
 		std::chrono::system_clock::now());
+	// localtime_s and localtime_r do the same job with REVERSED arguments -
+	// MSVC takes (tm*, time_t*), POSIX takes (time_t*, tm*). Swapping them
+	// compiles cleanly and produces garbage, so spell it out.
 	tm tmNow{};
+#ifdef _WIN32
 	localtime_s(&tmNow, &now);
+#else
+	localtime_r(&now, &tmNow);
+#endif
 
 	std::ostringstream oss;
 	oss << std::put_time(&tmNow, "%Y%m%d%H%M%S");

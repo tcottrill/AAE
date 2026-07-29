@@ -9,12 +9,14 @@
 #include <iomanip>
 #include <mutex>
 #define NOMINMAX
-#include <windows.h>
+// <windows.h> and win32/win32_private.h removed in Phase 3c - the only Win32
+// use in this file was GetClientRect(win_get_window()) for the snapshot size,
+// which ISystemWindow::ClientWidth/Height provides portably. See TEX::Snapshot.
 
 #include "sys_texture.h"
 #include "sys_gl.h"
 #include "sys_log.h"
-#include "win32/win32_private.h"
+#include "sys_window.h"
 #include "sys_fileio.h"
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -235,10 +237,11 @@ void TEX::SaveFramebufferToPNG(int width, int height, const std::string& filenam
 
 
 void TEX::Snapshot(const std::string& filename, const std::string& folder) {
-	RECT rc{};
-	GetClientRect(win_get_window(), &rc);
-	int width = rc.right - rc.left;
-	int height = rc.bottom - rc.top;
+	// Portable: the window contract reports its own client size, so this works
+	// on Win32 and X11 alike without a RECT or a platform window handle.
+	ISystemWindow& win = GetSystemWindow();
+	int width  = win.ClientWidth();
+	int height = win.ClientHeight();
 
 	if (width <= 0 || height <= 0) {
 		LOG_ERROR("TEX::Snapshot - invalid window size");
@@ -258,7 +261,11 @@ void TEX::Snapshot(const std::string& filename, const std::string& folder) {
 	if (outName.empty()) {
 		const auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
 		tm tmNow{};
-		localtime_s(&tmNow, &now);
+	#ifdef _WIN32
+	localtime_s(&tmNow, &now);
+#else
+	localtime_r(&now, &tmNow);   // NOTE: reversed argument order vs localtime_s
+#endif
 
 		std::ostringstream oss;
 		oss << std::put_time(&tmNow, "%Y%m%d_%H%M%S");

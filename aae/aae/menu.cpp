@@ -9,9 +9,16 @@
 #include "osdepend.h"
 #include "os_input.h"
 #include "config.h"
+#include "sys_str.h"   // aae_stricmp
 #include "colordefs.h"
 #include "mame_layout.h"      // Layout_ComputeGameAspect (GAME ASPECT menu item)
-#include "windows_util.h"     // WindowUtil_UpdateAspect
+#ifdef _WIN32
+#include "windows_util.h"   // Win32 dialog/monitor helpers
+#else
+// Linux halves, defined in system/window/linux/linux_main.cpp.
+void WindowUtil_UpdateAspect(float gameAspect);
+void allegro_message(const char* title, const char* message);
+#endif     // WindowUtil_UpdateAspect
 #include "sys_log.h"
 #include "sys_input.h"        // RawInput_GetMouseCount/Name (multi-mouse menu)
 #include "joystick.h"         // joystick_device_count/get_display_name (INPUT DEVICES)
@@ -1000,7 +1007,7 @@ void MenuManager::BuildColorMonitorMenu() {
     {
         static std::string s_screenEffect;
         if (config.raster_effect && config.raster_effect[0] &&
-            _stricmp(config.raster_effect, "NONE") != 0)
+            aae_stricmp(config.raster_effect, "NONE") != 0)
             s_screenEffect = config.raster_effect;
         else
             s_screenEffect = config.color_enable ? "SHADER" : "OFF";
@@ -1265,8 +1272,8 @@ void MenuManager::BuildInputDevicesMenu() {
     auto assign_mouse = [](int p, int v) {
         config.mouse_player[p] = v;
         if (v >= 0)
-            strncpy_s(config.mouse_player_path[p], sizeof(config.mouse_player_path[p]),
-                      RawInput_GetMousePath(v), _TRUNCATE);
+            aae_strncpy(config.mouse_player_path[p], sizeof(config.mouse_player_path[p]),
+                      RawInput_GetMousePath(v));
         else
             config.mouse_player_path[p][0] = 0;
     };
@@ -1321,8 +1328,8 @@ void MenuManager::BuildInputDevicesMenu() {
     auto assign_kbd = [](int p, int v) {
         config.kbd_player[p] = v;
         if (v >= 0)
-            strncpy_s(config.kbd_player_path[p], sizeof(config.kbd_player_path[p]),
-                      RawInput_GetKeyboardPath(v), _TRUNCATE);
+            aae_strncpy(config.kbd_player_path[p], sizeof(config.kbd_player_path[p]),
+                      RawInput_GetKeyboardPath(v));
         else
             config.kbd_player_path[p][0] = 0;
     };
@@ -1377,8 +1384,8 @@ void MenuManager::BuildInputDevicesMenu() {
     auto assign_joy = [](int p, int v) {
         config.joy_player[p] = v;
         if (v >= 0)
-            strncpy_s(config.joy_player_id[p], sizeof(config.joy_player_id[p]),
-                      joystick_get_id(v), _TRUNCATE);
+            aae_strncpy(config.joy_player_id[p], sizeof(config.joy_player_id[p]),
+                      joystick_get_id(v));
         else
             config.joy_player_id[p][0] = 0;
     };

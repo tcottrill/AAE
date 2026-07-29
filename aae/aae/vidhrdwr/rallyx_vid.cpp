@@ -20,7 +20,16 @@ extern unsigned char* rallyx_colorram2;
 extern unsigned char* rallyx_radarx;
 extern unsigned char* rallyx_radary;
 extern unsigned char* rallyx_radarattr;
-size_t rallyx_radarram_size;
+// extern int, NOT `size_t rallyx_radarram_size;`. This used to DEFINE the
+// symbol a second time, with a different type - drivers/rallyx.cpp:44 defines
+// it as `int rallyx_radarram_size = 0x0b`. MSVC merged the two as tentative
+// definitions and nobody noticed; GNU ld (with -fno-common, the default since
+// GCC 10) rejects it outright as a multiple definition.
+//
+// The type mismatch was the real defect: on a 64-bit build size_t is 8 bytes
+// and int is 4, so the two translation units disagreed about the object's
+// size and layout - undefined behaviour that happened to work.
+extern int rallyx_radarram_size;
 extern unsigned char* rallyx_scrollx;
 extern unsigned char* rallyx_scrolly;
 //static unsigned char* dirtybuffer2;	/* keep track of modified portions of the screen */

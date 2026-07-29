@@ -235,7 +235,6 @@ set(AAE_COMMON_SOURCES
     aae/aae/vidhrdwr/emu_vector_draw.cpp
     aae/aae/vidhrdwr/fast_poly.cpp
     aae/aae/vidhrdwr/osd_video.cpp
-    aae/system/3rdparty/glew.c
     aae/system/3rdparty/miniz.c
     aae/system/3rdparty/tinyxml2.cpp
     aae/system/audio/mixer.cpp
@@ -248,8 +247,14 @@ set(AAE_COMMON_SOURCES
     aae/system/util/sys_log.cpp
 )
 
+# The bundled GLEW (system/3rdparty/glew.c) ships wglew.h but NOT glxew.h, so
+# it cannot be compiled on Linux at all. Windows keeps the bundled copy - it is
+# what aae.vcxproj builds and is known-good there - and Linux links the system
+# libGLEW instead. This is why glew.c is per-platform rather than in
+# AAE_COMMON_SOURCES.
 if(WIN32)
     set(AAE_PLATFORM_SOURCES
+        aae/system/3rdparty/glew.c
         aae/system/window/winmain.cpp
         aae/system/window/windows_util.cpp
         aae/system/window/win10_win11_required_code.cpp
@@ -295,6 +300,15 @@ elseif(UNIX AND NOT APPLE)
         aae/system/util/linux/posix_timer.cpp
     )
 
+    # Phase 3c additions that are not "backends" in the EXISTS-guarded sense:
+    #   linux_main.cpp   - the entry point and GetSystemWindow/GetWindowSetup,
+    #                      i.e. the Linux counterpart of winmain.cpp
+    #   glx_present.cpp  - IPresentSurface over GLX
+    list(APPEND AAE_PLATFORM_SOURCES_WANTED
+        aae/system/window/linux/linux_main.cpp
+        aae/system/window/linux/glx_present.cpp
+    )
+
     # Not in the EXISTS-guarded list above: these two exist as of Phase 3b and
     # are unconditional parts of the Linux build.
     #   voice_mixer.cpp   - software voice mixing, no OS calls (ALSA gives one
@@ -325,7 +339,10 @@ elseif(UNIX AND NOT APPLE)
 
     list(APPEND AAE_PLATFORM_SOURCES ${AAE_LINUX_EXTRA_SOURCES})
 
-    set(AAE_PLATFORM_DEFINES GLEW_STATIC)
+    # NOT GLEW_STATIC here: Windows links the bundled GLEW statically, but
+    # Linux links the system libGLEW, which is a shared library. Defining
+    # GLEW_STATIC against a shared GLEW gets the declarations' linkage wrong.
+    set(AAE_PLATFORM_DEFINES)
 
     # Looked up optionally, NOT with REQUIRED. These three used to be REQUIRED
     # at project scope, which meant a box without libx11-dev could not
@@ -339,16 +356,27 @@ elseif(UNIX AND NOT APPLE)
     find_package(ALSA)
     find_package(OpenGL)
     find_package(X11)
+    find_package(GLEW)   # system GLEW; the bundled one is Windows-only
 
     set(AAE_PLATFORM_LIBS pthread dl)
     if(OpenGL_FOUND)
+        # GLU as well as GL: sys_texture.cpp and texture_handler.cpp still call
+        # gluBuild2DMipmaps on the legacy (non-modernGL) texture path. Windows
+        # gets it from #pragma comment(lib, "glu32.lib") in sys_gl.cpp, which
+        # has no effect under g++, so it has to be named here.
         list(APPEND AAE_PLATFORM_LIBS OpenGL::GL)
+        if(TARGET OpenGL::GLU)
+            list(APPEND AAE_PLATFORM_LIBS OpenGL::GLU)
+        endif()
     endif()
     if(ALSA_FOUND)
         list(APPEND AAE_PLATFORM_LIBS ALSA::ALSA)
     endif()
     if(X11_FOUND)
         list(APPEND AAE_PLATFORM_LIBS X11::X11)
+    endif()
+    if(GLEW_FOUND)
+        list(APPEND AAE_PLATFORM_LIBS GLEW::GLEW)
     endif()
 else()
     message(FATAL_ERROR "Unsupported platform - AAE targets Windows and Linux only")

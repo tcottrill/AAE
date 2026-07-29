@@ -6,29 +6,49 @@
 // Logs capabilities, enables vsync control.
 // -----------------------------------------------------------------------------
 
+#ifdef _WIN32
 #include <windows.h>
+#endif
 #include <cstdio>
+#include <cstring>   // strstr, used by the GLX capability probe
 #include <string>
 #include <sstream>
 
+#ifdef _WIN32
 #include "glew.h"
 #include "wglew.h"
-#include "sys_log.h"
 #include "win32/win32_private.h"
+#else
+// Linux: GLEW and GLX. glxew.h pulls <GL/glx.h> itself and must come after
+// glew.h. Xlib is reached only through GLX here - this file never touches a
+// window directly; LinuxWindow hands it the display/window via
+// sys_gl_set_x11_target() below.
+#include <GL/glew.h>
+#include <GL/glx.h>
+#endif
+#include "sys_log.h"
 #include "sys_gl.h"
-
-#include "render_types.h"
-static_assert(sizeof(rtex_t) == sizeof(GLuint) && alignof(rtex_t) == alignof(GLuint),
-	"render handle types must be bit-identical to GLuint for the GL backend");
-
-#pragma comment(lib, "glu32.lib")
-#pragma comment(lib, "opengl32.lib")
 
 // -----------------------------------------------------------------------------
 // Static Globals
 // -----------------------------------------------------------------------------
-static HDC hDC = nullptr;
+#ifdef _WIN32
+static HDC   hDC = nullptr;
 static HGLRC hRC = nullptr;
+#else
+// The X11 display/window LinuxWindow hands us via sys_gl_set_x11_target().
+// This file never opens a display of its own - the dependency runs one way,
+// window -> GL, exactly as it does on Windows where winmain supplies the HWND.
+static Display*    gDpy = nullptr;
+static GLXDrawable gWin = 0;
+static GLXContext  gCtx = nullptr;
+
+void sys_gl_set_x11_target(void* display, unsigned long window)
+{
+	gDpy = static_cast<Display*>(display);
+	gWin = static_cast<GLXDrawable>(window);
+}
+#endif
 static bool gOpenGLInitialized = false;
 
 void CheckGLErrorEx(const char* label, const char* file, int line) {
@@ -75,7 +95,11 @@ static void ReportOpenGLCapabilities()
 	{
 		LOG_INFO("GL_SHADING_LANGUAGE_VERSION: %s", glslVersionStr);
 		int major = 0, minor = 0;
+#ifdef _WIN32
 		if (sscanf_s(glslVersionStr, "%d.%d", &major, &minor) == 2)
+#else
+		if (sscanf(glslVersionStr, "%d.%d", &major, &minor) == 2)
+#endif
 		{
 			if (major >= 4)
 				LOG_INFO("GLSL 4.x or higher is supported");
@@ -128,6 +152,7 @@ static void ReportOpenGLCapabilities()
 	else
 		LOG_ERROR("GLSL support NOT available");
 
+#ifdef _WIN32
 	if (wglewIsSupported("WGL_EXT_swap_control")) {
 		LOG_INFO("WGL_EXT_swap_control supported: vsync control available");
 		if (wglGetSwapIntervalEXT)
@@ -138,6 +163,17 @@ static void ReportOpenGLCapabilities()
 	else {
 		LOG_ERROR("WGL_EXT_swap_control NOT supported");
 	}
+#else
+	// GLX equivalent, queried directly rather than through GLEW so this does
+	// not depend on glxewInit() having run.
+	{
+		const char* exts = gDpy ? glXQueryExtensionsString(gDpy, DefaultScreen(gDpy)) : nullptr;
+		if (exts && strstr(exts, "GLX_EXT_swap_control"))
+			LOG_INFO("GLX_EXT_swap_control supported: vsync control available");
+		else
+			LOG_INFO("GLX_EXT_swap_control NOT advertised - vsync may be compositor-controlled");
+	}
+#endif
 }
 
 // GetGLDC()/GetGLRC() removed in Phase 3c - see the note in sys_gl.h. hDC and
@@ -173,6 +209,8 @@ static void ReportOpenGLCapabilities()
 //   bool core = strstr(lpCmdLine, "-core") != nullptr;
 //   InitOpenGLContext(false, msaa, core);
 // -----------------------------------------------------------------------------
+#ifdef _WIN32
+
 bool InitOpenGLContext(bool forceLegacyGL2, bool enableMultisample, bool useCoreProfile)
 {
 	HWND hwnd = win_get_window();
@@ -348,6 +386,174 @@ void GLSwapBuffers()
 	}
 }
 
+#else  // ---------------------------------------------------------------- GLX
+
+// -----------------------------------------------------------------------------
+// InitOpenGLContext (GLX)
+//
+// Same contract as the WGL version above. LinuxWindow must have called
+// sys_gl_set_x11_target() first.
+//
+// The one thing that MUST NOT be simplified: glXCreateContextAttribsARB is an
+// EXTENSION entry point and has to be resolved through glXGetProcAddressARB.
+// Calling glXCreateContext() instead compiles and runs, but silently yields a
+// legacy compatibility context - and the renderer's "#version 330 core"
+// shaders then fail at draw time, far away from the real cause.
+// -----------------------------------------------------------------------------
+bool InitOpenGLContext(bool forceLegacyGL2, bool enableMultisample, bool useCoreProfile)
+{
+	if (!gDpy || !gWin) {
+		LOG_ERROR("InitOpenGLContext: no X11 target - LinuxWindow must call "
+		          "sys_gl_set_x11_target() before this");
+		return false;
+	}
+
+	const int screen = DefaultScreen(gDpy);
+
+	int fbAttribs[] = {
+		GLX_X_RENDERABLE,  True,
+		GLX_DRAWABLE_TYPE, GLX_WINDOW_BIT,
+		GLX_RENDER_TYPE,   GLX_RGBA_BIT,
+		GLX_X_VISUAL_TYPE, GLX_TRUE_COLOR,
+		GLX_RED_SIZE,      8,
+		GLX_GREEN_SIZE,    8,
+		GLX_BLUE_SIZE,     8,
+		GLX_ALPHA_SIZE,    8,
+		GLX_DEPTH_SIZE,    24,
+		GLX_STENCIL_SIZE,  8,
+		GLX_DOUBLEBUFFER,  True,
+		GLX_SAMPLE_BUFFERS, enableMultisample ? 1 : 0,
+		GLX_SAMPLES,        enableMultisample ? 4 : 0,
+		None
+	};
+
+	int fbCount = 0;
+	GLXFBConfig* fbc = glXChooseFBConfig(gDpy, screen, fbAttribs, &fbCount);
+	if (!fbc || fbCount == 0) {
+		// MSAA is optional; retry without it rather than failing outright.
+		if (enableMultisample) {
+			LOG_INFO("GLX: no multisample framebuffer config, retrying without MSAA");
+			fbAttribs[sizeof(fbAttribs)/sizeof(fbAttribs[0]) - 5] = 0;  // SAMPLE_BUFFERS
+			fbAttribs[sizeof(fbAttribs)/sizeof(fbAttribs[0]) - 3] = 0;  // SAMPLES
+			fbc = glXChooseFBConfig(gDpy, screen, fbAttribs, &fbCount);
+		}
+		if (!fbc || fbCount == 0) {
+			LOG_ERROR("GLX: no suitable framebuffer config found");
+			return false;
+		}
+	}
+	GLXFBConfig chosen = fbc[0];
+	XFree(fbc);
+
+	typedef GLXContext (*PFNGLXCREATECONTEXTATTRIBSARB)(Display*, GLXFBConfig, GLXContext, Bool, const int*);
+	PFNGLXCREATECONTEXTATTRIBSARB createContextAttribs =
+		(PFNGLXCREATECONTEXTATTRIBSARB)glXGetProcAddressARB(
+			(const GLubyte*)"glXCreateContextAttribsARB");
+
+	if (!createContextAttribs) {
+		LOG_ERROR("GLX: glXCreateContextAttribsARB unavailable - cannot create a "
+		          "core profile context, and the 330 core shaders require one");
+		return false;
+	}
+
+	// Match the Windows request order: primary target, then 3.3, then legacy.
+	const int wantMajor = forceLegacyGL2 ? 2 : 4;
+	const int wantMinor = forceLegacyGL2 ? 1 : 2;
+
+	int attribs[] = {
+		GLX_CONTEXT_MAJOR_VERSION_ARB, wantMajor,
+		GLX_CONTEXT_MINOR_VERSION_ARB, wantMinor,
+		GLX_CONTEXT_PROFILE_MASK_ARB,
+			useCoreProfile ? GLX_CONTEXT_CORE_PROFILE_BIT_ARB
+			               : GLX_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB,
+		None
+	};
+
+	gCtx = createContextAttribs(gDpy, chosen, nullptr, True, attribs);
+
+	if (!gCtx && !forceLegacyGL2) {
+		LOG_INFO("GLX: %d.%d context refused, falling back to 3.3", wantMajor, wantMinor);
+		attribs[1] = 3;
+		attribs[3] = 3;
+		gCtx = createContextAttribs(gDpy, chosen, nullptr, True, attribs);
+	}
+	if (!gCtx) {
+		LOG_ERROR("GLX: could not create an OpenGL context");
+		return false;
+	}
+
+	if (!glXMakeCurrent(gDpy, gWin, gCtx)) {
+		LOG_ERROR("GLX: glXMakeCurrent failed");
+		glXDestroyContext(gDpy, gCtx);
+		gCtx = nullptr;
+		return false;
+	}
+
+	glewExperimental = GL_TRUE;   // required for core profiles
+	GLenum err = glewInit();
+	if (err != GLEW_OK) {
+		LOG_ERROR("GLEW init failed: %s", glewGetErrorString(err));
+		return false;
+	}
+	// A core profile makes glewInit leave a spurious GL_INVALID_ENUM behind.
+	glGetError();
+
+	if (enableMultisample)
+		glEnable(GL_MULTISAMPLE);
+
+	gOpenGLInitialized = true;
+	ReportOpenGLCapabilities();
+	return true;
+}
+
+void DeleteGLContext()
+{
+	if (gDpy && gCtx) {
+		glXMakeCurrent(gDpy, 0, nullptr);
+		glXDestroyContext(gDpy, gCtx);
+		gCtx = nullptr;
+	}
+	gOpenGLInitialized = false;
+}
+
+void SetvSync(bool enabled)
+{
+	if (!gDpy || !gWin) return;
+
+	typedef void (*PFNGLXSWAPINTERVALEXT)(Display*, GLXDrawable, int);
+	static PFNGLXSWAPINTERVALEXT swapIntervalEXT =
+		(PFNGLXSWAPINTERVALEXT)glXGetProcAddressARB((const GLubyte*)"glXSwapIntervalEXT");
+
+	if (swapIntervalEXT) {
+		swapIntervalEXT(gDpy, gWin, enabled ? 1 : 0);
+		return;
+	}
+
+	// MESA and SGI fallbacks, in that order.
+	typedef int (*PFNGLXSWAPINTERVALINT)(int);
+	static PFNGLXSWAPINTERVALINT swapIntervalMESA =
+		(PFNGLXSWAPINTERVALINT)glXGetProcAddressARB((const GLubyte*)"glXSwapIntervalMESA");
+	if (swapIntervalMESA) { swapIntervalMESA(enabled ? 1 : 0); return; }
+
+	static PFNGLXSWAPINTERVALINT swapIntervalSGI =
+		(PFNGLXSWAPINTERVALINT)glXGetProcAddressARB((const GLubyte*)"glXSwapIntervalSGI");
+	if (swapIntervalSGI) { swapIntervalSGI(enabled ? 1 : 0); return; }
+
+	// Say so rather than silently doing nothing - under a compositor vsync is
+	// often forced on regardless, and that is worth knowing when timing looks odd.
+	LOG_INFO("SetvSync: no GLX swap-control extension; vsync is compositor-controlled");
+}
+
+void GLSwapBuffers()
+{
+	if (gDpy && gWin)
+		glXSwapBuffers(gDpy, gWin);
+	else
+		LOG_ERROR("GLSwapBuffers called with no X11 target");
+}
+
+#endif // _WIN32
+
 // -----------------------------------------------------------------------------
 // CheckGLVersionSupport
 // Displays warning if OpenGL version is below 2.0
@@ -357,8 +563,11 @@ void CheckGLVersionSupport()
 	const char* version = reinterpret_cast<const char*>(glGetString(GL_VERSION));
 	int major = 0, minor = 0;
 
-	// Use sscanf_s with format and provide buffer sizes
+#ifdef _WIN32
 	if (sscanf_s(version, "%d.%d", &major, &minor) != 2)
+#else
+	if (sscanf(version, "%d.%d", &major, &minor) != 2)
+#endif
 	{
 		LOG_DEBUG("Failed to parse OpenGL version string: %s", version);
 		return;
@@ -368,8 +577,15 @@ void CheckGLVersionSupport()
 
 	if (major < 2)
 	{
+#ifdef _WIN32
 		MessageBox(nullptr, L"This program may not work. Your OpenGL version is less than 2.0.",
 			L"OpenGL Version Warning", MB_ICONERROR | MB_OK);
+#else
+		// No portable dialog, and AAE takes no toolkit dependency. Error level
+		// so it is visible on the console and in systemlog.txt.
+		LOG_ERROR("This program may not work: your OpenGL version (%d.%d) is "
+		          "less than 2.0", major, minor);
+#endif
 	}
 }
 

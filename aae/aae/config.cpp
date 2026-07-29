@@ -1,6 +1,16 @@
+#ifdef _WIN32
 #include <windows.h>  // MAX_PATH
+#else
+// POSIX spells it PATH_MAX and it lives in <limits.h>. Aliased rather than
+// replaced so the (many) MAX_PATH-sized buffers below stay as they are.
+#include <limits.h>
+#ifndef MAX_PATH
+#define MAX_PATH PATH_MAX
+#endif
+#endif
 #include "config.h"
 #include "iniFile.h"
+#include "sys_str.h"   // aae_stricmp
 #include "aae_mame_driver.h"
 #include "menu.h"
 #include "sys_log.h"
@@ -24,7 +34,7 @@ void setup_config() {
 
     // Load base config: aae.ini (GLOBAL CONFIG PATH - DO NOT OVERWRITE THIS)
     temppath = getpathM(0, "aae.ini");
-    strcpy_s(g_aaeIniPath, sizeof(g_aaeIniPath), temppath.c_str());
+    aae_strcpy(g_aaeIniPath, sizeof(g_aaeIniPath), temppath.c_str());
     SetIniFile(g_aaeIniPath);
     LOG_DEBUG("INI PATH (aae.ini) %s", g_aaeIniPath);
 
@@ -44,8 +54,8 @@ void setup_config() {
         char keyname[32];
         snprintf(keyname, sizeof(keyname), "mouse_player%d_path", p + 1);
         const char* s = get_config_string("input", keyname, "");
-        strncpy_s(config.mouse_player_path[p], sizeof(config.mouse_player_path[p]),
-                  s ? s : "", _TRUNCATE);
+        aae_strncpy(config.mouse_player_path[p], sizeof(config.mouse_player_path[p]),
+                  s ? s : "");
     }
 
     // Per-player joystick assignment: AUTO (stick N -> player N) by default.
@@ -58,8 +68,8 @@ void setup_config() {
 
         snprintf(keyname, sizeof(keyname), "joy_player%d_id", p + 1);
         const char* s = get_config_string("input", keyname, "");
-        strncpy_s(config.joy_player_id[p], sizeof(config.joy_player_id[p]),
-                  s ? s : "", _TRUNCATE);
+        aae_strncpy(config.joy_player_id[p], sizeof(config.joy_player_id[p]),
+                  s ? s : "");
     }
 
     // Per-player keyboard assignment: everyone defaults to the merged system
@@ -72,8 +82,8 @@ void setup_config() {
 
         snprintf(keyname, sizeof(keyname), "kbd_player%d_path", p + 1);
         const char* s = get_config_string("input", keyname, "");
-        strncpy_s(config.kbd_player_path[p], sizeof(config.kbd_player_path[p]),
-                  s ? s : "", _TRUNCATE);
+        aae_strncpy(config.kbd_player_path[p], sizeof(config.kbd_player_path[p]),
+                  s ? s : "");
     }
     config.prescale = get_config_float("main", "prescale", 1);
     config.vid_rotate = get_config_int("main", "vid_rotate", 1);
@@ -183,7 +193,7 @@ void setup_config() {
 
     // Load game-specific overrides for select fields
     temppath = getpathM("ini", 0) + std::string("\\") + Machine->gamedrv->name + ".ini";
-    strcpy_s(g_gameIniPath, sizeof(g_gameIniPath), temppath.c_str());
+    aae_strcpy(g_gameIniPath, sizeof(g_gameIniPath), temppath.c_str());
     if (file_exists(g_gameIniPath)) {
         SetIniFile(g_gameIniPath);
         LOG_INFO("Game Config Path: %s", g_gameIniPath);
@@ -297,7 +307,7 @@ void setup_video_config() {
     LOG_DEBUG("SETUP VIDEO CONFIG CALLED");
 
     std::string temppath = getpathM(0, "video.ini");
-    strcpy_s(g_videoIniPath, sizeof(g_videoIniPath), temppath.c_str());
+    aae_strcpy(g_videoIniPath, sizeof(g_videoIniPath), temppath.c_str());
     SetIniFile(g_videoIniPath);
     std::string name = Machine->gamedrv->name;
 
@@ -427,9 +437,16 @@ void my_set_config_string(const char* section, const char* key, const char* val,
 float aspect_from_string(const char* s)
 {
     if (!s || !s[0]) return 0.0f;
-    if (_stricmp(s, "AUTO") == 0) return 0.0f;
+    if (aae_stricmp(s, "AUTO") == 0) return 0.0f;
     float w = 0.0f, h = 0.0f;
+#ifdef _WIN32
+    // sscanf_s on Windows: MSVC raises C4996 for plain sscanf and this project
+    // builds with that as an error. For %f with no string conversions the two
+    // take identical arguments.
     if (sscanf_s(s, "%f:%f", &w, &h) == 2 && w > 0.0f && h > 0.0f)
+#else
+    if (sscanf(s, "%f:%f", &w, &h) == 2 && w > 0.0f && h > 0.0f)
+#endif
         return w / h;
     return 0.0f;
 }

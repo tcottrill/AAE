@@ -1,11 +1,49 @@
-#include "win32/win32_private.h"
+#ifdef _WIN32
+#include "win32/win32_private.h"   // win_get_window
+#endif
 #include "sys_log.h"
 #include <stdint.h>
 #include <string.h>
+#ifdef _WIN32
 // This header provides IOCTL_KEYBOARD_SET_INDICATORS and KEYBOARD_INDICATOR_PARAMETERS.
 #include <ntddkbd.h>
 #include <setupapi.h>
 #pragma comment(lib, "setupapi.lib")
+#endif
+
+#ifndef _WIN32
+// -----------------------------------------------------------------------------
+// This entire file is Win32 window and process manipulation: SetWindowPos,
+// SetWindowLong style stripping, GetDesktopWindow, DEVMODE refresh queries and
+// SetProcessAffinityMask. On X11 the window manager owns geometry and stacking,
+// and the equivalents either live in LinuxWindow already (fullscreen, sizing)
+// or are deliberately not done (see below).
+//
+// Only ONE of these is actually called from portable code -
+// GetDesktopResolution, from aae_emulator.cpp:1581 - so it is the only one
+// that needs a real implementation. It reads what linux_main.cpp already
+// probed into WindowSetup::screenRect rather than opening a second display.
+// -----------------------------------------------------------------------------
+#include "sys_window.h"
+
+void ClientResize(int, int)          {}
+void GetRefresh()                    {}
+void LimitThreadAffinityToCurrentProc() {}
+void SetProcessorAffinity()          {}
+void SetTopMost(const bool)          {}
+void setwindow()                     {}
+void center_window()                 {}
+void Set_ForeGround()                {}
+
+void GetDesktopResolution(int& horizontal, int& vertical)
+{
+	const WindowSetup& ws = GetWindowSetup();
+	horizontal = ws.screenRect.right  - ws.screenRect.left;
+	vertical   = ws.screenRect.bottom - ws.screenRect.top;
+}
+
+#else   // ================================================ Win32 implementation
+
 
 
 bool Calculate(int cx, int cy, RECT& rect)
@@ -200,3 +238,5 @@ void SetProcessorAffinity()
 		}
 	}
 }
+
+#endif // _WIN32

@@ -1,7 +1,32 @@
-#include "framework.h"
+#ifdef _WIN32
+#include "framework.h"   // Win32 window helpers
+#endif
 #include "sys_log.h"
 #include <stdint.h>
 #include <string.h>
+
+#ifndef _WIN32
+// -----------------------------------------------------------------------------
+// Keyboard LEDs are Windows-only in AAE.
+//
+// The whole implementation below drives the keyboard's Num/Caps/Scroll LEDs
+// through IOCTL_KEYBOARD_SET_INDICATORS (ntddkbd.h) over a SetupAPI device
+// handle. Linux exposes the same LEDs through evdev EV_LED writes, which is a
+// completely different mechanism and belongs with the evdev backend rather
+// than bolted onto this file - so it is scheduled with the rest of evdev
+// rather than half-done here.
+//
+// These stubs keep the exported surface intact so nothing else needs guarding.
+// -----------------------------------------------------------------------------
+void set_led_status(int, int)          {}
+int  get_led_status(int)               { return 0; }
+void set_led_status_all(int, int, int) {}
+void osd_led_service_start()           {}
+void osd_led_service_stop()            {}
+void osd_set_leds(int)                 {}
+int  osd_get_leds()                    { return 0; }
+
+#else   // ================================================ Win32 implementation
 // This header provides IOCTL_KEYBOARD_SET_INDICATORS and KEYBOARD_INDICATOR_PARAMETERS.
 #include <ntddkbd.h>
 #include <setupapi.h>
@@ -144,6 +169,9 @@ static void Win32_EnumKeyboardLedTargets()
 			}
 		}
 	}
+
+	if (g_kbdLedHandleCount == 0)
+		LOG_INFO("LED service: no keyboard LED targets could be opened; keyboard LEDs will not work (check OS/service configuration)");
 }
 
 // Apply LED mask via KeyboardClass IOCTL.
@@ -381,3 +409,5 @@ void set_led_status_all(int led0, int led1, int led2)
 
 	osd_set_leds(mask);
 }
+
+#endif // _WIN32

@@ -1,6 +1,6 @@
 // -----------------------------------------------------------------------------
 // FrameLimiter.h
-// High-precision Windows frame rate limiter (header-only).
+// High-precision frame rate limiter (header-only).
 //
 // Usage:
 //   #include "FrameLimiter.h"
@@ -13,28 +13,46 @@
 //   FrameLimiter::Shutdown();
 //
 // Notes:
-//   - Uses QueryPerformanceCounter for precise timing.
-//   - Uses coarse Sleep + short spin to reduce CPU usage while maintaining accuracy.
+//   - Uses std::chrono::steady_clock for precise timing.
+//   - Uses a coarse sleep + short spin to reduce CPU usage while maintaining
+//     accuracy, because no OS sleep is dependable at frame granularity.
 //   - Handles oversleep by snapping the schedule forward to prevent drift.
+//
+// Rewritten in Phase 3c from QueryPerformanceCounter/Sleep/timeBeginPeriod to
+// <chrono> + <thread>. steady_clock IS QueryPerformanceCounter on MSVC and
+// clock_gettime(CLOCK_MONOTONIC) on Linux, so Windows timing is unchanged -
+// the same clock, reached portably - and the sleep/spin structure below is
+// preserved exactly.
+//
+// One Windows-only piece remains and genuinely cannot be expressed portably:
+// timeBeginPeriod(1), which raises the SYSTEM timer resolution so that a short
+// sleep returns in ~1 ms instead of ~15. Linux has no global resolution to
+// raise; its nanosleep is already fine-grained.
 // -----------------------------------------------------------------------------
 
 #pragma once
+
+#include <chrono>
+#include <thread>
+
+#ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <mmsystem.h>
 #pragma comment(lib, "winmm.lib")
+#endif
 
 namespace FrameLimiter
 {
-    static LARGE_INTEGER s_qpcFreq = {};
-    static LARGE_INTEGER s_nextTick = {};
-    static long long     s_ticksPerFrame = 0;
-    static UINT          s_timerPeriodMs = 1;
+    using Clock    = std::chrono::steady_clock;
+    using Duration = Clock::duration;
 
-    static inline double TicksToMs(long long ticks)
-    {
-        return (1000.0 * (double)ticks) / (double)s_qpcFreq.QuadPart;
-    }
+    static Clock::time_point s_nextTick{};
+    static Duration          s_frameDuration{};
+
+#ifdef _WIN32
+    static UINT s_timerPeriodMs = 1;
+#endif
 
     // -------------------------------------------------------------------------
     // Init
@@ -44,14 +62,14 @@ namespace FrameLimiter
     {
         if (fps <= 0.0) fps = 60.0;
 
-        timeBeginPeriod(s_timerPeriodMs); // improve Sleep() granularity
+#ifdef _WIN32
+        timeBeginPeriod(s_timerPeriodMs); // improve sleep granularity
+#endif
 
-        QueryPerformanceFrequency(&s_qpcFreq);
-        s_ticksPerFrame = (long long)((double)s_qpcFreq.QuadPart / fps);
-
-        LARGE_INTEGER now;
-        QueryPerformanceCounter(&now);
-        s_nextTick.QuadPart = now.QuadPart + s_ticksPerFrame;
+        const double nsPerFrame = 1e9 / fps;
+        s_frameDuration = std::chrono::duration_cast<Duration>(
+            std::chrono::nanoseconds(static_cast<long long>(nsPerFrame)));
+        s_nextTick = Clock::now() + s_frameDuration;
     }
 
     // -------------------------------------------------------------------------
@@ -60,7 +78,9 @@ namespace FrameLimiter
     // -------------------------------------------------------------------------
     inline void Shutdown()
     {
+#ifdef _WIN32
         timeEndPeriod(s_timerPeriodMs);
+#endif
     }
 
     // -------------------------------------------------------------------------
@@ -69,37 +89,37 @@ namespace FrameLimiter
     // -------------------------------------------------------------------------
     inline void Throttle()
     {
-        LARGE_INTEGER now;
         for (;;)
         {
-            QueryPerformanceCounter(&now);
-            long long ticksRemaining = s_nextTick.QuadPart - now.QuadPart;
-            if (ticksRemaining <= 0)
+            const Clock::time_point now = Clock::now();
+            if (now >= s_nextTick)
                 break;
 
-            double msRemaining = TicksToMs(ticksRemaining);
+            const double msRemaining =
+                std::chrono::duration<double, std::milli>(s_nextTick - now).count();
+
             if (msRemaining > 2.0)
             {
-                DWORD sleepMs = (DWORD)(msRemaining - 1.0);
-                if (sleepMs > 0)
-                    Sleep(sleepMs);
+                // Sleep all but the last millisecond; the yield-spin below
+                // covers the rest, where no OS sleep is dependable.
+                std::this_thread::sleep_for(
+                    std::chrono::duration<double, std::milli>(msRemaining - 1.0));
             }
             else
             {
-                SwitchToThread();
-                for (int i = 0; i < 50; ++i) { YieldProcessor(); }
+                std::this_thread::yield();
             }
         }
 
-        s_nextTick.QuadPart += s_ticksPerFrame;
+        s_nextTick += s_frameDuration;
 
         // Handle oversleep: snap forward to avoid drift.
-        QueryPerformanceCounter(&now);
-        if (now.QuadPart > s_nextTick.QuadPart)
+        const Clock::time_point now = Clock::now();
+        if (now > s_nextTick)
         {
-            long long behind = now.QuadPart - s_nextTick.QuadPart;
-            long long framesBehind = (behind / s_ticksPerFrame) + 1;
-            s_nextTick.QuadPart += framesBehind * s_ticksPerFrame;
+            const auto behind = now - s_nextTick;
+            const long long framesBehind = (behind / s_frameDuration) + 1;
+            s_nextTick += s_frameDuration * framesBehind;
         }
     }
 }

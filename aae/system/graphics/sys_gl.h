@@ -7,8 +7,12 @@
 #ifndef GL_BASICS_H
 #define GL_BASICS_H
 
+#ifdef _WIN32
 #include "glew.h"
-#include "wglew.h"
+#include "wglew.h"   // WGL entry points; Windows-only by definition
+#else
+#include <GL/glew.h>
+#endif
 #include "sys_log.h"
 
 // -----------------------------------------------------------------------------
@@ -65,6 +69,19 @@ float ReSizeGLScene(int width, int height);
 void ViewOrtho(int width, int height);
 
 void CheckGLErrorEx(const char* label = nullptr, const char* file = nullptr, int line = 0);
+
+#ifndef _WIN32
+// -----------------------------------------------------------------------------
+// Linux only. LinuxWindow::Create() calls this with its Display*/Window BEFORE
+// InitOpenGLContext(), which then has something to build a GLX context on.
+//
+// Typed void*/unsigned long deliberately: this header is included widely, and
+// <X11/Xlib.h> #defines Bool, None, Status and KeyPress - names that collide
+// loudly with ordinary C++ and produce errors far from their cause. Keeping
+// Xlib out of here means only the two files that genuinely need it see it.
+// -----------------------------------------------------------------------------
+void sys_gl_set_x11_target(void* display, unsigned long window);
+#endif
 
 #define check_gl_error()          CheckGLErrorEx(nullptr, __FILE__, __LINE__)
 #define check_gl_error_named(x)   CheckGLErrorEx(x, __FILE__, __LINE__)
