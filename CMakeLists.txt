@@ -669,3 +669,73 @@ if(WIN32)
         $<$<NOT:$<CONFIG:Debug>>:WIN7BUILD>
         UNICODE _UNICODE)
 endif()
+
+# =============================================================================
+# aae_audiotest - Phase 3b's audible proof.
+#
+# Links the REAL mixer.cpp against the platform's IAudioBackend, unlike
+# aae_headless which stubs the mixer out entirely (aae/headless/
+# null_backends.cpp). Without this target a green Linux build would say
+# nothing at all about whether audio works - and the voice path has not been
+# exercised by anything but a smoke test since Phase 2 rewrote it.
+#
+# Deliberately does NOT link aae_core: the point is to isolate the audio
+# stack, so this pulls in only the mixer, the platform backend, and the
+# handful of utility files the mixer needs.
+# =============================================================================
+set(AAE_AUDIOTEST_SOURCES
+    aae/audiotest/audiotest_main.cpp
+    aae/system/audio/mixer.cpp
+    aae/system/util/sys_log.cpp
+    aae/system/util/path_helper.cpp
+    aae/system/util/sys_fileio.cpp
+    aae/system/util/iniFile.cpp
+    aae/system/3rdparty/miniz.c
+)
+if(WIN32)
+    list(APPEND AAE_AUDIOTEST_SOURCES
+        aae/system/audio/xaudio2_backend.cpp
+        aae/system/audio/audio_3d.cpp)
+else()
+    list(APPEND AAE_AUDIOTEST_SOURCES
+        aae/system/audio/linux/alsa_backend.cpp
+        aae/system/audio/voice_mixer.cpp
+        aae/system/audio/linux/audio_3d_null.cpp)
+endif()
+
+add_executable(aae_audiotest ${AAE_AUDIOTEST_SOURCES})
+
+target_compile_features(aae_audiotest PRIVATE cxx_std_17)
+set_target_properties(aae_audiotest PROPERTIES
+    C_STANDARD 17
+    C_STANDARD_REQUIRED ON
+)
+target_include_directories(aae_audiotest PRIVATE
+    aae/aae
+    aae
+    aae/system/audio
+    aae/system/util
+    aae/system/3rdparty
+    aae/system/math
+)
+target_compile_definitions(aae_audiotest PRIVATE
+    $<$<CONFIG:Debug>:_DEBUG>
+    $<$<NOT:$<CONFIG:Debug>>:NDEBUG>
+    ${AAE_PLATFORM_DEFINES}
+)
+if(WIN32)
+    target_include_directories(aae_audiotest PRIVATE
+        ${AAE_XAUDIO2_INCLUDE_DIR}
+        aae/system/audio/linux)
+    target_compile_definitions(aae_audiotest PRIVATE
+        $<$<NOT:$<CONFIG:Debug>>:WIN7BUILD>
+        $<$<NOT:$<CONFIG:Debug>>:USING_XAUDIO2_REDIST>
+        UNICODE _UNICODE)
+    target_link_libraries(aae_audiotest PRIVATE ${AAE_PLATFORM_LIBS})
+else()
+    if(NOT ALSA_FOUND)
+        message(FATAL_ERROR "aae_audiotest needs ALSA - install libasound2-dev")
+    endif()
+    target_include_directories(aae_audiotest PRIVATE aae/system/audio/linux)
+    target_link_libraries(aae_audiotest PRIVATE ALSA::ALSA pthread)
+endif()

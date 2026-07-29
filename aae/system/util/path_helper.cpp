@@ -38,7 +38,10 @@ For more information, please refer to < https://unlicense.org/>
 
 #ifdef _WIN32
 #include <windows.h>   // GetModuleFileNameW - see exe_dir() below
-#include "utf8conv.h"
+// NOTE: "utf8conv.h" used to be included here for win32::Utf8ToUtf16, which
+// built the path separators by hand. std::filesystem does that now, so the
+// include is gone - and with it a dependency from system/util on
+// system/window, which is OSD-layer code this file has no business needing.
 #else
 #include <unistd.h>    // readlink
 #include <limits.h>    // PATH_MAX

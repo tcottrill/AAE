@@ -195,7 +195,11 @@ void SaveIniFile() {
 }
 
 void SetIniFile(const char* szFileName) {
-    strncpy_s(m_szFileName, MAX_INI, szFileName, _TRUNCATE);
+    // snprintf rather than MSVC's strncpy_s/_TRUNCATE: it truncates and always
+    // null-terminates, which is exactly what _TRUNCATE asked for, and it is
+    // standard on both platforms. (Plain strncpy would NOT null-terminate on
+    // overflow - that is the trap this avoids.)
+    snprintf(m_szFileName, MAX_INI, "%s", szFileName ? szFileName : "");
     LoadIniFile();
 }
 
@@ -268,7 +272,9 @@ bool get_config_bool(const char* section, const char* key, bool defval) {
 char* get_config_string(const char* section, const char* key, const char* defval) {
     std::string val = get_value(section, key, defval);
     char* res = new char[val.size() + 1];
-    strcpy_s(res, val.size() + 1, val.c_str());
+    // memcpy with the exact length, rather than MSVC's strcpy_s: the buffer is
+    // sized from val.size() a line above, so there is nothing to check.
+    std::memcpy(res, val.c_str(), val.size() + 1);
 
     // Caller must delete[] the returned pointer!
     return res;
