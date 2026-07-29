@@ -198,3 +198,45 @@ Verification runs under WSLg where it can (WSLg provides XWayland and Mesa softw
 | Real positional audio on Linux (X3DAudio matrix maths) | **3d** |
 | Vulkan renderer path (required by the Pi) | **4** |
 | Teensy 4.1 freestanding target | **5** |
+
+---
+
+## Phase 3c outcome
+
+**Milestone A** (X11 window + GLX context) completed 2026-07-29 — `aae` builds, links, opens a window and renders on Linux.
+
+**Milestone B** (evdev input) completed 2026-07-29. Structure differs from the plan in two deliberate ways, both recorded here because the reasoning is not recoverable from the diff:
+
+1. **No poll thread on Linux.** The plan called for one thread plus `std::atomic` publication. `sys_input.h:19-22` states the Win32 worker thread is a backend design choice rather than part of the contract, and that its "safe on x86" reasoning does not carry to ARM. Since the contract fixes the types (`unsigned char key[256]`, `int mouse_b`), they cannot be made atomic without changing Windows. Draining non-blocking evdev fds on the game thread removes the cross-thread publication entirely instead of trying to make it correct, and suits the Teensy target, which has no threads. **Windows keeps its worker thread untouched** — `rawinput.cpp` was not modified in this phase.
+2. **Gamepad in its own file.** `evdev_joystick.cpp` implements `joystick.h`; `evdev_input.cpp` implements `sys_input.h`. This mirrors the Windows split between `Joystick.cpp` and `rawinput.cpp` rather than the single file the plan named.
+
+### New test infrastructure
+
+WSL2 has **no `/dev/input` directory at all** — not empty, absent — so nothing could be enumerated on the dev box. Two tools were built:
+
+- `tools/linux/uinput_devices.cpp` (`aae_uinput_test`) — fabricates two keyboards, a mouse and a gamepad through `/dev/uinput`. It deliberately does *not* imitate well-behaved hardware: the pad advertises axis ranges no real controller uses (`0..1023` unsigned left stick, `-2048..2047` right), and the mouse advertises `BTN_LEFT`, which lives in the `KEY_*` number space. `--exec` runs the program under test as the invoking user, so the whole run is one `sudo` command.
+- `aae/inputtest/inputtest_main.cpp` (`aae_inputtest`) — links the REAL evdev backend against the real contract and reports every state change, the twin of `aae_audiotest`. It exists because the emulator does not log key presses, it responds to them, so on a machine with no display a working backend and a dead one produce identical logs.
+
+### Verified by execution
+
+Keymap `static_assert`s (20, compile-time); coverage 107 evdev codes → 106/109 bindable AAE keys. Capability classification (mouse with `BTN_LEFT` classified mouse, `letters=0`; keyboards `letters=26`; pad by `EV_ABS`+`FF_RUMBLE`). Keyboard: letters across three evdev rows, digit row distinct from keypad, arrows, F1/F12, L/R modifiers distinct, modifier flags while held. **Multi-HID: the same key from two keyboards reported `from=[kbd0]` then `from=[kbd1]`, and both held distinct keys simultaneously.** Callbacks fire per event and correctly do NOT fire on auto-repeat. Mouse: read-and-reset mickeys, accumulator, Allegro bit order `L=0x1 R=0x2 M=0x4`, wheel scaled to Win32 `WHEEL_DELTA` (one detent → 120). Gamepad: two different non-standard ranges both scaled correctly from `EVIOCGABS`, dead zone honoured, D-pad override to ±128, buttons in XInput order, all three `JOY_COMBO_*` firing exactly once. Rumble: `strong=49151 (75%) weak=16383 (25%)` for a requested `0.75/0.25`, then PLAY/STOP/erase.
+
+Regression: Windows MSBuild exit 0 with exactly six warnings; `Total games: 132` on both platforms; vector counts unchanged at asteroid 89,414 / bzone 353,693.
+
+### The bug the harness caught
+
+**Analog stick Y was double-inverted.** The first implementation negated Y as `Joystick.cpp` does, with a comment asserting evdev behaved "like XInput". It does not: XInput reports the stick pushed up as *positive* and must be negated to reach AAE's screen-space convention, whereas evdev already reports up as *negative*, which IS that convention. The symptom was that pushing the stick up and pressing D-pad up produced opposite signs, since the D-pad path sets `-128` for up explicitly. Left unfixed, every vertical gamepad control would have been backwards while the keyboard looked fine.
+
+Two test artefacts were also mistaken for backend faults and are worth remembering: a key tapped for less than one frame never appears in a polled view of `key[]` (net state change zero — a real property shared with the Win32 backend, which is why the observer now also watches the callbacks), and the uinput event nodes need `chown` to the invoking user as well as `chmod 0666`, because without udev they are `0600 root:root`.
+
+### Unverified — reported as unverified, never assumed
+
+- **Rumble physically spinning a motor.** The harness proves the correct magnitudes reach the device; no motor exists here.
+- **`/dev/input/by-id/` identity.** WSL has no udev, so *every* device in testing fell back to weak event-number identity. Persistent player assignment across reboots is untested.
+- **Two real keyboards on separate USB ports**, and real-hardware feel and latency.
+- **`aae` itself played from a keyboard** (`asteroid`, `pacman`) — the backend is verified through `aae_inputtest`, not yet through an interactive session.
+- **Linux audio still never heard** (carried from 3b; WSLg has no PCM device).
+
+### Pre-existing defect found in passing, not fixed here
+
+`aae.exe -listallgames` on Windows writes a correct file then exits `0xC0000409` (`STATUS_STACK_BUFFER_OVERRUN`). The older shipped binary fails identically and the Windows projects reference no Linux sources, so it predates this phase. It silently breaks the documented `./aae.exe -listallgames && grep ...` verification command, because the `&&` never runs.
