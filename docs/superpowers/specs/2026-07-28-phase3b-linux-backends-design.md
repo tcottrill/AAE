@@ -319,3 +319,42 @@ This is the phase's most valuable risk, and it is handled by *not* routing aroun
 **ALSA under WSLg may not produce sound even when the code is correct.** WSLg routes audio through PulseAudio, and ALSA-to-Pulse bridging is not guaranteed. If item 10's Linux half cannot be demonstrated under WSL, it is demonstrated on the Steam Machine instead — the compile-and-link half still lands here, and the phase does not claim "audible on Linux" until someone has heard it.
 
 **`ENABLE_VIRTUAL_TERMINAL_PROCESSING` changes Windows console output if it fails to enable.** The fallback is uncoloured text, not garbage escape sequences — but it must be checked visually on Windows before the phase is called done, because a log that silently loses its colour coding is a real regression for a debugging tool.
+
+---
+
+## 7. Phase 3b outcome (recorded 2026-07-29)
+
+Branch `refactor/phase3b-linux-backends`. All 18 planned tasks landed.
+
+### Measured result
+
+| goal (§3.1) | result |
+|---|---|
+| `aae_core` compiles under g++ | **yes** — 88/88 TUs, `libaae_core.a` 4.6 MB, g++ 15.2.0 |
+| Linux `aae_headless` matches Windows exactly | **yes** — asteroid 600 → **89,414**, bzone 600 → **353,693**, identical on both |
+| `aae_audiotest` audible on both | **Windows yes; Linux unverified** — see below |
+| Windows unchanged | **yes** — MSBuild exit 0, exactly six warnings, `Total games: 132`, CMake builds every target |
+
+g++ progress across the phase: **13/88 → 74/88 (two words) → 88/88**.
+
+### What the second compiler actually found
+
+Everything below is a latent defect that MSVC accepted, not porting friction:
+
+1. **Two stray `const` keywords caused 146 errors across 73 files.** `const struct RomModule` / `const struct artworks` — a `const` qualifying no declarator.
+2. **Path separators were the only thing between "links" and "runs".** `aae_fileio.cpp`, a *core* file, hardcoded `"\\"` in nine places (ROM archives, sample archives, hiscore/NVRAM). Forward slashes work on both.
+3. **Four symbols declared `extern` in a header, defined `static`.** The plan said "drop the static"; that would have been **wrong for three of the four** — the exported name already had a real definition elsewhere, so it would have been a duplicate-symbol link failure. Only `watchdog_reset_r` genuinely needed external linkage; the others were driver-private shadows and were renamed. **`mhavoc.cpp` had the same defect but never appeared in the g++ survey** because it builds into the exe, not `aae_core`.
+4. **`REGIONFLAG_DISPOSE` (0x80000000) has never worked.** The only reader tests `== ROMREGION_DISPOSE` (0x10). Left alone deliberately — fixing it changes runtime behaviour.
+5. **TMS5220 k-tables** narrowed 79 initialisers. Now `constexpr unsigned short` + `(int16_t)` at the read sites, with `static_assert`s pinning the values. They must be `constexpr`, not `const`: an element of a `const` array is not a constant expression.
+6. **`wintimer.h`'s `timer_t` collided with POSIX `<time.h>`** — a hard redefinition error, so the type had to be renamed (`AaeTimer`) before any POSIX implementation was possible.
+7. Assorted MSVC-only calls no pattern scan had flagged, because the files are not in `aae_core`: `localtime_s` (**reversed argument order** vs `localtime_r`), `fopen_s`, `vsnprintf_s`/`_TRUNCATE`, `_fseeki64`/`_ftelli64`, `strncpy_s`, `strcpy_s`.
+
+### Still owed
+
+- **Linux audio has never been heard.** `/dev/snd` under WSLg contains only `timer`; there is no PCM device, and audio routes through PulseAudio (`/mnt/wslg/PulseServer`). Needs `libasound2-plugins`, or the Steam Machine. The backend correctly detects the absence, logs it and returns cleanly.
+- **The TMS5220 speech-by-ear check on bzone.** The `static_assert`s prove the coefficients are bit-identical, but only listening proves the filter.
+- The interactive Windows pass carried over from Phase 3a: fullscreen toggle, cursor clipping, alt-tab focus, audio by ear.
+
+### Correction to a claim in §5
+
+`aae/system/audio/linux/alsa_backend.cpp` and `aae/system/util/linux/posix_timer.cpp` now exist, so CMake's "not yet implemented" warning lists only `linux_window.cpp` and `evdev_input.cpp`. The `aae` executable still does not link on Linux, exactly as §5 predicted — that is Phase 3c.
