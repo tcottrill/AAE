@@ -313,10 +313,30 @@ elseif(UNIX AND NOT APPLE)
     endif()
 
     set(AAE_PLATFORM_DEFINES GLEW_STATIC)
-    find_package(OpenGL REQUIRED)
-    find_package(ALSA REQUIRED)
-    find_package(X11 REQUIRED)
-    set(AAE_PLATFORM_LIBS OpenGL::GL ALSA::ALSA X11::X11 pthread dl)
+
+    # Looked up optionally, NOT with REQUIRED. These three used to be REQUIRED
+    # at project scope, which meant a box without libx11-dev could not
+    # CONFIGURE at all - and therefore could not build aae_headless, the one
+    # target that needs none of the three. Phase 3b's deliverables are exactly
+    # the targets that do not use X11 or GL, so requiring them up front would
+    # have blocked the phase on a dependency it never touches.
+    #
+    # Each target below asks for what it actually needs: aae_headless nothing,
+    # aae_audiotest ALSA, and the full aae executable all three (Phase 3c).
+    find_package(ALSA)
+    find_package(OpenGL)
+    find_package(X11)
+
+    set(AAE_PLATFORM_LIBS pthread dl)
+    if(OpenGL_FOUND)
+        list(APPEND AAE_PLATFORM_LIBS OpenGL::GL)
+    endif()
+    if(ALSA_FOUND)
+        list(APPEND AAE_PLATFORM_LIBS ALSA::ALSA)
+    endif()
+    if(X11_FOUND)
+        list(APPEND AAE_PLATFORM_LIBS X11::X11)
+    endif()
 else()
     message(FATAL_ERROR "Unsupported platform - AAE targets Windows and Linux only")
 endif()
@@ -392,7 +412,18 @@ endif()
 # =============================================================================
 # aae - executable
 # =============================================================================
-add_executable(aae ${AAE_COMMON_SOURCES} ${AAE_PLATFORM_SOURCES})
+# On Linux the aae executable cannot LINK until Phase 3c supplies
+# linux_window.cpp and evdev_input.cpp (see the EXISTS check above). Declaring
+# it is still useful - the target exists and its sources are configured - but
+# it is excluded from the default build so `cmake --build build-linux` does not
+# fail on a target this phase knowingly does not deliver. Build it explicitly
+# with `--target aae` once 3c lands, and delete this block then.
+set(AAE_EXCLUDE_FROM_ALL "")
+if(UNIX AND _aae_missing_backends)
+    set(AAE_EXCLUDE_FROM_ALL EXCLUDE_FROM_ALL)
+endif()
+
+add_executable(aae ${AAE_EXCLUDE_FROM_ALL} ${AAE_COMMON_SOURCES} ${AAE_PLATFORM_SOURCES})
 
 if(WIN32)
     target_sources(aae PRIVATE aae/resource.rc aae/app.manifest)
