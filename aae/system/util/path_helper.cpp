@@ -33,6 +33,7 @@ For more information, please refer to < https://unlicense.org/>
 #include "path_helper.h"
 #include "sys_log.h"
 
+#include <cstdlib>     // getenv - AAE_DATA_DIR, see exe_dir() below
 #include <filesystem>
 #include <string>
 
@@ -61,6 +62,33 @@ For more information, please refer to < https://unlicense.org/>
 // -----------------------------------------------------------------------------
 static std::filesystem::path exe_dir()
 {
+	// AAE_DATA_DIR wins when set. Everything in AAE resolves relative to the
+	// executable's own directory, which is correct for a portable unzip-and-run
+	// layout and WRONG for any packaged install: inside a Flatpak /app is
+	// read-only, so hi/, cfg/ and nv/ writes fail. The packaging launcher
+	// points this at a writable per-user directory that symlinks the bulky
+	// read-only data (roms/, artwork/, samples/) back into /app, so only the
+	// few hundred KB that actually change are real files.
+	//
+	// Unset on Windows and on a normal Linux run, where the branch below is
+	// reached exactly as before - this adds no configuration to the common
+	// case and no build-time switch.
+	// MSVC deprecates getenv in favour of _dupenv_s and this project builds
+	// with C4996 as an error. Suppressed rather than switched: _dupenv_s
+	// allocates and must be freed, which is three times the code for a
+	// read-only lookup of a variable we control. Same pragma idiom the tree
+	// already uses in aae_emulator.cpp and old_mame_raster.h.
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
+	if (const char* dataDir = std::getenv("AAE_DATA_DIR"))
+		if (dataDir[0])
+			return std::filesystem::path(dataDir);
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
+
 #ifdef _WIN32
 	wchar_t buf[MAX_PATH] = { 0 };
 	DWORD len = GetModuleFileNameW(nullptr, buf, MAX_PATH);
