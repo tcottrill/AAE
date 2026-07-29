@@ -54,7 +54,14 @@ Xlib for the window, GLX for the GL 3.3 core context.
 - It is roughly a third of the code of a native Wayland backend, which needs xdg-shell protocol boilerplate, client-side decorations, and its own fullscreen/cursor/pointer-lock handling.
 - The GL shaders are `#version 330 core` and Mesa `radeonsi` does GL 4.6, so no shader work is needed on the Steam Machine.
 
-**Cost, stated plainly:** XWayland adds a compositing hop, and X11 is the legacy stack. A native Wayland backend is a **later phase** if the hop ever measurably hurts — and because `ISystemWindow` is a real interface, it is a new implementation rather than a rewrite. That is precisely what Phase 3a's abstraction bought.
+**Cost — revised 2026-07-29 after checking how SteamOS actually works.** The original draft of this section called XWayland "a compositing hop" and treated it as the price of the decision. That was overcautious:
+
+- **Gamescope hosts its own XWayland server, and every game in the Steam session runs inside it.** On SteamOS an X11 client is not a fallback — it is the primary, best-supported path, sandboxed in its own virtual desktop that cannot interfere with (or be interfered with by) the session.
+- Gamescope receives game frames through XWayland **with no copy inside X**, and can DRM/KMS-flip them straight to the display, compositing with async Vulkan compute only when it must.
+
+So on the Steam Machine specifically, X11 is not merely tolerated, it is the road the platform is paved for. The remaining honest cost is that X11 is the legacy stack generally, and a desktop Pi running a native Wayland session pays an XWayland cost that a native backend would not.
+
+A native Wayland backend therefore stays a **later phase, if measurement ever justifies it** — and because `ISystemWindow` is a real interface, it is a new implementation rather than a rewrite. That is precisely what Phase 3a's abstraction bought.
 
 **Not affected:** the Pi's eventual Vulkan path (Mesa v3d tops out near GL/GLES 3.1, below `#version 330 core`). That remains Phase 4 and is orthogonal to windowing.
 
@@ -85,7 +92,19 @@ Phase 1 renamed `KEY_*` to `AAEKEY_*` precisely because `KEY_A` collides with Li
 
 ### 3.3 `/dev/input` is permission-gated
 
-Reading `/dev/input/event*` requires membership of the `input` group (or root). This is a **deployment** fact, not a code one, but it must be surfaced properly: a backend that silently finds no devices because of permissions is indistinguishable from one with a bug. The backend logs the distinction explicitly.
+Reading `/dev/input/event*` requires membership of the `input` group (or root):
+
+```bash
+sudo usermod -aG input $USER    # then log out and back in
+```
+
+This is a **deployment** fact, not a code one, but it must be surfaced properly: a backend that silently finds no devices because of permissions is indistinguishable from one with a bug. The backend logs the distinction explicitly (`EACCES` vs "none found"), with the fix in the message.
+
+**On SteamOS this does persist, with a caveat** (checked 2026-07-29). The root filesystem is immutable, but `/etc` — where group membership lives — is a **writable overlay stored under `/var`, explicitly designed to survive OS updates**; that is the same mechanism that preserves the user's password and network configuration. However, `/etc` changes have been reported to occasionally conflict during an update, and SteamOS keeps rollback copies under `/etc/previous` and `/var/lib/steamos-atomupd/etc_backup` for exactly that reason.
+
+**Practical consequence:** group membership is worth re-verifying after a SteamOS update, and the startup log line above is what makes a silent revert obvious rather than mysterious. Any udev rule the backend ever needs (it should not need one — `input` group membership is sufficient for `/dev/input/event*`) has the same persistence story.
+
+Unverified: the actual state of the target machine. `id -nG | tr ' ' '\n' | grep -x input` answers it in one line.
 
 ---
 
