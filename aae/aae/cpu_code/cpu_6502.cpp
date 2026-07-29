@@ -2548,7 +2548,7 @@ std::string cpu_6502::disassemble(uint16_t pc, int* bytesUsed)
 	switch (length[opcode])
 	{
 	case 1:
-		sprintf_s(buffer, sizeof(buffer), "%02X       %-4s", opcode, mnemonics[opcode]);
+		snprintf(buffer, sizeof(buffer),"%02X       %-4s", opcode, mnemonics[opcode]);
 		break;
 
 	case 2:
@@ -2556,11 +2556,11 @@ std::string cpu_6502::disassemble(uint16_t pc, int* bytesUsed)
 		{
 			int8_t offset = static_cast<int8_t>(op1);
 			uint16_t target = pc + 2 + offset;
-			sprintf_s(buffer, sizeof(buffer), "%02X %02X    %-4s $%04X", opcode, op1, mnemonics[opcode], target);
+			snprintf(buffer, sizeof(buffer),"%02X %02X    %-4s $%04X", opcode, op1, mnemonics[opcode], target);
 		}
 		else
 		{
-			sprintf_s(buffer, sizeof(buffer), "%02X %02X    %-4s $%02X", opcode, op1, mnemonics[opcode], op1);
+			snprintf(buffer, sizeof(buffer),"%02X %02X    %-4s $%02X", opcode, op1, mnemonics[opcode], op1);
 		}
 		break;
 
@@ -2569,21 +2569,21 @@ std::string cpu_6502::disassemble(uint16_t pc, int* bytesUsed)
 		uint16_t addr = static_cast<uint16_t>(op1) | (static_cast<uint16_t>(op2) << 8);
 		if (opcode == 0x4C || opcode == 0x20) // JMP abs, JSR abs
 		{
-			sprintf_s(buffer, sizeof(buffer), "%02X %02X %02X %-4s $%04X", opcode, op1, op2, mnemonics[opcode], addr);
+			snprintf(buffer, sizeof(buffer),"%02X %02X %02X %-4s $%04X", opcode, op1, op2, mnemonics[opcode], addr);
 		}
 		else if (opcode == 0x6C) // JMP (indirect)
 		{
-			sprintf_s(buffer, sizeof(buffer), "%02X %02X %02X %-4s ($%04X)", opcode, op1, op2, mnemonics[opcode], addr);
+			snprintf(buffer, sizeof(buffer),"%02X %02X %02X %-4s ($%04X)", opcode, op1, op2, mnemonics[opcode], addr);
 		}
 		else
 		{
-			sprintf_s(buffer, sizeof(buffer), "%02X %02X %02X %-4s $%02X%02X", opcode, op1, op2, mnemonics[opcode], op2, op1);
+			snprintf(buffer, sizeof(buffer),"%02X %02X %02X %-4s $%02X%02X", opcode, op1, op2, mnemonics[opcode], op2, op1);
 		}
 		break;
 	}
 
 	default:
-		sprintf_s(buffer, sizeof(buffer), "%02X       ???", opcode);
+		snprintf(buffer, sizeof(buffer),"%02X       ???", opcode);
 		break;
 	}
 
