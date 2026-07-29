@@ -50,6 +50,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include <string.h>
+#include <cstdint>   // int16_t, for sign-extending the k-tables (see below)
 #include "sys_log.h"
 #include "tms5220.h"
 #include "aae_mame_driver.h"
@@ -76,46 +77,62 @@ const unsigned short pitchtable[0x40] = {
 	0x5C00, 0x5F00, 0x6300, 0x6600, 0x6A00, 0x6E00, 0x7300, 0x7700,
 	0x7B00, 0x8000, 0x8500, 0x8A00, 0x8F00, 0x9500, 0x9A00, 0xA000 };
 
-const short k1table[0x20] = {
+constexpr unsigned short k1table[0x20] = {
 0x82C0,0x8380,0x83C0,0x8440,0x84C0,0x8540,0x8600,0x8780,
 0x8880,0x8980,0x8AC0,0x8C00,0x8D40,0x8F00,0x90C0,0x92C0,
 0x9900,0xA140,0xAB80,0xB840,0xC740,0xD8C0,0xEBC0,0x0000,
 0x1440,0x2740,0x38C0,0x47C0,0x5480,0x5EC0,0x6700,0x6D40 };
 
-const short k2table[0x20] = {
+constexpr unsigned short k2table[0x20] = {
 0xAE00,0xB480,0xBB80,0xC340,0xCB80,0xD440,0xDDC0,0xE780,
 0xF180,0xFBC0,0x0600,0x1040,0x1A40,0x2400,0x2D40,0x3600,
 0x3E40,0x45C0,0x4CC0,0x5300,0x5880,0x5DC0,0x6240,0x6640,
 0x69C0,0x6CC0,0x6F80,0x71C0,0x73C0,0x7580,0x7700,0x7E80 };
 
-const short k3table[0x10] = {
+constexpr unsigned short k3table[0x10] = {
 0x9200,0x9F00,0xAD00,0xBA00,0xC800,0xD500,0xE300,0xF000,
 0xFE00,0x0B00,0x1900,0x2600,0x3400,0x4100,0x4F00,0x5C00 };
 
-const short k4table[0x10] = {
+constexpr unsigned short k4table[0x10] = {
 0xAE00,0xBC00,0xCA00,0xD800,0xE600,0xF400,0x0100,0x0F00,
 0x1D00,0x2B00,0x3900,0x4700,0x5500,0x6300,0x7100,0x7E00 };
 
-const short k5table[0x10] = {
+constexpr unsigned short k5table[0x10] = {
 0xAE00,0xBA00,0xC500,0xD100,0xDD00,0xE800,0xF400,0xFF00,
 0x0B00,0x1700,0x2200,0x2E00,0x3900,0x4500,0x5100,0x5C00 };
 
-const short k6table[0x10] = {
+constexpr unsigned short k6table[0x10] = {
 0xC000,0xCB00,0xD600,0xE100,0xEC00,0xF700,0x0300,0x0E00,
 0x1900,0x2400,0x2F00,0x3A00,0x4500,0x5000,0x5B00,0x6600 };
 
-const short k7table[0x10] = {
+constexpr unsigned short k7table[0x10] = {
 0xB300,0xBF00,0xCB00,0xD700,0xE300,0xEF00,0xFB00,0x0700,
 0x1300,0x1F00,0x2B00,0x3700,0x4300,0x4F00,0x5A00,0x6600 };
 
-const short k8table[0x08] = {
+constexpr unsigned short k8table[0x08] = {
 0xC000,0xD800,0xF000,0x0700,0x1F00,0x3700,0x4F00,0x6600 };
 
-const short k9table[0x08] = {
+constexpr unsigned short k9table[0x08] = {
 0xC000,0xD400,0xE800,0xFC00,0x1000,0x2500,0x3900,0x4D00 };
 
-const short k10table[0x08] = {
+constexpr unsigned short k10table[0x08] = {
 0xCD00,0xDF00,0xF100,0x0400,0x1600,0x2000,0x3B00,0x4D00 };
+
+// The k tables above hold SIGNED 16-bit LPC reflection coefficients, written
+// as unsigned hex straight from the TMS5220 datasheet (0x82C0 = -32064). They
+// are stored unsigned so the initialisers need no narrowing - `const short`
+// with these literals is a hard error under g++ (79 of them) and only worked
+// on MSVC because it truncates silently. Every read site sign-extends with an
+// explicit (int16_t) cast before assigning into new_k[], which is int.
+//
+// These assertions pin that conversion. If the table type or a literal is ever
+// changed, this fails at compile time instead of quietly detuning the lattice
+// filter - a regression that would be audible but very hard to trace.
+static_assert((int16_t)k1table[0]  == -32064, "k1table[0] must be 0x82C0 as signed 16-bit");
+static_assert((int16_t)k1table[23] ==      0, "k1table[23] must be 0x0000");
+static_assert((int16_t)k1table[31] ==  27968, "k1table[31] must be 0x6D40 as signed 16-bit");
+static_assert((int16_t)k10table[0] == -13056, "k10table[0] must be 0xCD00 as signed 16-bit");
+static_assert((int16_t)k10table[7] ==  19712, "k10table[7] must be 0x4D00 as signed 16-bit");
 
 static unsigned char chirptable[41] = {
 	0x00, 0x2a, 0xd4, 0x32, 0xb2, 0x12, 0x25, 0x14,
@@ -543,10 +560,10 @@ static int parse_frame(int remove)
 	{
 		bits -= 18;
 		if (bits < 0) goto ranout;
-		new_k[0] = k1table[extract_bits(5)];
-		new_k[1] = k2table[extract_bits(5)];
-		new_k[2] = k3table[extract_bits(4)];
-		new_k[3] = k4table[extract_bits(4)];
+		new_k[0] = (int16_t)k1table[extract_bits(5)];
+		new_k[1] = (int16_t)k2table[extract_bits(5)];
+		new_k[2] = (int16_t)k3table[extract_bits(4)];
+		new_k[3] = (int16_t)k4table[extract_bits(4)];
 #ifdef DEBUG_5220
 		if (f) fprintf(f, "  (29-bit energy=%d pitch=%d rep=%d 4K frame)\n", new_energy, new_pitch, rep_flag);
 #endif
@@ -555,16 +572,16 @@ static int parse_frame(int remove)
 
 	bits -= 39;
 	if (bits < 0) goto ranout;
-	new_k[0] = k1table[extract_bits(5)];
-	new_k[1] = k2table[extract_bits(5)];
-	new_k[2] = k3table[extract_bits(4)];
-	new_k[3] = k4table[extract_bits(4)];
-	new_k[4] = k5table[extract_bits(4)];
-	new_k[5] = k6table[extract_bits(4)];
-	new_k[6] = k7table[extract_bits(4)];
-	new_k[7] = k8table[extract_bits(3)];
-	new_k[8] = k9table[extract_bits(3)];
-	new_k[9] = k10table[extract_bits(3)];
+	new_k[0] = (int16_t)k1table[extract_bits(5)];
+	new_k[1] = (int16_t)k2table[extract_bits(5)];
+	new_k[2] = (int16_t)k3table[extract_bits(4)];
+	new_k[3] = (int16_t)k4table[extract_bits(4)];
+	new_k[4] = (int16_t)k5table[extract_bits(4)];
+	new_k[5] = (int16_t)k6table[extract_bits(4)];
+	new_k[6] = (int16_t)k7table[extract_bits(4)];
+	new_k[7] = (int16_t)k8table[extract_bits(3)];
+	new_k[8] = (int16_t)k9table[extract_bits(3)];
+	new_k[9] = (int16_t)k10table[extract_bits(3)];
 #ifdef DEBUG_5220
 	if (f) fprintf(f, "  (50-bit energy=%d pitch=%d rep=%d 10K frame)\n", new_energy, new_pitch, rep_flag);
 #endif
