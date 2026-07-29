@@ -55,10 +55,22 @@ cmake -S . -B build-cmake -A x64 && cmake --build build-cmake --config Release
 Game count (the check that matters most — run it after anything touching linking or driver files):
 
 ```bash
-./x64/Release/aae.exe -listallgames | wc -l
+cd aae/x64/Release && ./aae.exe -listallgames && grep "Total games:" "AAE All Games List.txt"
 ```
 
-Expected: **132**.
+Expected: **`Total games: 132`**.
+
+**Two traps in that one command, both hit for real on 2026-07-29:**
+
+1. **`-listallgames` does not print to stdout.** It writes `AAE All Games List.txt` next to the binary and calls `exit(0)` (`aae_emulator.cpp:1622-1627`, `list_all_games()` at `:636-681`). Piping it to `wc -l` counts log lines, not games — it returned `42`, which looks like a catastrophic regression and means nothing at all. Always read the file's `Total games:` footer.
+
+2. **MSBuild does not write to `x64/Release/aae.exe`.** That path holds the *stale shipped* binary — dated 2026-07-23, predating this branch entirely. `aae/aae.vcxproj` outputs to **`aae/x64/Release/aae.exe`**. Verifying the tracked copy would "confirm" a binary no build has touched, which is precisely how Phase 2 lost 83 games without anyone noticing. Check the timestamp if a result ever looks suspiciously unchanged:
+
+```bash
+ls -l --time-style=full-iso aae/x64/Release/aae.exe x64/Release/aae.exe
+```
+
+Note the command `cd`s, so run it in its own shell or `cd` back afterwards.
 
 Linux (after Task 7 creates it):
 
@@ -212,10 +224,10 @@ Expected: exit 0, exactly six warning lines — the same six as before this task
 - [ ] **Step 4: Verify the game count did not move**
 
 ```bash
-./x64/Release/aae.exe -listallgames | wc -l
+cd aae/x64/Release && ./aae.exe -listallgames && grep "Total games:" "AAE All Games List.txt"
 ```
 
-Expected: `132`.
+Expected: `Total games: 132`.
 
 - [ ] **Step 5: Commit**
 
@@ -344,10 +356,10 @@ Inspect each hit. Any comparison of the form `< 0` or assignment to a signed loc
 "/c/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" aae/aae.vcxproj -t:Rebuild -p:Configuration=Release -p:Platform=x64 -v:q -nologo
 ```
 ```bash
-./x64/Release/aae.exe -listallgames | wc -l
+cd aae/x64/Release && ./aae.exe -listallgames && grep "Total games:" "AAE All Games List.txt"
 ```
 
-Expected: exit 0 with six warnings; `132`.
+Expected: exit 0 with six warnings; `Total games: 132`.
 
 - [ ] **Step 5: Run one game that uses the flag, to prove ROM regions still load**
 
@@ -455,10 +467,10 @@ If `old_mame_raster.cpp` already defines it, then `rallyx_vid.cpp`'s copy is a *
 "/c/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" aae/aae.vcxproj -t:Rebuild -p:Configuration=Release -p:Platform=x64 -v:q -nologo
 ```
 ```bash
-./x64/Release/aae.exe -listallgames | wc -l
+cd aae/x64/Release && ./aae.exe -listallgames && grep "Total games:" "AAE All Games List.txt"
 ```
 
-Expected: exit 0, six warnings, `132`.
+Expected: exit 0, six warnings, `Total games: 132`.
 
 - [ ] **Step 6: Run the affected games**
 
@@ -733,10 +745,10 @@ Expected: build FAILS with "os_input.cpp is core code and must not see windows.h
 "/c/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" aae/aae.vcxproj -t:Rebuild -p:Configuration=Release -p:Platform=x64 -v:q -nologo
 ```
 ```bash
-./x64/Release/aae.exe -listallgames | wc -l
+cd aae/x64/Release && ./aae.exe -listallgames && grep "Total games:" "AAE All Games List.txt"
 ```
 
-Expected: exit 0, six warnings, `132`.
+Expected: exit 0, six warnings, `Total games: 132`.
 
 Then, with a gamepad connected, run any game and confirm LS+Start opens the menu, LS+Back exits, and Start+Back pauses. These are the three combos this task rewrote; nothing else exercises them.
 
@@ -1089,13 +1101,13 @@ Add `aae/system/audio/audio_backend.h` to `aae/aae.vcxproj` (as a `<ClInclude>`)
 "/c/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" aae/aae.vcxproj -t:Rebuild -p:Configuration=Release -p:Platform=x64 -v:q -nologo
 ```
 ```bash
-./x64/Release/aae.exe -listallgames | wc -l
+cd aae/x64/Release && ./aae.exe -listallgames && grep "Total games:" "AAE All Games List.txt"
 ```
 ```bash
 ./x64/Release/aae.exe pacman
 ```
 
-Expected: exit 0 with six warnings; `132`; and Pac-Man's sounds play exactly as before. This is the first change to the audio path since Phase 2, so listen rather than trusting the log.
+Expected: exit 0 with six warnings; `Total games: 132`; and Pac-Man's sounds play exactly as before. This is the first change to the audio path since Phase 2, so listen rather than trusting the log.
 
 - [ ] **Step 8: Commit**
 
@@ -2229,13 +2241,13 @@ Expected: all targets build.
 - [ ] **Step 3: Game count from both binaries**
 
 ```bash
-./x64/Release/aae.exe -listallgames | wc -l
+cd aae/x64/Release && ./aae.exe -listallgames && grep "Total games:" "AAE All Games List.txt"
 ```
 ```bash
-./build-cmake/Release/aae.exe -listallgames | wc -l
+cd build-cmake/Release && ./aae.exe -listallgames && grep "Total games:" "AAE All Games List.txt"
 ```
 
-Expected: `132` from both. Anything less means whole-archive linking regressed — check the `/WHOLEARCHIVE:` and `$<LINK_LIBRARY:WHOLE_ARCHIVE,...>` options are still present before looking anywhere else.
+Expected: `Total games: 132` from both. Anything less means whole-archive linking regressed — check the `/WHOLEARCHIVE:` and `$<LINK_LIBRARY:WHOLE_ARCHIVE,...>` options are still present before looking anywhere else.
 
 - [ ] **Step 4: Vector counts, both platforms**
 

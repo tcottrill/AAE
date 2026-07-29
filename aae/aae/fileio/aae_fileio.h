@@ -41,7 +41,13 @@ bool file_exists(const char* filename);
 
 // RomModule structure defined here
 // Rom setting moved here temporarily
-const struct RomModule
+// NOTE: no `const` on this definition. It qualified no declarator, so it meant
+// nothing here - but MSVC accepts that and g++ rejects it outright, and since
+// this header reaches nearly every core file the one keyword broke 73 of the
+// 88 aae_core translation units. Instances still get their constness where
+// they are declared: ROM_START expands to `static struct RomModule ...` and
+// ART_START to `static const struct artworks ...`.
+struct RomModule
 {
 	const char* filename;
 	unsigned int loadAddr;

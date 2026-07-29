@@ -77,7 +77,9 @@ constexpr uint8_t BIT(uint8_t x, int n) { return (x >> n) & 0x1; }
 // This system is deprecated and will be replaced by MAME .lay
 // file layouts once vector games are migrated. New drivers should
 // use AAE_DRIVER_LAYOUT() instead of or in addition to ART_LOAD().
-const struct artworks
+// No `const` here - see the note on struct RomModule in fileio/aae_fileio.h.
+// ART_START below supplies it on the instances, which is where it belongs.
+struct artworks
 {
 	const char* zipfile;
 	const char* filename;
