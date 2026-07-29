@@ -466,6 +466,24 @@ endif()
 
 add_executable(aae ${AAE_EXCLUDE_FROM_ALL} ${AAE_COMMON_SOURCES} ${AAE_PLATFORM_SOURCES})
 
+# Output the Linux executable into x64/Release, NOT build-linux.
+#
+# This is not cosmetic. Every path in the program resolves relative to the
+# EXECUTABLE's own directory (path_helper.cpp: GetModuleFileNameW on Windows,
+# /proc/self/exe on Linux) - so aae.ini, video.ini, roms/, artwork/, hi/ and
+# cfg/ are all looked for beside the binary. Building into build-linux/ meant
+# none of them were found and every game silently ran with built-in defaults:
+# wrong scale, wrong position, and an upside-down GUI, because video.ini drives
+# flipping as well as sizing.
+#
+# The Windows solution build already outputs to x64/Release for exactly this
+# reason. Matching it keeps both platforms on one rule instead of needing a
+# launcher workaround.
+if(UNIX AND NOT APPLE)
+    set_target_properties(aae PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/x64/Release")
+endif()
+
 if(WIN32)
     target_sources(aae PRIVATE aae/resource.rc aae/app.manifest)
     # Matches the vcxproj's <SubSystem>Windows</SubSystem>: the entry point

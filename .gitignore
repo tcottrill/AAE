@@ -61,3 +61,5 @@ build-linux/
 aae/x64/
 aae/aae/x64/
 aae/aae_core/
+build-linux/aae
+x64/Release/aae

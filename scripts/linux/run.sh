@@ -22,15 +22,16 @@
 set -e
 cd "$(dirname "$0")/../.." || exit 1
 
-BIN="$PWD/build-linux/aae"
+BIN="$PWD/x64/Release/aae"
 if [ ! -x "$BIN" ]; then
     echo "error: $BIN not built. Run scripts/linux/build.sh aae first." >&2
     exit 1
 fi
 
-# ROMs, artwork, samples and aae.ini all live next to the shipped Windows
-# binary, and paths resolve relative to the executable's directory - so run
-# from there rather than from build-linux.
+# The binary is BUILT into x64/Release (see CMakeLists.txt) precisely because
+# every path resolves relative to the executable's own directory - aae.ini,
+# video.ini, roms/, artwork/, hi/ and cfg/ all live beside it. cd there too so
+# relative paths on the command line behave as expected.
 cd x64/Release || exit 1
 
 if grep -qi microsoft /proc/version 2>/dev/null && [ -e /dev/dxg ]; then
