@@ -98,6 +98,27 @@ Scanning all 88 `aae_core` translation units:
 
 This is a far better starting position than the Phase 3a work list assumed, and it is the reason goal 2 below is achievable in one phase.
 
+#### 2.1.1 What g++ actually says — measured 2026-07-29
+
+The scan above looks for *known* MSVC-isms. Running the real compiler found things no pattern list would have. All 88 `aae_core` translation units, `g++ -std=c++17 -fsyntax-only`:
+
+| | clean | failing |
+|---|---|---|
+| as-is | 13 | 75 |
+| after deleting two stray `const` keywords | **74** | **14** |
+
+**146 of the errors came from two words.** `aae_fileio.h:44` and `aae_mame_driver.h:80` both read `const struct Foo { ... };` — a `const` qualifying no declarator. MSVC accepts it; g++ rejects it. Because both headers reach nearly every core file, two keywords broke 73 files. Removing them is semantically inert: instances get their constness at the use sites, where `ART_START`/`ROM_START` expand to `static const struct ...`.
+
+The 14 files that remain have five causes, three of which the pattern scan could not have predicted:
+
+1. **`tms5220.cpp`, 79 errors.** The k1–k10 LPC coefficient tables are `const short` initialised with datasheet hex (`0x82C0` = −32064). MSVC truncates silently to the intended negative value; g++ rejects the narrowing. The resulting bit patterns must not change or speech synthesis detunes.
+2. **`memory.h:72`.** `REGIONFLAG_DISPOSE` is `0x80000000` but `RomModule::disposable` is `int`, so every `ROM_REGION(..., REGIONFLAG_DISPOSE)` narrows. MSVC silently stores `INT_MIN`.
+3. **Four extern-vs-static mismatches** — `watchdog_reset_r` (`cpu_control.cpp:1056` vs `cpu_control.h:246`), `interrupt_enable_w` (`dkong.cpp:77` vs `cpu_control.h:240`), `avgdvg_reset_w` (`bwidow.cpp:129` vs `aae_avg.h:118`), `tmpbitmap1` (`rallyx_vid.cpp:28` vs `old_mame_raster.h:48`). A header exports the symbol; the definition gives it internal linkage. Genuine defects that MSVC waves through.
+4. `os_input.cpp` — `windows.h` via `joystick.h` (§2.2).
+5. `cpu_6502.cpp` — `sprintf_s` (§2.1).
+
+Items 1–3 are **not portability annoyances — they are latent defects the second compiler exposed**, which is the argument for §1.1's toolchain decision stated as evidence rather than prediction.
+
 ### 2.2 `joystick.h` is the *only* thing keeping the core Windows-bound
 
 Phase 3a's work list opened with "split `os_input.cpp`", on the grounds that it lives in `aae_core` but does not compile OSD-free. That is true, but the cause is much narrower than a file split.
