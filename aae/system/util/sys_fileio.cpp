@@ -3,9 +3,10 @@
 #include <cstdint>
 #include <fstream>
 #include <string>
-#include <windows.h>
+#include <filesystem>
 #include "sys_fileio.h"
 #include "sys_log.h"
+#include "path_helper.h"   // getpathM/getpathU - the single exe-path primitive
 #include "miniz.h"
 
 // Globals used to store state of last operation
@@ -14,6 +15,43 @@ size_t uncomp_size = 0;
 uint32_t last_crc = 0;
 
 #pragma warning(disable : 4996)
+
+// -----------------------------------------------------------------------------
+// Portable shims for the MSVC-only calls this file used to make directly.
+//
+// aae_fopen: plain fopen works on both, and the 4996 pragma above already
+// suppresses MSVC's "consider fopen_s" deprecation for this translation unit,
+// so no warning count changes. Returns nullptr on failure, unlike fopen_s's
+// errno_t-out-param convention, which is why the call sites below read a
+// little differently now.
+//
+// aae_fseek64 / aae_ftell64: 64-bit file offsets. MSVC spells them
+// _fseeki64/_ftelli64; POSIX has fseeko/ftello, which are 64-bit on Linux
+// when _FILE_OFFSET_BITS=64 (the default for 64-bit builds). Needed because
+// ROM and sample archives can exceed 2 GB.
+// -----------------------------------------------------------------------------
+static inline FILE* aae_fopen(const char* path, const char* mode)
+{
+    return std::fopen(path, mode);
+}
+
+static inline int aae_fseek64(FILE* f, int64_t off, int origin)
+{
+#ifdef _WIN32
+    return _fseeki64(f, off, origin);
+#else
+    return fseeko(f, (off_t)off, origin);
+#endif
+}
+
+static inline int64_t aae_ftell64(FILE* f)
+{
+#ifdef _WIN32
+    return _ftelli64(f);
+#else
+    return (int64_t)ftello(f);
+#endif
+}
 
 size_t getLastFileSize() {
     return filesz;
@@ -28,22 +66,27 @@ uint32_t getLastZCrc() {
 }
 
 bool DirectoryExists(const char* dirName) {
-    DWORD attribs = GetFileAttributesA(dirName);
-    return (attribs != INVALID_FILE_ATTRIBUTES && (attribs & FILE_ATTRIBUTE_DIRECTORY));
+    // std::filesystem instead of GetFileAttributesA. The error_code overload
+    // does not throw, so a missing or inaccessible path reports false exactly
+    // as INVALID_FILE_ATTRIBUTES did.
+    if (!dirName) return false;
+    std::error_code ec;
+    return std::filesystem::is_directory(dirName, ec) && !ec;
 }
 
+// These two used to wrap GetModuleFileName themselves, duplicating what
+// path_helper.cpp already does. Porting the same job twice would have been a
+// mistake, so they now delegate to the single platform primitive there
+// (GetModuleFileNameW on Windows, /proc/self/exe on Linux).
+//
+// Note the names are historical and misleading: they return the EXECUTABLE's
+// directory, not the process's current working directory.
 std::wstring getCurrentDirectoryW() {
-    wchar_t buffer[MAX_PATH];
-    GetModuleFileNameW(nullptr, buffer, MAX_PATH);
-    std::wstring path(buffer);
-    return path.substr(0, path.find_last_of(L"\\/"));
+    return getpathU(nullptr, nullptr);
 }
 
 std::string getCurrentDirectory() {
-    char buffer[MAX_PATH];
-    GetModuleFileNameA(nullptr, buffer, MAX_PATH);
-    std::string path(buffer);
-    return path.substr(0, path.find_last_of("\\/"));
+    return getpathM(nullptr, nullptr);
 }
 
 int getFileSize(FILE* input) {
@@ -59,8 +102,8 @@ uint8_t* loadFile(const std::string& filename) {
 
 uint8_t* loadFile(const char* filename) {
     filesz = 0;
-    FILE* fd = nullptr;
-    if (fopen_s(&fd, filename, "rb") != 0 || !fd) {
+    FILE* fd = aae_fopen(filename, "rb");
+    if (!fd) {
         LOG_INFO("Failed to open file: %s", filename);
         return nullptr;
     }
@@ -78,8 +121,8 @@ uint8_t* loadFile(const char* filename) {
 }
 
 bool saveFile(const char* filename, const unsigned char* buf, int size) {
-    FILE* fd = nullptr;
-    if (fopen_s(&fd, filename, "wb") != 0 || !fd) {
+    FILE* fd = aae_fopen(filename, "wb");
+    if (!fd) {
         LOG_INFO("Failed to save file: %s", filename);
         return false;
     }
@@ -89,14 +132,14 @@ bool saveFile(const char* filename, const unsigned char* buf, int size) {
 }
 
 bool fileExistsReadable(const char* filename) {
-    FILE* f = nullptr;
-    if (fopen_s(&f, filename, "rb") != 0 || !f)
+    FILE* f = aae_fopen(filename, "rb");
+    if (!f)
         return false;
 
     // Optional: Check if file has size, though simple existence is usually enough
-    _fseeki64(f, 0, SEEK_END);
-    uint64_t file_size = _ftelli64(f);
-    _fseeki64(f, 0, SEEK_SET);
+    aae_fseek64(f, 0, SEEK_END);
+    int64_t file_size = aae_ftell64(f);
+    aae_fseek64(f, 0, SEEK_SET);
 
     fclose(f);
     return (file_size > 0);

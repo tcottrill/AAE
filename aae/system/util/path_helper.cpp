@@ -31,85 +31,85 @@ For more information, please refer to < https://unlicense.org/>
 */
 
 #include "path_helper.h"
-#include <windows.h> // For MAX_PATH & GetModuleFileName
-#include "utf8conv.h"
 #include "sys_log.h"
+
+#include <filesystem>
+#include <string>
+
+#ifdef _WIN32
+#include <windows.h>   // GetModuleFileNameW - see exe_dir() below
+#include "utf8conv.h"
+#else
+#include <unistd.h>    // readlink
+#include <limits.h>    // PATH_MAX
+#endif
+
+// -----------------------------------------------------------------------------
+// exe_dir
+//
+// The ONE genuinely platform-specific operation in this file: ask the OS where
+// the running executable lives. There is no portable way to do it - Windows has
+// GetModuleFileName, Linux has the /proc/self/exe symlink - so it is isolated
+// here and everything above it is std::filesystem.
+//
+// This also replaces the hand-rolled backslash searching the two functions
+// below used to do (wcsrchr/strrchr for '\\'), which found nothing on Linux
+// because a backslash is an ordinary filename character there.
+// -----------------------------------------------------------------------------
+static std::filesystem::path exe_dir()
+{
+#ifdef _WIN32
+	wchar_t buf[MAX_PATH] = { 0 };
+	DWORD len = GetModuleFileNameW(nullptr, buf, MAX_PATH);
+	if (len == 0 || len == MAX_PATH)
+	{
+		LOG_INFO("Failed to get the executable path. Error: %lu", GetLastError());
+		return {};
+	}
+	return std::filesystem::path(buf).parent_path();
+#else
+	char buf[PATH_MAX] = { 0 };
+	ssize_t len = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+	if (len <= 0)
+	{
+		LOG_INFO("Failed to get the executable path from /proc/self/exe");
+		return {};
+	}
+	buf[len] = '\0';
+	return std::filesystem::path(buf).parent_path();
+#endif
+}
 
 // This is a helper function to return the fullpath of a file in Unicode
 
 //Unicode Version
 std::wstring getpathU(const char* dir, const char* file)
 {
-	std::wstring path;
-	wchar_t temppath[MAX_PATH] = { 0 }; // Buffer to hold the path
+	std::filesystem::path path = exe_dir();
 
-	DWORD length = GetModuleFileNameW(NULL, temppath, MAX_PATH);
+	// operator/= inserts the platform's preferred separator, so callers get
+	// backslashes on Windows and forward slashes on Linux without this file
+	// having to know which.
+	if (dir)  path /= dir;
+	if (file) path /= file;
 
-	if (length == 0)
-	{
-		// If the function fails, it returns 0
-		LOG_INFO("Failed to get the file path. Error: %ld\n", GetLastError());
-	}
-
-	// Find the last backslash and terminate the string there
-	wchar_t* lastBackslash = wcsrchr(temppath, '\\');
-	if (lastBackslash != NULL) {
-		*lastBackslash = '\0'; // End the string at the last backslash
-	}
-
-	path.assign(temppath);
-
-	if (dir)
-	{
-		path.append(win32::Utf8ToUtf16("\\"));
-		path.append(win32::Utf8ToUtf16(dir));
-	}
-	if (file)
-	{
-		path.append(win32::Utf8ToUtf16("\\"));
-		path.append(win32::Utf8ToUtf16(file));
-	}
-
-	LOG_INFO("getpathU returning path: %s", path.c_str());
-	return path;
+	std::wstring result = path.wstring();
+	LOG_INFO("getpathU returning path: %ls", result.c_str());
+	return result;
 }
 
 
-// This is the non-wide version of this code. 
+// This is the non-wide version of this code.
 std::string getpathM(const char* dir, const char* file)
 {
-	std::string path;
-	char temppath[MAX_PATH] = { 0 }; // Buffer to hold the path
+	std::filesystem::path path = exe_dir();
 
-	DWORD length = GetModuleFileNameA(NULL, temppath, MAX_PATH);
+	if (dir)  path /= dir;
+	if (file) path /= file;
 
-	if (length == 0)
-	{
-		// If the function fails, it returns 0
-		LOG_INFO("Failed to get the file path. Error: %ld\n", GetLastError());
-	}
-
-	// Find the last backslash and terminate the string there
-	char* lastBackslash = strrchr(temppath, '\\');
-	if (lastBackslash != NULL) {
-		*lastBackslash = '\0'; // End the string at the last backslash
-	}
-
-	path.assign(temppath);
-
-	if (dir)
-	{
-		path.append("\\");
-		path.append(dir);
-	}
-	if (file)
-	{
-		path.append("\\");
-		path.append(file);
-	}
-
-	LOG_INFO("getpathM returning path: %s", path.c_str());
-	return path;
+	std::string result = path.string();
+	LOG_INFO("getpathM returning path: %s", result.c_str());
+	return result;
 }
 
 

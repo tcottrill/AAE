@@ -110,19 +110,29 @@
 #include <atomic>
 #include <iostream>
 #include <iomanip>
+#ifdef _WIN32
 #include <windows.h>
 #include <io.h>
 #include <fcntl.h>
+#endif
 
-static WORD levelToColor(Log::Level level) {
+// ANSI SGR colour codes, understood by Linux terminals and by Windows 10+
+// consoles once ENABLE_VIRTUAL_TERMINAL_PROCESSING is enabled (see
+// setConsoleOutputEnabled below). These replaced SetConsoleTextAttribute and
+// its FOREGROUND_* constants, which gave this otherwise portable file its only
+// hard Windows dependency. The colours are chosen to match what the Win32
+// attributes produced, so console output looks the same as before.
+static const char* levelToAnsi(Log::Level level) {
 	switch (level) {
-	case Log::Level::Debug: return FOREGROUND_INTENSITY;
-	case Log::Level::Info:  return FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY; // bright white
-	case Log::Level::Warn:  return FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_INTENSITY; // bright yellow
-	case Log::Level::Error: return FOREGROUND_RED | FOREGROUND_INTENSITY;
-	default:                return FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE;
+	case Log::Level::Debug: return "\x1b[90m";  // bright black (grey)
+	case Log::Level::Info:  return "\x1b[97m";  // bright white
+	case Log::Level::Warn:  return "\x1b[93m";  // bright yellow
+	case Log::Level::Error: return "\x1b[91m";  // bright red
+	default:                return "\x1b[37m";  // white
 	}
 }
+
+static const char* ansiReset() { return "\x1b[0m"; }
 
 
 static const char* baseName(const char* path) {
@@ -158,7 +168,15 @@ namespace {
 	std::string currentTimeString() {
 		std::time_t now = std::time(nullptr);
 		struct tm timeInfo;
+		// Both are the thread-safe variant, but the argument order is
+		// REVERSED between them: MSVC's localtime_s(tm*, time_t*) vs POSIX's
+		// localtime_r(time_t*, tm*). Swapping them compiles cleanly and
+		// produces garbage, so this is worth spelling out.
+#ifdef _WIN32
 		localtime_s(&timeInfo, &now);
+#else
+		localtime_r(&now, &timeInfo);
+#endif
 		char buffer[32];
 		std::strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", &timeInfo);
 		return buffer;
@@ -210,9 +228,18 @@ namespace Log {
 			stream = nullptr;
 		}
 
+		// fopen_s is kept on Windows rather than switching both platforms to
+		// plain fopen: MSVC emits C4996 ("consider using fopen_s") for fopen,
+		// and this phase must not change the build's warning count.
+#ifdef _WIN32
 		errno_t err = fopen_s(&stream, filename.c_str(), "w");
 		if (err != 0 || !stream)
 			return false;
+#else
+		stream = std::fopen(filename.c_str(), "w");
+		if (!stream)
+			return false;
+#endif
 
 		running = true;
 		logThread = std::thread(logWorker);
@@ -259,6 +286,10 @@ namespace Log {
 
 		if (enabled) {
 			std::call_once(consoleInitFlag, []() {
+#ifdef _WIN32
+				// Windows-only: a GUI-subsystem process has no console until
+				// it allocates one. Linux processes already have stdout, so
+				// there is nothing to do there.
 				AllocConsole();
 				freopen_s((FILE**)stdout, "CONOUT$", "w", stdout);
 				freopen_s((FILE**)stderr, "CONOUT$", "w", stderr);
@@ -267,6 +298,20 @@ namespace Log {
 				_setmode(_fileno(stdout), _O_TEXT);
 				_setmode(_fileno(stderr), _O_TEXT);
 
+				// Make the console interpret the ANSI escapes levelToAnsi()
+				// emits. Supported since Windows 10 build 1511, and AAE
+				// already requires Win10/11 (win10_win11_required_code.cpp),
+				// so it is always available. If it somehow fails, output
+				// degrades to uncoloured text - never to visible escape
+				// sequences, because the codes are only ever written to this
+				// same handle.
+				{
+					HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+					DWORD mode = 0;
+					if (hOut != INVALID_HANDLE_VALUE && GetConsoleMode(hOut, &mode))
+						SetConsoleMode(hOut, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+				}
+#endif
 				std::cout.clear();
 				std::cerr.clear();
 				});
@@ -282,7 +327,10 @@ namespace Log {
 
 		va_list args;
 		va_start(args, format);
-		vsnprintf_s(formatted, kMaxMessageSize, _TRUNCATE, format, args);
+		// Plain vsnprintf, not MSVC's vsnprintf_s: it is standard C++11,
+		// truncates and null-terminates exactly like _TRUNCATE asked for, and
+		// MSVC does not deprecate it (unlike fopen above).
+		vsnprintf(formatted, kMaxMessageSize, format, args);
 		va_end(args);
 
 		std::ostringstream oss;
@@ -296,19 +344,11 @@ namespace Log {
 		enqueueMessage(std::move(oss.str()));
 
 		if (consoleOutputEnabled) {
-			HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
-			CONSOLE_SCREEN_BUFFER_INFO consoleInfo;
-			WORD originalAttributes = 0;
-
-			if (GetConsoleScreenBufferInfo(hConsole, &consoleInfo)) {
-				originalAttributes = consoleInfo.wAttributes;
-				SetConsoleTextAttribute(hConsole, levelToColor(level));
-			}
-
-			std::cout << oss.str();
-
-			if (originalAttributes)
-				SetConsoleTextAttribute(hConsole, originalAttributes);
+			// One code path for both platforms. The Win32 console-attribute
+			// save/restore dance this replaced did the same job, but only on
+			// Windows; the escape codes work everywhere and need no handle.
+			std::cout << levelToAnsi(level) << oss.str() << ansiReset();
+			std::cout.flush();
 		}
 	}
 }
