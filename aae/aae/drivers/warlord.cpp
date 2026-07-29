@@ -103,6 +103,9 @@ Off On  On                          For every 5 coins, add 1 coin
 #include "earom.h"
 #include "aae_pokey.h"
 #include "timer.h"
+#include <windows.h>  // INT (used below as a plain int cast); used to arrive
+                      // transitively via opengl_renderer.h -> framework.h,
+                      // which no longer includes framework.h (Task 4).
 
 #include "opengl_renderer.h"
 

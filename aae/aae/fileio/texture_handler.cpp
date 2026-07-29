@@ -11,7 +11,7 @@
 #include "menu.h" // This is just for load_texture
 #include "path_helper.h"
 #include "sys_gl.h"
-#include "framework.h"  // win_get_window; no longer pulled in via aae_mame_driver.h
+#include "win32/win32_private.h"  // win_get_window; no longer pulled in via aae_mame_driver.h
 
 //#define STB_IMAGE_IMPLEMENTATION
 //#define STB_IMAGE_WRITE_IMPLEMENTATION

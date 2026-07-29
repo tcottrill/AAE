@@ -285,6 +285,7 @@
     <ClInclude Include="system\window\framework.h" />
     <ClInclude Include="system\window\sys_window.h" />
     <ClInclude Include="system\window\win32\win32_private.h" />
+    <ClInclude Include="system\window\win32\win32_window.h" />
     <ClInclude Include="system\window\utf8conv.h" />
     <ClInclude Include="system\window\win10_win11_required_code.h" />
     <ClInclude Include="system\window\windows_util.h" />

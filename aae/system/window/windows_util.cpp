@@ -7,7 +7,6 @@
 
 #include "windows_util.h"
 #include "sys_log.h"
-#include "framework.h"
 #include "win32/win32_private.h"
 #include "utf8conv.h"
 // For the UGLY framebuffer clear hacks for temporary vertical vector game artwork
@@ -147,37 +146,6 @@ void allegro_message(const char* title, const char* message)
 		MessageBoxA(GetForegroundWindow(), fallback.c_str(), "Encoding Error",
 			MB_OK | MB_ICONERROR | MB_TOPMOST);
 	}
-}
-
-//========================================================================
-// Return a std string with last error message
-//========================================================================
-std::string GetLastErrorStdStr()
-{
-	DWORD error = GetLastError();
-	if (error)
-	{
-		LPVOID lpMsgBuf;
-		DWORD bufLen = FormatMessage(
-			FORMAT_MESSAGE_ALLOCATE_BUFFER |
-			FORMAT_MESSAGE_FROM_SYSTEM |
-			FORMAT_MESSAGE_IGNORE_INSERTS,
-			NULL,
-			error,
-			MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-			(LPTSTR)&lpMsgBuf,
-			0, NULL);
-		if (bufLen)
-		{
-			LPCSTR lpMsgStr = (LPCSTR)lpMsgBuf;
-			std::string result(lpMsgStr, lpMsgStr + bufLen);
-
-			LocalFree(lpMsgBuf);
-
-			return result;
-		}
-	}
-	return std::string();
 }
 
 RECT GetOpenGLScreenRect(HWND hwnd)

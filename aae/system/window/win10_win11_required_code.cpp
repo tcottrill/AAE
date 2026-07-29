@@ -1,4 +1,5 @@
-#include "framework.h"
+#include <windows.h>
+#include "sys_log.h"
 #include "win10_win11_required_code.h"
 
 #ifndef WIN7BUILD

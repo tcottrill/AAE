@@ -55,7 +55,7 @@
 #include "segag80snd.h"
 #include "aae_mame_driver.h"
 #include "mixer.h"
-#include "framework.h"  // allegro_message; no longer pulled in via aae_mame_driver.h
+#include "sys_dialog.h"  // allegro_message; no longer pulled in via aae_mame_driver.h
 
 
 //TACSCAN SOUND CONSTANTS

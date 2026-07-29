@@ -20,11 +20,10 @@
 #include <atomic>   // device-change flag
 #include <new>      // std::nothrow
 #include <cstdlib>  // atoi
+#include "win32/win32_private.h"  // win_get_window
 
 #pragma comment(lib, "dinput8.lib")
 #pragma comment(lib, "dxguid.lib")
-
-extern HWND win_get_window();   // framework.h (system/window)
 
 #pragma comment(lib, "winmm.lib")
 #ifndef WIN7BUILD

@@ -13,7 +13,7 @@
 // ====================================================================
 
 #include "mame_layout.h"
-#include "framework.h"      // glew.h, wglew.h, GL calls, WindowSetup
+#include "sys_window.h"     // WindowSetup / GetWindowSetup (GL calls come via shader_util.h -> sys_gl.h)
 #include "shader_util.h"    // CompileShader(), LinkShaderProgram()
 #include "sys_log.h"
 #include "tinyxml2.h"

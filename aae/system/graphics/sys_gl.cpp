@@ -14,7 +14,7 @@
 #include "glew.h"
 #include "wglew.h"
 #include "sys_log.h"
-#include "framework.h"
+#include "win32/win32_private.h"
 #include "sys_gl.h"
 
 #include "render_types.h"

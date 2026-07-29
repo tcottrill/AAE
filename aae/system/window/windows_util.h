@@ -34,7 +34,6 @@ void SaveAndDisableAccessibilityPopups();
 void RestoreAccessibilityPopups();
 void osMessage(int ID, const char* fmt, ...);
 void allegro_message(const char* title, const char* message);
-std::string GetLastErrorStdStr();
 WindowsOS GetOsVersion();
 RECT GetOpenGLScreenRect(HWND hwnd);
 

@@ -1,4 +1,4 @@
-#include "framework.h"
+#include <windows.h>  // MAX_PATH
 #include "config.h"
 #include "iniFile.h"
 #include "aae_mame_driver.h"

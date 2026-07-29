@@ -1,7 +1,6 @@
 #ifndef GLCODE_H
 #define GLCODE_H
 
-#include "framework.h"
 #include "texrect.h"
 #include "render_types.h"
 

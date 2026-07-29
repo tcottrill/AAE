@@ -14,7 +14,7 @@
 #include "sys_texture.h"
 #include "sys_gl.h"
 #include "sys_log.h"
-#include "framework.h"
+#include "win32/win32_private.h"
 #include "sys_fileio.h"
 
 #define STB_IMAGE_IMPLEMENTATION

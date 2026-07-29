@@ -1,4 +1,4 @@
-#include "framework.h"
+#include "win32/win32_private.h"
 #include "sys_log.h"
 #include <stdint.h>
 #include <string.h>

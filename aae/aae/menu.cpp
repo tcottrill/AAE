@@ -1,5 +1,5 @@
 #include "menu.h"
-#include "framework.h"
+#include "sys_window.h"
 #include "aae_mame_driver.h"
 #include "opengl_renderer.h"
 #include "vector_fonts.h"
@@ -716,7 +716,7 @@ void MenuManager::BuildVideoMenu() {
             return std::string(GetWindowSetup().borderlessFullscreen ? "YES" : "NO");
         };
         fs.onAdjust = [](int) {
-            ToggleBorderlessFullscreen(win_get_window(), GetWindowSetup());
+            GetSystemWindow().ToggleBorderlessFullscreen();
             config.windowed = GetWindowSetup().borderlessFullscreen ? 1 : 0;
         };
         fs.onActivate = []() {};

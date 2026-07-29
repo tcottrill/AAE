@@ -26,7 +26,8 @@
 // ---------------------------------------------------------------------------
 // Windows / platform headers
 // ---------------------------------------------------------------------------
-#include "framework.h"  // pulls in Windows.h with correct defines
+#include "sys_window.h"  // WindowSetup / GetWindowSetup
+#include "sys_dialog.h"  // allegro_message
 
 #ifndef WIN7BUILD
 #include "win10_win11_required_code.h"

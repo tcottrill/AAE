@@ -50,6 +50,7 @@
 //==========================================================================
 
 #include "opengl_renderer.h"
+#include "sys_window.h"  // GetWindowSetup
 #include "sys_gl.h"
 #include "aae_mame_driver.h"
 #include "old_mame_raster.h"  // main_bitmap; no longer pulled in via osd_video.h

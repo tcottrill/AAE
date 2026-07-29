@@ -11,7 +11,6 @@
 // SOME CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.
 //==========================================================================
 
-#include "framework.h"
 #include "opengl_renderer.h"
 #include "menu.h"
 #include "iniFile.h"
@@ -27,23 +26,17 @@
 // Boundary guard: nothing acommon.cpp includes may drag in the Win32 API.
 // MUST stay below every #include above - see the comment on the glew guard.
 //
-// Currently commented out: it fires, but not because acommon.cpp needs
-// Win32. Task 5 closed the aae_mame_driver.h -> framework.h -> <Windows.h>
-// leak this comment used to blame, so that path is gone. Two paths remain,
-// both direct rather than transitive: this file's own line 14
-// `#include "framework.h"`, and line 15's `#include "opengl_renderer.h"`,
-// which includes framework.h directly and is staying that way (render
-// headers are legitimately Win32-coupled for now - see Task 5 notes).
-// A grep of this file found zero calls to any Win32-touching symbol from
-// framework.h (win_get_window, allegro_message, osMessage, GetClientWidth/
-// Height, ClipAndHideCursor, ...) - acommon.cpp does not itself need Win32,
-// framework.h just leaks it to every one of its includers, itself included.
-// Re-enable this guard once framework.h stops dragging in windows.h, or once
-// acommon.cpp's own dependency on it and on opengl_renderer.h are removed.
-//
-// #ifdef _WINDOWS_
-// #error "windows.h leaked into acommon.cpp"
-// #endif
+// Re-enabled by Task 4 (phase3a-window-contract): this file's own
+// `#include "framework.h"` is gone (acommon.cpp never called any Win32-
+// touching symbol from it - win_get_window, allegro_message, osMessage,
+// GetClientWidth/Height, ClipAndHideCursor, ... - framework.h was just
+// leaking Windows.h to every includer, itself included), and
+// opengl_renderer.h no longer includes framework.h either (Task 4 moved
+// that include into opengl_renderer.cpp, since the header itself used
+// nothing from it). With both paths closed, this guard holds clean.
+#ifdef _WINDOWS_
+#error "windows.h leaked into acommon.cpp"
+#endif
 
 // Regression guard: this file must never see OpenGL headers. If this fires,
 // a render header re-leaked glew.h — fix the header, not this guard.

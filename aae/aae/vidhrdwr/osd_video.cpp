@@ -55,7 +55,6 @@
 //
 // -----------------------------------------------------------------------------
 
-#include "framework.h"
 #include "osd_video.h"
 #include "aae_mame_driver.h"
 #include "old_mame_raster.h"

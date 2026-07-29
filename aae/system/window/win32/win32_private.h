@@ -21,6 +21,11 @@ struct Win32WindowState {
 Win32WindowState& GetWin32WindowState();
 
 // -----------------------------------------------------------------------------
+// Global access to the live Win32 window handle. Defined in winmain.cpp.
+// -----------------------------------------------------------------------------
+HWND win_get_window();
+
+// -----------------------------------------------------------------------------
 // RECT <-> SysRect conversions, used at the Win32 API boundary
 // (GetWindowRect, SetWindowPos, AdjustWindowRectEx, GetSystemMetrics, ...).
 // -----------------------------------------------------------------------------

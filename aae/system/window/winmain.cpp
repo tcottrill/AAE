@@ -38,8 +38,8 @@
 #include "utf8conv.h"
 #include "rawinput_win32.h"
 #include "sys_gl.h"
-#include "framework.h"
 #include "win32/win32_private.h"
+#include "win32/win32_window.h"
 #include "aae_emulator.h"
 #include "resource.h"
 #include "joystick.h"
@@ -51,6 +51,11 @@
 #include "windows_util.h"
 #include "opengl_renderer.h"
 #include "led_service_handler.h"
+
+// Forward declaration: Win32Window::Create() (below) registers the window
+// class with this WndProc, same as wWinMain does; the definition itself
+// comes later in this file.
+LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 // -----------------------------------------------------------------------------
 // Globals
@@ -78,15 +83,28 @@ Win32WindowState& GetWin32WindowState() {
 	return g_win32WindowState;
 }
 
-int GetClientWidth() {
+// -----------------------------------------------------------------------------
+// Win32Window - the ISystemWindow implementation.
+//
+// Method bodies here are re-homed free functions that used to live in this
+// file (see win32_window.h for why they stay in this translation unit rather
+// than a separate win32_window.cpp): ClientWidth/ClientHeight replace the old
+// GetClientWidth/GetClientHeight, and RestoreViewport replaces the old
+// RestoreWindowViewport(), unchanged logic throughout.
+// -----------------------------------------------------------------------------
+int Win32Window::ClientWidth() const {
 	return g_windowSetup.clientWidth;
 }
 
-int GetClientHeight() {
+int Win32Window::ClientHeight() const {
 	return g_windowSetup.clientHeight;
 }
 
-void RestoreWindowViewport()
+float Win32Window::DpiScale() const {
+	return g_windowSetup.dpiScale;
+}
+
+void Win32Window::RestoreViewport()
 {
 	glViewport(0, 0, g_windowSetup.clientWidth, g_windowSetup.clientHeight);
 }
@@ -300,60 +318,61 @@ void UpdateCursorState()
 }
 
 // -----------------------------------------------------------------------------
-// Framework Compatibility Wrappers
-// These match the declarations in framework.h so the rest of the app compiles.
+// Win32Window - cursor control.
+//
+// EnableCursorClip/ForceCursorClipUpdate/SetMousePos/GetMousePos are the same
+// bodies as the old framework.h free functions of the same name (SetMousePos/
+// GetMousePos adapted from an HWND parameter to the interface's g_hWnd/out-
+// param signatures). ClipAndHideCursor/UnclipAndShowCursor were already
+// explicitly deprecated aliases for EnableCursorClip(true/false) with zero
+// callers anywhere in the tree - deleted rather than ported, since
+// ISystemWindow has no equivalent slot for them.
 // -----------------------------------------------------------------------------
 
-void EnableCursorClip(bool enable)
+void Win32Window::EnableCursorClip(bool enable)
 {
 	g_windowSetup.cursorClipEnabled = enable;
 	UpdateCursorState();
 }
 
-void ForceCursorClipUpdate()
+void Win32Window::ForceCursorClipUpdate()
 {
 	UpdateCursorState();
 }
 
-// Deprecated logic replaced by UpdateCursorState, but kept for API compatibility
-void ClipAndHideCursor(HWND hWnd)
+// No prior standalone body existed for this one - cursor visibility used to
+// be an inline side effect of UpdateCursorState's capture logic. Reuses the
+// same ShowCursor-counter idiom used there.
+void Win32Window::SetCursorVisible(bool visible)
 {
-	// If the app explicitly asks to Clip, we assume they want the feature enabled
-	g_windowSetup.cursorClipEnabled = true;
-	UpdateCursorState();
-}
-
-// Deprecated logic replaced by UpdateCursorState, but kept for API compatibility
-void UnclipAndShowCursor()
-{
-	// If the app explicitly asks to Unclip, we assume they want it disabled temporarily
-	g_windowSetup.cursorClipEnabled = false;
-	UpdateCursorState();
+	if (visible) { while (ShowCursor(TRUE)  < 0); }
+	else         { while (ShowCursor(FALSE) >= 0); }
 }
 
 // -----------------------------------------------------------------------------
 // SetMousePos
-// Sets the mouse cursor position relative to the client area of the given HWND.
+// Sets the mouse cursor position relative to the client area of the live window.
 // Converts to screen coordinates before applying.
 // -----------------------------------------------------------------------------
-void SetMousePos(HWND hwnd, int x, int y)
+void Win32Window::SetMousePos(int x, int y)
 {
 	POINT pos = { x, y };
-	ClientToScreen(hwnd, &pos);
+	ClientToScreen(g_hWnd, &pos);
 	SetCursorPos(pos.x, pos.y);
 }
 
 // -----------------------------------------------------------------------------
 // GetMousePos
 // Returns the current mouse cursor position relative to the client area
-// of the given HWND. If conversion fails, returns {0,0}.
+// of the live window. If conversion fails, returns {0,0}.
 // -----------------------------------------------------------------------------
-POINT GetMousePos(HWND hwnd)
+void Win32Window::GetMousePos(int* x, int* y) const
 {
 	POINT p{};
 	if (GetCursorPos(&p))
-		ScreenToClient(hwnd, &p);
-	return p;
+		ScreenToClient(g_hWnd, &p);
+	if (x) *x = p.x;
+	if (y) *y = p.y;
 }
 
 void GetWindowFrameSize(DWORD style, DWORD exStyle, int& frameW, int& frameH)
@@ -781,18 +800,125 @@ HWND CreateConfiguredWindow(HINSTANCE hInstance, const wchar_t* className, const
 }
 
 // -----------------------------------------------------------------------------
-// ToggleBorderlessFullscreen
+// Win32Window::Create / Destroy / PumpEvents / Presentation
+//
+// wWinMain (below) still registers its own window class and calls
+// CreateConfiguredWindow directly - its startup sequencing (icon load,
+// staying hidden until the first black frame is presented, DPI awareness)
+// is more involved than a single entry point. These methods are the
+// equivalent path for a future caller that goes through the interface
+// instead: same class name/title, same CreateConfiguredWindow, registering
+// the class lazily if needed. Not currently called by anything in this file.
+// -----------------------------------------------------------------------------
+bool Win32Window::Create(const WindowSetup& setup)
+{
+	static bool s_classRegistered = false;
+	const wchar_t* kClassName = L"OpenGLWindowClass";
+	HINSTANCE hInstance = GetModuleHandleW(nullptr);
+
+	if (!s_classRegistered)
+	{
+		WNDCLASSW wc = {};
+		wc.lpfnWndProc   = WndProc;
+		wc.hInstance     = hInstance;
+		wc.lpszClassName = kClassName;
+		wc.hCursor       = LoadCursor(nullptr, IDC_ARROW);
+		wc.style         = CS_HREDRAW | CS_VREDRAW;
+		wc.hbrBackground = reinterpret_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
+		RegisterClassW(&wc);
+		s_classRegistered = true;
+	}
+
+	g_windowSetup = setup;
+	g_hWnd = CreateConfiguredWindow(hInstance, kClassName, L"AAE Emulator", g_windowSetup);
+	return g_hWnd != nullptr;
+}
+
+void Win32Window::Destroy()
+{
+	if (g_hWnd)
+	{
+		DestroyWindow(g_hWnd);
+		g_hWnd = nullptr;
+	}
+}
+
+bool Win32Window::PumpEvents()
+{
+	MSG msg;
+	while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
+	{
+		if (msg.message == WM_QUIT)
+			return false;
+
+		TranslateMessage(&msg);
+		DispatchMessage(&msg);
+	}
+	return true;
+}
+
+IPresentSurface* Win32Window::Presentation()
+{
+	return &m_presentSurface;
+}
+
+// -----------------------------------------------------------------------------
+// Win32PresentSurface
+// No Vulkan path is wired up on Windows yet (the working VK renderer lives in
+// the donor Engine Alpha codebase, not here), so CreateVkSurface() is an
+// honest stub rather than an untested implementation.
+// -----------------------------------------------------------------------------
+void Win32PresentSurface::SwapBuffers()
+{
+	GLSwapBuffers();
+}
+
+void Win32PresentSurface::GetDrawableSize(int* w, int* h) const
+{
+	if (w) *w = g_windowSetup.clientWidth;
+	if (h) *h = g_windowSetup.clientHeight;
+}
+
+const char* const* Win32PresentSurface::RequiredVkInstanceExtensions(uint32_t* count) const
+{
+	static const char* kExtensions[] = { "VK_KHR_surface", "VK_KHR_win32_surface" };
+	if (count) *count = 2;
+	return kExtensions;
+}
+
+bool Win32PresentSurface::CreateVkSurface(void* instance, void* outSurface)
+{
+	(void)instance;
+	(void)outSurface;
+	LOG_ERROR("Win32PresentSurface::CreateVkSurface: not implemented");
+	return false;
+}
+
+// -----------------------------------------------------------------------------
+// GetSystemWindow
+// The active window - never null after startup (see sys_window.h).
+// -----------------------------------------------------------------------------
+ISystemWindow& GetSystemWindow()
+{
+	static Win32Window instance;
+	return instance;
+}
+
+// -----------------------------------------------------------------------------
+// Win32Window::ToggleBorderlessFullscreen
 // Switches between borderless fullscreen and windowed mode.
 // When going fullscreen at runtime (ALT+ENTER), uses the monitor nearest to the
 // current window position rather than config.startingMonitor, so we stay on
 // whichever monitor the window currently lives on.
 // When restoring to windowed, uses the saved windowedRect (or fallback).
 // -----------------------------------------------------------------------------
-void ToggleBorderlessFullscreen(HWND hwnd, WindowSetup& config)
+void Win32Window::ToggleBorderlessFullscreen()
 {
 	LOG_INFO("Calling ToggleBorderlessFullscreen");
-	// Both call sites (WndProc's WM_SYSKEYDOWN and menu.cpp) pass g_windowSetup,
-	// so its Win32 half is the live g_win32WindowState singleton.
+	HWND hwnd = g_hWnd;
+	WindowSetup& config = g_windowSetup;
+	// Both call sites (WndProc's WM_SYSKEYDOWN and menu.cpp) act on
+	// g_windowSetup, so its Win32 half is the live g_win32WindowState singleton.
 	Win32WindowState& win32 = GetWin32WindowState();
 	if (!config.borderlessFullscreen)
 	{
@@ -891,7 +1017,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		g_windowSetup.isMinimized = (wParam == SIZE_MINIMIZED);
 
 		if (!g_windowSetup.isMinimized) {
-			RestoreWindowViewport();
+			GetSystemWindow().RestoreViewport();
 			ViewOrtho(width, height);
 			emulator_on_window_resize(width, height);
 #ifndef WIN7BUILD
@@ -957,7 +1083,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 	case WM_SYSKEYDOWN:
 		if (wParam == VK_RETURN && (GetKeyState(VK_MENU) & 0x8000)) {
-			ToggleBorderlessFullscreen(hWnd, g_windowSetup);
+			GetSystemWindow().ToggleBorderlessFullscreen();
 			return 0;
 		}
 		break;
@@ -990,7 +1116,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		// Press F9 to toggle mouse capture/hiding
 		if (wParam == VK_F9) {
 			bool newState = !GetWindowSetup().cursorClipEnabled;
-			EnableCursorClip(newState);
+			GetSystemWindow().EnableCursorClip(newState);
 			return 0;
 		}
 	}
@@ -1218,12 +1344,12 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance,
 	// -------------------------------------------------------------------------
 	g_windowSetup.borderlessFullscreen = false;
 	if (requestedFullscreen)
-		ToggleBorderlessFullscreen(g_hWnd, g_windowSetup);
+		GetSystemWindow().ToggleBorderlessFullscreen();
 
 	// Now that all subsystems (Window, RawInput, OpenGL) are ready,
 	// enforce the cursor trap/hide logic.
 	UpdateCursorState();
-	EnableCursorClip(1);
+	GetSystemWindow().EnableCursorClip(true);
 
 	// This sets the High Performance timer.
 	TimerInit();

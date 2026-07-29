@@ -31,7 +31,6 @@
 #include "galsnd_stream.h"
 #include "aae_mame_driver.h"   // Machine, cpu_scale_by_cycles
 #include "mixer.h"             // stream_start/stop/update()
-#include "framework.h"         // config.samplerate
 
 // -----------------------------------------------------------------------------
 // Constants (legacy-compatible)
