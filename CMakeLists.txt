@@ -472,6 +472,43 @@ if(UNIX AND _aae_missing_backends)
     set(AAE_EXCLUDE_FROM_ALL EXCLUDE_FROM_ALL)
 endif()
 
+# Fail at CONFIGURE time, with the package name, rather than at link time.
+#
+# find_package(GLEW/OpenGL/X11) above is deliberately non-REQUIRED so that
+# aae_headless can be built on a box with none of them. The cost is that a
+# missing library does not stop the configure: the aae target simply omits it
+# from target_link_libraries, compiles all 139 objects, and then dies with a
+# couple of hundred "undefined reference to `__glewBindBuffer'" lines that say
+# nothing about what to install.
+#
+# That is exactly how the first hermetic build of this project failed. Anything
+# that ONLY aae needs is checked here instead, in the same shape as the ALSA
+# check aae_audiotest already has.
+if(UNIX AND NOT APPLE AND NOT AAE_EXCLUDE_FROM_ALL)
+    if(NOT GLEW_FOUND)
+        message(FATAL_ERROR
+            "The 'aae' target needs GLEW, which was not found.\n"
+            "  Debian/Ubuntu:  sudo apt install libglew-dev\n"
+            "  Arch/SteamOS:   sudo pacman -S glew\n"
+            "  Flatpak:        the manifest builds it as a module - pass "
+            "-DCMAKE_PREFIX_PATH=/app so find_package can see it.\n"
+            "The bundled 3rdparty GLEW is Windows-only: it has wglew.h but no "
+            "glxew.h, so Linux must link the system library.")
+    endif()
+    if(NOT OpenGL_FOUND)
+        message(FATAL_ERROR
+            "The 'aae' target needs OpenGL and GLU.\n"
+            "  Debian/Ubuntu:  sudo apt install libgl1-mesa-dev libglu1-mesa-dev\n"
+            "  Arch/SteamOS:   sudo pacman -S mesa glu")
+    endif()
+    if(NOT X11_FOUND)
+        message(FATAL_ERROR
+            "The 'aae' target needs X11.\n"
+            "  Debian/Ubuntu:  sudo apt install libx11-dev\n"
+            "  Arch/SteamOS:   sudo pacman -S libx11")
+    endif()
+endif()
+
 add_executable(aae ${AAE_EXCLUDE_FROM_ALL} ${AAE_COMMON_SOURCES} ${AAE_PLATFORM_SOURCES})
 
 # Output the Linux executable into x64/Release, NOT build-linux.
