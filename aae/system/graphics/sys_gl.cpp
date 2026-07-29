@@ -584,8 +584,8 @@ void GLSwapBuffers()
 	// window that was never created. Log the first few swaps so "is anything
 	// drawing?" can be answered from the log alone.
 	static int s_swapCount = 0;
-	if (s_swapCount < 3) {
-		++s_swapCount;
+	++s_swapCount;
+	if (s_swapCount <= 3 || (s_swapCount % 120) == 0) {
 		LOG_INFO("GLSwapBuffers #%d (dpy=%p win=%lu)", s_swapCount,
 		         (void*)gDpy, (unsigned long)gWin);
 	}
