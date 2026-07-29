@@ -4,6 +4,7 @@
 #include "linux/linux_window.h"
 
 #include "sys_gl.h"
+#include "sys_input.h"   // RawInput_SetPaused, on focus change
 #include "sys_log.h"
 
 #include <X11/Xlib.h>
@@ -258,10 +259,21 @@ bool LinuxWindow::PumpEvents()
 			m_impl->focused = true;
 			// Re-apply the confine if the user asked for one.
 			if (m_impl->clipEnabled) ForceCursorClipUpdate();
+			RawInput_SetPaused(false);
 			break;
 
 		case FocusOut:
 			m_impl->focused = false;
+			// Pause input, as winmain.cpp does on WM_ACTIVATEAPP.
+			//
+			// This matters MORE here than it does on Windows. evdev is a
+			// global tap: it keeps delivering events from the physical
+			// devices no matter which window the desktop considers focused,
+			// so without this an alt-tabbed AAE carries on eating every
+			// keystroke meant for the other application. Pausing also clears
+			// the key state, which is what stops a key held at the moment of
+			// the switch from being stuck down on return.
+			RawInput_SetPaused(true);
 			// CRITICAL: drop the pointer grab. A grab held while unfocused
 			// confines the pointer for the WHOLE desktop, not just this
 			// window - the X11 equivalent of a stuck ClipCursor, and much

@@ -20,6 +20,7 @@
 #include "iniFile.h"
 #include "path_helper.h"
 #include "joystick.h"
+#include "linux/evdev_input.h"
 
 #include <X11/Xlib.h>   // screen-size probe below; the window owns its own Display
 
@@ -137,6 +138,17 @@ int main(int argc, char** argv)
 	g_window.EnableCursorClip(true);
 	TimerInit();
 
+	// winmain.cpp calls RawInput_Initialize(hwnd) at the equivalent point.
+	// This takes no window handle: evdev reads the devices directly rather
+	// than routing input through the window, which is what gives per-device
+	// multi-HID identity in the first place.
+	if (!EvdevInput_Initialize()) {
+		LOG_WARN("No input devices could be opened - the game will run but will "
+		         "not respond to the keyboard. If devices are present, this is "
+		         "almost certainly permissions: sudo usermod -aG input $USER");
+	}
+	install_joystick();
+
 	emulator_init(argc, argv);
 
 	bool running = true;
@@ -145,6 +157,10 @@ int main(int argc, char** argv)
 		if (!g_window.PumpEvents())
 			break;
 
+		// Input is drained here, on the game thread. The Win32 backend does
+		// this on a worker thread because WM_INPUT arrives on the message
+		// pump; sys_input.h notes that is a backend choice, not the contract.
+		EvdevInput_Poll();
 		poll_joystick();
 		emulator_run();
 
@@ -153,6 +169,8 @@ int main(int argc, char** argv)
 	}
 
 	emulator_end();
+	remove_joystick();
+	RawInput_Shutdown();
 	osd_led_service_stop();
 	TimerShutdown();
 	DeleteGLContext();
