@@ -81,6 +81,20 @@ void CheckGLErrorEx(const char* label = nullptr, const char* file = nullptr, int
 // Xlib out of here means only the two files that genuinely need it see it.
 // -----------------------------------------------------------------------------
 void sys_gl_set_x11_target(void* display, unsigned long window);
+
+// -----------------------------------------------------------------------------
+// Linux only, and ORDER-CRITICAL: call this BEFORE creating the X window, and
+// create that window with the returned visual (plus a colormap made from it).
+//
+// GLX requires the drawable's visual to be compatible with the GL context's
+// framebuffer config. Creating the window with CopyFromParent and choosing an
+// FBConfig afterwards produces a window that makes a context, reports no
+// error, swaps buffers happily - and shows nothing at all.
+//
+// Returns an XVisualInfo* the caller must XFree(), or nullptr on failure.
+// Typed void* so this header stays free of Xlib (see the note above).
+// -----------------------------------------------------------------------------
+void* sys_gl_choose_x11_visual(void* display, int screen, int enableMultisample);
 #endif
 
 #define check_gl_error()          CheckGLErrorEx(nullptr, __FILE__, __LINE__)

@@ -42,6 +42,70 @@ static HGLRC hRC = nullptr;
 static Display*    gDpy = nullptr;
 static GLXDrawable gWin = 0;
 static GLXContext  gCtx = nullptr;
+static GLXFBConfig gFbc = nullptr;   // chosen by sys_gl_choose_x11_visual()
+
+// -----------------------------------------------------------------------------
+// sys_gl_choose_x11_visual
+//
+// MUST be called BEFORE the X window is created, and the returned visual MUST
+// be the one XCreateWindow uses (with a colormap made from it).
+//
+// GLX requires the drawable's visual to be compatible with the context's
+// framebuffer config. Creating the window with CopyFromParent and *then*
+// picking an FBConfig independently is the classic way to get a window that
+// makes a context, reports no error, swaps happily - and displays nothing.
+//
+// Returns an XVisualInfo* the caller must XFree(), or nullptr on failure.
+// -----------------------------------------------------------------------------
+void* sys_gl_choose_x11_visual(void* display, int screen, int enableMultisample)
+{
+	Display* dpy = static_cast<Display*>(display);
+	if (!dpy) return nullptr;
+
+	int fbAttribs[] = {
+		GLX_X_RENDERABLE,  True,
+		GLX_DRAWABLE_TYPE, GLX_WINDOW_BIT,
+		GLX_RENDER_TYPE,   GLX_RGBA_BIT,
+		GLX_X_VISUAL_TYPE, GLX_TRUE_COLOR,
+		GLX_RED_SIZE,      8,
+		GLX_GREEN_SIZE,    8,
+		GLX_BLUE_SIZE,     8,
+		GLX_ALPHA_SIZE,    8,
+		GLX_DEPTH_SIZE,    24,
+		GLX_STENCIL_SIZE,  8,
+		GLX_DOUBLEBUFFER,  True,
+		GLX_SAMPLE_BUFFERS, enableMultisample ? 1 : 0,
+		GLX_SAMPLES,        enableMultisample ? 4 : 0,
+		None
+	};
+
+	int fbCount = 0;
+	GLXFBConfig* fbc = glXChooseFBConfig(dpy, screen, fbAttribs, &fbCount);
+	if ((!fbc || fbCount == 0) && enableMultisample) {
+		// MSAA is optional - retry without rather than failing outright.
+		LOG_INFO("GLX: no multisample framebuffer config, retrying without MSAA");
+		fbAttribs[24] = 0;   // GLX_SAMPLE_BUFFERS value
+		fbAttribs[26] = 0;   // GLX_SAMPLES value
+		fbc = glXChooseFBConfig(dpy, screen, fbAttribs, &fbCount);
+	}
+	if (!fbc || fbCount == 0) {
+		LOG_ERROR("GLX: no suitable framebuffer config found");
+		return nullptr;
+	}
+
+	gFbc = fbc[0];
+	XVisualInfo* vi = glXGetVisualFromFBConfig(dpy, gFbc);
+	XFree(fbc);
+
+	if (!vi) {
+		LOG_ERROR("GLX: glXGetVisualFromFBConfig returned no visual");
+		return nullptr;
+	}
+
+	LOG_INFO("GLX: chose visual 0x%lx depth %d for the window",
+	         (unsigned long)vi->visualid, vi->depth);
+	return vi;
+}
 
 void sys_gl_set_x11_target(void* display, unsigned long window)
 {
@@ -408,42 +472,12 @@ bool InitOpenGLContext(bool forceLegacyGL2, bool enableMultisample, bool useCore
 		return false;
 	}
 
-	const int screen = DefaultScreen(gDpy);
-
-	int fbAttribs[] = {
-		GLX_X_RENDERABLE,  True,
-		GLX_DRAWABLE_TYPE, GLX_WINDOW_BIT,
-		GLX_RENDER_TYPE,   GLX_RGBA_BIT,
-		GLX_X_VISUAL_TYPE, GLX_TRUE_COLOR,
-		GLX_RED_SIZE,      8,
-		GLX_GREEN_SIZE,    8,
-		GLX_BLUE_SIZE,     8,
-		GLX_ALPHA_SIZE,    8,
-		GLX_DEPTH_SIZE,    24,
-		GLX_STENCIL_SIZE,  8,
-		GLX_DOUBLEBUFFER,  True,
-		GLX_SAMPLE_BUFFERS, enableMultisample ? 1 : 0,
-		GLX_SAMPLES,        enableMultisample ? 4 : 0,
-		None
-	};
-
-	int fbCount = 0;
-	GLXFBConfig* fbc = glXChooseFBConfig(gDpy, screen, fbAttribs, &fbCount);
-	if (!fbc || fbCount == 0) {
-		// MSAA is optional; retry without it rather than failing outright.
-		if (enableMultisample) {
-			LOG_INFO("GLX: no multisample framebuffer config, retrying without MSAA");
-			fbAttribs[sizeof(fbAttribs)/sizeof(fbAttribs[0]) - 5] = 0;  // SAMPLE_BUFFERS
-			fbAttribs[sizeof(fbAttribs)/sizeof(fbAttribs[0]) - 3] = 0;  // SAMPLES
-			fbc = glXChooseFBConfig(gDpy, screen, fbAttribs, &fbCount);
-		}
-		if (!fbc || fbCount == 0) {
-			LOG_ERROR("GLX: no suitable framebuffer config found");
-			return false;
-		}
+	if (!gFbc) {
+		LOG_ERROR("InitOpenGLContext: no framebuffer config - "
+		          "sys_gl_choose_x11_visual() must run before the window is created");
+		return false;
 	}
-	GLXFBConfig chosen = fbc[0];
-	XFree(fbc);
+	GLXFBConfig chosen = gFbc;
 
 	typedef GLXContext (*PFNGLXCREATECONTEXTATTRIBSARB)(Display*, GLXFBConfig, GLXContext, Bool, const int*);
 	PFNGLXCREATECONTEXTATTRIBSARB createContextAttribs =
@@ -546,6 +580,16 @@ void SetvSync(bool enabled)
 
 void GLSwapBuffers()
 {
+	// Diagnostic: a window that never presents is indistinguishable from a
+	// window that was never created. Log the first few swaps so "is anything
+	// drawing?" can be answered from the log alone.
+	static int s_swapCount = 0;
+	if (s_swapCount < 3) {
+		++s_swapCount;
+		LOG_INFO("GLSwapBuffers #%d (dpy=%p win=%lu)", s_swapCount,
+		         (void*)gDpy, (unsigned long)gWin);
+	}
+
 	if (gDpy && gWin)
 		glXSwapBuffers(gDpy, gWin);
 	else

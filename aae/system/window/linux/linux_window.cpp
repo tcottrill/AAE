@@ -7,6 +7,7 @@
 #include "sys_log.h"
 
 #include <X11/Xlib.h>
+#include <X11/Xutil.h>   // XVisualInfo, for the GLX-matched visual
 #include <X11/Xatom.h>
 #include <X11/Xresource.h>
 #include <X11/cursorfont.h>
@@ -88,8 +89,29 @@ bool LinuxWindow::Create(const WindowSetup& setup)
 		if (y < 0) y = 0;
 	}
 
+	// ORDER MATTERS. The GL framebuffer config must be chosen FIRST, and this
+	// window created with ITS visual - GLX requires the drawable's visual to be
+	// compatible with the context's FBConfig. Creating the window with
+	// CopyFromParent and picking an FBConfig afterwards yields a window that
+	// makes a context, reports no error, swaps buffers happily, and displays
+	// nothing whatsoever.
+	XVisualInfo* vi = static_cast<XVisualInfo*>(
+		sys_gl_choose_x11_visual(m_impl->dpy, m_impl->screen, /*multisample=*/0));
+	if (!vi) {
+		LOG_ERROR("LinuxWindow: no GLX-compatible visual available");
+		XCloseDisplay(m_impl->dpy);
+		delete m_impl; m_impl = nullptr;
+		return false;
+	}
+
 	XSetWindowAttributes swa{};
 	swa.background_pixel = BlackPixel(m_impl->dpy, m_impl->screen);
+	// A colormap for the CHOSEN visual. Without one, XCreateWindow fails with
+	// BadMatch whenever that visual differs from the root's.
+	swa.colormap = XCreateColormap(m_impl->dpy,
+	                               RootWindow(m_impl->dpy, m_impl->screen),
+	                               vi->visual, AllocNone);
+	swa.border_pixel = 0;
 	// StructureNotify gives resize/map, FocusChange drives the pointer-grab
 	// release below. Key/Button masks are deliberately absent - input comes
 	// from evdev, not X11.
@@ -98,8 +120,10 @@ bool LinuxWindow::Create(const WindowSetup& setup)
 	m_impl->win = XCreateWindow(
 		m_impl->dpy, RootWindow(m_impl->dpy, m_impl->screen),
 		x, y, (unsigned)w, (unsigned)h, 0,
-		CopyFromParent, InputOutput, CopyFromParent,
-		CWBackPixel | CWEventMask, &swa);
+		vi->depth, InputOutput, vi->visual,
+		CWBackPixel | CWBorderPixel | CWColormap | CWEventMask, &swa);
+
+	XFree(vi);
 
 	if (!m_impl->win) {
 		LOG_ERROR("XCreateWindow failed");
@@ -119,10 +143,39 @@ bool LinuxWindow::Create(const WindowSetup& setup)
 	m_impl->blankCursor = make_blank_cursor(m_impl->dpy, m_impl->win);
 
 	XMapWindow(m_impl->dpy, m_impl->win);
-	XFlush(m_impl->dpy);
+	// XSync, not XFlush: XMapWindow is asynchronous, and everything after this
+	// (the GLX context, the pointer grab) assumes the window is actually
+	// viewable. XFlush only pushes the request out; XSync waits for the server
+	// to have processed it.
+	XSync(m_impl->dpy, False);
+
+	// Report what the SERVER thinks, not what we asked for. A window that is
+	// created and mapped without error can still be unviewable or zero-sized,
+	// and that looks identical to "no window appeared" from the outside.
+	{
+		XWindowAttributes wa{};
+		if (XGetWindowAttributes(m_impl->dpy, m_impl->win, &wa)) {
+			const char* st = (wa.map_state == IsViewable)   ? "IsViewable"
+			               : (wa.map_state == IsUnviewable) ? "IsUnviewable"
+			                                                : "IsUnmapped";
+			LOG_INFO("LinuxWindow: server reports map_state=%s geometry=%dx%d at %d,%d",
+			         st, wa.width, wa.height, wa.x, wa.y);
+		} else {
+			LOG_ERROR("LinuxWindow: XGetWindowAttributes failed after mapping");
+		}
+	}
 
 	m_impl->clientW = w;
 	m_impl->clientH = h;
+
+	// The renderer reads its viewport and FBO size from WindowSetup, NOT from
+	// ISystemWindow - opengl_renderer.cpp does glViewport(0, 0, ws.clientWidth,
+	// ws.clientHeight) and sizes screen_rect from the same pair. They default
+	// to 0, so leaving them unset renders a perfectly working black window.
+	// winmain.cpp keeps them current from WM_SIZE; ConfigureNotify is the
+	// counterpart here.
+	GetWindowSetup().clientWidth  = w;
+	GetWindowSetup().clientHeight = h;
 
 	// X11 has no per-monitor DPI API. Xft.dpi in the resource database is what
 	// desktop environments actually set, so read that and fall back to 1.0.
@@ -172,6 +225,21 @@ bool LinuxWindow::PumpEvents()
 
 	bool keepRunning = true;
 
+	// One-shot: report the map state once the WM has had a chance to respond.
+	// XMapWindow is asynchronous with respect to the WINDOW MANAGER (XSync only
+	// waits for our own requests), so checking immediately after mapping can
+	// legitimately still read IsUnmapped.
+	static bool s_reportedMap = false;
+	if (!s_reportedMap) {
+		XWindowAttributes wa{};
+		if (XGetWindowAttributes(m_impl->dpy, m_impl->win, &wa) &&
+		    wa.map_state == IsViewable) {
+			s_reportedMap = true;
+			LOG_INFO("LinuxWindow: window is now IsViewable (%dx%d at %d,%d)",
+			         wa.width, wa.height, wa.x, wa.y);
+		}
+	}
+
 	while (XPending(m_impl->dpy)) {
 		XEvent ev;
 		XNextEvent(m_impl->dpy, &ev);
@@ -180,6 +248,10 @@ bool LinuxWindow::PumpEvents()
 		case ConfigureNotify:
 			m_impl->clientW = ev.xconfigure.width;
 			m_impl->clientH = ev.xconfigure.height;
+			// Keep WindowSetup in step - the renderer's viewport comes from
+			// there, not from this class. See the note in Create().
+			GetWindowSetup().clientWidth  = m_impl->clientW;
+			GetWindowSetup().clientHeight = m_impl->clientH;
 			break;
 
 		case FocusIn:

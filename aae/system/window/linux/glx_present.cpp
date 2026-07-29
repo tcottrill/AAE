@@ -17,6 +17,15 @@ void GlxPresentSurface::Attach(void* display, unsigned long window)
 
 void GlxPresentSurface::SwapBuffers()
 {
+	// Diagnostic: a window that never presents looks the same as a window that
+	// was never created. Log the first few swaps so "is anything drawing?" is
+	// answerable from the log alone.
+	static int s_swapCount = 0;
+	if (s_swapCount < 3) {
+		++s_swapCount;
+		LOG_INFO("GlxPresentSurface::SwapBuffers #%d", s_swapCount);
+	}
+
 	// Routed through sys_gl.cpp rather than calling glXSwapBuffers directly:
 	// that file owns the GLX context and the display/window it was made
 	// current on, and having two places that think they own the swap is how
