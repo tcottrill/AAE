@@ -301,12 +301,20 @@ elseif(UNIX AND NOT APPLE)
     )
 
     # Phase 3c additions that are not "backends" in the EXISTS-guarded sense:
-    #   linux_main.cpp   - the entry point and GetSystemWindow/GetWindowSetup,
-    #                      i.e. the Linux counterpart of winmain.cpp
-    #   glx_present.cpp  - IPresentSurface over GLX
+    #   linux_main.cpp    - the entry point and GetSystemWindow/GetWindowSetup,
+    #                       i.e. the Linux counterpart of winmain.cpp
+    #   glx_present.cpp   - IPresentSurface over GLX
+    #   evdev_device.cpp  - one /dev/input/event* node
+    #   evdev_keymap.cpp  - KEY_* -> AAEKEY_*
+    #   evdev_joystick.cpp- the joystick.h half, sibling of Joystick.cpp on
+    #                       Windows (evdev_input.cpp is the sys_input.h half,
+    #                       sibling of rawinput.cpp)
     list(APPEND AAE_PLATFORM_SOURCES_WANTED
         aae/system/window/linux/linux_main.cpp
         aae/system/window/linux/glx_present.cpp
+        aae/system/input/linux/evdev_device.cpp
+        aae/system/input/linux/evdev_keymap.cpp
+        aae/system/input/linux/evdev_joystick.cpp
     )
 
     # Not in the EXISTS-guarded list above: these two exist as of Phase 3b and
@@ -784,4 +792,57 @@ else()
     endif()
     target_include_directories(aae_audiotest PRIVATE aae/system/audio/linux)
     target_link_libraries(aae_audiotest PRIVATE ALSA::ALSA pthread)
+endif()
+
+# =============================================================================
+# aae_uinput_test - synthetic input devices for the evdev backend (Linux only).
+#
+# The development box is WSL2, which has NO /dev/input directory at all - so
+# without this there is nothing for the evdev backend to enumerate and none of
+# Phase 3c Milestone B could be exercised before its first run on real
+# hardware. /dev/uinput is present, so the devices are fabricated instead.
+#
+# It has no Windows counterpart by design; Win32 has the real Raw Input stack
+# and a hardware pass. Deliberately standalone - it links nothing from AAE,
+# because a test harness sharing code with the thing under test can agree with
+# it and still both be wrong.
+#
+# Excluded from ALL: it needs root to run, so building it by default would
+# invite running the whole test suite under sudo. Build it explicitly:
+#   cmake --build build-linux --target aae_uinput_test
+# =============================================================================
+if(UNIX AND NOT APPLE)
+    add_executable(aae_uinput_test EXCLUDE_FROM_ALL tools/linux/uinput_devices.cpp)
+    target_compile_features(aae_uinput_test PRIVATE cxx_std_17)
+endif()
+
+# =============================================================================
+# aae_inputtest - Phase 3c's observable proof, the twin of aae_audiotest.
+#
+# Links the REAL evdev backend against the real sys_input.h / joystick.h
+# contract and prints every state change. The emulator does not log key
+# presses - it responds to them - so without this a working backend and a dead
+# one produce identical output on a machine with no display and no hands.
+#
+# Deliberately does NOT link aae_core: the point is to isolate the input
+# stack, exactly as aae_audiotest isolates the audio one.
+# =============================================================================
+if(UNIX AND NOT APPLE)
+    add_executable(aae_inputtest
+        aae/inputtest/inputtest_main.cpp
+        aae/system/input/linux/evdev_input.cpp
+        aae/system/input/linux/evdev_device.cpp
+        aae/system/input/linux/evdev_keymap.cpp
+        aae/system/input/linux/evdev_joystick.cpp
+        aae/system/util/sys_log.cpp
+    )
+    target_compile_features(aae_inputtest PRIVATE cxx_std_17)
+    target_include_directories(aae_inputtest PRIVATE
+        aae
+        aae/system/input
+        aae/system/window
+        aae/system/util
+        aae/system/math
+    )
+    target_link_libraries(aae_inputtest PRIVATE pthread)
 endif()

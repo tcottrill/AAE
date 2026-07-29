@@ -1,0 +1,220 @@
+# Phase 3c Milestone B verification sequence.
+#
+#   terminal A:  ./aae_inputtest --seconds 40 --rumble
+#   terminal B:  sudo ./aae_uinput_test --script tools/linux/tests/milestone_b.txt
+#
+# Start aae_inputtest FIRST. The opening sleep gives its hotplug rescan (120
+# frames, ~2s) time to notice devices that appeared after it started, which
+# exercises hotplug as a side effect of setting the test up.
+#
+# Every step below targets something that can be wrong while still compiling.
+
+sleep 4000
+
+echo === keyboard: letters across three different evdev rows ===
+# KEY_Q=16, KEY_A=30, KEY_Z=44 - deliberately not adjacent, because a table
+# built by assuming alphabetical contiguity passes for A and fails for Z.
+tap kbd1 KEY_A
+sleep 80
+tap kbd1 KEY_Q
+sleep 80
+tap kbd1 KEY_Z
+sleep 80
+tap kbd1 KEY_M
+sleep 80
+
+echo === keyboard: digit row vs numeric keypad ===
+# These must NOT collapse onto each other. KEY_1 -> AAEKEY_1 (0x31),
+# KEY_KP1 -> AAEKEY_1_PAD (0x61).
+tap kbd1 KEY_1
+sleep 80
+tap kbd1 KEY_KP1
+sleep 80
+tap kbd1 KEY_0
+sleep 80
+tap kbd1 KEY_KP0
+sleep 80
+
+echo === keyboard: arrows and function row ===
+tap kbd1 KEY_LEFT
+sleep 80
+tap kbd1 KEY_DOWN
+sleep 80
+tap kbd1 KEY_F1
+sleep 80
+tap kbd1 KEY_F12
+sleep 80
+tap kbd1 KEY_ESC
+sleep 80
+tap kbd1 KEY_SPACE
+sleep 80
+
+echo === keyboard: left and right modifiers must stay distinct ===
+key kbd1 KEY_LEFTCTRL 1
+sleep 80
+key kbd1 KEY_LEFTCTRL 0
+sleep 80
+key kbd1 KEY_RIGHTCTRL 1
+sleep 80
+key kbd1 KEY_RIGHTCTRL 0
+sleep 80
+
+echo === keyboard: modifier flags while a key is held ===
+key kbd1 KEY_LEFTSHIFT 1
+sleep 80
+tap kbd1 KEY_A
+sleep 80
+key kbd1 KEY_LEFTSHIFT 0
+sleep 80
+
+echo === keyboard: auto-repeat feeds the hold counter, not new presses ===
+key kbd1 KEY_B 1
+sleep 60
+key kbd1 KEY_B 2
+sleep 60
+key kbd1 KEY_B 2
+sleep 60
+key kbd1 KEY_B 2
+sleep 60
+key kbd1 KEY_B 0
+sleep 100
+
+echo === MULTI-HID: the same key on two different keyboards ===
+# THE per-device claim. Both must set the merged key[], but each must appear
+# in exactly one device slot. A backend that routes everything to slot 0
+# passes every test above and fails here.
+tap kbd1 KEY_5
+sleep 150
+tap kbd2 KEY_5
+sleep 150
+
+echo === MULTI-HID: both keyboards holding different keys at once ===
+key kbd1 KEY_LEFT 1
+sleep 60
+key kbd2 KEY_RIGHT 1
+sleep 150
+key kbd1 KEY_LEFT 0
+sleep 60
+key kbd2 KEY_RIGHT 0
+sleep 100
+
+echo === mouse: relative motion, read-and-reset ===
+rel mouse REL_X 10
+sleep 60
+rel mouse REL_Y -5
+sleep 60
+rel mouse REL_X -20
+sleep 60
+rel mouse REL_X 3
+rel mouse REL_Y 4
+sleep 100
+
+echo === mouse: Allegro button bit order (L=0x01 R=0x02 M=0x04) ===
+# BTN_LEFT/RIGHT/MIDDLE are 0x110/0x111/0x112 in that order, but the Allegro
+# mask puts MIDDLE last. Transcribing positionally swaps right and middle.
+key mouse BTN_LEFT 1
+sleep 80
+key mouse BTN_LEFT 0
+sleep 80
+key mouse BTN_RIGHT 1
+sleep 80
+key mouse BTN_RIGHT 0
+sleep 80
+key mouse BTN_MIDDLE 1
+sleep 80
+key mouse BTN_MIDDLE 0
+sleep 80
+
+echo === mouse: wheel ===
+rel mouse REL_WHEEL 1
+sleep 80
+rel mouse REL_WHEEL -1
+sleep 80
+
+echo === gamepad: axes on NON-STANDARD ranges (0..1023, flat 16) ===
+# Resting value is 511, not 0. Anything assuming a signed 16-bit range reads
+# a centred stick as pinned hard over.
+abs pad ABS_X 511
+sleep 100
+abs pad ABS_X 0
+sleep 150
+abs pad ABS_X 1023
+sleep 150
+abs pad ABS_X 511
+sleep 150
+
+echo === gamepad: right stick on its own different range (-2048..2047) ===
+abs pad ABS_RX -2048
+sleep 150
+abs pad ABS_RX 2047
+sleep 150
+abs pad ABS_RX 0
+sleep 150
+
+echo === gamepad: dead zone - a nudge inside flat must read zero ===
+abs pad ABS_X 519
+sleep 150
+abs pad ABS_X 511
+sleep 150
+
+echo === gamepad: Y axis must be INVERTED (up is negative) ===
+abs pad ABS_Y 0
+sleep 150
+abs pad ABS_Y 1023
+sleep 150
+abs pad ABS_Y 511
+sleep 150
+
+echo === gamepad: hat / d-pad overrides the left stick to +-128 ===
+abs pad ABS_HAT0X -1
+sleep 150
+abs pad ABS_HAT0X 1
+sleep 150
+abs pad ABS_HAT0X 0
+sleep 150
+abs pad ABS_HAT0Y -1
+sleep 150
+abs pad ABS_HAT0Y 0
+sleep 150
+
+echo === gamepad: face buttons - check the printed letter, not the compass ===
+tap pad BTN_SOUTH
+sleep 100
+tap pad BTN_EAST
+sleep 100
+tap pad BTN_NORTH
+sleep 100
+tap pad BTN_WEST
+sleep 100
+tap pad BTN_TL
+sleep 100
+tap pad BTN_TR
+sleep 100
+
+echo === gamepad: JOY_COMBO_PAUSE = Start + Back, edge-triggered ===
+# Must fire ONCE, not every frame it is held.
+key pad BTN_START 1
+key pad BTN_SELECT 1
+sleep 500
+key pad BTN_START 0
+key pad BTN_SELECT 0
+sleep 200
+
+echo === gamepad: JOY_COMBO_ESC = LStick + Back ===
+key pad BTN_THUMBL 1
+key pad BTN_SELECT 1
+sleep 400
+key pad BTN_THUMBL 0
+key pad BTN_SELECT 0
+sleep 200
+
+echo === gamepad: JOY_COMBO_MENU = LStick + Start ===
+key pad BTN_THUMBL 1
+key pad BTN_START 1
+sleep 400
+key pad BTN_THUMBL 0
+key pad BTN_START 0
+sleep 300
+
+echo === done - devices will now be removed, exercising the unplug path ===
+sleep 500
