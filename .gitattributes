@@ -1,0 +1,11 @@
+# Shell scripts must keep LF endings even when checked out on Windows.
+# With core.autocrlf=true (the default on this dev box) git would otherwise
+# hand bash a file whose shebang ends in \r, and every invocation fails with
+# "/bin/bash^M: bad interpreter". WSL reads these straight off /mnt/c, so the
+# working-tree form is what matters, not the form in the object store.
+*.sh text eol=lf
+
+# CMake and the Linux build read these on both platforms; LF is safe for
+# MSBuild and Visual Studio too, and keeps diffs stable across the two OSes.
+CMakeLists.txt text eol=lf
+*.cmake text eol=lf
