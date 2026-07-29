@@ -323,3 +323,16 @@ bool XAudio2Backend::VoiceSetOutputMatrix(VoiceHandle* v, uint32_t srcChannels,
 	}
 	return true;
 }
+
+// -----------------------------------------------------------------------------
+// The Windows half of audio_backend.h's platform factory.
+//
+// This is the ONLY place in the Windows build that names XAudio2Backend.
+// mixer.cpp used to construct it directly, which meant portable mixer code
+// referred to a concrete Win32 type; it now calls create_audio_backend() and
+// never learns which backend it got.
+// -----------------------------------------------------------------------------
+std::unique_ptr<IAudioBackend> create_audio_backend()
+{
+	return std::make_unique<XAudio2Backend>();
+}

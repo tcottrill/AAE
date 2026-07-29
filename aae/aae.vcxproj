@@ -290,6 +290,7 @@
     <ClInclude Include="system\audio\error_wav.h" />
     <ClInclude Include="system\audio\mixer.h" />
     <ClInclude Include="system\audio\stb.h" />
+    <ClInclude Include="system\audio\audio_backend.h" />
     <ClInclude Include="system\audio\xaudio2_backend.h" />
     <ClInclude Include="system\graphics\colordefs.h" />
     <ClInclude Include="system\graphics\sys_gl.h" />

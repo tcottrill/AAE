@@ -139,7 +139,7 @@
  // Note for ME: This is the FULL INTEGER version of this code, for AAE only: 8/15/25
 
 #include "mixer.h"
-#include "xaudio2_backend.h"
+#include "audio_backend.h"   // IAudioBackend + create_audio_backend(); NOT xaudio2_backend.h
 #include "audio_3d.h"
 #include "error_wav.h"
 #include "emptywav.h"
@@ -161,7 +161,24 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-#define HR(hr) if (FAILED(hr)) { LOG_ERROR("Error at line %d: HRESULT = 0x%08X\n", __LINE__, hr); }
+//----------------------------------------------------------------------------
+// Build-time boundary test. mixer.cpp is platform-neutral and must reach the
+// audio device ONLY through audio_backend.h. Until Phase 3b it included
+// xaudio2_backend.h, which pulls <xaudio2.h> unconditionally - so this file
+// could not even be parsed on Linux.
+//
+// __XAUDIO2_INCLUDED__ is the include guard used by BOTH the Windows SDK's
+// xaudio2.h and the redist's xaudio2redist.h - read out of both headers, not
+// guessed. Phase 1 shipped three #error guards that could never fire because
+// their macro name was assumed; this one was verified to trigger.
+//----------------------------------------------------------------------------
+#ifdef __XAUDIO2_INCLUDED__
+#error "mixer.cpp must not see xaudio2.h - go through IAudioBackend (audio_backend.h)"
+#endif
+
+// (A dead `#define HR(hr) if (FAILED(hr)) ...` lived here. FAILED() is a Win32
+// macro, so it was the last Windows-ism in this file - never invoked, and
+// removed with the guard above rather than left as a trap.)
 
 //#define OGG_DECODE
 //#define MP3_DECODE
@@ -667,9 +684,17 @@ int mixer_init(int rate, int fps)  // <<< integer FPS
 
 	LOG_INFO("Mixer init, BUFFER SIZE = %d, freq %d framerate %d", BUFFER_SIZE, rate, fps);
 
-	// Stand up the streaming backend (XAudio2 today). Voice path routes
-	// through g_backend's Voice* methods, so no separate engine handle needed.
-	auto backend = std::make_unique<XAudio2Backend>();
+	// Stand up the streaming backend for whichever platform this is - XAudio2
+	// on Windows, ALSA on Linux. This file never names a concrete backend;
+	// create_audio_backend() (audio_backend.h) is defined once per platform.
+	// The voice path routes through g_backend's Voice* methods, so no separate
+	// engine handle is needed either.
+	auto backend = create_audio_backend();
+	if (!backend) {
+		// No sound card is a legitimate configuration, not an error - run silent.
+		LOG_ERROR("mixer_init: no audio backend available for this platform");
+		return 0;
+	}
 	if (!backend->Init(rate, fps)) {
 		LOG_ERROR("mixer_init: backend Init failed");
 		return 0; // unique_ptr destructor calls Shutdown
