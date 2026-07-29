@@ -140,23 +140,9 @@ static void ReportOpenGLCapabilities()
 	}
 }
 
-// -----------------------------------------------------------------------------
-// GetGLDC
-// Returns the current device context used by the OpenGL subsystem
-// -----------------------------------------------------------------------------
-HDC GetGLDC()
-{
-	return hDC;
-}
-
-// -----------------------------------------------------------------------------
-// GetGLRC
-// Returns the current rendering context created by InitOpenGLContext()
-// -----------------------------------------------------------------------------
-HGLRC GetGLRC()
-{
-	return hRC;
-}
+// GetGLDC()/GetGLRC() removed in Phase 3c - see the note in sys_gl.h. hDC and
+// hRC are still used internally by this file; only the public accessors, which
+// nothing called, are gone.
 
 // -----------------------------------------------------------------------------
 // InitOpenGLContext

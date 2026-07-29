@@ -39,16 +39,15 @@ void GLSwapBuffers();
 void SetvSync(bool enabled);
 
 // -----------------------------------------------------------------------------
-// GetGLDC
-// Returns the current Win32 device context used by OpenGL
+// GetGLDC()/GetGLRC() were removed in Phase 3c. They returned HDC/HGLRC - the
+// last Win32 types in this otherwise platform-neutral header - and had no
+// callers anywhere in the codebase, so nothing was load-bearing on them. Their
+// presence alone stopped this header being included from the Linux build.
+//
+// Anything that genuinely needs the platform's GL handles should go through
+// IPresentSurface (system/window/sys_window.h), which is the contract that
+// exists for exactly that purpose.
 // -----------------------------------------------------------------------------
-HDC GetGLDC();
-
-// -----------------------------------------------------------------------------
-// GetGLRC
-// Returns the current OpenGL rendering context handle
-// -----------------------------------------------------------------------------
-HGLRC GetGLRC();
 
 // -----------------------------------------------------------------------------
 // Logs OpenGL version support and optionally warns if < 2.0
