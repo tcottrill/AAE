@@ -56,7 +56,10 @@ struct RomModule
 	//Hashing Checksums
 	unsigned int crc;
 	const char* sha;
-	int disposable;
+	// ROMREGION_* / REGIONFLAG_* bitmask. Unsigned so REGIONFLAG_DISPOSE
+	// (0x80000000) fits without narrowing the braced initialiser in
+	// ROM_REGION() - see the note in memory.h.
+	unsigned int disposable;
 };
 
 // HANDY ROM Definitions.

@@ -68,9 +68,22 @@ enum {
 	REGION_MAX
 };
 
-#define REGIONFLAG_MASK			0xf8000000
-#define REGIONFLAG_DISPOSE		0x80000000           /* Dispose of this region when done */
-#define REGIONFLAG_SOUNDONLY	0x40000000           /* load only if sound emulation is turned on */
+/* Bitmask flags packed into RomModule::disposable. 0x80000000 does not fit in
+   a signed int, so these carry the u suffix and the field they feed is
+   unsigned - otherwise the braced initialiser in ROM_REGION() narrows, which
+   g++ rejects outright and MSVC silently stored as INT_MIN.
+
+   NOTE: these are MAME-inherited and are NOT the constant this codebase
+   actually acts on. The only reader of the field is osd_video.cpp, which
+   tests `== ROMREGION_DISPOSE` (0x10, defined in fileio/aae_fileio.h) - a
+   value REGIONFLAG_DISPOSE can never equal. 68 driver sites use
+   ROMREGION_DISPOSE and work; the single site using REGIONFLAG_DISPOSE
+   (drivers/gaplus.cpp) has therefore never had its region freed. Left alone
+   deliberately: switching it would start freeing a region that never has
+   been, which is a behaviour change and not this phase's business. */
+#define REGIONFLAG_MASK			0xf8000000u
+#define REGIONFLAG_DISPOSE		0x80000000u          /* Dispose of this region when done */
+#define REGIONFLAG_SOUNDONLY	0x40000000u          /* load only if sound emulation is turned on */
 
 #define PROM_MEMORY_REGION(region) ((const unsigned char *)((-(region))-1))
 
