@@ -69,7 +69,13 @@
 #include "menu.h"
 #include "aae_emulator.h"   // get_exit_confirm_status / get_exit_confirm_selection
 #include "mame_layout.h"
-#include "inifile.h"
+// iniFile.h, with the capital F the file actually has. Spelled "inifile.h"
+// until 2026-07-29 and it built everywhere anyway: Windows is case-insensitive,
+// and so is the /mnt/c drvfs mount the WSL Linux build runs on. It first failed
+// inside the Flatpak, where sources are copied onto a real case-sensitive
+// filesystem - which is also what a from-source build on the Steam Machine or a
+// Pi would hit.
+#include "iniFile.h"
 #include "mame_vector.h"
 #include <chrono>   // for optional frame-time profiling
 #include <cstring>  // strcmp for raster_effect name check
