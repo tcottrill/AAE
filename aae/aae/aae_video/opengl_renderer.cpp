@@ -53,6 +53,7 @@
 #include "sys_window.h"  // GetWindowSetup
 #include "sys_gl.h"
 #include "sys_str.h"     // aae_stricmp
+#include "iniFile.h"     // get_config_int, for the vsync diagnostic in init_gl
 #include "aae_mame_driver.h"
 #include "old_mame_raster.h"  // main_bitmap; no longer pulled in via osd_video.h
 #include "vector_fonts.h"
@@ -356,8 +357,11 @@ int init_gl(void)
 		// WGL_EXT_swap_control on Windows, GLX_EXT/MESA/SGI swap control on
 		// Linux - including reporting when no swap-control extension exists.
 		// Calling wgl* directly here duplicated that and was Windows-only.
-		SetvSync(config.forcesync != 0);
-		LOG_INFO("VSync %s (config.forcesync).", config.forcesync ? "enabled" : "disabled");
+		SetvSync(config.forcesync);
+		LOG_INFO("VSync %s (config.forcesync=%d, raw ini force_vsync=%d).",
+		         config.forcesync ? "enabled" : "disabled",
+		         config.forcesync,
+		         get_config_int("main", "force_vsync", -1));
 
 		// --- Base GL state ---
 		set_ortho(1024, 768);
