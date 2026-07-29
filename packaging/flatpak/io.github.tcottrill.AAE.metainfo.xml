@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.tcottrill.AAE</id>
+
+  <name>AAE</name>
+  <summary>Vector and raster arcade emulator</summary>
+
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+
+  <developer id="io.github.tcottrill">
+    <name>Tim Cottrill</name>
+  </developer>
+
+  <description>
+    <p>
+      AAE emulates vector arcade hardware with a beam-accurate renderer, and a
+      number of raster titles alongside it.
+    </p>
+    <p>
+      This build is packaged for local installation and is not intended for
+      distribution: it bundles game data, so it is a private sideload artefact
+      rather than a publishable application.
+    </p>
+  </description>
+
+  <launchable type="desktop-id">io.github.tcottrill.AAE.desktop</launchable>
+
+  <categories>
+    <category>Game</category>
+    <category>Emulator</category>
+  </categories>
+
+  <supports>
+    <control>keyboard</control>
+    <control>gamepad</control>
+    <control>pointing</control>
+  </supports>
+
+  <content_rating type="oars-1.1"/>
+
+  <releases>
+    <release version="0.1" date="2026-07-29">
+      <description>
+        <p>First Linux package. X11/GLX renderer, ALSA audio, and evdev input
+        with per-device keyboard, mouse and gamepad routing.</p>
+      </description>
+    </release>
+  </releases>
+</component>

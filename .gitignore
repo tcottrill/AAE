@@ -63,3 +63,12 @@ aae/aae/x64/
 aae/aae_core/
 build-linux/aae
 x64/Release/aae
+
+# Flatpak build artefacts. aae.flatpak is a ~300MB bundle of the emulator plus
+# every rom, artwork and sample - a build OUTPUT, not source, and it would
+# dwarf the repository. The rest is flatpak-builder's own state.
+aae.flatpak
+flatpak-build.log
+build-flatpak/
+flatpak-repo/
+.flatpak-builder/

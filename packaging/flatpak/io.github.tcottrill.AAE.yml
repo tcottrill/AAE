@@ -1,0 +1,190 @@
+# AAE Flatpak manifest.
+#
+# Build:
+#   flatpak-builder --user --install --force-clean build-flatpak \
+#       packaging/flatpak/io.github.tcottrill.AAE.yml
+#
+# Single-file bundle to carry to the Steam Machine:
+#   flatpak-builder --user --repo=repo --force-clean build-flatpak \
+#       packaging/flatpak/io.github.tcottrill.AAE.yml
+#   flatpak build-bundle repo aae.flatpak io.github.tcottrill.AAE
+#
+# WHY FLATPAK RATHER THAN A TARBALL
+#
+# The binary cannot simply be copied to SteamOS. This repo builds against the
+# host toolchain - glibc 2.43 on the Ubuntu 26.04 dev box - while SteamOS 3.x
+# ships roughly 2.37, so a copied binary dies with "GLIBC_2.4x not found"
+# before main(). Flatpak compiles the app INSIDE its own SDK, so the result
+# depends only on the runtime, which is the same everywhere.
+#
+# NOTE ON REDISTRIBUTION: this bundles roms/, artwork/ and samples/ so the
+# thing installs and runs in one step. That makes it a private sideload
+# artefact - Flathub would not accept a package containing arcade ROMs. If
+# this is ever published, the data modules below are what has to come out.
+
+app-id: io.github.tcottrill.AAE
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: aae-launcher.sh
+
+finish-args:
+  # X11, not Wayland. Deliberate, and the reason the whole backend is X11+GLX:
+  # gamescope hosts its own XWayland server and every game in the SteamOS
+  # session runs inside it, taking frames with no copy inside X. X11 is the
+  # paved road on this target, not a fallback.
+  - --socket=x11
+  - --share=ipc
+
+  # GPU.
+  - --device=dri
+
+  # Audio. PulseAudio covers the PipeWire-with-pulse-compat setup SteamOS
+  # uses; alsa_backend opens ALSA "default", which resolves to it.
+  - --socket=pulseaudio
+
+  # THE ONE THAT IS EASY TO MISS. Without --device=input the sandbox exposes
+  # no /dev/input at all and the evdev backend correctly reports "no input
+  # devices" - which reads as a broken build rather than a missing permission.
+  # The user must also be in the 'input' group on the host; on SteamOS /etc is
+  # a writable overlay under /var, so usermod -aG input survives OS updates
+  # (worth re-checking after each one - rollbacks land in /etc/previous).
+  - --device=input
+
+  # Gamepads that present as /dev/uinput or hidraw, plus rumble.
+  - --device=all
+
+modules:
+  # GLU is not in the Freedesktop runtime either, and two things need it:
+  # glew.h #includes <GL/glu.h> unless the consumer defines GLEW_NO_GLU, and
+  # AAE actually CALLS gluBuild2DMipmaps from sys_texture.cpp and
+  # texture_handler.cpp on the legacy texture path - so defining that macro to
+  # silence the include would only move the failure to link time.
+  #
+  # Must come BEFORE glew, which installs the header that includes it.
+  #
+  # Sourced from git by tag rather than a tarball, deliberately: a git tag
+  # needs no sha256, and a hash written from memory is exactly how the glew
+  # module wasted a build cycle earlier.
+  - name: glu
+    buildsystem: meson
+    sources:
+      - type: git
+        url: https://gitlab.freedesktop.org/mesa/glu.git
+        tag: glu-9.0.3
+
+  # GLEW is NOT part of the Freedesktop runtime, and the Linux build needs it:
+  # the bundled copy in system/3rdparty has wglew.h but no glxew.h, so Linux
+  # links the system library while Windows keeps the bundled one.
+  #
+  - name: glew
+    buildsystem: simple
+    build-commands:
+      - make GLEW_PREFIX=/app GLEW_DEST=/app LIBDIR=/app/lib -j${FLATPAK_BUILDER_N_JOBS}
+      - make install GLEW_PREFIX=/app GLEW_DEST=/app LIBDIR=/app/lib
+    sources:
+      - type: archive
+        url: https://github.com/nigels-com/glew/releases/download/glew-2.2.0/glew-2.2.0.tgz
+        sha256: d4fc82893cfb00109578d0a1a2337fb8ca335b3ceccf97b97e5cc7f08e4353e1
+
+  - name: aae
+    buildsystem: simple
+    sources:
+      - type: dir
+        path: ../..
+        # The working tree is ~2.4GB and almost none of it is source. Without
+        # these skips flatpak-builder copies the lot into the build sandbox on
+        # every run: 462MB of build output, 161MB of backups, 120MB of stuff/,
+        # 115MB of packages/, a 75MB cc65 toolchain and a 72MB .git.
+        #
+        # x64 is skipped here even though CMakeLists writes the executable into
+        # x64/Release - that directory is CREATED by the build. The game data
+        # that normally lives there is handled by the aae-data module below.
+        skip:
+          - .git
+          - .vs
+          - backup
+          - stuff
+          - packages
+          - cc65-win32
+          - build-linux
+          - build-cmake
+          - build-flatpak
+          - flatpak-repo
+          - x64
+          - aae_2026_7_20_release_1.7
+          - dice.0.9.win.x86
+          - dice.0.9.win.x86.zip
+          - gifsicle-1.95-win64.zip
+          - romident
+          - images
+    build-commands:
+      # Explicit rather than buildsystem: cmake-ninja, for two reasons. The
+      # default runs `ninja` with no target, which would also build
+      # aae_audiotest - and that hard-errors when ALSA is absent, failing the
+      # whole package over a target we do not ship. And CMakeLists defines no
+      # install() rules, so the default `ninja install` would be a no-op that
+      # merely looks like it worked.
+      # CMAKE_PREFIX_PATH=/app is required, not decorative. The glu and glew
+      # modules install there, and while the SDK compiler searches /app/include
+      # by default - so everything COMPILES - CMake's find_package(GLEW) does
+      # not, and GLEW is optional in CMakeLists. The result was a configure that
+      # printed "Could NOT find GLEW", built all 139 objects happily, and then
+      # failed at link with 200 undefined __glew* symbols.
+      - cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=/app
+      - cmake --build build --target aae
+    post-install:
+      # CMakeLists puts the executable in x64/Release beside its data; the
+      # Flatpak layout wants it in /app/bin with the data under /app/share.
+      - install -Dm755 x64/Release/aae /app/bin/aae
+      - install -Dm755 packaging/flatpak/aae-launcher.sh /app/bin/aae-launcher.sh
+      - install -Dm644 packaging/flatpak/io.github.tcottrill.AAE.desktop
+          /app/share/applications/io.github.tcottrill.AAE.desktop
+      - install -Dm644 packaging/flatpak/io.github.tcottrill.AAE.metainfo.xml
+          /app/share/metainfo/io.github.tcottrill.AAE.metainfo.xml
+      # Without an icon, appstreamcli fails the build outright with
+      # "icon-not-found" - the metainfo file makes it a hard requirement, not a
+      # cosmetic one. This is the 256x256 entry extracted from the Windows
+      # aae/aae.ico, which already ships 16 through 256.
+      - install -Dm644 packaging/flatpak/io.github.tcottrill.AAE.png
+          /app/share/icons/hicolor/256x256/apps/io.github.tcottrill.AAE.png
+
+  # Data ships as its own module so it is obvious what would have to be
+  # removed to make this redistributable, and so a data-only change does not
+  # force a rebuild of the emulator.
+  - name: aae-data
+    buildsystem: simple
+    sources:
+      - type: dir
+        path: ../../x64/Release
+        dest: aaedata
+        # x64/Release is the shared Windows+Linux output directory, so it also
+        # holds both platforms' binaries, PDBs, release zips and old docs.
+        # Only the game data belongs in the package.
+        skip:
+          - aae
+          - aae.exe
+          - aae_win7.exe
+          - aae.pdb
+          - aae_core.lib
+          - aae_core.pdb
+          - xaudio2_9redist.dll
+          - xaudio2_9redist.pdb
+          - xapobaseredist.pdb
+          - aae_win7_7_8_26.zip
+          - aae.ini.bak
+          - systemlog.txt
+          - audiotest.log
+          - original docs from 2007
+          - hi
+          - cfg
+    build-commands:
+      - mkdir -p /app/share/aae
+      - cp -r aaedata/roms    /app/share/aae/ 2>/dev/null || true
+      - cp -r aaedata/artwork /app/share/aae/ 2>/dev/null || true
+      - cp -r aaedata/samples /app/share/aae/ 2>/dev/null || true
+      - cp -r aaedata/snap    /app/share/aae/ 2>/dev/null || true
+      - cp -r aaedata/pleiads /app/share/aae/ 2>/dev/null || true
+      - cp -r aaedata/ini     /app/share/aae/ 2>/dev/null || true
+      - install -Dm644 aaedata/aae.ini   /app/share/aae/aae.ini
+      - install -Dm644 aaedata/video.ini /app/share/aae/video.ini

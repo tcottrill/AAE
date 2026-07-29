@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=AAE
+GenericName=Arcade Emulator
+Comment=Vector and raster arcade emulator
+Exec=aae-launcher.sh
+Icon=io.github.tcottrill.AAE
+Terminal=false
+Categories=Game;Emulator;
+Keywords=arcade;emulator;vector;
