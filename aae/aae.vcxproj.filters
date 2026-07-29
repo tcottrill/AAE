@@ -468,6 +468,12 @@
     <ClInclude Include="system\window\framework.h">
       <Filter>Source Files\system\window</Filter>
     </ClInclude>
+    <ClInclude Include="system\window\sys_window.h">
+      <Filter>Source Files\system\window</Filter>
+    </ClInclude>
+    <ClInclude Include="system\window\win32\win32_private.h">
+      <Filter>Source Files\system\window</Filter>
+    </ClInclude>
     <ClInclude Include="system\window\utf8conv.h">
       <Filter>Source Files\system\window</Filter>
     </ClInclude>

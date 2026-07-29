@@ -39,6 +39,7 @@
 #include "rawinput_win32.h"
 #include "sys_gl.h"
 #include "framework.h"
+#include "win32/win32_private.h"
 #include "aae_emulator.h"
 #include "resource.h"
 #include "joystick.h"
@@ -68,6 +69,15 @@ WindowSetup& GetWindowSetup() {
 	return g_windowSetup;
 }
 
+// The Win32-only counterpart to g_windowSetup (style/exStyle/disableNC/
+// disableRoundedCorners). Kept as a separate singleton so sys_window.h can
+// stay platform-neutral; see win32/win32_private.h.
+Win32WindowState g_win32WindowState;
+
+Win32WindowState& GetWin32WindowState() {
+	return g_win32WindowState;
+}
+
 int GetClientWidth() {
 	return g_windowSetup.clientWidth;
 }
@@ -84,6 +94,11 @@ void RestoreWindowViewport()
 // When starting in fullscreen, we still need a valid windowed-mode target
 // (style/exstyle/rect) for restoring on ALT+ENTER.
 static WindowSetup g_windowedFallbackSetup;
+// Win32-only counterpart to g_windowedFallbackSetup, for the same reason
+// g_win32WindowState pairs with g_windowSetup: the live window's style and
+// this fallback's style are two independent values that must not alias the
+// same singleton.
+static Win32WindowState g_windowedFallbackWin32State;
 
 // -----------------------------------------------------------------------------
 // Monitor helpers
@@ -361,14 +376,14 @@ void GetWindowFrameSize(DWORD style, DWORD exStyle, int& frameW, int& frameH)
 // when the user presses ALT+ENTER, Win32_GetNearestMonitorRect(hwnd) is used
 // instead so we stay on whichever monitor the window is currently on.
 // -----------------------------------------------------------------------------
-WindowSetup GetBorderlessFullscreenSetup(const RECT& targetMonitor)
+WindowSetup GetBorderlessFullscreenSetup(const RECT& targetMonitor, Win32WindowState& win32Out)
 {
 	WindowSetup ws;
-	ws.style   = WS_POPUP;
-	ws.exStyle = WS_EX_APPWINDOW | WS_EX_TOPMOST;
+	win32Out.style   = WS_POPUP;
+	win32Out.exStyle = WS_EX_APPWINDOW | WS_EX_TOPMOST;
 
 	// Use the caller-supplied monitor rect
-	ws.rect = targetMonitor;
+	ws.rect = FromWin32Rect(targetMonitor);
 
 	ws.borderlessFullscreen = true;
 	return ws;
@@ -380,14 +395,14 @@ WindowSetup GetBorderlessFullscreenSetup(const RECT& targetMonitor)
 // specified monitor's work area (the area excluding the taskbar).
 // targetMonitor: the monitor rect to center on.
 // -----------------------------------------------------------------------------
-WindowSetup GetClassicWindowSetup(int width, int height, bool center, const RECT& targetMonitor)
+WindowSetup GetClassicWindowSetup(int width, int height, bool center, const RECT& targetMonitor, Win32WindowState& win32Out)
 {
 	WindowSetup ws;
-	ws.style   = WS_OVERLAPPEDWINDOW | WS_CLIPSIBLINGS | WS_CLIPCHILDREN;
-	ws.exStyle = WS_EX_APPWINDOW | WS_EX_TOPMOST;
+	win32Out.style   = WS_OVERLAPPEDWINDOW | WS_CLIPSIBLINGS | WS_CLIPCHILDREN;
+	win32Out.exStyle = WS_EX_APPWINDOW | WS_EX_TOPMOST;
 
 	RECT wr = { 0, 0, width, height };
-	AdjustWindowRect(&wr, ws.style, FALSE);
+	AdjustWindowRect(&wr, win32Out.style, FALSE);
 
 	int windowW = wr.right  - wr.left;
 	int windowH = wr.bottom - wr.top;
@@ -427,11 +442,11 @@ WindowSetup GetClassicWindowSetup(int width, int height, bool center, const RECT
 // maintaining the given aspect ratio.
 // targetMonitor: the monitor rect to size and center the window against.
 // -----------------------------------------------------------------------------
-WindowSetup GetCenteredAspectWindowSetup(float aspectRatio, bool disableNC, const RECT& targetMonitor)
+WindowSetup GetCenteredAspectWindowSetup(float aspectRatio, bool disableNC, const RECT& targetMonitor, Win32WindowState& win32Out)
 {
 	WindowSetup ws;
-	ws.style   = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX;
-	ws.exStyle = WS_EX_APPWINDOW | WS_EX_TOPMOST;
+	win32Out.style   = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX;
+	win32Out.exStyle = WS_EX_APPWINDOW | WS_EX_TOPMOST;
 
 	// Get the work area for the target monitor (excludes taskbar on that monitor)
 	RECT workArea = Win32_GetWorkAreaForMonitorRect(targetMonitor);
@@ -450,7 +465,7 @@ WindowSetup GetCenteredAspectWindowSetup(float aspectRatio, bool disableNC, cons
 
 	// Compute window frame size for style
 	int frameW = 0, frameH = 0;
-	GetWindowFrameSize(ws.style, ws.exStyle, frameW, frameH);
+	GetWindowFrameSize(win32Out.style, win32Out.exStyle, frameW, frameH);
 
 	// Determine maximum client height we can use
 	int maxClientH = screenH - frameH;
@@ -479,7 +494,7 @@ WindowSetup GetCenteredAspectWindowSetup(float aspectRatio, bool disableNC, cons
 	ws.windowWidth  = clientW;
 	ws.windowHeight = clientH;
 	ws.aspectRatio  = aspectRatio;
-	ws.disableNC    = disableNC;
+	win32Out.disableNC = disableNC;
 
 	return ws;
 }
@@ -490,7 +505,7 @@ WindowSetup GetCenteredAspectWindowSetup(float aspectRatio, bool disableNC, cons
 // This runs early (before emulator_init), so it reads starting_monitor
 // directly from INI rather than relying on the main config system.
 // -----------------------------------------------------------------------------
-void LoadWindowIniConfig(WindowSetup& config)
+void LoadWindowIniConfig(WindowSetup& config, Win32WindowState& win32Config)
 {
 	// Always point at the real aae.ini in the exe/root folder.
 	std::string iniPath = getpathM(0, "aae.ini");
@@ -524,7 +539,7 @@ void LoadWindowIniConfig(WindowSetup& config)
 	config.centerWindow   = get_config_int("window", "center", 1) != 0;
 	config.useAspectRatio = get_config_int("window", "use_aspect", 0) != 0;
 	config.aspectOverrideActive = config.useAspectRatio;
-	config.disableNC      = get_config_int("window", "disable_nc", 0) != 0;
+	win32Config.disableNC = get_config_int("window", "disable_nc", 0) != 0;
 
 	// Width/Height selection:
 	// - Prefer [window].width/height if present
@@ -537,7 +552,7 @@ void LoadWindowIniConfig(WindowSetup& config)
 	else if (main_screenh != -1) config.windowHeight = main_screenh;
 	else config.windowHeight = 768;
 
-	config.disableRoundedCorners = get_config_bool("window", "disable_rounded_corners", false);
+	win32Config.disableRoundedCorners = get_config_bool("window", "disable_rounded_corners", false);
 	config.dpiAware              = get_config_bool("window", "dpi_aware", true);
 	config.cursorClipEnabled     = get_config_bool("window", "cursor_clip", true);
 
@@ -574,7 +589,7 @@ void LoadWindowIniConfig(WindowSetup& config)
 // -monitor N   sets the starting monitor (1-based, overrides INI)
 // All other flags work as before.
 // -----------------------------------------------------------------------------
-void ParseCommandLineArgs(WindowSetup& config)
+void ParseCommandLineArgs(WindowSetup& config, Win32WindowState& win32Config)
 {
 	int argc = 0;
 	LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
@@ -587,7 +602,7 @@ void ParseCommandLineArgs(WindowSetup& config)
 		else if (arg == L"-windowed")      config.useFullscreen  = false;
 		else if (arg == L"-nocenter")      config.centerWindow   = false;
 		else if (arg == L"-aspectwindow")  config.useAspectRatio = true;
-		else if (arg == L"-disableNC")     config.disableNC      = true;
+		else if (arg == L"-disableNC")     win32Config.disableNC = true;
 		else if (arg == L"-noclip")        config.cursorClipEnabled = false;
 		else if (arg == L"-clip")          config.cursorClipEnabled = true;
 		else if (arg == L"-aspect" && i + 1 < argc) {
@@ -633,7 +648,8 @@ void ParseCommandLineArgs(WindowSetup& config)
 WindowSetup GenerateFinalWindowSetup(bool forceWindowed = false)
 {
 	WindowSetup config;
-	LoadWindowIniConfig(config);
+	Win32WindowState win32Config;
+	LoadWindowIniConfig(config, win32Config);
 
 	// Resolve which monitor to target based on the index read from INI.
 	// Command-line will be applied next and may override startingMonitor,
@@ -644,13 +660,15 @@ WindowSetup GenerateFinalWindowSetup(bool forceWindowed = false)
 
 	// Always compute a windowed-mode fallback so ALT+ENTER restore works even
 	// when the app starts in fullscreen. Place the fallback on the same monitor.
+	// g_windowedFallbackWin32State captures the fallback's style/exStyle/disableNC
+	// independently of the live g_win32WindowState computed below.
 	if (config.useAspectRatio)
-		g_windowedFallbackSetup = GetCenteredAspectWindowSetup(config.aspectRatio, config.disableNC, targetMonitor);
+		g_windowedFallbackSetup = GetCenteredAspectWindowSetup(config.aspectRatio, win32Config.disableNC, targetMonitor, g_windowedFallbackWin32State);
 	else
-		g_windowedFallbackSetup = GetClassicWindowSetup(config.windowWidth, config.windowHeight, config.centerWindow, targetMonitor);
+		g_windowedFallbackSetup = GetClassicWindowSetup(config.windowWidth, config.windowHeight, config.centerWindow, targetMonitor, g_windowedFallbackWin32State);
 
 	// Now apply command-line overrides (these may change startingMonitor)
-	ParseCommandLineArgs(config);
+	ParseCommandLineArgs(config, win32Config);
 
 	// If -monitor was passed on the command line, re-resolve the target monitor
 	// so the actual window is placed on the overridden monitor.
@@ -667,17 +685,20 @@ WindowSetup GenerateFinalWindowSetup(bool forceWindowed = false)
 	WindowSetup finalSetup;
 	finalSetup.aspectRatio = config.aspectRatio;
 
-	// Apply correct window setup based on (possibly forced) mode
+	// Apply correct window setup based on (possibly forced) mode.
+	// GetWin32WindowState() is written directly here since finalSetup becomes
+	// the live g_windowSetup (see wWinMain), so its Win32 half is the live
+	// g_win32WindowState singleton.
 	if (!forceWindowed && config.useFullscreen) {
-		finalSetup = GetBorderlessFullscreenSetup(targetMonitor);
+		finalSetup = GetBorderlessFullscreenSetup(targetMonitor, GetWin32WindowState());
 	}
 	else if (config.useAspectRatio) {
-		finalSetup = GetCenteredAspectWindowSetup(config.aspectRatio, config.disableNC, targetMonitor);
+		finalSetup = GetCenteredAspectWindowSetup(config.aspectRatio, win32Config.disableNC, targetMonitor, GetWin32WindowState());
 	}
 	// ---- HACK: Fix for skipping ClassicWindowSetup ----- Added 4/5/2026 -- Get Real Fix.
 	else {
-	//	finalSetup = GetClassicWindowSetup(config.windowWidth, config.windowHeight, config.centerWindow, targetMonitor);
-		finalSetup = GetCenteredAspectWindowSetup(config.aspectRatio, config.disableNC, targetMonitor);
+	//	finalSetup = GetClassicWindowSetup(config.windowWidth, config.windowHeight, config.centerWindow, targetMonitor, GetWin32WindowState());
+		finalSetup = GetCenteredAspectWindowSetup(config.aspectRatio, win32Config.disableNC, targetMonitor, GetWin32WindowState());
 	}
 	// ------------------- END HACK ------------------------
 	// Copy override flags back into final setup
@@ -685,13 +706,13 @@ WindowSetup GenerateFinalWindowSetup(bool forceWindowed = false)
 	finalSetup.useAspectRatio  = config.useAspectRatio;
 	finalSetup.aspectOverrideActive = config.aspectOverrideActive;
 	finalSetup.centerWindow    = config.centerWindow;
-	finalSetup.disableNC       = config.disableNC;
 	finalSetup.windowWidth     = config.windowWidth;
 	finalSetup.windowHeight    = config.windowHeight;
-	finalSetup.disableRoundedCorners = config.disableRoundedCorners;
 	finalSetup.dpiAware        = config.dpiAware;
 	finalSetup.cursorClipEnabled = config.cursorClipEnabled;
 	finalSetup.startingMonitor = config.startingMonitor;
+	GetWin32WindowState().disableNC = win32Config.disableNC;
+	GetWin32WindowState().disableRoundedCorners = win32Config.disableRoundedCorners;
 
 	return finalSetup;
 }
@@ -703,14 +724,18 @@ WindowSetup GenerateFinalWindowSetup(bool forceWindowed = false)
 // -----------------------------------------------------------------------------
 HWND CreateConfiguredWindow(HINSTANCE hInstance, const wchar_t* className, const wchar_t* title, WindowSetup& config)
 {
+	// This is always called with the live g_windowSetup, so its Win32 half is
+	// the live g_win32WindowState singleton.
+	Win32WindowState& win32 = GetWin32WindowState();
+
 	int w = config.rect.right  - config.rect.left;
 	int h = config.rect.bottom - config.rect.top;
 
 	HWND hwnd = CreateWindowExW(
-		config.exStyle,
+		win32.exStyle,
 		className,
 		title,
-		config.style,
+		win32.style,
 		config.rect.left,
 		config.rect.top,
 		w,
@@ -727,9 +752,9 @@ HWND CreateConfiguredWindow(HINSTANCE hInstance, const wchar_t* className, const
 #ifndef WIN7BUILD
 	if (GetOsVersion() == Win11)
 	{
-		if (config.disableNC == 0)
+		if (win32.disableNC == 0)
 		{
-			if (config.disableRoundedCorners) {
+			if (win32.disableRoundedCorners) {
 				DisableRoundedCorners(hwnd);
 			}
 		}
@@ -766,15 +791,20 @@ HWND CreateConfiguredWindow(HINSTANCE hInstance, const wchar_t* className, const
 void ToggleBorderlessFullscreen(HWND hwnd, WindowSetup& config)
 {
 	LOG_INFO("Calling ToggleBorderlessFullscreen");
+	// Both call sites (WndProc's WM_SYSKEYDOWN and menu.cpp) pass g_windowSetup,
+	// so its Win32 half is the live g_win32WindowState singleton.
+	Win32WindowState& win32 = GetWin32WindowState();
 	if (!config.borderlessFullscreen)
 	{
 		// Backup current window rect for restoration
-		GetWindowRect(hwnd, &config.windowedRect);
+		RECT wr{};
+		GetWindowRect(hwnd, &wr);
+		config.windowedRect = FromWin32Rect(wr);
 
 		SetWindowLong(hwnd, GWL_STYLE,   WS_POPUP);
 		SetWindowLong(hwnd, GWL_EXSTYLE, WS_EX_APPWINDOW | WS_EX_TOPMOST);
-		config.style   = WS_POPUP;
-		config.exStyle = WS_EX_APPWINDOW | WS_EX_TOPMOST;
+		win32.style   = WS_POPUP;
+		win32.exStyle = WS_EX_APPWINDOW | WS_EX_TOPMOST;
 
 		// MULTI-MONITOR SAFE: at runtime we fullscreen on the monitor the window
 		// is currently on, not necessarily the starting_monitor.
@@ -797,21 +827,21 @@ void ToggleBorderlessFullscreen(HWND hwnd, WindowSetup& config)
 		// Restore to windowed mode. If we never captured a valid windowed rect
 		// (e.g., the app started in fullscreen), fall back to the computed
 		// windowed setup from config/ini.
-		RECT wr = config.windowedRect;
+		RECT wr = ToWin32Rect(config.windowedRect);
 		int w = wr.right  - wr.left;
 		int h = wr.bottom - wr.top;
 		if (w <= 0 || h <= 0) {
-			wr = g_windowedFallbackSetup.rect;
+			wr = ToWin32Rect(g_windowedFallbackSetup.rect);
 			w  = wr.right  - wr.left;
 			h  = wr.bottom - wr.top;
 		}
 
-		DWORD restoreStyle   = g_windowedFallbackSetup.style;
-		DWORD restoreExStyle = g_windowedFallbackSetup.exStyle;
+		DWORD restoreStyle   = g_windowedFallbackWin32State.style;
+		DWORD restoreExStyle = g_windowedFallbackWin32State.exStyle;
 		SetWindowLong(hwnd, GWL_STYLE,   restoreStyle);
 		SetWindowLong(hwnd, GWL_EXSTYLE, restoreExStyle);
-		config.style   = restoreStyle;
-		config.exStyle = restoreExStyle;
+		win32.style   = restoreStyle;
+		win32.exStyle = restoreExStyle;
 
 		LOG_INFO("Restoring to windowed size in ToggleScreenSize: %d x %d", w, h);
 		SetWindowPos(hwnd, HWND_TOPMOST,
@@ -894,7 +924,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 		// Measure window frame size
 		RECT tmp = { 0, 0, 100, 100 };
-		AdjustWindowRectEx(&tmp, config->style, FALSE, config->exStyle);
+		AdjustWindowRectEx(&tmp, GetWin32WindowState().style, FALSE, GetWin32WindowState().exStyle);
 		frameW = (tmp.right - tmp.left) - 100;
 		frameH = (tmp.bottom - tmp.top) - 100;
 
@@ -1080,8 +1110,9 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance,
 	// ParseCommandLineArgs may override it with -monitor N.
 	// -------------------------------------------------------------------------
 	WindowSetup temp;
-	LoadWindowIniConfig(temp);
-	ParseCommandLineArgs(temp);
+	Win32WindowState tempWin32;
+	LoadWindowIniConfig(temp, tempWin32);
+	ParseCommandLineArgs(temp, tempWin32);
 	bool requestedFullscreen = temp.useFullscreen;
 
 	// -------------------------------------------------------------------------
@@ -1150,7 +1181,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance,
 	// -------------------------------------------------------------------------
 	RECT wr{};
 	if (GetWindowRect(g_hWnd, &wr)) {
-		g_windowSetup.windowedRect = wr;
+		g_windowSetup.windowedRect = FromWin32Rect(wr);
 		LOG_INFO("Saved windowedRect before fullscreen: (%d,%d)-(%d,%d)",
 			wr.left, wr.top, wr.right, wr.bottom);
 	}

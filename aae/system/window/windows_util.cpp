@@ -8,6 +8,7 @@
 #include "windows_util.h"
 #include "sys_log.h"
 #include "framework.h"
+#include "win32/win32_private.h"
 #include "utf8conv.h"
 // For the UGLY framebuffer clear hacks for temporary vertical vector game artwork
 #include "opengl_renderer.h"   // emulator_on_window_resize
@@ -231,7 +232,7 @@ void WindowUtil_UpdateAspect(float gameAspect)
 	// Compute frame overhead (difference between window rect and client rect)
 	int frameW = 0, frameH = 0;
 	RECT tmp = { 0, 0, 100, 100 };
-	AdjustWindowRectEx(&tmp, ws.style, FALSE, ws.exStyle);
+	AdjustWindowRectEx(&tmp, GetWin32WindowState().style, FALSE, GetWin32WindowState().exStyle);
 	frameW = (tmp.right - tmp.left) - 100;
 	frameH = (tmp.bottom - tmp.top) - 100;
 
@@ -293,7 +294,9 @@ void WindowUtil_UpdateAspect(float gameAspect)
 	ws.clientHeight = rc.bottom - rc.top;
 
 	// Save the new windowed rect for ALT+ENTER restore
-	GetWindowRect(hwnd, &ws.windowedRect);
+	RECT windowedRect{};
+	GetWindowRect(hwnd, &windowedRect);
+	ws.windowedRect = FromWin32Rect(windowedRect);
 
 	LOG_INFO("WindowUtil_UpdateAspect: aspect=%.3f client=%dx%d window=%dx%d",
 		gameAspect, ws.clientWidth, ws.clientHeight, winW, winH);
