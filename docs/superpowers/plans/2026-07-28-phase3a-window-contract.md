@@ -35,6 +35,12 @@ Since Phase 2 these are attributed to `aae_core.vcxproj`, which builds those fil
 
 **Two projects since Phase 2.** `aae/aae_core.vcxproj` (StaticLibrary, 86 files, include path **omits** `./aae/aae_video`, `./aae/gui`, `./system/window`) and `aae/aae.vcxproj` (48 files, links the lib). **Never add an omitted directory back to the core's include path** — that restriction is the enforced boundary. Phase 2's negative test must keep passing: `#include "framework.h"` in a core file yields `C1083 file-not-found`.
 
+**CORRECTION (2026-07-28, after Task 4).** Earlier drafts of this plan stated "48 and 86" as a hard invariant to check every task. That was wrong and actively harmful: Task 4 needed a new `win32_window.cpp`, which would have made it 49, so the implementer suppressed the new file and defined `Win32Window`'s methods inside `winmain.cpp` instead — a worse structure, forced by a bad rule.
+
+The **real** invariant is: **`aae_core.vcxproj` stays at 86, and every translation unit is compiled exactly once.** The executable's count legitimately grows as platform backends are added — Task 5 adds targets, Task 6 adds two headless files, and Phase 3b will add a whole `linux/` backend. Check the sum against the file inventory, not against 48.
+
+**Also: never use `git add aae/`.** It sweeps in build artifacts (`x64/Debug`, `*.tlog`, `.exe`) and untracked WIP (`sndhrdwr/generic.*`, `drivers/tempest_with_random_checks.cpp`). Stage files individually. The commit recipes below that say `git add aae/` are wrong — ignore them and stage explicitly.
+
 **`WIN7BUILD` must survive** in both projects' `Release|x64` `PreprocessorDefinitions`.
 
 **Do NOT touch** WIP files: `aae/aae/drivers/bwidow.cpp`, `aae/aae/led_service_handler.cpp`, `aae/aae/drivers/tempest_with_random_checks.cpp`, `aae/aae/sndhrdwr/generic.cpp`, `aae/aae/sndhrdwr/generic.h`.
