@@ -75,7 +75,7 @@ int save_file_char(const char* filename, const char* buf, int size) {
 
 int load_hi_aae(int start, int size, int image)
 {
-    std::string fullpath = getpathM("hi", 0) + "\\";
+    std::string fullpath = getpathM("hi", 0) + "/";
     fullpath.append(Machine->gamedrv->name);
     fullpath.append(".aae");
 
@@ -108,7 +108,7 @@ int load_hi_aae(int start, int size, int image)
 
 int save_hi_aae(int start, int size, int image)
 {
-    std::string fullpath = getpathM("hi", 0) + "\\";
+    std::string fullpath = getpathM("hi", 0) + "/";
     fullpath.append(Machine->gamedrv->name);
     fullpath.append(".aae");
 
@@ -191,12 +191,12 @@ int verify_rom(const char* archname, const struct RomModule* p, int romnum)
         return 4;
 
     zipPath = get_config_string("main", "mame_rom_path", "roms");
-    zipPath.append("\\");
+    zipPath.append("/");
     zipPath.append(archname);
     zipPath.append(".zip");
 
     if (!file_exists(zipPath)) {
-        zipPath = getpathM("roms", 0) + "\\" + archname + ".zip";
+        zipPath = getpathM("roms", 0) + "/" + archname + ".zip";
         if (!file_exists(zipPath)) {
             LOG_INFO("ROM ZIP not found: %s", zipPath.c_str());
             return 5; // NOZIP
@@ -245,7 +245,7 @@ int verify_sample(const char** samples, int num)
 {
     if (!samples || !samples[num]) return 4;
 
-    std::string sampleZip = getpathM("samples", 0) + std::string("\\") + samples[0] + ".zip";
+    std::string sampleZip = getpathM("samples", 0) + std::string("/") + samples[0] + ".zip";
     if (!file_exists(sampleZip)) {
         LOG_INFO("Sample ZIP not found: %s", sampleZip.c_str());
         return 5; // NOZIP
@@ -287,13 +287,13 @@ int load_roms(const char* archname, const struct RomModule* p)
     unsigned int current_uncomp_size = 0; 
 
     temppath = config.exrompath;
-    temppath.append("\\");
+    temppath.append("/");
     temppath.append(archname);
     temppath.append(".zip");
 
     if (!file_exists(temppath.c_str())) {
         DLOG("Rom not found in external path, looking in rom folder");
-        temppath = getpathM("roms", 0) + "\\" + archname + ".zip";
+        temppath = getpathM("roms", 0) + "/" + archname + ".zip";
     }
 
     DLOG("ROM Path: %s", temppath.c_str());
@@ -474,7 +474,7 @@ void load_samples_batch(const char* const* sample_list)
     if (!sample_list || !sample_list[0]) return;
 
     std::string archiveName = sample_list[0];
-    std::string fullZipPath = "samples\\" + archiveName;
+    std::string fullZipPath = "samples/" + archiveName;
 
     std::string subFolderName = archiveName;
     size_t lastDot = subFolderName.find_last_of('.');
@@ -482,7 +482,7 @@ void load_samples_batch(const char* const* sample_list)
         subFolderName = subFolderName.substr(0, lastDot);
     }
 
-    LOG_INFO("Batch loading samples. Archive: '%s', Fallback Dir: 'samples\\%s\\'",
+    LOG_INFO("Batch loading samples. Archive: '%s', Fallback Dir: 'samples/%s/'",
         fullZipPath.c_str(), subFolderName.c_str());
 
     int i = 1;
@@ -491,7 +491,7 @@ void load_samples_batch(const char* const* sample_list)
         if (strcmp(filename, "NULL") == 0) break;
 
         std::string entryName = filename;
-        std::string fullDiskPath = "samples\\" + subFolderName + "\\" + entryName;
+        std::string fullDiskPath = "samples/" + subFolderName + "/" + entryName;
 
         if (load_sample_core(fullZipPath, entryName, fullDiskPath) < 0) {
             // Sample file missing/unloadable: register a silent placeholder so the
@@ -508,8 +508,8 @@ void load_samples_batch(const char* const* sample_list)
 // -----------------------------------------------------------------------------
 // load_ambient_samples
 //
-// Loads the 3 optional AAE ambient audio files from "samples\aae.zip"
-// (with loose-file fallback to "samples\aae\").
+// Loads the 3 optional AAE ambient audio files from "samples/aae.zip"
+// (with loose-file fallback to "samples/aae/").
 //
 // The ambient files are:
 //   - flyback.wav   (CRT horizontal flyback chatter)
@@ -528,7 +528,7 @@ void load_samples_batch(const char* const* sample_list)
 // -----------------------------------------------------------------------------
 void load_ambient_samples()
 {
-    // The ambient sample filenames, loaded from "samples\aae.zip"
+    // The ambient sample filenames, loaded from "samples/aae.zip"
     static const char* ambient_files[] = {
         "flyback.wav",
         "psnoise.wav",
@@ -536,8 +536,8 @@ void load_ambient_samples()
         nullptr
     };
 
-    const std::string zipPath = "samples\\aae.zip";
-    const std::string diskBase = "samples\\aae\\";
+    const std::string zipPath = "samples/aae.zip";
+    const std::string diskBase = "samples/aae/";
 
     LOG_INFO("Loading ambient samples from '%s' (fallback: '%s')", zipPath.c_str(), diskBase.c_str());
 

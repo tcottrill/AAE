@@ -121,12 +121,18 @@ namespace Log {
 // the process's CURRENT WORKING DIRECTORY instead - which is why aae_headless
 // must be launched from x64/Release (see the Task 6 report for the exact
 // command).
+// Separator is '/', not '\\'. Windows accepts forward slashes in every path
+// API this reaches (fopen, and miniz's fopen-based zip reader), while a
+// backslash on Linux is an ordinary filename character - so the hardcoded
+// backslash this used to have produced "roms\asteroid.zip", a file that
+// simply does not exist, and every ROM load failed. One character, and it
+// was the first thing the cross-platform run caught.
 std::string getpathM(const char* dir, const char* file)
 {
 	std::string result = dir ? dir : "";
 	if (file && file[0])
 	{
-		result += "\\";
+		result += "/";
 		result += file;
 	}
 	return result;
