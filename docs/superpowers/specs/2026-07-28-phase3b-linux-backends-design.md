@@ -7,6 +7,22 @@
 
 ---
 
+## 0. The end point
+
+**Linux must do everything Windows does. That is the programme's #1 goal and its definition of done** (user, 2026-07-28).
+
+Not "Linux runs the emulator". Not "Linux runs most games". Feature parity: every game, every renderer feature, every input device, every audio path, the menus, the artwork, the configuration — the same on both.
+
+This has one consequence that governs the rest of this document, and every phase document after it:
+
+> **Nothing in this programme is dropped. Things are only ordered.**
+
+Where a section below says "deferred to 3c" it means *scheduled later*, never *decided against*. A Linux build that is missing positional audio, or per-device input, or a window, is an intermediate state with a dated successor — not an acceptable resting place. Any deferral in this spec that does not have a phase named against it is a defect in this spec.
+
+The corollary for verification: parity claims need evidence of *sameness*, not evidence of *working*. "Linux produces vectors" is not the test; "Linux produces the same 89,414 vectors Windows does" is. That principle is why §3.1's goal 2 is an equality and not a threshold.
+
+---
+
 ## 1. Motivation
 
 Phases 1–3a defined all three backend contracts — input (`sys_input.h`), OSD services and audio (`osdepend.h`, `IAudioBackend`), and the window (`ISystemWindow`) — and made the core/OSD boundary compiler-enforced by turning `aae_core` into a static library whose include path cannot reach the OSD. Phase 3a proved the payoff: `aae_headless` runs real games with no window, no GL and no audio.
@@ -24,7 +40,21 @@ ninja  -> NOT FOUND        docker -> NOT FOUND
 cmake  -> C:\Program Files\CMake\bin\cmake.exe
 ```
 
-**Decision (user, 2026-07-28): install WSL2 + a native Ubuntu toolchain on the development box.** This is the single highest-leverage item in the whole port programme. It converts every Linux claim in this phase from "written blind, checked later by pasting errors back from the Steam Machine" into "checked by a compiler in seconds" — the same standard that made Phases 1–3a trustworthy, and that caught a misfiled header breaking 72 of 86 core files when no grep-based rule could have.
+**Decision (user, 2026-07-28): install WSL2 + a native Ubuntu toolchain on the development box. Done, and measured the same day:**
+
+```
+Ubuntu 26.04 LTS   g++ 15.2.0   cmake 4.2.3   ninja   make   git
+repo visible at /mnt/c/Source2026/AAE_publish
+still missing: pkg-config, libasound2-dev, libx11-dev, libgl1-mesa-dev,
+               libglu1-mesa-dev, libudev-dev
+```
+
+Two things about that toolchain that the plan must account for:
+
+- **g++ 15 is much stricter than the MSVC this code grew up under.** Expect a first pass dominated by missing `#include`s that MSVC supplied transitively, narrowing conversions, and `-Wall` findings. These are real defects being surfaced, not toolchain noise.
+- **CMake 4.x removes compatibility with `cmake_minimum_required` below 3.5.** `CMakeLists.txt` declares 3.20, so it configures — but the `LINK_LIBRARY` genex path (3.24+) is the one that will be taken here, and the hand-written `--whole-archive` fallback below it will therefore go untested on this box. It still matters: an older distro CMake on the Steam Machine or Pi may take the fallback, and if it is wrong, every game silently vanishes.
+
+This is the single highest-leverage item in the whole port programme. It converts every Linux claim in this phase from "written blind, checked later by pasting errors back from the Steam Machine" into "checked by a compiler in seconds" — the same standard that made Phases 1–3a trustworthy, and that caught a misfiled header breaking 72 of 86 core files when no grep-based rule could have.
 
 What WSL2 can and cannot verify:
 
@@ -197,7 +227,9 @@ That mixing code is genuinely portable and will be wanted again for the Teensy t
 
 `audio_3d_null.cpp` provides the Linux implementation of `audio_3d.h`: `audio_3d_init()` returns `false`, everything else no-ops. `mixer.cpp` already gates the entire positional path on `g_3d_inited` (`:686`, `:971`, `:1351`, `:1375`), so nothing else changes.
 
-Real positional audio would mean reimplementing X3DAudio's channel-matrix computation, which is a self-contained piece of DSP work and not what this phase is about. Deferring it explicitly — with a file that says so — is better than a Linux build that silently plays everything at centre-pan and leaves someone to discover why.
+Real positional audio would mean reimplementing X3DAudio's channel-matrix computation — a self-contained piece of DSP work, scheduled as **Phase 3d** (§5). Parity requires it; this phase does not deliver it.
+
+The null file exists so the gap is *loud*. A Linux build that silently plays everything centre-panned is indistinguishable from a working one until someone notices the stereo field is dead, months later. `audio_3d_null.cpp` names the omission in the source tree, and its `audio_3d_init()` must log a warning at startup rather than returning `false` quietly.
 
 ### 3.7 Build system
 
@@ -206,6 +238,7 @@ Both build systems stay in lockstep, as Phase 3a established:
 - New files (`audio_backend.h`, `alsa_backend.*`, `sys_timer.h`, `posix_timer.cpp`, `audio_3d_null.cpp`) added to `CMakeLists.txt` **and**, where they are Windows-relevant, to the vcxprojs. Source lists stay explicit — never `file(GLOB)`, so the core/OSD split cannot drift unnoticed.
 - The `_aae_core_count EQUAL 88` and `_aae_exe_count EQUAL 47` assertions are updated in the same commit as any change that moves them. Most of this phase adds headers or Linux-only translation units, neither of which affects the Windows counts — and `_aae_exe_count` is already guarded by `if(WIN32 ...)`, so the Linux backend files do not perturb it. If a number does not need to change, it must not be changed.
 - `aae_audiotest` is a new target on both platforms, linking `mixer.cpp`, the platform audio backend, the three portable utility files, and `aae_core`.
+- **The three `find_package(... REQUIRED)` calls in the `UNIX` branch must be scoped to the targets that need them.** As written, `find_package(OpenGL REQUIRED)`, `find_package(ALSA REQUIRED)` and `find_package(X11 REQUIRED)` run at configure time for the whole project, so a box without `libx11-dev` cannot configure *at all* — and therefore cannot build `aae_headless`, which needs none of the three. Since 3b's deliverables are exactly the two targets that do not need X11 or GL, this would block the phase on a dependency it does not use. ALSA becomes required only when `aae_audiotest`/`alsa_backend.cpp` is being built; X11 and OpenGL only when the `aae` target is, which is 3c.
 - The `EXISTS`-guarded Linux backend list in `CMakeLists.txt` loses `alsa_backend.cpp` and `posix_timer.cpp` from its "not yet implemented" warning as they land; `linux_window.cpp` and `evdev_input.cpp` remain warned-about, which is accurate — the `aae` target still will not link on Linux at the end of this phase. **That is expected and is not a failure of 3b.** `aae_headless` and `aae_audiotest` are the Linux deliverables; `aae` becomes linkable in 3c.
 
 ### 3.8 Regression guards added
@@ -223,7 +256,7 @@ Every fix in this phase gets a mechanism that prevents its recurrence, not just 
 
 | # | item | verified by |
 |---|---|---|
-| 1 | WSL2 + Ubuntu toolchain installed (user action; needs elevation and a reboot) | `g++ --version` under WSL |
+| 1 | WSL2 + Ubuntu toolchain — **done**; dev packages (`pkg-config`, `libasound2-dev`, `libx11-dev`, `libgl1-mesa-dev`, `libglu1-mesa-dev`, `libudev-dev`) still to install (user action; `sudo` needs a password) | `pkg-config --modversion alsa` returns a version |
 | 2 | Neutralise `joystick.h`; add the `_WINDOWS_` guard to `os_input.cpp` | Windows builds green, 132 games; `os_input.cpp` compiles with no Windows header reachable |
 | 3 | `sprintf_s` → `snprintf` in `cpu_6502.cpp` | Windows builds green |
 | 4 | `aae_core` builds under g++ | Linux `libaae_core.a` produced |
@@ -238,17 +271,21 @@ Items 2–3 and 6–8 are Windows-verifiable and can land before item 1 complete
 
 ---
 
-## 5. Out of scope
+## 5. Not in this phase — scheduled, not dropped
 
-Deferred to Phase 3c, deliberately:
+Per §0, everything here has a phase named against it. None of it is optional to reaching parity.
 
-- `linux_window.cpp` (X11 or Wayland surface + GL context)
-- `evdev_input.cpp` and multi-HID parity with the RawInput/XInput/DirectInput/WinMM stack
-- `sys_gl.cpp`'s WGL→GLX split and `sys_texture.cpp`'s `win32/win32_private.h` dependency
-- Real positional audio on Linux (§3.6)
-- The Vulkan renderer path the Raspberry Pi will require (Mesa v3d tops out near GL/GLES 3.1, below the `#version 330 core` shaders); the Steam Machine's `radeonsi` does GL 4.6 and needs no such thing
+| item | phase | why not now |
+|---|---|---|
+| `linux_window.cpp` (X11/Wayland surface + GL context) | **3c** | needs a screen and a human to judge |
+| `evdev_input.cpp`, multi-HID parity with RawInput/XInput/DirectInput/WinMM | **3c** | largest single item in the programme; needs real devices |
+| `sys_gl.cpp` WGL→GLX split, `sys_texture.cpp`'s `win32/win32_private.h` | **3c** | travels with the window backend |
+| Real positional audio on Linux (§3.6) | **3d** | self-contained DSP work: reimplementing X3DAudio's channel-matrix maths |
+| Vulkan renderer path | **4** | required only by the Pi (Mesa v3d tops out near GL/GLES 3.1, below the `#version 330 core` shaders). The Steam Machine's `radeonsi` does GL 4.6 and needs none of it — but the Pi is a parity target too, so this is scheduled, not conditional |
 
-Also unchanged and still owed from earlier phases: the interactive audio pass on Windows (fullscreen toggle, cursor clipping, alt-tab focus, audio by ear), `emu_vector_draw.cpp`'s GL saturation, and `segag80snd.cpp:178` calling `allegro_message()` from a sound path.
+**The `aae` executable will not link on Linux at the end of 3b.** `aae_headless` and `aae_audiotest` are this phase's Linux deliverables. That is a planned intermediate state with 3c as its successor, and it is the one place in this programme where "it doesn't build" is an acceptable reported outcome — stated here so it is never mistaken for a regression.
+
+Still owed from earlier phases, unchanged by this one: the interactive audio pass on Windows (fullscreen toggle, cursor clipping, alt-tab focus, audio by ear), `emu_vector_draw.cpp`'s GL saturation, and `segag80snd.cpp:178` calling `allegro_message()` from a sound path.
 
 ---
 
