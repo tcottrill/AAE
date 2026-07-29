@@ -56,6 +56,36 @@ done
 
 export AAE_DATA_DIR="$DATA_DIR"
 
+# A short path to the log, in the user's home.
+#
+# The real one lives at
+#   ~/.var/app/io.github.tcottrill.AAE/data/aae/systemlog.txt
+# which is miserable to type on a machine where you are working directly at
+# the console rather than pasting. The symlink costs nothing and turns every
+# diagnostic request into "grep something ~/aae.log".
+ln -sfn "$DATA_DIR/systemlog.txt" "$HOME/aae.log" 2>/dev/null || true
+
+# --diag prints the lines worth reporting and exits:
+#
+#   flatpak run io.github.tcottrill.AAE --diag
+#
+# Handled HERE, before the input warnings below, so its output is clean. Those
+# warnings go to stderr and were landing in the middle of the report, which
+# meant reading it required knowing to append 2>/dev/null - exactly the sort of
+# extra thing this is meant to save.
+if [ "$1" = "--diag" ]; then
+    LOG="$DATA_DIR/systemlog.txt"
+    if [ ! -f "$LOG" ]; then
+        echo "no log yet at $LOG - run a game first"
+        exit 1
+    fi
+    echo "=========== AAE diagnostics ==========="
+    grep -E "built |ALSA:|ALSA streaming|Shutdown:|Frame pacing|evdev: .*(keyboard|mouse|gamepad) " "$LOG" \
+        | sed -E 's/^[A-Z]+ +\([^)]*\) - //'
+    echo "======================================="
+    exit 0
+fi
+
 # cd there too: Log::open("systemlog.txt") in linux_main.cpp is relative to the
 # working directory, not to AAE_DATA_DIR, so without this the log write fails
 # silently in a read-only cwd.

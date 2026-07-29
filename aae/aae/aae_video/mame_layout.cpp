@@ -335,7 +335,7 @@ bool Layout_Parse(const std::string& layFilename, const std::string& zipFile,
 	else
 	{
 		// Load .lay from filesystem (loose file)
-		std::string fullPath = artworkDir + "\\" + layFilename;
+		std::string fullPath = artworkDir + "/" + layFilename;   // '/' works on both platforms
 		if (doc.LoadFile(fullPath.c_str()) != XML_SUCCESS) {
 			LOG_ERROR("Layout_Parse: Failed to load '%s'", fullPath.c_str());
 			return false;
@@ -533,7 +533,7 @@ bool Layout_LoadTextures(LayoutData& data, const std::string& zipFile,
 
 			// Fallback: try loose file in artwork directory
 			if (!imgData) {
-				std::string fullPath = artworkDir + "\\" + elem.imageFile;
+				std::string fullPath = artworkDir + "/" + elem.imageFile;   // '/' works on both platforms
 				stbi_set_flip_vertically_on_load(0);
 				imgData = stbi_load(fullPath.c_str(), &w, &h, &channels, 4);
 			}
@@ -1301,10 +1301,12 @@ void Layout_LoadForGame(const AAEDriver* drv)
 		std::string artDir;     // path to the loose-file artwork directory
 		bool found = false;
 
-		// Helper: append path separator if needed
+		// Helper: append path separator if needed. Forward slash: valid in every
+		// Windows file API and the only separator Linux accepts - a hardcoded
+		// backslash made these artwork lookups silently fail on Linux.
 		auto ensureTrailingSep = [](std::string& p) {
 			if (!p.empty() && p.back() != '\\' && p.back() != '/')
-				p.push_back('\\');
+				p.push_back('/');
 			};
 
 		// 1. Try external artwork path (config.exartpath)
@@ -1327,7 +1329,7 @@ void Layout_LoadForGame(const AAEDriver* drv)
 			if (!found)
 			{
 				artDir = extBase + gameName;
-				std::string testLay = artDir + "\\" + layFilename;
+				std::string testLay = artDir + "/" + layFilename;   // '/' works on both platforms
 				if (std::filesystem::exists(testLay))
 				{
 					zipFile.clear();
@@ -1357,7 +1359,7 @@ void Layout_LoadForGame(const AAEDriver* drv)
 			if (!found)
 			{
 				artDir = localBase + gameName;
-				std::string testLay = artDir + "\\" + layFilename;
+				std::string testLay = artDir + "/" + layFilename;   // '/' works on both platforms
 				if (std::filesystem::exists(testLay))
 				{
 					zipFile.clear();

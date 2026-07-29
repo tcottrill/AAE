@@ -1161,6 +1161,32 @@ void msg_loop(void)
 		SetvSync(throttle);
 	}
 
+	// F9 toggles mouse capture (pointer confine + cursor hide).
+	//
+	// This lives here rather than in the Win32 message pump because Linux takes
+	// all keyboard input from evdev and never routes keys through the window
+	// event loop - see the note at the top of linux_window.h. A WndProc hotkey
+	// is structurally invisible on that backend, which is why F9 did nothing
+	// there. osd_key_pressed_memory is edge-triggered, so this also stops a held
+	// F9 from flapping capture on every auto-repeat the way WM_KEYDOWN did.
+	if (osd_key_pressed_memory(OSD_KEY_F9))
+		GetSystemWindow().EnableCursorClip(!GetWindowSetup().cursorClipEnabled);
+
+	// ALT+ENTER toggles borderless fullscreen, matching WndProc's WM_SYSKEYDOWN
+	// handler on Windows. As with F9 above, Linux keyboard input never reaches a
+	// window event loop, so the toggle has to live here. Windows is excluded:
+	// WndProc already handles it, and both firing on the same keystroke would
+	// toggle twice - visibly doing nothing.
+	//
+	// ALT level-check first: the && short-circuit keeps the ENTER edge memory
+	// unpolled on a plain ENTER, so menu select keeps its edge. When ALT is held,
+	// this runs before the menu code and consumes the ENTER edge, so ALT+ENTER
+	// toggles fullscreen without also selecting whatever the menu has focused.
+#ifndef _WIN32
+	if (osd_key_pressed(OSD_KEY_ALT) && osd_key_pressed_memory(OSD_KEY_ENTER))
+		GetSystemWindow().ToggleBorderlessFullscreen();
+#endif
+
 	// -------------------------------------------------------------------------
 	// Exit confirmation dialog input handling.
 	// When the confirm dialog is active, we consume all navigation and

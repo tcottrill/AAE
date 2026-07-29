@@ -52,6 +52,27 @@ public:
 	SoftVoice* Create();
 	void       Destroy(SoftVoice* v);
 
+	// MUST be held by anything outside this class that touches a SoftVoice.
+	//
+	// The fields of a SoftVoice are written from the GAME thread - VoiceSubmit,
+	// VoiceStart, VoiceSetVolume and the rest - while MixInto reads them on the
+	// AUDIO thread. Create/Destroy/MixInto took m_lock from the start, but the
+	// field writes did not, and VoiceSubmit's data.assign() REALLOCATES the
+	// vector that MixInto is holding a raw pointer into. That is a
+	// use-after-free, not a benign torn read.
+	//
+	// Handed out as a scoped lock rather than wrapping every field in its own
+	// accessor: the backend's Voice* methods map one-to-one onto IAudioBackend
+	// and stay readable as one-liners, and there is a single lock to reason
+	// about either way.
+	//
+	// NOT recursive: do not hold this across a call to Create() or Destroy(),
+	// which take it themselves.
+	[[nodiscard]] std::unique_lock<std::mutex> LockVoices() const
+	{
+		return std::unique_lock<std::mutex>(m_lock);
+	}
+
 private:
 	mutable std::mutex m_lock;
 	std::vector<std::unique_ptr<SoftVoice>> m_voices;

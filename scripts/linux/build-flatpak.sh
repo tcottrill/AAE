@@ -87,11 +87,41 @@ if [ "$rc" -ne 0 ]; then
 fi
 
 echo
-echo "=== exporting bundle ==="
-flatpak build-bundle "$WORK/repo" "$WORK/aae.flatpak" "$APP_ID"
+echo "=== exporting bundle ===" | tee -a "$LOG"
+
+# Appended to the SAME log as the build stage. This was outside the capture
+# once, and when build-bundle failed it produced no diagnosable output at all -
+# the build looked like it had succeeded right up to the point where no file
+# appeared. Every stage that can fail writes to the log.
+set +e
+flatpak build-bundle "$WORK/repo" "$WORK/aae.flatpak" "$APP_ID" 2>&1 | tee -a "$LOG"
+rc=${PIPESTATUS[0]}
+set -e
+if [ "$rc" -ne 0 ]; then
+    echo "=== BUNDLE EXPORT FAILED (exit $rc) - see $LOG ===" >&2
+    exit "$rc"
+fi
 
 # Copy the finished artefact back to the repo, where Windows can see it.
-cp "$WORK/aae.flatpak" "$REPO_DIR/aae.flatpak"
+#
+# Via a temporary name and then mv, for two reasons. A direct cp onto the live
+# file fails outright if anything on the Windows side has it open - which is
+# exactly what happens when someone is copying the previous bundle to a test
+# machine while the next one builds, and it aborted two builds that had
+# otherwise completely succeeded. And a half-copied 300MB file that looks
+# finished is worse than no file: it installs, or seems to, and then behaves
+# like a build nobody wrote.
+TMP="$REPO_DIR/aae.flatpak.new"
+if ! cp "$WORK/aae.flatpak" "$TMP"; then
+    echo "error: could not write $TMP - is the destination open elsewhere?" >&2
+    echo "       the finished bundle is still at $WORK/aae.flatpak" >&2
+    exit 1
+fi
+if ! mv -f "$TMP" "$REPO_DIR/aae.flatpak"; then
+    echo "error: could not replace $REPO_DIR/aae.flatpak (file in use?)." >&2
+    echo "       the new bundle is at $TMP - rename it when the file is free." >&2
+    exit 1
+fi
 
 echo
 echo "=== done ==="

@@ -1111,16 +1111,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		UpdateCursorState();
 		return 0;
 
-	case WM_KEYDOWN:
-	{
-		// Press F9 to toggle mouse capture/hiding
-		if (wParam == VK_F9) {
-			bool newState = !GetWindowSetup().cursorClipEnabled;
-			GetSystemWindow().EnableCursorClip(newState);
-			return 0;
-		}
-	}
-	break;
+	// F9 is NOT handled here. The mouse-capture toggle lives in msg_loop()
+	// (aae_emulator.cpp) so that Linux, whose keyboard comes from evdev and
+	// never passes through this message pump, gets the same hotkey.
 
 	case WM_KILLFOCUS:
 	case WM_SETFOCUS:
@@ -1348,7 +1341,12 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance,
 
 	// Now that all subsystems (Window, RawInput, OpenGL) are ready,
 	// enforce the cursor trap/hide logic.
-	UpdateCursorState();
+	//
+	// ALWAYS capture at startup - deliberately NOT the ini/cmdline value.
+	// Honouring cursor_clip=0 here meant a stale ini entry started every session
+	// with a visible, unconfined pointer, which reads as broken mouse support.
+	// Capture-by-default is the product decision (2026-07-29); F9 releases and a
+	// click recaptures, so an escape hatch at startup buys nothing.
 	GetSystemWindow().EnableCursorClip(true);
 
 	// This sets the High Performance timer.

@@ -352,7 +352,7 @@ Everything below is a latent defect that MSVC accepted, not porting friction:
 ### Still owed
 
 - **Linux audio has never been heard.** `/dev/snd` under WSLg contains only `timer`; there is no PCM device, and audio routes through PulseAudio (`/mnt/wslg/PulseServer`). Needs `libasound2-plugins`, or the Steam Machine. The backend correctly detects the absence, logs it and returns cleanly.
-- **The TMS5220 speech-by-ear check on bzone.** The `static_assert`s prove the coefficients are bit-identical, but only listening proves the filter.
+- **The TMS5220 speech-by-ear check.** The `static_assert`s prove the coefficients are bit-identical, but only listening proves the filter. **Test with `starwars`** (or `mhavoc`) - those are the only two drivers that use the TMS5220. An earlier draft of this document said `bzone`, which is simply wrong: Battlezone has no speech chip (user correction, 2026-07-29).
 - The interactive Windows pass carried over from Phase 3a: fullscreen toggle, cursor clipping, alt-tab focus, audio by ear.
 
 ### Correction to a claim in §5

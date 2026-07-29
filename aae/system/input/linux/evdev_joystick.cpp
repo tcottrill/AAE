@@ -17,6 +17,7 @@
 #include "joystick.h"
 #include "sys_log.h"
 
+#include <algorithm>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -80,6 +81,10 @@ PadSlot s_pads[MAX_JOYSTICKS];
 int s_numPads = 0;
 
 std::vector<EvdevDevice> s_devices;
+
+// Nodes already probed and decided about, including rejects - see ScanPads.
+std::vector<std::string> s_examined;
+
 JoystickHotplugCallback s_hotplugCallback = nullptr;
 bool s_deviceChangePending = false;
 int  s_rescanCountdown = 0;
@@ -289,11 +294,39 @@ void DetachPad(int slot)
 //------------------------------------------------------------------------------
 void ScanPads()
 {
-	for (const EvdevNode& node : EvdevEnumerateNodes()) {
-		bool alreadyOpen = false;
-		for (const EvdevDevice& d : s_devices)
-			if (d.IsOpen() && d.devNode() == node.devNode) { alreadyOpen = true; break; }
-		if (alreadyOpen) continue;
+	const std::vector<EvdevNode> nodes = EvdevEnumerateNodes();
+
+	// Forget nodes that have gone, so a replugged pad is probed again.
+	s_examined.erase(
+		std::remove_if(s_examined.begin(), s_examined.end(),
+			[&nodes](const std::string& p) {
+				return std::none_of(nodes.begin(), nodes.end(),
+					[&p](const EvdevNode& n) { return n.devNode == p; });
+			}),
+		s_examined.end());
+
+	for (const EvdevNode& node : nodes) {
+		int existing = -1;
+		for (size_t i = 0; i < s_devices.size(); i++)
+			if (s_devices[i].devNode() == node.devNode) { existing = (int)i; break; }
+
+		if (existing >= 0) {
+			if (s_devices[existing].IsOpen()) continue;
+			// Replugged: re-open in place so the pad keeps its joy[] slot.
+			if (s_devices[existing].Open(node.devNode, node.identity) &&
+			    s_devices[existing].kind() == EvdevKind::Gamepad)
+				AttachPad(existing, s_devices[existing]);
+			continue;
+		}
+
+		// The same trap evdev_input.cpp's ScanDevices documents: every
+		// keyboard, mouse and system button on the machine is NOT a gamepad,
+		// and re-probing all of them every two seconds - opening, five
+		// EVIOCGBIT ioctls, a log line, closing - happens on the thread that
+		// is trying to render.
+		if (std::find(s_examined.begin(), s_examined.end(), node.devNode) != s_examined.end())
+			continue;
+		s_examined.push_back(node.devNode);
 
 		EvdevDevice dev;
 		if (!dev.Open(node.devNode, node.identity)) continue;

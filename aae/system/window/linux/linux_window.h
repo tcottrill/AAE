@@ -43,6 +43,11 @@ public:
 	IPresentSurface* Presentation() override { return &m_presentSurface; }
 
 private:
+	// Rewrites the WM title to reflect the current capture state, mirroring
+	// winmain.cpp's UpdateWindowTitle(). This is the only on-screen hint that
+	// F9 releases the pointer, so it has to track the state, not be set once.
+	void UpdateTitle();
+
 	struct Impl;
 	Impl* m_impl = nullptr;
 	GlxPresentSurface m_presentSurface;

@@ -942,4 +942,98 @@
       <Filter>Source Files\aae\cpu_code</Filter>
     </None>
   </ItemGroup>
+  <!-- Linux port. Grouped under one top-level "Linux (not built)" folder so the
+       whole port is reviewable in one place and is obviously not part of the
+       Windows build. See the matching comment in aae.vcxproj. -->
+  <ItemGroup>
+    <Filter Include="Linux (not built)">
+      <UniqueIdentifier>{1a7c4e90-5b3d-42f1-9c68-7e0a2d4b8f11}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Linux (not built)\window">
+      <UniqueIdentifier>{2b8d5fa1-6c4e-4302-ad79-8f1b3e5c9022}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Linux (not built)\input">
+      <UniqueIdentifier>{3c9e60b2-7d5f-4413-be8a-901c4f6d0133}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Linux (not built)\audio">
+      <UniqueIdentifier>{4daf71c3-8e60-4524-cf9b-a12d507e1244}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Linux (not built)\util">
+      <UniqueIdentifier>{5eb082d4-9f71-4635-d0ac-b23e618f2355}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Linux (not built)\build + packaging">
+      <UniqueIdentifier>{6fc193e5-a082-4746-e1bd-c34f72903466}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="system\window\linux\linux_main.cpp">
+      <Filter>Linux (not built)\window</Filter>
+    </None>
+    <None Include="system\window\linux\linux_window.cpp">
+      <Filter>Linux (not built)\window</Filter>
+    </None>
+    <None Include="system\window\linux\linux_window.h">
+      <Filter>Linux (not built)\window</Filter>
+    </None>
+    <None Include="system\window\linux\glx_present.cpp">
+      <Filter>Linux (not built)\window</Filter>
+    </None>
+    <None Include="system\window\linux\glx_present.h">
+      <Filter>Linux (not built)\window</Filter>
+    </None>
+    <None Include="system\input\linux\evdev_input.cpp">
+      <Filter>Linux (not built)\input</Filter>
+    </None>
+    <None Include="system\input\linux\evdev_input.h">
+      <Filter>Linux (not built)\input</Filter>
+    </None>
+    <None Include="system\input\linux\evdev_device.cpp">
+      <Filter>Linux (not built)\input</Filter>
+    </None>
+    <None Include="system\input\linux\evdev_device.h">
+      <Filter>Linux (not built)\input</Filter>
+    </None>
+    <None Include="system\input\linux\evdev_keymap.cpp">
+      <Filter>Linux (not built)\input</Filter>
+    </None>
+    <None Include="system\input\linux\evdev_keymap.h">
+      <Filter>Linux (not built)\input</Filter>
+    </None>
+    <None Include="system\input\linux\evdev_joystick.cpp">
+      <Filter>Linux (not built)\input</Filter>
+    </None>
+    <None Include="system\audio\linux\alsa_backend.cpp">
+      <Filter>Linux (not built)\audio</Filter>
+    </None>
+    <None Include="system\audio\linux\alsa_backend.h">
+      <Filter>Linux (not built)\audio</Filter>
+    </None>
+    <None Include="system\audio\linux\audio_3d_null.cpp">
+      <Filter>Linux (not built)\audio</Filter>
+    </None>
+    <None Include="system\util\linux\posix_timer.cpp">
+      <Filter>Linux (not built)\util</Filter>
+    </None>
+    <None Include="..\tools\linux\uinput_devices.cpp">
+      <Filter>Linux (not built)\util</Filter>
+    </None>
+    <None Include="..\CMakeLists.txt">
+      <Filter>Linux (not built)\build + packaging</Filter>
+    </None>
+    <None Include="..\scripts\linux\build.sh">
+      <Filter>Linux (not built)\build + packaging</Filter>
+    </None>
+    <None Include="..\scripts\linux\run.sh">
+      <Filter>Linux (not built)\build + packaging</Filter>
+    </None>
+    <None Include="..\scripts\linux\build-flatpak.sh">
+      <Filter>Linux (not built)\build + packaging</Filter>
+    </None>
+    <None Include="..\packaging\flatpak\io.github.tcottrill.AAE.yml">
+      <Filter>Linux (not built)\build + packaging</Filter>
+    </None>
+    <None Include="..\packaging\flatpak\aae-launcher.sh">
+      <Filter>Linux (not built)\build + packaging</Filter>
+    </None>
+  </ItemGroup>
 </Project>

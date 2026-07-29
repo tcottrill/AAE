@@ -18,6 +18,7 @@
 #include "sys_window.h"
 #include "sys_log.h"
 
+#include <algorithm>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -83,9 +84,15 @@ MouseSlot s_mice[RI_MAX_MICE];
 int s_numKbds = 0;
 int s_numMice = 0;
 
-// Every open node. Slots hold indices rather than pointers because this vector
-// is rebuilt on hotplug rescans.
+// Every open node. Slots hold indices rather than pointers, so entries are
+// never removed from the middle - a device that goes away is closed in place
+// and re-opened there if it comes back.
 std::vector<EvdevDevice> s_devices;
+
+// Nodes already probed and decided about, INCLUDING the ones rejected. See
+// ScanDevices for why re-probing them every two seconds was expensive enough
+// to see on screen.
+std::vector<std::string> s_examined;
 
 //------------------------------------------------------------------------------
 int RegisterKeyboard(int devIndex, const EvdevDevice& dev)
@@ -310,12 +317,47 @@ void ScanDevices()
 {
 	const std::vector<EvdevNode> nodes = EvdevEnumerateNodes();
 
+	// Drop remembered nodes that have gone away, so unplug-then-replug probes
+	// the device again instead of it staying "rejected" for the session.
+	s_examined.erase(
+		std::remove_if(s_examined.begin(), s_examined.end(),
+			[&nodes](const std::string& p) {
+				return std::none_of(nodes.begin(), nodes.end(),
+					[&p](const EvdevNode& n) { return n.devNode == p; });
+			}),
+		s_examined.end());
+
 	int permissionDenied = 0;
 	for (const EvdevNode& node : nodes) {
-		bool alreadyOpen = false;
-		for (const EvdevDevice& d : s_devices)
-			if (d.devNode() == node.devNode) { alreadyOpen = true; break; }
-		if (alreadyOpen) continue;
+		int existing = -1;
+		for (size_t i = 0; i < s_devices.size(); i++)
+			if (s_devices[i].devNode() == node.devNode) { existing = (int)i; break; }
+
+		if (existing >= 0) {
+			if (s_devices[existing].IsOpen()) continue;
+
+			// Was unplugged and is back. Re-open IN PLACE: the keyboard and
+			// mouse slot tables hold this index, and reattaching by identity
+			// is what keeps a player's device assignment across a replug.
+			if (s_devices[existing].Open(node.devNode, node.identity)) {
+				if (s_devices[existing].kind() == EvdevKind::Keyboard)
+					RegisterKeyboard(existing, s_devices[existing]);
+				else if (s_devices[existing].kind() == EvdevKind::Mouse)
+					RegisterMouse(existing, s_devices[existing]);
+			}
+			continue;
+		}
+
+		// Probed before and not ours - a gamepad, a power button, a lid
+		// switch, an HDMI audio jack. THIS CHECK IS THE POINT: without it
+		// every rescan re-opened and re-classified every such node, five
+		// EVIOCGBIT ioctls and a log line each, on the GAME THREAD, twice
+		// every two seconds once evdev_joystick.cpp's identical scan is
+		// counted. On a machine with twenty event nodes that is a visible
+		// stutter roughly once a second.
+		if (std::find(s_examined.begin(), s_examined.end(), node.devNode) != s_examined.end())
+			continue;
+		s_examined.push_back(node.devNode);
 
 		EvdevDevice dev;
 		if (!dev.Open(node.devNode, node.identity)) {

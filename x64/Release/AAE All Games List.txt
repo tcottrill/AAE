@@ -1,39 +1,87 @@
 AAE Game List
 Name            Description
 ----            -----------
-meteorts        Meteorites (Asteroids Bootleg)
-asterock        Asterock (Asteroids Bootleg)
-asteroidb       Asteroids (Bootleg on Lunar Lander Hardware)
-asteroid1       Asteroids (Revision 1)
-asteroid        Asteroids (Revision 2)
-astdelux1       Asteroids Deluxe (Revision 1)
-astdelux2       Asteroids Deluxe (Revision 2)
-astdelux        Asteroids Deluxe (Revision 3)
-aztarac         Aztarac
-bosco           Bosconian
-spacduel        Space Duel
-spacduel0       Space Duel (prototype)
-spacduel1       Space Duel Revision 1
-bwidow          Black Widow
-gravitar        Gravitar (Revision 3)
-gravitar2       Gravitar (Revision 2)
-gravp           Gravitar (Prototype)
-lunarbat        Lunar Battle (Prototype, Late)
-lunarba1        Lunar Battle (Prototype, Early)
-bzone           Battlezone (Revision 1)
-bzonea          Battlezone (Revision A)
-bzonec          Battlezone Cocktail Proto
-bzonep          Battlezone Plus (Clay Cowgill)
-redbaron        Red Baron
-bradley         Bradley Trainer
-cchasm          Cosmic Chasm (set 2)
-cchasm1         Cosmic Chasm (set 1)
-centiped        Centipede
-foodf           Food Fight (Atari)
-gaplus          gaplus (US)
-dkong           Donkey Kong (US)
-dkongjr         Donkey Kong Junior (US)
-gyruss          Gyruss (Konami)
+mhavoc          Major Havoc (Revision 3)
+mhavoc2         Major Havoc (Revision 2)
+mhavocrv        Major Havoc (Return To VAX - Mod by Jeff Askey)
+mhavocpe        Major Havoc (The Promised End 1.01 adpcm)
+mhavocp         Major Havoc (Prototype)
+alphaone        Alpha One (Major Havoc Prototype - 3 Lives)
+alphaonea       Alpha One (Major Havoc Prototype - 5 Lives)
+starwars        Star Wars (Revision 2)
+starwars1       Star Wars (Revision 1)
+esb             Star Wars: Empire Strike Back
+tomcat          TomCat (Star Wars hardware, prototype)
+tempestm        Tempest Multigame (1999 Clay Cowgill)
+tempest         Tempest (Revision 3)
+tempest3        Tempest (Revision 2B)
+tempest2        Tempest (Revision 2A)
+tempest1        Tempest (Revision 1)
+temptube        Tempest Tubes
+aliensv         Aliens (Tempest Alpha)
+vbrakout        Vector Breakout (1999 Clay Cowgill)
+vortex          Vortex (Tempest Beta)
+warlords        Warlords
+spacezap        Space Zap
+yiear           Yie Ar Kung-Fu (set 1)
+xevious         Xevious (Namco)
+depthch         Depth Charge
+topgunnr        Top Gunner
+superpac        Super Pac-Man
+superpcm        Super Pac-Man (Midway)
+pacnpal         Pac & Pal
+pacnpal2        Pac & Pal (set 2)
+pacnchmp        Pac-Man & Chomp Chomp
+zektor          Zektor
+tacscan         Tac/Scan
+startrek        Star Trek
+spacfury        Space Fury (Revision C)
+spacfura        Space Fury (Revision A)
+spacfurb        Space Fury (Revision B)
+elim2           Eliminator (2 Player Set 1)
+elim2a          Eliminator (2 Player Set 2A)
+elim2c          Eliminator (2 Player Set 2C)
+elim4           Eliminator (4 Player)
+elim4p          Eliminator (4 Player Prototype)
+rallyx          Rally-X
+quantum1        Quantum (Revision 1)
+quantum         Quantum (Revision 2)
+quantump        Quantum (Prototype)
+phoenix         Phoenix (Amstar)
+pleiads         Pleiads (Tehkan)
+pacman          Pacman
+mspacman        Ms. Pac-Man
+pacplus         Pacman Plus
+multi15         Multipac (v1.5)
+puckman         PuckMan (Japan set 1)
+crush           Crush Roller (Kural Samno)
+maketrax        Make Trax
+ponpoko         Ponpoko
+superabc        Pacman Super ABC
+omegrace        Omega Race
+deltrace        Delta Race (Omega Race Bootleg)
+missile         Missile Command
+milliped        Millipede
+mappy           Mappy (US)
+mappyjp         Mappy (Japan)
+digdug2         Dig Dug 2
+motos           Motos
+todruaga        Tower of Druaga
+llander         Lunar Lander
+llander1        Lunar Lander (Revision 1)
+jrpacman        Jr. Pac-Man
+invaders        Space Invaders
+invaddlx        Space Invaders Deluxe
+clowns          Clowns
+clowns1         Clowns Revision 1
+boothill        Boot Hill
+galaxian        Galaxian (Midway)
+galaga          Galaga
+digdug          Dig Dug
+circus          Circus
+robotbwl        Robot Bowl
+crash           Crash
+ripcord         Rip Cord
 solarq          Solar Quest
 starcas         Star Castle
 ripoff          RipOff
@@ -50,78 +98,40 @@ boxingb         Boxing Bugs
 wotw            War of the Worlds (B&W)
 wotwc           War of the Worlds (Color)
 qb3             QB-3 (prototype)
-circus          Circus
-robotbwl        Robot Bowl
-crash           Crash
-ripcord         Rip Cord
-digdug          Dig Dug
-galaga          Galaga
-galaxian        Galaxian (Midway)
-invaders        Space Invaders
-invaddlx        Space Invaders Deluxe
-clowns          Clowns
-clowns1         Clowns
-jrpacman        Jr. Pac-Man
-llander         Lunar Lander
-llander1        Lunar Lander (Revision 1)
-mappy           Mappy (US)
-mappyjp         Mappy (Japan)
-digdug2         Dig Dug 2
-motos           Motos
-todruaga        Tower of Druaga
-mhavoc          Major Havoc (Revision 3)
-mhavoc2         Major Havoc (Revision 2)
-mhavocrv        Major Havoc (Return To VAX - Mod by Jeff Askey)
-mhavocpe        Major Havoc (The Promised End 1.01 adpcm)
-mhavocp         Major Havoc (Prototype)
-alphaone        Alpha One (Major Havoc Prototype - 3 Lives)
-alphaonea       Alpha One (Major Havoc Prototype - 5 Lives)
-milliped        Millipede
-missile         Missile Command
-omegrace        Omega Race
-deltrace        Delta Race (Omega Race Bootleg)
-pacman          Pacman
-mspacman        Ms. Pac-Man
-pacplus         Pacman Plus
-phoenix         Phoenix (Amstar)
-pleiads         Pleiads (Tehkan)
-quantum1        Quantum (Revision 1)
-quantum         Quantum (Revision 2)
-quantump        Quantum (Prototype)
-rallyx          Rally-X
-zektor          Zektor
-tacscan         Tac/Scan
-startrek        Star Trek
-spacfury        Space Fury (Revision C)
-spacfura        Space Fury (Revision A)
-spacfurb        Space Fury (Revision B)
-elim2           Eliminator (2 Player Set 1)
-elim2a          Eliminator (2 Player Set 2A)
-elim2c          Eliminator (2 Player Set 2C)
-elim4           Eliminator (4 Player)
-elim4p          Eliminator (4 Player Prototype)
-starwars        Star Wars (Revision 2)
-starwars1       Star Wars (Revision 1)
-esb             Star Wars: Empire Strike Back
-tomcat          TomCat (Star Wars hardware, prototype)
-superpac        Super Pac-Man
-superpcm        Super Pac-Man (Midway)
-pacnpal         Pac & Pal
-pacnpal2        Pac & Pal (set 2)
-pacnchmp        Pac-Man & Chomp Chomp
-tempestm        Tempest Multigame (1999 Clay Cowgill)
-tempest         Tempest (Revision 3)
-tempest3        Tempest (Revision 2B)
-tempest2        Tempest (Revision 2A)
-tempest1        Tempest (Revision 1)
-temptube        Tempest Tubes
-aliensv         Aliens (Tempest Alpha)
-vbrakout        Vector Breakout (1999 Clay Cowgill)
-vortex          Vortex (Tempest Beta)
-topgunnr        Top Gunner
-depthch         Depth Charge
-warlords        Warlords
-xevious         Xevious (Namco)
-yiear           Yie Ar Kung-Fu (set 1)
+gyruss          Gyruss (Konami)
+dkong           Donkey Kong (US)
+dkongjr         Donkey Kong Junior (US)
+breakout        Breakout
+pong            Pong
+gaplus          gaplus (US)
+foodf           Food Fight (Atari)
+centiped        Centipede
+cchasm          Cosmic Chasm (set 2)
+cchasm1         Cosmic Chasm (set 1)
+bzone           Battlezone (Revision 1)
+bzonea          Battlezone (Revision A)
+bzonec          Battlezone Cocktail Proto
+bzonep          Battlezone Plus (Clay Cowgill)
+redbaron        Red Baron
+bradley         Bradley Trainer
+spacduel        Space Duel
+spacduel0       Space Duel (prototype)
+spacduel1       Space Duel Revision 1
+bwidow          Black Widow
+gravitar        Gravitar (Revision 3)
+gravitar2       Gravitar (Revision 2)
+gravp           Gravitar (Prototype)
+lunarbat        Lunar Battle (Prototype, Late)
+lunarba1        Lunar Battle (Prototype, Early)
+bosco           Bosconian
+aztarac         Aztarac
+meteorts        Meteorites (Asteroids Bootleg)
+asterock        Asterock (Asteroids Bootleg)
+asteroidb       Asteroids (Bootleg on Lunar Lander Hardware)
+asteroid1       Asteroids (Revision 1)
+asteroid        Asteroids (Revision 2)
+astdelux1       Asteroids Deluxe (Revision 1)
+astdelux2       Asteroids Deluxe (Revision 2)
+astdelux        Asteroids Deluxe (Revision 3)
 
-Total games: 122
+Total games: 132

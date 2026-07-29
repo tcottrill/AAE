@@ -580,12 +580,17 @@ void SetvSync(bool enabled)
 
 void GLSwapBuffers()
 {
-	// Diagnostic: a window that never presents is indistinguishable from a
-	// window that was never created. Log the first few swaps so "is anything
-	// drawing?" can be answered from the log alone.
+	// The first three swaps are logged and no more. This carried a `%120`
+	// clause as well, which at 60fps put a line in the log every two seconds
+	// for the whole session - added while chasing a window that never
+	// presented, and left in after that was solved. Logging is asynchronous so
+	// one line is unlikely to cost a frame, but per-frame diagnostics do not
+	// belong in a build anyone plays, and "every two seconds" is a poor thing
+	// to have in the log while investigating a stutter that recurs every few
+	// seconds.
 	static int s_swapCount = 0;
-	++s_swapCount;
-	if (s_swapCount <= 3 || (s_swapCount % 120) == 0) {
+	if (s_swapCount < 3) {
+		++s_swapCount;
 		LOG_INFO("GLSwapBuffers #%d (dpy=%p win=%lu)", s_swapCount,
 		         (void*)gDpy, (unsigned long)gWin);
 	}

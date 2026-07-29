@@ -39,7 +39,12 @@ void setup_config() {
     LOG_DEBUG("INI PATH (aae.ini) %s", g_aaeIniPath);
 
     // Load all fields from aae.ini
-    config.samplerate = get_config_int("main", "samplerate", 22050);
+    // 48000, not 22050. This is the fallback when [main] samplerate is absent,
+    // and 22050 caps the output at an 11 kHz bandwidth - audibly thin, and then
+    // resampled UP anyway on any HDMI sink, which is 48 kHz-native almost
+    // without exception. 48000 is also what the ALSA/HDMI path wants, so the
+    // common case now involves no rate conversion at all.
+    config.samplerate = get_config_int("main", "samplerate", 48000);
 
     // Per-player mouse assignment: player 1 defaults to the merged system
     // mouse (legacy behavior), the rest to none. When a specific device is
@@ -192,7 +197,14 @@ void setup_config() {
     config.color_mask_scale      = get_config_float("monitorcolor", "color_mask_scale",      2.0f);
 
     // Load game-specific overrides for select fields
-    temppath = getpathM("ini", 0) + std::string("\\") + Machine->gamedrv->name + ".ini";
+    // Let getpathM join the filename: it uses std::filesystem, so the separator
+    // is correct on both platforms. The old hand-appended "\\" produced a
+    // filename with a literal backslash on Linux ("ini\game.ini"), so per-game
+    // overrides silently never loaded there - every game inherited whatever
+    // config the previous game left behind (wrong aspect on vertical games from
+    // the GUI being the visible symptom) - and per-game SAVES (g_gameIniPath is
+    // reused by my_set_config_value) landed in a junk file of that name.
+    temppath = getpathM("ini", (std::string(Machine->gamedrv->name) + ".ini").c_str());
     aae_strcpy(g_gameIniPath, sizeof(g_gameIniPath), temppath.c_str());
     if (file_exists(g_gameIniPath)) {
         SetIniFile(g_gameIniPath);

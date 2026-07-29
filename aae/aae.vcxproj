@@ -383,6 +383,41 @@
     <None Include="packages.config" />
     <None Include="resource.aps" />
   </ItemGroup>
+  <!-- ===================================================================
+       Linux port - VISIBLE FOR EDITING, NEVER BUILT BY MSBUILD.
+       These are <None> items on purpose. They are compiled only by
+       CMakeLists.txt, inside its `elseif(UNIX AND NOT APPLE)` branch, so
+       MSBuild must not see them as ClCompile - and <None> also keeps
+       IntelliSense from parsing them with the MSVC toolset, which would
+       squiggle every X11/evdev/ALSA include red.
+       Adding a file here does NOT add it to the Linux build: it must also
+       be listed in CMakeLists.txt.
+       =================================================================== -->
+  <ItemGroup>
+    <None Include="system\window\linux\linux_main.cpp" />
+    <None Include="system\window\linux\linux_window.cpp" />
+    <None Include="system\window\linux\linux_window.h" />
+    <None Include="system\window\linux\glx_present.cpp" />
+    <None Include="system\window\linux\glx_present.h" />
+    <None Include="system\input\linux\evdev_input.cpp" />
+    <None Include="system\input\linux\evdev_input.h" />
+    <None Include="system\input\linux\evdev_device.cpp" />
+    <None Include="system\input\linux\evdev_device.h" />
+    <None Include="system\input\linux\evdev_keymap.cpp" />
+    <None Include="system\input\linux\evdev_keymap.h" />
+    <None Include="system\input\linux\evdev_joystick.cpp" />
+    <None Include="system\audio\linux\alsa_backend.cpp" />
+    <None Include="system\audio\linux\alsa_backend.h" />
+    <None Include="system\audio\linux\audio_3d_null.cpp" />
+    <None Include="system\util\linux\posix_timer.cpp" />
+    <None Include="..\tools\linux\uinput_devices.cpp" />
+    <None Include="..\CMakeLists.txt" />
+    <None Include="..\scripts\linux\build.sh" />
+    <None Include="..\scripts\linux\run.sh" />
+    <None Include="..\scripts\linux\build-flatpak.sh" />
+    <None Include="..\packaging\flatpak\io.github.tcottrill.AAE.yml" />
+    <None Include="..\packaging\flatpak\aae-launcher.sh" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
     <Import Project="..\packages\Microsoft.XAudio2.Redist.1.2.13\build\native\Microsoft.XAudio2.Redist.targets" Condition="Exists('..\packages\Microsoft.XAudio2.Redist.1.2.13\build\native\Microsoft.XAudio2.Redist.targets')" />

@@ -16,6 +16,11 @@
 #include <cstdlib>
 #include <cstring>
 
+// opengl_renderer.h, declared here rather than included: that header drags in GL
+// and the whole renderer surface for one function (same reasoning as
+// linux_main.cpp, which forward-declares it for the same reason).
+void emulator_on_window_resize(int newW, int newH);
+
 //------------------------------------------------------------------------------
 // All Xlib state lives here so linux_window.h stays free of <X11/Xlib.h>.
 //------------------------------------------------------------------------------
@@ -114,9 +119,17 @@ bool LinuxWindow::Create(const WindowSetup& setup)
 	                               vi->visual, AllocNone);
 	swa.border_pixel = 0;
 	// StructureNotify gives resize/map, FocusChange drives the pointer-grab
-	// release below. Key/Button masks are deliberately absent - input comes
+	// release below. KEY masks are deliberately absent - keyboard input comes
 	// from evdev, not X11.
-	swa.event_mask = StructureNotifyMask | FocusChangeMask | ExposureMask;
+	//
+	// ButtonPress is the one exception, and it is window MANAGEMENT, not game
+	// input: it re-arms capture when the user clicks back into the window after
+	// releasing with F9, exactly as WM_LBUTTONDOWN does in winmain.cpp. It has
+	// to come from X11 rather than evdev precisely because X11 delivers it only
+	// when the click lands on OUR window - an evdev button would re-capture on
+	// any click anywhere on the desktop.
+	swa.event_mask = StructureNotifyMask | FocusChangeMask | ExposureMask |
+	                 ButtonPressMask;
 
 	m_impl->win = XCreateWindow(
 		m_impl->dpy, RootWindow(m_impl->dpy, m_impl->screen),
@@ -133,7 +146,11 @@ bool LinuxWindow::Create(const WindowSetup& setup)
 		return false;
 	}
 
-	XStoreName(m_impl->dpy, m_impl->win, "AAE");
+	// Match winmain.cpp: the configured capture state arrives in WindowSetup, so
+	// seed from there rather than defaulting to off. linux_main.cpp calls
+	// EnableCursorClip() once the GL context exists to actually apply it.
+	m_impl->clipEnabled = setup.cursorClipEnabled;
+	UpdateTitle();
 
 	m_impl->wmDeleteWindow = XInternAtom(m_impl->dpy, "WM_DELETE_WINDOW", False);
 	XSetWMProtocols(m_impl->dpy, m_impl->win, &m_impl->wmDeleteWindow, 1);
@@ -247,13 +264,38 @@ bool LinuxWindow::PumpEvents()
 
 		switch (ev.type) {
 		case ConfigureNotify:
-			m_impl->clientW = ev.xconfigure.width;
-			m_impl->clientH = ev.xconfigure.height;
+		{
+			const int newW = ev.xconfigure.width;
+			const int newH = ev.xconfigure.height;
+			// ConfigureNotify also fires for pure MOVES, so only react to an
+			// actual size change - emulator_on_window_resize below rebuilds the
+			// screen rect and is not free.
+			const bool sizeChanged = (newW != m_impl->clientW) || (newH != m_impl->clientH);
+
+			m_impl->clientW = newW;
+			m_impl->clientH = newH;
 			// Keep WindowSetup in step - the renderer's viewport comes from
 			// there, not from this class. See the note in Create().
-			GetWindowSetup().clientWidth  = m_impl->clientW;
-			GetWindowSetup().clientHeight = m_impl->clientH;
+			GetWindowSetup().clientWidth  = newW;
+			GetWindowSetup().clientHeight = newH;
+
+			// THE resize hook, and it was missing: this is what WM_SIZE calls on
+			// Windows (winmain.cpp), and without it ALT+ENTER left the game
+			// drawn at the old size and off-centre.
+			//
+			// Raster games happened to adapt anyway - Layout_Render re-reads
+			// clientWidth/Height every frame - but the VECTOR path draws through
+			// screen_rect, which holds absolute pixel coordinates computed once
+			// and only ever re-fitted here. That is also what re-centres the
+			// image: UpdateScreenRect recomputes the centring offsets from the
+			// new client size.
+			//
+			// Safe before GL exists: emulator_on_window_resize returns
+			// immediately while screen_rect is null.
+			if (sizeChanged && newW > 0 && newH > 0)
+				emulator_on_window_resize(newW, newH);
 			break;
+		}
 
 		case FocusIn:
 			m_impl->focused = true;
@@ -284,6 +326,18 @@ bool LinuxWindow::PumpEvents()
 			}
 			break;
 
+		case ButtonPress:
+			// Clicking back into the game view re-arms capture, mirroring
+			// WM_LBUTTONDOWN/WM_RBUTTONDOWN in winmain.cpp. Left and right only:
+			// the middle button and the wheel (buttons 4/5) must not re-capture.
+			//
+			// Not game input - see the event-mask note in Create().
+			if ((ev.xbutton.button == Button1 || ev.xbutton.button == Button3) &&
+			    !m_impl->clipEnabled) {
+				EnableCursorClip(true);
+			}
+			break;
+
 		case ClientMessage:
 			if ((Atom)ev.xclient.data.l[0] == m_impl->wmDeleteWindow) {
 				LOG_INFO("LinuxWindow: WM_DELETE_WINDOW - quitting");
@@ -308,6 +362,13 @@ void LinuxWindow::ToggleBorderlessFullscreen()
 	if (!m_impl || !m_impl->dpy) return;
 
 	m_impl->fullscreen = !m_impl->fullscreen;
+
+	// Publish to the shared WindowSetup, as the Win32 version does. Not
+	// bookkeeping: menu.cpp reads borderlessFullscreen to DISPLAY the FULLSCREEN
+	// item, to decide which arrow keys are live on it, and to persist
+	// [window] fullscreen on save. Left unset, the Linux Video menu always
+	// showed "NO" and always saved 0, whatever the window was actually doing.
+	GetWindowSetup().borderlessFullscreen = m_impl->fullscreen;
 
 	// EWMH, not override-redirect. Override-redirect bypasses the window
 	// manager entirely: it breaks alt-tab, ignores multi-monitor layout, and
@@ -348,10 +409,31 @@ void LinuxWindow::SetCursorVisible(bool visible)
 	m_impl->cursorVisible = visible;
 }
 
+void LinuxWindow::UpdateTitle()
+{
+	if (!m_impl || !m_impl->dpy || !m_impl->win) return;
+
+	// Same wording as winmain.cpp so the two platforms read identically.
+	const char* title = m_impl->clipEnabled
+		? "AAE - Mouse Captured (F9 to release)"
+		: "AAE";
+
+	XStoreName(m_impl->dpy, m_impl->win, title);
+	XFlush(m_impl->dpy);
+}
+
 void LinuxWindow::EnableCursorClip(bool enable)
 {
 	if (!m_impl) return;
 	m_impl->clipEnabled = enable;
+
+	// Keep the shared WindowSetup in step, as Win32Window::EnableCursorClip
+	// does. This is NOT bookkeeping for its own sake: msg_loop()'s F9 handler
+	// reads cursorClipEnabled to decide which way to toggle, so without this the
+	// flag would never change and F9 would only ever capture, never release.
+	GetWindowSetup().cursorClipEnabled = enable;
+
+	UpdateTitle();
 	ForceCursorClipUpdate();
 }
 
@@ -364,10 +446,19 @@ void LinuxWindow::ForceCursorClipUpdate()
 	if (want && !m_impl->clipActive) {
 		// confine_to = our window is the closest X11 has to ClipCursor.
 		// owner_events=True so the app still receives its own events normally.
+		//
+		// blankCursor as the grab cursor is what HIDES the pointer while
+		// captured, matching ShowCursor(FALSE) in winmain.cpp's
+		// UpdateCursorState(). Passing it here rather than calling
+		// SetCursorVisible() is deliberate: X11 applies a grab cursor for
+		// exactly the lifetime of the grab and restores the normal one on
+		// ungrab, so visibility can never drift out of step with capture -
+		// including on the FocusOut path, which ungrabs without going through
+		// this function.
 		int r = XGrabPointer(m_impl->dpy, m_impl->win, True,
 		                     ButtonPressMask | ButtonReleaseMask | PointerMotionMask,
 		                     GrabModeAsync, GrabModeAsync,
-		                     m_impl->win, None, CurrentTime);
+		                     m_impl->win, m_impl->blankCursor, CurrentTime);
 		if (r == GrabSuccess) {
 			m_impl->clipActive = true;
 		} else {

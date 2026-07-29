@@ -112,6 +112,16 @@ modules:
           - build-flatpak
           - flatpak-repo
           - x64
+          # The MSBuild output trees. Skipped for size - they are hundreds of
+          # MB of Windows .obj/.pdb that the Linux build has no use for - and
+          # for correctness: a Windows build running at the same time is
+          # actively writing them, and flatpak-builder aborts with
+          # "Error opening file .../aae_core.pdb: Permission denied" when it
+          # tries to copy a file MSBuild has open. All three are gitignored
+          # build products, not sources.
+          - aae/x64
+          - aae/aae/x64
+          - aae/aae_core
           - aae_2026_7_20_release_1.7
           - dice.0.9.win.x86
           - dice.0.9.win.x86.zip

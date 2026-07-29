@@ -593,7 +593,9 @@ Expected: exit 0, six warnings. If the `static_assert`s fail, the values were mi
 ./x64/Release/aae.exe bzone
 ```
 
-Expected: Battlezone's speech ("player one", the enemy callouts) sounds exactly as before. This is the only real check that the coefficients still mean what they used to — a build that compiles proves nothing about the filter.
+Run `starwars` — **not** `bzone`. Only `drivers/starwars.cpp` and `drivers/mhavoc.cpp` use the TMS5220; Battlezone has no speech chip at all, so testing it would prove nothing while looking like it had (user correction, 2026-07-29).
+
+Expected: Star Wars' speech sounds exactly as before. This is the only real check that the coefficients still mean what they used to — a build that compiles proves nothing about the filter.
 
 - [ ] **Step 8: Commit**
 
@@ -2272,7 +2274,7 @@ Expected: `89414` and `353693` from both platforms.
 ./x64/Release/aae.exe dkong
 ```
 
-Expected: all boot, play, and sound correct. `bzone` specifically exercises the TMS5220 tables from Task 6 — its speech is the check that Task 6 preserved the coefficients.
+Expected: all boot, play, and sound correct. For the TMS5220 tables from Task 6 the game to listen to is **`starwars`** (or `mhavoc`) — those are the only two drivers that use that chip.
 
 - [ ] **Step 6: Write the phase report**
 
