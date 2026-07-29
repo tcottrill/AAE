@@ -35,6 +35,33 @@ cmake_minimum_required(VERSION 3.20)
 project(aae LANGUAGES CXX C)
 
 # -----------------------------------------------------------------------------
+# Warning level, applied to all three targets below (aae_core, aae,
+# aae_headless - C sources like glew.c/miniz.c included). Left unset, cl.exe
+# silently falls back to its own default of /W1, well below the Level3 (/W3)
+# both aae/aae.vcxproj and aae/aae_core.vcxproj set explicitly - so the CMake
+# build was emitting only 1 of the 6 warnings MSBuild produces (C4018 is
+# level 3, C4101 is level 4; both were silently suppressed). This exists to
+# keep CMake's warning output at parity with the vcxproj so a regression
+# can't hide in the Linux build, since CMake is the only build system there.
+#
+# Plain add_compile_options(/W3) rather than CMAKE_CXX_FLAGS: neither
+# CMAKE_CXX_FLAGS nor CMAKE_C_FLAGS carries a pre-existing /W flag here (CMake
+# stopped injecting its own default /W3 once CMP0092 went NEW, which it is by
+# default at our required CMake >= 3.20), so there is nothing for this /W3 to
+# collide with. Appending /W3 onto an /W1 already present in those flags
+# variables is what triggers MSVC's D9025 "overriding '/W1' with '/W3'" -
+# verified that warning does NOT appear in the build output.
+#
+# -Wall (not -Werror) for GCC/Clang, the Linux path: the six warnings below
+# are pre-existing and must not become hard build failures.
+# -----------------------------------------------------------------------------
+if(MSVC)
+    add_compile_options(/W3)
+else()
+    add_compile_options(-Wall)
+endif()
+
+# -----------------------------------------------------------------------------
 # aae_core: 88 files from aae/aae_core.vcxproj's <ClCompile> list (86 as of
 # Task 5, plus aae/machine_state.cpp added in Task 6 - see the comment in
 # that file for why Machine's storage needed to move into the core).
