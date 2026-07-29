@@ -1019,6 +1019,11 @@ void run_game(void)
 		if (isVector && isVertical && hasBezel && bezelOn)
 		{
 			LOG_INFO("Step 12: vertical vector with bezel art active - keeping 4:3 window");
+			// The window keeps its shape, but screen_rect must still be re-fitted
+			// for THIS game - it is built once inside init_gl's init_one guard
+			// and is otherwise never refreshed on a game switch.
+			emulator_on_window_resize(GetWindowSetup().clientWidth,
+			                          GetWindowSetup().clientHeight);
 		}
 		else if (gameAspect > 0.0f)
 		{

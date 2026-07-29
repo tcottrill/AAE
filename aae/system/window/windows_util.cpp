@@ -261,6 +261,20 @@ void WindowUtil_UpdateAspect(float gameAspect)
 	ws.clientWidth = rc.right - rc.left;
 	ws.clientHeight = rc.bottom - rc.top;
 
+	// Re-fit screen_rect explicitly, exactly as the borderlessFullscreen path
+	// above already does.
+	//
+	// This must NOT be left to the WM_SIZE that SetWindowPos usually raises.
+	// screen_rect is built once, inside init_gl's init_one guard, so a game
+	// switch never rebuilds it - emulator_on_window_resize is the only thing
+	// that re-fits it for the new game's aspect. And WM_SIZE does not fire
+	// when the computed size equals the current one, which is exactly what
+	// happens launching a game FROM THE GUI at the same aspect: the window
+	// does not move, no WM_SIZE arrives, and the game renders with the GUI's
+	// fit. Launching the same game directly looked fine because init_gl built
+	// screen_rect from that game's values in the first place.
+	emulator_on_window_resize(ws.clientWidth, ws.clientHeight);
+
 	// Save the new windowed rect for ALT+ENTER restore
 	RECT windowedRect{};
 	GetWindowRect(hwnd, &windowedRect);

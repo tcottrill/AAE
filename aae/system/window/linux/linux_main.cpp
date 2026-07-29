@@ -29,6 +29,10 @@
 #include <string>
 
 // Emulator entry points (aae_emulator.cpp)
+// opengl_renderer.h - declared here rather than including that header,
+// which drags in GL and the whole renderer surface for one function.
+void emulator_on_window_resize(int newW, int newH);
+
 void emulator_init(int argc, char** argv);
 void emulator_run();
 void emulator_end();
@@ -56,15 +60,28 @@ ISystemWindow& GetSystemWindow() { return g_window; }
 // versions live in system/window/windows_util.cpp; these are the Linux halves.
 //------------------------------------------------------------------------------
 
-// aae_emulator.cpp calls this to resize the window to a game's aspect ratio.
-// Deliberately a no-op for now: under a compositor the window manager owns
-// geometry, and a client that fights it produces a flickering resize loop. The
-// renderer already letterboxes to the requested aspect inside whatever client
-// area it is given, so the visible result is correct either way.
+// aae_emulator.cpp calls this when a game's aspect ratio is known.
+//
+// The Win32 version also RESIZES the window; this one does not - under a
+// compositor the window manager owns geometry, and a client that fights it
+// produces a flickering resize loop. The renderer letterboxes to the requested
+// aspect inside whatever client area it is given, so the visible result is the
+// same. What must NOT be skipped is the viewport re-fit below.
 void WindowUtil_UpdateAspect(float gameAspect)
 {
-	LOG_INFO("WindowUtil_UpdateAspect(%.4f): letterboxed by the renderer; the "
-	         "window is not resized on this platform", gameAspect);
+	if (gameAspect <= 0.0f) return;
+
+	// Storing the aspect and re-fitting screen_rect is the part that MATTERS -
+	// not the window resize. screen_rect is built once inside init_gl's
+	// init_one guard, so emulator_on_window_resize is the only thing that
+	// re-fits it for a new game; without this call, a game launched from the
+	// GUI renders with the GUI's fit.
+	GetWindowSetup().aspectRatio = gameAspect;
+	emulator_on_window_resize(GetWindowSetup().clientWidth,
+	                          GetWindowSetup().clientHeight);
+
+	LOG_INFO("WindowUtil_UpdateAspect(%.4f): aspect stored and viewport re-fitted; "
+	         "the window itself is left to the WM on this platform", gameAspect);
 }
 
 // Message box equivalent. There is no portable dialog here and AAE has no
