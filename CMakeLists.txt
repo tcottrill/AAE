@@ -7,30 +7,37 @@
 # without also having to invent build plumbing on a machine we cannot reach
 # from here.
 #
-# Source lists below are copy-pasted out of aae/aae_core.vcxproj (86 files)
-# and aae/aae.vcxproj (48 files) - NOT globbed. A file(GLOB) would silently
+# Source lists below are copy-pasted out of aae/aae_core.vcxproj (87 files,
+# 86 plus machine_state.cpp added in Task 6 - see the note above
+# AAE_CORE_SOURCES) and aae/aae.vcxproj (48 files) - NOT globbed. A
+# file(GLOB) would silently
 # let new files join whichever target picked them up first and the core/exe
 # split (the whole point of Phase 1-2's compiler-enforced boundary) would
 # drift without anyone noticing. If you add a source file, add it to the
 # vcxproj AND to the matching list below.
 #
 # Three targets:
-#   aae_core     - STATIC library, the 86 emulation-core translation units.
+#   aae_core     - STATIC library, the 87 emulation-core translation units.
 #                  Its include directories deliberately omit
 #                  aae/aae/aae_video, aae/aae/gui and aae/system/window - see
 #                  the comment above AAE_CORE_INCLUDE_DIRS.
 #   aae          - the executable, links aae_core, adds the OSD-layer include
 #                  directories for itself only.
-#   aae_headless - PLACEHOLDER. Task 6 adds this target (a headless/test
-#                  harness that links aae_core without any OSD). Not created
-#                  here on purpose.
+#   aae_headless - Task 6's headless/test harness: links aae_core with no
+#                  aae_video/gui/window at all, supplies a NullWindow and a
+#                  handful of OSD stubs (aae/headless/), runs N frames of a
+#                  vector driver and counts vectors emitted through
+#                  add_line() - the proof the core runs with no display,
+#                  which is the Teensy target's precondition.
 # =============================================================================
 
 cmake_minimum_required(VERSION 3.20)
 project(aae LANGUAGES CXX C)
 
 # -----------------------------------------------------------------------------
-# aae_core: 86 files from aae/aae_core.vcxproj's <ClCompile> list.
+# aae_core: 87 files from aae/aae_core.vcxproj's <ClCompile> list (86 as of
+# Task 5, plus aae/machine_state.cpp added in Task 6 - see the comment in
+# that file for why Machine's storage needed to move into the core).
 # vcxproj paths are relative to aae/, so aae\cpu_code\cpu_6502.cpp becomes
 # aae/aae/cpu_code/cpu_6502.cpp from the repo root.
 # -----------------------------------------------------------------------------
@@ -93,6 +100,7 @@ set(AAE_CORE_SOURCES
     aae/aae/machine/SegaG80crypt.cpp
     aae/aae/machine/slapstic.cpp
     aae/aae/machine/starwars_machine.cpp
+    aae/aae/machine_state.cpp
     aae/aae/memory.cpp
     aae/aae/os_input.cpp
     aae/aae/sndhrdwr/aae_pokey.cpp
@@ -123,8 +131,8 @@ set(AAE_CORE_SOURCES
     aae/aae/vidhrdwr/xevious_video.cpp
 )
 list(LENGTH AAE_CORE_SOURCES _aae_core_count)
-if(NOT _aae_core_count EQUAL 86)
-    message(FATAL_ERROR "aae_core source list has ${_aae_core_count} entries, expected 86 - it has drifted from aae/aae_core.vcxproj")
+if(NOT _aae_core_count EQUAL 87)
+    message(FATAL_ERROR "aae_core source list has ${_aae_core_count} entries, expected 87 - it has drifted from aae/aae_core.vcxproj")
 endif()
 
 # -----------------------------------------------------------------------------
@@ -415,7 +423,97 @@ if(WIN32)
 endif()
 
 # =============================================================================
-# aae_headless - PLACEHOLDER for Task 6. A headless/test target that links
-# aae_core without any OSD (no aae_video/gui/window). Deliberately not
-# defined yet - do not add it here as part of Task 5.
+# aae_headless - Task 6. Proves aae_core runs with no window, no OSD, and no
+# display anywhere: links aae_core against a NullWindow (Presentation() ==
+# nullptr, inherited from ISystemWindow's base) and a handful of OSD stubs,
+# then runs N frames of a vector driver and counts vectors emitted through
+# add_line(). That is the Teensy 4.1 scenario minus the DACs.
+#
+# aae/system/3rdparty/miniz.c is added directly (not via aae_core) because
+# aae_fileio.cpp's load_roms() (an aae_core file) calls the miniz zip-reader
+# API directly rather than through the OSD file layer. It has no OSD
+# dependencies of its own - it is a plain zip codec - so compiling the real
+# file is simpler and more honest than stubbing 15 mz_zip_* entry points.
 # =============================================================================
+# aae/aae/drivers/asteroid.cpp and bzone.cpp are ALSO compiled directly as
+# aae_headless sources, in addition to (not instead of) being part of
+# aae_core.lib. This looks redundant but is the fix for a real discovery
+# from this task: AAE_REGISTER_DRIVER's self-registration idiom (each driver
+# file has a file-scope static object whose constructor calls
+# aae::RegisterDriver()) has NO ordinary symbol that anything else in the
+# program references - drivers are looked up by name at runtime through
+# aae::FindDriverByName(), never by C++ symbol. A linker only pulls an
+# archive (.lib) member when it resolves a currently-outstanding external
+# symbol; with nothing outstanding for asteroid.obj/bzone.obj specifically,
+# MSVC's classical selective-archive linking drops them from aae_core.lib
+# entirely and aae::AllDrivers() comes back empty (verified: FindDriverByName
+# failed for every game, dumpbin/archivemembers showed the .obj present in
+# the .lib but "-listallgames" against a CMake-built aae.exe - not just
+# aae_headless - produced an empty list too, so this is a latent bug in the
+# Task 5 CMake build, not something specific to going headless).
+#
+# The real MSBuild aae.exe happens to avoid this because ALL of AAE_COMMON_
+# SOURCES' 48 files - including this project's own driver-adjacent files -
+# are passed to the linker as loose .obj, which are always linked regardless
+# of reference (only .lib archive members are selectively pulled); aae_core's
+# ~40 driver files were never among those 48, so the real exe's own drivers
+# working at all was never actually exercising the archive-selection path for
+# THIS particular pair of games either - it happens to work there for reasons
+# that don't hold for a lean target like aae_headless linking almost nothing
+# else directly. Rather than force /WHOLEARCHIVE (tried; pulls ~40 MORE
+# unresolved externals from unrelated drivers' shared sound modules -
+# namco.cpp, mappy/galaxian/segag80 sound - blowing well past the ~40-symbol
+# stop condition) this compiles just the two driver files this test actually
+# runs directly into the executable, exactly like AAE_COMMON_SOURCES already
+# does for mhavoc.cpp/starwars.cpp/tempest.cpp/warlord.cpp. Their archive
+# copies inside aae_core.lib simply go unused; no duplicate-symbol conflict
+# results because nothing ever asks the linker to pull them from there.
+#
+# This is a genuine, previously-undiscovered gap in the self-registration
+# design that the Teensy port must solve properly (an explicit compiled-in
+# driver table, or per-platform force-linking) rather than route around
+# per-target the way this test does. See the Task 6 report.
+add_executable(aae_headless
+    aae/headless/headless_main.cpp
+    aae/headless/null_backends.cpp
+    aae/aae/drivers/asteroid.cpp
+    aae/aae/drivers/bzone.cpp
+    aae/system/3rdparty/miniz.c)
+target_link_libraries(aae_headless PRIVATE aae_core)
+# NOTE: no aae_video, no system/window (only its header, for NullWindow), no
+# audio backend, no GL.
+target_include_directories(aae_headless PRIVATE
+    aae/aae
+    aae/aae/sndhrdwr
+    aae/aae/vidhrdwr
+    aae/aae/machine
+    aae/aae/fileio
+    aae/aae/drivers
+    aae/aae/cpu_code
+    aae/system/audio
+    aae
+    aae/system/graphics
+    aae/system/input
+    aae/system/window
+    aae/system/font
+    aae/system/math
+    aae/system/util
+    aae/system/3rdparty
+    aae/system/platform
+    aae/system/project
+)
+target_compile_features(aae_headless PRIVATE cxx_std_17)
+set_target_properties(aae_headless PROPERTIES
+    C_STANDARD 17
+    C_STANDARD_REQUIRED ON
+)
+target_compile_definitions(aae_headless PRIVATE
+    $<$<CONFIG:Debug>:_DEBUG>
+    $<$<NOT:$<CONFIG:Debug>>:NDEBUG>
+    ${AAE_PLATFORM_DEFINES}
+)
+if(WIN32)
+    target_compile_definitions(aae_headless PRIVATE
+        $<$<NOT:$<CONFIG:Debug>>:WIN7BUILD>
+        UNICODE _UNICODE)
+endif()

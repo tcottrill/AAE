@@ -130,11 +130,13 @@ static int g_lastBezelState = -1;  // -1 = not yet initialized
 
 // ---------------------------------------------------------------------------
 // MAME compatibility: RunningMachine and driver pointers.
-// Machine is the globally visible pointer to the current running game state.
+// Machine is the globally visible pointer to the current running game state;
+// its storage now lives in machine_state.cpp (an aae_core translation unit)
+// so a core-only link (headless/Teensy) resolves it without pulling in this
+// executable-side file. This file keeps using Machine via the existing
+// `extern` declaration in aae_mame_driver.h.
 // gamedrv is the module-level alias used by init_machine().
 // ---------------------------------------------------------------------------
-static struct RunningMachine machine;
-struct RunningMachine* Machine = &machine;
 static const struct AAEDriver* gamedrv = nullptr;
 
 struct GameOptions options;
@@ -1784,8 +1786,11 @@ void emulator_stop_game()
 	osd_set_leds(0); // Turn off LEDS
 
 	// 8) Reset the RunningMachine struct for the next game.
-	memset(&machine, 0, sizeof(machine));
-	Machine = &machine;
+	// machine's storage now lives in machine_state.cpp; Machine already
+	// points at it (nothing ever reassigns Machine to another object), so
+	// zeroing through the pointer is equivalent to the old memset(&machine, ...)
+	// + no-op reassignment.
+	memset(Machine, 0, sizeof(*Machine));
 
 	// 9) Clear all per-game globals.
 	ResetPerGameRuntimeState();

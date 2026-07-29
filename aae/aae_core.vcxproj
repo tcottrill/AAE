@@ -134,6 +134,7 @@
     <ClCompile Include="aae\machine\SegaG80crypt.cpp" />
     <ClCompile Include="aae\machine\slapstic.cpp" />
     <ClCompile Include="aae\machine\starwars_machine.cpp" />
+    <ClCompile Include="aae\machine_state.cpp" />
     <ClCompile Include="aae\memory.cpp" />
     <ClCompile Include="aae\os_input.cpp" />
     <ClCompile Include="aae\sndhrdwr\aae_pokey.cpp" />
