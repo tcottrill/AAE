@@ -294,6 +294,17 @@ elseif(UNIX AND NOT APPLE)
         aae/system/audio/linux/alsa_backend.cpp
         aae/system/util/linux/posix_timer.cpp
     )
+
+    # Not in the EXISTS-guarded list above: these two exist as of Phase 3b and
+    # are unconditional parts of the Linux build.
+    #   voice_mixer.cpp   - software voice mixing, no OS calls (ALSA gives one
+    #                       PCM stream, not a voice mixer). Reused by Teensy.
+    #   audio_3d_null.cpp - positional audio is Phase 3d; this stub logs the
+    #                       gap at startup instead of silently centre-panning.
+    set(AAE_LINUX_EXTRA_SOURCES
+        aae/system/audio/voice_mixer.cpp
+        aae/system/audio/linux/audio_3d_null.cpp
+    )
     set(AAE_PLATFORM_SOURCES "")
     set(_aae_missing_backends "")
     foreach(_src ${AAE_PLATFORM_SOURCES_WANTED})
@@ -311,6 +322,8 @@ elseif(UNIX AND NOT APPLE)
             "Configuring anyway with the backends that do exist; the 'aae' "
             "target will fail to link until all four are provided.")
     endif()
+
+    list(APPEND AAE_PLATFORM_SOURCES ${AAE_LINUX_EXTRA_SOURCES})
 
     set(AAE_PLATFORM_DEFINES GLEW_STATIC)
 
