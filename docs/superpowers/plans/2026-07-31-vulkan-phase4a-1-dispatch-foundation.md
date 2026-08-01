@@ -463,15 +463,13 @@ git -C C:/Source2026/AAE_publish commit -m "feat(video): renderer dispatch layer
 - Modify: `aae/aae.vcxproj` (x64 Debug + Release property groups)
 - Modify: `aae/aae/aae_video_vk/vulkan_renderer.cpp`
 
-- [ ] **Step 1: Declare the SDK dependency explicitly in the project**
+- [ ] **Step 1: Vulkan via vcpkg (AMENDED 2026-08-01 — no LunarG SDK on this machine)**
 
-For BOTH x64 configurations in `aae/aae.vcxproj` (the donor repos relied on an invisible per-machine `.user.props` — spec §6 requires this to be explicit):
+Investigation of the Bosconian donor's build tlogs showed Vulkan resolves through **vcpkg**, not the LunarG SDK: headers at `C:\Users\user9\vcpkg\installed\x64-windows\include\vulkan\`, lib `...\lib\vulkan-1.lib`, both injected by vcpkg's user-wide MSBuild integration (`%LOCALAPPDATA%\vcpkg\vcpkg.user.targets` importing `C:\Users\user9\vcpkg\scripts\buildsystems\msbuild\vcpkg.targets`), with automatic linking. This is how Bosconian and SpriteTest build today.
 
-- `<AdditionalIncludeDirectories>`: append `$(VULKAN_SDK)\Include;`
-- Linker `<AdditionalDependencies>`: append `vulkan-1.lib;`
-- Linker `<AdditionalLibraryDirectories>`: append `$(VULKAN_SDK)\Lib;`
-
-If `%VULKAN_SDK%` is not set in the environment, stop and install the LunarG Vulkan SDK first — do not hardcode a path.
+Therefore: **no vcxproj include/lib edits are needed** — the integration provides both. Instead:
+- Verify the integration import exists (`Test-Path "$env:LOCALAPPDATA\vcpkg\vcpkg.user.targets"` → True) before building.
+- Record the dependency in `Build Notes.txt` at the repo root: building AAE with the Vulkan chain requires `vcpkg install vulkan:x64-windows` plus `vcpkg integrate install` (user-wide MSBuild integration). Linux (Phase 4b) will use CMake `find_package(Vulkan)` with distro `libvulkan-dev` instead.
 
 - [ ] **Step 2: Prove compile + link with a loader query**
 
@@ -494,23 +492,15 @@ int  vkchain_init(void)
 }
 ```
 
-- [ ] **Step 3: Build**
+- [ ] **Step 3: Build (this is the verification — AMENDED: no runtime launch)**
 
-Run the build command. Expected: exit 0. An unresolved `vkEnumerateInstanceVersion` means the lib dir/lib name from Step 1 is wrong for this SDK.
+Run the build command for Release AND Debug x64. Expected: exit 0. An unresolved `vkEnumerateInstanceVersion` means the vcpkg integration is not active for this project. The runtime confirmation of the loader log line moves to the Task 6 user-run gate — agents must not launch aae.exe (focus-stealing broke a session on 2026-08-01).
 
-- [ ] **Step 4: Runtime check**
-
-```bash
-cd C:/Source2026/AAE_publish/aae/x64/Release && ./aae.exe asteroid -renderer vulkan
-```
-
-Expected: log now shows `Vulkan loader present, instance version 1.3.x` (or 1.4.x) before the fallback popup. Fallback and GL play still work.
-
-- [ ] **Step 5: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
-git -C C:/Source2026/AAE_publish add aae/aae.vcxproj aae/aae/aae_video_vk/vulkan_renderer.cpp
-git -C C:/Source2026/AAE_publish commit -m "build: explicit Vulkan SDK include/lib wiring + loader smoke check"
+git -C C:/Source2026/AAE_publish add "Build Notes.txt" aae/aae/aae_video_vk/vulkan_renderer.cpp
+git -C C:/Source2026/AAE_publish commit -m "build: Vulkan via vcpkg integration + loader smoke check in vkchain_init"
 ```
 
 ---
@@ -570,28 +560,34 @@ void main()
 }
 ```
 
-- [ ] **Step 2: Add the CustomBuild rule to `aae/aae.vcxproj`**
+- [ ] **Step 2: Vendor glslc + add the CustomBuild rule (AMENDED 2026-08-01 — glslc from vcpkg, vendored into tools/)**
 
-New `<ItemGroup>` (paths relative to the vcxproj, which lives in `aae/`):
+No LunarG SDK exists on this machine; the shader compiler is vcpkg's standalone `glslc.exe` (shaderc v2023.8, single 4.7 MB exe, no side-by-side DLLs — verified). Vendor it so the build is repo-self-contained (house precedent: the repo already commits tool binaries — dice, cc65-win32, gifsicle):
+
+```bash
+cp C:/Users/user9/vcpkg/installed/x64-windows/tools/shaderc/glslc.exe C:/Source2026/AAE_publish/tools/glslc.exe
+```
+
+New `<ItemGroup>` in `aae/aae.vcxproj` (paths relative to the vcxproj, which lives in `aae/`; glslc infers the shader stage from the file extension):
 
 ```xml
 <ItemGroup>
   <CustomBuild Include="shaders\vk\fast_poly_vk.vert">
     <Command>if not exist "$(OutDir)shaders\vk" mkdir "$(OutDir)shaders\vk"
-"$(VULKAN_SDK)\Bin\glslangValidator.exe" -V "%(FullPath)" -o "$(OutDir)shaders\vk\%(Filename)%(Extension).spv"</Command>
+"$(ProjectDir)..\tools\glslc.exe" "%(FullPath)" -o "$(OutDir)shaders\vk\%(Filename)%(Extension).spv"</Command>
     <Outputs>$(OutDir)shaders\vk\%(Filename)%(Extension).spv</Outputs>
-    <Message>glslangValidator %(Filename)%(Extension)</Message>
+    <Message>glslc %(Filename)%(Extension)</Message>
   </CustomBuild>
   <CustomBuild Include="shaders\vk\fast_poly_vk.frag">
     <Command>if not exist "$(OutDir)shaders\vk" mkdir "$(OutDir)shaders\vk"
-"$(VULKAN_SDK)\Bin\glslangValidator.exe" -V "%(FullPath)" -o "$(OutDir)shaders\vk\%(Filename)%(Extension).spv"</Command>
+"$(ProjectDir)..\tools\glslc.exe" "%(FullPath)" -o "$(OutDir)shaders\vk\%(Filename)%(Extension).spv"</Command>
     <Outputs>$(OutDir)shaders\vk\%(Filename)%(Extension).spv</Outputs>
-    <Message>glslangValidator %(Filename)%(Extension)</Message>
+    <Message>glslc %(Filename)%(Extension)</Message>
   </CustomBuild>
 </ItemGroup>
 ```
 
-Every future shader (Plans 2-6) is added as another `<CustomBuild>` pair here.
+Every future shader (Plans 2-6) is added as another `<CustomBuild>` pair here. Linux (Phase 4b) uses distro `glslc` (shaderc package) via CMake.
 
 - [ ] **Step 3: Build and confirm the .spv outputs**
 

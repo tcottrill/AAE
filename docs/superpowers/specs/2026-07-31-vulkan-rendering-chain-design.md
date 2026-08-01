@@ -259,13 +259,17 @@ Inventory:
 
 Build step:
 
-- **Windows:** vcxproj CustomBuild rule runs
-  `%VULKAN_SDK%\Bin\glslangValidator.exe -V` per `.vert`/`.frag` into
-  `$(OutDir)shaders\vk\`. Editing a shader rebuilds like any source file.
-  The Vulkan SDK include/lib paths are declared **explicitly in the project**
-  (the donor's invisible per-machine `.user.props` dependency does not carry
-  over).
-- **Linux:** CMake `add_custom_command` with `glslangValidator` (or `glslc`).
+- **Windows** (amended 2026-08-01 after build-environment investigation): there
+  is no LunarG SDK on the dev machine — Vulkan headers + `vulkan-1.lib` come
+  from **vcpkg** (`vcpkg install vulkan:x64-windows`) via its user-wide MSBuild
+  integration, which is how both donor repos build today; this dependency is
+  documented in `Build Notes.txt`. The shader compiler is vcpkg's standalone
+  `glslc.exe` (shaderc), **vendored into `tools/glslc.exe`** (house precedent:
+  dice, cc65-win32) and invoked by a vcxproj CustomBuild rule per
+  `.vert`/`.frag` into `$(OutDir)shaders\vk\`. Editing a shader rebuilds like
+  any source file.
+- **Linux:** CMake `find_package(Vulkan)` (distro `libvulkan-dev`) +
+  `add_custom_command` with distro `glslc` (shaderc package).
 - Runtime loads `.spv` via the existing `Shader_SetPath` convention.
 
 ---
