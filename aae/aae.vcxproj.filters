@@ -340,6 +340,12 @@
     <ClCompile Include="aae\aae_video\opengl_renderer.cpp">
       <Filter>Source Files\aae\aae_video</Filter>
     </ClCompile>
+    <ClCompile Include="aae\aae_video\renderer_dispatch.cpp">
+      <Filter>Source Files\aae\aae_video</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\aae_video_vk\vulkan_renderer.cpp">
+      <Filter>Source Files\aae\aae_video_vk</Filter>
+    </ClCompile>
     <ClCompile Include="aae\aae_video\vector_draw.cpp">
       <Filter>Source Files\aae\aae_video</Filter>
     </ClCompile>
@@ -813,6 +819,9 @@
     <ClInclude Include="aae\aae_video\opengl_renderer.h">
       <Filter>Source Files\aae\aae_video</Filter>
     </ClInclude>
+    <ClInclude Include="aae\aae_video_vk\vulkan_renderer.h">
+      <Filter>Source Files\aae\aae_video_vk</Filter>
+    </ClInclude>
     <ClInclude Include="aae\aae_video\mame_vector.h">
       <Filter>Source Files\aae\aae_video</Filter>
     </ClInclude>
@@ -920,6 +929,9 @@
     </Filter>
     <Filter Include="Source Files\aae\aae_video">
       <UniqueIdentifier>{7fcaf12f-f667-46fb-a91b-1111313e4a36}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\aae\aae_video_vk">
+      <UniqueIdentifier>{9a1e5c2d-4b6f-4a3e-8c2a-2f6d7e9b0c11}</UniqueIdentifier>
     </Filter>
     <Filter Include="Source Files\aae\drivers\raster">
       <UniqueIdentifier>{d3b1a532-181d-44f4-92aa-3fd58d1c1e7c}</UniqueIdentifier>

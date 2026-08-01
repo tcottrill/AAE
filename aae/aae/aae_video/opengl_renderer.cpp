@@ -159,7 +159,7 @@ static int orientation_to_rect2_rotation(int orientation)
 // Called by the OS message handler whenever the client area changes size.
 // Updates screen_rect so the final blit tracks the new window dimensions.
 // ---------------------------------------------------------------------------
-void emulator_on_window_resize(int newW, int newH)
+void glchain_on_window_resize(int newW, int newH)
 {
 	if (!screen_rect) return;
 
@@ -352,7 +352,7 @@ static void shutdown_scanline_quad()
 // lifetime of the process. The GUI overlay driver can safely use all
 // GL resources initialized here without re-initializing them.
 // ---------------------------------------------------------------------------
-int init_gl(void)
+int glchain_init(void)
 {
 	static int init_one = 0;
 	check_gl_error_named("init_gl start");
@@ -422,7 +422,7 @@ int init_gl(void)
 // Shutdown: release subsystems that require explicit cleanup.
 // Call this once when the application exits.
 // ---------------------------------------------------------------------------
-void end_gl()
+void glchain_end()
 {
 	shutdown_scanline_quad();
 	//TiledEffect_Shutdown();
@@ -443,7 +443,7 @@ void end_gl()
 // Sets g_scanrezTex to a valid GL texture handle on success, or 0 if
 // loading is disabled or the file is not found.
 // ---------------------------------------------------------------------------
-void init_raster_overlay()
+void glchain_init_raster_overlay()
 {
 	// Release any texture left over from a previous game.
 	if (g_scanrezTex != 0)
@@ -486,7 +486,7 @@ void init_raster_overlay()
 // Releases the scanlines texture. Safe to call even if nothing is loaded.
 // Called from emulator_stop_game() during per-game teardown.
 // ---------------------------------------------------------------------------
-void shutdown_raster_overlay()
+void glchain_shutdown_raster_overlay()
 {
 	if (g_scanrezTex != 0)
 	{
@@ -503,7 +503,7 @@ void shutdown_raster_overlay()
 // or feedback data from a previous session.
 // Saves and restores the previously bound FBO and viewport.
 // ---------------------------------------------------------------------------
-void glcode_vector_hard_clear_fbo1()
+void glchain_vector_hard_clear_fbo1()
 {
 	if (!fbo1)
 		return;
@@ -901,7 +901,7 @@ void render_ui_overlays(int winW, int winH, bool fboSpace)
 // visible_area size * prescale, with Y-DOWN ortho so the bitmap pixels
 // land correctly without a vertical flip.
 // ---------------------------------------------------------------------------
-void set_render()
+void glchain_set_render()
 {
 	// Set 1024x1024 ortho to match the FBO dimensions.
 	if (Machine->drv->video_attributes & VIDEO_TYPE_VECTOR)
@@ -955,7 +955,7 @@ void set_render()
 // Main per-frame render dispatch. Handles the paused state, then routes to
 // the vector or raster draw path before calling the appropriate final_render.
 // ---------------------------------------------------------------------------
-void render()
+void glchain_render()
 {
 	// Only process new game geometry if we are not paused.
 	// (If paused, FBO1 retains the image from the last active frame).
@@ -1674,7 +1674,7 @@ void final_render_raster()
 static GLuint s_guiPointVAO = 0;
 static GLuint s_guiPointVBO = 0;
 
-void gui_points_init(int maxPoints)
+void glchain_gui_points_init(int maxPoints)
 {
 	glGenVertexArrays(1, &s_guiPointVAO);
 	glGenBuffers(1, &s_guiPointVBO);
@@ -1691,7 +1691,7 @@ void gui_points_init(int maxPoints)
 	glBindVertexArray(0);
 }
 
-void gui_points_draw(const GuiPointVertex* pts, int count, float pointSize)
+void glchain_gui_points_draw(const GuiPointVertex* pts, int count, float pointSize)
 {
 	if (count <= 0 || !s_guiPointVAO) return;
 
@@ -1709,7 +1709,7 @@ void gui_points_draw(const GuiPointVertex* pts, int count, float pointSize)
 	glPointSize(config.pointsize);
 }
 
-void gui_points_shutdown()
+void glchain_gui_points_shutdown()
 {
 	if (s_guiPointVAO) { glDeleteVertexArrays(1, &s_guiPointVAO); s_guiPointVAO = 0; }
 	if (s_guiPointVBO) { glDeleteBuffers(1, &s_guiPointVBO); s_guiPointVBO = 0; }
@@ -1721,7 +1721,7 @@ void gui_points_shutdown()
 // render .cpp files that just want to know if a GL error occurred, without
 // pulling in GL headers themselves.
 // ---------------------------------------------------------------------------
-int glcode_get_gl_error()
+int glchain_get_gl_error()
 {
 	return static_cast<int>(glGetError());
 }

@@ -30,7 +30,7 @@ void GlxPresentSurface::SwapBuffers()
 	// that file owns the GLX context and the display/window it was made
 	// current on, and having two places that think they own the swap is how
 	// you end up swapping a drawable the context is not bound to.
-	GLSwapBuffers();
+	glchain_swap_buffers();
 }
 
 void GlxPresentSurface::GetDrawableSize(int* w, int* h) const

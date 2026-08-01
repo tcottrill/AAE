@@ -870,7 +870,7 @@ IPresentSurface* Win32Window::Presentation()
 // -----------------------------------------------------------------------------
 void Win32PresentSurface::SwapBuffers()
 {
-	GLSwapBuffers();
+	glchain_swap_buffers();
 }
 
 void Win32PresentSurface::GetDrawableSize(int* w, int* h) const

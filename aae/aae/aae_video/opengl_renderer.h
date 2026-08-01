@@ -67,4 +67,21 @@ void SetvSync(bool enabled);
 // TUs poll for GL errors without including GL headers.
 int glcode_get_gl_error();
 
+// ---------------------------------------------------------------------------
+// GL chain implementations (renamed from the public names; the public names
+// are now defined by renderer_dispatch.cpp and route on config.renderer).
+// ---------------------------------------------------------------------------
+int  glchain_init(void);
+void glchain_end();
+void glchain_set_render();
+void glchain_render();
+void glchain_on_window_resize(int newW, int newH);
+void glchain_gui_points_init(int maxPoints);
+void glchain_gui_points_draw(const GuiPointVertex* pts, int count, float pointSize);
+void glchain_gui_points_shutdown();
+void glchain_vector_hard_clear_fbo1();
+void glchain_init_raster_overlay();
+void glchain_shutdown_raster_overlay();
+int  glchain_get_gl_error();
+
 #endif

@@ -43,6 +43,13 @@ void GLSwapBuffers();
 void SetvSync(bool enabled);
 
 // -----------------------------------------------------------------------------
+// GL backend implementations; public GLSwapBuffers/SetvSync are dispatch
+// functions in renderer_dispatch.cpp as of Phase 4.
+// -----------------------------------------------------------------------------
+void glchain_swap_buffers();
+void glchain_set_vsync(bool enabled);
+
+// -----------------------------------------------------------------------------
 // GetGLDC()/GetGLRC() were removed in Phase 3c. They returned HDC/HGLRC - the
 // last Win32 types in this otherwise platform-neutral header - and had no
 // callers anywhere in the codebase, so nothing was load-bearing on them. Their

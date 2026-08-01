@@ -428,7 +428,7 @@ void DeleteGLContext()
 // SetvSync
 // Enables or disables vertical sync if available
 // -----------------------------------------------------------------------------
-void SetvSync(bool enabled)
+void glchain_set_vsync(bool enabled)
 {
 	if (wglSwapIntervalEXT)
 		wglSwapIntervalEXT(enabled ? 1 : 0);
@@ -440,7 +440,7 @@ void SetvSync(bool enabled)
 // GLSwapBuffers
 // Swaps the front and back buffers
 // -----------------------------------------------------------------------------
-void GLSwapBuffers()
+void glchain_swap_buffers()
 {
 	if (hDC) {
 		SwapBuffers(hDC);
@@ -550,7 +550,7 @@ void DeleteGLContext()
 	gOpenGLInitialized = false;
 }
 
-void SetvSync(bool enabled)
+void glchain_set_vsync(bool enabled)
 {
 	if (!gDpy || !gWin) return;
 
@@ -578,7 +578,7 @@ void SetvSync(bool enabled)
 	LOG_INFO("SetvSync: no GLX swap-control extension; vsync is compositor-controlled");
 }
 
-void GLSwapBuffers()
+void glchain_swap_buffers()
 {
 	// The first three swaps are logged and no more. This carried a `%120`
 	// clause as well, which at 60fps put a line in the log every two seconds
