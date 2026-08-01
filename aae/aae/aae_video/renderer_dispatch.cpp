@@ -1,13 +1,16 @@
 // ===========================================================================
-// renderer_dispatch.cpp - Phase 4 renderer dispatch (spec §3.2).
+// renderer_dispatch.cpp - Phase 4 renderer dispatch (spec sec.3.2).
 //
 // Defines the public renderer entry points the emulator core, GUI and
 // window layer have always called, and routes each to the GL chain
 // (glchain_*) or the Vulkan chain (vkchain_*) based on config.renderer.
 //
-// The decision is made ONCE, inside init_gl(): if Vulkan is requested but
-// fails to initialize, we fall back to GL for the session and never touch
-// the ini (spec §5). s_active is the single source of truth afterwards.
+// The Vulkan-vs-GL decision is latched ONCE per session (process lifetime),
+// not once per init_gl() call: run_game() calls init_gl() on every game
+// load, so the first failed Vulkan attempt sets s_vulkanFailed and every
+// later call goes straight to GL - no repeat vkchain_init() attempts, no
+// repeat failure popup. We never touch the ini (spec sec.5). s_active is the
+// single source of truth for which chain is live.
 // ===========================================================================
 #include "config.h"
 #include "sys_log.h"
@@ -19,6 +22,10 @@ void allegro_message(const char* title, const char* message);
 
 static int s_active = RENDERER_OPENGL;
 
+// Set once, the first time vkchain_init() fails, so later init_gl() calls
+// (one per game load) do not retry Vulkan or re-show the fallback popup.
+static int s_vulkanFailed = 0;
+
 // Which chain actually runs this session (post-fallback). For future
 // consumers (artwork loaders, snapshot path) - not part of the GL surface.
 int active_renderer(void) { return s_active; }
@@ -28,17 +35,26 @@ int init_gl(void)
 	s_active = config.renderer;
 	if (s_active == RENDERER_VULKAN)
 	{
-		if (vkchain_init())
+		if (s_vulkanFailed)
+		{
+			// Already failed once this session - go straight to GL, silently.
+			s_active = RENDERER_OPENGL;
+		}
+		else if (vkchain_init())
 		{
 			LOG_INFO("Renderer: Vulkan");
 			return 1;
 		}
-		LOG_ERROR("Vulkan init failed; falling back to OpenGL for this session");
-		allegro_message("AAE",
-			"Vulkan initialization failed.\n"
-			"Falling back to OpenGL for this session.\n"
-			"See the log for details.");
-		s_active = RENDERER_OPENGL;
+		else
+		{
+			s_vulkanFailed = 1;
+			LOG_ERROR("Vulkan init failed; falling back to OpenGL for this session");
+			allegro_message("AAE",
+				"Vulkan initialization failed.\n"
+				"Falling back to OpenGL for this session.\n"
+				"See the log for details.");
+			s_active = RENDERER_OPENGL;
+		}
 	}
 	LOG_INFO("Renderer: OpenGL");
 	return glchain_init();

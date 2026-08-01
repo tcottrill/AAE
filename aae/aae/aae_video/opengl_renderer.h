@@ -59,7 +59,9 @@ void gui_points_init(int maxPoints);
 void gui_points_draw(const GuiPointVertex* pts, int count, float pointSize);
 void gui_points_shutdown();
 
-// Backend window-swap / vsync wrappers (implemented by the GL backend in sys_gl.cpp).
+// Backend window-swap / vsync wrappers. Public names are dispatch functions
+// defined in renderer_dispatch.cpp; the GL implementations are glchain_swap_buffers()
+// / glchain_set_vsync() in sys_gl.cpp (see sys_gl.h).
 void GLSwapBuffers();
 void SetvSync(bool enabled);
 
@@ -83,5 +85,10 @@ void glchain_vector_hard_clear_fbo1();
 void glchain_init_raster_overlay();
 void glchain_shutdown_raster_overlay();
 int  glchain_get_gl_error();
+
+// Which chain is actually live this session (RENDERER_OPENGL / RENDERER_VULKAN
+// from config.h), post Vulkan-fallback. Defined in renderer_dispatch.cpp. No
+// callers yet; for future consumers (artwork loader, snapshot path in Plans 2-6).
+int  active_renderer(void);
 
 #endif

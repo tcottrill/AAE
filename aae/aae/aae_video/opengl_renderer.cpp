@@ -359,11 +359,14 @@ int glchain_init(void)
 	if (!init_one)
 	{
 		// --- VSync control ---
-		// SetvSync (sys_gl.h) already does exactly this on both platforms -
-		// WGL_EXT_swap_control on Windows, GLX_EXT/MESA/SGI swap control on
-		// Linux - including reporting when no swap-control extension exists.
-		// Calling wgl* directly here duplicated that and was Windows-only.
-		SetvSync(config.forcesync);
+		// glchain_set_vsync (sys_gl.h) already does exactly this on both
+		// platforms - WGL_EXT_swap_control on Windows, GLX_EXT/MESA/SGI swap
+		// control on Linux - including reporting when no swap-control
+		// extension exists. Calling wgl* directly here duplicated that and
+		// was Windows-only. Called directly (not via the SetvSync dispatch):
+		// this is the GL chain's own init, so it stays within the GL layer
+		// rather than calling back up into renderer_dispatch.cpp.
+		glchain_set_vsync(config.forcesync);
 		LOG_INFO("VSync %s (config.forcesync=%d, raw ini force_vsync=%d).",
 		         config.forcesync ? "enabled" : "disabled",
 		         config.forcesync,

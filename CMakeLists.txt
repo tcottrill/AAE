@@ -214,8 +214,10 @@ set(AAE_COMMON_SOURCES
     aae/aae/aae_video/mame_layout.cpp
     aae/aae/aae_video/mame_vector.cpp
     aae/aae/aae_video/opengl_renderer.cpp
+    aae/aae/aae_video/renderer_dispatch.cpp
     aae/aae/aae_video/vector_draw.cpp
     aae/aae/aae_video/vector_fonts.cpp
+    aae/aae/aae_video_vk/vulkan_renderer.cpp
     aae/aae/acommon.cpp
     aae/aae/config.cpp
     aae/aae/drivers/astrocade.cpp
@@ -409,8 +411,8 @@ endif()
 list(LENGTH AAE_COMMON_SOURCES _aae_common_count)
 list(LENGTH AAE_PLATFORM_SOURCES _aae_platform_count)
 math(EXPR _aae_exe_count "${_aae_common_count} + ${_aae_platform_count}")
-if(WIN32 AND NOT _aae_exe_count EQUAL 47)
-    message(FATAL_ERROR "aae executable source count is ${_aae_exe_count} (common=${_aae_common_count} + platform=${_aae_platform_count}), expected 47 on Windows - it has drifted from aae/aae.vcxproj (ccpu.cpp moved to aae_core - see the comment above AAE_CORE_SOURCES)")
+if(WIN32 AND NOT _aae_exe_count EQUAL 49)
+    message(FATAL_ERROR "aae executable source count is ${_aae_exe_count} (common=${_aae_common_count} + platform=${_aae_platform_count}), expected 49 on Windows - it has drifted from aae/aae.vcxproj (ccpu.cpp moved to aae_core - see the comment above AAE_CORE_SOURCES)")
 endif()
 
 # =============================================================================
