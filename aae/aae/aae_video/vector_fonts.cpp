@@ -273,7 +273,11 @@ VectorFont::~VectorFont()
 // ----
 void VectorFont::Initialize(int width, int height)
 {
-	InitGL();
+	// GL program/VAO creation only on the GL chain; under Vulkan the glyph
+	// strokes route through beam_add_line (see End) and need no GL objects.
+	// The CPU-side fields below are required by BOTH chains.
+	if (active_renderer() != RENDERER_VULKAN)
+		InitGL();
 
 	screenWidth = width;
 	screenHeight = height;
@@ -302,6 +306,12 @@ void VectorFont::SetOverrideViewport(bool enable)
 // ----
 void VectorFont::Begin()
 {
+	// Under Vulkan there is no GL context: every gl* below is a null GLEW
+	// pointer (first GUI frame crashed here before this guard). Vertex
+	// accumulation is CPU-side, so Begin has nothing to do on the VK chain.
+	if (active_renderer() == RENDERER_VULKAN)
+		return;
+
 	if (overrideViewport) {
 		glViewport(0, 0, screenWidth, screenHeight);
 	}
@@ -349,7 +359,8 @@ void VectorFont::End()
 {
 	if (drawVerts.empty())
 	{
-		glUseProgram(0);
+		if (active_renderer() != RENDERER_VULKAN)
+			glUseProgram(0);
 		return;
 	}
 

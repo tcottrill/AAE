@@ -31,6 +31,7 @@
 #include "vector_draw_vk.h"    // VectorDrawVK - beam vector renderer (Plan 5);
                                // pulls in vector_draw.h (beam batch access)
 #include "vk_texture_loader.h" // VkTex_GetSolidWhite (Plan 6 - GUI solid quads)
+#include "vector_fonts.h"      // VF singleton - CPU init under VK (Plan 6 fix)
 #include "../aae_video/opengl_renderer.h" // GuiPointVertex full definition (GL-free header)
 
 static VkContext g_vk;
@@ -481,6 +482,13 @@ int vkchain_init(void)
 	s_fpolyFailed = false;
 	EnsureRasterRenderer();   // usually defers (see helper comment)
 	s_vectorFailed = false;   // beam renderer inits lazily on the first vector frame
+
+	// Vector-font CPU state (screen dims + projection fields). Under GL this
+	// runs in glchain_init (opengl_renderer.cpp); the VK chain must do it too
+	// or every VF.Print computes glyphs against 0x0 dims and the GUI/overlay
+	// text silently vanishes. Initialize skips its GL object creation on the
+	// VK chain (guard inside). Idempotent.
+	VF.Initialize(1024, 768);
 
 	s_initialized = true;
 	s_deferredZeroExtent = false;
