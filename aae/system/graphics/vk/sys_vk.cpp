@@ -1235,6 +1235,13 @@ static bool s_framePassOpen = false;
 static VkImage       s_frameSwapImage = VK_NULL_HANDLE;
 static uint32_t      s_frameImageIndex = UINT32_MAX;
 
+// Cached alongside s_frameSwapImage for the same reason (see the VK_EndFrame
+// comment about mid/end-frame std::vector indexing): VK_ResumeFramePass
+// re-opens the swapchain pass against the SAME attachment view VK_BeginFrame
+// used, so the view is cached at begin time instead of re-indexing
+// ctx.swapchainViews mid-frame.
+static VkImageView   s_frameSwapView = VK_NULL_HANDLE;
+
 // -----------------------------------------------------------------------------
 // VK_BeginFrame / VK_EndFrame
 //
@@ -1362,8 +1369,10 @@ bool VK_BeginFrame(VkContext& ctx, uint32_t& outImageIndex)
 
 	// Cache for VK_EndFrame. This saves VK_EndFrame from touching the vector
 	// again at end-of-frame (which was crashing in some configurations).
+	// The view is cached for VK_ResumeFramePass (same rationale).
 	s_frameSwapImage = scImg;
 	s_frameImageIndex = outImageIndex;
+	s_frameSwapView = ctx.swapchainViews[outImageIndex];
 
 	CmdSwapchainBarrier(ctx, cmd, scImg,
 		VK_IMAGE_LAYOUT_UNDEFINED,
@@ -1571,6 +1580,7 @@ bool VK_EndFrame(VkContext& ctx, uint32_t imageIndex)
 	// safely rather than reusing stale state.
 	s_frameSwapImage = VK_NULL_HANDLE;
 	s_frameImageIndex = UINT32_MAX;
+	s_frameSwapView = VK_NULL_HANDLE;
 
 	VkResult ec = ctx.vkEndCommandBuffer_(cmd);
 	if (ec != VK_SUCCESS)
@@ -1628,6 +1638,121 @@ bool VK_EndFrame(VkContext& ctx, uint32_t imageIndex)
 
 	ctx.frameIndex = (ctx.frameIndex + 1) % VkContext::kFramesInFlight;
 	return true;
+}
+
+// -----------------------------------------------------------------------------
+// VK_SuspendFramePass / VK_ResumeFramePass (Phase 4a Plan 4, Task 3)
+//
+// The one-big-pass-per-frame architecture above needs an escape hatch for
+// offscreen work: vkCmdBlitImage (mip generation) and a RenderTargetVK's own
+// dynamic-rendering pass are both illegal while the swapchain pass is open.
+// Suspend ends the swapchain pass; Resume re-opens it against the SAME
+// attachment view/extent VK_BeginFrame used, but with LOAD_OP_LOAD so the
+// clear (and anything drawn before the suspension) survives.
+//
+// s_framePassOpen bookkeeping: VK_BeginFrame sets it true, VK_EndFrame sets
+// it false after its single vkCmdEndRendering. Suspend/Resume flip it
+// false/true symmetrically, so a properly paired suspension is invisible to
+// VK_EndFrame; an unpaired Suspend leaves it false and VK_EndFrame's
+// existing recovery path (log + submit without the second EndRendering)
+// keeps the app alive instead of double-ending the pass.
+//
+// Deliberately NO swapchain image barriers in either direction: the image
+// stays COLOR_ATTACHMENT_OPTIMAL across the suspension, so VK_BeginFrame's
+// UNDEFINED->COLOR barrier and VK_EndFrame's COLOR->PRESENT barrier remain
+// the only two swapchain transitions per frame. Cross-pass-instance ordering
+// (pass 1's clear/store vs pass 2's load) rides the execution-dependency
+// chain of the offscreen work recorded in between (RenderTargetVK End's
+// COLOR_ATTACHMENT_OUTPUT -> FRAGMENT_SHADER barrier et al.).
+// -----------------------------------------------------------------------------
+void VK_SuspendFramePass(VkContext& ctx, VkCommandBuffer cmd)
+{
+	if (!s_framePassOpen)
+	{
+		LOG_ERROR("VK_SuspendFramePass: no frame pass open (missing VK_BeginFrame, "
+			"or Suspend called twice); ignoring");
+		return;
+	}
+	if (cmd == VK_NULL_HANDLE || !ctx.vkCmdEndRendering_)
+	{
+		LOG_ERROR("VK_SuspendFramePass: NULL cmd or vkCmdEndRendering; ignoring");
+		return;
+	}
+
+	ctx.vkCmdEndRendering_(cmd);
+	s_framePassOpen = false;
+	// No pass open now; offscreen pass owners (RenderTargetVK::Begin) publish
+	// their own format and GenerateMips asserts on UNDEFINED.
+	ctx.activeColorFormat = VK_FORMAT_UNDEFINED;
+}
+
+void VK_ResumeFramePass(VkContext& ctx, VkCommandBuffer cmd, uint32_t imageIndex)
+{
+	if (s_framePassOpen)
+	{
+		LOG_ERROR("VK_ResumeFramePass: frame pass already open (missing Suspend, "
+			"or Resume called twice); ignoring");
+		return;
+	}
+	if (cmd == VK_NULL_HANDLE || !ctx.vkCmdBeginRendering_)
+	{
+		LOG_ERROR("VK_ResumeFramePass: NULL cmd or vkCmdBeginRendering; ignoring");
+		return;
+	}
+	// An offscreen pass left open would make the vkCmdBeginRendering below a
+	// nested pass (undefined behavior / driver crash). Catch it loudly.
+	if (ctx.activeColorFormat != VK_FORMAT_UNDEFINED)
+	{
+		LOG_ERROR("VK_ResumeFramePass: an offscreen pass is still open "
+			"(activeColorFormat=%d); missing End()? Ignoring resume",
+			(int)ctx.activeColorFormat);
+		return;
+	}
+	if (imageIndex != s_frameImageIndex || s_frameSwapView == VK_NULL_HANDLE)
+	{
+		LOG_ERROR("VK_ResumeFramePass: imageIndex %u does not match this frame's "
+			"acquired image %u (or no cached view); ignoring",
+			imageIndex, s_frameImageIndex);
+		return;
+	}
+
+	// Mirror VK_BeginFrame's begin-rendering block exactly, with ONE change:
+	// loadOp = LOAD (the attachment was cleared when VK_BeginFrame opened the
+	// pass this frame; a second CLEAR would wipe it). The image is still in
+	// COLOR_ATTACHMENT_OPTIMAL -- no barrier needed or wanted here.
+	VkRenderingAttachmentInfo colorAtt{ VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
+	colorAtt.imageView = s_frameSwapView;
+	colorAtt.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	colorAtt.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+	colorAtt.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+
+	VkRenderingInfo ri{ VK_STRUCTURE_TYPE_RENDERING_INFO };
+	ri.renderArea.offset = { 0, 0 };
+	ri.renderArea.extent = ctx.swapchainExtent;
+	ri.layerCount = 1;
+	ri.colorAttachmentCount = 1;
+	ri.pColorAttachments = &colorAtt;
+
+	ctx.vkCmdBeginRendering_(cmd, &ri);
+	s_framePassOpen = true;
+	ctx.activeColorFormat = ctx.swapchainFormat;
+
+	// Re-establish VK_BeginFrame's default full-surface viewport/scissor:
+	// the offscreen pass set its own, and subsystems recording after the
+	// resume inherit this default exactly as they would after VK_BeginFrame.
+	VkViewport vp{};
+	vp.x = 0.0f;
+	vp.y = 0.0f;
+	vp.width = (float)ctx.swapchainExtent.width;
+	vp.height = (float)ctx.swapchainExtent.height;
+	vp.minDepth = 0.0f;
+	vp.maxDepth = 1.0f;
+	ctx.vkCmdSetViewport_(cmd, 0, 1, &vp);
+
+	VkRect2D sc{};
+	sc.offset = { 0, 0 };
+	sc.extent = ctx.swapchainExtent;
+	ctx.vkCmdSetScissor_(cmd, 0, 1, &sc);
 }
 
 // -----------------------------------------------------------------------------

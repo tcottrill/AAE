@@ -266,6 +266,30 @@ void VK_Shutdown(VkContext& ctx);
 bool VK_BeginFrame(VkContext& ctx, uint32_t& outImageIndex);
 bool VK_EndFrame(VkContext& ctx, uint32_t imageIndex);
 
+// -----------------------------------------------------------------------------
+// Mid-frame pass suspension (Phase 4a Plan 4, Task 3).
+//
+// Ends the swapchain dynamic-rendering pass so offscreen passes (render
+// targets, mip generation) can record mid-frame, and re-opens it with
+// LOAD_OP_LOAD (the attachment was cleared when VK_BeginFrame opened it).
+//
+// Contract:
+//   - Only legal between VK_BeginFrame and VK_EndFrame.
+//   - Suspend and Resume must be paired; imageIndex passed to Resume must be
+//     the one VK_BeginFrame returned this frame.
+//   - No swapchain image barriers happen here: the image stays
+//     COLOR_ATTACHMENT_OPTIMAL throughout, so VK_EndFrame's single
+//     COLOR->PRESENT barrier remains the one end-of-frame transition.
+//   - Suspend resets ctx.activeColorFormat to UNDEFINED (no pass open);
+//     Resume restores it to the swapchain format and re-establishes
+//     VK_BeginFrame's default full-surface viewport/scissor.
+//   - A mismatched pair is detected and logged; VK_EndFrame still works
+//     either way (its s_framePassOpen recovery path handles an unmatched
+//     Suspend, and an unmatched Resume is a logged no-op).
+// -----------------------------------------------------------------------------
+void VK_SuspendFramePass(VkContext& ctx, VkCommandBuffer cmd);
+void VK_ResumeFramePass(VkContext& ctx, VkCommandBuffer cmd, uint32_t imageIndex);
+
 bool VK_RecreateSwapchain(VkContext& ctx);
 
 // -----------------------------------------------------------------------------
