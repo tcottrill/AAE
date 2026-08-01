@@ -41,7 +41,19 @@ static bool     s_fpolyInit = false;
 static bool     s_fpolyFailed = false;
 static int      s_rasterW = 0;     // post-orientation dims, source pixels
 static int      s_rasterH = 0;
+// Set when a dims-change rebuild is requested while a frame is open (the
+// rebuild drains the device and destroys objects prior frames may still
+// reference, so it must not run mid-frame). Serviced by vkchain_set_render
+// at the next frame boundary, before VK_BeginFrame.
+static bool     s_fpolyRebuildPending = false;
 
+// The shared emit loop passes cell indices with size = config.prescale
+// (GL cell semantics: the GL Fpoly::addPoly multiplies x,y by size into a
+// prescaled ortho - aae/aae/vidhrdwr/fast_poly.cpp). FpolyVK::addPoly is
+// absolute-coordinate (donor-verbatim), and our ortho spans the unscaled
+// source dims, so exact unit tiling is correct here and prescale adds
+// nothing until Plan 4's RenderTarget restructure.
+//
 // sRGB contingency note (Plan 3 Task 3, documented, NOT implemented): the
 // swapchain can be an sRGB format while the pen colors are sRGB-authored
 // bytes fed as UNORM vertex colors - identical to the proven Bosconian
@@ -50,7 +62,8 @@ static int      s_rasterH = 0;
 // conversion of the pen RGB here (8-bit LUT applied to rgba's color bytes).
 static void VkRasterSink(void* user, float x, float y, float size, uint32_t rgba)
 {
-	((FpolyVK*)user)->addPoly(x, y, size, rgba);
+	(void)size;
+	((FpolyVK*)user)->addPoly(x, y, 1.0f, rgba);
 }
 
 static bool GameIsRaster(void)
@@ -150,18 +163,26 @@ static void EnsureRasterRenderer(void)
 		return;     // main_bitmap not created yet (pre-vh_open); retry later
 
 	if (s_fpolyInit && (newW == s_rasterW && newH == s_rasterH))
-		return;     // up to date
+		return;     // up to date (two-int compare; cheap on the frame path)
 
 	if (s_fpolyInit)
 	{
 		// Game shape changed: rebuild. In-flight frames may still reference
-		// the old pipeline/VBO, so drain the device first (game switches are
-		// rare; the wait is not on the per-frame path).
+		// the old pipeline/VBO, so the device is drained first. That drain
+		// (and the destroy) must never run while a frame is open, so a
+		// mid-frame request is deferred to the next frame boundary
+		// (vkchain_set_render services the flag before VK_BeginFrame).
+		if (s_frameOpen)
+		{
+			s_fpolyRebuildPending = true;
+			return;
+		}
 		if (g_vk.device && g_vk.vkDeviceWaitIdle_)
 			g_vk.vkDeviceWaitIdle_(g_vk.device);
 		g_fpoly.Shutdown(g_vk);
 		s_fpolyInit = false;
 	}
+	s_fpolyRebuildPending = false;
 
 	s_rasterW = newW;
 	s_rasterH = newH;
@@ -246,6 +267,7 @@ void vkchain_shutdown(void)
 		s_fpolyInit = false;
 	}
 	s_fpolyFailed = false;
+	s_fpolyRebuildPending = false;
 	s_rasterW = 0;
 	s_rasterH = 0;
 	VK_Shutdown(g_vk);
@@ -280,6 +302,15 @@ void vkchain_set_render(void)
 		return;
 	}
 
+	// Service a deferred FpolyVK rebuild here, where no frame is open (the
+	// s_frameOpen early-out above guarantees it), so the device drain and
+	// object destruction never overlap an open frame.
+	if (s_fpolyRebuildPending)
+	{
+		s_fpolyRebuildPending = false;
+		EnsureRasterRenderer();
+	}
+
 	if (!VK_BeginFrame(g_vk, s_imageIndex))
 	{
 		RecreateSwapchainOrDefer();
@@ -298,8 +329,10 @@ void vkchain_render(void)
 		// Lazy init/rebuild: main_bitmap does not exist yet when
 		// vkchain_init runs (see EnsureRasterRenderer's comment), so the
 		// first frame of a raster game lands here with s_fpolyInit false.
-		if (!s_fpolyInit)
-			EnsureRasterRenderer();
+		// Called unconditionally (dims-equal early-out is two int compares)
+		// so a stale ortho can never survive a session; a dims-change
+		// rebuild requested here is deferred to the next frame boundary.
+		EnsureRasterRenderer();
 
 		if (s_fpolyInit)
 		{
