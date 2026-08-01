@@ -30,6 +30,8 @@
 #include "screen_quad_vk.h"    // ScreenQuadVK - RT->swapchain composite (Plan 4)
 #include "vector_draw_vk.h"    // VectorDrawVK - beam vector renderer (Plan 5);
                                // pulls in vector_draw.h (beam batch access)
+#include "vk_texture_loader.h" // VkTex_GetSolidWhite (Plan 6 - GUI solid quads)
+#include "../aae_video/opengl_renderer.h" // GuiPointVertex full definition (GL-free header)
 
 static VkContext g_vk;
 static bool      s_initialized = false;
@@ -90,6 +92,20 @@ static VectorDrawVK g_vectorDraw;
 static bool         s_vectorInit = false;
 static bool         s_vectorFailed = false;
 
+// GUI starfield (Plan 6 Task 1): a second, dedicated FpolyVK instance draws
+// the front-end GUI's point-sprite stars. Kept separate from g_fpoly (the
+// raster game quad renderer) because it draws at a different time in the
+// frame (during run_gui(), i.e. inside cpu_run() -- BEFORE vkchain_render
+// runs) and into different space (see GuiBeamToWindowPx below): stars are
+// pre-transformed to explicit window-pixel coordinates on the CPU, so this
+// instance's own ortho spans the full swapchain 1:1 (no SetViewportRect
+// letterbox override -- the letterbox is already baked into the per-star
+// coordinates). Game-independent, so like g_screenQuad it inits once
+// (lazily, on the first GUI frame) and persists across game loads.
+static FpolyVK g_guiPoints;
+static bool    s_guiPointsInit = false;
+static bool    s_guiPointsFailed = false;
+
 // The shared emit loop passes cell indices with size = config.prescale
 // (GL cell semantics: the GL Fpoly::addPoly multiplies x,y by size into a
 // prescaled ortho - aae/aae/vidhrdwr/fast_poly.cpp). FpolyVK::addPoly is
@@ -135,6 +151,68 @@ static void MakeOrthoColMajor(float l, float r, float b, float t, float* m)
 	m[12] = -(r + l) / rl;
 	m[13] = -(t + b) / tb;
 	m[15] = 1.0f;
+}
+
+// ---------------------------------------------------------------------------
+// GUI-space -> window-pixel mapping (Plan 6 Task 1).
+//
+// The front-end GUI driver is VIDEO_TYPE_VECTOR, so vkchain_render's vector
+// branch (below) already maps beam-space (0..1024 x 0..1024) coordinates to
+// the swapchain via the game_rect box + aspect-fit letterbox + one vertical
+// flip (see that branch's "Projection" comment for the full paper-trace
+// derivation, verified against the GL reference). GL's GUI draws (VF text,
+// VF::DrawQuad, the starfield) all land in the SAME fbo1 canvas the beams
+// use and go through that SAME single flip during the fbo1->fbo4 composite
+// (opengl_renderer.cpp's final_render, the flip_v=true drawTexturedQuad
+// call) -- so replicating that exact transform for GUI content reproduces
+// GL's output, regardless of each content type's own CPU-side authoring
+// convention (VF's own ortho is y-up 0..768; the starfield's Star.x/y are
+// already authored directly in the shared 0..1024 beam space, matching
+// fillStars()'s kFBOHeight=1024 in driver_gui.cpp).
+//
+// GuiBeamToWindowPx below is the forward (beam-space -> window-pixel) form
+// of that same map, for GUI draw paths that need explicit window-pixel
+// coordinates (ScreenQuadVK::RecordRect, or CPU-computed vertices for the
+// starfield's FpolyVK instance) instead of a vertex-shader projection
+// matrix. Deliberately NOT unified with the vector branch's inline
+// MakeOrthoColMajor call below (some duplicated letterbox arithmetic) to
+// avoid touching that already-gated, working Plan 5 code path.
+struct GuiBeamMap { float lx, ly, vw, vh, grL, grR, grB, grT; };
+
+static GuiBeamMap ComputeGuiBeamMap(void)
+{
+	GuiBeamMap m{};
+	const int sw = (int)g_vk.swapchainExtent.width;
+	const int sh = (int)g_vk.swapchainExtent.height;
+
+	float vecAspect = GetWindowSetup().aspectRatio;
+	if (vecAspect <= 0.0f)
+		vecAspect = 4.0f / 3.0f;
+	int vw = sw, vh = (int)(sw / vecAspect + 0.5f);
+	if (vh > sh) { vh = sh; vw = (int)(sh * vecAspect + 0.5f); }
+	if (vw < 1) vw = 1;
+	if (vh < 1) vh = 1;
+
+	m.lx = (float)((sw - vw) / 2);
+	m.ly = (float)((sh - vh) / 2);
+	m.vw = (float)vw;
+	m.vh = (float)vh;
+
+	m.grL = (float)game_rect_left;   m.grR = (float)game_rect_right;
+	m.grB = (float)game_rect_bottom; m.grT = (float)game_rect_top;
+	if (m.grR - m.grL < 1.0f) { m.grL = 0.0f; m.grR = 1024.0f; }
+	if (m.grT - m.grB < 1.0f) { m.grB = 0.0f; m.grT = 1024.0f; }
+	return m;
+}
+
+// Maps beam-space (bx,by in the 0..1024 box) to window pixels, y-up
+// (0 = window bottom) -- ScreenQuadVK::RecordRect's coordinate convention.
+static void GuiBeamToWindowPx(const GuiBeamMap& m, float bx, float by, float& outX, float& outY)
+{
+	const float fx = m.grL + (bx / 1024.0f) * (m.grR - m.grL);
+	const float fy = m.grT - (by / 1024.0f) * (m.grT - m.grB);
+	outX = m.lx + (fx / 1024.0f) * m.vw;
+	outY = m.ly + (fy / 1024.0f) * m.vh;
 }
 
 // Lazy once-per-session init of the beam renderer (see the g_vectorDraw
@@ -438,6 +516,13 @@ void vkchain_shutdown(void)
 		s_vectorInit = false;
 	}
 	s_vectorFailed = false;
+	if (s_guiPointsInit)
+	{
+		g_guiPoints.Shutdown(g_vk);
+		s_guiPointsInit = false;
+	}
+	s_guiPointsFailed = false;
+	VkTex_ShutdownCache(g_vk);   // GUI solid-white texture + any cached loads
 	if (s_rtGame.IsValid())
 		s_rtGame.Shutdown(g_vk);
 	s_fpolyFailed = false;
@@ -729,11 +814,152 @@ void vkchain_on_window_resize(int newW, int newH)
 	RecreateSwapchainOrDefer();
 }
 
-// --- Plans 3-6 fill these in -----------------------------------------------
-void vkchain_gui_points_init(int) {}
-void vkchain_gui_points_draw(const GuiPointVertex*, int, float) {}
-void vkchain_gui_points_shutdown(void) {}
+// ---------------------------------------------------------------------------
+// GUI starfield (Plan 6 Task 1). See the g_guiPoints comment above for why
+// this is a separate FpolyVK instance drawn immediately here (during
+// run_gui(), called from cpu_run() before vkchain_render runs this frame --
+// same ordering as GL's glchain_set_render-before-cpu_run) instead of being
+// queued into the vector beam batch: this call needs to land BEHIND the
+// quad/text draws that follow it later in the same frame's command buffer,
+// and record order is z-order within one dynamic-rendering pass.
+//
+// vkchain_set_render() (called by set_render(), before cpu_run()/run_gui())
+// has already opened the frame by the time this runs, so s_frameOpen is
+// true and g_vk.cmdBuffers[g_vk.frameIndex] is a valid, currently-recording
+// command buffer inside the open swapchain pass.
+// ---------------------------------------------------------------------------
+void vkchain_gui_points_init(int maxPoints)
+{
+	(void)maxPoints;   // FpolyVK grows its VBO on demand; nothing to pre-size here.
+}
+
+void vkchain_gui_points_draw(const GuiPointVertex* pts, int count, float pointSize)
+{
+	if (!s_initialized || !s_frameOpen || !pts || count <= 0)
+		return;
+
+	if (!s_guiPointsInit && !s_guiPointsFailed)
+	{
+		FastPolyVKCreateInfo ci{};
+		ci.vertSpvPath = "shaders/vk/fast_poly_vk.vert.spv";
+		ci.fragSpvPath = "shaders/vk/fast_poly_vk.frag.spv";
+		ci.flipViewportY = true;   // OpenGL-style: input (0,0) = window bottom-left.
+		// colorFormat left UNDEFINED -> builds against ctx.swapchainFormat
+		// (this instance always draws direct to the swapchain, like the
+		// vector beam renderer).
+		if (g_guiPoints.Init(g_vk, (int)g_vk.swapchainExtent.width, (int)g_vk.swapchainExtent.height, &ci))
+		{
+			s_guiPointsInit = true;
+		}
+		else
+		{
+			s_guiPointsFailed = true;
+			LOG_ERROR("vkchain: GUI starfield FpolyVK init failed; stars will not draw");
+		}
+	}
+	if (!s_guiPointsInit)
+		return;
+
+	// Ortho is rebuilt from m_surfaceW/H every Render() call (FpolyVK::
+	// UpdateGlobals), so this is cheap and keeps it correct across resizes.
+	g_guiPoints.SetSurfaceSize((int)g_vk.swapchainExtent.width, (int)g_vk.swapchainExtent.height);
+
+	// Stars are authored directly in the shared 0..1024 beam-space (see the
+	// GuiBeamToWindowPx comment), so no extra 768/1024 rescale like VF text
+	// needs. Pre-transform to window pixels on the CPU and size the point
+	// quad by the same letterbox zoom factor so stars scale with the window
+	// like everything else in the vector/GUI chain.
+	const GuiBeamMap m = ComputeGuiBeamMap();
+	const float sizeScale = m.vw / 1024.0f;
+	const float sizePx = pointSize * sizeScale;
+
+	for (int i = 0; i < count; ++i)
+	{
+		float wx, wy;
+		GuiBeamToWindowPx(m, pts[i].x, pts[i].y, wx, wy);
+
+		const uint32_t rgba = MAKE_RGBA(
+			(int)(pts[i].r * 255.0f + 0.5f),
+			(int)(pts[i].g * 255.0f + 0.5f),
+			(int)(pts[i].b * 255.0f + 0.5f),
+			(int)(pts[i].a * 255.0f + 0.5f));
+
+		g_guiPoints.addPoly(wx - sizePx * 0.5f, wy - sizePx * 0.5f, sizePx, rgba);
+	}
+
+	VkCommandBuffer cmd = g_vk.cmdBuffers[g_vk.frameIndex];
+	g_guiPoints.Render(g_vk, cmd, s_imageIndex, g_vk.frameIndex, false, 0.0f, 0.0f, 0.0f, 0.0f);
+}
+
+void vkchain_gui_points_shutdown(void)
+{
+	if (s_guiPointsInit)
+	{
+		g_guiPoints.Shutdown(g_vk);
+		s_guiPointsInit = false;
+	}
+	s_guiPointsFailed = false;
+}
+
+// ---------------------------------------------------------------------------
+// vkchain_vector_hard_clear (Plan 6 Task 1 investigation finding).
+// GL's glchain_vector_hard_clear_fbo1 clears fbo1's three attachments
+// (img1a/img1b/img1c) to flush leftover trail/phosphor-feedback data from a
+// previous vector game when the GUI starts up. Under Vulkan there is no
+// persistent fbo1-equivalent: VectorDrawVK renders direct to the swapchain
+// every frame (Plan 5) with no retained image and no trail/feedback state
+// (the SSAA RT + phosphor/glow chain is deferred to Plan 5 Task 3, not yet
+// implemented) -- so there is nothing to hard-clear yet. No-op until that
+// lands, at which point this should clear whatever retained buffer it adds.
+// ---------------------------------------------------------------------------
 void vkchain_vector_hard_clear(void) {}
+
+// ---------------------------------------------------------------------------
+// GUI solid-color quads (Plan 6 Task 1). VectorFont::DrawQuad's GL path
+// draws through its own GL program/VAO (vector_fonts.cpp) -- GL-direct,
+// invisible under Vulkan. This seam reuses ScreenQuadVK::RecordRect (already
+// online for the raster composite) with a 1x1 white texture tinted by the
+// caller's color, alpha-blended (RecordRect's pipeline is SRC_ALPHA /
+// ONE_MINUS_SRC_ALPHA, matching VF::Begin()'s GL blend state).
+// ---------------------------------------------------------------------------
+void vkchain_gui_draw_quad(float x, float y, float width, float height, rgb_t color)
+{
+	if (!s_initialized || !s_frameOpen || !s_screenQuadInit)
+		return;
+
+	VkTexture* white = VkTex_GetSolidWhite(g_vk);
+	if (!white)
+		return;
+
+	// GUI-local space (VF::Initialize(1024,768)): x centered directly in the
+	// shared 0..1024 box; y needs the same 768->1024 rescale VF text uses
+	// (GuiBeamToWindowPx works in the native 0..1024 beam space).
+	const float scaleY = 1024.0f / 768.0f;
+	const float minx = x - width * 0.5f,  maxx = x + width * 0.5f;
+	const float miny = (y - height * 0.5f) * scaleY, maxy = (y + height * 0.5f) * scaleY;
+
+	const GuiBeamMap m = ComputeGuiBeamMap();
+	float x0, y0, x1, y1;
+	GuiBeamToWindowPx(m, minx, miny, x0, y0);
+	GuiBeamToWindowPx(m, maxx, maxy, x1, y1);
+
+	// The by->fy map includes a flip, so min/max in beam space does not
+	// necessarily land in the same order in window space -- sort explicitly.
+	const float L = (x0 < x1) ? x0 : x1;
+	const float R = (x0 < x1) ? x1 : x0;
+	const float B = (y0 < y1) ? y0 : y1;
+	const float T = (y0 < y1) ? y1 : y0;
+
+	const uint32_t sw = g_vk.swapchainExtent.width;
+	const uint32_t sh = g_vk.swapchainExtent.height;
+	VkCommandBuffer cmd = g_vk.cmdBuffers[g_vk.frameIndex];
+
+	g_screenQuad.RecordRect(g_vk, cmd, g_vk.frameIndex,
+		white->view, white->sampler,
+		L, B, R, T, sw, sh,
+		/*flipUV_Y=*/false, color);
+}
+
 void vkchain_init_raster_overlay(void) {}
 void vkchain_shutdown_raster_overlay(void) {}
 int  vkchain_get_error(void) { return 0; }

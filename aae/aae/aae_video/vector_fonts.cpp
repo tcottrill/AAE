@@ -5,6 +5,8 @@
 #include "shader_util.h"
 #include "colordefs.h"
 #include "vector_draw.h"   // shared coverage-AA beam line path (BeamLine/BeamJoin + draw)
+#include "config.h"        // RENDERER_VULKAN
+#include "../aae_video_vk/vulkan_renderer.h"   // vkchain_gui_draw_quad (Plan 6 seam)
 
 #include <cstdio>
 #include <cstring>
@@ -351,6 +353,43 @@ void VectorFont::End()
 		return;
 	}
 
+	if (active_renderer() == RENDERER_VULKAN)
+	{
+		// Plan 6 Task 1 (investigation finding): beam_draw_lines/beam_draw_caps
+		// below issue real GL draw calls (glUseProgram, glDrawArraysInstanced,
+		// ...), so VF text is invisible under Vulkan as-is. Route each glyph
+		// stroke through beam_add_line instead -- the SAME CPU-side beam queue
+		// vkchain_render's vector branch (vulkan_renderer.cpp, Plan 5) already
+		// consumes every frame for the GUI driver (VIDEO_TYPE_VECTOR), so text
+		// rides the existing, working VK vector path with no new draw code.
+		// No GL calls are made on this branch.
+		//
+		// Two documented, accepted deviations from the GL look (least-code
+		// path per the plan):
+		//  - stroke half-width follows config.linewidth (beam_add_line's
+		//    fixed half-width), not the font-tuned kFontHalf/kFontAA below.
+		//  - text blends with the frame's single additive/alpha-over choice
+		//    (the GUI driver is VECTOR_USES_COLOR -> additive) instead of
+		//    always alpha-over; on white/colored text over black this reads
+		//    the same, at most a touch brighter where strokes cross.
+		//
+		// Y is rescaled 768->1024: this ortho is Initialize(1024,768), but the
+		// beam queue (and vkchain_render's GUI mapping, see GuiBeamToWindowPx
+		// in vulkan_renderer.cpp) assumes the same shared 0..1024 box GL's
+		// fbo1 canvas uses for both VF text and beam content.
+		static constexpr float kGuiToBeamY = 1024.0f / 768.0f;
+		for (size_t i = 0; i + 1 < drawVerts.size(); i += 2)
+		{
+			const VFVertex& a = drawVerts[i];
+			const VFVertex& b = drawVerts[i + 1];
+			const aae::math::vec2 p0 = vf_rotate(a.pos, a.origin, a.angle);
+			const aae::math::vec2 p1 = vf_rotate(b.pos, b.origin, b.angle);
+			beam_add_line(p0.x, p0.y * kGuiToBeamY, p1.x, p1.y * kGuiToBeamY, 255, a.color);
+		}
+		drawVerts.clear();
+		return;
+	}
+
 	// The font's glyph strokes ARE line segments, so render them with the beam's
 	// coverage-AA line shader instead of GL_LINES + GL_LINE_SMOOTH / GL_POINTS.
 	// The beam shader has no rotation of its own; apply each string's rotation here.
@@ -382,6 +421,17 @@ void VectorFont::End()
 // ----
 void VectorFont::DrawQuad(float x, float y, float width, float height, rgb_t color)
 {
+	if (active_renderer() == RENDERER_VULKAN)
+	{
+		// GL path below draws through this class's own GL program/VAO
+		// (GL-direct, invisible under Vulkan). Plan 6 Task 1 seam: reuse
+		// ScreenQuadVK::RecordRect (already online for the raster composite)
+		// with a 1x1 white texture tinted by 'color'. No GL calls are made
+		// on this branch.
+		vkchain_gui_draw_quad(x, y, width, height, color);
+		return;
+	}
+
 	const float minx = x - (width * 0.5f);
 	const float miny = y - (height * 0.5f);
 	const float maxx = x + (width * 0.5f);
