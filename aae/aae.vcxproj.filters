@@ -16,6 +16,9 @@
     <ClCompile Include="system\graphics\sys_texture.cpp">
       <Filter>Source Files\system\graphics</Filter>
     </ClCompile>
+    <ClCompile Include="system\graphics\vk\sys_vk.cpp">
+      <Filter>Source Files\system\graphics\vk</Filter>
+    </ClCompile>
     <ClCompile Include="system\graphics\texrect.cpp">
       <Filter>Source Files\system\graphics</Filter>
     </ClCompile>
@@ -446,6 +449,9 @@
     </ClInclude>
     <ClInclude Include="system\graphics\sys_texture.h">
       <Filter>Source Files\system\graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="system\graphics\vk\sys_vk.h">
+      <Filter>Source Files\system\graphics\vk</Filter>
     </ClInclude>
     <ClInclude Include="system\graphics\texrect.h">
       <Filter>Source Files\system\graphics</Filter>
@@ -890,6 +896,9 @@
     </Filter>
     <Filter Include="Source Files\system\graphics">
       <UniqueIdentifier>{07d65e8f-88fa-4efd-a1a0-4a502ea755e0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\system\graphics\vk">
+      <UniqueIdentifier>{1d2831fc-1216-4d6e-83d2-3fea77316bf2}</UniqueIdentifier>
     </Filter>
     <Filter Include="Source Files\system\input">
       <UniqueIdentifier>{42c97af3-2c6e-4411-bc32-3481fff5a049}</UniqueIdentifier>

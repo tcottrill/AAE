@@ -243,6 +243,7 @@ set(AAE_COMMON_SOURCES
     aae/system/graphics/sys_gl.cpp
     aae/system/graphics/sys_texture.cpp
     aae/system/graphics/texrect.cpp
+    aae/system/graphics/vk/sys_vk.cpp
     aae/system/util/iniFile.cpp
     aae/system/util/path_helper.cpp
     aae/system/util/sys_fileio.cpp
@@ -411,8 +412,8 @@ endif()
 list(LENGTH AAE_COMMON_SOURCES _aae_common_count)
 list(LENGTH AAE_PLATFORM_SOURCES _aae_platform_count)
 math(EXPR _aae_exe_count "${_aae_common_count} + ${_aae_platform_count}")
-if(WIN32 AND NOT _aae_exe_count EQUAL 49)
-    message(FATAL_ERROR "aae executable source count is ${_aae_exe_count} (common=${_aae_common_count} + platform=${_aae_platform_count}), expected 49 on Windows - it has drifted from aae/aae.vcxproj (ccpu.cpp moved to aae_core - see the comment above AAE_CORE_SOURCES)")
+if(WIN32 AND NOT _aae_exe_count EQUAL 50)
+    message(FATAL_ERROR "aae executable source count is ${_aae_exe_count} (common=${_aae_common_count} + platform=${_aae_platform_count}), expected 50 on Windows - it has drifted from aae/aae.vcxproj (ccpu.cpp moved to aae_core - see the comment above AAE_CORE_SOURCES)")
 endif()
 
 # =============================================================================
@@ -577,6 +578,7 @@ target_include_directories(aae PRIVATE
     aae/system/audio
     aae
     aae/system/graphics
+    aae/system/graphics/vk
     aae/system/input
     aae/system/window
     aae/system/font

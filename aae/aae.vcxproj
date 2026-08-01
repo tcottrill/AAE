@@ -108,7 +108,7 @@
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <LanguageStandard_C>stdc17</LanguageStandard_C>
-      <AdditionalIncludeDirectories>./aae/aae_video;./aae;./aae/sndhrdwr;./aae/vidhrdwr;./aae/machine;./aae/gui;./aae/fileio;./aae/drivers;./aae/cpu_code;./system/audio;./;./system/graphics;./system/input;./system/window;./system/font;./system/math;./system/util;./system/3rdparty;./system/platform;./system/project</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>./aae/aae_video;./aae;./aae/sndhrdwr;./aae/vidhrdwr;./aae/machine;./aae/gui;./aae/fileio;./aae/drivers;./aae/cpu_code;./system/audio;./;./system/graphics;./system/graphics/vk;./system/input;./system/window;./system/font;./system/math;./system/util;./system/3rdparty;./system/platform;./system/project</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -147,7 +147,7 @@
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <LanguageStandard_C>stdc17</LanguageStandard_C>
-      <AdditionalIncludeDirectories>./aae/aae_video;./aae;./aae/sndhrdwr;./aae/vidhrdwr;./aae/machine;./aae/gui;./aae/fileio;./aae/drivers;./aae/cpu_code;./system/audio;./;./system/graphics;./system/input;./system/window;./system/font;./system/math;./system/util;./system/3rdparty;./system/platform;./system/project</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>./aae/aae_video;./aae;./aae/sndhrdwr;./aae/vidhrdwr;./aae/machine;./aae/gui;./aae/fileio;./aae/drivers;./aae/cpu_code;./system/audio;./;./system/graphics;./system/graphics/vk;./system/input;./system/window;./system/font;./system/math;./system/util;./system/3rdparty;./system/platform;./system/project</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -298,6 +298,7 @@
     <ClInclude Include="system\graphics\shader_util.h" />
     <ClInclude Include="system\graphics\sys_texture.h" />
     <ClInclude Include="system\graphics\texrect.h" />
+    <ClInclude Include="system\graphics\vk\sys_vk.h" />
     <ClInclude Include="system\input\joystick.h" />
     <ClInclude Include="system\input\rawinput.h" />
     <ClInclude Include="system\math\circle.h" />
@@ -360,6 +361,7 @@
     <ClCompile Include="system\graphics\sys_gl.cpp" />
     <ClCompile Include="system\graphics\sys_texture.cpp" />
     <ClCompile Include="system\graphics\texrect.cpp" />
+    <ClCompile Include="system\graphics\vk\sys_vk.cpp" />
     <ClCompile Include="system\input\Joystick.cpp" />
     <ClCompile Include="system\input\rawinput.cpp" />
     <ClCompile Include="system\util\iniFile.cpp" />
