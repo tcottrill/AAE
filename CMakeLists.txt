@@ -214,6 +214,7 @@ set(AAE_COMMON_SOURCES
     aae/aae/aae_video/mame_layout.cpp
     aae/aae/aae_video/mame_vector.cpp
     aae/aae/aae_video/opengl_renderer.cpp
+    aae/aae/aae_video/raster_emit.cpp
     aae/aae/aae_video/renderer_dispatch.cpp
     aae/aae/aae_video/vector_draw.cpp
     aae/aae/aae_video/vector_fonts.cpp
@@ -412,8 +413,8 @@ endif()
 list(LENGTH AAE_COMMON_SOURCES _aae_common_count)
 list(LENGTH AAE_PLATFORM_SOURCES _aae_platform_count)
 math(EXPR _aae_exe_count "${_aae_common_count} + ${_aae_platform_count}")
-if(WIN32 AND NOT _aae_exe_count EQUAL 50)
-    message(FATAL_ERROR "aae executable source count is ${_aae_exe_count} (common=${_aae_common_count} + platform=${_aae_platform_count}), expected 50 on Windows - it has drifted from aae/aae.vcxproj (ccpu.cpp moved to aae_core - see the comment above AAE_CORE_SOURCES)")
+if(WIN32 AND NOT _aae_exe_count EQUAL 51)
+    message(FATAL_ERROR "aae executable source count is ${_aae_exe_count} (common=${_aae_common_count} + platform=${_aae_platform_count}), expected 51 on Windows - it has drifted from aae/aae.vcxproj (ccpu.cpp moved to aae_core - see the comment above AAE_CORE_SOURCES; raster_emit.cpp added in Phase 4a Plan 3 Task 1)")
 endif()
 
 # =============================================================================

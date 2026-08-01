@@ -343,6 +343,9 @@
     <ClCompile Include="aae\aae_video\opengl_renderer.cpp">
       <Filter>Source Files\aae\aae_video</Filter>
     </ClCompile>
+    <ClCompile Include="aae\aae_video\raster_emit.cpp">
+      <Filter>Source Files\aae\aae_video</Filter>
+    </ClCompile>
     <ClCompile Include="aae\aae_video\renderer_dispatch.cpp">
       <Filter>Source Files\aae\aae_video</Filter>
     </ClCompile>
@@ -823,6 +826,9 @@
       <Filter>Source Files\aae\drivers\raster</Filter>
     </ClInclude>
     <ClInclude Include="aae\aae_video\opengl_renderer.h">
+      <Filter>Source Files\aae\aae_video</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\aae_video\raster_emit.h">
       <Filter>Source Files\aae\aae_video</Filter>
     </ClInclude>
     <ClInclude Include="aae\aae_video_vk\vulkan_renderer.h">

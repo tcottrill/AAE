@@ -168,6 +168,7 @@
     <ClInclude Include="aae\aae_video\mame_layout.h" />
     <ClInclude Include="aae\vidhrdwr\mame_vector.h" />
     <ClInclude Include="aae\aae_video\opengl_renderer.h" />
+    <ClInclude Include="aae\aae_video\raster_emit.h" />
     <ClInclude Include="aae\aae_video_vk\vulkan_renderer.h" />
     <ClInclude Include="aae\aae_video\vector_draw.h" />
     <ClInclude Include="aae\aae_video\shader_definitions.h" />
@@ -327,6 +328,7 @@
     <ClCompile Include="aae\aae_video\mame_layout.cpp" />
     <ClCompile Include="aae\aae_video\mame_vector.cpp" />
     <ClCompile Include="aae\aae_video\opengl_renderer.cpp" />
+    <ClCompile Include="aae\aae_video\raster_emit.cpp" />
     <ClCompile Include="aae\aae_video\renderer_dispatch.cpp" />
     <ClCompile Include="aae\aae_video_vk\vulkan_renderer.cpp" />
     <ClCompile Include="aae\aae_video\vector_draw.cpp" />

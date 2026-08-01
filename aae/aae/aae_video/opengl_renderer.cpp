@@ -64,6 +64,7 @@
 #include "vector_draw_gl.h"   // draw_textured_shots
 #include "vector_draw.h"
 #include "fast_poly.h"
+#include "raster_emit.h"
 #include "os_basic.h"
 #include "MathUtils.h"
 #include "menu.h"
@@ -171,88 +172,20 @@ void glchain_on_window_resize(int newW, int newH)
 
 // ---------------------------------------------------------------------------
 // raster_poly_update
-// Reads the MAME bitmap (main_bitmap) for the current frame, converts each
-// non-zero pixel to an RGBA color via osd_get_pen(), and submits it to the
-// Fpoly renderer (sc) as a small rectangle scaled by vid_scale.
-//
-// Handles all four MAME orientation flags so rotated/flipped games display
-// correctly without needing separate draw paths.
+// Backend-neutral emit loop moved to raster_emit.cpp (Phase 4a Plan 3);
+// this wrapper feeds it into the GL Fpoly exactly as before (Y-down ortho,
+// so no flip).
 // ---------------------------------------------------------------------------
+static void GlRasterSink(void* user, float x, float y, float size, uint32_t rgba)
+{
+	((Fpoly*)user)->addPoly(x, y, size, rgba);
+}
+
 void raster_poly_update(void)
 {
-	unsigned char r1, g1, b1;
-
-	if (!Machine || !Machine->drv || !main_bitmap || !sc)
+	if (!sc)
 		return;
-
-	const rectangle& va = Machine->drv->visible_area;
-	const int minX = va.min_x;
-	const int maxX = va.max_x;
-	const int minY = va.min_y;
-	const int maxY = va.max_y;
-
-	const int srcW = (maxX - minX + 1);
-	const int srcH = (maxY - minY + 1);
-
-	if (srcW <= 0 || srcH <= 0)
-		return;
-
-	const int rot = Machine->drv->rotation;
-
-	// Destination extents after orientation.
-	int dstW = srcW;
-	int dstH = srcH;
-
-	if (rot & ORIENTATION_SWAP_XY)
-	{
-		dstW = srcH;
-		dstH = srcW;
-	}
-
-	for (int srcY = minY; srcY <= maxY; ++srcY)
-	{
-		unsigned char* srcRow = main_bitmap->line[srcY];
-		if (!srcRow)
-			continue;
-
-		for (int srcX = minX; srcX <= maxX; ++srcX)
-		{
-			const unsigned char c = srcRow[srcX];
-
-			// Keep current behavior: draw all pixels, including black.
-			// If you later want to skip transparent black, restore:
-			// if (!c) continue;
-
-			osd_get_pen(Machine->pens[c], &r1, &g1, &b1);
-
-			// Convert source bitmap coords to local visible-area coords.
-			int x = srcX - minX;
-			int y = srcY - minY;
-
-			// Apply MAME orientation flags.
-			// IMPORTANT: FLIP is performed after SWAP_XY.
-			if (rot & ORIENTATION_SWAP_XY)
-			{
-				const int t = x;
-				x = y;
-				y = t;
-			}
-
-			// Flip against destination extents, not source extents.
-			if (rot & ORIENTATION_FLIP_X)
-			{
-				x = (dstW - 1) - x;
-			}
-
-			if (rot & ORIENTATION_FLIP_Y)
-			{
-				y = (dstH - 1) - y;
-			}
-
-			// Submit in visible-area-local coordinates.
-			sc->addPoly((float)x, (float)y, config.prescale, MAKE_RGBA(r1, g1, b1, 0xff));
-		}
-	}
+	raster_emit_polys(GlRasterSink, sc, /*yFlip=*/0);
 }
 
 // TBD: Change or remove.
