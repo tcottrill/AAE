@@ -52,6 +52,15 @@
 #include "opengl_renderer.h"
 #include "led_service_handler.h"
 
+// Vulkan surface creation for the Win32 window backend (Phase 4a Plan 2).
+// Uses the vendored headers; binds the two needed entry points from the
+// runtime loader so nothing links vulkan-1.lib (spec sec. 6).
+#ifndef VK_USE_PLATFORM_WIN32_KHR
+#define VK_USE_PLATFORM_WIN32_KHR 1
+#endif
+#include <vulkan/vulkan.h>
+#include <vulkan/vulkan_win32.h>
+
 // Forward declaration: Win32Window::Create() (below) registers the window
 // class with this WndProc, same as wWinMain does; the definition itself
 // comes later in this file.
@@ -864,9 +873,11 @@ IPresentSurface* Win32Window::Presentation()
 
 // -----------------------------------------------------------------------------
 // Win32PresentSurface
-// No Vulkan path is wired up on Windows yet (the working VK renderer lives in
-// the donor Engine Alpha codebase, not here), so CreateVkSurface() is an
-// honest stub rather than an untested implementation.
+// CreateVkSurface() creates the real VkSurfaceKHR for this window (Phase 4a
+// Plan 2): it loads vulkan-1.dll at runtime, resolves vkGetInstanceProcAddr,
+// and calls vkCreateWin32SurfaceKHR against g_hWnd. No vulkan-1.lib link
+// (spec sec. 6) -- sys_vk.cpp's own loader bootstrap does the same for every
+// other Vulkan entry point.
 // -----------------------------------------------------------------------------
 void Win32PresentSurface::SwapBuffers()
 {
@@ -888,10 +899,44 @@ const char* const* Win32PresentSurface::RequiredVkInstanceExtensions(uint32_t* c
 
 bool Win32PresentSurface::CreateVkSurface(void* instance, void* outSurface)
 {
-	(void)instance;
-	(void)outSurface;
-	LOG_ERROR("Win32PresentSurface::CreateVkSurface: not implemented");
-	return false;
+	if (!instance || !outSurface || !g_hWnd)
+	{
+		LOG_ERROR("Win32PresentSurface::CreateVkSurface: bad args or no window");
+		return false;
+	}
+
+	HMODULE loader = LoadLibraryA("vulkan-1.dll");
+	if (!loader)
+	{
+		LOG_ERROR("Win32PresentSurface::CreateVkSurface: vulkan-1.dll not found");
+		return false;
+	}
+
+	PFN_vkGetInstanceProcAddr gipa =
+		(PFN_vkGetInstanceProcAddr)GetProcAddress(loader, "vkGetInstanceProcAddr");
+	PFN_vkCreateWin32SurfaceKHR createWin32Surface = gipa
+		? (PFN_vkCreateWin32SurfaceKHR)gipa((VkInstance)instance, "vkCreateWin32SurfaceKHR")
+		: nullptr;
+
+	bool ok = false;
+	if (createWin32Surface)
+	{
+		VkWin32SurfaceCreateInfoKHR sci{ VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR };
+		sci.hinstance = GetModuleHandleW(nullptr);
+		sci.hwnd = g_hWnd;
+
+		VkResult r = createWin32Surface((VkInstance)instance, &sci, nullptr, (VkSurfaceKHR*)outSurface);
+		ok = (r == VK_SUCCESS);
+		if (!ok)
+			LOG_ERROR("Win32PresentSurface::CreateVkSurface: vkCreateWin32SurfaceKHR failed (VkResult=%d)", (int)r);
+	}
+	else
+	{
+		LOG_ERROR("Win32PresentSurface::CreateVkSurface: vkCreateWin32SurfaceKHR not available");
+	}
+
+	FreeLibrary(loader);  // refcounted; sys_vk holds its own reference for the session
+	return ok;
 }
 
 // -----------------------------------------------------------------------------
