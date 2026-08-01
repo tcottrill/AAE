@@ -173,6 +173,7 @@
     <ClInclude Include="aae\aae_video_vk\render_target_vk.h" />
     <ClInclude Include="aae\aae_video_vk\screen_quad_vk.h" />
     <ClInclude Include="aae\aae_video_vk\vector_draw_vk.h" />
+    <ClInclude Include="aae\aae_video_vk\vk_texture_loader.h" />
     <ClInclude Include="aae\aae_video_vk\vulkan_renderer.h" />
     <ClInclude Include="aae\aae_video\vector_draw.h" />
     <ClInclude Include="aae\aae_video\shader_definitions.h" />
@@ -338,6 +339,7 @@
     <ClCompile Include="aae\aae_video_vk\render_target_vk.cpp" />
     <ClCompile Include="aae\aae_video_vk\screen_quad_vk.cpp" />
     <ClCompile Include="aae\aae_video_vk\vector_draw_vk.cpp" />
+    <ClCompile Include="aae\aae_video_vk\vk_texture_loader.cpp" />
     <ClCompile Include="aae\aae_video_vk\vulkan_renderer.cpp" />
     <ClCompile Include="aae\aae_video\vector_draw.cpp" />
     <ClCompile Include="aae\aae_video\vector_fonts.cpp" />

@@ -361,6 +361,9 @@
     <ClCompile Include="aae\aae_video_vk\vector_draw_vk.cpp">
       <Filter>Source Files\aae\aae_video_vk</Filter>
     </ClCompile>
+    <ClCompile Include="aae\aae_video_vk\vk_texture_loader.cpp">
+      <Filter>Source Files\aae\aae_video_vk</Filter>
+    </ClCompile>
     <ClCompile Include="aae\aae_video_vk\vulkan_renderer.cpp">
       <Filter>Source Files\aae\aae_video_vk</Filter>
     </ClCompile>
@@ -853,6 +856,9 @@
       <Filter>Source Files\aae\aae_video_vk</Filter>
     </ClInclude>
     <ClInclude Include="aae\aae_video_vk\vector_draw_vk.h">
+      <Filter>Source Files\aae\aae_video_vk</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\aae_video_vk\vk_texture_loader.h">
       <Filter>Source Files\aae\aae_video_vk</Filter>
     </ClInclude>
     <ClInclude Include="aae\aae_video_vk\vulkan_renderer.h">
