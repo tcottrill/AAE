@@ -19,7 +19,7 @@
 - `allegro_message(title, msg)` — declared `aae/system/window/windows_util.h:36`, Linux impl `linux_main.cpp:95`.
 - Dispatch surface (externally referenced, enumerated by grep excluding `aae_video/`): `init_gl`, `end_gl` (declared, no external caller — dispatched for symmetry), `set_render`, `render`, `GLSwapBuffers`, `SetvSync`, `emulator_on_window_resize`, `gui_points_init`, `gui_points_draw`, `gui_points_shutdown`, `glcode_vector_hard_clear_fbo1`, `init_raster_overlay`, `shutdown_raster_overlay`, `glcode_get_gl_error`.
 - Shared globals (`game_rect_*`, `g_scanline_override`, `g_proj`, `vid_scale`) stay defined where they are — both chains read/write the same data; NOT part of the dispatch.
-- Donor `fast_poly` VK interface (for the Task 6 shader): UBO `set=0 binding=0` holding `mat4`, vertex = `location 0: R32G32_SFLOAT`, `location 1: R8G8B8A8_UNORM` (`C:\Source2026\Bosconian\Bosconian\sys_graphics\fast_poly.cpp:240-373,501-502`).
+- Donor `fast_poly` VK interface: UBO `set=0 binding=0` holding `mat4`, vertex = `location 0: R32G32_SFLOAT`, `location 1: R8G8B8A8_UNORM` (`C:\Source2026\Bosconian\Bosconian\sys_graphics\fast_poly.cpp:240-373,501-502`). The GLSL sources EXIST at `C:\Source2026\Bosconian\x64\Release\shaders\fast_poly_vk.{vert,frag}` (verified 2026-07-31; only the SpriteTest repo lacks them) — Task 5 copies them, no reconstruction.
 
 **Build command (the "test runner"):**
 
@@ -522,23 +522,28 @@ git -C C:/Source2026/AAE_publish commit -m "build: explicit Vulkan SDK include/l
 - Create: `aae/shaders/vk/fast_poly_vk.frag`
 - Modify: `aae/aae.vcxproj` (CustomBuild items)
 
-- [ ] **Step 1: Create the first two canonical GLSL sources**
+- [ ] **Step 1: Copy the existing canonical GLSL sources**
 
-These reconstruct the donor's missing `fast_poly_vk` sources. The interface is transcribed from the donor pipeline code (`C:\Source2026\Bosconian\Bosconian\sys_graphics\fast_poly.cpp`: UBO set=0 binding=0 with one mat4, written at :501-502; vertex attrs at :358-367).
+The `fast_poly_vk` GLSL sources already exist in the Bosconian output tree — copy them verbatim, do not rewrite:
 
-`aae/shaders/vk/fast_poly_vk.vert`:
+```bash
+mkdir -p C:/Source2026/AAE_publish/aae/shaders/vk
+cp C:/Source2026/Bosconian/x64/Release/shaders/fast_poly_vk.vert C:/Source2026/AAE_publish/aae/shaders/vk/
+cp C:/Source2026/Bosconian/x64/Release/shaders/fast_poly_vk.frag C:/Source2026/AAE_publish/aae/shaders/vk/
+```
+
+For reference, the copied content must be exactly this (verified against the Fpoly pipeline: UBO set=0 binding=0 mat4, loc 0 vec2 pos R32G32_SFLOAT, loc 1 vec4 color R8G8B8A8_UNORM):
+
+`fast_poly_vk.vert`:
 
 ```glsl
 #version 450
-// fast_poly (Fpoly) raster-quad renderer - vertex.
-// Interface must match Fpoly::CreatePipeline: binding 0 stride sizeof(_fpdata),
-// loc 0 = vec2 pos (R32G32_SFLOAT), loc 1 = vec4 color (R8G8B8A8_UNORM);
-// set 0 binding 0 = UBO { mat4 proj }.
 
 layout(location = 0) in vec2 inPos;
 layout(location = 1) in vec4 inColor;
 
-layout(set = 0, binding = 0) uniform Globals {
+layout(set = 0, binding = 0) uniform Globals
+{
     mat4 uProj;
 } g;
 
@@ -546,16 +551,15 @@ layout(location = 0) out vec4 vColor;
 
 void main()
 {
-    gl_Position = g.uProj * vec4(inPos, 0.0, 1.0);
     vColor = inColor;
+    gl_Position = g.uProj * vec4(inPos.xy, 0.0, 1.0);
 }
 ```
 
-`aae/shaders/vk/fast_poly_vk.frag`:
+`fast_poly_vk.frag`:
 
 ```glsl
 #version 450
-// fast_poly (Fpoly) raster-quad renderer - fragment. Pure vertex-color fill.
 
 layout(location = 0) in vec4 vColor;
 layout(location = 0) out vec4 outColor;
@@ -603,7 +607,7 @@ Expected: `fast_poly_vk.vert.spv`, `fast_poly_vk.frag.spv`. A glslangValidator s
 
 ```bash
 git -C C:/Source2026/AAE_publish add aae/shaders aae/aae.vcxproj
-git -C C:/Source2026/AAE_publish commit -m "build: canonical VK shader home (aae/shaders/vk) + glslangValidator build rule; reconstruct fast_poly_vk GLSL"
+git -C C:/Source2026/AAE_publish commit -m "build: canonical VK shader home (aae/shaders/vk) + glslangValidator build rule; import fast_poly_vk GLSL from Bosconian donor"
 ```
 
 ---

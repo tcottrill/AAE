@@ -254,7 +254,7 @@ Inventory:
 |---|---|
 | `vector_line_vk`, `vector_disc_vk`, `vector_shot_vk` | sources exist (SpriteTest `sys_graphics\`) |
 | `screen_quad_rect_vk`, `screenquad`, `render_target_composite` | sources exist (SpriteTest `data\shaders\`) |
-| `fast_poly_vk` | **.spv only** — trivial pair, recover or rewrite during import |
+| `fast_poly_vk` | sources exist (Bosconian `x64\Release\shaders\fast_poly_vk.{vert,frag}`) — copy, don't reconstruct |
 | mono CRT, color CRT, scanline, glow blur chain, gui points, overlays | **new ports** from the GL 330 shaders |
 
 Build step:
