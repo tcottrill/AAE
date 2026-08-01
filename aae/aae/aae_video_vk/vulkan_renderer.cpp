@@ -1,62 +1,150 @@
 // ===========================================================================
-// vulkan_renderer.cpp - Vulkan chain stubs (Phase 4a Plan 1).
+// vulkan_renderer.cpp - Vulkan chain orchestration (Phase 4a Plan 2).
 //
-// Every function is a safe no-op. vkchain_init() reports failure so the
-// dispatch falls back to GL; none of the other entry points can be reached
-// until it returns success (Plan 2).
+// Owns the VkContext and maps the dispatch entry points onto the sys_vk
+// frame loop (spec sec. 3.4):
+//   vkchain_set_render   -> VK_BeginFrame (acquire, open pass, clear)
+//   vkchain_render       -> record draws (nothing yet; Plans 3-6 fill this in)
+//   vkchain_swap_buffers -> VK_EndFrame (submit + present)
+// A failed begin (resize, minimize, OUT_OF_DATE) recreates the swapchain and
+// skips the rest of that frame; s_frameOpen keeps end-of-frame honest.
 // ===========================================================================
 #include "vulkan_renderer.h"
 #include "sys_log.h"
+#include "sys_vk.h"
+#include "sys_window.h"
+#include "config.h"
 
-#ifdef _WIN32
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <windows.h>
-#endif
+static VkContext g_vk;
+static bool      s_initialized = false;
+static bool      s_frameOpen = false;
+static uint32_t  s_imageIndex = 0;
 
-#include <vulkan/vulkan.h>
+// Set while VK_BeginFrame/VK_RecreateSwapchain cannot back a swapchain
+// because the surface has zero area (window minimized, or mid-drag).
+// vkchain_set_render runs once per emulator tick regardless of window state
+// (audio keeps running while minimized), and CreateSwapchain logs a
+// "deferring" line every time it is called with a zero extent. Without this
+// flag a minimized Vulkan session would call VK_RecreateSwapchain -> log
+// "deferring" every single tick (tens of lines/sec in systemlog.txt). Instead
+// we log our own state transition once and stop retrying from here; the
+// window layer only calls vkchain_on_window_resize on WM_SIZE when the
+// window is NOT minimized (see winmain.cpp), so restoring the window is what
+// clears the deferral and retries.
+static bool s_deferredZeroExtent = false;
 
-// ===========================================================================
-// vkchain_init - Plan 1 smoke check.
-// Loads the Vulkan runtime dynamically (no import lib, no SDK install
-// needed to build - the loader DLL ships with the GPU driver) and logs the
-// instance version. Plan 2 replaces this with the real chain bring-up,
-// keeping the same LoadLibrary bootstrap.
-// ===========================================================================
-int  vkchain_init(void)
+int vkchain_init(void)
 {
-	HMODULE loader = LoadLibraryA("vulkan-1.dll");
-	if (!loader)
+	if (s_initialized)
+		return 1;   // re-entrant like glchain_init: run_game calls per load
+
+	IPresentSurface* present = GetSystemWindow().Presentation();
+	if (!present)
 	{
-		LOG_ERROR("vkchain_init: vulkan-1.dll not found (no Vulkan runtime installed)");
+		LOG_ERROR("vkchain_init: no presentation surface (headless backend?)");
 		return 0;
 	}
 
-	typedef VkResult (VKAPI_PTR *PFN_EnumVer)(uint32_t*);
-	PFN_EnumVer enumVer = (PFN_EnumVer)GetProcAddress(loader, "vkEnumerateInstanceVersion");
+	const bool validation = (config.vk_validation != 0);
+	if (!VK_Init(g_vk, *present, validation, /*vsync=*/true))
+	{
+		LOG_ERROR("vkchain_init: VK_Init failed");
+		VK_Shutdown(g_vk);
+		return 0;
+	}
 
-	uint32_t v = VK_API_VERSION_1_0;
-	if (enumVer)
-		enumVer(&v);
-
-	LOG_INFO("Vulkan loader present, instance version %u.%u.%u (headers %u.%u.%u)",
-		VK_API_VERSION_MAJOR(v), VK_API_VERSION_MINOR(v), VK_API_VERSION_PATCH(v),
-		VK_API_VERSION_MAJOR(VK_HEADER_VERSION_COMPLETE),
-		VK_API_VERSION_MINOR(VK_HEADER_VERSION_COMPLETE),
-		VK_API_VERSION_PATCH(VK_HEADER_VERSION_COMPLETE));
-
-	FreeLibrary(loader);
-
-	LOG_ERROR("vkchain_init: Vulkan chain not implemented yet (Phase 4a Plan 2)");
-	return 0;
+	s_initialized = true;
+	s_deferredZeroExtent = false;
+	LOG_INFO("vkchain_init: Vulkan chain online (validation=%d)", validation ? 1 : 0);
+	return 1;
 }
-void vkchain_shutdown(void) {}
-void vkchain_set_render(void) {}
-void vkchain_render(void) {}
-void vkchain_swap_buffers(void) {}
-void vkchain_set_vsync(bool) {}
-void vkchain_on_window_resize(int, int) {}
+
+void vkchain_shutdown(void)
+{
+	if (!s_initialized)
+		return;
+	VK_Shutdown(g_vk);
+	s_initialized = false;
+	s_frameOpen = false;
+	s_deferredZeroExtent = false;
+}
+
+void vkchain_set_render(void)
+{
+	if (!s_initialized || s_frameOpen)
+		return;
+
+	// While deferred (zero-area surface) do not retry from here: retrying
+	// every tick would call VK_RecreateSwapchain -> CreateSwapchain, which
+	// logs every attempt, at full frame rate. vkchain_on_window_resize is
+	// the only path that clears s_deferredZeroExtent (see comment above).
+	if (s_deferredZeroExtent)
+		return;
+
+	if (!VK_BeginFrame(g_vk, s_imageIndex))
+	{
+		if (!VK_RecreateSwapchain(g_vk))
+		{
+			s_deferredZeroExtent = true;
+			LOG_INFO("vkchain_set_render: swapchain recreate deferred (zero-area surface); will retry on resize");
+		}
+		return;             // skip this frame; next tick re-acquires
+	}
+	s_frameOpen = true;
+}
+
+void vkchain_render(void)
+{
+	// Plan 2: the frame pass opened by VK_BeginFrame clears to the gate
+	// color; there is nothing to record yet. Raster (Plan 3), post/artwork
+	// (Plan 4), vector (Plan 5) and GUI (Plan 6) record here.
+}
+
+void vkchain_swap_buffers(void)
+{
+	if (!s_initialized || !s_frameOpen)
+		return;
+	s_frameOpen = false;
+	if (!VK_EndFrame(g_vk, s_imageIndex))
+		VK_RecreateSwapchain(g_vk);
+}
+
+void vkchain_set_vsync(bool enabled)
+{
+	if (!s_initialized)
+		return;
+	if (g_vk.vsync == enabled)
+		return;
+	g_vk.vsync = enabled;
+	VK_RecreateSwapchain(g_vk);   // waits device idle internally
+}
+
+void vkchain_on_window_resize(int newW, int newH)
+{
+	(void)newW; (void)newH;
+	if (!s_initialized)
+		return;
+
+	// This is the only retry path while s_deferredZeroExtent is set (see
+	// vkchain_set_render): winmain.cpp only calls emulator_on_window_resize,
+	// and therefore this function, on WM_SIZE when the window is NOT
+	// minimized, so a nonzero extent is the expected case here.
+	if (VK_RecreateSwapchain(g_vk))
+	{
+		if (s_deferredZeroExtent)
+		{
+			LOG_INFO("vkchain_on_window_resize: swapchain recreated, resuming frames");
+			s_deferredZeroExtent = false;
+		}
+	}
+	else if (!s_deferredZeroExtent)
+	{
+		s_deferredZeroExtent = true;
+		LOG_INFO("vkchain_on_window_resize: swapchain recreate deferred (zero-area surface); will retry on resize");
+	}
+}
+
+// --- Plans 3-6 fill these in -----------------------------------------------
 void vkchain_gui_points_init(int) {}
 void vkchain_gui_points_draw(const GuiPointVertex*, int, float) {}
 void vkchain_gui_points_shutdown(void) {}

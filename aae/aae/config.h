@@ -77,6 +77,7 @@ typedef struct {
 	int cheat;
 	int debug;
 	int renderer;         // RENDERER_OPENGL (default) or RENDERER_VULKAN
+	int vk_validation;    // [main] vk_validation: 1 = enable Vulkan validation layer (default 0)
 	int debug_profile_code;
 	int audio_force_resample;
 	int kbleds;

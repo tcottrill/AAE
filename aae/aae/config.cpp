@@ -136,6 +136,7 @@ void setup_config() {
         config.renderer = (r && strcmp(r, "vulkan") == 0) ? RENDERER_VULKAN : RENDERER_OPENGL;
         LOG_INFO("Config: renderer=%s", (config.renderer == RENDERER_VULKAN) ? "vulkan" : "opengl");
     }
+    config.vk_validation = get_config_int("main", "vk_validation", 0);
     config.debug_profile_code = get_config_int("main", "debug_profile_code", 0);
     config.audio_force_resample = get_config_int("main", "audio_force_resample", 0);
 
