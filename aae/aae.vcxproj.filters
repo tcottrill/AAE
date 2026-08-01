@@ -939,11 +939,25 @@
     <Filter Include="Source Files\aae\cpu_code">
       <UniqueIdentifier>{da058008-a727-4d5f-bb3f-a3335773c65c}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Shaders">
+      <UniqueIdentifier>{7a1b3c5d-2e4f-4a6b-8c9d-0e1f2a3b4c5d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Shaders\vk">
+      <UniqueIdentifier>{8b2c4d6e-3f5a-4b7c-9d0e-1f2a3b4c5d6e}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="resource.rc">
       <Filter>Resource Files</Filter>
     </ResourceCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="shaders\vk\fast_poly_vk.vert">
+      <Filter>Shaders\vk</Filter>
+    </CustomBuild>
+    <CustomBuild Include="shaders\vk\fast_poly_vk.frag">
+      <Filter>Shaders\vk</Filter>
+    </CustomBuild>
   </ItemGroup>
   <ItemGroup>
     <None Include="resource.aps">

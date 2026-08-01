@@ -436,4 +436,26 @@
       <Project>{F3062892-E013-44FF-A04E-C81133A4B5B9}</Project>
     </ProjectReference>
   </ItemGroup>
+  <!-- ===================================================================
+       Vulkan shader home (aae/shaders/vk) - compiled to SPIR-V at build
+       time via the vendored tools/glslc.exe (shaderc, committed binary;
+       see tools/dice, tools/cc65-win32, tools/gifsicle for precedent).
+       Every future VK shader gets added here as another CustomBuild pair.
+       The .spv outputs land in $(OutDir)shaders\vk\ next to the exe and
+       are loaded at runtime by the Vulkan chain (Shader_SetPath).
+       =================================================================== -->
+  <ItemGroup>
+    <CustomBuild Include="shaders\vk\fast_poly_vk.vert">
+      <Command>if not exist "$(OutDir)shaders\vk" mkdir "$(OutDir)shaders\vk"
+"$(ProjectDir)..\tools\glslc.exe" "%(FullPath)" -o "$(OutDir)shaders\vk\%(Filename)%(Extension).spv"</Command>
+      <Outputs>$(OutDir)shaders\vk\%(Filename)%(Extension).spv</Outputs>
+      <Message>glslc %(Filename)%(Extension)</Message>
+    </CustomBuild>
+    <CustomBuild Include="shaders\vk\fast_poly_vk.frag">
+      <Command>if not exist "$(OutDir)shaders\vk" mkdir "$(OutDir)shaders\vk"
+"$(ProjectDir)..\tools\glslc.exe" "%(FullPath)" -o "$(OutDir)shaders\vk\%(Filename)%(Extension).spv"</Command>
+      <Outputs>$(OutDir)shaders\vk\%(Filename)%(Extension).spv</Outputs>
+      <Message>glslc %(Filename)%(Extension)</Message>
+    </CustomBuild>
+  </ItemGroup>
 </Project>
