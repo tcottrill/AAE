@@ -1,0 +1,21 @@
+# Vulkan Phase 4a — Plan 5: Vector Path (PRIORITIZED)
+
+> Lean plan by user directive (2026-08-01): vector is primary, reviews limited to implementer self-review + user gate.
+
+**Goal:** Vector games (asteroid, tempest) render visible beams under `renderer=vulkan` via the already-written `VectorDrawVK`, with the three known backport fixes applied. Glow/phosphor/SSAA follow as a second stage on the Plan 4 RT infrastructure.
+
+**Donor files (user-designated):** `C:\SourceEngineAlpha\SpriteTestVulcan28_vulkan_working_copy\sys_graphics\`: `vector_draw_vk.{h,cpp}` (VectorDrawVK), `vector_draw.{h,cpp}` (the GL beam renderer — SAME lineage as AAE's `aae/aae/aae_video/vector_draw.{h,cpp}`; use for wiring reference, do NOT import), shaders `vector_line_vk.{vert,frag}`, `vector_disc_vk.{vert,frag}`, `vector_shot_vk.{vert,frag}`.
+**Backport doc:** `C:\SourceEngineAlpha\SpriteTestVulcan28_vulkan_working_copy\docs\2026-07-05-vector-draw-vk-aae-backport.md` — READ FIRST; contains the flipViewportY fix and the three pre-ship fixes: (4a) append discipline (per-slot write-head + stale list, catalog entries 3/12 — same pattern just applied to FpolyVK in commit 01dea94), (4b) SSAA feather divide (uAA = line_smoothing / ssaa), (4c) Init idempotence (guard with `if (m_pipeLayout) Shutdown(ctx);`).
+
+**Data flow (verify while implementing):** sims feed two paths — old DVG/`emu_vector_draw` `add_line` → `beam_add_line` appends to CPU arrays in AAE's `aae_video/vector_draw.cpp` (g_lines/g_joins/g_shots); AVG/late-DVG → `vector_add_point` → `vector_list`, consumed by `vector_update()` (mame_vector.cpp:279+) which converts to beam calls. GL renders via `beam_draw_all(proj)`. Under VK: run the same CPU conversion (`vector_update()`), then hand the beam arrays to VectorDrawVK, then clear. Find the projection the GL vector path uses (what proj reaches beam_draw_all in glchain_render's vector branch, and what coordinate space add_line emits) and mirror it exactly.
+
+### Task 1: Import + wire (one agent)
+- [ ] Copy `vector_draw_vk.{h,cpp}` → `aae/aae/aae_video_vk/` (collision-check vs AAE headers; the class is VectorDrawVK — likely no collisions; its CreateInfo takes spv paths — point at `shaders/vk/`). Copy the six shaders → `aae/shaders/vk/` + CustomBuild pairs. Apply fixes 4a/4b/4c from the backport doc (4a per the FpolyVK pattern just landed). Register vcxproj/filters/CMake (recount drift check).
+- [ ] Wire `vulkan_renderer.cpp` vector branch: on vector games, per frame — call `vector_update()` (CPU convert; verify it has no GL calls — if it does, gate/extract them), build caps via the donor's `beam_build_caps` equivalent if VectorDrawVK expects them (READ vector_draw_vk.cpp to learn how it's fed in the donor engine — it may read the beam arrays directly via beam_get_lines()/beam_get_shots() or take uploads; AAE's beam array API in aae_video/vector_draw.h is the same lineage), then `VectorDrawVK::Record(ctx, cmd, frameIndex, proj, additive, targetW, targetH)` INTO the open frame pass (direct-to-swapchain first cut), then clear the queues (replaces the current drain-only cache_clear/vector_clear_list — keep vector_clear_list, move cache_clear semantics to post-consume). Aspect-fit viewport like the raster path (vector coordinate space fitted to window; find GL's vector aspect handling — 4:3 default). Init idempotent per game load; Shutdown before VK_Shutdown.
+- [ ] Also make sure `beam_init` is NOT needed (VK path must not call it — it creates GL objects; the arrays work without it, proven in Plan 2). If VectorDrawVK needs ssaa or feather config, feed `config.line_smoothing`/ssaa=1 for now.
+- [ ] Build Release+Debug, self-review hard (coordinate trace on paper: one add_line at DVG center → screen position; flipViewportY consistency), commit.
+
+### Task 2: GATE (user)
+- [ ] Copy exe + shaders/vk to asset tree. `asteroid -renderer vulkan`: SHIPS AND ROCKS VISIBLE as beams. `tempest -renderer vulkan`: color beams. Orientation/aspect correct; GL regression on both. (pacman still works — Plan 4 Task 3 restructure gate folded here.)
+
+### Task 3 (next): SSAA RT + phosphor trails (`vectrail`) + glow chain (`vecglow`) on RenderTargetVK + suspend/resume — reuses Plan 4 infra. Planned when Gate passes.
