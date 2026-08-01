@@ -71,6 +71,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 // -----------------------------------------------------------------------------
 HWND g_hWnd = nullptr;
 
+// True once InitOpenGLContext() has succeeded this session. Renderer=vulkan
+// sessions never set this (see wWinMain's GL-bring-up gate), so every other
+// GL/WGL call site in this file guards on it to stay a no-op under Vulkan.
+static bool g_glContextCreated = false;
+
 // Initialize the audio mixer
 const int audioSampleRate = 44100;
 const int targetFPS = 60;
@@ -115,7 +120,10 @@ float Win32Window::DpiScale() const {
 
 void Win32Window::RestoreViewport()
 {
-	glViewport(0, 0, g_windowSetup.clientWidth, g_windowSetup.clientHeight);
+	// No-op under Vulkan: there is no GL context/viewport to restore, and
+	// WM_SIZE fires long before a renderer-agnostic resize hook exists here.
+	if (g_glContextCreated)
+		glViewport(0, 0, g_windowSetup.clientWidth, g_windowSetup.clientHeight);
 }
 
 // When starting in fullscreen, we still need a valid windowed-mode target
@@ -658,6 +666,38 @@ void ParseCommandLineArgs(WindowSetup& config, Win32WindowState& win32Config)
 	}
 
 	LocalFree(argv);
+}
+
+// -----------------------------------------------------------------------------
+// EarlyRendererIsVulkan
+// The GL context must be skipped BEFORE config.renderer is populated (that
+// happens later, inside run_game's setup_config). Read the same two sources
+// the dispatch reads - [main] renderer in aae.ini, then a -renderer cmdline
+// override - so the window layer and the dispatch always agree.
+// -----------------------------------------------------------------------------
+static bool EarlyRendererIsVulkan(void)
+{
+	bool vulkan = false;
+	const char* r = get_config_string("main", "renderer", "opengl");
+	if (r && strcmp(r, "vulkan") == 0)
+		vulkan = true;
+
+	// Cmdline override, same precedence as the dispatch.
+	int argc = 0;
+	LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+	if (argv)
+	{
+		for (int i = 1; i < argc - 1; ++i)
+		{
+			if (_wcsicmp(argv[i], L"-renderer") == 0)
+			{
+				if (_wcsicmp(argv[i + 1], L"vulkan") == 0)      vulkan = true;
+				else if (_wcsicmp(argv[i + 1], L"opengl") == 0) vulkan = false;
+			}
+		}
+		LocalFree(argv);
+	}
+	return vulkan;
 }
 
 // -----------------------------------------------------------------------------
@@ -1318,20 +1358,41 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance,
 		LOG_ERROR("No joysticks detected or initialization failed");
 	}
 
-	// useCoreProfile = true: request a forward-compatible OpenGL core context.
-	// The whole render path is now core-clean (no fixed-function matrix/state,
-	// no client arrays, core FBO calls, all #version 330 core shaders).
-	if (!InitOpenGLContext(false, false, true)) {
-		LOG_ERROR("Failed to initialize OpenGL");
-		return -1;
-	}
+	const bool wantVulkan = EarlyRendererIsVulkan();
+	g_glContextCreated = false;
 
-	// Present one black frame into the front buffer *before* the window is ever
-	// visible, so the first thing the user sees is black, not white. Our
-	// WM_ERASEBKGND handler returns 1, so GDI never repaints over this.
-	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-	glClear(GL_COLOR_BUFFER_BIT);
-	GLSwapBuffers();
+	if (!wantVulkan)
+	{
+		// useCoreProfile = true: request a forward-compatible OpenGL core context.
+		// The whole render path is now core-clean (no fixed-function matrix/state,
+		// no client arrays, core FBO calls, all #version 330 core shaders).
+		if (!InitOpenGLContext(false, false, true)) {
+			LOG_ERROR("Failed to initialize OpenGL");
+			return -1;
+		}
+		g_glContextCreated = true;
+
+		// Present one black frame into the front buffer *before* the window is
+		// ever visible, so the first thing the user sees is black, not white.
+		// Our WM_ERASEBKGND handler returns 1, so GDI never repaints over this.
+		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT);
+		glchain_swap_buffers();
+	}
+	else
+	{
+		LOG_INFO("Renderer=vulkan: skipping OpenGL context creation (window layer)");
+		// Keep the first-visible-pixels-are-black invariant without GL: paint
+		// the hidden window's client area once with GDI.
+		RECT rc{};
+		GetClientRect(g_hWnd, &rc);
+		HDC dc = GetDC(g_hWnd);
+		if (dc)
+		{
+			FillRect(dc, &rc, (HBRUSH)GetStockObject(BLACK_BRUSH));
+			ReleaseDC(g_hWnd, dc);
+		}
+	}
 
 	ShowWindow(g_hWnd, nCmdShow);
 	UpdateWindow(g_hWnd);
@@ -1446,7 +1507,8 @@ exit_main:
 	osd_led_service_stop();
 	RestoreAccessibilityPopups();
 	TimerShutdown();
-	DeleteGLContext();
+	if (g_glContextCreated)
+		DeleteGLContext();
 	RawInput_Shutdown();
 	LogClose();
 	return static_cast<int>(msg.wParam);
