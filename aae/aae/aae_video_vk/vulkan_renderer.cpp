@@ -20,18 +20,52 @@ static bool      s_initialized = false;
 static bool      s_frameOpen = false;
 static uint32_t  s_imageIndex = 0;
 
-// Set while VK_BeginFrame/VK_RecreateSwapchain cannot back a swapchain
-// because the surface has zero area (window minimized, or mid-drag).
-// vkchain_set_render runs once per emulator tick regardless of window state
-// (audio keeps running while minimized), and CreateSwapchain logs a
-// "deferring" line every time it is called with a zero extent. Without this
-// flag a minimized Vulkan session would call VK_RecreateSwapchain -> log
-// "deferring" every single tick (tens of lines/sec in systemlog.txt). Instead
-// we log our own state transition once and stop retrying from here; the
-// window layer only calls vkchain_on_window_resize on WM_SIZE when the
-// window is NOT minimized (see winmain.cpp), so restoring the window is what
-// clears the deferral and retries.
-static bool s_deferredZeroExtent = false;
+// Set when a swapchain recreate attempt fails (window minimized, mid-drag,
+// or any other transient reason CreateSwapchain can fail for). vkchain_set_
+// render runs once per emulator tick regardless of window state (audio keeps
+// running while minimized), and CreateSwapchain logs a line every time it is
+// called with a zero extent, so retrying it every tick would spam
+// systemlog.txt at frame rate. While this flag is set, vkchain_set_render
+// polls GetDrawableSize roughly every 2 seconds (s_deferRetryTick) before
+// attempting a recreate: a genuinely minimized window reports zero area, so
+// the recreate call (and its log line) is skipped and the loop stays silent;
+// a window with real area is retried, self-healing without needing an
+// explicit resize event. A resize notification (vkchain_on_window_resize,
+// fired by WM_SIZE when the window is NOT minimized) also retries
+// immediately, so a drag-resize recovers on the next frame instead of
+// waiting out the timer.
+static bool     s_deferredZeroExtent = false;
+static uint32_t s_deferRetryTick = 0;
+
+// Shared "recreate or defer" path used by every call site that can hit a
+// swapchain recreate failure outside vkchain_set_render's own retry timer
+// above (VK_EndFrame's OUT_OF_DATE recovery, a vsync toggle, and a window
+// resize notification). Routing all of them through the same latch means a
+// failed recreate anywhere leaves s_deferredZeroExtent set, so the very next
+// vkchain_set_render call goes straight into the polling retry instead of
+// calling VK_BeginFrame again and logging a stray "ctx.swapchain is NULL"
+// error before the retry timer would have caught it.
+static void RecreateSwapchainOrDefer(void)
+{
+	if (VK_RecreateSwapchain(g_vk))
+	{
+		if (s_deferredZeroExtent)
+			LOG_INFO("vulkan_renderer: deferred swapchain recreated, resuming frames");
+		s_deferredZeroExtent = false;
+		s_deferRetryTick = 0;
+		return;
+	}
+
+	// Honest wording: a recreate can fail for reasons other than a
+	// zero-area surface (device-lost, out-of-memory, etc.), not just a
+	// minimized window, so this does not claim a specific cause.
+	if (!s_deferredZeroExtent)
+	{
+		s_deferredZeroExtent = true;
+		s_deferRetryTick = 0;
+		LOG_INFO("vulkan_renderer: swapchain recreate failed; deferring (retry ~2s or on resize)");
+	}
+}
 
 int vkchain_init(void)
 {
@@ -55,6 +89,7 @@ int vkchain_init(void)
 
 	s_initialized = true;
 	s_deferredZeroExtent = false;
+	s_deferRetryTick = 0;
 	LOG_INFO("vkchain_init: Vulkan chain online (validation=%d)", validation ? 1 : 0);
 	return 1;
 }
@@ -67,6 +102,7 @@ void vkchain_shutdown(void)
 	s_initialized = false;
 	s_frameOpen = false;
 	s_deferredZeroExtent = false;
+	s_deferRetryTick = 0;
 }
 
 void vkchain_set_render(void)
@@ -74,20 +110,29 @@ void vkchain_set_render(void)
 	if (!s_initialized || s_frameOpen)
 		return;
 
-	// While deferred (zero-area surface) do not retry from here: retrying
-	// every tick would call VK_RecreateSwapchain -> CreateSwapchain, which
-	// logs every attempt, at full frame rate. vkchain_on_window_resize is
-	// the only path that clears s_deferredZeroExtent (see comment above).
 	if (s_deferredZeroExtent)
+	{
+		if (++s_deferRetryTick < 120)   // retry roughly every 2 s at 60 fps
+			return;
+		s_deferRetryTick = 0;
+
+		// Poll drawable size before attempting a recreate: a genuinely
+		// minimized window reports zero here, so skip the recreate call
+		// (and CreateSwapchain's internal log line) and stay silent. Only
+		// retry the recreate once the surface has real area again.
+		int dw = 0, dh = 0;
+		if (g_vk.present)
+			g_vk.present->GetDrawableSize(&dw, &dh);
+		if (dw <= 0 || dh <= 0)
+			return;                     // genuinely minimized: silent, no log
+
+		RecreateSwapchainOrDefer();
 		return;
+	}
 
 	if (!VK_BeginFrame(g_vk, s_imageIndex))
 	{
-		if (!VK_RecreateSwapchain(g_vk))
-		{
-			s_deferredZeroExtent = true;
-			LOG_INFO("vkchain_set_render: swapchain recreate deferred (zero-area surface); will retry on resize");
-		}
+		RecreateSwapchainOrDefer();
 		return;             // skip this frame; next tick re-acquires
 	}
 	s_frameOpen = true;
@@ -106,7 +151,7 @@ void vkchain_swap_buffers(void)
 		return;
 	s_frameOpen = false;
 	if (!VK_EndFrame(g_vk, s_imageIndex))
-		VK_RecreateSwapchain(g_vk);
+		RecreateSwapchainOrDefer();
 }
 
 void vkchain_set_vsync(bool enabled)
@@ -116,7 +161,7 @@ void vkchain_set_vsync(bool enabled)
 	if (g_vk.vsync == enabled)
 		return;
 	g_vk.vsync = enabled;
-	VK_RecreateSwapchain(g_vk);   // waits device idle internally
+	RecreateSwapchainOrDefer();   // waits device idle internally
 }
 
 void vkchain_on_window_resize(int newW, int newH)
@@ -125,23 +170,10 @@ void vkchain_on_window_resize(int newW, int newH)
 	if (!s_initialized)
 		return;
 
-	// This is the only retry path while s_deferredZeroExtent is set (see
-	// vkchain_set_render): winmain.cpp only calls emulator_on_window_resize,
-	// and therefore this function, on WM_SIZE when the window is NOT
-	// minimized, so a nonzero extent is the expected case here.
-	if (VK_RecreateSwapchain(g_vk))
-	{
-		if (s_deferredZeroExtent)
-		{
-			LOG_INFO("vkchain_on_window_resize: swapchain recreated, resuming frames");
-			s_deferredZeroExtent = false;
-		}
-	}
-	else if (!s_deferredZeroExtent)
-	{
-		s_deferredZeroExtent = true;
-		LOG_INFO("vkchain_on_window_resize: swapchain recreate deferred (zero-area surface); will retry on resize");
-	}
+	// winmain.cpp only calls emulator_on_window_resize (and therefore this
+	// function) on WM_SIZE when the window is NOT minimized, so this is a
+	// fast-path retry: it does not wait for s_deferRetryTick's ~2s poll.
+	RecreateSwapchainOrDefer();
 }
 
 // --- Plans 3-6 fill these in -----------------------------------------------
