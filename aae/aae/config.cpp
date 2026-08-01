@@ -130,6 +130,12 @@ void setup_config() {
     config.corner_strength = get_config_float("main", "corner_strength", 0.85f);
     config.shots_textured  = get_config_int  ("main", "shots_textured",  0);
     config.debug = get_config_int("main", "debug", 0);
+    {
+        // Value is expected lowercase in the ini, matching house style.
+        const char* r = get_config_string("main", "renderer", "opengl");
+        config.renderer = (r && strcmp(r, "vulkan") == 0) ? RENDERER_VULKAN : RENDERER_OPENGL;
+        LOG_INFO("Config: renderer=%s", (config.renderer == RENDERER_VULKAN) ? "vulkan" : "opengl");
+    }
     config.debug_profile_code = get_config_int("main", "debug_profile_code", 0);
     config.audio_force_resample = get_config_int("main", "audio_force_resample", 0);
 

@@ -1,6 +1,11 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
+// Renderer backend selection ([main] renderer= in aae.ini, -renderer on the
+// command line). Resolved once at startup; no runtime switching (Phase 4 spec §3.1).
+#define RENDERER_OPENGL 0
+#define RENDERER_VULKAN 1
+
 typedef struct {
 	char rompath[256];
 	char samplepath[256];
@@ -71,6 +76,7 @@ typedef struct {
 	int hack;
 	int cheat;
 	int debug;
+	int renderer;         // RENDERER_OPENGL (default) or RENDERER_VULKAN
 	int debug_profile_code;
 	int audio_force_resample;
 	int kbleds;

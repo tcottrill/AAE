@@ -134,6 +134,7 @@ static int artwork_override = -1;   // -noartwork command-line override
 static int bezel_override = -1;     // -nobezel command-line override
 static int overlay_override = -1;   // -nooverlay command-line override
 static int prescale_override = -1;  // -prescale X command-line override
+static int renderer_override = -1;  // -renderer opengl|vulkan command-line override
 // TEMPORARY VARIABLE
 // Tracks the last-applied bezel state for vertical vector games so we can
 // detect mid-game toggles and resize the window accordingly.
@@ -860,6 +861,12 @@ void run_game(void)
 		config.overlay = overlay_override;
 	if (prescale_override != -1)
 		config.prescale = prescale_override;
+	// Re-apply the command line renderer override over the INI file.
+	if (renderer_override != -1)
+	{
+		config.renderer = renderer_override;
+		LOG_INFO("Cmdline: renderer=%s", (config.renderer == RENDERER_VULKAN) ? "vulkan" : "opengl");
+	}
 
 	// Reset per-game rendering suppression flags.
 	g_scanline_override = 0;
@@ -1668,6 +1675,16 @@ void emulator_init(int argc, char** argv)
 			}
 			config.debug = val;
 			debug_override = val;
+		}
+		else if (arg == "-renderer")
+		{
+			if (i + 1 < argc && argv[i + 1])
+			{
+				const std::string val = to_lowercase(argv[i + 1]);
+				if (val == "vulkan")      renderer_override = RENDERER_VULKAN;
+				else if (val == "opengl") renderer_override = RENDERER_OPENGL;
+				else LOG_INFO("-renderer: unknown value '%s' (use opengl|vulkan)", argv[i + 1]);
+			}
 		}
 	}
 
