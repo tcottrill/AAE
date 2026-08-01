@@ -31,7 +31,7 @@
 
 Pure refactor-by-move — the GL path must be bit-identical.
 
-- [ ] **Step 1: Create `raster_emit.h`**
+- [x] **Step 1: Create `raster_emit.h`**
 
 ```cpp
 #pragma once
@@ -59,7 +59,7 @@ int raster_dst_dims(int* outW, int* outH);
 void raster_emit_polys(RasterPolySink sink, void* user, int yFlip);
 ```
 
-- [ ] **Step 2: Create `raster_emit.cpp` by MOVING the loop**
+- [x] **Step 2: Create `raster_emit.cpp` by MOVING the loop**
 
 Move the body of `raster_poly_update` (opengl_renderer.cpp:181 onward — the whole orientation walk) into `raster_emit_polys`, changing ONLY:
 - the guard: keep the `!Machine || !Machine->drv || !main_bitmap` early-outs but drop the `!sc` check (sink replaces it);
@@ -74,7 +74,7 @@ Move the body of `raster_poly_update` (opengl_renderer.cpp:181 onward — the wh
 
 where `rgba` is built exactly as the original builds its color argument. `raster_dst_dims` returns the same `dstW`/`dstH` the loop computes (factor the computation so both use one path). Includes: whatever `raster_poly_update` needed (check the original's dependencies: `aae_mame_driver.h`, `osd_video.h`, `colordefs.h`, the `main_bitmap` extern, `vid_scale` extern) — but NO GL headers and NO `fast_poly.h`.
 
-- [ ] **Step 3: Shrink `raster_poly_update` to a wrapper in opengl_renderer.cpp**
+- [x] **Step 3: Shrink `raster_poly_update` to a wrapper in opengl_renderer.cpp**
 
 ```cpp
 // ---------------------------------------------------------------------------
@@ -98,11 +98,11 @@ void raster_poly_update(void)
 
 Match the original addPoly argument types exactly (read AAE's GL `Fpoly::addPoly` signature in `aae/aae/vidhrdwr/fast_poly.h` — if it takes the color as a different type/order, adapt the sink to preserve identical behavior).
 
-- [ ] **Step 4: Register, build both configs, GL-identical check**
+- [x] **Step 4: Register, build both configs, GL-identical check**
 
 Register raster_emit.cpp in vcxproj (+filters) and CMakeLists (recount the drift check yourself). Build Release + Debug x64: exit 0, no new warnings. This is a pure move — any behavior change is a bug.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git -C C:/Source2026/AAE_publish add aae/aae/aae_video/raster_emit.h aae/aae/aae_video/raster_emit.cpp aae/aae/aae_video/opengl_renderer.cpp aae/aae.vcxproj aae/aae.vcxproj.filters CMakeLists.txt
@@ -118,7 +118,7 @@ git -C C:/Source2026/AAE_publish commit -m "refactor(video): extract backend-neu
 - Create: `aae/aae/aae_video_vk/fast_poly_vk.cpp` (from `C:\Source2026\Bosconian\Bosconian\sys_graphics\fast_poly.cpp`)
 - Modify: vcxproj + filters + CMakeLists (register; recount)
 
-- [ ] **Step 1: Copy donor files verbatim, then apply ONLY these edits**
+- [x] **Step 1: Copy donor files verbatim, then apply ONLY these edits**
 
 1. **Collision renames.** Diff the donor header's global-scope names against AAE's GL `aae/aae/vidhrdwr/fast_poly.h` and rename every collision in the imported files with a `VK` suffix. At minimum `Fpoly` → `FpolyVK`; check `_fpdata`, `FastPolyVKCreateInfo`, and any file-scope helpers. Report the full rename list.
 2. **Viewport override for letterboxing.** Add to the class:
@@ -137,7 +137,7 @@ git -C C:/Source2026/AAE_publish commit -m "refactor(video): extract backend-neu
 with members `int m_vpX = 0, m_vpY = 0, m_vpW = 0, m_vpH = 0; bool m_vpOverride = false;`. In `Render`, where the donor builds `vp`/`sc` from `ctx.swapchainExtent`, use the override when set (keep the `flipViewportY` negative-height handling — apply it to the override rect the same way: `vp.y = m_vpY + m_vpH; vp.height = -(float)m_vpH;` when flipping). Scissor gets the same rect (positive height always).
 3. Includes resolve via the existing include dirs (`sys_vk.h` is on the path). ASCII-only comments; keep donor comments (especially the frame-pass contract comment at Render — it documents why no barriers/passes are opened there).
 
-- [ ] **Step 2: Register in builds, compile both configs (nothing calls it yet), commit**
+- [x] **Step 2: Register in builds, compile both configs (nothing calls it yet), commit**
 
 ```bash
 git -C C:/Source2026/AAE_publish add aae/aae/aae_video_vk/fast_poly_vk.h aae/aae/aae_video_vk/fast_poly_vk.cpp aae/aae.vcxproj aae/aae.vcxproj.filters CMakeLists.txt
@@ -152,11 +152,11 @@ git -C C:/Source2026/AAE_publish commit -m "feat(vk): import Bosconian VK Fpoly 
 - Modify: `aae/aae/aae_video_vk/vulkan_renderer.cpp`
 - Modify: `aae/system/graphics/vk/sys_vk.cpp` (clear color blue → black, one line)
 
-- [ ] **Step 1: Clear color to black**
+- [x] **Step 1: Clear color to black**
 
 In `VK_BeginFrame`, change the Plan 2 gate color to `{0.0f, 0.0f, 0.0f, 1.0f}` and update the comment: game pixels prove rendering from Plan 3 on; borders stay black like the GL chain.
 
-- [ ] **Step 2: Raster wiring in vulkan_renderer.cpp**
+- [x] **Step 2: Raster wiring in vulkan_renderer.cpp**
 
 Add includes `"fast_poly_vk.h"` and `"raster_emit.h"`, statics, and a sink:
 
@@ -252,11 +252,11 @@ In `vkchain_render`, before the drain calls:
 
 In `vkchain_shutdown`: `if (s_fpolyInit) { g_fpoly.Shutdown(g_vk); s_fpolyInit = false; }` BEFORE `VK_Shutdown` (device must still exist). Also reset `s_rasterW/H`.
 
-- [ ] **Step 3: sRGB color note (do NOT implement, document only)**
+- [x] **Step 3: sRGB color note (do NOT implement, document only)**
 
 The swapchain is sRGB; pen colors are sRGB-authored bytes fed as UNORM vertex colors — the same as the working Bosconian setup, so ship it identically. IF the user's gate reports washed-out/too-bright colors vs the GL side-by-side, the fix is a CPU sRGB→linear conversion on the pen RGB in `VkRasterSink` (8-bit LUT). Add this as a comment at the sink.
 
-- [ ] **Step 4: Build Release + Debug x64 (fresh timestamps verified), commit**
+- [x] **Step 4: Build Release + Debug x64 (fresh timestamps verified), commit**
 
 ```bash
 git -C C:/Source2026/AAE_publish add aae/aae/aae_video_vk/vulkan_renderer.cpp aae/system/graphics/vk/sys_vk.cpp
@@ -275,11 +275,11 @@ mkdir -p C:/Source2026/AAE_publish/x64/Release/shaders/vk
 cp C:/Source2026/AAE_publish/aae/x64/Release/shaders/vk/*.spv C:/Source2026/AAE_publish/x64/Release/shaders/vk/
 ```
 
-- [ ] **1. pacman renders:** `aae.exe pacman -renderer vulkan` — the maze is VISIBLE, portrait-oriented (not sideways/mirrored), letterboxed with black bars, playable with correct input. Compare colors against a `renderer=opengl` run side by side — report if VK looks washed-out/brighter (triggers the documented sRGB fix).
-- [ ] **2. A second raster game:** `aae.exe galaga -renderer vulkan` (or another raster title you have ROMs for) — renders and plays.
-- [ ] **3. Resize + fullscreen under Vulkan while pacman runs:** the game stays aspect-correct and centered at every size; minimize/restore stable.
-- [ ] **4. Vector games unaffected:** `aae.exe asteroid -renderer vulkan`, `aae.exe tempest -renderer vulkan` — still stable (blue... now BLACK window + audio; vector pixels arrive in Plan 5).
-- [ ] **5. GL regression:** `aae.exe pacman` (default GL) — identical to before this plan (the Task 1 refactor touched the GL path).
+- [x] **1. pacman renders:** `aae.exe pacman -renderer vulkan` — the maze is VISIBLE, portrait-oriented (not sideways/mirrored), letterboxed with black bars, playable with correct input. Compare colors against a `renderer=opengl` run side by side — report if VK looks washed-out/brighter (triggers the documented sRGB fix).
+- [x] **2. A second raster game:** `aae.exe galaga -renderer vulkan` (or another raster title you have ROMs for) — renders and plays.
+- [x] **3. Resize + fullscreen under Vulkan while pacman runs:** the game stays aspect-correct and centered at every size; minimize/restore stable.
+- [x] **4. Vector games unaffected:** `aae.exe asteroid -renderer vulkan`, `aae.exe tempest -renderer vulkan` — still stable (blue... now BLACK window + audio; vector pixels arrive in Plan 5).
+- [x] **5. GL regression:** `aae.exe pacman` (default GL) — identical to before this plan (the Task 1 refactor touched the GL path).
 
 ---
 
