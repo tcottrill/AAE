@@ -15,6 +15,12 @@
 #include "sys_window.h"
 #include "config.h"
 #include "emu_vector_draw.h"   // cache_clear - backend-neutral, no GL headers
+#include "mame_vector.h"       // vector_start / vector_clear_list; pulls in
+                               // aae_mame_driver.h for Machine and
+                               // VIDEO_TYPE_VECTOR (safe direction: driver
+                               // headers into the VK TU, not vulkan.h into
+                               // core TUs, so the VULKAN_H_ leak guards in
+                               // acommon.cpp et al. are unaffected)
 
 static VkContext g_vk;
 static bool      s_initialized = false;
@@ -68,10 +74,34 @@ static void RecreateSwapchainOrDefer(void)
 	}
 }
 
+// The GL chain allocates the MAME vector display list in glchain_init
+// (vector_start) for vector games; under Vulkan that path never runs, so
+// the AVG simulations (tempest et al.) would append through vector_add_point
+// into a NULL vector_list. Allocate it here instead. vector_start is
+// idempotent, so overlapping with the late-AVG/DVG driver start (which also
+// calls it) is harmless. beam_init is deliberately NOT called: it is GL-only
+// (compiles shaders, builds VAOs/VBOs) and the CPU-side beam queue needs no
+// init.
+static void EnsureVectorList(void)
+{
+	if (Machine && Machine->gamedrv &&
+	    (Machine->gamedrv->video_attributes & VIDEO_TYPE_VECTOR))
+	{
+		if (!vector_start())
+			LOG_ERROR("vkchain_init: vector_start failed (out of memory?)");
+	}
+}
+
 int vkchain_init(void)
 {
 	if (s_initialized)
-		return 1;   // re-entrant like glchain_init: run_game calls per load
+	{
+		// Re-entrant like glchain_init: run_game calls per load. A later
+		// load can be a vector game even when the first was not, so the
+		// list check runs on every load, not just the first.
+		EnsureVectorList();
+		return 1;
+	}
 
 	IPresentSurface* present = GetSystemWindow().Presentation();
 	if (!present)
@@ -87,6 +117,8 @@ int vkchain_init(void)
 		VK_Shutdown(g_vk);
 		return 0;
 	}
+
+	EnsureVectorList();
 
 	s_initialized = true;
 	s_deferredZeroExtent = false;
@@ -150,6 +182,11 @@ void vkchain_render(void)
 	// CPU (clears the beam line/join/shot lists via beam_clear plus the
 	// legacy textured-shot list, which add_tex also fills every frame).
 	cache_clear();
+
+	// Drain the MAME vector display list (AVG/DVG sims append via
+	// vector_add_point); Plan 5's VectorDrawVK consumes it instead.
+	// Pure CPU: resets the list write index (mame_vector.cpp).
+	vector_clear_list();
 }
 
 void vkchain_swap_buffers(void)

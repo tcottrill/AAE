@@ -101,9 +101,13 @@ int vector_start()
 	vector_index = 0;
 
 	/* allocate memory for tables */
-	vector_list = (point*)malloc(MAX_POINTS * sizeof(vector_list[0]));
+	/* Idempotent: vector_start is reached from glchain_init, from the
+	   late-AVG/DVG driver start, and (as of Phase 4a) from the Vulkan
+	   chain init - whichever comes first allocates, the rest reuse. */
+	if (!vector_list)
+		vector_list = (point*)malloc(MAX_POINTS * sizeof(vector_list[0]));
 
-	return 1;
+	return (vector_list != NULL) ? 1 : 0;
 }
 
 int render_clip_line(render_bounds* bounds, const render_bounds* clip)

@@ -1314,11 +1314,14 @@ bool VK_BeginFrame(VkContext& ctx, uint32_t& outImageIndex)
 	// the caller's RecreateSyncObjects recovery would save it).
 	ctx.vkResetFences_(ctx.device, 1, &ctx.inFlight[fi]);
 
-	if (s_traceCount <= 5)
-	{
-		LOG_INFO("VK_BeginFrame: acquired imageIndex=%u (fi=%u, acquireResult=%d, swapchainImages.size=%zu)",
-			outImageIndex, fi, (int)r, ctx.swapchainImages.size());
-	}
+	// Per-frame debug logging from the donor bring-up; re-enable locally when
+	// debugging frame issues. (s_traceCount stops incrementing at 5, so this
+	// <= 5 check was true every frame and flooded systemlog.txt.)
+	//if (s_traceCount <= 5)
+	//{
+	//	LOG_INFO("VK_BeginFrame: acquired imageIndex=%u (fi=%u, acquireResult=%d, swapchainImages.size=%zu)",
+	//		outImageIndex, fi, (int)r, ctx.swapchainImages.size());
+	//}
 
 	// Reset only THIS slot's command buffer. The previous code called
 	// vkResetCommandPool on the entire pool, which is a Vulkan spec
@@ -1389,21 +1392,25 @@ bool VK_BeginFrame(VkContext& ctx, uint32_t& outImageIndex)
 	ri.colorAttachmentCount = 1;
 	ri.pColorAttachments = &colorAtt;
 
-	if (s_traceCount <= 5)
-	{
-		LOG_INFO("VK_BeginFrame: about to vkCmdBeginRendering (cmd=%p, &ctx=%p, fi=%u, imgIdx=%u, ext=%ux%u, view=%p)",
-			(void*)cmd, (void*)&ctx, fi, outImageIndex, ctx.swapchainExtent.width, ctx.swapchainExtent.height,
-			(void*)ctx.swapchainViews[outImageIndex]);
-	}
+	// Per-frame debug logging from the donor bring-up; re-enable locally when
+	// debugging frame issues.
+	//if (s_traceCount <= 5)
+	//{
+	//	LOG_INFO("VK_BeginFrame: about to vkCmdBeginRendering (cmd=%p, &ctx=%p, fi=%u, imgIdx=%u, ext=%ux%u, view=%p)",
+	//		(void*)cmd, (void*)&ctx, fi, outImageIndex, ctx.swapchainExtent.width, ctx.swapchainExtent.height,
+	//		(void*)ctx.swapchainViews[outImageIndex]);
+	//}
 
 	ctx.vkCmdBeginRendering_(cmd, &ri);
 	s_framePassOpen = true;
 	ctx.activeColorFormat = ctx.swapchainFormat;
 
-	if (s_traceCount <= 5)
-	{
-		LOG_INFO("VK_BeginFrame: vkCmdBeginRendering OK, setting default viewport/scissor");
-	}
+	// Per-frame debug logging from the donor bring-up; re-enable locally when
+	// debugging frame issues.
+	//if (s_traceCount <= 5)
+	//{
+	//	LOG_INFO("VK_BeginFrame: vkCmdBeginRendering OK, setting default viewport/scissor");
+	//}
 
 	// Default full-surface viewport. Subsystems can override per-draw, but
 	// this is what they'll inherit unless they say otherwise. y-down, matching
