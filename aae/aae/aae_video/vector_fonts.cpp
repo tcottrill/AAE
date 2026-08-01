@@ -388,6 +388,11 @@ void VectorFont::End()
 		// beam queue (and vkchain_render's GUI mapping, see GuiBeamToWindowPx
 		// in vulkan_renderer.cpp) assumes the same shared 0..1024 box GL's
 		// fbo1 canvas uses for both VF text and beam content.
+		// GUI text is authored Y-down (menu rows grow downward); the GL chain
+		// compensated via the user's video.ini flip. The beam ortho is Y-up,
+		// so mirror the full 768 canvas at emission - this flips layout AND
+		// glyph strokes together, which is exactly the global fix an
+		// upside-down menu needs (gate finding 2026-08-01).
 		static constexpr float kGuiToBeamY = 1024.0f / 768.0f;
 		for (size_t i = 0; i + 1 < drawVerts.size(); i += 2)
 		{
@@ -395,7 +400,8 @@ void VectorFont::End()
 			const VFVertex& b = drawVerts[i + 1];
 			const aae::math::vec2 p0 = vf_rotate(a.pos, a.origin, a.angle);
 			const aae::math::vec2 p1 = vf_rotate(b.pos, b.origin, b.angle);
-			beam_add_line(p0.x, p0.y * kGuiToBeamY, p1.x, p1.y * kGuiToBeamY, 255, a.color);
+			beam_add_line(p0.x, (768.0f - p0.y) * kGuiToBeamY,
+			              p1.x, (768.0f - p1.y) * kGuiToBeamY, 255, a.color);
 		}
 		drawVerts.clear();
 		return;
