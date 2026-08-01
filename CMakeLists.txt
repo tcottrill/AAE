@@ -221,6 +221,7 @@ set(AAE_COMMON_SOURCES
     aae/aae/aae_video_vk/fast_poly_vk.cpp
     aae/aae/aae_video_vk/render_target_vk.cpp
     aae/aae/aae_video_vk/screen_quad_vk.cpp
+    aae/aae/aae_video_vk/vector_draw_vk.cpp
     aae/aae/aae_video_vk/vulkan_renderer.cpp
     aae/aae/acommon.cpp
     aae/aae/config.cpp
@@ -416,8 +417,8 @@ endif()
 list(LENGTH AAE_COMMON_SOURCES _aae_common_count)
 list(LENGTH AAE_PLATFORM_SOURCES _aae_platform_count)
 math(EXPR _aae_exe_count "${_aae_common_count} + ${_aae_platform_count}")
-if(WIN32 AND NOT _aae_exe_count EQUAL 54)
-    message(FATAL_ERROR "aae executable source count is ${_aae_exe_count} (common=${_aae_common_count} + platform=${_aae_platform_count}), expected 54 on Windows - it has drifted from aae/aae.vcxproj (ccpu.cpp moved to aae_core - see the comment above AAE_CORE_SOURCES; raster_emit.cpp added in Phase 4a Plan 3 Task 1, fast_poly_vk.cpp in Task 2; render_target_vk.cpp + screen_quad_vk.cpp added in Plan 4 Task 2)")
+if(WIN32 AND NOT _aae_exe_count EQUAL 55)
+    message(FATAL_ERROR "aae executable source count is ${_aae_exe_count} (common=${_aae_common_count} + platform=${_aae_platform_count}), expected 55 on Windows - it has drifted from aae/aae.vcxproj (ccpu.cpp moved to aae_core - see the comment above AAE_CORE_SOURCES; raster_emit.cpp added in Phase 4a Plan 3 Task 1, fast_poly_vk.cpp in Task 2; render_target_vk.cpp + screen_quad_vk.cpp added in Plan 4 Task 2; vector_draw_vk.cpp added in Plan 5 Task 1)")
 endif()
 
 # =============================================================================

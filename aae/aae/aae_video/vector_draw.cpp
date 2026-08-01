@@ -305,6 +305,11 @@ void beam_clear() {
     g_verts.clear();
 }
 
+// Backend-agnostic batch access (see vector_draw.h): read-only views of the
+// CPU-side beam batches for the Vulkan backend. No GL, no behavior change.
+const std::vector<BeamLine>& beam_get_lines() { return g_lines; }
+const std::vector<BeamShot>& beam_get_shots() { return g_shots; }
+
 // ----------------------------- draw -----------------------------------------
 void beam_draw_all(const mat4& proj) {
     // AA feather (logical units) from the configured smoothing, scaled by SSAA.

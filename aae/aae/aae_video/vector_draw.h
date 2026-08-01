@@ -62,4 +62,12 @@ void beam_draw_caps (const aae::math::mat4& proj, const BeamJoin* caps,  int cou
 void beam_build_caps(const BeamLine* lines, int count, float endcapMul, float cornerMul,
                      std::vector<BeamJoin>& out);
 
+// ---- Backend-agnostic batch access -----------------------------------------
+// The current frame's segment / shot batches, built by beam_add_line /
+// beam_add_shot. The Vulkan backend (vector_draw_vk) consumes these; the round
+// joins are rebuilt from the lines via beam_build_caps(), so no other internal
+// state is exposed. Pure CPU accessors - no GL, no behavior change.
+const std::vector<BeamLine>& beam_get_lines();
+const std::vector<BeamShot>& beam_get_shots();
+
 #endif // VECTOR_DRAW_H

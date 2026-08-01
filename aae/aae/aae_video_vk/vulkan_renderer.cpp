@@ -28,6 +28,8 @@
 #include "raster_emit.h"       // backend-neutral raster emit loop (Plan 3)
 #include "render_target_vk.h"  // RenderTargetVK - offscreen game RT (Plan 4)
 #include "screen_quad_vk.h"    // ScreenQuadVK - RT->swapchain composite (Plan 4)
+#include "vector_draw_vk.h"    // VectorDrawVK - beam vector renderer (Plan 5);
+                               // pulls in vector_draw.h (beam batch access)
 
 static VkContext g_vk;
 static bool      s_initialized = false;
@@ -75,6 +77,19 @@ static RenderTargetVK s_rtGame;
 static ScreenQuadVK g_screenQuad;
 static bool         s_screenQuadInit = false;
 
+// Beam vector renderer (Plan 5 Task 1): draws the frame's BeamLine/BeamJoin/
+// BeamShot batches direct to the swapchain inside the open frame pass (the
+// SSAA RT + phosphor/glow chain is Plan 5 Task 3). Game-independent (the
+// pipelines build against the swapchain format), so like ScreenQuadVK it is
+// initialized once, lazily on the first vector frame, and shut down in
+// vkchain_shutdown. s_vectorFailed latches an Init failure so the per-frame
+// retry does not spam the log; it resets on every game load (a later load
+// gets a fresh attempt). VectorDrawVK::Init is idempotent (backport fix 4c),
+// so re-Init on a format change would be safe if ever needed.
+static VectorDrawVK g_vectorDraw;
+static bool         s_vectorInit = false;
+static bool         s_vectorFailed = false;
+
 // The shared emit loop passes cell indices with size = config.prescale
 // (GL cell semantics: the GL Fpoly::addPoly multiplies x,y by size into a
 // prescaled ortho - aae/aae/vidhrdwr/fast_poly.cpp). FpolyVK::addPoly is
@@ -98,6 +113,54 @@ static bool GameIsRaster(void)
 {
 	return Machine && Machine->gamedrv &&
 		!(Machine->gamedrv->video_attributes & VIDEO_TYPE_VECTOR);
+}
+
+static bool GameIsVector(void)
+{
+	return Machine && Machine->gamedrv &&
+		(Machine->gamedrv->video_attributes & VIDEO_TYPE_VECTOR) != 0;
+}
+
+// Column-major 4x4 ortho (same math as FpolyVK::MakeOrtho / aae::math::ortho).
+// Maps x=l -> NDC -1, x=r -> +1, y=b -> NDC -1, y=t -> +1. Inverted ranges
+// (b > t) are valid and produce the corresponding axis flip.
+static void MakeOrthoColMajor(float l, float r, float b, float t, float* m)
+{
+	for (int i = 0; i < 16; ++i) m[i] = 0.0f;
+	const float rl = (r - l);
+	const float tb = (t - b);
+	m[0] = 2.0f / rl;
+	m[5] = 2.0f / tb;
+	m[10] = 1.0f;
+	m[12] = -(r + l) / rl;
+	m[13] = -(t + b) / tb;
+	m[15] = 1.0f;
+}
+
+// Lazy once-per-session init of the beam renderer (see the g_vectorDraw
+// comment). Defaults resolve to shaders/vk/vector_{line,disc,shot}_vk
+// CustomBuild output; colorFormat is left UNDEFINED so the pipelines build
+// against the swapchain format (direct-to-swapchain first cut); ssaa=1
+// (backport fix 4b divide is in place for when the SSAA RT lands).
+// beam_init() is deliberately NOT called: it is GL-only (compiles shaders,
+// builds VAOs/VBOs); the CPU-side beam arrays need no init (proven Plan 2).
+static void EnsureVectorRenderer(void)
+{
+	if (!GameIsVector() || s_vectorFailed || s_vectorInit)
+		return;
+
+	VectorDrawVKCreateInfo ci{};
+	ci.ssaa = 1;
+	if (g_vectorDraw.Init(g_vk, &ci))
+	{
+		s_vectorInit = true;
+		LOG_INFO("vkchain: VectorDrawVK online (direct to swapchain)");
+	}
+	else
+	{
+		s_vectorFailed = true;
+		LOG_ERROR("vkchain: VectorDrawVK init failed; vector game will show black");
+	}
 }
 
 // Set when a swapchain recreate attempt fails (window minimized, mid-drag,
@@ -307,6 +370,9 @@ int vkchain_init(void)
 		// because main_bitmap does not exist yet at this point in run_game.
 		s_fpolyFailed = false;
 		EnsureRasterRenderer();
+		// Same latch-reset for the beam renderer: a later load gets a
+		// fresh init attempt (the renderer itself persists across games).
+		s_vectorFailed = false;
 		return 1;
 	}
 
@@ -336,6 +402,7 @@ int vkchain_init(void)
 	EnsureVectorList();
 	s_fpolyFailed = false;
 	EnsureRasterRenderer();   // usually defers (see helper comment)
+	s_vectorFailed = false;   // beam renderer inits lazily on the first vector frame
 
 	s_initialized = true;
 	s_deferredZeroExtent = false;
@@ -365,6 +432,12 @@ void vkchain_shutdown(void)
 		g_screenQuad.Shutdown(g_vk);
 		s_screenQuadInit = false;
 	}
+	if (s_vectorInit)
+	{
+		g_vectorDraw.Shutdown(g_vk);
+		s_vectorInit = false;
+	}
+	s_vectorFailed = false;
 	if (s_rtGame.IsValid())
 		s_rtGame.Shutdown(g_vk);
 	s_fpolyFailed = false;
@@ -426,6 +499,12 @@ void vkchain_set_render(void)
 	// site (bg_renderer.cpp); here set_render IS that once-per-frame site.
 	if (s_screenQuadInit)
 		g_screenQuad.OnFrameBegin(g_vk.frameIndex);
+
+	// Beam renderer slot reset (backport fix 4a): drain the slot's retired
+	// instance buffers and reset its write heads, here where the fence wait
+	// has just proven the slot's previous frame is done.
+	if (s_vectorInit)
+		g_vectorDraw.OnFrameBegin(g_vk, g_vk.frameIndex);
 }
 
 void vkchain_render(void)
@@ -502,14 +581,119 @@ void vkchain_render(void)
 		}
 	}
 
-	// Drain the emu-side beam queue so vector games do not grow unbounded;
-	// Plan 5's VectorDrawVK consumes this queue instead. cache_clear is pure
-	// CPU (clears the beam line/join/shot lists via beam_clear plus the
-	// legacy textured-shot list, which add_tex also fills every frame).
+	// Vector path (Plan 5 Task 1): draw the frame's beam batches direct to
+	// the swapchain, inside the frame pass VK_BeginFrame opened (no
+	// suspend/resume needed -- VectorDrawVK records into an already-open
+	// pass). Order per plan: vector_update (CPU convert), Record (consume),
+	// then the clears below (post-consume drain).
+	if (s_frameOpen && GameIsVector())
+	{
+		EnsureVectorRenderer();
+
+		// Mirror glchain_render's !paused guard. Known first-cut limitation:
+		// GL freezes the last frame in its FBO while paused; direct-to-
+		// swapchain has no retained image, so a paused vector game shows
+		// black until unpause (the Task 3 RT chain restores parity).
+		if (s_vectorInit && !paused &&
+		    g_vk.swapchainExtent.width > 0 && g_vk.swapchainExtent.height > 0)
+		{
+			// CPU-only conversion (audited: mame_vector.cpp vector_update ->
+			// add_line/add_tex -> beam_add_line/beam_add_shot, no GL calls):
+			// transforms the AVG/late-DVG display list into 0..1024 beam
+			// space with driver rotation applied. Old-DVG sims (asteroid)
+			// already fed the beam arrays directly during cpu_run.
+			//
+			// Note: when config.shots_textured is set, add_tex routes shots
+			// into the legacy textured-shot list (a GL-only draw path) and
+			// they will not appear under VK; the default procedural beam
+			// shots render fine.
+			vector_update();
+
+			// ---- Projection: mirror the GL chain's net beam -> screen map.
+			//
+			// GL reference (opengl_renderer.cpp): beams draw into a square
+			// 1024x1024 FBO with ortho(0,1024,0,1024); final_render then maps
+			// that FBO onto the quad [game_rect_left..right] x
+			// [game_rect_bottom..top] in fbo4's Y-up 1024-space with
+			// flip_v=true (the chain's single vertical flip, righting MAME's
+			// y-down beam coords); end_render_fbo4's screen_rect finally
+			// letterboxes square fbo4 onto ws.aspectRatio in the window.
+			//
+			// Net GL map, reproduced here directly (fx,fy = fbo4 coords):
+			//   fx = grL + (bx/1024)*(grR-grL)
+			//   fy = grT - (by/1024)*(grT-grB)      <- the one flip
+			//   window px (y-up) = letterbox(lx,ly,vw,vh) of fbo4 0..1024
+			// We draw with a full-swapchain viewport and fold the letterbox +
+			// game_rect + flip into one ortho by inverting that map at the
+			// swapchain edges (beam-space coords at window left/right/bottom/
+			// top). The ortho comes out Y-inverted (b > t), which combined
+			// with VectorDrawVK's flipped (negative-height) viewport yields:
+			//
+			// Paper trace (defaults grL=0 grR=1024 grB=0 grT=1024, exact-fit
+			// letterbox): beam (0,0) = MAME top-left. x: bx=0 -> fx=0 ->
+			// window x = lx (letterbox left). y: by=0 -> fy=1024 -> ortho t
+			// ~= 0 -> NDC y=+1 -> negative-height viewport maps NDC +1 to
+			// framebuffer row 0 = window TOP. So beam (0,0) renders at the
+			// letterbox's top-left, exactly where GL puts it (GL: by=0 ->
+			// FBO v=0 -> flip_v quad top -> fbo4 y=grT -> screen_rect top).
+			const int sw = (int)g_vk.swapchainExtent.width;
+			const int sh = (int)g_vk.swapchainExtent.height;
+
+			// Aspect-fit letterbox, same math as the raster branch /
+			// Rect2::UpdateScreenRect. Vector display aspect = the window
+			// setup's aspect (Step 12 stores the game aspect there for GL's
+			// screen_rect; 4:3 fallback matches Rect2's).
+			float vecAspect = GetWindowSetup().aspectRatio;
+			if (vecAspect <= 0.0f)
+				vecAspect = 4.0f / 3.0f;
+			int vw = sw, vh = (int)(sw / vecAspect + 0.5f);
+			if (vh > sh) { vh = sh; vw = (int)(sh * vecAspect + 0.5f); }
+			if (vw < 1) vw = 1;
+			if (vh < 1) vh = 1;
+			const float lx = (float)((sw - vw) / 2);
+			const float ly = (float)((sh - vh) / 2);
+
+			// Per-game CRT rect in fbo4 1024-space (aae_mame_driver.h /
+			// config.cpp; defaults 0..1024). Degenerate values fall back.
+			float grL = (float)game_rect_left,   grR = (float)game_rect_right;
+			float grB = (float)game_rect_bottom, grT = (float)game_rect_top;
+			if (grR - grL < 1.0f) { grL = 0.0f; grR = 1024.0f; }
+			if (grT - grB < 1.0f) { grB = 0.0f; grT = 1024.0f; }
+
+			// Invert the beam->window map at the swapchain edges.
+			const float fx0 = (0.0f - lx) * 1024.0f / (float)vw;       // window left
+			const float fx1 = ((float)sw - lx) * 1024.0f / (float)vw;  // window right
+			const float ol = (fx0 - grL) * 1024.0f / (grR - grL);
+			const float orr = (fx1 - grL) * 1024.0f / (grR - grL);
+			const float fy0 = (0.0f - ly) * 1024.0f / (float)vh;       // window bottom (y-up)
+			const float fy1 = ((float)sh - ly) * 1024.0f / (float)vh;  // window top
+			const float ob = (grT - fy0) * 1024.0f / (grT - grB);      // beam y at window bottom
+			const float ot = (grT - fy1) * 1024.0f / (grT - grB);      // beam y at window top
+
+			float proj[16];
+			MakeOrthoColMajor(ol, orr, ob, ot, proj);
+
+			// Blend selection mirrors beam_draw_all(): color games additive,
+			// B/W alpha-over with the painter's sort inside Record.
+			const bool additive = Machine && Machine->drv &&
+				(Machine->drv->video_attributes & VECTOR_USES_COLOR) != 0;
+
+			VkCommandBuffer cmd = g_vk.cmdBuffers[g_vk.frameIndex];
+			// 0,0 target dims = record against the swapchain extent
+			// (direct-to-swapchain first cut; Task 3 passes the RT dims).
+			g_vectorDraw.Record(g_vk, cmd, g_vk.frameIndex, proj, additive, 0, 0);
+		}
+	}
+
+	// Post-consume clears (Plan 5 order: vector_update, Record, clear).
+	// cache_clear is pure CPU: clears the beam line/join/shot arrays
+	// VectorDrawVK just consumed (beam_clear) plus the legacy textured-shot
+	// list. Also keeps the queues from growing unbounded on raster/GUI
+	// frames, exactly as the Plan 2 drain-only calls did.
 	cache_clear();
 
 	// Drain the MAME vector display list (AVG/DVG sims append via
-	// vector_add_point); Plan 5's VectorDrawVK consumes it instead.
+	// vector_add_point; vector_update consumed it above on vector frames).
 	// Pure CPU: resets the list write index (mame_vector.cpp).
 	vector_clear_list();
 }
