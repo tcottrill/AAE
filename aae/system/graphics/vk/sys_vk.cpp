@@ -1371,11 +1371,13 @@ bool VK_BeginFrame(VkContext& ctx, uint32_t& outImageIndex)
 
 	// Open the frame's render pass. LOAD_OP_CLEAR so a missing BG draw still
 	// gives us a defined starting color and no sampling-from-uninitialized.
-	// Plan 2 gate color: prove VK is presenting (raster/vector chains draw over this from Plan 3 on).
+	// Black from Plan 3 on: game pixels are the proof of rendering now, and
+	// the letterbox borders must be black like the GL chain. (Plan 2 used a
+	// gate blue here to prove presentation before anything drew.)
 	VkClearValue clearVal{};
-	clearVal.color.float32[0] = 0.02f;
-	clearVal.color.float32[1] = 0.05f;
-	clearVal.color.float32[2] = 0.20f;
+	clearVal.color.float32[0] = 0.0f;
+	clearVal.color.float32[1] = 0.0f;
+	clearVal.color.float32[2] = 0.0f;
 	clearVal.color.float32[3] = 1.0f;
 
 	VkRenderingAttachmentInfo colorAtt{ VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };

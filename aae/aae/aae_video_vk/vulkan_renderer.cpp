@@ -21,11 +21,43 @@
                                // headers into the VK TU, not vulkan.h into
                                // core TUs, so the VULKAN_H_ leak guards in
                                // acommon.cpp et al. are unaffected)
+#include "fast_poly_vk.h"      // FpolyVK - raster quad renderer (Plan 3)
+#include "raster_emit.h"       // backend-neutral raster emit loop (Plan 3)
 
 static VkContext g_vk;
 static bool      s_initialized = false;
 static bool      s_frameOpen = false;
 static uint32_t  s_imageIndex = 0;
+
+// Raster path (Plan 3): FpolyVK draws main_bitmap's pixels as quads into the
+// frame pass. s_rasterW/H are the post-orientation game dims in SOURCE
+// pixels; they double as the FpolyVK ortho extents (the shared emit loop
+// outputs unscaled source-pixel coords with size = config.prescale, exactly
+// like the GL path - no vid_scale anywhere; the letterbox viewport does the
+// scaling to window size). s_fpolyFailed latches an Init failure so the
+// lazy per-frame retry does not spam the log; it resets on every game load.
+static FpolyVK  g_fpoly;
+static bool     s_fpolyInit = false;
+static bool     s_fpolyFailed = false;
+static int      s_rasterW = 0;     // post-orientation dims, source pixels
+static int      s_rasterH = 0;
+
+// sRGB contingency note (Plan 3 Task 3, documented, NOT implemented): the
+// swapchain can be an sRGB format while the pen colors are sRGB-authored
+// bytes fed as UNORM vertex colors - identical to the proven Bosconian
+// setup, so it ships as-is. IF the user gate reports washed-out/too-bright
+// colors vs the GL chain side by side, the fix is a CPU sRGB->linear
+// conversion of the pen RGB here (8-bit LUT applied to rgba's color bytes).
+static void VkRasterSink(void* user, float x, float y, float size, uint32_t rgba)
+{
+	((FpolyVK*)user)->addPoly(x, y, size, rgba);
+}
+
+static bool GameIsRaster(void)
+{
+	return Machine && Machine->gamedrv &&
+		!(Machine->gamedrv->video_attributes & VIDEO_TYPE_VECTOR);
+}
 
 // Set when a swapchain recreate attempt fails (window minimized, mid-drag,
 // or any other transient reason CreateSwapchain can fail for). vkchain_set_
@@ -92,6 +124,68 @@ static void EnsureVectorList(void)
 	}
 }
 
+// Mirrors EnsureVectorList for the raster path: (re)build the FpolyVK
+// renderer whenever a raster game needs one. Handles fresh init, a raster
+// game following a vector game (s_fpolyInit false), and a raster game with
+// DIFFERENT post-orientation dims following another raster game (Shutdown +
+// re-Init so the ortho matches the new game).
+//
+// Called from both vkchain_init paths AND from vkchain_render's raster
+// block. The render-path call is required, not belt-and-braces: run_game
+// calls init_gl (Step 4, aae_emulator.cpp:920) before vh_open (Step 11,
+// :1017) creates main_bitmap, so raster_dst_dims() returns 0 during
+// vkchain_init on a fresh load and the real init happens lazily on the
+// first rendered frame. Machine->gamedrv/Machine->drv ARE populated by
+// init_gl time (run_game logs gamedrv->desc at :874 and reads
+// drv->rotation at :887), so GameIsRaster and the dims math are safe in
+// both call sites. Init failure latches s_fpolyFailed (reset per game
+// load in vkchain_init) so the per-frame call does not retry-spam.
+static void EnsureRasterRenderer(void)
+{
+	if (!GameIsRaster() || s_fpolyFailed)
+		return;
+
+	int newW = 0, newH = 0;
+	if (!raster_dst_dims(&newW, &newH))
+		return;     // main_bitmap not created yet (pre-vh_open); retry later
+
+	if (s_fpolyInit && (newW == s_rasterW && newH == s_rasterH))
+		return;     // up to date
+
+	if (s_fpolyInit)
+	{
+		// Game shape changed: rebuild. In-flight frames may still reference
+		// the old pipeline/VBO, so drain the device first (game switches are
+		// rare; the wait is not on the per-frame path).
+		if (g_vk.device && g_vk.vkDeviceWaitIdle_)
+			g_vk.vkDeviceWaitIdle_(g_vk.device);
+		g_fpoly.Shutdown(g_vk);
+		s_fpolyInit = false;
+	}
+
+	s_rasterW = newW;
+	s_rasterH = newH;
+
+	FastPolyVKCreateInfo ci{};
+	ci.vertSpvPath = "shaders/vk/fast_poly_vk.vert.spv";
+	ci.fragSpvPath = "shaders/vk/fast_poly_vk.frag.spv";
+	ci.flipViewportY = true;
+	// CORRECTED (Task 1 finding): the shared emit loop outputs UNSCALED
+	// source-pixel coords with size = config.prescale, exactly like the
+	// GL path. The ortho therefore spans the post-orientation source
+	// dims - no vid_scale anywhere.
+	if (g_fpoly.Init(g_vk, s_rasterW, s_rasterH, &ci))
+	{
+		s_fpolyInit = true;
+		LOG_INFO("vkchain: FpolyVK online (%dx%d source pixels)", s_rasterW, s_rasterH);
+	}
+	else
+	{
+		s_fpolyFailed = true;
+		LOG_ERROR("vkchain: FpolyVK init failed; raster game will show black");
+	}
+}
+
 int vkchain_init(void)
 {
 	if (s_initialized)
@@ -100,6 +194,13 @@ int vkchain_init(void)
 		// load can be a vector game even when the first was not, so the
 		// list check runs on every load, not just the first.
 		EnsureVectorList();
+		// New game load: allow a fresh FpolyVK init attempt even if the
+		// previous game's init failed, then rebuild if the shape changed
+		// (raster->raster with different dims) or init for the first time
+		// (raster after vector). Usually defers to the render-path call
+		// because main_bitmap does not exist yet at this point in run_game.
+		s_fpolyFailed = false;
+		EnsureRasterRenderer();
 		return 1;
 	}
 
@@ -119,6 +220,8 @@ int vkchain_init(void)
 	}
 
 	EnsureVectorList();
+	s_fpolyFailed = false;
+	EnsureRasterRenderer();   // usually defers (see helper comment)
 
 	s_initialized = true;
 	s_deferredZeroExtent = false;
@@ -131,6 +234,20 @@ void vkchain_shutdown(void)
 {
 	if (!s_initialized)
 		return;
+	// FpolyVK owns device objects, so it must go before VK_Shutdown (which
+	// destroys the device). VK_Shutdown waits device-idle internally, but
+	// buffer/pipeline destruction here races nothing: the app is tearing
+	// down and no frame is open (winmain drains before shutdown).
+	if (s_fpolyInit)
+	{
+		if (g_vk.device && g_vk.vkDeviceWaitIdle_)
+			g_vk.vkDeviceWaitIdle_(g_vk.device);
+		g_fpoly.Shutdown(g_vk);
+		s_fpolyInit = false;
+	}
+	s_fpolyFailed = false;
+	s_rasterW = 0;
+	s_rasterH = 0;
 	VK_Shutdown(g_vk);
 	s_initialized = false;
 	s_frameOpen = false;
@@ -173,9 +290,35 @@ void vkchain_set_render(void)
 
 void vkchain_render(void)
 {
-	// Plan 2: the frame pass opened by VK_BeginFrame clears to the gate
-	// color; there is nothing to record yet. Raster (Plan 3), post/artwork
-	// (Plan 4), vector (Plan 5) and GUI (Plan 6) record here.
+	// Raster path (Plan 3): emit main_bitmap through the shared loop into
+	// FpolyVK and record its draws into the frame pass VK_BeginFrame opened.
+	// Post/artwork (Plan 4), vector (Plan 5) and GUI (Plan 6) follow.
+	if (s_frameOpen && GameIsRaster())
+	{
+		// Lazy init/rebuild: main_bitmap does not exist yet when
+		// vkchain_init runs (see EnsureRasterRenderer's comment), so the
+		// first frame of a raster game lands here with s_fpolyInit false.
+		if (!s_fpolyInit)
+			EnsureRasterRenderer();
+
+		if (s_fpolyInit)
+		{
+			raster_emit_polys(VkRasterSink, &g_fpoly, /*yFlip=*/1);
+
+			// Aspect-fit letterbox: fit the post-orientation game rect into
+			// the swapchain, centered. Natural pixel aspect for Plan 3; the
+			// layout system's aspect overrides arrive with Plan 4.
+			const float gameAspect = (float)s_rasterW / (float)s_rasterH;
+			const int sw = (int)g_vk.swapchainExtent.width;
+			const int sh = (int)g_vk.swapchainExtent.height;
+			int vw = sw, vh = (int)(sw / gameAspect + 0.5f);
+			if (vh > sh) { vh = sh; vw = (int)(sh * gameAspect + 0.5f); }
+			g_fpoly.SetViewportRect((sw - vw) / 2, (sh - vh) / 2, vw, vh);
+
+			g_fpoly.Render(g_vk, g_vk.cmdBuffers[g_vk.frameIndex],
+				s_imageIndex, g_vk.frameIndex, false, 0.0f, 0.0f, 0.0f, 0.0f);
+		}
+	}
 
 	// Drain the emu-side beam queue so vector games do not grow unbounded;
 	// Plan 5's VectorDrawVK consumes this queue instead. cache_clear is pure
