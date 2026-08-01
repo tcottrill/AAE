@@ -35,9 +35,9 @@
 
 **Files:** Modify `aae/aae/aae_video_vk/fast_poly_vk.{h,cpp}`
 
-- [ ] Replace the single `m_vbo/m_vboMem/m_mappedVBO/m_vboCapacityVerts` with per-frame-slot arrays sized `VkContext::kFramesInFlight`, plus a per-slot stale-buffer list drained on next visit to the slot (after `VK_BeginFrame`'s fence wait proves the GPU is done). Pattern per bug-catalog entry 3; `EnsureVBOCapacity(ctx, frameIndex, wantVerts)` grows ONLY the current slot, pushing the old buffer to that slot's stale list instead of destroying it immediately. `Render` uploads to and binds `m_vbo[frameIndex]`. `Shutdown` destroys all slots + drains all stale lists. Add a comment noting entry 12 (append discipline) is not needed while Render is called once per frame, and what to do if that changes.
-- [ ] Add a `VkFormat colorFormat` parameter to `Init` (default `VK_FORMAT_UNDEFINED` = use `ctx.swapchainFormat`, preserving Plan 3 behavior) and build the pipeline against it — Task 3 passes the RT format.
-- [ ] Build both configs; commit `"fix(vk): FpolyVK per-frame-slot VBOs (bug catalog entry 3) + pipeline color-format parameter"`.
+- [x] Replace the single `m_vbo/m_vboMem/m_mappedVBO/m_vboCapacityVerts` with per-frame-slot arrays sized `VkContext::kFramesInFlight`, plus a per-slot stale-buffer list drained on next visit to the slot (after `VK_BeginFrame`'s fence wait proves the GPU is done). Pattern per bug-catalog entry 3; `EnsureVBOCapacity(ctx, frameIndex, wantVerts)` grows ONLY the current slot, pushing the old buffer to that slot's stale list instead of destroying it immediately. `Render` uploads to and binds `m_vbo[frameIndex]`. `Shutdown` destroys all slots + drains all stale lists. Add a comment noting entry 12 (append discipline) is not needed while Render is called once per frame, and what to do if that changes.
+- [x] Add a `VkFormat colorFormat` field to `FastPolyVKCreateInfo` (default `VK_FORMAT_UNDEFINED` = use `ctx.swapchainFormat`, preserving Plan 3 behavior) and build the pipeline against it — Task 3 passes the RT format. (Implemented as a CreateInfo field rather than a separate `Init` parameter, matching the existing `flipViewportY`/`initialCapacityVerts` pattern on the same struct.)
+- [x] Build both configs; commit `"fix(vk): FpolyVK per-frame-slot VBOs (bug catalog entry 3) + pipeline color-format parameter"`.
 
 ### Task 2: Import RenderTargetVK + ScreenQuadVK
 

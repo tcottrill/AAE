@@ -62,6 +62,13 @@ struct FastPolyVKCreateInfo
 
     // Initial VBO capacity in vertices (grows automatically).
     uint32_t initialCapacityVerts = 8192;
+
+    // Color attachment format to build the pipeline against. VK_FORMAT_UNDEFINED
+    // (default) means "use ctx.swapchainFormat", preserving Plan 3 behavior for
+    // the current caller (vulkan_renderer.cpp), which composites straight to the
+    // swapchain. Plan 4 Task 3 passes the offscreen RenderTargetVK's format once
+    // FpolyVK starts rendering into the game RT instead.
+    VkFormat colorFormat = VK_FORMAT_UNDEFINED;
 };
 
 class FpolyVK {
@@ -119,10 +126,37 @@ private:
     VkDeviceMemory        m_uboMem[VkContext::kFramesInFlight]{};
     void* m_mappedUBO[VkContext::kFramesInFlight]{};
 
-    VkBuffer              m_vbo = VK_NULL_HANDLE;
-    VkDeviceMemory        m_vboMem = VK_NULL_HANDLE;
-    void* m_mappedVBO = nullptr;
-    uint32_t              m_vboCapacityVerts = 0;
+    // Per-frame-slot VBOs (bug catalog entry 3): a single persistently-mapped
+    // VBO memcpy'd every frame races the previous frame's in-flight GPU read
+    // (kFramesInFlight=2; VK_BeginFrame's fence wait only proves frame N-2 is
+    // done, not N-1, for the OTHER slot). Each slot owns its own buffer, so
+    // frame N only ever touches m_vbo[frameIndex], never a slot the GPU may
+    // still be reading. When a slot's buffer must grow, the old buffer is
+    // pushed onto that slot's stale list instead of being destroyed
+    // immediately (the GPU may still be reading it from the in-flight
+    // submission that used it); the stale list is drained at the top of
+    // Render() for that slot, which is only reached after VK_BeginFrame's
+    // fence wait has proven the GPU is done with this slot's previous frame.
+    //
+    // Entry 12 (append-discipline / per-slot write-head) is NOT needed here:
+    // Render() is called at most once per frame per FpolyVK instance (see
+    // vulkan_renderer.cpp's single vkchain_render call site), so there is no
+    // intra-frame second flush to race against the first. If a future change
+    // ever calls Render() more than once per frame for the same instance,
+    // adopt the write-head append pattern from bug catalog entry 12 (track a
+    // per-slot vertex write offset, bias firstVertex in the draw call) instead
+    // of the current "upload at offset 0, draw, clear" behavior.
+    VkBuffer       m_vbo[VkContext::kFramesInFlight]{};
+    VkDeviceMemory m_vboMem[VkContext::kFramesInFlight]{};
+    void*          m_mappedVBO[VkContext::kFramesInFlight]{};
+    uint32_t       m_vboCapacityVerts[VkContext::kFramesInFlight]{};
+
+    struct StaleBuffer { VkBuffer buf; VkDeviceMemory mem; void* mapped; };
+    std::vector<StaleBuffer> m_staleBuffers[VkContext::kFramesInFlight];
+
+    // Pipeline color attachment format (Plan 4 Task 1): VK_FORMAT_UNDEFINED
+    // resolves to ctx.swapchainFormat at Init time (Plan 3 behavior).
+    VkFormat m_colorFormat = VK_FORMAT_UNDEFINED;
 
     // State
     int  m_surfaceW = 0;
@@ -160,7 +194,8 @@ private:
         VkImageLayout oldLayout,
         VkImageLayout newLayout);
 
-    bool EnsureVBOCapacity(VkContext& ctx, uint32_t wantVerts);
+    bool EnsureVBOCapacity(VkContext& ctx, uint32_t frameIndex, uint32_t wantVerts);
+    void DrainStaleBuffers(VkContext& ctx, uint32_t frameIndex);
     void UpdateGlobals(VkContext& ctx, uint32_t frameIndex);
 };
 

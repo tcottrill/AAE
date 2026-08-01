@@ -339,10 +339,17 @@ bool FpolyVK::Init(VkContext& ctx, int surfaceW, int surfaceH, const FastPolyVKC
         ctx.vkUpdateDescriptorSets_(ctx.device, 1, &w, 0, nullptr);
     }
 
-    // VBO (persistently mapped, grows as needed)
-    m_vboCapacityVerts = (ci.initialCapacityVerts > 0) ? ci.initialCapacityVerts : 8192;
-    if (!EnsureVBOCapacity(ctx, m_vboCapacityVerts))
-        return false;
+    // VBOs (per-frame-slot, persistently mapped, grow as needed -- bug
+    // catalog entry 3; see the member comment in fast_poly_vk.h). The donor
+    // allocated a single initial buffer; now every slot gets one up front.
+    m_colorFormat = ci.colorFormat;
+    const uint32_t initCap = (ci.initialCapacityVerts > 0) ? ci.initialCapacityVerts : 8192;
+    for (uint32_t i = 0; i < VkContext::kFramesInFlight; ++i)
+    {
+        m_vboCapacityVerts[i] = initCap;
+        if (!EnsureVBOCapacity(ctx, i, initCap))
+            return false;
+    }
 
     // Shaders
     VkShaderModule vs = CreateShaderModuleFromFile(ctx, ci.vertSpvPath);
@@ -419,10 +426,17 @@ bool FpolyVK::Init(VkContext& ctx, int surfaceW, int surfaceH, const FastPolyVKC
     dyn.dynamicStateCount = 2;
     dyn.pDynamicStates = dynStates;
 
-    // Dynamic rendering info (swapchain format)
+    // Dynamic rendering info: build against the caller-supplied color format
+    // (Plan 4 Task 1), falling back to ctx.swapchainFormat when unset --
+    // preserves Plan 3 behavior for the current caller (vulkan_renderer.cpp),
+    // which does not yet pass a format and composites straight to the
+    // swapchain. Task 3 passes the offscreen RenderTargetVK's format.
+    const VkFormat pipelineColorFormat =
+        (m_colorFormat != VK_FORMAT_UNDEFINED) ? m_colorFormat : ctx.swapchainFormat;
+
     VkPipelineRenderingCreateInfo pr{ VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO };
     pr.colorAttachmentCount = 1;
-    pr.pColorAttachmentFormats = &ctx.swapchainFormat;
+    pr.pColorAttachmentFormats = &pipelineColorFormat;
 
     VkGraphicsPipelineCreateInfo gp{ VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
     gp.pNext = &pr;
@@ -454,7 +468,16 @@ bool FpolyVK::Init(VkContext& ctx, int surfaceW, int surfaceH, const FastPolyVKC
 
 void FpolyVK::Shutdown(VkContext& ctx)
 {
-    DestroyBuffer(ctx, m_vbo, m_vboMem, &m_mappedVBO);
+    // Destroy every slot's buffer AND drain every slot's stale list. By
+    // shutdown time the caller has already device-waited-idle (see
+    // vulkan_renderer.cpp's vkchain_shutdown/EnsureRasterRenderer), so no
+    // in-flight submission can still be reading any of these.
+    for (uint32_t i = 0; i < VkContext::kFramesInFlight; ++i)
+    {
+        DestroyBuffer(ctx, m_vbo[i], m_vboMem[i], &m_mappedVBO[i]);
+        DrainStaleBuffers(ctx, i);
+        m_vboCapacityVerts[i] = 0;
+    }
 
     for (uint32_t i = 0; i < VkContext::kFramesInFlight; ++i)
         DestroyBuffer(ctx, m_ubo[i], m_uboMem[i], &m_mappedUBO[i]);
@@ -464,7 +487,6 @@ void FpolyVK::Shutdown(VkContext& ctx)
     if (m_descPool) { ctx.vkDestroyDescriptorPool_(ctx.device, m_descPool, nullptr); m_descPool = VK_NULL_HANDLE; }
     if (m_setLayout) { ctx.vkDestroyDescriptorSetLayout_(ctx.device, m_setLayout, nullptr); m_setLayout = VK_NULL_HANDLE; }
 
-    m_vboCapacityVerts = 0;
     vertices.clear();
 }
 
@@ -476,31 +498,60 @@ void FpolyVK::SetSurfaceSize(int surfaceW, int surfaceH)
 
 // -----------------------------------------------------------------------------
 // EnsureVBOCapacity
+// Operates on the CURRENT slot (frameIndex) only. On growth, the old
+// {buf, mem, mapped} is pushed onto that slot's stale list rather than
+// destroyed immediately -- the GPU may still be reading it from an
+// in-flight submission (bug catalog entry 3). The stale list is drained
+// in DrainStaleBuffers, called at the top of Render() for this slot, after
+// VK_BeginFrame's fence wait has proven the GPU is done with it.
 // -----------------------------------------------------------------------------
-bool FpolyVK::EnsureVBOCapacity(VkContext& ctx, uint32_t wantVerts)
+bool FpolyVK::EnsureVBOCapacity(VkContext& ctx, uint32_t frameIndex, uint32_t wantVerts)
 {
-    if (wantVerts <= m_vboCapacityVerts && m_vbo && m_vboMem && m_mappedVBO)
+    if (wantVerts <= m_vboCapacityVerts[frameIndex] && m_vbo[frameIndex] && m_vboMem[frameIndex] && m_mappedVBO[frameIndex])
         return true;
 
-    uint32_t newCap = (m_vboCapacityVerts > 0) ? m_vboCapacityVerts : 8192;
+    uint32_t newCap = (m_vboCapacityVerts[frameIndex] > 0) ? m_vboCapacityVerts[frameIndex] : 8192;
     while (newCap < wantVerts)
         newCap *= 2;
 
-    DestroyBuffer(ctx, m_vbo, m_vboMem, &m_mappedVBO);
+    // Retire the old buffer to this slot's stale list instead of destroying
+    // it now -- do NOT call DestroyBuffer here.
+    if (m_vbo[frameIndex] || m_vboMem[frameIndex] || m_mappedVBO[frameIndex])
+    {
+        StaleBuffer sb{ m_vbo[frameIndex], m_vboMem[frameIndex], m_mappedVBO[frameIndex] };
+        m_staleBuffers[frameIndex].push_back(sb);
+        m_vbo[frameIndex] = VK_NULL_HANDLE;
+        m_vboMem[frameIndex] = VK_NULL_HANDLE;
+        m_mappedVBO[frameIndex] = nullptr;
+    }
 
     VkDeviceSize bytes = (VkDeviceSize)newCap * (VkDeviceSize)sizeof(_fpdataVK);
     if (!CreateBuffer(ctx,
         bytes,
         VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-        m_vbo, m_vboMem, &m_mappedVBO))
+        m_vbo[frameIndex], m_vboMem[frameIndex], &m_mappedVBO[frameIndex]))
     {
-        LOG_ERROR("FpolyVK: CreateBuffer(VBO) failed");
+        LOG_ERROR("FpolyVK: CreateBuffer(VBO) failed (frameIndex=%u)", frameIndex);
         return false;
     }
 
-    m_vboCapacityVerts = newCap;
+    m_vboCapacityVerts[frameIndex] = newCap;
     return true;
+}
+
+// -----------------------------------------------------------------------------
+// DrainStaleBuffers
+// Unmaps + destroys every retired buffer for this slot. Only safe to call
+// once VK_BeginFrame's fence wait has proven the GPU is done with the
+// in-flight submission(s) that may have referenced these buffers -- i.e.
+// at the top of Render() for this frameIndex, before any new upload.
+// -----------------------------------------------------------------------------
+void FpolyVK::DrainStaleBuffers(VkContext& ctx, uint32_t frameIndex)
+{
+    for (auto& sb : m_staleBuffers[frameIndex])
+        DestroyBuffer(ctx, sb.buf, sb.mem, &sb.mapped);
+    m_staleBuffers[frameIndex].clear();
 }
 
 void FpolyVK::UpdateGlobals(VkContext& ctx, uint32_t frameIndex)
@@ -544,17 +595,26 @@ void FpolyVK::Render(VkContext& ctx,
     bool clear,
     float clearR, float clearG, float clearB, float clearA)
 {
-    if (vertices.empty())
-        return;
-
     if (frameIndex >= VkContext::kFramesInFlight)
         return;
 
-    if (!EnsureVBOCapacity(ctx, (uint32_t)vertices.size()))
+    // Drain this slot's stale buffers at the top of Render, before any
+    // upload, regardless of whether this particular frame has polys queued.
+    // We are only here because the caller's VK_BeginFrame already
+    // fence-waited on this slot, which proves the GPU is done with whatever
+    // this slot's previous frame referenced (bug catalog entry 3) -- so it
+    // is safe to unmap/destroy any buffers this slot retired last time it
+    // grew.
+    DrainStaleBuffers(ctx, frameIndex);
+
+    if (vertices.empty())
         return;
 
-    // Upload CPU vertices -> mapped VBO
-    memcpy(m_mappedVBO, vertices.data(), sizeof(_fpdataVK) * vertices.size());
+    if (!EnsureVBOCapacity(ctx, frameIndex, (uint32_t)vertices.size()))
+        return;
+
+    // Upload CPU vertices -> this slot's mapped VBO
+    memcpy(m_mappedVBO[frameIndex], vertices.data(), sizeof(_fpdataVK) * vertices.size());
 
     UpdateGlobals(ctx, frameIndex);
 
@@ -607,7 +667,7 @@ void FpolyVK::Render(VkContext& ctx,
         m_pipeLayout, 0, 1, &m_descSets[frameIndex], 0, nullptr);
 
     VkDeviceSize off = 0;
-    ctx.vkCmdBindVertexBuffers_(cmd, 0, 1, &m_vbo, &off);
+    ctx.vkCmdBindVertexBuffers_(cmd, 0, 1, &m_vbo[frameIndex], &off);
 
     ctx.vkCmdDraw_(cmd, (uint32_t)vertices.size(), 1, 0, 0);
 
