@@ -28,6 +28,12 @@
 #error "windows.h leaked into driver code"
 #endif
 
+// Phase 4 boundary check (spec sec. 3.5): the emulation core must never see
+// Vulkan headers. Mirrors the _WINDOWS_ leak guard idiom from Phase 1.
+#ifdef VULKAN_H_
+#error "vulkan.h leaked into driver code"
+#endif
+
 uint8_t m_p1 = 0;
 uint8_t m_p2 = 0;
 

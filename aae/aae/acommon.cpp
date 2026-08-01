@@ -38,6 +38,12 @@
 #error "windows.h leaked into acommon.cpp"
 #endif
 
+// Phase 4 boundary check (spec sec. 3.5): the emulation core must never see
+// Vulkan headers. Mirrors the _WINDOWS_ leak guard idiom from Phase 1.
+#ifdef VULKAN_H_
+#error "vulkan.h leaked into acommon.cpp"
+#endif
+
 // Regression guard: this file must never see OpenGL headers. If this fires,
 // a render header re-leaked glew.h — fix the header, not this guard.
 #ifdef __glew_h__

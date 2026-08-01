@@ -41,6 +41,12 @@
 #error "os_input.cpp is core code and must not see windows.h - check your includes"
 #endif
 
+// Phase 4 boundary check (spec sec. 3.5): the emulation core must never see
+// Vulkan headers. Mirrors the _WINDOWS_ leak guard idiom from Phase 1.
+#ifdef VULKAN_H_
+#error "os_input.cpp is core code and must not see vulkan.h - check your includes"
+#endif
+
 int joy_type = -1;
 int use_mouse = 1;
 int joystick = 1;

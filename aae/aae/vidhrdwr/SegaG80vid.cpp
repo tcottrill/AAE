@@ -21,6 +21,12 @@
 #error "windows.h leaked into the emulation core"
 #endif
 
+// Phase 4 boundary check (spec sec. 3.5): the emulation core must never see
+// Vulkan headers. Mirrors the _WINDOWS_ leak guard idiom from Phase 1.
+#ifdef VULKAN_H_
+#error "vulkan.h leaked into the emulation core"
+#endif
+
 #pragma warning( disable : 4996 4244)
 
 // This was the very old, inacurate video from the old version of M.A.M.E. (TM)

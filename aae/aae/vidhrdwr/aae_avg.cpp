@@ -19,6 +19,12 @@
 #error "windows.h leaked into the emulation core"
 #endif
 
+// Phase 4 boundary check (spec sec. 3.5): the emulation core must never see
+// Vulkan headers. Mirrors the _WINDOWS_ leak guard idiom from Phase 1.
+#ifdef VULKAN_H_
+#error "vulkan.h leaked into the emulation core"
+#endif
+
 #pragma warning( disable : 4996 4244)
 
 unsigned char vec_ram[0x8000]; // Only used by aztarac and quantum, review.
