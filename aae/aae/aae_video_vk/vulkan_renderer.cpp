@@ -7,9 +7,17 @@
 // ===========================================================================
 #include "vulkan_renderer.h"
 #include "sys_log.h"
+#include <vulkan/vulkan.h>
 
 int  vkchain_init(void)
 {
+	uint32_t v = VK_API_VERSION_1_0;
+	vkEnumerateInstanceVersion(&v);
+	LOG_INFO("Vulkan loader present, instance version %u.%u.%u (headers %u.%u.%u)",
+		VK_API_VERSION_MAJOR(v), VK_API_VERSION_MINOR(v), VK_API_VERSION_PATCH(v),
+		VK_API_VERSION_MAJOR(VK_HEADER_VERSION_COMPLETE),
+		VK_API_VERSION_MINOR(VK_HEADER_VERSION_COMPLETE),
+		VK_API_VERSION_PATCH(VK_HEADER_VERSION_COMPLETE));
 	LOG_ERROR("vkchain_init: Vulkan chain not implemented yet (Phase 4a Plan 2)");
 	return 0;
 }

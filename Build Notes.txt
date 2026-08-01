@@ -1,4 +1,15 @@
-Requires Visual Studio 2022 and the Microsoft.XAudio2.Redist.1.2.11 installed to build correctly. 
+Requires Visual Studio 2022 and the Microsoft.XAudio2.Redist.1.2.11 installed to build correctly.
 
 How to install the NuGet package:
 https://learn.microsoft.com/en-us/windows/win32/xaudio2/xaudio2-redistributable
+
+Vulkan (Windows):
+Building AAE's Vulkan chain on Windows requires vcpkg, not the LunarG SDK. Install with:
+  vcpkg install vulkan:x64-windows
+  vcpkg integrate install
+This registers user-wide MSBuild integration (vcpkg.user.targets) that supplies the
+vulkan/vulkan.h headers and auto-links vulkan-1.lib; no manual include/lib paths are
+needed in the vcxproj.
+
+Vulkan (Linux, Phase 4b, future):
+Will use CMake find_package(Vulkan) with the distro's libvulkan-dev package.
