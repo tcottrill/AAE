@@ -191,8 +191,11 @@ In `vkchain_init`, after the vector-list block, initialize for raster games:
 			ci.vertSpvPath = "shaders/vk/fast_poly_vk.vert.spv";
 			ci.fragSpvPath = "shaders/vk/fast_poly_vk.frag.spv";
 			ci.flipViewportY = true;
-			if (g_fpoly.Init(g_vk,
-				(int)(s_rasterW * vid_scale), (int)(s_rasterH * vid_scale), &ci))
+			// CORRECTED (Task 1 finding): the shared emit loop outputs UNSCALED
+			// source-pixel coords with size = config.prescale, exactly like the
+			// GL path. The ortho therefore spans the post-orientation source
+			// dims - no vid_scale anywhere.
+			if (g_fpoly.Init(g_vk, s_rasterW, s_rasterH, &ci))
 			{
 				s_fpolyInit = true;
 			}
