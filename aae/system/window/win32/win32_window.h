@@ -16,8 +16,8 @@
 // ===========================================================================
 #include "sys_window.h"
 
-// Presents the Win32/OpenGL backbuffer. No Vulkan path is wired up on
-// Windows yet, so CreateVkSurface() is a stub - see win32_window.cpp.
+// Presents the Win32/OpenGL backbuffer. CreateVkSurface() is implemented in
+// winmain.cpp (Phase 4a Plan 2): runtime-loaded vkCreateWin32SurfaceKHR.
 class Win32PresentSurface : public IPresentSurface {
 public:
 	void SwapBuffers() override;
