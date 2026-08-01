@@ -33,7 +33,7 @@
 - Modify: `aae/aae.vcxproj` + `aae/aae.vcxproj.filters` (register sys_vk.cpp/h; add `./system/graphics/vk` to AdditionalIncludeDirectories in BOTH x64 configs)
 - Modify: `CMakeLists.txt` (add sys_vk.cpp to AAE_COMMON_SOURCES; bump the source-count drift check 49→50; add the include dir if CMake mirrors include paths)
 
-- [ ] **Step 1: Copy the donor files verbatim, then apply the neutralization edits below — nothing else.**
+- [x] **Step 1: Copy the donor files verbatim, then apply the neutralization edits below — nothing else.**
 
 The donor is battle-tested; every unlisted line imports unchanged. The edits:
 
@@ -185,16 +185,16 @@ Every subsequent pre-instance call in the donor of the form `vkGetInstanceProcAd
 
 **(i) Clear color** — find the `VkClearValue`/`clearValue` in `VK_BeginFrame`'s `vkCmdBeginRendering` and set it to a distinctive dark blue `{0.02f, 0.05f, 0.20f, 1.0f}` with the comment `// Plan 2 gate color: prove VK is presenting (raster/vector chains draw over this from Plan 3 on).`
 
-- [ ] **Step 2: Register in build systems**
+- [x] **Step 2: Register in build systems**
 
 vcxproj: `<ClCompile Include="system\graphics\vk\sys_vk.cpp" />`, `<ClInclude Include="system\graphics\vk\sys_vk.h" />`, matching filter entries (new filter `Source Files\system\graphics\vk` or per existing convention). Append `./system/graphics/vk` to `<AdditionalIncludeDirectories>` in BOTH x64 configs (lines ~111 and ~150).
 CMakeLists.txt: add `aae/system/graphics/vk/sys_vk.cpp` to `AAE_COMMON_SOURCES`, bump the drift-check (currently `EQUAL 49`) to 50, and add the include dir wherever `aae/system/3rdparty` is added (~line 454).
 
-- [ ] **Step 3: Build (compile/link only — nothing calls VK_Init yet)**
+- [x] **Step 3: Build (compile/link only — nothing calls VK_Init yet)**
 
 Release + Debug x64, exit 0, no new warnings. Common failure: a missed `hwnd` reference — the compiler will name it.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git -C C:/Source2026/AAE_publish add aae/system/graphics/vk aae/aae.vcxproj aae/aae.vcxproj.filters CMakeLists.txt
@@ -208,7 +208,7 @@ git -C C:/Source2026/AAE_publish commit -m "feat(vk): import sys_vk from Bosconi
 **Files:**
 - Modify: `aae/system/window/winmain.cpp` (the stub at ~:889-895)
 
-- [ ] **Step 1: Implement the stub**
+- [x] **Step 1: Implement the stub**
 
 At the top of winmain.cpp (which already includes windows.h), add after the existing includes:
 
@@ -271,7 +271,7 @@ bool Win32PresentSurface::CreateVkSurface(void* instance, void* outSurface)
 
 Adapt `g_hWnd`/logging names to what winmain.cpp actually uses (check the file — the window handle global and the class's access to it; if the stub's surrounding code reaches the HWND differently, follow that). Keep the "honest stub" comment block above it updated to say it is now implemented.
 
-- [ ] **Step 2: Build (Release x64), commit**
+- [x] **Step 2: Build (Release x64), commit**
 
 ```bash
 git -C C:/Source2026/AAE_publish add aae/system/window/winmain.cpp
@@ -285,7 +285,7 @@ git -C C:/Source2026/AAE_publish commit -m "feat(vk): implement Win32PresentSurf
 **Files:**
 - Modify: `aae/system/window/winmain.cpp` (~:1276-1292)
 
-- [ ] **Step 1: Early renderer read**
+- [x] **Step 1: Early renderer read**
 
 Near the other early-config reads in wWinMain (before window creation is fine, before :1279 is required), add a helper + call. winmain already uses the ini machinery (`GenerateFinalWindowSetup` reads `[main] starting_monitor`), so mirror that pattern:
 
@@ -325,7 +325,7 @@ static bool EarlyRendererIsVulkan(void)
 
 Check what winmain includes for `get_config_string` (iniFile.h) and whether the ini path is already set at this point (it is for `starting_monitor` — place this read in the same region or later). `CommandLineToArgvW` needs `<shellapi.h>` — check if already included.
 
-- [ ] **Step 2: Gate the GL bring-up**
+- [x] **Step 2: Gate the GL bring-up**
 
 Replace winmain.cpp:1276-1289 region:
 
@@ -367,7 +367,7 @@ Add `static bool g_glContextCreated = false;` near winmain's other statics. NOTE
 
 Then audit winmain for OTHER GL calls that would run in a Vulkan session (grep winmain.cpp for `gl[A-Z]`, `wgl`, `GLSwapBuffers`, `SetvSync`, `InitOpenGLContext`, and the GL teardown at exit): each site gets guarded with `if (g_glContextCreated)`. Report the list of guarded sites. `Win32PresentSurface::SwapBuffers()` keeps calling `glchain_swap_buffers()` unconditionally — it's internally hDC-guarded and only the GL chain calls it.
 
-- [ ] **Step 3: Build (Release x64), commit**
+- [x] **Step 3: Build (Release x64), commit**
 
 ```bash
 git -C C:/Source2026/AAE_publish add aae/system/window/winmain.cpp
@@ -382,9 +382,9 @@ git -C C:/Source2026/AAE_publish commit -m "feat(vk): winmain skips GL context c
 - Modify: `aae/aae/aae_video_vk/vulkan_renderer.cpp` (replace the Plan 1 stubs)
 - Modify: `aae/aae/config.h` + `aae/aae/config.cpp` (add `int vk_validation;` read from `[main] vk_validation`, default 0 — same pattern as `renderer`)
 
-- [ ] **Step 1: Add the `vk_validation` config field** (config.h next to `renderer`; config.cpp next to the renderer read: `config.vk_validation = get_config_int("main", "vk_validation", 0);`)
+- [x] **Step 1: Add the `vk_validation` config field** (config.h next to `renderer`; config.cpp next to the renderer read: `config.vk_validation = get_config_int("main", "vk_validation", 0);`)
 
-- [ ] **Step 2: Rewrite vulkan_renderer.cpp**
+- [x] **Step 2: Rewrite vulkan_renderer.cpp**
 
 ```cpp
 // ===========================================================================
@@ -501,7 +501,7 @@ int  vkchain_get_error(void) { return 0; }
 
 Check the exact names/behaviors against the imported sys_vk.h (e.g. `VK_RecreateSwapchain` return type, whether `VK_BeginFrame` handles minimized/zero-extent by returning false — it does in the donor; a failed recreate while minimized just means the next tick retries). If `vkchain_set_render` is called while a recreate keeps failing (minimized), the chain stays idle safely — confirm no tight-loop logging (donor logs "deferring" once per attempt; if that spams the log when minimized, rate-limit by only logging on state change and note it in the report).
 
-- [ ] **Step 3: Build Release + Debug x64, commit**
+- [x] **Step 3: Build Release + Debug x64, commit**
 
 ```bash
 git -C C:/Source2026/AAE_publish add aae/aae/aae_video_vk/vulkan_renderer.cpp aae/aae/config.h aae/aae/config.cpp
@@ -515,7 +515,7 @@ git -C C:/Source2026/AAE_publish commit -m "feat(vk): real vkchain frame loop - 
 **Files:**
 - Modify: `aae/aae/acommon.cpp`, `aae/aae/cpu_code/cpu_control.cpp`, `aae/aae/inptport.cpp` (three representative core TUs)
 
-- [ ] **Step 1: Add the guard to each file, near the top after its includes**
+- [x] **Step 1: Add the guard to each file, near the top after its includes**
 
 ```c
 /* Phase 4 boundary check (spec sec. 3.5): the emulation core must never see
@@ -527,7 +527,7 @@ git -C C:/Source2026/AAE_publish commit -m "feat(vk): real vkchain frame loop - 
 
 (vendored vulkan.h defines `VULKAN_H_`; verify with a grep of `aae/system/3rdparty/vulkan/vulkan.h`.) Check whether these files carry the Phase 1 `_WINDOWS_` guard and place the new one adjacent; if a different set of TUs carries those guards, use THAT set instead and report which.
 
-- [ ] **Step 2: Build (guards must compile clean — proving the boundary holds), commit**
+- [x] **Step 2: Build (guards must compile clean — proving the boundary holds), commit**
 
 ```bash
 git -C C:/Source2026/AAE_publish add aae/aae/acommon.cpp aae/aae/cpu_code/cpu_control.cpp aae/aae/inptport.cpp
@@ -544,12 +544,12 @@ git -C C:/Source2026/AAE_publish commit -m "chore(vk): VULKAN_H_ leak guards in 
 cp C:/Source2026/AAE_publish/aae/x64/Release/aae.exe C:/Source2026/AAE_publish/x64/Release/aae.exe
 ```
 
-- [ ] **1. Vulkan boots:** `aae.exe asteroid -renderer vulkan` — NO fallback popup; a **dark blue** window appears (the Plan 2 gate color — the game itself is invisible until Plan 5). Audio plays (emulation runs under the blank screen). ESC exits cleanly, no crash on shutdown.
-- [ ] **2. Log evidence** (`systemlog.txt`): `vkchain_init: Vulkan chain online`, swapchain creation lines (extent + presentMode), no ERROR lines during steady state.
-- [ ] **3. Window ops under Vulkan:** resize the window (blue area follows, no crash), toggle borderless fullscreen, minimize + restore (no crash, no error spam while minimized).
-- [ ] **4. Second game load:** ESC to exit is fine for asteroid; also run `aae.exe -renderer vulkan` (GUI — blank blue, expected), then quit. No popup, no crash.
-- [ ] **5. GL regression:** `aae.exe asteroid` (default GL) — identical to Plan 1 gate. Also `aae.exe pacman`.
-- [ ] **6. Validation spot-check (optional but valuable):** add `vk_validation=1` under `[main]` in aae.ini, run asteroid with `-renderer vulkan`, check the log for validation output (needs the validation layers present on the system — if the log says the layer is unavailable, that's fine, remove the setting and note it).
+- [x] **1. Vulkan boots:** `aae.exe asteroid -renderer vulkan` — NO fallback popup; a **dark blue** window appears (the Plan 2 gate color — the game itself is invisible until Plan 5). Audio plays (emulation runs under the blank screen). ESC exits cleanly, no crash on shutdown.
+- [x] **2. Log evidence** (`systemlog.txt`): `vkchain_init: Vulkan chain online`, swapchain creation lines (extent + presentMode), no ERROR lines during steady state.
+- [x] **3. Window ops under Vulkan:** resize the window (blue area follows, no crash), toggle borderless fullscreen, minimize + restore (no crash, no error spam while minimized).
+- [x] **4. Second game load:** ESC to exit is fine for asteroid; also run `aae.exe -renderer vulkan` (GUI — blank blue, expected), then quit. No popup, no crash.
+- [x] **5. GL regression:** `aae.exe asteroid` (default GL) — identical to Plan 1 gate. Also `aae.exe pacman`.
+- [x] **6. Validation spot-check (optional but valuable):** add `vk_validation=1` under `[main]` in aae.ini, run asteroid with `-renderer vulkan`, check the log for validation output (needs the validation layers present on the system — if the log says the layer is unavailable, that's fine, remove the setting and note it).
 
 ---
 
