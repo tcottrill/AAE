@@ -463,6 +463,15 @@ git -C C:/Source2026/AAE_publish commit -m "feat(video): renderer dispatch layer
 - Modify: `aae/aae.vcxproj` (x64 Debug + Release property groups)
 - Modify: `aae/aae/aae_video_vk/vulkan_renderer.cpp`
 
+> **SECOND AMENDMENT 2026-08-01 (supersedes the vcpkg approach below):** the user
+> requires minimal 3rd-party build installs. Final approach: Vulkan C headers
+> vendored into `aae/system/3rdparty/vulkan/` + `vk_video/` (already on the
+> include path), the smoke check bootstraps the loader at runtime via
+> `LoadLibraryA("vulkan-1.dll")` so nothing links `vulkan-1.lib`, and Build
+> Notes documents "Visual Studio only". The vcpkg text below is retained as
+> the historical intermediate state (commit 70fa664); the vendoring follow-up
+> commit lands on top of it.
+
 - [ ] **Step 1: Vulkan via vcpkg (AMENDED 2026-08-01 — no LunarG SDK on this machine)**
 
 Investigation of the Bosconian donor's build tlogs showed Vulkan resolves through **vcpkg**, not the LunarG SDK: headers at `C:\Users\user9\vcpkg\installed\x64-windows\include\vulkan\`, lib `...\lib\vulkan-1.lib`, both injected by vcpkg's user-wide MSBuild integration (`%LOCALAPPDATA%\vcpkg\vcpkg.user.targets` importing `C:\Users\user9\vcpkg\scripts\buildsystems\msbuild\vcpkg.targets`), with automatic linking. This is how Bosconian and SpriteTest build today.

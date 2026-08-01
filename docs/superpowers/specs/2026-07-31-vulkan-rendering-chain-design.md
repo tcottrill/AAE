@@ -156,7 +156,8 @@ that `sys_window.h` already exposes:
 | `vkCreateWin32SurfaceKHR(hwnd)` | `IPresentSurface::CreateVkSurface(instance, &surface)` |
 | hardcoded instance extension list | `IPresentSurface::RequiredVkInstanceExtensions(&count)` |
 | `GetClientRect` extent fallback | `IPresentSurface::GetDrawableSize(&w, &h)` |
-| `#include <windows.h>` / `vulkan_win32.h` in `sys_vk.h` | removed; `sys_vk.h` includes only `<vulkan/vulkan.h>` |
+| `#include <windows.h>` / `vulkan_win32.h` in `sys_vk.h` | removed; `sys_vk.h` includes only `<vulkan/vulkan.h>` (vendored, §6) |
+| direct `vkGetInstanceProcAddr` link (needs `vulkan-1.lib`) | runtime bootstrap: `LoadLibraryA("vulkan-1.dll")` / `dlopen("libvulkan.so.1")` + `GetProcAddress`/`dlsym` for the bootstrap symbols only (§6, zero-build-deps requirement) |
 
 This is what makes Phase 4b a windowing task instead of a renderer task.
 
@@ -259,17 +260,24 @@ Inventory:
 
 Build step:
 
-- **Windows** (amended 2026-08-01 after build-environment investigation): there
-  is no LunarG SDK on the dev machine — Vulkan headers + `vulkan-1.lib` come
-  from **vcpkg** (`vcpkg install vulkan:x64-windows`) via its user-wide MSBuild
-  integration, which is how both donor repos build today; this dependency is
-  documented in `Build Notes.txt`. The shader compiler is vcpkg's standalone
-  `glslc.exe` (shaderc), **vendored into `tools/glslc.exe`** (house precedent:
-  dice, cc65-win32) and invoked by a vcxproj CustomBuild rule per
-  `.vert`/`.frag` into `$(OutDir)shaders\vk\`. Editing a shader rebuilds like
-  any source file.
-- **Linux:** CMake `find_package(Vulkan)` (distro `libvulkan-dev`) +
-  `add_custom_command` with distro `glslc` (shaderc package).
+- **Zero 3rd-party build installs** (user requirement, 2026-08-01: "limit 3rd
+  party application installation requirements on my code builds within
+  reason"):
+  - Vulkan **C headers vendored** into `aae/system/3rdparty/vulkan/` +
+    `vk_video/` (Khronos Vulkan-Headers, Apache-2.0, license file included;
+    `./system/3rdparty` is already on the include path).
+  - **No `vulkan-1.lib` link**: the loader is bound at runtime —
+    `LoadLibraryA("vulkan-1.dll")` on Windows (ships with GPU drivers),
+    `dlopen("libvulkan.so.1")` on Linux. `sys_vk` already fetches all other
+    functions via proc-address; only the bootstrap symbols change (see §3.5).
+  - Shader compiler `glslc.exe` (shaderc, standalone) **vendored into
+    `tools/`** (house precedent: dice, cc65-win32) and invoked by a vcxproj
+    CustomBuild rule per `.vert`/`.frag` into `$(OutDir)shaders\vk\`. Editing
+    a shader rebuilds like any source file.
+  - Net: Windows builds need only Visual Studio 2022. No vcpkg, no LunarG SDK.
+- **Linux:** vendored headers + `dlopen` likewise; CMake `add_custom_command`
+  with distro `glslc` (shaderc package) — an ordinary distro package is the
+  agreed "within reason" ceiling.
 - Runtime loads `.spv` via the existing `Shader_SetPath` convention.
 
 ---
@@ -365,3 +373,4 @@ House style: the build plus a runtime pass is the test.
 | Raster VK donor | Bosconian mini-port (newest `sys_vk`/`fast_poly`) | user, 2026-07-31 |
 | Vector VK donor | SpriteTest `VectorDrawVK` + backport doc fixes | user, 2026-07-31 |
 | Default renderer | stays `opengl` this phase | design, accepted with §5 |
+| Build dependencies | zero 3rd-party installs on Windows: vendored Vulkan headers + runtime loader bootstrap + vendored glslc; distro packages are the ceiling on Linux | user, 2026-08-01 |
