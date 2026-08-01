@@ -35,7 +35,7 @@ Pass = exit 0, no new warnings beyond the known five (spec §9). Run from `C:\So
 
 **Files:** none (git only)
 
-- [ ] **Step 1: Branch off the current working branch**
+- [x] **Step 1: Branch off the current working branch**
 
 ```bash
 git -C C:/Source2026/AAE_publish checkout -b feature/vulkan-rendering-chain
@@ -52,7 +52,7 @@ Expected: `Switched to a new branch 'feature/vulkan-rendering-chain'` (branching
 - Modify: `aae/aae/config.cpp:26+` (inside `setup_config()`)
 - Modify: `aae/aae/aae_emulator.cpp:1657-1672` (early flag loop)
 
-- [ ] **Step 1: Add the field and backend constants to `config.h`**
+- [x] **Step 1: Add the field and backend constants to `config.h`**
 
 Near the top of `aae/aae/config.h` (after the include guard, before the struct):
 
@@ -69,7 +69,7 @@ Inside the config struct, next to the `int debug;` field:
 	int renderer;         // RENDERER_OPENGL (default) or RENDERER_VULKAN
 ```
 
-- [ ] **Step 2: Read it in `setup_config()`**
+- [x] **Step 2: Read it in `setup_config()`**
 
 In `aae/aae/config.cpp`, inside `setup_config()` next to the `config.debug` line (~line 132):
 
@@ -84,7 +84,7 @@ In `aae/aae/config.cpp`, inside `setup_config()` next to the `config.debug` line
 
 First confirm `get_config_string` is already used in this file (it is — `config.cpp:80`) so no new include is needed.
 
-- [ ] **Step 3: Add `-renderer` to the early cmdline loop**
+- [x] **Step 3: Add `-renderer` to the early cmdline loop**
 
 `setup_config()` must already have run when this loop executes so the override wins. Verify: grep the call site of `setup_config` (`grep -rn "setup_config()" aae/ --include=*.cpp`) and confirm it executes before `emulator_init`'s flag loop at `aae_emulator.cpp:1657`. If it runs later, place this parse immediately after the `setup_config()` call instead — same code either way.
 
@@ -105,11 +105,11 @@ In the `-debug` loop body (`aae_emulator.cpp:1657-1672`), add after the `-debug`
 		}
 ```
 
-- [ ] **Step 4: Build**
+- [x] **Step 4: Build**
 
 Run the build command. Expected: exit 0.
 
-- [ ] **Step 5: Runtime check**
+- [x] **Step 5: Runtime check**
 
 ```bash
 cd C:/Source2026/AAE_publish/aae/x64/Release && ./aae.exe -renderer vulkan
@@ -117,7 +117,7 @@ cd C:/Source2026/AAE_publish/aae/x64/Release && ./aae.exe -renderer vulkan
 
 Exit the GUI. Expected in the log (`systemlog.txt` / console): `Config: renderer=opengl` then `Cmdline: renderer=vulkan`. Nothing else changes — the switch has no consumer yet.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git -C C:/Source2026/AAE_publish add aae/aae/config.h aae/aae/config.cpp aae/aae/aae_emulator.cpp
@@ -138,7 +138,7 @@ git -C C:/Source2026/AAE_publish commit -m "feat(video): add [main] renderer= co
 
 Pure renames — zero behavior change. The public names temporarily have no definition between Task 2 and Task 3; that is fine because they build together before the next build step.
 
-- [ ] **Step 1: Rename the 12 definitions in `opengl_renderer.cpp`**
+- [x] **Step 1: Rename the 12 definitions in `opengl_renderer.cpp`**
 
 | Old definition | New name |
 |---|---|
@@ -157,7 +157,7 @@ Pure renames — zero behavior change. The public names temporarily have no defi
 
 Rename ONLY the definitions and any calls to these names *inside* `aae_video/` files (e.g. if `render()` internals or `mame_layout.cpp` call `init_raster_overlay`, update those calls to `glchain_init_raster_overlay`). Do NOT touch `final_render*`, `set_ortho*`, `render_ui_overlays`, `raster_poly_update` or anything not in the table.
 
-- [ ] **Step 2: Declare the renamed functions in `opengl_renderer.h`**
+- [x] **Step 2: Declare the renamed functions in `opengl_renderer.h`**
 
 Add below the existing declarations (keep ALL existing declarations — the public names will be defined by the dispatch in Task 3):
 
@@ -180,7 +180,7 @@ void glchain_shutdown_raster_overlay();
 int  glchain_get_gl_error();
 ```
 
-- [ ] **Step 3: Rename `GLSwapBuffers`/`SetvSync` in `sys_gl.cpp`**
+- [x] **Step 3: Rename `GLSwapBuffers`/`SetvSync` in `sys_gl.cpp`**
 
 Both functions have TWO definitions (Win32 and Linux `#ifdef` branches — lines ~443/581 and ~431/553). Rename all four definitions:
 
@@ -196,7 +196,7 @@ void glchain_swap_buffers();
 void glchain_set_vsync(bool enabled);
 ```
 
-- [ ] **Step 4: Point the present surfaces at the GL impl directly**
+- [x] **Step 4: Point the present surfaces at the GL impl directly**
 
 These two are GL-path presentation code, so they call the GL implementation, not the dispatch:
 
@@ -204,7 +204,7 @@ These two are GL-path presentation code, so they call the GL implementation, not
 
 `aae/system/window/linux/glx_present.cpp:33` — same change.
 
-- [ ] **Step 5: Do NOT build yet**
+- [x] **Step 5: Do NOT build yet**
 
 The public names now have declarations but no definitions; callers still reference them, so linking would fail. Task 3 restores them. (If you must checkpoint, `MSBuild ... -t:ClCompile` compiles without linking.)
 
@@ -218,7 +218,7 @@ The public names now have declarations but no definitions; callers still referen
 - Create: `aae/aae/aae_video_vk/vulkan_renderer.cpp`
 - Modify: `aae/aae.vcxproj` (+ `aae/aae.vcxproj.filters`) — add the two new .cpp files
 
-- [ ] **Step 1: Create `vulkan_renderer.h`**
+- [x] **Step 1: Create `vulkan_renderer.h`**
 
 ```cpp
 #pragma once
@@ -248,7 +248,7 @@ void vkchain_shutdown_raster_overlay(void);
 int  vkchain_get_error(void);
 ```
 
-- [ ] **Step 2: Create `vulkan_renderer.cpp` (stubs)**
+- [x] **Step 2: Create `vulkan_renderer.cpp` (stubs)**
 
 ```cpp
 // ===========================================================================
@@ -281,7 +281,7 @@ void vkchain_shutdown_raster_overlay(void) {}
 int  vkchain_get_error(void) { return 0; }
 ```
 
-- [ ] **Step 3: Create `renderer_dispatch.cpp`**
+- [x] **Step 3: Create `renderer_dispatch.cpp`**
 
 ```cpp
 // ===========================================================================
@@ -411,7 +411,7 @@ int glcode_get_gl_error()
 
 Check the actual signatures in `opengl_renderer.h` before compiling — if any public declaration differs from the above (e.g. `init_gl(void)` vs `init_gl()`, parameter types on `gui_points_draw`), the dispatch definitions must match the HEADER exactly. Add a declaration for `active_renderer()` to `renderer_dispatch`'s consumers later; nothing needs it in Plan 1.
 
-- [ ] **Step 4: Register the new files in the project**
+- [x] **Step 4: Register the new files in the project**
 
 In `aae/aae.vcxproj`, add to the `<ItemGroup>` containing `<ClCompile>` entries (match neighbors' formatting):
 
@@ -428,11 +428,11 @@ And the header:
 
 Mirror in `aae.vcxproj.filters` next to the other `aae_video` entries. Verify the relative-path convention by looking at how `aae\aae_video\opengl_renderer.cpp` is listed and match it exactly.
 
-- [ ] **Step 5: Build**
+- [x] **Step 5: Build**
 
 Run the build command. Expected: exit 0. Link errors about `glchain_*` mean a Task 2 rename was missed (the error names the exact symbol).
 
-- [ ] **Step 6: Runtime — GL default unchanged**
+- [x] **Step 6: Runtime — GL default unchanged**
 
 ```bash
 cd C:/Source2026/AAE_publish/aae/x64/Release && ./aae.exe asteroid
@@ -440,7 +440,7 @@ cd C:/Source2026/AAE_publish/aae/x64/Release && ./aae.exe asteroid
 
 Expected: asteroid boots, plays, sounds correct; log shows `Renderer: OpenGL`. Quit, run `./aae.exe pacman` — same check for the raster path.
 
-- [ ] **Step 7: Runtime — Vulkan requested, falls back**
+- [x] **Step 7: Runtime — Vulkan requested, falls back**
 
 ```bash
 cd C:/Source2026/AAE_publish/aae/x64/Release && ./aae.exe asteroid -renderer vulkan
@@ -448,7 +448,7 @@ cd C:/Source2026/AAE_publish/aae/x64/Release && ./aae.exe asteroid -renderer vul
 
 Expected: popup "Vulkan initialization failed... Falling back to OpenGL", then asteroid plays on GL. Log shows `vkchain_init: Vulkan chain not implemented yet` then `Renderer: OpenGL`.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git -C C:/Source2026/AAE_publish add -A aae/aae/aae_video aae/aae/aae_video_vk aae/system/graphics/sys_gl.h aae/system/graphics/sys_gl.cpp aae/system/window/winmain.cpp aae/system/window/linux/glx_present.cpp aae/aae.vcxproj aae/aae.vcxproj.filters
@@ -472,7 +472,7 @@ git -C C:/Source2026/AAE_publish commit -m "feat(video): renderer dispatch layer
 > the historical intermediate state (commit 70fa664); the vendoring follow-up
 > commit lands on top of it.
 
-- [ ] **Step 1: Vulkan via vcpkg (AMENDED 2026-08-01 — no LunarG SDK on this machine)**
+- [x] **Step 1: Vulkan via vcpkg (AMENDED 2026-08-01 — no LunarG SDK on this machine)**
 
 Investigation of the Bosconian donor's build tlogs showed Vulkan resolves through **vcpkg**, not the LunarG SDK: headers at `C:\Users\user9\vcpkg\installed\x64-windows\include\vulkan\`, lib `...\lib\vulkan-1.lib`, both injected by vcpkg's user-wide MSBuild integration (`%LOCALAPPDATA%\vcpkg\vcpkg.user.targets` importing `C:\Users\user9\vcpkg\scripts\buildsystems\msbuild\vcpkg.targets`), with automatic linking. This is how Bosconian and SpriteTest build today.
 
@@ -480,7 +480,7 @@ Therefore: **no vcxproj include/lib edits are needed** — the integration provi
 - Verify the integration import exists (`Test-Path "$env:LOCALAPPDATA\vcpkg\vcpkg.user.targets"` → True) before building.
 - Record the dependency in `Build Notes.txt` at the repo root: building AAE with the Vulkan chain requires `vcpkg install vulkan:x64-windows` plus `vcpkg integrate install` (user-wide MSBuild integration). Linux (Phase 4b) will use CMake `find_package(Vulkan)` with distro `libvulkan-dev` instead.
 
-- [ ] **Step 2: Prove compile + link with a loader query**
+- [x] **Step 2: Prove compile + link with a loader query**
 
 In `vulkan_renderer.cpp`, add the include and extend `vkchain_init`:
 
@@ -501,11 +501,11 @@ int  vkchain_init(void)
 }
 ```
 
-- [ ] **Step 3: Build (this is the verification — AMENDED: no runtime launch)**
+- [x] **Step 3: Build (this is the verification — AMENDED: no runtime launch)**
 
 Run the build command for Release AND Debug x64. Expected: exit 0. An unresolved `vkEnumerateInstanceVersion` means the vcpkg integration is not active for this project. The runtime confirmation of the loader log line moves to the Task 6 user-run gate — agents must not launch aae.exe (focus-stealing broke a session on 2026-08-01).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git -C C:/Source2026/AAE_publish add "Build Notes.txt" aae/aae/aae_video_vk/vulkan_renderer.cpp
@@ -521,7 +521,7 @@ git -C C:/Source2026/AAE_publish commit -m "build: Vulkan via vcpkg integration 
 - Create: `aae/shaders/vk/fast_poly_vk.frag`
 - Modify: `aae/aae.vcxproj` (CustomBuild items)
 
-- [ ] **Step 1: Copy the existing canonical GLSL sources**
+- [x] **Step 1: Copy the existing canonical GLSL sources**
 
 The `fast_poly_vk` GLSL sources already exist in the Bosconian output tree — copy them verbatim, do not rewrite:
 
@@ -569,7 +569,7 @@ void main()
 }
 ```
 
-- [ ] **Step 2: Vendor glslc + add the CustomBuild rule (AMENDED 2026-08-01 — glslc from vcpkg, vendored into tools/)**
+- [x] **Step 2: Vendor glslc + add the CustomBuild rule (AMENDED 2026-08-01 — glslc from vcpkg, vendored into tools/)**
 
 No LunarG SDK exists on this machine; the shader compiler is vcpkg's standalone `glslc.exe` (shaderc v2023.8, single 4.7 MB exe, no side-by-side DLLs — verified). Vendor it so the build is repo-self-contained (house precedent: the repo already commits tool binaries — dice, cc65-win32, gifsicle):
 
@@ -598,7 +598,7 @@ New `<ItemGroup>` in `aae/aae.vcxproj` (paths relative to the vcxproj, which liv
 
 Every future shader (Plans 2-6) is added as another `<CustomBuild>` pair here. Linux (Phase 4b) uses distro `glslc` (shaderc package) via CMake.
 
-- [ ] **Step 3: Build and confirm the .spv outputs**
+- [x] **Step 3: Build and confirm the .spv outputs**
 
 Run the build command, then:
 
@@ -608,7 +608,7 @@ ls C:/Source2026/AAE_publish/aae/x64/Release/shaders/vk/
 
 Expected: `fast_poly_vk.vert.spv`, `fast_poly_vk.frag.spv`. A glslangValidator syntax error fails the build — that is the shader "test".
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git -C C:/Source2026/AAE_publish add aae/shaders aae/aae.vcxproj
@@ -621,7 +621,7 @@ git -C C:/Source2026/AAE_publish commit -m "build: canonical VK shader home (aae
 
 **Files:** none (verification only)
 
-- [ ] **Step 1: Runtime matrix on the default (GL) renderer**
+- [x] **Step 1: Runtime matrix on the default (GL) renderer**
 
 From `aae/x64/Release`, run each and confirm identical behavior to a pre-plan build (boots, plays, correct sound, correct visuals):
 
@@ -638,15 +638,15 @@ From `aae/x64/Release`, run each and confirm identical behavior to a pre-plan bu
 ./aae.exe warlords
 ```
 
-- [ ] **Step 2: GUI pass**
+- [x] **Step 2: GUI pass**
 
 Launch `./aae.exe` with no args: navigate the menu, confirm the starfield draws (`gui_points_*` went through the dispatch), start a game from the GUI, return, quit. Enter KEY CONFIG and rebind a key.
 
-- [ ] **Step 3: Window ops**
+- [x] **Step 3: Window ops**
 
 In any game: resize the window, toggle borderless fullscreen, minimize/restore. All must behave as before.
 
-- [ ] **Step 4: Fallback path once more**
+- [x] **Step 4: Fallback path once more**
 
 ```bash
 ./aae.exe -renderer vulkan
@@ -654,7 +654,7 @@ In any game: resize the window, toggle borderless fullscreen, minimize/restore. 
 
 GUI boots on GL after the popup; log shows the loader version line.
 
-- [ ] **Step 5: Commit the plan checkboxes and close out**
+- [x] **Step 5: Commit the plan checkboxes and close out**
 
 ```bash
 git -C C:/Source2026/AAE_publish add docs/superpowers/plans/2026-07-31-vulkan-phase4a-1-dispatch-foundation.md
