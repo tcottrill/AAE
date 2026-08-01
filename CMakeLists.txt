@@ -380,6 +380,22 @@ elseif(UNIX AND NOT APPLE)
     if(ALSA_FOUND)
         list(APPEND AAE_PLATFORM_LIBS ALSA::ALSA)
     endif()
+    # PulseAudio client libraries, optional. When present, the audio backend
+    # opens the Pulse/PipeWire server NATIVELY with explicit channel positions
+    # (the cubeb/Dolphin model) instead of going through the ALSA compat shim,
+    # which is what made 6-channel output unverifiable (silent rears on the
+    # Steam Machine). Without them the raw-ALSA path still covers everything -
+    # Pi console builds and bare cabinets have no server anyway.
+    # pa_strerror lives in libpulse proper, hence both libraries.
+    find_library(PULSE_SIMPLE_LIBRARY pulse-simple)
+    find_library(PULSE_LIBRARY pulse)
+    if(PULSE_SIMPLE_LIBRARY AND PULSE_LIBRARY)
+        list(APPEND AAE_PLATFORM_LIBS ${PULSE_SIMPLE_LIBRARY} ${PULSE_LIBRARY})
+        add_compile_definitions(AAE_HAVE_PULSE)
+        message(STATUS "PulseAudio native output enabled: ${PULSE_SIMPLE_LIBRARY}")
+    else()
+        message(STATUS "libpulse-simple not found - audio will use raw ALSA only")
+    endif()
     if(X11_FOUND)
         list(APPEND AAE_PLATFORM_LIBS X11::X11)
     endif()

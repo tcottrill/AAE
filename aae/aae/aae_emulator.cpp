@@ -946,9 +946,27 @@ void run_game(void)
 	frames = 0;
 
 	// Step 9: Audio.
+	// Speaker request first - backend Init consumes it (see mixer.h).
+	mixer_set_speaker_config(config.speakers);
+	mixer_set_surround_encode(config.surround_encode);
 	mixer_init(config.samplerate, Machine->gamedrv->fps);
 	did_mixer_init = true;
 	if (have_error != 0) goto fail;
+
+	// The mixer follows the DEVICE's native rate (the ini value is a request -
+	// an HDMI sink typically turns 44100 into 48000). Every sound core that
+	// inits later reads config.samplerate to size its per-frame buffers and
+	// phase steps (pokey, ay8910, dac, sn76477, the discrete drivers...), so
+	// write the granted rate back before init_game() at Step 14 - otherwise
+	// the chips would synthesize one frame of 44100 into a mixer consuming
+	// one frame of 48000. In-memory only; the ini file is not rewritten.
+	if (const int granted = mixer_get_output_rate();
+		granted > 0 && granted != config.samplerate)
+	{
+		LOG_INFO("Audio device runs at %d Hz (ini asked %d) - sound cores will follow",
+		         granted, config.samplerate);
+		config.samplerate = granted;
+	}
 
 	// Apply initial volume settings from config. This also sets the g_lastAppliedMainVol255
 	AAE_ApplyAudioVolumesFromConfig(1);

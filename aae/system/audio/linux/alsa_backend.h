@@ -22,6 +22,10 @@
 #include <thread>
 #include <vector>
 
+// PulseAudio simple-stream handle, forward-declared so this header stays free
+// of <pulse/*.h>. Only alsa_backend.cpp needs the real definition.
+struct pa_simple;
+
 class AlsaBackend : public IAudioBackend {
 public:
 	AlsaBackend() = default;
@@ -61,6 +65,18 @@ public:
 
 private:
 	void FeedThread();
+	void UpmixPeriod();   // m_scratch (stereo) -> m_devBuf (m_devChannels-wide)
+	void EncodeStereoPeriod();   // in-place matrix surround encode on m_scratch
+	bool InitPulseNative(unsigned int rate, int f);   // the cubeb model; see .cpp
+	void SetupBuffersAndUpmix(unsigned int rate);     // shared Init tail
+
+	// PulseAudio NATIVE stream (the cubeb model). When a Pulse/PipeWire server
+	// is reachable this is used INSTEAD of m_pcm: the stream carries an
+	// EXPLICIT channel map into the server, bypassing the ALSA compat shim
+	// whose position labelling for >2 channels cannot be verified (chmap query
+	// returns nothing through it). Null when running on raw ALSA (Pi, bare
+	// systems), in which case m_pcm carries the audio exactly as before.
+	struct pa_simple* m_pulse    = nullptr;
 
 	snd_pcm_t*        m_pcm      = nullptr;
 	VoiceMixer        m_mixer;
@@ -72,6 +88,40 @@ private:
 
 	std::vector<int16_t> m_scratch;    // One period, handed to the voice mixer
 	std::vector<uint8_t> m_appBuffer;  // Returned by GetNextBuffer()
+
+	// ---- pseudo-surround upmix (device side only) ---------------------------
+	//
+	// EVERYTHING above this line stays stereo: the voice mixer, the app buffer,
+	// the streaming ring, and every game-facing contract. When the device
+	// offers 6 channels, the feed thread expands the finished stereo mix into
+	// m_devBuf with a passive matrix (Dolby Surround style) as the very last
+	// step before snd_pcm_writei:
+	//
+	//   FL/FR = L/R untouched      C   = 0.5*(L+R)
+	//   RL/RR = 0.5*(L-R) delayed  LFE = low-passed mono
+	//
+	// FL/FR carrying the original stereo untouched is the graceful-degradation
+	// guarantee: if anything downstream drops the extra channels, the result is
+	// exactly the old stereo mix, never less.
+	//
+	// Index order within a device frame comes from the device's channel map
+	// (queried at Init); m_chIndex holds where each position lands.
+	enum { kFL = 0, kFR, kRL, kRR, kFC, kLFE, kMaxCh };
+	uint32_t             m_devChannels = 2;   // negotiated; 2 or 6
+	std::vector<int16_t> m_devBuf;            // one period, device-interleaved
+	int                  m_chIndex[kMaxCh] = { 0, 1, 2, 3, 4, 5 };
+	std::vector<float>   m_rearDelay;         // ~12ms surround decorrelation
+	size_t               m_rearPos  = 0;
+	float                m_lfeState = 0.0f;   // one-pole low-pass state
+	float                m_lfeK     = 0.0f;   // its coefficient, set from rate
+
+	// Matrix surround ENCODE state for the STEREO path (EncodeStereoPeriod):
+	// a delayed mono ambience injected antiphase into L/R so downstream
+	// difference-driven upmixers (PipeWire psd, Pro Logic, soundbars) derive
+	// rears from our near-mono content. Empty when disabled or when running
+	// discrete 5.1 (the two are mutually exclusive by construction).
+	std::vector<float>   m_encDelay;
+	size_t               m_encPos = 0;
 
 	// ---- streaming path -----------------------------------------------------
 	//

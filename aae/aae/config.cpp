@@ -46,6 +46,25 @@ void setup_config() {
     // common case now involves no rate conversion at all.
     config.samplerate = get_config_int("main", "samplerate", 48000);
 
+    // Speaker request (Linux output only). Default 2 - measured, not guessed:
+    // on the Steam Machine, Dolphin's acclaimed "surround" is a plain stereo
+    // stream (pactl: s16le 2ch) room-filled downstream by PipeWire/the
+    // soundbar, while a discrete 6ch pulse stream loses its rears inside the
+    // SteamOS loopback graph even at 100% channel volume (speaker-test over
+    // PipeWire's NATIVE protocol delivers them fine - it is pulse-protocol
+    // specific). Stereo out therefore SOUNDS more surround than real 5.1
+    // there. speakers=6 keeps the discrete upmix for hardware that takes it.
+    config.speakers = get_config_int("main", "speakers", 2);
+    if (config.speakers != 2 && config.speakers != 6 && config.speakers != 0)
+        config.speakers = 2;
+
+    // Matrix surround encode for the stereo path - see config.h. Default ON:
+    // it is what makes downstream upmixers produce rears from our mono-heavy
+    // content, verified against the PipeWire graph (both AAE's and Dolphin's
+    // stereo streams get identical 6-port upmix treatment; only the L-R
+    // content differs).
+    config.surround_encode = get_config_int("main", "surround_encode", 1) ? 1 : 0;
+
     // Per-player mouse assignment: player 1 defaults to the merged system
     // mouse (legacy behavior), the rest to none. When a specific device is
     // assigned, its PATH (stable across reboots) is stored alongside the

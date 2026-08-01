@@ -590,6 +590,28 @@ void mixer_update();
 // Shutdown
 void mixer_end();
 
+// The rate the mixer is ACTUALLY running at, post-negotiation. mixer_init
+// follows the device (the ALSA backend asks what the sink natively runs, and
+// e.g. an HDMI sink turns a 44100 request into 48000), so the value passed to
+// mixer_init is a request, not a guarantee. Anything that sizes buffers or
+// computes phase steps from the sample rate must read THIS after mixer_init
+// rather than reusing the requested value. Returns 0 before mixer_init.
+int mixer_get_output_rate(void);
+
+// Speaker request for the OUTPUT device, set by the emulator from
+// [main] speakers BEFORE mixer_init: 2 = stereo (default), 6 = discrete 5.1
+// (backend upmixes), 0 = auto-negotiate. Consumed by the Linux backend at
+// Init; the Windows XAudio2 backend ignores it. Lives here because the
+// backend already includes mixer.h and must not reach into aae-side config.
+void mixer_set_speaker_config(int channels);
+int  mixer_get_speaker_config(void);
+
+// Matrix surround encode for the stereo output path (see config.h's
+// surround_encode). Same plumbing pattern as the speaker config: set by the
+// emulator before mixer_init, consumed by the Linux backend at Init.
+void mixer_set_surround_encode(int enabled);
+int  mixer_get_surround_encode(void);
+
 // Query the output device's actual channel layout (post-init). Useful for
 // diagnosing Atmos / surround setups and for sanity-checking that the OS is
 // presenting the expected layout to the application.

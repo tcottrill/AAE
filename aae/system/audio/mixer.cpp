@@ -699,6 +699,36 @@ int mixer_init(int rate, int fps)  // <<< integer FPS
 		LOG_ERROR("mixer_init: backend Init failed");
 		return 0; // unique_ptr destructor calls Shutdown
 	}
+
+	// Follow the DEVICE's rate, not the requested one. The ALSA backend asks
+	// the device what it natively runs (see set_rate_resample there) and may
+	// come back with e.g. 48000 for a 44100 request. Every derived quantity
+	// must then be recomputed from the granted rate - leaving BUFFER_SIZE and
+	// SYS_FREQ at the requested rate would make the mixer synthesize one
+	// frame's worth of 44100 while the device consumes one frame's worth of
+	// 48000: pitch shift plus starvation. XAudio2 echoes the request back, so
+	// this is a no-op on Windows.
+	//
+	// Callers that size their own buffers from the rate must re-read it AFTER
+	// mixer_init via mixer_get_output_rate() - aae_emulator.cpp writes it back
+	// to config.samplerate for the sound cores, which init later (Step 14).
+	{
+		const int granted = backend->OutputRate();
+		if (granted > 0 && granted != rate) {
+			LOG_INFO("mixer_init: backend granted %d Hz (requested %d) - refitting",
+			         granted, rate);
+			rate        = granted;
+			BUFFER_SIZE = rate / fps;
+			g_spf_rem   = rate % fps;
+			g_spf_accum = 0;
+			SYS_FREQ    = rate;
+			if (BUFFER_SIZE <= 0) {
+				LOG_ERROR("mixer_init: invalid BUFFER_SIZE=%d after rate refit (rate=%d fps=%d)",
+				          BUFFER_SIZE, rate, fps);
+				return 0;
+			}
+		}
+	}
 	g_backend = std::move(backend);
 
 	// Apply the canonical 80% default through the perceptual curve so g_master_pct
@@ -745,6 +775,43 @@ int mixer_init(int rate, int fps)  // <<< integer FPS
 	}
 
 	return 1;
+}
+
+// -----------------------------------------------------------------------------
+// mixer_get_output_rate
+// The negotiated rate the mixer actually runs at - see mixer.h. SYS_FREQ is
+// only meaningful once mixer_init has succeeded, so report 0 until then.
+// -----------------------------------------------------------------------------
+int mixer_get_output_rate(void)
+{
+	return audioThreadActive.load(std::memory_order_acquire) ? SYS_FREQ : 0;
+}
+
+// -----------------------------------------------------------------------------
+// Speaker request - see mixer.h. Plain int, set once before mixer_init on the
+// game thread and read once inside backend Init on the same call chain.
+// -----------------------------------------------------------------------------
+static int g_speaker_config  = 2;
+static int g_surround_encode = 1;
+
+void mixer_set_speaker_config(int channels)
+{
+	g_speaker_config = (channels == 6 || channels == 0) ? channels : 2;
+}
+
+int mixer_get_speaker_config(void)
+{
+	return g_speaker_config;
+}
+
+void mixer_set_surround_encode(int enabled)
+{
+	g_surround_encode = enabled ? 1 : 0;
+}
+
+int mixer_get_surround_encode(void)
+{
+	return g_surround_encode;
 }
 
 // -----------------------------------------------------------------------------

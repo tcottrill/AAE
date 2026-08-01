@@ -75,6 +75,21 @@ typedef struct {
 	int audio_force_resample;
 	int kbleds;
 	int samplerate;
+	// Output speaker request, [main] speakers: 2 = stereo (default - the
+	// Dolphin model: the sound server / soundbar fills the room from clean
+	// stereo), 6 = discrete 5.1 with AAE's own pseudo-surround upmix (for
+	// hardware that genuinely takes 6-channel PCM), 0 = auto-negotiate.
+	// Linux backend only; Windows XAudio2 output is unaffected.
+	int speakers;
+	// Matrix surround ENCODE for the stereo path, [main] surround_encode
+	// (default 1). Arcade audio is near-mono, and every difference-driven
+	// upmixer (PipeWire psd, Pro Logic, soundbar processing) derives rears
+	// from L-R - which is ~zero for mono content, so the rears stay silent
+	// no matter how good the chain is (measured: Dolphin's rich-stereo games
+	// light the same upmixer up; our mono content doesn't). This injects a
+	// delayed mono ambience ANTIPHASE into L/R, giving those decoders real
+	// difference content to send rearward. 0 = plain untouched stereo.
+	int surround_encode;
 
 	char* raster_effect;
 	// Display aspect override: "AUTO" (natural computed aspect, the default)
