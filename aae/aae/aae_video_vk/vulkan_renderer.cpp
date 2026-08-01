@@ -14,6 +14,7 @@
 #include "sys_vk.h"
 #include "sys_window.h"
 #include "config.h"
+#include "emu_vector_draw.h"   // cache_clear - backend-neutral, no GL headers
 
 static VkContext g_vk;
 static bool      s_initialized = false;
@@ -143,6 +144,12 @@ void vkchain_render(void)
 	// Plan 2: the frame pass opened by VK_BeginFrame clears to the gate
 	// color; there is nothing to record yet. Raster (Plan 3), post/artwork
 	// (Plan 4), vector (Plan 5) and GUI (Plan 6) record here.
+
+	// Drain the emu-side beam queue so vector games do not grow unbounded;
+	// Plan 5's VectorDrawVK consumes this queue instead. cache_clear is pure
+	// CPU (clears the beam line/join/shot lists via beam_clear plus the
+	// legacy textured-shot list, which add_tex also fills every frame).
+	cache_clear();
 }
 
 void vkchain_swap_buffers(void)

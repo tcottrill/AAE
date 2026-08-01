@@ -1397,6 +1397,20 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance,
 	ShowWindow(g_hWnd, nCmdShow);
 	UpdateWindow(g_hWnd);
 
+	if (wantVulkan)
+	{
+		// GDI paint on a hidden window does not survive the show (the user
+		// saw a white flash), so repeat the black fill now that it is visible.
+		RECT rc{};
+		GetClientRect(g_hWnd, &rc);
+		HDC dc = GetDC(g_hWnd);
+		if (dc)
+		{
+			FillRect(dc, &rc, (HBRUSH)GetStockObject(BLACK_BRUSH));
+			ReleaseDC(g_hWnd, dc);
+		}
+	}
+
 	// Assume focus because we just showed the window
 	g_windowSetup.isFocused = true;
 

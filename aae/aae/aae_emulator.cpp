@@ -926,12 +926,19 @@ void run_game(void)
 	// multiple times). Vector games use the existing FBO pipeline instead.
 	if (!(Machine->gamedrv->video_attributes & VIDEO_TYPE_VECTOR))
 	{
-		fbo_init_raster();
+		// fbo_init_raster is raw GL (gl_fbo.cpp create_fbo) outside the
+		// renderer dispatch surface - only valid when the GL chain is live.
+		// The Vulkan raster target arrives with the VK TEX system (Plan 3).
+		if (active_renderer() == RENDERER_OPENGL)
+			fbo_init_raster();
 		init_raster_overlay();
 	}
 
 	// Step 6: Legacy artwork loading and texture resize.
-	if (Machine->gamedrv->artwork)
+	// load_artwork creates GL textures (texture_handler.cpp load_texture ->
+	// glGenTextures); with no GL context under Vulkan the first GL call would
+	// kill the process. Vulkan artwork arrives in Plans 3-4.
+	if (Machine->gamedrv->artwork && active_renderer() == RENDERER_OPENGL)
 	{
 		load_artwork(Machine->gamedrv->artwork);
 		did_loaded_artwork = true;
@@ -941,7 +948,12 @@ void run_game(void)
 	// Step 7: MAME .lay layout loading (raster games only).
 	// Searches external and local artwork paths for ZIP or loose .lay files.
 	// Falls back to a synthetic screen-only layout if nothing is found.
-	if (!(Machine->gamedrv->video_attributes & VIDEO_TYPE_VECTOR))
+	// GL-gated: Layout_LoadForGame bakes layout textures via glGenTextures
+	// (mame_layout.cpp Layout_LoadTextures). With the layout disabled,
+	// Layout_ComputeGameAspect falls back to the game-dimension path, which
+	// yields the same 4:3 / 3:4 target aspect for the window logic below.
+	if (!(Machine->gamedrv->video_attributes & VIDEO_TYPE_VECTOR)
+		&& active_renderer() == RENDERER_OPENGL)
 		Layout_LoadForGame(Machine->gamedrv);
 
 	// Step 8: Video configuration (bezel/crop layout, scale, offsets).
@@ -1131,8 +1143,13 @@ fail:
 	if (did_init_gl)
 	{
 		shutdown_raster_overlay();
-		fbo_shutdown_raster();
-		destroy_all_textures();
+		// fbo_shutdown_raster / destroy_all_textures issue raw glDelete*
+		// calls outside the dispatch surface - GL chain only.
+		if (active_renderer() == RENDERER_OPENGL)
+		{
+			fbo_shutdown_raster();
+			destroy_all_textures();
+		}
 	}
 
 	FrameLimiter::Shutdown();
@@ -1888,11 +1905,18 @@ void emulator_stop_game()
 
 	// 6) Video and per-game GL assets.
 	shutdown_raster_overlay();
-	fbo_shutdown_raster();
-	destroy_all_textures();
+	// fbo_shutdown_raster / destroy_all_textures / Layout_FreeTextures issue
+	// raw glDelete* calls outside the dispatch surface - GL chain only.
+	// Under Vulkan nothing was created, so there is nothing to free.
+	if (active_renderer() == RENDERER_OPENGL)
+	{
+		fbo_shutdown_raster();
+		destroy_all_textures();
+	}
 
 	// 6.5) Layout teardown (new artwork system).
-	Layout_FreeTextures(g_layoutData);
+	if (active_renderer() == RENDERER_OPENGL)
+		Layout_FreeTextures(g_layoutData);
 	g_layoutData.elements.clear();
 	g_layoutData.views.clear();
 	g_activeView = nullptr;

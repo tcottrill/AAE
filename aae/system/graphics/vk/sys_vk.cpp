@@ -451,7 +451,7 @@ bool VK_Init(VkContext& ctx, IPresentSurface& present, bool enableValidation, bo
 
 	ctx.vkDestroyInstance_ = (PFN_vkDestroyInstance)ctx.vkGetInstanceProcAddr_(nullptr, "vkDestroyInstance");
 	if (!ctx.vkDestroyInstance_)
-		LOG_ERROR("VK_Init: vkDestroyInstance_ is NULL");
+		LOG_INFO("VK_Init: vkDestroyInstance not available pre-instance (normal on some loaders); re-fetched after instance creation");
 	else
 		LOG_INFO("VK_Init: vkDestroyInstance_ loaded");
 
