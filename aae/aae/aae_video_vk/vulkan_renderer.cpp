@@ -7,17 +7,47 @@
 // ===========================================================================
 #include "vulkan_renderer.h"
 #include "sys_log.h"
+
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#endif
+
 #include <vulkan/vulkan.h>
 
+// ===========================================================================
+// vkchain_init - Plan 1 smoke check.
+// Loads the Vulkan runtime dynamically (no import lib, no SDK install
+// needed to build - the loader DLL ships with the GPU driver) and logs the
+// instance version. Plan 2 replaces this with the real chain bring-up,
+// keeping the same LoadLibrary bootstrap.
+// ===========================================================================
 int  vkchain_init(void)
 {
+	HMODULE loader = LoadLibraryA("vulkan-1.dll");
+	if (!loader)
+	{
+		LOG_ERROR("vkchain_init: vulkan-1.dll not found (no Vulkan runtime installed)");
+		return 0;
+	}
+
+	typedef VkResult (VKAPI_PTR *PFN_EnumVer)(uint32_t*);
+	PFN_EnumVer enumVer = (PFN_EnumVer)GetProcAddress(loader, "vkEnumerateInstanceVersion");
+
 	uint32_t v = VK_API_VERSION_1_0;
-	vkEnumerateInstanceVersion(&v);
+	if (enumVer)
+		enumVer(&v);
+
 	LOG_INFO("Vulkan loader present, instance version %u.%u.%u (headers %u.%u.%u)",
 		VK_API_VERSION_MAJOR(v), VK_API_VERSION_MINOR(v), VK_API_VERSION_PATCH(v),
 		VK_API_VERSION_MAJOR(VK_HEADER_VERSION_COMPLETE),
 		VK_API_VERSION_MINOR(VK_HEADER_VERSION_COMPLETE),
 		VK_API_VERSION_PATCH(VK_HEADER_VERSION_COMPLETE));
+
+	FreeLibrary(loader);
+
 	LOG_ERROR("vkchain_init: Vulkan chain not implemented yet (Phase 4a Plan 2)");
 	return 0;
 }

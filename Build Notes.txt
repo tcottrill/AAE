@@ -4,12 +4,16 @@ How to install the NuGet package:
 https://learn.microsoft.com/en-us/windows/win32/xaudio2/xaudio2-redistributable
 
 Vulkan (Windows):
-Building AAE's Vulkan chain on Windows requires vcpkg, not the LunarG SDK. Install with:
-  vcpkg install vulkan:x64-windows
-  vcpkg integrate install
-This registers user-wide MSBuild integration (vcpkg.user.targets) that supplies the
-vulkan/vulkan.h headers and auto-links vulkan-1.lib; no manual include/lib paths are
-needed in the vcxproj.
+No 3rd-party install required. The Vulkan C headers are vendored in the repo at
+aae/system/3rdparty/vulkan and aae/system/3rdparty/vk_video (Khronos Vulkan-Headers,
+Apache-2.0 / MIT, see aae/system/3rdparty/vulkan/LICENSE.txt, VK_HEADER_VERSION 309).
+./system/3rdparty is already on the project include path, so #include <vulkan/vulkan.h>
+resolves from the repo with nothing else to install. At runtime, vkchain_init() binds
+the loader dynamically via LoadLibraryA("vulkan-1.dll"); that DLL ships with the GPU
+driver, so there is no vulkan-1.lib import dependency and no vcpkg or LunarG SDK
+requirement to build.
 
 Vulkan (Linux, Phase 4b, future):
-Will use CMake find_package(Vulkan) with the distro's libvulkan-dev package.
+Will use the same vendored headers plus dlopen("libvulkan.so.1") at runtime, matching
+the Windows LoadLibrary bootstrap. GLSL shader compilation will use the distro's glslc
+package.
