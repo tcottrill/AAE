@@ -199,12 +199,36 @@ int main(int argc, char** argv)
 		return 1;
 	}
 
-	// Core profile, matching winmain.cpp's InitOpenGLContext(false, false, true).
-	if (!InitOpenGLContext(false, false, true)) {
-		LOG_ERROR("OpenGL context creation failed - cannot continue");
-		g_window.Destroy();
-		Log::close();
-		return 1;
+	// Renderer selection, decided EARLY like winmain.cpp's EarlyRendererIsVulkan:
+	// under Vulkan no GLX context is created at all (the dispatch layer routes
+	// every gl*chain call to vkchain, and ViewOrtho is a core-profile no-op, so
+	// nothing touches GL without a context - proven by the Windows VK path,
+	// which has skipped context creation since Plan 2). This also means a GLX
+	// failure can no longer kill a Vulkan session that never needed GL.
+	// Default matches config.cpp: vulkan. The cmdline can override per launch.
+	bool wantVulkan = true;
+	{
+		std::string r = get_config_string("main", "renderer", "vulkan");
+		if (r == "opengl")
+			wantVulkan = false;
+		for (int i = 1; i < argc - 1; ++i) {
+			if (strcmp(argv[i], "-renderer") == 0) {
+				if (strcmp(argv[i + 1], "vulkan") == 0)      wantVulkan = true;
+				else if (strcmp(argv[i + 1], "opengl") == 0) wantVulkan = false;
+			}
+		}
+	}
+
+	if (!wantVulkan) {
+		// Core profile, matching winmain.cpp's InitOpenGLContext(false, false, true).
+		if (!InitOpenGLContext(false, false, true)) {
+			LOG_ERROR("OpenGL context creation failed - cannot continue");
+			g_window.Destroy();
+			Log::close();
+			return 1;
+		}
+	} else {
+		LOG_INFO("Renderer=vulkan: skipping GLX context creation (window layer)");
 	}
 
 	g_window.EnableCursorClip(g_windowSetup.cursorClipEnabled);

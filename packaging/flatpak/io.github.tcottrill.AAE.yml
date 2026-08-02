@@ -147,6 +147,16 @@ modules:
       # CMakeLists puts the executable in x64/Release beside its data; the
       # Flatpak layout wants it in /app/bin with the data under /app/share.
       - install -Dm755 x64/Release/aae /app/bin/aae
+      # Vulkan shaders (Phase 4b). If the SDK provides glslc, the cmake build
+      # above compiled shaders/vk/*.spv next to the binary - install them.
+      # If it does not, this is a quiet no-op and the aae-data module's
+      # fallback (the prebuilt SPIR-V from the shared Windows output tree -
+      # SPIR-V is platform-independent) covers it; a hard existence check
+      # there guarantees the package can never ship renderer=vulkan (the
+      # default) with no shaders at all.
+      - mkdir -p /app/share/aae
+      - if [ -d x64/Release/shaders ]; then cp -r x64/Release/shaders /app/share/aae/;
+        fi
       - install -Dm755 packaging/flatpak/aae-launcher.sh /app/bin/aae-launcher.sh
       - install -Dm644 packaging/flatpak/io.github.tcottrill.AAE.desktop
           /app/share/applications/io.github.tcottrill.AAE.desktop
@@ -196,5 +206,16 @@ modules:
       - cp -r aaedata/snap    /app/share/aae/ 2>/dev/null || true
       - cp -r aaedata/pleiads /app/share/aae/ 2>/dev/null || true
       - cp -r aaedata/ini     /app/share/aae/ 2>/dev/null || true
+      # Vulkan SPIR-V fallback (Phase 4b): the shared output tree carries the
+      # Windows-compiled .spv, and SPIR-V is platform-independent. -n so the
+      # SDK-built copies installed by the aae module (when glslc exists there)
+      # are never clobbered by these.
+      - if [ -d aaedata/shaders ]; then mkdir -p /app/share/aae/shaders/vk;
+        cp -n aaedata/shaders/vk/*.spv /app/share/aae/shaders/vk/ 2>/dev/null || true;
+        fi
+      # HARD check - fail the package rather than ship renderer=vulkan (the
+      # default) with no shader anywhere. fast_poly is the raster workhorse;
+      # if it is missing they all are.
+      - test -f /app/share/aae/shaders/vk/fast_poly_vk.vert.spv
       - install -Dm644 aaedata/aae.ini   /app/share/aae/aae.ini
       - install -Dm644 aaedata/video.ini /app/share/aae/video.ini

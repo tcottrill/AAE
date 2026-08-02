@@ -26,7 +26,12 @@ mkdir -p "$DATA_DIR"
 # Read-only payload: link, never copy. Refreshed every launch so an app update
 # that adds a rom set or new artwork is picked up without the user clearing
 # anything.
-for d in roms artwork samples snap pleiads; do
+#
+# shaders/ is the Vulkan SPIR-V (Phase 4b). The VK chain loads
+# "shaders/vk/<name>.spv" with plain relative fopen, which resolves against
+# the working directory - and we cd to $DATA_DIR below - so the link is what
+# makes renderer=vulkan (the default) find its pipelines at all.
+for d in roms artwork samples snap pleiads shaders; do
     if [ -d "$APP_DATA/$d" ]; then
         ln -sfn "$APP_DATA/$d" "$DATA_DIR/$d"
     fi
