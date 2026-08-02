@@ -234,6 +234,52 @@ static void GuiBeamToWindowPx(const GuiBeamMap& m, float bx, float by, float& ou
 	outY = m.ly + (fy / 1024.0f) * m.vh;
 }
 
+// ---------------------------------------------------------------------------
+// In-game UI overlay mapping (menu / PAUSED / exit dialog / FPS).
+//
+// GL reference: render_ui_overlays (opengl_renderer.cpp) draws overlay content
+// into fbo4's FULL 0..1024 space for vector games (end_render_fbo4's
+// screen_rect then letterboxes that square onto ws.aspectRatio), and straight
+// onto the backbuffer for raster games with the viewport narrowed to a hard,
+// centered 4:3 box when the window is wider than that. Two consequences for
+// the VK map:
+//  - the box is ALWAYS the default 0..1024 rect, never the per-game
+//    game_rect (overlays do not ride the game's CRT-rect quad under GL);
+//  - the letterbox aspect is ws.aspectRatio for vector games (fbo4 blit
+//    parity) and hard 4:3 for raster games (viewport-narrowing parity).
+// s_uiOverlayActive marks the render_ui_overlays() reuse window so the shared
+// vkchain_gui_draw_quad seam (menu backgrounds via VF::DrawQuad) picks this
+// map instead of the GUI-driver game_rect map.
+// ---------------------------------------------------------------------------
+static bool s_uiOverlayActive = false;
+
+static GuiBeamMap ComputeUiOverlayMap(void)
+{
+	GuiBeamMap m{};
+	const int sw = (int)g_vk.swapchainExtent.width;
+	const int sh = (int)g_vk.swapchainExtent.height;
+
+	float aspect = 4.0f / 3.0f;
+	if (GameIsVector())
+	{
+		aspect = GetWindowSetup().aspectRatio;
+		if (aspect <= 0.0f)
+			aspect = 4.0f / 3.0f;
+	}
+	int vw = sw, vh = (int)(sw / aspect + 0.5f);
+	if (vh > sh) { vh = sh; vw = (int)(sh * aspect + 0.5f); }
+	if (vw < 1) vw = 1;
+	if (vh < 1) vh = 1;
+
+	m.lx = (float)((sw - vw) / 2);
+	m.ly = (float)((sh - vh) / 2);
+	m.vw = (float)vw;
+	m.vh = (float)vh;
+	m.grL = 0.0f; m.grR = 1024.0f;
+	m.grB = 0.0f; m.grT = 1024.0f;
+	return m;
+}
+
 // Lazy once-per-session init of the beam renderer (see the g_vectorDraw
 // comment). Defaults resolve to shaders/vk/vector_{line,disc,shot}_vk
 // CustomBuild output; colorFormat is left UNDEFINED so the pipelines build
@@ -241,9 +287,14 @@ static void GuiBeamToWindowPx(const GuiBeamMap& m, float bx, float by, float& ou
 // (backport fix 4b divide is in place for when the SSAA RT lands).
 // beam_init() is deliberately NOT called: it is GL-only (compiles shaders,
 // builds VAOs/VBOs); the CPU-side beam arrays need no init (proven Plan 2).
+//
+// NOT gated on GameIsVector(): raster games need this renderer too, for the
+// in-game UI overlay text (RecordUiOverlays below) - VF glyph strokes ride
+// the same beam queue on every game type under Vulkan. The pipelines are
+// game-independent (swapchain format), so one lazy init serves the session.
 static void EnsureVectorRenderer(void)
 {
-	if (!GameIsVector() || s_vectorFailed || s_vectorInit)
+	if (s_vectorFailed || s_vectorInit)
 		return;
 
 	VectorDrawVKCreateInfo ci{};
@@ -674,6 +725,86 @@ void vkchain_set_render(void)
 	}
 }
 
+// ---------------------------------------------------------------------------
+// RecordUiOverlays - in-game UI overlays (pause dim, PAUSED text, exit
+// confirmation dialog, TAB menu, FPS counter, debug/error overlays) for BOTH
+// game types, GL parity via the shared render_ui_overlays() content:
+//
+//  1. render_ui_overlays() runs the exact GL overlay content (its raw GL
+//     calls are guarded by active_renderer() inside). Under Vulkan the VF
+//     text accumulates in the CPU beam queue, VF::DrawQuad menu backgrounds
+//     route through vkchain_gui_draw_quad, and the dim quads route through
+//     vkchain_ui_dim_quad - both picking the overlay map below via
+//     s_uiOverlayActive. It also runs video_loop()'s frame logic (menu
+//     auto-pause, LED refresh, debug adjust), which GL runs every frame.
+//  2. The queued glyph strokes are then drawn direct-to-swapchain with
+//     g_vectorDraw (the swapchain-format instance the GUI path proved),
+//     inside the still-open frame pass, using the overlay map folded into
+//     one inverted ortho - the same derivation as the vector branch's
+//     "Projection" comment, with the default 0..1024 box.
+//
+// Coordinate parity trace (VF.Print y=Y, 16:9 window, vector game):
+//   GL: VF ortho 0..768 y-up into fbo4's full 1024 viewport -> fbo4 row
+//       Y*1024/768 (y-up); screen_rect letterboxes fbo4 (no flip) -> window
+//       y-up = ly + (Y*1024/768)/1024 * vh.
+//   VK: VF::End emits y_beam = (768-Y)*1024/768; the map's fy = grT -
+//       y_beam = Y*1024/768; window y-up = ly + fy/1024 * vh. Identical.
+//
+// Deliberately NOT routed through the vector post chain's beam RT: overlays
+// would inherit trail/glow and freeze while paused. Direct-to-swapchain
+// matches GL's crisp post-composite overlay draw. Blend is alpha-over
+// (additive=false), matching GL's VF::End (always alpha-over for text).
+//
+// Known accepted deviations from GL (documented, cosmetic):
+//  - a window NARROWER than 4:3 letterboxes the overlay vertically instead
+//    of GL's full-height vertical stretch (raster path only);
+//  - the dim rect covers exactly the letterbox box; GL's raster-window dim
+//    covers the full window height of the 4:3 strip (same thing whenever
+//    the window is 4:3 or wider);
+//  - system-rotated raster games get upright overlays (the VK raster
+//    composite is non-rotated, so upright IS the match for its output).
+// ---------------------------------------------------------------------------
+static void RecordUiOverlays(void)
+{
+	if (!s_frameOpen || !Machine || !Machine->drv)
+		return;
+
+	// Raster games need the beam renderer online too (overlay text).
+	EnsureVectorRenderer();
+
+	s_uiOverlayActive = true;
+	render_ui_overlays(1024, 768, false);
+	s_uiOverlayActive = false;
+
+	const int sw = (int)g_vk.swapchainExtent.width;
+	const int sh = (int)g_vk.swapchainExtent.height;
+	if (s_vectorInit && sw > 0 && sh > 0)
+	{
+		// Fold letterbox + default box + the single V flip into one ortho by
+		// inverting the beam->window map at the swapchain edges (see the
+		// vector branch). With the default box (grL=0, grR-grL=1024) the
+		// box term cancels for x; y keeps the grT - fy flip.
+		const GuiBeamMap m = ComputeUiOverlayMap();
+		const float ol = (0.0f - m.lx) * 1024.0f / m.vw;        // beam x at window left
+		const float orr = ((float)sw - m.lx) * 1024.0f / m.vw;  // beam x at window right
+		const float fy0 = (0.0f - m.ly) * 1024.0f / m.vh;       // fbo4 y at window bottom (y-up)
+		const float fy1 = ((float)sh - m.ly) * 1024.0f / m.vh;  // fbo4 y at window top
+		const float ob = m.grT - fy0;                           // beam y at window bottom
+		const float ot = m.grT - fy1;                           // beam y at window top
+
+		float proj[16];
+		MakeOrthoColMajor(ol, orr, ob, ot, proj);
+
+		VkCommandBuffer cmd = g_vk.cmdBuffers[g_vk.frameIndex];
+		g_vectorDraw.Record(g_vk, cmd, g_vk.frameIndex, proj,
+			/*additive=*/false, 0, 0);
+	}
+
+	// Drain the overlay strokes (or the orphaned queue if Record was
+	// skipped). Pure CPU, same call the game path made just before us.
+	cache_clear();
+}
+
 void vkchain_render(void)
 {
 	// Raster path (Plan 4 Task 3): suspend the swapchain frame pass, render
@@ -936,6 +1067,13 @@ void vkchain_render(void)
 	// vector_add_point; vector_update consumed it above on vector frames).
 	// Pure CPU: resets the list write index (mame_vector.cpp).
 	vector_clear_list();
+
+	// In-game UI overlays LAST, so the menu/PAUSED/exit dialog/FPS land on
+	// top of whatever the branches above composited - and on EVERY frame,
+	// including paused ones (GL parity: final_render always runs the overlay
+	// draw). Runs after the clears above so the overlay Record only ever
+	// consumes overlay strokes, never game beams.
+	RecordUiOverlays();
 }
 
 void vkchain_swap_buffers(void)
@@ -1087,13 +1225,23 @@ void vkchain_gui_draw_quad(float x, float y, float width, float height, rgb_t co
 		return;
 
 	// GUI-local space (VF::Initialize(1024,768)): x centered directly in the
-	// shared 0..1024 box; y needs the same 768->1024 rescale VF text uses
-	// (GuiBeamToWindowPx works in the native 0..1024 beam space).
+	// shared 0..1024 box; y gets the same 768->1024 rescale AND the same
+	// full-canvas Y mirror VF text emission applies (vector_fonts.cpp
+	// VectorFont::End: (768-y)*1024/768) - quads and text must share one
+	// convention or a menu background lands mirrored away from its rows.
+	// Under GL both draw with VF's y-up 1024x768 ortho into the same canvas,
+	// so mirroring both here reproduces that pairing. (GuiBeamToWindowPx
+	// works in the native 0..1024 beam space.)
 	const float scaleY = 1024.0f / 768.0f;
 	const float minx = x - width * 0.5f,  maxx = x + width * 0.5f;
-	const float miny = (y - height * 0.5f) * scaleY, maxy = (y + height * 0.5f) * scaleY;
+	const float miny = (768.0f - (y - height * 0.5f)) * scaleY;
+	const float maxy = (768.0f - (y + height * 0.5f)) * scaleY;
 
-	const GuiBeamMap m = ComputeGuiBeamMap();
+	// In-game overlay quads (TAB menu background during a game) use the
+	// overlay map: default 0..1024 box, overlay letterbox aspect. The GUI
+	// driver's own quads keep the game_rect map its text renders with.
+	const GuiBeamMap m = s_uiOverlayActive ? ComputeUiOverlayMap()
+	                                       : ComputeGuiBeamMap();
 	float x0, y0, x1, y1;
 	GuiBeamToWindowPx(m, minx, miny, x0, y0);
 	GuiBeamToWindowPx(m, maxx, maxy, x1, y1);
@@ -1113,6 +1261,35 @@ void vkchain_gui_draw_quad(float x, float y, float width, float height, rgb_t co
 		white->view, white->sampler,
 		L, B, R, T, sw, sh,
 		/*flipUV_Y=*/false, color);
+}
+
+// ---------------------------------------------------------------------------
+// In-game overlay dim (pause / exit-confirm). Called from the shared
+// render_ui_overlays() (opengl_renderer.cpp) in place of its GL
+// quad_from_center. GL dims fbo4's full 1024 space, which the screen_rect
+// blit letterboxes onto the window - so the on-screen dim covers exactly the
+// overlay letterbox box; this draws that box directly. Same ScreenQuadVK +
+// solid-white-texture seam as vkchain_gui_draw_quad (alpha-over pipeline).
+// ---------------------------------------------------------------------------
+void vkchain_ui_dim_quad(int alpha)
+{
+	if (!s_initialized || !s_frameOpen || !s_screenQuadInit)
+		return;
+
+	VkTexture* white = VkTex_GetSolidWhite(g_vk);
+	if (!white)
+		return;
+
+	if (alpha < 0) alpha = 0;
+	if (alpha > 255) alpha = 255;
+
+	const GuiBeamMap m = ComputeUiOverlayMap();
+	VkCommandBuffer cmd = g_vk.cmdBuffers[g_vk.frameIndex];
+	g_screenQuad.RecordRect(g_vk, cmd, g_vk.frameIndex,
+		white->view, white->sampler,
+		m.lx, m.ly, m.lx + m.vw, m.ly + m.vh,
+		g_vk.swapchainExtent.width, g_vk.swapchainExtent.height,
+		/*flipUV_Y=*/false, MAKE_RGBA(0, 0, 0, alpha));
 }
 
 void vkchain_init_raster_overlay(void) {}

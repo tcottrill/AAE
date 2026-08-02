@@ -31,6 +31,14 @@ void vkchain_vector_hard_clear(void);
 // GL-direct and invisible under Vulkan). x,y is the rect CENTER, matching
 // VectorFont::DrawQuad's own parameter convention.
 void vkchain_gui_draw_quad(float x, float y, float width, float height, rgb_t color);
+
+// In-game UI overlays (Plan 6 follow-up): black dim rect over the overlay
+// letterbox box (pause dim / exit-confirm dim), alpha 0..255. Called from the
+// shared render_ui_overlays() (opengl_renderer.cpp) in place of its GL
+// quad_from_center when the Vulkan chain is active. The GL dim covers fbo4's
+// full 1024 space (letterboxed to the window); this covers the same on-screen
+// box directly.
+void vkchain_ui_dim_quad(int alpha);
 void vkchain_init_raster_overlay(void);
 void vkchain_shutdown_raster_overlay(void);
 int  vkchain_get_error(void);

@@ -7,6 +7,7 @@
 #include "colordefs.h"
 #include "gl_shader.h" // Added to access the new basic shaders
 #include "MathUtils.h"  // aae::math::mat4 / value_ptr for the core-profile quads
+#include "config.h"     // RENDERER_VULKAN (show_error runs on both chains)
 
 #pragma warning( disable : 4305 4244 )
 
@@ -174,16 +175,22 @@ void show_error(void)
 
 	if (have_error) {
 		//if (!errorsound) { sample_start(5, num_samples - 4, 0); errorsound = 1; }
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		// The quads are GL-direct; skip them under Vulkan (show_error runs there
+		// too, via the shared render_ui_overlays -> video_loop overlay path).
+		// The VF.Print below is backend-neutral.
+		if (active_renderer() != RENDERER_VULKAN)
+		{
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-		// drawTexturedQuad is core (VAO/VBO + uProj); legacy color/matrix removed.
-		drawTexturedQuad(282.0f, 234.0f, 742.0f, 534.0f);
+			// drawTexturedQuad is core (VAO/VBO + uProj); legacy color/matrix removed.
+			drawTexturedQuad(282.0f, 234.0f, 742.0f, 534.0f);
 
-		//glBindTexture(GL_TEXTURE_2D, error_tex[0]);
-		//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		//glBlendFunc(GL_SRC_ALPHA, GL_ONE); //PROPER
-		drawTexturedQuad(-24.0f, -24.0f, 24.0f, 24.0f);
+			//glBindTexture(GL_TEXTURE_2D, error_tex[0]);
+			//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			//glBlendFunc(GL_SRC_ALPHA, GL_ONE); //PROPER
+			drawTexturedQuad(-24.0f, -24.0f, 24.0f, 24.0f);
+		}
 
 		//TODO: Replace this with Vector drawing calls.
 		VF.Print(300, 330, MAKE_RGBA(fade, 255, 255, fade), 2.0, "AN ERROR OCCURED");

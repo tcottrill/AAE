@@ -78,6 +78,8 @@
 // Pi would hit.
 #include "iniFile.h"
 #include "mame_vector.h"
+#include "config.h"                            // RENDERER_VULKAN (overlay reuse guard)
+#include "../aae_video_vk/vulkan_renderer.h"   // vkchain_ui_dim_quad (overlay reuse seam)
 #include <chrono>   // for optional frame-time profiling
 #include <cstring>  // strcmp for raster_effect name check
 #include <cmath>    // log2f for the mono monitor halation mip bias
@@ -702,6 +704,16 @@ void render_ui_overlays(int winW, int winH, bool fboSpace)
 {
 	if (winW < 1 || winH < 1) return;
 
+	// Vulkan chain reuse (vkchain_render -> RecordUiOverlays): the CONTENT of
+	// this function - the pause dim, PAUSED text, exit dialog, and everything
+	// video_loop() draws (menu, FPS, debug, error) - is backend-neutral: the
+	// VF.* calls accumulate CPU-side and route through the beam queue /
+	// vkchain_gui_draw_quad under Vulkan. Only the raw GL calls (viewport/
+	// ortho/blend/FBO state, quad_from_center) are skipped there, with the dim
+	// quads routed to vkchain_ui_dim_quad instead. 'vk' is false for the whole
+	// GL chain, so GL behavior is untouched.
+	const bool vk = (active_renderer() == RENDERER_VULKAN);
+
 	// WIDESCREEN CORRECTION:
 	// If wider than 4:3, narrow and center the overlay viewport
 	int vpX = 0;
@@ -713,8 +725,11 @@ void render_ui_overlays(int winW, int winH, bool fboSpace)
 		vpX = (winW - vpW) / 2;
 	}
 
-	glViewport(vpX, 0, vpW, winH);
-	g_proj = aae::math::ortho(0.0f, 1024.0f, 0.0f, 768.0f);
+	if (!vk)
+	{
+		glViewport(vpX, 0, vpW, winH);
+		g_proj = aae::math::ortho(0.0f, 1024.0f, 0.0f, 768.0f);
+	}
 
 	// Tell VF not to override our viewport when Begin() is called.
 	// VF's internal 1024x768 ortho projection still maps correctly
@@ -730,7 +745,8 @@ void render_ui_overlays(int winW, int winH, bool fboSpace)
 		// Vector overlays -- and rotated raster overlays composited into fbo4 --
 		// render onto the 1024x1024 FBO, so switch the ortho to match. screen_rect
 		// then rotates/letterboxes the blit to the window.
-		set_ortho(1024, 1024);
+		if (!vk)
+			set_ortho(1024, 1024);
 		uiH = 1024.0f;
 	}
 	// else: keep the 1024x768 ortho already set above for raster window overlays.
@@ -740,10 +756,15 @@ void render_ui_overlays(int winW, int winH, bool fboSpace)
 	//------------------------------------------------------------------
 	if (paused || get_menu_status())
 	{
-		glEnable(GL_BLEND);
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		if (vk)
+			vkchain_ui_dim_quad(127);
+		else
+		{
+			glEnable(GL_BLEND);
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-		quad_from_center(512.0f, uiH * 0.5f, 1024.0f, uiH, 0, 0, 0, 127);
+			quad_from_center(512.0f, uiH * 0.5f, 1024.0f, uiH, 0, 0, 0, 127);
+		}
 
 		if (get_menu_status() == 0)
 		{
@@ -760,9 +781,14 @@ void render_ui_overlays(int winW, int winH, bool fboSpace)
 	{
 		if (!paused && !get_menu_status())
 		{
-			glEnable(GL_BLEND);
-			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-			quad_from_center(512.0f, uiH * 0.5f, 1024.0f, uiH, 0, 0, 0, 216);
+			if (vk)
+				vkchain_ui_dim_quad(216);
+			else
+			{
+				glEnable(GL_BLEND);
+				glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+				quad_from_center(512.0f, uiH * 0.5f, 1024.0f, uiH, 0, 0, 0, 216);
+			}
 		}
 
 		const int sel = get_exit_confirm_selection();
@@ -816,10 +842,13 @@ void render_ui_overlays(int winW, int winH, bool fboSpace)
 	//------------------------------------------------------------------
 	video_loop();
 
-	// Restore GL state for the next frame's vector pipeline
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	glEnable(GL_BLEND);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	if (!vk)
+	{
+		// Restore GL state for the next frame's vector pipeline
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	}
 
 	// Restore VF to default behavior for the vector pipeline
 	VF.SetOverrideViewport(true);
