@@ -89,17 +89,29 @@ Legend: [ ] untested · [x] passed · [!] defect (add a line to KNOWN ISSUES)
 
 ## KNOWN ISSUES (deferred to the troubleshooting pass)
 
-1. **Scanline overlay scale** — the tiled scanline overlay renders at the
-   wrong pitch under VK. Suspect `CrtPostVK::RecordScanlines` pitch math vs
-   GL `render_scanlines`; possibly prescale-dependent.
+1. ~~**Scanline overlay scale**~~ — FIXED (`5fc0bc5`), same root cause as 3.
+   *Re-gate at `prescale` 2 and 4.*
 2. **Vector game rotation** — at least one vector game rotates incorrectly.
    *Name the game here when reproduced.*
-3. **Mono CRT differs from GL** — mono now runs everywhere it should, but the
-   look does not match GL. Capture WHAT differs (softness / brightness /
-   ripple / halation / tint). First experiment: compare at `prescale=1`; GL's
-   source image is prescale-sized while the VK game RT is unscaled, and
-   `uLodBias` is 0 under VK vs `log2(prescale)` under GL.
+3. ~~**Mono CRT differs from GL**~~ — ROOT CAUSE FOUND + FIXED (`6d7b35f`):
+   `config.prescale` was completely inert under Vulkan. The game RT rendered
+   at native resolution and `uLodBias` was hardcoded 0, so the CRT beam taps
+   reconstructed from a `prescale`x coarser image than GL's, and the scanline
+   pattern was squeezed into `1/prescale` as many texels (issue 1).
+   *Re-gate at `prescale` 2 and 4 vs GL.*
 4. **Vector beam look** — user-reported "needs tweaking" (styling, not a bug).
+
+### Prescale re-gate (new, after `5fc0bc5`)
+
+`prescale` is absent from aae.ini so it defaults to **1**, where behavior is
+bit-identical to before the fix — **set `prescale=4` in `[main]` to see any
+of this**. Valid range 1..5; an out-of-range value silently becomes 2.
+
+- [ ] `pacman` at prescale 1 vs 4: sharper/finer image under VK, matching GL
+- [ ] `invaders` mono CRT at prescale 4: beam reconstruction as fine as GL's
+- [ ] Scanline overlay at prescale 4: a real multi-row pattern, not a flat
+      multiply (it was collapsing to one texel per period)
+- [ ] Prescale 1 still byte-identical to the earlier gate (no regression)
 
 ## ACCEPTED DEVIATIONS (documented in code, not defects)
 
