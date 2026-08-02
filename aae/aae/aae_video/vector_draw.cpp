@@ -305,6 +305,29 @@ void beam_clear() {
     g_verts.clear();
 }
 
+// ---- Retained-batch stash (see vector_draw.h for the ownership rationale) ---
+// Swap-based, so the game's batches come back byte-identical and neither call
+// allocates after the first frame. Only the Vulkan chain's RecordUiOverlays
+// uses these; under GL the fonts never touch this queue.
+static std::vector<BeamLine>                  s_stashLines;
+static std::vector<BeamJoin>                  s_stashJoins;
+static std::vector<BeamShot>                  s_stashShots;
+static std::unordered_map<int64_t, VertAccum> s_stashVerts;
+
+void beam_stash_push() {
+    s_stashLines.swap(g_lines);  g_lines.clear();
+    s_stashJoins.swap(g_joins);  g_joins.clear();
+    s_stashShots.swap(g_shots);  g_shots.clear();
+    s_stashVerts.swap(g_verts);  g_verts.clear();
+}
+
+void beam_stash_pop() {
+    g_lines.clear();  g_lines.swap(s_stashLines);
+    g_joins.clear();  g_joins.swap(s_stashJoins);
+    g_shots.clear();  g_shots.swap(s_stashShots);
+    g_verts.clear();  g_verts.swap(s_stashVerts);
+}
+
 // Backend-agnostic batch access (see vector_draw.h): read-only views of the
 // CPU-side beam batches for the Vulkan backend. No GL, no behavior change.
 const std::vector<BeamLine>& beam_get_lines() { return g_lines; }

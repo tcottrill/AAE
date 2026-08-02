@@ -42,6 +42,24 @@ void beam_add_shot(float ex, float ey, int intensity, rgb_t col);
 void beam_clear();
 void beam_draw_all(const aae::math::mat4& proj);
 
+// ---- Retained-batch stash (Vulkan UI-overlay isolation) --------------------
+// The game's beam batches are RETAINED across video frames: the SIMS own the
+// clear (they call cache_clear() when they start a new vector frame) and the
+// renderer redraws whatever is in the arrays on the frames in between.
+//
+// Under Vulkan the in-game UI overlays (menu / PAUSED / exit dialog / FPS)
+// route their glyph strokes through this SAME queue (VectorFont::End ->
+// beam_add_line), so the VK chain brackets its overlay emit+record with these
+// two calls: push swaps the game's batches aside and leaves the live arrays
+// empty; pop discards whatever the overlay pass produced and swaps the game's
+// batches back, bit-exactly. Both are container swaps - no element copying -
+// and the emptied containers keep their capacity for the next frame.
+//
+// One level only (not nestable), which is all the chain needs. GL never calls
+// these: its fonts draw with their own GL objects and never enter this queue.
+void beam_stash_push();
+void beam_stash_pop();
+
 // ---- Shared AA-line path (also used by the vector-font renderer) -----------
 // Draw a caller-owned batch of segments / caps with the beam's coverage-AA line
 // and round-disc shaders under an explicit projection. Resources are created

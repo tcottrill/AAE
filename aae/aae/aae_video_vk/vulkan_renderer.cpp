@@ -17,7 +17,6 @@
 #include "sys_vk.h"
 #include "sys_window.h"
 #include "config.h"
-#include "emu_vector_draw.h"   // cache_clear - backend-neutral, no GL headers
 #include "mame_vector.h"       // vector_start / vector_clear_list; pulls in
                                // aae_mame_driver.h for Machine and
                                // VIDEO_TYPE_VECTOR (safe direction: driver
@@ -1317,6 +1316,16 @@ static void RecordUiOverlays(void)
 	// Raster games need the beam renderer online too (overlay text).
 	EnsureVectorRenderer();
 
+	// Overlay isolation (see the ownership note at the tail of vkchain_render).
+	// VectorFont::End routes glyph strokes through the SAME global beam queue
+	// the game's RETAINED beams live in, so stash the game's batches aside for
+	// the duration: the overlays emit into empty arrays, get recorded alone,
+	// and the pop below discards them and swaps the game's data back
+	// bit-exactly. Without this the overlay Record would redraw the whole game
+	// geometry direct-to-swapchain (unprocessed - no glow/trail) and the drain
+	// would wipe the retained set the NEXT frame needs.
+	beam_stash_push();
+
 	s_uiOverlayActive = true;
 	render_ui_overlays(1024, 768, false);
 	s_uiOverlayActive = false;
@@ -1353,9 +1362,12 @@ static void RecordUiOverlays(void)
 			s_rotTargetActive ? (uint32_t)kRotCanvas : 0u);
 	}
 
-	// Drain the overlay strokes (or the orphaned queue if Record was
-	// skipped). Pure CPU, same call the game path made just before us.
-	cache_clear();
+	// Discard the overlay strokes (or the orphaned queue if Record was
+	// skipped) and restore the game's retained batches. Pure CPU, no copying.
+	// NOT cache_clear(): the legacy textured-shot list (texlist) is retained
+	// across frames exactly like the beam batches, and the overlays never
+	// write to it.
+	beam_stash_pop();
 }
 
 void vkchain_render(void)
@@ -1675,12 +1687,12 @@ void vkchain_render(void)
 			// blit. Non-rotated raster keeps the crisp direct draw below.
 			if (rot != 0 && EnsureRotTarget())
 			{
-				// The overlay strokes must be the ONLY thing in the beam
-				// queue when RecordUiOverlays records it (the game path
-				// normally drains just below this branch).
-				cache_clear();
-				vector_clear_list();
-
+				// No pre-clear: RecordUiOverlays isolates its own strokes
+				// (beam_stash_push/pop), and a cache_clear() here would now be
+				// a rule violation - the beam batches belong to the sim, not
+				// the renderer. On a raster game they are empty anyway (nothing
+				// but the overlays touches the beam queue), and the MAME vector
+				// list is drained once at this function's tail.
 				VK_SuspendFramePass(g_vk, cmd);
 				s_rtRot.Begin(g_vk, cmd, /*clear=*/true, 0.0f, 0.0f, 0.0f, 0.0f);
 				s_rotTargetActive = true;
@@ -1709,9 +1721,11 @@ void vkchain_render(void)
 	// anyway), as does any game if the post chain failed to init (visible
 	// beams beat a black screen).
 	//
-	// Documented deviation: the in-game menu/pause text rides the beam queue
-	// under VK (Plan 6 routes VF strokes through beam_add_line), so it gets
-	// trail/glow here; GL draws those overlays post-composite, crisp.
+	// The in-game menu/pause text rides the same CPU beam queue under VK
+	// (Plan 6 routes VF strokes through beam_add_line), but it is emitted and
+	// recorded by RecordUiOverlays AFTER this composite and against a stashed
+	// (empty) queue, so it stays out of the beam RT and out of trail/glow -
+	// post-composite and crisp, same as GL.
 	const bool wantPostChain = s_frameOpen && GameIsVector() &&
 		!emulator_is_gui_active();
 	if (wantPostChain)
@@ -1886,12 +1900,11 @@ void vkchain_render(void)
 
 			// UI overlays go in the SAME canvas so they turn with the frame -
 			// that is precisely what GL gets for free by drawing them into
-			// fbo4. The game beams were consumed by g_vectorDrawRT above but
-			// not yet drained, and RecordUiOverlays records whatever is in the
-			// queue, so drain first (the tail of this function does the same
-			// clears for the unrotated paths).
-			cache_clear();
-			vector_clear_list();
+			// fbo4. The game's beam batches are still live here and must STAY
+			// live - they are RETAINED for the frames the sim does not refresh
+			// (see the ownership note at the tail of this function).
+			// RecordUiOverlays stashes them across its own emit+record and
+			// swaps them back, so nothing is drained here.
 			RecordUiOverlays();
 			uiOverlaysDone = true;
 
@@ -2050,23 +2063,47 @@ void vkchain_render(void)
 		}
 	}
 
-	// Post-consume clears (Plan 5 order: vector_update, Record, clear).
-	// cache_clear is pure CPU: clears the beam line/join/shot arrays
-	// VectorDrawVK just consumed (beam_clear) plus the legacy textured-shot
-	// list. Also keeps the queues from growing unbounded on raster/GUI
-	// frames, exactly as the Plan 2 drain-only calls did.
-	cache_clear();
+	// ---- Who owns the beam-batch clear: the SIM, not the renderer. ----------
+	//
+	// AAE's vector sims do NOT rebuild the display list every video frame. A
+	// game triggers a redraw (AVG VGGO and friends) only when it wants to, and
+	// on the frames in between the renderer is expected to REDRAW THE RETAINED
+	// beam data. So the clear belongs to the producer, and every sim/driver
+	// does it at the start of a new vector frame: aae_avg.cpp,
+	// old_mame_vecsim_dvg.cpp, ccpu.cpp, SegaG80vid.cpp, vertigo_video.cpp,
+	// tempest.cpp, mhavoc.cpp, cchasm.cpp, aztarac.cpp,
+	// cinematronics_driver.cpp, segag80.cpp - plus the front-end GUI at
+	// driver_gui.cpp's run_gui.
+	//
+	// The GL chain honours that (glchain_render's vector branch calls
+	// vector_update / beam_draw_all / vector_clear_list and NEVER cache_clear),
+	// and this chain must too. A cache_clear() here wiped the batches on every
+	// frame the sim had not refreshed, so BeginBeamPass's freshly cleared beam
+	// RT had nothing to draw into it: a blank frame, i.e. the AVG flicker on
+	// bwidow / spacduel. It also blanked the retained batches while paused, so
+	// the first frame after an unpause drew nothing until the next sim redraw.
+	//
+	// The UI-overlay strokes that also ride this queue under VK are isolated by
+	// RecordUiOverlays' own beam_stash_push/pop, so nothing here has to drain
+	// them - and the legacy textured-shot list (texlist) is retained on exactly
+	// the same terms as the beam batches, which is why cache_clear() is gone
+	// rather than replaced by a beam-only clear.
 
 	// Drain the MAME vector display list (AVG/DVG sims append via
-	// vector_add_point; vector_update consumed it above on vector frames).
+	// vector_add_point). THIS one is the renderer's: vector_update APPENDS the
+	// list into the beam batches, so an undrained list would be re-appended
+	// every frame and double the geometry. GL's vector branch calls it in
+	// exactly the same place (opengl_renderer.cpp). The sims call it too when
+	// they start a new frame; both are needed, since a sim that skips a frame
+	// never reaches its own call.
 	// Pure CPU: resets the list write index (mame_vector.cpp).
 	vector_clear_list();
 
 	// In-game UI overlays LAST, so the menu/PAUSED/exit dialog/FPS land on
 	// top of whatever the branches above composited - and on EVERY frame,
 	// including paused ones (GL parity: final_render always runs the overlay
-	// draw). Runs after the clears above so the overlay Record only ever
-	// consumes overlay strokes, never game beams.
+	// draw). It stashes the game's retained batches for the duration, so the
+	// overlay Record only ever consumes overlay strokes, never game beams.
 	//
 	// Skipped when a rotated branch already ran them inside the output RT:
 	// render_ui_overlays() also drives video_loop() frame logic (menu
