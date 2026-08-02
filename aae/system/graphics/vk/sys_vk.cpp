@@ -962,6 +962,21 @@ bool VK_Init(VkContext& ctx, IPresentSurface& present, bool enableValidation, bo
 	ctx.vkCmdBlitImage_ = (PFN_vkCmdBlitImage)ctx.vkGetDeviceProcAddr_(ctx.device, "vkCmdBlitImage");
 	if (!ctx.vkCmdBlitImage_) LOG_ERROR("VK_Init: vkCmdBlitImage_ is NULL");
 
+	// Optional (see sys_vk.h): timestamp query pool for the GPU profiler
+	// ([main] vk_profile). Also NOT in the required[] table below - a driver
+	// missing these degrades the profiler, not VK init. Logged at INFO, not
+	// ERROR: unlike the two above, absence here costs a diagnostic only.
+	ctx.vkCreateQueryPool_ = (PFN_vkCreateQueryPool)ctx.vkGetDeviceProcAddr_(ctx.device, "vkCreateQueryPool");
+	ctx.vkDestroyQueryPool_ = (PFN_vkDestroyQueryPool)ctx.vkGetDeviceProcAddr_(ctx.device, "vkDestroyQueryPool");
+	ctx.vkCmdWriteTimestamp_ = (PFN_vkCmdWriteTimestamp)ctx.vkGetDeviceProcAddr_(ctx.device, "vkCmdWriteTimestamp");
+	ctx.vkCmdResetQueryPool_ = (PFN_vkCmdResetQueryPool)ctx.vkGetDeviceProcAddr_(ctx.device, "vkCmdResetQueryPool");
+	ctx.vkGetQueryPoolResults_ = (PFN_vkGetQueryPoolResults)ctx.vkGetDeviceProcAddr_(ctx.device, "vkGetQueryPoolResults");
+	if (!ctx.vkCreateQueryPool_ || !ctx.vkDestroyQueryPool_ || !ctx.vkCmdWriteTimestamp_ ||
+		!ctx.vkCmdResetQueryPool_ || !ctx.vkGetQueryPoolResults_)
+	{
+		LOG_INFO("VK_Init: timestamp query entry points incomplete; GPU profiler unavailable");
+	}
+
 	ctx.vkCreatePipelineCache_ = (PFN_vkCreatePipelineCache)ctx.vkGetDeviceProcAddr_(ctx.device, "vkCreatePipelineCache");
 	if (!ctx.vkCreatePipelineCache_) LOG_ERROR("VK_Init: vkCreatePipelineCache_ is NULL");
 	ctx.vkDestroyPipelineCache_ = (PFN_vkDestroyPipelineCache)ctx.vkGetDeviceProcAddr_(ctx.device, "vkDestroyPipelineCache");

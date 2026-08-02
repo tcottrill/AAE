@@ -6,6 +6,7 @@
 
 #include "vector_post_vk.h"
 #include "sys_log.h"
+#include "gpu_profiler_vk.h"   // GPU_ZONE - per-pass GPU timing ([main] vk_profile)
 
 #include <stdio.h>
 #include <string.h>
@@ -561,7 +562,13 @@ void VectorPostVK::EndBeamPass(VkContext& ctx, VkCommandBuffer cmd)
     if (!initialized_) return;
     rtBeam_.End(ctx, cmd);
     if (rtBeam_.GetMipLevels() > 1)
+    {
+        // Timed as its own section on purpose: this is an unconditional ~10
+        // level blit cascade with a pipeline barrier per level, run every
+        // frame whether or not anything downstream samples beyond level 0.
+        GPU_ZONE("beam_mips");
         rtBeam_.GenerateMips(ctx, cmd);
+    }
     beamReady_ = true;
 }
 
@@ -637,6 +644,7 @@ void VectorPostVK::RecordPost(VkContext& ctx, VkCommandBuffer cmd, uint32_t fram
     // with blend ONE_MINUS_DST_COLOR/SRC_ALPHA and the per-level decay tint.
     if (vectrail > 0)
     {
+        GPU_ZONE("trail");
         float tr = 1.0f, tg = 1.0f, tb = 1.0f, ta = 1.0f;
         switch (vectrail)
         {
@@ -670,6 +678,7 @@ void VectorPostVK::RecordPost(VkContext& ctx, VkCommandBuffer cmd, uint32_t fram
         push.tint[0] = push.tint[1] = push.tint[2] = push.tint[3] = 1.0f;
 
         // Downsample 1: beam (trilinear-mipped) -> 512, fragBlur at 512.
+        GPU_ZONE_BEGIN("glow_down");
         rtGlowHalf_.Begin(ctx, cmd, /*clear=*/true, 0.0f, 0.0f, 0.0f, 0.0f);
         push.rect[0] = 0.0f; push.rect[1] = 0.0f; push.rect[2] = 512.0f; push.rect[3] = 512.0f;
         push.tsize[0] = 512.0f; push.tsize[1] = 512.0f;
@@ -689,6 +698,7 @@ void VectorPostVK::RecordPost(VkContext& ctx, VkCommandBuffer cmd, uint32_t fram
                   rtGlowHalf_.VK_GetColorView(), rtGlowHalf_.VK_GetSampler(),
                   push, 256, 256);
         rtGlowA_.End(ctx, cmd);
+        GPU_ZONE_END();   // glow_down
 
         // Ping-pong (GL render_blur_image_fbo3): rows 0-3 of fshifta/fshiftb
         // (axis taps), near offset v1 A->B, far offset v2 B->A, additive
@@ -720,12 +730,15 @@ void VectorPostVK::RecordPost(VkContext& ctx, VkCommandBuffer cmd, uint32_t fram
             dst.End(ctx, cmd);
         };
 
-        for (int pass = 0; pass < 4; ++pass)
         {
-            pingpong(rtGlowB_, rtGlowA_, fshifta[pass * 2], fshifta[pass * 2 + 1],
-                     /*clear=*/pass == 0);
-            pingpong(rtGlowA_, rtGlowB_, fshiftb[pass * 2], fshiftb[pass * 2 + 1],
-                     /*clear=*/false);
+            GPU_ZONE("glow_blur");   // the 8 ping-pong passes as one section
+            for (int pass = 0; pass < 4; ++pass)
+            {
+                pingpong(rtGlowB_, rtGlowA_, fshifta[pass * 2], fshifta[pass * 2 + 1],
+                         /*clear=*/pass == 0);
+                pingpong(rtGlowA_, rtGlowB_, fshiftb[pass * 2], fshiftb[pass * 2 + 1],
+                         /*clear=*/false);
+            }
         }
         glowReady_ = true;
     }

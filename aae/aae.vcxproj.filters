@@ -370,6 +370,9 @@
     <ClCompile Include="aae\aae_video_vk\vector_post_vk.cpp">
       <Filter>Source Files\aae\aae_video_vk</Filter>
     </ClCompile>
+    <ClCompile Include="aae\aae_video_vk\gpu_profiler_vk.cpp">
+      <Filter>Source Files\aae\aae_video_vk</Filter>
+    </ClCompile>
     <ClCompile Include="aae\aae_video_vk\shot_draw_vk.cpp">
       <Filter>Source Files\aae\aae_video_vk</Filter>
     </ClCompile>
@@ -880,6 +883,9 @@
       <Filter>Source Files\aae\aae_video_vk</Filter>
     </ClInclude>
     <ClInclude Include="aae\aae_video_vk\vector_post_vk.h">
+      <Filter>Source Files\aae\aae_video_vk</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\aae_video_vk\gpu_profiler_vk.h">
       <Filter>Source Files\aae\aae_video_vk</Filter>
     </ClInclude>
     <ClInclude Include="aae\aae_video_vk\shot_draw_vk.h">

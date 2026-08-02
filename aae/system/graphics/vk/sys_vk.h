@@ -255,6 +255,17 @@ struct VkContext
     PFN_vkDestroyPipelineCache  vkDestroyPipelineCache_ = nullptr;
     PFN_vkGetPipelineCacheData  vkGetPipelineCacheData_ = nullptr;
 
+    // Timestamp query pool. Serves the GPU profiler ([main] vk_profile) and
+    // nothing else, so - like vkCmdBlitImage and vkCmdCopyImageToBuffer -
+    // these are deliberately NOT in VK_Init's required[] table: a driver that
+    // somehow lacks them costs the profiler, not the whole Vulkan chain.
+    // GpuProfilerVK::Init null-checks all five and disables itself.
+    PFN_vkCreateQueryPool     vkCreateQueryPool_ = nullptr;
+    PFN_vkDestroyQueryPool    vkDestroyQueryPool_ = nullptr;
+    PFN_vkCmdWriteTimestamp   vkCmdWriteTimestamp_ = nullptr;
+    PFN_vkCmdResetQueryPool   vkCmdResetQueryPool_ = nullptr;
+    PFN_vkGetQueryPoolResults vkGetQueryPoolResults_ = nullptr;
+
 };
 
 // Resolves the color format of the pass a subsystem is recording into.

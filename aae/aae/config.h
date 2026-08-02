@@ -95,6 +95,14 @@ typedef struct {
 	// the same hardware. Read once when the vector post chain initialises,
 	// so a change takes effect at the next launch.
 	int vk_ssaa;
+	// [main] vk_profile: 1 = GPU timestamp profiler for the VULKAN chain
+	// (default 0). Wraps each pass of the frame in a VkQueryPool timestamp
+	// pair and logs a per-section average-ms / %-of-frame summary to
+	// systemlog.txt every 120 measured frames. Read once when the Vulkan
+	// chain initialises, so a change takes effect at the next launch.
+	// At 0 no query pool is created and not one timestamp is recorded - the
+	// command stream is byte-identical to a build without the profiler.
+	int vk_profile;
 	int debug_profile_code;
 	int audio_force_resample;
 	int kbleds;
