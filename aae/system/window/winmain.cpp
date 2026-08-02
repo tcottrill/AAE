@@ -1397,38 +1397,12 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance,
 		}
 	}
 
-	ShowWindow(g_hWnd, nCmdShow);
-	UpdateWindow(g_hWnd);
-
-	if (wantVulkan)
-	{
-		// GDI paint on a hidden window does not survive the show (the user
-		// saw a white flash), so repeat the black fill now that it is visible.
-		RECT rc{};
-		GetClientRect(g_hWnd, &rc);
-		HDC dc = GetDC(g_hWnd);
-		if (dc)
-		{
-			FillRect(dc, &rc, (HBRUSH)GetStockObject(BLACK_BRUSH));
-			ReleaseDC(g_hWnd, dc);
-		}
-	}
-
-	// Assume focus because we just showed the window
-	g_windowSetup.isFocused = true;
-
-	// Present one black frame into the front buffer *before* the window is ever
-	// visible, so the first thing the user sees is black, not white. Our
-	// WM_ERASEBKGND handler returns 1, so GDI never repaints over this.
-	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-	glClear(GL_COLOR_BUFFER_BIT);
-	GLSwapBuffers();
-
-	ShowWindow(g_hWnd, nCmdShow);
-	UpdateWindow(g_hWnd);
-
-	// Assume focus because we just showed the window
-	g_windowSetup.isFocused = true;
+	// NOTE: the window is deliberately still HIDDEN here. It is shown once,
+	// after Step 6 has applied the fullscreen toggle - see the comment there.
+	// (A second glClear/GLSwapBuffers + ShowWindow pair used to sit here; it
+	// was a leftover duplicate of the black-frame present a few lines above,
+	// and it ran GL calls unconditionally, including in Vulkan mode where no
+	// GL context exists.)
 
 	// -------------------------------------------------------------------------
 	// Step 4: Save a valid windowedRect for fullscreen restore.
@@ -1474,6 +1448,44 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance,
 	g_windowSetup.borderlessFullscreen = false;
 	if (requestedFullscreen)
 		GetSystemWindow().ToggleBorderlessFullscreen();
+
+	// -------------------------------------------------------------------------
+	// Step 6b: NOW show the window - the first time it is ever visible.
+	//
+	// The window is created windowed on purpose (GenerateFinalWindowSetup is
+	// called with forceWindowed=true) so Steps 4/5 can capture a valid
+	// windowedRect and client size for the fullscreen restore path. It used to
+	// be SHOWN in that windowed state too, and the toggle above then resized it
+	// - so launching fullscreen flashed a bordered 4:3 window first. The client
+	// area was already painted black, but the DWM frame (title bar + border) is
+	// light in the default Windows theme, which is the "brilliant white
+	// outline" that flashed.
+	//
+	// Showing it only here means the first frame the user ever sees is already
+	// borderless and full-screen. GetWindowRect/GetClientRect/SetWindowLong/
+	// SetWindowPos all work on a hidden window, so Steps 4-6 are unaffected.
+	// -------------------------------------------------------------------------
+	ShowWindow(g_hWnd, nCmdShow);
+	UpdateWindow(g_hWnd);
+
+	if (wantVulkan)
+	{
+		// A GDI paint on a hidden window does not survive the show, and under
+		// Vulkan no swapchain image has been presented yet, so fill the client
+		// area black now that it is visible - otherwise the first visible
+		// pixels are an uninitialised (white) client area.
+		RECT rc{};
+		GetClientRect(g_hWnd, &rc);
+		HDC dc = GetDC(g_hWnd);
+		if (dc)
+		{
+			FillRect(dc, &rc, (HBRUSH)GetStockObject(BLACK_BRUSH));
+			ReleaseDC(g_hWnd, dc);
+		}
+	}
+
+	// Assume focus because we just showed the window.
+	g_windowSetup.isFocused = true;
 
 	// Now that all subsystems (Window, RawInput, OpenGL) are ready,
 	// enforce the cursor trap/hide logic.
