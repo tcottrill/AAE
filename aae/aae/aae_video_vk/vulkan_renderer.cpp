@@ -81,6 +81,40 @@ static bool     s_fpolyRebuildPending = false;
 static RenderTargetVK s_rtGame;
 
 // ---------------------------------------------------------------------------
+// Intermediate CRT monitor target - the VK mirror of GL's fbo_mono / img5b.
+//
+// GL NEVER draws the monitor shader straight to the screen: render_mono_monitor
+// / render_color_monitor run img5a -> img5b, where img5b is resized EVERY FRAME
+// to the on-screen game rectangle (fbo_resize_mono from Layout_GetScreenPixelSize),
+// and then `screenTex = img5b` is handed to Layout_Render, whose screen drawable
+// does the compositing: the dual-texture overlay gel multiply AND the rigid
+// whole-layout rotation. That indirection is what lets the gel and the rotation
+// apply to the MONITOR OUTPUT rather than the raw game image.
+//
+// This RT reproduces it for the two cases the direct-to-swapchain monitor draw
+// cannot express, because CrtPostVK::DrawQuad_ drives its quad from a uvrect
+// (which can flip but cannot turn 90 degrees) and its shaders take ONE texture:
+//   * an overlay color gel (layout dual-source multiply), and
+//   * system rotation (the composite's permuted corner UVs).
+// When neither applies the monitor still draws DIRECTLY onto the swapchain -
+// one resample fewer, and byte-identical to the pre-existing chain.
+//
+// Format R8G8B8A8_UNORM (never _SRGB): the monitor output is gamma-space bytes
+// that the composite must read back unchanged, same contract as s_rtGame.
+// Single mip level: it is sized to the exact on-screen pixel count of the quad
+// that samples it, so nothing downstream ever minifies it (GL regenerates
+// img5b's mips only because img5b starts life at 4x native before the first
+// resize lands).
+static RenderTargetVK s_rtMonitor;
+static bool           s_rtMonitorFailed = false;
+// Deferred resize request (dims when a size change is noticed mid-frame).
+// Resize destroys the image the OTHER in-flight frame may still be sampling,
+// so it must run at a frame boundary - the same discipline, and the same
+// servicing point (vkchain_set_render), as s_fpolyRebuildPending.
+static int  s_rtMonitorPendW = 0;
+static int  s_rtMonitorPendH = 0;
+
+// ---------------------------------------------------------------------------
 // System-rotation output target (-ror / -rol / 180, config.system_rotation).
 //
 // GL does display-time rotation with ONE quad: everything (vector composite,
@@ -769,6 +803,130 @@ static bool VkColorMonitorActive(int vattr)
 		(vattr & VIDEO_TYPE_RASTER_COLOR) != 0;
 }
 
+// ---------------------------------------------------------------------------
+// EnsureMonitorTarget - GL fbo_resize_mono (gl_fbo.cpp:424).
+//
+// Lazily creates, and thereafter tracks the size of, the intermediate monitor
+// RT. w/h are the on-screen pixel dims of the quad that will sample it, in the
+// monitor image's OWN (pre-rotation) frame - see the sizing derivation at the
+// call site. Clamp range is GL's, verbatim.
+//
+// Returns false when the target is unusable this frame, in which case the
+// caller falls back to compositing the raw game RT - i.e. exactly what the
+// chain did before the monitor pass existed.
+// ---------------------------------------------------------------------------
+static bool EnsureMonitorTarget(int w, int h)
+{
+	if (s_rtMonitorFailed)
+		return false;
+
+	// GL fbo_resize_mono's clamps, so a degenerate window behaves the same way.
+	if (w < 64)   w = 64;
+	if (h < 64)   h = 64;
+	if (w > 4096) w = 4096;
+	if (h > 4096) h = 4096;
+
+	if (!s_rtMonitor.IsValid())
+	{
+		// First use: a create destroys nothing, so it is safe with a frame
+		// open (unlike the resize below).
+		RenderTargetVKCreateInfo ci{};
+		ci.width = w;
+		ci.height = h;
+		ci.filter = rtFilterVK::Linear;
+		ci.colorFormat = VK_FORMAT_R8G8B8A8_UNORM;   // never _SRGB (see s_rtMonitor)
+		ci.mipLevels = 1;                            // sampled 1:1, never minified
+		if (!s_rtMonitor.Init(g_vk, ci))
+		{
+			s_rtMonitorFailed = true;
+			LOG_ERROR("vkchain: CRT monitor RT init failed; gel/rotated monitor pass disabled");
+			return false;
+		}
+		s_rtMonitorPendW = 0;
+		s_rtMonitorPendH = 0;
+		LOG_INFO("vkchain: CRT monitor RT online (%dx%d RGBA8_UNORM)", w, h);
+		return true;
+	}
+
+	if (s_rtMonitor.GetWidth() == w && s_rtMonitor.GetHeight() == h)
+		return true;
+
+	// Size changed (window resize, aspect override, a bezel/artcrop toggle
+	// moving the layout camera). Resize drains the device and destroys the
+	// old image, which the other in-flight frame may still be sampling, so a
+	// mid-frame request is deferred to the next frame boundary exactly as
+	// EnsureRasterRenderer defers its rebuild. This frame keeps the previous
+	// composite - one frame of the pre-fix picture on a resize, never a
+	// use-after-free.
+	if (s_frameOpen)
+	{
+		s_rtMonitorPendW = w;
+		s_rtMonitorPendH = h;
+		return false;
+	}
+
+	s_rtMonitorPendW = 0;
+	s_rtMonitorPendH = 0;
+	s_rtMonitor.Resize(g_vk, w, h);
+	if (!s_rtMonitor.IsValid())
+	{
+		s_rtMonitorFailed = true;
+		LOG_ERROR("vkchain: CRT monitor RT resize failed; gel/rotated monitor pass disabled");
+		return false;
+	}
+	LOG_INFO("vkchain: CRT monitor RT resized to %dx%d", w, h);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// FillMonitorParams - the per-frame config -> CrtMonitorParamsVK copy, shared
+// by the offscreen and direct monitor routes (GL re-uploads every uniform
+// every frame for the same reason: the menus mutate config live).
+// ---------------------------------------------------------------------------
+static void FillMonitorParams(bool monoPass, CrtMonitorParamsVK& mp)
+{
+	// uSrcSize: the game's visible area in NATIVE pixels, oriented -- which is
+	// exactly the game RT size here (GL computes vw/vh from visible_area +
+	// ORIENTATION_SWAP_XY; raster_dst_dims does the same and feeds s_rasterW/H).
+	mp.srcW = (float)s_rasterW;
+	mp.srcH = (float)s_rasterH;
+	// uLodBias: GL passes log2(config.prescale) because its source texture is
+	// prescale-sized. The VK game RT is UNSCALED source pixels, so one game
+	// pixel is one texel and the halation mip level needs no shift: 0.
+	mp.lodBias = 0.0f;
+
+	if (monoPass)
+	{
+		const int ti = (config.mono_tint >= 0 && config.mono_tint <= 2)
+			? config.mono_tint : 0;
+		mp.blurH     = config.mono_blur_h;
+		mp.blurV     = config.mono_blur_v;
+		mp.halation  = config.mono_halation;
+		mp.halRadius = config.mono_halation_radius;
+		mp.scanline  = config.mono_scanline;
+		mp.contrast  = config.mono_contrast;
+		mp.bright    = config.mono_brightness;
+		mp.tint[0]   = k_vkMonoTints[ti][0];
+		mp.tint[1]   = k_vkMonoTints[ti][1];
+		mp.tint[2]   = k_vkMonoTints[ti][2];
+	}
+	else
+	{
+		mp.blurH        = config.color_blur_h;
+		mp.blurV        = config.color_blur_v;
+		mp.converge     = config.color_converge;
+		mp.halation     = config.color_halation;
+		mp.halRadius    = config.color_halation_radius;
+		mp.scanline     = config.color_scanline;
+		mp.contrast     = config.color_contrast;
+		mp.bright       = config.color_brightness;
+		mp.saturation   = config.color_saturation;
+		mp.maskType     = (float)config.color_mask_type;
+		mp.maskStrength = config.color_mask_strength;
+		mp.maskScale    = config.color_mask_scale;
+	}
+}
+
 int vkchain_init(void)
 {
 	if (s_initialized)
@@ -791,8 +949,12 @@ int vkchain_init(void)
 		// accumulator once so the previous game's phosphor never ghosts.
 		s_vecPostFailed = false;
 		s_trailClearPending = true;
-		// CRT post chain: fresh init attempt per load, same discipline.
+		// CRT post chain: fresh init attempt per load, same discipline. The
+		// monitor RT's failure latch clears with it; the target itself
+		// persists (it is game-independent - sized to the on-screen rect,
+		// which EnsureMonitorTarget re-checks every frame anyway).
 		s_crtPostFailed = false;
+		s_rtMonitorFailed = false;
 		EnsureCrtPost();
 		return 1;
 	}
@@ -919,6 +1081,11 @@ void vkchain_shutdown(void)
 	VkTex_ShutdownCache(g_vk);   // GUI solid-white texture + any cached loads
 	if (s_rtGame.IsValid())
 		s_rtGame.Shutdown(g_vk);
+	if (s_rtMonitor.IsValid())
+		s_rtMonitor.Shutdown(g_vk);
+	s_rtMonitorFailed = false;
+	s_rtMonitorPendW = 0;
+	s_rtMonitorPendH = 0;
 	if (s_rtRot.IsValid())
 		s_rtRot.Shutdown(g_vk);
 	s_rtRotFormat = VK_FORMAT_UNDEFINED;
@@ -967,6 +1134,18 @@ void vkchain_set_render(void)
 	{
 		s_fpolyRebuildPending = false;
 		EnsureRasterRenderer();
+	}
+
+	// Same treatment for a deferred CRT monitor RT resize (window resize, an
+	// aspect override, a bezel/artcrop toggle moving the layout camera): the
+	// recreate destroys an image an in-flight frame may still be sampling.
+	if (s_rtMonitorPendW > 0 && s_rtMonitorPendH > 0)
+	{
+		const int pw = s_rtMonitorPendW;
+		const int ph = s_rtMonitorPendH;
+		s_rtMonitorPendW = 0;
+		s_rtMonitorPendH = 0;
+		EnsureMonitorTarget(pw, ph);   // no frame open here: takes the resize path
 	}
 
 	// Same treatment for a menu-triggered scanline-overlay reload: the destroy
@@ -1139,6 +1318,118 @@ void vkchain_render(void)
 			VkCommandBuffer cmd = g_vk.cmdBuffers[g_vk.frameIndex];
 			const int vattr = (Machine && Machine->drv) ? Machine->drv->video_attributes : 0;
 
+			// -------------------------------------------------------------
+			// Frame geometry, resolved BEFORE the pass work begins.
+			//
+			// The intermediate monitor pass (below) has to open and close its
+			// own render pass, which is only legal inside the suspended-pass
+			// window - so the decision of WHETHER to run it, and at what size,
+			// cannot wait for the composite section. Everything hoisted here
+			// is pure computation over the swapchain extent, s_rasterW/H, rot
+			// and config; none of it records commands.
+			// -------------------------------------------------------------
+
+			// Aspect-fit letterbox (Plan 3 math, unchanged): fit the
+			// post-orientation game rect into the swapchain, centered.
+			// RecordRect takes the rect in y-up screen pixels, but a
+			// centered rect is symmetric, so the same offsets serve.
+			//
+			// System rotation: s_rasterW/H are post-DRIVER-orientation only
+			// (raster_emit reads Machine->drv->rotation, which run_game never
+			// XORs the user rotation into - that goes to Machine->orientation),
+			// so a 90-degree system rotation turns the image at DISPLAY time
+			// here: the fitted box takes the INVERTED aspect and the composite
+			// quad samples with rotated corner UVs. Same split as the GL chain,
+			// where the game image is emitted driver-oriented into the raster
+			// FBO and Layout_Render turns the whole composition.
+			float gameAspect = (float)s_rasterW / (float)s_rasterH;
+			if (rot == 1 || rot == 2)
+				gameAspect = 1.0f / gameAspect;
+			const int sw = (int)g_vk.swapchainExtent.width;
+			const int sh = (int)g_vk.swapchainExtent.height;
+			int vw = sw, vh = (int)(sw / gameAspect + 0.5f);
+			if (vh > sh) { vh = sh; vw = (int)(sh * gameAspect + 0.5f); }
+			const float lx = (float)((sw - vw) / 2);
+			const float ly = (float)((sh - vh) / 2);
+
+			// PHASE 1 (GL final_render_raster): the MAME .lay layout
+			// composite. GL hands the whole raster frame to Layout_Render,
+			// which fits the view, then draws backdrop -> screen (with the
+			// overlay color gel multiplied in) -> bezel, and owns the display
+			// rotation for all of them. LayoutVK_ComputeFrame resolves the
+			// same geometry; when it declines (this game has no .lay, or the
+			// compositor failed to init) the chain keeps the plain aspect-fit
+			// letterbox composite, byte-identical to before Plan 10.
+			LayoutVKFrame lay{};
+			const bool layoutActive = s_layoutQuadInit &&
+				LayoutVK_ComputeFrame(sw, sh, lay) && lay.hasScreen;
+
+			// Monitor rect: the layout's SCREEN element when a layout is
+			// active (so the backdrop and bezel frame it), otherwise the plain
+			// letterbox. CrtPostVK takes y-DOWN pixels, which is exactly what
+			// LayoutVKFrame stores.
+			const float mx0 = layoutActive ? lay.sx0 : lx;
+			const float my0 = layoutActive ? lay.sy0 : ly;
+			const float mx1 = layoutActive ? lay.sx1 : (lx + (float)vw);
+			const float my1 = layoutActive ? lay.sy1 : (ly + (float)vh);
+
+			// PHASE B (GL final_render_raster): the monitor CRT pass, and the
+			// choice of the two routes to the screen.
+			//
+			// GL ALWAYS goes offscreen: render_mono_monitor / render_color_monitor
+			// write img5b (fbo_mono), Layout_Render then composites img5b in
+			// place of img5a - which is how the gel multiply and the rigid
+			// rotation come to act on the MONITOR OUTPUT rather than the raw
+			// game image. Two things about the direct-to-swapchain monitor draw
+			// cannot express that:
+			//   * the gel - CrtPostVK's shaders take ONE texture, so they
+			//     cannot multiply the layout's overlay; and
+			//   * rotation - DrawQuad_ drives its quad from a uvrect, which can
+			//     flip but cannot turn 90 degrees.
+			// So the intermediate RT is engaged exactly when either applies,
+			// and the composite that samples it (the layout's dual-source gel
+			// quad, or ScreenQuadVK's permuted corner UVs, or both) supplies
+			// what the monitor quad cannot. When NEITHER applies the monitor
+			// still draws straight onto the swapchain at the rect above: the
+			// same output-sized post with one resample fewer, and byte-for-byte
+			// the picture this chain already shipped.
+			const bool wantMono  = VkMonoMonitorActive(vattr);
+			const bool wantColor = !wantMono && VkColorMonitorActive(vattr);
+			const bool monitorWanted = wantMono || wantColor;
+			const bool gelActive = layoutActive && lay.hasOverlay;
+			const bool needIntermediate = monitorWanted && (gelActive || rot != 0);
+
+			// Intermediate size = the on-screen pixel extent of the quad that
+			// will sample it, measured in the monitor image's OWN frame.
+			//
+			// GL's number is Layout_GetScreenPixelSize, which mame_layout.cpp
+			// sets to d.w*scaleX x d.h*scaleY - the screen quad's edge lengths
+			// BEFORE the rigid rotation ("rigid rotation preserves edge
+			// lengths ... regardless of rotMode"). LayoutRectPx here reports
+			// the ROTATED bounding box instead, and a 90/270 turn swaps those
+			// two axes, so they are swapped back. The letterbox path is the
+			// same story: vw/vh were fitted to the INVERTED aspect for rot
+			// 1/2, so un-swapping recovers the unrotated extent - exactly what
+			// GL's synthetic screen-only layout produces for a game with no
+			// .lay file. Net effect either way: one monitor fragment covers
+			// one screen pixel of the composited quad, so the shadow mask and
+			// beam ripple resolve on screen pixels just as GL's img5b resize
+			// achieves.
+			int mw = (int)((mx1 - mx0) + 0.5f);
+			int mh = (int)((my1 - my0) + 0.5f);
+			if (rot == 1 || rot == 2) { const int t = mw; mw = mh; mh = t; }
+
+			// EnsureMonitorTarget returns false when the RT is unavailable or
+			// a resize had to be deferred to the next frame boundary; then
+			// BOTH routes stand down and the composite samples the raw game RT
+			// - the pre-monitor picture, never a stale or destroyed image.
+			const bool monitorOffscreen = needIntermediate && EnsureMonitorTarget(mw, mh);
+			const bool monitorDirect    = monitorWanted && !needIntermediate;
+
+			CrtMonitorParamsVK mp{};
+			if (monitorOffscreen || monitorDirect)
+				FillMonitorParams(wantMono, mp);
+
 			// Offscreen work is illegal inside the swapchain pass (the RT
 			// opens its own pass; vkCmdBlitImage may not appear inside any
 			// pass), so the frame pass is suspended around it. No swapchain
@@ -1174,143 +1465,79 @@ void vkchain_render(void)
 			if (s_rtGame.GetMipLevels() > 1)
 				s_rtGame.GenerateMips(g_vk, cmd);
 
+			// PHASE B, offscreen route (GL render_mono_monitor /
+			// render_color_monitor -> img5b). Still inside the suspended-pass
+			// window: a render pass cannot nest inside the swapchain pass, and
+			// this one must also come AFTER GenerateMips because the halation
+			// taps read the game RT's mip pyramid via textureLod - the same
+			// ordering GL enforces with fbo_generate_mipmaps({img5a}) sitting
+			// between the scanline draw and the monitor pass.
+			//
+			// Rect (0,0)-(w,h) over the whole RT with targetW/H = the RT dims,
+			// so the shader's mask origin push (pc.tsize.zw) is (0,0) - which
+			// is GL's fbo_mono origin exactly. The direct route has to
+			// re-anchor to the letterbox corner; here the anchor falls out of
+			// the render target, so the color pass's mask phase now tracks GL
+			// more closely than the direct route does, with no shader change.
+			if (monitorOffscreen)
+			{
+				const int rtW = s_rtMonitor.GetWidth();
+				const int rtH = s_rtMonitor.GetHeight();
+
+				// Clear is belt-and-braces: the monitor quad is blend-disabled
+				// (GL glDisable(GL_BLEND), "straight replace into img5b") and
+				// covers every pixel. It also satisfies the RT's first-use
+				// rule without relying on the UNDEFINED-layout hardening.
+				s_rtMonitor.Begin(g_vk, cmd, /*clear=*/true, 0.0f, 0.0f, 0.0f, 1.0f);
+				g_crtPost.RecordMonitor(g_vk, cmd, g_vk.frameIndex,
+					/*colorPass=*/wantColor,
+					s_rtGame.VK_GetColorView(), s_rtGame.VK_GetSampler(),
+					mp,
+					0.0f, 0.0f, (float)rtW, (float)rtH,
+					rtW, rtH);
+				s_rtMonitor.End(g_vk, cmd);
+			}
+
 			VK_ResumeFramePass(g_vk, cmd, s_imageIndex);
 
-			// Aspect-fit letterbox (Plan 3 math, unchanged): fit the
-			// post-orientation game rect into the swapchain, centered.
-			// RecordRect takes the rect in y-up screen pixels, but a
-			// centered rect is symmetric, so the same offsets serve.
-			//
-			// System rotation: s_rasterW/H are post-DRIVER-orientation only
-			// (raster_emit reads Machine->drv->rotation, which run_game never
-			// XORs the user rotation into - that goes to Machine->orientation),
-			// so a 90-degree system rotation turns the image at DISPLAY time
-			// here: the fitted box takes the INVERTED aspect and the composite
-			// quad samples with rotated corner UVs. Same split as the GL chain,
-			// where the game image is emitted driver-oriented into the raster
-			// FBO and Layout_Render turns the whole composition.
-			float gameAspect = (float)s_rasterW / (float)s_rasterH;
-			if (rot == 1 || rot == 2)
-				gameAspect = 1.0f / gameAspect;
-			const int sw = (int)g_vk.swapchainExtent.width;
-			const int sh = (int)g_vk.swapchainExtent.height;
-			int vw = sw, vh = (int)(sw / gameAspect + 0.5f);
-			if (vh > sh) { vh = sh; vw = (int)(sh * gameAspect + 0.5f); }
-			const float lx = (float)((sw - vw) / 2);
-			const float ly = (float)((sh - vh) / 2);
+			// The texture the SCREEN layer samples - GL's one-line
+			// `screenTex = img5b` swap in final_render_raster. When the monitor
+			// ran offscreen, everything downstream (the gel multiply, the
+			// rotation, the additive blend over the backdrop) acts on the MONITOR
+			// OUTPUT; otherwise it acts on the raw game image, exactly as before.
+			// Both images carry the game's top scanline in row 0 and are sampled
+			// with normalized UVs over their full extent, so nothing about the UV
+			// conventions below changes with the swap.
+			VkImageView screenView = monitorOffscreen
+				? s_rtMonitor.VK_GetColorView() : s_rtGame.VK_GetColorView();
+			VkSampler screenSampler = monitorOffscreen
+				? s_rtMonitor.VK_GetSampler() : s_rtGame.VK_GetSampler();
 
-			// PHASE B (GL final_render_raster): the monitor CRT pass. GL runs
-			// img5a -> img5b, where img5b is resized every frame to the
-			// ON-SCREEN game rectangle, then blits img5b 1:1 - "pixel-exact
-			// output sizing", so the shadow mask and scanline ripple land on
-			// screen pixels. Here the monitor quad IS that output-sized draw:
-			// it goes straight onto the swapchain at the same letterbox rect
-			// the plain composite uses, so 1 fragment = 1 screen pixel with
-			// one resample fewer. With both monitor passes gated off, the
-			// plain ScreenQuadVK composite below runs exactly as before.
-			//
-			// Rect orientation: RecordRect takes y-up screen pixels and
-			// CrtPostVK takes y-down; the rect is vertically centered with the
-			// same integer margins either way, so the numbers are identical.
-			// RecordMonitor's uvrect puts v=0 at the rect TOP, which is RT
-			// image row 0 = the game's top scanline (see the flipUV_Y trace
-			// below) - upright, the same result as flipUV_Y=false.
-			//
-			// MERGE deviation (rotation x CRT, documented): RecordMonitor has
-			// no rotated-UV path, so a system-rotated raster game falls back
-			// to the plain rotated composite - the monitor mask/beam pass is
-			// skipped under rotation. The tiled scanline overlay still
-			// applies (it lives INSIDE the game RT and turns with the quad).
-			const bool wantMono  = VkMonoMonitorActive(vattr);
-			const bool wantColor = !wantMono && VkColorMonitorActive(vattr);
-
-			// PHASE 1 (GL final_render_raster): the MAME .lay layout
-			// composite. GL hands the whole raster frame to Layout_Render,
-			// which fits the view, then draws backdrop -> screen (with the
-			// overlay color gel multiplied in) -> bezel, and owns the display
-			// rotation for all of them. LayoutVK_ComputeFrame resolves the
-			// same geometry; when it declines (this game has no .lay, or the
-			// compositor failed to init) the chain keeps the plain aspect-fit
-			// letterbox composite, byte-identical to before Plan 10.
-			LayoutVKFrame lay{};
-			const bool layoutActive = s_layoutQuadInit &&
-				LayoutVK_ComputeFrame(sw, sh, lay) && lay.hasScreen;
-
-			// MERGE deviation (artwork x CRT, documented): the monitor
-			// shaders take ONE texture, so they cannot multiply the overlay
-			// color gel into their output the way GL's dual-texture layout
-			// screen shader does with img5b. When the layout supplies an
-			// overlay for this game the monitor pass stands down and the
-			// gel-multiplied screen quad draws instead - the same shape as
-			// the rotation x CRT deviation noted above.
-			const bool monitorOn = (wantMono || wantColor) && rot == 0 &&
-				!(layoutActive && lay.hasOverlay);
-
-			// Monitor rect: the layout's SCREEN element when a layout is
-			// active (so the backdrop and bezel frame it), otherwise the plain
-			// letterbox. CrtPostVK takes y-DOWN pixels, which is exactly what
-			// LayoutVKFrame stores.
-			const float mx0 = layoutActive ? lay.sx0 : lx;
-			const float my0 = layoutActive ? lay.sy0 : ly;
-			const float mx1 = layoutActive ? lay.sx1 : (lx + (float)vw);
-			const float my1 = layoutActive ? lay.sy1 : (ly + (float)vh);
-
-			// Layers BELOW and INCLUDING the game: every backdrop drawable,
-			// then the screen quad itself unless the monitor pass takes it.
+			// Layers BELOW and INCLUDING the game: every backdrop drawable, then
+			// the screen quad itself unless the DIRECT monitor route takes that
+			// rect. The offscreen route still wants the screen quad drawn - that
+			// quad is what puts the monitor output on screen, gel and all.
 			if (layoutActive)
 			{
 				LayoutVK_RecordUnderlay(g_vk, cmd, g_vk.frameIndex,
 					g_layoutQuad, lay,
-					s_rtGame.VK_GetColorView(), s_rtGame.VK_GetSampler(),
-					sw, sh, /*drawScreen=*/!monitorOn);
+					screenView, screenSampler,
+					sw, sh, /*drawScreen=*/!monitorDirect);
 			}
 
-			if (monitorOn)
+			if (monitorDirect)
 			{
-				CrtMonitorParamsVK mp{};
-				// uSrcSize: the game's visible area in NATIVE pixels, oriented
-				// -- which is exactly the RT size here (GL computes vw/vh from
-				// visible_area + ORIENTATION_SWAP_XY; raster_dst_dims does the
-				// same and feeds s_rasterW/H).
-				mp.srcW = (float)s_rasterW;
-				mp.srcH = (float)s_rasterH;
-				// uLodBias: GL passes log2(config.prescale) because its source
-				// texture is prescale-sized. The VK game RT is UNSCALED source
-				// pixels, so one game pixel is one texel and the halation mip
-				// level needs no shift: 0.
-				mp.lodBias = 0.0f;
-
-				if (wantMono)
-				{
-					const int ti = (config.mono_tint >= 0 && config.mono_tint <= 2)
-						? config.mono_tint : 0;
-					mp.blurH     = config.mono_blur_h;
-					mp.blurV     = config.mono_blur_v;
-					mp.halation  = config.mono_halation;
-					mp.halRadius = config.mono_halation_radius;
-					mp.scanline  = config.mono_scanline;
-					mp.contrast  = config.mono_contrast;
-					mp.bright    = config.mono_brightness;
-					mp.tint[0]   = k_vkMonoTints[ti][0];
-					mp.tint[1]   = k_vkMonoTints[ti][1];
-					mp.tint[2]   = k_vkMonoTints[ti][2];
-				}
-				else
-				{
-					mp.blurH        = config.color_blur_h;
-					mp.blurV        = config.color_blur_v;
-					mp.converge     = config.color_converge;
-					mp.halation     = config.color_halation;
-					mp.halRadius    = config.color_halation_radius;
-					mp.scanline     = config.color_scanline;
-					mp.contrast     = config.color_contrast;
-					mp.bright       = config.color_brightness;
-					mp.saturation   = config.color_saturation;
-					mp.maskType     = (float)config.color_mask_type;
-					mp.maskStrength = config.color_mask_strength;
-					mp.maskScale    = config.color_mask_scale;
-				}
-
+				// Direct route (unchanged from the pre-fix chain): no gel and no
+				// rotation, so the monitor quad IS the output-sized draw - straight
+				// onto the swapchain at the letterbox or layout screen rect, so
+				// 1 fragment = 1 screen pixel with one resample fewer than GL.
+				//
+				// Rect orientation: RecordRect takes y-up screen pixels and
+				// CrtPostVK takes y-down; the rect is vertically centered with the
+				// same integer margins either way, so the numbers are identical.
+				// RecordMonitor's uvrect puts v=0 at the rect TOP, which is RT
+				// image row 0 = the game's top scanline (see the flipUV_Y trace
+				// below) - upright, the same result as flipUV_Y=false.
 				g_crtPost.RecordMonitor(g_vk, cmd, g_vk.frameIndex,
 					/*colorPass=*/wantColor,
 					s_rtGame.VK_GetColorView(), s_rtGame.VK_GetSampler(),
@@ -1320,8 +1547,8 @@ void vkchain_render(void)
 			}
 			else if (layoutActive)
 			{
-				// The screen quad was already recorded by RecordUnderlay at
-				// the layout's screen bounds; nothing to composite here.
+				// The screen quad was already recorded by RecordUnderlay at the
+				// layout's screen bounds; nothing to composite here.
 			}
 			else
 			{
@@ -1332,9 +1559,12 @@ void vkchain_render(void)
 				// game's top scanline lands in RT row 0. RecordRect with
 				// flipUV_Y=false samples image row 0 (v=0) at the rect's TOP
 				// vertex -- game top at screen top, upright. So: false.
-				// System rotation rides the rotated corner UVs (rot != 0).
+				// System rotation rides the rotated corner UVs (rot != 0) - which
+				// is also how a rotated MONITOR image reaches the screen for a
+				// game with no .lay file, GL's synthetic screen-only layout doing
+				// the same rigid turn on img5b.
 				g_screenQuad.RecordRect(g_vk, cmd, g_vk.frameIndex,
-					s_rtGame.VK_GetColorView(), s_rtGame.VK_GetSampler(),
+					screenView, screenSampler,
 					lx, ly, lx + (float)vw, ly + (float)vh,
 					(uint32_t)sw, (uint32_t)sh,
 					/*flipUV_Y=*/false, RGB_WHITE, rot);
