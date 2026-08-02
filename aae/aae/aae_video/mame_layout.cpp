@@ -1287,6 +1287,98 @@ void Layout_CreateDefaultScreen(LayoutData& outData, float screenW, float screen
 //      a. ZIP archive: artwork\<gamename>.zip
 //      b. Loose files: artwork\<gamename>\<layFilename>
 // ====================================================================
+bool Layout_FindArtworkSource(const AAEDriver* drv,
+	std::string& outZipFile, std::string& outArtDir)
+{
+	outZipFile.clear();
+	outArtDir.clear();
+
+	if (!drv || !drv->layoutFile || drv->layoutFile[0] == '\0')
+		return false;
+
+	const char* gameName = drv->name;
+	const char* layFilename = drv->layoutFile;
+
+	std::string zipFile;    // path to the ZIP archive (empty if using loose files)
+	std::string artDir;     // path to the loose-file artwork directory
+	bool found = false;
+
+	// Helper: append path separator if needed. Forward slash: valid in every
+	// Windows file API and the only separator Linux accepts - a hardcoded
+	// backslash made these artwork lookups silently fail on Linux.
+	auto ensureTrailingSep = [](std::string& p) {
+		if (!p.empty() && p.back() != '\\' && p.back() != '/')
+			p.push_back('/');
+		};
+
+	// 1. Try external artwork path (config.exartpath)
+	if (!found && config.exartpath && config.exartpath[0] != '\0')
+	{
+		std::string extBase = config.exartpath;
+		ensureTrailingSep(extBase);
+
+		// 1a. ZIP archive: <exartpath>\<gamename>.zip
+		std::string testZip = extBase + gameName + ".zip";
+		if (file_exists(testZip.c_str()))
+		{
+			zipFile = testZip;
+			artDir = extBase + gameName;
+			found = true;
+			LOG_INFO("Layout: found ZIP in external path: %s", zipFile.c_str());
+		}
+
+		// 1b. Loose files: <exartpath>\<gamename>\<layFilename>
+		if (!found)
+		{
+			artDir = extBase + gameName;
+			std::string testLay = artDir + "/" + layFilename;   // '/' works on both platforms
+			if (std::filesystem::exists(testLay))
+			{
+				zipFile.clear();
+				found = true;
+				LOG_INFO("Layout: found loose file in external path: %s", testLay.c_str());
+			}
+		}
+	}
+
+	// 2. Try local artwork directory (relative to exe)
+	if (!found)
+	{
+		std::string localBase = getpathM("artwork", nullptr);
+		ensureTrailingSep(localBase);
+
+		// 2a. ZIP archive: artwork\<gamename>.zip
+		std::string testZip = localBase + gameName + ".zip";
+		if (file_exists(testZip.c_str()))
+		{
+			zipFile = testZip;
+			artDir = localBase + gameName;
+			found = true;
+			LOG_INFO("Layout: found ZIP in local path: %s", zipFile.c_str());
+		}
+
+		// 2b. Loose files: artwork\<gamename>\<layFilename>
+		if (!found)
+		{
+			artDir = localBase + gameName;
+			std::string testLay = artDir + "/" + layFilename;   // '/' works on both platforms
+			if (std::filesystem::exists(testLay))
+			{
+				zipFile.clear();
+				found = true;
+				LOG_INFO("Layout: found loose file in local path: %s", testLay.c_str());
+			}
+		}
+	}
+
+	if (found)
+	{
+		outZipFile = zipFile;
+		outArtDir = artDir;
+	}
+	return found;
+}
+
 void Layout_LoadForGame(const AAEDriver* drv)
 {
 	if (!drv) return;
@@ -1299,75 +1391,8 @@ void Layout_LoadForGame(const AAEDriver* drv)
 
 		std::string zipFile;    // path to the ZIP archive (empty if using loose files)
 		std::string artDir;     // path to the loose-file artwork directory
-		bool found = false;
+		const bool found = Layout_FindArtworkSource(drv, zipFile, artDir);
 
-		// Helper: append path separator if needed. Forward slash: valid in every
-		// Windows file API and the only separator Linux accepts - a hardcoded
-		// backslash made these artwork lookups silently fail on Linux.
-		auto ensureTrailingSep = [](std::string& p) {
-			if (!p.empty() && p.back() != '\\' && p.back() != '/')
-				p.push_back('/');
-			};
-
-		// 1. Try external artwork path (config.exartpath)
-		if (!found && config.exartpath && config.exartpath[0] != '\0')
-		{
-			std::string extBase = config.exartpath;
-			ensureTrailingSep(extBase);
-
-			// 1a. ZIP archive: <exartpath>\<gamename>.zip
-			std::string testZip = extBase + gameName + ".zip";
-			if (file_exists(testZip.c_str()))
-			{
-				zipFile = testZip;
-				artDir = extBase + gameName;
-				found = true;
-				LOG_INFO("Layout: found ZIP in external path: %s", zipFile.c_str());
-			}
-
-			// 1b. Loose files: <exartpath>\<gamename>\<layFilename>
-			if (!found)
-			{
-				artDir = extBase + gameName;
-				std::string testLay = artDir + "/" + layFilename;   // '/' works on both platforms
-				if (std::filesystem::exists(testLay))
-				{
-					zipFile.clear();
-					found = true;
-					LOG_INFO("Layout: found loose file in external path: %s", testLay.c_str());
-				}
-			}
-		}
-
-		// 2. Try local artwork directory (relative to exe)
-		if (!found)
-		{
-			std::string localBase = getpathM("artwork", nullptr);
-			ensureTrailingSep(localBase);
-
-			// 2a. ZIP archive: artwork\<gamename>.zip
-			std::string testZip = localBase + gameName + ".zip";
-			if (file_exists(testZip.c_str()))
-			{
-				zipFile = testZip;
-				artDir = localBase + gameName;
-				found = true;
-				LOG_INFO("Layout: found ZIP in local path: %s", zipFile.c_str());
-			}
-
-			// 2b. Loose files: artwork\<gamename>\<layFilename>
-			if (!found)
-			{
-				artDir = localBase + gameName;
-				std::string testLay = artDir + "/" + layFilename;   // '/' works on both platforms
-				if (std::filesystem::exists(testLay))
-				{
-					zipFile.clear();
-					found = true;
-					LOG_INFO("Layout: found loose file in local path: %s", testLay.c_str());
-				}
-			}
-		}
 		if (found)
 		{
 			if (Layout_Parse(layFilename, zipFile, artDir, g_layoutData))

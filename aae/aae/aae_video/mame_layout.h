@@ -165,6 +165,16 @@ float Layout_ComputeGameAspect();
 struct AAEDriver;
 void Layout_LoadForGame(const AAEDriver* drv);
 
+// Renderer-neutral half of Layout_LoadForGame: probes the four artwork
+// locations for this driver's .lay file and reports where it lives.
+//   outZipFile - path to the ZIP holding the layout (empty => loose files)
+//   outArtDir  - directory used for loose-file lookups / the ZIP's sibling dir
+// Returns false when the driver has no layoutFile or nothing was found.
+// Pure filesystem probing - no GL, no Vulkan - so the GL loader and the
+// Vulkan loader (LayoutVK_LoadForGame) share one search order.
+bool Layout_FindArtworkSource(const AAEDriver* drv,
+    std::string& outZipFile, std::string& outArtDir);
+
 // ====================================================================
 // Global layout state (set by the app, read by the renderer)
 // ====================================================================
