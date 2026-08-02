@@ -1,4 +1,4 @@
-# =============================================================================
+﻿# =============================================================================
 # CMakeLists.txt - AAE (arcade emulator)
 #
 # Added ALONGSIDE the existing Visual Studio vcxproj files, replacing nothing.
@@ -221,6 +221,7 @@ set(AAE_COMMON_SOURCES
     aae/aae/aae_video_vk/crt_post_vk.cpp
     aae/aae/aae_video_vk/fast_poly_vk.cpp
     aae/aae/aae_video_vk/layout_vk.cpp
+    aae/aae/aae_video_vk/raster_tex_vk.cpp
     aae/aae/aae_video_vk/render_target_vk.cpp
     aae/aae/aae_video_vk/screen_quad_vk.cpp
     aae/aae/aae_video_vk/shot_draw_vk.cpp

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <Manifest Include="app.manifest" />
@@ -356,6 +356,9 @@
       <Filter>Source Files\aae\aae_video_vk</Filter>
     </ClCompile>
     <ClCompile Include="aae\aae_video_vk\layout_vk.cpp">
+      <Filter>Source Files\aae\aae_video_vk</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\aae_video_vk\raster_tex_vk.cpp">
       <Filter>Source Files\aae\aae_video_vk</Filter>
     </ClCompile>
     <ClCompile Include="aae\aae_video_vk\render_target_vk.cpp">
@@ -868,6 +871,9 @@
       <Filter>Source Files\aae\aae_video_vk</Filter>
     </ClInclude>
     <ClInclude Include="aae\aae_video_vk\layout_vk.h">
+      <Filter>Source Files\aae\aae_video_vk</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\aae_video_vk\raster_tex_vk.h">
       <Filter>Source Files\aae\aae_video_vk</Filter>
     </ClInclude>
     <ClInclude Include="aae\aae_video_vk\render_target_vk.h">
