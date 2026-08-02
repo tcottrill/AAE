@@ -388,11 +388,25 @@ void VectorFont::End()
 		// beam queue (and vkchain_render's GUI mapping, see GuiBeamToWindowPx
 		// in vulkan_renderer.cpp) assumes the same shared 0..1024 box GL's
 		// fbo1 canvas uses for both VF text and beam content.
-		// GUI text is authored Y-down (menu rows grow downward); the GL chain
-		// compensated via the user's video.ini flip. The beam ortho is Y-up,
-		// so mirror the full 768 canvas at emission - this flips layout AND
-		// glyph strokes together, which is exactly the global fix an
-		// upside-down menu needs (gate finding 2026-08-01).
+		// GUI text is authored Y-down (menu rows grow downward) while the beam
+		// ortho is Y-up, so SOMETHING must flip it. Which thing depends on
+		// which coordinate regime this draw lands in - see
+		// vkchain_ui_overlay_active():
+		//
+		//   in-game overlay pass -> mapped through the DEFAULT 0..1024 box,
+		//     which carries no per-game flip, so mirror here.
+		//   GUI front-end        -> mapped through the [gui] rect from
+		//     video.ini, whose INVERTED bottom/top (1083 -> 6) already IS the
+		//     flip. GL has always relied on exactly that. Mirroring here too
+		//     flips it twice and the menu comes out upside down.
+		//
+		// The mirror used to be unconditional because the VK game_rect readers
+		// treated an inverted range as degenerate and replaced it with the full
+		// box, silently discarding the video.ini flip. Once that was fixed
+		// (commit 6290955, so Cinematronics/SegaG80 stopped rendering upside
+		// down) the GUI inherited the second flip - reported on Linux, but it
+		// was never platform-specific.
+		const bool mirrorY = vkchain_ui_overlay_active();
 		static constexpr float kGuiToBeamY = 1024.0f / 768.0f;
 		for (size_t i = 0; i + 1 < drawVerts.size(); i += 2)
 		{
@@ -400,8 +414,10 @@ void VectorFont::End()
 			const VFVertex& b = drawVerts[i + 1];
 			const aae::math::vec2 p0 = vf_rotate(a.pos, a.origin, a.angle);
 			const aae::math::vec2 p1 = vf_rotate(b.pos, b.origin, b.angle);
-			beam_add_line(p0.x, (768.0f - p0.y) * kGuiToBeamY,
-			              p1.x, (768.0f - p1.y) * kGuiToBeamY, 255, a.color);
+			const float y0 = mirrorY ? (768.0f - p0.y) : p0.y;
+			const float y1 = mirrorY ? (768.0f - p1.y) : p1.y;
+			beam_add_line(p0.x, y0 * kGuiToBeamY,
+			              p1.x, y1 * kGuiToBeamY, 255, a.color);
 		}
 		drawVerts.clear();
 		return;

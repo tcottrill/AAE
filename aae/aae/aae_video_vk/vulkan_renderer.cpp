@@ -2317,6 +2317,8 @@ void vkchain_vector_hard_clear(void) {}
 // caller's color, alpha-blended (RecordRect's pipeline is SRC_ALPHA /
 // ONE_MINUS_SRC_ALPHA, matching VF::Begin()'s GL blend state).
 // ---------------------------------------------------------------------------
+bool vkchain_ui_overlay_active(void) { return s_uiOverlayActive; }
+
 void vkchain_gui_draw_quad(float x, float y, float width, float height, rgb_t color)
 {
 	if (!s_initialized || !s_frameOpen || !s_screenQuadInit)
@@ -2327,17 +2329,19 @@ void vkchain_gui_draw_quad(float x, float y, float width, float height, rgb_t co
 		return;
 
 	// GUI-local space (VF::Initialize(1024,768)): x centered directly in the
-	// shared 0..1024 box; y gets the same 768->1024 rescale AND the same
-	// full-canvas Y mirror VF text emission applies (vector_fonts.cpp
-	// VectorFont::End: (768-y)*1024/768) - quads and text must share one
-	// convention or a menu background lands mirrored away from its rows.
-	// Under GL both draw with VF's y-up 1024x768 ortho into the same canvas,
-	// so mirroring both here reproduces that pairing. (GuiBeamToWindowPx
-	// works in the native 0..1024 beam space.)
+	// shared 0..1024 box; y gets the 768->1024 rescale and the SAME conditional
+	// Y mirror VF text emission applies (vector_fonts.cpp VectorFont::End).
+	// Quads and text must share one convention or a menu background lands
+	// mirrored away from its rows - so this switch has to track that one
+	// exactly: mirror for the in-game overlay pass (default 0..1024 box, no
+	// per-game flip), not for the GUI front-end (whose [gui] video.ini rect is
+	// inverted and supplies the flip itself, exactly as under GL).
+	const bool mirrorY = s_uiOverlayActive;
 	const float scaleY = 1024.0f / 768.0f;
 	const float minx = x - width * 0.5f,  maxx = x + width * 0.5f;
-	const float miny = (768.0f - (y - height * 0.5f)) * scaleY;
-	const float maxy = (768.0f - (y + height * 0.5f)) * scaleY;
+	const float ylo = y - height * 0.5f, yhi = y + height * 0.5f;
+	const float miny = (mirrorY ? (768.0f - ylo) : ylo) * scaleY;
+	const float maxy = (mirrorY ? (768.0f - yhi) : yhi) * scaleY;
 
 	// In-game overlay quads (TAB menu background during a game) use the
 	// overlay map: default 0..1024 box, overlay letterbox aspect. The GUI

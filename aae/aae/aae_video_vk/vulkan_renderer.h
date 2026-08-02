@@ -38,6 +38,18 @@ void vkchain_request_snapshot(void);
 // VectorFont::DrawQuad's own parameter convention.
 void vkchain_gui_draw_quad(float x, float y, float width, float height, rgb_t color);
 
+// True only while render_ui_overlays() is being replayed for the in-game
+// overlay pass (menu / PAUSED / exit dialog / FPS).
+//
+// It is the discriminator between the two GUI-space coordinate regimes, and
+// both VF seams need it:
+//   - overlay pass  -> the DEFAULT 0..1024 box, which carries no per-game
+//     flip, so the Y-down authored content must be mirrored at emission.
+//   - GUI front-end -> the [gui] rect from video.ini, whose INVERTED
+//     bottom/top IS the flip (GL relies on exactly the same thing), so
+//     mirroring again would flip it twice and stand the menu on its head.
+bool vkchain_ui_overlay_active(void);
+
 // In-game UI overlays (Plan 6 follow-up): black dim rect over the overlay
 // letterbox box (pause dim / exit-confirm dim), alpha 0..255. Called from the
 // shared render_ui_overlays() (opengl_renderer.cpp) in place of its GL
