@@ -9,6 +9,15 @@
 #include <X11/Xlib.h>
 #include <GL/glx.h>
 
+// Vulkan surface support (Phase 4b). VK_USE_PLATFORM_XLIB_KHR must be defined
+// BEFORE vulkan.h to get VkXlibSurfaceCreateInfoKHR, and vulkan.h must follow
+// Xlib.h so its Display/Window typedefs are the real ones. dlfcn for the
+// runtime loader - AAE never links libvulkan (spec sec. 6; the Win32 side
+// LoadLibrary's vulkan-1.dll for exactly the same reason).
+#define VK_USE_PLATFORM_XLIB_KHR
+#include <vulkan/vulkan.h>
+#include <dlfcn.h>
+
 void GlxPresentSurface::Attach(void* display, unsigned long window)
 {
 	m_display = display;
@@ -52,21 +61,76 @@ void GlxPresentSurface::GetDrawableSize(int* w, int* h) const
 }
 
 //------------------------------------------------------------------------------
-// Vulkan: Phase 4.
+// Vulkan (Phase 4b): the X11 twin of Win32PresentSurface's implementation in
+// winmain.cpp. The Raspberry Pi 5 is why this exists - Mesa v3d tops out near
+// GL/GLES 3.1, below the GL renderer's "#version 330 core" shaders - while the
+// Steam Machine's radeonsi does GL 4.6 and can run either chain.
 //
-// The Raspberry Pi needs it - Mesa v3d tops out near GL/GLES 3.1, below the
-// renderer's "#version 330 core" shaders - but the Steam Machine's radeonsi
-// does GL 4.6, so nothing in Phase 3c requires a Vulkan surface. Returning
-// nothing here is honest; a caller checks the count and the bool.
+// This class already owns the Display*/Window (Attach(), called by the X11
+// window backend), which is exactly what vkCreateXlibSurfaceKHR needs, so the
+// surface is created straight from those two handles.
+//
+// XLIB rather than XCB: the window backend is Xlib and gamescope hosts
+// XWayland, so an Xlib surface is what the existing window can supply. A
+// Wayland-native surface would need a Wayland window first - not a Phase 4b
+// requirement.
 //------------------------------------------------------------------------------
 const char* const* GlxPresentSurface::RequiredVkInstanceExtensions(uint32_t* count) const
 {
-	if (count) *count = 0;
-	return nullptr;
+	static const char* kExtensions[] = { "VK_KHR_surface", "VK_KHR_xlib_surface" };
+	if (count) *count = 2;
+	return kExtensions;
 }
 
-bool GlxPresentSurface::CreateVkSurface(void* /*instance*/, void* /*outSurface*/)
+bool GlxPresentSurface::CreateVkSurface(void* instance, void* outSurface)
 {
-	LOG_ERROR("CreateVkSurface: Vulkan is Phase 4; this build has a GLX surface only");
-	return false;
+	if (!instance || !outSurface || !m_display || !m_window)
+	{
+		LOG_ERROR("GlxPresentSurface::CreateVkSurface: bad args or no window");
+		return false;
+	}
+
+	// Runtime load, no link: same policy as the Win32 side. ".so.1" is the
+	// versioned SONAME every loader ships; the unversioned ".so" is a
+	// dev-package symlink, tried second so a machine with only the SDK
+	// installed still works.
+	void* loader = dlopen("libvulkan.so.1", RTLD_NOW | RTLD_LOCAL);
+	if (!loader)
+		loader = dlopen("libvulkan.so", RTLD_NOW | RTLD_LOCAL);
+	if (!loader)
+	{
+		LOG_ERROR("GlxPresentSurface::CreateVkSurface: libvulkan.so.1 not found (%s)",
+		          dlerror() ? dlerror() : "no error text");
+		return false;
+	}
+
+	PFN_vkGetInstanceProcAddr gipa =
+		(PFN_vkGetInstanceProcAddr)dlsym(loader, "vkGetInstanceProcAddr");
+	PFN_vkCreateXlibSurfaceKHR createXlibSurface = gipa
+		? (PFN_vkCreateXlibSurfaceKHR)gipa((VkInstance)instance, "vkCreateXlibSurfaceKHR")
+		: nullptr;
+
+	bool ok = false;
+	if (createXlibSurface)
+	{
+		VkXlibSurfaceCreateInfoKHR sci{ VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR };
+		sci.dpy    = static_cast<Display*>(m_display);
+		sci.window = static_cast<Window>(m_window);
+
+		VkResult r = createXlibSurface((VkInstance)instance, &sci, nullptr,
+		                               (VkSurfaceKHR*)outSurface);
+		ok = (r == VK_SUCCESS);
+		if (!ok)
+			LOG_ERROR("GlxPresentSurface::CreateVkSurface: vkCreateXlibSurfaceKHR failed (VkResult=%d)", (int)r);
+	}
+	else
+	{
+		LOG_ERROR("GlxPresentSurface::CreateVkSurface: vkCreateXlibSurfaceKHR not available "
+		          "(driver missing VK_KHR_xlib_surface?)");
+	}
+
+	// Refcounted: sys_vk.cpp holds its own handle on the loader for the
+	// session, so dropping this reference does not unload the library.
+	dlclose(loader);
+	return ok;
 }

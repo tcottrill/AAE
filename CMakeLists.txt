@@ -304,9 +304,13 @@ if(WIN32)
         "${AAE_XAUDIO2_LIB_DIR}/xapobaseredist.lib")
 elseif(UNIX AND NOT APPLE)
     # Linux backend - files do not exist yet; Phase 3b creates them. Listed
-    # here so the structure is settled and 3b only fills in bodies. Steam
-    # Machine (Mesa radeonsi) runs GL 4.6, so the existing #version 330 core
-    # shaders work unchanged - no Vulkan port is needed for Linux.
+    # here so the structure is settled and 3b only fills in bodies.
+    #
+    # (Phase 3b note, now superseded: this said "no Vulkan port is needed for
+    # Linux" because the Steam Machine's radeonsi runs GL 4.6. That holds for
+    # the Steam Machine but NOT for the Pi 5, whose Mesa v3d tops out near
+    # GL/GLES 3.1 - below the GL chain's #version 330 core shaders. That is
+    # why Phase 4b exists; glx_present.cpp now creates a real VkSurfaceKHR.)
     set(AAE_PLATFORM_SOURCES_WANTED
         aae/system/window/linux/linux_window.cpp
         aae/system/input/linux/evdev_input.cpp
@@ -682,6 +686,77 @@ if(WIN32)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${AAE_XAUDIO2_DLL}" "$<TARGET_FILE_DIR:aae>/xaudio2_9redist.dll"
     )
+endif()
+
+# =============================================================================
+# Vulkan shaders (Phase 4b).
+#
+# The VK chain loads "shaders/vk/<name>.spv" relative to the binary at pipeline
+# creation time. On Windows those are produced by the <CustomBuild> entries in
+# aae/aae.vcxproj - which CMake never sees - so before this rule the CMake
+# build produced an aae that could not create a single Vulkan pipeline. Every
+# renderer would log "failed to read shaders/vk/..." and fall over.
+#
+# Listed explicitly, NOT file(GLOB)'d: same rule as the source lists above -
+# a glob silently absorbs new files and hides the fact that the vcxproj and
+# this file have drifted apart. If you add a shader, add it in BOTH places
+# (the vcxproj CustomBuild pair AND this list).
+#
+# glslc ships with the Vulkan SDK; tools/glslc.exe is the vendored Windows copy
+# the vcxproj uses. If it is not found the shaders simply are not built and the
+# GL chain is unaffected - so a Linux box without the SDK can still build and
+# run `renderer=opengl`, which is what the Steam Machine does today.
+# =============================================================================
+set(AAE_VK_SHADERS
+    crt_color_vk.frag
+    crt_mono_vk.frag
+    crt_post_vk.vert
+    crt_scanline_vk.frag
+    fast_poly_vk.frag
+    fast_poly_vk.vert
+    layout_quad_vk.frag
+    screen_quad_rect_vk.frag
+    screen_quad_rect_vk.vert
+    vector_disc_vk.frag
+    vector_disc_vk.vert
+    vector_line_vk.frag
+    vector_line_vk.vert
+    vector_post_blur_vk.frag
+    vector_post_multi_vk.frag
+    vector_post_tex_vk.frag
+    vector_post_vk.vert
+    vector_shot_tex_vk.frag
+    vector_shot_tex_vk.vert
+    vector_shot_vk.frag
+    vector_shot_vk.vert
+)
+
+find_program(AAE_GLSLC NAMES glslc
+             HINTS "${CMAKE_CURRENT_SOURCE_DIR}/aae/tools"
+             DOC "glslc (Vulkan SDK) - compiles shaders/vk/*.{vert,frag} to SPIR-V")
+
+if(AAE_GLSLC)
+    set(AAE_SPV_OUTPUTS "")
+    foreach(shader ${AAE_VK_SHADERS})
+        set(_src "${CMAKE_CURRENT_SOURCE_DIR}/aae/shaders/vk/${shader}")
+        set(_dst "$<TARGET_FILE_DIR:aae>/shaders/vk/${shader}.spv")
+        add_custom_command(
+            OUTPUT  "${_dst}"
+            COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:aae>/shaders/vk"
+            COMMAND "${AAE_GLSLC}" "${_src}" -o "${_dst}"
+            DEPENDS "${_src}"
+            COMMENT "glslc ${shader}"
+            VERBATIM)
+        list(APPEND AAE_SPV_OUTPUTS "${_dst}")
+    endforeach()
+
+    add_custom_target(aae_vk_shaders DEPENDS ${AAE_SPV_OUTPUTS})
+    add_dependencies(aae aae_vk_shaders)
+    message(STATUS "Vulkan shaders: will compile ${AAE_GLSLC}")
+else()
+    message(STATUS "Vulkan shaders: glslc NOT found - shaders/vk/*.spv will not be "
+                   "built, so renderer=vulkan will fail at pipeline creation. "
+                   "Install the Vulkan SDK (or set AAE_GLSLC) for a Vulkan-capable build.")
 endif()
 
 # =============================================================================
