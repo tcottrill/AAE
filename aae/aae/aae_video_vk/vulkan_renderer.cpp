@@ -441,8 +441,21 @@ static GuiBeamMap ComputeGuiBeamMap(void)
 
 	m.grL = (float)game_rect_left;   m.grR = (float)game_rect_right;
 	m.grB = (float)game_rect_bottom; m.grT = (float)game_rect_top;
-	if (m.grR - m.grL < 1.0f) { m.grL = 0.0f; m.grR = 1024.0f; }
-	if (m.grT - m.grB < 1.0f) { m.grB = 0.0f; m.grT = 1024.0f; }
+	// Reject only a GENUINELY degenerate rect (zero extent, which would divide
+	// by zero downstream). fabsf is load-bearing: video.ini expresses per-game
+	// FLIPS as an INVERTED range, and an ordered comparison here silently threw
+	// those away and substituted the full box - so every Cinematronics/SegaG80
+	// game rendered unflipped (upside down / mirrored) and lost its bezel
+	// sizing. Real examples: solarq full_left=1023 full_right=0 (X flip) with
+	// full_bottom=1023 full_top=0 (Y flip); starcas full_bottom=976 full_top=7;
+	// tacscan/elim2/zektor/armora likewise. Atari titles happen to use ordered
+	// ranges (asteroid 0..1024 / -225..1067), which is why only some games
+	// looked wrong. GL never had this guard - it hands the raw values to the
+	// quad and an inverted range flips it naturally, which is the intent.
+	// Out-of-range values (asteroid's -225/1067 overscan) are also deliberate
+	// and must NOT be clamped.
+	if (fabsf(m.grR - m.grL) < 1.0f) { m.grL = 0.0f; m.grR = 1024.0f; }
+	if (fabsf(m.grT - m.grB) < 1.0f) { m.grB = 0.0f; m.grT = 1024.0f; }
 	return m;
 }
 
@@ -2032,11 +2045,15 @@ void vkchain_render(void)
 			const float ly = (float)((sh - vh) / 2);
 
 			// Per-game CRT rect in fbo4 1024-space (aae_mame_driver.h /
-			// config.cpp; defaults 0..1024). Degenerate values fall back.
+			// config.cpp; defaults 0..1024). Only a ZERO-extent rect falls
+			// back - see the fabsf rationale in ComputeGuiBeamMap: an INVERTED
+			// range is how video.ini expresses a per-game flip, and the folded
+			// ortho below reproduces it correctly (the negative denominator
+			// flips the axis, exactly as GL's inverted quad does).
 			float grL = (float)game_rect_left,   grR = (float)game_rect_right;
 			float grB = (float)game_rect_bottom, grT = (float)game_rect_top;
-			if (grR - grL < 1.0f) { grL = 0.0f; grR = 1024.0f; }
-			if (grT - grB < 1.0f) { grB = 0.0f; grT = 1024.0f; }
+			if (fabsf(grR - grL) < 1.0f) { grL = 0.0f; grR = 1024.0f; }
+			if (fabsf(grT - grB) < 1.0f) { grB = 0.0f; grT = 1024.0f; }
 
 			// Invert the beam->window map at the swapchain edges.
 			const float fx0 = (0.0f - lx) * 1024.0f / (float)vw;       // window left
