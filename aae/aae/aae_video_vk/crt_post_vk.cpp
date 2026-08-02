@@ -458,15 +458,20 @@ void CrtPostVK::DrawQuad_(VkContext& ctx, VkCommandBuffer cmd, uint32_t frameInd
 //
 // SCANLINE PITCH TRACE (GL parity):
 //   GL renders the game into fbo_raster at rw x rh = (oriented visible area)
-//   * config.prescale and tiles the overlay with u = rw/texW, v = rh/texH -
-//   i.e. the texture repeats (vw * prescale / texW) times across the game
-//   image, whatever the window size. The letterbox blit then stretches that
-//   to the on-screen game rect, so the ON-SCREEN pitch is
-//   (game rect width in px) / (vw * prescale / texW).
-//   The VK game RT is UNSCALED source pixels (targetW == vw), so the repeat
-//   count is reproduced explicitly as targetW * prescale / texW. At the
-//   default prescale = 1 the two are identical term for term; carrying the
-//   factor keeps a non-default prescale looking the same as GL too.
+//   * config.prescale and tiles the overlay over that whole target with
+//   u = rw/texW, v = rh/texH - so the texture repeats rh/texH times down the
+//   game image and one pattern period occupies texH TEXELS of the target,
+//   whatever the window size. The letterbox blit then stretches the target
+//   to the on-screen game rect, making the ON-SCREEN period
+//   (game rect height in px) * texH / rh.
+//
+//   The VK game RT is now the SAME rw x rh (vulkan_renderer.cpp sizes it
+//   native * config.prescale), so targetW/targetH ARE rw/rh and the tiling
+//   is GL's, term for term, with no correction factor. The earlier
+//   `targetW * prescale / texW` compensation existed only because the RT was
+//   unscaled: it reproduced GL's repeat COUNT but squeezed each period into
+//   1/prescale as many texels, which at prescale 4 with a 4-tall pattern is
+//   a single texel per period - unrepresentable. That factor is gone.
 //
 // V DIRECTION: GL's loader (load_texture) always calls
 //   stbi_set_flip_vertically_on_load(1), so v = 0 is the image's BOTTOM row,
@@ -478,8 +483,7 @@ void CrtPostVK::DrawQuad_(VkContext& ctx, VkCommandBuffer cmd, uint32_t frameInd
 void CrtPostVK::RecordScanlines(VkContext& ctx, VkCommandBuffer cmd, uint32_t frameIndex,
                                 VkImageView texView,
                                 int texW, int texH,
-                                int targetW, int targetH,
-                                float prescale)
+                                int targetW, int targetH)
 {
     if (!initialized_ || targetW <= 0 || targetH <= 0 || texW <= 0 || texH <= 0)
         return;
@@ -488,15 +492,12 @@ void CrtPostVK::RecordScanlines(VkContext& ctx, VkCommandBuffer cmd, uint32_t fr
     if (!pipe)
         return;
 
-    // GL: rw = (int)(vw * config.prescale); u = (float)rw / scan_x. The int
-    // truncation is reproduced so a fractional prescale tiles identically.
-    const float ps = (prescale > 0.0f) ? prescale : 1.0f;
-    int rw = (int)((float)targetW * ps);
-    int rh = (int)((float)targetH * ps);
-    if (rw < 1) rw = 1;
-    if (rh < 1) rh = 1;
-    const float u = (float)rw / (float)texW;
-    const float v = (float)rh / (float)texH;
+    // GL render_scanlines: u = (float)rw / scan_x, v = (float)rh / scan_y over
+    // the full rw x rh target. targetW/targetH are that same rw/rh (the caller
+    // passes the PRESCALED game RT dims, already truncated the way GL
+    // truncates them), so this is GL's line verbatim.
+    const float u = (float)targetW / (float)texW;
+    const float v = (float)targetH / (float)texH;
 
     CrtPush push{};
     push.rect[0] = 0.0f;            push.rect[1] = 0.0f;

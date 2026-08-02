@@ -5,7 +5,7 @@
 // and the shadow mask's fragment-coordinate ORIGIN changed. Uniform-for-uniform:
 //   uTex          -> set 0 binding 0 (the game RT, full mip chain)
 //   uSrcSize      -> pc.p0.xy
-//   uLodBias      -> pc.p0.z   (ALWAYS 0 under VK - see crt_mono_vk.frag)
+//   uLodBias      -> pc.p0.z   (log2(config.prescale) - see crt_mono_vk.frag)
 //   uBlurH        -> pc.p0.w
 //   uBlurV        -> pc.p1.x
 //   uConverge     -> pc.p1.y

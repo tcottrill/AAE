@@ -64,7 +64,9 @@ struct CrtMonitorParamsVK
     // Shared (both passes)
     float srcW = 1.0f;          // uSrcSize.x - visible area in NATIVE px, oriented
     float srcH = 1.0f;          // uSrcSize.y
-    float lodBias = 0.0f;       // uLodBias - ALWAYS 0 under VK (see crt_mono_vk.frag)
+    float lodBias = 0.0f;       // uLodBias = log2(config.prescale), GL's value
+                                //   (the game RT is native * prescale). 0 at
+                                //   the default prescale 1.
     float blurH = 0.0f;         // uBlurH
     float blurV = 0.0f;         // uBlurV
     float halation = 0.0f;      // uHalation
@@ -117,13 +119,13 @@ public:
 
     // Tiled scanline multiply over the whole game RT, recorded into the RT's
     // ALREADY-OPEN pass. texW/texH are the scanline image's pixel dims;
-    // prescale is config.prescale (GL tiles over a prescale-sized FBO, so the
-    // repeat COUNT carries the factor - see the .cpp for the pitch trace).
+    // targetW/targetH are the game RT's dims, i.e. native * config.prescale -
+    // GL's rw/rh, which is what the tiling divides. No prescale argument: the
+    // target already carries it (see the .cpp for the pitch trace).
     void RecordScanlines(VkContext& ctx, VkCommandBuffer cmd, uint32_t frameIndex,
                          VkImageView texView,
                          int texW, int texH,
-                         int targetW, int targetH,
-                         float prescale);
+                         int targetW, int targetH);
 
     // Monitor CRT pass. srcView/srcSampler are the game RT's mipped sampled
     // view; the quad is drawn into the ALREADY-OPEN swapchain pass at the

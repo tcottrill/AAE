@@ -6,7 +6,7 @@
 // crt_post_vk.vert for the layout). Uniform-for-uniform:
 //   uTex       -> set 0 binding 0 (the game RT, full mip chain)
 //   uSrcSize   -> pc.p0.xy   (game visible area in NATIVE pixels, oriented)
-//   uLodBias   -> pc.p0.z    (ALWAYS 0 under VK - see below)
+//   uLodBias   -> pc.p0.z    (log2(config.prescale) - see below)
 //   uBlurH     -> pc.p0.w
 //   uBlurV     -> pc.p1.x
 //   uHalation  -> pc.p1.z
@@ -17,11 +17,18 @@
 //   uTint      -> pc.tint.rgb
 // (pc.p1.y = uConverge and pc.p2.w / pc.p3 are color-pass-only and unread here.)
 //
-// uLodBias note: GL's source texture is native size * config.prescale, so its
-// halation mip level is shifted by log2(prescale). The VK game RT is UNSCALED
-// source pixels (prescale is a GL-only supersampling knob - see the s_rtGame
-// comment in vulkan_renderer.cpp), so one game pixel is exactly one texel and
-// the VK equivalent of uLodBias is 0. The recorder passes 0 unconditionally.
+// uLodBias note: the source texture is native size * config.prescale, so one
+// game pixel spans prescale texels and a halation radius expressed in game
+// pixels sits log2(prescale) levels up the mip pyramid. uSrcSize stays NATIVE
+// (the beam-tap spacing px = 1/uSrcSize is a game-pixel quantity; prescale
+// only gives those taps more detail to land on). Both match the GL chain
+// exactly - see render_mono_monitor in opengl_renderer.cpp.
+//
+// This corrects an earlier VK-only decision to size the game RT at unscaled
+// source pixels and pass uLodBias = 0. It made the beam reconstruction
+// prescale-times coarser than GL's, which is what "the mono CRT looks like
+// it is only rendering at prescale 1" was. At prescale 1 the value is 0 and
+// nothing changes.
 #version 450
 
 layout(set = 0, binding = 0) uniform sampler2D uTex;
