@@ -129,9 +129,15 @@ public:
     // Safe to call while paused (samples retained RTs); does nothing until
     // the first EndBeamPass has run. This is the NO-ARTWORK fast path; when
     // artwork layers are active use RecordFrameBuild + RecordCompositeLayered.
+    //
+    // targetW/targetH: dimensions of the framebuffer this records into.
+    // 0/0 (the default) means the swapchain, which is what every non-rotated
+    // caller passes; the system-rotation path passes the square output RT's
+    // dims so the same composite lands in GL's fbo4-equivalent canvas.
     void RecordComposite(VkContext& ctx, VkCommandBuffer cmd, uint32_t frameIndex,
                          float x0, float y0, float x1, float y1,
-                         int vectrail, int vecglow);
+                         int vectrail, int vecglow,
+                         int targetW = 0, int targetH = 0);
 
     // ---- Artwork path (GL final_render LAYER 5A/5B/5C/6 mirror) ----
     //
@@ -155,10 +161,12 @@ public:
     // the square 1024 canvas in Y-UP window pixels (ComputeGuiBeamMap values);
     // grL..grT as in RecordFrameBuild. Does nothing until the first
     // RecordFrameBuild has run (callers fall back to RecordComposite).
+    // targetW/targetH as in RecordComposite (0/0 = the swapchain).
     void RecordCompositeLayered(VkContext& ctx, VkCommandBuffer cmd, uint32_t frameIndex,
                                 float lx, float lyUp, float vw, float vh,
                                 float grL, float grR, float grB, float grT,
-                                const VectorArtworkVK& art);
+                                const VectorArtworkVK& art,
+                                int targetW = 0, int targetH = 0);
 
     bool IsValid()    const { return initialized_; }
     bool BeamReady()  const { return beamReady_; }

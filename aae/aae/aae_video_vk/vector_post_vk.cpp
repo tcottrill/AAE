@@ -805,7 +805,8 @@ void VectorPostVK::DrawMultiQuad(VkContext& ctx, VkCommandBuffer cmd, uint32_t f
 // -----------------------------------------------------------------------------
 void VectorPostVK::RecordComposite(VkContext& ctx, VkCommandBuffer cmd, uint32_t frameIndex,
                                    float x0, float y0, float x1, float y1,
-                                   int vectrail, int vecglow)
+                                   int vectrail, int vecglow,
+                                   int targetW, int targetH)
 {
     if (!initialized_ || !beamReady_)
         return;
@@ -821,8 +822,12 @@ void VectorPostVK::RecordComposite(VkContext& ctx, VkCommandBuffer cmd, uint32_t
     const bool usefb   = (vectrail > 0) && trailReady_;
     const bool useglow = (vecglow  > 0) && glowReady_;
 
-    const float sw = (float)ctx.swapchainExtent.width;
-    const float sh = (float)ctx.swapchainExtent.height;
+    // Target framebuffer dims: the swapchain unless the caller named an
+    // offscreen one (the system-rotation output RT).
+    const int tw = (targetW > 0) ? targetW : (int)ctx.swapchainExtent.width;
+    const int th = (targetH > 0) ? targetH : (int)ctx.swapchainExtent.height;
+    const float sw = (float)tw;
+    const float sh = (float)th;
 
     PostPush push{};
     push.rect[0] = x0; push.rect[1] = y0;
@@ -837,8 +842,7 @@ void VectorPostVK::RecordComposite(VkContext& ctx, VkCommandBuffer cmd, uint32_t
     push.params[1] = usefb   ? 1.0f : 0.0f;
     push.params[2] = useglow ? 1.0f : 0.0f;
 
-    DrawMultiQuad(ctx, cmd, frameIndex, pipe, push,
-                  (int)ctx.swapchainExtent.width, (int)ctx.swapchainExtent.height);
+    DrawMultiQuad(ctx, cmd, frameIndex, pipe, push, tw, th);
 }
 
 // -----------------------------------------------------------------------------
@@ -910,7 +914,8 @@ void VectorPostVK::RecordFrameBuild(VkContext& ctx, VkCommandBuffer cmd, uint32_
 void VectorPostVK::RecordCompositeLayered(VkContext& ctx, VkCommandBuffer cmd, uint32_t frameIndex,
                                           float lx, float lyUp, float vw, float vh,
                                           float grL, float grR, float grB, float grT,
-                                          const VectorArtworkVK& art)
+                                          const VectorArtworkVK& art,
+                                          int targetW, int targetH)
 {
     if (!initialized_ || !frameReady_)
         return;
@@ -919,8 +924,12 @@ void VectorPostVK::RecordCompositeLayered(VkContext& ctx, VkCommandBuffer cmd, u
     if (!v || !EnsureArtPipelines(ctx, *v))
         return;
 
-    const float sw = (float)ctx.swapchainExtent.width;
-    const float sh = (float)ctx.swapchainExtent.height;
+    // Target framebuffer dims: the swapchain unless the caller named an
+    // offscreen one (the system-rotation output RT).
+    const int tw = (targetW > 0) ? targetW : (int)ctx.swapchainExtent.width;
+    const int th = (targetH > 0) ? targetH : (int)ctx.swapchainExtent.height;
+    const float sw = (float)tw;
+    const float sh = (float)th;
     if (sw <= 0.0f || sh <= 0.0f || vw <= 0.0f || vh <= 0.0f)
         return;
 
@@ -962,8 +971,7 @@ void VectorPostVK::RecordCompositeLayered(VkContext& ctx, VkCommandBuffer cmd, u
         p.tint[0] = p.tint[1] = p.tint[2] = 0.5f; p.tint[3] = 1.0f;
         p.params[3] = 1.0f;   // real texture alpha
         DrawQuadS(ctx, cmd, frameIndex, v->artAlpha,
-                  art.backdropView, art.backdropSampler, p,
-                  (int)ctx.swapchainExtent.width, (int)ctx.swapchainExtent.height);
+                  art.backdropView, art.backdropSampler, p, tw, th);
     }
 
     // 2) The CRT image (frame RT) additively over the backdrop (GL's ONE/ONE
@@ -977,8 +985,7 @@ void VectorPostVK::RecordCompositeLayered(VkContext& ctx, VkCommandBuffer cmd, u
         // params.w = 0: force sampled alpha to 1 (GL RGB8 semantics; ONE/ONE
         // ignores alpha for color anyway).
         DrawQuadS(ctx, cmd, frameIndex, v->artAdd,
-                  rtFrame_.VK_GetColorView(), rtFrame_.VK_GetSampler(), p,
-                  (int)ctx.swapchainExtent.width, (int)ctx.swapchainExtent.height);
+                  rtFrame_.VK_GetColorView(), rtFrame_.VK_GetSampler(), p, tw, th);
 
         // 3) crt_boost: secondary additive pass to punch the vectors up
         //    against dark artwork (GL: 0.2 with a backdrop, 0.25 overlay2-only).
@@ -987,8 +994,7 @@ void VectorPostVK::RecordCompositeLayered(VkContext& ctx, VkCommandBuffer cmd, u
             const float boost = haveBackdrop ? 0.2f : 0.25f;
             p.tint[0] = p.tint[1] = p.tint[2] = boost; p.tint[3] = 1.0f;
             DrawQuadS(ctx, cmd, frameIndex, v->artAdd,
-                      rtFrame_.VK_GetColorView(), rtFrame_.VK_GetSampler(), p,
-                      (int)ctx.swapchainExtent.width, (int)ctx.swapchainExtent.height);
+                      rtFrame_.VK_GetColorView(), rtFrame_.VK_GetSampler(), p, tw, th);
         }
     }
 
@@ -1004,8 +1010,7 @@ void VectorPostVK::RecordCompositeLayered(VkContext& ctx, VkCommandBuffer cmd, u
         p.tint[0] = p.tint[1] = p.tint[2] = 1.0f; p.tint[3] = 0.5f;
         p.params[3] = 1.0f;   // real texture alpha
         DrawQuadS(ctx, cmd, frameIndex, v->artOver2,
-                  art.overlayView, art.overlaySampler, p,
-                  (int)ctx.swapchainExtent.width, (int)ctx.swapchainExtent.height);
+                  art.overlayView, art.overlaySampler, p, tw, th);
     }
 
     // 5) Bezel frame: blending DISABLED, hard alpha cutoff at 0.2 via shader
@@ -1020,7 +1025,6 @@ void VectorPostVK::RecordCompositeLayered(VkContext& ctx, VkCommandBuffer cmd, u
         p.params[2] = 0.2f;   // alpha test threshold
         p.params[3] = 1.0f;   // real texture alpha
         DrawQuadS(ctx, cmd, frameIndex, v->artOpaque,
-                  art.bezelView, art.bezelSampler, p,
-                  (int)ctx.swapchainExtent.width, (int)ctx.swapchainExtent.height);
+                  art.bezelView, art.bezelSampler, p, tw, th);
     }
 }
