@@ -43,6 +43,7 @@
 #include "snapshot_vk.h"       // F12 screenshot readback (swapchain -> PNG)
 #include "vector_fonts.h"      // VF singleton - CPU init under VK (Plan 6 fix)
 #include "../aae_video/opengl_renderer.h" // GuiPointVertex full definition (GL-free header)
+#include <math.h>              // log2f - CRT halation mip bias (GL parity)
 
 static VkContext g_vk;
 static bool      s_initialized = false;
@@ -50,18 +51,35 @@ static bool      s_frameOpen = false;
 static uint32_t  s_imageIndex = 0;
 
 // Raster path: FpolyVK draws main_bitmap's pixels as quads into the game RT
-// (s_rtGame, below). s_rasterW/H are the post-orientation game dims in
-// SOURCE pixels; they double as the FpolyVK ortho extents AND the RT dims
-// (the shared emit loop outputs unscaled source-pixel coords with size =
-// config.prescale, exactly like the GL path - no vid_scale anywhere; the
-// RecordRect composite does the scaling to window size). s_fpolyFailed
-// latches an Init failure so the lazy per-frame retry does not spam the
-// log; it resets on every game load.
+// (s_rtGame, below). s_fpolyFailed latches an Init failure so the lazy
+// per-frame retry does not spam the log; it resets on every game load.
+//
+// TWO dimension pairs, and they are NOT interchangeable - read this before
+// touching either:
+//
+//   s_rasterNativeW/H    the post-orientation game dims in NATIVE source
+//                        pixels (raster_dst_dims). This is the GL chain's
+//                        vw/vh. It is what the monitor shaders' uSrcSize
+//                        wants (a beam-spot radius is measured in GAME
+//                        pixels, not texels) and what the letterbox aspect
+//                        is computed from.
+//
+//   s_rasterScaledW/H    native * config.prescale, truncated exactly like
+//                        GL's (int)((float)vw * config.prescale). This is
+//                        the GL chain's rw/rh: the size of the game RT, the
+//                        FpolyVK ortho extent, the FpolyVK viewport, and the
+//                        scanline overlay's tiling target. It is a
+//                        SUPERSAMPLED image - more texels than game pixels.
+//
+// At config.prescale == 1 (the default) the two pairs are equal and every
+// consumer sees exactly the numbers it saw before prescale was honored.
 static FpolyVK  g_fpoly;
 static bool     s_fpolyInit = false;
 static bool     s_fpolyFailed = false;
-static int      s_rasterW = 0;     // post-orientation dims, source pixels
-static int      s_rasterH = 0;
+static int      s_rasterNativeW = 0;   // post-orientation dims, NATIVE game pixels
+static int      s_rasterNativeH = 0;
+static int      s_rasterScaledW = 0;   // native * config.prescale (GL's rw)
+static int      s_rasterScaledH = 0;
 // Set when a dims-change rebuild is requested while a frame is open (the
 // rebuild drains the device and destroys objects prior frames may still
 // reference, so it must not run mid-frame). Serviced by vkchain_set_render
@@ -69,16 +87,25 @@ static int      s_rasterH = 0;
 // rebuild and the s_rtGame resize (same trigger, same timing constraints).
 static bool     s_fpolyRebuildPending = false;
 
-// Offscreen game render target (Plan 4 Task 3): FpolyVK now draws into this
+// Offscreen game render target (Plan 4 Task 3): FpolyVK draws into this
 // mipped RT instead of straight into the swapchain pass; ScreenQuadVK then
-// composites RT level 0 into the aspect-fit letterbox rect. Sized
-// s_rasterW x s_rasterH (post-orientation SOURCE pixels, unit tiling) --
-// NOT visible_area x config.prescale like the GL fbo_raster: the GL emit
-// draws prescale-sized cells into a prescaled ortho, but the VK chain
-// standardized on unit tiling at source resolution (Plan 3 corrected
-// finding), and prescale is a GL-side supersampling knob that this RT's
-// full mip chain supersedes (minification quality comes from the trilinear
-// mip cascade, not from rendering oversized and downscaling).
+// composites it into the aspect-fit letterbox rect.
+//
+// Sized s_rasterScaledW x s_rasterScaledH, i.e. visible_area * config.prescale
+// - the GL fbo_raster / img5a shape, allocated by the same truncating math
+// (gl_fbo.cpp fbo_init_raster, opengl_renderer.cpp glchain_set_render).
+//
+// REVERSED from the Plan 3/4 decision, which sized this RT at unscaled source
+// pixels on the theory that the full mip chain "supersedes" prescale. That
+// holds only for the DOWNSCALE to the window - it is false for anything that
+// samples this texture directly, which is exactly what the CRT monitor passes
+// do: their 7x3 Gaussian beam taps are spaced in SOURCE-pixel units but read
+// whatever detail the texture actually carries, and the halation textureLod
+// picks a mip level relative to level 0. At unscaled size both got a
+// prescale-times coarser reconstruction than GL ("the mono CRT looks like it
+// is only rendering at prescale 1"). The tiled scanline overlay had the same
+// problem from the other end: a scan_y-tall pattern cannot resolve when the
+// target has 1/prescale as many texels per period.
 static RenderTargetVK s_rtGame;
 
 // ---------------------------------------------------------------------------
@@ -240,12 +267,31 @@ static FpolyVK g_guiPoints;
 static bool    s_guiPointsInit = false;
 static bool    s_guiPointsFailed = false;
 
-// The shared emit loop passes cell indices with size = config.prescale
-// (GL cell semantics: the GL Fpoly::addPoly multiplies x,y by size into a
-// prescaled ortho - aae/aae/vidhrdwr/fast_poly.cpp). FpolyVK::addPoly is
-// absolute-coordinate (donor-verbatim), and our ortho spans the unscaled
-// source dims, so exact unit tiling is correct here (see the s_rtGame
-// comment for why prescale stays a GL-only knob under VK).
+// VkRasterScaledDims
+// The GL raster-FBO shape, computed exactly as GL computes it:
+//   rw = (int)((float)vw * config.prescale)     [gl_fbo.cpp fbo_init_raster,
+//   rh = (int)((float)vh * config.prescale)      opengl_renderer.cpp:894]
+// with vw/vh the POST-orientation native dims (raster_dst_dims applies the
+// same ORIENTATION_SWAP_XY transpose GL does). config.prescale is read RAW,
+// not clamped, so a fractional value truncates identically to GL - the emit
+// loop hands the same raw value to the sink as the cell size, and the two
+// must agree. sanity_check_config (config.cpp:412) already pins it to 1..5;
+// the >= 1 floor below only stops a zero-sized RT if that ever changes.
+static void VkRasterScaledDims(int nativeW, int nativeH, int& outW, int& outH)
+{
+	outW = (int)((float)nativeW * config.prescale);
+	outH = (int)((float)nativeH * config.prescale);
+	if (outW < 1) outW = 1;
+	if (outH < 1) outH = 1;
+}
+
+// The shared emit loop passes CELL INDICES with size = config.prescale - GL
+// cell semantics, because GL's Fpoly::addPoly multiplies x,y BY size before
+// emitting the quad (aae/aae/vidhrdwr/fast_poly.cpp:47-52) into GL's
+// prescaled ortho. FpolyVK::addPoly is absolute-coordinate (donor-verbatim:
+// it emits x..x+size with no scaling of the origin), so the multiply has to
+// happen here: cell (cx,cy) covers [cx*size, cx*size+size) in an ortho that
+// now spans s_rasterScaledW/H. Term for term the same quad GL emits.
 //
 // sRGB contingency (Plan 3 Task 3) RESOLVED at the Plan 7 gate: the user
 // did report washed-out/too-bright colors (vector games, then the GUI and
@@ -255,8 +301,7 @@ static bool    s_guiPointsFailed = false;
 // window. No per-color conversion anywhere.
 static void VkRasterSink(void* user, float x, float y, float size, uint32_t rgba)
 {
-	(void)size;
-	((FpolyVK*)user)->addPoly(x, y, 1.0f, rgba);
+	((FpolyVK*)user)->addPoly(x * size, y * size, size, rgba);
 }
 
 static bool GameIsRaster(void)
@@ -637,8 +682,18 @@ static void EnsureRasterRenderer(void)
 	if (!raster_dst_dims(&newW, &newH))
 		return;     // main_bitmap not created yet (pre-vh_open); retry later
 
-	if (s_fpolyInit && (newW == s_rasterW && newH == s_rasterH))
-		return;     // up to date (two-int compare; cheap on the frame path)
+	// Prescaled shape too: config.prescale is re-read from the per-game ini
+	// on every load (config.cpp:252), so it can differ between two games of
+	// the SAME native shape - and, pathologically, two games of different
+	// native shapes can land on the same prescaled shape. Both pairs are
+	// therefore part of the up-to-date test.
+	int newScaledW = 0, newScaledH = 0;
+	VkRasterScaledDims(newW, newH, newScaledW, newScaledH);
+
+	if (s_fpolyInit &&
+		newW == s_rasterNativeW && newH == s_rasterNativeH &&
+		newScaledW == s_rasterScaledW && newScaledH == s_rasterScaledH)
+		return;     // up to date (four int compares; cheap on the frame path)
 
 	if (s_fpolyInit)
 	{
@@ -660,8 +715,10 @@ static void EnsureRasterRenderer(void)
 	}
 	s_fpolyRebuildPending = false;
 
-	s_rasterW = newW;
-	s_rasterH = newH;
+	s_rasterNativeW = newW;
+	s_rasterNativeH = newH;
+	s_rasterScaledW = newScaledW;
+	s_rasterScaledH = newScaledH;
 
 	// (Re)create the offscreen game RT BEFORE FpolyVK: the FpolyVK pipeline
 	// is built against the RT's color format below.
@@ -679,8 +736,8 @@ static void EnsureRasterRenderer(void)
 	if (!s_rtGame.IsValid())
 	{
 		RenderTargetVKCreateInfo rtci{};
-		rtci.width = s_rasterW;
-		rtci.height = s_rasterH;
+		rtci.width = s_rasterScaledW;
+		rtci.height = s_rasterScaledH;
 		rtci.filter = rtFilterVK::Linear;
 		rtci.colorFormat = VK_FORMAT_R8G8B8A8_UNORM;
 		rtci.mipLevels = -1;   // full chain (Plan 4 CRT halation + minified composite)
@@ -691,13 +748,13 @@ static void EnsureRasterRenderer(void)
 			return;
 		}
 	}
-	else if (s_rtGame.GetWidth() != s_rasterW || s_rtGame.GetHeight() != s_rasterH)
+	else if (s_rtGame.GetWidth() != s_rasterScaledW || s_rtGame.GetHeight() != s_rasterScaledH)
 	{
 		// Resize waits device-idle internally (donor discipline: the other
 		// in-flight frame may still be sampling the old image) -- redundant
 		// with the drain above on the rebuild path, but harmless, and it
 		// keeps Resize safe for any future caller.
-		s_rtGame.Resize(g_vk, s_rasterW, s_rasterH);
+		s_rtGame.Resize(g_vk, s_rasterScaledW, s_rasterScaledH);
 		if (!s_rtGame.IsValid())
 		{
 			s_fpolyFailed = true;
@@ -714,20 +771,22 @@ static void EnsureRasterRenderer(void)
 	// built against the RT's format, not the swapchain's (dynamic rendering
 	// requires the pipeline's declared attachment format to match the pass).
 	ci.colorFormat = s_rtGame.GetFormat();
-	// CORRECTED (Task 1 finding): the shared emit loop outputs UNSCALED
-	// source-pixel coords with size = config.prescale, exactly like the
-	// GL path. The ortho therefore spans the post-orientation source
-	// dims - no vid_scale anywhere.
-	if (g_fpoly.Init(g_vk, s_rasterW, s_rasterH, &ci))
+	// Ortho spans the PRESCALED dims, mirroring GL's set_ortho(rw, rh) in
+	// glchain_set_render: the sink multiplies the emit loop's cell indices
+	// by config.prescale, so the quads span 0..native*prescale in x and y.
+	// (Before prescale was honored this was the native pair with unit-sized
+	// cells; at prescale 1 the two are the same numbers.)
+	if (g_fpoly.Init(g_vk, s_rasterScaledW, s_rasterScaledH, &ci))
 	{
 		s_fpolyInit = true;
 		// Permanent full-RT viewport override: FpolyVK's default (no
 		// override) viewport is ctx.swapchainExtent, which is wrong for RT
 		// rendering. The aspect-fit letterboxing that used to live here
 		// moved to the RecordRect composite in vkchain_render.
-		g_fpoly.SetViewportRect(0, 0, s_rasterW, s_rasterH);
-		LOG_INFO("vkchain: FpolyVK online (%dx%d source pixels into %s RT, %u mips)",
-			s_rasterW, s_rasterH,
+		g_fpoly.SetViewportRect(0, 0, s_rasterScaledW, s_rasterScaledH);
+		LOG_INFO("vkchain: FpolyVK online (%dx%d native x%.1f prescale = %dx%d into %s RT, %u mips)",
+			s_rasterNativeW, s_rasterNativeH, config.prescale,
+			s_rasterScaledW, s_rasterScaledH,
 			(s_rtGame.GetFormat() == VK_FORMAT_R8G8B8A8_UNORM) ? "RGBA8_UNORM" : "non-UNORM",
 			s_rtGame.GetMipLevels());
 	}
@@ -886,15 +945,24 @@ static bool EnsureMonitorTarget(int w, int h)
 // ---------------------------------------------------------------------------
 static void FillMonitorParams(bool monoPass, CrtMonitorParamsVK& mp)
 {
-	// uSrcSize: the game's visible area in NATIVE pixels, oriented -- which is
-	// exactly the game RT size here (GL computes vw/vh from visible_area +
-	// ORIENTATION_SWAP_XY; raster_dst_dims does the same and feeds s_rasterW/H).
-	mp.srcW = (float)s_rasterW;
-	mp.srcH = (float)s_rasterH;
-	// uLodBias: GL passes log2(config.prescale) because its source texture is
-	// prescale-sized. The VK game RT is UNSCALED source pixels, so one game
-	// pixel is one texel and the halation mip level needs no shift: 0.
-	mp.lodBias = 0.0f;
+	// uSrcSize: the game's visible area in NATIVE pixels, oriented - NOT the
+	// game RT size, which is now prescale times larger. GL does exactly this:
+	// render_mono_monitor / render_color_monitor derive vw/vh straight from
+	// visible_area + ORIENTATION_SWAP_XY and pass those, even though img5a is
+	// the prescaled texture (opengl_renderer.cpp:1312-1321, :1355). The
+	// shader's `px = 1.0 / uSrcSize` is the beam-tap spacing, and a beam spot
+	// is a fixed size in GAME pixels regardless of how finely the source is
+	// sampled; prescale only buys the taps more detail to land on.
+	mp.srcW = (float)s_rasterNativeW;
+	mp.srcH = (float)s_rasterNativeH;
+	// uLodBias: the source texture is native * prescale, so a halation radius
+	// expressed in game pixels sits log2(prescale) levels up the pyramid.
+	// GL's line verbatim (opengl_renderer.cpp:1352/1360, :1463/1469),
+	// including the >1 clamp that keeps the bias non-negative.
+	{
+		const float ps = (config.prescale > 1.0f) ? config.prescale : 1.0f;
+		mp.lodBias = log2f(ps);
+	}
 
 	if (monoPass)
 	{
@@ -1094,8 +1162,10 @@ void vkchain_shutdown(void)
 	s_rotTargetActive = false;
 	s_fpolyFailed = false;
 	s_fpolyRebuildPending = false;
-	s_rasterW = 0;
-	s_rasterH = 0;
+	s_rasterNativeW = 0;
+	s_rasterNativeH = 0;
+	s_rasterScaledW = 0;
+	s_rasterScaledH = 0;
 	VkSnapshot::DropPending("renderer shutting down");
 	VK_Shutdown(g_vk);
 	s_initialized = false;
@@ -1332,8 +1402,8 @@ void vkchain_render(void)
 			// own render pass, which is only legal inside the suspended-pass
 			// window - so the decision of WHETHER to run it, and at what size,
 			// cannot wait for the composite section. Everything hoisted here
-			// is pure computation over the swapchain extent, s_rasterW/H, rot
-			// and config; none of it records commands.
+			// is pure computation over the swapchain extent, the raster dims,
+			// rot and config; none of it records commands.
 			// -------------------------------------------------------------
 
 			// Aspect-fit letterbox (Plan 3 math, unchanged): fit the
@@ -1341,15 +1411,22 @@ void vkchain_render(void)
 			// RecordRect takes the rect in y-up screen pixels, but a
 			// centered rect is symmetric, so the same offsets serve.
 			//
-			// System rotation: s_rasterW/H are post-DRIVER-orientation only
-			// (raster_emit reads Machine->drv->rotation, which run_game never
-			// XORs the user rotation into - that goes to Machine->orientation),
-			// so a 90-degree system rotation turns the image at DISPLAY time
-			// here: the fitted box takes the INVERTED aspect and the composite
-			// quad samples with rotated corner UVs. Same split as the GL chain,
-			// where the game image is emitted driver-oriented into the raster
-			// FBO and Layout_Render turns the whole composition.
-			float gameAspect = (float)s_rasterW / (float)s_rasterH;
+			// System rotation: s_rasterNativeW/H are post-DRIVER-orientation
+			// only (raster_emit reads Machine->drv->rotation, which run_game
+			// never XORs the user rotation into - that goes to
+			// Machine->orientation), so a 90-degree system rotation turns the
+			// image at DISPLAY time here: the fitted box takes the INVERTED
+			// aspect and the composite quad samples with rotated corner UVs.
+			// Same split as the GL chain, where the game image is emitted
+			// driver-oriented into the raster FBO and Layout_Render turns the
+			// whole composition.
+			//
+			// NATIVE dims, not the prescaled RT dims: prescale is a uniform
+			// scale on both axes so the ratio is the same either way, but the
+			// native pair is the one GL's layout math uses
+			// (Layout_InitGameDimensions, mame_layout.cpp:1494) and it avoids
+			// carrying the RT's per-axis integer truncation into the aspect.
+			float gameAspect = (float)s_rasterNativeW / (float)s_rasterNativeH;
 			if (rot == 1 || rot == 2)
 				gameAspect = 1.0f / gameAspect;
 			const int sw = (int)g_vk.swapchainExtent.width;
@@ -1456,12 +1533,17 @@ void vkchain_render(void)
 			// draws it into fbo_raster/img5a at exactly this point, so the mip
 			// chain built below (and therefore the monitor pass's halation)
 			// includes it, same as GL.
+			//
+			// PRESCALED dims: GL's render_scanlines covers its rw x rh FBO and
+			// tiles u = rw/scan_x, v = rh/scan_y. Now that this RT is the same
+			// rw x rh, the target IS the tiling extent and RecordScanlines no
+			// longer carries a prescale compensation factor.
 			if (VkScanlinesActive(vattr))
 			{
 				g_crtPost.RecordScanlines(g_vk, cmd, g_vk.frameIndex,
 					s_scanTex.view,
 					(int)s_scanTex.width, (int)s_scanTex.height,
-					s_rasterW, s_rasterH, config.prescale);
+					s_rasterScaledW, s_rasterScaledH);
 			}
 
 			s_rtGame.End(g_vk, cmd);
