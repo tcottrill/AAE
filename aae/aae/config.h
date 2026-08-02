@@ -86,6 +86,15 @@ typedef struct {
 	// on the next run, which is exactly what the menu tells the user.
 	int renderer_pending;
 	int vk_validation;    // [main] vk_validation: 1 = enable Vulkan validation layer (default 0)
+	// [main] vk_ssaa: supersample factor for the VULKAN vector beam target.
+	// The beam render target is 1024 * vk_ssaa square, and the composite's
+	// trilinear minification resolves it. 1 (default) matches the GL chain,
+	// whose beam_init(1) has always used a plain 1024 buffer; 2 is visibly
+	// smoother but costs 4x the beam fill AND a 4x larger per-frame mip
+	// cascade - measured as roughly a 6x frame-rate difference against GL on
+	// the same hardware. Read once when the vector post chain initialises,
+	// so a change takes effect at the next launch.
+	int vk_ssaa;
 	int debug_profile_code;
 	int audio_force_resample;
 	int kbleds;

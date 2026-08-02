@@ -143,6 +143,10 @@ void setup_config() {
         LOG_INFO("Config: renderer=%s", (config.renderer == RENDERER_VULKAN) ? "vulkan" : "opengl");
     }
     config.vk_validation = get_config_int("main", "vk_validation", 0);
+    // Beam supersampling for the Vulkan vector chain: 1 = 1024x1024 beam
+    // target (GL parity - beam_init(1)), 2 = 2048x2048 (smoother, ~4x the
+    // beam fill and mip cost). Default 1; see config.h.
+    config.vk_ssaa = get_config_int("main", "vk_ssaa", 1);
     config.debug_profile_code = get_config_int("main", "debug_profile_code", 0);
     config.audio_force_resample = get_config_int("main", "audio_force_resample", 0);
 
@@ -419,6 +423,16 @@ void sanity_check_config()
     {
         LOG_INFO("!!!!!Raster prescale set to unsupported value, supported values are 1 - 5");
         config.prescale = 2; have_error = 3;
+    }
+
+    // Only the two beam-buffer sizes are offered: 1 -> 1024x1024,
+    // 2 -> 2048x2048. Higher factors are not clamped-to but rejected, because
+    // 3 would ask for a 3072-square target whose per-frame mip cascade costs
+    // more than the extra smoothness is worth on any GPU this runs on.
+    if (config.vk_ssaa != 1 && config.vk_ssaa != 2)
+    {
+        LOG_INFO("!!!!!vk_ssaa set to unsupported value, supported values are 1 (1024x1024 beam buffer) or 2 (2048x2048)");
+        config.vk_ssaa = 1; have_error = 3;
     }
 
     if (config.anisfilter < 2 || config.anisfilter > 16 || (config.anisfilter % 2 != 0))

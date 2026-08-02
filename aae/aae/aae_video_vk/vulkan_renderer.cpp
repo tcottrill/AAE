@@ -560,18 +560,26 @@ static void EnsureVectorRenderer(void)
 }
 
 // Lazy once-per-session init of the vector post chain + its RT-format beam
-// renderer (see the g_vectorPost comment). ssaa=2: the beam RT renders at
-// 2048x2048 and the composite's trilinear minification is the supersample
-// resolve (the GL chain runs beam_init(1) today - the SSAA RT was always
-// this task's deliverable, and the AA feather divide keeps beam widths
-// matching the GL look).
+// renderer (see the g_vectorPost comment).
+//
+// The beam RT is 1024 * vk_ssaa square and the composite's trilinear
+// minification is the supersample resolve; the AA feather divide (backport
+// fix 4b) keeps beam widths matching the GL look at either setting.
+//
+// This was hardcoded to 2. That made the VK chain do FOUR TIMES the beam fill
+// of the GL chain - whose beam_init(1) has always used a plain 1024 buffer -
+// plus a 4x larger per-frame mip cascade, which measured as roughly a 6x
+// frame-rate difference on the same GPU (1400 fps GL vs 217 fps VK, asteroid
+// deluxe, RTX 4070 at 4K). The two chains were never doing equal work. It is
+// now [main] vk_ssaa, defaulting to 1 for GL parity; set 2 for the smoother
+// 2048x2048 buffer where there is headroom for it.
 static void EnsureVectorPost(void)
 {
 	if (s_vecPostFailed || s_vecPostInit)
 		return;
 
 	VectorPostVKCreateInfo pci{};
-	pci.ssaa = 2;
+	pci.ssaa = (config.vk_ssaa == 2) ? 2 : 1;   // sanity_check_config pins it to 1 or 2
 	if (!g_vectorPost.Init(g_vk, &pci))
 	{
 		s_vecPostFailed = true;
