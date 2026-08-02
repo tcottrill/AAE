@@ -19,7 +19,9 @@ Legend: [ ] untested · [x] passed · [!] defect (add a line to KNOWN ISSUES)
 - [ ] Pause shows frozen frame with overlays live on top
 - [ ] `-ror` / `-rol` / 180: image turns, overlays turn with it
 - [ ] `-ror` + CRT on: monitor pass still applies, mask turns with image
-- [ ] F12 snapshot: file in `snap/`, upright, correct colors
+- [ ] F12 snapshot: file in `snap/`, upright, correct colors, opaque
+      (VK reads back the swapchain; GL's bottom-up flip is deliberately
+      NOT applied — an upside-down PNG means the row order regressed)
 - [ ] Window resize + minimize/restore
 
 ## 2. `invaders` — B/W raster + layout + color gel  *(the headline fix)*
