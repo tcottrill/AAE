@@ -30,6 +30,8 @@
 #include "screen_quad_vk.h"    // ScreenQuadVK - RT->swapchain composite (Plan 4)
 #include "vector_draw_vk.h"    // VectorDrawVK - beam vector renderer (Plan 5);
                                // pulls in vector_draw.h (beam batch access)
+#include "vector_post_vk.h"    // VectorPostVK - SSAA RT + trail + glow (Plan 7)
+#include "../aae_emulator.h"   // emulator_is_gui_active (GUI keeps the direct path)
 #include "vk_texture_loader.h" // VkTex_GetSolidWhite (Plan 6 - GUI solid quads)
 #include "vector_fonts.h"      // VF singleton - CPU init under VK (Plan 6 fix)
 #include "../aae_video/opengl_renderer.h" // GuiPointVertex full definition (GL-free header)
@@ -92,6 +94,22 @@ static bool         s_screenQuadInit = false;
 static VectorDrawVK g_vectorDraw;
 static bool         s_vectorInit = false;
 static bool         s_vectorFailed = false;
+
+// Vector post chain (Plan 7 = Plan 5 Task 3): NON-GUI vector games render
+// beams into VectorPostVK's SSAA RT through a SECOND VectorDrawVK instance
+// (g_vectorDrawRT - its pipelines are built against the RT's RGBA8 format and
+// its AA feather uses the RT's ssaa; g_vectorDraw above stays swapchain-format
+// for the gated GUI direct path). VectorPostVK then runs trail/glow and the
+// composite. Same lazy-init + failure-latch discipline as the other
+// subsystems; on failure the game falls back to the direct path (visible, no
+// post effects) rather than black. s_trailClearPending forces a one-time
+// trail-accumulator clear on each new game load (vkchain_init re-entrant
+// path) so the previous game's phosphor never ghosts into the next.
+static VectorDrawVK g_vectorDrawRT;
+static VectorPostVK g_vectorPost;
+static bool         s_vecPostInit = false;
+static bool         s_vecPostFailed = false;
+static bool         s_trailClearPending = true;
 
 // GUI starfield (Plan 6 Task 1): a second, dedicated FpolyVK instance draws
 // the front-end GUI's point-sprite stars. Kept separate from g_fpoly (the
@@ -240,6 +258,42 @@ static void EnsureVectorRenderer(void)
 		s_vectorFailed = true;
 		LOG_ERROR("vkchain: VectorDrawVK init failed; vector game will show black");
 	}
+}
+
+// Lazy once-per-session init of the vector post chain + its RT-format beam
+// renderer (see the g_vectorPost comment). ssaa=2: the beam RT renders at
+// 2048x2048 and the composite's trilinear minification is the supersample
+// resolve (the GL chain runs beam_init(1) today - the SSAA RT was always
+// this task's deliverable, and the AA feather divide keeps beam widths
+// matching the GL look).
+static void EnsureVectorPost(void)
+{
+	if (s_vecPostFailed || s_vecPostInit)
+		return;
+
+	VectorPostVKCreateInfo pci{};
+	pci.ssaa = 2;
+	if (!g_vectorPost.Init(g_vk, &pci))
+	{
+		s_vecPostFailed = true;
+		LOG_ERROR("vkchain: VectorPostVK init failed; vector game falls back to direct path");
+		return;
+	}
+
+	VectorDrawVKCreateInfo ci{};
+	ci.colorFormat = g_vectorPost.BeamFormat();
+	ci.ssaa = pci.ssaa;
+	if (!g_vectorDrawRT.Init(g_vk, &ci))
+	{
+		g_vectorPost.Shutdown(g_vk);
+		s_vecPostFailed = true;
+		LOG_ERROR("vkchain: VectorDrawVK (RT) init failed; vector game falls back to direct path");
+		return;
+	}
+
+	s_vecPostInit = true;
+	LOG_INFO("vkchain: vector post chain online (beam RT %dx%d, trail+glow)",
+		g_vectorPost.BeamDim(), g_vectorPost.BeamDim());
 }
 
 // Set when a swapchain recreate attempt fails (window minimized, mid-drag,
@@ -452,6 +506,10 @@ int vkchain_init(void)
 		// Same latch-reset for the beam renderer: a later load gets a
 		// fresh init attempt (the renderer itself persists across games).
 		s_vectorFailed = false;
+		// Post chain: fresh init attempt per load, and clear the trail
+		// accumulator once so the previous game's phosphor never ghosts.
+		s_vecPostFailed = false;
+		s_trailClearPending = true;
 		return 1;
 	}
 
@@ -482,6 +540,8 @@ int vkchain_init(void)
 	s_fpolyFailed = false;
 	EnsureRasterRenderer();   // usually defers (see helper comment)
 	s_vectorFailed = false;   // beam renderer inits lazily on the first vector frame
+	s_vecPostFailed = false;  // post chain likewise
+	s_trailClearPending = true;
 
 	// Vector-font CPU state (screen dims + projection fields). Under GL this
 	// runs in glchain_init (opengl_renderer.cpp); the VK chain must do it too
@@ -524,6 +584,13 @@ void vkchain_shutdown(void)
 		s_vectorInit = false;
 	}
 	s_vectorFailed = false;
+	if (s_vecPostInit)
+	{
+		g_vectorDrawRT.Shutdown(g_vk);
+		g_vectorPost.Shutdown(g_vk);
+		s_vecPostInit = false;
+	}
+	s_vecPostFailed = false;
 	if (s_guiPointsInit)
 	{
 		g_guiPoints.Shutdown(g_vk);
@@ -598,6 +665,14 @@ void vkchain_set_render(void)
 	// has just proven the slot's previous frame is done.
 	if (s_vectorInit)
 		g_vectorDraw.OnFrameBegin(g_vk, g_vk.frameIndex);
+
+	// Post-chain slot resets (same contract): the RT-format beam renderer's
+	// buffer drain and VectorPostVK's descriptor-ring cursor.
+	if (s_vecPostInit)
+	{
+		g_vectorDrawRT.OnFrameBegin(g_vk, g_vk.frameIndex);
+		g_vectorPost.OnFrameBegin(g_vk.frameIndex);
+	}
 }
 
 void vkchain_render(void)
@@ -674,12 +749,80 @@ void vkchain_render(void)
 		}
 	}
 
+	// Vector post chain (Plan 7 = Plan 5 Task 3): NON-GUI vector games render
+	// beams into the SSAA RT, run trail/glow, and composite - mirroring the
+	// GL chain's fbo1 -> trail/blur -> final_render shape. The GUI keeps the
+	// gated Plan 5/6 direct path below (GL excludes the GUI from trail/glow
+	// anyway), as does any game if the post chain failed to init (visible
+	// beams beat a black screen).
+	//
+	// Documented deviation: the in-game menu/pause text rides the beam queue
+	// under VK (Plan 6 routes VF strokes through beam_add_line), so it gets
+	// trail/glow here; GL draws those overlays post-composite, crisp.
+	const bool wantPostChain = s_frameOpen && GameIsVector() &&
+		!emulator_is_gui_active();
+	if (wantPostChain)
+		EnsureVectorPost();
+
+	if (wantPostChain && s_vecPostInit)
+	{
+		VkCommandBuffer cmd = g_vk.cmdBuffers[g_vk.frameIndex];
+		const int sw = (int)g_vk.swapchainExtent.width;
+		const int sh = (int)g_vk.swapchainExtent.height;
+
+		// Mirror glchain_render's !paused guard; unlike the direct path,
+		// pause here shows the RETAINED frame (composite below still runs) -
+		// parity with GL's frozen fbo1 restored, as the Plan 5 comment
+		// promised for this task.
+		if (!paused && sw > 0 && sh > 0)
+		{
+			// CPU-only conversion, same as the direct path (see its comment).
+			vector_update();
+
+			// Beams draw into the SQUARE beam RT with the GL chain's own
+			// fbo1 projection - ortho(0,1024,0,1024) - not the direct path's
+			// folded window ortho; the composite quad applies game_rect +
+			// letterbox + the single V flip instead (exactly like GL's
+			// final_render quad).
+			float proj[16];
+			MakeOrthoColMajor(0.0f, 1024.0f, 0.0f, 1024.0f, proj);
+
+			const bool additive = Machine && Machine->drv &&
+				(Machine->drv->video_attributes & VECTOR_USES_COLOR) != 0;
+
+			VK_SuspendFramePass(g_vk, cmd);
+			g_vectorPost.BeginBeamPass(g_vk, cmd);
+			g_vectorDrawRT.Record(g_vk, cmd, g_vk.frameIndex, proj, additive,
+				(uint32_t)g_vectorPost.BeamDim(), (uint32_t)g_vectorPost.BeamDim());
+			g_vectorPost.EndBeamPass(g_vk, cmd);
+			g_vectorPost.RecordPost(g_vk, cmd, g_vk.frameIndex,
+				config.vectrail, config.vecglow, s_trailClearPending);
+			s_trailClearPending = false;
+			VK_ResumeFramePass(g_vk, cmd, s_imageIndex);
+		}
+
+		if (sw > 0 && sh > 0)
+		{
+			// Same beam-space -> window map as the GUI helpers: game_rect box
+			// scaled into the aspect-fit letterbox. RecordComposite takes
+			// Y-DOWN window pixels, so the y-up letterbox coords flip here.
+			const GuiBeamMap m = ComputeGuiBeamMap();
+			const float x0 = m.lx + (m.grL / 1024.0f) * m.vw;
+			const float x1 = m.lx + (m.grR / 1024.0f) * m.vw;
+			const float yTopUp = m.ly + (m.grT / 1024.0f) * m.vh;
+			const float yBotUp = m.ly + (m.grB / 1024.0f) * m.vh;
+			g_vectorPost.RecordComposite(g_vk, cmd, g_vk.frameIndex,
+				x0, (float)sh - yTopUp, x1, (float)sh - yBotUp,
+				config.vectrail, config.vecglow);
+		}
+	}
 	// Vector path (Plan 5 Task 1): draw the frame's beam batches direct to
 	// the swapchain, inside the frame pass VK_BeginFrame opened (no
 	// suspend/resume needed -- VectorDrawVK records into an already-open
 	// pass). Order per plan: vector_update (CPU convert), Record (consume),
-	// then the clears below (post-consume drain).
-	if (s_frameOpen && GameIsVector())
+	// then the clears below (post-consume drain). Since Plan 7 this path
+	// serves the GUI driver and the post-chain-init-failed fallback only.
+	else if (s_frameOpen && GameIsVector())
 	{
 		EnsureVectorRenderer();
 
