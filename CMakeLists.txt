@@ -222,6 +222,7 @@ set(AAE_COMMON_SOURCES
     aae/aae/aae_video_vk/render_target_vk.cpp
     aae/aae/aae_video_vk/screen_quad_vk.cpp
     aae/aae/aae_video_vk/vector_draw_vk.cpp
+    aae/aae/aae_video_vk/vector_post_vk.cpp
     aae/aae/aae_video_vk/vk_texture_loader.cpp
     aae/aae/aae_video_vk/vulkan_renderer.cpp
     aae/aae/acommon.cpp
