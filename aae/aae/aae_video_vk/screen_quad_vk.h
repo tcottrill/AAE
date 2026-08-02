@@ -59,6 +59,30 @@
 #include <string>
 
 // -----------------------------------------------------------------------------
+// SQBlendVK
+// Blend state for a RecordRect draw. The pipeline variant cache is keyed by
+// (active color format, blend mode), so a new mode costs one extra pipeline
+// the first time it is used and nothing after that.
+//
+//   Alpha      - SRC_ALPHA / ONE_MINUS_SRC_ALPHA. The donor's only mode and
+//                the default: every pre-rotation caller keeps it verbatim.
+//   None       - blending disabled, a straight RGBA copy. This is GL's
+//                end_render_fbo4 blit (glDisable(GL_BLEND) + screen_rect),
+//                used by the rotated vector output-RT blit.
+//   PremulOver - ONE / ONE_MINUS_SRC_ALPHA. GL's rotated raster overlay blit
+//                (opengl_renderer.cpp final_render_raster): the overlay was
+//                composited into a transparent canvas with premultiplied
+//                alpha, so its RGB must not be re-multiplied by SRC_ALPHA.
+// -----------------------------------------------------------------------------
+enum class SQBlendVK : int
+{
+    Alpha      = 0,
+    None       = 1,
+    PremulOver = 2,
+    Count      = 3
+};
+
+// -----------------------------------------------------------------------------
 // ScreenQuadVKCreateInfo
 // Explicit SPV paths, matching the FastPolyVKCreateInfo convention. The
 // defaults point at the CustomBuild output location next to the exe.
@@ -122,16 +146,30 @@ public:
     //   tint         - per-call RGBA tint (default RGB_WHITE = identity).
     //                  Multiplied with the sampled texel in the fragment
     //                  shader via a fragment-stage push constant.
+    //   uvRotation   - display-time rotation of the SOURCE image inside the
+    //                  destination rect, using the GL chain's Rect2 index
+    //                  (texrect.cpp UpdateScreenRect's indices[32] table):
+    //                    0 = none, 1 = rotate right (CW 90),
+    //                    2 = rotate left (CCW 90), 3 = 180.
+    //                  Implemented as a per-corner UV permutation on the CPU
+    //                  vertices - no shader involvement - so 0 emits exactly
+    //                  the UVs this path always emitted. The caller is
+    //                  responsible for giving the rect the ROTATED aspect;
+    //                  this only turns the sampled image.
+    //   blend        - pipeline blend state (see SQBlendVK). Default Alpha is
+    //                  the donor behavior.
     //
     // The pipeline used by RecordRect is owned by ScreenQuadVK; a variant is
-    // created lazily per VK_ActiveColorFormat(ctx).
+    // created lazily per (VK_ActiveColorFormat(ctx), blend).
     // -------------------------------------------------------------------------
     void RecordRect(VkContext& ctx, VkCommandBuffer cmd, uint32_t frameIndex,
                     VkImageView srcView, VkSampler srcSampler,
                     float leftPx, float bottomPx, float rightPx, float topPx,
                     uint32_t targetWidth, uint32_t targetHeight,
                     bool flipUV_Y = false,
-                    rgb_t tint = RGB_WHITE);
+                    rgb_t tint = RGB_WHITE,
+                    int uvRotation = 0,
+                    SQBlendVK blend = SQBlendVK::Alpha);
 
     // Deterministic per-frame slot-cursor reset. Call once per frame after
     // VK_BeginFrame. The lazy reset keyed on "frameIndex changed since last
@@ -143,8 +181,9 @@ public:
 private:
     bool RectInit_(VkContext& ctx);
     void RectShutdown_(VkContext& ctx);
-    bool RectBuildPipelineForFormat_(VkContext& ctx, VkFormat colorFormat, VkPipeline& outPipeline);
-    VkPipeline RectGetOrCreatePipeline_(VkContext& ctx);
+    bool RectBuildPipelineForFormat_(VkContext& ctx, VkFormat colorFormat,
+                                     SQBlendVK blend, VkPipeline& outPipeline);
+    VkPipeline RectGetOrCreatePipeline_(VkContext& ctx, SQBlendVK blend);
 
     bool CreateBuffer(VkContext& ctx,
         VkDeviceSize size,
@@ -171,14 +210,16 @@ private:
     VkPipelineLayout      rect_pipeLayout_ = VK_NULL_HANDLE;
     VkDescriptorPool      rect_descPool_   = VK_NULL_HANDLE;
 
-    // Per-format pipeline variants. RecordRect draws into whatever pass is
-    // open -- the swapchain pass for composites, an offscreen RT pass for
-    // post-processing. Dynamic rendering demands a pipeline whose declared
+    // Per-(format, blend) pipeline variants. RecordRect draws into whatever
+    // pass is open -- the swapchain pass for composites, an offscreen RT pass
+    // for post-processing. Dynamic rendering demands a pipeline whose declared
     // format matches the pass, so variants are created lazily per
-    // VK_ActiveColorFormat(ctx) and only destroyed at shutdown (no
-    // in-flight-destroy hazard).
-    static constexpr uint32_t kRectMaxPipelineVariants = 4;
+    // (VK_ActiveColorFormat(ctx), blend) and only destroyed at shutdown (no
+    // in-flight-destroy hazard). Sized for the observed formats (swapchain +
+    // the RGBA8_UNORM game RT) times the three blend modes.
+    static constexpr uint32_t kRectMaxPipelineVariants = 8;
     VkFormat   rect_pipeFormat_[kRectMaxPipelineVariants]{};
+    SQBlendVK  rect_pipeBlend_[kRectMaxPipelineVariants]{};
     VkPipeline rect_pipeVariant_[kRectMaxPipelineVariants]{};
     uint32_t   rect_pipeVariantCount_ = 0;
 
@@ -189,11 +230,14 @@ private:
     VkDeviceMemory rect_vboMem_[VkContext::kFramesInFlight]{};
     void*          rect_vboMapped_[VkContext::kFramesInFlight]{};
 
-    // Per-frame UBO ring -- one mat4 per frame slot. Updated each
-    // RecordRect call to match the caller's target dims.
+    // Per-frame UBO ring -- one mat4 per RECT SLOT (kRectSlotsPerFrame of
+    // them), each at a device-aligned offset. Written by the RecordRect call
+    // that claims the slot, so draws with different target dims can coexist
+    // in one frame (the rotated overlay RT + the final swapchain blit).
     VkBuffer       rect_ubo_[VkContext::kFramesInFlight]{};
     VkDeviceMemory rect_uboMem_[VkContext::kFramesInFlight]{};
     void*          rect_uboMapped_[VkContext::kFramesInFlight]{};
+    VkDeviceSize   rect_uboStride_ = 0;
 
     // Pre-allocated descriptor sets. UBO binding pre-written at init;
     // sampler binding written per-call.

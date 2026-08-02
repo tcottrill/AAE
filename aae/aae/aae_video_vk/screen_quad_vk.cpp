@@ -276,7 +276,27 @@ bool ScreenQuadVK::RectInit_(VkContext& ctx)
     // Per-frame VBO holds (kRectSlotsPerFrame * 6) verts. Per-slot offsets
     // prevent races between still-in-flight slots in the same frame.
     const VkDeviceSize vboBytes = (VkDeviceSize)kRectSlotsPerFrame * 6 * sizeof(QuadVertex);
-    const VkDeviceSize uboBytes = sizeof(float) * 16;
+
+    // UBO: ONE ortho per SLOT, not one per frame. The donor shared a single
+    // mat4 across every slot of a frame, which is only correct while all of a
+    // frame's rect draws share the same target dims - the last RecordRect call
+    // won for all of them. The system-rotation path breaks that assumption
+    // (overlay quads record into the square 1024 output RT, then the final
+    // blit records against the swapchain), so each slot now owns its own
+    // device-aligned region and the per-call write can never clobber a
+    // previously recorded draw. Same values, own storage: single-target
+    // callers are unaffected.
+    const VkDeviceSize uboMatBytes = sizeof(float) * 16;
+    VkDeviceSize uboAlign = 256;
+    if (ctx.vkGetPhysicalDeviceProperties_ && ctx.phys)
+    {
+        VkPhysicalDeviceProperties props{};
+        ctx.vkGetPhysicalDeviceProperties_(ctx.phys, &props);
+        if (props.limits.minUniformBufferOffsetAlignment > 0)
+            uboAlign = props.limits.minUniformBufferOffsetAlignment;
+    }
+    rect_uboStride_ = ((uboMatBytes + uboAlign - 1) / uboAlign) * uboAlign;
+    const VkDeviceSize uboBytes = rect_uboStride_ * kRectSlotsPerFrame;
 
     for (uint32_t fi = 0; fi < VkContext::kFramesInFlight; ++fi)
     {
@@ -312,22 +332,23 @@ bool ScreenQuadVK::RectInit_(VkContext& ctx)
             return false;
         }
 
-        // Pre-write the UBO binding for every slot in this frame. The
-        // sampler binding is written per-call in RecordRect (varies by call).
-        VkDescriptorBufferInfo bi{};
-        bi.buffer = rect_ubo_[fi];
-        bi.offset = 0;
-        bi.range  = uboBytes;
-
+        // Pre-write the UBO binding for every slot in this frame, each at its
+        // OWN aligned offset in the ring. The sampler binding is written
+        // per-call in RecordRect (varies by call).
+        VkDescriptorBufferInfo bis[kRectSlotsPerFrame]{};
         VkWriteDescriptorSet writes[kRectSlotsPerFrame]{};
         for (uint32_t s = 0; s < kRectSlotsPerFrame; ++s)
         {
+            bis[s].buffer = rect_ubo_[fi];
+            bis[s].offset = rect_uboStride_ * s;
+            bis[s].range  = uboMatBytes;
+
             writes[s].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
             writes[s].dstSet          = rect_descSets_[fi][s];
             writes[s].dstBinding      = 0;
             writes[s].descriptorCount = 1;
             writes[s].descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-            writes[s].pBufferInfo     = &bi;
+            writes[s].pBufferInfo     = &bis[s];
         }
         ctx.vkUpdateDescriptorSets_(ctx.device, kRectSlotsPerFrame, writes, 0, nullptr);
 
@@ -339,12 +360,13 @@ bool ScreenQuadVK::RectInit_(VkContext& ctx)
     // created lazily by RectGetOrCreatePipeline_ on first use.
     {
         VkPipeline p = VK_NULL_HANDLE;
-        if (!RectBuildPipelineForFormat_(ctx, ctx.swapchainFormat, p))
+        if (!RectBuildPipelineForFormat_(ctx, ctx.swapchainFormat, SQBlendVK::Alpha, p))
         {
             RectShutdown_(ctx);
             return false;
         }
         rect_pipeFormat_[0] = ctx.swapchainFormat;
+        rect_pipeBlend_[0] = SQBlendVK::Alpha;
         rect_pipeVariant_[0] = p;
         rect_pipeVariantCount_ = 1;
     }
@@ -365,6 +387,7 @@ void ScreenQuadVK::RectShutdown_(VkContext& ctx)
             ctx.vkDestroyPipeline_(ctx.device, rect_pipeVariant_[i], nullptr);
         rect_pipeVariant_[i] = VK_NULL_HANDLE;
         rect_pipeFormat_[i] = VK_FORMAT_UNDEFINED;
+        rect_pipeBlend_[i] = SQBlendVK::Alpha;
     }
     rect_pipeVariantCount_ = 0;
 
@@ -398,32 +421,36 @@ void ScreenQuadVK::RectShutdown_(VkContext& ctx)
 
 // -----------------------------------------------------------------------------
 // RectGetOrCreatePipeline_
-// Returns the pipeline variant matching the active pass's color format,
-// creating it lazily on first use. Variants live until RectShutdown_, so
-// there is never a destroy while a recorded frame still references one.
+// Returns the pipeline variant matching the active pass's color format AND
+// the requested blend mode, creating it lazily on first use. Variants live
+// until RectShutdown_, so there is never a destroy while a recorded frame
+// still references one.
 // -----------------------------------------------------------------------------
-VkPipeline ScreenQuadVK::RectGetOrCreatePipeline_(VkContext& ctx)
+VkPipeline ScreenQuadVK::RectGetOrCreatePipeline_(VkContext& ctx, SQBlendVK blend)
 {
     const VkFormat fmt = VK_ActiveColorFormat(ctx);
 
     for (uint32_t i = 0; i < rect_pipeVariantCount_; ++i)
     {
-        if (rect_pipeFormat_[i] == fmt)
+        if (rect_pipeFormat_[i] == fmt && rect_pipeBlend_[i] == blend)
             return rect_pipeVariant_[i];
     }
 
     if (rect_pipeVariantCount_ >= kRectMaxPipelineVariants)
     {
-        LOG_ERROR("ScreenQuadVK(rect): pipeline variant cache full (format %d requested)", (int)fmt);
+        LOG_ERROR("ScreenQuadVK(rect): pipeline variant cache full (format %d blend %d requested)",
+                  (int)fmt, (int)blend);
         return VK_NULL_HANDLE;
     }
 
     VkPipeline p = VK_NULL_HANDLE;
-    if (!RectBuildPipelineForFormat_(ctx, fmt, p))
+    if (!RectBuildPipelineForFormat_(ctx, fmt, blend, p))
         return VK_NULL_HANDLE;
 
-    LOG_INFO("ScreenQuadVK(rect): created pipeline variant for color format %d", (int)fmt);
+    LOG_INFO("ScreenQuadVK(rect): created pipeline variant for color format %d, blend %d",
+             (int)fmt, (int)blend);
     rect_pipeFormat_[rect_pipeVariantCount_] = fmt;
+    rect_pipeBlend_[rect_pipeVariantCount_] = blend;
     rect_pipeVariant_[rect_pipeVariantCount_] = p;
     ++rect_pipeVariantCount_;
     return p;
@@ -431,9 +458,11 @@ VkPipeline ScreenQuadVK::RectGetOrCreatePipeline_(VkContext& ctx)
 
 // -----------------------------------------------------------------------------
 // RectBuildPipelineForFormat_
-// Builds one rect-aware pipeline variant against the given color format.
+// Builds one rect-aware pipeline variant against the given color format and
+// blend mode.
 // -----------------------------------------------------------------------------
-bool ScreenQuadVK::RectBuildPipelineForFormat_(VkContext& ctx, VkFormat colorFormat, VkPipeline& outPipeline)
+bool ScreenQuadVK::RectBuildPipelineForFormat_(VkContext& ctx, VkFormat colorFormat,
+                                               SQBlendVK blend, VkPipeline& outPipeline)
 {
     outPipeline = VK_NULL_HANDLE;
 
@@ -504,6 +533,22 @@ bool ScreenQuadVK::RectBuildPipelineForFormat_(VkContext& ctx, VkFormat colorFor
     cba.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
                          VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
 
+    // Blend-mode overrides. Alpha (above) is the donor state and stays
+    // untouched so every pre-existing caller keeps byte-identical pipelines.
+    if (blend == SQBlendVK::None)
+    {
+        // Straight copy - GL end_render_fbo4's glDisable(GL_BLEND) blit.
+        cba.blendEnable = VK_FALSE;
+    }
+    else if (blend == SQBlendVK::PremulOver)
+    {
+        // GL glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA).
+        cba.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
+        cba.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        cba.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+        cba.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+    }
+
     VkPipelineColorBlendStateCreateInfo cb{ VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO };
     cb.attachmentCount = 1;
     cb.pAttachments    = &cba;
@@ -567,7 +612,9 @@ void ScreenQuadVK::RecordRect(VkContext& ctx, VkCommandBuffer cmd, uint32_t fram
                               float leftPx, float bottomPx, float rightPx, float topPx,
                               uint32_t targetWidth, uint32_t targetHeight,
                               bool flipUV_Y,
-                              rgb_t tint)
+                              rgb_t tint,
+                              int uvRotation,
+                              SQBlendVK blend)
 {
     if (cmd == VK_NULL_HANDLE)
         return;
@@ -596,10 +643,10 @@ void ScreenQuadVK::RecordRect(VkContext& ctx, VkCommandBuffer cmd, uint32_t fram
         return;
     }
 
-    // Pipeline variant matching the active pass's color format. A new format
-    // simply gets its own variant, which also handles drawing inside RTs
-    // whose format is not the swapchain's.
-    VkPipeline rectPipeline = RectGetOrCreatePipeline_(ctx);
+    // Pipeline variant matching the active pass's color format and the
+    // requested blend mode. A new format simply gets its own variant, which
+    // also handles drawing inside RTs whose format is not the swapchain's.
+    VkPipeline rectPipeline = RectGetOrCreatePipeline_(ctx, blend);
     if (rectPipeline == VK_NULL_HANDLE)
         return;
 
@@ -626,16 +673,15 @@ void ScreenQuadVK::RecordRect(VkContext& ctx, VkCommandBuffer cmd, uint32_t fram
     }
     rect_slotCursor_[fi] = slot + 1;
 
-    // Update the per-frame UBO ortho to match the caller's coord frame.
-    // Note: written every call. Within a single frame, multiple calls with
-    // different target dims would clobber each other -- but in practice each
-    // frame uses one consistent target (RT or swapchain) for all rect draws,
-    // and all calls within that frame supply the same dims, so this is safe.
+    // Update THIS SLOT's ortho to match the caller's coord frame. Per-slot
+    // storage (see RectInit_), so a later call with different target dims
+    // cannot retroactively change an already-recorded draw.
     if (rect_uboMapped_[fi])
     {
         float mvp[16];
         RectMakeOrtho_(0.0f, (float)targetWidth, 0.0f, (float)targetHeight, mvp);
-        memcpy(rect_uboMapped_[fi], mvp, sizeof(mvp));
+        uint8_t* uboBase = static_cast<uint8_t*>(rect_uboMapped_[fi]);
+        memcpy(uboBase + (size_t)(rect_uboStride_ * slot), mvp, sizeof(mvp));
     }
 
     // Write the sampler binding for this slot's descriptor set.
@@ -662,20 +708,52 @@ void ScreenQuadVK::RecordRect(VkContext& ctx, VkCommandBuffer cmd, uint32_t fram
     // callers that need an explicit vertical flip pass flipUV_Y=true.
     // (The donor fixed an earlier version that had v0/v1 swapped, which
     // forced every caller to pass flipUV_Y=true for right-side-up output.)
-    const float u0 = 0.0f;
-    const float u1 = 1.0f;
-    const float v0 = flipUV_Y ? 0.0f : 1.0f;
-    const float v1 = flipUV_Y ? 1.0f : 0.0f;
+    //
+    // uvRotation (GL Rect2 parity): the four corner UVs are permuted the same
+    // way texrect.cpp's indices[32] table permutes Rect2's, so the source
+    // image turns inside the destination rect. Working in the "image
+    // parameter" space d = (across, DOWN) - i.e. d equals (u,v) at rotation 0
+    // - the table is:
+    //     0 (none)  : (d.x,     d.y)
+    //     1 (right) : (d.y,     1-d.x)
+    //     2 (left)  : (1-d.y,   d.x)
+    //     3 (180)   : (1-d.x,   1-d.y)
+    // Derivation check against Rect2's rotate-right row (which is written in
+    // GL's y-UP texture space, v_gl = 1 - d.y): BL(1,0) TL(0,0) TR(0,1)
+    // BR(1,1) becomes, in d-space, BL(1,1) TL(0,1) TR(0,0) BR(1,0) - exactly
+    // what row 1 above produces for the BL/TL/TR/BR d values below.
+    // flipUV_Y is applied FIRST (d.y := 1-d.y), then the rotation.
+    const float dBL[2] = { 0.0f, flipUV_Y ? 0.0f : 1.0f };
+    const float dTL[2] = { 0.0f, flipUV_Y ? 1.0f : 0.0f };
+    const float dTR[2] = { 1.0f, flipUV_Y ? 1.0f : 0.0f };
+    const float dBR[2] = { 1.0f, flipUV_Y ? 0.0f : 1.0f };
+
+    auto rotUV = [uvRotation](const float d[2], float& u, float& v)
+    {
+        switch (uvRotation)
+        {
+        case 1:  u = d[1];        v = 1.0f - d[0]; break;   // rotate right (CW 90)
+        case 2:  u = 1.0f - d[1]; v = d[0];        break;   // rotate left (CCW 90)
+        case 3:  u = 1.0f - d[0]; v = 1.0f - d[1]; break;   // 180
+        default: u = d[0];        v = d[1];        break;   // none
+        }
+    };
+
+    float uBL, vBL, uTL, vTL, uTR, vTR, uBR, vBR;
+    rotUV(dBL, uBL, vBL);
+    rotUV(dTL, uTL, vTL);
+    rotUV(dTR, uTR, vTR);
+    rotUV(dBR, uBR, vBR);
 
     QuadVertex tri6[6] = {
         // BL, TL, TR
-        { leftPx,  bottomPx, u0, v0 },
-        { leftPx,  topPx,    u0, v1 },
-        { rightPx, topPx,    u1, v1 },
+        { leftPx,  bottomPx, uBL, vBL },
+        { leftPx,  topPx,    uTL, vTL },
+        { rightPx, topPx,    uTR, vTR },
         // TR, BR, BL
-        { rightPx, topPx,    u1, v1 },
-        { rightPx, bottomPx, u1, v0 },
-        { leftPx,  bottomPx, u0, v0 },
+        { rightPx, topPx,    uTR, vTR },
+        { rightPx, bottomPx, uBR, vBR },
+        { leftPx,  bottomPx, uBL, vBL },
     };
 
     const VkDeviceSize slotByteOffset =
