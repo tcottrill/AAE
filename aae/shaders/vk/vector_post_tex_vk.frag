@@ -19,5 +19,10 @@ layout(location = 0) out vec4 FragColor;
 
 void main()
 {
-    FragColor = texture(colorMap, vUV) * pc.tint;
+    // GL RGB8 semantics (gl_fbo.cpp: img1b has NO alpha channel, reads a=1):
+    // force the sample's alpha to 1 so the trail blend's SRC_ALPHA dst
+    // factor is exactly tint.a (the decay constant) EVERYWHERE. Using the
+    // VK RT's real beam alpha instead multiplied the old trail by ~0
+    // wherever no beam drew this frame - erasing the phosphor instantly.
+    FragColor = vec4(texture(colorMap, vUV).rgb, 1.0) * pc.tint;
 }

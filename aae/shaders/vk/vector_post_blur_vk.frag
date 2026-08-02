@@ -36,9 +36,14 @@ void main()
         1.0/17.0, 2.0/17.0, 1.0/17.0
     );
 
+    // GL RGB8 semantics (gl_fbo.cpp: fbo1/2/3 have NO alpha channel, so GL
+    // texture reads return a=1.0): force each tap's alpha to 1. This makes
+    // the ping-pong SRC_ALPHA/ONE accumulate effectively full-strength
+    // ONE/ONE, exactly like GL - sampling the RGBA8 VK RT's real (feathered,
+    // mostly-zero) beam alpha instead had the glow accumulating a*a-weak.
     vec4 sum = vec4(0.0);
     for (int i = 0; i < 9; i++)
-        sum += texture(colorMap, vUV + offset[i]) * kernel_[i];
+        sum += vec4(texture(colorMap, vUV + offset[i]).rgb, 1.0) * kernel_[i];
 
     FragColor = sum * 1.12;
 }
