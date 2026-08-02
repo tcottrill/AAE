@@ -25,8 +25,14 @@ extern rtex_t menu_tex[7];
 rtex_t load_texture(const char* filename, const char* archname, int numcomponents, int filter, bool modernGL = true);
 // Use
 void set_texture(rtex_t* texture, bool linear, bool mipmapping, bool blending, bool set_color);
-// Take snapshot
+// Take snapshot (F12). Backend-neutral entry point; the routing to the GL or
+// Vulkan pixel source lives in aae_video/renderer_dispatch.cpp.
 void snapshot();
+// Shared snapshot writer, used by BOTH render chains so the two backends
+// produce byte-identically named files. Expects a TIGHTLY PACKED RGBA8 buffer
+// (width*4 bytes per row) whose scanline 0 is the TOP row of the image.
+// Creates snap/, builds snap/<gamename>_<YYYYMMDDHHMMSS>.png and writes it.
+bool snapshot_write_rgba8_png(const unsigned char* rgba, int width, int height);
 // Deletes all registered textures
 void destroy_all_textures();
 // Retrieve loaded texture size

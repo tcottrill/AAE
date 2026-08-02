@@ -219,9 +219,75 @@ rtex_t load_texture(const char* filename,
 }
 
 // -----------------------------------------------------------------------------
-//  snapshot
+//  snapshot (F12)
+//
+//  Split into a SHARED writer and a per-chain pixel source, so the GL and the
+//  Vulkan chains emit byte-identically named files and only the way the pixels
+//  are fetched differs:
+//
+//    snapshot_write_rgba8_png()  - snap/ creation, the timestamped filename,
+//                                  stbi_write_png and the log line. Written
+//                                  ONCE, here; the Vulkan swapchain readback
+//                                  (aae_video_vk/snapshot_vk.cpp) calls it too.
+//    glchain_snapshot()          - the GL pixel source. Behavior unchanged.
+//
+//  The public snapshot() entry point moved to aae_video/renderer_dispatch.cpp
+//  with the rest of the chain routing (it is still declared in this header).
+//
+//  Both chains hand over a TIGHTLY PACKED, TOP-ROW-FIRST RGBA8 buffer:
+//  buffer scanline 0 is the topmost row of the image, which is exactly what
+//  PNG scanline 0 must be. GL needs a vertical flip to satisfy that contract
+//  (glReadPixels' origin is bottom-left); a Vulkan image's row 0 is already
+//  the top row, so the VK path must NOT flip.
 // -----------------------------------------------------------------------------
-void snapshot()
+bool snapshot_write_rgba8_png(const unsigned char* rgba, int width, int height)
+{
+	if (!rgba || width <= 0 || height <= 0)
+	{
+		LOG_ERROR("snapshot - invalid pixel buffer (%dx%d)", width, height);
+		return false;
+	}
+
+	std::filesystem::create_directory("snap");
+
+	// generate timestamp
+	const auto now = std::chrono::system_clock::to_time_t(
+		std::chrono::system_clock::now());
+	// localtime_s and localtime_r do the same job with REVERSED arguments -
+	// MSVC takes (tm*, time_t*), POSIX takes (time_t*, tm*). Swapping them
+	// compiles cleanly and produces garbage, so spell it out.
+	tm tmNow{};
+#ifdef _WIN32
+	localtime_s(&tmNow, &now);
+#else
+	localtime_r(&now, &tmNow);
+#endif
+
+	std::ostringstream oss;
+	oss << std::put_time(&tmNow, "%Y%m%d%H%M%S");
+
+	// Machine is a pointer to a file-static RunningMachine and is never null,
+	// but gamedrv is only populated once a driver is loaded. The fallback name
+	// exists purely so a stray F12 before/after a game load cannot dereference
+	// null; with a driver loaded (including the "gui" front-end driver) the
+	// name is identical to what the GL path has always produced.
+	const char* gameName =
+		(Machine && Machine->gamedrv && Machine->gamedrv->name)
+		? Machine->gamedrv->name : "aae";
+
+	std::filesystem::path outPath =
+		std::filesystem::path("snap")
+		/ (std::string(gameName) + "_" + oss.str() + ".png");
+
+	stbi_write_png(outPath.string().c_str(),
+		width, height, 4,
+		rgba, width * 4);
+
+	LOG_INFO("snapshot saved: %s", outPath.string().c_str());
+	return true;
+}
+
+void glchain_snapshot()
 {
 	// Portable: ISystemWindow reports its own client size, so no RECT and no
 	// platform window handle are needed.
@@ -244,33 +310,7 @@ void snapshot()
 			buffer.data() + (y + 1) * width * 4,
 			buffer.data() + (height - y - 1) * width * 4);
 
-	std::filesystem::create_directory("snap");
-
-	// generate timestamp
-	const auto now = std::chrono::system_clock::to_time_t(
-		std::chrono::system_clock::now());
-	// localtime_s and localtime_r do the same job with REVERSED arguments -
-	// MSVC takes (tm*, time_t*), POSIX takes (time_t*, tm*). Swapping them
-	// compiles cleanly and produces garbage, so spell it out.
-	tm tmNow{};
-#ifdef _WIN32
-	localtime_s(&tmNow, &now);
-#else
-	localtime_r(&now, &tmNow);
-#endif
-
-	std::ostringstream oss;
-	oss << std::put_time(&tmNow, "%Y%m%d%H%M%S");
-
-	std::filesystem::path outPath =
-		std::filesystem::path("snap")
-		/ (std::string(Machine->gamedrv->name) + "_" + oss.str() + ".png");
-
-	stbi_write_png(outPath.string().c_str(),
-		width, height, 4,
-		buffer.data(), width * 4);
-
-	LOG_INFO("snapshot saved: %s", outPath.string().c_str());
+	snapshot_write_rgba8_png(buffer.data(), width, height);
 }
 
 // Binds and configures a 2D texture.

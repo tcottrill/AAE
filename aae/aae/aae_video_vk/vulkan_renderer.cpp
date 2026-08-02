@@ -40,6 +40,7 @@
 #include "../aae_emulator.h"   // emulator_is_gui_active (GUI keeps the direct path)
 #include "vk_texture_loader.h" // VkTex_GetSolidWhite (Plan 6 - GUI solid quads);
                                // VkArt_* per-game artwork cache (Plan 8)
+#include "snapshot_vk.h"       // F12 screenshot readback (swapchain -> PNG)
 #include "vector_fonts.h"      // VF singleton - CPU init under VK (Plan 6 fix)
 #include "../aae_video/opengl_renderer.h" // GuiPointVertex full definition (GL-free header)
 
@@ -1095,6 +1096,7 @@ void vkchain_shutdown(void)
 	s_fpolyRebuildPending = false;
 	s_rasterW = 0;
 	s_rasterH = 0;
+	VkSnapshot::DropPending("renderer shutting down");
 	VK_Shutdown(g_vk);
 	s_initialized = false;
 	s_frameOpen = false;
@@ -1109,6 +1111,11 @@ void vkchain_set_render(void)
 
 	if (s_deferredZeroExtent)
 	{
+		// A screenshot latched just before the swapchain went away can never
+		// be serviced from this frame; drop it instead of firing it whenever
+		// the window comes back.
+		VkSnapshot::DropPending("swapchain deferred (window minimized?)");
+
 		if (++s_deferRetryTick < 120)   // retry roughly every 2 s at 60 fps
 			return;
 		s_deferRetryTick = 0;
@@ -1987,12 +1994,60 @@ void vkchain_render(void)
 		RecordUiOverlays();
 }
 
+// ---------------------------------------------------------------------------
+// vkchain_request_snapshot - the Vulkan half of snapshot() (F12).
+//
+// Called from the emulator's input handling MID-TICK: the frame pass is open
+// (or the swapchain is deferred and no frame exists), and there is no GL
+// context to glReadPixels from. So nothing is read here - the request is
+// latched and serviced at the next vkchain_swap_buffers, which captures the
+// frame the user actually saw.
+//
+// The skip cases are logged and dropped rather than left latched, so a press
+// while minimized does not silently fire minutes later on restore.
+// ---------------------------------------------------------------------------
+void vkchain_request_snapshot(void)
+{
+	if (!s_initialized)
+	{
+		LOG_ERROR("snapshot (vulkan): renderer not initialized; dropped");
+		return;
+	}
+	if (s_deferredZeroExtent)
+	{
+		LOG_ERROR("snapshot (vulkan): swapchain deferred (window minimized?); dropped");
+		return;
+	}
+	if (g_vk.swapchainExtent.width == 0 || g_vk.swapchainExtent.height == 0)
+	{
+		LOG_ERROR("snapshot (vulkan): swapchain extent is zero; dropped");
+		return;
+	}
+	VkSnapshot::Request();
+}
+
 void vkchain_swap_buffers(void)
 {
 	if (!s_initialized || !s_frameOpen)
 		return;
 	s_frameOpen = false;
-	if (!VK_EndFrame(g_vk, s_imageIndex))
+
+	// F12: service a latched screenshot request here, the last point at which
+	// this frame's command buffer is still recording and its pass still open.
+	// The readback is recorded into that same command buffer, so what lands in
+	// the PNG is provably the frame about to be presented. Nothing happens on
+	// frames with no request pending.
+	VkSnapshot::Capture shot;
+	VkSnapshot::BeginCapture(g_vk, g_vk.cmdBuffers[g_vk.frameIndex], s_imageIndex, shot);
+
+	const bool submitted = VK_EndFrame(g_vk, s_imageIndex);
+
+	// After submit+present: drains the device, maps the staging buffer and
+	// writes the PNG. No-op (and frees nothing) when no capture was recorded.
+	if (shot.active)
+		VkSnapshot::FinishCapture(g_vk, shot, submitted);
+
+	if (!submitted)
 		RecreateSwapchainOrDefer();
 }
 
