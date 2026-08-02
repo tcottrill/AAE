@@ -65,7 +65,7 @@ here is mine now" has been the entire journey.
 ## Features
 
 - 🟢 **Phosphor vector glow** — bloom, beam falloff, and per-vector intensity rendered through an
-  OpenGL 3.3 shader pipeline, tuned to look like the real CRT on a modern OLED.
+  OpenGL 3.3 core shader pipeline, tuned to look like the real CRT on a modern OLED.
 - 🎛️ **Live graphics tuning** — per-game knobs for glow, line width, and intensity.
 - 🕹️ **Vector-first accuracy** — Atari AVG/DVG and Cinematronics hardware are the focus and the
   most carefully emulated.

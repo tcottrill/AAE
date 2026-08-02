@@ -50,6 +50,12 @@
 #error "OpenGL headers leaked into a non-render translation unit"
 #endif
 
+// Regression guard: this file must never see OpenGL headers. If this fires,
+// a render header re-leaked glew.h — fix the header, not this guard.
+#ifdef __glew_h__
+#error "OpenGL headers leaked into a non-render translation unit"
+#endif
+
 extern int errorsound;
 extern int show_fps;
 extern int menulevel;

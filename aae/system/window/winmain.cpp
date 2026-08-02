@@ -1414,6 +1414,19 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance,
 	// Assume focus because we just showed the window
 	g_windowSetup.isFocused = true;
 
+	// Present one black frame into the front buffer *before* the window is ever
+	// visible, so the first thing the user sees is black, not white. Our
+	// WM_ERASEBKGND handler returns 1, so GDI never repaints over this.
+	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+	glClear(GL_COLOR_BUFFER_BIT);
+	GLSwapBuffers();
+
+	ShowWindow(g_hWnd, nCmdShow);
+	UpdateWindow(g_hWnd);
+
+	// Assume focus because we just showed the window
+	g_windowSetup.isFocused = true;
+
 	// -------------------------------------------------------------------------
 	// Step 4: Save a valid windowedRect for fullscreen restore.
 	// This is the actual Window RECT before any fullscreen toggle.
