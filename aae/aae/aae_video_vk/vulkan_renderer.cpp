@@ -5,8 +5,8 @@
 // frame loop (spec sec. 3.4):
 //   vkchain_set_render   -> VK_BeginFrame (acquire, open pass, clear)
 //   vkchain_render       -> record draws. Raster (Plan 4 Task 3): suspend
-//                           the frame pass, game -> mipped RT via FpolyVK,
-//                           GenerateMips, resume, RecordRect composite.
+//                           the frame pass, game texture -> mipped RT via
+//                           one quad, GenerateMips, resume, composite.
 //                           Vector (Plan 5) and GUI (Plan 6) follow.
 //   vkchain_swap_buffers -> VK_EndFrame (submit + present)
 // A failed begin (resize, minimize, OUT_OF_DATE) recreates the swapchain and
@@ -23,8 +23,9 @@
                                // headers into the VK TU, not vulkan.h into
                                // core TUs, so the VULKAN_H_ leak guards in
                                // acommon.cpp et al. are unaffected)
-#include "fast_poly_vk.h"      // FpolyVK - raster quad renderer (Plan 3)
+#include "fast_poly_vk.h"      // FpolyVK - GUI starfield point renderer (Plan 6)
 #include "raster_emit.h"       // backend-neutral raster emit loop (Plan 3)
+#include "raster_tex_vk.h"     // RasterTexVK - streamed game image texture
 #include "render_target_vk.h"  // RenderTargetVK - offscreen game RT (Plan 4)
 #include "screen_quad_vk.h"    // ScreenQuadVK - RT->swapchain composite (Plan 4)
 #include "crt_post_vk.h"       // CrtPostVK - raster CRT/monitor + scanline overlay
@@ -49,9 +50,19 @@ static bool      s_initialized = false;
 static bool      s_frameOpen = false;
 static uint32_t  s_imageIndex = 0;
 
-// Raster path: FpolyVK draws main_bitmap's pixels as quads into the game RT
-// (s_rtGame, below). s_fpolyFailed latches an Init failure so the lazy
+// Raster path: main_bitmap's pixels are emitted into a NATIVE-sized RGBA8
+// texture (RasterTexVK) and drawn as ONE NEAREST-magnified quad into the game
+// RT (s_rtGame, below). s_rasterTexFailed latches an Init failure so the lazy
 // per-frame retry does not spam the log; it resets on every game load.
+//
+// SUPERSEDES the FpolyVK quad emit this path used through Plan 10. The shared
+// emit loop visits every source pixel, and the old VK sink turned each one into
+// a quad: pacman (288x224) rebuilt ~64,500 quads / ~258,000 vertices on the CPU
+// and uploaded them EVERY FRAME. Desktop immediate-mode GPUs absorb that; a
+// tiler (Pi 5 / Mesa v3d) bins every primitive up front and pacman ran 53 fps
+// there even at prescale 1 with no shaders. The quad-per-pixel shape was
+// inherited from the legacy fixed-function GL Fpoly path, not required by
+// Vulkan. FpolyVK itself stays - the GUI starfield (g_guiPoints) still uses it.
 //
 // TWO dimension pairs, and they are NOT interchangeable - read this before
 // touching either:
@@ -66,15 +77,19 @@ static uint32_t  s_imageIndex = 0;
 //   s_rasterScaledW/H    native * config.prescale, truncated exactly like
 //                        GL's (int)((float)vw * config.prescale). This is
 //                        the GL chain's rw/rh: the size of the game RT, the
-//                        FpolyVK ortho extent, the FpolyVK viewport, and the
-//                        scanline overlay's tiling target. It is a
-//                        SUPERSAMPLED image - more texels than game pixels.
+//                        destination rect of the game quad, and the scanline
+//                        overlay's tiling target. It is a SUPERSAMPLED image
+//                        - more texels than game pixels.
+//
+// The RasterTexVK texture is sized from the NATIVE pair; the quad stretches it
+// across the SCALED pair with NEAREST filtering, which is where prescale's
+// solid blocks now come from (see the prescale note above the draw).
 //
 // At config.prescale == 1 (the default) the two pairs are equal and every
 // consumer sees exactly the numbers it saw before prescale was honored.
-static FpolyVK  g_fpoly;
-static bool     s_fpolyInit = false;
-static bool     s_fpolyFailed = false;
+static RasterTexVK g_rasterTex;
+static bool     s_rasterTexInit = false;
+static bool     s_rasterTexFailed = false;
 static int      s_rasterNativeW = 0;   // post-orientation dims, NATIVE game pixels
 static int      s_rasterNativeH = 0;
 static int      s_rasterScaledW = 0;   // native * config.prescale (GL's rw)
@@ -82,11 +97,12 @@ static int      s_rasterScaledH = 0;
 // Set when a dims-change rebuild is requested while a frame is open (the
 // rebuild drains the device and destroys objects prior frames may still
 // reference, so it must not run mid-frame). Serviced by vkchain_set_render
-// at the next frame boundary, before VK_BeginFrame. Covers BOTH the FpolyVK
-// rebuild and the s_rtGame resize (same trigger, same timing constraints).
-static bool     s_fpolyRebuildPending = false;
+// at the next frame boundary, before VK_BeginFrame. Covers BOTH the
+// RasterTexVK rebuild and the s_rtGame resize (same trigger, same timing
+// constraints).
+static bool     s_rasterRebuildPending = false;
 
-// Offscreen game render target (Plan 4 Task 3): FpolyVK draws into this
+// Offscreen game render target (Plan 4 Task 3): the game quad draws into this
 // mipped RT instead of straight into the swapchain pass; ScreenQuadVK then
 // composites it into the aspect-fit letterbox rect.
 //
@@ -137,7 +153,7 @@ static bool           s_rtMonitorFailed = false;
 // Deferred resize request (dims when a size change is noticed mid-frame).
 // Resize destroys the image the OTHER in-flight frame may still be sampling,
 // so it must run at a frame boundary - the same discipline, and the same
-// servicing point (vkchain_set_render), as s_fpolyRebuildPending.
+// servicing point (vkchain_set_render), as s_rasterRebuildPending.
 static int  s_rtMonitorPendW = 0;
 static int  s_rtMonitorPendH = 0;
 
@@ -176,7 +192,7 @@ static const int      kRotCanvas = 1024;
 // comes up (vkchain_init's first-run path only -- no per-frame retry, so a
 // failure is a single log line) and shut down in vkchain_shutdown before
 // VK_Shutdown. While false, the raster branch records nothing (black
-// screen), mirroring the s_fpolyFailed degradation.
+// screen), mirroring the s_rasterTexFailed degradation.
 static ScreenQuadVK g_screenQuad;
 static bool         s_screenQuadInit = false;
 
@@ -209,7 +225,7 @@ static bool         s_layoutQuadInit = false;
 // vkchain_init_raster_overlay, which mirrors glchain_init_raster_overlay's
 // gates exactly. s_scanReloadPending defers a mid-frame menu-triggered reload
 // to the next frame boundary: the destroy needs a device drain, which must
-// never run with a frame open (same constraint as the FpolyVK rebuild).
+// never run with a frame open (same constraint as the raster-texture rebuild).
 static VkTexture s_scanTex{};
 static bool      s_scanHave = false;
 static bool      s_scanReloadPending = false;
@@ -252,11 +268,12 @@ static bool         s_trailClearPending = true;
 static ShotDrawVK g_shotDraw;
 static bool       s_shotInit = false;
 
-// GUI starfield (Plan 6 Task 1): a second, dedicated FpolyVK instance draws
-// the front-end GUI's point-sprite stars. Kept separate from g_fpoly (the
-// raster game quad renderer) because it draws at a different time in the
-// frame (during run_gui(), i.e. inside cpu_run() -- BEFORE vkchain_render
-// runs) and into different space (see GuiBeamToWindowPx below): stars are
+// GUI starfield (Plan 6 Task 1): the ONE remaining FpolyVK instance draws the
+// front-end GUI's point-sprite stars. (It used to be the second of two; the
+// raster game path's instance is gone - see the RasterTexVK note above.) It
+// draws at a different time in the frame (during run_gui(), i.e. inside
+// cpu_run() -- BEFORE vkchain_render runs) and into different space (see
+// GuiBeamToWindowPx below): stars are
 // pre-transformed to explicit window-pixel coordinates on the CPU, so this
 // instance's own ortho spans the full swapchain 1:1 (no SetViewportRect
 // letterbox override -- the letterbox is already baked into the per-star
@@ -272,10 +289,13 @@ static bool    s_guiPointsFailed = false;
 //   rh = (int)((float)vh * config.prescale)      opengl_renderer.cpp:894]
 // with vw/vh the POST-orientation native dims (raster_dst_dims applies the
 // same ORIENTATION_SWAP_XY transpose GL does). config.prescale is read RAW,
-// not clamped, so a fractional value truncates identically to GL - the emit
-// loop hands the same raw value to the sink as the cell size, and the two
-// must agree. sanity_check_config (config.cpp:412) already pins it to 1..5;
-// the >= 1 floor below only stops a zero-sized RT if that ever changes.
+// not clamped, so a fractional value truncates identically to GL.
+// sanity_check_config (config.cpp:412) already pins it to 1..5; the >= 1 floor
+// below only stops a zero-sized RT if that ever changes.
+//
+// The emit loop's `size` argument (also config.prescale) is now IGNORED by the
+// sink: the texture is native-sized and this scaled pair is the quad's
+// destination rect, so the magnification does the multiply the sink used to.
 static void VkRasterScaledDims(int nativeW, int nativeH, int& outW, int& outH)
 {
 	outW = (int)((float)nativeW * config.prescale);
@@ -284,13 +304,21 @@ static void VkRasterScaledDims(int nativeW, int nativeH, int& outW, int& outH)
 	if (outH < 1) outH = 1;
 }
 
-// The shared emit loop passes CELL INDICES with size = config.prescale - GL
-// cell semantics, because GL's Fpoly::addPoly multiplies x,y BY size before
-// emitting the quad (aae/aae/vidhrdwr/fast_poly.cpp:47-52) into GL's
-// prescaled ortho. FpolyVK::addPoly is absolute-coordinate (donor-verbatim:
-// it emits x..x+size with no scaling of the origin), so the multiply has to
-// happen here: cell (cx,cy) covers [cx*size, cx*size+size) in an ortho that
-// now spans s_rasterScaledW/H. Term for term the same quad GL emits.
+// Texture sink for raster_emit_polys. yFlip = 0, so (x,y) are destination-local
+// integer coords with y growing DOWNWARD - natural top-down image order, so
+// buf[y*w + x] puts the game's TOP scanline in texture row 0. That is the same
+// row-0 convention the FpolyVK path produced in the game RT (it used yFlip = 1
+// only to cooperate with FpolyVK's y-up ortho), so everything downstream is
+// unchanged. `size` (= config.prescale) is deliberately unused: the texture is
+// NATIVE-sized and the single quad's destination rect carries the prescale.
+//
+// rgba is MAKE_RGBA: R in the low byte, so a uint32_t array is byte-for-byte
+// VK_FORMAT_R8G8B8A8_UNORM on a little-endian host (x86-64 and ARM64, the two
+// targets). No swizzle, no conversion.
+//
+// The bounds test is cheap insurance against a geometry desync between
+// EnsureRasterRenderer (which sizes the buffer) and this loop; without it a
+// mismatch would be a heap overrun rather than a missing pixel.
 //
 // sRGB contingency (Plan 3 Task 3) RESOLVED at the Plan 7 gate: the user
 // did report washed-out/too-bright colors (vector games, then the GUI and
@@ -298,9 +326,21 @@ static void VkRasterScaledDims(int nativeW, int nativeH, int& outW, int& outH)
 // floated here - sys_vk CreateSwapchain now prefers a UNORM swapchain, so
 // the sRGB-authored pen bytes display byte-for-byte like GL's non-sRGB
 // window. No per-color conversion anywhere.
-static void VkRasterSink(void* user, float x, float y, float size, uint32_t rgba)
+struct VkRasterTexSinkCtx
 {
-	((FpolyVK*)user)->addPoly(x * size, y * size, size, rgba);
+	uint32_t* buf;
+	int       w;
+	int       h;
+};
+
+static void VkRasterTexSink(void* user, float x, float y, float size, uint32_t rgba)
+{
+	(void)size;
+	const VkRasterTexSinkCtx* c = (const VkRasterTexSinkCtx*)user;
+	const int ix = (int)x;
+	const int iy = (int)y;
+	if ((unsigned)ix < (unsigned)c->w && (unsigned)iy < (unsigned)c->h)
+		c->buf[(size_t)iy * (size_t)c->w + (size_t)ix] = rgba;
 }
 
 static bool GameIsRaster(void)
@@ -669,11 +709,11 @@ static void EnsureVectorList(void)
 	}
 }
 
-// Mirrors EnsureVectorList for the raster path: (re)build the FpolyVK
-// renderer whenever a raster game needs one. Handles fresh init, a raster
-// game following a vector game (s_fpolyInit false), and a raster game with
+// Mirrors EnsureVectorList for the raster path: (re)build the game image
+// texture whenever a raster game needs one. Handles fresh init, a raster
+// game following a vector game (s_rasterTexInit false), and a raster game with
 // DIFFERENT post-orientation dims following another raster game (Shutdown +
-// re-Init so the ortho matches the new game).
+// re-Init so the texture matches the new game).
 //
 // Called from both vkchain_init paths AND from vkchain_render's raster
 // block. The render-path call is required, not belt-and-braces: run_game
@@ -683,11 +723,11 @@ static void EnsureVectorList(void)
 // first rendered frame. Machine->gamedrv/Machine->drv ARE populated by
 // init_gl time (run_game logs gamedrv->desc at :874 and reads
 // drv->rotation at :887), so GameIsRaster and the dims math are safe in
-// both call sites. Init failure latches s_fpolyFailed (reset per game
+// both call sites. Init failure latches s_rasterTexFailed (reset per game
 // load in vkchain_init) so the per-frame call does not retry-spam.
 static void EnsureRasterRenderer(void)
 {
-	if (!GameIsRaster() || s_fpolyFailed)
+	if (!GameIsRaster() || s_rasterTexFailed)
 		return;
 
 	int newW = 0, newH = 0;
@@ -702,38 +742,40 @@ static void EnsureRasterRenderer(void)
 	int newScaledW = 0, newScaledH = 0;
 	VkRasterScaledDims(newW, newH, newScaledW, newScaledH);
 
-	if (s_fpolyInit &&
+	if (s_rasterTexInit &&
 		newW == s_rasterNativeW && newH == s_rasterNativeH &&
 		newScaledW == s_rasterScaledW && newScaledH == s_rasterScaledH)
 		return;     // up to date (four int compares; cheap on the frame path)
 
-	if (s_fpolyInit)
+	if (s_rasterTexInit)
 	{
-		// Game shape changed: rebuild. In-flight frames may still reference
-		// the old pipeline/VBO (and sample the old RT image), so the device
-		// is drained first. That drain (and the destroys) must never run
-		// while a frame is open, so a mid-frame request is deferred to the
-		// next frame boundary (vkchain_set_render services the flag before
+		// Game shape changed: rebuild. In-flight frames may still be sampling
+		// the old texture images (and the old RT image), so the device is
+		// drained first. That drain (and the destroys) must never run while a
+		// frame is open, so a mid-frame request is deferred to the next frame
+		// boundary (vkchain_set_render services the flag before
 		// VK_BeginFrame).
 		if (s_frameOpen)
 		{
-			s_fpolyRebuildPending = true;
+			s_rasterRebuildPending = true;
 			return;
 		}
 		if (g_vk.device && g_vk.vkDeviceWaitIdle_)
 			g_vk.vkDeviceWaitIdle_(g_vk.device);
-		g_fpoly.Shutdown(g_vk);
-		s_fpolyInit = false;
+		g_rasterTex.Shutdown(g_vk);
+		s_rasterTexInit = false;
 	}
-	s_fpolyRebuildPending = false;
+	s_rasterRebuildPending = false;
 
 	s_rasterNativeW = newW;
 	s_rasterNativeH = newH;
 	s_rasterScaledW = newScaledW;
 	s_rasterScaledH = newScaledH;
 
-	// (Re)create the offscreen game RT BEFORE FpolyVK: the FpolyVK pipeline
-	// is built against the RT's color format below.
+	// (Re)create the offscreen game RT. It stays PRESCALED (native *
+	// config.prescale) while the source texture below is NATIVE - that split
+	// is what preserves prescale's supersampled detail for the CRT/scanline
+	// consumers while the per-frame upload stays native-sized.
 	//
 	// Format trace (UPDATED at the Plan 7 gate): pen bytes are written to
 	// this R8G8B8A8_UNORM RT byte-for-byte (UNORM attachment: no encode),
@@ -755,7 +797,7 @@ static void EnsureRasterRenderer(void)
 		rtci.mipLevels = -1;   // full chain (Plan 4 CRT halation + minified composite)
 		if (!s_rtGame.Init(g_vk, rtci))
 		{
-			s_fpolyFailed = true;
+			s_rasterTexFailed = true;
 			LOG_ERROR("vkchain: game RenderTargetVK init failed; raster game will show black");
 			return;
 		}
@@ -769,34 +811,20 @@ static void EnsureRasterRenderer(void)
 		s_rtGame.Resize(g_vk, s_rasterScaledW, s_rasterScaledH);
 		if (!s_rtGame.IsValid())
 		{
-			s_fpolyFailed = true;
+			s_rasterTexFailed = true;
 			LOG_ERROR("vkchain: game RenderTargetVK resize failed; raster game will show black");
 			return;
 		}
 	}
 
-	FastPolyVKCreateInfo ci{};
-	ci.vertSpvPath = "shaders/vk/fast_poly_vk.vert.spv";
-	ci.fragSpvPath = "shaders/vk/fast_poly_vk.frag.spv";
-	ci.flipViewportY = true;
-	// Plan 4 Task 3: FpolyVK renders into s_rtGame, so its pipeline must be
-	// built against the RT's format, not the swapchain's (dynamic rendering
-	// requires the pipeline's declared attachment format to match the pass).
-	ci.colorFormat = s_rtGame.GetFormat();
-	// Ortho spans the PRESCALED dims, mirroring GL's set_ortho(rw, rh) in
-	// glchain_set_render: the sink multiplies the emit loop's cell indices
-	// by config.prescale, so the quads span 0..native*prescale in x and y.
-	// (Before prescale was honored this was the native pair with unit-sized
-	// cells; at prescale 1 the two are the same numbers.)
-	if (g_fpoly.Init(g_vk, s_rasterScaledW, s_rasterScaledH, &ci))
+	// The streamed game image: NATIVE dims, one image + one staging buffer per
+	// frame-in-flight, created ONCE here and only updated per frame. No
+	// per-frame create/destroy, so no allocation churn and no chance of
+	// destroying an image an in-flight frame is still sampling.
+	if (g_rasterTex.Init(g_vk, (uint32_t)s_rasterNativeW, (uint32_t)s_rasterNativeH))
 	{
-		s_fpolyInit = true;
-		// Permanent full-RT viewport override: FpolyVK's default (no
-		// override) viewport is ctx.swapchainExtent, which is wrong for RT
-		// rendering. The aspect-fit letterboxing that used to live here
-		// moved to the RecordRect composite in vkchain_render.
-		g_fpoly.SetViewportRect(0, 0, s_rasterScaledW, s_rasterScaledH);
-		LOG_INFO("vkchain: FpolyVK online (%dx%d native x%.1f prescale = %dx%d into %s RT, %u mips)",
+		s_rasterTexInit = true;
+		LOG_INFO("vkchain: raster game texture online (%dx%d native x%.1f prescale = %dx%d into %s RT, %u mips)",
 			s_rasterNativeW, s_rasterNativeH, config.prescale,
 			s_rasterScaledW, s_rasterScaledH,
 			(s_rtGame.GetFormat() == VK_FORMAT_R8G8B8A8_UNORM) ? "RGBA8_UNORM" : "non-UNORM",
@@ -804,8 +832,8 @@ static void EnsureRasterRenderer(void)
 	}
 	else
 	{
-		s_fpolyFailed = true;
-		LOG_ERROR("vkchain: FpolyVK init failed; raster game will show black");
+		s_rasterTexFailed = true;
+		LOG_ERROR("vkchain: raster game texture init failed; raster game will show black");
 	}
 }
 
@@ -1016,12 +1044,12 @@ int vkchain_init(void)
 		// load can be a vector game even when the first was not, so the
 		// list check runs on every load, not just the first.
 		EnsureVectorList();
-		// New game load: allow a fresh FpolyVK init attempt even if the
+		// New game load: allow a fresh raster-texture init attempt even if the
 		// previous game's init failed, then rebuild if the shape changed
 		// (raster->raster with different dims) or init for the first time
 		// (raster after vector). Usually defers to the render-path call
 		// because main_bitmap does not exist yet at this point in run_game.
-		s_fpolyFailed = false;
+		s_rasterTexFailed = false;
 		EnsureRasterRenderer();
 		// Same latch-reset for the beam renderer: a later load gets a
 		// fresh init attempt (the renderer itself persists across games).
@@ -1072,7 +1100,7 @@ int vkchain_init(void)
 		LOG_ERROR("vkchain_init: LayoutQuadVK init failed; raster artwork disabled");
 
 	EnsureVectorList();
-	s_fpolyFailed = false;
+	s_rasterTexFailed = false;
 	EnsureRasterRenderer();   // usually defers (see helper comment)
 	s_vectorFailed = false;   // beam renderer inits lazily on the first vector frame
 	s_vecPostFailed = false;  // post chain likewise
@@ -1098,17 +1126,17 @@ void vkchain_shutdown(void)
 {
 	if (!s_initialized)
 		return;
-	// FpolyVK, ScreenQuadVK and the game RT all own device objects, so they
+	// RasterTexVK, ScreenQuadVK and the game RT all own device objects, so they
 	// must go before VK_Shutdown (which destroys the device). VK_Shutdown
 	// waits device-idle internally, but buffer/pipeline destruction here
 	// races nothing: the app is tearing down and no frame is open (winmain
 	// drains before shutdown). One drain up front covers all three.
 	if (g_vk.device && g_vk.vkDeviceWaitIdle_)
 		g_vk.vkDeviceWaitIdle_(g_vk.device);
-	if (s_fpolyInit)
+	if (s_rasterTexInit)
 	{
-		g_fpoly.Shutdown(g_vk);
-		s_fpolyInit = false;
+		g_rasterTex.Shutdown(g_vk);
+		s_rasterTexInit = false;
 	}
 	if (s_screenQuadInit)
 	{
@@ -1172,8 +1200,8 @@ void vkchain_shutdown(void)
 	s_rtRotFormat = VK_FORMAT_UNDEFINED;
 	s_rtRotFailed = false;
 	s_rotTargetActive = false;
-	s_fpolyFailed = false;
-	s_fpolyRebuildPending = false;
+	s_rasterTexFailed = false;
+	s_rasterRebuildPending = false;
 	s_rasterNativeW = 0;
 	s_rasterNativeH = 0;
 	s_rasterScaledW = 0;
@@ -1216,12 +1244,12 @@ void vkchain_set_render(void)
 		return;
 	}
 
-	// Service a deferred FpolyVK rebuild here, where no frame is open (the
+	// Service a deferred raster-texture rebuild here, where no frame is open (the
 	// s_frameOpen early-out above guarantees it), so the device drain and
 	// object destruction never overlap an open frame.
-	if (s_fpolyRebuildPending)
+	if (s_rasterRebuildPending)
 	{
-		s_fpolyRebuildPending = false;
+		s_rasterRebuildPending = false;
 		EnsureRasterRenderer();
 	}
 
@@ -1396,7 +1424,7 @@ void vkchain_render(void)
 	bool uiOverlaysDone = false;
 
 	// Raster path (Plan 4 Task 3): suspend the swapchain frame pass, render
-	// the game into the mipped offscreen RT (FpolyVK), regenerate its mip
+	// the game into the mipped offscreen RT (one textured quad), regenerate its mip
 	// chain, resume the frame pass, and composite the RT into the aspect-fit
 	// letterbox rect via ScreenQuadVK. The scanline/CRT passes (Plan 4
 	// Tasks 4-5) slot in between the game draw and the composite; the layout
@@ -1408,14 +1436,14 @@ void vkchain_render(void)
 	{
 		// Lazy init/rebuild: main_bitmap does not exist yet when
 		// vkchain_init runs (see EnsureRasterRenderer's comment), so the
-		// first frame of a raster game lands here with s_fpolyInit false.
+		// first frame of a raster game lands here with s_rasterTexInit false.
 		// Called unconditionally (dims-equal early-out is two int compares)
 		// so a stale ortho can never survive a session; a dims-change
 		// rebuild requested here is deferred to the next frame boundary.
 		EnsureRasterRenderer();
 		EnsureCrtPost();   // needs the game RT's format; no-op once online
 
-		if (s_fpolyInit && s_rtGame.IsValid() && s_screenQuadInit)
+		if (s_rasterTexInit && s_rtGame.IsValid() && s_screenQuadInit)
 		{
 			VkCommandBuffer cmd = g_vk.cmdBuffers[g_vk.frameIndex];
 			const int vattr = (Machine && Machine->drv) ? Machine->drv->video_attributes : 0;
@@ -1546,12 +1574,62 @@ void vkchain_render(void)
 			// resume re-opens with LOAD_OP_LOAD (see sys_vk.cpp).
 			VK_SuspendFramePass(g_vk, cmd);
 
+			// -------------------------------------------------------------
+			// Game image upload. vkCmdCopyBufferToImage may NOT be recorded
+			// inside a dynamic-rendering pass, so this sits in the suspended
+			// window and BEFORE s_rtGame.Begin.
+			//
+			// The buffer is pre-filled with opaque black so a source row the
+			// emit skips (main_bitmap->line[y] == NULL) shows the same black
+			// the RT clear used to supply, not last frame's pixels. The emit
+			// otherwise covers every texel: the orientation transform is a
+			// bijection from the visible area onto the destination.
+			//
+			// In-flight safety: the CPU buffer is private to this thread, and
+			// Upload only touches slot g_vk.frameIndex's staging buffer and
+			// image - the slot VK_BeginFrame just proved idle by waiting its
+			// fence. The other in-flight frame owns the other slot.
+			// -------------------------------------------------------------
+			VkRasterTexSinkCtx sinkCtx{ g_rasterTex.Pixels(),
+				(int)g_rasterTex.GetWidth(), (int)g_rasterTex.GetHeight() };
+			g_rasterTex.ClearPixels(MAKE_RGBA(0, 0, 0, 0xff));
+			raster_emit_polys(VkRasterTexSink, &sinkCtx, /*yFlip=*/0);
+			g_rasterTex.Upload(g_vk, cmd, g_vk.frameIndex);
+
 			// Game pass: clear to opaque black (the GL fbo_raster clears
-			// black too), emit the frame's pixels, record the draws.
+			// black too), then ONE textured quad over the whole RT - the
+			// replacement for the ~64,500-quad emit this path used to do.
+			//
+			// PRESCALE: the texture is s_rasterNativeW/H and the rect is
+			// s_rasterScaledW/H, sampled NEAREST. Destination pixel j takes
+			// texel floor((j+0.5) * native / scaled); the old quad path gave
+			// pixel j the cell floor((j+0.5) / prescale). scaled ==
+			// native*prescale EXACTLY whenever that product is an integer -
+			// which covers every integer prescale - so the two are identical
+			// there, block for block. Only a prescale whose product truncates
+			// (e.g. 2.3) differs, and then only in where a block boundary
+			// lands near the right/bottom edge; the quad path also left a
+			// sub-pixel sliver of the RT unwritten in that case, which this
+			// does not.
+			//
+			// UV/flip trace: the emit ran with yFlip=0, so the game's TOP
+			// scanline is texture row 0. RecordRect with flipUV_Y=false maps
+			// v=0 to the rect's TOP vertex, and its y-flipped viewport puts
+			// world y = topPx at RT image row 0 - so the game's top scanline
+			// lands in RT row 0 and column 0 stays on the left, exactly what
+			// the FpolyVK path produced. Everything downstream (scanlines,
+			// mips, monitor, layout, rotation, composite) is untouched.
+			//
+			// Blend None: a straight RGBA copy. The emitted texels are opaque
+			// (alpha 0xff), so alpha blending would compute the same result;
+			// None just says so and skips the blend hardware.
 			s_rtGame.Begin(g_vk, cmd, /*clear=*/true, 0.0f, 0.0f, 0.0f, 1.0f);
-			raster_emit_polys(VkRasterSink, &g_fpoly, /*yFlip=*/1);
-			g_fpoly.Render(g_vk, cmd,
-				s_imageIndex, g_vk.frameIndex, false, 0.0f, 0.0f, 0.0f, 0.0f);
+			g_screenQuad.RecordRect(g_vk, cmd, g_vk.frameIndex,
+				g_rasterTex.View(g_vk.frameIndex), g_rasterTex.Sampler(),
+				0.0f, 0.0f, (float)s_rasterScaledW, (float)s_rasterScaledH,
+				(uint32_t)s_rasterScaledW, (uint32_t)s_rasterScaledH,
+				/*flipUV_Y=*/false, RGB_WHITE, /*uvRotation=*/0,
+				SQBlendVK::None);
 
 			// PHASE A (GL final_render_raster): the tiled scanline overlay
 			// multiplied over the game image, INSIDE the game RT's pass - GL
@@ -1666,13 +1744,14 @@ void vkchain_render(void)
 			}
 			else
 			{
-				// flipUV_Y trace (Gate A verifies): the emit runs with yFlip=1,
-				// so the game's TOP scanline (post-orientation y=0) is emitted
-				// at world y = rtH-1; FpolyVK's y-up ortho (0..rtH) plus its
-				// flipped viewport map world y=rtH to RT image row 0, so the
-				// game's top scanline lands in RT row 0. RecordRect with
-				// flipUV_Y=false samples image row 0 (v=0) at the rect's TOP
-				// vertex -- game top at screen top, upright. So: false.
+				// flipUV_Y trace (Gate A verifies): the emit runs with yFlip=0,
+				// so the game's TOP scanline (post-orientation y=0) is texture
+				// row 0; the game quad draws that with flipUV_Y=false into the
+				// RT's y-flipped viewport, so the game's top scanline lands in
+				// RT image row 0 (same row-0 convention the FpolyVK emit had).
+				// RecordRect with flipUV_Y=false samples image row 0 (v=0) at
+				// the rect's TOP vertex -- game top at screen top, upright.
+				// So: false.
 				// System rotation rides the rotated corner UVs (rot != 0) - which
 				// is also how a rotated MONITOR image reaches the screen for a
 				// game with no .lay file, GL's synthetic screen-only layout doing
@@ -2223,7 +2302,7 @@ void vkchain_on_window_resize(int newW, int newH)
 
 // ---------------------------------------------------------------------------
 // GUI starfield (Plan 6 Task 1). See the g_guiPoints comment above for why
-// this is a separate FpolyVK instance drawn immediately here (during
+// this FpolyVK instance is drawn immediately here (during
 // run_gui(), called from cpu_run() before vkchain_render runs this frame --
 // same ordering as GL's glchain_set_render-before-cpu_run) instead of being
 // queued into the vector beam batch: this call needs to land BEHIND the
