@@ -147,6 +147,9 @@ void setup_config() {
     // target (GL parity - beam_init(1)), 2 = 2048x2048 (smoother, ~4x the
     // beam fill and mip cost). Default 1; see config.h.
     config.vk_ssaa = get_config_int("main", "vk_ssaa", 1);
+    // GPU timestamp profiler for the Vulkan chain; see config.h. Off costs
+    // nothing at all (no query pool, no timestamps).
+    config.vk_profile = get_config_int("main", "vk_profile", 0);
     config.debug_profile_code = get_config_int("main", "debug_profile_code", 0);
     config.audio_force_resample = get_config_int("main", "audio_force_resample", 0);
 
@@ -434,6 +437,11 @@ void sanity_check_config()
         LOG_INFO("!!!!!vk_ssaa set to unsupported value, supported values are 1 (1024x1024 beam buffer) or 2 (2048x2048)");
         config.vk_ssaa = 1; have_error = 3;
     }
+
+    // Diagnostic toggle, so anything non-zero means "on" - but pin it to 0/1
+    // so the log line and the profiler's own gate agree.
+    if (config.vk_profile != 0)
+        config.vk_profile = 1;
 
     if (config.anisfilter < 2 || config.anisfilter > 16 || (config.anisfilter % 2 != 0))
     {
