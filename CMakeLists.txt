@@ -218,6 +218,7 @@ set(AAE_COMMON_SOURCES
     aae/aae/aae_video/renderer_dispatch.cpp
     aae/aae/aae_video/vector_draw.cpp
     aae/aae/aae_video/vector_fonts.cpp
+    aae/aae/aae_video_vk/crt_post_vk.cpp
     aae/aae/aae_video_vk/fast_poly_vk.cpp
     aae/aae/aae_video_vk/render_target_vk.cpp
     aae/aae/aae_video_vk/screen_quad_vk.cpp

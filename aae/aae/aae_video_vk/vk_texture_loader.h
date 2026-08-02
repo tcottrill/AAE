@@ -79,6 +79,15 @@ struct artworks;   // aae_mame_driver.h
 
 void VkArt_LoadForGame(VkContext& ctx, const struct artworks* p);
 
+// One-off load through the SAME four-step artwork search order
+// (exartpath zip / exartpath folder / artwork zip / artwork folder) that
+// make_single_bitmap uses, without touching the per-game slot cache. Used by
+// the raster scanline overlay (vkchain_init_raster_overlay), whose GL twin
+// calls make_single_bitmap(config.raster_effect, "aae.zip"). The caller owns
+// outTex and must VK_DestroyTexture it (device-idle).
+bool VkArt_LoadFromArchive(VkContext& ctx, const char* filename, const char* archname,
+                           bool flipY, bool generateMips, VkTexture& outTex);
+
 // Loaded per-game artwork slot, or nullptr. Valid until the next
 // VkArt_LoadForGame / VkArt_FreeAll.
 VkTexture* VkArt_Get(int slot);

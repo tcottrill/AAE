@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <Manifest Include="app.manifest" />
@@ -348,6 +348,9 @@
     </ClCompile>
     <ClCompile Include="aae\aae_video\renderer_dispatch.cpp">
       <Filter>Source Files\aae\aae_video</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\aae_video_vk\crt_post_vk.cpp">
+      <Filter>Source Files\aae\aae_video_vk</Filter>
     </ClCompile>
     <ClCompile Include="aae\aae_video_vk\fast_poly_vk.cpp">
       <Filter>Source Files\aae\aae_video_vk</Filter>
@@ -852,6 +855,9 @@
     <ClInclude Include="aae\aae_video\raster_emit.h">
       <Filter>Source Files\aae\aae_video</Filter>
     </ClInclude>
+    <ClInclude Include="aae\aae_video_vk\crt_post_vk.h">
+      <Filter>Source Files\aae\aae_video_vk</Filter>
+    </ClInclude>
     <ClInclude Include="aae\aae_video_vk\fast_poly_vk.h">
       <Filter>Source Files\aae\aae_video_vk</Filter>
     </ClInclude>
@@ -1037,6 +1043,18 @@
       <Filter>Shaders\vk</Filter>
     </CustomBuild>
     <CustomBuild Include="shaders\vk\vector_shot_vk.frag">
+      <Filter>Shaders\vk</Filter>
+    </CustomBuild>
+    <CustomBuild Include="shaders\vk\crt_post_vk.vert">
+      <Filter>Shaders\vk</Filter>
+    </CustomBuild>
+    <CustomBuild Include="shaders\vk\crt_mono_vk.frag">
+      <Filter>Shaders\vk</Filter>
+    </CustomBuild>
+    <CustomBuild Include="shaders\vk\crt_color_vk.frag">
+      <Filter>Shaders\vk</Filter>
+    </CustomBuild>
+    <CustomBuild Include="shaders\vk\crt_scanline_vk.frag">
       <Filter>Shaders\vk</Filter>
     </CustomBuild>
     <CustomBuild Include="shaders\vk\vector_shot_tex_vk.vert">

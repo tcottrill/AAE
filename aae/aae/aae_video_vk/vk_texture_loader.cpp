@@ -149,7 +149,8 @@ namespace
     //   2a. ZIP archive in the default "artwork" folder (next to the exe)
     //   2b. unzipped artwork\<gamename>\<filename>
     bool VkArt_LoadSingle(VkContext& ctx, VkTexture& out,
-                          const char* filename, const char* archname)
+                          const char* filename, const char* archname,
+                          bool flipY = false, bool mips = true)
     {
         auto join_path = [](const std::string& root, const char* child) -> std::string {
             if (root.empty() || !child || !child[0])
@@ -161,10 +162,11 @@ namespace
             return p;
         };
 
-        // No stbi flip (see header) and full mip chains (GL loads art with
-        // filter=1 trilinear mips; the letterbox minifies the same way here).
-        const bool kFlipY = false;
-        const bool kMips  = true;
+        // Artwork defaults: no stbi flip (see header) and full mip chains (GL
+        // loads art with filter=1 trilinear mips; the letterbox minifies the
+        // same way here). The raster scanline overlay overrides both.
+        const bool kFlipY = flipY;
+        const bool kMips  = mips;
 
         std::string archivePath;
 
@@ -214,6 +216,12 @@ namespace
         LOG_ERROR("VkArt: failed to load '%s' from all paths (external and default)", filename);
         return false;
     }
+}
+
+bool VkArt_LoadFromArchive(VkContext& ctx, const char* filename, const char* archname,
+                           bool flipY, bool generateMips, VkTexture& outTex)
+{
+    return VkArt_LoadSingle(ctx, outTex, filename, archname, flipY, generateMips);
 }
 
 void VkArt_FreeAll(VkContext& ctx)

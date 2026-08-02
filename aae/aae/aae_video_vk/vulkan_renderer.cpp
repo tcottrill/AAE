@@ -28,6 +28,8 @@
 #include "raster_emit.h"       // backend-neutral raster emit loop (Plan 3)
 #include "render_target_vk.h"  // RenderTargetVK - offscreen game RT (Plan 4)
 #include "screen_quad_vk.h"    // ScreenQuadVK - RT->swapchain composite (Plan 4)
+#include "crt_post_vk.h"       // CrtPostVK - raster CRT/monitor + scanline overlay
+#include "sys_str.h"           // aae_stricmp (raster_effect "NONE" test)
 #include "vector_draw_vk.h"    // VectorDrawVK - beam vector renderer (Plan 5);
                                // pulls in vector_draw.h (beam batch access)
 #include "vector_post_vk.h"    // VectorPostVK - SSAA RT + trail + glow (Plan 7)
@@ -115,6 +117,30 @@ static const int      kRotCanvas = 1024;
 // screen), mirroring the s_fpolyFailed degradation.
 static ScreenQuadVK g_screenQuad;
 static bool         s_screenQuadInit = false;
+
+// Raster CRT post chain (Plan 4 Tasks 4-5): the tiled scanline overlay
+// (GL render_scanlines) plus the mono/color monitor shaders (GL
+// render_mono_monitor / render_color_monitor). Game-independent - the
+// scanline pipeline is built against the game RT's RGBA8_UNORM format and the
+// monitor pipelines against the swapchain format - so like ScreenQuadVK it is
+// initialized once, lazily on the first raster frame, and shut down in
+// vkchain_shutdown. s_crtPostFailed latches an Init failure so the per-frame
+// retry does not spam the log; it resets on every game load, and on failure
+// the raster path falls back to the plain ScreenQuadVK composite (the same
+// picture the chain showed before this port).
+static CrtPostVK g_crtPost;
+static bool      s_crtPostInit = false;
+static bool      s_crtPostFailed = false;
+
+// Scanline / raster-effect overlay texture - the VK twin of GL's
+// g_scanrezTex. Loaded per-game (and on a live menu change) by
+// vkchain_init_raster_overlay, which mirrors glchain_init_raster_overlay's
+// gates exactly. s_scanReloadPending defers a mid-frame menu-triggered reload
+// to the next frame boundary: the destroy needs a device drain, which must
+// never run with a frame open (same constraint as the FpolyVK rebuild).
+static VkTexture s_scanTex{};
+static bool      s_scanHave = false;
+static bool      s_scanReloadPending = false;
 
 // Beam vector renderer (Plan 5 Task 1): draws the frame's BeamLine/BeamJoin/
 // BeamShot batches direct to the swapchain inside the open frame pass (the
@@ -666,6 +692,72 @@ static void EnsureRasterRenderer(void)
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Raster CRT post chain (Plan 4 Tasks 4-5) - lazy init + the per-frame gates.
+//
+// The gates below are line-for-line twins of the GL ones in
+// opengl_renderer.cpp; keep them in sync. config is read every frame (never
+// cached) because the in-game menus mutate these fields live, exactly as the
+// GL path re-uploads every uniform each frame.
+// ---------------------------------------------------------------------------
+static void EnsureCrtPost(void)
+{
+	if (s_crtPostInit || s_crtPostFailed)
+		return;
+	// Needs the game RT's format for the scanline pipeline variant.
+	if (!s_rtGame.IsValid())
+		return;
+
+	CrtPostVKCreateInfo ci{};
+	ci.gameRtFormat = s_rtGame.GetFormat();
+	if (g_crtPost.Init(g_vk, &ci))
+	{
+		s_crtPostInit = true;
+		LOG_INFO("vkchain: CrtPostVK online (raster scanline + monitor shaders)");
+	}
+	else
+	{
+		s_crtPostFailed = true;
+		LOG_ERROR("vkchain: CrtPostVK init failed; raster CRT effects disabled");
+	}
+}
+
+// Monitor phosphor tint presets, indexed by config.mono_tint. Verbatim from
+// opengl_renderer.cpp's k_monoTints.
+static const float k_vkMonoTints[3][3] = {
+	{ 1.00f, 1.00f, 1.00f },   // 0: P4 white
+	{ 0.30f, 1.00f, 0.40f },   // 1: P1 green
+	{ 1.00f, 0.75f, 0.20f },   // 2: P3 amber
+};
+
+// GL twin: the PHASE A test in final_render_raster (opengl_renderer.cpp:1524).
+static bool VkScanlinesActive(int vattr)
+{
+	return s_scanHave && s_crtPostInit && Machine && Machine->drv &&
+		(g_scanline_override == 1 ||
+			(g_scanline_override == 0 && !(vattr & VIDEO_TYPE_RASTER_BW)));
+}
+
+// GL twin: mono_monitor_active (opengl_renderer.cpp:1300). The GL test also
+// requires fragMonoMonitor and fbo_mono to exist; s_crtPostInit is the VK
+// equivalent of "the shader and its target came up".
+static bool VkMonoMonitorActive(int vattr)
+{
+	return config.mono_enable != 0 && s_crtPostInit &&
+		(vattr & VIDEO_TYPE_RASTER_BW) != 0;
+}
+
+// GL twin: color_monitor_active (opengl_renderer.cpp:1411), including the
+// "a selected texture overlay stands the shader down" rule.
+static bool VkColorMonitorActive(int vattr)
+{
+	const bool overlay_selected = config.raster_effect && config.raster_effect[0] &&
+		aae_stricmp(config.raster_effect, "NONE") != 0;
+
+	return !overlay_selected && config.color_enable != 0 && s_crtPostInit &&
+		(vattr & VIDEO_TYPE_RASTER_COLOR) != 0;
+}
+
 int vkchain_init(void)
 {
 	if (s_initialized)
@@ -688,6 +780,9 @@ int vkchain_init(void)
 		// accumulator once so the previous game's phosphor never ghosts.
 		s_vecPostFailed = false;
 		s_trailClearPending = true;
+		// CRT post chain: fresh init attempt per load, same discipline.
+		s_crtPostFailed = false;
+		EnsureCrtPost();
 		return 1;
 	}
 
@@ -719,6 +814,8 @@ int vkchain_init(void)
 	EnsureRasterRenderer();   // usually defers (see helper comment)
 	s_vectorFailed = false;   // beam renderer inits lazily on the first vector frame
 	s_vecPostFailed = false;  // post chain likewise
+	s_crtPostFailed = false;  // raster CRT post chain likewise
+	EnsureCrtPost();          // defers until the game RT exists
 	s_trailClearPending = true;
 
 	// Vector-font CPU state (screen dims + projection fields). Under GL this
@@ -780,6 +877,19 @@ void vkchain_shutdown(void)
 		s_guiPointsInit = false;
 	}
 	s_guiPointsFailed = false;
+	if (s_crtPostInit)
+	{
+		g_crtPost.Shutdown(g_vk);
+		s_crtPostInit = false;
+	}
+	s_crtPostFailed = false;
+	if (s_scanHave)
+	{
+		VK_DestroyTexture(g_vk, s_scanTex);
+		s_scanTex = VkTexture{};
+		s_scanHave = false;
+	}
+	s_scanReloadPending = false;
 	VkArt_FreeAll(g_vk);         // per-game artwork textures (Plan 8)
 	VkTex_ShutdownCache(g_vk);   // GUI solid-white texture + any cached loads
 	if (s_rtGame.IsValid())
@@ -834,6 +944,14 @@ void vkchain_set_render(void)
 		EnsureRasterRenderer();
 	}
 
+	// Same treatment for a menu-triggered scanline-overlay reload: the destroy
+	// needs a device drain, which must not overlap an open frame.
+	if (s_scanReloadPending)
+	{
+		s_scanReloadPending = false;
+		vkchain_init_raster_overlay();
+	}
+
 	if (!VK_BeginFrame(g_vk, s_imageIndex))
 	{
 		RecreateSwapchainOrDefer();
@@ -848,6 +966,8 @@ void vkchain_set_render(void)
 	// site (bg_renderer.cpp); here set_render IS that once-per-frame site.
 	if (s_screenQuadInit)
 		g_screenQuad.OnFrameBegin(g_vk.frameIndex);
+	if (s_crtPostInit)
+		g_crtPost.OnFrameBegin(g_vk.frameIndex);
 
 	// Beam renderer slot reset (backport fix 4a): drain the slot's retired
 	// instance buffers and reset its write heads, here where the fence wait
@@ -985,10 +1105,12 @@ void vkchain_render(void)
 		// so a stale ortho can never survive a session; a dims-change
 		// rebuild requested here is deferred to the next frame boundary.
 		EnsureRasterRenderer();
+		EnsureCrtPost();   // needs the game RT's format; no-op once online
 
 		if (s_fpolyInit && s_rtGame.IsValid() && s_screenQuadInit)
 		{
 			VkCommandBuffer cmd = g_vk.cmdBuffers[g_vk.frameIndex];
+			const int vattr = (Machine && Machine->drv) ? Machine->drv->video_attributes : 0;
 
 			// Offscreen work is illegal inside the swapchain pass (the RT
 			// opens its own pass; vkCmdBlitImage may not appear inside any
@@ -1003,6 +1125,20 @@ void vkchain_render(void)
 			raster_emit_polys(VkRasterSink, &g_fpoly, /*yFlip=*/1);
 			g_fpoly.Render(g_vk, cmd,
 				s_imageIndex, g_vk.frameIndex, false, 0.0f, 0.0f, 0.0f, 0.0f);
+
+			// PHASE A (GL final_render_raster): the tiled scanline overlay
+			// multiplied over the game image, INSIDE the game RT's pass - GL
+			// draws it into fbo_raster/img5a at exactly this point, so the mip
+			// chain built below (and therefore the monitor pass's halation)
+			// includes it, same as GL.
+			if (VkScanlinesActive(vattr))
+			{
+				g_crtPost.RecordScanlines(g_vk, cmd, g_vk.frameIndex,
+					s_scanTex.view,
+					(int)s_scanTex.width, (int)s_scanTex.height,
+					s_rasterW, s_rasterH, config.prescale);
+			}
+
 			s_rtGame.End(g_vk, cmd);
 
 			// Mips are load-bearing downstream (CRT halation textureLod,
@@ -1036,18 +1172,100 @@ void vkchain_render(void)
 			const float lx = (float)((sw - vw) / 2);
 			const float ly = (float)((sh - vh) / 2);
 
-			// flipUV_Y trace (Gate A verifies): the emit runs with yFlip=1,
-			// so the game's TOP scanline (post-orientation y=0) is emitted
-			// at world y = rtH-1; FpolyVK's y-up ortho (0..rtH) plus its
-			// flipped viewport map world y=rtH to RT image row 0, so the
-			// game's top scanline lands in RT row 0. RecordRect with
-			// flipUV_Y=false samples image row 0 (v=0) at the rect's TOP
-			// vertex -- game top at screen top, upright. So: false.
-			g_screenQuad.RecordRect(g_vk, cmd, g_vk.frameIndex,
-				s_rtGame.VK_GetColorView(), s_rtGame.VK_GetSampler(),
-				lx, ly, lx + (float)vw, ly + (float)vh,
-				(uint32_t)sw, (uint32_t)sh,
-				/*flipUV_Y=*/false, RGB_WHITE, rot);
+			// PHASE B (GL final_render_raster): the monitor CRT pass. GL runs
+			// img5a -> img5b, where img5b is resized every frame to the
+			// ON-SCREEN game rectangle, then blits img5b 1:1 - "pixel-exact
+			// output sizing", so the shadow mask and scanline ripple land on
+			// screen pixels. Here the monitor quad IS that output-sized draw:
+			// it goes straight onto the swapchain at the same letterbox rect
+			// the plain composite uses, so 1 fragment = 1 screen pixel with
+			// one resample fewer. With both monitor passes gated off, the
+			// plain ScreenQuadVK composite below runs exactly as before.
+			//
+			// Rect orientation: RecordRect takes y-up screen pixels and
+			// CrtPostVK takes y-down; the rect is vertically centered with the
+			// same integer margins either way, so the numbers are identical.
+			// RecordMonitor's uvrect puts v=0 at the rect TOP, which is RT
+			// image row 0 = the game's top scanline (see the flipUV_Y trace
+			// below) - upright, the same result as flipUV_Y=false.
+			//
+			// MERGE deviation (rotation x CRT, documented): RecordMonitor has
+			// no rotated-UV path, so a system-rotated raster game falls back
+			// to the plain rotated composite - the monitor mask/beam pass is
+			// skipped under rotation. The tiled scanline overlay still
+			// applies (it lives INSIDE the game RT and turns with the quad).
+			const bool wantMono  = VkMonoMonitorActive(vattr);
+			const bool wantColor = !wantMono && VkColorMonitorActive(vattr);
+
+			if ((wantMono || wantColor) && rot == 0)
+			{
+				CrtMonitorParamsVK mp{};
+				// uSrcSize: the game's visible area in NATIVE pixels, oriented
+				// -- which is exactly the RT size here (GL computes vw/vh from
+				// visible_area + ORIENTATION_SWAP_XY; raster_dst_dims does the
+				// same and feeds s_rasterW/H).
+				mp.srcW = (float)s_rasterW;
+				mp.srcH = (float)s_rasterH;
+				// uLodBias: GL passes log2(config.prescale) because its source
+				// texture is prescale-sized. The VK game RT is UNSCALED source
+				// pixels, so one game pixel is one texel and the halation mip
+				// level needs no shift: 0.
+				mp.lodBias = 0.0f;
+
+				if (wantMono)
+				{
+					const int ti = (config.mono_tint >= 0 && config.mono_tint <= 2)
+						? config.mono_tint : 0;
+					mp.blurH     = config.mono_blur_h;
+					mp.blurV     = config.mono_blur_v;
+					mp.halation  = config.mono_halation;
+					mp.halRadius = config.mono_halation_radius;
+					mp.scanline  = config.mono_scanline;
+					mp.contrast  = config.mono_contrast;
+					mp.bright    = config.mono_brightness;
+					mp.tint[0]   = k_vkMonoTints[ti][0];
+					mp.tint[1]   = k_vkMonoTints[ti][1];
+					mp.tint[2]   = k_vkMonoTints[ti][2];
+				}
+				else
+				{
+					mp.blurH        = config.color_blur_h;
+					mp.blurV        = config.color_blur_v;
+					mp.converge     = config.color_converge;
+					mp.halation     = config.color_halation;
+					mp.halRadius    = config.color_halation_radius;
+					mp.scanline     = config.color_scanline;
+					mp.contrast     = config.color_contrast;
+					mp.bright       = config.color_brightness;
+					mp.saturation   = config.color_saturation;
+					mp.maskType     = (float)config.color_mask_type;
+					mp.maskStrength = config.color_mask_strength;
+					mp.maskScale    = config.color_mask_scale;
+				}
+
+				g_crtPost.RecordMonitor(g_vk, cmd, g_vk.frameIndex,
+					/*colorPass=*/wantColor,
+					s_rtGame.VK_GetColorView(), s_rtGame.VK_GetSampler(),
+					mp,
+					lx, ly, lx + (float)vw, ly + (float)vh,
+					sw, sh);
+			}
+			else
+			{
+				// flipUV_Y trace (Gate A verifies): the emit runs with yFlip=1,
+				// so the game's TOP scanline (post-orientation y=0) is emitted
+				// at world y = rtH-1; FpolyVK's y-up ortho (0..rtH) plus its
+				// flipped viewport map world y=rtH to RT image row 0, so the
+				// game's top scanline lands in RT row 0. RecordRect with
+				// flipUV_Y=false samples image row 0 (v=0) at the rect's TOP
+				// vertex -- game top at screen top, upright. So: false.
+				// System rotation rides the rotated corner UVs (rot != 0).
+				g_screenQuad.RecordRect(g_vk, cmd, g_vk.frameIndex,
+					s_rtGame.VK_GetColorView(), s_rtGame.VK_GetSampler(),
+					lx, ly, lx + (float)vw, ly + (float)vh,
+					(uint32_t)sw, (uint32_t)sh,
+					/*flipUV_Y=*/false, RGB_WHITE, rot);
+			}
 
 			// Rotated raster overlays (GL final_render_raster parity): GL
 			// routes the menu/PAUSED/FPS through fbo4 + the rotated
@@ -1701,6 +1919,97 @@ void vkchain_load_artwork(const struct artworks* p)
 	VkArt_LoadForGame(g_vk, p);
 }
 
-void vkchain_init_raster_overlay(void) {}
-void vkchain_shutdown_raster_overlay(void) {}
+// ---------------------------------------------------------------------------
+// vkchain_init_raster_overlay / vkchain_shutdown_raster_overlay
+//
+// VK twins of glchain_init_raster_overlay / glchain_shutdown_raster_overlay
+// (opengl_renderer.cpp:384/427). Same gates, same load source
+// (config.raster_effect out of aae.zip through the artwork search order), same
+// "release whatever was there first" contract; run_game calls this per game
+// load and the VIDEO menu calls it live when the user picks a different
+// effect.
+//
+// Two VK-only wrinkles:
+//  * the destroy needs a device drain (an in-flight frame may still sample the
+//    old image), and a drain must not run with a frame open. The menu call
+//    site sits inside cpu_run, i.e. mid-frame, so that case is deferred to the
+//    next frame boundary via s_scanReloadPending (serviced in
+//    vkchain_set_render).
+//  * the texture is loaded stbi-FLIPPED, matching GL's load_texture
+//    (stbi_set_flip_vertically_on_load(1)); see RecordScanlines' V-direction
+//    note for why that matters for tiling phase. No mips: GL uses GL_NEAREST
+//    min/mag on this texture.
+// ---------------------------------------------------------------------------
+void vkchain_init_raster_overlay(void)
+{
+	if (!s_initialized)
+		return;
+
+	// Mid-frame (live menu change): defer the whole thing to the next frame
+	// boundary rather than draining the device under an open frame.
+	if (s_frameOpen)
+	{
+		s_scanReloadPending = true;
+		return;
+	}
+
+	// Release any texture left over from a previous game / effect.
+	if (s_scanHave)
+	{
+		if (g_vk.device && g_vk.vkDeviceWaitIdle_)
+			g_vk.vkDeviceWaitIdle_(g_vk.device);
+		VK_DestroyTexture(g_vk, s_scanTex);
+		s_scanTex = VkTexture{};
+		s_scanHave = false;
+	}
+
+	// Skip if no raster effect is configured.
+	if (!config.raster_effect ||
+		config.raster_effect[0] == '\0' ||
+		strcmp(config.raster_effect, "NONE") == 0)
+	{
+		LOG_INFO("Raster overlay (VK): disabled (raster_effect = NONE).");
+		return;
+	}
+
+	// Only raster games use the scanlines overlay; skip for vector games.
+	if (Machine && Machine->drv &&
+		!(Machine->drv->video_attributes & VIDEO_RASTER_CLASS_MASK))
+	{
+		LOG_INFO("Raster overlay (VK): skipped (not a raster game).");
+		return;
+	}
+
+	if (!VkArt_LoadFromArchive(g_vk, config.raster_effect, "aae.zip",
+		/*flipY=*/true, /*generateMips=*/false, s_scanTex))
+	{
+		LOG_INFO("Raster overlay (VK): '%s' not found in aae.zip; disabled.",
+			config.raster_effect);
+		s_scanTex = VkTexture{};
+		s_scanHave = false;
+		return;
+	}
+
+	s_scanHave = true;
+	LOG_INFO("Raster overlay (VK): loaded '%s' (%ux%u).",
+		config.raster_effect, s_scanTex.width, s_scanTex.height);
+}
+
+void vkchain_shutdown_raster_overlay(void)
+{
+	if (!s_initialized)
+		return;
+
+	s_scanReloadPending = false;
+
+	if (!s_scanHave)
+		return;
+
+	if (g_vk.device && g_vk.vkDeviceWaitIdle_)
+		g_vk.vkDeviceWaitIdle_(g_vk.device);
+	VK_DestroyTexture(g_vk, s_scanTex);
+	s_scanTex = VkTexture{};
+	s_scanHave = false;
+}
+
 int  vkchain_get_error(void) { return 0; }
