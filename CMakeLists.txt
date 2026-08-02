@@ -736,13 +736,19 @@ find_program(AAE_GLSLC NAMES glslc
              DOC "glslc (Vulkan SDK) - compiles shaders/vk/*.{vert,frag} to SPIR-V")
 
 if(AAE_GLSLC)
+    # Two-step on purpose: add_custom_command(OUTPUT ...) may NOT contain
+    # target-dependent generator expressions like $<TARGET_FILE_DIR:aae> -
+    # CMake hard-errors at generate time ("No target aae"). So the .spv are
+    # compiled to fixed paths in the build tree, and a POST_BUILD step - where
+    # the genex IS legal - copies them beside the binary. (This bit only on
+    # the flatpak build: the WSL box has no glslc, so the branch never ran.)
     set(AAE_SPV_OUTPUTS "")
     foreach(shader ${AAE_VK_SHADERS})
         set(_src "${CMAKE_CURRENT_SOURCE_DIR}/aae/shaders/vk/${shader}")
-        set(_dst "$<TARGET_FILE_DIR:aae>/shaders/vk/${shader}.spv")
+        set(_dst "${CMAKE_BINARY_DIR}/shaders/vk/${shader}.spv")
         add_custom_command(
             OUTPUT  "${_dst}"
-            COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:aae>/shaders/vk"
+            COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/shaders/vk"
             COMMAND "${AAE_GLSLC}" "${_src}" -o "${_dst}"
             DEPENDS "${_src}"
             COMMENT "glslc ${shader}"
@@ -752,7 +758,11 @@ if(AAE_GLSLC)
 
     add_custom_target(aae_vk_shaders DEPENDS ${AAE_SPV_OUTPUTS})
     add_dependencies(aae aae_vk_shaders)
-    message(STATUS "Vulkan shaders: will compile ${AAE_GLSLC}")
+    add_custom_command(TARGET aae POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_BINARY_DIR}/shaders/vk" "$<TARGET_FILE_DIR:aae>/shaders/vk"
+        COMMENT "Staging shaders/vk beside the aae binary")
+    message(STATUS "Vulkan shaders: will compile with ${AAE_GLSLC}")
 else()
     message(STATUS "Vulkan shaders: glslc NOT found - shaders/vk/*.spv will not be "
                    "built, so renderer=vulkan will fail at pipeline creation. "
