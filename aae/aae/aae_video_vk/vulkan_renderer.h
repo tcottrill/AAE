@@ -50,3 +50,10 @@ int  vkchain_get_error(void);
 // menu-flag bookkeeping as the GL loader (see VkArt_LoadForGame).
 struct artworks;   // aae_mame_driver.h
 void vkchain_load_artwork(const struct artworks* p);
+
+// Plan 10 (raster artwork): the VK mirror of run_game Step 7's
+// Layout_LoadForGame call. Parses the driver's MAME .lay layout through the
+// SHARED mame_layout.cpp parser and uploads its element textures as
+// VkTextures. Device drain inside - call between games only, never mid-frame.
+struct AAEDriver;  // aae_mame_driver.h
+void vkchain_load_layout(const struct AAEDriver* drv);

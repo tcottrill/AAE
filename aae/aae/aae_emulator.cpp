@@ -955,13 +955,21 @@ void run_game(void)
 	// Step 7: MAME .lay layout loading (raster games only).
 	// Searches external and local artwork paths for ZIP or loose .lay files.
 	// Falls back to a synthetic screen-only layout if nothing is found.
-	// GL-gated: Layout_LoadForGame bakes layout textures via glGenTextures
-	// (mame_layout.cpp Layout_LoadTextures). With the layout disabled,
-	// Layout_ComputeGameAspect falls back to the game-dimension path, which
-	// yields the same 4:3 / 3:4 target aspect for the window logic below.
-	if (!(Machine->gamedrv->video_attributes & VIDEO_TYPE_VECTOR)
-		&& active_renderer() == RENDERER_OPENGL)
-		Layout_LoadForGame(Machine->gamedrv);
+	// Layout_LoadForGame bakes layout textures via glGenTextures
+	// (mame_layout.cpp Layout_LoadTextures), so it is GL-only; the Vulkan
+	// chain runs the SAME search order and the SAME parser through its own
+	// texture loader (vkchain_load_layout -> LayoutVK_LoadForGame). The VK
+	// side deliberately skips the synthetic screen-only fallback: with the
+	// layout left disabled, Layout_ComputeGameAspect uses the game-dimension
+	// path, which yields the same 4:3 / 3:4 target aspect the synthetic view
+	// would have produced, and the VK chain keeps its own letterbox composite.
+	if (!(Machine->gamedrv->video_attributes & VIDEO_TYPE_VECTOR))
+	{
+		if (active_renderer() == RENDERER_OPENGL)
+			Layout_LoadForGame(Machine->gamedrv);
+		else if (active_renderer() == RENDERER_VULKAN)
+			vkchain_load_layout(Machine->gamedrv);
+	}
 
 	// Step 8: Video configuration (bezel/crop layout, scale, offsets).
 	setup_video_config();

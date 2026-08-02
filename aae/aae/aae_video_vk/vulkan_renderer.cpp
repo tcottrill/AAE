@@ -29,6 +29,7 @@
 #include "render_target_vk.h"  // RenderTargetVK - offscreen game RT (Plan 4)
 #include "screen_quad_vk.h"    // ScreenQuadVK - RT->swapchain composite (Plan 4)
 #include "crt_post_vk.h"       // CrtPostVK - raster CRT/monitor + scanline overlay
+#include "layout_vk.h"         // LayoutQuadVK + the MAME .lay raster compositor (Plan 10)
 #include "sys_str.h"           // aae_stricmp (raster_effect "NONE" test)
 #include "vector_draw_vk.h"    // VectorDrawVK - beam vector renderer (Plan 5);
                                // pulls in vector_draw.h (beam batch access)
@@ -131,6 +132,16 @@ static bool         s_screenQuadInit = false;
 static CrtPostVK g_crtPost;
 static bool      s_crtPostInit = false;
 static bool      s_crtPostFailed = false;
+
+// MAME .lay layout compositor for RASTER games (Plan 10). The GL chain
+// composites raster artwork in mame_layout.cpp's Layout_Render, NOT in
+// final_render's art_tex[] path (that one is vector-only); this is the quad
+// recorder that mirrors it. Game-independent like ScreenQuadVK: one init at
+// chain start, one shutdown at the end. When it fails to init - or the game
+// has no .lay file - the raster branch keeps its plain aspect-fit letterbox
+// composite, byte-identical to the pre-Plan-10 chain.
+static LayoutQuadVK g_layoutQuad;
+static bool         s_layoutQuadInit = false;
 
 // Scanline / raster-effect overlay texture - the VK twin of GL's
 // g_scanrezTex. Loaded per-game (and on a live menu change) by
@@ -809,6 +820,14 @@ int vkchain_init(void)
 	else
 		LOG_ERROR("vkchain_init: ScreenQuadVK init failed; raster composite disabled");
 
+	// Same lifetime as ScreenQuadVK. A failure here only costs raster artwork:
+	// LayoutVK_Active() is consulted alongside s_layoutQuadInit, so the chain
+	// falls back to the plain letterbox composite.
+	if (g_layoutQuad.Init(g_vk, nullptr))
+		s_layoutQuadInit = true;
+	else
+		LOG_ERROR("vkchain_init: LayoutQuadVK init failed; raster artwork disabled");
+
 	EnsureVectorList();
 	s_fpolyFailed = false;
 	EnsureRasterRenderer();   // usually defers (see helper comment)
@@ -853,6 +872,11 @@ void vkchain_shutdown(void)
 		g_screenQuad.Shutdown(g_vk);
 		s_screenQuadInit = false;
 	}
+	if (s_layoutQuadInit)
+	{
+		g_layoutQuad.Shutdown(g_vk);
+		s_layoutQuadInit = false;
+	}
 	if (s_vectorInit)
 	{
 		g_vectorDraw.Shutdown(g_vk);
@@ -891,6 +915,7 @@ void vkchain_shutdown(void)
 	}
 	s_scanReloadPending = false;
 	VkArt_FreeAll(g_vk);         // per-game artwork textures (Plan 8)
+	LayoutVK_FreeTextures(g_vk); // per-game .lay layout textures (Plan 10)
 	VkTex_ShutdownCache(g_vk);   // GUI solid-white texture + any cached loads
 	if (s_rtGame.IsValid())
 		s_rtGame.Shutdown(g_vk);
@@ -966,6 +991,8 @@ void vkchain_set_render(void)
 	// site (bg_renderer.cpp); here set_render IS that once-per-frame site.
 	if (s_screenQuadInit)
 		g_screenQuad.OnFrameBegin(g_vk.frameIndex);
+	if (s_layoutQuadInit)
+		g_layoutQuad.OnFrameBegin(g_vk.frameIndex);
 	if (s_crtPostInit)
 		g_crtPost.OnFrameBegin(g_vk.frameIndex);
 
@@ -1197,7 +1224,48 @@ void vkchain_render(void)
 			const bool wantMono  = VkMonoMonitorActive(vattr);
 			const bool wantColor = !wantMono && VkColorMonitorActive(vattr);
 
-			if ((wantMono || wantColor) && rot == 0)
+			// PHASE 1 (GL final_render_raster): the MAME .lay layout
+			// composite. GL hands the whole raster frame to Layout_Render,
+			// which fits the view, then draws backdrop -> screen (with the
+			// overlay color gel multiplied in) -> bezel, and owns the display
+			// rotation for all of them. LayoutVK_ComputeFrame resolves the
+			// same geometry; when it declines (this game has no .lay, or the
+			// compositor failed to init) the chain keeps the plain aspect-fit
+			// letterbox composite, byte-identical to before Plan 10.
+			LayoutVKFrame lay{};
+			const bool layoutActive = s_layoutQuadInit &&
+				LayoutVK_ComputeFrame(sw, sh, lay) && lay.hasScreen;
+
+			// MERGE deviation (artwork x CRT, documented): the monitor
+			// shaders take ONE texture, so they cannot multiply the overlay
+			// color gel into their output the way GL's dual-texture layout
+			// screen shader does with img5b. When the layout supplies an
+			// overlay for this game the monitor pass stands down and the
+			// gel-multiplied screen quad draws instead - the same shape as
+			// the rotation x CRT deviation noted above.
+			const bool monitorOn = (wantMono || wantColor) && rot == 0 &&
+				!(layoutActive && lay.hasOverlay);
+
+			// Monitor rect: the layout's SCREEN element when a layout is
+			// active (so the backdrop and bezel frame it), otherwise the plain
+			// letterbox. CrtPostVK takes y-DOWN pixels, which is exactly what
+			// LayoutVKFrame stores.
+			const float mx0 = layoutActive ? lay.sx0 : lx;
+			const float my0 = layoutActive ? lay.sy0 : ly;
+			const float mx1 = layoutActive ? lay.sx1 : (lx + (float)vw);
+			const float my1 = layoutActive ? lay.sy1 : (ly + (float)vh);
+
+			// Layers BELOW and INCLUDING the game: every backdrop drawable,
+			// then the screen quad itself unless the monitor pass takes it.
+			if (layoutActive)
+			{
+				LayoutVK_RecordUnderlay(g_vk, cmd, g_vk.frameIndex,
+					g_layoutQuad, lay,
+					s_rtGame.VK_GetColorView(), s_rtGame.VK_GetSampler(),
+					sw, sh, /*drawScreen=*/!monitorOn);
+			}
+
+			if (monitorOn)
 			{
 				CrtMonitorParamsVK mp{};
 				// uSrcSize: the game's visible area in NATIVE pixels, oriented
@@ -1247,8 +1315,13 @@ void vkchain_render(void)
 					/*colorPass=*/wantColor,
 					s_rtGame.VK_GetColorView(), s_rtGame.VK_GetSampler(),
 					mp,
-					lx, ly, lx + (float)vw, ly + (float)vh,
+					mx0, my0, mx1, my1,
 					sw, sh);
+			}
+			else if (layoutActive)
+			{
+				// The screen quad was already recorded by RecordUnderlay at
+				// the layout's screen bounds; nothing to composite here.
 			}
 			else
 			{
@@ -1265,6 +1338,14 @@ void vkchain_render(void)
 					lx, ly, lx + (float)vw, ly + (float)vh,
 					(uint32_t)sw, (uint32_t)sh,
 					/*flipUV_Y=*/false, RGB_WHITE, rot);
+			}
+
+			// Bezel layer, LAST - on top of the game and on top of the CRT
+			// monitor pass, exactly where Layout_Render's layer order puts it.
+			if (layoutActive)
+			{
+				LayoutVK_RecordOverlayArt(g_vk, cmd, g_vk.frameIndex,
+					g_layoutQuad, lay, sw, sh);
 			}
 
 			// Rotated raster overlays (GL final_render_raster parity): GL
@@ -1917,6 +1998,31 @@ void vkchain_load_artwork(const struct artworks* p)
 	if (g_vk.device && g_vk.vkDeviceWaitIdle_)
 		g_vk.vkDeviceWaitIdle_(g_vk.device);
 	VkArt_LoadForGame(g_vk, p);
+}
+
+// ---------------------------------------------------------------------------
+// vkchain_load_layout (Plan 10). The VK mirror of run_game Step 7's GL
+// Layout_LoadForGame call - the raster artwork path. Same drain discipline as
+// vkchain_load_artwork: the previous game's layout textures are destroyed
+// inside LayoutVK_LoadForGame, so the device must be idle first and no frame
+// may be open.
+//
+// Note the GL call is unconditional for raster games because Layout_LoadForGame
+// also builds a synthetic screen-only view; the VK loader deliberately does
+// not (see layout_vk.h), so games with no .lay simply leave the layout off.
+// ---------------------------------------------------------------------------
+void vkchain_load_layout(const struct AAEDriver* drv)
+{
+	if (!s_initialized)
+		return;
+	if (s_frameOpen)
+	{
+		LOG_ERROR("vkchain_load_layout: called mid-frame; skipping (layout not loaded)");
+		return;
+	}
+	if (g_vk.device && g_vk.vkDeviceWaitIdle_)
+		g_vk.vkDeviceWaitIdle_(g_vk.device);
+	LayoutVK_LoadForGame(g_vk, drv);
 }
 
 // ---------------------------------------------------------------------------
