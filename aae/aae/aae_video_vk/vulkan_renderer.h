@@ -42,3 +42,11 @@ void vkchain_ui_dim_quad(int alpha);
 void vkchain_init_raster_overlay(void);
 void vkchain_shutdown_raster_overlay(void);
 int  vkchain_get_error(void);
+
+// Plan 8 (vector artwork): the VK mirror of run_game Step 6's load_artwork
+// call. Frees the previous game's artwork VkTextures (device drain inside -
+// call between games only, never mid-frame) and loads the driver's ART_TEX
+// table entries with the same search order / art_loaded[] / config-flag /
+// menu-flag bookkeeping as the GL loader (see VkArt_LoadForGame).
+struct artworks;   // aae_mame_driver.h
+void vkchain_load_artwork(const struct artworks* p);

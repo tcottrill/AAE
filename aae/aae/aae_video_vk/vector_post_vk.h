@@ -59,6 +59,39 @@ struct VectorPostVKCreateInfo
     int ssaa = 2;
 };
 
+// Per-frame artwork layer set for the layered composite (the VK mirror of GL
+// final_render's art_tex[] usage). Views/samplers come from the VkArt_* cache
+// (vk_texture_loader) - a null view means "layer absent this frame"; the
+// caller applies the GL gates (config flag + art_loaded + video_attributes)
+// before filling this in. All textures are loaded WITHOUT the GL chain's
+// stbi vertical flip; the uvrects inside VectorPostVK encode the orientation
+// (backdrop/bezel upright, overlays V-flipped exactly like GL's swapped-
+// bottom/top drawTexturedQuad calls).
+struct VectorArtworkVK
+{
+    VkImageView backdropView   = VK_NULL_HANDLE;  // GL art_tex[0], config.artwork
+    VkSampler   backdropSampler = VK_NULL_HANDLE;
+    VkImageView overlayView    = VK_NULL_HANDLE;  // GL art_tex[1], config.overlay
+    VkSampler   overlaySampler = VK_NULL_HANDLE;
+    VkImageView bezelView      = VK_NULL_HANDLE;  // GL art_tex[3], config.bezel
+    VkSampler   bezelSampler   = VK_NULL_HANDLE;
+
+    bool overlay1 = false;   // VECTOR_USES_OVERLAY1: modulates the CRT image
+    bool overlay2 = false;   // VECTOR_USES_OVERLAY2: gel drawn over the CRT
+    bool rasterBW = false;   // VIDEO_TYPE_RASTER_BW: overlay1 uses DST_COLOR/ZERO
+
+    bool  artcrop  = false;  // cabinet crop scaling for backdrop/bezel
+    float bezelX   = 0.0f;
+    float bezelY   = 0.0f;
+    float bezelZoom = 1.0f;
+
+    bool Any() const
+    {
+        return backdropView != VK_NULL_HANDLE || bezelView != VK_NULL_HANDLE ||
+               (overlayView != VK_NULL_HANDLE && (overlay1 || overlay2));
+    }
+};
+
 class VectorPostVK
 {
 public:
@@ -94,19 +127,51 @@ public:
     // pass) at the given rect in Y-DOWN window pixels. Blend ONE/ONE over
     // the cleared-black frame, matching the GL additive build of img4b.
     // Safe to call while paused (samples retained RTs); does nothing until
-    // the first EndBeamPass has run.
+    // the first EndBeamPass has run. This is the NO-ARTWORK fast path; when
+    // artwork layers are active use RecordFrameBuild + RecordCompositeLayered.
     void RecordComposite(VkContext& ctx, VkCommandBuffer cmd, uint32_t frameIndex,
                          float x0, float y0, float x1, float y1,
                          int vectrail, int vecglow);
 
-    bool IsValid()   const { return initialized_; }
-    bool BeamReady() const { return beamReady_; }
-    int  BeamDim()   const { return beamDim_; }
+    // ---- Artwork path (GL final_render LAYER 5A/5B/5C/6 mirror) ----
+    //
+    // RecordFrameBuild: builds the "CRT image" into the 1024x1024 frame RT
+    // (GL img4b): beam+glow+trail composite quad at the game_rect box
+    // (grL/grR/grB/grT in GL's Y-UP 1024-space, i.e. game_rect_* globals),
+    // then the OVERLAY1 modulate quad (DST_COLOR/SRC_COLOR - DST_COLOR/ZERO
+    // for RASTER_BW). Must run OUTSIDE any pass (between RecordPost and
+    // VK_ResumeFramePass). Requires a prior EndBeamPass this session.
+    void RecordFrameBuild(VkContext& ctx, VkCommandBuffer cmd, uint32_t frameIndex,
+                          float grL, float grR, float grB, float grT,
+                          int vectrail, int vecglow,
+                          const VectorArtworkVK& art);
+
+    // RecordCompositeLayered: the layered swapchain draw (GL LAYER 5C + 6):
+    // backdrop (alpha blend, 0.5 tint, cabinet scaling) -> frame RT ONE/ONE
+    // -> crt_boost additive re-draw (0.2 with backdrop / 0.25 overlay2-only)
+    // -> overlay2 (ONE_MINUS_SRC_ALPHA/SRC_COLOR, alpha 0.5, at game_rect)
+    // -> bezel (no blend, alpha-test 0.2, cabinet scaling). Records into the
+    // CURRENTLY OPEN swapchain pass. lx/lyUp/vw/vh = aspect-fit letterbox of
+    // the square 1024 canvas in Y-UP window pixels (ComputeGuiBeamMap values);
+    // grL..grT as in RecordFrameBuild. Does nothing until the first
+    // RecordFrameBuild has run (callers fall back to RecordComposite).
+    void RecordCompositeLayered(VkContext& ctx, VkCommandBuffer cmd, uint32_t frameIndex,
+                                float lx, float lyUp, float vw, float vh,
+                                float grL, float grR, float grB, float grT,
+                                const VectorArtworkVK& art);
+
+    bool IsValid()    const { return initialized_; }
+    bool BeamReady()  const { return beamReady_; }
+    bool FrameReady() const { return frameReady_; }
+    int  BeamDim()    const { return beamDim_; }
     VkFormat BeamFormat() const { return rtBeam_.GetFormat(); }
 
 private:
-    static const uint32_t kSingleSlotsPerFrame = 12; // trail + 2 downsample + 8 ping-pong + spare
-    static const uint32_t kMultiSlotsPerFrame  = 2;
+    // Worst case single-sampler draws per frame: trail(1) + glow downsamples
+    // (2) + glow ping-pong (8) + overlay1 modulate (1) + layered composite
+    // backdrop/frameRT/boost/overlay2/bezel (5) = 17, plus spare.
+    static const uint32_t kSingleSlotsPerFrame = 20;
+    static const uint32_t kMultiSlotsPerFrame  = 2;   // frame build OR direct composite (+spare)
     static const uint32_t kMaxCompositeVariants = 4;
 
     struct PostPush
@@ -118,17 +183,38 @@ private:
         float params[4];  // blur: w,h | multi: glowamt, usefb, useglow
     };
 
+    // Per-color-format pipeline bundle for draws into the swapchain pass.
+    // multi (the beam+glow+trail composite) builds on first use; the four
+    // artwork pipelines build together on the first layered composite.
+    struct CompVariant
+    {
+        VkFormat   fmt       = VK_FORMAT_UNDEFINED;
+        VkPipeline multi     = VK_NULL_HANDLE;  // multi frag, ONE/ONE
+        VkPipeline artAlpha  = VK_NULL_HANDLE;  // tex frag, SRC_ALPHA/1-SRC_ALPHA (backdrop)
+        VkPipeline artAdd    = VK_NULL_HANDLE;  // tex frag, ONE/ONE (frame RT + boost)
+        VkPipeline artOver2  = VK_NULL_HANDLE;  // tex frag, 1-SRC_ALPHA/SRC_COLOR (overlay2)
+        VkPipeline artOpaque = VK_NULL_HANDLE;  // tex frag, no blend (bezel, alpha-test)
+    };
+
     bool CreateLayouts(VkContext& ctx);
     bool CreateDescriptors(VkContext& ctx);
     bool BuildPipeline(VkContext& ctx, VkFormat colorFormat,
                        const char* fragPath, int blendMode,
                        VkPipelineLayout layout, VkPipeline& out);
-    VkPipeline GetCompositePipeline(VkContext& ctx);
+    CompVariant* GetVariant(VkContext& ctx);         // find-or-add slot for the active format
+    VkPipeline   GetCompositePipeline(VkContext& ctx);
+    bool         EnsureArtPipelines(VkContext& ctx, CompVariant& v);
 
     // Records one quad with the single-sampler layout into the open pass.
     void DrawQuadS(VkContext& ctx, VkCommandBuffer cmd, uint32_t frameIndex,
                    VkPipeline pipeline, VkImageView view, VkSampler sampler,
                    const PostPush& push, int targetW, int targetH);
+
+    // Records one beam+glow+trail quad with the triple-sampler layout into
+    // the open pass (readiness-substituted bindings; see RecordComposite).
+    void DrawMultiQuad(VkContext& ctx, VkCommandBuffer cmd, uint32_t frameIndex,
+                       VkPipeline pipeline, const PostPush& push,
+                       int targetW, int targetH);
 
     bool initialized_ = false;
     int  beamDim_ = 2048;
@@ -141,6 +227,8 @@ private:
     RenderTargetVK rtGlowHalf_;  // 512
     RenderTargetVK rtGlowA_;     // 256 ping-pong A (GL img3a)
     RenderTargetVK rtGlowB_;     // 256 ping-pong B (GL img3b - composite source)
+    RenderTargetVK rtFrame_;     // 1024, no mips (GL img4b - the CRT image,
+                                 // overlay1-modulated; only used with artwork)
 
     // Readiness = the RT has been through at least one End() and is safe to
     // sample (layout SHADER_READ_ONLY). trail/glow also gate the composite's
@@ -149,6 +237,7 @@ private:
     bool beamReady_  = false;
     bool trailReady_ = false;
     bool glowReady_  = false;
+    bool frameReady_ = false;  // rtFrame_ holds a built CRT image
 
     VkDescriptorSetLayout setLayoutS_ = VK_NULL_HANDLE;  // 1 sampler
     VkDescriptorSetLayout setLayoutM_ = VK_NULL_HANDLE;  // 3 samplers
@@ -159,11 +248,15 @@ private:
     VkPipeline pipeBlurAccum_ = VK_NULL_HANDLE;  // SRC_ALPHA/ONE, blur frag (RGBA8)
     VkPipeline pipeTrail_     = VK_NULL_HANDLE;  // ONE_MINUS_DST_COLOR/SRC_ALPHA, tex frag (RGBA8)
 
-    // Composite pipeline variants per active color format (swapchain format
-    // in practice; lazy like ScreenQuadVK's cache).
-    VkFormat   compFormat_[kMaxCompositeVariants]{};
-    VkPipeline compPipe_[kMaxCompositeVariants]{};
-    uint32_t   compCount_ = 0;
+    // Frame-RT (RGBA8) artwork pipelines, fixed-format, built at Init.
+    VkPipeline pipeFrameMulti_ = VK_NULL_HANDLE; // multi frag, ONE/ONE (CRT into frame RT)
+    VkPipeline pipeArtMul_     = VK_NULL_HANDLE; // tex frag, DST_COLOR/SRC_COLOR (overlay1)
+    VkPipeline pipeArtMulBW_   = VK_NULL_HANDLE; // tex frag, DST_COLOR/ZERO (overlay1, RASTER_BW)
+
+    // Swapchain-pass pipeline variants per active color format (lazy like
+    // ScreenQuadVK's cache).
+    CompVariant comp_[kMaxCompositeVariants]{};
+    uint32_t    compCount_ = 0;
 
     VkDescriptorPool descPool_ = VK_NULL_HANDLE;
     VkDescriptorSet  setsS_[VkContext::kFramesInFlight][kSingleSlotsPerFrame]{};

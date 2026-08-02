@@ -60,13 +60,19 @@ static VkShaderModule PostCreateShaderModule_(VkContext& ctx, const char* path)
     return mod;
 }
 
-// Blend modes for BuildPipeline.
+// Blend modes for BuildPipeline. GL glBlendFunc sets ONE pair for color and
+// alpha alike; the *_COLOR factors substitute their *_ALPHA equivalent on the
+// alpha channel (see the comment inside BuildPipeline).
 enum
 {
-    POST_BLEND_NONE = 0,   // downsample copies
+    POST_BLEND_NONE = 0,   // downsample copies; bezel (alpha-test in shader)
     POST_BLEND_ADD  = 1,   // SRC_ALPHA/ONE      (GL glow accumulate)
     POST_BLEND_TRAIL = 2,  // ONE_MINUS_DST_COLOR/SRC_ALPHA (GL trail)
     POST_BLEND_ONEONE = 3, // ONE/ONE            (GL composite into cleared img4b)
+    POST_BLEND_ALPHA = 4,  // SRC_ALPHA/ONE_MINUS_SRC_ALPHA (GL backdrop)
+    POST_BLEND_MUL = 5,    // DST_COLOR/SRC_COLOR (GL overlay1 2x modulate)
+    POST_BLEND_MUL_BW = 6, // DST_COLOR/ZERO      (GL overlay1, RASTER_BW)
+    POST_BLEND_OVER2 = 7,  // ONE_MINUS_SRC_ALPHA/SRC_COLOR (GL overlay2 gel)
 };
 
 // -----------------------------------------------------------------------------
@@ -110,6 +116,12 @@ bool VectorPostVK::Init(VkContext& ctx, const VectorPostVKCreateInfo* ci)
     if (!rtGlowA_.Init(ctx, rt)) { LOG_ERROR("VectorPostVK: glow A RT init failed"); Shutdown(ctx); return false; }
     if (!rtGlowB_.Init(ctx, rt)) { LOG_ERROR("VectorPostVK: glow B RT init failed"); Shutdown(ctx); return false; }
 
+    // Frame RT (GL img4b): the CRT image the overlay modulates. Sampled 1:1
+    // at composite time exactly like GL (set_texture with mipmapping=0), so
+    // no mip chain.
+    rt.width = 1024; rt.height = 1024; rt.mipLevels = 1;
+    if (!rtFrame_.Init(ctx, rt)) { LOG_ERROR("VectorPostVK: frame RT init failed"); Shutdown(ctx); return false; }
+
     if (!CreateLayouts(ctx))     { Shutdown(ctx); return false; }
     if (!CreateDescriptors(ctx)) { Shutdown(ctx); return false; }
 
@@ -119,13 +131,16 @@ bool VectorPostVK::Init(VkContext& ctx, const VectorPostVKCreateInfo* ci)
     const VkFormat rgba8 = VK_FORMAT_R8G8B8A8_UNORM;
     if (!BuildPipeline(ctx, rgba8, blurSpv_.c_str(), POST_BLEND_NONE,  pipeLayoutS_, pipeBlurCopy_) ||
         !BuildPipeline(ctx, rgba8, blurSpv_.c_str(), POST_BLEND_ADD,   pipeLayoutS_, pipeBlurAccum_) ||
-        !BuildPipeline(ctx, rgba8, texSpv_.c_str(),  POST_BLEND_TRAIL, pipeLayoutS_, pipeTrail_))
+        !BuildPipeline(ctx, rgba8, texSpv_.c_str(),  POST_BLEND_TRAIL, pipeLayoutS_, pipeTrail_) ||
+        !BuildPipeline(ctx, rgba8, multiSpv_.c_str(), POST_BLEND_ONEONE, pipeLayoutM_, pipeFrameMulti_) ||
+        !BuildPipeline(ctx, rgba8, texSpv_.c_str(),  POST_BLEND_MUL,    pipeLayoutS_, pipeArtMul_) ||
+        !BuildPipeline(ctx, rgba8, texSpv_.c_str(),  POST_BLEND_MUL_BW, pipeLayoutS_, pipeArtMulBW_))
     {
         Shutdown(ctx);
         return false;
     }
 
-    beamReady_ = trailReady_ = glowReady_ = false;
+    beamReady_ = trailReady_ = glowReady_ = frameReady_ = false;
     initialized_ = true;
     LOG_INFO("VectorPostVK: online (beam %dx%d ssaa=%d, trail 1024, glow 512/256/256)",
              beamDim_, beamDim_, ssaa_);
@@ -136,15 +151,23 @@ void VectorPostVK::Shutdown(VkContext& ctx)
 {
     for (uint32_t i = 0; i < compCount_; ++i)
     {
-        if (compPipe_[i]) ctx.vkDestroyPipeline_(ctx.device, compPipe_[i], nullptr);
-        compPipe_[i] = VK_NULL_HANDLE;
-        compFormat_[i] = VK_FORMAT_UNDEFINED;
+        VkPipeline* pipes[5] = { &comp_[i].multi, &comp_[i].artAlpha, &comp_[i].artAdd,
+                                 &comp_[i].artOver2, &comp_[i].artOpaque };
+        for (VkPipeline* p : pipes)
+        {
+            if (*p) ctx.vkDestroyPipeline_(ctx.device, *p, nullptr);
+            *p = VK_NULL_HANDLE;
+        }
+        comp_[i].fmt = VK_FORMAT_UNDEFINED;
     }
     compCount_ = 0;
 
-    if (pipeBlurCopy_)  { ctx.vkDestroyPipeline_(ctx.device, pipeBlurCopy_,  nullptr); pipeBlurCopy_  = VK_NULL_HANDLE; }
-    if (pipeBlurAccum_) { ctx.vkDestroyPipeline_(ctx.device, pipeBlurAccum_, nullptr); pipeBlurAccum_ = VK_NULL_HANDLE; }
-    if (pipeTrail_)     { ctx.vkDestroyPipeline_(ctx.device, pipeTrail_,     nullptr); pipeTrail_     = VK_NULL_HANDLE; }
+    if (pipeBlurCopy_)   { ctx.vkDestroyPipeline_(ctx.device, pipeBlurCopy_,   nullptr); pipeBlurCopy_   = VK_NULL_HANDLE; }
+    if (pipeBlurAccum_)  { ctx.vkDestroyPipeline_(ctx.device, pipeBlurAccum_,  nullptr); pipeBlurAccum_  = VK_NULL_HANDLE; }
+    if (pipeTrail_)      { ctx.vkDestroyPipeline_(ctx.device, pipeTrail_,      nullptr); pipeTrail_      = VK_NULL_HANDLE; }
+    if (pipeFrameMulti_) { ctx.vkDestroyPipeline_(ctx.device, pipeFrameMulti_, nullptr); pipeFrameMulti_ = VK_NULL_HANDLE; }
+    if (pipeArtMul_)     { ctx.vkDestroyPipeline_(ctx.device, pipeArtMul_,     nullptr); pipeArtMul_     = VK_NULL_HANDLE; }
+    if (pipeArtMulBW_)   { ctx.vkDestroyPipeline_(ctx.device, pipeArtMulBW_,   nullptr); pipeArtMulBW_   = VK_NULL_HANDLE; }
 
     if (pipeLayoutS_) { ctx.vkDestroyPipelineLayout_(ctx.device, pipeLayoutS_, nullptr); pipeLayoutS_ = VK_NULL_HANDLE; }
     if (pipeLayoutM_) { ctx.vkDestroyPipelineLayout_(ctx.device, pipeLayoutM_, nullptr); pipeLayoutM_ = VK_NULL_HANDLE; }
@@ -160,13 +183,14 @@ void VectorPostVK::Shutdown(VkContext& ctx)
         cursorM_[fi] = 0;
     }
 
+    if (rtFrame_.IsValid())    rtFrame_.Shutdown(ctx);
     if (rtGlowB_.IsValid())    rtGlowB_.Shutdown(ctx);
     if (rtGlowA_.IsValid())    rtGlowA_.Shutdown(ctx);
     if (rtGlowHalf_.IsValid()) rtGlowHalf_.Shutdown(ctx);
     if (rtTrail_.IsValid())    rtTrail_.Shutdown(ctx);
     if (rtBeam_.IsValid())     rtBeam_.Shutdown(ctx);
 
-    beamReady_ = trailReady_ = glowReady_ = false;
+    beamReady_ = trailReady_ = glowReady_ = frameReady_ = false;
     initialized_ = false;
 }
 
@@ -369,6 +393,42 @@ bool VectorPostVK::BuildPipeline(VkContext& ctx, VkFormat colorFormat,
         cba.dstAlphaBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
         cba.alphaBlendOp = VK_BLEND_OP_ADD;
         break;
+    case POST_BLEND_ALPHA:
+        cba.blendEnable = VK_TRUE;
+        cba.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+        cba.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        cba.colorBlendOp = VK_BLEND_OP_ADD;
+        cba.srcAlphaBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+        cba.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        cba.alphaBlendOp = VK_BLEND_OP_ADD;
+        break;
+    case POST_BLEND_MUL:
+        cba.blendEnable = VK_TRUE;
+        cba.srcColorBlendFactor = VK_BLEND_FACTOR_DST_COLOR;
+        cba.dstColorBlendFactor = VK_BLEND_FACTOR_SRC_COLOR;
+        cba.colorBlendOp = VK_BLEND_OP_ADD;
+        cba.srcAlphaBlendFactor = VK_BLEND_FACTOR_DST_ALPHA;
+        cba.dstAlphaBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+        cba.alphaBlendOp = VK_BLEND_OP_ADD;
+        break;
+    case POST_BLEND_MUL_BW:
+        cba.blendEnable = VK_TRUE;
+        cba.srcColorBlendFactor = VK_BLEND_FACTOR_DST_COLOR;
+        cba.dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
+        cba.colorBlendOp = VK_BLEND_OP_ADD;
+        cba.srcAlphaBlendFactor = VK_BLEND_FACTOR_DST_ALPHA;
+        cba.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+        cba.alphaBlendOp = VK_BLEND_OP_ADD;
+        break;
+    case POST_BLEND_OVER2:
+        cba.blendEnable = VK_TRUE;
+        cba.srcColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        cba.dstColorBlendFactor = VK_BLEND_FACTOR_SRC_COLOR;
+        cba.colorBlendOp = VK_BLEND_OP_ADD;
+        cba.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        cba.dstAlphaBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+        cba.alphaBlendOp = VK_BLEND_OP_ADD;
+        break;
     case POST_BLEND_ONEONE:
     default:
         cba.blendEnable = VK_TRUE;
@@ -423,28 +483,57 @@ bool VectorPostVK::BuildPipeline(VkContext& ctx, VkFormat colorFormat,
     return true;
 }
 
-VkPipeline VectorPostVK::GetCompositePipeline(VkContext& ctx)
+VectorPostVK::CompVariant* VectorPostVK::GetVariant(VkContext& ctx)
 {
     const VkFormat fmt = VK_ActiveColorFormat(ctx);
     for (uint32_t i = 0; i < compCount_; ++i)
-        if (compFormat_[i] == fmt)
-            return compPipe_[i];
+        if (comp_[i].fmt == fmt)
+            return &comp_[i];
 
     if (compCount_ >= kMaxCompositeVariants)
     {
         LOG_ERROR("VectorPostVK: composite variant cache full (format %d)", (int)fmt);
-        return VK_NULL_HANDLE;
+        return nullptr;
     }
 
-    VkPipeline p = VK_NULL_HANDLE;
-    if (!BuildPipeline(ctx, fmt, multiSpv_.c_str(), POST_BLEND_ONEONE, pipeLayoutM_, p))
+    comp_[compCount_] = CompVariant{};
+    comp_[compCount_].fmt = fmt;
+    return &comp_[compCount_++];
+}
+
+VkPipeline VectorPostVK::GetCompositePipeline(VkContext& ctx)
+{
+    CompVariant* v = GetVariant(ctx);
+    if (!v)
+        return VK_NULL_HANDLE;
+    if (v->multi)
+        return v->multi;
+
+    if (!BuildPipeline(ctx, v->fmt, multiSpv_.c_str(), POST_BLEND_ONEONE, pipeLayoutM_, v->multi))
         return VK_NULL_HANDLE;
 
-    LOG_INFO("VectorPostVK: composite pipeline variant for format %d", (int)fmt);
-    compFormat_[compCount_] = fmt;
-    compPipe_[compCount_] = p;
-    ++compCount_;
-    return p;
+    LOG_INFO("VectorPostVK: composite pipeline variant for format %d", (int)v->fmt);
+    return v->multi;
+}
+
+// Builds the four artwork pipelines of a variant on first use (one shot: a
+// partial earlier failure retries here, the builders are cheap and idempotent
+// against the null members).
+bool VectorPostVK::EnsureArtPipelines(VkContext& ctx, CompVariant& v)
+{
+    if (v.artAlpha && v.artAdd && v.artOver2 && v.artOpaque)
+        return true;
+
+    if ((!v.artAlpha  && !BuildPipeline(ctx, v.fmt, texSpv_.c_str(), POST_BLEND_ALPHA,  pipeLayoutS_, v.artAlpha)) ||
+        (!v.artAdd    && !BuildPipeline(ctx, v.fmt, texSpv_.c_str(), POST_BLEND_ONEONE, pipeLayoutS_, v.artAdd)) ||
+        (!v.artOver2  && !BuildPipeline(ctx, v.fmt, texSpv_.c_str(), POST_BLEND_OVER2,  pipeLayoutS_, v.artOver2)) ||
+        (!v.artOpaque && !BuildPipeline(ctx, v.fmt, texSpv_.c_str(), POST_BLEND_NONE,   pipeLayoutS_, v.artOpaque)))
+    {
+        LOG_ERROR("VectorPostVK: artwork pipeline build failed (format %d)", (int)v.fmt);
+        return false;
+    }
+    LOG_INFO("VectorPostVK: artwork pipelines for format %d", (int)v.fmt);
+    return true;
 }
 
 // -----------------------------------------------------------------------------
@@ -643,33 +732,22 @@ void VectorPostVK::RecordPost(VkContext& ctx, VkCommandBuffer cmd, uint32_t fram
 }
 
 // -----------------------------------------------------------------------------
-// RecordComposite - fragMulti quad into the open swapchain pass.
+// DrawMultiQuad - one beam+glow+trail quad with the triple-sampler layout
+// into the currently open pass. Bindings are readiness-substituted so no
+// UNDEFINED-layout image is ever sampled (unrendered slots bind the beam
+// view; the shader multiplies them by 0 via push.params).
 // -----------------------------------------------------------------------------
-void VectorPostVK::RecordComposite(VkContext& ctx, VkCommandBuffer cmd, uint32_t frameIndex,
-                                   float x0, float y0, float x1, float y1,
-                                   int vectrail, int vecglow)
+void VectorPostVK::DrawMultiQuad(VkContext& ctx, VkCommandBuffer cmd, uint32_t frameIndex,
+                                 VkPipeline pipeline, const PostPush& push,
+                                 int targetW, int targetH)
 {
-    if (!initialized_ || !beamReady_)
-        return;
-    if (frameIndex >= VkContext::kFramesInFlight)
+    if (frameIndex >= VkContext::kFramesInFlight || !pipeline)
         return;
     if (cursorM_[frameIndex] >= kMultiSlotsPerFrame)
     {
         LOG_ERROR("VectorPostVK: multi-descriptor ring exhausted this frame");
         return;
     }
-
-    VkPipeline pipe = GetCompositePipeline(ctx);
-    if (!pipe)
-        return;
-
-    // Readiness-gated flags: a config toggle can enable vectrail/vecglow on a
-    // frame where that RT has not been rendered yet this session (or ever, if
-    // paused) - the flags keep the shader contribution at 0 AND the bindings
-    // below substitute the beam view so no UNDEFINED-layout image is sampled.
-    const bool usefb   = (vectrail > 0) && trailReady_;
-    const bool useglow = (vecglow  > 0) && glowReady_;
-
     VkDescriptorSet set = setsM_[frameIndex][cursorM_[frameIndex]++];
 
     VkDescriptorImageInfo ii[3]{};
@@ -701,6 +779,48 @@ void VectorPostVK::RecordComposite(VkContext& ctx, VkCommandBuffer cmd, uint32_t
     }
     ctx.vkUpdateDescriptorSets_(ctx.device, 3, w, 0, nullptr);
 
+    ctx.vkCmdBindPipeline_(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+    ctx.vkCmdBindDescriptorSets_(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                 pipeLayoutM_, 0, 1, &set, 0, nullptr);
+
+    VkViewport vpo{};
+    vpo.width = (float)targetW;
+    vpo.height = (float)targetH;
+    vpo.maxDepth = 1.0f;
+    ctx.vkCmdSetViewport_(cmd, 0, 1, &vpo);
+
+    VkRect2D sc{};
+    sc.extent.width = (uint32_t)targetW;
+    sc.extent.height = (uint32_t)targetH;
+    ctx.vkCmdSetScissor_(cmd, 0, 1, &sc);
+
+    ctx.vkCmdPushConstants_(cmd, pipeLayoutM_,
+                            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                            0, sizeof(PostPush), &push);
+    ctx.vkCmdDraw_(cmd, 4, 1, 0, 0);
+}
+
+// -----------------------------------------------------------------------------
+// RecordComposite - fragMulti quad into the open swapchain pass.
+// -----------------------------------------------------------------------------
+void VectorPostVK::RecordComposite(VkContext& ctx, VkCommandBuffer cmd, uint32_t frameIndex,
+                                   float x0, float y0, float x1, float y1,
+                                   int vectrail, int vecglow)
+{
+    if (!initialized_ || !beamReady_)
+        return;
+
+    VkPipeline pipe = GetCompositePipeline(ctx);
+    if (!pipe)
+        return;
+
+    // Readiness-gated flags: a config toggle can enable vectrail/vecglow on a
+    // frame where that RT has not been rendered yet this session (or ever, if
+    // paused) - the flags keep the shader contribution at 0 AND DrawMultiQuad
+    // substitutes the beam view so no UNDEFINED-layout image is sampled.
+    const bool usefb   = (vectrail > 0) && trailReady_;
+    const bool useglow = (vecglow  > 0) && glowReady_;
+
     const float sw = (float)ctx.swapchainExtent.width;
     const float sh = (float)ctx.swapchainExtent.height;
 
@@ -717,22 +837,190 @@ void VectorPostVK::RecordComposite(VkContext& ctx, VkCommandBuffer cmd, uint32_t
     push.params[1] = usefb   ? 1.0f : 0.0f;
     push.params[2] = useglow ? 1.0f : 0.0f;
 
-    ctx.vkCmdBindPipeline_(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe);
-    ctx.vkCmdBindDescriptorSets_(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                 pipeLayoutM_, 0, 1, &set, 0, nullptr);
+    DrawMultiQuad(ctx, cmd, frameIndex, pipe, push,
+                  (int)ctx.swapchainExtent.width, (int)ctx.swapchainExtent.height);
+}
 
-    VkViewport vpo{};
-    vpo.width = sw;
-    vpo.height = sh;
-    vpo.maxDepth = 1.0f;
-    ctx.vkCmdSetViewport_(cmd, 0, 1, &vpo);
+// -----------------------------------------------------------------------------
+// RecordFrameBuild - GL LAYER 5A + 5B: build the CRT image (beam+glow+trail)
+// into the 1024x1024 frame RT at the game_rect quad, then modulate it with
+// the OVERLAY1 color gel. Runs OUTSIDE any pass (after RecordPost, before
+// VK_ResumeFramePass).
+//
+// Orientation: the frame RT is stored screen-oriented y-down (row 0 = screen
+// top), the exact mirror of GL's y-up img4b. The game_rect values arrive in
+// GL's Y-UP 1024-space, so the y-down rect is (grL, 1024-grT, grR, 1024-grB).
+// The CRT quad samples the beam RT with the chain's single V-flip (v=1 at
+// rect min y = MAME y=0 = screen top - same uvrect as RecordComposite); the
+// overlay quad uses the SAME V-swapped uvrect, which reproduces GL's
+// swapped-bottom/top overlay draw (drawTexturedQuad(left,right,top,bottom))
+// given our un-flipped PNG loads (GL loads art stbi-flipped, we do not; the
+// two flips cancel into the same on-screen orientation).
+// -----------------------------------------------------------------------------
+void VectorPostVK::RecordFrameBuild(VkContext& ctx, VkCommandBuffer cmd, uint32_t frameIndex,
+                                    float grL, float grR, float grB, float grT,
+                                    int vectrail, int vecglow,
+                                    const VectorArtworkVK& art)
+{
+    if (!initialized_ || !beamReady_ || !rtFrame_.IsValid())
+        return;
 
-    VkRect2D sc{};
-    sc.extent = ctx.swapchainExtent;
-    ctx.vkCmdSetScissor_(cmd, 0, 1, &sc);
+    const bool usefb   = (vectrail > 0) && trailReady_;
+    const bool useglow = (vecglow  > 0) && glowReady_;
 
-    ctx.vkCmdPushConstants_(cmd, pipeLayoutM_,
-                            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-                            0, sizeof(PostPush), &push);
-    ctx.vkCmdDraw_(cmd, 4, 1, 0, 0);
+    rtFrame_.Begin(ctx, cmd, /*clear=*/true, 0.0f, 0.0f, 0.0f, 0.0f);
+
+    PostPush push{};
+    push.rect[0] = grL;            push.rect[1] = 1024.0f - grT;
+    push.rect[2] = grR;            push.rect[3] = 1024.0f - grB;
+    push.tsize[0] = 1024.0f;       push.tsize[1] = 1024.0f;
+    push.uvrect[0] = 0.0f; push.uvrect[1] = 1.0f;
+    push.uvrect[2] = 1.0f; push.uvrect[3] = 0.0f;
+    push.tint[0] = push.tint[1] = push.tint[2] = push.tint[3] = 1.0f;
+    push.params[0] = (float)vecglow * 0.01f;
+    push.params[1] = usefb   ? 1.0f : 0.0f;
+    push.params[2] = useglow ? 1.0f : 0.0f;
+    DrawMultiQuad(ctx, cmd, frameIndex, pipeFrameMulti_, push, 1024, 1024);
+
+    // OVERLAY1: modulate the CRT image in place (GL DST_COLOR/SRC_COLOR "2x
+    // multiply"; DST_COLOR/ZERO for RASTER_BW drivers).
+    if (art.overlay1 && art.overlayView != VK_NULL_HANDLE)
+    {
+        PostPush po{};
+        po.rect[0] = grL;      po.rect[1] = 1024.0f - grT;
+        po.rect[2] = grR;      po.rect[3] = 1024.0f - grB;
+        po.tsize[0] = 1024.0f; po.tsize[1] = 1024.0f;
+        po.uvrect[0] = 0.0f; po.uvrect[1] = 1.0f;
+        po.uvrect[2] = 1.0f; po.uvrect[3] = 0.0f;
+        po.tint[0] = po.tint[1] = po.tint[2] = po.tint[3] = 1.0f;
+        po.params[3] = 1.0f;   // real texture alpha (GL fragBasicTex)
+        DrawQuadS(ctx, cmd, frameIndex,
+                  art.rasterBW ? pipeArtMulBW_ : pipeArtMul_,
+                  art.overlayView, art.overlaySampler, po, 1024, 1024);
+    }
+
+    rtFrame_.End(ctx, cmd);
+    frameReady_ = true;
+}
+
+// -----------------------------------------------------------------------------
+// RecordCompositeLayered - GL LAYER 5C + 6: backdrop, frame RT, crt_boost,
+// overlay2, bezel into the open swapchain pass.
+// -----------------------------------------------------------------------------
+void VectorPostVK::RecordCompositeLayered(VkContext& ctx, VkCommandBuffer cmd, uint32_t frameIndex,
+                                          float lx, float lyUp, float vw, float vh,
+                                          float grL, float grR, float grB, float grT,
+                                          const VectorArtworkVK& art)
+{
+    if (!initialized_ || !frameReady_)
+        return;
+
+    CompVariant* v = GetVariant(ctx);
+    if (!v || !EnsureArtPipelines(ctx, *v))
+        return;
+
+    const float sw = (float)ctx.swapchainExtent.width;
+    const float sh = (float)ctx.swapchainExtent.height;
+    if (sw <= 0.0f || sh <= 0.0f || vw <= 0.0f || vh <= 0.0f)
+        return;
+
+    // Map a Y-UP rect in the square 1024 canvas (GL fbo4 space) through the
+    // aspect-fit letterbox into Y-DOWN window pixels (the same map GL applies
+    // via end_render_fbo4's screen_rect).
+    auto mapRect = [&](float x1, float y1, float x2, float y2, PostPush& p)
+    {
+        p.rect[0] = lx + x1 / 1024.0f * vw;
+        p.rect[1] = sh - (lyUp + y2 / 1024.0f * vh);
+        p.rect[2] = lx + x2 / 1024.0f * vw;
+        p.rect[3] = sh - (lyUp + y1 / 1024.0f * vh);
+        p.tsize[0] = sw;
+        p.tsize[1] = sh;
+    };
+
+    // Cabinet scaling (GL DrawCabinetScaledLayer): artcrop pans/zooms the
+    // backdrop/bezel quad, otherwise they fill the full 1024 canvas.
+    float cabX1 = 0.0f, cabY1 = 0.0f, cabX2 = 1024.0f, cabY2 = 1024.0f;
+    if (art.artcrop)
+    {
+        cabX1 = art.bezelX;
+        cabY1 = art.bezelY;
+        cabX2 = 1024.0f * art.bezelZoom + art.bezelX;
+        cabY2 = 1024.0f * art.bezelZoom + art.bezelY;
+    }
+
+    const bool haveBackdrop = art.backdropView != VK_NULL_HANDLE;
+    const bool haveOverlay2 = art.overlay2 && art.overlayView != VK_NULL_HANDLE;
+
+    // 1) Backdrop: alpha-blended, tinted 0.5 (GL darkens the cabinet art so
+    //    the CRT layer reads over it). Upright: v=0 (PNG top) at rect min y.
+    if (haveBackdrop)
+    {
+        PostPush p{};
+        mapRect(cabX1, cabY1, cabX2, cabY2, p);
+        p.uvrect[0] = 0.0f; p.uvrect[1] = 0.0f;
+        p.uvrect[2] = 1.0f; p.uvrect[3] = 1.0f;
+        p.tint[0] = p.tint[1] = p.tint[2] = 0.5f; p.tint[3] = 1.0f;
+        p.params[3] = 1.0f;   // real texture alpha
+        DrawQuadS(ctx, cmd, frameIndex, v->artAlpha,
+                  art.backdropView, art.backdropSampler, p,
+                  (int)ctx.swapchainExtent.width, (int)ctx.swapchainExtent.height);
+    }
+
+    // 2) The CRT image (frame RT) additively over the backdrop (GL's ONE/ONE
+    //    FS_Rect of img4b). Frame RT row 0 = screen top, so identity UVs.
+    {
+        PostPush p{};
+        mapRect(0.0f, 0.0f, 1024.0f, 1024.0f, p);
+        p.uvrect[0] = 0.0f; p.uvrect[1] = 0.0f;
+        p.uvrect[2] = 1.0f; p.uvrect[3] = 1.0f;
+        p.tint[0] = p.tint[1] = p.tint[2] = p.tint[3] = 1.0f;
+        // params.w = 0: force sampled alpha to 1 (GL RGB8 semantics; ONE/ONE
+        // ignores alpha for color anyway).
+        DrawQuadS(ctx, cmd, frameIndex, v->artAdd,
+                  rtFrame_.VK_GetColorView(), rtFrame_.VK_GetSampler(), p,
+                  (int)ctx.swapchainExtent.width, (int)ctx.swapchainExtent.height);
+
+        // 3) crt_boost: secondary additive pass to punch the vectors up
+        //    against dark artwork (GL: 0.2 with a backdrop, 0.25 overlay2-only).
+        if (haveBackdrop || haveOverlay2)
+        {
+            const float boost = haveBackdrop ? 0.2f : 0.25f;
+            p.tint[0] = p.tint[1] = p.tint[2] = boost; p.tint[3] = 1.0f;
+            DrawQuadS(ctx, cmd, frameIndex, v->artAdd,
+                      rtFrame_.VK_GetColorView(), rtFrame_.VK_GetSampler(), p,
+                      (int)ctx.swapchainExtent.width, (int)ctx.swapchainExtent.height);
+        }
+    }
+
+    // 4) OVERLAY2: visible gel over the CRT at the game_rect quad, alpha 0.5,
+    //    ONE_MINUS_SRC_ALPHA/SRC_COLOR. Same V-swap as overlay1 (GL's swapped
+    //    bottom/top quad + stbi-flip, cancelled - see RecordFrameBuild).
+    if (haveOverlay2)
+    {
+        PostPush p{};
+        mapRect(grL, grB, grR, grT, p);
+        p.uvrect[0] = 0.0f; p.uvrect[1] = 1.0f;
+        p.uvrect[2] = 1.0f; p.uvrect[3] = 0.0f;
+        p.tint[0] = p.tint[1] = p.tint[2] = 1.0f; p.tint[3] = 0.5f;
+        p.params[3] = 1.0f;   // real texture alpha
+        DrawQuadS(ctx, cmd, frameIndex, v->artOver2,
+                  art.overlayView, art.overlaySampler, p,
+                  (int)ctx.swapchainExtent.width, (int)ctx.swapchainExtent.height);
+    }
+
+    // 5) Bezel frame: blending DISABLED, hard alpha cutoff at 0.2 via shader
+    //    discard (GL replaced fixed-function GL_ALPHA_TEST the same way).
+    if (art.bezelView != VK_NULL_HANDLE)
+    {
+        PostPush p{};
+        mapRect(cabX1, cabY1, cabX2, cabY2, p);
+        p.uvrect[0] = 0.0f; p.uvrect[1] = 0.0f;
+        p.uvrect[2] = 1.0f; p.uvrect[3] = 1.0f;
+        p.tint[0] = p.tint[1] = p.tint[2] = p.tint[3] = 1.0f;
+        p.params[2] = 0.2f;   // alpha test threshold
+        p.params[3] = 1.0f;   // real texture alpha
+        DrawQuadS(ctx, cmd, frameIndex, v->artOpaque,
+                  art.bezelView, art.bezelSampler, p,
+                  (int)ctx.swapchainExtent.width, (int)ctx.swapchainExtent.height);
+    }
 }

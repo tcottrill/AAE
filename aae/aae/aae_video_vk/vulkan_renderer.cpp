@@ -32,7 +32,8 @@
                                // pulls in vector_draw.h (beam batch access)
 #include "vector_post_vk.h"    // VectorPostVK - SSAA RT + trail + glow (Plan 7)
 #include "../aae_emulator.h"   // emulator_is_gui_active (GUI keeps the direct path)
-#include "vk_texture_loader.h" // VkTex_GetSolidWhite (Plan 6 - GUI solid quads)
+#include "vk_texture_loader.h" // VkTex_GetSolidWhite (Plan 6 - GUI solid quads);
+                               // VkArt_* per-game artwork cache (Plan 8)
 #include "vector_fonts.h"      // VF singleton - CPU init under VK (Plan 6 fix)
 #include "../aae_video/opengl_renderer.h" // GuiPointVertex full definition (GL-free header)
 
@@ -647,6 +648,7 @@ void vkchain_shutdown(void)
 		s_guiPointsInit = false;
 	}
 	s_guiPointsFailed = false;
+	VkArt_FreeAll(g_vk);         // per-game artwork textures (Plan 8)
 	VkTex_ShutdownCache(g_vk);   // GUI solid-white texture + any cached loads
 	if (s_rtGame.IsValid())
 		s_rtGame.Shutdown(g_vk);
@@ -900,6 +902,41 @@ void vkchain_render(void)
 		const int sw = (int)g_vk.swapchainExtent.width;
 		const int sh = (int)g_vk.swapchainExtent.height;
 
+		// Artwork layer set for this frame (Plan 8), mirroring final_render's
+		// gates exactly: config flag AND art_loaded AND (for the overlay) the
+		// driver's video_attributes. Views come from the per-game VkArt cache
+		// loaded by vkchain_load_artwork (run_game Step 6).
+		VectorArtworkVK art{};
+		{
+			const int vattr = (Machine && Machine->drv) ? Machine->drv->video_attributes : 0;
+			VkTexture* t = nullptr;
+			if (config.artwork && art_loaded[0] && (t = VkArt_Get(0)) != nullptr)
+			{
+				art.backdropView = t->view;
+				art.backdropSampler = t->sampler;
+			}
+			if (config.overlay && art_loaded[1] && (t = VkArt_Get(1)) != nullptr)
+			{
+				art.overlayView = t->view;
+				art.overlaySampler = t->sampler;
+				art.overlay1 = (vattr & VECTOR_USES_OVERLAY1) != 0;
+				art.overlay2 = (vattr & VECTOR_USES_OVERLAY2) != 0;
+			}
+			if (config.bezel && art_loaded[3] && (t = VkArt_Get(3)) != nullptr)
+			{
+				art.bezelView = t->view;
+				art.bezelSampler = t->sampler;
+			}
+			art.rasterBW = (vattr & VIDEO_TYPE_RASTER_BW) != 0;
+			art.artcrop = (config.artcrop != 0);
+			art.bezelX = (float)bezelx;
+			art.bezelY = (float)bezely;
+			art.bezelZoom = bezelzoom;
+		}
+		const bool artActive = art.Any();
+
+		const GuiBeamMap m = ComputeGuiBeamMap();
+
 		// Mirror glchain_render's !paused guard; unlike the direct path,
 		// pause here shows the RETAINED frame (composite below still runs) -
 		// parity with GL's frozen fbo1 restored, as the Plan 5 comment
@@ -933,22 +970,42 @@ void vkchain_render(void)
 			// until a later mid-game vectrail toggle first draws into it.
 			if (config.vectrail > 0)
 				s_trailClearPending = false;
+			// Artwork (Plan 8): build the CRT image (beam+glow+trail composite
+			// + OVERLAY1 modulate) into the frame RT - GL's img4b - so the
+			// overlay colors ONLY the CRT image, never the backdrop. Offscreen,
+			// so it must run before the frame pass resumes.
+			if (artActive)
+				g_vectorPost.RecordFrameBuild(g_vk, cmd, g_vk.frameIndex,
+					m.grL, m.grR, m.grB, m.grT,
+					config.vectrail, config.vecglow, art);
 			VK_ResumeFramePass(g_vk, cmd, s_imageIndex);
 		}
 
 		if (sw > 0 && sh > 0)
 		{
-			// Same beam-space -> window map as the GUI helpers: game_rect box
-			// scaled into the aspect-fit letterbox. RecordComposite takes
-			// Y-DOWN window pixels, so the y-up letterbox coords flip here.
-			const GuiBeamMap m = ComputeGuiBeamMap();
-			const float x0 = m.lx + (m.grL / 1024.0f) * m.vw;
-			const float x1 = m.lx + (m.grR / 1024.0f) * m.vw;
-			const float yTopUp = m.ly + (m.grT / 1024.0f) * m.vh;
-			const float yBotUp = m.ly + (m.grB / 1024.0f) * m.vh;
-			g_vectorPost.RecordComposite(g_vk, cmd, g_vk.frameIndex,
-				x0, (float)sh - yTopUp, x1, (float)sh - yBotUp,
-				config.vectrail, config.vecglow);
+			if (artActive && g_vectorPost.FrameReady())
+			{
+				// Layered composite (GL LAYER 5C + 6): backdrop -> frame RT
+				// -> crt_boost -> overlay2 -> bezel, all mapped through the
+				// same letterbox the direct composite uses.
+				g_vectorPost.RecordCompositeLayered(g_vk, cmd, g_vk.frameIndex,
+					m.lx, m.ly, m.vw, m.vh,
+					m.grL, m.grR, m.grB, m.grT, art);
+			}
+			else
+			{
+				// No-artwork fast path (the known-gated behavior): game_rect
+				// box scaled into the aspect-fit letterbox. RecordComposite
+				// takes Y-DOWN window pixels, so the y-up letterbox coords
+				// flip here.
+				const float x0 = m.lx + (m.grL / 1024.0f) * m.vw;
+				const float x1 = m.lx + (m.grR / 1024.0f) * m.vw;
+				const float yTopUp = m.ly + (m.grT / 1024.0f) * m.vh;
+				const float yBotUp = m.ly + (m.grB / 1024.0f) * m.vh;
+				g_vectorPost.RecordComposite(g_vk, cmd, g_vk.frameIndex,
+					x0, (float)sh - yTopUp, x1, (float)sh - yBotUp,
+					config.vectrail, config.vecglow);
+			}
 		}
 	}
 	// Vector path (Plan 5 Task 1): draw the frame's beam batches direct to
@@ -1290,6 +1347,29 @@ void vkchain_ui_dim_quad(int alpha)
 		m.lx, m.ly, m.lx + m.vw, m.ly + m.vh,
 		g_vk.swapchainExtent.width, g_vk.swapchainExtent.height,
 		/*flipUV_Y=*/false, MAKE_RGBA(0, 0, 0, alpha));
+}
+
+// ---------------------------------------------------------------------------
+// vkchain_load_artwork (Plan 8). The VK mirror of run_game Step 6's GL
+// load_artwork call - run_game invokes this per game load, between games.
+// Frees the previous game's artwork VkTextures first; frames submitted for
+// the previous game may still be in flight sampling them, so the device is
+// drained before the destroy (same discipline as EnsureRasterRenderer's
+// rebuild). A mid-frame call would be a caller bug: the drain cannot run
+// with a frame open, so it is refused loudly instead of deadlocking.
+// ---------------------------------------------------------------------------
+void vkchain_load_artwork(const struct artworks* p)
+{
+	if (!s_initialized)
+		return;
+	if (s_frameOpen)
+	{
+		LOG_ERROR("vkchain_load_artwork: called mid-frame; skipping (artwork not loaded)");
+		return;
+	}
+	if (g_vk.device && g_vk.vkDeviceWaitIdle_)
+		g_vk.vkDeviceWaitIdle_(g_vk.device);
+	VkArt_LoadForGame(g_vk, p);
 }
 
 void vkchain_init_raster_overlay(void) {}

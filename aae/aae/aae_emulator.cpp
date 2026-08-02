@@ -45,6 +45,7 @@
 #include "fileio/texture_handler.h"
 #include "config.h"
 #include "opengl_renderer.h"
+#include "aae_video_vk/vulkan_renderer.h"   // vkchain_load_artwork (Plan 8)
 #include "vector_draw.h"
 #include "gl_fbo.h"
 #include "menu.h"
@@ -937,12 +938,18 @@ void run_game(void)
 	// Step 6: Legacy artwork loading and texture resize.
 	// load_artwork creates GL textures (texture_handler.cpp load_texture ->
 	// glGenTextures); with no GL context under Vulkan the first GL call would
-	// kill the process. Vulkan artwork arrives in Plans 3-4.
+	// kill the process. The Vulkan chain loads the same table through its own
+	// texture loader instead (vkchain_load_artwork: same search order, same
+	// art_loaded[]/config-flag/menu-flag bookkeeping, VkTexture uploads).
 	if (Machine->gamedrv->artwork && active_renderer() == RENDERER_OPENGL)
 	{
 		load_artwork(Machine->gamedrv->artwork);
 		did_loaded_artwork = true;
 		if (have_error != 0) goto fail;
+	}
+	else if (Machine->gamedrv->artwork && active_renderer() == RENDERER_VULKAN)
+	{
+		vkchain_load_artwork(Machine->gamedrv->artwork);
 	}
 
 	// Step 7: MAME .lay layout loading (raster games only).
