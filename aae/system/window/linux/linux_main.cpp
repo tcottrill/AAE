@@ -193,6 +193,32 @@ int main(int argc, char** argv)
 		         g_windowSetup.windowWidth, g_windowSetup.windowHeight);
 	}
 
+	// [main] screenw/screenh WIN when set, exactly as on Windows where they are
+	// the VIDEO menu's RESOLUTION presets. This was missing: Linux always took
+	// the work-area fit above, so the ini setting was silently ignored and
+	// there was NO way to ask for a smaller window.
+	//
+	// That is a performance cliff on a modest GPU, not a cosmetic choice. On a
+	// 4K desktop the work-area fit yields a 2768x2076 client area - 5.75
+	// MEGAPIXELS - against 1.3 MP for the same build on a Steam Deck. Every
+	// full-screen pass in the vector post chain and every composite pays that,
+	// and a tile-based GPU (the Pi's V3D) pays again in tile load/store per
+	// pass. Measured on a Pi 5 at that size: 23 fps.
+	//
+	// Placed AFTER the probe block so it overrides the computed default, and
+	// outside it so it still applies if XOpenDisplay failed.
+	{
+		const int cfgW = get_config_int("main", "screenw", 0);
+		const int cfgH = get_config_int("main", "screenh", 0);
+		if (cfgW > 0 && cfgH > 0) {
+			LOG_INFO("Window size from [main] screenw/screenh: %dx%d "
+			         "(computed default was %dx%d)",
+			         cfgW, cfgH, g_windowSetup.windowWidth, g_windowSetup.windowHeight);
+			g_windowSetup.windowWidth  = cfgW;
+			g_windowSetup.windowHeight = cfgH;
+		}
+	}
+
 	if (!g_window.Create(g_windowSetup)) {
 		LOG_ERROR("Window creation failed - cannot continue");
 		Log::close();
