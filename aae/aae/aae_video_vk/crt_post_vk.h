@@ -9,20 +9,33 @@
 //   * render_mono_monitor()   -> RecordMonitor(mono)  : fragMonoMonitor
 //   * render_color_monitor()  -> RecordMonitor(color) : fragColorMonitor
 //
-// Structural deviation from GL (deliberate, documented): GL runs the monitor
-// shader img5a -> img5b where img5b is resized every frame to the ON-SCREEN
-// game rectangle (Layout_GetScreenPixelSize), then blits img5b 1:1 - the
+// GL runs the monitor shader img5a -> img5b, where img5b is resized every
+// frame to the ON-SCREEN game rectangle (Layout_GetScreenPixelSize) - the
 // "pixel-exact output sizing" trick that makes the mask/scanline pitch
-// independent of window size. The VK chain has no layout compositor yet, so
-// RecordMonitor draws the monitor quad DIRECTLY onto the swapchain at the
-// aspect-fit letterbox rect. That is the same output-sized post with one
-// resample fewer: 1 fragment == 1 screen pixel, exactly as GL intends. The
-// mask's fragment origin is re-anchored to the rect corner in the shader
-// (see crt_color_vk.frag) so the phase still tracks the game rectangle.
+// independent of window size - and then hands img5b to Layout_Render, whose
+// screen drawable does the compositing (the dual-texture overlay gel multiply
+// and the rigid whole-layout rotation). RecordMonitor is target-agnostic and
+// serves BOTH shapes; vulkan_renderer.cpp picks per frame:
+//
+//   * OFFSCREEN (GL's shape) - draw into s_rtMonitor, an intermediate RT sized
+//     to the on-screen screen rect, and let the layout's gel quad or the
+//     rotated ScreenQuadVK blit composite it. Required whenever the composite
+//     must do something this class's quad cannot express: multiply an overlay
+//     gel (the shaders take ONE texture) or turn 90 degrees (DrawQuad_ drives
+//     its quad from a uvrect, which flips but does not rotate).
+//   * DIRECT - no gel and no rotation: draw the quad straight onto the
+//     swapchain at the letterbox / layout screen rect. Same output-sized post
+//     with one resample fewer, 1 fragment == 1 screen pixel.
+//
+// The mask's fragment origin follows the target either way: the caller passes
+// the rect corner as the origin push (pc.tsize.zw), which is the letterbox
+// corner on the direct route and (0,0) - GL's fbo_mono origin exactly - on the
+// offscreen route. See crt_color_vk.frag.
 //
 // Ordering contract (mirrors final_render_raster exactly):
 //   rtGame.Begin -> FpolyVK draws the frame -> RecordScanlines -> rtGame.End
-//   -> rtGame.GenerateMips -> resume swapchain pass -> RecordMonitor
+//   -> rtGame.GenerateMips -> [offscreen: rtMonitor.Begin -> RecordMonitor ->
+//   rtMonitor.End] -> resume swapchain pass -> [direct: RecordMonitor]
 // The mono/color halation taps read the source mip pyramid via textureLod, so
 // GenerateMips MUST run after the scanline draw and before RecordMonitor -
 // exactly what GL does (fbo_generate_mipmaps({img5a}) sits between
