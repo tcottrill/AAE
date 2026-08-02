@@ -343,6 +343,7 @@ void GpuProf::BeginFrame(VkContext& ctx, VkCommandBuffer cmd,
     s_cmd = cmd;
     s_slot = frameIndex;
     s_depth = 0;
+    s_dropped = 0;
 
     // 1. Read back what this slot wrote last time round. See Collect's header
     //    for why the data is provably complete.
