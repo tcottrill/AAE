@@ -132,12 +132,12 @@ static bool    s_guiPointsFailed = false;
 // source dims, so exact unit tiling is correct here (see the s_rtGame
 // comment for why prescale stays a GL-only knob under VK).
 //
-// sRGB contingency note (Plan 3 Task 3, documented, NOT implemented): the
-// swapchain can be an sRGB format while the pen colors are sRGB-authored
-// bytes fed as UNORM vertex colors - identical to the proven Bosconian
-// setup, so it ships as-is. IF the user gate reports washed-out/too-bright
-// colors vs the GL chain side by side, the fix is a CPU sRGB->linear
-// conversion of the pen RGB here (8-bit LUT applied to rgba's color bytes).
+// sRGB contingency (Plan 3 Task 3) RESOLVED at the Plan 7 gate: the user
+// did report washed-out/too-bright colors (vector games, then the GUI and
+// pacman), and the fix landed at the ROOT instead of the CPU-LUT idea
+// floated here - sys_vk CreateSwapchain now prefers a UNORM swapchain, so
+// the sRGB-authored pen bytes display byte-for-byte like GL's non-sRGB
+// window. No per-color conversion anywhere.
 static void VkRasterSink(void* user, float x, float y, float size, uint32_t rgba)
 {
 	(void)size;
@@ -415,17 +415,16 @@ static void EnsureRasterRenderer(void)
 	// (Re)create the offscreen game RT BEFORE FpolyVK: the FpolyVK pipeline
 	// is built against the RT's color format below.
 	//
-	// Format trace (why UNORM keeps colors IDENTICAL to Plan 3's direct
-	// swapchain draw): Plan 3 fed sRGB-authored pen bytes as UNORM vertex
-	// colors straight into the sRGB swapchain attachment, so the hardware
-	// applied exactly one linear->sRGB encode on store. Now the same pen
-	// bytes are written to this R8G8B8A8_UNORM RT (UNORM attachment: stored
-	// byte-for-byte, no encode), RecordRect samples the UNORM view (no
-	// decode -- the raw bytes come back as the same floats) and writes them
-	// to the sRGB swapchain, where the hardware applies the same single
-	// encode Plan 3 got. One encode either way; the final swapchain bytes
-	// are identical. An _SRGB RT here would decode-on-sample and re-encode
-	// twice, shifting every mid-tone.
+	// Format trace (UPDATED at the Plan 7 gate): pen bytes are written to
+	// this R8G8B8A8_UNORM RT byte-for-byte (UNORM attachment: no encode),
+	// RecordRect samples the UNORM view (raw bytes back as the same floats)
+	// and writes them to the now-UNORM swapchain (sys_vk CreateSwapchain
+	// prefers UNORM since the Plan 7 gate) - ZERO encodes anywhere, so the
+	// presented bytes equal the GL chain's exactly. The original reasoning
+	// here ("one encode either way" onto a forced-sRGB swapchain) displayed
+	// encode(byte), which the user confirmed as washed-out/too-bright for
+	// pacman once the vector path had its parity fix to compare against.
+	// An _SRGB RT here would decode-on-sample and shift every mid-tone.
 	if (!s_rtGame.IsValid())
 	{
 		RenderTargetVKCreateInfo rtci{};

@@ -190,27 +190,54 @@ static bool CreateSwapchain(VkContext& ctx)
 
 	VkSurfaceFormatKHR chosen = fmts[0];
 
-	// Prefer SRGB swapchain formats.
+	// Prefer UNORM swapchain formats (GL-parity decision, Plan 7 gate). AAE
+	// authors its colors as sRGB-encoded bytes and does all blending math on
+	// those raw bytes, exactly like the GL chain whose FBOs and window
+	// framebuffer are non-sRGB. A UNORM swapchain stores shader output
+	// byte-for-byte (the display then interprets them as sRGB, same as GL's
+	// window), so the presented bytes equal GL's. An *_SRGB swapchain
+	// instead applies a linear->sRGB encode on store, lifting every mid/low
+	// tone - first seen as washed-out/too-bright beams and GUI text at the
+	// Plan 7 gates. SRGB stays as a fallback for the never-seen-on-desktop
+	// case where no UNORM surface format exists; renderers pick pipelines
+	// via VK_ActiveColorFormat, so either choice is functionally valid.
+	bool found = false;
 	for (auto& f : fmts)
 	{
-		if ((f.format == VK_FORMAT_B8G8R8A8_SRGB || f.format == VK_FORMAT_R8G8B8A8_SRGB) &&
+		if ((f.format == VK_FORMAT_B8G8R8A8_UNORM || f.format == VK_FORMAT_R8G8B8A8_UNORM) &&
 			f.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
 		{
 			chosen = f;
+			found = true;
 			break;
 		}
 	}
-
-	// HARD-FAIL if no SRGB swapchain exists.
-	if (chosen.format != VK_FORMAT_B8G8R8A8_SRGB && chosen.format != VK_FORMAT_R8G8B8A8_SRGB)
+	if (!found)
 	{
-		LOG_ERROR("CreateSwapchain: no SRGB swapchain format available");
+		for (auto& f : fmts)
+		{
+			if ((f.format == VK_FORMAT_B8G8R8A8_SRGB || f.format == VK_FORMAT_R8G8B8A8_SRGB) &&
+				f.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
+			{
+				chosen = f;
+				found = true;
+				LOG_INFO("CreateSwapchain: no UNORM surface format; falling back to SRGB "
+					"(output will be brighter than the GL chain)");
+				break;
+			}
+		}
+	}
+	if (!found)
+	{
+		LOG_ERROR("CreateSwapchain: no UNORM or SRGB swapchain format available");
 		return false;
 	}
 
 	ctx.swapchainFormat = chosen.format;
 
-	LOG_INFO("CreateSwapchain: using SRGB swapchain format");
+	LOG_INFO("CreateSwapchain: using %s swapchain format",
+		(chosen.format == VK_FORMAT_B8G8R8A8_UNORM || chosen.format == VK_FORMAT_R8G8B8A8_UNORM)
+			? "UNORM" : "SRGB");
 
 	// Resolve the extent. currentExtent == 0xFFFFFFFF means the surface lets
 	// the swapchain decide; take the window drawable size (via the window
