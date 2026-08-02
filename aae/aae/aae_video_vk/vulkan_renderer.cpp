@@ -40,6 +40,7 @@
 #include "vk_texture_loader.h" // VkTex_GetSolidWhite (Plan 6 - GUI solid quads);
                                // VkArt_* per-game artwork cache (Plan 8)
 #include "snapshot_vk.h"       // F12 screenshot readback (swapchain -> PNG)
+#include "gpu_profiler_vk.h"   // GPU_ZONE - per-pass GPU timing ([main] vk_profile)
 #include "vector_fonts.h"      // VF singleton - CPU init under VK (Plan 6 fix)
 #include "../aae_video/opengl_renderer.h" // GuiPointVertex full definition (GL-free header)
 #include <math.h>              // log2f - CRT halation mip bias (GL parity)
@@ -1088,6 +1089,11 @@ int vkchain_init(void)
 	EnsureCrtPost();          // defers until the game RT exists
 	s_trailClearPending = true;
 
+	// GPU section profiler ([main] vk_profile, default 0). Creates the query
+	// pool and latches timestampPeriod; returns false and stays completely
+	// inert when the key is 0 or the device cannot timestamp on this queue.
+	GpuProf::Init(g_vk, config.vk_profile != 0);
+
 	// Vector-font CPU state (screen dims + projection fields). Under GL this
 	// runs in glchain_init (opengl_renderer.cpp); the VK chain must do it too
 	// or every VF.Print computes glyphs against 0x0 dims and the GUI/overlay
@@ -1187,6 +1193,7 @@ void vkchain_shutdown(void)
 	s_rasterScaledW = 0;
 	s_rasterScaledH = 0;
 	VkSnapshot::DropPending("renderer shutting down");
+	GpuProf::Shutdown(g_vk);     // query pool, before the device goes
 	VK_Shutdown(g_vk);
 	s_initialized = false;
 	s_frameOpen = false;
@@ -1259,6 +1266,17 @@ void vkchain_set_render(void)
 		return;             // skip this frame; next tick re-acquires
 	}
 	s_frameOpen = true;
+
+	// GPU profiler frame boundary ([main] vk_profile; inert at 0). This is the
+	// once-per-frame site where the slot's fence wait has just proven the
+	// slot's PREVIOUS submission complete, which is exactly the precondition
+	// for reading back that submission's timestamps - so BeginFrame collects
+	// here, then resets this slot's query range, then opens the "frame"
+	// section. The reset needs no pass open, which is why BeginFrame brackets
+	// it in VK_SuspendFramePass/VK_ResumeFramePass (VK_BeginFrame above leaves
+	// the swapchain pass OPEN).
+	GpuProf::BeginFrame(g_vk, g_vk.cmdBuffers[g_vk.frameIndex],
+		g_vk.frameIndex, s_imageIndex);
 
 	// Deterministic per-frame slot-cursor reset (bug catalog entry 9 /
 	// ScreenQuadVK header): once per frame, right after VK_BeginFrame has
@@ -1333,6 +1351,11 @@ static void RecordUiOverlays(void)
 {
 	if (!s_frameOpen || !Machine || !Machine->drv)
 		return;
+
+	// One zone wherever this runs - direct-to-swapchain, or inside the square
+	// rotation RT on the two rotated paths. vkCmdWriteTimestamp is legal inside
+	// a render pass, so no suspension is needed for either case.
+	GPU_ZONE("ui");
 
 	// Raster games need the beam renderer online too (overlay text).
 	EnsureVectorRenderer();
@@ -1556,10 +1579,12 @@ void vkchain_render(void)
 
 			// Game pass: clear to opaque black (the GL fbo_raster clears
 			// black too), emit the frame's pixels, record the draws.
+			GPU_ZONE_BEGIN("raster");
 			s_rtGame.Begin(g_vk, cmd, /*clear=*/true, 0.0f, 0.0f, 0.0f, 1.0f);
 			raster_emit_polys(VkRasterSink, &g_fpoly, /*yFlip=*/1);
 			g_fpoly.Render(g_vk, cmd,
 				s_imageIndex, g_vk.frameIndex, false, 0.0f, 0.0f, 0.0f, 0.0f);
+			GPU_ZONE_END();
 
 			// PHASE A (GL final_render_raster): the tiled scanline overlay
 			// multiplied over the game image, INSIDE the game RT's pass - GL
@@ -1573,12 +1598,18 @@ void vkchain_render(void)
 			// longer carries a prescale compensation factor.
 			if (VkScanlinesActive(vattr))
 			{
+				GPU_ZONE("scanlines");
 				g_crtPost.RecordScanlines(g_vk, cmd, g_vk.frameIndex,
 					s_scanTex.view,
 					(int)s_scanTex.width, (int)s_scanTex.height,
 					s_rasterScaledW, s_rasterScaledH);
 			}
 
+			// One zone for the RT pass close and the mip cascade. The pass
+			// close and its COLOR->SHADER barrier are what make the image
+			// mippable in the first place, and both always run, so timing them
+			// together keeps the sections flat without hiding anything.
+			GPU_ZONE_BEGIN("game_mips");
 			s_rtGame.End(g_vk, cmd);
 
 			// Mips are load-bearing downstream (CRT halation textureLod,
@@ -1586,6 +1617,7 @@ void vkchain_render(void)
 			// reads them when the letterbox rect is smaller than the RT.
 			if (s_rtGame.GetMipLevels() > 1)
 				s_rtGame.GenerateMips(g_vk, cmd);
+			GPU_ZONE_END();
 
 			// PHASE B, offscreen route (GL render_mono_monitor /
 			// render_color_monitor -> img5b). Still inside the suspended-pass
@@ -1603,6 +1635,7 @@ void vkchain_render(void)
 			// more closely than the direct route does, with no shader change.
 			if (monitorOffscreen)
 			{
+				GPU_ZONE("monitor");
 				const int rtW = s_rtMonitor.GetWidth();
 				const int rtH = s_rtMonitor.GetHeight();
 
@@ -1641,6 +1674,7 @@ void vkchain_render(void)
 			// quad is what puts the monitor output on screen, gel and all.
 			if (layoutActive)
 			{
+				GPU_ZONE("composite");
 				LayoutVK_RecordUnderlay(g_vk, cmd, g_vk.frameIndex,
 					g_layoutQuad, lay,
 					screenView, screenSampler,
@@ -1649,6 +1683,7 @@ void vkchain_render(void)
 
 			if (monitorDirect)
 			{
+				GPU_ZONE("monitor");
 				// Direct route (unchanged from the pre-fix chain): no gel and no
 				// rotation, so the monitor quad IS the output-sized draw - straight
 				// onto the swapchain at the letterbox or layout screen rect, so
@@ -1685,6 +1720,7 @@ void vkchain_render(void)
 				// is also how a rotated MONITOR image reaches the screen for a
 				// game with no .lay file, GL's synthetic screen-only layout doing
 				// the same rigid turn on img5b.
+				GPU_ZONE("composite");
 				g_screenQuad.RecordRect(g_vk, cmd, g_vk.frameIndex,
 					screenView, screenSampler,
 					lx, ly, lx + (float)vw, ly + (float)vh,
@@ -1696,6 +1732,7 @@ void vkchain_render(void)
 			// monitor pass, exactly where Layout_Render's layer order puts it.
 			if (layoutActive)
 			{
+				GPU_ZONE("composite");
 				LayoutVK_RecordOverlayArt(g_vk, cmd, g_vk.frameIndex,
 					g_layoutQuad, lay, sw, sh);
 			}
@@ -1726,6 +1763,7 @@ void vkchain_render(void)
 				// Letterbox for the blit = the same window fit the game quad
 				// used, so the overlay canvas lands exactly over the game
 				// (GL's screen_rect covers the fbo4 square identically).
+				GPU_ZONE("rot_blit");
 				g_screenQuad.RecordRect(g_vk, cmd, g_vk.frameIndex,
 					s_rtRot.VK_GetColorView(), s_rtRot.VK_GetSampler(),
 					lx, ly, lx + (float)vw, ly + (float)vh,
@@ -1834,9 +1872,11 @@ void vkchain_render(void)
 
 			VK_SuspendFramePass(g_vk, cmd);
 			passSuspended = true;
+			GPU_ZONE_BEGIN("beam");
 			g_vectorPost.BeginBeamPass(g_vk, cmd);
 			g_vectorDrawRT.Record(g_vk, cmd, g_vk.frameIndex, proj, additive,
 				(uint32_t)g_vectorPost.BeamDim(), (uint32_t)g_vectorPost.BeamDim());
+			GPU_ZONE_END();
 			// Textured shots (Plan 9): the GL analog draws texlist right
 			// after beam_draw_all into fbo1 with the same projection
 			// (opengl_renderer.cpp: draw_textured_shots(proj)). Same here:
@@ -1849,11 +1889,14 @@ void vkchain_render(void)
 				const txdata* shots = tex_shot_verts(&shotVerts);
 				VkTexture* shotTex = VkArt_GetShotTex();
 				if (shots && shotVerts > 0 && shotTex)
+				{
+					GPU_ZONE("shots");
 					g_shotDraw.Record(g_vk, cmd, g_vk.frameIndex, proj,
 						shots, (uint32_t)shotVerts,
 						shotTex->view, shotTex->sampler,
 						(uint32_t)g_vectorPost.BeamDim(),
 						(uint32_t)g_vectorPost.BeamDim());
+				}
 			}
 			g_vectorPost.EndBeamPass(g_vk, cmd);
 			g_vectorPost.RecordPost(g_vk, cmd, g_vk.frameIndex,
@@ -1869,9 +1912,12 @@ void vkchain_render(void)
 			// overlay colors ONLY the CRT image, never the backdrop. Offscreen,
 			// so it must run before the frame pass resumes.
 			if (artActive)
+			{
+				GPU_ZONE("framebuild");
 				g_vectorPost.RecordFrameBuild(g_vk, cmd, g_vk.frameIndex,
 					m.grL, m.grR, m.grB, m.grT,
 					config.vectrail, config.vecglow, art);
+			}
 			// The rotated path stays suspended: its output RT is another
 			// offscreen pass, and resuming only to suspend again would be a
 			// pointless swapchain pass open/close.
@@ -1902,6 +1948,7 @@ void vkchain_render(void)
 
 			if (artActive && g_vectorPost.FrameReady())
 			{
+				GPU_ZONE("composite");
 				g_vectorPost.RecordCompositeLayered(g_vk, cmd, g_vk.frameIndex,
 					0.0f, 0.0f, (float)kRotCanvas, (float)kRotCanvas,
 					m.grL, m.grR, m.grB, m.grT, art,
@@ -1912,6 +1959,7 @@ void vkchain_render(void)
 				// Same expression as the unrotated branch with lx=ly=0 and
 				// vw=vh=1024 substituted, i.e. the game_rect quad in fbo4
 				// space, y-down.
+				GPU_ZONE("composite");
 				g_vectorPost.RecordComposite(g_vk, cmd, g_vk.frameIndex,
 					m.grL, (float)kRotCanvas - m.grT,
 					m.grR, (float)kRotCanvas - m.grB,
@@ -1936,6 +1984,7 @@ void vkchain_render(void)
 
 			// GL end_render_fbo4: blit the square canvas onto the letterbox
 			// rect with blending DISABLED and the rotation's corner UVs.
+			GPU_ZONE("rot_blit");
 			g_screenQuad.RecordRect(g_vk, cmd, g_vk.frameIndex,
 				s_rtRot.VK_GetColorView(), s_rtRot.VK_GetSampler(),
 				m.lx, m.ly, m.lx + m.vw, m.ly + m.vh,
@@ -1949,6 +1998,7 @@ void vkchain_render(void)
 				// Layered composite (GL LAYER 5C + 6): backdrop -> frame RT
 				// -> crt_boost -> overlay2 -> bezel, all mapped through the
 				// same letterbox the direct composite uses.
+				GPU_ZONE("composite");
 				g_vectorPost.RecordCompositeLayered(g_vk, cmd, g_vk.frameIndex,
 					m.lx, m.ly, m.vw, m.vh,
 					m.grL, m.grR, m.grB, m.grT, art);
@@ -1963,6 +2013,7 @@ void vkchain_render(void)
 				const float x1 = m.lx + (m.grR / 1024.0f) * m.vw;
 				const float yTopUp = m.ly + (m.grT / 1024.0f) * m.vh;
 				const float yBotUp = m.ly + (m.grB / 1024.0f) * m.vh;
+				GPU_ZONE("composite");
 				g_vectorPost.RecordComposite(g_vk, cmd, g_vk.frameIndex,
 					x0, (float)sh - yTopUp, x1, (float)sh - yBotUp,
 					config.vectrail, config.vecglow);
@@ -2148,6 +2199,12 @@ void vkchain_render(void)
 	// double-step that logic, not just double-draw.
 	if (!uiOverlaysDone)
 		RecordUiOverlays();
+
+	// Close the profiler's "frame" section. Everything this chain records for
+	// the frame is now behind us; VK_EndFrame's pass close, present barrier and
+	// submit are all that follow. The swapchain pass is still open here, which
+	// is fine - vkCmdWriteTimestamp is legal inside a render pass.
+	GpuProf::EndFrame();
 }
 
 // ---------------------------------------------------------------------------

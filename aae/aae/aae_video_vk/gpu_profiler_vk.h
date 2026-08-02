@@ -31,6 +31,14 @@
 // Begin/End take only a name and the deep call sites (VectorPostVK::RecordPost
 // and friends) need no ctx/cmd plumbing.
 //
+// WHY THE NUMBERS ARE TRUSTWORTHY: the chain RECORDS the whole frame and only
+// then submits it once (vkchain_swap_buffers -> VK_EndFrame). The GPU
+// therefore executes the entire buffer back to back with no CPU interleaving,
+// so a section's delta is GPU work, never GPU idle waiting on the recorder.
+// The one thing these numbers do NOT include is the present/vsync wait, which
+// happens after the last timestamp - so the "frame" total is a GPU cost, not a
+// frame time, and the fps it implies is a ceiling.
+//
 // ASCII-only comments.
 // -----------------------------------------------------------------------------
 
