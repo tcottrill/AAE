@@ -416,8 +416,12 @@ void VectorFont::End()
 			const aae::math::vec2 p1 = vf_rotate(b.pos, b.origin, b.angle);
 			const float y0 = mirrorY ? (768.0f - p0.y) : p0.y;
 			const float y1 = mirrorY ? (768.0f - p1.y) : p1.y;
+			// kFontHalf, NOT the game beam width: these are glyph strokes and
+			// the GL path draws them at the font's own tuned half-width (see
+			// the s_fontSegs push below). Inheriting config.linewidth made the
+			// menu visibly fatter and brighter than GL.
 			beam_add_line(p0.x, y0 * kGuiToBeamY,
-			              p1.x, y1 * kGuiToBeamY, 255, a.color);
+			              p1.x, y1 * kGuiToBeamY, 255, a.color, kFontHalf);
 		}
 		drawVerts.clear();
 		return;

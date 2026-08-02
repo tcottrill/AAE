@@ -2070,7 +2070,19 @@ void vkchain_render(void)
 
 			// Blend selection mirrors beam_draw_all(): color games additive,
 			// B/W alpha-over with the painter's sort inside Record.
-			const bool additive = Machine && Machine->drv &&
+			//
+			// EXCEPT the front-end GUI. Its driver declares VECTOR_USES_COLOR,
+			// so this test picked additive - but the GUI's beam queue is not
+			// game beams, it is VF GLYPH STROKES (Plan 6 routes them here under
+			// VK, where GL draws them through VF's own path). GL draws that text
+			// with VF::Begin's SRC_ALPHA/ONE_MINUS_SRC_ALPHA and
+			// beam_draw_lines/caps(additive=false), i.e. ALPHA-OVER. Drawing it
+			// additively instead summed every overlapping stroke: the menu read
+			// far brighter than GL and glyph joins - where two strokes and a
+			// join disc stack - blew out to near-white. Alpha-over here also
+			// puts the joins on the m_pipeDiscOver path, matching GL's caps.
+			const bool additive = !emulator_is_gui_active() &&
+				Machine && Machine->drv &&
 				(Machine->drv->video_attributes & VECTOR_USES_COLOR) != 0;
 
 			VkCommandBuffer cmd = g_vk.cmdBuffers[g_vk.frameIndex];

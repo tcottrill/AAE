@@ -36,7 +36,13 @@ void beam_set_ssaa(int ssaa);          // sets the supersample factor (affects A
 // Mirrors add_line / add_tex exactly. Join connectivity is inferred internally by
 // endpoint matching, so EVERY producer (vector_update, the DVG sim, cchasm) is
 // covered by routing through these from add_line()/add_tex().
-void beam_add_line(float sx, float sy, float ex, float ey, int intensity, rgb_t col);
+// halfOverride < 0 (the default) takes the beam half-width from
+// config.linewidth, which is what every sim wants. The vector-font renderer
+// passes its own font-tuned kFontHalf instead: under Vulkan its glyph strokes
+// go through this queue rather than VF's GL-direct path, and inheriting the
+// game beam width made menu text noticeably fatter and brighter than GL's.
+void beam_add_line(float sx, float sy, float ex, float ey, int intensity, rgb_t col,
+                   float halfOverride = -1.0f);
 void beam_add_shot(float ex, float ey, int intensity, rgb_t col);
 
 void beam_clear();

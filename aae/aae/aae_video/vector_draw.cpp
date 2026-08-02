@@ -267,14 +267,16 @@ void beam_shutdown() {
 }
 
 // ----------------------------- producer -------------------------------------
-void beam_add_line(float sx, float sy, float ex, float ey, int intensity, rgb_t col) {
+void beam_add_line(float sx, float sy, float ex, float ey, int intensity, rgb_t col,
+                   float halfOverride) {
     rgb_t c = modulate_color(col, intensity, config.gain);
 
     // Invisible (pen-up move): draw nothing, contribute no vertex.
     if ((c & 0x00FFFFFFu) == 0) return;
 
     vec2 p0(sx, sy), p1(ex, ey);
-    float half = config.linewidth * 0.5f;
+    // See the header: negative means "use the game beam width".
+    float half = (halfOverride >= 0.0f) ? halfOverride : (config.linewidth * 0.5f);
     g_lines.push_back({ p0, p1, half, c });
 
     // Record both endpoints; a vertex shared by 2+ segments becomes a join.
