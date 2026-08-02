@@ -797,7 +797,12 @@ void vkchain_render(void)
 			g_vectorPost.EndBeamPass(g_vk, cmd);
 			g_vectorPost.RecordPost(g_vk, cmd, g_vk.frameIndex,
 				config.vectrail, config.vecglow, s_trailClearPending);
-			s_trailClearPending = false;
+			// Consume the flag only when the trail pass actually ran: with
+			// vectrail off at load time the accumulator still holds the
+			// PREVIOUS game's phosphor, and the pending clear must survive
+			// until a later mid-game vectrail toggle first draws into it.
+			if (config.vectrail > 0)
+				s_trailClearPending = false;
 			VK_ResumeFramePass(g_vk, cmd, s_imageIndex);
 		}
 
