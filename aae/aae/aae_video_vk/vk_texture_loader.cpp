@@ -137,6 +137,12 @@ namespace
     VkTexture s_artTex[8]{};
     bool      s_artHave[8]{};
 
+    // GAME_TEX slot 0: the textured-shot sprite (shot.png / cineshot.png).
+    // Plan 9 - the one GAME_TEX entry the VK chain consumes (ShotDrawVK);
+    // other GAME_TEX/FUN_TEX entries still feed GL-only draw paths.
+    VkTexture s_shotTex{};
+    bool      s_shotHave = false;
+
     // Path-by-path mirror of make_single_bitmap (texture_handler.cpp):
     //   1a. ZIP archive in config.exartpath
     //   1b. unzipped <exartpath>\<gamename>\<filename>
@@ -221,6 +227,17 @@ void VkArt_FreeAll(VkContext& ctx)
             s_artHave[i] = false;
         }
     }
+    if (s_shotHave)
+    {
+        VK_DestroyTexture(ctx, s_shotTex);
+        s_shotTex = VkTexture{};
+        s_shotHave = false;
+    }
+}
+
+VkTexture* VkArt_GetShotTex(void)
+{
+    return s_shotHave ? &s_shotTex : nullptr;
 }
 
 VkTexture* VkArt_Get(int slot)
@@ -238,8 +255,18 @@ void VkArt_LoadForGame(VkContext& ctx, const struct artworks* p)
     {
         for (int i = 0; p[i].filename != NULL; i++)
         {
-            // FUN_TEX / GAME_TEX feed GL-only draw paths (fun screens,
-            // per-game textured shots); the VK compositor uses ART_TEX only.
+            // GAME_TEX slot 0 is the textured-shot sprite - the VK shot pass
+            // (ShotDrawVK, Plan 9) needs it. All other FUN_TEX/GAME_TEX
+            // entries feed GL-only draw paths (fun screens etc.) and are
+            // skipped; the VK compositor otherwise uses ART_TEX only.
+            if (p[i].type == GAME_TEX && p[i].target == 0)
+            {
+                if (VkArt_LoadSingle(ctx, s_shotTex, p[i].filename, p[i].zipfile))
+                    s_shotHave = true;
+                else
+                    LOG_INFO("VkArt: could not load shot texture '%s'.", p[i].filename);
+                continue;
+            }
             if (p[i].type != ART_TEX)
                 continue;
 

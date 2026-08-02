@@ -109,6 +109,15 @@ void cache_clear()
     beam_clear();          // clear the modern beam lists on the same frame boundary
 }
 
+// VK-chain accessor (vector_draw_gl.h): the VK renderer records texlist with
+// its own pipeline instead of draw_textured_shots' GL objects.
+const txdata* tex_shot_verts(int* count)
+{
+    if (count)
+        *count = (int)texlist.size();
+    return texlist.empty() ? nullptr : texlist.data();
+}
+
 // Core-profile VAO/VBO for the textured shots (pos + uv + packed RGBA, matching
 // the txdata layout). Lazily created on first use.
 static GLuint s_shotVAO = 0, s_shotVBO = 0;

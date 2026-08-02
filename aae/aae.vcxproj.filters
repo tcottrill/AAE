@@ -364,6 +364,9 @@
     <ClCompile Include="aae\aae_video_vk\vector_post_vk.cpp">
       <Filter>Source Files\aae\aae_video_vk</Filter>
     </ClCompile>
+    <ClCompile Include="aae\aae_video_vk\shot_draw_vk.cpp">
+      <Filter>Source Files\aae\aae_video_vk</Filter>
+    </ClCompile>
     <ClCompile Include="aae\aae_video_vk\vk_texture_loader.cpp">
       <Filter>Source Files\aae\aae_video_vk</Filter>
     </ClCompile>
@@ -864,6 +867,9 @@
     <ClInclude Include="aae\aae_video_vk\vector_post_vk.h">
       <Filter>Source Files\aae\aae_video_vk</Filter>
     </ClInclude>
+    <ClInclude Include="aae\aae_video_vk\shot_draw_vk.h">
+      <Filter>Source Files\aae\aae_video_vk</Filter>
+    </ClInclude>
     <ClInclude Include="aae\aae_video_vk\vk_texture_loader.h">
       <Filter>Source Files\aae\aae_video_vk</Filter>
     </ClInclude>
@@ -1031,6 +1037,12 @@
       <Filter>Shaders\vk</Filter>
     </CustomBuild>
     <CustomBuild Include="shaders\vk\vector_shot_vk.frag">
+      <Filter>Shaders\vk</Filter>
+    </CustomBuild>
+    <CustomBuild Include="shaders\vk\vector_shot_tex_vk.vert">
+      <Filter>Shaders\vk</Filter>
+    </CustomBuild>
+    <CustomBuild Include="shaders\vk\vector_shot_tex_vk.frag">
       <Filter>Shaders\vk</Filter>
     </CustomBuild>
     <CustomBuild Include="shaders\vk\vector_post_vk.vert">

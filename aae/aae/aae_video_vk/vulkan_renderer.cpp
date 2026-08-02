@@ -31,6 +31,9 @@
 #include "vector_draw_vk.h"    // VectorDrawVK - beam vector renderer (Plan 5);
                                // pulls in vector_draw.h (beam batch access)
 #include "vector_post_vk.h"    // VectorPostVK - SSAA RT + trail + glow (Plan 7)
+#include "shot_draw_vk.h"      // ShotDrawVK - textured vector shots (Plan 9);
+                               // pulls in vector_draw_gl.h (txdata,
+                               // tex_shot_verts - GL-free header)
 #include "../aae_emulator.h"   // emulator_is_gui_active (GUI keeps the direct path)
 #include "vk_texture_loader.h" // VkTex_GetSolidWhite (Plan 6 - GUI solid quads);
                                // VkArt_* per-game artwork cache (Plan 8)
@@ -111,6 +114,15 @@ static VectorPostVK g_vectorPost;
 static bool         s_vecPostInit = false;
 static bool         s_vecPostFailed = false;
 static bool         s_trailClearPending = true;
+
+// Textured vector shots (Plan 9): with config.shots_textured set, add_tex
+// diverts every shot into the CPU txdata list that only GL drew - shots were
+// completely invisible under VK. ShotDrawVK records that list into the beam
+// RT right after the beams (the GL fbo1 analog), so shots pick up glow/
+// trail/artwork. Init rides EnsureVectorPost (pipeline is built against the
+// beam RT's format); its failure only disables shots, never the whole chain.
+static ShotDrawVK g_shotDraw;
+static bool       s_shotInit = false;
 
 // GUI starfield (Plan 6 Task 1): a second, dedicated FpolyVK instance draws
 // the front-end GUI's point-sprite stars. Kept separate from g_fpoly (the
@@ -346,6 +358,15 @@ static void EnsureVectorPost(void)
 	s_vecPostInit = true;
 	LOG_INFO("vkchain: vector post chain online (beam RT %dx%d, trail+glow)",
 		g_vectorPost.BeamDim(), g_vectorPost.BeamDim());
+
+	// Textured shots (Plan 9): non-fatal - a failure just means shots fall
+	// back to invisible (the pre-Plan-9 state) while everything else works.
+	ShotDrawVKCreateInfo sci{};
+	sci.colorFormat = g_vectorPost.BeamFormat();
+	if (g_shotDraw.Init(g_vk, &sci))
+		s_shotInit = true;
+	else
+		LOG_ERROR("vkchain: ShotDrawVK init failed; textured shots disabled");
 }
 
 // Set when a swapchain recreate attempt fails (window minimized, mid-drag,
@@ -642,6 +663,11 @@ void vkchain_shutdown(void)
 		s_vecPostInit = false;
 	}
 	s_vecPostFailed = false;
+	if (s_shotInit)
+	{
+		g_shotDraw.Shutdown(g_vk);
+		s_shotInit = false;
+	}
 	if (s_guiPointsInit)
 	{
 		g_guiPoints.Shutdown(g_vk);
@@ -961,6 +987,24 @@ void vkchain_render(void)
 			g_vectorPost.BeginBeamPass(g_vk, cmd);
 			g_vectorDrawRT.Record(g_vk, cmd, g_vk.frameIndex, proj, additive,
 				(uint32_t)g_vectorPost.BeamDim(), (uint32_t)g_vectorPost.BeamDim());
+			// Textured shots (Plan 9): the GL analog draws texlist right
+			// after beam_draw_all into fbo1 with the same projection
+			// (opengl_renderer.cpp: draw_textured_shots(proj)). Same here:
+			// into the beam RT, so shots get glow/trail/artwork. Skipped
+			// when the game has no shot texture - GL samples an incomplete
+			// texture there and shows nothing either.
+			if (s_shotInit && config.shots_textured)
+			{
+				int shotVerts = 0;
+				const txdata* shots = tex_shot_verts(&shotVerts);
+				VkTexture* shotTex = VkArt_GetShotTex();
+				if (shots && shotVerts > 0 && shotTex)
+					g_shotDraw.Record(g_vk, cmd, g_vk.frameIndex, proj,
+						shots, (uint32_t)shotVerts,
+						shotTex->view, shotTex->sampler,
+						(uint32_t)g_vectorPost.BeamDim(),
+						(uint32_t)g_vectorPost.BeamDim());
+			}
 			g_vectorPost.EndBeamPass(g_vk, cmd);
 			g_vectorPost.RecordPost(g_vk, cmd, g_vk.frameIndex,
 				config.vectrail, config.vecglow, s_trailClearPending);

@@ -83,6 +83,11 @@ void VkArt_LoadForGame(VkContext& ctx, const struct artworks* p);
 // VkArt_LoadForGame / VkArt_FreeAll.
 VkTexture* VkArt_Get(int slot);
 
+// Per-game GAME_TEX slot 0 - the textured-shot sprite (shot.png /
+// cineshot.png), consumed by ShotDrawVK (Plan 9). nullptr when the game has
+// none (GL draws black/invisible shots there too). Same lifetime as VkArt_Get.
+VkTexture* VkArt_GetShotTex(void);
+
 // Destroys the current per-game artwork set (call device-idle).
 void VkArt_FreeAll(VkContext& ctx);
 

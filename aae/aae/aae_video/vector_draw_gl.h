@@ -21,3 +21,9 @@ public:
 
 rgb_t modulate_color(rgb_t col, int intensity, int gain);
 void  draw_textured_shots(const aae::math::mat4& proj);
+
+// VK-chain read-only view of the frame's textured-shot list (GL draws it
+// itself via draw_textured_shots above). 6 vertices per shot; cleared each
+// frame by cache_clear(). Header is GL-free (colordefs + MathUtils only),
+// so the VK TU can include it without header-leak concerns.
+const txdata* tex_shot_verts(int* count);
