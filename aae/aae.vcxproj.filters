@@ -355,6 +355,9 @@
     <ClCompile Include="aae\aae_video_vk\fast_poly_vk.cpp">
       <Filter>Source Files\aae\aae_video_vk</Filter>
     </ClCompile>
+    <ClCompile Include="aae\aae_video_vk\layout_vk.cpp">
+      <Filter>Source Files\aae\aae_video_vk</Filter>
+    </ClCompile>
     <ClCompile Include="aae\aae_video_vk\render_target_vk.cpp">
       <Filter>Source Files\aae\aae_video_vk</Filter>
     </ClCompile>
@@ -861,6 +864,9 @@
     <ClInclude Include="aae\aae_video_vk\fast_poly_vk.h">
       <Filter>Source Files\aae\aae_video_vk</Filter>
     </ClInclude>
+    <ClInclude Include="aae\aae_video_vk\layout_vk.h">
+      <Filter>Source Files\aae\aae_video_vk</Filter>
+    </ClInclude>
     <ClInclude Include="aae\aae_video_vk\render_target_vk.h">
       <Filter>Source Files\aae\aae_video_vk</Filter>
     </ClInclude>
@@ -1043,6 +1049,9 @@
       <Filter>Shaders\vk</Filter>
     </CustomBuild>
     <CustomBuild Include="shaders\vk\vector_shot_vk.frag">
+      <Filter>Shaders\vk</Filter>
+    </CustomBuild>
+    <CustomBuild Include="shaders\vk\layout_quad_vk.frag">
       <Filter>Shaders\vk</Filter>
     </CustomBuild>
     <CustomBuild Include="shaders\vk\crt_post_vk.vert">
