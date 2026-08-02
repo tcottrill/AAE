@@ -132,8 +132,14 @@ void setup_config() {
     config.debug = get_config_int("main", "debug", 0);
     {
         // Value is expected lowercase in the ini, matching house style.
-        const char* r = get_config_string("main", "renderer", "opengl");
-        config.renderer = (r && strcmp(r, "vulkan") == 0) ? RENDERER_VULKAN : RENDERER_OPENGL;
+        // Default is now "vulkan" (Phase 4b): the VK chain reached parity with
+        // GL on Windows and runs on Linux. init_gl() falls back to OpenGL
+        // automatically - once, with a popup - if Vulkan init fails, so a
+        // machine without a usable Vulkan driver still starts.
+        const char* r = get_config_string("main", "renderer", "vulkan");
+        config.renderer = (r && strcmp(r, "opengl") == 0) ? RENDERER_OPENGL : RENDERER_VULKAN;
+        // What the VIDEO menu edits; applies at the next launch (see config.h).
+        config.renderer_pending = config.renderer;
         LOG_INFO("Config: renderer=%s", (config.renderer == RENDERER_VULKAN) ? "vulkan" : "opengl");
     }
     config.vk_validation = get_config_int("main", "vk_validation", 0);

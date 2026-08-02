@@ -562,6 +562,11 @@ void MenuManager::SaveConfigIfRequired(MenuID fromId) {
             GetWindowSetup().borderlessFullscreen ? 1 : 0, 0);
         my_set_config_string("main", "game_aspect",
             config.game_aspect ? config.game_aspect : "AUTO", inGui ? 0 : gamenum);
+        // Renderer is a machine-level choice and always global (path 0).
+        // The PENDING value is what gets written - the live one never changes
+        // mid-session (see BuildVideoMenu's RENDERER item).
+        my_set_config_string("main", "renderer",
+            (config.renderer_pending == RENDERER_VULKAN) ? "vulkan" : "opengl", 0);
         my_set_config_int("main", "screenw",     config.screenw,   0);
         my_set_config_int("main", "screenh",     config.screenh,   0);
         my_set_config_int("main", "gamma",       config.gamma,     0);
@@ -730,6 +735,35 @@ void MenuManager::BuildVideoMenu() {
         fs.hasLeft  = []() { return GetWindowSetup().borderlessFullscreen; };
         fs.hasRight = []() { return !GetWindowSetup().borderlessFullscreen; };
         m_items.push_back(fs);
+    }
+
+    // RENDERER: which graphics backend starts NEXT run.
+    //
+    // Deliberately edits config.renderer_pending, never config.renderer:
+    // init_gl() latches the live value on every game load, so flipping it
+    // mid-session would try to switch APIs against a window whose context was
+    // created for the other one at startup. The value display says so, and
+    // SaveConfigIfRequired writes it to aae.ini [main] renderer globally.
+    {
+        MenuItem rend;
+        rend.label = "RENDERER";
+        rend.getValueDisplay = []() {
+            const bool vk = (config.renderer_pending == RENDERER_VULKAN);
+            // Flag a pending change so the user knows a restart is needed.
+            const bool changed = (config.renderer_pending != config.renderer);
+            return std::string(vk ? "VULKAN" : "OPENGL") +
+                   (changed ? " (NEXT RUN)" : "");
+        };
+        rend.onAdjust = [](int dir) {
+            (void)dir;   // two states: either direction toggles
+            config.renderer_pending =
+                (config.renderer_pending == RENDERER_VULKAN) ? RENDERER_OPENGL
+                                                             : RENDERER_VULKAN;
+        };
+        rend.onActivate = []() {};
+        rend.hasLeft  = []() { return config.renderer_pending == RENDERER_VULKAN; };
+        rend.hasRight = []() { return config.renderer_pending == RENDERER_OPENGL; };
+        m_items.push_back(rend);
     }
 
     // Resolution preset binding. Static so the index survives redraws.

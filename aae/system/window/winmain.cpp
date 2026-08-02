@@ -677,10 +677,13 @@ void ParseCommandLineArgs(WindowSetup& config, Win32WindowState& win32Config)
 // -----------------------------------------------------------------------------
 static bool EarlyRendererIsVulkan(void)
 {
-	bool vulkan = false;
-	const char* r = get_config_string("main", "renderer", "opengl");
-	if (r && strcmp(r, "vulkan") == 0)
-		vulkan = true;
+	// Default "vulkan" (Phase 4b) - must match config.cpp's default exactly,
+	// or the window layer and the dispatch would disagree about which API the
+	// window was created for.
+	bool vulkan = true;
+	const char* r = get_config_string("main", "renderer", "vulkan");
+	if (r && strcmp(r, "opengl") == 0)
+		vulkan = false;
 
 	// Cmdline override, same precedence as the dispatch.
 	int argc = 0;

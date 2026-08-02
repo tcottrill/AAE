@@ -76,7 +76,15 @@ typedef struct {
 	int hack;
 	int cheat;
 	int debug;
-	int renderer;         // RENDERER_OPENGL (default) or RENDERER_VULKAN
+	int renderer;         // RENDERER_VULKAN (default) or RENDERER_OPENGL
+	// The VIDEO menu's RENDERER item edits THIS, never `renderer` above.
+	// init_gl() latches s_active from config.renderer on EVERY game load, so
+	// changing the live value mid-session would try to switch chains at the
+	// next launch - impossible, because the window and its context were
+	// created for one API at startup (winmain's EarlyRendererIsVulkan). This
+	// pending value is written to aae.ini on menu exit and only takes effect
+	// on the next run, which is exactly what the menu tells the user.
+	int renderer_pending;
 	int vk_validation;    // [main] vk_validation: 1 = enable Vulkan validation layer (default 0)
 	int debug_profile_code;
 	int audio_force_resample;
