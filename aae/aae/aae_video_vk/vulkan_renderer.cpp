@@ -77,6 +77,36 @@ static bool     s_fpolyRebuildPending = false;
 // mip cascade, not from rendering oversized and downscaling).
 static RenderTargetVK s_rtGame;
 
+// ---------------------------------------------------------------------------
+// System-rotation output target (-ror / -rol / 180, config.system_rotation).
+//
+// GL does display-time rotation with ONE quad: everything (vector composite,
+// artwork layers, UI overlays) lands in the square 1024x1024 fbo4 and
+// end_render_fbo4 blits it through Rect2, whose UpdateScreenRect swaps the
+// quad's per-corner UVs (texrect.cpp indices[32]). This RT is the VK mirror
+// of fbo4 for exactly that purpose, and it exists ONLY while a rotation is
+// configured: at rotation 0 nothing below is created, entered or drawn, and
+// every pre-rotation code path runs untouched.
+//
+// Format: created with colorFormat UNDEFINED, i.e. the SWAPCHAIN format. That
+// is load-bearing, not incidental - g_vectorDraw builds its pipelines against
+// ctx.swapchainFormat once at init and cannot legally record into a pass with
+// any other format, and the UI overlays must record inside this RT to rotate
+// with the frame (GL parity). ScreenQuadVK and VectorPostVK pick their
+// variants off VK_ActiveColorFormat, so they simply reuse the swapchain
+// variants they already built. s_rtRotFormat catches a swapchain format
+// change across a recreate and forces a rebuild.
+static RenderTargetVK s_rtRot;
+static VkFormat       s_rtRotFormat = VK_FORMAT_UNDEFINED;
+static bool           s_rtRotFailed = false;
+// True only while draws are being recorded INTO s_rtRot. The overlay seams
+// (vkchain_gui_draw_quad / vkchain_ui_dim_quad / ComputeUiOverlayMap) consult
+// it to switch from the window letterbox to the square canvas.
+static bool           s_rotTargetActive = false;
+// The square canvas edge - GL's fbo4 size, and the space every overlay and
+// composite coordinate below is already expressed in.
+static const int      kRotCanvas = 1024;
+
 // RT->swapchain composite quad. Game-independent (per-format pipeline
 // variants are built lazily), so it is initialized ONCE when the VK chain
 // comes up (vkchain_init's first-run path only -- no per-frame retry, so a
@@ -167,6 +197,69 @@ static bool GameIsVector(void)
 {
 	return Machine && Machine->gamedrv &&
 		(Machine->gamedrv->video_attributes & VIDEO_TYPE_VECTOR) != 0;
+}
+
+// ---------------------------------------------------------------------------
+// VkRotationIndex
+// The VK mirror of opengl_renderer.cpp's orientation_to_rect2_rotation (which
+// is static there; the GL chain is not touched by this file). Converts the
+// user's display-time rotation to the Rect2 index:
+//   0 = none, 1 = rotate right (CW 90), 2 = rotate left (CCW 90), 3 = 180.
+// ONLY config.system_rotation feeds it: the DRIVER rotation describes the
+// cabinet's monitor and is already baked into the game's coordinate
+// generation (vector_update's beam transform; raster_emit's orientation
+// loop), so it must not be applied a second time at display time.
+// ---------------------------------------------------------------------------
+static int VkRotationIndex(void)
+{
+	switch (config.system_rotation)
+	{
+	case ROT90:  return 1;   // -ror
+	case ROT270: return 2;   // -rol
+	case ROT180: return 3;
+	default:     return 0;
+	}
+}
+
+// Lazily creates (or rebuilds after a swapchain format change) the square
+// output RT. Returns false if it is unavailable, in which case the caller
+// falls back to its normal unrotated path - a wrong-way-up picture beats a
+// black screen, and the failure is logged once.
+static bool EnsureRotTarget(void)
+{
+	if (s_rtRotFailed)
+		return false;
+	if (s_rtRot.IsValid() && s_rtRotFormat == g_vk.swapchainFormat)
+		return true;
+
+	if (s_rtRot.IsValid())
+	{
+		// Format changed under a swapchain recreate: the pipelines recorded
+		// into this RT are keyed on the format, so it must be rebuilt. Never
+		// mid-frame (the destroy would race in-flight reads).
+		if (s_frameOpen)
+			return false;
+		if (g_vk.device && g_vk.vkDeviceWaitIdle_)
+			g_vk.vkDeviceWaitIdle_(g_vk.device);
+		s_rtRot.Shutdown(g_vk);
+	}
+
+	RenderTargetVKCreateInfo ci{};
+	ci.width = kRotCanvas;
+	ci.height = kRotCanvas;
+	ci.filter = rtFilterVK::Linear;
+	ci.colorFormat = VK_FORMAT_UNDEFINED;   // = the swapchain format (see s_rtRot)
+	ci.mipLevels = 1;                       // blitted 1:1-ish, never minified hard
+	if (!s_rtRot.Init(g_vk, ci))
+	{
+		s_rtRotFailed = true;
+		LOG_ERROR("vkchain: rotation output RT init failed; system rotation disabled this session");
+		return false;
+	}
+	s_rtRotFormat = g_vk.swapchainFormat;
+	LOG_INFO("vkchain: rotation output RT online (%dx%d, swapchain format %d)",
+		kRotCanvas, kRotCanvas, (int)s_rtRotFormat);
+	return true;
 }
 
 // Column-major 4x4 ortho (same math as FpolyVK::MakeOrtho / aae::math::ortho).
@@ -271,6 +364,19 @@ static GuiBeamMap ComputeUiOverlayMap(void)
 	GuiBeamMap m{};
 	const int sw = (int)g_vk.swapchainExtent.width;
 	const int sh = (int)g_vk.swapchainExtent.height;
+
+	// Recording into the square rotation RT: the canvas IS the letterbox, so
+	// the identity fit is the whole target. This is exactly GL's rotated
+	// overlay path, which draws render_ui_overlays into fbo4's full 0..1024
+	// space and lets the (rotated) screen_rect blit do the letterboxing.
+	if (s_rotTargetActive)
+	{
+		m.lx = 0.0f; m.ly = 0.0f;
+		m.vw = (float)kRotCanvas; m.vh = (float)kRotCanvas;
+		m.grL = 0.0f; m.grR = 1024.0f;
+		m.grB = 0.0f; m.grT = 1024.0f;
+		return m;
+	}
 
 	float aspect = 4.0f / 3.0f;
 	if (GameIsVector())
@@ -678,6 +784,11 @@ void vkchain_shutdown(void)
 	VkTex_ShutdownCache(g_vk);   // GUI solid-white texture + any cached loads
 	if (s_rtGame.IsValid())
 		s_rtGame.Shutdown(g_vk);
+	if (s_rtRot.IsValid())
+		s_rtRot.Shutdown(g_vk);
+	s_rtRotFormat = VK_FORMAT_UNDEFINED;
+	s_rtRotFailed = false;
+	s_rotTargetActive = false;
 	s_fpolyFailed = false;
 	s_fpolyRebuildPending = false;
 	s_rasterW = 0;
@@ -789,8 +900,11 @@ void vkchain_set_render(void)
 //  - the dim rect covers exactly the letterbox box; GL's raster-window dim
 //    covers the full window height of the 4:3 strip (same thing whenever
 //    the window is 4:3 or wider);
-//  - system-rotated raster games get upright overlays (the VK raster
-//    composite is non-rotated, so upright IS the match for its output).
+//
+// System rotation: both game types now route this function's output through
+// the square s_rtRot canvas and one rotated blit, so the overlays turn with
+// the game exactly as they do under GL (which gets it free from fbo4). The
+// switch is s_rotTargetActive, consulted here and by the two quad seams.
 // ---------------------------------------------------------------------------
 static void RecordUiOverlays(void)
 {
@@ -804,8 +918,11 @@ static void RecordUiOverlays(void)
 	render_ui_overlays(1024, 768, false);
 	s_uiOverlayActive = false;
 
-	const int sw = (int)g_vk.swapchainExtent.width;
-	const int sh = (int)g_vk.swapchainExtent.height;
+	// Target framebuffer: the square rotation RT while it is open (so the
+	// overlays turn with the frame, GL's fbo4 behavior), the swapchain
+	// otherwise. The map above follows the same switch.
+	const int sw = s_rotTargetActive ? kRotCanvas : (int)g_vk.swapchainExtent.width;
+	const int sh = s_rotTargetActive ? kRotCanvas : (int)g_vk.swapchainExtent.height;
 	if (s_vectorInit && sw > 0 && sh > 0)
 	{
 		// Fold letterbox + default box + the single V flip into one ortho by
@@ -824,8 +941,13 @@ static void RecordUiOverlays(void)
 		MakeOrthoColMajor(ol, orr, ob, ot, proj);
 
 		VkCommandBuffer cmd = g_vk.cmdBuffers[g_vk.frameIndex];
+		// 0/0 = record against the swapchain extent; the rotated path names
+		// the square RT explicitly. g_vectorDraw's pipelines are built for the
+		// swapchain format, which is exactly what the rotation RT carries.
 		g_vectorDraw.Record(g_vk, cmd, g_vk.frameIndex, proj,
-			/*additive=*/false, 0, 0);
+			/*additive=*/false,
+			s_rotTargetActive ? (uint32_t)kRotCanvas : 0u,
+			s_rotTargetActive ? (uint32_t)kRotCanvas : 0u);
 	}
 
 	// Drain the overlay strokes (or the orphaned queue if Record was
@@ -835,13 +957,24 @@ static void RecordUiOverlays(void)
 
 void vkchain_render(void)
 {
+	// Display-time system rotation (-ror / -rol / 180). Resolved once here so
+	// every branch below agrees, and so the whole feature is one compare away
+	// from being provably inert: at rot == 0 every `rotActive` below is false
+	// and the chain records exactly what it recorded before this feature.
+	const int rot = VkRotationIndex();
+	// Set when the rotated path has already run the UI overlays (inside the
+	// output RT, so they turn with the frame); stops the tail of this function
+	// running render_ui_overlays a second time.
+	bool uiOverlaysDone = false;
+
 	// Raster path (Plan 4 Task 3): suspend the swapchain frame pass, render
 	// the game into the mipped offscreen RT (FpolyVK), regenerate its mip
 	// chain, resume the frame pass, and composite the RT into the aspect-fit
 	// letterbox rect via ScreenQuadVK. The scanline/CRT passes (Plan 4
 	// Tasks 4-5) slot in between the game draw and the composite; the layout
-	// system (Task 6) replaces the RecordRect composite (and brings
-	// rotation/aspect overrides -- this composite is non-rotated).
+	// system (Task 6) replaces the RecordRect composite (and brings the
+	// aspect overrides). Display-time system rotation IS handled here now:
+	// the composite quad takes the inverted aspect box and rotated corner UVs.
 	// Vector (Plan 5) and GUI (Plan 6) follow.
 	if (s_frameOpen && GameIsRaster())
 	{
@@ -884,7 +1017,18 @@ void vkchain_render(void)
 			// post-orientation game rect into the swapchain, centered.
 			// RecordRect takes the rect in y-up screen pixels, but a
 			// centered rect is symmetric, so the same offsets serve.
-			const float gameAspect = (float)s_rasterW / (float)s_rasterH;
+			//
+			// System rotation: s_rasterW/H are post-DRIVER-orientation only
+			// (raster_emit reads Machine->drv->rotation, which run_game never
+			// XORs the user rotation into - that goes to Machine->orientation),
+			// so a 90-degree system rotation turns the image at DISPLAY time
+			// here: the fitted box takes the INVERTED aspect and the composite
+			// quad samples with rotated corner UVs. Same split as the GL chain,
+			// where the game image is emitted driver-oriented into the raster
+			// FBO and Layout_Render turns the whole composition.
+			float gameAspect = (float)s_rasterW / (float)s_rasterH;
+			if (rot == 1 || rot == 2)
+				gameAspect = 1.0f / gameAspect;
 			const int sw = (int)g_vk.swapchainExtent.width;
 			const int sh = (int)g_vk.swapchainExtent.height;
 			int vw = sw, vh = (int)(sw / gameAspect + 0.5f);
@@ -903,7 +1047,40 @@ void vkchain_render(void)
 				s_rtGame.VK_GetColorView(), s_rtGame.VK_GetSampler(),
 				lx, ly, lx + (float)vw, ly + (float)vh,
 				(uint32_t)sw, (uint32_t)sh,
-				/*flipUV_Y=*/false, RGB_WHITE);
+				/*flipUV_Y=*/false, RGB_WHITE, rot);
+
+			// Rotated raster overlays (GL final_render_raster parity): GL
+			// routes the menu/PAUSED/FPS through fbo4 + the rotated
+			// screen_rect blit when system-rotated, so they turn with the
+			// game. Same shape here - overlays into the square output RT
+			// (cleared transparent), then ONE rotated premultiplied-over
+			// blit. Non-rotated raster keeps the crisp direct draw below.
+			if (rot != 0 && EnsureRotTarget())
+			{
+				// The overlay strokes must be the ONLY thing in the beam
+				// queue when RecordUiOverlays records it (the game path
+				// normally drains just below this branch).
+				cache_clear();
+				vector_clear_list();
+
+				VK_SuspendFramePass(g_vk, cmd);
+				s_rtRot.Begin(g_vk, cmd, /*clear=*/true, 0.0f, 0.0f, 0.0f, 0.0f);
+				s_rotTargetActive = true;
+				RecordUiOverlays();
+				s_rotTargetActive = false;
+				uiOverlaysDone = true;
+				s_rtRot.End(g_vk, cmd);
+				VK_ResumeFramePass(g_vk, cmd, s_imageIndex);
+
+				// Letterbox for the blit = the same window fit the game quad
+				// used, so the overlay canvas lands exactly over the game
+				// (GL's screen_rect covers the fbo4 square identically).
+				g_screenQuad.RecordRect(g_vk, cmd, g_vk.frameIndex,
+					s_rtRot.VK_GetColorView(), s_rtRot.VK_GetSampler(),
+					lx, ly, lx + (float)vw, ly + (float)vh,
+					(uint32_t)sw, (uint32_t)sh,
+					/*flipUV_Y=*/false, RGB_WHITE, rot, SQBlendVK::PremulOver);
+			}
 		}
 	}
 
@@ -963,10 +1140,29 @@ void vkchain_render(void)
 
 		const GuiBeamMap m = ComputeGuiBeamMap();
 
+		// System rotation (GL: everything lands in the square fbo4 and ONE
+		// Rect2 blit turns it). Same here: the composite AND the UI overlays
+		// record into the square output RT with the identity square fit, then
+		// a single rotated quad puts that canvas in the window's letterbox
+		// box. m.lx/ly/vw/vh is already the POST-rotation letterbox - Step 12
+		// of run_game stores the rotated aspect in GetWindowSetup(), which is
+		// the same source GL's screen_rect reads - so the box is correct
+		// as-is and only the content inside it needs turning.
+		// Requires the composite blitter; if either the RT or ScreenQuadVK is
+		// unavailable this stays false and the untouched non-rotated path runs.
+		const bool rotActive = (rot != 0) && s_screenQuadInit && EnsureRotTarget();
+
 		// Mirror glchain_render's !paused guard; unlike the direct path,
 		// pause here shows the RETAINED frame (composite below still runs) -
 		// parity with GL's frozen fbo1 restored, as the Plan 5 comment
 		// promised for this task.
+		// Tracks whether the swapchain pass is currently suspended. The
+		// rotated path keeps it suspended past the beam work so the output RT
+		// pass can open straight away; when paused it opens the suspension
+		// itself (the composite must still be rebuilt every frame - the
+		// overlays move while the game is frozen).
+		bool passSuspended = false;
+
 		if (!paused && sw > 0 && sh > 0)
 		{
 			// CPU-only conversion, same as the direct path (see its comment).
@@ -984,6 +1180,7 @@ void vkchain_render(void)
 				(Machine->drv->video_attributes & VECTOR_USES_COLOR) != 0;
 
 			VK_SuspendFramePass(g_vk, cmd);
+			passSuspended = true;
 			g_vectorPost.BeginBeamPass(g_vk, cmd);
 			g_vectorDrawRT.Record(g_vk, cmd, g_vk.frameIndex, proj, additive,
 				(uint32_t)g_vectorPost.BeamDim(), (uint32_t)g_vectorPost.BeamDim());
@@ -1022,10 +1219,78 @@ void vkchain_render(void)
 				g_vectorPost.RecordFrameBuild(g_vk, cmd, g_vk.frameIndex,
 					m.grL, m.grR, m.grB, m.grT,
 					config.vectrail, config.vecglow, art);
-			VK_ResumeFramePass(g_vk, cmd, s_imageIndex);
+			// The rotated path stays suspended: its output RT is another
+			// offscreen pass, and resuming only to suspend again would be a
+			// pointless swapchain pass open/close.
+			if (!rotActive)
+			{
+				VK_ResumeFramePass(g_vk, cmd, s_imageIndex);
+				passSuspended = false;
+			}
 		}
 
-		if (sw > 0 && sh > 0)
+		if (sw > 0 && sh > 0 && rotActive)
+		{
+			// ---- Rotated composite: build GL's fbo4 in s_rtRot, then blit.
+			//
+			// The letterbox collapses to the identity square (lx=ly=0,
+			// vw=vh=1024), which turns every mapped coordinate below back
+			// into the plain fbo4-space value GL uses; the game_rect box is
+			// unchanged (it IS an fbo4-space rect). The final quad then does
+			// what end_render_fbo4 does.
+			if (!passSuspended)
+			{
+				VK_SuspendFramePass(g_vk, cmd);
+				passSuspended = true;
+			}
+			// Clear transparent, like GL's set_render_fbo4 (glClearColor 0,0,0,0).
+			s_rtRot.Begin(g_vk, cmd, /*clear=*/true, 0.0f, 0.0f, 0.0f, 0.0f);
+			s_rotTargetActive = true;
+
+			if (artActive && g_vectorPost.FrameReady())
+			{
+				g_vectorPost.RecordCompositeLayered(g_vk, cmd, g_vk.frameIndex,
+					0.0f, 0.0f, (float)kRotCanvas, (float)kRotCanvas,
+					m.grL, m.grR, m.grB, m.grT, art,
+					kRotCanvas, kRotCanvas);
+			}
+			else
+			{
+				// Same expression as the unrotated branch with lx=ly=0 and
+				// vw=vh=1024 substituted, i.e. the game_rect quad in fbo4
+				// space, y-down.
+				g_vectorPost.RecordComposite(g_vk, cmd, g_vk.frameIndex,
+					m.grL, (float)kRotCanvas - m.grT,
+					m.grR, (float)kRotCanvas - m.grB,
+					config.vectrail, config.vecglow,
+					kRotCanvas, kRotCanvas);
+			}
+
+			// UI overlays go in the SAME canvas so they turn with the frame -
+			// that is precisely what GL gets for free by drawing them into
+			// fbo4. The game beams were consumed by g_vectorDrawRT above but
+			// not yet drained, and RecordUiOverlays records whatever is in the
+			// queue, so drain first (the tail of this function does the same
+			// clears for the unrotated paths).
+			cache_clear();
+			vector_clear_list();
+			RecordUiOverlays();
+			uiOverlaysDone = true;
+
+			s_rotTargetActive = false;
+			s_rtRot.End(g_vk, cmd);
+			VK_ResumeFramePass(g_vk, cmd, s_imageIndex);
+			passSuspended = false;
+
+			// GL end_render_fbo4: blit the square canvas onto the letterbox
+			// rect with blending DISABLED and the rotation's corner UVs.
+			g_screenQuad.RecordRect(g_vk, cmd, g_vk.frameIndex,
+				s_rtRot.VK_GetColorView(), s_rtRot.VK_GetSampler(),
+				m.lx, m.ly, m.lx + m.vw, m.ly + m.vh,
+				(uint32_t)sw, (uint32_t)sh,
+				/*flipUV_Y=*/false, RGB_WHITE, rot, SQBlendVK::None);
+		}
+		else if (sw > 0 && sh > 0)
 		{
 			if (artActive && g_vectorPost.FrameReady())
 			{
@@ -1050,6 +1315,16 @@ void vkchain_render(void)
 					x0, (float)sh - yTopUp, x1, (float)sh - yBotUp,
 					config.vectrail, config.vecglow);
 			}
+		}
+
+		// Safety net: a suspension can only survive to here if rotActive was
+		// true and the sw/sh guard above went false between the two blocks
+		// (impossible today - same values, same frame - but an unmatched
+		// suspend would leave the frame with no open pass).
+		if (passSuspended)
+		{
+			VK_ResumeFramePass(g_vk, cmd, s_imageIndex);
+			passSuspended = false;
 		}
 	}
 	// Vector path (Plan 5 Task 1): draw the frame's beam batches direct to
@@ -1174,7 +1449,13 @@ void vkchain_render(void)
 	// including paused ones (GL parity: final_render always runs the overlay
 	// draw). Runs after the clears above so the overlay Record only ever
 	// consumes overlay strokes, never game beams.
-	RecordUiOverlays();
+	//
+	// Skipped when a rotated branch already ran them inside the output RT:
+	// render_ui_overlays() also drives video_loop() frame logic (menu
+	// auto-pause, LED refresh), so calling it twice in a frame would
+	// double-step that logic, not just double-draw.
+	if (!uiOverlaysDone)
+		RecordUiOverlays();
 }
 
 void vkchain_swap_buffers(void)
@@ -1354,8 +1635,10 @@ void vkchain_gui_draw_quad(float x, float y, float width, float height, rgb_t co
 	const float B = (y0 < y1) ? y0 : y1;
 	const float T = (y0 < y1) ? y1 : y0;
 
-	const uint32_t sw = g_vk.swapchainExtent.width;
-	const uint32_t sh = g_vk.swapchainExtent.height;
+	// Target dims follow the map above: the square rotation RT while it is
+	// open, the swapchain otherwise.
+	const uint32_t sw = s_rotTargetActive ? (uint32_t)kRotCanvas : g_vk.swapchainExtent.width;
+	const uint32_t sh = s_rotTargetActive ? (uint32_t)kRotCanvas : g_vk.swapchainExtent.height;
 	VkCommandBuffer cmd = g_vk.cmdBuffers[g_vk.frameIndex];
 
 	g_screenQuad.RecordRect(g_vk, cmd, g_vk.frameIndex,
@@ -1385,11 +1668,13 @@ void vkchain_ui_dim_quad(int alpha)
 	if (alpha > 255) alpha = 255;
 
 	const GuiBeamMap m = ComputeUiOverlayMap();
+	const uint32_t tw = s_rotTargetActive ? (uint32_t)kRotCanvas : g_vk.swapchainExtent.width;
+	const uint32_t th = s_rotTargetActive ? (uint32_t)kRotCanvas : g_vk.swapchainExtent.height;
 	VkCommandBuffer cmd = g_vk.cmdBuffers[g_vk.frameIndex];
 	g_screenQuad.RecordRect(g_vk, cmd, g_vk.frameIndex,
 		white->view, white->sampler,
 		m.lx, m.ly, m.lx + m.vw, m.ly + m.vh,
-		g_vk.swapchainExtent.width, g_vk.swapchainExtent.height,
+		tw, th,
 		/*flipUV_Y=*/false, MAKE_RGBA(0, 0, 0, alpha));
 }
 
