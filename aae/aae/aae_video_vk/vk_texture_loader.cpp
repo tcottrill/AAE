@@ -4,13 +4,18 @@
 // -----------------------------------------------------------------------------
 #include "vk_texture_loader.h"
 #include "sys_log.h"
-#include "aae_fileio.h"   // load_zip_file / get_last_zip_file_size
+#include "aae_fileio.h"      // load_zip_file / get_last_zip_file_size / file_exists
+#include "aae_mame_driver.h" // struct artworks, art_loaded[], Machine, ART_TEX
+#include "config.h"          // config.exartpath + artwork/overlay/bezel flags
+#include "menu.h"            // g_*Available menu flags
+#include "path_helper.h"     // getpathM
 
 // Header-only include; STB_IMAGE_IMPLEMENTATION is compiled exactly once,
 // in system/graphics/sys_texture.cpp - do NOT define it again here.
 #include "stb_image.h"
 
 #include <cstdlib>        // free()
+#include <filesystem>
 #include <string>
 #include <unordered_map>
 
@@ -121,4 +126,167 @@ void VkTex_ShutdownCache(VkContext& ctx)
         s_solidWhiteInit = false;
     }
     s_solidWhiteFailed = false;
+}
+
+// -----------------------------------------------------------------------------
+// Per-game legacy artwork (see header). Mirrors texture_handler.cpp's
+// make_single_bitmap / load_artwork for the Vulkan chain.
+// -----------------------------------------------------------------------------
+namespace
+{
+    VkTexture s_artTex[8]{};
+    bool      s_artHave[8]{};
+
+    // Path-by-path mirror of make_single_bitmap (texture_handler.cpp):
+    //   1a. ZIP archive in config.exartpath
+    //   1b. unzipped <exartpath>\<gamename>\<filename>
+    //   2a. ZIP archive in the default "artwork" folder (next to the exe)
+    //   2b. unzipped artwork\<gamename>\<filename>
+    bool VkArt_LoadSingle(VkContext& ctx, VkTexture& out,
+                          const char* filename, const char* archname)
+    {
+        auto join_path = [](const std::string& root, const char* child) -> std::string {
+            if (root.empty() || !child || !child[0])
+                return std::string();
+            std::string p = root;
+            if (p.back() != '\\' && p.back() != '/')
+                p.push_back('\\');
+            p.append(child);
+            return p;
+        };
+
+        // No stbi flip (see header) and full mip chains (GL loads art with
+        // filter=1 trilinear mips; the letterbox minifies the same way here).
+        const bool kFlipY = false;
+        const bool kMips  = true;
+
+        std::string archivePath;
+
+        if (config.exartpath && config.exartpath[0] != '\0')
+        {
+            archivePath = join_path(config.exartpath, archname);
+            if (!archivePath.empty() && file_exists(archivePath.c_str()))
+            {
+                LOG_INFO("VkArt: loading '%s' from external archive: %s", filename, archivePath.c_str());
+                if (VkTex_Load(ctx, filename, archivePath.c_str(), kFlipY, kMips, out))
+                    return true;
+                LOG_ERROR("VkArt: external archive found but load failed for '%s'", filename);
+            }
+
+            if (Machine && Machine->gamedrv && Machine->gamedrv->name)
+            {
+                std::string folderBase = join_path(config.exartpath, Machine->gamedrv->name);
+                std::filesystem::path fullFilePath = std::filesystem::path(folderBase) / filename;
+                if (std::filesystem::exists(fullFilePath))
+                {
+                    LOG_INFO("VkArt: loading '%s' from external folder: %s",
+                             filename, fullFilePath.string().c_str());
+                    std::string fullPathStr = fullFilePath.string();
+                    if (VkTex_Load(ctx, fullPathStr.c_str(), nullptr, kFlipY, kMips, out))
+                        return true;
+                    LOG_ERROR("VkArt: external folder file found but load failed for '%s'", filename);
+                }
+            }
+        }
+
+        archivePath = getpathM("artwork", archname);
+        if (VkTex_Load(ctx, filename, archivePath.c_str(), kFlipY, kMips, out))
+            return true;
+
+        if (Machine && Machine->gamedrv && Machine->gamedrv->name)
+        {
+            std::string folderPath = getpathM("artwork", Machine->gamedrv->name);
+            std::filesystem::path fullFilePath = std::filesystem::path(folderPath) / filename;
+            if (std::filesystem::exists(fullFilePath))
+            {
+                std::string fullPathStr = fullFilePath.string();
+                if (VkTex_Load(ctx, fullPathStr.c_str(), nullptr, kFlipY, kMips, out))
+                    return true;
+            }
+        }
+
+        LOG_ERROR("VkArt: failed to load '%s' from all paths (external and default)", filename);
+        return false;
+    }
+}
+
+void VkArt_FreeAll(VkContext& ctx)
+{
+    for (int i = 0; i < 8; ++i)
+    {
+        if (s_artHave[i])
+        {
+            VK_DestroyTexture(ctx, s_artTex[i]);
+            s_artTex[i] = VkTexture{};
+            s_artHave[i] = false;
+        }
+    }
+}
+
+VkTexture* VkArt_Get(int slot)
+{
+    if (slot < 0 || slot >= 8 || !s_artHave[slot])
+        return nullptr;
+    return &s_artTex[slot];
+}
+
+void VkArt_LoadForGame(VkContext& ctx, const struct artworks* p)
+{
+    VkArt_FreeAll(ctx);
+
+    if (p)
+    {
+        for (int i = 0; p[i].filename != NULL; i++)
+        {
+            // FUN_TEX / GAME_TEX feed GL-only draw paths (fun screens,
+            // per-game textured shots); the VK compositor uses ART_TEX only.
+            if (p[i].type != ART_TEX)
+                continue;
+
+            const int t = p[i].target;
+            if (t < 0 || t >= 8)
+            {
+                LOG_ERROR("VkArt: bad art target %d for '%s'", t, p[i].filename);
+                continue;
+            }
+
+            if (VkArt_LoadSingle(ctx, s_artTex[t], p[i].filename, p[i].zipfile))
+            {
+                s_artHave[t] = true;
+                if (t < 6)
+                    art_loaded[t] = 1;
+            }
+            else
+            {
+                LOG_INFO("VkArt: could not load '%s' (target=%d).", p[i].filename, t);
+            }
+        }
+    }
+
+    // --- Same post-load bookkeeping as GL load_artwork: disable config flags
+    // for layers that failed so the renderer/menu never reference them. ---
+    if (!art_loaded[0] && config.artwork)
+    {
+        LOG_INFO("VkArt: backdrop not available - disabling config.artwork.");
+        config.artwork = 0;
+    }
+    if (!art_loaded[1] && config.overlay)
+    {
+        LOG_INFO("VkArt: overlay not available - disabling config.overlay.");
+        config.overlay = 0;
+    }
+    if (!art_loaded[3] && config.bezel)
+    {
+        LOG_INFO("VkArt: bezel not available - disabling config.bezel and config.artcrop.");
+        config.bezel = 0;
+        config.artcrop = 0;
+    }
+
+    g_artworkAvailable = art_loaded[0];
+    g_overlayAvailable = art_loaded[1];
+    g_bezelAvailable   = art_loaded[3];
+    g_artcropAvailable = art_loaded[3];
+
+    LOG_INFO("VkArt: availability flags: artwork=%d overlay=%d bezel=%d artcrop=%d",
+             g_artworkAvailable, g_overlayAvailable, g_bezelAvailable, g_artcropAvailable);
 }

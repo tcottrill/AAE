@@ -56,4 +56,34 @@ VkTexture* VkTex_GetSolidWhite(VkContext& ctx);
 // Call once from vkchain_shutdown, before VK_Shutdown tears down the device.
 void VkTex_ShutdownCache(VkContext& ctx);
 
+// -----------------------------------------------------------------------------
+// Per-game legacy artwork (the VK mirror of GL's art_tex[] slots - Plan 8).
+// Slots follow texture_handler.cpp load_artwork: 0 = backdrop, 1 = overlay,
+// 2 = bezel mask (unused by the compositor), 3 = bezel frame, 4 = burn.
+//
+// VkArt_LoadForGame frees the PREVIOUS game's set first - the caller must
+// guarantee no in-flight frame still references those textures (run_game's
+// load path drains the device via vkchain_load_artwork before calling this).
+// It then walks the driver's artworks table with EXACTLY the GL search order
+// (external artwork path zip / folder, then the default artwork folder zip /
+// folder) for the ART_TEX entries, uploads UNORM VkTextures, and performs the
+// same bookkeeping as GL load_artwork: art_loaded[] flags, disabling
+// config.artwork/overlay/bezel(+artcrop) for layers that failed, and the
+// g_*Available menu flags. FUN_TEX/GAME_TEX entries feed GL-only draw paths
+// and are skipped.
+//
+// Loads are NOT stbi-flipped (unlike GL): VectorPostVK's artwork uvrects
+// encode the on-screen orientation instead.
+// -----------------------------------------------------------------------------
+struct artworks;   // aae_mame_driver.h
+
+void VkArt_LoadForGame(VkContext& ctx, const struct artworks* p);
+
+// Loaded per-game artwork slot, or nullptr. Valid until the next
+// VkArt_LoadForGame / VkArt_FreeAll.
+VkTexture* VkArt_Get(int slot);
+
+// Destroys the current per-game artwork set (call device-idle).
+void VkArt_FreeAll(VkContext& ctx);
+
 #endif // VK_TEXTURE_LOADER_H
