@@ -23,6 +23,12 @@ void vkchain_gui_points_draw(const GuiPointVertex* pts, int count, float pointSi
 void vkchain_gui_points_shutdown(void);
 void vkchain_vector_hard_clear(void);
 
+// F12 screenshot (routed from snapshot() in renderer_dispatch.cpp). Latches a
+// request only - the swapchain readback runs at the next vkchain_swap_buffers,
+// because this is called mid-tick from the emulator input path with the
+// frame's render pass open. See aae_video_vk/snapshot_vk.h.
+void vkchain_request_snapshot(void);
+
 // Plan 6 Task 1: draws a solid-color, alpha-blended rect in GUI-local space
 // (VectorFont's Initialize(1024,768) coordinate frame - x centered, y-up)
 // through ScreenQuadVK::RecordRect + a 1x1 white texture. Used by

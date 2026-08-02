@@ -85,6 +85,11 @@ void glchain_vector_hard_clear_fbo1();
 void glchain_init_raster_overlay();
 void glchain_shutdown_raster_overlay();
 int  glchain_get_gl_error();
+// GL pixel source for the F12 screenshot: glReadPixels the default
+// framebuffer, flip it top-row-first, hand it to the shared writer
+// (snapshot_write_rgba8_png). Defined in fileio/texture_handler.cpp next to
+// the writer; routed from snapshot() in renderer_dispatch.cpp.
+void glchain_snapshot();
 
 // Which chain is actually live this session (RENDERER_OPENGL / RENDERER_VULKAN
 // from config.h), post Vulkan-fallback. Defined in renderer_dispatch.cpp. No

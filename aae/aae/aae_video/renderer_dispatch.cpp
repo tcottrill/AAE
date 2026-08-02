@@ -17,6 +17,7 @@
 #include "opengl_renderer.h"
 #include "sys_gl.h"
 #include "../aae_video_vk/vulkan_renderer.h"
+#include "texture_handler.h"   // snapshot() declaration + the shared PNG writer
 
 void allegro_message(const char* title, const char* message);
 
@@ -136,4 +137,22 @@ int glcode_get_gl_error()
 {
 	if (s_active == RENDERER_VULKAN) return vkchain_get_error();
 	return glchain_get_gl_error();
+}
+
+// F12 screenshot. Both chains end at the SAME writer
+// (snapshot_write_rgba8_png, fileio/texture_handler.cpp), so the filename,
+// the snap/ directory and the PNG encoding are identical between backends;
+// only the pixel source differs.
+//
+// The GL side reads the default framebuffer synchronously right here. The
+// Vulkan side cannot: this runs from the emulator's input handling mid-tick,
+// with the frame's dynamic-rendering pass open (or with no frame open at all
+// when the swapchain is deferred), and glReadPixels would resolve through a
+// NULL GLEW pointer because no GL context exists. So the VK entry point only
+// LATCHES the request; it is serviced at the next VK_EndFrame, which captures
+// the frame the user actually saw.
+void snapshot()
+{
+	if (s_active == RENDERER_VULKAN) { vkchain_request_snapshot(); return; }
+	glchain_snapshot();
 }

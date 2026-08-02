@@ -321,7 +321,20 @@ static bool CreateSwapchain(VkContext& ctx)
 	sci.imageColorSpace = chosen.colorSpace;
 	sci.imageExtent = extent;
 	sci.imageArrayLayers = 1;
+	// COLOR_ATTACHMENT is what the frame pass needs. TRANSFER_SRC is added on
+	// top ONLY when the surface advertises it, so the F12 screenshot path can
+	// vkCmdCopyImageToBuffer out of the presented image (that copy is invalid
+	// without this usage bit). supportedUsageFlags is queried rather than
+	// assumed: TRANSFER_SRC is optional per spec, and requesting an
+	// unsupported usage makes vkCreateSwapchainKHR fail outright - a lost
+	// screenshot must never cost the whole renderer.
 	sci.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+	ctx.swapchainTransferSrc = (caps.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_SRC_BIT) != 0;
+	if (ctx.swapchainTransferSrc)
+		sci.imageUsage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+	else
+		LOG_INFO("CreateSwapchain: surface does not support TRANSFER_SRC usage; "
+			"screenshots (F12) will be unavailable on this device");
 	sci.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	sci.preTransform = caps.currentTransform;
 	sci.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
@@ -941,6 +954,11 @@ bool VK_Init(VkContext& ctx, IPresentSurface& present, bool enableValidation, bo
 	ctx.vkCmdCopyBufferToImage_ = (PFN_vkCmdCopyBufferToImage)ctx.vkGetDeviceProcAddr_(ctx.device, "vkCmdCopyBufferToImage");
 	if (!ctx.vkCmdCopyBufferToImage_) LOG_ERROR("VK_Init: vkCmdCopyBufferToImage_ is NULL");
 
+	// Optional (see sys_vk.h): used only by the F12 screenshot readback, and
+	// therefore NOT in the required[] table below.
+	ctx.vkCmdCopyImageToBuffer_ = (PFN_vkCmdCopyImageToBuffer)ctx.vkGetDeviceProcAddr_(ctx.device, "vkCmdCopyImageToBuffer");
+	if (!ctx.vkCmdCopyImageToBuffer_) LOG_ERROR("VK_Init: vkCmdCopyImageToBuffer_ is NULL");
+
 	ctx.vkCmdBlitImage_ = (PFN_vkCmdBlitImage)ctx.vkGetDeviceProcAddr_(ctx.device, "vkCmdBlitImage");
 	if (!ctx.vkCmdBlitImage_) LOG_ERROR("VK_Init: vkCmdBlitImage_ is NULL");
 
@@ -956,6 +974,8 @@ bool VK_Init(VkContext& ctx, IPresentSurface& present, bool enableValidation, bo
 	// failing here lets the caller fall back to the GL backend cleanly.
 	// vkCmdBlitImage / vkGetPhysicalDeviceFormatProperties are deliberately
 	// absent from this list -- the texture builder has a 1-mip fallback.
+	// vkCmdCopyImageToBuffer likewise: it only serves the F12 screenshot,
+	// which null-checks it and reports failure.
 	{
 		const struct { const void* fn; const char* name; } required[] =
 		{

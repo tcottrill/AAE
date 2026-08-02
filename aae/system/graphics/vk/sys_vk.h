@@ -54,6 +54,15 @@ struct VkContext
     VkExtent2D swapchainExtent{ 0, 0 };
     VkFormat   swapchainFormat = VK_FORMAT_B8G8R8A8_UNORM;
 
+    // True when CreateSwapchain was able to add TRANSFER_SRC to the swapchain
+    // images' usage (i.e. the surface reported it in supportedUsageFlags).
+    // Required to vkCmdCopyImageToBuffer out of a presentable image, which is
+    // what the F12 screenshot readback does. Every desktop driver supports it,
+    // but it is optional per spec, so the flag is queried rather than assumed
+    // and consumers degrade (snapshot reports failure) instead of the
+    // swapchain failing to create.
+    bool swapchainTransferSrc = false;
+
     // Color format of the currently open dynamic-rendering pass. Set by
     // whoever opens a pass (RenderTarget::VK_Begin_, the compositor screen
     // pass, legacy VK_BeginFrame); reset to UNDEFINED when it closes.
@@ -229,6 +238,12 @@ struct VkContext
 
     PFN_vkCmdCopyBuffer vkCmdCopyBuffer_ = nullptr;
     PFN_vkCmdCopyBufferToImage vkCmdCopyBufferToImage_ = nullptr;
+
+    // Image -> host-visible buffer readback (F12 screenshot). Optional, like
+    // vkCmdBlitImage: it is deliberately NOT in VK_Init's required[] table, so
+    // a driver that somehow lacks it costs the screenshot feature, not the
+    // whole Vulkan chain. Consumers must null-check.
+    PFN_vkCmdCopyImageToBuffer vkCmdCopyImageToBuffer_ = nullptr;
 
     // Mip generation support. vkCmdBlitImage downsamples level N into level N+1
     // with linear filtering. Format feature query is used to verify the target
