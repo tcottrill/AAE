@@ -87,7 +87,23 @@ Legend: [ ] untested · [x] passed · [!] defect (add a line to KNOWN ISSUES)
 
 ---
 
-## KNOWN ISSUES (deferred to the troubleshooting pass)
+## STATUS: Phase 4a (Windows) COMPLETE — all issues closed 2026-08-02
+
+Every item below was gated by the user and closed. The only open work is
+vector beam *styling* ("needs tweaking"), which is a look preference, not a
+defect. Next phase is 4b (Linux / Pi 5).
+
+| Issue | Resolution |
+|---|---|
+| AVG flicker (bwidow/spacduel) | `70add65` — the SIM owns the beam-batch clear |
+| Cinematronics/SegaG80 upside down + bezel sizing | `6290955` — inverted `video.ini` rect = a FLIP |
+| "Some vector game rotates incorrectly" | Same bug as above; user confirmed all correct |
+| Scanline overlay scale | `5fc0bc5` — was the prescale root cause |
+| Mono CRT differs from GL | `6d7b35f` — `config.prescale` was inert under VK |
+| Mono CRT dead on gel games | `44089b1` — monitor now composes with the gel |
+| F12 snapshot | `f75967b` — verified working by the user |
+
+## HISTORICAL — the issues above, as originally logged
 
 1. ~~**Scanline overlay scale**~~ — FIXED (`5fc0bc5`), same root cause as 3.
    *Re-gate at `prescale` 2 and 4.*
