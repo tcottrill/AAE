@@ -1261,28 +1261,10 @@ void VK_Shutdown(VkContext& ctx)
 	ctx.loaderModule = nullptr;
 }
 
-// First-few-frames trace counters (used by VK_BeginFrame / VK_EndFrame below).
-// File scope rather than function-local statics so VK_RecreateSwapchain can
-// rearm them: the frames immediately AFTER a recreate are exactly the ones
-// worth tracing, and a recreate can happen long after the opening frames have
-// used the budget up.
-static int s_traceCount = 0;
-static int s_endTraceCount = 0;
-
-void VK_RearmFrameTrace(void)
-{
-	s_traceCount = 0;
-	s_endTraceCount = 0;
-}
-
 bool VK_RecreateSwapchain(VkContext& ctx)
 {
 	if (!ctx.device)
 		return false;
-
-	// Rearm the frame trace so the first frames on the NEW swapchain are
-	// logged, whichever frame of the session this recreate lands on.
-	VK_RearmFrameTrace();
 
 	ctx.vkDeviceWaitIdle_(ctx.device);
 
@@ -1366,11 +1348,10 @@ bool VK_BeginFrame(VkContext& ctx, uint32_t& outImageIndex)
 	// First-few-frames diagnostic. When isolating crashes that happen right
 	// at the start, the log tells us the flow got this far. Stops logging
 	// after a handful of frames to avoid spamming the log file.
+	static int s_traceCount = 0;
 	if (s_traceCount < 5)
 	{
-		LOG_INFO("VK_BeginFrame: enter (fi=%u, trace=%d, imgs=%zu, extent=%ux%u)",
-			ctx.frameIndex, s_traceCount, ctx.swapchainImages.size(),
-			ctx.swapchainExtent.width, ctx.swapchainExtent.height);
+		LOG_INFO("VK_BeginFrame: enter (fi=%u, trace=%d)", ctx.frameIndex, s_traceCount);
 		++s_traceCount;
 	}
 
@@ -1544,10 +1525,6 @@ void VK_EnsureFramePass(VkContext& ctx, VkCommandBuffer cmd)
 
 	const bool firstOpen = !s_framePassEverOpened;
 
-	if (s_traceCount < 5)
-		LOG_INFO("VK_EnsureFramePass: opening (firstOpen=%d, fi=%u, view=%p, img=%p)",
-			(int)firstOpen, ctx.frameIndex, (void*)s_frameSwapView, (void*)s_frameSwapImage);
-
 	if (firstOpen)
 	{
 		// Was in VK_BeginFrame. The image is fresh from vkAcquireNextImage,
@@ -1694,6 +1671,7 @@ bool VK_EndFrame(VkContext& ctx, uint32_t imageIndex)
 	}
 
 	// Close the frame's render pass. Single vkCmdEndRendering per frame.
+	static int s_endTraceCount = 0;
 	const bool trace = (s_endTraceCount < 5);
 	if (trace) LOG_INFO("VK_EndFrame: step 1 - about to vkCmdEndRendering (fi=%u, cmd=%p, fptr=%p, &ctx=%p, ctx.frameIndex=%u, s_framePassOpen=%d)",
 		fi, (void*)cmd, (void*)ctx.vkCmdEndRendering_, (void*)&ctx, ctx.frameIndex, (int)s_framePassOpen);

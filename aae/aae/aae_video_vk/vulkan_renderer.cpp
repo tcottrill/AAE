@@ -252,8 +252,6 @@ static bool         s_trailClearPending = true;
 // beam RT's format); its failure only disables shots, never the whole chain.
 static ShotDrawVK g_shotDraw;
 static bool       s_shotInit = false;
-// Frames still to trace in the vector post branch; rearmed on every game load.
-static int        s_postTrace = 0;
 
 // GUI starfield (Plan 6 Task 1): a second, dedicated FpolyVK instance draws
 // the front-end GUI's point-sprite stars. Kept separate from g_fpoly (the
@@ -1041,8 +1039,6 @@ int vkchain_init(void)
 		// accumulator once so the previous game's phosphor never ghosts.
 		s_vecPostFailed = false;
 		s_trailClearPending = true;
-		s_postTrace = 0;
-		VK_RearmFrameTrace();
 		// CRT post chain: fresh init attempt per load, same discipline. The
 		// monitor RT's failure latch clears with it; the target itself
 		// persists (it is game-independent - sized to the on-screen rect,
@@ -1092,8 +1088,6 @@ int vkchain_init(void)
 	s_crtPostFailed = false;  // raster CRT post chain likewise
 	EnsureCrtPost();          // defers until the game RT exists
 	s_trailClearPending = true;
-	s_postTrace = 0;
-	VK_RearmFrameTrace();
 
 	// GPU section profiler ([main] vk_profile, default 0). Creates the query
 	// pool and latches timestampPeriod; returns false and stays completely
@@ -1458,17 +1452,6 @@ void vkchain_render(void)
 		// rebuild requested here is deferred to the next frame boundary.
 		EnsureRasterRenderer();
 		EnsureCrtPost();   // needs the game RT's format; no-op once online
-
-		// First-few-frames-per-load diagnostic: the gate that decides whether
-		// this branch records anything at all, and therefore whether its
-		// Suspend/Resume pair runs to open the swapchain pass.
-		if (s_postTrace < 5)
-		{
-			LOG_INFO("vkchain_render raster: fpoly=%d rtGame=%d squad=%d paused=%d rot=%d",
-				(int)s_fpolyInit, (int)s_rtGame.IsValid(), (int)s_screenQuadInit,
-				paused, rot);
-			++s_postTrace;
-		}
 
 		if (s_fpolyInit && s_rtGame.IsValid() && s_screenQuadInit)
 		{
@@ -1877,17 +1860,6 @@ void vkchain_render(void)
 		// itself (the composite must still be rebuilt every frame - the
 		// overlays move while the game is frozen).
 		bool passSuspended = false;
-
-		// First-few-frames-per-load diagnostic: which of this branch's two
-		// routes to the composite a frame takes. The !paused route opens the
-		// swapchain pass via its Resume; the paused route relies on the Ensure
-		// at the composite itself.
-		if (s_postTrace < 5)
-		{
-			LOG_INFO("vkchain_render post: paused=%d rotActive=%d artActive=%d sw=%d sh=%d",
-				paused, (int)rotActive, (int)artActive, sw, sh);
-			++s_postTrace;
-		}
 
 		if (!paused && sw > 0 && sh > 0)
 		{

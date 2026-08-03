@@ -346,12 +346,6 @@ bool VK_EndUploadBatch(VkContext& ctx);
 
 bool VK_RecreateSwapchain(VkContext& ctx);
 
-// Rearm the first-few-frames diagnostic trace in VK_BeginFrame / VK_EndFrame /
-// VK_EnsureFramePass. Called on a swapchain recreate and on every game load,
-// so the opening frames of a NEW game are traced however late in the session
-// they happen (the front-end GUI otherwise uses the budget up at startup).
-void VK_RearmFrameTrace(void);
-
 // -----------------------------------------------------------------------------
 // Texture helpers
 //
