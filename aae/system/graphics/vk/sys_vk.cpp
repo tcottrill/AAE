@@ -1261,10 +1261,28 @@ void VK_Shutdown(VkContext& ctx)
 	ctx.loaderModule = nullptr;
 }
 
+// First-few-frames trace counters (used by VK_BeginFrame / VK_EndFrame below).
+// File scope rather than function-local statics so VK_RecreateSwapchain can
+// rearm them: the frames immediately AFTER a recreate are exactly the ones
+// worth tracing, and a recreate can happen long after the opening frames have
+// used the budget up.
+static int s_traceCount = 0;
+static int s_endTraceCount = 0;
+
+void VK_RearmFrameTrace(void)
+{
+	s_traceCount = 0;
+	s_endTraceCount = 0;
+}
+
 bool VK_RecreateSwapchain(VkContext& ctx)
 {
 	if (!ctx.device)
 		return false;
+
+	// Rearm the frame trace so the first frames on the NEW swapchain are
+	// logged, whichever frame of the session this recreate lands on.
+	VK_RearmFrameTrace();
 
 	ctx.vkDeviceWaitIdle_(ctx.device);
 
@@ -1348,10 +1366,11 @@ bool VK_BeginFrame(VkContext& ctx, uint32_t& outImageIndex)
 	// First-few-frames diagnostic. When isolating crashes that happen right
 	// at the start, the log tells us the flow got this far. Stops logging
 	// after a handful of frames to avoid spamming the log file.
-	static int s_traceCount = 0;
 	if (s_traceCount < 5)
 	{
-		LOG_INFO("VK_BeginFrame: enter (fi=%u, trace=%d)", ctx.frameIndex, s_traceCount);
+		LOG_INFO("VK_BeginFrame: enter (fi=%u, trace=%d, imgs=%zu, extent=%ux%u)",
+			ctx.frameIndex, s_traceCount, ctx.swapchainImages.size(),
+			ctx.swapchainExtent.width, ctx.swapchainExtent.height);
 		++s_traceCount;
 	}
 
@@ -1366,7 +1385,18 @@ bool VK_BeginFrame(VkContext& ctx, uint32_t& outImageIndex)
 	// Wait for the previous use of this frame-in-flight slot to finish on the
 	// GPU. After this returns, everything associated with slot fi (cmd buffer,
 	// per-frame VBOs/UBOs in subsystems) is safe to overwrite.
-	ctx.vkWaitForFences_(ctx.device, 1, &ctx.inFlight[fi], VK_TRUE, UINT64_MAX);
+	// The result is checked, not discarded: this wait is the EARLIEST point at
+	// which a lost device surfaces - before the acquire, before any recording.
+	// VK_ERROR_DEVICE_LOST is sticky, so the submit that first REPORTS it can
+	// be several frames after the one that caused it; catching it here instead
+	// pins the loss to the slot whose previous submit actually faulted.
+	{
+		VkResult wr = ctx.vkWaitForFences_(ctx.device, 1, &ctx.inFlight[fi], VK_TRUE, UINT64_MAX);
+		if (wr != VK_SUCCESS)
+			LOG_ERROR("VK_BeginFrame: vkWaitForFences returned VkResult=%d (fi=%u) "
+				"- the device was already lost BEFORE this frame recorded anything",
+				(int)wr, fi);
+	}
 
 	VkResult r = ctx.vkAcquireNextImageKHR_(ctx.device, ctx.swapchain,
 		UINT64_MAX, ctx.imageAvailable[fi], VK_NULL_HANDLE, &outImageIndex);
@@ -1514,6 +1544,10 @@ void VK_EnsureFramePass(VkContext& ctx, VkCommandBuffer cmd)
 
 	const bool firstOpen = !s_framePassEverOpened;
 
+	if (s_traceCount < 5)
+		LOG_INFO("VK_EnsureFramePass: opening (firstOpen=%d, fi=%u, view=%p, img=%p)",
+			(int)firstOpen, ctx.frameIndex, (void*)s_frameSwapView, (void*)s_frameSwapImage);
+
 	if (firstOpen)
 	{
 		// Was in VK_BeginFrame. The image is fresh from vkAcquireNextImage,
@@ -1660,7 +1694,6 @@ bool VK_EndFrame(VkContext& ctx, uint32_t imageIndex)
 	}
 
 	// Close the frame's render pass. Single vkCmdEndRendering per frame.
-	static int s_endTraceCount = 0;
 	const bool trace = (s_endTraceCount < 5);
 	if (trace) LOG_INFO("VK_EndFrame: step 1 - about to vkCmdEndRendering (fi=%u, cmd=%p, fptr=%p, &ctx=%p, ctx.frameIndex=%u, s_framePassOpen=%d)",
 		fi, (void*)cmd, (void*)ctx.vkCmdEndRendering_, (void*)&ctx, ctx.frameIndex, (int)s_framePassOpen);
@@ -1874,16 +1907,29 @@ bool VK_BeginUpload(VkContext& ctx)
 	VkCommandBufferBeginInfo bi{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
 	bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
-	if (ctx.vkBeginCommandBuffer_(ctx.uploadCmd, &bi) != VK_SUCCESS)
+	VkResult r = ctx.vkBeginCommandBuffer_(ctx.uploadCmd, &bi);
+	if (r != VK_SUCCESS)
+	{
+		LOG_ERROR("VK_BeginUpload: vkBeginCommandBuffer VkResult=%d", (int)r);
 		return false;
+	}
 
 	return true;
 }
 
 bool VK_EndUpload(VkContext& ctx)
 {
-	if (ctx.vkEndCommandBuffer_(ctx.uploadCmd) != VK_SUCCESS)
+	// Every exit reports its VkResult. These run OUTSIDE the frame loop (game
+	// load, artwork, layout art), so when one fails it is the earliest evidence
+	// available of a sick device - and a silent `return false` here surfaces
+	// far away as a bare "GPU upload failed", with no way to tell a lost device
+	// (-4) from exhausted memory (-2).
+	VkResult er = ctx.vkEndCommandBuffer_(ctx.uploadCmd);
+	if (er != VK_SUCCESS)
+	{
+		LOG_ERROR("VK_EndUpload: vkEndCommandBuffer VkResult=%d", (int)er);
 		return false;
+	}
 
 	ctx.vkResetFences_(ctx.device, 1, &ctx.uploadFence);
 
@@ -1894,11 +1940,19 @@ bool VK_EndUpload(VkContext& ctx)
 	si.commandBufferInfoCount = 1;
 	si.pCommandBufferInfos = &csi;
 
-	if (ctx.vkQueueSubmit2_(ctx.gfxQueue, 1, &si, ctx.uploadFence) != VK_SUCCESS)
+	VkResult sr = ctx.vkQueueSubmit2_(ctx.gfxQueue, 1, &si, ctx.uploadFence);
+	if (sr != VK_SUCCESS)
+	{
+		LOG_ERROR("VK_EndUpload: vkQueueSubmit2 VkResult=%d", (int)sr);
 		return false;
+	}
 
-	if (ctx.vkWaitForFences_(ctx.device, 1, &ctx.uploadFence, VK_TRUE, UINT64_MAX) != VK_SUCCESS)
+	VkResult wr = ctx.vkWaitForFences_(ctx.device, 1, &ctx.uploadFence, VK_TRUE, UINT64_MAX);
+	if (wr != VK_SUCCESS)
+	{
+		LOG_ERROR("VK_EndUpload: vkWaitForFences VkResult=%d", (int)wr);
 		return false;
+	}
 
 	return true;
 }
@@ -2011,22 +2065,37 @@ static bool VK_BuildRGBA8Texture(VkContext& ctx,
 		ii.usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
 	ii.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
-	if (ctx.vkCreateImage_(ctx.device, &ii, nullptr, &outTex.image) != VK_SUCCESS)
-		return false;
+	VkResult ir = ctx.vkCreateImage_(ctx.device, &ii, nullptr, &outTex.image);
+	if (ir != VK_SUCCESS)
+	{
+		LOG_ERROR("VK_BuildRGBA8Texture: vkCreateImage VkResult=%d (%ux%u, %u mips)",
+			(int)ir, width, height, mipLevels);
+		outTex.image = VK_NULL_HANDLE;
+		return fail();
+	}
 
 	VkMemoryRequirements mr{};
 	ctx.vkGetImageMemoryRequirements_(ctx.device, outTex.image, &mr);
 
 	uint32_t memIdx = FindMemoryTypeIdx(ctx, mr.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 	if (memIdx == 0xFFFFFFFFu)
+	{
+		LOG_ERROR("VK_BuildRGBA8Texture: no DEVICE_LOCAL memory type for %ux%u", width, height);
 		return fail();
+	}
 
 	VkMemoryAllocateInfo mai{ VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
 	mai.allocationSize = mr.size;
 	mai.memoryTypeIndex = memIdx;
 
-	if (ctx.vkAllocateMemory_(ctx.device, &mai, nullptr, &outTex.memory) != VK_SUCCESS)
+	VkResult ar = ctx.vkAllocateMemory_(ctx.device, &mai, nullptr, &outTex.memory);
+	if (ar != VK_SUCCESS)
+	{
+		LOG_ERROR("VK_BuildRGBA8Texture: vkAllocateMemory (image) VkResult=%d, %llu bytes for %ux%u",
+			(int)ar, (unsigned long long)mr.size, width, height);
+		outTex.memory = VK_NULL_HANDLE;
 		return fail();
+	}
 
 	if (ctx.vkBindImageMemory_(ctx.device, outTex.image, outTex.memory, 0) != VK_SUCCESS)
 		return fail();
@@ -2053,8 +2122,14 @@ static bool VK_BuildRGBA8Texture(VkContext& ctx,
 	bmai.allocationSize = bmr.size;
 	bmai.memoryTypeIndex = smIdx;
 
-	if (ctx.vkAllocateMemory_(ctx.device, &bmai, nullptr, &smem) != VK_SUCCESS)
+	VkResult sar = ctx.vkAllocateMemory_(ctx.device, &bmai, nullptr, &smem);
+	if (sar != VK_SUCCESS)
+	{
+		LOG_ERROR("VK_BuildRGBA8Texture: vkAllocateMemory (staging) VkResult=%d, %llu bytes",
+			(int)sar, (unsigned long long)bmr.size);
+		smem = VK_NULL_HANDLE;
 		return fail();
+	}
 
 	if (ctx.vkBindBufferMemory_(ctx.device, sbuf, smem, 0) != VK_SUCCESS)
 		return fail();

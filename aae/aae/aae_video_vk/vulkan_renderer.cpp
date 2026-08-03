@@ -252,6 +252,8 @@ static bool         s_trailClearPending = true;
 // beam RT's format); its failure only disables shots, never the whole chain.
 static ShotDrawVK g_shotDraw;
 static bool       s_shotInit = false;
+// Frames still to trace in the vector post branch; rearmed on every game load.
+static int        s_postTrace = 0;
 
 // GUI starfield (Plan 6 Task 1): a second, dedicated FpolyVK instance draws
 // the front-end GUI's point-sprite stars. Kept separate from g_fpoly (the
@@ -1039,6 +1041,8 @@ int vkchain_init(void)
 		// accumulator once so the previous game's phosphor never ghosts.
 		s_vecPostFailed = false;
 		s_trailClearPending = true;
+		s_postTrace = 0;
+		VK_RearmFrameTrace();
 		// CRT post chain: fresh init attempt per load, same discipline. The
 		// monitor RT's failure latch clears with it; the target itself
 		// persists (it is game-independent - sized to the on-screen rect,
@@ -1088,6 +1092,8 @@ int vkchain_init(void)
 	s_crtPostFailed = false;  // raster CRT post chain likewise
 	EnsureCrtPost();          // defers until the game RT exists
 	s_trailClearPending = true;
+	s_postTrace = 0;
+	VK_RearmFrameTrace();
 
 	// GPU section profiler ([main] vk_profile, default 0). Creates the query
 	// pool and latches timestampPeriod; returns false and stays completely
@@ -1452,6 +1458,17 @@ void vkchain_render(void)
 		// rebuild requested here is deferred to the next frame boundary.
 		EnsureRasterRenderer();
 		EnsureCrtPost();   // needs the game RT's format; no-op once online
+
+		// First-few-frames-per-load diagnostic: the gate that decides whether
+		// this branch records anything at all, and therefore whether its
+		// Suspend/Resume pair runs to open the swapchain pass.
+		if (s_postTrace < 5)
+		{
+			LOG_INFO("vkchain_render raster: fpoly=%d rtGame=%d squad=%d paused=%d rot=%d",
+				(int)s_fpolyInit, (int)s_rtGame.IsValid(), (int)s_screenQuadInit,
+				paused, rot);
+			++s_postTrace;
+		}
 
 		if (s_fpolyInit && s_rtGame.IsValid() && s_screenQuadInit)
 		{
@@ -1861,6 +1878,17 @@ void vkchain_render(void)
 		// overlays move while the game is frozen).
 		bool passSuspended = false;
 
+		// First-few-frames-per-load diagnostic: which of this branch's two
+		// routes to the composite a frame takes. The !paused route opens the
+		// swapchain pass via its Resume; the paused route relies on the Ensure
+		// at the composite itself.
+		if (s_postTrace < 5)
+		{
+			LOG_INFO("vkchain_render post: paused=%d rotActive=%d artActive=%d sw=%d sh=%d",
+				paused, (int)rotActive, (int)artActive, sw, sh);
+			++s_postTrace;
+		}
+
 		if (!paused && sw > 0 && sh > 0)
 		{
 			// CPU-only conversion, same as the direct path (see its comment).
@@ -2008,6 +2036,15 @@ void vkchain_render(void)
 		}
 		else if (sw > 0 && sh > 0)
 		{
+			// The composite draws to the SWAPCHAIN, and it is the only part of
+			// this branch that runs while PAUSED - the !paused block above (the
+			// one whose Suspend/Resume pair used to leave the pass open for us)
+			// is skipped entirely then. Since the pass became lazily-opened,
+			// that left a paused frame recording these draws with NO pass open
+			// at all. Ensure it here; a no-op on the unpaused path, where the
+			// Resume at the end of the beam block already opened it.
+			VK_EnsureFramePass(g_vk, cmd);
+
 			if (artActive && g_vectorPost.FrameReady())
 			{
 				// Layered composite (GL LAYER 5C + 6): backdrop -> frame RT
@@ -2406,6 +2443,27 @@ void vkchain_gui_points_shutdown(void)
 {
 	if (s_guiPointsInit)
 	{
+		// DRAIN FIRST. FpolyVK::Shutdown destroys the pipeline, the descriptor
+		// pool and every slot's VBO/UBO with no drain of its own - by its own
+		// documented contract the CALLER must have device-waited-idle (which is
+		// why vkchain_shutdown and EnsureRasterRenderer both do).
+		//
+		// This entry point is the one that did not, and it is the worst place
+		// to skip it: it runs from end_gui() during emulator_stop_game(), i.e.
+		// immediately after the front-end drew its LAST frame - a frame whose
+		// command buffer draws the starfield out of exactly these buffers with
+		// exactly this pipeline, was submitted by VK_EndFrame, and is never
+		// waited on by anything. Destroying them here while the GPU is still
+		// executing that submission is a use-after-free that faults the device.
+		//
+		// It presents as: launch a game from the front-end, VK_ERROR_DEVICE_LOST
+		// (-4) on the next GPU operation - usually the new game's first artwork
+		// upload, before it ever renders a frame - then a dead swapchain while
+		// the emulation keeps running. Intermittent, because it is a race with
+		// however long the GPU still needed: an unrelated log line either side
+		// of it was enough to flip the outcome.
+		if (g_vk.device && g_vk.vkDeviceWaitIdle_)
+			g_vk.vkDeviceWaitIdle_(g_vk.device);
 		g_guiPoints.Shutdown(g_vk);
 		s_guiPointsInit = false;
 	}
