@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <Manifest Include="app.manifest" />
@@ -49,58 +49,16 @@
     <ClCompile Include="system\util\iniFile.cpp">
       <Filter>Source Files\system\util</Filter>
     </ClCompile>
-    <ClCompile Include="aae\cpu_code\cpu_control.cpp">
-      <Filter>Source Files\aae\cpu_code</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\cpu_code\cpu_i8080.cpp">
-      <Filter>Source Files\aae\cpu_code</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\cpu_code\cpu_z80.cpp">
-      <Filter>Source Files\aae\cpu_code</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\cpu_code\timer.cpp">
-      <Filter>Source Files\aae\cpu_code</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\llander.cpp">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClCompile>
     <ClCompile Include="aae\fileio\texture_handler.cpp">
-      <Filter>Source Files\aae\fileio</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\fileio\aae_fileio.cpp">
       <Filter>Source Files\aae\fileio</Filter>
     </ClCompile>
     <ClCompile Include="aae\fileio\mame_fileio.cpp">
       <Filter>Source Files\aae\fileio</Filter>
     </ClCompile>
-    <ClCompile Include="aae\machine\mathbox.cpp">
-      <Filter>Source Files\aae\machine</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\machine\slapstic.cpp">
-      <Filter>Source Files\aae\machine</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\machine\earom.cpp">
-      <Filter>Source Files\aae\machine</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\sndhrdwr\tms5220.cpp">
-      <Filter>Source Files\aae\sndhrdwr</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\sndhrdwr\ay8910.cpp">
-      <Filter>Source Files\aae\sndhrdwr</Filter>
-    </ClCompile>
     <ClCompile Include="aae\vidhrdwr\emu_vector_draw.cpp">
       <Filter>Source Files\aae\vidhrdwr</Filter>
     </ClCompile>
     <ClCompile Include="aae\vidhrdwr\fast_poly.cpp">
-      <Filter>Source Files\aae\vidhrdwr</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\vidhrdwr\old_mame_raster.cpp">
-      <Filter>Source Files\aae\vidhrdwr</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\vidhrdwr\old_mame_vecsim_dvg.cpp">
-      <Filter>Source Files\aae\vidhrdwr</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\vidhrdwr\aae_avg.cpp">
       <Filter>Source Files\aae\vidhrdwr</Filter>
     </ClCompile>
     <ClCompile Include="aae\aae_video\gl_shader.cpp">
@@ -115,22 +73,10 @@
     <ClCompile Include="aae\aae_video\gl_texturing.cpp">
       <Filter>Source Files\aae\aae_video</Filter>
     </ClCompile>
-    <ClCompile Include="aae\game_list.cpp">
-      <Filter>Source Files\aae</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\inptport.cpp">
-      <Filter>Source Files\aae</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\memory.cpp">
-      <Filter>Source Files\aae</Filter>
-    </ClCompile>
     <ClCompile Include="aae\menu.cpp">
       <Filter>Source Files\aae</Filter>
     </ClCompile>
     <ClCompile Include="aae\os_basic.cpp">
-      <Filter>Source Files\aae</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\os_input.cpp">
       <Filter>Source Files\aae</Filter>
     </ClCompile>
     <ClCompile Include="aae\aae_emulator.cpp">
@@ -145,132 +91,6 @@
     <ClCompile Include="aae\vidhrdwr\osd_video.cpp">
       <Filter>Source Files\aae\vidhrdwr</Filter>
     </ClCompile>
-    <ClCompile Include="aae\cpu_code\cpu_6502.cpp">
-      <Filter>Source Files\aae\cpu_code</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\driver_registry.cpp">
-      <Filter>Source Files\aae</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\asteroid.cpp">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\bwidow.cpp">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\bzone.cpp">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\tempest.cpp">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\mhavoc.cpp">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\cinematronics_driver.cpp">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\omegrace.cpp">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\quantum.cpp">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\segag80.cpp">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\starwars.cpp">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\aztarac.cpp">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\vidhrdwr\cinematronics_video.cpp">
-      <Filter>Source Files\aae\vidhrdwr</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\machine\SegaG80crypt.cpp">
-      <Filter>Source Files\aae\machine</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\machine\starwars_machine.cpp">
-      <Filter>Source Files\aae\machine</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\sndhrdwr\cinematronics_sound.cpp">
-      <Filter>Source Files\aae\sndhrdwr</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\sndhrdwr\namco.cpp">
-      <Filter>Source Files\aae\sndhrdwr</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\sndhrdwr\segag80snd.cpp">
-      <Filter>Source Files\aae\sndhrdwr</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\sndhrdwr\starwars_snd.cpp">
-      <Filter>Source Files\aae\sndhrdwr</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\vidhrdwr\SegaG80vid.cpp">
-      <Filter>Source Files\aae\vidhrdwr</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\vidhrdwr\rallyx_vid.cpp">
-      <Filter>Source Files\aae\vidhrdwr</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\vidhrdwr\galaxian_vid.cpp">
-      <Filter>Source Files\aae\vidhrdwr</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\sndhrdwr\galsnd_stream.cpp">
-      <Filter>Source Files\aae\sndhrdwr</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\rallyx.cpp">
-      <Filter>Source Files\aae\drivers\raster</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\galaxian_driver.cpp">
-      <Filter>Source Files\aae\drivers\raster</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\invaders.cpp">
-      <Filter>Source Files\aae\drivers\raster</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\vicdual.cpp">
-      <Filter>Source Files\aae\drivers\raster</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\galaga.cpp">
-      <Filter>Source Files\aae\drivers\raster</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\pacman.cpp">
-      <Filter>Source Files\aae\drivers\raster</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\milliped.cpp">
-      <Filter>Source Files\aae\drivers\raster</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\missile.cpp">
-      <Filter>Source Files\aae\drivers\raster</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\warlord.cpp">
-      <Filter>Source Files\aae\drivers\raster</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\sndhrdwr\okim6295_loader.cpp">
-      <Filter>Source Files\aae\sndhrdwr</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\bosco.cpp">
-      <Filter>Source Files\aae\drivers\raster</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\machine\pacplus_decode.cpp">
-      <Filter>Source Files\aae\machine</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\yiear.cpp">
-      <Filter>Source Files\aae\drivers\raster</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\centiped.cpp">
-      <Filter>Source Files\aae\drivers\raster</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\foodf.cpp">
-      <Filter>Source Files\aae\drivers\raster</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\dkong.cpp">
-      <Filter>Source Files\aae\drivers\raster</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\gyruss.cpp">
-      <Filter>Source Files\aae\drivers\raster</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\vidhrdwr\centiped_vid.cpp">
-      <Filter>Source Files\aae\vidhrdwr</Filter>
-    </ClCompile>
     <ClCompile Include="system\audio\mixer.cpp">
       <Filter>Source Files\system\audio</Filter>
     </ClCompile>
@@ -280,65 +100,11 @@
     <ClCompile Include="system\input\rawinput.cpp">
       <Filter>Source Files\system\input</Filter>
     </ClCompile>
-    <ClCompile Include="aae\drivers\cchasm.cpp">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\cpu_code\z80fmly.cpp">
-      <Filter>Source Files\aae\cpu_code</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\sndhrdwr\aae_pokey.cpp">
-      <Filter>Source Files\aae\sndhrdwr</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\vidhrdwr\mappy_video.cpp">
-      <Filter>Source Files\aae\vidhrdwr</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\mappy.cpp">
-      <Filter>Source Files\aae\drivers\raster</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\sndhrdwr\dac.cpp">
-      <Filter>Source Files\aae\sndhrdwr</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\sndhrdwr\sn76477.cpp">
-      <Filter>Source Files\aae\sndhrdwr</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\superpac.cpp">
-      <Filter>Source Files\aae\drivers\raster</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\jrpacman.cpp">
-      <Filter>Source Files\aae\drivers\raster</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\circus.cpp">
-      <Filter>Source Files\aae\drivers\raster</Filter>
-    </ClCompile>
     <ClCompile Include="aae\aae_video\mame_layout.cpp">
       <Filter>Source Files\aae\aae_video</Filter>
     </ClCompile>
-    <ClCompile Include="aae\cpu_code\cpu_i8085.cpp">
-      <Filter>Source Files\aae\cpu_code</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\phoenix.cpp">
-      <Filter>Source Files\aae\drivers\raster</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\sndhrdwr\tms36xx.cpp">
-      <Filter>Source Files\aae\sndhrdwr</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\sndhrdwr\phoenix_audio.cpp">
-      <Filter>Source Files\aae\sndhrdwr</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\sndhrdwr\pleiads_audio.cpp">
-      <Filter>Source Files\aae\sndhrdwr</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\xevious.cpp">
-      <Filter>Source Files\aae\drivers\raster</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\vidhrdwr\xevious_video.cpp">
-      <Filter>Source Files\aae\vidhrdwr</Filter>
-    </ClCompile>
     <ClCompile Include="system\3rdparty\tinyxml2.cpp">
       <Filter>Source Files\system\3rdparty</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\digdug.cpp">
-      <Filter>Source Files\aae\drivers\raster</Filter>
     </ClCompile>
     <ClCompile Include="aae\aae_video\opengl_renderer.cpp">
       <Filter>Source Files\aae\aae_video</Filter>
@@ -397,56 +163,8 @@
     <ClCompile Include="system\audio\xaudio2_backend.cpp">
       <Filter>Source Files\system\audio</Filter>
     </ClCompile>
-    <ClCompile Include="aae\cpu_code\cpu_m6809.cpp">
-      <Filter>Source Files\aae\cpu_code</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\cpu_code\cpu_m68000.cpp">
-      <Filter>Source Files\aae\cpu_code</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\cpu_code\cpu_lr35902.cpp">
-      <Filter>Source Files\aae\cpu_code</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\cpu_code\cpu_i8039.cpp">
-      <Filter>Source Files\aae\cpu_code</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\gaplus.cpp">
-      <Filter>Source Files\aae\drivers\raster</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\pong.cpp">
-      <Filter>Source Files\aae\drivers\raster</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\breakout.cpp">
-      <Filter>Source Files\aae\drivers\raster</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\vidhrdwr\gaplus_video.cpp">
-      <Filter>Source Files\aae\vidhrdwr</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\vidhrdwr\vertigo_video.cpp">
-      <Filter>Source Files\aae\vidhrdwr</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\vertigo.cpp">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\machine\74148.cpp">
-      <Filter>Source Files\aae\machine</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\machine\pit8253.cpp">
-      <Filter>Source Files\aae\machine</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\sndhrdwr\exidy440_sound.cpp">
-      <Filter>Source Files\aae\sndhrdwr</Filter>
-    </ClCompile>
     <ClCompile Include="aae\led_service_handler.cpp">
       <Filter>Source Files\aae</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\vidhrdwr\astrocde_video.cpp">
-      <Filter>Source Files\aae\vidhrdwr</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\astrocade.cpp">
-      <Filter>Source Files\aae\drivers\raster</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\sndhrdwr\astrocade_sound.cpp">
-      <Filter>Source Files\aae\sndhrdwr</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -460,9 +178,6 @@
       <Filter>Source Files\system\3rdparty</Filter>
     </ClInclude>
     <ClInclude Include="system\3rdparty\miniz.h">
-      <Filter>Source Files\system\3rdparty</Filter>
-    </ClInclude>
-    <ClInclude Include="system\audio\stb.h">
       <Filter>Source Files\system\3rdparty</Filter>
     </ClInclude>
     <ClInclude Include="system\3rdparty\stb_image_write.h">
@@ -525,9 +240,6 @@
     <ClInclude Include="system\window\utf8conv.h">
       <Filter>Source Files\system\window</Filter>
     </ClInclude>
-    <ClInclude Include="system\util\wintimer.h">
-      <Filter>Source Files\system\util</Filter>
-    </ClInclude>
     <ClInclude Include="system\util\sys_log.h">
       <Filter>Source Files\system\util</Filter>
     </ClInclude>
@@ -540,53 +252,11 @@
     <ClInclude Include="system\util\iniFile.h">
       <Filter>Source Files\system\util</Filter>
     </ClInclude>
-    <ClInclude Include="aae\cpu_code\ccpu.h">
-      <Filter>Source Files\aae\cpu_code</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\cpu_code\cpu_6502.h">
-      <Filter>Source Files\aae\cpu_code</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\cpu_code\cpu_control.h">
-      <Filter>Source Files\aae\cpu_code</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\cpu_code\cpu_i8080.h">
-      <Filter>Source Files\aae\cpu_code</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\cpu_code\cpu_z80.h">
-      <Filter>Source Files\aae\cpu_code</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\cpu_code\timer.h">
-      <Filter>Source Files\aae\cpu_code</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\drivers\llander.h">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\fileio\sha-1.h">
-      <Filter>Source Files\aae\fileio</Filter>
-    </ClInclude>
     <ClInclude Include="aae\fileio\texture_handler.h">
-      <Filter>Source Files\aae\fileio</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\fileio\aae_fileio.h">
       <Filter>Source Files\aae\fileio</Filter>
     </ClInclude>
     <ClInclude Include="aae\fileio\mame_fileio.h">
       <Filter>Source Files\aae\fileio</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\machine\mathbox.h">
-      <Filter>Source Files\aae\machine</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\machine\slapstic.h">
-      <Filter>Source Files\aae\machine</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\machine\earom.h">
-      <Filter>Source Files\aae\machine</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\sndhrdwr\tms5220.h">
-      <Filter>Source Files\aae\sndhrdwr</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\sndhrdwr\ay8910.h">
-      <Filter>Source Files\aae\sndhrdwr</Filter>
     </ClInclude>
     <ClInclude Include="aae\vidhrdwr\emu_vector_draw.h">
       <Filter>Source Files\aae\vidhrdwr</Filter>
@@ -595,15 +265,6 @@
       <Filter>Source Files\aae\aae_video</Filter>
     </ClInclude>
     <ClInclude Include="aae\vidhrdwr\fast_poly.h">
-      <Filter>Source Files\aae\vidhrdwr</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\vidhrdwr\old_mame_raster.h">
-      <Filter>Source Files\aae\vidhrdwr</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\vidhrdwr\old_mame_vecsim_dvg.h">
-      <Filter>Source Files\aae\vidhrdwr</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\vidhrdwr\aae_avg.h">
       <Filter>Source Files\aae\vidhrdwr</Filter>
     </ClInclude>
     <ClInclude Include="aae\aae_video\gl_shader.h">
@@ -621,22 +282,10 @@
     <ClInclude Include="aae\aae_video\gl_texturing.h">
       <Filter>Source Files\aae\aae_video</Filter>
     </ClInclude>
-    <ClInclude Include="aae\game_list.h">
-      <Filter>Source Files\aae</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\inptport.h">
-      <Filter>Source Files\aae</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\memory.h">
-      <Filter>Source Files\aae</Filter>
-    </ClInclude>
     <ClInclude Include="aae\menu.h">
       <Filter>Source Files\aae</Filter>
     </ClInclude>
     <ClInclude Include="aae\os_basic.h">
-      <Filter>Source Files\aae</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\os_input.h">
       <Filter>Source Files\aae</Filter>
     </ClInclude>
     <ClInclude Include="aae\osdepend.h">
@@ -666,125 +315,8 @@
     <ClInclude Include="aae\vidhrdwr\osd_video.h">
       <Filter>Source Files\aae\vidhrdwr</Filter>
     </ClInclude>
-    <ClInclude Include="aae\driver_registry.h">
-      <Filter>Source Files\aae</Filter>
-    </ClInclude>
     <ClInclude Include="aae\driver_macros.h">
       <Filter>Source Files\aae</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\drivers\asteroid.h">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\drivers\bwidow.h">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\drivers\bzone.h">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\drivers\tempest.h">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\drivers\mhavoc.h">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\drivers\cinematronics_driver.h">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\drivers\namco_stars.h">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\drivers\omegrace.h">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\drivers\quantum.h">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\drivers\segag80.h">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\drivers\starwars.h">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\drivers\aztarac.h">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\vidhrdwr\cinematronics_video.h">
-      <Filter>Source Files\aae\vidhrdwr</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\machine\SegaG80crypt.h">
-      <Filter>Source Files\aae\machine</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\machine\starwars_machine.h">
-      <Filter>Source Files\aae\machine</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\sndhrdwr\cinematronics_sound.h">
-      <Filter>Source Files\aae\sndhrdwr</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\sndhrdwr\namco.h">
-      <Filter>Source Files\aae\sndhrdwr</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\sndhrdwr\segag80snd.h">
-      <Filter>Source Files\aae\sndhrdwr</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\sndhrdwr\starwars_snd.h">
-      <Filter>Source Files\aae\sndhrdwr</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\vidhrdwr\SegaG80vid.h">
-      <Filter>Source Files\aae\vidhrdwr</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\vidhrdwr\rallyx_vid.h">
-      <Filter>Source Files\aae\vidhrdwr</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\vidhrdwr\galaxian_vid.h">
-      <Filter>Source Files\aae\vidhrdwr</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\sndhrdwr\galsnd_stream.h">
-      <Filter>Source Files\aae\sndhrdwr</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\drivers\rallyx.h">
-      <Filter>Source Files\aae\drivers\raster</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\drivers\galaxian_driver.h">
-      <Filter>Source Files\aae\drivers\raster</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\drivers\invaders.h">
-      <Filter>Source Files\aae\drivers\raster</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\drivers\vicdual.h">
-      <Filter>Source Files\aae\drivers\raster</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\drivers\galaga.h">
-      <Filter>Source Files\aae\drivers\raster</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\drivers\pacman.h">
-      <Filter>Source Files\aae\drivers\raster</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\drivers\milliped.h">
-      <Filter>Source Files\aae\drivers\raster</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\drivers\missile.h">
-      <Filter>Source Files\aae\drivers\raster</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\drivers\warlord.h">
-      <Filter>Source Files\aae\drivers\raster</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\sndhrdwr\okim6295_loader.h">
-      <Filter>Source Files\aae\sndhrdwr</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\drivers\bosco.h">
-      <Filter>Source Files\aae\drivers\raster</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\machine\pacplus_decode.h">
-      <Filter>Source Files\aae\machine</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\drivers\yiear.h">
-      <Filter>Source Files\aae\drivers\raster</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\drivers\centiped.h">
-      <Filter>Source Files\aae\drivers\raster</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\vidhrdwr\centiped_vid.h">
-      <Filter>Source Files\aae\vidhrdwr</Filter>
     </ClInclude>
     <ClInclude Include="system\audio\emptywav.h">
       <Filter>Source Files\system\audio</Filter>
@@ -798,65 +330,17 @@
     <ClInclude Include="aae\gui\driver_gui.h">
       <Filter>Source Files\aae\gui</Filter>
     </ClInclude>
-    <ClInclude Include="system\input\rawinput.h">
+    <ClInclude Include="system\input\rawinput_win32.h">
       <Filter>Source Files\system\input</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\drivers\cchasm.h">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\cpu_code\z80fmly.h">
-      <Filter>Source Files\aae\cpu_code</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\sndhrdwr\aae_pokey.h">
-      <Filter>Source Files\aae\sndhrdwr</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\drivers\mappy.h">
-      <Filter>Source Files\aae\drivers\raster</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\sndhrdwr\dac.h">
-      <Filter>Source Files\aae\sndhrdwr</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\sndhrdwr\sn76477.h">
-      <Filter>Source Files\aae\sndhrdwr</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\drivers\superpac.h">
-      <Filter>Source Files\aae\drivers\raster</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\drivers\jrpacman.h">
-      <Filter>Source Files\aae\drivers\raster</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\drivers\circus.h">
-      <Filter>Source Files\aae\drivers\raster</Filter>
     </ClInclude>
     <ClInclude Include="aae\aae_video\mame_layout.h">
       <Filter>Source Files\aae\aae_video</Filter>
     </ClInclude>
-    <ClInclude Include="aae\cpu_code\cpu_i8085.h">
-      <Filter>Source Files\aae\cpu_code</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\drivers\phoenix.h">
-      <Filter>Source Files\aae\drivers\raster</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\sndhrdwr\tms36xx.h">
-      <Filter>Source Files\aae\sndhrdwr</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\sndhrdwr\phoenix_audio.h">
-      <Filter>Source Files\aae\sndhrdwr</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\sndhrdwr\pleiads_audio.h">
-      <Filter>Source Files\aae\sndhrdwr</Filter>
-    </ClInclude>
     <ClInclude Include="system\3rdparty\stb_truetype.h">
       <Filter>Source Files\system\3rdparty</Filter>
     </ClInclude>
-    <ClInclude Include="aae\drivers\xevious.h">
-      <Filter>Source Files\aae\drivers\raster</Filter>
-    </ClInclude>
     <ClInclude Include="system\3rdparty\tinyxml2.h">
       <Filter>Source Files\system\3rdparty</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\drivers\digdug.h">
-      <Filter>Source Files\aae\drivers\raster</Filter>
     </ClInclude>
     <ClInclude Include="aae\aae_video\opengl_renderer.h">
       <Filter>Source Files\aae\aae_video</Filter>
@@ -900,51 +384,17 @@
     <ClInclude Include="aae\aae_video_vk\vulkan_renderer.h">
       <Filter>Source Files\aae\aae_video_vk</Filter>
     </ClInclude>
-    <ClInclude Include="aae\aae_video\mame_vector.h">
-      <Filter>Source Files\aae\aae_video</Filter>
-    </ClInclude>
     <ClInclude Include="system\audio\audio_3d.h">
       <Filter>Source Files\system\audio</Filter>
     </ClInclude>
     <ClInclude Include="system\audio\xaudio2_backend.h">
       <Filter>Source Files\system\audio</Filter>
     </ClInclude>
-    <ClInclude Include="aae\cpu_code\cpu_m6809.h">
-      <Filter>Source Files\aae\cpu_code</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\cpu_code\cpu_m68000.h">
-      <Filter>Source Files\aae\cpu_code</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\cpu_code\cpu_lr35902.h">
-      <Filter>Source Files\aae\cpu_code</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\cpu_code\cpu_i8039.h">
-      <Filter>Source Files\aae\cpu_code</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\drivers\gaplus.h">
-      <Filter>Source Files\aae\drivers\raster</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\drivers\vertigo.h">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\machine\74148.h">
-      <Filter>Source Files\aae\machine</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\machine\pit8253.h">
-      <Filter>Source Files\aae\machine</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\sndhrdwr\exidy440_sound.h">
-      <Filter>Source Files\aae\sndhrdwr</Filter>
-    </ClInclude>
     <ClInclude Include="aae\led_service_handler.h">
       <Filter>Source Files\aae</Filter>
     </ClInclude>
-    <ClInclude Include="aae\vidhrdwr\astrocde_video.h">
-      <Filter>Source Files\aae\vidhrdwr</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\sndhrdwr\astrocade_sound.h">
-      <Filter>Source Files\aae\sndhrdwr</Filter>
-    </ClInclude>
+    <ClInclude Include="system\audio\audio_backend.h" />
+    <ClInclude Include="system\util\sys_timer.h" />
   </ItemGroup>
   <ItemGroup>
     <Image Include="appicon.ico" />
@@ -1026,6 +476,9 @@
     <Filter Include="Shaders\vk">
       <UniqueIdentifier>{8b2c4d6e-3f5a-4b7c-9d0e-1f2a3b4c5d6e}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\aae\drivers\vector">
+      <UniqueIdentifier>{92cad4b1-1b94-4dbf-8b28-332c22199de8}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="resource.rc">
@@ -1098,13 +551,7 @@
     </CustomBuild>
   </ItemGroup>
   <ItemGroup>
-    <None Include="resource.aps">
-      <Filter>Resource Files</Filter>
-    </None>
     <None Include="packages.config" />
-    <None Include="aae\cpu_code\cpu_m68000_ops.inc">
-      <Filter>Source Files\aae\cpu_code</Filter>
-    </None>
   </ItemGroup>
   <!-- Linux port. Grouped under one top-level "Linux (not built)" folder so the
        whole port is reviewable in one place and is obviously not part of the
@@ -1166,6 +613,9 @@
     <None Include="system\input\linux\evdev_joystick.cpp">
       <Filter>Linux (not built)\input</Filter>
     </None>
+    <None Include="inputtest\inputtest_main.cpp">
+      <Filter>Linux (not built)\input</Filter>
+    </None>
     <None Include="system\audio\linux\alsa_backend.cpp">
       <Filter>Linux (not built)\audio</Filter>
     </None>
@@ -1181,19 +631,43 @@
     <None Include="..\tools\linux\uinput_devices.cpp">
       <Filter>Linux (not built)\util</Filter>
     </None>
+    <None Include="..\tools\linux\tests\drive_gui.txt">
+      <Filter>Linux (not built)\util</Filter>
+    </None>
+    <None Include="..\tools\linux\tests\milestone_b.txt">
+      <Filter>Linux (not built)\util</Filter>
+    </None>
     <None Include="..\CMakeLists.txt">
       <Filter>Linux (not built)\build + packaging</Filter>
     </None>
     <None Include="..\scripts\linux\build.sh">
       <Filter>Linux (not built)\build + packaging</Filter>
     </None>
+    <None Include="..\scripts\linux\build-linux.sh">
+      <Filter>Linux (not built)\build + packaging</Filter>
+    </None>
+    <None Include="..\scripts\linux\build-pi5.sh">
+      <Filter>Linux (not built)\build + packaging</Filter>
+    </None>
     <None Include="..\scripts\linux\run.sh">
+      <Filter>Linux (not built)\build + packaging</Filter>
+    </None>
+    <None Include="..\scripts\linux\stage-for-pi.sh">
       <Filter>Linux (not built)\build + packaging</Filter>
     </None>
     <None Include="..\scripts\linux\build-flatpak.sh">
       <Filter>Linux (not built)\build + packaging</Filter>
     </None>
+    <None Include="..\scripts\linux\wsl-asoundrc">
+      <Filter>Linux (not built)\build + packaging</Filter>
+    </None>
     <None Include="..\packaging\flatpak\io.github.tcottrill.AAE.yml">
+      <Filter>Linux (not built)\build + packaging</Filter>
+    </None>
+    <None Include="..\packaging\flatpak\io.github.tcottrill.AAE.desktop">
+      <Filter>Linux (not built)\build + packaging</Filter>
+    </None>
+    <None Include="..\packaging\flatpak\io.github.tcottrill.AAE.metainfo.xml">
       <Filter>Linux (not built)\build + packaging</Filter>
     </None>
     <None Include="..\packaging\flatpak\aae-launcher.sh">
