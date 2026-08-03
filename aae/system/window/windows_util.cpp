@@ -195,6 +195,19 @@ void WindowUtil_UpdateAspect(float gameAspect)
 		return;
 	}
 
+	// Explicit resolution ([main] screenw/screenh > 0): the user chose this
+	// window size, so KEEP it - re-fit the viewport (letterbox) and stop.
+	// The unconditional SetWindowPos below is what stomped an explicit size
+	// back to the monitor aspect-fit on every game launch, and each stomp
+	// fired WM_SIZE + a second resize call = two Vulkan swapchain recreates
+	// per launch for a window that never needed to change. Same treatment as
+	// the borderless path above, and the same behavior Linux always has.
+	if (ws.explicitWindowSize)
+	{
+		emulator_on_window_resize(ws.clientWidth, ws.clientHeight);
+		return;
+	}
+
 	HWND hwnd = win_get_window();
 
 	// Compute frame overhead (difference between window rect and client rect)

@@ -2286,8 +2286,20 @@ void vkchain_set_vsync(bool enabled)
 
 void vkchain_on_window_resize(int newW, int newH)
 {
-	(void)newW; (void)newH;
 	if (!s_initialized)
+		return;
+
+	// Same-size calls are common, not exotic: WindowUtil_UpdateAspect re-fits
+	// the viewport through emulator_on_window_resize on EVERY game launch, and
+	// at a fixed window size (explicit resolution, borderless fullscreen) the
+	// client area never changed. Recreating the swapchain at an identical
+	// extent is a full device drain for nothing - and a stream of them is the
+	// recreate-storm signature seen when the GUI launched games. Skip when the
+	// live swapchain already matches, unless a deferred recreate is pending
+	// (then this call doubles as the fast-path retry described below).
+	if (!s_deferredZeroExtent &&
+	    g_vk.swapchainExtent.width  == (uint32_t)newW &&
+	    g_vk.swapchainExtent.height == (uint32_t)newH)
 		return;
 
 	// winmain.cpp only calls emulator_on_window_resize (and therefore this

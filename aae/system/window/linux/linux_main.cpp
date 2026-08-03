@@ -142,6 +142,9 @@ int main(int argc, char** argv)
 	const int cfgScreenW = get_config_int("main", "screenw", 0);
 	const int cfgScreenH = get_config_int("main", "screenh", 0);
 	const bool explicitSize = (cfgScreenW > 0 && cfgScreenH > 0);
+	// This platform's WindowUtil_UpdateAspect never resizes the window, but
+	// keep the shared contract's flag truthful all the same.
+	g_windowSetup.explicitWindowSize = explicitSize;
 
 	// screenRect is the primary monitor's pixel size. run_game() reads it to
 	// sanity-check the configured resolution, so it must be populated before

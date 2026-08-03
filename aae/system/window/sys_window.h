@@ -45,6 +45,11 @@ struct WindowSetup {
 	// When false (default), every game uses its natural computed aspect ratio.
 	bool aspectOverrideActive = false;
 	float aspectRatio = 4.0f / 3.0f;
+	// True when the user configured an exact window size ([main] screenw/
+	// screenh > 0, or -width/-height). WindowUtil_UpdateAspect must then keep
+	// its hands off the window: games letterbox inside the chosen client area
+	// instead of the window being resized to the per-game aspect fit.
+	bool explicitWindowSize = false;
 	int windowWidth = 1024;
 	int windowHeight = 768;
 	int clientWidth = 0;   // This is for the current window size.

@@ -800,6 +800,7 @@ WindowSetup GenerateFinalWindowSetup(bool forceWindowed = false)
 	finalSetup.useAspectRatio  = config.useAspectRatio;
 	finalSetup.aspectOverrideActive = config.aspectOverrideActive;
 	finalSetup.centerWindow    = config.centerWindow;
+	finalSetup.explicitWindowSize = !autoSize;
 	finalSetup.windowWidth     = config.windowWidth;
 	finalSetup.windowHeight    = config.windowHeight;
 	finalSetup.dpiAware        = config.dpiAware;
