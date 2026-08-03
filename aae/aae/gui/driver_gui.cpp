@@ -276,6 +276,13 @@ static const char* gui_samples[] =
 	"idle.wav",      // 3
 	"explode1.wav",  // 4
 	"fire.wav",      // 5
+	0                // TERMINATOR - load_samples_batch walks until nullptr.
+	                 // This was missing: the loader read past the array into
+	                 // whatever .rdata the linker placed next. It survived on
+	                 // Windows only while that memory happened to be benign
+	                 // (any code change could reshuffle it - the dual-filter
+	                 // glow strings finally did), and it is what crashed the
+	                 // GUI on the Pi from day one.
 };
 
 // =============================================================================
