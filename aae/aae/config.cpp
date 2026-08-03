@@ -182,8 +182,13 @@ void setup_config() {
     config.showinfo = get_config_int("main", "showinfo", 0);
     config.windowed = get_config_int("window", "fullscreen", 0);
     config.aspect = get_config_string("window", "aspect_ratio", "4:3");
-    config.screenw = get_config_int("main", "screenw", 1024);
-    config.screenh = get_config_int("main", "screenh", 768);
+    // 0 = AUTO: size the window to the largest aspect-fit on the monitor at
+    // startup. Any positive pair is an exact client size, honored literally.
+    // The 0 sentinel lives ONLY in the ini/config/menu layer - the window
+    // startup code (GenerateFinalWindowSetup / linux_main) resolves it to real
+    // pixels before anything downstream sees a size.
+    config.screenw = get_config_int("main", "screenw", 0);
+    config.screenh = get_config_int("main", "screenh", 0);
     config.exrompath = get_config_string("main", "mame_rom_path", "roms");
     config.exartpath = get_config_string("main", "mame_artwork_path", "artwork");
     config.hack = get_config_int("main", "hack", 0);

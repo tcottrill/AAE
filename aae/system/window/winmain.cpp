@@ -551,13 +551,16 @@ void LoadWindowIniConfig(WindowSetup& config, Win32WindowState& win32Config)
 	// 1) Prefer [window] if present
 	// -----------------------------
 	const int win_fullscreen = get_config_int("window", "fullscreen", -1);
-	const int win_width      = get_config_int("window", "width", -1);
-	const int win_height     = get_config_int("window", "height", -1);
 
 	// Legacy keys saved by the menu/config system
 	const int main_windowed = get_config_int("main", "windowed", -1);
-	const int main_screenw  = get_config_int("main", "screenw", -1);
-	const int main_screenh  = get_config_int("main", "screenh", -1);
+
+	// THE windowed-size setting, and the only one. [window] width/height used
+	// to shadow it, which meant the menu's RESOLUTION item could never win -
+	// that pair is no longer read. 0 (or absent) = AUTO: the startup code
+	// computes the largest aspect-fit window instead.
+	const int main_screenw  = get_config_int("main", "screenw", 0);
+	const int main_screenh  = get_config_int("main", "screenh", 0);
 
 	// Fullscreen/windowed selection:
 	// - If [window].fullscreen exists, use it.
@@ -577,16 +580,17 @@ void LoadWindowIniConfig(WindowSetup& config, Win32WindowState& win32Config)
 	config.aspectOverrideActive = config.useAspectRatio;
 	win32Config.disableNC = get_config_int("window", "disable_nc", 0) != 0;
 
-	// Width/Height selection:
-	// - Prefer [window].width/height if present
-	// - Else fall back to [main].screenw/screenh (what the menu saves)
-	if (win_width  != -1) config.windowWidth  = win_width;
-	else if (main_screenw != -1) config.windowWidth  = main_screenw;
-	else config.windowWidth  = 1024;
-
-	if (win_height != -1) config.windowHeight = win_height;
-	else if (main_screenh != -1) config.windowHeight = main_screenh;
-	else config.windowHeight = 768;
+	// Width/Height: an explicit size needs BOTH values positive; anything else
+	// is AUTO. Carrying 0 through windowWidth/Height here is safe because
+	// GenerateFinalWindowSetup resolves it to real pixels before the values
+	// reach window creation or the renderer.
+	if (main_screenw > 0 && main_screenh > 0) {
+		config.windowWidth  = main_screenw;
+		config.windowHeight = main_screenh;
+	} else {
+		config.windowWidth  = 0;   // AUTO
+		config.windowHeight = 0;
+	}
 
 	win32Config.disableRoundedCorners = get_config_bool("window", "disable_rounded_corners", false);
 	config.dpiAware              = get_config_bool("window", "dpi_aware", true);
@@ -733,7 +737,11 @@ WindowSetup GenerateFinalWindowSetup(bool forceWindowed = false)
 	// when the app starts in fullscreen. Place the fallback on the same monitor.
 	// g_windowedFallbackWin32State captures the fallback's style/exStyle/disableNC
 	// independently of the live g_win32WindowState computed below.
-	if (config.useAspectRatio)
+	//
+	// AUTO (screenw/screenh = 0) falls back to the aspect-fit window, same as
+	// the live dispatch below. Only an explicit size goes through Classic.
+	if (config.useAspectRatio ||
+	    config.windowWidth <= 0 || config.windowHeight <= 0)
 		g_windowedFallbackSetup = GetCenteredAspectWindowSetup(config.aspectRatio, win32Config.disableNC, targetMonitor, g_windowedFallbackWin32State);
 	else
 		g_windowedFallbackSetup = GetClassicWindowSetup(config.windowWidth, config.windowHeight, config.centerWindow, targetMonitor, g_windowedFallbackWin32State);
@@ -756,6 +764,22 @@ WindowSetup GenerateFinalWindowSetup(bool forceWindowed = false)
 	WindowSetup finalSetup;
 	finalSetup.aspectRatio = config.aspectRatio;
 
+	// AUTO vs explicit, decided AFTER the command line so -width/-height can
+	// override an ini AUTO. This replaces the 4/5/2026 hack that forced every
+	// windowed startup through the aspect-fit path and made screenw/screenh
+	// (and the menu's RESOLUTION item) decorative.
+	const bool autoSize = (config.windowWidth <= 0 || config.windowHeight <= 0);
+
+	// Resolve the AUTO sentinel into real pixels RIGHT HERE - zero must never
+	// survive past this function. The windowed fallback above already computed
+	// the aspect-fit client size, which is exactly what AUTO means.
+	if (autoSize) {
+		config.windowWidth  = g_windowedFallbackSetup.windowWidth;
+		config.windowHeight = g_windowedFallbackSetup.windowHeight;
+		LOG_INFO("Window size AUTO: resolved to %dx%d",
+		         config.windowWidth, config.windowHeight);
+	}
+
 	// Apply correct window setup based on (possibly forced) mode.
 	// GetWin32WindowState() is written directly here since finalSetup becomes
 	// the live g_windowSetup (see wWinMain), so its Win32 half is the live
@@ -763,15 +787,14 @@ WindowSetup GenerateFinalWindowSetup(bool forceWindowed = false)
 	if (!forceWindowed && config.useFullscreen) {
 		finalSetup = GetBorderlessFullscreenSetup(targetMonitor, GetWin32WindowState());
 	}
-	else if (config.useAspectRatio) {
+	else if (config.useAspectRatio || autoSize) {
 		finalSetup = GetCenteredAspectWindowSetup(config.aspectRatio, win32Config.disableNC, targetMonitor, GetWin32WindowState());
 	}
-	// ---- HACK: Fix for skipping ClassicWindowSetup ----- Added 4/5/2026 -- Get Real Fix.
 	else {
-	//	finalSetup = GetClassicWindowSetup(config.windowWidth, config.windowHeight, config.centerWindow, targetMonitor, GetWin32WindowState());
-		finalSetup = GetCenteredAspectWindowSetup(config.aspectRatio, win32Config.disableNC, targetMonitor, GetWin32WindowState());
+		// Explicit resolution: honored literally, centered, never inflated to
+		// fill the monitor.
+		finalSetup = GetClassicWindowSetup(config.windowWidth, config.windowHeight, config.centerWindow, targetMonitor, GetWin32WindowState());
 	}
-	// ------------------- END HACK ------------------------
 	// Copy override flags back into final setup
 	finalSetup.useFullscreen   = config.useFullscreen;
 	finalSetup.useAspectRatio  = config.useAspectRatio;
@@ -801,6 +824,18 @@ HWND CreateConfiguredWindow(HINSTANCE hInstance, const wchar_t* className, const
 
 	int w = config.rect.right  - config.rect.left;
 	int h = config.rect.bottom - config.rect.top;
+
+	// Belt-and-suspenders: a zero/negative size here means the AUTO sentinel
+	// (screenw/screenh = 0) leaked past GenerateFinalWindowSetup, or the rect
+	// was never filled. A degenerate window "succeeds" and then everything
+	// downstream renders into nothing - fail loudly and recover instead.
+	if (w <= 0 || h <= 0) {
+		LOG_ERROR("CreateConfiguredWindow: degenerate size %dx%d - falling back to 1024x768", w, h);
+		w = 1024;
+		h = 768;
+		config.rect.right  = config.rect.left + w;
+		config.rect.bottom = config.rect.top  + h;
+	}
 
 	HWND hwnd = CreateWindowExW(
 		win32.exStyle,

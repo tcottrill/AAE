@@ -136,6 +136,13 @@ int main(int argc, char** argv)
 	// Set BEFORE Create(), which seeds its own capture state from WindowSetup.
 	g_windowSetup.cursorClipEnabled = true;
 
+	// Explicit window size, same [main] screenw/screenh contract as Windows:
+	// both positive = exact client size, 0 (the default) = AUTO, which keeps
+	// the computed work-area fit below. The WM may still clamp what we ask for.
+	const int cfgScreenW = get_config_int("main", "screenw", 0);
+	const int cfgScreenH = get_config_int("main", "screenh", 0);
+	const bool explicitSize = (cfgScreenW > 0 && cfgScreenH > 0);
+
 	// screenRect is the primary monitor's pixel size. run_game() reads it to
 	// sanity-check the configured resolution, so it must be populated before
 	// emulator_init - winmain.cpp fills it from GetSystemMetrics at the same
@@ -174,16 +181,24 @@ int main(int argc, char** argv)
 		// Windows subtracts the real frame size here; X11 cannot know it before
 		// the window is mapped (_NET_FRAME_EXTENTS arrives afterwards), so a
 		// fixed allowance stands in for the title bar.
-		const int frameAllowance = 32;
-		int clientH = (int)workH - frameAllowance;
-		int clientW = (int)lroundf(clientH * g_windowSetup.aspectRatio);
-		if (clientW > (int)workW) {           // too wide: clamp and recompute
-			clientW = (int)workW;
-			clientH = (int)lroundf(clientW / g_windowSetup.aspectRatio);
-		}
-		if (clientW > 0 && clientH > 0) {
-			g_windowSetup.windowWidth  = clientW;
-			g_windowSetup.windowHeight = clientH;
+		//
+		// Only for AUTO - an explicit screenw/screenh is honored literally,
+		// matching GetClassicWindowSetup on Windows.
+		if (explicitSize) {
+			g_windowSetup.windowWidth  = cfgScreenW;
+			g_windowSetup.windowHeight = cfgScreenH;
+		} else {
+			const int frameAllowance = 32;
+			int clientH = (int)workH - frameAllowance;
+			int clientW = (int)lroundf(clientH * g_windowSetup.aspectRatio);
+			if (clientW > (int)workW) {           // too wide: clamp and recompute
+				clientW = (int)workW;
+				clientH = (int)lroundf(clientW / g_windowSetup.aspectRatio);
+			}
+			if (clientW > 0 && clientH > 0) {
+				g_windowSetup.windowWidth  = clientW;
+				g_windowSetup.windowHeight = clientH;
+			}
 		}
 
 		XCloseDisplay(probe);

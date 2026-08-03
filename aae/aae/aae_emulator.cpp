@@ -1679,12 +1679,16 @@ void emulator_init(int argc, char** argv)
 		gamenum = g_guiGameIndex;
 	}
 
-	// Force config screen dimensions to the current desktop resolution.
+	// Log the desktop resolution, but do NOT write it into config.screenw/h.
+	// The old force-overwrite here is what made the RESOLUTION setting
+	// impossible to persist: the menu then displayed desktop-derived values,
+	// and saving the video menu wrote the desktop size back to the ini,
+	// clobbering whatever the user chose (and it would destroy the AUTO 0
+	// sentinel the same way). screenw/screenh now keep their ini-loaded
+	// meaning: 0 = AUTO window sizing, positive = exact window client size.
 	int horizontal = 0, vertical = 0;
 	GetDesktopResolution(horizontal, vertical);
 	LOG_INFO("Desktop resolution: %d x %d", horizontal, vertical);
-	config.screenw = horizontal;
-	config.screenh = vertical;
 
 	game_loaded_sentinel = false;
 

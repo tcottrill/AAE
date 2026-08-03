@@ -766,34 +766,40 @@ void MenuManager::BuildVideoMenu() {
         m_items.push_back(rend);
     }
 
-    // Resolution preset binding. Static so the index survives redraws.
+    // Resolution presets. Index 0 is AUTO (screenw/screenh = 0): the startup
+    // code sizes the window to the largest aspect-fit on the monitor. The
+    // fixed presets are honored literally at next launch - the window is
+    // created at exactly that client size, not inflated to fill the screen.
+    //
+    // Applies on NEXT RUN, same pattern as the RENDERER item: the live window
+    // was created at startup, so the value display flags a pending change by
+    // comparing against a snapshot of the values the session started with.
+    static const int kResW[] = { 0, 1024, 1152, 1280, 1600, 1920 };
+    static const int kResH[] = { 0,  768,  864, 1024, 1200, 1080 };
+    static constexpr int kResCount = 6;
+
+    // Static so the index survives redraws; snapshot taken once per session.
     static int resIndex = 0;
-    if (config.screenw == 1024) resIndex = 0;
-    else if (config.screenw == 1152) resIndex = 1;
-    else if (config.screenw == 1280) resIndex = 2;
-    else if (config.screenw == 1600) resIndex = 3;
-    else if (config.screenw == 1920) resIndex = 4;
+    static int s_startupW = -1, s_startupH = -1;
+    if (s_startupW < 0) { s_startupW = config.screenw; s_startupH = config.screenh; }
+    for (int i = 0; i < kResCount; ++i)
+        if (config.screenw == kResW[i] && config.screenh == kResH[i]) { resIndex = i; break; }
 
     MenuItem resItem;
     resItem.label = "RESOLUTION";
     resItem.getValueDisplay = []() {
-        const char* names[] = { "1024x768", "1152x864", "1280x1024", "1600x1200", "1920x1080" };
-        return std::string(names[std::clamp(resIndex, 0, 4)]);
+        const char* names[] = { "AUTO", "1024x768", "1152x864", "1280x1024", "1600x1200", "1920x1080" };
+        const bool changed = (config.screenw != s_startupW) || (config.screenh != s_startupH);
+        return std::string(names[std::clamp(resIndex, 0, kResCount - 1)]) +
+               (changed ? " (NEXT RUN)" : "");
         };
     resItem.onAdjust = [](int dir) {
-        resIndex += dir;
-        if (resIndex > 4) resIndex = 4;
-        if (resIndex < 0) resIndex = 0;
-        switch (resIndex) {
-        case 0: config.screenw = 1024; config.screenh = 768;  break;
-        case 1: config.screenw = 1152; config.screenh = 864;  break;
-        case 2: config.screenw = 1280; config.screenh = 1024; break;
-        case 3: config.screenw = 1600; config.screenh = 1200; break;
-        case 4: config.screenw = 1920; config.screenh = 1080; break;
-        }
+        resIndex = std::clamp(resIndex + dir, 0, kResCount - 1);
+        config.screenw = kResW[resIndex];
+        config.screenh = kResH[resIndex];
         };
     resItem.hasLeft = []() { return resIndex > 0; };
-    resItem.hasRight = []() { return resIndex < 4; };
+    resItem.hasRight = []() { return resIndex < kResCount - 1; };
     resItem.onActivate = []() {};
     m_items.push_back(resItem);
 
