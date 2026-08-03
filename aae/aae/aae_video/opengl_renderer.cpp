@@ -1808,6 +1808,26 @@ void glchain_gui_points_shutdown()
 }
 
 // ---------------------------------------------------------------------------
+// glchain_present_blank_frame - clear the window to black and present it.
+//
+// run_game loads ROMs, artwork and samples with nothing repainting, so the
+// previously presented frame would otherwise sit frozen on screen for the whole
+// load. One black frame up front makes that read as a deliberate transition.
+//
+// The clear is EXPLICIT and targets the default framebuffer: swapping without
+// it would present whatever stale content the back buffer happens to hold -
+// an older frame - which reads as a flicker backwards rather than a blank.
+// ---------------------------------------------------------------------------
+void glchain_present_blank_frame()
+{
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	glDisable(GL_SCISSOR_TEST);       // a leftover scissor would clip the clear
+	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+	glClear(GL_COLOR_BUFFER_BIT);
+	glchain_swap_buffers();
+}
+
+// ---------------------------------------------------------------------------
 // glcode_get_gl_error
 // Backend-neutral wrapper around glGetError() for callers outside the
 // render .cpp files that just want to know if a GL error occurred, without

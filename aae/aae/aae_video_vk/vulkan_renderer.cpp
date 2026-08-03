@@ -2439,6 +2439,29 @@ void vkchain_gui_points_draw(const GuiPointVertex* pts, int count, float pointSi
 	g_guiPoints.Render(g_vk, cmd, s_imageIndex, g_vk.frameIndex, false, 0.0f, 0.0f, 0.0f, 0.0f);
 }
 
+// ---------------------------------------------------------------------------
+// vkchain_present_blank_frame - clear the window to black and present it.
+//
+// run_game spends real time on ROMs, artwork and samples with nothing
+// repainting, so without this the previous game's (or the front-end's) last
+// presented frame sits frozen on screen for the whole load. Presenting one
+// black frame first makes that read as a deliberate transition.
+//
+// Nothing needs drawing: the swapchain pass opens with LOAD_OP_CLEAR to black,
+// so an empty frame IS the clear. VK_EndFrame's backstop opens it even though
+// no draw call ever touches the swapchain this frame.
+// ---------------------------------------------------------------------------
+void vkchain_present_blank_frame(void)
+{
+	if (!s_initialized || s_frameOpen)
+		return;
+
+	vkchain_set_render();
+	if (!s_frameOpen)
+		return;                 // acquire failed / swapchain deferred; nothing to present
+	vkchain_swap_buffers();
+}
+
 void vkchain_gui_points_shutdown(void)
 {
 	if (s_guiPointsInit)

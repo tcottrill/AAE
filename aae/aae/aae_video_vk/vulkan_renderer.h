@@ -21,6 +21,7 @@ void vkchain_on_window_resize(int newW, int newH);
 void vkchain_gui_points_init(int maxPoints);
 void vkchain_gui_points_draw(const GuiPointVertex* pts, int count, float pointSize);
 void vkchain_gui_points_shutdown(void);
+void vkchain_present_blank_frame(void);
 void vkchain_vector_hard_clear(void);
 
 // F12 screenshot (routed from snapshot() in renderer_dispatch.cpp). Latches a

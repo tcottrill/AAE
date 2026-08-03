@@ -1976,6 +1976,15 @@ bool emulator_start_game(int newGameNum)
 		return false;
 	}
 
+	// Blank the window BEFORE the teardown, not after: run_game then spends
+	// real time on ROMs, artwork and samples with nothing repainting, and
+	// without this the outgoing game's (or the front-end's) last presented
+	// frame stays frozen on screen for all of it.
+	//
+	// Before emulator_stop_game() specifically, because that memsets Machine
+	// and glchain_set_render dereferences Machine->drv unguarded.
+	present_blank_frame();
+
 	emulator_stop_game();
 
 	// Drop the outgoing driver's retained vector geometry before the incoming

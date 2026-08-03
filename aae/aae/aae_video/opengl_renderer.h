@@ -58,6 +58,9 @@ struct GuiPointVertex {
 void gui_points_init(int maxPoints);
 void gui_points_draw(const GuiPointVertex* pts, int count, float pointSize);
 void gui_points_shutdown();
+// Clear the window to black and present it. Used before a long game load so
+// the previous frame does not sit frozen on screen throughout.
+void present_blank_frame();
 
 // Backend window-swap / vsync wrappers. Public names are dispatch functions
 // defined in renderer_dispatch.cpp; the GL implementations are glchain_swap_buffers()
@@ -81,6 +84,7 @@ void glchain_on_window_resize(int newW, int newH);
 void glchain_gui_points_init(int maxPoints);
 void glchain_gui_points_draw(const GuiPointVertex* pts, int count, float pointSize);
 void glchain_gui_points_shutdown();
+void glchain_present_blank_frame();
 void glchain_vector_hard_clear_fbo1();
 void glchain_init_raster_overlay();
 void glchain_shutdown_raster_overlay();

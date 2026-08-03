@@ -115,6 +115,12 @@ void gui_points_shutdown()
 	glchain_gui_points_shutdown();
 }
 
+void present_blank_frame()
+{
+	if (s_active == RENDERER_VULKAN) { vkchain_present_blank_frame(); return; }
+	glchain_present_blank_frame();
+}
+
 void glcode_vector_hard_clear_fbo1()
 {
 	if (s_active == RENDERER_VULKAN) { vkchain_vector_hard_clear(); return; }

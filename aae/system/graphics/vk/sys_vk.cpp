@@ -1958,6 +1958,75 @@ bool VK_EndUpload(VkContext& ctx)
 }
 
 // -----------------------------------------------------------------------------
+// Upload batching (see the header for what this buys and why the deferral is
+// mandatory rather than an optimization).
+// -----------------------------------------------------------------------------
+static int s_uploadBatchDepth = 0;
+
+// Objects a builder wanted to destroy while the batch's command buffer was
+// recorded-but-unsubmitted. Destroying them there would invalidate that command
+// buffer and fault the GPU on submit, so they wait until the batch has run.
+static std::vector<VkBuffer>       s_batchBuffers;
+static std::vector<VkDeviceMemory> s_batchMemory;
+static std::vector<VkImage>        s_batchImages;
+static std::vector<VkImageView>    s_batchViews;
+static std::vector<VkSampler>      s_batchSamplers;
+
+static bool UploadBatchActive(void)
+{
+	return s_uploadBatchDepth > 0;
+}
+
+bool VK_BeginUploadBatch(VkContext& ctx)
+{
+	if (s_uploadBatchDepth++ > 0)
+		return true;            // nested: join the batch already recording
+
+	if (!VK_BeginUpload(ctx))
+	{
+		s_uploadBatchDepth = 0;
+		LOG_ERROR("VK_BeginUploadBatch: VK_BeginUpload failed; batch not started");
+		return false;
+	}
+	return true;
+}
+
+bool VK_EndUploadBatch(VkContext& ctx)
+{
+	if (s_uploadBatchDepth <= 0)
+	{
+		LOG_ERROR("VK_EndUploadBatch: no batch open; ignoring");
+		return false;
+	}
+	if (--s_uploadBatchDepth > 0)
+		return true;            // an outer batch still owns the command buffer
+
+	// One submit, one fence wait, for every texture recorded since Begin.
+	const bool ok = VK_EndUpload(ctx);
+
+	// Reclaim AFTER the wait: the submit has completed, so everything the
+	// builders deferred is now provably untouched by the GPU. This runs even
+	// when the submit failed - the command buffer is done with either way, and
+	// leaking on the failure path would be worse.
+	for (VkSampler s : s_batchSamplers)   if (s) ctx.vkDestroySampler_(ctx.device, s, nullptr);
+	for (VkImageView v : s_batchViews)    if (v) ctx.vkDestroyImageView_(ctx.device, v, nullptr);
+	for (VkImage i : s_batchImages)       if (i) ctx.vkDestroyImage_(ctx.device, i, nullptr);
+	for (VkBuffer b : s_batchBuffers)     if (b) ctx.vkDestroyBuffer_(ctx.device, b, nullptr);
+	for (VkDeviceMemory m : s_batchMemory) if (m) ctx.vkFreeMemory_(ctx.device, m, nullptr);
+
+	s_batchSamplers.clear();
+	s_batchViews.clear();
+	s_batchImages.clear();
+	s_batchBuffers.clear();
+	s_batchMemory.clear();
+
+	if (!ok)
+		LOG_ERROR("VK_EndUploadBatch: batch submit failed; textures in this batch are unusable");
+
+	return ok;
+}
+
+// -----------------------------------------------------------------------------
 // Texture helpers
 // -----------------------------------------------------------------------------
 static uint32_t FindMemoryTypeIdx(VkContext& ctx, uint32_t typeBits, VkMemoryPropertyFlags props)
@@ -2014,6 +2083,25 @@ static bool VK_BuildRGBA8Texture(VkContext& ctx,
 
 	auto fail = [&]() -> bool
 	{
+		if (UploadBatchActive())
+		{
+			// The batch's command buffer is recorded but NOT yet submitted, and
+			// it may already reference this image. Destroying it now would
+			// invalidate that command buffer and fault the GPU when the batch
+			// submits, so hand everything to the batch to reclaim after its
+			// wait instead. (VK_DestroyTexture's own device-wait-idle would
+			// also be wrong here - it cannot drain work that has not been
+			// submitted yet.)
+			if (sbuf) { s_batchBuffers.push_back(sbuf); sbuf = VK_NULL_HANDLE; }
+			if (smem) { s_batchMemory.push_back(smem);  smem = VK_NULL_HANDLE; }
+			if (outTex.sampler) s_batchSamplers.push_back(outTex.sampler);
+			if (outTex.view)    s_batchViews.push_back(outTex.view);
+			if (outTex.image)   s_batchImages.push_back(outTex.image);
+			if (outTex.memory)  s_batchMemory.push_back(outTex.memory);
+			outTex = VkTexture{};
+			return false;
+		}
+
 		if (sbuf) { ctx.vkDestroyBuffer_(ctx.device, sbuf, nullptr); sbuf = VK_NULL_HANDLE; }
 		if (smem) { ctx.vkFreeMemory_(ctx.device, smem, nullptr); smem = VK_NULL_HANDLE; }
 		VK_DestroyTexture(ctx, outTex);
@@ -2141,8 +2229,10 @@ static bool VK_BuildRGBA8Texture(VkContext& ctx,
 	memcpy(dst, rgba8Pixels, (size_t)sizeBytes);
 	ctx.vkUnmapMemory_(ctx.device, smem);
 
-	// Upload and mip-generation in a single command buffer submission.
-	if (!VK_BeginUpload(ctx))
+	// Upload and mip-generation in a single command buffer submission - or, when
+	// a batch is open, appended to the one already recording.
+	const bool batched = UploadBatchActive();
+	if (!batched && !VK_BeginUpload(ctx))
 		return fail();
 
 	// Transition every mip level UNDEFINED -> TRANSFER_DST_OPTIMAL. We copy
@@ -2294,15 +2384,28 @@ static bool VK_BuildRGBA8Texture(VkContext& ctx,
 		ctx.vkCmdPipelineBarrier2_(ctx.uploadCmd, &dep);
 	}
 
-	if (!VK_EndUpload(ctx))
-		return fail();
+	if (batched)
+	{
+		// The copy above has been RECORDED, not executed - the staging buffer
+		// is still live input to a command buffer that has not submitted yet,
+		// so it cannot be freed here. The batch frees it after its wait.
+		s_batchBuffers.push_back(sbuf);
+		s_batchMemory.push_back(smem);
+		sbuf = VK_NULL_HANDLE;
+		smem = VK_NULL_HANDLE;
+	}
+	else
+	{
+		if (!VK_EndUpload(ctx))
+			return fail();
 
-	// Destroy staging (and null the handles so a later failure does not
-	// double-destroy them in fail()).
-	ctx.vkDestroyBuffer_(ctx.device, sbuf, nullptr);
-	ctx.vkFreeMemory_(ctx.device, smem, nullptr);
-	sbuf = VK_NULL_HANDLE;
-	smem = VK_NULL_HANDLE;
+		// Destroy staging (and null the handles so a later failure does not
+		// double-destroy them in fail()).
+		ctx.vkDestroyBuffer_(ctx.device, sbuf, nullptr);
+		ctx.vkFreeMemory_(ctx.device, smem, nullptr);
+		sbuf = VK_NULL_HANDLE;
+		smem = VK_NULL_HANDLE;
+	}
 
 	// Image view covers the whole mip chain.
 	VkImageViewCreateInfo iv{ VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };

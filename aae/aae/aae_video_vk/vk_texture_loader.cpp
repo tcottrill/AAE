@@ -259,6 +259,15 @@ void VkArt_LoadForGame(VkContext& ctx, const struct artworks* p)
 {
     VkArt_FreeAll(ctx);
 
+    // One command buffer and ONE fence wait for the whole set, instead of a
+    // blocking GPU round-trip per image. This loop is the bulk of the launch
+    // stall on artwork-heavy games (the Atari vector bezels especially), and it
+    // runs on the main thread with nothing repainting behind it. The free above
+    // stays outside the batch: it destroys the PREVIOUS game's textures, which
+    // is a device-wait-idle, and must complete before the batch starts
+    // recording.
+    const bool batched = VK_BeginUploadBatch(ctx);
+
     if (p)
     {
         for (int i = 0; p[i].filename != NULL; i++)
@@ -296,6 +305,17 @@ void VkArt_LoadForGame(VkContext& ctx, const struct artworks* p)
                 LOG_INFO("VkArt: could not load '%s' (target=%d).", p[i].filename, t);
             }
         }
+    }
+
+    // Submit and wait once. Must happen BEFORE the availability bookkeeping
+    // below: a failed batch means none of these textures are usable, and the
+    // flags have to reflect that.
+    if (batched && !VK_EndUploadBatch(ctx))
+    {
+        LOG_ERROR("VkArt: artwork upload batch failed; dropping this game's artwork");
+        VkArt_FreeAll(ctx);
+        for (int i = 0; i < 6; ++i)
+            art_loaded[i] = 0;
     }
 
     // --- Same post-load bookkeeping as GL load_artwork: disable config flags

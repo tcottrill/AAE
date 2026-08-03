@@ -323,6 +323,27 @@ void VK_ResumeFramePass(VkContext& ctx, VkCommandBuffer cmd, uint32_t imageIndex
 // The first open of a frame clears; later ones load. See the definition.
 void VK_EnsureFramePass(VkContext& ctx, VkCommandBuffer cmd);
 
+// -----------------------------------------------------------------------------
+// Upload batching.
+//
+// Every VK_*Texture builder normally submits its own upload command buffer and
+// then BLOCKS on a fence - a full GPU round-trip per texture. Loading a game's
+// artwork is 6 of those back to back, on the main thread, and the big Atari
+// vector bezels make it the dominant part of the launch stall.
+//
+// Bracketing a run of texture builds in Begin/EndUploadBatch records them all
+// into ONE command buffer and waits ONCE at the end. Nestable (depth-counted),
+// so an inner builder joins the open batch rather than starting its own.
+//
+// While a batch is open the builders may NOT destroy anything they have already
+// recorded commands against - staging buffers, and the resources of a build
+// that fails part-way - because the batch's command buffer is recorded but not
+// yet submitted. Those are handed to the batch instead and destroyed after its
+// submit has completed. Callers need do nothing beyond bracketing.
+// -----------------------------------------------------------------------------
+bool VK_BeginUploadBatch(VkContext& ctx);
+bool VK_EndUploadBatch(VkContext& ctx);
+
 bool VK_RecreateSwapchain(VkContext& ctx);
 
 // Rearm the first-few-frames diagnostic trace in VK_BeginFrame / VK_EndFrame /
