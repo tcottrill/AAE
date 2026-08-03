@@ -1016,21 +1016,34 @@ void VectorPostVK::RecordCompositeLayered(VkContext& ctx, VkCommandBuffer cmd, u
         mapRect(0.0f, 0.0f, 1024.0f, 1024.0f, p);
         p.uvrect[0] = 0.0f; p.uvrect[1] = 0.0f;
         p.uvrect[2] = 1.0f; p.uvrect[3] = 1.0f;
-        p.tint[0] = p.tint[1] = p.tint[2] = p.tint[3] = 1.0f;
+        // crt_boost FOLDED IN (GL draws it as a SECOND additive full-screen
+        // pass over the same frame RT: 0.2 with a backdrop, 0.25 overlay2-only,
+        // to punch the vectors up against dark artwork).
+        //
+        // Two additive draws of the SAME texture differing only in tint are
+        // one draw with the tints summed - and here that is exact, not an
+        // approximation, because the blend is ONE/ONE:
+        //     dst + f*1  then  + f*boost   ==   dst + f*(1+boost)
+        // Saturation does not break it either. Vulkan clamps a fragment to
+        // [0,1] before blending into a UNORM attachment, so the folded draw
+        // contributes min(f*(1+boost), 1). Whenever that clamp bites -
+        // f*(1+boost) > 1 - the two-pass form has already exceeded 1 as well
+        // (dst + f*(1+boost) > 1), so both store 1.0. Below the clamp the two
+        // are arithmetically identical. Checked at f = 0.5 / 0.8 / 0.84 / 0.87
+        // / 0.9 / 1.0 against dst = 0 and dst = 0.3.
+        //
+        // Worth a whole pass: this is a FULL-SCREEN quad at swapchain
+        // resolution, and the profiler showed the composite zone dominating
+        // the frame - with pass-to-pass barriers costing several times the
+        // section's own fill (removing the surplus mip levels cut 0.116 ms of
+        // mip work but 0.523 ms of frame time).
+        const float boost = haveBackdrop ? 0.2f : (haveOverlay2 ? 0.25f : 0.0f);
+        p.tint[0] = p.tint[1] = p.tint[2] = 1.0f + boost;
+        p.tint[3] = 1.0f;
         // params.w = 0: force sampled alpha to 1 (GL RGB8 semantics; ONE/ONE
         // ignores alpha for color anyway).
         DrawQuadS(ctx, cmd, frameIndex, v->artAdd,
                   rtFrame_.VK_GetColorView(), rtFrame_.VK_GetSampler(), p, tw, th);
-
-        // 3) crt_boost: secondary additive pass to punch the vectors up
-        //    against dark artwork (GL: 0.2 with a backdrop, 0.25 overlay2-only).
-        if (haveBackdrop || haveOverlay2)
-        {
-            const float boost = haveBackdrop ? 0.2f : 0.25f;
-            p.tint[0] = p.tint[1] = p.tint[2] = boost; p.tint[3] = 1.0f;
-            DrawQuadS(ctx, cmd, frameIndex, v->artAdd,
-                      rtFrame_.VK_GetColorView(), rtFrame_.VK_GetSampler(), p, tw, th);
-        }
     }
 
     // 4) OVERLAY2: visible gel over the CRT at the game_rect quad, alpha 0.5,
