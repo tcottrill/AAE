@@ -104,10 +104,32 @@ bool VectorPostVK::Init(VkContext& ctx, const VectorPostVKCreateInfo* ci)
     rt.filter = rtFilterVK::Linear;
     rt.colorFormat = VK_FORMAT_R8G8B8A8_UNORM;
 
-    rt.width = beamDim_;  rt.height = beamDim_;  rt.mipLevels = -1;
+    // Mip depth: only as many levels as something actually SAMPLES.
+    //
+    // These used to request -1 (a full chain), which is ~11 levels for a 1024
+    // target and 12 for 2048 - and GenerateMips is a blit cascade with a
+    // pipeline barrier per level, paid every frame. Measured with the GPU
+    // profiler, beam_mips was ~9% of frame GPU time doing roughly 5x the work
+    // it needed to.
+    //
+    // What genuinely reads these, and at what minification:
+    //   beam -> trail pass   1024 target: 1:1 at ssaa 1 (level 0), 2:1 at
+    //                        ssaa 2 (level 1)
+    //   beam -> glow down     512 target: 2:1 at ssaa 1 (level 1), 4:1 at
+    //                        ssaa 2 (level 2)   <- the deepest real consumer
+    //   beam/trail -> composite: drawn at the on-screen game rect, which is
+    //                        MAGNIFICATION on any normal display (level 0)
+    //                        and only mild minification in a small window
+    // So level 2 is the deepest anything asks for; 4 leaves generous headroom
+    // for a very small window. The sampler's maxLod clamps to whatever exists,
+    // so an extreme minification just samples the smallest level we made -
+    // marginally sharper than a full chain would give, never broken.
+    static const int kBeamMipLevels = 4;
+
+    rt.width = beamDim_;  rt.height = beamDim_;  rt.mipLevels = kBeamMipLevels;
     if (!rtBeam_.Init(ctx, rt)) { LOG_ERROR("VectorPostVK: beam RT init failed"); Shutdown(ctx); return false; }
 
-    rt.width = 1024;      rt.height = 1024;      rt.mipLevels = -1;
+    rt.width = 1024;      rt.height = 1024;      rt.mipLevels = kBeamMipLevels;
     if (!rtTrail_.Init(ctx, rt)) { LOG_ERROR("VectorPostVK: trail RT init failed"); Shutdown(ctx); return false; }
 
     rt.mipLevels = 1;
@@ -143,8 +165,8 @@ bool VectorPostVK::Init(VkContext& ctx, const VectorPostVKCreateInfo* ci)
 
     beamReady_ = trailReady_ = glowReady_ = frameReady_ = false;
     initialized_ = true;
-    LOG_INFO("VectorPostVK: online (beam %dx%d ssaa=%d, trail 1024, glow 512/256/256)",
-             beamDim_, beamDim_, ssaa_);
+    LOG_INFO("VectorPostVK: online (beam %dx%d ssaa=%d %u mips, trail 1024 %u mips, glow 512/256/256)",
+             beamDim_, beamDim_, ssaa_, rtBeam_.GetMipLevels(), rtTrail_.GetMipLevels());
     return true;
 }
 
