@@ -33,11 +33,24 @@
 # files regardless, which is why this script handles both halves together.
 set -e
 
-DEST="${1:-}"
+DEST=""
+FORCE_CONFIG=0
+for arg in "$@"; do
+    case "$arg" in
+        --force-config) FORCE_CONFIG=1 ;;
+        -*)             echo "unknown option: $arg" >&2; exit 1 ;;
+        *)              DEST="$arg" ;;
+    esac
+done
+
 if [ -z "$DEST" ]; then
-    echo "usage: $0 <destination-directory>" >&2
-    echo "  e.g. $0 /mnt/e/aae-pi      (a pen drive mounted at E:)" >&2
-    echo "       $0 ~/aae-pi-payload   (then rsync/scp it to the Pi)" >&2
+    echo "usage: $0 <destination-directory> [--force-config]" >&2
+    echo "  e.g. $0 /home/you/aae-pi-payload   (then copy it to the Pi)" >&2
+    echo "       $0 /mnt/e/aae-pi              (a pen drive mounted at E:)" >&2
+    echo >&2
+    echo "  Re-staging PRESERVES the target's aae.ini, video.ini and ini/ -" >&2
+    echo "  those hold tuning done on that machine (Pi glow values especially)." >&2
+    echo "  --force-config overwrites them with this machine's config instead." >&2
     exit 1
 fi
 
@@ -83,14 +96,47 @@ rsync -a --exclude '*.exe' "$SRC/tools/" "$DEST/tools/"
 echo
 echo "game data (roms/artwork/samples/shaders)..."
 mkdir -p "$DEST/x64/Release"
-for d in roms artwork samples shaders ini pleiads snap; do
+for d in roms artwork samples shaders pleiads snap; do
     if [ -d "$SRC/x64/Release/$d" ]; then
         rsync -a --info=stats1 "$SRC/x64/Release/$d/" "$DEST/x64/Release/$d/"
     fi
 done
-for f in aae.ini video.ini; do
-    [ -f "$SRC/x64/Release/$f" ] && cp "$SRC/x64/Release/$f" "$DEST/x64/Release/"
-done
+
+# --- Config is PRESERVED on re-stage, unlike everything above.
+#
+# The target's settings are not a copy of the dev box's - they are tuning done
+# ON that machine, for that machine, and they are not reproducible here. The
+# Pi's GPU needs its own glow values in particular: the dual-filter pyramid
+# quantizes to 8 bits at every level and then multiplies by glow2_gain (10 by
+# default) on the final pass, so a single code of per-GPU rounding difference
+# lands as ~4% of full scale in the output. Values tuned on desktop NVIDIA/AMD
+# are not the right values on the Pi's v3d.
+#
+# The menu writes glow2_* into video.ini (menu.cpp, my_set_config_float with
+# vidPath) and per-game settings into ini/, so a plain overwrite here destroyed
+# exactly the work the user had just done on the target - silently, and on
+# every payload refresh, which makes tuning feel impossible rather than merely
+# lost.
+#
+# So: seed these when absent, never clobber them. Pass --force-config to push
+# the dev box's config over the target's on purpose.
+if [ "$FORCE_CONFIG" = "1" ]; then
+    echo "config (--force-config: OVERWRITING the target's settings)..."
+    [ -d "$SRC/x64/Release/ini" ] && rsync -a "$SRC/x64/Release/ini/" "$DEST/x64/Release/ini/"
+    for f in aae.ini video.ini; do
+        [ -f "$SRC/x64/Release/$f" ] && cp "$SRC/x64/Release/$f" "$DEST/x64/Release/"
+    done
+else
+    echo "config (seeding only - the target's own tuning is preserved)..."
+    [ -d "$SRC/x64/Release/ini" ] && rsync -a --ignore-existing "$SRC/x64/Release/ini/" "$DEST/x64/Release/ini/"
+    for f in aae.ini video.ini; do
+        if [ -f "$SRC/x64/Release/$f" ] && [ ! -f "$DEST/x64/Release/$f" ]; then
+            cp "$SRC/x64/Release/$f" "$DEST/x64/Release/"
+        elif [ -f "$DEST/x64/Release/$f" ]; then
+            echo "  kept existing $f"
+        fi
+    done
+fi
 
 # --- Deliberately NOT copied: every Windows binary and build artefact. They
 # --- are useless on ARM and would only confuse a later "which aae am I
