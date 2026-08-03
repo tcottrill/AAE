@@ -93,7 +93,6 @@
     <ClCompile Include="aae\cpu_code\timer.cpp" />
     <ClCompile Include="aae\cpu_code\z80fmly.cpp" />
     <ClCompile Include="aae\drivers\asteroid.cpp" />
-    <ClCompile Include="aae\drivers\astrocade.cpp" />
     <ClCompile Include="aae\drivers\aztarac.cpp" />
     <ClCompile Include="aae\drivers\bosco.cpp" />
     <ClCompile Include="aae\drivers\bwidow.cpp" />
@@ -102,7 +101,6 @@
     <ClCompile Include="aae\drivers\centiped.cpp" />
     <ClCompile Include="aae\drivers\foodf.cpp" />
     <ClCompile Include="aae\drivers\gaplus.cpp" />
-    <ClCompile Include="aae\drivers\mhavoc.cpp" />
     <ClCompile Include="aae\drivers\pong.cpp" />
     <ClCompile Include="aae\drivers\breakout.cpp" />
     <ClCompile Include="aae\drivers\dkong.cpp" />
@@ -124,12 +122,9 @@
     <ClCompile Include="aae\drivers\quantum.cpp" />
     <ClCompile Include="aae\drivers\rallyx.cpp" />
     <ClCompile Include="aae\drivers\segag80.cpp" />
-    <ClCompile Include="aae\drivers\starwars.cpp" />
     <ClCompile Include="aae\drivers\superpac.cpp" />
-    <ClCompile Include="aae\drivers\tempest.cpp" />
     <ClCompile Include="aae\drivers\vertigo.cpp" />
     <ClCompile Include="aae\drivers\vicdual.cpp" />
-    <ClCompile Include="aae\drivers\warlord.cpp" />
     <ClCompile Include="aae\drivers\xevious.cpp" />
     <ClCompile Include="aae\drivers\yiear.cpp" />
     <ClCompile Include="aae\driver_registry.cpp" />
@@ -153,12 +148,9 @@
     <ClCompile Include="aae\sndhrdwr\cinematronics_sound.cpp" />
     <ClCompile Include="aae\sndhrdwr\dac.cpp" />
     <ClCompile Include="aae\sndhrdwr\exidy440_sound.cpp" />
-    <ClCompile Include="aae\sndhrdwr\galsnd_stream.cpp" />
-    <ClCompile Include="aae\sndhrdwr\namco.cpp" />
     <ClCompile Include="aae\sndhrdwr\okim6295_loader.cpp" />
     <ClCompile Include="aae\sndhrdwr\phoenix_audio.cpp" />
     <ClCompile Include="aae\sndhrdwr\pleiads_audio.cpp" />
-    <ClCompile Include="aae\sndhrdwr\segag80snd.cpp" />
     <ClCompile Include="aae\sndhrdwr\sn76477.cpp" />
     <ClCompile Include="aae\sndhrdwr\starwars_snd.cpp" />
     <ClCompile Include="aae\sndhrdwr\tms36xx.cpp" />
@@ -190,10 +182,6 @@
     <ClInclude Include="aae\cpu_code\cpu_z80.h" />
     <ClInclude Include="aae\cpu_code\timer.h" />
     <ClInclude Include="aae\cpu_code\z80fmly.h" />
-    <ClInclude Include="aae\drivers\mhavoc.h" />
-    <ClInclude Include="aae\drivers\starwars.h" />
-    <ClInclude Include="aae\drivers\tempest.h" />
-    <ClInclude Include="aae\drivers\warlord.h" />
     <ClInclude Include="aae\driver_registry.h" />
     <ClInclude Include="aae\drivers\asteroid.h" />
     <ClInclude Include="aae\drivers\aztarac.h" />
@@ -246,12 +234,9 @@
     <ClInclude Include="aae\sndhrdwr\cinematronics_sound.h" />
     <ClInclude Include="aae\sndhrdwr\dac.h" />
     <ClInclude Include="aae\sndhrdwr\exidy440_sound.h" />
-    <ClInclude Include="aae\sndhrdwr\galsnd_stream.h" />
-    <ClInclude Include="aae\sndhrdwr\namco.h" />
     <ClInclude Include="aae\sndhrdwr\okim6295_loader.h" />
     <ClInclude Include="aae\sndhrdwr\phoenix_audio.h" />
     <ClInclude Include="aae\sndhrdwr\pleiads_audio.h" />
-    <ClInclude Include="aae\sndhrdwr\segag80snd.h" />
     <ClInclude Include="aae\sndhrdwr\sn76477.h" />
     <ClInclude Include="aae\sndhrdwr\starwars_snd.h" />
     <ClInclude Include="aae\sndhrdwr\tms36xx.h" />
