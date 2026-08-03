@@ -47,6 +47,7 @@
 #include "opengl_renderer.h"
 #include "aae_video_vk/vulkan_renderer.h"   // vkchain_load_artwork (Plan 8)
 #include "vector_draw.h"
+#include "emu_vector_draw.h"   // cache_clear - retained beam/texlist drop on game switch
 #include "gl_fbo.h"
 #include "menu.h"
 #include "aae_avg.h"
@@ -1976,6 +1977,26 @@ bool emulator_start_game(int newGameNum)
 	}
 
 	emulator_stop_game();
+
+	// Drop the outgoing driver's retained vector geometry before the incoming
+	// one gets a renderer.
+	//
+	// The beam batches are RETAINED on purpose: AAE's vector sims do not
+	// rebuild the display list every video frame, so the renderer redraws the
+	// last batch on the frames in between, and the clear belongs to the sim
+	// (see the ownership note in vkchain_render). That contract holds WITHIN a
+	// game. It has no answer for the boundary BETWEEN two games, where the
+	// outgoing sim is gone and the incoming one has not run yet - so its
+	// geometry stayed in the queue and the new game's renderer faithfully
+	// redrew it, in the new game's colors and coordinate convention, for the
+	// seconds its ROM took to boot and issue a clear of its own. Launching a
+	// game from the front-end showed the menu hanging over it, upside down.
+	//
+	// This is the boundary, and it belongs to neither sim, so the switch clears
+	// it. Renderer-neutral by design: cache_clear drops texlist and the beam
+	// lists, nothing GPU-side. Covers every direction through this funnel,
+	// including game -> front-end, where the same ghost ran the other way.
+	cache_clear();
 
 	gamenum = newGameNum;
 	have_error = 0;
