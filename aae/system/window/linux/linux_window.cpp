@@ -37,6 +37,7 @@ struct LinuxWindow::Impl {
 	bool   cursorVisible = true;
 	bool   clipEnabled   = false;
 	bool   clipActive    = false;   // whether a pointer grab is currently held
+	bool   clipPending   = false;   // grab wanted but not held - retry each frame
 	bool   fullscreen    = false;
 	bool   focused       = true;
 
@@ -299,8 +300,10 @@ bool LinuxWindow::PumpEvents()
 
 		case FocusIn:
 			m_impl->focused = true;
-			// Re-apply the confine if the user asked for one.
-			if (m_impl->clipEnabled) ForceCursorClipUpdate();
+			// Re-apply the confine, and the cursor visibility that goes with it.
+			// Unconditional: when capture is OFF this is what puts the pointer
+			// back on screen, which is just as much part of "focus regained".
+			ForceCursorClipUpdate();
 			RawInput_SetPaused(false);
 			break;
 
@@ -320,10 +323,14 @@ bool LinuxWindow::PumpEvents()
 			// confines the pointer for the WHOLE desktop, not just this
 			// window - the X11 equivalent of a stuck ClipCursor, and much
 			// harder for a user to escape from.
-			if (m_impl->clipActive) {
-				XUngrabPointer(m_impl->dpy, CurrentTime);
-				m_impl->clipActive = false;
-			}
+			//
+			// Routed through ForceCursorClipUpdate rather than ungrabbing
+			// inline: with `focused` now false it ungrabs exactly as before,
+			// and it ALSO restores the cursor - which an inline ungrab does
+			// not, now that hiding is a window attribute rather than a
+			// property of the grab. Alt-tabbing away used to be able to leave
+			// an invisible pointer over our own window.
+			ForceCursorClipUpdate();
 			break;
 
 		case ButtonPress:
@@ -349,6 +356,23 @@ bool LinuxWindow::PumpEvents()
 			break;
 		}
 	}
+
+	// Retry a grab that was asked for but could not be taken yet.
+	//
+	// THIS is what fixes capture-at-startup. linux_main.cpp calls
+	// EnableCursorClip() immediately after Create() returns, and at that moment
+	// the window is still IsUnmapped: XMapWindow is asynchronous with respect to
+	// the WINDOW MANAGER, and the XSync in Create() only waits for our own
+	// requests, not for the WM's reparent+map (the same caveat the map report
+	// above is written around). XGrabPointer on a window that is not viewable
+	// fails with GrabNotViewable, so the very first capture of every session was
+	// silently dropped - measured, not assumed.
+	//
+	// Retrying here rather than sleeping for the WM keeps it general: it also
+	// covers AlreadyGrabbed, which is what happens when another client holds a
+	// grab (a menu is open, a WM is mid-drag) at the moment we ask.
+	if (m_impl->clipPending)
+		ForceCursorClipUpdate();
 
 	return keepRunning;
 }
@@ -441,35 +465,54 @@ void LinuxWindow::ForceCursorClipUpdate()
 {
 	if (!m_impl || !m_impl->dpy) return;
 
+	// Same condition winmain.cpp's UpdateCursorState() uses for BOTH halves:
+	// hide and confine together, show and release together.
 	const bool want = m_impl->clipEnabled && m_impl->focused;
+
+	// Visibility FIRST, and independently of the grab.
+	//
+	// Hiding used to ride entirely on the grab cursor passed to XGrabPointer,
+	// on the reasoning that a grab cursor cannot drift out of step with the
+	// grab. True, but it made visibility inherit every one of the grab's
+	// failure modes - and the grab genuinely does fail, both at startup (see
+	// PumpEvents) and any time another client already holds one. The pointer
+	// stayed a visible arrow until something unrelated happened to re-trigger
+	// this function.
+	//
+	// The window's own cursor attribute has no such dependency: the server
+	// applies it whenever the pointer is over our window, grab or no grab. That
+	// is also the closer analogue of ShowCursor(FALSE), which likewise owes
+	// nothing to ClipCursor. SetCursorVisible early-outs when already in the
+	// requested state, so calling it on every retry costs no X traffic.
+	SetCursorVisible(!want);
 
 	if (want && !m_impl->clipActive) {
 		// confine_to = our window is the closest X11 has to ClipCursor.
 		// owner_events=True so the app still receives its own events normally.
-		//
-		// blankCursor as the grab cursor is what HIDES the pointer while
-		// captured, matching ShowCursor(FALSE) in winmain.cpp's
-		// UpdateCursorState(). Passing it here rather than calling
-		// SetCursorVisible() is deliberate: X11 applies a grab cursor for
-		// exactly the lifetime of the grab and restores the normal one on
-		// ungrab, so visibility can never drift out of step with capture -
-		// including on the FocusOut path, which ungrabs without going through
-		// this function.
+		// blankCursor stays as the grab cursor so the pointer is hidden for the
+		// whole confined area even where the window attribute would not reach.
 		int r = XGrabPointer(m_impl->dpy, m_impl->win, True,
 		                     ButtonPressMask | ButtonReleaseMask | PointerMotionMask,
 		                     GrabModeAsync, GrabModeAsync,
 		                     m_impl->win, m_impl->blankCursor, CurrentTime);
 		if (r == GrabSuccess) {
 			m_impl->clipActive = true;
-		} else {
-			// Not fatal - another client may hold a grab. Say so rather than
-			// leaving the caller to wonder why the pointer still escapes.
-			LOG_INFO("LinuxWindow: XGrabPointer failed (%d); cursor not confined", r);
+			if (m_impl->clipPending)
+				LOG_INFO("LinuxWindow: pointer grab acquired on retry");
+		} else if (!m_impl->clipPending) {
+			// Logged once per pending run, not once per frame - PumpEvents
+			// retries this every frame until it takes.
+			LOG_INFO("LinuxWindow: XGrabPointer failed (%d); cursor hidden but "
+			         "not yet confined - retrying", r);
 		}
 	} else if (!want && m_impl->clipActive) {
 		XUngrabPointer(m_impl->dpy, CurrentTime);
 		m_impl->clipActive = false;
 	}
+
+	// Drives the retry in PumpEvents. Also self-clearing: once capture is no
+	// longer wanted (F9, focus lost) the retry stops on its own.
+	m_impl->clipPending = want && !m_impl->clipActive;
 }
 
 void LinuxWindow::SetMousePos(int x, int y)
