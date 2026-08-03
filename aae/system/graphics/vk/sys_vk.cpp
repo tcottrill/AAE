@@ -1289,6 +1289,10 @@ bool VK_RecreateSwapchain(VkContext& ctx)
 // driver-side crash with no context.
 // -----------------------------------------------------------------------------
 static bool s_framePassOpen = false;
+// Whether the swapchain pass has been opened AT ALL this frame. Drives
+// CLEAR-vs-LOAD in VK_EnsureFramePass: the clear must happen exactly once
+// per frame, on whichever draw opens the pass first.
+static bool s_framePassEverOpened = false;
 
 // Per-frame cache. Populated in VK_BeginFrame, consumed in VK_EndFrame.
 // This lets VK_EndFrame avoid touching ctx.swapchainImages/.swapchainViews
@@ -1436,34 +1440,22 @@ bool VK_BeginFrame(VkContext& ctx, uint32_t& outImageIndex)
 	s_frameImageIndex = outImageIndex;
 	s_frameSwapView = ctx.swapchainViews[outImageIndex];
 
-	CmdSwapchainBarrier(ctx, cmd, scImg,
-		VK_IMAGE_LAYOUT_UNDEFINED,
-		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-
-	// Open the frame's render pass. LOAD_OP_CLEAR so a missing BG draw still
-	// gives us a defined starting color and no sampling-from-uninitialized.
-	// Black from Plan 3 on: game pixels are the proof of rendering now, and
-	// the letterbox borders must be black like the GL chain. (Plan 2 used a
-	// gate blue here to prove presentation before anything drew.)
-	VkClearValue clearVal{};
-	clearVal.color.float32[0] = 0.0f;
-	clearVal.color.float32[1] = 0.0f;
-	clearVal.color.float32[2] = 0.0f;
-	clearVal.color.float32[3] = 1.0f;
-
-	VkRenderingAttachmentInfo colorAtt{ VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
-	colorAtt.imageView = ctx.swapchainViews[outImageIndex];
-	colorAtt.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-	colorAtt.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-	colorAtt.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-	colorAtt.clearValue = clearVal;
-
-	VkRenderingInfo ri{ VK_STRUCTURE_TYPE_RENDERING_INFO };
-	ri.renderArea.offset = { 0, 0 };
-	ri.renderArea.extent = ctx.swapchainExtent;
-	ri.layerCount = 1;
-	ri.colorAttachmentCount = 1;
-	ri.pColorAttachments = &colorAtt;
+	// The swapchain pass is NOT opened here - see VK_EnsureFramePass. It opens
+	// on the first draw that actually targets the swapchain, which on a
+	// game frame is the composite, i.e. AFTER all the offscreen work.
+	//
+	// Why: opening here meant every frame did open+clear -> Suspend ->
+	// offscreen -> Resume. On an immediate-mode GPU those pass boundaries are
+	// bookkeeping. On a TILE-BASED GPU (the Raspberry Pi's V3D) Suspend writes
+	// every tile out to memory and Resume reads them all back - ~5.7 MB each
+	// way at 1387x1040 - purely to preserve a framebuffer that had just been
+	// cleared and not yet drawn to. Measured on a Pi 5, that pair plus its
+	// barriers was a FIXED ~4.16 ms per frame, identical across two very
+	// different games (52% of the frame in tempest).
+	s_framePassOpen = false;
+	s_framePassEverOpened = false;
+	ctx.activeColorFormat = VK_FORMAT_UNDEFINED;
+	(void)scImg;   // barrier moved into VK_EnsureFramePass's first open
 
 	// Per-frame debug logging from the donor bring-up; re-enable locally when
 	// debugging frame issues.
@@ -1474,23 +1466,95 @@ bool VK_BeginFrame(VkContext& ctx, uint32_t& outImageIndex)
 	//		(void*)ctx.swapchainViews[outImageIndex]);
 	//}
 
+	return true;
+}
+
+// -----------------------------------------------------------------------------
+// VK_EnsureFramePass
+//
+// Opens the swapchain render pass if it is not already open, and is a no-op if
+// it is - so every entry point that draws to the swapchain may call it
+// unconditionally without tracking pass state itself.
+//
+// The FIRST open of a frame performs VK_BeginFrame's old work: the
+// UNDEFINED -> COLOR_ATTACHMENT_OPTIMAL barrier and LOAD_OP_CLEAR. Any later
+// open (i.e. a genuine resume after an offscreen pass) uses LOAD_OP_LOAD so
+// the earlier contents survive. That distinction is what lets the pass be
+// deferred without changing a single pixel: the clear still happens exactly
+// once per frame, just later - as the pass's load op, immediately before the
+// first real draw, which is the cheapest form of clear on any hardware.
+//
+// VK_EndFrame calls this too, so a frame that draws nothing at all still gets
+// its clear and still reaches PRESENT_SRC through the normal path.
+// -----------------------------------------------------------------------------
+void VK_EnsureFramePass(VkContext& ctx, VkCommandBuffer cmd)
+{
+	if (s_framePassOpen)
+		return;
+
+	if (cmd == VK_NULL_HANDLE || !ctx.vkCmdBeginRendering_)
+	{
+		LOG_ERROR("VK_EnsureFramePass: NULL cmd or vkCmdBeginRendering; ignoring");
+		return;
+	}
+	if (s_frameSwapView == VK_NULL_HANDLE)
+	{
+		LOG_ERROR("VK_EnsureFramePass: no acquired image this frame; ignoring");
+		return;
+	}
+	// An offscreen pass left open would make this a nested pass (undefined
+	// behaviour / driver crash). Same guard VK_ResumeFramePass always had.
+	if (ctx.activeColorFormat != VK_FORMAT_UNDEFINED)
+	{
+		LOG_ERROR("VK_EnsureFramePass: an offscreen pass is still open "
+			"(activeColorFormat=%d); missing End()? Ignoring",
+			(int)ctx.activeColorFormat);
+		return;
+	}
+
+	const bool firstOpen = !s_framePassEverOpened;
+
+	if (firstOpen)
+	{
+		// Was in VK_BeginFrame. The image is fresh from vkAcquireNextImage,
+		// so UNDEFINED is the correct old layout (we do not need its
+		// contents - the clear below defines them).
+		CmdSwapchainBarrier(ctx, cmd, s_frameSwapImage,
+			VK_IMAGE_LAYOUT_UNDEFINED,
+			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+	}
+
+	// Black clear: game pixels are the proof of rendering, and the letterbox
+	// borders must be black like the GL chain.
+	VkClearValue clearVal{};
+	clearVal.color.float32[0] = 0.0f;
+	clearVal.color.float32[1] = 0.0f;
+	clearVal.color.float32[2] = 0.0f;
+	clearVal.color.float32[3] = 1.0f;
+
+	VkRenderingAttachmentInfo colorAtt{ VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
+	colorAtt.imageView = s_frameSwapView;
+	colorAtt.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	colorAtt.loadOp = firstOpen ? VK_ATTACHMENT_LOAD_OP_CLEAR
+	                            : VK_ATTACHMENT_LOAD_OP_LOAD;
+	colorAtt.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	colorAtt.clearValue = clearVal;
+
+	VkRenderingInfo ri{ VK_STRUCTURE_TYPE_RENDERING_INFO };
+	ri.renderArea.offset = { 0, 0 };
+	ri.renderArea.extent = ctx.swapchainExtent;
+	ri.layerCount = 1;
+	ri.colorAttachmentCount = 1;
+	ri.pColorAttachments = &colorAtt;
+
 	ctx.vkCmdBeginRendering_(cmd, &ri);
 	s_framePassOpen = true;
+	s_framePassEverOpened = true;
 	ctx.activeColorFormat = ctx.swapchainFormat;
 
-	// Per-frame debug logging from the donor bring-up; re-enable locally when
-	// debugging frame issues.
-	//if (s_traceCount <= 5)
-	//{
-	//	LOG_INFO("VK_BeginFrame: vkCmdBeginRendering OK, setting default viewport/scissor");
-	//}
-
-	// Default full-surface viewport. Subsystems can override per-draw, but
-	// this is what they'll inherit unless they say otherwise. y-down, matching
-	// the engine's ortho projections for UI / BMFont / winfont text. For
-	// subsystems that need a flipped viewport (winfont with y-down ortho
-	// texture-space expectations), they set their own viewport in their
-	// record function.
+	// Default full-surface viewport/scissor, exactly what VK_BeginFrame used
+	// to establish - subsystems recording after this inherit it unless they
+	// set their own.
 	VkViewport vp{};
 	vp.x = 0.0f;
 	vp.y = 0.0f;
@@ -1504,14 +1568,23 @@ bool VK_BeginFrame(VkContext& ctx, uint32_t& outImageIndex)
 	sc.offset = { 0, 0 };
 	sc.extent = ctx.swapchainExtent;
 	ctx.vkCmdSetScissor_(cmd, 0, 1, &sc);
-
-	return true;
 }
 
 bool VK_EndFrame(VkContext& ctx, uint32_t imageIndex)
 {
 	uint32_t fi = ctx.frameIndex;
 	VkCommandBuffer cmd = ctx.cmdBuffers[fi];
+
+	// Backstop for the lazily-opened swapchain pass: a frame where nothing
+	// drew to the swapchain at all (renderer stalled, game paused before its
+	// first composite, a path that bailed early) would otherwise reach the
+	// end with the image still UNDEFINED and never cleared - and the
+	// COLOR_ATTACHMENT -> PRESENT_SRC transition below would be transitioning
+	// from a layout the image was never in. Opening it here costs one clear on
+	// exactly those frames and guarantees the invariant VK_BeginFrame used to
+	// provide unconditionally: by the time we submit, the pass has been opened
+	// exactly once, the image is cleared, and it is in COLOR_ATTACHMENT_OPTIMAL.
+	VK_EnsureFramePass(ctx, cmd);
 
 	// renderFinished is per swapchain image (see sys_vk.h). Look it up once
 	// for both the normal and the recovery submit paths below.
@@ -1731,8 +1804,12 @@ void VK_SuspendFramePass(VkContext& ctx, VkCommandBuffer cmd)
 {
 	if (!s_framePassOpen)
 	{
-		LOG_ERROR("VK_SuspendFramePass: no frame pass open (missing VK_BeginFrame, "
-			"or Suspend called twice); ignoring");
+		// NOT an error since the pass became lazily-opened (see
+		// VK_EnsureFramePass): a frame whose offscreen work runs before
+		// anything touches the swapchain reaches here with no pass open, and
+		// having nothing to suspend is exactly the outcome we want. Callers
+		// may suspend unconditionally without knowing whether the pass was
+		// opened yet.
 		return;
 	}
 	if (cmd == VK_NULL_HANDLE || !ctx.vkCmdEndRendering_)
@@ -1750,12 +1827,18 @@ void VK_SuspendFramePass(VkContext& ctx, VkCommandBuffer cmd)
 
 void VK_ResumeFramePass(VkContext& ctx, VkCommandBuffer cmd, uint32_t imageIndex)
 {
+	// Now a thin wrapper over VK_EnsureFramePass, which does the real work and
+	// picks CLEAR vs LOAD itself. Kept as its own entry point because the call
+	// sites read better as "resume what I suspended", and because it validates
+	// the image index - Ensure has no imageIndex to check against.
+	//
+	// Since the pass became lazily-opened, "resume" is frequently the FIRST
+	// open of the frame (offscreen work runs before anything touches the
+	// swapchain), which is why an already-open pass is no longer an error
+	// here: it just means something drew to the swapchain earlier, as the
+	// front-end GUI does during cpu_run.
 	if (s_framePassOpen)
-	{
-		LOG_ERROR("VK_ResumeFramePass: frame pass already open (missing Suspend, "
-			"or Resume called twice); ignoring");
 		return;
-	}
 	if (cmd == VK_NULL_HANDLE || !ctx.vkCmdBeginRendering_)
 	{
 		LOG_ERROR("VK_ResumeFramePass: NULL cmd or vkCmdBeginRendering; ignoring");
@@ -1778,43 +1861,7 @@ void VK_ResumeFramePass(VkContext& ctx, VkCommandBuffer cmd, uint32_t imageIndex
 		return;
 	}
 
-	// Mirror VK_BeginFrame's begin-rendering block exactly, with ONE change:
-	// loadOp = LOAD (the attachment was cleared when VK_BeginFrame opened the
-	// pass this frame; a second CLEAR would wipe it). The image is still in
-	// COLOR_ATTACHMENT_OPTIMAL -- no barrier needed or wanted here.
-	VkRenderingAttachmentInfo colorAtt{ VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
-	colorAtt.imageView = s_frameSwapView;
-	colorAtt.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-	colorAtt.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-	colorAtt.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-
-	VkRenderingInfo ri{ VK_STRUCTURE_TYPE_RENDERING_INFO };
-	ri.renderArea.offset = { 0, 0 };
-	ri.renderArea.extent = ctx.swapchainExtent;
-	ri.layerCount = 1;
-	ri.colorAttachmentCount = 1;
-	ri.pColorAttachments = &colorAtt;
-
-	ctx.vkCmdBeginRendering_(cmd, &ri);
-	s_framePassOpen = true;
-	ctx.activeColorFormat = ctx.swapchainFormat;
-
-	// Re-establish VK_BeginFrame's default full-surface viewport/scissor:
-	// the offscreen pass set its own, and subsystems recording after the
-	// resume inherit this default exactly as they would after VK_BeginFrame.
-	VkViewport vp{};
-	vp.x = 0.0f;
-	vp.y = 0.0f;
-	vp.width = (float)ctx.swapchainExtent.width;
-	vp.height = (float)ctx.swapchainExtent.height;
-	vp.minDepth = 0.0f;
-	vp.maxDepth = 1.0f;
-	ctx.vkCmdSetViewport_(cmd, 0, 1, &vp);
-
-	VkRect2D sc{};
-	sc.offset = { 0, 0 };
-	sc.extent = ctx.swapchainExtent;
-	ctx.vkCmdSetScissor_(cmd, 0, 1, &sc);
+	VK_EnsureFramePass(ctx, cmd);
 }
 
 // -----------------------------------------------------------------------------

@@ -1370,6 +1370,13 @@ static void RecordUiOverlays(void)
 	// would wipe the retained set the NEXT frame needs.
 	beam_stash_push();
 
+	// Lazily-opened swapchain pass: the overlay Record below targets the
+	// swapchain unless the rotation canvas is open (which is its own offscreen
+	// pass, already open). On a frame where nothing else drew to the swapchain
+	// this is the first open.
+	if (!s_rotTargetActive)
+		VK_EnsureFramePass(g_vk, g_vk.cmdBuffers[g_vk.frameIndex]);
+
 	s_uiOverlayActive = true;
 	render_ui_overlays(1024, 768, false);
 	s_uiOverlayActive = false;
@@ -2145,6 +2152,9 @@ void vkchain_render(void)
 				(Machine->drv->video_attributes & VECTOR_USES_COLOR) != 0;
 
 			VkCommandBuffer cmd = g_vk.cmdBuffers[g_vk.frameIndex];
+			// Direct-to-swapchain path: no suspend/resume brackets it, so it
+			// must open the lazily-opened pass itself.
+			VK_EnsureFramePass(g_vk, cmd);
 			// 0,0 target dims = record against the swapchain extent
 			// (direct-to-swapchain first cut; Task 3 passes the RT dims).
 			g_vectorDraw.Record(g_vk, cmd, g_vk.frameIndex, proj, additive, 0, 0);
@@ -2310,6 +2320,15 @@ void vkchain_gui_points_draw(const GuiPointVertex* pts, int count, float pointSi
 	if (!s_initialized || !s_frameOpen || !pts || count <= 0)
 		return;
 
+	// The swapchain pass is opened lazily (VK_BeginFrame no longer opens it -
+	// see VK_EnsureFramePass). This entry point draws straight to the
+	// swapchain, and for the front-end GUI it runs during cpu_run, BEFORE
+	// vkchain_render, so it can genuinely be the first thing to open the pass.
+	// Skipped while the rotation canvas is active: that is an offscreen pass
+	// which is already open and must not be disturbed.
+	if (!s_rotTargetActive)
+		VK_EnsureFramePass(g_vk, g_vk.cmdBuffers[g_vk.frameIndex]);
+
 	if (!s_guiPointsInit && !s_guiPointsFailed)
 	{
 		FastPolyVKCreateInfo ci{};
@@ -2405,6 +2424,15 @@ void vkchain_gui_draw_quad(float x, float y, float width, float height, rgb_t co
 	if (!white)
 		return;
 
+	// The swapchain pass is opened lazily (VK_BeginFrame no longer opens it -
+	// see VK_EnsureFramePass). This entry point draws straight to the
+	// swapchain, and for the front-end GUI it runs during cpu_run, BEFORE
+	// vkchain_render, so it can genuinely be the first thing to open the pass.
+	// Skipped while the rotation canvas is active: that is an offscreen pass
+	// which is already open and must not be disturbed.
+	if (!s_rotTargetActive)
+		VK_EnsureFramePass(g_vk, g_vk.cmdBuffers[g_vk.frameIndex]);
+
 	// GUI-local space (VF::Initialize(1024,768)): x centered directly in the
 	// shared 0..1024 box; y gets the 768->1024 rescale and the SAME conditional
 	// Y mirror VF text emission applies (vector_fonts.cpp VectorFont::End).
@@ -2464,6 +2492,15 @@ void vkchain_ui_dim_quad(int alpha)
 	VkTexture* white = VkTex_GetSolidWhite(g_vk);
 	if (!white)
 		return;
+
+	// The swapchain pass is opened lazily (VK_BeginFrame no longer opens it -
+	// see VK_EnsureFramePass). This entry point draws straight to the
+	// swapchain, and for the front-end GUI it runs during cpu_run, BEFORE
+	// vkchain_render, so it can genuinely be the first thing to open the pass.
+	// Skipped while the rotation canvas is active: that is an offscreen pass
+	// which is already open and must not be disturbed.
+	if (!s_rotTargetActive)
+		VK_EnsureFramePass(g_vk, g_vk.cmdBuffers[g_vk.frameIndex]);
 
 	if (alpha < 0) alpha = 0;
 	if (alpha > 255) alpha = 255;

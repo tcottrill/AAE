@@ -316,6 +316,13 @@ bool VK_EndFrame(VkContext& ctx, uint32_t imageIndex);
 void VK_SuspendFramePass(VkContext& ctx, VkCommandBuffer cmd);
 void VK_ResumeFramePass(VkContext& ctx, VkCommandBuffer cmd, uint32_t imageIndex);
 
+// Opens the swapchain render pass if it is not already open; no-op if it is.
+// VK_BeginFrame deliberately does NOT open it (that cost a tile store+reload
+// per frame on tile-based GPUs), so every entry point that draws to the
+// SWAPCHAIN must call this first. Safe to call unconditionally and repeatedly.
+// The first open of a frame clears; later ones load. See the definition.
+void VK_EnsureFramePass(VkContext& ctx, VkCommandBuffer cmd);
+
 bool VK_RecreateSwapchain(VkContext& ctx);
 
 // -----------------------------------------------------------------------------
