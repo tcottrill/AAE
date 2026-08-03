@@ -13,6 +13,8 @@ rprog_t fragTexColor = 0;
 rprog_t fragMonoMonitor = 0;
 rprog_t fragColorMonitor = 0;
 rprog_t fragColorVector = 0;
+rprog_t fragDualDown = 0;
+rprog_t fragDualUp = 0;
 
 // Write errors
 static void write_shader_error(GLuint obj, const char* label, bool isProgram)
@@ -137,5 +139,9 @@ int init_shader()
 
     // Color CRT simulation with shadow mask (color raster games)
     fragColorMonitor = create_shader_program(monoMonitorVert, colorMonitorFrag);
+
+    // Dual-filter pyramid glow ([main] glow_filter=1); both reuse vertText.
+    fragDualDown = create_shader_program(vertText, dualDownFrag);
+    fragDualUp   = create_shader_program(vertText, dualUpFrag);
     return 1;
 }

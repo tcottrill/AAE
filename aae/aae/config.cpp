@@ -125,6 +125,11 @@ void setup_config() {
     config.fire_point_size = get_config_int("main", "fire_point_size", 12);
     config.vecglow = get_config_int("main", "vectorglow", 5);
     config.vectrail = get_config_int("main", "vectortrail", 1);
+    config.glow_filter  = get_config_int("main", "glow_filter", 0);
+    config.glow2_gain   = get_config_float("main", "glow2_gain",   10.0f);
+    config.glow2_spread = get_config_float("main", "glow2_spread", 1.0f);
+    config.glow2_tail   = get_config_float("main", "glow2_tail",   0.6f);
+    config.glow2_core   = get_config_float("main", "glow2_core",   1.0f);
     config.gain = get_config_int("main", "gain", 1);
     config.line_smoothing  = get_config_float("main", "line_smoothing",  1.0f);
     config.corner_strength = get_config_float("main", "corner_strength", 0.85f);
@@ -263,6 +268,11 @@ void setup_config() {
         config.fire_point_size = get_config_int("main", "fire_point_size", config.fire_point_size);
         config.vecglow = get_config_int("main", "vectorglow", config.vecglow);
         config.vectrail = get_config_int("main", "vectortrail", config.vectrail);
+        config.glow_filter  = get_config_int("main", "glow_filter", config.glow_filter);
+        config.glow2_gain   = get_config_float("main", "glow2_gain",   config.glow2_gain);
+        config.glow2_spread = get_config_float("main", "glow2_spread", config.glow2_spread);
+        config.glow2_tail   = get_config_float("main", "glow2_tail",   config.glow2_tail);
+        config.glow2_core   = get_config_float("main", "glow2_core",   config.glow2_core);
         config.gain = get_config_int("main", "gain", config.gain);
         config.line_smoothing  = get_config_float("main", "line_smoothing",  config.line_smoothing);
         config.corner_strength = get_config_float("main", "corner_strength", config.corner_strength);

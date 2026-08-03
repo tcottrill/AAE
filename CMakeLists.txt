@@ -723,6 +723,8 @@ set(AAE_VK_SHADERS
     vector_line_vk.frag
     vector_line_vk.vert
     vector_post_blur_vk.frag
+    vector_post_dual_down_vk.frag
+    vector_post_dual_up_vk.frag
     vector_post_multi_vk.frag
     vector_post_tex_vk.frag
     vector_post_vk.vert

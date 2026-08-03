@@ -53,6 +53,16 @@ typedef struct {
 	int vecglow;
 	int vectrail;
 
+	// --- Glow blur selector + dual-filter pyramid tuning (glow_filter=1) ---
+	// All live-adjustable from the VECTOR MONITOR SETUP menu; both renderers
+	// read them per frame. gain is deliberately large: the pyramid is
+	// energy-preserving, unlike the classic accumulate blur it replaces.
+	int   glow_filter;    // 0 = classic 8-pass accumulate, 1 = dual-filter pyramid
+	float glow2_gain;     // overall glow brightness       (default 10.0)
+	float glow2_spread;   // halo width (tap radius scale) (default 1.0)
+	float glow2_tail;     // tail body (mid re-injection)  (default 0.6)
+	float glow2_core;     // hot-core hardness             (default 1.0)
+
 	// --- Modern vector beam renderer (menu + aae.ini; per-game overridable) ---
 	float line_smoothing;   // edge AA feather in px (0.4..2.0)
 	float corner_strength;  // beam corner/point disc size (0.3..2.5)

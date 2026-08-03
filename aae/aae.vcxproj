@@ -239,6 +239,13 @@
     <ClInclude Include="system\window\win10_win11_required_code.h" />
     <ClInclude Include="system\window\windows_util.h" />
     <ClInclude Include="resource.h" />
+    <ClInclude Include="aae\drivers\mhavoc.h" />
+    <ClInclude Include="aae\drivers\starwars.h" />
+    <ClInclude Include="aae\drivers\tempest.h" />
+    <ClInclude Include="aae\drivers\warlord.h" />
+    <ClInclude Include="aae\sndhrdwr\galsnd_stream.h" />
+    <ClInclude Include="aae\sndhrdwr\namco.h" />
+    <ClInclude Include="aae\sndhrdwr\segag80snd.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="aae\aae_emulator.cpp" />
@@ -297,6 +304,14 @@
     <ClCompile Include="system\window\win10_win11_required_code.cpp" />
     <ClCompile Include="system\window\windows_util.cpp" />
     <ClCompile Include="system\window\winmain.cpp" />
+    <ClCompile Include="aae\drivers\astrocade.cpp" />
+    <ClCompile Include="aae\drivers\warlord.cpp" />
+    <ClCompile Include="aae\drivers\mhavoc.cpp" />
+    <ClCompile Include="aae\drivers\starwars.cpp" />
+    <ClCompile Include="aae\drivers\tempest.cpp" />
+    <ClCompile Include="aae\sndhrdwr\galsnd_stream.cpp" />
+    <ClCompile Include="aae\sndhrdwr\namco.cpp" />
+    <ClCompile Include="aae\sndhrdwr\segag80snd.cpp" />
   </ItemGroup>
   <ItemGroup>
     <Manifest Include="app.manifest" />
@@ -499,6 +514,20 @@
       <Message>glslc %(Filename)%(Extension)</Message>
     </CustomBuild>
     <CustomBuild Include="shaders\vk\vector_post_blur_vk.frag">
+      <Command>if not exist "$(OutDir)shaders\vk" mkdir "$(OutDir)shaders\vk"
+"$(ProjectDir)..\tools\glslc.exe" "%(FullPath)" -o "$(OutDir)shaders\vk\%(Filename)%(Extension).spv"</Command>
+      <Outputs>$(OutDir)shaders\vk\%(Filename)%(Extension).spv</Outputs>
+      <AdditionalInputs>$(ProjectDir)..\tools\glslc.exe</AdditionalInputs>
+      <Message>glslc %(Filename)%(Extension)</Message>
+    </CustomBuild>
+    <CustomBuild Include="shaders\vk\vector_post_dual_down_vk.frag">
+      <Command>if not exist "$(OutDir)shaders\vk" mkdir "$(OutDir)shaders\vk"
+"$(ProjectDir)..\tools\glslc.exe" "%(FullPath)" -o "$(OutDir)shaders\vk\%(Filename)%(Extension).spv"</Command>
+      <Outputs>$(OutDir)shaders\vk\%(Filename)%(Extension).spv</Outputs>
+      <AdditionalInputs>$(ProjectDir)..\tools\glslc.exe</AdditionalInputs>
+      <Message>glslc %(Filename)%(Extension)</Message>
+    </CustomBuild>
+    <CustomBuild Include="shaders\vk\vector_post_dual_up_vk.frag">
       <Command>if not exist "$(OutDir)shaders\vk" mkdir "$(OutDir)shaders\vk"
 "$(ProjectDir)..\tools\glslc.exe" "%(FullPath)" -o "$(OutDir)shaders\vk\%(Filename)%(Extension).spv"</Command>
       <Outputs>$(OutDir)shaders\vk\%(Filename)%(Extension).spv</Outputs>

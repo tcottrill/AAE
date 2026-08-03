@@ -614,6 +614,11 @@ void MenuManager::SaveConfigIfRequired(MenuID fromId) {
         const int vidPath = inGui ? 0 : gamenum;
         my_set_config_int("main", "vectortrail", config.vectrail, vidPath);
         my_set_config_int("main", "vectorglow",  config.vecglow,  vidPath);
+        my_set_config_int  ("main", "glow_filter",  config.glow_filter,  vidPath);
+        my_set_config_float("main", "glow2_gain",   config.glow2_gain,   vidPath);
+        my_set_config_float("main", "glow2_spread", config.glow2_spread, vidPath);
+        my_set_config_float("main", "glow2_tail",   config.glow2_tail,   vidPath);
+        my_set_config_float("main", "glow2_core",   config.glow2_core,   vidPath);
         my_set_config_int("main", "m_line",      config.m_line,   vidPath);
         my_set_config_int("main", "m_point",     config.m_point,  vidPath);
         my_set_config_int("main", "gain",        config.gain,     vidPath);
@@ -941,6 +946,39 @@ void MenuManager::BuildVectorMonitorMenu() {
     m_items.push_back(MenuItem::Integer("PHOSPHOR TRAIL", &config.vectrail, 0, 3,
         { "NONE", "LITTLE", "MORE", "MAX" }));
     m_items.push_back(MenuItem::Integer("VECTOR GLOW", &config.vecglow, 0, 25));
+
+    // Glow blur algorithm + dual-filter pyramid tuning. All read per frame
+    // by both renderers, so every adjustment here applies live. The four
+    // GLOW2 items only matter when GLOW FILTER is PYRAMID; they stay
+    // visible either way so the menu layout is stable.
+    m_items.push_back(MenuItem::Integer("GLOW FILTER", &config.glow_filter, 0, 1,
+        { "CLASSIC", "PYRAMID" }));
+
+    // Small helper for the float knobs: value +/- step within [lo, hi],
+    // displayed with two decimals. Same hand-rolled pattern as BEAM WIDTH.
+    auto addFloatItem = [this](const char* label, float* value,
+                               float lo, float hi, float step) {
+        MenuItem it;
+        it.label = label;
+        it.getValueDisplay = [value]() {
+            char buf[32];
+            snprintf(buf, 32, "%.2f", *value);
+            return std::string(buf);
+            };
+        it.onAdjust = [value, lo, hi, step](int dir) {
+            *value += step * (float)dir;
+            *value = std::clamp(*value, lo, hi);
+            };
+        it.hasLeft  = [value, lo]() { return *value > lo; };
+        it.hasRight = [value, hi]() { return *value < hi; };
+        it.onActivate = []() {};
+        m_items.push_back(it);
+        };
+
+    addFloatItem("GLOW2 GAIN",   &config.glow2_gain,   0.0f, 30.0f, 0.5f);
+    addFloatItem("GLOW2 SPREAD", &config.glow2_spread, 0.2f,  3.0f, 0.05f);
+    addFloatItem("GLOW2 TAIL",   &config.glow2_tail,   0.0f,  2.0f, 0.05f);
+    addFloatItem("GLOW2 CORE",   &config.glow2_core,   0.0f,  2.0f, 0.05f);
 
     {
         MenuItem lwItem;

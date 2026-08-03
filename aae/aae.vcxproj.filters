@@ -166,6 +166,30 @@
     <ClCompile Include="aae\led_service_handler.cpp">
       <Filter>Source Files\aae</Filter>
     </ClCompile>
+    <ClCompile Include="aae\drivers\astrocade.cpp">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\drivers\warlord.cpp">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\drivers\mhavoc.cpp">
+      <Filter>Source Files\aae\drivers\vector</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\drivers\starwars.cpp">
+      <Filter>Source Files\aae\drivers\vector</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\drivers\tempest.cpp">
+      <Filter>Source Files\aae\drivers\vector</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\sndhrdwr\galsnd_stream.cpp">
+      <Filter>Source Files\aae\sndhrdwr</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\sndhrdwr\namco.cpp">
+      <Filter>Source Files\aae\sndhrdwr</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\sndhrdwr\segag80snd.cpp">
+      <Filter>Source Files\aae\sndhrdwr</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="resource.h">
@@ -395,6 +419,27 @@
     </ClInclude>
     <ClInclude Include="system\audio\audio_backend.h" />
     <ClInclude Include="system\util\sys_timer.h" />
+    <ClInclude Include="aae\drivers\mhavoc.h">
+      <Filter>Source Files\aae\drivers</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\drivers\starwars.h">
+      <Filter>Source Files\aae\drivers</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\drivers\tempest.h">
+      <Filter>Source Files\aae\drivers</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\drivers\warlord.h">
+      <Filter>Source Files\aae\drivers\raster</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\sndhrdwr\galsnd_stream.h">
+      <Filter>Source Files\aae\sndhrdwr</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\sndhrdwr\namco.h">
+      <Filter>Source Files\aae\sndhrdwr</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\sndhrdwr\segag80snd.h">
+      <Filter>Source Files\aae\sndhrdwr</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Image Include="appicon.ico" />
@@ -541,6 +586,12 @@
       <Filter>Shaders\vk</Filter>
     </CustomBuild>
     <CustomBuild Include="shaders\vk\vector_post_blur_vk.frag">
+      <Filter>Shaders\vk</Filter>
+    </CustomBuild>
+    <CustomBuild Include="shaders\vk\vector_post_dual_down_vk.frag">
+      <Filter>Shaders\vk</Filter>
+    </CustomBuild>
+    <CustomBuild Include="shaders\vk\vector_post_dual_up_vk.frag">
       <Filter>Shaders\vk</Filter>
     </CustomBuild>
     <CustomBuild Include="shaders\vk\vector_post_tex_vk.frag">

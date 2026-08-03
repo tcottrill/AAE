@@ -1906,8 +1906,16 @@ void vkchain_render(void)
 				}
 			}
 			g_vectorPost.EndBeamPass(g_vk, cmd);
+			// Glow selection + pyramid tuning straight from config every
+			// frame, so the VECTOR MONITOR SETUP menu adjusts it live.
+			VectorPostVK::VectorGlowVK glow;
+			glow.filter = config.glow_filter;
+			glow.gain   = config.glow2_gain;
+			glow.spread = config.glow2_spread;
+			glow.tail   = config.glow2_tail;
+			glow.core   = config.glow2_core;
 			g_vectorPost.RecordPost(g_vk, cmd, g_vk.frameIndex,
-				config.vectrail, config.vecglow, s_trailClearPending);
+				config.vectrail, config.vecglow, s_trailClearPending, glow);
 			// Consume the flag only when the trail pass actually ran: with
 			// vectrail off at load time the accumulator still holds the
 			// PREVIOUS game's phosphor, and the pending clear must survive

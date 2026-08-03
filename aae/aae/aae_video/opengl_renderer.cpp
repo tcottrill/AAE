@@ -683,6 +683,109 @@ void render_blur_image_fbo3()
 	unbind_shader();
 }
 
+// ---------------------------------------------------------------------------
+// render_blur_dualfilter - [main] glow_filter=1 prototype.
+//
+// Dual-filter pyramid (Kawase/Bjorge, the ARM tile-GPU bloom): img3a (256)
+// is downsampled 128 -> 64 -> 32 with a 5-tap kernel, then upsampled back
+// 64 -> 128 -> 256 with an 8-tap kernel, ending in img3b so the composite
+// (fragMulti's mytex3) needs no changes. Spread comes from pyramid depth;
+// ~0.8M taps vs the classic path's ~7.7M, with no blending (no destination
+// tile loads) and no per-frame mipmap generation on any pyramid level.
+//
+// The classic accumulate blur's signature - hot core, long soft tail - is
+// reproduced by re-injecting each down level during the matching up pass
+// (kTail) and the unblurred 256 source at the end (kCore), instead of by
+// additive accumulation.
+//
+// Tuning: config.glow2_* (aae.ini [main] glow2_* keys + the VECTOR MONITOR
+// SETUP menu). Read per frame so menu adjustments apply live:
+//   glow2_spread  tap radius scale inside every level    (default 1.0)
+//   glow2_tail    down-level re-injection weight          (default 0.6)
+//   glow2_core    unblurred-source weight in final pass   (default 1.0)
+//   glow2_gain    final output gain                       (default 10.0)
+//
+// The gain default is NOT arbitrary. The classic accumulate blur roughly
+// doubles the glow buffer's energy on each of its 8 additive passes, driving
+// it into saturation, and the composite then scales by glowamt (vecglow *
+// 0.01 - e.g. 0.07). This chain is energy-preserving, so at gain 1.0 it
+// feeds that same * 0.07 composite a signal ~50x dimmer: a technically
+// perfect, completely invisible glow (measured the hard way). The large
+// gain + RGB8's natural clamp at 1.0 reproduces the classic path's
+// blown-out-core-with-soft-tail, on purpose.
+// ---------------------------------------------------------------------------
+void render_blur_dualfilter()
+{
+	const float kSpread = config.glow2_spread;
+	const float kTail   = config.glow2_tail;
+	const float kCore   = config.glow2_core;
+	const float kGain   = config.glow2_gain;
+
+	glDisable(GL_BLEND);   // pure overwrites - the whole point on a tiler
+
+	// One pass: bind dst FBO, source texture(s), draw a full-target quad.
+	auto down = [&](rfbo_t dstFbo, int dstSize, rtex_t srcTex) {
+		glBindFramebuffer(GL_FRAMEBUFFER, dstFbo);
+		glDrawBuffer(GL_COLOR_ATTACHMENT0);
+		set_ortho(dstSize, dstSize);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, srcTex);
+		set_uniform2f(fragDualDown, "uHalfPixel",
+		              0.5f / (float)dstSize * kSpread,
+		              0.5f / (float)dstSize * kSpread);
+		FS_Rect(0, dstSize);
+	};
+
+	auto up = [&](rfbo_t dstFbo, GLenum dstAttach, int dstSize, int srcSize,
+	              rtex_t srcTex, rtex_t addTex, float addWeight, float gain) {
+		glBindFramebuffer(GL_FRAMEBUFFER, dstFbo);
+		glDrawBuffer(dstAttach);
+		set_ortho(dstSize, dstSize);
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, addTex);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, srcTex);
+		set_uniform2f(fragDualUp, "uHalfPixel",
+		              0.5f / (float)srcSize * kSpread,
+		              0.5f / (float)srcSize * kSpread);
+		set_uniform1f(fragDualUp, "uAddWeight", addWeight);
+		set_uniform1f(fragDualUp, "uGain", gain);
+		FS_Rect(0, dstSize);
+	};
+
+	// img3a is a trilinear texture and the first down pass minifies it 2:1 -
+	// that samples mip level ~1, which is STALE here (mips are only generated
+	// after the blur). Drop it to plain bilinear for the pyramid read: at an
+	// exact 2:1 ratio, level-0 bilinear IS the correct box filter. Restored
+	// after the chain so the rest of the pipeline sees the usual state.
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, img3a);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+
+	// Down chain: img3a 256 -> 128 -> 64 -> 32.
+	bind_shader(fragDualDown);
+	set_uniform1i(fragDualDown, "uSrc", 0);
+	down(fbo_pyr[0], 128, img3a);
+	down(fbo_pyr[1],  64, img_pyr[0]);
+	down(fbo_pyr[2],  32, img_pyr[1]);
+
+	// Up chain: 32 -> 64 -> 128 -> 256 (img3b), re-adding detail on the way.
+	bind_shader(fragDualUp);
+	set_uniform1i(fragDualUp, "uSrc", 0);
+	set_uniform1i(fragDualUp, "uAdd", 1);
+	up(fbo_pyr[3],          GL_COLOR_ATTACHMENT0,  64, 32, img_pyr[2], img_pyr[1], kTail, 1.0f);
+	up(fbo_pyr[4],          GL_COLOR_ATTACHMENT0, 128, 64, img_pyr[3], img_pyr[0], kTail, 1.0f);
+	up(fbo3,                GL_COLOR_ATTACHMENT1, 256, 128, img_pyr[4], img3a,     kCore, kGain);
+
+	// Restore img3a's trilinear MIN filter (see note above the down chain).
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, img3a);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+
+	check_gl_error_named("render_blur_dualfilter");
+	unbind_shader();
+}
+
 // ====================================================================
 // render_ui_overlays()
 //
@@ -1034,10 +1137,34 @@ void final_render(int left, int right, int bottom, int top)
 	//--------------------------------------------------------------------------
 	if (config.vecglow && !emulator_is_gui_active()) // No Vecglow for the GUI
 	{
+		// config.glow_filter: 0 = classic 8-pass accumulate blur (default),
+		// 1 = dual-filter pyramid (see render_blur_dualfilter). Read live so
+		// the menu toggle applies immediately; log only on change so a
+		// capture can be matched to the path that produced it.
+		static int s_loggedFilter = -1;
+		if (s_loggedFilter != config.glow_filter) {
+			s_loggedFilter = config.glow_filter;
+			LOG_INFO("Glow blur path: %s (glow_filter=%d)",
+			         s_loggedFilter == 1 ? "dual-filter pyramid" : "classic accumulate",
+			         s_loggedFilter);
+		}
+
 		copy_main_img_to_fbo2();
 		copy_fbo2_to_fbo3();
-		render_blur_image_fbo3();
-		fbo_generate_mipmaps({ img2a, img3a, img3b });
+		if (config.glow_filter == 1)
+		{
+			render_blur_dualfilter();
+			// img2a only: next frame's 512->256 trilinear downsample needs
+			// fresh mips, but the pyramid path samples img3a at level 0 and
+			// the composite MAGNIFIES img3b - two of the three per-frame
+			// mipmap generations are dead weight here.
+			fbo_generate_mipmaps({ img2a });
+		}
+		else
+		{
+			render_blur_image_fbo3();
+			fbo_generate_mipmaps({ img2a, img3a, img3b });
+		}
 	}
 
 	//--------------------------------------------------------------------------

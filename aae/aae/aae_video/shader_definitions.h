@@ -61,6 +61,70 @@ void main()
 }
 )glsl";
 
+// ---------------------------------------------------------------------------
+// Dual-filter pyramid blur (Kawase/Bjorge) - the [main] glow_filter=1 path.
+//
+// Two tiny kernels run over a downsample/upsample chain instead of many taps
+// at one resolution. Spread comes from pyramid DEPTH (the 32x32 level spans
+// 8x8 glow-buffer pixels per texel), not pass count, which is why the whole
+// chain costs ~0.8M taps against the classic path's ~7.7M. Designed at ARM
+// for tile-based GPUs: no blending, no mipmap generation, pure overwrites.
+//
+// Both shaders reuse vertText as their vertex stage.
+// ---------------------------------------------------------------------------
+const char* dualDownFrag = R"glsl(
+#version 330 core
+
+uniform sampler2D uSrc;
+uniform vec2 uHalfPixel;   // 0.5/dstSize * spread; diagonal taps land between
+                           // source texels so bilinear averages 4 for free
+
+in vec2 TexCoord;
+out vec4 FragColor;
+
+void main()
+{
+    vec3 sum = texture(uSrc, TexCoord).rgb * 4.0;
+    sum += texture(uSrc, TexCoord + uHalfPixel).rgb;
+    sum += texture(uSrc, TexCoord - uHalfPixel).rgb;
+    sum += texture(uSrc, TexCoord + vec2(uHalfPixel.x, -uHalfPixel.y)).rgb;
+    sum += texture(uSrc, TexCoord - vec2(uHalfPixel.x, -uHalfPixel.y)).rgb;
+    FragColor = vec4(sum * (1.0 / 8.0), 1.0);
+}
+)glsl";
+
+const char* dualUpFrag = R"glsl(
+#version 330 core
+
+uniform sampler2D uSrc;      // the lower (smaller) pyramid level
+uniform sampler2D uAdd;      // same-res detail re-injected on the way up
+uniform vec2  uHalfPixel;    // 0.5/srcSize * spread
+uniform float uAddWeight;    // 0 = pure wide halo; raising it hardens the core
+uniform float uGain;         // output gain (only the final pass sets != 1)
+
+in vec2 TexCoord;
+out vec4 FragColor;
+
+void main()
+{
+    vec3 sum;
+    sum  = texture(uSrc, TexCoord + vec2(-uHalfPixel.x * 2.0, 0.0)).rgb;
+    sum += texture(uSrc, TexCoord + vec2(-uHalfPixel.x,  uHalfPixel.y)).rgb * 2.0;
+    sum += texture(uSrc, TexCoord + vec2(0.0,  uHalfPixel.y * 2.0)).rgb;
+    sum += texture(uSrc, TexCoord + vec2( uHalfPixel.x,  uHalfPixel.y)).rgb * 2.0;
+    sum += texture(uSrc, TexCoord + vec2( uHalfPixel.x * 2.0, 0.0)).rgb;
+    sum += texture(uSrc, TexCoord + vec2( uHalfPixel.x, -uHalfPixel.y)).rgb * 2.0;
+    sum += texture(uSrc, TexCoord + vec2(0.0, -uHalfPixel.y * 2.0)).rgb;
+    sum += texture(uSrc, TexCoord + vec2(-uHalfPixel.x, -uHalfPixel.y)).rgb * 2.0;
+    vec3 wide = sum * (1.0 / 12.0);
+
+    // Narrow+wide sum is what reproduces the classic accumulate blur's
+    // hot-core/soft-tail shape - a single wide gaussian reads as mush.
+    vec3 core = texture(uAdd, TexCoord).rgb * uAddWeight;
+    FragColor = vec4((wide + core) * uGain, 1.0);
+}
+)glsl";
+
 // Multitexturing Combining Shaders
 // VS
 const char* texvertText = R"glsl(

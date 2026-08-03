@@ -62,6 +62,13 @@ extern rfbo_t fbo4;
 extern rfbo_t fbo_raster;
 extern rfbo_t fbo_mono;
 
+// Dual-filter glow pyramid ([main] glow_filter=1): five single-attachment
+// FBOs at 128/64/32/64/128, GL_RGB8, no mipmaps. Levels 0-2 are the down
+// chain, 3-4 the up chain; 256-side endpoints are img3a (in) / img3b (out).
+constexpr int GLOW_PYR_LEVELS = 5;
+extern rfbo_t fbo_pyr[GLOW_PYR_LEVELS];
+extern rtex_t img_pyr[GLOW_PYR_LEVELS];
+
 // ---------------------------------------------------------------------------
 // Texture handles
 // fbo1 textures (GL_RGB8)

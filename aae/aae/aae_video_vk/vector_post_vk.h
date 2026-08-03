@@ -52,6 +52,8 @@ struct VectorPostVKCreateInfo
     const char* blurSpv  = "shaders/vk/vector_post_blur_vk.frag.spv";
     const char* texSpv   = "shaders/vk/vector_post_tex_vk.frag.spv";
     const char* multiSpv = "shaders/vk/vector_post_multi_vk.frag.spv";
+    const char* dualDownSpv = "shaders/vk/vector_post_dual_down_vk.frag.spv";
+    const char* dualUpSpv   = "shaders/vk/vector_post_dual_up_vk.frag.spv";
 
     // Supersample factor for the beam RT (dim = 1024 * ssaa). The caller
     // passes the same value to VectorDrawVKCreateInfo::ssaa so the AA feather
@@ -117,11 +119,24 @@ public:
     // the 512 downsample both sample it minified).
     void EndBeamPass(VkContext& ctx, VkCommandBuffer cmd);
 
+    // Glow blur selection + dual-filter tuning, passed per frame from config
+    // so menu adjustments apply live. filter 0 = classic 8-pass accumulate,
+    // 1 = dual-filter pyramid (256 -> 128 -> 64 -> 32 -> 64 -> 128 -> 256).
+    struct VectorGlowVK
+    {
+        int   filter = 0;
+        float gain   = 10.0f;   // final-pass output gain
+        float spread = 1.0f;    // tap radius scale per level
+        float tail   = 0.6f;    // mid-level re-injection weight
+        float core   = 1.0f;    // unblurred-source weight in the final pass
+    };
+
     // Trail + glow offscreen passes, gated by the vectrail/vecglow values
     // (pass the config fields). clearTrail forces a one-time trail clear
     // (new game load). Must run after EndBeamPass, outside any pass.
     void RecordPost(VkContext& ctx, VkCommandBuffer cmd, uint32_t frameIndex,
-                    int vectrail, int vecglow, bool clearTrail);
+                    int vectrail, int vecglow, bool clearTrail,
+                    const VectorGlowVK& glow);
 
     // Composite quad into the CURRENTLY OPEN pass (the resumed swapchain
     // pass) at the given rect in Y-DOWN window pixels. Blend ONE/ONE over
@@ -177,8 +192,10 @@ public:
 private:
     // Worst case single-sampler draws per frame: trail(1) + glow downsamples
     // (2) + glow ping-pong (8) + overlay1 modulate (1) + layered composite
-    // backdrop/frameRT/boost/overlay2/bezel (5) = 17, plus spare.
-    static const uint32_t kSingleSlotsPerFrame = 20;
+    // backdrop/frameRT/boost/overlay2/bezel (5) = 17. The pyramid path is
+    // one heavier: 2 downsamples + 3 pyramid down + 3 up + 3 core-add = 11
+    // glow draws, so trail(1) + 11 + 1 + 5 = 18. Plus spare.
+    static const uint32_t kSingleSlotsPerFrame = 24;
     static const uint32_t kMultiSlotsPerFrame  = 2;   // frame build OR direct composite (+spare)
     static const uint32_t kMaxCompositeVariants = 4;
 
@@ -228,13 +245,19 @@ private:
     int  beamDim_ = 2048;
     int  ssaa_ = 2;
 
-    std::string vertSpv_, blurSpv_, texSpv_, multiSpv_;
+    std::string vertSpv_, blurSpv_, texSpv_, multiSpv_, dualDownSpv_, dualUpSpv_;
 
     RenderTargetVK rtBeam_;      // 1024*ssaa, mipped
     RenderTargetVK rtTrail_;     // 1024, mipped, persistent
     RenderTargetVK rtGlowHalf_;  // 512
     RenderTargetVK rtGlowA_;     // 256 ping-pong A (GL img3a)
     RenderTargetVK rtGlowB_;     // 256 ping-pong B (GL img3b - composite source)
+
+    // Dual-filter glow pyramid (glow_filter=1): 128/64/32 down, 64/128 up.
+    // Endpoints are rtGlowA_ (in) / rtGlowB_ (out), so the composite is
+    // untouched. GL twins: fbo_pyr/img_pyr in gl_fbo.cpp.
+    static const int kPyrLevels = 5;
+    RenderTargetVK rtPyr_[kPyrLevels];
     RenderTargetVK rtFrame_;     // 1024, no mips (GL img4b - the CRT image,
                                  // overlay1-modulated; only used with artwork)
 
@@ -255,6 +278,9 @@ private:
     VkPipeline pipeBlurCopy_  = VK_NULL_HANDLE;  // no blend, blur frag (RGBA8)
     VkPipeline pipeBlurAccum_ = VK_NULL_HANDLE;  // SRC_ALPHA/ONE, blur frag (RGBA8)
     VkPipeline pipeTrail_     = VK_NULL_HANDLE;  // ONE_MINUS_DST_COLOR/SRC_ALPHA, tex frag (RGBA8)
+    VkPipeline pipeDualDown_  = VK_NULL_HANDLE;  // no blend, dual-filter downsample (RGBA8)
+    VkPipeline pipeDualUp_    = VK_NULL_HANDLE;  // no blend, dual-filter upsample (RGBA8)
+    VkPipeline pipeTexAdd_    = VK_NULL_HANDLE;  // SRC_ALPHA/ONE, tex frag - pyramid core/tail re-inject
 
     // Frame-RT (RGBA8) artwork pipelines, fixed-format, built at Init.
     VkPipeline pipeFrameMulti_ = VK_NULL_HANDLE; // multi frag, ONE/ONE (CRT into frame RT)

@@ -46,6 +46,9 @@
 // ---------------------------------------------------------------------------
 // FBO and texture handle definitions
 // ---------------------------------------------------------------------------
+rfbo_t fbo_pyr[GLOW_PYR_LEVELS] = {};
+rtex_t img_pyr[GLOW_PYR_LEVELS] = {};
+
 rfbo_t fbo1       = 0;
 rfbo_t fbo2       = 0;
 rfbo_t fbo3       = 0;
@@ -240,6 +243,12 @@ struct FboAttachment
     rtex_t*               texOut;
     std::array<float, 2>  dims;
     bool                  use_alpha;
+    // Default true preserves the historical behavior. The glow pyramid passes
+    // false: its levels are sampled at fixed 2:1 ratios where plain bilinear
+    // IS the correct box prefilter, and a mip-free texture can never sample a
+    // stale mip - the failure mode that forces per-frame glGenerateMipmap
+    // everywhere else.
+    bool                  mipmaps = true;
 };
 
 static void create_fbo(rfbo_t& fbo,
@@ -251,7 +260,7 @@ static void create_fbo(rfbo_t& fbo,
     int slot = 0;
     for (const auto& a : attachments)
     {
-        *a.texOut = create_texture(a.dims[0], a.dims[1], true, a.use_alpha);
+        *a.texOut = create_texture(a.dims[0], a.dims[1], a.mipmaps, a.use_alpha);
 
         // Attach mip level 0. The rest of the mip chain is regenerated
         // separately after rendering (see fbo_generate_mipmaps).
@@ -332,6 +341,20 @@ void fbo_init()
         { &img4a, { width,  height  }, true },      // attachment 0: composited frame
 		{ &img4b, { width,  height  }, true }       // attachment 1: crt scratch area for overlay rendering (pre-backdrop)
     });
+
+    // Glow pyramid - the dual-filter blur chain ([main] glow_filter=1).
+    // 256 (img3a) -> 128 -> 64 -> 32 -> 64 -> 128 -> 256 (img3b). Five tiny
+    // single-attachment FBOs, ~160 KB of RGB8 total, always allocated so the
+    // ini toggle needs no re-init. mipmaps=false throughout: every sampling
+    // step is an exact 2:1 or 1:2 ratio where bilinear alone is correct, and
+    // it is precisely what lets this path skip glGenerateMipmap per frame.
+    static constexpr int kPyrSize[GLOW_PYR_LEVELS] = { 128, 64, 32, 64, 128 };
+    for (int i = 0; i < GLOW_PYR_LEVELS; ++i)
+    {
+        create_fbo(fbo_pyr[i], {
+            { &img_pyr[i], { (float)kPyrSize[i], (float)kPyrSize[i] }, false, false }
+        });
+    }
 
     LOG_INFO("fbo_init: done.");
 }
@@ -474,6 +497,11 @@ void fbo_shutdown()
     glDeleteFramebuffers(4, fbos);
 
     fbo1 = fbo2 = fbo3 = fbo4 = 0;
+
+    // Glow pyramid teardown.
+    glDeleteTextures(GLOW_PYR_LEVELS, img_pyr);
+    glDeleteFramebuffers(GLOW_PYR_LEVELS, fbo_pyr);
+    for (int i = 0; i < GLOW_PYR_LEVELS; ++i) { img_pyr[i] = 0; fbo_pyr[i] = 0; }
 
     // Also release the raster FBO if it was allocated.
     fbo_shutdown_raster();

@@ -93,6 +93,8 @@ bool VectorPostVK::Init(VkContext& ctx, const VectorPostVKCreateInfo* ci)
     blurSpv_  = ci->blurSpv;
     texSpv_   = ci->texSpv;
     multiSpv_ = ci->multiSpv;
+    dualDownSpv_ = ci->dualDownSpv;
+    dualUpSpv_   = ci->dualUpSpv;
     ssaa_     = (ci->ssaa >= 1) ? ci->ssaa : 1;
     beamDim_  = 1024 * ssaa_;
 
@@ -139,6 +141,15 @@ bool VectorPostVK::Init(VkContext& ctx, const VectorPostVKCreateInfo* ci)
     if (!rtGlowA_.Init(ctx, rt)) { LOG_ERROR("VectorPostVK: glow A RT init failed"); Shutdown(ctx); return false; }
     if (!rtGlowB_.Init(ctx, rt)) { LOG_ERROR("VectorPostVK: glow B RT init failed"); Shutdown(ctx); return false; }
 
+    // Dual-filter glow pyramid (glow_filter=1). Tiny RGBA8 targets, always
+    // allocated (~160 KB total) so the menu/ini toggle needs no re-init.
+    static const int kPyrSize[kPyrLevels] = { 128, 64, 32, 64, 128 };
+    for (int i = 0; i < kPyrLevels; ++i)
+    {
+        rt.width = kPyrSize[i]; rt.height = kPyrSize[i];
+        if (!rtPyr_[i].Init(ctx, rt)) { LOG_ERROR("VectorPostVK: glow pyramid RT %d init failed", i); Shutdown(ctx); return false; }
+    }
+
     // Frame RT (GL img4b): the CRT image the overlay modulates. Sampled 1:1
     // at composite time exactly like GL (set_texture with mipmapping=0), so
     // no mip chain.
@@ -157,7 +168,10 @@ bool VectorPostVK::Init(VkContext& ctx, const VectorPostVKCreateInfo* ci)
         !BuildPipeline(ctx, rgba8, texSpv_.c_str(),  POST_BLEND_TRAIL, pipeLayoutS_, pipeTrail_) ||
         !BuildPipeline(ctx, rgba8, multiSpv_.c_str(), POST_BLEND_ONEONE, pipeLayoutM_, pipeFrameMulti_) ||
         !BuildPipeline(ctx, rgba8, texSpv_.c_str(),  POST_BLEND_MUL,    pipeLayoutS_, pipeArtMul_) ||
-        !BuildPipeline(ctx, rgba8, texSpv_.c_str(),  POST_BLEND_MUL_BW, pipeLayoutS_, pipeArtMulBW_))
+        !BuildPipeline(ctx, rgba8, texSpv_.c_str(),  POST_BLEND_MUL_BW, pipeLayoutS_, pipeArtMulBW_) ||
+        !BuildPipeline(ctx, rgba8, dualDownSpv_.c_str(), POST_BLEND_NONE, pipeLayoutS_, pipeDualDown_) ||
+        !BuildPipeline(ctx, rgba8, dualUpSpv_.c_str(),   POST_BLEND_NONE, pipeLayoutS_, pipeDualUp_) ||
+        !BuildPipeline(ctx, rgba8, texSpv_.c_str(),      POST_BLEND_ADD,  pipeLayoutS_, pipeTexAdd_))
     {
         Shutdown(ctx);
         return false;
@@ -187,6 +201,9 @@ void VectorPostVK::Shutdown(VkContext& ctx)
 
     if (pipeBlurCopy_)   { ctx.vkDestroyPipeline_(ctx.device, pipeBlurCopy_,   nullptr); pipeBlurCopy_   = VK_NULL_HANDLE; }
     if (pipeBlurAccum_)  { ctx.vkDestroyPipeline_(ctx.device, pipeBlurAccum_,  nullptr); pipeBlurAccum_  = VK_NULL_HANDLE; }
+    if (pipeDualDown_)   { ctx.vkDestroyPipeline_(ctx.device, pipeDualDown_,   nullptr); pipeDualDown_   = VK_NULL_HANDLE; }
+    if (pipeDualUp_)     { ctx.vkDestroyPipeline_(ctx.device, pipeDualUp_,     nullptr); pipeDualUp_     = VK_NULL_HANDLE; }
+    if (pipeTexAdd_)     { ctx.vkDestroyPipeline_(ctx.device, pipeTexAdd_,     nullptr); pipeTexAdd_     = VK_NULL_HANDLE; }
     if (pipeTrail_)      { ctx.vkDestroyPipeline_(ctx.device, pipeTrail_,      nullptr); pipeTrail_      = VK_NULL_HANDLE; }
     if (pipeFrameMulti_) { ctx.vkDestroyPipeline_(ctx.device, pipeFrameMulti_, nullptr); pipeFrameMulti_ = VK_NULL_HANDLE; }
     if (pipeArtMul_)     { ctx.vkDestroyPipeline_(ctx.device, pipeArtMul_,     nullptr); pipeArtMul_     = VK_NULL_HANDLE; }
@@ -207,6 +224,8 @@ void VectorPostVK::Shutdown(VkContext& ctx)
     }
 
     if (rtFrame_.IsValid())    rtFrame_.Shutdown(ctx);
+    for (int i = kPyrLevels - 1; i >= 0; --i)
+        if (rtPyr_[i].IsValid()) rtPyr_[i].Shutdown(ctx);
     if (rtGlowB_.IsValid())    rtGlowB_.Shutdown(ctx);
     if (rtGlowA_.IsValid())    rtGlowA_.Shutdown(ctx);
     if (rtGlowHalf_.IsValid()) rtGlowHalf_.Shutdown(ctx);
@@ -655,7 +674,8 @@ void VectorPostVK::DrawQuadS(VkContext& ctx, VkCommandBuffer cmd, uint32_t frame
 // entry or exit).
 // -----------------------------------------------------------------------------
 void VectorPostVK::RecordPost(VkContext& ctx, VkCommandBuffer cmd, uint32_t frameIndex,
-                              int vectrail, int vecglow, bool clearTrail)
+                              int vectrail, int vecglow, bool clearTrail,
+                              const VectorGlowVK& glow)
 {
     if (!initialized_ || !beamReady_)
         return;
@@ -722,37 +742,110 @@ void VectorPostVK::RecordPost(VkContext& ctx, VkCommandBuffer cmd, uint32_t fram
         rtGlowA_.End(ctx, cmd);
         GPU_ZONE_END();   // glow_down
 
-        // Ping-pong (GL render_blur_image_fbo3): rows 0-3 of fshifta/fshiftb
-        // (axis taps), near offset v1 A->B, far offset v2 B->A, additive
-        // SRC_ALPHA/ONE, global sub-pixel correction applied to every quad.
-        // B is cleared once per frame via the first A->B pass's clear
-        // (GL clears img3b up front; LOAD+first-draw-into-clear is identical).
-        static constexpr float v1 = 1.0f;
-        static constexpr float v2 = 2.0f;
-        static constexpr float gx = -0.05f;
-        static constexpr float gy = -0.20f;
-        static const float fshifta[] = {
-             v1, 0,  -v1, 0,   0, v1,   0, -v1
-        };
-        static const float fshiftb[] = {
-             v2, 0,  -v2, 0,   0, v2,   0, -v2
-        };
-
-        auto pingpong = [&](RenderTargetVK& dst, RenderTargetVK& src,
-                            float ox, float oy, bool clear)
+        if (glow.filter == 1)
         {
-            dst.Begin(ctx, cmd, clear, 0.0f, 0.0f, 0.0f, 0.0f);
-            push.rect[0] = ox + gx;          push.rect[1] = oy + gy;
-            push.rect[2] = 256.0f + ox + gx; push.rect[3] = 256.0f + oy + gy;
-            push.tsize[0] = 256.0f; push.tsize[1] = 256.0f;
-            push.params[0] = 256.0f; push.params[1] = 256.0f;
-            DrawQuadS(ctx, cmd, frameIndex, pipeBlurAccum_,
-                      src.VK_GetColorView(), src.VK_GetSampler(),
-                      push, 256, 256);
-            dst.End(ctx, cmd);
-        };
+            // Dual-filter pyramid (GL render_blur_dualfilter):
+            // A(256) -> 128 -> 64 -> 32 -> 64 -> 128 -> B(256). No blending
+            // in the kernels; the tail/core re-injection is a second additive
+            // draw per up level (tex frag, SRC_ALPHA/ONE with a=1 forced,
+            // tint = weight) - identical math to the GL up shader's uAdd,
+            // kept on the single-sampler descriptor layout.
+            GPU_ZONE("glow_pyramid");
+            static const int kPyrSize[kPyrLevels] = { 128, 64, 32, 64, 128 };
 
+            // One kernel pass: full-target quad, params = halfpixel + gain.
+            auto kernelPass = [&](RenderTargetVK& dst, int dstSize,
+                                  RenderTargetVK& src, VkPipeline pipe,
+                                  float halfpixel, float gain)
+            {
+                dst.Begin(ctx, cmd, /*clear=*/true, 0.0f, 0.0f, 0.0f, 0.0f);
+                push.rect[0] = 0.0f; push.rect[1] = 0.0f;
+                push.rect[2] = (float)dstSize; push.rect[3] = (float)dstSize;
+                push.tsize[0] = (float)dstSize; push.tsize[1] = (float)dstSize;
+                push.params[0] = halfpixel; push.params[1] = halfpixel;
+                push.params[2] = gain; push.params[3] = 0.0f;
+                DrawQuadS(ctx, cmd, frameIndex, pipe,
+                          src.VK_GetColorView(), src.VK_GetSampler(),
+                          push, dstSize, dstSize);
+                // NOTE: dst.End is the caller's job - the up levels append
+                // their additive re-injection draw into the same open pass.
+            };
+
+            // Additive re-injection into the pass kernelPass left open.
+            auto addPass = [&](RenderTargetVK& dst, int dstSize,
+                               RenderTargetVK& addSrc, float weight)
+            {
+                push.rect[0] = 0.0f; push.rect[1] = 0.0f;
+                push.rect[2] = (float)dstSize; push.rect[3] = (float)dstSize;
+                push.tsize[0] = (float)dstSize; push.tsize[1] = (float)dstSize;
+                push.tint[0] = push.tint[1] = push.tint[2] = weight;
+                push.tint[3] = 1.0f;
+                // tex frag: params.z = alpha test (off), params.w = 0 forces
+                // a=1 (GL RGB8 semantics) so SRC_ALPHA/ONE adds tex * weight.
+                push.params[0] = push.params[1] = 0.0f;
+                push.params[2] = 0.0f; push.params[3] = 0.0f;
+                DrawQuadS(ctx, cmd, frameIndex, pipeTexAdd_,
+                          addSrc.VK_GetColorView(), addSrc.VK_GetSampler(),
+                          push, dstSize, dstSize);
+                push.tint[0] = push.tint[1] = push.tint[2] = push.tint[3] = 1.0f;
+                (void)dst;
+            };
+
+            // Down chain: halfpixel = 0.5/dstSize * spread (GL convention).
+            kernelPass(rtPyr_[0], 128, rtGlowA_,  pipeDualDown_, 0.5f / 128.0f * glow.spread, 1.0f);
+            rtPyr_[0].End(ctx, cmd);
+            kernelPass(rtPyr_[1],  64, rtPyr_[0], pipeDualDown_, 0.5f /  64.0f * glow.spread, 1.0f);
+            rtPyr_[1].End(ctx, cmd);
+            kernelPass(rtPyr_[2],  32, rtPyr_[1], pipeDualDown_, 0.5f /  32.0f * glow.spread, 1.0f);
+            rtPyr_[2].End(ctx, cmd);
+
+            // Up chain: halfpixel = 0.5/srcSize * spread; tail re-injection
+            // at the two mid levels, core (+gain) on the final 256 pass.
+            // GL parity: (wide + add*w) * gain == wide*gain + add*(w*gain).
+            kernelPass(rtPyr_[3],  64, rtPyr_[2], pipeDualUp_, 0.5f / 32.0f * glow.spread, 1.0f);
+            addPass(rtPyr_[3], 64, rtPyr_[1], glow.tail);
+            rtPyr_[3].End(ctx, cmd);
+
+            kernelPass(rtPyr_[4], 128, rtPyr_[3], pipeDualUp_, 0.5f / 64.0f * glow.spread, 1.0f);
+            addPass(rtPyr_[4], 128, rtPyr_[0], glow.tail);
+            rtPyr_[4].End(ctx, cmd);
+
+            kernelPass(rtGlowB_, 256, rtPyr_[4], pipeDualUp_, 0.5f / 128.0f * glow.spread, glow.gain);
+            addPass(rtGlowB_, 256, rtGlowA_, glow.core * glow.gain);
+            rtGlowB_.End(ctx, cmd);
+        }
+        else
         {
+            // Ping-pong (GL render_blur_image_fbo3): rows 0-3 of fshifta/fshiftb
+            // (axis taps), near offset v1 A->B, far offset v2 B->A, additive
+            // SRC_ALPHA/ONE, global sub-pixel correction applied to every quad.
+            // B is cleared once per frame via the first A->B pass's clear
+            // (GL clears img3b up front; LOAD+first-draw-into-clear is identical).
+            static constexpr float v1 = 1.0f;
+            static constexpr float v2 = 2.0f;
+            static constexpr float gx = -0.05f;
+            static constexpr float gy = -0.20f;
+            static const float fshifta[] = {
+                 v1, 0,  -v1, 0,   0, v1,   0, -v1
+            };
+            static const float fshiftb[] = {
+                 v2, 0,  -v2, 0,   0, v2,   0, -v2
+            };
+
+            auto pingpong = [&](RenderTargetVK& dst, RenderTargetVK& src,
+                                float ox, float oy, bool clear)
+            {
+                dst.Begin(ctx, cmd, clear, 0.0f, 0.0f, 0.0f, 0.0f);
+                push.rect[0] = ox + gx;          push.rect[1] = oy + gy;
+                push.rect[2] = 256.0f + ox + gx; push.rect[3] = 256.0f + oy + gy;
+                push.tsize[0] = 256.0f; push.tsize[1] = 256.0f;
+                push.params[0] = 256.0f; push.params[1] = 256.0f;
+                DrawQuadS(ctx, cmd, frameIndex, pipeBlurAccum_,
+                          src.VK_GetColorView(), src.VK_GetSampler(),
+                          push, 256, 256);
+                dst.End(ctx, cmd);
+            };
+
             GPU_ZONE("glow_blur");   // the 8 ping-pong passes as one section
             for (int pass = 0; pass < 4; ++pass)
             {
