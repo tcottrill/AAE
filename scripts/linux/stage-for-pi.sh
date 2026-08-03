@@ -3,8 +3,20 @@
 #
 #   wsl -d Ubuntu -- bash /mnt/c/Source2026/AAE_publish/scripts/linux/stage-for-pi.sh /mnt/e/aae-pi
 #
-# (Run it from PowerShell, not Git Bash - Git Bash rewrites /mnt/... paths
-# before wsl.exe sees them.)
+# INVOKE FROM POWERSHELL, AND PASS AN EXPLICIT /home/... PATH.
+#
+# Two different shells mangle this command, in opposite directions:
+#   - Git Bash rewrites /mnt/... into its own filesystem namespace before
+#     wsl.exe sees it ("no such file or directory" on a path that plainly
+#     exists).
+#   - PowerShell expands ~ and $HOME against WINDOWS first, so
+#         ... stage-for-pi.sh ~/aae-pi-payload
+#     arrives as C:\Users\you/aae-pi-payload. rsync then reads "C:" as an SSH
+#     host and fails with "Could not resolve hostname c", after creating a
+#     literal directory named C:Usersyou in the repo. Write the destination
+#     out in full:  /home/you/aae-pi-payload
+#     (The flatpak script's header documents the same trap; it has now cost
+#     this project time three times.)
 #
 # WHY STAGE AT ALL
 #
@@ -48,6 +60,19 @@ rsync -a --info=stats1 \
 cp "$SRC/CMakeLists.txt" "$DEST/"
 mkdir -p "$DEST/scripts"
 rsync -a "$SRC/scripts/linux/" "$DEST/scripts/linux/"
+
+# tools/ is NOT optional, however Windows-looking it seems. CMakeLists.txt
+# declares
+#     add_executable(aae_uinput_test EXCLUDE_FROM_ALL tools/linux/uinput_devices.cpp)
+# unconditionally under UNIX, and CMake errors at CONFIGURE time on a missing
+# source file - even for a target nobody builds. Leaving this out means the Pi
+# cannot configure at all, which reads as a broken payload rather than a
+# missing directory.
+#
+# glslc.exe is skipped: it is the vendored WINDOWS shader compiler, useless on
+# ARM, and the prebuilt .spv below make it unnecessary anyway.
+echo "tools (uinput test harness - CMake needs it to configure)..."
+rsync -a --exclude '*.exe' "$SRC/tools/" "$DEST/tools/"
 
 # --- Data. Everything resolves relative to the executable, and CMakeLists
 # --- builds into x64/Release, so the data has to sit exactly there.
