@@ -126,10 +126,24 @@ void setup_config() {
     config.vecglow = get_config_int("main", "vectorglow", 5);
     config.vectrail = get_config_int("main", "vectortrail", 1);
     config.glow_filter  = get_config_int("main", "glow_filter", 0);
+    // Pyramid glow (glow_filter=1) defaults. On the Pi 5 (Mesa v3d - the
+    // project's only aarch64 target) the same values render visibly hotter
+    // than on desktop AMD/NVIDIA drivers, so every default is HALVED there to
+    // match the desktop picture. Defaults only: an ini-set value always wins,
+    // and the per-game re-read below falls back to these loaded globals, so
+    // it inherits the platform default automatically. WSL is x86_64 and
+    // renders through the desktop GPU (d3d12), so it keeps desktop values.
+#if defined(__linux__) && defined(__aarch64__)
+    config.glow2_gain   = get_config_float("main", "glow2_gain",   5.0f);
+    config.glow2_spread = get_config_float("main", "glow2_spread", 0.5f);
+    config.glow2_tail   = get_config_float("main", "glow2_tail",   0.3f);
+    config.glow2_core   = get_config_float("main", "glow2_core",   0.5f);
+#else
     config.glow2_gain   = get_config_float("main", "glow2_gain",   10.0f);
     config.glow2_spread = get_config_float("main", "glow2_spread", 1.0f);
     config.glow2_tail   = get_config_float("main", "glow2_tail",   0.6f);
     config.glow2_core   = get_config_float("main", "glow2_core",   1.0f);
+#endif
     config.gain = get_config_int("main", "gain", 1);
     config.line_smoothing  = get_config_float("main", "line_smoothing",  1.0f);
     config.corner_strength = get_config_float("main", "corner_strength", 0.85f);

@@ -57,11 +57,14 @@ typedef struct {
 	// All live-adjustable from the VECTOR MONITOR SETUP menu; both renderers
 	// read them per frame. gain is deliberately large: the pyramid is
 	// energy-preserving, unlike the classic accumulate blur it replaces.
+	// Defaults are per-platform (see setup_config): desktop 10.0/1.0/0.6/1.0,
+	// Pi 5 (aarch64 Linux, Mesa v3d) HALF of each - v3d renders the pyramid
+	// visibly hotter than AMD/NVIDIA at the same values.
 	int   glow_filter;    // 0 = classic 8-pass accumulate, 1 = dual-filter pyramid
-	float glow2_gain;     // overall glow brightness       (default 10.0)
-	float glow2_spread;   // halo width (tap radius scale) (default 1.0)
-	float glow2_tail;     // tail body (mid re-injection)  (default 0.6)
-	float glow2_core;     // hot-core hardness             (default 1.0)
+	float glow2_gain;     // overall glow brightness       (default 10.0; Pi 5.0)
+	float glow2_spread;   // halo width (tap radius scale) (default 1.0; Pi 0.5)
+	float glow2_tail;     // tail body (mid re-injection)  (default 0.6; Pi 0.3)
+	float glow2_core;     // hot-core hardness             (default 1.0; Pi 0.5)
 
 	// --- Modern vector beam renderer (menu + aae.ini; per-game overridable) ---
 	float line_smoothing;   // edge AA feather in px (0.4..2.0)
