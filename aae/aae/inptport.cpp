@@ -430,6 +430,7 @@ int load_input_port_settings(void)
 	// Reset accelerating-repeat and single-pulse state for the new game.
 	reset_custom_input_state();
 
+
 	LOG_INFO("opening File");
 
 	if ((f = osd_fopen(Machine->gamedrv->name, 0, OSD_FILETYPE_CONFIG, 0)) != 0)
@@ -664,14 +665,14 @@ int input_port_joy(const struct InputPort* in)
 	{
 		type = (in - 1)->type & (~IPF_MASK | IPF_PLAYERMASK);
 		/* if port is disabled, or cheat with cheats disabled, return no joy */
-		if (((in - 1)->type & IPF_UNUSED) || ((in - 1)->type & IPF_CHEAT))
+		if (((in - 1)->type & IPF_UNUSED) || (!options.cheat && ((in - 1)->type & IPF_CHEAT)))
 			return IP_JOY_NONE;
 	}
 	else
 	{
 		type = in->type & (~IPF_MASK | IPF_PLAYERMASK);
 		/* if port is disabled, or cheat with cheats disabled, return no joy */
-		if ((in->type & IPF_UNUSED) || (in->type & IPF_CHEAT))
+		if ((in->type & IPF_UNUSED) || (!options.cheat && (in->type & IPF_CHEAT)))
 			return IP_JOY_NONE;
 	}
 
