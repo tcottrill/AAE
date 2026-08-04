@@ -20,7 +20,6 @@
 #include "starwars_machine.h"
 #include "starwars_snd.h"
 #include "slapstic.h"
-#include "opengl_renderer.h"
 
 #define MASTER_CLOCK (12096000)
 #define CLOCK_3KHZ  (MASTER_CLOCK / 4096)

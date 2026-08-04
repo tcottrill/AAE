@@ -19,8 +19,6 @@
 #include "earom.h"
 #include "mathbox.h"
 #include "timer.h"
-#include "opengl_renderer.h"
-#include "vector_fonts.h"
 #include "cpu_6502.h"
 
 // Regression guard: this file must never see OpenGL headers. If this fires,

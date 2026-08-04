@@ -9,8 +9,6 @@ extern int game_rect_left;
 extern int game_rect_right;
 extern int game_rect_bottom;
 extern int game_rect_top;
-// Custom flag(s) for Warlords, what a pain in the butt. I need to find a better way
-extern int g_scanline_override;
 
 // Current projection, mirrored from set_ortho*/set_ortho_raster so the core-profile
 // quad shaders can read it as a uniform (replaces the fixed-function GL_PROJECTION

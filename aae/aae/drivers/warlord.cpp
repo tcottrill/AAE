@@ -106,8 +106,6 @@ Off On  On                          For every 5 coins, add 1 coin
 // windows.h was included here solely for the Win32 typedef INT, used below as
 // a plain int cast. Casting to int directly needs no header at all.
 
-#include "opengl_renderer.h"
-
 #pragma warning( disable : 4838 4003 )
 
 // ---------------------------------------------------------------------------

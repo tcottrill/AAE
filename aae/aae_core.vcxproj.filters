@@ -279,6 +279,30 @@
     <ClCompile Include="aae\vidhrdwr\xevious_video.cpp">
       <Filter>vidhrdwr</Filter>
     </ClCompile>
+    <ClCompile Include="aae\drivers\mhavoc.cpp">
+      <Filter>drivers\vector</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\drivers\starwars.cpp">
+      <Filter>drivers\vector</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\drivers\tempest.cpp">
+      <Filter>drivers\vector</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\drivers\astrocade.cpp">
+      <Filter>drivers\raster</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\drivers\warlord.cpp">
+      <Filter>drivers\raster</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\sndhrdwr\galsnd_stream.cpp">
+      <Filter>sndhrdwr</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\sndhrdwr\namco.cpp">
+      <Filter>sndhrdwr</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\sndhrdwr\segag80snd.cpp">
+      <Filter>sndhrdwr</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="aae\driver_registry.h" />
@@ -513,6 +537,27 @@
     </ClInclude>
     <ClInclude Include="aae\vidhrdwr\SegaG80vid.h">
       <Filter>vidhrdwr</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\drivers\mhavoc.h">
+      <Filter>drivers\vector</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\drivers\starwars.h">
+      <Filter>drivers\vector</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\drivers\tempest.h">
+      <Filter>drivers\vector</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\drivers\warlord.h">
+      <Filter>drivers\raster</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\sndhrdwr\galsnd_stream.h">
+      <Filter>sndhrdwr</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\sndhrdwr\namco.h">
+      <Filter>sndhrdwr</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\sndhrdwr\segag80snd.h">
+      <Filter>sndhrdwr</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

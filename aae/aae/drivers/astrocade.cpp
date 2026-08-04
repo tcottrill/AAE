@@ -39,8 +39,6 @@
 #include "astrocde_video.h"
 #include "astrocade_sound.h"
 
-#include "opengl_renderer.h"	/* g_scanline_override */
-
 /*--------------------------------------------------------------------------
   Sound: two Astrocade chips at the Z80 clock
 --------------------------------------------------------------------------*/

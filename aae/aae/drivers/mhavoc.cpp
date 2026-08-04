@@ -192,7 +192,6 @@
 #include "tms5220.h"
 #include "timer.h"
 #include "aae_avg.h"
-#include "opengl_renderer.h"
 #include "mixer.h"
 #include "okim6295_loader.h"
 

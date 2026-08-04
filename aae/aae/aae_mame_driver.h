@@ -304,6 +304,14 @@ inline int game_rect_right = 1024;
 inline int game_rect_bottom = 0;
 inline int game_rect_top = 1024;
 
+// Per-game scanline-overlay override, set by a driver's init when the game
+// needs to disagree with the default RASTER_BW rule (warlords, astrocade).
+// 0 = default, 1 = force on, -1 = force off. Reset per game load in run_game.
+// Lives here rather than in the renderer so the drivers that set it stay
+// clear of the render headers - both chains read it (opengl_renderer.cpp
+// final_render_raster, vulkan_renderer.cpp VkScanlinesActive).
+inline int g_scanline_override = 0;
+
 inline float bezelzoom = 1.0f;
 inline int bezelx = 0;
 inline int bezely = 0;

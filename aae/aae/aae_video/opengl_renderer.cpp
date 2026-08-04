@@ -132,9 +132,6 @@ enum RotationDir { NONE, RIGHT, LEFT, OVER } rotation;
 int adj_horiz = 0;
 int adj_vert = 0;
 
-// Special Flag Just for Warlords with it's dual Monitor Types
-// Near the top with other module-level state
-int g_scanline_override = 0;  // 0 = default, 1 = force on, -1 = force off
 // ---------------------------------------------------------------------------
 // orientation_to_rect2_rotation
 // Converts ORIENTATION_xxx flags (from Machine->orientation or
@@ -174,9 +171,8 @@ void glchain_on_window_resize(int newW, int newH)
 
 // ---------------------------------------------------------------------------
 // raster_poly_update
-// Backend-neutral emit loop moved to raster_emit.cpp (Phase 4a Plan 3);
-// this wrapper feeds it into the GL Fpoly exactly as before (Y-down ortho,
-// so no flip).
+// The backend-neutral emit loop lives in raster_emit.cpp; this wrapper feeds
+// it into the GL Fpoly (Y-down ortho, so no flip).
 // ---------------------------------------------------------------------------
 static void GlRasterSink(void* user, float x, float y, float size, uint32_t rgba)
 {
@@ -330,7 +326,7 @@ int glchain_init(void)
 		if (Machine->gamedrv->video_attributes & VIDEO_TYPE_VECTOR)
 		{
 			vector_start();
-			beam_init(1);          // ssaa = 1 (Phase 1); raised to 2 in Phase 6
+			beam_init(1);          // ssaa = 1: fbo1 is a plain 1024 buffer
 		}
 
 		// --- Shader compilation ---

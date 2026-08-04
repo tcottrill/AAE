@@ -169,30 +169,6 @@
     <ClCompile Include="aae\led_service_handler.cpp">
       <Filter>Source Files\aae</Filter>
     </ClCompile>
-    <ClCompile Include="aae\drivers\astrocade.cpp">
-      <Filter>Source Files\aae\drivers\raster</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\warlord.cpp">
-      <Filter>Source Files\aae\drivers\raster</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\mhavoc.cpp">
-      <Filter>Source Files\aae\drivers\vector</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\starwars.cpp">
-      <Filter>Source Files\aae\drivers\vector</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\drivers\tempest.cpp">
-      <Filter>Source Files\aae\drivers\vector</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\sndhrdwr\galsnd_stream.cpp">
-      <Filter>Source Files\aae\sndhrdwr</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\sndhrdwr\namco.cpp">
-      <Filter>Source Files\aae\sndhrdwr</Filter>
-    </ClCompile>
-    <ClCompile Include="aae\sndhrdwr\segag80snd.cpp">
-      <Filter>Source Files\aae\sndhrdwr</Filter>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="resource.h">
@@ -425,27 +401,6 @@
     </ClInclude>
     <ClInclude Include="system\audio\audio_backend.h" />
     <ClInclude Include="system\util\sys_timer.h" />
-    <ClInclude Include="aae\drivers\mhavoc.h">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\drivers\starwars.h">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\drivers\tempest.h">
-      <Filter>Source Files\aae\drivers</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\drivers\warlord.h">
-      <Filter>Source Files\aae\drivers\raster</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\sndhrdwr\galsnd_stream.h">
-      <Filter>Source Files\aae\sndhrdwr</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\sndhrdwr\namco.h">
-      <Filter>Source Files\aae\sndhrdwr</Filter>
-    </ClInclude>
-    <ClInclude Include="aae\sndhrdwr\segag80snd.h">
-      <Filter>Source Files\aae\sndhrdwr</Filter>
-    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Image Include="appicon.ico" />
@@ -491,20 +446,11 @@
     <Filter Include="Source Files\aae">
       <UniqueIdentifier>{eef26f56-668e-4c26-9897-764111e69c73}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Source Files\aae\drivers">
-      <UniqueIdentifier>{4577e4bb-f586-44a6-a74c-e26fcb180920}</UniqueIdentifier>
-    </Filter>
     <Filter Include="Source Files\aae\fileio">
       <UniqueIdentifier>{06d40a8a-7079-4524-adb3-33680195e57d}</UniqueIdentifier>
     </Filter>
     <Filter Include="Source Files\aae\gui">
       <UniqueIdentifier>{03ed2864-0e5d-44f8-97a0-54b4479ad21d}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\aae\machine">
-      <UniqueIdentifier>{f2f82bbd-b595-4304-aaf3-4325d12ebf6b}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\aae\sndhrdwr">
-      <UniqueIdentifier>{41f08826-b9d1-4b65-a7d8-28680dabb924}</UniqueIdentifier>
     </Filter>
     <Filter Include="Source Files\aae\vidhrdwr">
       <UniqueIdentifier>{7b7ed687-8c8f-4447-a454-31a06b9497d1}</UniqueIdentifier>
@@ -515,20 +461,29 @@
     <Filter Include="Source Files\aae\aae_video_vk">
       <UniqueIdentifier>{9a1e5c2d-4b6f-4a3e-8c2a-2f6d7e9b0c11}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Source Files\aae\drivers\raster">
-      <UniqueIdentifier>{d3b1a532-181d-44f4-92aa-3fd58d1c1e7c}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\aae\cpu_code">
-      <UniqueIdentifier>{da058008-a727-4d5f-bb3f-a3335773c65c}</UniqueIdentifier>
-    </Filter>
     <Filter Include="Shaders">
       <UniqueIdentifier>{7a1b3c5d-2e4f-4a6b-8c9d-0e1f2a3b4c5d}</UniqueIdentifier>
     </Filter>
     <Filter Include="Shaders\vk">
       <UniqueIdentifier>{8b2c4d6e-3f5a-4b7c-9d0e-1f2a3b4c5d6e}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Source Files\aae\drivers\vector">
+    <Filter Include="Source Files\aae\drivers_old_nothing_here">
+      <UniqueIdentifier>{4577e4bb-f586-44a6-a74c-e26fcb180920}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\aae\drivers_old_nothing_here\raster_do_not_use">
+      <UniqueIdentifier>{d3b1a532-181d-44f4-92aa-3fd58d1c1e7c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\aae\drivers_old_nothing_here\vector_do_not_use">
       <UniqueIdentifier>{92cad4b1-1b94-4dbf-8b28-332c22199de8}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\aae\cpu_code_do_not_use">
+      <UniqueIdentifier>{da058008-a727-4d5f-bb3f-a3335773c65c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\aae\_do_not_usemachine">
+      <UniqueIdentifier>{f2f82bbd-b595-4304-aaf3-4325d12ebf6b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\aae\sndhrdwr_do_not_use">
+      <UniqueIdentifier>{41f08826-b9d1-4b65-a7d8-28680dabb924}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
