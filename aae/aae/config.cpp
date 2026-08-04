@@ -214,7 +214,17 @@ void setup_config() {
     config.exrompath = get_config_string("main", "mame_rom_path", "roms");
     config.exartpath = get_config_string("main", "mame_artwork_path", "artwork");
     config.hack = get_config_int("main", "hack", 0);
+    // Raster CRT treatment default is PER-PLATFORM. Desktop: NONE, so color
+    // raster games get the color monitor shader (color_enable=1). Pi 5 (the
+    // only aarch64 target): the scanlines.png texture overlay instead - a
+    // selected overlay stands the color shader down (VkColorMonitorActive /
+    // color_monitor_active), trading the multi-tap CRT passes for one cheap
+    // textured quad on the v3d GPU. Default only; an ini-set value wins.
+#if defined(__linux__) && defined(__aarch64__)
+    config.raster_effect = get_config_string("main", "raster_effect", "scanlines.png");
+#else
     config.raster_effect = get_config_string("main", "raster_effect", "NONE");
+#endif
     config.game_aspect = get_config_string("main", "game_aspect", "AUTO");
     config.flip_gui_controls = get_config_int("main", "flip_gui_controls", 0);
     // Monitor selection (1-based: 1 = primary).
