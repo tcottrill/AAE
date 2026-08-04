@@ -548,15 +548,29 @@ static GuiBeamMap ComputeUiOverlayMap(void)
 		return m;
 	}
 
-	float aspect = 4.0f / 3.0f;
+	int vw = sw, vh = sh;
 	if (GameIsVector())
 	{
-		aspect = GetWindowSetup().aspectRatio;
+		// Vector: aspect-fit box in ws.aspectRatio (fbo4 blit parity).
+		float aspect = GetWindowSetup().aspectRatio;
 		if (aspect <= 0.0f)
 			aspect = 4.0f / 3.0f;
+		vh = (int)(sw / aspect + 0.5f);
+		if (vh > sh) { vh = sh; vw = (int)(sh * aspect + 0.5f); }
 	}
-	int vw = sw, vh = (int)(sw / aspect + 0.5f);
-	if (vh > sh) { vh = sh; vw = (int)(sh * aspect + 0.5f); }
+	else
+	{
+		// Raster: exact GL viewport parity (render_ui_overlays). GL narrows
+		// the viewport to a centered 4:3 box ONLY when the window is WIDER
+		// than 4:3, and ALWAYS keeps the full window height; a window
+		// narrower than 4:3 keeps the whole window and lets the 1024x768
+		// ortho stretch. The old code here aspect-FIT a 4:3 box instead,
+		// which vertically letterboxed a short landscape strip into every
+		// portrait window - i.e. every rotated raster game - shrinking the
+		// FPS line, menu and PAUSED text into a small band mid-screen.
+		if ((float)sw / (float)sh > (4.0f / 3.0f + 0.01f))
+			vw = (int)(sh * (4.0f / 3.0f) + 0.5f);
+	}
 	if (vw < 1) vw = 1;
 	if (vh < 1) vh = 1;
 
@@ -1364,11 +1378,14 @@ void vkchain_set_render(void)
 // (additive=false), matching GL's VF::End (always alpha-over for text).
 //
 // Known accepted deviations from GL (documented, cosmetic):
-//  - a window NARROWER than 4:3 letterboxes the overlay vertically instead
-//    of GL's full-height vertical stretch (raster path only);
 //  - the dim rect covers exactly the letterbox box; GL's raster-window dim
 //    covers the full window height of the 4:3 strip (same thing whenever
 //    the window is 4:3 or wider);
+// (A third deviation - vertically letterboxing the overlay when the window
+// is NARROWER than 4:3 instead of GL's full-height stretch - was removed
+// 2026-08-03: every rotated raster game has a portrait window, so it shrank
+// the FPS/menu/PAUSED overlays into a small mid-screen band. The raster
+// branch of ComputeUiOverlayMap now reproduces GL's viewport rule exactly.)
 //
 // System rotation: both game types now route this function's output through
 // the square s_rtRot canvas and one rotated blit, so the overlays turn with
