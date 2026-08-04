@@ -255,7 +255,6 @@
     <ClCompile Include="aae\aae_video\gl_shader.cpp" />
     <ClCompile Include="aae\aae_video\gl_texturing.cpp" />
     <ClCompile Include="aae\aae_video\mame_layout.cpp" />
-    <ClCompile Include="aae\aae_video\mame_vector.cpp" />
     <ClCompile Include="aae\aae_video\opengl_renderer.cpp" />
     <ClCompile Include="aae\aae_video\raster_emit.cpp" />
     <ClCompile Include="aae\aae_video\renderer_dispatch.cpp" />

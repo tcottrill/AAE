@@ -157,9 +157,6 @@
     <ClCompile Include="aae\aae_video\vector_draw.cpp">
       <Filter>Source Files\aae\aae_video</Filter>
     </ClCompile>
-    <ClCompile Include="aae\aae_video\mame_vector.cpp">
-      <Filter>Source Files\aae\aae_video</Filter>
-    </ClCompile>
     <ClCompile Include="system\audio\audio_3d.cpp">
       <Filter>Source Files\system\audio</Filter>
     </ClCompile>

@@ -156,6 +156,7 @@ set(AAE_CORE_SOURCES
     aae/aae/sndhrdwr/tms36xx.cpp
     aae/aae/sndhrdwr/tms5220.cpp
     aae/aae/vidhrdwr/aae_avg.cpp
+    aae/aae/vidhrdwr/mame_vector.cpp
     aae/aae/vidhrdwr/centiped_vid.cpp
     aae/aae/vidhrdwr/astrocde_video.cpp
     aae/aae/vidhrdwr/cinematronics_video.cpp
@@ -212,7 +213,6 @@ set(AAE_COMMON_SOURCES
     aae/aae/aae_video/gl_shader.cpp
     aae/aae/aae_video/gl_texturing.cpp
     aae/aae/aae_video/mame_layout.cpp
-    aae/aae/aae_video/mame_vector.cpp
     aae/aae/aae_video/opengl_renderer.cpp
     aae/aae/aae_video/raster_emit.cpp
     aae/aae/aae_video/renderer_dispatch.cpp

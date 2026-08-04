@@ -243,6 +243,9 @@
     <ClCompile Include="aae\vidhrdwr\aae_avg.cpp">
       <Filter>vidhrdwr</Filter>
     </ClCompile>
+    <ClCompile Include="aae\vidhrdwr\mame_vector.cpp">
+      <Filter>vidhrdwr</Filter>
+    </ClCompile>
     <ClCompile Include="aae\vidhrdwr\astrocde_video.cpp">
       <Filter>vidhrdwr</Filter>
     </ClCompile>

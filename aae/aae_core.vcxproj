@@ -178,6 +178,7 @@
     <ClCompile Include="aae\sndhrdwr\tms36xx.cpp" />
     <ClCompile Include="aae\sndhrdwr\tms5220.cpp" />
     <ClCompile Include="aae\vidhrdwr\aae_avg.cpp" />
+    <ClCompile Include="aae\vidhrdwr\mame_vector.cpp" />
     <ClCompile Include="aae\vidhrdwr\centiped_vid.cpp" />
     <ClCompile Include="aae\vidhrdwr\astrocde_video.cpp" />
     <ClCompile Include="aae\vidhrdwr\cinematronics_video.cpp" />
