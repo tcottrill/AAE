@@ -172,6 +172,7 @@
     <ClInclude Include="aae\aae_video_vk\fast_poly_vk.h" />
     <ClInclude Include="aae\aae_video_vk\gpu_profiler_vk.h" />
     <ClInclude Include="aae\aae_video_vk\layout_vk.h" />
+    <ClInclude Include="aae\aae_video_vk\raster_tex_vk.h" />
     <ClInclude Include="aae\aae_video_vk\render_target_vk.h" />
     <ClInclude Include="aae\aae_video_vk\screen_quad_vk.h" />
     <ClInclude Include="aae\aae_video_vk\shot_draw_vk.h" />
@@ -261,6 +262,7 @@
     <ClCompile Include="aae\aae_video_vk\fast_poly_vk.cpp" />
     <ClCompile Include="aae\aae_video_vk\gpu_profiler_vk.cpp" />
     <ClCompile Include="aae\aae_video_vk\layout_vk.cpp" />
+    <ClCompile Include="aae\aae_video_vk\raster_tex_vk.cpp" />
     <ClCompile Include="aae\aae_video_vk\render_target_vk.cpp" />
     <ClCompile Include="aae\aae_video_vk\screen_quad_vk.cpp" />
     <ClCompile Include="aae\aae_video_vk\shot_draw_vk.cpp" />

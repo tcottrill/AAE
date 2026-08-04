@@ -124,6 +124,9 @@
     <ClCompile Include="aae\aae_video_vk\layout_vk.cpp">
       <Filter>Source Files\aae\aae_video_vk</Filter>
     </ClCompile>
+    <ClCompile Include="aae\aae_video_vk\raster_tex_vk.cpp">
+      <Filter>Source Files\aae\aae_video_vk</Filter>
+    </ClCompile>
     <ClCompile Include="aae\aae_video_vk\render_target_vk.cpp">
       <Filter>Source Files\aae\aae_video_vk</Filter>
     </ClCompile>
@@ -379,6 +382,9 @@
       <Filter>Source Files\aae\aae_video_vk</Filter>
     </ClInclude>
     <ClInclude Include="aae\aae_video_vk\layout_vk.h">
+      <Filter>Source Files\aae\aae_video_vk</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\aae_video_vk\raster_tex_vk.h">
       <Filter>Source Files\aae\aae_video_vk</Filter>
     </ClInclude>
     <ClInclude Include="aae\aae_video_vk\render_target_vk.h">
