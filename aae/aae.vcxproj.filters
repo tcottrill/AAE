@@ -396,8 +396,12 @@
     <ClInclude Include="aae\led_service_handler.h">
       <Filter>Source Files\aae</Filter>
     </ClInclude>
-    <ClInclude Include="system\audio\audio_backend.h" />
-    <ClInclude Include="system\util\sys_timer.h" />
+    <ClInclude Include="system\audio\audio_backend.h">
+      <Filter>Source Files\system\audio</Filter>
+    </ClInclude>
+    <ClInclude Include="system\util\sys_timer.h">
+      <Filter>Source Files\system\util</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Image Include="appicon.ico" />
@@ -463,24 +467,6 @@
     </Filter>
     <Filter Include="Shaders\vk">
       <UniqueIdentifier>{8b2c4d6e-3f5a-4b7c-9d0e-1f2a3b4c5d6e}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\aae\drivers_old_nothing_here">
-      <UniqueIdentifier>{4577e4bb-f586-44a6-a74c-e26fcb180920}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\aae\drivers_old_nothing_here\raster_do_not_use">
-      <UniqueIdentifier>{d3b1a532-181d-44f4-92aa-3fd58d1c1e7c}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\aae\drivers_old_nothing_here\vector_do_not_use">
-      <UniqueIdentifier>{92cad4b1-1b94-4dbf-8b28-332c22199de8}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\aae\cpu_code_do_not_use">
-      <UniqueIdentifier>{da058008-a727-4d5f-bb3f-a3335773c65c}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\aae\_do_not_usemachine">
-      <UniqueIdentifier>{f2f82bbd-b595-4304-aaf3-4325d12ebf6b}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\aae\sndhrdwr_do_not_use">
-      <UniqueIdentifier>{41f08826-b9d1-4b65-a7d8-28680dabb924}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
