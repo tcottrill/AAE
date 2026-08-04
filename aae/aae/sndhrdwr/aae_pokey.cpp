@@ -66,6 +66,7 @@ void Pokey::reset() {
 	IRQEN_ = IRQST_ = SKCTL_ = SKSTAT_ = 0;
 	KBCODE_ = SERIN_ = SEROUT_ = 0; kbd_pending_ = false;
 	pot_scanning_ = false;
+	pot_scan_ever_ = false;
 	pot_scan_start_ = 0;
 	rng_enabled_ = 0; pokey_random_ = 0;
 	rand_pos9_ = rand_pos17_ = 0;
@@ -164,6 +165,7 @@ void Pokey::write(uint8_t offset, uint8_t data) {
 	case W_SKREST: SKSTAT_ &= (uint8_t)~(ST_FRAME | ST_OVERRUN | ST_KBERR); return;
 	case W_POTGO:
 		pot_scanning_ = true;
+		pot_scan_ever_ = true;
 		pot_scan_start_ = host_ ? host_->now_cpu_cycles() : 0;
 		return;
 	case W_SEROUT: SEROUT_ = data; if (host_) host_->serial_out(data); return;
@@ -227,7 +229,21 @@ uint8_t Pokey::read(uint8_t offset) {
 			const uint64_t elapsed_pokey = elapsed * base_clock_ / cpu_hz;
 			if (elapsed_pokey >= need_pokey) pot_scanning_ = false;
 		}
-		if (!pot_scanning_) return 0x00;   // pre-POTGO or scan complete: all latched
+		// Boards that never run the scanner (Battlezone straps its control
+		// panel switches straight to the pot pins and reads ALLPOT as a plain
+		// input port) get MAME's behavior: the handler on every read. Gating
+		// those on a scan window that never opens returns 0x00 forever, which
+		// is a dead control panel. The distinction is the machine's own
+		// behavior, not a per-driver flag: issuing POTGO IS the statement that
+		// this board uses the scanner, so only then does the window apply.
+		if (!pot_scan_ever_) {
+			if (host_) {
+				const int v = host_->allpot_read();
+				if (v >= 0) return (uint8_t)v;
+			}
+			return 0xFF;
+		}
+		if (!pot_scanning_) return 0x00;   // scan complete: all latched
 		if (host_) {
 			const int v = host_->allpot_read();
 			if (v >= 0) return (uint8_t)v;   // mid-scan: grounded lines still counting

@@ -128,6 +128,10 @@ private:
 	// scan it reads the still-counting-line mask, after it 0x00.
 	uint64_t pot_scan_start_ = 0;
 	bool     pot_scanning_ = false;
+	// Sticky: set by the first POTGO this machine ever issues. A board that
+	// never runs the scanner is using the pot pins as a plain digital input
+	// port, and the scan window must not gate its reads. See R_ALLPOT.
+	bool     pot_scan_ever_ = false;
 
 	// RNG (carried-over logic)
 	uint8_t  rng_enabled_ = 0, pokey_random_ = 0;

@@ -83,10 +83,10 @@ static int bzone_IN3_r(int offset)
 {
 	int res, res1;
 
-	res = readinputport(3);
-	res1 = readinputport(4);
+	res = readinputportbytag("IN3");
+	res1 = readinputportbytag("FAKE");
 
-	res |= one_joy_trans[res1 & 0x1f];
+	res |= one_joy_trans[res1 & 0x0f];
 
 	return (res);
 }
@@ -437,16 +437,25 @@ PORT_DIPSETTING(0x60, "6 credits/4 coins")
 PORT_DIPSETTING(0x80, "6 credits/5 coins")
 
 PORT_START("IN3")	/* IN3 */
-PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_JOYSTICKRIGHT_DOWN | IPF_2WAY)
-PORT_BIT(0x02, IP_ACTIVE_HIGH, IPT_JOYSTICKRIGHT_UP | IPF_2WAY)
-PORT_BIT(0x04, IP_ACTIVE_HIGH, IPT_JOYSTICKLEFT_DOWN | IPF_2WAY)
-PORT_BIT(0x08, IP_ACTIVE_HIGH, IPT_JOYSTICKLEFT_UP | IPF_2WAY)
+/* The four tread bits are KEYBOARD-ONLY by default (IP_JOY_NONE); the physical
+   joystick drives the tank through the FAKE port and one_joy_trans below.
+   The stock defaults are unusable on one stick and collide with that path:
+   JOYSTICKLEFT_UP/DOWN sit on OSD_JOY_UP/DOWN -- the same codes the FAKE
+   port's JOYSTICK_UP/DOWN use, so a single push drove the left tread twice,
+   once directly and once through the table -- while JOYSTICKRIGHT_UP/DOWN sit
+   on OSD_JOY_FIRE2/FIRE3, putting the right tread on two fire buttons.
+   Keyboard is untouched: true dual-stick stays on E/D + I/K, arrows drive the
+   one-joystick path. Rebind either in the menu if you have a real twin-stick. */
+PORT_BITX(0x01, IP_ACTIVE_HIGH, IPT_JOYSTICKRIGHT_DOWN | IPF_2WAY, IP_NAME_DEFAULT, IP_KEY_DEFAULT, IP_JOY_NONE)
+PORT_BITX(0x02, IP_ACTIVE_HIGH, IPT_JOYSTICKRIGHT_UP | IPF_2WAY, IP_NAME_DEFAULT, IP_KEY_DEFAULT, IP_JOY_NONE)
+PORT_BITX(0x04, IP_ACTIVE_HIGH, IPT_JOYSTICKLEFT_DOWN | IPF_2WAY, IP_NAME_DEFAULT, IP_KEY_DEFAULT, IP_JOY_NONE)
+PORT_BITX(0x08, IP_ACTIVE_HIGH, IPT_JOYSTICKLEFT_UP | IPF_2WAY, IP_NAME_DEFAULT, IP_KEY_DEFAULT, IP_JOY_NONE)
 PORT_BIT(0x10, IP_ACTIVE_HIGH, IPT_BUTTON3)
 PORT_BIT(0x20, IP_ACTIVE_HIGH, IPT_START1)
 PORT_BIT(0x40, IP_ACTIVE_HIGH, IPT_START2)
 PORT_BIT(0x80, IP_ACTIVE_HIGH, IPT_UNUSED)
 
-PORT_START("IN4")	/* fake port for single joystick control */
+PORT_START("FAKE")	/* fake port for single joystick control */
 /* This fake port is handled via bzone_IN3_r */
 PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_JOYSTICK_UP | IPF_8WAY | IPF_CHEAT)
 PORT_BIT(0x02, IP_ACTIVE_HIGH, IPT_JOYSTICK_DOWN | IPF_8WAY | IPF_CHEAT)
