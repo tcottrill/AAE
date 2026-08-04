@@ -1,3 +1,7 @@
+//==========================================================================
+// AAE - Another Arcade Emulator
+// Copyright (C) 2026 Tim Cottrill - GNU GPL v3 or later.
+//==========================================================================
 // =============================================================================
 // audio_3d.cpp
 // X3DAudio glue for the voice path. Holds a single global listener (camera-

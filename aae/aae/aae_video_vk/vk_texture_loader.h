@@ -1,3 +1,7 @@
+//==========================================================================
+// AAE - Another Arcade Emulator
+// Copyright (C) 2026 Tim Cottrill - GNU GPL v3 or later.
+//==========================================================================
 // -----------------------------------------------------------------------------
 // vk_texture_loader.h - Minimal Vulkan texture loader for the front-end GUI.
 //

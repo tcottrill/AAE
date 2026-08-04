@@ -1,3 +1,7 @@
+//==========================================================================
+// AAE - Another Arcade Emulator
+// Copyright (C) 2026 Tim Cottrill - GNU GPL v3 or later.
+//==========================================================================
 #pragma once
 // ===========================================================================
 // vulkan_renderer.h - Vulkan chain orchestration entry points (vkchain_*).

@@ -1,3 +1,7 @@
+//==========================================================================
+// AAE - Another Arcade Emulator
+// Copyright (C) 2025-2026 Tim Cottrill - GNU GPL v3 or later.
+//==========================================================================
 // -----------------------------------------------------------------------------
 // vector_draw.cpp - Modern shader-based vector beam renderer.
 // Butt-capped, coverage-AA'd instanced beams + round joins + procedural shots.

@@ -1,3 +1,7 @@
+//==========================================================================
+// AAE - Another Arcade Emulator
+// Copyright (C) 2026 Tim Cottrill - GNU GPL v3 or later.
+//==========================================================================
 // -----------------------------------------------------------------------------
 // shot_draw_vk.cpp - Vulkan textured vector shot pass.
 // See shot_draw_vk.h for the GL reference and lifetime reasoning.

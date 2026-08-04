@@ -1,3 +1,7 @@
+//==========================================================================
+// AAE - Another Arcade Emulator
+// Copyright (C) 2026 Tim Cottrill - GNU GPL v3 or later.
+//==========================================================================
 // -----------------------------------------------------------------------------
 // fast_poly_vk.cpp - Vulkan fast-poly quad renderer, the twin of the GL Fpoly
 // in aae/aae/vidhrdwr/fast_poly.cpp. See fast_poly_vk.h for the naming and the

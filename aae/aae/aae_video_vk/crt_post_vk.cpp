@@ -1,3 +1,7 @@
+//==========================================================================
+// AAE - Another Arcade Emulator
+// Copyright (C) 2026 Tim Cottrill - GNU GPL v3 or later.
+//==========================================================================
 // -----------------------------------------------------------------------------
 // crt_post_vk.cpp - Vulkan RASTER CRT post chain.
 // See crt_post_vk.h for the GL correspondence and the ordering contract.

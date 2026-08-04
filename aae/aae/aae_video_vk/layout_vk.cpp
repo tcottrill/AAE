@@ -1,3 +1,7 @@
+//==========================================================================
+// AAE - Another Arcade Emulator
+// Copyright (C) 2026 Tim Cottrill - GNU GPL v3 or later.
+//==========================================================================
 // -----------------------------------------------------------------------------
 // layout_vk.cpp - Vulkan MAME .lay layout compositor. See layout_vk.h for
 // what the GL side is and which subset is ported.

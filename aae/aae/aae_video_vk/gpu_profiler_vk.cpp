@@ -1,3 +1,7 @@
+//==========================================================================
+// AAE - Another Arcade Emulator
+// Copyright (C) 2026 Tim Cottrill - GNU GPL v3 or later.
+//==========================================================================
 // -----------------------------------------------------------------------------
 // gpu_profiler_vk.cpp - per-section GPU timing for the Vulkan chain.
 // See gpu_profiler_vk.h for the contract and the call-site macros.

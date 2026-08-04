@@ -1,3 +1,7 @@
+//==========================================================================
+// AAE - Another Arcade Emulator
+// Copyright (C) 2026 Tim Cottrill - GNU GPL v3 or later.
+//==========================================================================
 #pragma once
 // ===========================================================================
 // snapshot_vk.h - F12 screenshot readback for the Vulkan chain.

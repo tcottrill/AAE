@@ -1,3 +1,7 @@
+//==========================================================================
+// AAE - Another Arcade Emulator
+// Copyright (C) 2026 Tim Cottrill - GNU GPL v3 or later.
+//==========================================================================
 // -----------------------------------------------------------------------------
 // render_target_vk.h - Vulkan offscreen render target: the VK equivalent of
 // the GL chain's FBO + attached texture (fbo1 / fbo4 / fbo_raster et al. in

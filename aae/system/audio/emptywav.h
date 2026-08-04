@@ -1,3 +1,7 @@
+//==========================================================================
+// AAE - Another Arcade Emulator
+// Copyright (C) 2025 Tim Cottrill - GNU GPL v3 or later.
+//==========================================================================
 /* C:\Temp\empty.wav (11/6/2015 7:49:16 PM)
    StartOffset: 00000000, EndOffset: 00001A23, Length: 00001A24 */
 

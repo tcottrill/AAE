@@ -1,3 +1,7 @@
+//==========================================================================
+// AAE - Another Arcade Emulator
+// Copyright (C) 2026 Tim Cottrill - GNU GPL v3 or later.
+//==========================================================================
 // -----------------------------------------------------------------------------
 // vector_post_vk.cpp - Vulkan vector post chain.
 // See vector_post_vk.h for the GL -> VK object map and frame shape.

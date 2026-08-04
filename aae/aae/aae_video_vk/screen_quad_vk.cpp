@@ -1,3 +1,7 @@
+//==========================================================================
+// AAE - Another Arcade Emulator
+// Copyright (C) 2026 Tim Cottrill - GNU GPL v3 or later.
+//==========================================================================
 // -----------------------------------------------------------------------------
 // screen_quad_vk.cpp - Textured-rect quad renderer. See screen_quad_vk.h for
 // what RecordRect draws and where the VK chain uses it.

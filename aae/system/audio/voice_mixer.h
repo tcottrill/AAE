@@ -1,3 +1,7 @@
+//==========================================================================
+// AAE - Another Arcade Emulator
+// Copyright (C) 2026 Tim Cottrill - GNU GPL v3 or later.
+//==========================================================================
 //==============================================================================
 // voice_mixer.h -- software mixing of IAudioBackend voices into one PCM stream.
 //

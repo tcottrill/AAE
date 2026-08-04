@@ -1,3 +1,7 @@
+//==========================================================================
+// AAE - Another Arcade Emulator
+// Copyright (C) 2026 Tim Cottrill - GNU GPL v3 or later.
+//==========================================================================
 // =============================================================================
 // xaudio2_backend.cpp
 // Moved verbatim from mixer.cpp's former xaudio2_init / xaudio2_update /

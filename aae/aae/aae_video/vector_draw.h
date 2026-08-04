@@ -1,3 +1,7 @@
+//==========================================================================
+// AAE - Another Arcade Emulator
+// Copyright (C) 2025-2026 Tim Cottrill - GNU GPL v3 or later.
+//==========================================================================
 #pragma once
 #ifndef VECTOR_DRAW_H
 #define VECTOR_DRAW_H

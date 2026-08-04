@@ -1,3 +1,7 @@
+//==========================================================================
+// AAE - Another Arcade Emulator
+// Copyright (C) 2025-2026 Tim Cottrill - GNU GPL v3 or later.
+//==========================================================================
 #pragma once
 
 #include "vector_draw_gl.h"  // draw_textured_shots (referenced in comments below)

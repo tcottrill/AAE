@@ -1,3 +1,7 @@
+//==========================================================================
+// AAE - Another Arcade Emulator
+// Copyright (C) 2026 Tim Cottrill - GNU GPL v3 or later.
+//==========================================================================
 // -----------------------------------------------------------------------------
 // vector_draw_vk.cpp - Vulkan backend for the beam vector renderer.
 // See vector_draw_vk.h for the buffer/append discipline and the SSAA feather.

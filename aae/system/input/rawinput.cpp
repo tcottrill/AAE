@@ -1,3 +1,7 @@
+//==========================================================================
+// AAE - Another Arcade Emulator
+// Copyright (C) 2025-2026 Tim Cottrill - GNU GPL v3 or later.
+//==========================================================================
 //Note: Updated bad mouse handling code. 8/5/25
 // Updated 2/28/26 to support Lost Focus and Pausing Input.
 

@@ -1,3 +1,7 @@
+//==========================================================================
+// AAE - Another Arcade Emulator
+// Copyright (C) 2024-2026 Tim Cottrill - GNU GPL v3 or later.
+//==========================================================================
 #include "aae_mame_driver.h"
 #include "gl_texturing.h"
 #include "sys_gl.h"

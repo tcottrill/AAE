@@ -1,3 +1,7 @@
+//==========================================================================
+// AAE - Another Arcade Emulator
+// Copyright (C) 2026 Tim Cottrill - GNU GPL v3 or later.
+//==========================================================================
 // ===========================================================================
 // vulkan_renderer.cpp - Vulkan chain orchestration, the twin of the GL chain
 // in aae_video/opengl_renderer.cpp.
