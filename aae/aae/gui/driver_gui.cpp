@@ -708,7 +708,7 @@ static void drawGameList()
 		offset += kLineSpacing;
 	}
 
-	VF.PrintCentered(kFooterY1, RGB_CYAN, kFooterScale, "Press Start 1 to Select Game");
+	VF.PrintCentered(kFooterY1, RGB_CYAN, kFooterScale, "Press A to Select Game");
 	VF.PrintCentered(kFooterY2, RGB_CYAN, kFooterScale, "2026 TEST GUI BUILD - Press <TAB> for Menu");
 
 	updateShotAnimation();

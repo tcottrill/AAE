@@ -1,0 +1,320 @@
+==============================================================================
+A.A.E. - XBOX CONTROLLER GUIDE (COUCH MODE)
+Operating the emulator end-to-end from a gamepad
+==============================================================================
+
+This document covers every button, stick and combo needed to run A.A.E. from
+the couch with an Xbox controller and no keyboard in reach.
+
+It also states plainly which functions CANNOT be reached from the pad, so you
+know before you sit down whether you need a keyboard nearby.
+
+Everything here describes the DEFAULT bindings. Anything you rebind in
+JOY CONFIG changes the game controls; the system combos in section 3 are
+fixed in code and cannot be rebound.
+
+
+------------------------------------------------------------------------------
+1. BEFORE YOU SIT DOWN
+------------------------------------------------------------------------------
+
+  * Plug the controller in (or connect it) BEFORE launching, or after - it
+    does not matter. XInput pads are hot-pluggable and are re-scanned every
+    frame. A pad connected mid-session is picked up automatically.
+
+  * Use an XInput controller. That means an Xbox 360, Xbox One, Xbox Series
+    pad, or any third-party pad that presents itself as XInput. This matters
+    for more than button labels: the system combos in section 3 are XInput-
+    only and silently do nothing on the older WinMM/DirectInput fallback
+    path. If the combos do not work, you are on the wrong driver.
+
+  * You must be on PAD 1. All emulator-level combos (pause, menu, exit) are
+    read from player 1's controller only. Pads 2-4 can play games but cannot
+    drive the emulator.
+
+  * Mouse capture is ON at startup and hides the cursor. This is intended and
+    is not something you need to change for pad use.
+
+  * First launch shows a one-time credits panel. Any face/shoulder/stick
+    button dismisses it (A, B, X, Y, LB, RB, Back, Start, LS or RS). The
+    D-pad and the triggers will NOT dismiss it. It never appears again.
+
+
+------------------------------------------------------------------------------
+2. THE CONTROLLER MAP AT A GLANCE
+------------------------------------------------------------------------------
+
+Left stick and D-pad are the same input. The D-pad overrides the stick when
+pressed, so you can use whichever you prefer without changing any setting.
+
+  PHYSICAL             IN A GAME              IN THE GUI / MENU
+  -------------------  ---------------------  --------------------------
+  Left stick / D-pad   Joystick, player 1     Navigate
+  A                    Button 1               Select / launch game
+  B                    Button 2               Back (menu only)
+  X                    Button 3               -
+  Y                    Button 4               -
+  LB                   Button 5               -
+  RB                   Button 6               -
+  Back                 1 PLAYER START         -
+  Start                2 PLAYER START         -
+  LS (click)           COIN 2                 -
+  RS (click)           COIN 1  (insert coin)  -
+  Right stick          -                      -
+  LT / RT              -  (see section 8)     -
+
+The two you will reach for constantly:
+
+  RS click  = INSERT COIN
+  Back      = START (1 player)
+
+That is the whole arcade coin-up sequence: click the right stick to drop a
+credit, press Back to start.
+
+
+------------------------------------------------------------------------------
+3. SYSTEM COMBOS - THE THREE YOU MUST MEMORIZE
+------------------------------------------------------------------------------
+
+These three combos are how you control the emulator itself. They are held
+combinations, not sequences - press and hold both buttons together.
+
+  LS + Start   OPEN / CLOSE THE MENU
+  LS + Back    ESC / BACK OUT / EXIT
+  Start + Back PAUSE / UNPAUSE
+
+Notes on how they behave:
+
+  * A combo fires ONCE when both buttons have been held together for two
+    consecutive polls. It will not repeat while held. Release both buttons
+    fully before triggering it again.
+
+  * Hold both buttons down together. Rolling from one to the other slowly
+    still works, but you may also trigger the individual button first - see
+    the warning below.
+
+  * IMPORTANT SIDE EFFECT: Back and Start are also 1P START and 2P START.
+    Start + Back therefore inserts a start signal for both players at the
+    same moment it pauses. In practice this is harmless during play, but if
+    you are sitting on an attract screen with credits in, pausing will also
+    start a game. Coin up first, then pause, or use LS + Start to open the
+    menu instead (LS is COIN 2, which is far less disruptive).
+
+  * Pause does nothing while the menu is open. Close the menu first.
+
+
+------------------------------------------------------------------------------
+4. THE GAME SELECTION SCREEN (GUI)
+------------------------------------------------------------------------------
+
+This is the list you land on at startup.
+
+  Left stick / D-pad UP or DOWN    Move through the game list (repeats if
+                                   held, with acceleration)
+  Left stick / D-pad LEFT or RIGHT Jump to the previous / next letter group
+                                   (single press - one jump per press)
+  A                                Launch the highlighted game
+  LS + Start                       Open the configuration menu
+  LS + Back                        Exit A.A.E. (see section 7)
+
+The letter-group jump is the fast way to cross a 130+ game list. Flick left
+or right to hop from the A's to the B's to the C's, then use up/down to pick
+the title.
+
+NOTE: the on-screen footer reads "Press Start 1 to Select Game". The button
+that actually launches a game from a pad is A. Back (which is 1P START) does
+not launch anything on this screen.
+
+If up/down and left/right feel backwards to you, set flip_gui_controls=1 in
+aae.ini under [misc] to swap the two axes - then left/right moves through the
+list and up/down jumps letter groups.
+
+
+------------------------------------------------------------------------------
+5. IN A GAME
+------------------------------------------------------------------------------
+
+  RS (click)     Insert coin
+  Back           1 player start
+  Start          2 player start
+  Left stick     Move
+  D-pad          Move (identical to the stick)
+  A / B / X / Y  Buttons 1 / 2 / 3 / 4
+  LB / RB        Buttons 5 / 6
+
+  Start + Back   Pause / unpause
+  LS + Start     Open the menu (DIP switches, video, sound, controls)
+  LS + Back      Return to the game list, or exit - see section 7
+
+Most classic arcade games use one or two buttons, so A and B cover nearly
+everything. Games with more buttons follow the order above.
+
+
+------------------------------------------------------------------------------
+6. THE CONFIGURATION MENU
+------------------------------------------------------------------------------
+
+Open with LS + Start from anywhere - the game list or mid-game.
+
+  Left stick / D-pad UP or DOWN    Move the highlight between rows
+  Left stick / D-pad LEFT or RIGHT Change the highlighted setting's value
+  A                                Select / enter a submenu
+  B                                Back one level, or close from the top
+  LS + Back                        Same as B
+  LS + Start                       Close the menu outright from any level
+
+There is a deliberate ~6 frame delay after the menu opens before it accepts
+navigation. This stops the stick deflection from the LS part of the combo
+from immediately scrolling the list. If your first nudge seems ignored, that
+is why - just nudge again.
+
+Start is deliberately NOT a select button inside the menu. It is reserved for
+the LS + Start close combo, so that reaching for the combo cannot accidentally
+confirm whatever row is highlighted. Use A to confirm.
+
+Menu contents you can reach entirely from the pad:
+
+  KEY CONFIG (GLOBAL / THIS GAME)   Keyboard bindings   - see the warning
+  JOY CONFIG (GLOBAL / THIS GAME)   Pad bindings        - see the warning
+  ANALOG CONFIG                     Per-player device assignment
+  INPUT DEVICES                     See what is plugged in
+  DIPSWITCHES                       Per-game arcade DIP settings
+  VIDEO SETUP                       Resolution, CRT effects, glow, rotation
+  SOUND SETUP                       Volume and audio options
+
+  ***  WARNING - KEY CONFIG AND JOY CONFIG ARE A ONE-WAY TRIP  ***
+
+  When you select a binding to reassign, the emulator waits for you to press
+  the new key or button. That wait can ONLY be cancelled with the keyboard
+  (ESC). There is no pad button that aborts it.
+
+  On the pad this is survivable in JOY CONFIG - just press whatever button
+  you actually want and the assignment completes. But in KEY CONFIG it is
+  waiting for a KEYBOARD key and no controller input will satisfy it. You
+  will be stuck on that screen until you reach a keyboard.
+
+  From the couch: stay out of KEY CONFIG.
+
+
+------------------------------------------------------------------------------
+7. GETTING OUT - WHAT LS + BACK DOES
+------------------------------------------------------------------------------
+
+LS + Back is context-sensitive. It backs out one layer at a time:
+
+  In a submenu          Return to the parent menu
+  At the top menu       Close the menu
+  Playing a game that
+    you launched from
+    the game list       Return to the game list (immediate, no prompt)
+  On the game list      Exit A.A.E. - with a YES/NO confirmation
+
+The confirmation dialog is fully pad-operable:
+
+  Left stick / D-pad LEFT or RIGHT   Toggle between YES and NO
+  A  or  Start                       Confirm the highlighted choice
+  LS + Back                          Dismiss the dialog, do not exit
+
+YES is highlighted by default, so A twice from the game list quits.
+
+Start works as a confirm here (unlike in the menu) because the dialog
+consumes all input while it is up, so there is no risk of it reopening the
+menu behind your back.
+
+If you want the emulator to quit instantly with no prompt, set
+confirm_exit=0 in aae.ini.
+
+
+------------------------------------------------------------------------------
+8. WHAT YOU CANNOT DO FROM THE PAD
+------------------------------------------------------------------------------
+
+Be aware of these before you settle in. All of them are keyboard-only:
+
+  F3     Reset the running machine
+  F9     Toggle mouse capture
+  F10    Toggle speed throttle
+  F11    Toggle the FPS display
+  F12    Take a screenshot
+  ALT+ENTER  Toggle borderless fullscreen
+  ESC    Cancel an in-progress key/joy rebind (see section 6 warning)
+
+These UI hotkeys have no joystick binding at all in the defaults table and
+cannot be given one through the menu - the pad reaches the emulator only
+through the three combos in section 3.
+
+Also unavailable on the pad:
+
+  * The TRIGGERS (LT and RT) cannot be used for anything. The input layer
+    only reaches the first ten buttons (A, B, X, Y, LB, RB, Back, Start, LS,
+    RS), and the triggers sit past that limit. They cannot be bound in JOY
+    CONFIG either.
+
+  * The RIGHT STICK is not mapped to any game control.
+
+  * The D-pad cannot be bound as four separate buttons. It only ever acts as
+    a direction, merged with the left stick.
+
+So: 10 usable buttons plus one stick. That is more than any game in the set
+needs, but it does mean the triggers sit idle.
+
+
+------------------------------------------------------------------------------
+9. SPINNER, DIAL AND TRACKBALL GAMES
+------------------------------------------------------------------------------
+
+Tempest, Major Havoc, Centipede, Millipede, Breakout, Warlords and similar
+games were built around a spinner, dial or trackball. They ARE playable on
+the pad - the left stick and D-pad feed the dial as fixed-rate steps - but
+you are getting on/off movement where the original had a proportional
+control, so fine aiming is harder than it was in the arcade.
+
+If you have a mouse, spinner or trackball connected it will drive these games
+properly and can be used alongside the pad. Assign it per player in
+ANALOG CONFIG, which you can reach from the pad.
+
+Games using an analog flight stick (AD stick) read the left stick
+proportionally and play correctly from the pad.
+
+
+------------------------------------------------------------------------------
+10. MULTIPLAYER
+------------------------------------------------------------------------------
+
+Up to four pads are supported. By default pad N drives player N with no setup
+required - plug in a second controller and player 2 works.
+
+Each player's pad has the same layout as section 2. Player 2's coin is on
+their own LS/RS clicks, and 2P START is on player 1's Start button (Back and
+Start on pad 1 are wired to 1P and 2P start respectively, matching an arcade
+cabinet's two start buttons).
+
+If the automatic assignment picks the wrong pad for a player, override it in
+ANALOG CONFIG. Assignments are stored by device identity, so they survive
+unplugging, replugging and reboots rather than shuffling when enumeration
+order changes.
+
+Only pad 1 can pause, open the menu, or exit.
+
+
+------------------------------------------------------------------------------
+11. QUICK REFERENCE CARD
+------------------------------------------------------------------------------
+
+  COIN                 RS click
+  START 1P             Back
+  START 2P             Start
+  FIRE                 A  (then B, X, Y, LB, RB)
+  MOVE                 Left stick or D-pad
+
+  MENU                 LS + Start
+  PAUSE                Start + Back
+  BACK / EXIT          LS + Back
+
+  Launch a game        A, on the game list
+  Jump A-Z             Left / Right on the game list
+  Confirm quit         A (YES is preselected)
+
+  Menu: A = select, B = back, Left/Right = change value
+
+==============================================================================
