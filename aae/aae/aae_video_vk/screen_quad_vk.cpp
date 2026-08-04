@@ -1,8 +1,6 @@
 // -----------------------------------------------------------------------------
-// screen_quad_vk.cpp - Textured-rect quad renderer (Phase 4a Plan 4, Task 2).
-// Imported from the Bosconian donor; see screen_quad_vk.h for what was
-// dropped (legacy ctx-owned fullscreen path) and what was adapted (explicit
-// SPV paths, ctx-carried vkCmdBindVertexBuffers).
+// screen_quad_vk.cpp - Textured-rect quad renderer. See screen_quad_vk.h for
+// what RecordRect draws and where the VK chain uses it.
 // ASCII-only comments.
 // -----------------------------------------------------------------------------
 
@@ -37,8 +35,8 @@ static bool RectReadFileBytes_(const char* path, std::vector<uint8_t>& out)
     return r == (size_t)n;
 }
 
-// Adapted from the donor: takes the path as-is (the donor prefixed its
-// engine's Shader_GetPath(); AAE passes explicit paths like FpolyVK does).
+// Takes the SPV path as-is: AAE passes explicit exe-relative paths, as FpolyVK
+// does.
 static VkShaderModule RectCreateShaderModule_(VkContext& ctx, const char* path)
 {
     std::vector<uint8_t> bytes;
@@ -80,9 +78,7 @@ static void RectMakeOrtho_(float l, float r, float b, float t, float* out16)
 
 // -----------------------------------------------------------------------------
 // Init / Shutdown
-// The donor's Init also built the legacy fullscreen VB and tolerated a
-// RectInit_ failure (legacy callers kept working). With the legacy path
-// dropped, RectInit_ failure is fatal.
+// RectInit_ failure is fatal: the rect path is the only path.
 // -----------------------------------------------------------------------------
 bool ScreenQuadVK::Init(VkContext& ctx, const ScreenQuadVKCreateInfo* ci)
 {
@@ -184,9 +180,8 @@ uint32_t ScreenQuadVK::FindMemoryType(VkContext& ctx, uint32_t typeBits, VkMemor
 // =============================================================================
 //                     RECT-AWARE PATH (RecordRect)
 // =============================================================================
-// Owns its own pipeline, descriptor pool, and per-frame VBO/UBO ring.
-// Architecture mirrors the donor engine's RenderTargetCompositor: same
-// per-slot offset trick to avoid races on still-in-flight reads, same
+// Owns its own pipeline, descriptor pool, and per-frame VBO/UBO ring, with
+// per-slot offsets to avoid races on still-in-flight reads and the house
 // y-flipped-viewport convention.
 // =============================================================================
 
@@ -277,10 +272,10 @@ bool ScreenQuadVK::RectInit_(VkContext& ctx)
     // prevent races between still-in-flight slots in the same frame.
     const VkDeviceSize vboBytes = (VkDeviceSize)kRectSlotsPerFrame * 6 * sizeof(QuadVertex);
 
-    // UBO: ONE ortho per SLOT, not one per frame. The donor shared a single
-    // mat4 across every slot of a frame, which is only correct while all of a
-    // frame's rect draws share the same target dims - the last RecordRect call
-    // won for all of them. The system-rotation path breaks that assumption
+    // UBO: ONE ortho per SLOT, not one per frame. Sharing a single mat4 across
+    // every slot of a frame is only correct while all of a frame's rect draws
+    // share the same target dims - the last RecordRect call would win for all
+    // of them. The system-rotation path breaks that assumption
     // (overlay quads record into the square 1024 output RT, then the final
     // blit records against the swapchain), so each slot now owns its own
     // device-aligned region and the per-call write can never clobber a
@@ -533,8 +528,7 @@ bool ScreenQuadVK::RectBuildPipelineForFormat_(VkContext& ctx, VkFormat colorFor
     cba.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
                          VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
 
-    // Blend-mode overrides. Alpha (above) is the donor state and stays
-    // untouched so every pre-existing caller keeps byte-identical pipelines.
+    // Blend-mode overrides. Alpha (above) is the default state.
     if (blend == SQBlendVK::None)
     {
         // Straight copy - GL end_render_fbo4's glDisable(GL_BLEND) blit.
@@ -701,13 +695,11 @@ void ScreenQuadVK::RecordRect(VkContext& ctx, VkCommandBuffer cmd, uint32_t fram
     // Build the 6-vertex quad in screen-pixel space at this slot's offset.
     // BL, TL, TR, then TR, BR, BL (two triangles, CCW).
     //
-    // UVs (donor contract, preserved): a texture uploaded without a vertical
-    // flip has v=0 at the IMAGE TOP. To render right-side up, the BL screen
-    // vertex samples the IMAGE BOTTOM (v=1) and the TL vertex samples the
-    // IMAGE TOP (v=0). flipUV_Y=false therefore maps to v0=1, v1=0 here;
-    // callers that need an explicit vertical flip pass flipUV_Y=true.
-    // (The donor fixed an earlier version that had v0/v1 swapped, which
-    // forced every caller to pass flipUV_Y=true for right-side-up output.)
+    // UVs: a texture uploaded without a vertical flip has v=0 at the IMAGE
+    // TOP. To render right-side up, the BL screen vertex samples the IMAGE
+    // BOTTOM (v=1) and the TL vertex samples the IMAGE TOP (v=0). flipUV_Y
+    // =false therefore maps to v0=1, v1=0 here; callers that need an explicit
+    // vertical flip pass flipUV_Y=true.
     //
     // uvRotation (GL Rect2 parity): the four corner UVs are permuted the same
     // way texrect.cpp's indices[32] table permutes Rect2's, so the source

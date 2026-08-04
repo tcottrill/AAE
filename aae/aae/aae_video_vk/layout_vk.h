@@ -1,6 +1,6 @@
 // -----------------------------------------------------------------------------
 // layout_vk.h - Vulkan port of the MAME .lay layout compositor
-// (Phase 4a Plan 10: RASTER-game artwork).
+// (RASTER-game artwork).
 //
 // WHAT THE GL SIDE ACTUALLY IS
 // ----------------------------

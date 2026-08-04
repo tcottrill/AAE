@@ -1,5 +1,5 @@
 // -----------------------------------------------------------------------------
-// shot_draw_vk.cpp - Vulkan textured vector shot pass (Phase 4a Plan 9).
+// shot_draw_vk.cpp - Vulkan textured vector shot pass.
 // See shot_draw_vk.h for the GL reference and lifetime reasoning.
 // ASCII-only comments.
 // -----------------------------------------------------------------------------
@@ -78,7 +78,7 @@ bool ShotDrawVK::Init(VkContext& ctx, const ShotDrawVKCreateInfo* ci)
     if (!ctx.device)
         return false;
     if (initialized_)
-        Shutdown(ctx);   // idempotence (house discipline, fix 4c)
+        Shutdown(ctx);   // idempotent re-Init: never leak the previous set
 
     ShotDrawVKCreateInfo def{};
     if (!ci) ci = &def;

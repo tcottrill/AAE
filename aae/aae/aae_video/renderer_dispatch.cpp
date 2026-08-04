@@ -1,5 +1,5 @@
 // ===========================================================================
-// renderer_dispatch.cpp - Phase 4 renderer dispatch (spec sec.3.2).
+// renderer_dispatch.cpp - renderer dispatch.
 //
 // Defines the public renderer entry points the emulator core, GUI and
 // window layer have always called, and routes each to the GL chain
@@ -9,8 +9,9 @@
 // not once per init_gl() call: run_game() calls init_gl() on every game
 // load, so the first failed Vulkan attempt sets s_vulkanFailed and every
 // later call goes straight to GL - no repeat vkchain_init() attempts, no
-// repeat failure popup. We never touch the ini (spec sec.5). s_active is the
-// single source of truth for which chain is live.
+// repeat failure popup. The ini is never rewritten: config.renderer keeps
+// whatever the user set. s_active is the single source of truth for which
+// chain is live.
 // ===========================================================================
 #include "config.h"
 #include "sys_log.h"
@@ -27,8 +28,8 @@ static int s_active = RENDERER_OPENGL;
 // (one per game load) do not retry Vulkan or re-show the fallback popup.
 static int s_vulkanFailed = 0;
 
-// Which chain actually runs this session (post-fallback). For future
-// consumers (artwork loaders, snapshot path) - not part of the GL surface.
+// Which chain actually runs this session (post-fallback), for the consumers
+// that must branch on it (artwork loaders, snapshot path, VectorFont).
 int active_renderer(void) { return s_active; }
 
 int init_gl(void)

@@ -1,36 +1,19 @@
 // -----------------------------------------------------------------------------
-// screen_quad_vk.h - Textured-rect quad renderer, Vulkan 1.3 dynamic rendering
-// (Phase 4a Plan 4, Task 2).
+// screen_quad_vk.h - Textured-rect quad renderer, Vulkan 1.3 dynamic rendering.
 //
-// Imported from the Bosconian donor (Bosconian/sys_graphics/screen_quad_vk.{h,cpp}).
-// The donor had two paths; only one survives the import:
+// The single entry point is RecordRect(...): it draws a textured rect at
+// caller screen-pixel coords into whatever dynamic-rendering pass is currently
+// open, building the pipeline variant lazily against VK_ActiveColorFormat(ctx).
+// Y-flipped viewport (house convention); rect coords are y-up (bottomPx <
+// topPx). It is self-contained - it owns its pipeline variants (one per active
+// color format), descriptor pool, and per-frame VBO/UBO ring - alongside
+// OnFrameBegin (per-frame slot-cursor reset) and Shutdown.
 //
-//   DROPPED - Record(...) legacy fullscreen path. It drew through the
-//     ctx-owned fullscreen pipeline (ctx.pipeline / ctx.pipelineLayout /
-//     ctx.descSet) which is populated by the sys_vk fullscreen-pass entry
-//     points (VK_BindFullscreenTexture / VK_RecordFullscreenPass /
-//     VK_RecordRectPass) that were EXCLUDED from the Plan 2 sys_vk port.
-//     With that machinery absent the legacy path can never draw, so
-//     Record(), the one-shot device-local quad VB, and its staging-upload
-//     helpers (CreateVertexBuffer / DestroyVertexBuffer /
-//     EnsureUploadObjects) are all removed.
-//
-//   KEPT - RecordRect(...), the self-contained rect-aware path: owns its own
-//     pipeline variants (one per active color format), descriptor pool, and
-//     per-frame VBO/UBO ring. Plus OnFrameBegin (per-frame slot-cursor
-//     reset) and Shutdown. Donor code preserved verbatim except:
-//       - the SPV paths come from ScreenQuadVKCreateInfo (explicit paths,
-//         same convention as FastPolyVKCreateInfo: "shaders/vk/...") instead
-//         of the donor engine's Shader_GetPath() prefix helper, which AAE
-//         does not have;
-//       - the donor's locally-loaded pfnCmdBindVertexBuffers proc address is
-//         replaced by ctx.vkCmdBindVertexBuffers_, which the AAE VkContext
-//         already carries.
-//
-// RecordRect draws a textured rect at caller screen-pixel coords into
-// whatever dynamic-rendering pass is currently open, building the pipeline
-// variant lazily against VK_ActiveColorFormat(ctx). Y-flipped viewport
-// (engine convention); rect coords are y-up (bottomPx < topPx).
+// This is what the VK chain composites with wherever the GL chain would blit a
+// textured quad: the game RT to the swapchain letterbox rect, GUI solid quads,
+// UI dim rects. SPV paths come from ScreenQuadVKCreateInfo (explicit
+// exe-relative paths, "shaders/vk/...", same convention as
+// FastPolyVKCreateInfo).
 //
 // License:
 //   This program is free software: you can redistribute it and/or modify
@@ -64,8 +47,7 @@
 // (active color format, blend mode), so a new mode costs one extra pipeline
 // the first time it is used and nothing after that.
 //
-//   Alpha      - SRC_ALPHA / ONE_MINUS_SRC_ALPHA. The donor's only mode and
-//                the default: every pre-rotation caller keeps it verbatim.
+//   Alpha      - SRC_ALPHA / ONE_MINUS_SRC_ALPHA, the default.
 //   None       - blending disabled, a straight RGBA copy. This is GL's
 //                end_render_fbo4 blit (glDisable(GL_BLEND) + screen_rect),
 //                used by the rotated vector output-RT blit.
@@ -152,12 +134,11 @@ public:
     //                    0 = none, 1 = rotate right (CW 90),
     //                    2 = rotate left (CCW 90), 3 = 180.
     //                  Implemented as a per-corner UV permutation on the CPU
-    //                  vertices - no shader involvement - so 0 emits exactly
-    //                  the UVs this path always emitted. The caller is
-    //                  responsible for giving the rect the ROTATED aspect;
-    //                  this only turns the sampled image.
-    //   blend        - pipeline blend state (see SQBlendVK). Default Alpha is
-    //                  the donor behavior.
+    //                  vertices - no shader involvement - so 0 emits the
+    //                  unrotated UVs. The caller is responsible for giving the
+    //                  rect the ROTATED aspect; this only turns the sampled
+    //                  image.
+    //   blend        - pipeline blend state (see SQBlendVK), default Alpha.
     //
     // The pipeline used by RecordRect is owned by ScreenQuadVK; a variant is
     // created lazily per (VK_ActiveColorFormat(ctx), blend).
@@ -200,10 +181,9 @@ private:
     std::string rect_vertSpvPath_ = "shaders/vk/screen_quad_rect_vk.vert.spv";
     std::string rect_fragSpvPath_ = "shaders/vk/screen_quad_rect_vk.frag.spv";
 
-    // Sized for the donor's heaviest caller (parallax stack: 7 layers x ~2
-    // tiles each = 14 RecordRect calls per frame, plus HUD/menu headroom).
-    // Per-slot cost is small (6 verts + 1 descriptor set per frame-in-flight),
-    // so 64 is cheap and leaves slack before this cap becomes an issue again.
+    // Max RecordRect calls per frame. Per-slot cost is small (6 verts + 1
+    // descriptor set per frame-in-flight), so 64 is cheap and leaves plenty of
+    // slack over the ~15 the heaviest layout composite needs.
     static constexpr uint32_t kRectSlotsPerFrame = 64;
 
     VkDescriptorSetLayout rect_setLayout_  = VK_NULL_HANDLE;

@@ -1,5 +1,5 @@
 // -----------------------------------------------------------------------------
-// crt_post_vk.h - Vulkan RASTER CRT post chain (Phase 4a Plan 4, Tasks 4-5).
+// crt_post_vk.h - Vulkan RASTER CRT post chain.
 //
 // VK port of the three GL raster post passes in opengl_renderer.cpp:
 //   * render_scanlines()      -> RecordScanlines : tiled scanline texture

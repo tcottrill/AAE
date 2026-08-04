@@ -6,7 +6,7 @@
 #include "colordefs.h"
 #include "vector_draw.h"   // shared coverage-AA beam line path (BeamLine/BeamJoin + draw)
 #include "config.h"        // RENDERER_VULKAN
-#include "../aae_video_vk/vulkan_renderer.h"   // vkchain_gui_draw_quad (Plan 6 seam)
+#include "../aae_video_vk/vulkan_renderer.h"   // vkchain_gui_draw_quad (VK quad path)
 
 #include <cstdio>
 #include <cstring>
@@ -366,17 +366,17 @@ void VectorFont::End()
 
 	if (active_renderer() == RENDERER_VULKAN)
 	{
-		// Plan 6 Task 1 (investigation finding): beam_draw_lines/beam_draw_caps
+		// beam_draw_lines/beam_draw_caps
 		// below issue real GL draw calls (glUseProgram, glDrawArraysInstanced,
-		// ...), so VF text is invisible under Vulkan as-is. Route each glyph
-		// stroke through beam_add_line instead -- the SAME CPU-side beam queue
-		// vkchain_render's vector branch (vulkan_renderer.cpp, Plan 5) already
+		// ...), so VF text would be invisible under Vulkan. Each glyph
+		// stroke goes through beam_add_line instead -- the SAME CPU-side beam queue
+		// vkchain_render's vector branch (vulkan_renderer.cpp) already
 		// consumes every frame for the GUI driver (VIDEO_TYPE_VECTOR), so text
-		// rides the existing, working VK vector path with no new draw code.
+		// rides the VK vector path with no separate draw code.
 		// No GL calls are made on this branch.
 		//
-		// Two documented, accepted deviations from the GL look (least-code
-		// path per the plan):
+		// Two accepted deviations from the GL look (least-code
+		// path):
 		//  - stroke half-width follows config.linewidth (beam_add_line's
 		//    fixed half-width), not the font-tuned kFontHalf/kFontAA below.
 		//  - text blends with the frame's single additive/alpha-over choice
@@ -400,12 +400,11 @@ void VectorFont::End()
 		//     flip. GL has always relied on exactly that. Mirroring here too
 		//     flips it twice and the menu comes out upside down.
 		//
-		// The mirror used to be unconditional because the VK game_rect readers
-		// treated an inverted range as degenerate and replaced it with the full
-		// box, silently discarding the video.ini flip. Once that was fixed
-		// (commit 6290955, so Cinematronics/SegaG80 stopped rendering upside
-		// down) the GUI inherited the second flip - reported on Linux, but it
-		// was never platform-specific.
+		// The mirror MUST stay conditional: the VK game_rect readers
+		// honor an inverted bottom/top range instead of treating it as
+		// degenerate, so the video.ini flip reaches this draw. Mirroring
+		// unconditionally on top of it stands the menu on its head (and the
+		// same inverted range is what keeps Cinematronics/SegaG80 upright).
 		const bool mirrorY = vkchain_ui_overlay_active();
 		static constexpr float kGuiToBeamY = 1024.0f / 768.0f;
 		for (size_t i = 0; i + 1 < drawVerts.size(); i += 2)
@@ -461,7 +460,7 @@ void VectorFont::DrawQuad(float x, float y, float width, float height, rgb_t col
 	if (active_renderer() == RENDERER_VULKAN)
 	{
 		// GL path below draws through this class's own GL program/VAO
-		// (GL-direct, invisible under Vulkan). Plan 6 Task 1 seam: reuse
+		// (GL-direct, invisible under Vulkan). The VK path reuses
 		// ScreenQuadVK::RecordRect (already online for the raster composite)
 		// with a 1x1 white texture tinted by 'color'. No GL calls are made
 		// on this branch.

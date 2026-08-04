@@ -1,8 +1,7 @@
 // -----------------------------------------------------------------------------
-// render_target_vk.cpp - Vulkan offscreen render target (Phase 4a Plan 4, Task 2).
-// Imported from the SpriteTest engine donor (sys_render/render_target_vk.cpp),
-// VK-only strip + mip-chain extension. See render_target_vk.h for the full
-// list of what was stripped, preserved, and extended.
+// render_target_vk.cpp - Vulkan offscreen render target, the VK equivalent of
+// the GL chain's FBO + attached texture. See render_target_vk.h for the
+// Begin/End behavior and the GenerateMips contract.
 // ASCII-only comments.
 // -----------------------------------------------------------------------------
 
@@ -28,9 +27,8 @@ static uint32_t RTFindMemoryTypeIdx_(VkContext& ctx, uint32_t typeBits,
     return 0xFFFFFFFFu;
 }
 
-// Single-image layout barrier over an arbitrary mip range. The donor's helper
-// hardcoded levelCount = 1; the mip extension needs baseLevel/levelCount so
-// GenerateMips can transition the tail levels in one barrier.
+// Single-image layout barrier over an arbitrary mip range: baseLevel/levelCount
+// let GenerateMips transition the tail levels in one barrier.
 static void RTImageLayoutBarrier_(VkContext& ctx,
                                   VkCommandBuffer cmd,
                                   VkImage img,
@@ -84,21 +82,20 @@ bool RenderTargetVK::Init(VkContext& ctx, const RenderTargetVKCreateInfo& ci)
     }
 
     // Keep the full CreateInfo so Resize can recreate the target with the
-    // SAME configuration (donor lesson: rebuilding from just width/height
-    // silently dropped colorFormat, changing blend math with no log).
+    // SAME configuration. Rebuilding from just width/height silently drops
+    // colorFormat, which changes the blend math with no log.
     createInfo_ = ci;
 
     width_  = (ci.width  > 0) ? ci.width  : 1;
     height_ = (ci.height > 0) ? ci.height : 1;
     filter_ = ci.filter;
 
-    // Honor an explicit format from the caller; default to swapchain format
-    // (the donor's legacy behavior).
+    // Honor an explicit format from the caller; default to swapchain format.
     vk_colorFormat_ = (ci.colorFormat != VK_FORMAT_UNDEFINED)
         ? ci.colorFormat
         : ctx.swapchainFormat;
 
-    // Resolve the mip request (extension over the donor).
+    // Resolve the mip request.
     //   0 or 1 -> 1;  -1 -> full chain;  N > 1 -> min(N, full chain).
     const uint32_t fullChain = RTFullMipChain_(width_, height_);
     if (ci.mipLevels == -1)
@@ -205,7 +202,7 @@ bool RenderTargetVK::Init(VkContext& ctx, const RenderTargetVKCreateInfo& ci)
 
     // Attachment view: a dynamic-rendering color attachment view must cover
     // exactly one mip level, so a mipped target needs a dedicated level-0
-    // view. Single-level targets reuse the sampled view (donor behavior).
+    // view. Single-level targets reuse the sampled view.
     if (mipLevels_ > 1)
     {
         VkImageViewCreateInfo av = iv;
@@ -223,8 +220,8 @@ bool RenderTargetVK::Init(VkContext& ctx, const RenderTargetVKCreateInfo& ci)
         vk_attachView_ = vk_colorView_;
     }
 
-    // Sampler: CLAMP_TO_EDGE (donor behavior). Single-level targets keep the
-    // donor's filter choice with mipmapMode NEAREST / maxLod 0. Mipped targets
+    // Sampler: CLAMP_TO_EDGE. Single-level targets keep the CreateInfo's
+    // filter choice with mipmapMode NEAREST / maxLod 0. Mipped targets
     // use LINEAR mag/min with LINEAR mipmap mode (GL_LINEAR_MIPMAP_LINEAR,
     // matching the GL raster chain's fbo texture params) and maxLod = chain
     // length so textureLod() in the CRT shaders can reach every level.
@@ -290,7 +287,7 @@ void RenderTargetVK::Resize(VkContext& ctx, int newWidth, int newHeight)
     if (!initialized_) return;
     if (newWidth == width_ && newHeight == height_) return;
 
-    // CRITICAL (donor lesson, kept verbatim in spirit): wait for the device
+    // CRITICAL: wait for the device
     // to be idle before tearing down the old image. With kFramesInFlight = 2,
     // the OTHER slot's GPU work may still be sampling the old RT image.
     // Destroying a VkImage while it is in use is UB; on NVIDIA it surfaces as
@@ -332,7 +329,7 @@ void RenderTargetVK::Begin(VkContext& ctx, VkCommandBuffer cmd,
         srcAccess = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
     }
 
-    // First-use hardening (donor behavior): transitioning from UNDEFINED
+    // First-use hardening: transitioning from UNDEFINED
     // legally discards the image contents, so LOAD_OP_LOAD would read
     // garbage. Force a clear for the very first pass on this image.
     if (vk_currentLayout_ == VK_IMAGE_LAYOUT_UNDEFINED && !clear)

@@ -1,5 +1,5 @@
 // -----------------------------------------------------------------------------
-// vector_post_vk.cpp - Vulkan vector post chain (Phase 4a Plan 7).
+// vector_post_vk.cpp - Vulkan vector post chain.
 // See vector_post_vk.h for the GL -> VK object map and frame shape.
 // ASCII-only comments.
 // -----------------------------------------------------------------------------
@@ -84,7 +84,7 @@ bool VectorPostVK::Init(VkContext& ctx, const VectorPostVKCreateInfo* ci)
     if (!ctx.device)
         return false;
     if (initialized_)
-        Shutdown(ctx);   // idempotence, same discipline as VectorDrawVK fix 4c
+        Shutdown(ctx);   // idempotent re-Init, same discipline as VectorDrawVK
 
     VectorPostVKCreateInfo def{};
     if (!ci) ci = &def;

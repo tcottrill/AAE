@@ -1,7 +1,6 @@
 // -----------------------------------------------------------------------------
 // vector_draw_vk.cpp - Vulkan backend for the beam vector renderer.
-// See vector_draw_vk.h for the import provenance and the three backport
-// fixes (4a append discipline, 4b SSAA feather divide, 4c Init idempotence).
+// See vector_draw_vk.h for the buffer/append discipline and the SSAA feather.
 //
 // Draws the current frame's batches as instanced TRIANGLE_STRIP quads:
 //   lines -> coverage-AA segments   (vector_line_vk)
@@ -72,9 +71,9 @@ static bool ReadFileBytes_(const char* path, std::vector<uint8_t>& out)
     return r == (size_t)n;
 }
 
-// AAE delta: the donor prefixed with Shader_GetPath(); AAE passes explicit
-// exe-relative paths in the CreateInfo ("shaders/vk/...", the CustomBuild
-// output next to the exe), matching FpolyVK / ScreenQuadVK.
+// SPV modules are loaded from explicit exe-relative paths given in the
+// CreateInfo ("shaders/vk/...", the CustomBuild output next to the exe),
+// matching FpolyVK / ScreenQuadVK.
 static VkShaderModule CreateShaderModuleFromFile_(VkContext& ctx, const char* path)
 {
     std::vector<uint8_t> bytes;
@@ -233,7 +232,7 @@ static VkPipeline CreatePipe_(VkContext& ctx, VkPipelineLayout layout, VkFormat 
 // =============================================================================
 bool VectorDrawVK::Init(VkContext& ctx, const VectorDrawVKCreateInfo* ciPtr)
 {
-    // Fix 4c: idempotent re-Init. CreatePipelines writes a fresh layout + 5
+    // Idempotent re-Init. CreatePipelines writes a fresh layout + 5
     // pipelines; without this guard a second Init (new game load) leaks the
     // previous set. Mirrors the GL beam_ensure_lines() progLine guard.
     if (m_pipeLayout)
@@ -241,7 +240,7 @@ bool VectorDrawVK::Init(VkContext& ctx, const VectorDrawVKCreateInfo* ciPtr)
 
     VectorDrawVKCreateInfo ci = ciPtr ? *ciPtr : VectorDrawVKCreateInfo{};
     m_initialCap = (ci.initialInstanceCapacity > 0) ? ci.initialInstanceCapacity : 4096;
-    m_ssaa = (ci.ssaa < 1) ? 1 : ci.ssaa;   // fix 4b input
+    m_ssaa = (ci.ssaa < 1) ? 1 : ci.ssaa;   // AA feather divisor
     m_flipViewportY = ci.flipViewportY;
 
     if (!CreatePipelines(ctx, ci))
@@ -300,7 +299,7 @@ bool VectorDrawVK::CreatePipelines(VkContext& ctx, const VectorDrawVKCreateInfo&
     return true;
 }
 
-// Fix 4a: growth RETIRES the old buffer to this slot's stale list instead of
+// Growth RETIRES the old buffer to this slot's stale list instead of
 // destroying it immediately -- draws recorded earlier this frame (or by the
 // slot's still-in-flight previous submission before OnFrameBegin ran) may
 // still reference it. OnFrameBegin drains the list once the slot's fence
@@ -343,7 +342,7 @@ void VectorDrawVK::DrainStaleBuffers(VkContext& ctx, uint32_t fi)
     m_stale[fi].clear();
 }
 
-// Fix 4a: once-per-frame slot reset. Only call after VK_BeginFrame's fence
+// Once-per-frame slot reset. Only call after VK_BeginFrame's fence
 // wait on this slot -- that is the proof the retired buffers (and the data
 // regions below the write heads) are no longer referenced by the GPU.
 void VectorDrawVK::OnFrameBegin(VkContext& ctx, uint32_t frameIndex)
@@ -418,7 +417,7 @@ void VectorDrawVK::Record(VkContext& ctx, VkCommandBuffer cmd, uint32_t fi,
 
     BeamPushVK pc{};
     memcpy(pc.proj, proj, sizeof(pc.proj));
-    // Fix 4b: AA feather divided by the supersample factor, mirroring the GL
+    // AA feather divided by the supersample factor, mirroring the GL
     // beam_draw_all (g_uAA = config.line_smoothing / g_ssaa). Without the
     // divide the feather is ssaa-times too wide on a supersampled RT.
     pc.uAA = ((config.line_smoothing > 0.0001f) ? config.line_smoothing : 0.0001f)
@@ -430,7 +429,7 @@ void VectorDrawVK::Record(VkContext& ctx, VkCommandBuffer cmd, uint32_t fi,
     const VkShaderStageFlags pcStages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
     const VkDeviceSize zero = 0;
 
-    // Fix 4a: append at this slot's write head and draw from the base as
+    // Append at this slot's write head and draw from the base as
     // firstInstance (instance-rate vertex fetch offsets by firstInstance *
     // stride), so a second Record in the same frame cannot overwrite data
     // the first Record's draws still reference.

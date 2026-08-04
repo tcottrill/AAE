@@ -1,8 +1,8 @@
 // -----------------------------------------------------------------------------
 // vector_post_vk.h - Vulkan vector post chain: SSAA beam RT, phosphor trail,
-// glow blur cascade, composite (Phase 4a Plan 7 = Plan 5 Task 3).
+// glow blur cascade, composite.
 //
-// New code (no donor): a VK port of the GL chain's vector post processing in
+// The VK port of the GL chain's vector post processing in
 // opengl_renderer.cpp final_render + copy_main_img_to_fbo2 / copy_fbo2_to_fbo3
 // / render_blur_image_fbo3, built on RenderTargetVK. GL -> VK object map:
 //
@@ -57,7 +57,7 @@ struct VectorPostVKCreateInfo
 
     // Supersample factor for the beam RT (dim = 1024 * ssaa). The caller
     // passes the same value to VectorDrawVKCreateInfo::ssaa so the AA feather
-    // divide (backport fix 4b) matches the RT density.
+    // divide matches the RT density.
     int ssaa = 2;
 };
 

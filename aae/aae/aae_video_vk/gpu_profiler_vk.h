@@ -4,7 +4,7 @@
 // WHY: "the VK chain is slower than the GL chain" is not actionable until you
 // know WHICH pass costs what. This wraps each pass of the frame in a
 // VkQueryPool timestamp pair and logs a per-section summary to systemlog.txt,
-// so every future performance change can be measured one variable at a time.
+// so a performance change can be measured one variable at a time.
 //
 // GATE: [main] vk_profile (default 0). At 0 no query pool is created, not one
 // timestamp is recorded, and every entry point below early-outs on a single

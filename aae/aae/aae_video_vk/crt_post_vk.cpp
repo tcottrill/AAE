@@ -1,5 +1,5 @@
 // -----------------------------------------------------------------------------
-// crt_post_vk.cpp - Vulkan RASTER CRT post chain (Phase 4a Plan 4, Tasks 4-5).
+// crt_post_vk.cpp - Vulkan RASTER CRT post chain.
 // See crt_post_vk.h for the GL correspondence and the ordering contract.
 // ASCII-only comments.
 // -----------------------------------------------------------------------------

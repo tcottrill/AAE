@@ -1,13 +1,14 @@
 // ===========================================================================
-// vulkan_renderer.cpp - Vulkan chain orchestration (Phase 4a Plan 2).
+// vulkan_renderer.cpp - Vulkan chain orchestration, the twin of the GL chain
+// in aae_video/opengl_renderer.cpp.
 //
 // Owns the VkContext and maps the dispatch entry points onto the sys_vk
-// frame loop (spec sec. 3.4):
+// frame loop:
 //   vkchain_set_render   -> VK_BeginFrame (acquire, open pass, clear)
-//   vkchain_render       -> record draws. Raster (Plan 4 Task 3): suspend
-//                           the frame pass, game texture -> mipped RT via
-//                           one quad, GenerateMips, resume, composite.
-//                           Vector (Plan 5) and GUI (Plan 6) follow.
+//   vkchain_render       -> record draws. Raster: suspend the frame pass,
+//                           game texture -> mipped RT via one quad,
+//                           GenerateMips, resume, composite. Then vector,
+//                           then GUI.
 //   vkchain_swap_buffers -> VK_EndFrame (submit + present)
 // A failed begin (resize, minimize, OUT_OF_DATE) recreates the swapchain and
 // skips the rest of that frame; s_frameOpen keeps end-of-frame honest.
@@ -23,26 +24,26 @@
                                // headers into the VK TU, not vulkan.h into
                                // core TUs, so the VULKAN_H_ leak guards in
                                // acommon.cpp et al. are unaffected)
-#include "fast_poly_vk.h"      // FpolyVK - GUI starfield point renderer (Plan 6)
-#include "raster_emit.h"       // backend-neutral raster emit loop (Plan 3)
+#include "fast_poly_vk.h"      // FpolyVK - GUI starfield point renderer
+#include "raster_emit.h"       // backend-neutral raster emit loop
 #include "raster_tex_vk.h"     // RasterTexVK - streamed game image texture
-#include "render_target_vk.h"  // RenderTargetVK - offscreen game RT (Plan 4)
-#include "screen_quad_vk.h"    // ScreenQuadVK - RT->swapchain composite (Plan 4)
+#include "render_target_vk.h"  // RenderTargetVK - offscreen game RT
+#include "screen_quad_vk.h"    // ScreenQuadVK - RT->swapchain composite
 #include "crt_post_vk.h"       // CrtPostVK - raster CRT/monitor + scanline overlay
-#include "layout_vk.h"         // LayoutQuadVK + the MAME .lay raster compositor (Plan 10)
+#include "layout_vk.h"         // LayoutQuadVK + the MAME .lay raster compositor
 #include "sys_str.h"           // aae_stricmp (raster_effect "NONE" test)
-#include "vector_draw_vk.h"    // VectorDrawVK - beam vector renderer (Plan 5);
+#include "vector_draw_vk.h"    // VectorDrawVK - beam vector renderer;
                                // pulls in vector_draw.h (beam batch access)
-#include "vector_post_vk.h"    // VectorPostVK - SSAA RT + trail + glow (Plan 7)
-#include "shot_draw_vk.h"      // ShotDrawVK - textured vector shots (Plan 9);
+#include "vector_post_vk.h"    // VectorPostVK - SSAA RT + trail + glow
+#include "shot_draw_vk.h"      // ShotDrawVK - textured vector shots;
                                // pulls in vector_draw_gl.h (txdata,
                                // tex_shot_verts - GL-free header)
 #include "../aae_emulator.h"   // emulator_is_gui_active (GUI keeps the direct path)
-#include "vk_texture_loader.h" // VkTex_GetSolidWhite (Plan 6 - GUI solid quads);
-                               // VkArt_* per-game artwork cache (Plan 8)
+#include "vk_texture_loader.h" // VkTex_GetSolidWhite (GUI solid quads);
+                               // VkArt_* per-game artwork cache
 #include "snapshot_vk.h"       // F12 screenshot readback (swapchain -> PNG)
 #include "gpu_profiler_vk.h"   // GPU_ZONE - per-pass GPU timing ([main] vk_profile)
-#include "vector_fonts.h"      // VF singleton - CPU init under VK (Plan 6 fix)
+#include "vector_fonts.h"      // VF singleton - CPU init under VK
 #include "../aae_video/opengl_renderer.h" // GuiPointVertex full definition (GL-free header)
 #include <math.h>              // log2f - CRT halation mip bias (GL parity)
 
@@ -56,14 +57,14 @@ static uint32_t  s_imageIndex = 0;
 // RT (s_rtGame, below). s_rasterTexFailed latches an Init failure so the lazy
 // per-frame retry does not spam the log; it resets on every game load.
 //
-// SUPERSEDES the FpolyVK quad emit this path used through Plan 10. The shared
-// emit loop visits every source pixel, and the old VK sink turned each one into
-// a quad: pacman (288x224) rebuilt ~64,500 quads / ~258,000 vertices on the CPU
-// and uploaded them EVERY FRAME. Desktop immediate-mode GPUs absorb that; a
-// tiler (Pi 5 / Mesa v3d) bins every primitive up front and pacman ran 53 fps
-// there even at prescale 1 with no shaders. The quad-per-pixel shape was
-// inherited from the legacy fixed-function GL Fpoly path, not required by
-// Vulkan. FpolyVK itself stays - the GUI starfield (g_guiPoints) still uses it.
+// A texture is used rather than the quad-per-pixel emit the legacy
+// fixed-function GL Fpoly path uses: the shared emit loop visits every source
+// pixel, and a quad sink turns each one into a quad, so pacman (288x224) would
+// rebuild ~64,500 quads / ~258,000 vertices on the CPU and upload them EVERY
+// FRAME. Desktop immediate-mode GPUs absorb that; a tiler (Pi 5 / Mesa v3d)
+// bins every primitive up front and pacman ran 53 fps there even at prescale 1
+// with no shaders. FpolyVK itself stays - the GUI starfield (g_guiPoints)
+// still uses it.
 //
 // TWO dimension pairs, and they are NOT interchangeable - read this before
 // touching either:
@@ -103,7 +104,7 @@ static int      s_rasterScaledH = 0;
 // constraints).
 static bool     s_rasterRebuildPending = false;
 
-// Offscreen game render target (Plan 4 Task 3): the game quad draws into this
+// Offscreen game render target: the game quad draws into this
 // mipped RT instead of straight into the swapchain pass; ScreenQuadVK then
 // composites it into the aspect-fit letterbox rect.
 //
@@ -111,17 +112,16 @@ static bool     s_rasterRebuildPending = false;
 // - the GL fbo_raster / img5a shape, allocated by the same truncating math
 // (gl_fbo.cpp fbo_init_raster, opengl_renderer.cpp glchain_set_render).
 //
-// REVERSED from the Plan 3/4 decision, which sized this RT at unscaled source
-// pixels on the theory that the full mip chain "supersedes" prescale. That
-// holds only for the DOWNSCALE to the window - it is false for anything that
-// samples this texture directly, which is exactly what the CRT monitor passes
-// do: their 7x3 Gaussian beam taps are spaced in SOURCE-pixel units but read
-// whatever detail the texture actually carries, and the halation textureLod
-// picks a mip level relative to level 0. At unscaled size both got a
-// prescale-times coarser reconstruction than GL ("the mono CRT looks like it
-// is only rendering at prescale 1"). The tiled scanline overlay had the same
-// problem from the other end: a scan_y-tall pattern cannot resolve when the
-// target has 1/prescale as many texels per period.
+// Sizing this RT at unscaled source pixels does NOT work, even though the full
+// mip chain covers the DOWNSCALE to the window: anything that samples this
+// texture directly still sees the coarser image, which is exactly what the CRT
+// monitor passes do. Their 7x3 Gaussian beam taps are spaced in SOURCE-pixel
+// units but read whatever detail the texture actually carries, and the
+// halation textureLod picks a mip level relative to level 0, so at unscaled
+// size both get a prescale-times coarser reconstruction than GL (the mono CRT
+// then looks like it is only rendering at prescale 1). The tiled scanline
+// overlay has the same problem from the other end: a scan_y-tall pattern
+// cannot resolve when the target has 1/prescale as many texels per period.
 static RenderTargetVK s_rtGame;
 
 // ---------------------------------------------------------------------------
@@ -141,7 +141,7 @@ static RenderTargetVK s_rtGame;
 //   * an overlay color gel (layout dual-source multiply), and
 //   * system rotation (the composite's permuted corner UVs).
 // When neither applies the monitor still draws DIRECTLY onto the swapchain -
-// one resample fewer, and byte-identical to the pre-existing chain.
+// one resample fewer.
 //
 // Format R8G8B8A8_UNORM (never _SRGB): the monitor output is gamma-space bytes
 // that the composite must read back unchanged, same contract as s_rtGame.
@@ -197,7 +197,7 @@ static const int      kRotCanvas = 1024;
 static ScreenQuadVK g_screenQuad;
 static bool         s_screenQuadInit = false;
 
-// Raster CRT post chain (Plan 4 Tasks 4-5): the tiled scanline overlay
+// Raster CRT post chain: the tiled scanline overlay
 // (GL render_scanlines) plus the mono/color monitor shaders (GL
 // render_mono_monitor / render_color_monitor). Game-independent - the
 // scanline pipeline is built against the game RT's RGBA8_UNORM format and the
@@ -205,19 +205,19 @@ static bool         s_screenQuadInit = false;
 // initialized once, lazily on the first raster frame, and shut down in
 // vkchain_shutdown. s_crtPostFailed latches an Init failure so the per-frame
 // retry does not spam the log; it resets on every game load, and on failure
-// the raster path falls back to the plain ScreenQuadVK composite (the same
-// picture the chain showed before this port).
+// the raster path falls back to the plain ScreenQuadVK composite (the game
+// image with no CRT effects).
 static CrtPostVK g_crtPost;
 static bool      s_crtPostInit = false;
 static bool      s_crtPostFailed = false;
 
-// MAME .lay layout compositor for RASTER games (Plan 10). The GL chain
+// MAME .lay layout compositor for RASTER games. The GL chain
 // composites raster artwork in mame_layout.cpp's Layout_Render, NOT in
 // final_render's art_tex[] path (that one is vector-only); this is the quad
 // recorder that mirrors it. Game-independent like ScreenQuadVK: one init at
 // chain start, one shutdown at the end. When it fails to init - or the game
 // has no .lay file - the raster branch keeps its plain aspect-fit letterbox
-// composite, byte-identical to the pre-Plan-10 chain.
+// composite.
 static LayoutQuadVK g_layoutQuad;
 static bool         s_layoutQuadInit = false;
 
@@ -231,20 +231,19 @@ static VkTexture s_scanTex{};
 static bool      s_scanHave = false;
 static bool      s_scanReloadPending = false;
 
-// Beam vector renderer (Plan 5 Task 1): draws the frame's BeamLine/BeamJoin/
-// BeamShot batches direct to the swapchain inside the open frame pass (the
-// SSAA RT + phosphor/glow chain is Plan 5 Task 3). Game-independent (the
-// pipelines build against the swapchain format), so like ScreenQuadVK it is
-// initialized once, lazily on the first vector frame, and shut down in
-// vkchain_shutdown. s_vectorFailed latches an Init failure so the per-frame
-// retry does not spam the log; it resets on every game load (a later load
-// gets a fresh attempt). VectorDrawVK::Init is idempotent (backport fix 4c),
-// so re-Init on a format change would be safe if ever needed.
+// Beam vector renderer: draws the frame's BeamLine/BeamJoin/BeamShot batches
+// direct to the swapchain inside the open frame pass, the path the GUI uses.
+// Game-independent (the pipelines build against the swapchain format), so like
+// ScreenQuadVK it is initialized once, lazily on the first vector frame, and
+// shut down in vkchain_shutdown. s_vectorFailed latches an Init failure so the
+// per-frame retry does not spam the log; it resets on every game load (a later
+// load gets a fresh attempt). VectorDrawVK::Init is idempotent, so re-Init on
+// a format change would be safe if ever needed.
 static VectorDrawVK g_vectorDraw;
 static bool         s_vectorInit = false;
 static bool         s_vectorFailed = false;
 
-// Vector post chain (Plan 7 = Plan 5 Task 3): NON-GUI vector games render
+// Vector post chain: NON-GUI vector games render
 // beams into VectorPostVK's SSAA RT through a SECOND VectorDrawVK instance
 // (g_vectorDrawRT - its pipelines are built against the RT's RGBA8 format and
 // its AA feather uses the RT's ssaa; g_vectorDraw above stays swapchain-format
@@ -260,19 +259,18 @@ static bool         s_vecPostInit = false;
 static bool         s_vecPostFailed = false;
 static bool         s_trailClearPending = true;
 
-// Textured vector shots (Plan 9): with config.shots_textured set, add_tex
-// diverts every shot into the CPU txdata list that only GL drew - shots were
-// completely invisible under VK. ShotDrawVK records that list into the beam
+// Textured vector shots: with config.shots_textured set, add_tex diverts every
+// shot into the CPU txdata list that only GL draws from, so without this pass
+// shots are invisible under VK. ShotDrawVK records that list into the beam
 // RT right after the beams (the GL fbo1 analog), so shots pick up glow/
 // trail/artwork. Init rides EnsureVectorPost (pipeline is built against the
 // beam RT's format); its failure only disables shots, never the whole chain.
 static ShotDrawVK g_shotDraw;
 static bool       s_shotInit = false;
 
-// GUI starfield (Plan 6 Task 1): the ONE remaining FpolyVK instance draws the
-// front-end GUI's point-sprite stars. (It used to be the second of two; the
-// raster game path's instance is gone - see the RasterTexVK note above.) It
-// draws at a different time in the frame (during run_gui(), i.e. inside
+// GUI starfield: the only FpolyVK instance in the chain, drawing the
+// front-end GUI's point-sprite stars (the raster path uses RasterTexVK - see
+// the note above). It draws at a different time in the frame (during run_gui(), i.e. inside
 // cpu_run() -- BEFORE vkchain_render runs) and into different space (see
 // GuiBeamToWindowPx below): stars are
 // pre-transformed to explicit window-pixel coordinates on the CPU, so this
@@ -294,9 +292,9 @@ static bool    s_guiPointsFailed = false;
 // sanity_check_config (config.cpp:412) already pins it to 1..5; the >= 1 floor
 // below only stops a zero-sized RT if that ever changes.
 //
-// The emit loop's `size` argument (also config.prescale) is now IGNORED by the
+// The emit loop's `size` argument (also config.prescale) is IGNORED by the
 // sink: the texture is native-sized and this scaled pair is the quad's
-// destination rect, so the magnification does the multiply the sink used to.
+// destination rect, so the magnification does the multiply.
 static void VkRasterScaledDims(int nativeW, int nativeH, int& outW, int& outH)
 {
 	outW = (int)((float)nativeW * config.prescale);
@@ -307,11 +305,10 @@ static void VkRasterScaledDims(int nativeW, int nativeH, int& outW, int& outH)
 
 // Texture sink for raster_emit_polys. yFlip = 0, so (x,y) are destination-local
 // integer coords with y growing DOWNWARD - natural top-down image order, so
-// buf[y*w + x] puts the game's TOP scanline in texture row 0. That is the same
-// row-0 convention the FpolyVK path produced in the game RT (it used yFlip = 1
-// only to cooperate with FpolyVK's y-up ortho), so everything downstream is
-// unchanged. `size` (= config.prescale) is deliberately unused: the texture is
-// NATIVE-sized and the single quad's destination rect carries the prescale.
+// buf[y*w + x] puts the game's TOP scanline in texture row 0, which is the
+// row-0 convention everything downstream expects. `size` (= config.prescale)
+// is deliberately unused: the texture is NATIVE-sized and the single quad's
+// destination rect carries the prescale.
 //
 // rgba is MAKE_RGBA: R in the low byte, so a uint32_t array is byte-for-byte
 // VK_FORMAT_R8G8B8A8_UNORM on a little-endian host (x86-64 and ARM64, the two
@@ -321,12 +318,10 @@ static void VkRasterScaledDims(int nativeW, int nativeH, int& outW, int& outH)
 // EnsureRasterRenderer (which sizes the buffer) and this loop; without it a
 // mismatch would be a heap overrun rather than a missing pixel.
 //
-// sRGB contingency (Plan 3 Task 3) RESOLVED at the Plan 7 gate: the user
-// did report washed-out/too-bright colors (vector games, then the GUI and
-// pacman), and the fix landed at the ROOT instead of the CPU-LUT idea
-// floated here - sys_vk CreateSwapchain now prefers a UNORM swapchain, so
-// the sRGB-authored pen bytes display byte-for-byte like GL's non-sRGB
-// window. No per-color conversion anywhere.
+// No sRGB conversion happens anywhere in this path: sys_vk CreateSwapchain
+// prefers a UNORM swapchain, so the sRGB-authored pen bytes display
+// byte-for-byte as they do in GL's non-sRGB window. An sRGB swapchain would
+// re-encode them and wash the picture out.
 struct VkRasterTexSinkCtx
 {
 	uint32_t* buf;
@@ -436,13 +431,13 @@ static void MakeOrthoColMajor(float l, float r, float b, float t, float* m)
 }
 
 // ---------------------------------------------------------------------------
-// GUI-space -> window-pixel mapping (Plan 6 Task 1).
+// GUI-space -> window-pixel mapping.
 //
 // The front-end GUI driver is VIDEO_TYPE_VECTOR, so vkchain_render's vector
 // branch (below) already maps beam-space (0..1024 x 0..1024) coordinates to
 // the swapchain via the game_rect box + aspect-fit letterbox + one vertical
-// flip (see that branch's "Projection" comment for the full paper-trace
-// derivation, verified against the GL reference). GL's GUI draws (VF text,
+// flip (see that branch's "Projection" comment for the full derivation).
+// GL's GUI draws (VF text,
 // VF::DrawQuad, the starfield) all land in the SAME fbo1 canvas the beams
 // use and go through that SAME single flip during the fbo1->fbo4 composite
 // (opengl_renderer.cpp's final_render, the flip_v=true drawTexturedQuad
@@ -457,8 +452,8 @@ static void MakeOrthoColMajor(float l, float r, float b, float t, float* m)
 // coordinates (ScreenQuadVK::RecordRect, or CPU-computed vertices for the
 // starfield's FpolyVK instance) instead of a vertex-shader projection
 // matrix. Deliberately NOT unified with the vector branch's inline
-// MakeOrthoColMajor call below (some duplicated letterbox arithmetic) to
-// avoid touching that already-gated, working Plan 5 code path.
+// MakeOrthoColMajor call below: the duplicated letterbox arithmetic is the
+// price of leaving that gated, working code path alone.
 struct GuiBeamMap { float lx, ly, vw, vh, grL, grR, grB, grT; };
 
 static GuiBeamMap ComputeGuiBeamMap(void)
@@ -586,10 +581,10 @@ static GuiBeamMap ComputeUiOverlayMap(void)
 // Lazy once-per-session init of the beam renderer (see the g_vectorDraw
 // comment). Defaults resolve to shaders/vk/vector_{line,disc,shot}_vk
 // CustomBuild output; colorFormat is left UNDEFINED so the pipelines build
-// against the swapchain format (direct-to-swapchain first cut); ssaa=1
-// (backport fix 4b divide is in place for when the SSAA RT lands).
+// against the swapchain format (this instance draws direct to the swapchain);
+// ssaa=1, since there is no supersampled RT on this path.
 // beam_init() is deliberately NOT called: it is GL-only (compiles shaders,
-// builds VAOs/VBOs); the CPU-side beam arrays need no init (proven Plan 2).
+// builds VAOs/VBOs), and the CPU-side beam arrays need no init.
 //
 // NOT gated on GameIsVector(): raster games need this renderer too, for the
 // in-game UI overlay text (RecordUiOverlays below) - VF glyph strokes ride
@@ -618,16 +613,15 @@ static void EnsureVectorRenderer(void)
 // renderer (see the g_vectorPost comment).
 //
 // The beam RT is 1024 * vk_ssaa square and the composite's trilinear
-// minification is the supersample resolve; the AA feather divide (backport
-// fix 4b) keeps beam widths matching the GL look at either setting.
+// minification is the supersample resolve; the AA feather divide keeps beam
+// widths matching the GL look at either setting.
 //
-// This was hardcoded to 2. That made the VK chain do FOUR TIMES the beam fill
-// of the GL chain - whose beam_init(1) has always used a plain 1024 buffer -
-// plus a 4x larger per-frame mip cascade, which measured as roughly a 6x
-// frame-rate difference on the same GPU (1400 fps GL vs 217 fps VK, asteroid
-// deluxe, RTX 4070 at 4K). The two chains were never doing equal work. It is
-// now [main] vk_ssaa, defaulting to 1 for GL parity; set 2 for the smoother
-// 2048x2048 buffer where there is headroom for it.
+// The factor is [main] vk_ssaa, defaulting to 1 for GL parity - GL's
+// beam_init(1) uses a plain 1024 buffer. At 2 the VK chain does FOUR TIMES the
+// beam fill plus a 4x larger per-frame mip cascade, which measures as roughly
+// a 6x frame-rate difference on the same GPU (1400 fps GL vs 217 fps VK,
+// asteroid deluxe, RTX 4070 at 4K). Set 2 for the smoother 2048x2048 buffer
+// only where there is headroom for it.
 static void EnsureVectorPost(void)
 {
 	if (s_vecPostFailed || s_vecPostInit)
@@ -657,8 +651,8 @@ static void EnsureVectorPost(void)
 	LOG_INFO("vkchain: vector post chain online (beam RT %dx%d, trail+glow)",
 		g_vectorPost.BeamDim(), g_vectorPost.BeamDim());
 
-	// Textured shots (Plan 9): non-fatal - a failure just means shots fall
-	// back to invisible (the pre-Plan-9 state) while everything else works.
+	// Textured shots: non-fatal - a failure just means shots fall back to
+	// invisible while everything else works.
 	ShotDrawVKCreateInfo sci{};
 	sci.colorFormat = g_vectorPost.BeamFormat();
 	if (g_shotDraw.Init(g_vk, &sci))
@@ -743,10 +737,10 @@ static void EnsureVectorList(void)
 // calls init_gl (Step 4, aae_emulator.cpp:920) before vh_open (Step 11,
 // :1017) creates main_bitmap, so raster_dst_dims() returns 0 during
 // vkchain_init on a fresh load and the real init happens lazily on the
-// first rendered frame. Machine->gamedrv/Machine->drv ARE populated by
-// init_gl time (run_game logs gamedrv->desc at :874 and reads
-// drv->rotation at :887), so GameIsRaster and the dims math are safe in
-// both call sites. Init failure latches s_rasterTexFailed (reset per game
+// first rendered frame.
+// Machine->gamedrv/Machine->drv ARE populated by init_gl time (run_game
+// logs gamedrv->desc at :874 and reads drv->rotation at :887), so
+// GameIsRaster and the dims math are safe in both call sites. Init failure latches s_rasterTexFailed (reset per game
 // load in vkchain_init) so the per-frame call does not retry-spam.
 static void EnsureRasterRenderer(void)
 {
@@ -800,16 +794,13 @@ static void EnsureRasterRenderer(void)
 	// is what preserves prescale's supersampled detail for the CRT/scanline
 	// consumers while the per-frame upload stays native-sized.
 	//
-	// Format trace (UPDATED at the Plan 7 gate): pen bytes are written to
-	// this R8G8B8A8_UNORM RT byte-for-byte (UNORM attachment: no encode),
-	// RecordRect samples the UNORM view (raw bytes back as the same floats)
-	// and writes them to the now-UNORM swapchain (sys_vk CreateSwapchain
-	// prefers UNORM since the Plan 7 gate) - ZERO encodes anywhere, so the
-	// presented bytes equal the GL chain's exactly. The original reasoning
-	// here ("one encode either way" onto a forced-sRGB swapchain) displayed
-	// encode(byte), which the user confirmed as washed-out/too-bright for
-	// pacman once the vector path had its parity fix to compare against.
-	// An _SRGB RT here would decode-on-sample and shift every mid-tone.
+	// Format trace: pen bytes are written to this R8G8B8A8_UNORM RT
+	// byte-for-byte (UNORM attachment: no encode), RecordRect samples the
+	// UNORM view (raw bytes back as the same floats) and writes them to the
+	// UNORM swapchain (sys_vk CreateSwapchain prefers UNORM) - ZERO encodes
+	// anywhere, so the presented bytes equal the GL chain's exactly. An _SRGB
+	// RT here would decode-on-sample and shift every mid-tone; an sRGB
+	// swapchain would encode on store and wash the picture out.
 	if (!s_rtGame.IsValid())
 	{
 		RenderTargetVKCreateInfo rtci{};
@@ -817,7 +808,7 @@ static void EnsureRasterRenderer(void)
 		rtci.height = s_rasterScaledH;
 		rtci.filter = rtFilterVK::Linear;
 		rtci.colorFormat = VK_FORMAT_R8G8B8A8_UNORM;
-		rtci.mipLevels = -1;   // full chain (Plan 4 CRT halation + minified composite)
+		rtci.mipLevels = -1;   // full chain: CRT halation + minified composite
 		if (!s_rtGame.Init(g_vk, rtci))
 		{
 			s_rasterTexFailed = true;
@@ -827,8 +818,8 @@ static void EnsureRasterRenderer(void)
 	}
 	else if (s_rtGame.GetWidth() != s_rasterScaledW || s_rtGame.GetHeight() != s_rasterScaledH)
 	{
-		// Resize waits device-idle internally (donor discipline: the other
-		// in-flight frame may still be sampling the old image) -- redundant
+		// Resize waits device-idle internally (the other in-flight frame may
+		// still be sampling the old image) -- redundant
 		// with the drain above on the rebuild path, but harmless, and it
 		// keeps Resize safe for any future caller.
 		s_rtGame.Resize(g_vk, s_rasterScaledW, s_rasterScaledH);
@@ -861,7 +852,7 @@ static void EnsureRasterRenderer(void)
 }
 
 // ---------------------------------------------------------------------------
-// Raster CRT post chain (Plan 4 Tasks 4-5) - lazy init + the per-frame gates.
+// Raster CRT post chain - lazy init + the per-frame gates.
 //
 // The gates below are line-for-line twins of the GL ones in
 // opengl_renderer.cpp; keep them in sync. config is read every frame (never
@@ -898,7 +889,8 @@ static const float k_vkMonoTints[3][3] = {
 	{ 1.00f, 0.75f, 0.20f },   // 2: P3 amber
 };
 
-// GL twin: the PHASE A test in final_render_raster (opengl_renderer.cpp:1524).
+// GL twin: the scanline-overlay test in final_render_raster
+// (opengl_renderer.cpp:1524).
 static bool VkScanlinesActive(int vattr)
 {
 	return s_scanHave && s_crtPostInit && Machine && Machine->drv &&
@@ -1213,8 +1205,8 @@ void vkchain_shutdown(void)
 		s_scanHave = false;
 	}
 	s_scanReloadPending = false;
-	VkArt_FreeAll(g_vk);         // per-game artwork textures (Plan 8)
-	LayoutVK_FreeTextures(g_vk); // per-game .lay layout textures (Plan 10)
+	VkArt_FreeAll(g_vk);         // per-game artwork textures
+	LayoutVK_FreeTextures(g_vk); // per-game .lay layout textures
 	VkTex_ShutdownCache(g_vk);   // GUI solid-white texture + any cached loads
 	if (s_rtGame.IsValid())
 		s_rtGame.Shutdown(g_vk);
@@ -1320,11 +1312,10 @@ void vkchain_set_render(void)
 	GpuProf::BeginFrame(g_vk, g_vk.cmdBuffers[g_vk.frameIndex],
 		g_vk.frameIndex, s_imageIndex);
 
-	// Deterministic per-frame slot-cursor reset (bug catalog entry 9 /
-	// ScreenQuadVK header): once per frame, right after VK_BeginFrame has
-	// fixed the frame slot and its fence wait has proven the slot's previous
-	// frame is done. The engine donor does the same at its per-frame render
-	// site (bg_renderer.cpp); here set_render IS that once-per-frame site.
+	// Deterministic per-frame slot-cursor reset (see the ScreenQuadVK header):
+	// once per frame, right after VK_BeginFrame has fixed the frame slot and
+	// its fence wait has proven the slot's previous frame is done. set_render
+	// IS that once-per-frame site.
 	if (s_screenQuadInit)
 		g_screenQuad.OnFrameBegin(g_vk.frameIndex);
 	if (s_layoutQuadInit)
@@ -1332,7 +1323,7 @@ void vkchain_set_render(void)
 	if (s_crtPostInit)
 		g_crtPost.OnFrameBegin(g_vk.frameIndex);
 
-	// Beam renderer slot reset (backport fix 4a): drain the slot's retired
+	// Beam renderer slot reset: drain the slot's retired
 	// instance buffers and reset its write heads, here where the fence wait
 	// has just proven the slot's previous frame is done.
 	if (s_vectorInit)
@@ -1471,22 +1462,21 @@ void vkchain_render(void)
 	// Display-time system rotation (-ror / -rol / 180). Resolved once here so
 	// every branch below agrees, and so the whole feature is one compare away
 	// from being provably inert: at rot == 0 every `rotActive` below is false
-	// and the chain records exactly what it recorded before this feature.
+	// and no rotation code records anything.
 	const int rot = VkRotationIndex();
 	// Set when the rotated path has already run the UI overlays (inside the
 	// output RT, so they turn with the frame); stops the tail of this function
 	// running render_ui_overlays a second time.
 	bool uiOverlaysDone = false;
 
-	// Raster path (Plan 4 Task 3): suspend the swapchain frame pass, render
-	// the game into the mipped offscreen RT (one textured quad), regenerate its mip
-	// chain, resume the frame pass, and composite the RT into the aspect-fit
-	// letterbox rect via ScreenQuadVK. The scanline/CRT passes (Plan 4
-	// Tasks 4-5) slot in between the game draw and the composite; the layout
-	// system (Task 6) replaces the RecordRect composite (and brings the
-	// aspect overrides). Display-time system rotation IS handled here now:
-	// the composite quad takes the inverted aspect box and rotated corner UVs.
-	// Vector (Plan 5) and GUI (Plan 6) follow.
+	// Raster path: suspend the swapchain frame pass, render the game into the
+	// mipped offscreen RT (one textured quad), regenerate its mip chain, resume
+	// the frame pass, and composite the RT into the aspect-fit letterbox rect
+	// via ScreenQuadVK. The scanline/CRT passes slot in between the game draw
+	// and the composite; when the game has a .lay file the layout system
+	// replaces the RecordRect composite (and brings the aspect overrides).
+	// Display-time system rotation is handled here: the composite quad takes
+	// the inverted aspect box and rotated corner UVs. Vector and GUI follow.
 	if (s_frameOpen && GameIsRaster())
 	{
 		// Lazy init/rebuild: main_bitmap does not exist yet when
@@ -1514,7 +1504,7 @@ void vkchain_render(void)
 			// rot and config; none of it records commands.
 			// -------------------------------------------------------------
 
-			// Aspect-fit letterbox (Plan 3 math, unchanged): fit the
+			// Aspect-fit letterbox: fit the
 			// post-orientation game rect into the swapchain, centered.
 			// RecordRect takes the rect in y-up screen pixels, but a
 			// centered rect is symmetric, so the same offsets serve.
@@ -1551,7 +1541,7 @@ void vkchain_render(void)
 			// rotation for all of them. LayoutVK_ComputeFrame resolves the
 			// same geometry; when it declines (this game has no .lay, or the
 			// compositor failed to init) the chain keeps the plain aspect-fit
-			// letterbox composite, byte-identical to before Plan 10.
+			// letterbox composite.
 			LayoutVKFrame lay{};
 			const bool layoutActive = s_layoutQuadInit &&
 				LayoutVK_ComputeFrame(sw, sh, lay) && lay.hasScreen;
@@ -1876,15 +1866,14 @@ void vkchain_render(void)
 		}
 	}
 
-	// Vector post chain (Plan 7 = Plan 5 Task 3): NON-GUI vector games render
-	// beams into the SSAA RT, run trail/glow, and composite - mirroring the
-	// GL chain's fbo1 -> trail/blur -> final_render shape. The GUI keeps the
-	// gated Plan 5/6 direct path below (GL excludes the GUI from trail/glow
-	// anyway), as does any game if the post chain failed to init (visible
-	// beams beat a black screen).
+	// Vector post chain: NON-GUI vector games render beams into the SSAA RT,
+	// run trail/glow, and composite - mirroring the GL chain's fbo1 ->
+	// trail/blur -> final_render shape. The GUI keeps the gated direct path
+	// below (GL excludes the GUI from trail/glow anyway), as does any game if
+	// the post chain failed to init (visible beams beat a black screen).
 	//
 	// The in-game menu/pause text rides the same CPU beam queue under VK
-	// (Plan 6 routes VF strokes through beam_add_line), but it is emitted and
+	// (VF strokes go through beam_add_line), but it is emitted and
 	// recorded by RecordUiOverlays AFTER this composite and against a stashed
 	// (empty) queue, so it stays out of the beam RT and out of trail/glow -
 	// post-composite and crisp, same as GL.
@@ -1899,8 +1888,8 @@ void vkchain_render(void)
 		const int sw = (int)g_vk.swapchainExtent.width;
 		const int sh = (int)g_vk.swapchainExtent.height;
 
-		// Artwork layer set for this frame (Plan 8), mirroring final_render's
-		// gates exactly: config flag AND art_loaded AND (for the overlay) the
+		// Artwork layer set for this frame, mirroring final_render's gates
+		// exactly: config flag AND art_loaded AND (for the overlay) the
 		// driver's video_attributes. Views come from the per-game VkArt cache
 		// loaded by vkchain_load_artwork (run_game Step 6).
 		VectorArtworkVK art{};
@@ -1947,9 +1936,8 @@ void vkchain_render(void)
 		const bool rotActive = (rot != 0) && s_screenQuadInit && EnsureRotTarget();
 
 		// Mirror glchain_render's !paused guard; unlike the direct path,
-		// pause here shows the RETAINED frame (composite below still runs) -
-		// parity with GL's frozen fbo1 restored, as the Plan 5 comment
-		// promised for this task.
+		// pause here shows the RETAINED frame (composite below still runs),
+		// matching GL's frozen fbo1.
 		// Tracks whether the swapchain pass is currently suspended. The
 		// rotated path keeps it suspended past the beam work so the output RT
 		// pass can open straight away; when paused it opens the suspension
@@ -1980,7 +1968,7 @@ void vkchain_render(void)
 			g_vectorDrawRT.Record(g_vk, cmd, g_vk.frameIndex, proj, additive,
 				(uint32_t)g_vectorPost.BeamDim(), (uint32_t)g_vectorPost.BeamDim());
 			GPU_ZONE_END();
-			// Textured shots (Plan 9): the GL analog draws texlist right
+			// Textured shots: the GL analog draws texlist right
 			// after beam_draw_all into fbo1 with the same projection
 			// (opengl_renderer.cpp: draw_textured_shots(proj)). Same here:
 			// into the beam RT, so shots get glow/trail/artwork. Skipped
@@ -2018,7 +2006,7 @@ void vkchain_render(void)
 			// until a later mid-game vectrail toggle first draws into it.
 			if (config.vectrail > 0)
 				s_trailClearPending = false;
-			// Artwork (Plan 8): build the CRT image (beam+glow+trail composite
+			// Artwork: build the CRT image (beam+glow+trail composite
 			// + OVERLAY1 modulate) into the frame RT - GL's img4b - so the
 			// overlay colors ONLY the CRT image, never the backdrop. Offscreen,
 			// so it must run before the frame pass resumes.
@@ -2150,24 +2138,24 @@ void vkchain_render(void)
 			passSuspended = false;
 		}
 	}
-	// Vector path (Plan 5 Task 1): draw the frame's beam batches direct to
-	// the swapchain, inside the frame pass VK_BeginFrame opened (no
-	// suspend/resume needed -- VectorDrawVK records into an already-open
-	// pass). Order per plan: vector_update (CPU convert), Record (consume),
-	// then the clears below (post-consume drain). Since Plan 7 this path
-	// serves the GUI driver and the post-chain-init-failed fallback only.
+	// Vector path: draw the frame's beam batches direct to the swapchain,
+	// inside the frame pass VK_BeginFrame opened (no suspend/resume needed --
+	// VectorDrawVK records into an already-open pass). Order: vector_update
+	// (CPU convert), Record (consume), then the clears below (post-consume
+	// drain). This path serves the GUI driver and the post-chain-init-failed
+	// fallback only; everything else goes through the post chain above.
 	else if (s_frameOpen && GameIsVector())
 	{
 		EnsureVectorRenderer();
 
-		// Mirror glchain_render's !paused guard. Known first-cut limitation:
-		// GL freezes the last frame in its FBO while paused; direct-to-
+		// Mirror glchain_render's !paused guard. Known limitation of this
+		// path: GL freezes the last frame in its FBO while paused; direct-to-
 		// swapchain has no retained image, so a paused vector game shows
-		// black until unpause (the Task 3 RT chain restores parity).
+		// black until unpause. The post chain above has no such gap.
 		if (s_vectorInit && !paused &&
 		    g_vk.swapchainExtent.width > 0 && g_vk.swapchainExtent.height > 0)
 		{
-			// CPU-only conversion (audited: mame_vector.cpp vector_update ->
+			// CPU-only conversion (mame_vector.cpp vector_update ->
 			// add_line/add_tex -> beam_add_line/beam_add_shot, no GL calls):
 			// transforms the AVG/late-DVG display list into 0..1024 beam
 			// space with driver rotation applied. Old-DVG sims (asteroid)
@@ -2252,8 +2240,8 @@ void vkchain_render(void)
 			//
 			// EXCEPT the front-end GUI. Its driver declares VECTOR_USES_COLOR,
 			// so this test picked additive - but the GUI's beam queue is not
-			// game beams, it is VF GLYPH STROKES (Plan 6 routes them here under
-			// VK, where GL draws them through VF's own path). GL draws that text
+			// game beams, it is VF GLYPH STROKES (under VK they are routed here,
+			// where GL draws them through VF's own path). GL draws that text
 			// with VF::Begin's SRC_ALPHA/ONE_MINUS_SRC_ALPHA and
 			// beam_draw_lines/caps(additive=false), i.e. ALPHA-OVER. Drawing it
 			// additively instead summed every overlapping stroke: the menu read
@@ -2268,8 +2256,8 @@ void vkchain_render(void)
 			// Direct-to-swapchain path: no suspend/resume brackets it, so it
 			// must open the lazily-opened pass itself.
 			VK_EnsureFramePass(g_vk, cmd);
-			// 0,0 target dims = record against the swapchain extent
-			// (direct-to-swapchain first cut; Task 3 passes the RT dims).
+			// 0,0 target dims = record against the swapchain extent; the post
+			// chain's instance passes the beam RT's dims instead.
 			g_vectorDraw.Record(g_vk, cmd, g_vk.frameIndex, proj, additive, 0, 0);
 		}
 	}
@@ -2422,7 +2410,7 @@ void vkchain_on_window_resize(int newW, int newH)
 }
 
 // ---------------------------------------------------------------------------
-// GUI starfield (Plan 6 Task 1). See the g_guiPoints comment above for why
+// GUI starfield. See the g_guiPoints comment above for why
 // this FpolyVK instance is drawn immediately here (during
 // run_gui(), called from cpu_run() before vkchain_render runs this frame --
 // same ordering as GL's glchain_set_render-before-cpu_run) instead of being
@@ -2562,20 +2550,19 @@ void vkchain_gui_points_shutdown(void)
 }
 
 // ---------------------------------------------------------------------------
-// vkchain_vector_hard_clear (Plan 6 Task 1 investigation finding).
+// vkchain_vector_hard_clear.
 // GL's glchain_vector_hard_clear_fbo1 clears fbo1's three attachments
 // (img1a/img1b/img1c) to flush leftover trail/phosphor-feedback data from a
-// previous vector game when the GUI starts up. Under Vulkan there is no
-// persistent fbo1-equivalent: VectorDrawVK renders direct to the swapchain
-// every frame (Plan 5) with no retained image and no trail/feedback state
-// (the SSAA RT + phosphor/glow chain is deferred to Plan 5 Task 3, not yet
-// implemented) -- so there is nothing to hard-clear yet. No-op until that
-// lands, at which point this should clear whatever retained buffer it adds.
+// previous vector game when the GUI starts up. The GUI's VK path has no
+// equivalent to clear: it goes through the direct VectorDrawVK instance, which
+// renders to the swapchain every frame with no retained image and no
+// trail/feedback state. The post chain's retained RTs belong to the game path
+// and are cleared on game load via s_trailClearPending, so this is a no-op.
 // ---------------------------------------------------------------------------
 void vkchain_vector_hard_clear(void) {}
 
 // ---------------------------------------------------------------------------
-// GUI solid-color quads (Plan 6 Task 1). VectorFont::DrawQuad's GL path
+// GUI solid-color quads. VectorFont::DrawQuad's GL path
 // draws through its own GL program/VAO (vector_fonts.cpp) -- GL-direct,
 // invisible under Vulkan. This seam reuses ScreenQuadVK::RecordRect (already
 // online for the raster composite) with a 1x1 white texture tinted by the
@@ -2686,8 +2673,8 @@ void vkchain_ui_dim_quad(int alpha)
 }
 
 // ---------------------------------------------------------------------------
-// vkchain_load_artwork (Plan 8). The VK mirror of run_game Step 6's GL
-// load_artwork call - run_game invokes this per game load, between games.
+// vkchain_load_artwork. The VK mirror of run_game Step 6's GL load_artwork
+// call - run_game invokes this per game load, between games.
 // Frees the previous game's artwork VkTextures first; frames submitted for
 // the previous game may still be in flight sampling them, so the device is
 // drained before the destroy (same discipline as EnsureRasterRenderer's
@@ -2709,7 +2696,7 @@ void vkchain_load_artwork(const struct artworks* p)
 }
 
 // ---------------------------------------------------------------------------
-// vkchain_load_layout (Plan 10). The VK mirror of run_game Step 7's GL
+// vkchain_load_layout. The VK mirror of run_game Step 7's GL
 // Layout_LoadForGame call - the raster artwork path. Same drain discipline as
 // vkchain_load_artwork: the previous game's layout textures are destroyed
 // inside LayoutVK_LoadForGame, so the device must be idle first and no frame

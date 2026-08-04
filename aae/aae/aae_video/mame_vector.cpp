@@ -102,8 +102,8 @@ int vector_start()
 
 	/* allocate memory for tables */
 	/* Idempotent: vector_start is reached from glchain_init, from the
-	   late-AVG/DVG driver start, and (as of Phase 4a) from the Vulkan
-	   chain init - whichever comes first allocates, the rest reuse. */
+	   late-AVG/DVG driver start, and from the Vulkan chain init -
+	   whichever comes first allocates, the rest reuse. */
 	if (!vector_list)
 		vector_list = (point*)malloc(MAX_POINTS * sizeof(vector_list[0]));
 

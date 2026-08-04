@@ -1,16 +1,14 @@
 // -----------------------------------------------------------------------------
-// render_target_vk.h - Vulkan offscreen render target (Phase 4a Plan 4, Task 2).
+// render_target_vk.h - Vulkan offscreen render target: the VK equivalent of
+// the GL chain's FBO + attached texture (fbo1 / fbo4 / fbo_raster et al. in
+// opengl_renderer.cpp). Named RenderTargetVK because AAE's GL side has its own
+// fbo types.
 //
-// Imported from the SpriteTest engine donor (sys_render/render_target.h +
-// render_target_vk.cpp), stripped to VK-only:
-//   - the GL backend, the RenderContext (rc) indirection, and the
-//     RenderTargetCompositor class are dropped. Methods take VkContext& and
-//     VkCommandBuffer directly, matching the AAE vkchain calling style
-//     (sys_vk.cpp / fast_poly_vk.cpp). Compositing to the swapchain is done
-//     by the layout system / ScreenQuadVK instead of a compositor class.
-//   - class renamed RenderTarget -> RenderTargetVK (AAE's GL side has its own
-//     fbo types); CreateInfo renamed to RenderTargetVKCreateInfo.
-// PRESERVED donor behavior:
+// Methods take VkContext& and VkCommandBuffer directly, matching the vkchain
+// calling style (sys_vk.cpp / fast_poly_vk.cpp). Compositing to the swapchain
+// is done by the layout system / ScreenQuadVK.
+//
+// BEHAVIOR:
 //   - Begin(): layout barrier to COLOR_ATTACHMENT_OPTIMAL, vkCmdBeginRendering
 //     on the color image, publish ctx.activeColorFormat, viewport/scissor set
 //     to the RT dimensions.
@@ -19,15 +17,16 @@
 //   - First-use hardening: the first Begin() on an UNDEFINED-layout image
 //     forces clear=true (LOAD_OP_LOAD would read garbage).
 //   - CLAMP_TO_EDGE sampler.
-// EXTENDED over the donor (new code): optional mip chain.
-//   - CreateInfo.mipLevels: 0 or 1 = single level (donor behavior); -1 = full
-//     chain for the dimensions; N > 1 = min(N, full chain).
+// OPTIONAL MIP CHAIN:
+//   - CreateInfo.mipLevels: 0 or 1 = single level; -1 = full chain for the
+//     dimensions; N > 1 = min(N, full chain).
 //   - When mipped, the image adds TRANSFER_SRC|TRANSFER_DST usage, the sampled
 //     view covers all levels, and the sampler is LINEAR mag/min with LINEAR
 //     mipmap mode (GL_LINEAR_MIPMAP_LINEAR equivalent) and maxLod = mip count.
-//   - GenerateMips(ctx, cmd) records a blit-cascade downsample (reference
-//     implementation: VK_BuildRGBA8Texture's mip cascade in sys_vk.cpp),
-//     adapted for a render target: level 0 enters in SHADER_READ_ONLY_OPTIMAL
+//   - GenerateMips(ctx, cmd) records a blit-cascade downsample (the same
+//     cascade VK_BuildRGBA8Texture uses in sys_vk.cpp, the VK equivalent of
+//     glGenerateMipmap), adapted for a render target: level 0 enters in
+//     SHADER_READ_ONLY_OPTIMAL
 //     (i.e. after End()), and on exit ALL levels are SHADER_READ_ONLY_OPTIMAL.
 //
 // GenerateMips CONTRACT:
@@ -42,9 +41,8 @@
 // Resize() recreates the image with the ORIGINAL CreateInfo (format, filter,
 // mip request) at the new dimensions, so a full-chain RT gets a full chain for
 // the new size. It drains the device first: with kFramesInFlight = 2 the other
-// in-flight frame may still be sampling the old image (see the donor comment
-// in render_target.cpp::Resize - destroying a live VkImage is UB and shows up
-// as VK_ERROR_DEVICE_LOST a frame or two later).
+// in-flight frame may still be sampling the old image, and destroying a live
+// VkImage is UB that shows up as VK_ERROR_DEVICE_LOST a frame or two later.
 //
 // License:
 //   This program is free software: you can redistribute it and/or modify
@@ -74,8 +72,8 @@
 
 // -----------------------------------------------------------------------------
 // rtFilterVK
-// Sampler filtering for the RT's color image. (Named with the VK suffix to
-// keep AAE's global namespace clean; the donor engine calls this rtFilter.)
+// Sampler filtering for the RT's color image. (VK suffix to keep AAE's global
+// namespace clear of the GL side.)
 // -----------------------------------------------------------------------------
 enum class rtFilterVK : int
 {
@@ -93,13 +91,13 @@ struct RenderTargetVKCreateInfo
     rtFilterVK filter = rtFilterVK::Linear;
 
     // Explicit storage format for the color image. VK_FORMAT_UNDEFINED (the
-    // default) uses the swapchain's format (donor legacy behavior). The AAE
+    // default) uses the swapchain's format. The AAE
     // raster chain passes VK_FORMAT_R8G8B8A8_UNORM so blending math matches
     // the GL path's non-color-managed byte space.
     VkFormat colorFormat = VK_FORMAT_UNDEFINED;
 
-    // Mip chain request (extension over the donor):
-    //   0 or 1  -> single level (donor behavior)
+    // Mip chain request:
+    //   0 or 1  -> single level
     //   -1      -> full chain for width x height
     //   N > 1   -> min(N, full chain)
     // When the resolved count is > 1 the image gains TRANSFER_SRC/DST usage

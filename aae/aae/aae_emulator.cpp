@@ -1687,11 +1687,7 @@ void emulator_init(int argc, char** argv)
 	}
 
 	// Log the desktop resolution, but do NOT write it into config.screenw/h.
-	// The old force-overwrite here is what made the RESOLUTION setting
-	// impossible to persist: the menu then displayed desktop-derived values,
-	// and saving the video menu wrote the desktop size back to the ini,
-	// clobbering whatever the user chose (and it would destroy the AUTO 0
-	// sentinel the same way). screenw/screenh now keep their ini-loaded
+	// screenw/screenh now keep their ini-loaded
 	// meaning: 0 = AUTO window sizing, positive = exact window client size.
 	int horizontal = 0, vertical = 0;
 	GetDesktopResolution(horizontal, vertical);
@@ -1982,11 +1978,7 @@ bool emulator_start_game(int newGameNum)
 		return false;
 	}
 
-	// Blank the window BEFORE the teardown, not after: run_game then spends
-	// real time on ROMs, artwork and samples with nothing repainting, and
-	// without this the outgoing game's (or the front-end's) last presented
-	// frame stays frozen on screen for all of it.
-	//
+	// Blank the window BEFORE the teardown, not after: 
 	// Before emulator_stop_game() specifically, because that memsets Machine
 	// and glchain_set_render dereferences Machine->drv unguarded.
 	present_blank_frame();
@@ -1995,22 +1987,6 @@ bool emulator_start_game(int newGameNum)
 
 	// Drop the outgoing driver's retained vector geometry before the incoming
 	// one gets a renderer.
-	//
-	// The beam batches are RETAINED on purpose: AAE's vector sims do not
-	// rebuild the display list every video frame, so the renderer redraws the
-	// last batch on the frames in between, and the clear belongs to the sim
-	// (see the ownership note in vkchain_render). That contract holds WITHIN a
-	// game. It has no answer for the boundary BETWEEN two games, where the
-	// outgoing sim is gone and the incoming one has not run yet - so its
-	// geometry stayed in the queue and the new game's renderer faithfully
-	// redrew it, in the new game's colors and coordinate convention, for the
-	// seconds its ROM took to boot and issue a clear of its own. Launching a
-	// game from the front-end showed the menu hanging over it, upside down.
-	//
-	// This is the boundary, and it belongs to neither sim, so the switch clears
-	// it. Renderer-neutral by design: cache_clear drops texlist and the beam
-	// lists, nothing GPU-side. Covers every direction through this funnel,
-	// including game -> front-end, where the same ghost ran the other way.
 	cache_clear();
 
 	gamenum = newGameNum;

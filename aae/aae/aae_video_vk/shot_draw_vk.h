@@ -1,5 +1,5 @@
 // -----------------------------------------------------------------------------
-// shot_draw_vk.h - Vulkan textured vector shot pass (Phase 4a Plan 9).
+// shot_draw_vk.h - Vulkan textured vector shot pass.
 //
 // VK port of the GL legacy textured-shot pass (emu_vector_draw.cpp
 // draw_textured_shots): when config.shots_textured is set, add_tex diverts

@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
-// fast_poly_vk.cpp - Vulkan fast-poly quad renderer (Phase 4a Plan 3, Task 2).
-// Imported from the Bosconian donor; see fast_poly_vk.h for the rename list
-// and the single functional addition (viewport-rect override in Render).
+// fast_poly_vk.cpp - Vulkan fast-poly quad renderer, the twin of the GL Fpoly
+// in aae/aae/vidhrdwr/fast_poly.cpp. See fast_poly_vk.h for the naming and the
+// viewport-rect override in Render.
 // -----------------------------------------------------------------------------
 
 #include "fast_poly_vk.h"
@@ -51,7 +51,7 @@ bool FpolyVK::ReadFileBytes(const char* path, std::vector<uint8_t>& outBytes)
         return false;
 
     // AAE builds with SDL checks (C4996 is an error), so use fopen_s on
-    // Windows; the donor's plain fopen remains for other platforms.
+    // Windows; plain fopen elsewhere.
     FILE* f = nullptr;
 #ifdef _WIN32
     fopen_s(&f, path, "rb");
@@ -339,9 +339,8 @@ bool FpolyVK::Init(VkContext& ctx, int surfaceW, int surfaceH, const FastPolyVKC
         ctx.vkUpdateDescriptorSets_(ctx.device, 1, &w, 0, nullptr);
     }
 
-    // VBOs (per-frame-slot, persistently mapped, grow as needed -- bug
-    // catalog entry 3; see the member comment in fast_poly_vk.h). The donor
-    // allocated a single initial buffer; now every slot gets one up front.
+    // VBOs: per-frame-slot, persistently mapped, grow as needed (see the
+    // member comment in fast_poly_vk.h). Every slot gets one up front.
     m_colorFormat = ci.colorFormat;
     const uint32_t initCap = (ci.initialCapacityVerts > 0) ? ci.initialCapacityVerts : 8192;
     for (uint32_t i = 0; i < VkContext::kFramesInFlight; ++i)
@@ -426,11 +425,11 @@ bool FpolyVK::Init(VkContext& ctx, int surfaceW, int surfaceH, const FastPolyVKC
     dyn.dynamicStateCount = 2;
     dyn.pDynamicStates = dynStates;
 
-    // Dynamic rendering info: build against the caller-supplied color format
-    // (Plan 4 Task 1), falling back to ctx.swapchainFormat when unset --
-    // preserves Plan 3 behavior for the current caller (vulkan_renderer.cpp),
-    // which does not yet pass a format and composites straight to the
-    // swapchain. Task 3 passes the offscreen RenderTargetVK's format.
+    // Dynamic rendering info: build against the caller-supplied color format,
+    // falling back to ctx.swapchainFormat when unset -- which is what the
+    // current caller (vulkan_renderer.cpp) relies on, since it composites
+    // straight to the swapchain. A caller drawing into an offscreen
+    // RenderTargetVK passes that target's format instead.
     const VkFormat pipelineColorFormat =
         (m_colorFormat != VK_FORMAT_UNDEFINED) ? m_colorFormat : ctx.swapchainFormat;
 
@@ -501,7 +500,7 @@ void FpolyVK::SetSurfaceSize(int surfaceW, int surfaceH)
 // Operates on the CURRENT slot (frameIndex) only. On growth, the old
 // {buf, mem, mapped} is pushed onto that slot's stale list rather than
 // destroyed immediately -- the GPU may still be reading it from an
-// in-flight submission (bug catalog entry 3). The stale list is drained
+// in-flight submission. The stale list is drained
 // in DrainStaleBuffers, called at the top of Render() for this slot, after
 // VK_BeginFrame's fence wait has proven the GPU is done with it.
 // -----------------------------------------------------------------------------
@@ -602,7 +601,7 @@ void FpolyVK::Render(VkContext& ctx,
     // upload, regardless of whether this particular frame has polys queued.
     // We are only here because the caller's VK_BeginFrame already
     // fence-waited on this slot, which proves the GPU is done with whatever
-    // this slot's previous frame referenced (bug catalog entry 3) -- so it
+    // this slot's previous frame referenced -- so it
     // is safe to unmap/destroy any buffers this slot retired last time it
     // grew.
     DrainStaleBuffers(ctx, frameIndex);
@@ -671,6 +670,6 @@ void FpolyVK::Render(VkContext& ctx,
 
     ctx.vkCmdDraw_(cmd, (uint32_t)vertices.size(), 1, 0, 0);
 
-    // clear after drawing for now.
+    // The queue is per-frame: drop it once it has been drawn.
     vertices.clear();
 }

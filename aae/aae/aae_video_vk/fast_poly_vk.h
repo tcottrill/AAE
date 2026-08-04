@@ -1,16 +1,14 @@
 // -----------------------------------------------------------------------------
-// fast_poly_vk.h - Vulkan fast-poly quad renderer (Phase 4a Plan 3, Task 2).
+// fast_poly_vk.h - Vulkan fast-poly quad renderer.
 //
-// Imported from the Bosconian donor (Bosconian/sys_graphics/fast_poly.{h,cpp})
-// with global-scope names renamed to avoid collisions with AAE's GL Fpoly
-// (aae/aae/vidhrdwr/fast_poly.h): Fpoly -> FpolyVK, _fpdata -> _fpdataVK,
-// include guard __FPOLY__ -> __FPOLY_VK__. The donor's header-scope
-// "using namespace aae::math;" is dropped (vec2 is qualified instead) so
-// this header does not pollute translation units that include it.
+// The Vulkan twin of AAE's GL Fpoly (aae/aae/vidhrdwr/fast_poly.h): batches
+// axis-aligned colored quads into one instanced draw. Global-scope names are
+// renamed so both can coexist in one build: Fpoly -> FpolyVK, _fpdata ->
+// _fpdataVK, include guard __FPOLY__ -> __FPOLY_VK__.
 //
-// One addition over the donor: an optional viewport/scissor rect override
+// Beyond the GL version it carries an optional viewport/scissor rect override
 // (SetViewportRect / ClearViewportRect) used by the VK chain for aspect-fit
-// letterboxing. Everything else is donor-verbatim.
+// letterboxing.
 //
 // License:
 //   This program is free software: you can redistribute it and/or modify
@@ -64,10 +62,10 @@ struct FastPolyVKCreateInfo
     uint32_t initialCapacityVerts = 8192;
 
     // Color attachment format to build the pipeline against. VK_FORMAT_UNDEFINED
-    // (default) means "use ctx.swapchainFormat", preserving Plan 3 behavior for
-    // the current caller (vulkan_renderer.cpp), which composites straight to the
-    // swapchain. Plan 4 Task 3 passes the offscreen RenderTargetVK's format once
-    // FpolyVK starts rendering into the game RT instead.
+    // (default) means "use ctx.swapchainFormat", which is what the current
+    // caller (vulkan_renderer.cpp) wants - it composites straight to the
+    // swapchain. A caller rendering into an offscreen RenderTargetVK passes
+    // that target's format here instead.
     VkFormat colorFormat = VK_FORMAT_UNDEFINED;
 };
 
@@ -126,7 +124,7 @@ private:
     VkDeviceMemory        m_uboMem[VkContext::kFramesInFlight]{};
     void* m_mappedUBO[VkContext::kFramesInFlight]{};
 
-    // Per-frame-slot VBOs (bug catalog entry 3): a single persistently-mapped
+    // Per-frame-slot VBOs: a single persistently-mapped
     // VBO memcpy'd every frame races the previous frame's in-flight GPU read
     // (kFramesInFlight=2; VK_BeginFrame's fence wait only proves frame N-2 is
     // done, not N-1, for the OTHER slot). Each slot owns its own buffer, so
@@ -138,14 +136,14 @@ private:
     // Render() for that slot, which is only reached after VK_BeginFrame's
     // fence wait has proven the GPU is done with this slot's previous frame.
     //
-    // Entry 12 (append-discipline / per-slot write-head) is NOT needed here:
-    // Render() is called at most once per frame per FpolyVK instance (see
-    // vulkan_renderer.cpp's single vkchain_render call site), so there is no
-    // intra-frame second flush to race against the first. If a future change
-    // ever calls Render() more than once per frame for the same instance,
-    // adopt the write-head append pattern from bug catalog entry 12 (track a
-    // per-slot vertex write offset, bias firstVertex in the draw call) instead
-    // of the current "upload at offset 0, draw, clear" behavior.
+    // The append-discipline / per-slot write-head pattern VectorDrawVK uses is
+    // NOT needed here: Render() is called at most once per frame per FpolyVK
+    // instance (see vulkan_renderer.cpp's single vkchain_render call site), so
+    // there is no intra-frame second flush to race against the first. If a
+    // change ever calls Render() more than once per frame for the same
+    // instance, adopt that write-head append pattern (track a per-slot vertex
+    // write offset, bias firstVertex in the draw call) instead of the current
+    // "upload at offset 0, draw, clear" behavior.
     VkBuffer       m_vbo[VkContext::kFramesInFlight]{};
     VkDeviceMemory m_vboMem[VkContext::kFramesInFlight]{};
     void*          m_mappedVBO[VkContext::kFramesInFlight]{};
@@ -154,8 +152,8 @@ private:
     struct StaleBuffer { VkBuffer buf; VkDeviceMemory mem; void* mapped; };
     std::vector<StaleBuffer> m_staleBuffers[VkContext::kFramesInFlight];
 
-    // Pipeline color attachment format (Plan 4 Task 1): VK_FORMAT_UNDEFINED
-    // resolves to ctx.swapchainFormat at Init time (Plan 3 behavior).
+    // Pipeline color attachment format: VK_FORMAT_UNDEFINED resolves to
+    // ctx.swapchainFormat at Init time.
     VkFormat m_colorFormat = VK_FORMAT_UNDEFINED;
 
     // State

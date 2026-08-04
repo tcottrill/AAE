@@ -1,29 +1,18 @@
 // -----------------------------------------------------------------------------
-// vector_draw_vk.h - Vulkan backend for the beam vector renderer (Phase 4a
-// Plan 5, Task 1). Imported from the Game Engine Alpha donor
-// (SpriteTestVulcan28 sys_graphics/vector_draw_vk.{h,cpp}) with the three
-// pre-ship fixes from docs 2026-07-05-vector-draw-vk-aae-backport.md applied:
-//
-//   4a. Append discipline: per-batch per-frame-slot write heads (uploads
-//       append, draws pass the base as firstInstance) + stale-buffer
-//       retirement on growth, drained once per frame in OnFrameBegin after
-//       the frame slot's fence wait (same pattern as FpolyVK / bug catalog
-//       entry 3). Multiple Record calls per frame are now safe.
-//   4b. SSAA feather divide: uAA = config.line_smoothing / ssaa (the GL
-//       beam_draw_all computes the same; ssaa comes from the CreateInfo,
-//       1 until the supersampled RT lands in Plan 5 Task 3).
-//   4c. Init idempotence: Init guards with `if (m_pipeLayout) Shutdown(ctx)`
-//       so a re-Init (new game load) cannot leak the layout/pipelines.
-//
-// Donor conventions preserved otherwise. AAE-side deltas: SPV paths are
-// explicit CreateInfo paths ("shaders/vk/..." next to the exe), matching
-// FastPolyVKCreateInfo / ScreenQuadVKCreateInfo, instead of the donor
-// engine's Shader_GetPath() prefix helper which AAE does not have.
+// vector_draw_vk.h - Vulkan backend for the beam vector renderer.
 //
 // The mirror of the GL beam_draw_all(): draws the current frame's BeamLine /
 // BeamJoin / BeamShot batches as instanced, coverage-AA quads
 // (TRIANGLE_STRIP, 4 verts, N instances) into an ALREADY-OPEN dynamic
 // rendering pass on the caller's command buffer.
+//
+// Buffer discipline: per-batch per-frame-slot write heads (uploads append,
+// draws pass the base as firstInstance) + stale-buffer retirement on growth,
+// drained once per frame in OnFrameBegin after the frame slot's fence wait
+// (the same pattern as FpolyVK). Multiple Record calls per frame are safe.
+//
+// SPV paths are explicit CreateInfo paths ("shaders/vk/..." next to the exe),
+// matching FastPolyVKCreateInfo / ScreenQuadVKCreateInfo.
 //
 // ASCII-only comments.
 // -----------------------------------------------------------------------------
@@ -46,17 +35,17 @@ struct VectorDrawVKCreateInfo
     const char* shotFragSpv = "shaders/vk/vector_shot_vk.frag.spv";
 
     // Color format of the target the beam draws into (the caller's
-    // RenderTarget, or the swapchain for the direct first cut).
+    // RenderTarget, or the swapchain when drawing direct).
     // VK_FORMAT_UNDEFINED falls back to ctx.swapchainFormat.
     VkFormat colorFormat = VK_FORMAT_UNDEFINED;
 
     // Initial per-batch instance capacity; each buffer grows on demand.
     uint32_t initialInstanceCapacity = 4096;
 
-    // Supersample factor of the bound render target (fix 4b): the AA feather
-    // pushed to the shaders is config.line_smoothing / ssaa, mirroring the GL
+    // Supersample factor of the bound render target: the AA feather pushed to
+    // the shaders is config.line_smoothing / ssaa, mirroring the GL
     // beam_draw_all / beam_set_ssaa. 1 for direct-to-swapchain; the SSAA RT
-    // (Plan 5 Task 3) passes its factor here.
+    // passes its factor here.
     int ssaa = 1;
 
     // Flip the viewport Y (negative height) so the SAME column-major ortho
@@ -77,12 +66,12 @@ public:
     VectorDrawVK(const VectorDrawVK&) = delete;
     VectorDrawVK& operator=(const VectorDrawVK&) = delete;
 
-    // Idempotent (fix 4c): a second Init shuts the previous objects down
-    // first, so per-game re-init cannot leak pipelines.
+    // Idempotent: a second Init shuts the previous objects down first, so
+    // per-game re-init cannot leak pipelines.
     bool Init(VkContext& ctx, const VectorDrawVKCreateInfo* ci = nullptr);
     void Shutdown(VkContext& ctx);
 
-    // Deterministic per-frame reset (fix 4a). Call once per frame right
+    // Deterministic per-frame reset. Call once per frame right
     // after VK_BeginFrame, whose fence wait has proven the GPU is done with
     // this slot's previous frame: drains the slot's retired (stale) instance
     // buffers and resets the slot's per-batch write heads. Same contract as
@@ -106,7 +95,7 @@ public:
 private:
     enum BatchType { BATCH_LINE = 0, BATCH_JOIN = 1, BATCH_SHOT = 2, BATCH_COUNT = 3 };
 
-    // A retired instance buffer (fix 4a): pushed by EnsureBuffer on growth,
+    // A retired instance buffer: pushed by EnsureBuffer on growth,
     // destroyed in OnFrameBegin once the slot's fence wait has proven the
     // GPU is done with the submission that referenced it.
     struct StaleBuffer
@@ -122,7 +111,7 @@ private:
 
     VkFormat m_colorFormat = VK_FORMAT_UNDEFINED;
     uint32_t m_initialCap  = 4096;
-    int      m_ssaa        = 1;      // fix 4b
+    int      m_ssaa        = 1;
     bool     m_flipViewportY = true;
 
     VkPipelineLayout m_pipeLayout   = VK_NULL_HANDLE;
@@ -138,12 +127,12 @@ private:
     void*          m_mapped[BATCH_COUNT][VkContext::kFramesInFlight]{};
     VkDeviceSize   m_cap   [BATCH_COUNT][VkContext::kFramesInFlight]{};
 
-    // Fix 4a: per-batch per-slot write head (bytes). Uploads append at the
+    // Per-batch per-slot write head (bytes). Uploads append at the
     // head; draws pass head/stride as firstInstance; OnFrameBegin resets the
     // slot's heads once the fence wait has proven the previous frame done.
     VkDeviceSize   m_head  [BATCH_COUNT][VkContext::kFramesInFlight]{};
 
-    // Fix 4a: buffers retired on growth, per slot, drained in OnFrameBegin.
+    // Buffers retired on growth, per slot, drained in OnFrameBegin.
     std::vector<StaleBuffer> m_stale[VkContext::kFramesInFlight];
 };
 

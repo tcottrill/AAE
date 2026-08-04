@@ -138,8 +138,8 @@ namespace
     bool      s_artHave[8]{};
 
     // GAME_TEX slot 0: the textured-shot sprite (shot.png / cineshot.png).
-    // Plan 9 - the one GAME_TEX entry the VK chain consumes (ShotDrawVK);
-    // other GAME_TEX/FUN_TEX entries still feed GL-only draw paths.
+    // The one GAME_TEX entry the VK chain consumes (ShotDrawVK); other
+    // GAME_TEX/FUN_TEX entries still feed GL-only draw paths.
     VkTexture s_shotTex{};
     bool      s_shotHave = false;
 
@@ -273,7 +273,7 @@ void VkArt_LoadForGame(VkContext& ctx, const struct artworks* p)
         for (int i = 0; p[i].filename != NULL; i++)
         {
             // GAME_TEX slot 0 is the textured-shot sprite - the VK shot pass
-            // (ShotDrawVK, Plan 9) needs it. All other FUN_TEX/GAME_TEX
+            // (ShotDrawVK) needs it. All other FUN_TEX/GAME_TEX
             // entries feed GL-only draw paths (fun screens etc.) and are
             // skipped; the VK compositor otherwise uses ART_TEX only.
             if (p[i].type == GAME_TEX && p[i].target == 0)

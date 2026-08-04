@@ -28,7 +28,10 @@ struct BeamShot {
     rgb_t           color;
 };
 
-// ssaa = supersample factor of the bound render target (1 in Phase 1, 2 in Phase 6).
+// ssaa = supersample factor of the bound render target. It divides the AA
+// feather, so a supersampled target keeps GL-matching beam widths. The GL
+// chain passes 1 (fbo1 is a plain 1024 buffer); the VK post chain passes
+// [main] vk_ssaa.
 void beam_init(int ssaa);
 void beam_shutdown();
 void beam_set_ssaa(int ssaa);          // sets the supersample factor (affects AA feather)

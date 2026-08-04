@@ -1,14 +1,13 @@
 // -----------------------------------------------------------------------------
 // raster_tex_vk.h - Per-frame raster game image as a streamed texture.
 //
-// REPLACES the per-pixel quad emit on the VK raster path. raster_emit_polys()
-// visits every source pixel; the old VK sink turned each one into an FpolyVK
-// quad, so pacman (288x224 visible) rebuilt and uploaded ~64,500 quads /
-// ~258,000 vertices EVERY FRAME. An immediate-mode desktop GPU shrugs that
-// off; a tile-based GPU (Raspberry Pi 5 / Mesa v3d) bins every primitive up
-// front, which is close to worst case - pacman ran 53 fps there at prescale 1
-// with no shaders. That design was inherited from the legacy fixed-function
-// GL Fpoly path; Vulkan does not need it.
+// The VK raster path does NOT emit one quad per pixel the way the legacy
+// fixed-function GL Fpoly path does. raster_emit_polys() visits every source
+// pixel, and a quad sink would have pacman (288x224 visible) rebuilding and
+// uploading ~64,500 quads / ~258,000 vertices EVERY FRAME. An immediate-mode
+// desktop GPU shrugs that off; a tile-based GPU (Raspberry Pi 5 / Mesa v3d)
+// bins every primitive up front, which is close to worst case - pacman ran
+// 53 fps there at prescale 1 with no shaders.
 //
 // Instead the emit writes a linear RGBA8 buffer, this class streams it to a
 // texture, and the caller draws ONE textured quad into the game RT. 4 verts
@@ -17,16 +16,15 @@
 // SHAPE AND PRESCALE
 //   The texture is NATIVE-sized (raster_dst_dims, i.e. post-orientation game
 //   pixels, NO prescale). The game RT stays PRESCALED, and the single quad
-//   covers it with NEAREST magnification - so one source pixel still paints a
-//   solid prescale x prescale block, exactly what the quad path produced.
+//   covers it with NEAREST magnification - so one source pixel paints a solid
+//   prescale x prescale block, exactly as GL's quad emit does.
 //   See the prescale-equivalence note in vulkan_renderer.cpp.
 //
 // PIXEL FORMAT
 //   The buffer holds MAKE_RGBA values: R in the low byte (r | g<<8 | b<<16 |
 //   a<<24). On a little-endian host that is the byte order R,G,B,A, which is
 //   VK_FORMAT_R8G8B8A8_UNORM verbatim - no swizzle, no conversion. UNORM
-//   only, never _SRGB: the whole chain is gamma-space byte math (commit
-//   09ec1bb).
+//   only, never _SRGB: the whole chain is gamma-space byte math, matching GL.
 //
 // IN-FLIGHT SAFETY
 //   Everything the GPU touches is PER FRAME-IN-FLIGHT: one staging buffer and

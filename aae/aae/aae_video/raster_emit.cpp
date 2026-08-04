@@ -12,10 +12,9 @@
 //
 // raster_emit.cpp
 //
-// Backend-neutral raster pixel-emit loop (Phase 4a Plan 3, Task 1). This is
-// the body of raster_poly_update() (aae_video/opengl_renderer.cpp) moved
-// verbatim behind a sink callback so both the GL and VK render chains can
-// share exactly one orientation/pen-lookup implementation.
+// Backend-neutral raster pixel-emit loop: the body of raster_poly_update()
+// (aae_video/opengl_renderer.cpp) behind a sink callback, so the GL and VK
+// render chains share exactly one orientation/pen-lookup implementation.
 //
 //==========================================================================
 
@@ -84,8 +83,8 @@ int raster_dst_dims(int* outW, int* outH)
 // ---------------------------------------------------------------------------
 // raster_emit_polys
 // Reads the MAME bitmap (main_bitmap) for the current frame, converts each
-// non-zero pixel to an RGBA color via osd_get_pen(), and submits it to the
-// caller's sink as a small rectangle.
+// pixel to an RGBA color via osd_get_pen(), and submits it to the caller's
+// sink in visible-area-local coordinates.
 //
 // Handles all four MAME orientation flags so rotated/flipped games display
 // correctly without needing separate draw paths.
@@ -108,9 +107,8 @@ void raster_emit_polys(RasterPolySink sink, void* user, int yFlip)
 		{
 			const unsigned char c = srcRow[srcX];
 
-			// Keep current behavior: draw all pixels, including black.
-			// If you later want to skip transparent black, restore:
-			// if (!c) continue;
+			// Every pixel is emitted, black ones included - the sinks
+			// paint an opaque image, they do not composite over anything.
 
 			osd_get_pen(Machine->pens[c], &r1, &g1, &b1);
 
@@ -138,9 +136,8 @@ void raster_emit_polys(RasterPolySink sink, void* user, int yFlip)
 				y = (dstH - 1) - y;
 			}
 
-			// yFlip = 0 (GL chain) reproduces the original behavior exactly:
-			// y grows downward. yFlip = 1 (VK chain, Plan 3 Task 3) flips to
-			// a bottom-left origin.
+			// yFlip = 0: y grows downward (both current callers).
+			// yFlip = 1: flip to a bottom-left origin.
 			float fy = (float)y;
 			if (yFlip)
 				fy = (float)(dstH - 1 - y);
