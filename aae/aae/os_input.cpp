@@ -308,29 +308,96 @@ int osd_read_key_immediate(void)
 }
 
 /* return the name of a key */ //--ERROR KEY NAMES NEED TO GO TO 200
+// ---------------------------------------------------------------------------
+// osd_key_name
+//
+// Keyed by Windows virtual-key code, because that is what OSD_KEY_*/AAEKEY_*
+// have been since the keyboard remap (osdepend.h / sys_input.h): OSD_KEY_1 is
+// 0x31, OSD_KEY_F2 is 0x71, OSD_KEY_LCONTROL is 0xa2.
+//
+// What this replaced was the MAME/Allegro SCANCODE-ordered list ("ESC","1",
+// "2",...) read as keynames[keycode - 1]. Once the codes became VK codes that
+// mapping was meaningless -- OSD_KEY_1 came out "N", OSD_KEY_5 "SLASH",
+// OSD_KEY_F2 "/ PAD". Worse, it held 115 entries while the guard allowed
+// anything up to OSD_MAX_KEY (199), so every modifier read off the end of the
+// array: OSD_KEY_LCONTROL (0xa2) indexed keynames[161] and returned whatever
+// static happened to follow it in memory (in practice a string out of
+// osd_joy_name's table).
+//
+// A code with no entry returns "None" rather than indexing anything, and the
+// table is keyed by code instead of by position so it cannot silently shift
+// again if a key is added.
+// ---------------------------------------------------------------------------
 const char* osd_key_name(int keycode)
 {
-	static const char* keynames[] =
-	{
-		"ESC", "1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "MINUS", "EQUAL", "BKSPACE",
-		"TAB", "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "OPBRACE", "CLBRACE", "ENTER",
-		"LCTRL", "A", "S", "D", "F", "G", "H", "J", "K", "L", "COLON", "QUOTE", "TILDE",
-		"LSHIFT", "Error", "Z", "X", "C", "V", "B", "N", "M", "COMMA", ".", "SLASH", "RSHIFT",
-		"*", "ALT", "SPACE", "CAPSLOCK", "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10",
-		"NUMLOCK", "SCRLOCK", "HOME", "UP", "PGUP", "MINUS PAD",
-		"LEFT", "5 PAD", "RIGHT", "PLUS PAD", "END", "DOWN",
-		"PGDN", "INS", "DEL", "PRTSCR", "Error", "Error",
-		"F11", "F12", "Error", "Error",
-		"LWIN", "RWIN", "MENU", "RCTRL", "ALTGR", "PAUSE",
-		"Error", "Error", "Error", "Error",
-		"1 PAD", "2 PAD", "3 PAD", "4 PAD", "Error",
-		"6 PAD", "7 PAD", "8 PAD", "9 PAD", "0 PAD",
-		". PAD", "= PAD", "/ PAD", "* PAD", "ENTER PAD",
-	};
-	static const char* nonedefined = "None";
+	struct KeyName { unsigned char code; const char* name; };
 
-	if (keycode && keycode <= OSD_MAX_KEY) return keynames[keycode - 1];
-	else return (char*)nonedefined;
+	static const KeyName keynames[] =
+	{
+		{ 0x08, "BKSPACE" }, { 0x09, "TAB"     }, { 0x0d, "ENTER"  },
+		{ 0x10, "SHIFT"   }, { 0x11, "CTRL"    }, { 0x12, "MENU"   },
+		{ 0x13, "PAUSE"   }, { 0x14, "CAPSLOCK"}, { 0x1b, "ESC"    },
+		{ 0x20, "SPACE"   },
+
+		{ 0x21, "PGUP"    }, { 0x22, "PGDN"    }, { 0x23, "END"    },
+		{ 0x24, "HOME"    }, { 0x25, "LEFT"    }, { 0x26, "UP"     },
+		{ 0x27, "RIGHT"   }, { 0x28, "DOWN"    }, { 0x2c, "PRTSCR" },
+		{ 0x2d, "INS"     }, { 0x2e, "DEL"     },
+
+		{ 0x30, "0" }, { 0x31, "1" }, { 0x32, "2" }, { 0x33, "3" }, { 0x34, "4" },
+		{ 0x35, "5" }, { 0x36, "6" }, { 0x37, "7" }, { 0x38, "8" }, { 0x39, "9" },
+
+		{ 0x41, "A" }, { 0x42, "B" }, { 0x43, "C" }, { 0x44, "D" }, { 0x45, "E" },
+		{ 0x46, "F" }, { 0x47, "G" }, { 0x48, "H" }, { 0x49, "I" }, { 0x4a, "J" },
+		{ 0x4b, "K" }, { 0x4c, "L" }, { 0x4d, "M" }, { 0x4e, "N" }, { 0x4f, "O" },
+		{ 0x50, "P" }, { 0x51, "Q" }, { 0x52, "R" }, { 0x53, "S" }, { 0x54, "T" },
+		{ 0x55, "U" }, { 0x56, "V" }, { 0x57, "W" }, { 0x58, "X" }, { 0x59, "Y" },
+		{ 0x5a, "Z" },
+
+		{ 0x5b, "LWIN" }, { 0x5c, "RWIN" },
+
+		{ 0x60, "0 PAD" }, { 0x61, "1 PAD" }, { 0x62, "2 PAD" }, { 0x63, "3 PAD" },
+		{ 0x64, "4 PAD" }, { 0x65, "5 PAD" }, { 0x66, "6 PAD" }, { 0x67, "7 PAD" },
+		{ 0x68, "8 PAD" }, { 0x69, "9 PAD" },
+		{ 0x6a, "* PAD" }, { 0x6b, "+ PAD" }, { 0x6c, "ENTER PAD" },
+		{ 0x6d, "- PAD" }, { 0x6e, ". PAD" }, { 0x6f, "/ PAD" },
+
+		{ 0x70, "F1"  }, { 0x71, "F2"  }, { 0x72, "F3"  }, { 0x73, "F4"  },
+		{ 0x74, "F5"  }, { 0x75, "F6"  }, { 0x76, "F7"  }, { 0x77, "F8"  },
+		{ 0x78, "F9"  }, { 0x79, "F10" }, { 0x7a, "F11" }, { 0x7b, "F12" },
+
+		{ 0x90, "NUMLOCK" }, { 0x91, "SCRLOCK" },
+
+		{ 0xa0, "LSHIFT" }, { 0xa1, "RSHIFT" }, { 0xa2, "LCTRL" },
+		{ 0xa3, "RCTRL"  }, { 0xa4, "ALT"    }, { 0xa5, "ALTGR" },
+
+		{ 0xba, "COLON"     }, { 0xbb, "EQUAL"     }, { 0xbc, "COMMA" },
+		{ 0xbd, "MINUS"     }, { 0xbe, "."         }, { 0xbf, "SLASH" },
+		{ 0xc0, "TILDE"     }, { 0xc1, "ABNT_C1"   },
+		{ 0xdb, "OPBRACE"   }, { 0xdc, "BACKSLASH" }, { 0xdd, "CLBRACE" },
+		{ 0xde, "QUOTE"     },
+	};
+
+	static const char* const nonedefined = "None";
+
+	// UI pseudo-codes (OSD_KEY_CANCEL and friends, 200+) name whichever
+	// physical key is currently bound to them, the same resolution
+	// osd_key_pressed does.
+	keycode = pseudo_to_key_code(keycode);
+
+	if (keycode <= 0 || keycode > 0xff) return nonedefined;
+
+	// Direct index, built once from the table above so the sparse VK space
+	// still resolves in constant time.
+	static const char* byCode[256] = { nullptr };
+	static const bool built = []() {
+		for (const KeyName& k : keynames) byCode[k.code] = k.name;
+		return true;
+	}();
+	(void)built;
+
+	const char* name = byCode[(unsigned char)keycode];
+	return name ? name : nonedefined;
 }
 
 /* return the name of a joystick button */
