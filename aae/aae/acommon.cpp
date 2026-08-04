@@ -122,6 +122,12 @@ void video_loop(void)
 	{
 		do_the_menu();
 	}
+
+	// One-shot first-run acknowledgement, drawn last so it sits over the menu
+	// as well as over the game/GUI underneath. Self-clearing: it dismisses
+	// itself and writes first_run=0 to aae.ini on the first key or button.
+	do_the_first_run_notice();
+
 	err = glcode_get_gl_error();
 	if (err != 0)
 	{

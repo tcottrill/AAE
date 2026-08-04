@@ -175,6 +175,9 @@ void setup_config() {
     config.boostThread = get_config_int("main", "boostThread", 1);
     // Exit confirmation dialog (1 = show prompt, 0 = exit immediately)
     config.confirm_exit = get_config_int("main", "confirm_exit", 1);
+    // First-run notice. Absent from the ini means "never shown", so a fresh
+    // install (and anyone upgrading over an old aae.ini) sees it once.
+    config.first_run = get_config_int("main", "first_run", 1);
 
     config.kbleds = get_config_int("main", "kbleds", 1);
     config.colordepth = get_config_int("main", "colordepth", 32);

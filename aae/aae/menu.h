@@ -48,4 +48,18 @@ void change_menu_item(int dir);
 void select_menu_item();
 void set_points_lines();
 
+// ----------------------------------------------------------------------
+// First-run notice
+// ----------------------------------------------------------------------
+// A one-shot acknowledgement panel drawn over whatever runs first -- the GUI
+// frontend, or a game launched straight from the command line. It uses the
+// same blue panel as the menu and waits for any key or joystick button, then
+// clears aae.ini [main] first_run so it never appears again.
+//
+// first_run_notice_active() is what input handlers gate on: while it returns
+// non-zero they must swallow their input so the dismissing press does not
+// also toggle the menu, move the GUI selection, or exit.
+int  first_run_notice_active();
+void do_the_first_run_notice();
+
 #endif // MENU_H

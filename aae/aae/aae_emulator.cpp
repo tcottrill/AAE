@@ -1191,6 +1191,12 @@ fail:
 // ---------------------------------------------------------------------------
 void msg_loop(void)
 {
+	// The first-run notice owns every key and button while it is up: the press
+	// that dismisses it must not also toggle the menu, pause, or exit. The
+	// panel does its own polling from video_loop().
+	if (first_run_notice_active())
+		return;
+
 	if (osd_key_pressed_memory(OSD_KEY_RESET_MACHINE))
 		cpu_reset(0);
 

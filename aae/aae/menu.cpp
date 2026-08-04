@@ -1892,6 +1892,136 @@ void MenuManager::PollInput() {
 }
 
 // ----------------------------------------------------------------------
+// First-Run Notice
+// ----------------------------------------------------------------------
+// Drawn from video_loop() on top of everything else, so it lands over the
+// GUI frontend or over a game started from the command line without either
+// of them needing to know it exists. See menu.h for the contract.
+
+namespace {
+
+    const char* const NOTICE_BODY =
+        "A.A.E. is built using M.A.M.E source code and information collected "
+        "over the last two decades by the dedicated and hard working people "
+        "that sacrificed their time and used their knowledge to create "
+        "something truly special. Thank you to everyone who has contributed "
+        "over the years especially the vector teams. Please see credit.txt for "
+        "more information.";
+
+    const char* const NOTICE_PROMPT = "(press any key)";
+
+    constexpr float NOTICE_SCALE      = 2.0f;
+    constexpr float NOTICE_LINE_H     = 30.0f;
+    constexpr float NOTICE_TEXT_W     = 720.0f;  // wrap width in VF units
+    constexpr float NOTICE_PAD_X      = 40.0f;
+    constexpr float NOTICE_PAD_TOP    = 34.0f;
+    constexpr float NOTICE_PAD_BOTTOM = 22.0f;
+    constexpr float NOTICE_CENTER_X   = 512.0f;  // VF space is always 1024x768
+    constexpr float NOTICE_CENTER_Y   = 384.0f;
+
+    // Greedy word wrap measured with the real proportional glyph widths, so
+    // the panel is sized from what actually gets drawn rather than from a
+    // character count. Built once on first use -- VF's font metrics come from
+    // its constructor, so this is safe before the renderer is up.
+    const std::vector<std::string>& NoticeLines() {
+        static std::vector<std::string> lines;
+        if (!lines.empty()) return lines;
+
+        const std::string src(NOTICE_BODY);
+        std::string cur;
+        size_t i = 0;
+        while (i < src.size()) {
+            const size_t sp = src.find(' ', i);
+            const std::string word = (sp == std::string::npos)
+                ? src.substr(i)
+                : src.substr(i, sp - i);
+            i = (sp == std::string::npos) ? src.size() : sp + 1;
+            if (word.empty()) continue;
+
+            const std::string trial = cur.empty() ? word : cur + " " + word;
+            if (!cur.empty() &&
+                VF.GetStringPitch(trial.c_str(), NOTICE_SCALE, 0) > NOTICE_TEXT_W)
+            {
+                lines.push_back(cur);
+                cur = word;
+            }
+            else {
+                cur = trial;
+            }
+        }
+        if (!cur.empty()) lines.push_back(cur);
+        return lines;
+    }
+
+    // True while any key or any joystick fire button is physically down.
+    // key[] is the raw Allegro-style keystate both backends fill; only the
+    // aggregate JOYn_FIRE codes are polled so a drifting analog stick can
+    // never dismiss the panel on its own.
+    bool NoticeAnyInputDown() {
+        for (int k = 1; k <= AAEKEY_MAX; ++k) {
+            if (key[k]) return true;
+        }
+        return osd_joy_pressed(OSD_JOY_FIRE)  || osd_joy_pressed(OSD_JOY2_FIRE) ||
+               osd_joy_pressed(OSD_JOY3_FIRE) || osd_joy_pressed(OSD_JOY4_FIRE);
+    }
+
+}  // namespace
+
+int first_run_notice_active() { return config.first_run ? 1 : 0; }
+
+void do_the_first_run_notice() {
+    if (!config.first_run) return;
+
+    // ---- Dismissal ----
+    // Arm only once nothing is held. A game started from a shell still has
+    // the launching ENTER down on the first frame, and the GUI can reach
+    // here with a button held; without this the panel would vanish before
+    // it was ever readable.
+    static bool s_armed = false;
+    const bool anyDown = NoticeAnyInputDown();
+
+    if (!s_armed) {
+        if (!anyDown) s_armed = true;
+    }
+    else if (anyDown) {
+        config.first_run = 0;
+        my_set_config_int("main", "first_run", 0, 0);  // path 0 = aae.ini
+        LOG_INFO("First-run notice dismissed");
+        return;
+    }
+
+    // ---- Layout ----
+    const std::vector<std::string>& lines = NoticeLines();
+
+    // Body lines, then a blank spacer, then the prompt.
+    const int totalLines = (int)lines.size() + 2;
+
+    const float blockH = (totalLines - 1) * NOTICE_LINE_H;
+    const float firstY = NOTICE_CENTER_Y +
+        ((blockH + NOTICE_PAD_BOTTOM - NOTICE_PAD_TOP) * 0.5f);
+
+    const float panelTop    = firstY + NOTICE_PAD_TOP;
+    const float panelBottom = firstY - blockH - NOTICE_PAD_BOTTOM;
+    const float panelW      = NOTICE_TEXT_W + (NOTICE_PAD_X * 2.0f);
+    const float panelH      = panelTop - panelBottom;
+
+    const float textLeftX = NOTICE_CENTER_X - (NOTICE_TEXT_W * 0.5f);
+
+    // ---- Draw ----
+    VF.DrawQuad(NOTICE_CENTER_X, (panelTop + panelBottom) * 0.5f,
+        panelW, panelH, MAKE_RGBA(20, 20, 80, 255));
+
+    float y = firstY;
+    for (const std::string& line : lines) {
+        VF.Print(textLeftX, (int)y, RGB_WHITE, NOTICE_SCALE, "%s", line.c_str());
+        y -= NOTICE_LINE_H;
+    }
+
+    y -= NOTICE_LINE_H;  // blank spacer line
+    VF.PrintCentered((int)y, RGB_YELLOW, NOTICE_SCALE, NOTICE_PROMPT);
+}
+
+// ----------------------------------------------------------------------
 // Legacy Free-Function Interface
 // ----------------------------------------------------------------------
 

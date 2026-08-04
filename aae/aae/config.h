@@ -147,6 +147,11 @@ typedef struct {
 	// 1 = show YES/NO prompt before exiting (default)
 	// 0 = exit immediately with no prompt
 	int confirm_exit;
+	// --- First-run acknowledgement notice ---
+	// 1 = show the credits/thank-you panel over whatever runs first (the GUI
+	// or a game launched straight from the command line). Cleared to 0 in
+	// aae.ini the moment the user dismisses it, so it only ever shows once.
+	int first_run;
 	int flip_gui_controls;
 	int starting_monitor;
 	

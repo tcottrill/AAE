@@ -723,7 +723,8 @@ static void pollInput()
 {
 	s_in = {}; // Reset every frame
 
-	if (get_menu_status() != 0 || get_exit_confirm_status() != 0)
+	if (get_menu_status() != 0 || get_exit_confirm_status() != 0 ||
+		first_run_notice_active() != 0)
 	{
 		input_cooldown = 10;
 		return;
