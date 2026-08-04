@@ -71,6 +71,14 @@
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
+  <!-- Per-project intermediate directory. See the matching comment in
+       aae_core.vcxproj: both projects live in this folder and would otherwise
+       share one IntDir, overwriting each other's .obj/.tlog files (MSB8028)
+       and letting stale objects mask real compile errors. OutDir stays shared
+       on purpose so the exe and the lib land together. -->
+  <PropertyGroup>
+    <IntDir>$(Platform)\$(Configuration)\$(ProjectName)\</IntDir>
+  </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <GenerateManifest>false</GenerateManifest>
   </PropertyGroup>

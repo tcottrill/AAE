@@ -55,6 +55,20 @@
   <ImportGroup Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
+  <!-- Per-project intermediate directory.
+       aae.vcxproj and aae_core.vcxproj live in the SAME folder, so MSBuild's
+       default IntDir ($(Platform)\$(Configuration)\) resolves to one identical
+       path for both and they overwrite each other's .obj and .tlog files -
+       warning MSB8028. That is not cosmetic: a stale .obj left behind by the
+       other project can satisfy the linker for a source file this project
+       cannot actually compile, so incremental builds keep passing while the
+       code is broken (exactly how the aae_video include leak into aae_core
+       stayed hidden). $(ProjectName) gives each project its own subtree.
+       OutDir is deliberately NOT overridden - aae.exe and aae_core.lib are
+       meant to land together in the solution's x64\$(Configuration)\. -->
+  <PropertyGroup>
+    <IntDir>$(Platform)\$(Configuration)\$(ProjectName)\</IntDir>
+  </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
