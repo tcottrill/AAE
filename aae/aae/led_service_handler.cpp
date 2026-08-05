@@ -129,6 +129,12 @@ static void Win32_EnumKeyboardLedTargets()
 				{
 					if (g_kbdLedHandleCount < (int)(sizeof(g_kbdLedHandles) / sizeof(g_kbdLedHandles[0])))
 					{
+						// Log the device path: when a machine misbehaves this
+						// is what identifies WHICH keyboard-class device we
+						// are about to send indicator IOCTLs to (a keyboard
+						// encoder like an I-PAC shows its VID here, e.g.
+						// vid_d209 for Ultimarc).
+						LOG_INFO("LED service: opened target %ls", detail->DevicePath);
 						g_kbdLedHandles[g_kbdLedHandleCount++] = h;
 					}
 					else
@@ -163,7 +169,10 @@ static void Win32_EnumKeyboardLedTargets()
 			if (h != INVALID_HANDLE_VALUE)
 			{
 				if (g_kbdLedHandleCount < (int)(sizeof(g_kbdLedHandles) / sizeof(g_kbdLedHandles[0])))
+				{
+					LOG_INFO("LED service: opened target %s (fallback path)", path);
 					g_kbdLedHandles[g_kbdLedHandleCount++] = h;
+				}
 				else
 					CloseHandle(h);
 			}

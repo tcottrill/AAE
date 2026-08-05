@@ -66,6 +66,7 @@
 // comes later in this file.
 LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
+
 // -----------------------------------------------------------------------------
 // Globals
 // -----------------------------------------------------------------------------
@@ -79,6 +80,35 @@ static bool g_glContextCreated = false;
 // Initialize the audio mixer
 const int audioSampleRate = 44100;
 const int targetFPS = 60;
+
+// -----------------------------------------------------------------------------
+// Deferred fullscreen switch (startup only).
+//
+// A window that goes straight from hidden to full-screen-covering + topmost
+// has never been composed by DWM as an ordinary window. Its first present is
+// therefore also DWM's first decision about it - "fullscreen, wants the
+// display" - taken at the exact moment another full-screen app may still hold
+// scanout, from a process that does not own the foreground. On some drivers
+// that hand-off simply never happens and we render invisibly behind the
+// incumbent, foreground and z-order both correct and both irrelevant.
+//
+// So the window is shown NOT-quite-fullscreen first, which DWM has no choice
+// but to compose, presents real frames for a couple of iterations, and only
+// then switches to true fullscreen. See PreFullscreenBlackout for how that
+// pre-state is made invisible to the user.
+//
+// The delay only has to outlast a present or two; anything longer is just
+// visible pre-state. s_realWindowedRect preserves the genuine windowed
+// geometry across the switch, because ToggleBorderlessFullscreen captures
+// whatever rect it finds as the ALT+ENTER restore target - and the pre-state
+// rect must never become that.
+// -----------------------------------------------------------------------------
+static bool s_pendingFullscreenToggle = false;
+static int  s_fullscreenDelayFrames   = 0;
+static RECT s_realWindowedRect        = {};
+static bool s_haveRealWindowedRect    = false;
+
+static const int kFullscreenDelayFrames = 2;
 
 WindowSetup g_windowSetup;
 
@@ -1307,6 +1337,75 @@ void BuildUTF8Args(int& argc_out, char**& argv_out)
 }
 
 // -----------------------------------------------------------------------------
+// Win32_RaiseToTopmostForeground
+// Puts the window at the TOP of the topmost band and gives it the foreground.
+//
+// Every WindowSetup already creates the window with WS_EX_TOPMOST, but that
+// only places it IN the topmost band - it does not make it the frontmost
+// member of that band, and it does not activate it. Launching from a front-end
+// that is itself topmost therefore left AAE behind the launcher: two topmost
+// windows, and the front-end was the active one.
+//
+// Two things are needed, and neither is implied by ShowWindow():
+//
+//   1. An explicit HWND_TOPMOST insert. This asks for the top slot of the
+//      topmost band rather than merely membership of it.
+//
+//   2. Foreground activation through an input-queue attach. Windows refuses
+//      SetForegroundWindow() from a process that does not already own the
+//      foreground - exactly our case when a launcher started us and kept
+//      focus. Attaching to the foreground window's input queue for the
+//      duration of the call lifts that restriction; it is the documented
+//      workaround. Everything is undone immediately afterwards.
+//
+// ShowWindow's nCmdShow cannot be relied on here either: it comes from the
+// launching process's STARTUPINFO, and a front-end passing SW_SHOWNOACTIVATE
+// would suppress activation on its own.
+// -----------------------------------------------------------------------------
+static bool Win32_RaiseToTopmostForeground(HWND hwnd)
+{
+	if (!hwnd) return false;
+
+	SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0,
+		SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+
+	const HWND  fg      = GetForegroundWindow();
+	const DWORD fgTid   = fg ? GetWindowThreadProcessId(fg, nullptr) : 0;
+	const DWORD selfTid = GetCurrentThreadId();
+	const bool  attach  = (fgTid != 0 && fgTid != selfTid);
+
+	if (attach)
+		AttachThreadInput(fgTid, selfTid, TRUE);
+
+	BringWindowToTop(hwnd);
+	SetForegroundWindow(hwnd);
+	SetActiveWindow(hwnd);
+	SetFocus(hwnd);
+
+	if (attach)
+		AttachThreadInput(fgTid, selfTid, FALSE);
+
+	return GetForegroundWindow() == hwnd;
+}
+
+// Logs who owns the foreground after the raise, so a failure on a machine we
+// cannot see can be diagnosed from systemlog.txt alone - the log names the
+// window class and title of whatever won.
+static void Win32_LogForegroundOwner(const char* verdict)
+{
+	HWND fg = GetForegroundWindow();
+	char title[128] = "?";
+	char cls[64]    = "?";
+	if (fg)
+	{
+		GetWindowTextA(fg, title, sizeof(title));
+		GetClassNameA(fg, cls, sizeof(cls));
+	}
+	LOG_INFO("topmost raise: %s (foreground hwnd=%p class=\"%s\" title=\"%s\")",
+		verdict, (void*)fg, cls, title);
+}
+
+// -----------------------------------------------------------------------------
 // Description
 // Entry point for Win32 application with full Unicode, INI, and DPI handling
 // -----------------------------------------------------------------------------
@@ -1387,8 +1486,19 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance,
 		return false;
 	}
 
-	// Start keyboard LED service (pushes LED states to all KeyboardClass devices)
-	osd_led_service_start();
+	// Start keyboard LED service (pushes LED states to all KeyboardClass
+	// devices). Gated by [main] led_service in aae.ini: arcade keyboard
+	// encoders (Ultimarc I-PAC et al.) enumerate as keyboard-class devices,
+	// and IOCTL_KEYBOARD_SET_INDICATORS aimed at one can wedge the machine's
+	// keyboard input path system-wide - observed as err=31 on the IOCTL, a
+	// dead ALT-TAB, and only CTRL-ALT-DEL recovering. Set led_service=0 on
+	// cabinet installs with an encoder. Gating the start call is sufficient:
+	// without the service thread there is no enumeration, no cached handles,
+	// and osd_set_leds() only stores a mask it never applies.
+	if (get_config_int("main", "led_service", 1) != 0)
+		osd_led_service_start();
+	else
+		LOG_INFO("LED service disabled via aae.ini [main] led_service=0");
 
 	if (!install_joystick()) {
 		LOG_INFO("Win32 joystick initialized: %d detected", num_joysticks);
@@ -1481,28 +1591,102 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance,
 	// -------------------------------------------------------------------------
 	// Step 6: Now toggle to fullscreen if originally requested
 	// -------------------------------------------------------------------------
-	g_windowSetup.borderlessFullscreen = false;
-	if (requestedFullscreen)
-		GetSystemWindow().ToggleBorderlessFullscreen();
+	//g_windowSetup.borderlessFullscreen = false;
+//	if (requestedFullscreen) GetSystemWindow().ToggleBorderlessFullscreen();
+
+	// -------------------------------------------------------------------------
+	// PreFullscreenBlackout
+	//
+	// Steps 4/5 above have already captured the REAL windowed rect and client
+	// size from the properly-styled window, so the ALT+ENTER restore path is
+	// safe from here on. Now put the still-HIDDEN window into the state it
+	// will first be shown in:
+	//
+	//   - WS_POPUP, no WS_EX_TOPMOST. Borderless, so there is no caption or
+	//     frame to flash white - that light DWM frame is exactly what was
+	//     visible for the whole delay when the pre-state kept its border.
+	//   - Positioned over the target monitor at FULL WIDTH x (HEIGHT - 1).
+	//     One pixel short is the entire trick: it is visually indistinguishable
+	//     from fullscreen, so the user never sees the desktop, but it is not
+	//     an exact screen-sized window, so DWM must composite it rather than
+	//     considering it for a direct scanout hand-off. That is what gets the
+	//     window composed before the real switch.
+	//   - Cleared to black and presented at the new size, so the first visible
+	//     pixels are black rather than an unsized or stale buffer.
+	//
+	// ToggleBorderlessFullscreen then only has to grow it by that one pixel
+	// and add topmost, which is invisible.
+	// -------------------------------------------------------------------------
+	if (requestedFullscreen) {
+		if (GetWindowRect(g_hWnd, &s_realWindowedRect))
+			s_haveRealWindowedRect = true;
+
+		RECT mon = Win32_GetNearestMonitorRect(g_hWnd);
+		if ((mon.right <= mon.left) || (mon.bottom <= mon.top))
+			mon = Win32_GetPrimaryMonitorRect();
+
+		const int monW = mon.right - mon.left;
+		const int monH = mon.bottom - mon.top;
+
+		SetWindowLong(g_hWnd, GWL_STYLE, WS_POPUP);
+		SetWindowLong(g_hWnd, GWL_EXSTYLE, WS_EX_APPWINDOW);
+		g_win32WindowState.style   = WS_POPUP;
+		g_win32WindowState.exStyle = WS_EX_APPWINDOW;
+
+		SetWindowPos(g_hWnd, HWND_NOTOPMOST,
+			mon.left, mon.top,
+			monW, (monH > 1) ? (monH - 1) : monH,
+			SWP_FRAMECHANGED | SWP_NOACTIVATE);
+
+		// Re-present black at the pre-state size (the earlier black frame was
+		// presented at the old windowed size and no longer matches).
+		RECT pre{};
+		if (GetClientRect(g_hWnd, &pre)) {
+			g_windowSetup.clientWidth  = pre.right  - pre.left;
+			g_windowSetup.clientHeight = pre.bottom - pre.top;
+			ViewOrtho(g_windowSetup.clientWidth, g_windowSetup.clientHeight);
+		}
+		if (g_glContextCreated) {
+			glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+			glClear(GL_COLOR_BUFFER_BIT);
+			glchain_swap_buffers();
+		}
+
+		s_pendingFullscreenToggle = true;
+		s_fullscreenDelayFrames   = kFullscreenDelayFrames;
+
+		LOG_INFO("Pre-fullscreen blackout: %dx%d at (%d,%d), switching in %d frames",
+			monW, (monH > 1) ? (monH - 1) : monH, mon.left, mon.top,
+			kFullscreenDelayFrames);
+	}
 
 	// -------------------------------------------------------------------------
 	// Step 6b: NOW show the window - the first time it is ever visible.
 	//
 	// The window is created windowed on purpose (GenerateFinalWindowSetup is
 	// called with forceWindowed=true) so Steps 4/5 can capture a valid
-	// windowedRect and client size for the fullscreen restore path. It used to
-	// be SHOWN in that windowed state too, and the toggle above then resized it
-	// - so launching fullscreen flashed a bordered 4:3 window first. The client
-	// area was already painted black, but the DWM frame (title bar + border) is
-	// light in the default Windows theme, which is the "brilliant white
-	// outline" that flashed.
+	// windowedRect and client size for the fullscreen restore path.
 	//
-	// Showing it only here means the first frame the user ever sees is already
-	// borderless and full-screen. GetWindowRect/GetClientRect/SetWindowLong/
-	// SetWindowPos all work on a hidden window, so Steps 4-6 are unaffected.
+	// It is never SHOWN in that bordered windowed state. When fullscreen was
+	// requested, Step 6 has already restyled the still-hidden window to the
+	// borderless, black, screen-covering pre-state, so the first frame the
+	// user ever sees is black and frameless either way - no caption, no light
+	// DWM border, no desktop. The real fullscreen switch follows a couple of
+	// frames later and is visually a one-pixel change.
+	//
+	// GetWindowRect/GetClientRect/SetWindowLong/SetWindowPos all work on a
+	// hidden window, so Steps 4-6 are unaffected by the window being hidden.
 	// -------------------------------------------------------------------------
 	ShowWindow(g_hWnd, nCmdShow);
 	UpdateWindow(g_hWnd);
+
+	// Claim the top of the topmost band and the foreground. Without this a
+	// front-end that is itself topmost stays in front of us - see the comment
+	// on the helper. The outcome is logged so a failure on a remote machine
+	// can be read straight out of systemlog.txt.
+	Win32_LogForegroundOwner(Win32_RaiseToTopmostForeground(g_hWnd)
+		? "initial raise - foreground acquired"
+		: "initial raise REFUSED by the OS");
 
 	if (wantVulkan)
 	{
@@ -1561,9 +1745,37 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance,
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
 		}
-
+		
 		poll_joystick();
 		emulator_run();
+
+		// Deferred fullscreen switch: the window has now presented a frame or
+		// two from the composed pre-state, so DWM will hand over the display
+		// properly. See the notes on s_pendingFullscreenToggle.
+		if (s_pendingFullscreenToggle)
+		{
+			if (--s_fullscreenDelayFrames <= 0)
+			{
+				s_pendingFullscreenToggle = false;
+
+				GetSystemWindow().ToggleBorderlessFullscreen();
+
+				// ToggleBorderlessFullscreen captured the PRE-STATE rect as
+				// the ALT+ENTER restore target. Put the genuine windowed
+				// geometry back, or the first ALT+ENTER would "restore" to a
+				// borderless screen-sized window instead of a real one.
+				if (s_haveRealWindowedRect)
+				{
+					g_windowSetup.windowedRect = FromWin32Rect(s_realWindowedRect);
+					g_windowedFallbackSetup.rect = g_windowSetup.windowedRect;
+				}
+
+				Win32_LogForegroundOwner(Win32_RaiseToTopmostForeground(g_hWnd)
+					? "deferred fullscreen - foreground acquired"
+					: "deferred fullscreen - foreground REFUSED by the OS");
+			}
+		}
+
 
 		// If a game requested a switch (ESC-to-GUI or future GUI selection), do it here.
 		if (emulator_apply_pending_switch()) {
