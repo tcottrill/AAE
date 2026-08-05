@@ -211,6 +211,52 @@ int main(int argc, char** argv)
 		         g_windowSetup.windowWidth, g_windowSetup.windowHeight);
 	}
 
+	// Startup window mode, from the same [window] fullscreen key the Video menu
+	// writes on save. Applied by Create() below, which requests EWMH fullscreen
+	// only once the window exists - the ordering winmain.cpp had to learn on
+	// Windows too (b7073ae).
+	//
+	// The absence of this read is why fullscreen appeared not to SAVE on Linux.
+	// It saved correctly: ToggleBorderlessFullscreen publishes the live state to
+	// WindowSetup, and menu.cpp persists it to [window] fullscreen. Nothing ever
+	// read it back, so every session started windowed and the setting looked
+	// discarded. Windows was unaffected - winmain.cpp has had this read all along.
+	//
+	// Precedence matches winmain.cpp exactly: [window] fullscreen wins; the
+	// legacy [main] windowed is the fallback (windowed=1 meaning fullscreen=0);
+	// windowed is the safe default when neither key is present.
+	{
+		const int winFullscreen = get_config_int("window", "fullscreen", -1);
+		const int mainWindowed  = get_config_int("main",   "windowed",   -1);
+
+		if (winFullscreen != -1)
+			g_windowSetup.useFullscreen = (winFullscreen != 0);
+		else if (mainWindowed != -1)
+			g_windowSetup.useFullscreen = (mainWindowed == 0);
+		else
+			g_windowSetup.useFullscreen = false;
+
+		// The command line wins over the ini, for front-ends that launch AAE
+		// with an explicit mode. Applied AFTER the ini read and before Create(),
+		// so a switch is a one-launch override that leaves [window] fullscreen
+		// untouched - the same contract ParseCommandLineArgs gives on Windows.
+		//
+		// Only these two of the Win32 window switches are meaningful here.
+		// -clip/-noclip are deliberately inert on this platform (capture is
+		// unconditional, see the note above) and -disableNC is a Win32 style
+		// concern with no X11 counterpart. aae_emulator.cpp's own parser sees
+		// the same argv and ignores tokens it does not recognise, so the two
+		// need no coordination.
+		for (int i = 1; i < argc; ++i) {
+			if (!argv[i]) continue;
+			if      (strcmp(argv[i], "-fullscreen") == 0) g_windowSetup.useFullscreen = true;
+			else if (strcmp(argv[i], "-windowed")   == 0) g_windowSetup.useFullscreen = false;
+		}
+
+		LOG_INFO("Startup window mode: %s",
+		         g_windowSetup.useFullscreen ? "fullscreen" : "windowed");
+	}
+
 	if (!g_window.Create(g_windowSetup)) {
 		LOG_ERROR("Window creation failed - cannot continue");
 		Log::close();
