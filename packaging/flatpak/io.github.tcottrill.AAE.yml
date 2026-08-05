@@ -71,6 +71,17 @@ finish-args:
   - --filesystem=home:ro
   - --filesystem=/run/media:ro
 
+  # ~/AAE is where roms/ and artwork/ are surfaced, so unlike the two above it
+  # needs WRITE access - the launcher creates the folders and populates them
+  # with links to the shipped payload. :create makes the directory if it is
+  # not there yet, which is what turns "find the hidden data folder" into
+  # "open /home/deck/AAE".
+  #
+  # Outside the app data directory on purpose: `flatpak uninstall --delete-data`
+  # clears settings and saves for an ini format change without touching a rom
+  # collection.
+  - --filesystem=~/AAE:create
+
 modules:
   # GLU is not in the Freedesktop runtime either, and two things need it:
   # glew.h #includes <GL/glu.h> unless the consumer defines GLEW_NO_GLU, and
@@ -174,6 +185,10 @@ modules:
       - mkdir -p /app/share/aae
       - if [ -d x64/Release/shaders ]; then cp -r x64/Release/shaders /app/share/aae/;
         fi
+      # The Xbox guide lives in the repo root and has never been copied into
+      # x64/Release, so it is installed from this module rather than aae-data
+      # with the other three documents.
+      - install -Dm644 "AAE Xbox Controller Guide.txt" "/app/share/aae/AAE Xbox Controller Guide.txt"
       - install -Dm755 packaging/flatpak/aae-launcher.sh /app/bin/aae-launcher.sh
       - install -Dm644 packaging/flatpak/io.github.tcottrill.AAE.desktop
           /app/share/applications/io.github.tcottrill.AAE.desktop
@@ -214,7 +229,9 @@ modules:
           - audiotest.log
           - original docs from 2007
           - hi
-          - cfg
+          # cfg/ is NOT skipped: two files in it are shipped as defaults (see
+          # the seed step below). The other ~100 are the developer's own
+          # per-game bindings and are deliberately not installed.
           # snap/ is where the screenshot key WRITES, so it is user state in
           # exactly the way hi/ and cfg/ are - the launcher creates it writable
           # under $XDG_DATA_HOME. Shipping it also meant shipping whatever
@@ -246,5 +263,23 @@ modules:
       # default) with no shader anywhere. fast_poly is the raster workhorse;
       # if it is missing they all are.
       - test -f /app/share/aae/shaders/vk/fast_poly_vk.vert.spv
+      # Seed key bindings. inptport.cpp loads cfg/default.cfg for the global
+      # map and cfg/<game>.cfg per game, and with neither present on a first
+      # launch the GUI has no input mapping at all - the game list scrolls by
+      # itself until a key is pressed, which reads as a broken build rather
+      # than a missing file.
+      #
+      # ONLY these two. The rest of x64/Release/cfg is the developer's own
+      # per-game bindings; shipping those would silently impose one person's
+      # control layout on every install.
+      - install -Dm644 aaedata/cfg/default.cfg /app/share/aae/cfg/default.cfg
+      - install -Dm644 aaedata/cfg/gui.cfg     /app/share/aae/cfg/gui.cfg
       - install -Dm644 aaedata/aae.ini   /app/share/aae/aae.ini
       - install -Dm644 aaedata/video.ini /app/share/aae/video.ini
+      # Shipped documentation, linked beside aae.ini by the launcher so it
+      # sits with the settings it describes. "AAE Xbox Controller Guide.txt"
+      # is NOT here - it exists only in the repo root, so the aae module
+      # installs that one.
+      - install -Dm644 aaedata/CREDIT.TXT /app/share/aae/CREDIT.TXT
+      - install -Dm644 "aaedata/AAE Command Line Options.txt" "/app/share/aae/AAE Command Line Options.txt"
+      - install -Dm644 "aaedata/AAE Configuration Options.txt" "/app/share/aae/AAE Configuration Options.txt"
