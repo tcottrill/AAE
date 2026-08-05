@@ -31,15 +31,63 @@ mkdir -p "$DATA_DIR"
 # "shaders/vk/<name>.spv" with plain relative fopen, which resolves against
 # the working directory - and we cd to $DATA_DIR below - so the link is what
 # makes renderer=vulkan (the default) find its pipelines at all.
-for d in roms artwork samples snap pleiads shaders; do
+for d in pleiads shaders; do
     if [ -d "$APP_DATA/$d" ]; then
         ln -sfn "$APP_DATA/$d" "$DATA_DIR/$d"
     fi
 done
 
+# roms/, artwork/ and samples/ get the same zero-copy treatment but ONE LEVEL
+# DOWN: a real writable directory holding a symlink per shipped file, rather
+# than a symlink to the whole directory.
+#
+# The distinction is the difference between a usable install and a dead end.
+# Linking the directory itself makes it read-only, because it lands in /app -
+# so adding a rom set or an artwork pack meant rebuilding and reinstalling the
+# whole 42MB bundle. Linking the CONTENTS costs the same nothing (the payload
+# is still stored exactly once, in /app) while leaving the directory itself
+# writable, so new files can simply be dropped in beside the shipped ones:
+#
+#   ~/.var/app/io.github.tcottrill.AAE/data/aae/roms/
+#
+# That path is ordinary $HOME from the host's point of view - a file manager,
+# scp or a USB stick all reach it with no sandbox permission of any kind.
+#
+# For a collection too large to sit there, aae.ini's mame_rom_path and
+# mame_artwork_path take an absolute path instead; --filesystem in the manifest
+# is what lets the sandbox read it.
+for d in roms artwork samples; do
+    [ -d "$APP_DATA/$d" ] || continue
+    mkdir -p "$DATA_DIR/$d"
+
+    # Clear links left by a previous version of the payload before relinking.
+    # -xtype l matches only symlinks whose target is GONE, so a rom the user
+    # added themselves is a regular file and can never be caught by this;
+    # without it, a file dropped from the bundle would linger for ever as a
+    # dangling entry that the game list still offers and no game can load.
+    find "$DATA_DIR/$d" -maxdepth 1 -xtype l -delete 2>/dev/null || true
+
+    # NO -f here, and that is the whole point: plain `ln -s` refuses to replace
+    # an existing entry, so a real file the user dropped in always wins over the
+    # shipped one of the same name. That is how a better dump or a custom
+    # overlay gets substituted; relinking over it every launch would make the
+    # substitution look as though it had been ignored. The failure for
+    # already-linked files is expected every launch after the first, which is
+    # what the redirect and the `|| true` are absorbing.
+    for f in "$APP_DATA/$d"/*; do
+        [ -e "$f" ] || continue
+        ln -s "$f" "$DATA_DIR/$d/$(basename "$f")" 2>/dev/null || true
+    done
+done
+
 # Writable state: create empty, and never overwrite what is already there -
 # these hold the user's hiscores, key bindings and NVRAM.
-mkdir -p "$DATA_DIR/hi" "$DATA_DIR/cfg" "$DATA_DIR/nv"
+#
+# snap/ is in THIS list, not the symlink loop above, because it is an OUTPUT
+# directory - the screenshot key writes into it. Linking it at /app/share/aae
+# made every screenshot fail silently against the read-only sandbox, which is
+# indistinguishable from the key not being bound.
+mkdir -p "$DATA_DIR/hi" "$DATA_DIR/cfg" "$DATA_DIR/nv" "$DATA_DIR/snap"
 
 # ini/ ships defaults but per-game overrides are written into it, so it is
 # copied on first run rather than linked. -n so a re-launch never clobbers
