@@ -13,6 +13,8 @@
 #include <X11/Xresource.h>
 #include <X11/cursorfont.h>
 
+#include <dlfcn.h>       // XFixes is loaded at runtime, not linked - see Impl
+
 #include <cstdlib>
 #include <cstring>
 
@@ -41,9 +43,103 @@ struct LinuxWindow::Impl {
 	bool   fullscreen    = false;
 	bool   focused       = true;
 
+	// Frames left to re-assert hide+grab after the window becomes VIEWABLE,
+	// and whether the one-shot priming warp has been done. See the priming
+	// block in PumpEvents for why once is not enough.
+	int  cursorPrimeFrames = 0;
+	bool cursorWarped      = false;
+	bool cursorEnterSeen   = false;   // an EnterNotify has arrived at least once
+	int  focusLogCount     = 0;       // caps the FocusIn/FocusOut logging
+
+	// XFixes, loaded at runtime rather than linked.
+	//
+	// This is what actually hides the pointer under gamescope. A window cursor
+	// attribute is advice about OUR window; gamescope composites its own
+	// pointer overlay and had gone on drawing an arrow over a window that was
+	// created blank, with a blank grab cursor, and with the grab held - the log
+	// said cursorVisible=0 clipActive=1 while an arrow was plainly on screen.
+	// XFixesHideCursor is a DISPLAY-level request, which is the level the thing
+	// drawing the arrow operates at.
+	//
+	// dlopen'd because the runtime library is present everywhere that matters
+	// but the -dev package often is not, and this must not become a hard build
+	// dependency for a fallback path. Same approach the Vulkan loader uses.
+	void* xfixesLib = nullptr;
+	int  (*pQueryExtension)(Display*, int*, int*) = nullptr;
+	int  (*pQueryVersion)(Display*, int*, int*)   = nullptr;
+	void (*pHideCursor)(Display*, Window)         = nullptr;
+	void (*pShowCursor)(Display*, Window)         = nullptr;
+	bool xfixesReady  = false;
+	bool xfixesHidden = false;
+
+	// Hide/show are REFERENCE COUNTED per client by the server: N hides need N
+	// shows. The priming loop calls applyCursor every frame, so this must only
+	// act on a transition - counting up ten times and back once would leave the
+	// pointer hidden for good, including after F9.
+	void applyXfixes(bool hide) {
+		if (!xfixesReady || hide == xfixesHidden) return;
+		if (hide) pHideCursor(dpy, win);
+		else      pShowCursor(dpy, win);
+		xfixesHidden = hide;
+	}
+
+	// XTEST, also loaded at runtime: the "wiggle the mouse for them" fallback.
+	//
+	// XWarpPointer is not enough under XWayland - Wayland gives ordinary
+	// clients no way to move the pointer, so a warp is close to a no-op there
+	// and the log showed it changing nothing. XTEST is different: it injects
+	// motion through the server's input path, which is the same road real
+	// device input travels, so the compositor processes it as genuine movement
+	// and finally sends the pointer-enter that makes a cursor change legal.
+	//
+	// One pixel out and one pixel back, so the pointer ends where it started.
+	void* xtestLib = nullptr;
+	int (*pFakeRelativeMotion)(Display*, int, int, unsigned long) = nullptr;
+	bool xtestReady = false;
+
+	void wigglePointer() {
+		if (!xtestReady) return;
+		pFakeRelativeMotion(dpy, 1, 0, 0);
+		pFakeRelativeMotion(dpy, -1, 0, 0);
+		XFlush(dpy);
+	}
+
+	// The ROOT window's cursor, which is a different lever from our own
+	// window's. A window that defines no cursor of its own inherits its
+	// parent's, up to the root, so setting it there covers the case where the
+	// pointer is not being treated as "inside" our surface at all - which is
+	// exactly the state XWayland leaves us in before it grants pointer focus.
+	//
+	// MUST be restored. Unlike our own window, the root outlives this process,
+	// so a blank cursor left on it is a desktop with no pointer. Destroy()
+	// restores it, and a hard crash is the one case that would leave it set -
+	// recoverable by any app that sets its own cursor, but worth knowing.
+	Window root          = 0;
+	bool   rootCursorSet = false;
+
+	void applyRootCursor(bool hide) {
+		if (!dpy || !root || hide == rootCursorSet) return;
+		if (hide) XDefineCursor(dpy, root, blankCursor);
+		else      XUndefineCursor(dpy, root);
+		rootCursorSet = hide;
+	}
+
 	int clientW = 0;
 	int clientH = 0;
 	float dpiScale = 1.0f;
+
+	// Issues the cursor attribute UNCONDITIONALLY, unlike SetCursorVisible,
+	// which early-outs when the state already matches. The priming retry needs
+	// to re-send a request the server has already been given, so it cannot go
+	// through the state-guarded path.
+	void applyCursor() {
+		if (!dpy || !win) return;
+		if (cursorVisible) XUndefineCursor(dpy, win);
+		else               XDefineCursor(dpy, win, blankCursor);
+		applyRootCursor(!cursorVisible);
+		applyXfixes(!cursorVisible);
+		XFlush(dpy);
+	}
 };
 
 //------------------------------------------------------------------------------
@@ -129,14 +225,43 @@ bool LinuxWindow::Create(const WindowSetup& setup)
 	// to come from X11 rather than evdev precisely because X11 delivers it only
 	// when the click lands on OUR window - an evdev button would re-capture on
 	// any click anywhere on the desktop.
+	// EnterWindowMask is here for XWayland, and it is the piece that was
+	// missing. Under a Wayland compositor the pointer image belongs to the
+	// compositor, and wl_pointer.set_cursor is only legal with the serial from
+	// a wl_pointer.enter - so XDefineCursor, the CWCursor attribute below, the
+	// grab cursor and even XFixesHideCursor are ALL silently dropped until the
+	// pointer has entered our surface. EnterNotify is how we find out that the
+	// serial exists, and the handler re-sends the cursor at that instant.
+	// Without it the first legal moment came from the user physically moving
+	// the mouse, which is precisely the reported symptom.
 	swa.event_mask = StructureNotifyMask | FocusChangeMask | ExposureMask |
-	                 ButtonPressMask;
+	                 ButtonPressMask | EnterWindowMask | LeaveWindowMask;
+
+	// The blank cursor is created HERE, from the root drawable, so it can be
+	// handed to XCreateWindow as the window's own cursor attribute.
+	//
+	// This is what makes hiding immune to startup timing, and it is the third
+	// attempt at this bug. Applying it afterwards with XDefineCursor is a
+	// request the server acts on when it next evaluates the pointer over this
+	// window, and on SteamOS/gamescope that did not happen until the mouse was
+	// physically moved: nothing else here generates a pointer event, because
+	// the window selects neither EnterWindowMask nor PointerMotionMask and
+	// motion otherwise arrives only through the grab we are still trying to
+	// take. Worse, the one XDefineCursor we did issue went out while the window
+	// was still IsUnmapped, and the state guard in SetCursorVisible then
+	// suppressed every later attempt as redundant.
+	//
+	// A window CREATED with the attribute has never had any other cursor to
+	// show, so there is no event to wait for and no state to re-assert.
+	m_impl->root        = RootWindow(m_impl->dpy, m_impl->screen);
+	m_impl->blankCursor = make_blank_cursor(m_impl->dpy, m_impl->root);
+	swa.cursor          = m_impl->blankCursor;
 
 	m_impl->win = XCreateWindow(
 		m_impl->dpy, RootWindow(m_impl->dpy, m_impl->screen),
 		x, y, (unsigned)w, (unsigned)h, 0,
 		vi->depth, InputOutput, vi->visual,
-		CWBackPixel | CWBorderPixel | CWColormap | CWEventMask, &swa);
+		CWBackPixel | CWBorderPixel | CWColormap | CWEventMask | CWCursor, &swa);
 
 	XFree(vi);
 
@@ -151,6 +276,92 @@ bool LinuxWindow::Create(const WindowSetup& setup)
 	// seed from there rather than defaulting to off. linux_main.cpp calls
 	// EnableCursorClip() once the GL context exists to actually apply it.
 	m_impl->clipEnabled = setup.cursorClipEnabled;
+
+	// The window was created WITH the blank cursor, so the state has to say so.
+	// Left at its `true` default it would describe a cursor that is not on
+	// screen, and SetCursorVisible(true) - what F9 does - would early-out as
+	// "already visible" and never issue the XUndefineCursor, making the release
+	// silently do nothing.
+	m_impl->cursorVisible = false;
+
+	// What are we actually running on? Four builds were spent assuming
+	// gamescope because the symptom was reported from a Steam Machine, when the
+	// session was in fact Plasma-on-Wayland in Desktop Mode - which is a
+	// completely different cursor path. Panel geometry was the only clue, and
+	// inferring the environment from the size of a taskbar is not a diagnostic.
+	{
+		int evb = 0, erb = 0;
+		const bool xwayland = XQueryExtension(m_impl->dpy, "XWAYLAND", &evb, &erb, &erb);
+		const char* sessionType = getenv("XDG_SESSION_TYPE");
+		const char* desktop     = getenv("XDG_CURRENT_DESKTOP");
+		LOG_INFO("LinuxWindow: display server = %s, XDG_SESSION_TYPE=%s, "
+		         "XDG_CURRENT_DESKTOP=%s, WAYLAND_DISPLAY=%s",
+		         xwayland ? "XWayland (cursor is the compositor's)" : "native X11",
+		         sessionType ? sessionType : "(unset)",
+		         desktop     ? desktop     : "(unset)",
+		         getenv("WAYLAND_DISPLAY") ? getenv("WAYLAND_DISPLAY") : "(unset)");
+	}
+
+	// Bring up XFixes and hide the pointer at the DISPLAY level, before the
+	// window is ever mapped. Everything tried before this operated on our
+	// window's cursor attribute, which gamescope is free to ignore because it
+	// draws its own pointer overlay - and did, even with the grab held.
+	//
+	// Soft dependency throughout: a missing library, a missing symbol or a
+	// server without the extension all just leave xfixesReady false and fall
+	// back to the window attribute, which is correct everywhere else.
+	m_impl->xfixesLib = dlopen("libXfixes.so.3", RTLD_LAZY | RTLD_LOCAL);
+	if (!m_impl->xfixesLib)
+		m_impl->xfixesLib = dlopen("libXfixes.so", RTLD_LAZY | RTLD_LOCAL);
+
+	if (m_impl->xfixesLib) {
+		*(void**)(&m_impl->pQueryExtension) = dlsym(m_impl->xfixesLib, "XFixesQueryExtension");
+		*(void**)(&m_impl->pQueryVersion)   = dlsym(m_impl->xfixesLib, "XFixesQueryVersion");
+		*(void**)(&m_impl->pHideCursor)     = dlsym(m_impl->xfixesLib, "XFixesHideCursor");
+		*(void**)(&m_impl->pShowCursor)     = dlsym(m_impl->xfixesLib, "XFixesShowCursor");
+
+		int evBase = 0, errBase = 0, major = 0, minor = 0;
+		if (m_impl->pQueryExtension && m_impl->pQueryVersion &&
+		    m_impl->pHideCursor && m_impl->pShowCursor &&
+		    m_impl->pQueryExtension(m_impl->dpy, &evBase, &errBase)) {
+			// QueryVersion is not optional: it is what negotiates the version
+			// with the server, and HideCursor needs XFixes 4 or later.
+			m_impl->pQueryVersion(m_impl->dpy, &major, &minor);
+			if (major > 4 || (major == 4 && minor >= 0)) {
+				m_impl->xfixesReady = true;
+				LOG_INFO("LinuxWindow: XFixes %d.%d available - using display-level cursor hiding",
+				         major, minor);
+			} else {
+				LOG_INFO("LinuxWindow: XFixes %d.%d too old for HideCursor (need 4) - "
+				         "falling back to the window cursor attribute", major, minor);
+			}
+		} else {
+			LOG_INFO("LinuxWindow: XFixes present but unusable - "
+			         "falling back to the window cursor attribute");
+		}
+	} else {
+		LOG_INFO("LinuxWindow: libXfixes not found - "
+		         "falling back to the window cursor attribute");
+	}
+
+	// XTEST, for the wiggle fallback in PumpEvents. Soft like XFixes: absent
+	// library or symbol simply leaves xtestReady false.
+	m_impl->xtestLib = dlopen("libXtst.so.6", RTLD_LAZY | RTLD_LOCAL);
+	if (!m_impl->xtestLib)
+		m_impl->xtestLib = dlopen("libXtst.so", RTLD_LAZY | RTLD_LOCAL);
+	if (m_impl->xtestLib) {
+		*(void**)(&m_impl->pFakeRelativeMotion) =
+			dlsym(m_impl->xtestLib, "XTestFakeRelativeMotionEvent");
+		m_impl->xtestReady = (m_impl->pFakeRelativeMotion != nullptr);
+	}
+	LOG_INFO("LinuxWindow: XTEST pointer nudge %s",
+	         m_impl->xtestReady ? "available" : "NOT available");
+
+	// The window was born blank; make the display-level state agree right now,
+	// before the map, rather than waiting for a frame that will not run until
+	// the whole emulator has finished initialising.
+	m_impl->applyXfixes(true);
+
 	UpdateTitle();
 
 	m_impl->wmDeleteWindow = XInternAtom(m_impl->dpy, "WM_DELETE_WINDOW", False);
@@ -158,8 +369,6 @@ bool LinuxWindow::Create(const WindowSetup& setup)
 
 	m_impl->netWmState     = XInternAtom(m_impl->dpy, "_NET_WM_STATE", False);
 	m_impl->netWmStateFull = XInternAtom(m_impl->dpy, "_NET_WM_STATE_FULLSCREEN", False);
-
-	m_impl->blankCursor = make_blank_cursor(m_impl->dpy, m_impl->win);
 
 	XMapWindow(m_impl->dpy, m_impl->win);
 	// XSync, not XFlush: XMapWindow is asynchronous, and everything after this
@@ -220,6 +429,13 @@ bool LinuxWindow::Create(const WindowSetup& setup)
 	if (setup.useFullscreen || setup.borderlessFullscreen)
 		ToggleBorderlessFullscreen();
 
+	// Set AFTER the fullscreen switch above, so the priming frames span the
+	// window settling into its final size rather than being spent on the
+	// windowed one it briefly was. These are VIEWABLE frames - PumpEvents does
+	// not start counting until the server says the window is on screen, so the
+	// budget cannot be burnt through while it is still unmapped.
+	m_impl->cursorPrimeFrames = 10;
+
 	return true;
 }
 
@@ -229,10 +445,22 @@ void LinuxWindow::Destroy()
 
 	if (m_impl->dpy) {
 		if (m_impl->clipActive)  XUngrabPointer(m_impl->dpy, CurrentTime);
+		// Balance the XFixes hide before the window goes away. The server drops
+		// it when the client disconnects anyway, but not doing it leaves the
+		// desktop without a pointer for however long teardown takes.
+		m_impl->applyXfixes(false);
+		// Before the cursor is freed, and before the display closes: hand the
+		// desktop its pointer back. Leaving a blank cursor on the root is not
+		// our window's problem to inherit - it is everyone's.
+		m_impl->applyRootCursor(false);
+		XFlush(m_impl->dpy);
 		if (m_impl->blankCursor) XFreeCursor(m_impl->dpy, m_impl->blankCursor);
 		if (m_impl->win)         XDestroyWindow(m_impl->dpy, m_impl->win);
 		XCloseDisplay(m_impl->dpy);
 	}
+
+	if (m_impl->xfixesLib) dlclose(m_impl->xfixesLib);
+	if (m_impl->xtestLib)  dlclose(m_impl->xtestLib);
 
 	delete m_impl;
 	m_impl = nullptr;
@@ -298,8 +526,31 @@ bool LinuxWindow::PumpEvents()
 			break;
 		}
 
+		case EnterNotify:
+			// The first moment a Wayland compositor will accept a cursor
+			// change for this surface. Re-send unconditionally - going through
+			// SetCursorVisible would early-out, because the state has said
+			// "hidden" since before the window was even mapped.
+			if (!m_impl->cursorEnterSeen) {
+				m_impl->cursorEnterSeen = true;
+				LOG_INFO("LinuxWindow: pointer entered - re-asserting cursor "
+				         "(cursorVisible=%d)", m_impl->cursorVisible ? 1 : 0);
+			}
+			m_impl->applyCursor();
+			break;
+
 		case FocusIn:
 			m_impl->focused = true;
+			// Logged for the first few only. A compositor that withholds focus
+			// until the pointer moves would leave `want` false in
+			// ForceCursorClipUpdate, which shows the cursor and takes no grab -
+			// indistinguishable from the priming having failed, so the log has
+			// to be able to tell the two apart.
+			if (m_impl->focusLogCount < 4) {
+				++m_impl->focusLogCount;
+				LOG_INFO("LinuxWindow: FocusIn (clipEnabled=%d)",
+				         m_impl->clipEnabled ? 1 : 0);
+			}
 			// Re-apply the confine, and the cursor visibility that goes with it.
 			// Unconditional: when capture is OFF this is what puts the pointer
 			// back on screen, which is just as much part of "focus regained".
@@ -309,6 +560,10 @@ bool LinuxWindow::PumpEvents()
 
 		case FocusOut:
 			m_impl->focused = false;
+			if (m_impl->focusLogCount < 4) {
+				++m_impl->focusLogCount;
+				LOG_INFO("LinuxWindow: FocusOut (capture released)");
+			}
 			// Pause input, as winmain.cpp does on WM_ACTIVATEAPP.
 			//
 			// This matters MORE here than it does on Windows. evdev is a
@@ -374,6 +629,101 @@ bool LinuxWindow::PumpEvents()
 	if (m_impl->clipPending)
 		ForceCursorClipUpdate();
 
+	// Capture priming: warp the pointer into the window, then re-assert the
+	// whole hide-and-confine for a few VIEWABLE frames.
+	//
+	// A first attempt at this re-sent only the cursor attribute, for five
+	// frames counted from the end of Create(). It changed nothing on SteamOS,
+	// for two separate reasons:
+	//
+	// 1. Those frames were spent while the window was still IsUnmapped - the
+	//    very asynchrony documented at the grab retry above. A cursor attribute
+	//    set then has no window on screen to apply to, so all five were wasted
+	//    before anything was visible. The count is now gated on IsViewable.
+	//
+	// 2. Re-sending the attribute could never restore CAPTURE, only hiding.
+	//    Capture is the grab. Priming now runs the whole
+	//    ForceCursorClipUpdate, so hide and grab are re-tried together.
+	//
+	// The warp is the actual mechanism, and it is what the user was doing by
+	// hand. The window selects neither EnterWindowMask nor PointerMotionMask
+	// (see the event_mask in Create) - pointer motion reaches us only through
+	// the grab we are trying to take. So under gamescope there was no pointer
+	// event for the compositor to act on and no way for us to provoke one, and
+	// everything stayed stuck until the mouse was physically moved.
+	// XWarpPointer generates that event ourselves, and lands the pointer inside
+	// our window, which is also the only place the cursor attribute applies.
+	//
+	// Warping is safe here: capture at startup is unconditional by design, so
+	// the pointer is about to be confined to this window regardless, and games
+	// read mouse deltas rather than absolute position.
+	if (m_impl->cursorPrimeFrames > 0) {
+		XWindowAttributes wa{};
+		if (XGetWindowAttributes(m_impl->dpy, m_impl->win, &wa) &&
+		    wa.map_state == IsViewable) {
+
+			if (!m_impl->cursorWarped) {
+				m_impl->cursorWarped = true;
+
+				// If the compositor has not handed us focus by the time the
+				// window is on screen, ask for it once. ForceCursorClipUpdate
+				// gates BOTH hiding and the grab on `focused`, so an unfocused
+				// window spends every priming frame deciding it does not want
+				// the pointer - and the FocusOut logged during startup shows
+				// this is not hypothetical. Safe here because we are inside the
+				// IsViewable check; XSetInputFocus on an unviewable window is a
+				// BadMatch.
+				if (!m_impl->focused) {
+					XSetInputFocus(m_impl->dpy, m_impl->win, RevertToParent, CurrentTime);
+					LOG_INFO("LinuxWindow: unfocused at priming - requested input focus");
+				}
+
+				XWarpPointer(m_impl->dpy, None, m_impl->win,
+				             0, 0, 0, 0, wa.width / 2, wa.height / 2);
+				XFlush(m_impl->dpy);
+
+				// And a real one-pixel nudge through XTEST. The warp above is
+				// the native-X11 answer and is ignored under XWayland; this is
+				// the same idea expressed as INPUT rather than as a position
+				// change, which is the only version a Wayland compositor acts
+				// on. Harmless where the warp already worked - the pointer
+				// ends exactly where it started.
+				m_impl->wigglePointer();
+				LOG_INFO("LinuxWindow: primed capture - pointer warped to %d,%d "
+				         "(clipEnabled=%d focused=%d)",
+				         wa.width / 2, wa.height / 2,
+				         m_impl->clipEnabled ? 1 : 0, m_impl->focused ? 1 : 0);
+			}
+
+			--m_impl->cursorPrimeFrames;
+			ForceCursorClipUpdate();
+
+			// And re-send the attribute UNCONDITIONALLY. ForceCursorClipUpdate
+			// goes through SetCursorVisible, which early-outs when the state
+			// already matches - and it always does by this point, because the
+			// hide was recorded back when the window was still unmapped. That
+			// guard silently swallowed every priming attempt in the previous
+			// build: the log showed "cursorVisible=0 clipActive=1" while an
+			// arrow was still on screen, because no XDefineCursor had been sent
+			// since the window became viewable.
+			m_impl->applyCursor();
+
+			// Compositor still has not sent a pointer-enter with two frames of
+			// priming left? Nudge again. Under XWayland the enter is the only
+			// thing that makes a cursor change legal, and one nudge during the
+			// window's first viewable frame can land before the compositor is
+			// ready to act on it.
+			if (m_impl->cursorPrimeFrames <= 2 && !m_impl->cursorEnterSeen)
+				m_impl->wigglePointer();
+
+			if (m_impl->cursorPrimeFrames == 0)
+				LOG_INFO("LinuxWindow: priming done - cursorVisible=%d clipActive=%d "
+				         "enterSeen=%d",
+				         m_impl->cursorVisible ? 1 : 0, m_impl->clipActive ? 1 : 0,
+				         m_impl->cursorEnterSeen ? 1 : 0);
+		}
+	}
+
 	return keepRunning;
 }
 
@@ -426,11 +776,8 @@ void LinuxWindow::SetCursorVisible(bool visible)
 	if (!m_impl || !m_impl->dpy) return;
 	if (visible == m_impl->cursorVisible) return;
 
-	if (visible) XUndefineCursor(m_impl->dpy, m_impl->win);
-	else         XDefineCursor(m_impl->dpy, m_impl->win, m_impl->blankCursor);
-
-	XFlush(m_impl->dpy);
 	m_impl->cursorVisible = visible;
+	m_impl->applyCursor();
 }
 
 void LinuxWindow::UpdateTitle()
