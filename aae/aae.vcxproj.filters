@@ -396,11 +396,11 @@
     <ClInclude Include="aae\led_service_handler.h">
       <Filter>Source Files\aae</Filter>
     </ClInclude>
-    <ClInclude Include="system\audio\audio_backend.h">
-      <Filter>Source Files\system\audio</Filter>
-    </ClInclude>
     <ClInclude Include="system\util\sys_timer.h">
       <Filter>Source Files\system\util</Filter>
+    </ClInclude>
+    <ClInclude Include="system\audio\audio_backend.h">
+      <Filter>Source Files\system\audio</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
