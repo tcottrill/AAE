@@ -373,8 +373,13 @@ int make_single_bitmap(rtex_t* texture, const char* filename, const char* archna
 		if (root.empty() || !child || !child[0])
 			return std::string();
 		std::string p = root;
+		// Forward slash: accepted by every Windows file API and the only
+		// separator Linux takes. A hardcoded backslash here built
+		// "artwork\bzone.zip" as a single Linux FILENAME, so file_exists() said
+		// no and mame_artwork_path silently fell through to the default folder
+		// - the same failure already fixed in mame_layout.cpp's ensureTrailingSep.
 		if (p.back() != '\\' && p.back() != '/')
-			p.push_back('\\');
+			p.push_back('/');
 		p.append(child);
 		return p;
 		};

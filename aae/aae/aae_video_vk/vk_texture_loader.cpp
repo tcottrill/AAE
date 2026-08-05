@@ -160,8 +160,12 @@ namespace
             if (root.empty() || !child || !child[0])
                 return std::string();
             std::string p = root;
+            // Forward slash, not backslash - see the same lambda in
+            // texture_handler.cpp. This is the VULKAN copy, and vulkan is the
+            // default renderer, so the backslash broke mame_artwork_path on
+            // Linux for the path most users are actually on.
             if (p.back() != '\\' && p.back() != '/')
-                p.push_back('\\');
+                p.push_back('/');
             p.append(child);
             return p;
         };
