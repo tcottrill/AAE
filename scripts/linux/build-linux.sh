@@ -64,12 +64,21 @@ command -v cmake >/dev/null && ok "cmake $(cmake --version | head -1 | cut -d' '
 # --- Link-time dependencies. All of these are needed even for a Vulkan-only
 # --- run: the GL chain is compiled into the binary regardless, it is simply
 # --- never called when renderer=vulkan.
-check_lib() { # <soname-fragment> <package-var> <label>
-    if ls /usr/lib/*/lib$1.so /usr/lib/lib$1.so >/dev/null 2>&1; then
-        ok "lib$1 dev present"
-    else
-        bad "lib$1 dev missing: $PM $2"
-    fi
+# Tested one candidate at a time, NOT as `ls <glob> <literal>`. ls exits
+# non-zero when ANY operand is missing, so passing it both the multiarch path
+# and the flat /usr/lib one made the check fail whenever the library was in
+# exactly the place Debian and Ubuntu actually put it - reporting every dev
+# package as missing on a machine where all of them were installed, and
+# blocking the native build outright.
+check_lib() { # <soname-fragment> <package-var>
+    for p in /usr/lib/*/lib$1.so /usr/lib/lib$1.so /usr/lib64/lib$1.so; do
+        # An unmatched glob stays literal here, and -e is false for it.
+        if [ -e "$p" ]; then
+            ok "lib$1 dev present"
+            return
+        fi
+    done
+    bad "lib$1 dev missing: $PM $2"
 }
 check_lib GL    "$P_GL"
 check_lib GLEW  "$P_GLEW"
