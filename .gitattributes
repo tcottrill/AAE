@@ -9,3 +9,17 @@
 # MSBuild and Visual Studio too, and keeps diffs stable across the two OSes.
 CMakeLists.txt text eol=lf
 *.cmake text eol=lf
+
+# Freedesktop metadata, for the same reason as the shell scripts: the objects
+# are already LF, but checkout on this box hands WSL a CRLF copy. Both
+# desktop-file-validate and appstreamcli reject carriage returns outright
+# ("file contains at least one line ending with a carriage return"), and
+# flatpak-builder downgrades that to a WARNING and keeps going - so the bundle
+# builds, exports and installs while carrying a .desktop the target's desktop
+# environment may decline to parse. The symptom is no menu entry and no Steam
+# library entry, with nothing in the build output that reads as a failure.
+*.desktop text eol=lf
+*.metainfo.xml text eol=lf
+
+# The flatpak manifest, read by flatpak-builder off /mnt/c.
+*.yml text eol=lf
