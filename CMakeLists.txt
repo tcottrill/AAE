@@ -93,6 +93,7 @@ set(AAE_CORE_SOURCES
     aae/aae/cpu_code/timer.cpp
     aae/aae/cpu_code/z80fmly.cpp
     aae/aae/drivers/asteroid.cpp
+    aae/aae/drivers/astrocade.cpp
     aae/aae/drivers/aztarac.cpp
     aae/aae/drivers/bosco.cpp
     aae/aae/drivers/bwidow.cpp
@@ -114,6 +115,7 @@ set(AAE_CORE_SOURCES
     aae/aae/drivers/jrpacman.cpp
     aae/aae/drivers/llander.cpp
     aae/aae/drivers/mappy.cpp
+    aae/aae/drivers/mhavoc.cpp
     aae/aae/drivers/milliped.cpp
     aae/aae/drivers/missile.cpp
     aae/aae/drivers/omegrace.cpp
@@ -122,9 +124,12 @@ set(AAE_CORE_SOURCES
     aae/aae/drivers/quantum.cpp
     aae/aae/drivers/rallyx.cpp
     aae/aae/drivers/segag80.cpp
+    aae/aae/drivers/starwars.cpp
     aae/aae/drivers/superpac.cpp
+    aae/aae/drivers/tempest.cpp
     aae/aae/drivers/vertigo.cpp
     aae/aae/drivers/vicdual.cpp
+    aae/aae/drivers/warlord.cpp
     aae/aae/drivers/xevious.cpp
     aae/aae/drivers/yiear.cpp
     aae/aae/driver_registry.cpp
@@ -145,6 +150,9 @@ set(AAE_CORE_SOURCES
     aae/aae/sndhrdwr/aae_pokey.cpp
     aae/aae/sndhrdwr/astrocade_sound.cpp
     aae/aae/sndhrdwr/ay8910.cpp
+    aae/aae/sndhrdwr/galsnd_stream.cpp
+    aae/aae/sndhrdwr/namco.cpp
+    aae/aae/sndhrdwr/segag80snd.cpp
     aae/aae/sndhrdwr/cinematronics_sound.cpp
     aae/aae/sndhrdwr/dac.cpp
     aae/aae/sndhrdwr/exidy440_sound.cpp
@@ -171,8 +179,8 @@ set(AAE_CORE_SOURCES
     aae/aae/vidhrdwr/xevious_video.cpp
 )
 list(LENGTH AAE_CORE_SOURCES _aae_core_count)
-if(NOT _aae_core_count EQUAL 88)
-    message(FATAL_ERROR "aae_core source list has ${_aae_core_count} entries, expected 88 - it has drifted from aae/aae_core.vcxproj")
+if(NOT _aae_core_count EQUAL 97)
+    message(FATAL_ERROR "aae_core source list has ${_aae_core_count} entries, expected 97 - it has drifted from aae/aae_core.vcxproj")
 endif()
 
 # -----------------------------------------------------------------------------
@@ -233,20 +241,12 @@ set(AAE_COMMON_SOURCES
     aae/aae/aae_video_vk/vulkan_renderer.cpp
     aae/aae/acommon.cpp
     aae/aae/config.cpp
-    aae/aae/drivers/astrocade.cpp
-    aae/aae/drivers/mhavoc.cpp
-    aae/aae/drivers/starwars.cpp
-    aae/aae/drivers/tempest.cpp
-    aae/aae/drivers/warlord.cpp
     aae/aae/fileio/mame_fileio.cpp
     aae/aae/fileio/texture_handler.cpp
     aae/aae/gui/driver_gui.cpp
     aae/aae/led_service_handler.cpp
     aae/aae/menu.cpp
     aae/aae/os_basic.cpp
-    aae/aae/sndhrdwr/galsnd_stream.cpp
-    aae/aae/sndhrdwr/namco.cpp
-    aae/aae/sndhrdwr/segag80snd.cpp
     aae/aae/vidhrdwr/emu_vector_draw.cpp
     aae/aae/vidhrdwr/fast_poly.cpp
     aae/aae/vidhrdwr/osd_video.cpp
@@ -429,8 +429,8 @@ endif()
 list(LENGTH AAE_COMMON_SOURCES _aae_common_count)
 list(LENGTH AAE_PLATFORM_SOURCES _aae_platform_count)
 math(EXPR _aae_exe_count "${_aae_common_count} + ${_aae_platform_count}")
-if(WIN32 AND NOT _aae_exe_count EQUAL 56)
-    message(FATAL_ERROR "aae executable source count is ${_aae_exe_count} (common=${_aae_common_count} + platform=${_aae_platform_count}), expected 56 on Windows - it has drifted from aae/aae.vcxproj (ccpu.cpp moved to aae_core - see the comment above AAE_CORE_SOURCES; raster_emit.cpp added in Phase 4a Plan 3 Task 1, fast_poly_vk.cpp in Task 2; render_target_vk.cpp + screen_quad_vk.cpp added in Plan 4 Task 2; vector_draw_vk.cpp added in Plan 5 Task 1; vk_texture_loader.cpp added in Plan 6 Task 1)")
+if(WIN32 AND NOT _aae_exe_count EQUAL 54)
+    message(FATAL_ERROR "aae executable source count is ${_aae_exe_count} (common=${_aae_common_count} + platform=${_aae_platform_count}), expected 54 on Windows - it has drifted from aae/aae.vcxproj's <ClCompile> list. Anything that moves between aae.vcxproj and aae_core.vcxproj must move between AAE_COMMON_SOURCES and AAE_CORE_SOURCES here too.")
 endif()
 
 # =============================================================================
