@@ -13,7 +13,10 @@
 // osd_set_leds() takes. Nothing about it is platform-specific, so it lives
 // OUTSIDE the #ifdef: it used to exist twice -- a real copy in the Win32
 // branch and a do-nothing copy in the other -- which meant a non-Windows build
-// discarded LED state before the osd_ layer was ever reached.
+// discarded LED state before the osd_ layer was ever reached. Nothing
+// observable changes today, because the non-Windows osd_set_leds() below is
+// itself a no-op; this matters once the Linux osd_ layer is real, and it means
+// only that layer has to be written rather than this bookkeeping as well.
 //
 // LED mapping: 0 -> NumLock, 1 -> CapsLock, 2 -> ScrollLock.
 // ---------------------------------------------------------------------------
@@ -31,8 +34,7 @@ static int led_mask()
 }
 
 // which: 0..2 as above. Any other index is ignored -- omegrace.cpp asks for
-// index 3, which has no keyboard indicator to map onto. Pre-existing on both
-// platforms.
+// index 3, which has no keyboard indicator to map onto.
 void set_led_status(int which, int on)
 {
 	const int v = (on != 0) ? 1 : 0;
