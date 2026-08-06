@@ -673,3 +673,24 @@ int RawInput_MouseSeenInput(int index)
 	if (index < 0 || index >= s_numMice) return 0;
 	return s_mice[index].seen ? 1 : 0;
 }
+
+//==============================================================================
+// Keyboard LEDs -- the osdepend.h LED contract.
+//
+// Declared locally rather than by including osdepend.h, which would drag the
+// whole emulator surface into the input backend; linux_main.cpp forward-
+// declares osd_led_service_stop the same way.
+//
+// Stubs for now: a later task fills these in. They live here rather than in
+// led_service_handler.cpp because this file owns the open device fds the real
+// implementation needs.
+//==============================================================================
+void osd_led_service_start();
+void osd_led_service_stop();
+void osd_set_leds(int state);
+int  osd_get_leds();
+
+void osd_led_service_start() {}
+void osd_led_service_stop()  {}
+void osd_set_leds(int)       {}
+int  osd_get_leds()          { return 0; }

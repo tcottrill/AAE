@@ -65,27 +65,10 @@ void set_led_status_all(int led0, int led1, int led2)
 	osd_set_leds(led_mask());
 }
 
-#ifndef _WIN32
-// -----------------------------------------------------------------------------
-// The osd_ LED layer is Windows-only in AAE.
-//
-// The Win32 implementation below drives the keyboard's Num/Caps/Scroll LEDs
-// through IOCTL_KEYBOARD_SET_INDICATORS (ntddkbd.h) over a SetupAPI device
-// handle. Linux exposes the same LEDs through evdev EV_LED writes, which is a
-// completely different mechanism and belongs with the evdev backend rather
-// than bolted onto this file - so it is scheduled with the rest of evdev
-// rather than half-done here.
-//
-// These stubs keep the osd_ half of the exported surface intact so nothing else
-// needs guarding. The set_led_status bookkeeping above is shared and real on
-// every platform; only the delivery of the resulting mask is stubbed here.
-// -----------------------------------------------------------------------------
-void osd_led_service_start()           {}
-void osd_led_service_stop()            {}
-void osd_set_leds(int)                 {}
-int  osd_get_leds()                    { return 0; }
+// The non-Windows osd_led_* implementations live in the evdev backend
+// (aae/system/input/linux/evdev_input.cpp), where the open device fds are.
 
-#else   // ================================================ Win32 implementation
+#ifdef _WIN32   // ========================================= Win32 implementation
 // This header provides IOCTL_KEYBOARD_SET_INDICATORS and KEYBOARD_INDICATOR_PARAMETERS.
 #include <ntddkbd.h>
 #include <setupapi.h>
