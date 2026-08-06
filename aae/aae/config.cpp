@@ -243,7 +243,20 @@ void setup_config() {
 
     // Mono monitor CRT effect (B/W raster games). Defaults are the accepted
     // PET emulator look; tint default is P4 white for arcade monitors.
+    //
+    // Whether it is ON by default is PER-PLATFORM, the direct sibling of
+    // raster_effect above and for the same reason: the mono pass is multi-tap
+    // (separable blur plus a halation gather at radius 4), and on the Pi 5's
+    // v3d GPU that costs more than these games can spare. Desktop and SteamOS
+    // keep it; the only aarch64 target starts without it.
+    //
+    // Default only - an ini-set value wins either way, so MONO EFFECT in the
+    // MONO MONITOR SETUP menu turns it back on and the choice persists.
+#if defined(__linux__) && defined(__aarch64__)
+    config.mono_enable          = get_config_int  ("monitormono", "mono_enable",          0);
+#else
     config.mono_enable          = get_config_int  ("monitormono", "mono_enable",          1);
+#endif
     config.mono_blur_h          = get_config_float("monitormono", "mono_blur_h",          0.8f);
     config.mono_blur_v          = get_config_float("monitormono", "mono_blur_v",          0.35f);
     config.mono_halation        = get_config_float("monitormono", "mono_halation",        0.15f);
