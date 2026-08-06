@@ -77,6 +77,17 @@ public:
 	bool SetRumble(float strong, float weak);
 	void StopRumble();
 
+	// Keyboard indicator LEDs. AAE drives these as stand-ins for a cabinet's
+	// start-button lamps. Same two-causes-one-symptom split as rumble above:
+	// false either because the device has no LED bits or because the node
+	// could only be opened read-only, and Classify() logs those apart.
+	//
+	// The mask is AAE's own, NOT the kernel's LED_* numbering:
+	// bit0 = NumLock, bit1 = CapsLock, bit2 = ScrollLock.
+	bool SupportsLeds() const { return m_hasLeds && m_writable; }
+	bool SetLeds(int mask);
+	int  GetLeds() const;
+
 private:
 	void Classify();
 
@@ -89,6 +100,7 @@ private:
 	bool        m_seenInput    = false;
 	bool        m_writable     = false;
 	bool        m_hasRumble    = false;
+	bool        m_hasLeds      = false;
 	int         m_ffEffectId   = -1;   // -1 = nothing uploaded yet
 };
 

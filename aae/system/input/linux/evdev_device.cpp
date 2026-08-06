@@ -155,6 +155,7 @@ void EvdevDevice::Close()
 	m_kind      = EvdevKind::Unknown;
 	m_writable  = false;
 	m_hasRumble = false;
+	m_hasLeds   = false;
 	m_ffEffectId = -1;
 }
 
@@ -182,19 +183,29 @@ void EvdevDevice::Classify()
 	unsigned long relBits[BitsToLongs(REL_MAX + 1)] = {0};
 	unsigned long absBits[BitsToLongs(ABS_MAX + 1)] = {0};
 	unsigned long ffBits [BitsToLongs(FF_MAX  + 1)] = {0};
+	unsigned long ledBits[BitsToLongs(LED_MAX + 1)] = {0};
 
 	ioctl(m_fd, EVIOCGBIT(0,      sizeof(evBits)),  evBits);
 	const bool hasEvKey = TestBit(evBits, EV_KEY);
 	const bool hasEvRel = TestBit(evBits, EV_REL);
 	const bool hasEvAbs = TestBit(evBits, EV_ABS);
 	const bool hasEvFF  = TestBit(evBits, EV_FF);
+	const bool hasEvLed = TestBit(evBits, EV_LED);
 
 	if (hasEvKey) ioctl(m_fd, EVIOCGBIT(EV_KEY, sizeof(keyBits)), keyBits);
 	if (hasEvRel) ioctl(m_fd, EVIOCGBIT(EV_REL, sizeof(relBits)), relBits);
 	if (hasEvAbs) ioctl(m_fd, EVIOCGBIT(EV_ABS, sizeof(absBits)), absBits);
 	if (hasEvFF)  ioctl(m_fd, EVIOCGBIT(EV_FF,  sizeof(ffBits)),  ffBits);
+	if (hasEvLed) ioctl(m_fd, EVIOCGBIT(EV_LED, sizeof(ledBits)), ledBits);
 
 	m_hasRumble = hasEvFF && TestBit(ffBits, FF_RUMBLE);
+
+	// Test the three indicators AAE actually drives rather than the EV_LED type
+	// bit alone: EV_LED also covers things like LED_MUTE and LED_KANA, so a
+	// device can report EV_LED and have nothing we can light.
+	m_hasLeds = hasEvLed && (TestBit(ledBits, LED_NUML)  ||
+	                         TestBit(ledBits, LED_CAPSL) ||
+	                         TestBit(ledBits, LED_SCROLLL));
 
 	const bool padButtons = hasEvKey &&
 		(TestBit(keyBits, BTN_GAMEPAD) ||   // == BTN_SOUTH / BTN_A
@@ -218,10 +229,10 @@ void EvdevDevice::Classify()
 		m_kind = EvdevKind::Unknown;
 
 	LOG_INFO("evdev: %s '%s' -> %s (letters=%d rel=%d abs=%d ff_rumble=%d "
-	         "writable=%d identity=%s%s)",
+	         "leds=%d writable=%d identity=%s%s)",
 	         m_devNode.c_str(), m_name.c_str(), EvdevKindName(m_kind),
 	         letters, mouseAxes ? 1 : 0, padAxes ? 1 : 0, m_hasRumble ? 1 : 0,
-	         m_writable ? 1 : 0, m_identity.c_str(),
+	         m_hasLeds ? 1 : 0, m_writable ? 1 : 0, m_identity.c_str(),
 	         m_weakIdentity ? " WEAK" : "");
 
 	if (m_weakIdentity && m_kind != EvdevKind::Unknown) {
@@ -233,6 +244,11 @@ void EvdevDevice::Classify()
 		LOG_WARN("evdev: '%s' supports rumble but opened read-only, so it cannot "
 		         "be driven - check write permission on %s",
 		         m_name.c_str(), m_devNode.c_str());
+	}
+	if (m_hasLeds && !m_writable) {
+		LOG_WARN("evdev: '%s' has keyboard LEDs but opened read-only, so game "
+		         "lamps cannot be driven - add your user to the 'input' group, "
+		         "or set a udev rule for %s", m_name.c_str(), m_devNode.c_str());
 	}
 }
 
@@ -348,6 +364,76 @@ void EvdevDevice::StopRumble()
 	// another running client then has one fewer slot.
 	(void)ioctl(m_fd, EVIOCRMFF, m_ffEffectId);
 	m_ffEffectId = -1;
+}
+
+//------------------------------------------------------------------------------
+// AAE's LED mask (bit0 Num, bit1 Caps, bit2 Scroll) against the kernel's codes.
+// Spelled out rather than relying on LED_NUML/CAPSL/SCROLLL happening to be
+// 0, 1 and 2 - they are, but nothing guarantees it and the bug would be silent.
+//------------------------------------------------------------------------------
+namespace {
+const struct { int bit; uint16_t code; } kLedMap[] = {
+	{ 1 << 0, LED_NUML    },
+	{ 1 << 1, LED_CAPSL   },
+	{ 1 << 2, LED_SCROLLL },
+};
+} // namespace
+
+//------------------------------------------------------------------------------
+// Write all three indicators in one go.
+//
+// Every indicator is written on every call, including the ones that are off:
+// it is the only way to turn one back OFF, and something else may have changed
+// any of them since the last call - these devices are not grabbed, so libinput
+// drives the same LEDs.
+//
+// Writes that do not change anything cost nothing observable. The kernel drops
+// an EV_LED write whose value already matches the current state (see
+// input_handle_event), so re-asserting an unchanged mask produces no event and
+// wakes no other client.
+//------------------------------------------------------------------------------
+bool EvdevDevice::SetLeds(int mask)
+{
+	if (!SupportsLeds()) return false;
+
+	input_event evs[std::size(kLedMap) + 1] {};
+	size_t n = 0;
+	for (const auto& m : kLedMap) {
+		evs[n].type  = EV_LED;
+		evs[n].code  = m.code;
+		evs[n].value = (mask & m.bit) ? 1 : 0;
+		n++;
+	}
+	evs[n].type  = EV_SYN;
+	evs[n].code  = SYN_REPORT;
+	evs[n].value = 0;
+	n++;
+
+	const ssize_t want = (ssize_t)(sizeof(input_event) * n);
+	if (write(m_fd, evs, sizeof(input_event) * n) != want) {
+		LOG_WARN("evdev: writing LEDs to '%s' failed: %s",
+		         m_name.c_str(), strerror(errno));
+		return false;
+	}
+	return true;
+}
+
+//------------------------------------------------------------------------------
+// Current indicator state as an AAE mask. Used once per run, to snapshot what
+// the desktop had set before AAE starts driving the LEDs, so quitting can put
+// it back.
+//------------------------------------------------------------------------------
+int EvdevDevice::GetLeds() const
+{
+	if (m_fd < 0) return 0;
+
+	unsigned long ledBits[BitsToLongs(LED_MAX + 1)] = {0};
+	if (ioctl(m_fd, EVIOCGLED(sizeof(ledBits)), ledBits) < 0) return 0;
+
+	int mask = 0;
+	for (const auto& m : kLedMap)
+		if (TestBit(ledBits, m.code)) mask |= m.bit;
+	return mask;
 }
 
 //------------------------------------------------------------------------------
