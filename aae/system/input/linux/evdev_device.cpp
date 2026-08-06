@@ -76,6 +76,14 @@ EvdevDevice& EvdevDevice::operator=(EvdevDevice&& other) noexcept
 		m_seenInput    = other.m_seenInput;
 		m_writable     = other.m_writable;
 		m_hasRumble    = other.m_hasRumble;
+		// Forgetting a field here is silent and expensive: m_hasLeds was
+		// missed when LEDs were added, so the push_back(std::move(...)) in
+		// ScanDevices stripped the flag from every device entering the table.
+		// Classify() logged leds=1 on the temporary, SupportsLeds() was false
+		// on the stored copy, and the LED service found zero targets on a
+		// machine with two LED keyboards. Only real hardware could show it -
+		// the WSL harness has no devices, so the move path never carried one.
+		m_hasLeds      = other.m_hasLeds;
 		m_ffEffectId   = other.m_ffEffectId;
 		other.m_fd     = -1;
 		other.m_ffEffectId = -1;
