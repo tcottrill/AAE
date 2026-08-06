@@ -32,6 +32,17 @@
 #include <ctime>
 
 //------------------------------------------------------------------------------
+// The LED half of the OSD contract, implemented by the evdev backend this
+// target already links. Declared here rather than by including osdepend.h,
+// which lives in the emulator layer this harness deliberately does not link -
+// the same reason evdev_input.cpp and linux_main.cpp forward-declare it.
+//------------------------------------------------------------------------------
+extern void osd_led_service_start();
+extern void osd_led_service_stop();
+extern void osd_set_leds(int state);
+extern int  osd_get_leds();
+
+//------------------------------------------------------------------------------
 // evdev_input.cpp's get_mouse_win() asks the window where the pointer is, the
 // way the Win32 backend asks Windows. There is no window here, so this
 // satisfies the contract honestly rather than pretending.
@@ -131,6 +142,55 @@ void DescribeKey(int aae, char* out, size_t n)
 	}
 }
 
+//------------------------------------------------------------------------------
+// --leds: walk a fixed set of LED masks with a pause between each, so a watcher
+// can tie each burst of EV_LED traffic back to a known request. Everything else
+// in this file reports what arrives; this is the one mode that drives output,
+// which is why it replaces the report loop instead of running alongside it.
+//
+// The sequence is spelled out here because a later task teaches
+// tools/linux/uinput_devices.cpp to watch for EV_LED and assert against exactly
+// it: 0 -> 1 -> 2 -> 4 -> 7 -> 0. Singles first so a wrong bit ordering is
+// obvious, then all three, then off again so the run does not leave a physical
+// keyboard lit.
+//------------------------------------------------------------------------------
+int run_led_test()
+{
+	static const int kSequence[] = { 0, 1, 2, 4, 7, 0 };
+
+	printf("[LEDTEST] starting LED service\n");
+	fflush(stdout);
+	osd_led_service_start();
+
+	for (int mask : kSequence) {
+		printf("[LEDTEST] request mask=%d\n", mask);
+		fflush(stdout);
+		osd_set_leds(mask);
+
+		const int got = osd_get_leds();
+		if (got != mask) {
+			printf("[LEDTEST] FAIL osd_get_leds()=%d after requesting %d\n", got, mask);
+			fflush(stdout);
+		}
+
+		// ~600ms per step, polling throughout. The gap is the point: it
+		// separates one mask's EV_LED traffic from the next in time, and it
+		// outlasts the 250ms wake period the Windows LED service worker uses,
+		// so a service of that shape gets at least one tick inside every step.
+		for (int i = 0; i < 40; i++) {
+			EvdevInput_Poll();
+			msleep(15);
+		}
+	}
+
+	printf("[LEDTEST] stopping LED service\n");
+	fflush(stdout);
+	osd_led_service_stop();
+	printf("[LEDTEST] done\n");
+	fflush(stdout);
+	return 0;
+}
+
 } // namespace
 
 // The two window entry points evdev_input.cpp reaches for.
@@ -147,14 +207,19 @@ int main(int argc, char** argv)
 	// output the run existed to produce.
 	int seconds = 25;
 	bool doRumble = false;
+	bool doLeds = false;
 	for (int i = 1; i < argc; i++) {
 		if (strcmp(argv[i], "--seconds") == 0 && i + 1 < argc) seconds = atoi(argv[++i]);
 		else if (strcmp(argv[i], "--rumble") == 0)             doRumble = true;
+		else if (strcmp(argv[i], "--leds") == 0)               doLeds = true;
 	}
 
 	Log::open("inputtest.log");
 	printf("=== AAE evdev input test ===\n");
-	printf("Polling for %d seconds at 60Hz. Ctrl-C to stop early.\n\n", seconds);
+	if (doLeds)
+		printf("LED mode: driving a fixed mask sequence, then exiting.\n\n");
+	else
+		printf("Polling for %d seconds at 60Hz. Ctrl-C to stop early.\n\n", seconds);
 
 	EvdevInput_Initialize();
 	install_joystick();
@@ -172,6 +237,21 @@ int main(int argc, char** argv)
 	for (int i = 0; i < joystick_device_count(); i++)
 		printf("  [%d] %-32s id=%s connected=%d\n", i, joystick_get_display_name(i),
 		       joystick_get_id(i), joystick_is_connected(i));
+	fflush(stdout);
+
+	// Deliberately after EvdevInput_Initialize(), not instead of it: the LED
+	// writes go to the device fds that call opened, so running this without a
+	// device pass would prove nothing. The report loop below has nothing to
+	// say about output, so the run ends here.
+	if (doLeds) {
+		printf("\n--- leds ---\n");
+		const int rc = run_led_test();
+		remove_joystick();
+		RawInput_Shutdown();
+		Log::close();
+		return rc;
+	}
+
 	printf("\n--- events ---\n");
 	fflush(stdout);
 
