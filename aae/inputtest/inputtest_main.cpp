@@ -18,6 +18,14 @@
 //
 // Order does not matter. Devices appearing while this is running exercise the
 // hotplug rescan, which is worth testing anyway.
+//
+// Modes:
+//   --seconds N  how long the report loop runs (default 25).
+//   --rumble     once a pad appears, send it one rumble effect and later stop
+//                it. Runs inside the report loop.
+//   --leds       INSTEAD of the report loop: drive a fixed sequence of LED
+//                masks and exit, printing a machine-readable trace of what was
+//                requested - see run_led_test().
 //==============================================================================
 #include "linux/evdev_input.h"
 
@@ -34,8 +42,11 @@
 //------------------------------------------------------------------------------
 // The LED half of the OSD contract, implemented by the evdev backend this
 // target already links. Declared here rather than by including osdepend.h,
-// which lives in the emulator layer this harness deliberately does not link -
-// the same reason evdev_input.cpp and linux_main.cpp forward-declare it.
+// which lives at aae/aae/osdepend.h: this target puts `aae` on the include path
+// where the emulator puts `aae/aae`, so the include would have to be spelled
+// "aae/osdepend.h" here against the plain "osdepend.h" used at every other site
+// in the tree. evdev_input.cpp cites that same include-spelling reason for its
+// own copy of these declarations.
 //------------------------------------------------------------------------------
 extern void osd_led_service_start();
 extern void osd_led_service_stop();
@@ -144,39 +155,65 @@ void DescribeKey(int aae, char* out, size_t n)
 
 //------------------------------------------------------------------------------
 // --leds: walk a fixed set of LED masks with a pause between each, so a watcher
-// can tie each burst of EV_LED traffic back to a known request. Everything else
-// in this file reports what arrives; this is the one mode that drives output,
-// which is why it replaces the report loop instead of running alongside it.
+// can tie a burst of EV_LED traffic back to a known request.
 //
-// The sequence is spelled out here because a later task teaches
-// tools/linux/uinput_devices.cpp to watch for EV_LED and assert against exactly
-// it: 0 -> 1 -> 2 -> 4 -> 7 -> 0. Singles first so a wrong bit ordering is
-// obvious, then all three, then off again so the run does not leave a physical
-// keyboard lit.
+// The sequence is 0 -> 1 -> 2 -> 4 -> 7 -> 0: singles first so a wrong bit
+// ordering is obvious, then all three at once, then off again so a run does not
+// leave a physical keyboard lit. A later task teaches
+// tools/linux/uinput_devices.cpp to declare EV_LED and the LED bits on its
+// virtual keyboards and to watch for them - declaring them is not optional,
+// because without those bits the kernel does not route LED writes to the device
+// at all, so watching alone would see nothing.
+//
+// Not every step produces traffic even when everything works: the kernel drops
+// an EV_LED write whose value already matches the LED's current state, and the
+// devices start with every LED clear, so step 1 (mask 0) legitimately writes
+// nothing.
+//
+// The masks are printed at run time as well as listed here so the watcher can
+// read the contract instead of carrying its own copy of it.
 //------------------------------------------------------------------------------
-int run_led_test()
+void run_led_test()
 {
 	static const int kSequence[] = { 0, 1, 2, 4, 7, 0 };
+	const int kSteps = (int)(sizeof(kSequence) / sizeof(kSequence[0]));
+
+	// Generated, never spelled out as a string: a hand-written copy here would
+	// be a second thing to keep in step with kSequence, which is the exact
+	// desynchronisation this line exists to prevent downstream.
+	printf("[LEDTEST] sequence=");
+	for (int i = 0; i < kSteps; i++) printf("%s%d", i ? "," : "", kSequence[i]);
+	printf("\n");
 
 	printf("[LEDTEST] starting LED service\n");
 	fflush(stdout);
 	osd_led_service_start();
 
-	for (int mask : kSequence) {
-		printf("[LEDTEST] request mask=%d\n", mask);
+	int mismatches = 0;
+
+	for (int step = 0; step < kSteps; step++) {
+		const int mask = kSequence[step];
+		printf("[LEDTEST] step=%d/%d request mask=%d\n", step + 1, kSteps, mask);
 		fflush(stdout);
 		osd_set_leds(mask);
 
+		// Counted and reported, never fatal: this program is the driver, not
+		// the judge. Bailing out on the first mismatch would leave the rest of
+		// the sequence undriven, destroying the very trace the watcher is
+		// waiting on. The tally below is what something downstream asserts on.
 		const int got = osd_get_leds();
 		if (got != mask) {
-			printf("[LEDTEST] FAIL osd_get_leds()=%d after requesting %d\n", got, mask);
+			mismatches++;
+			printf("[LEDTEST] readback mismatch: osd_get_leds()=%d after requesting %d\n",
+			       got, mask);
 			fflush(stdout);
 		}
 
-		// ~600ms per step, polling throughout. The gap is the point: it
-		// separates one mask's EV_LED traffic from the next in time, and it
-		// outlasts the 250ms wake period the Windows LED service worker uses,
-		// so a service of that shape gets at least one tick inside every step.
+		// ~600ms per step. The gap separates one mask's EV_LED traffic from the
+		// next in time, which is what lets a watcher attribute a burst to a
+		// step. Polling through it is not idle courtesy: EvdevInput_Poll()
+		// drains the device fds, so the kernel buffer cannot fill and deliver a
+		// backlog later, and it decrements the hotplug rescan countdown.
 		for (int i = 0; i < 40; i++) {
 			EvdevInput_Poll();
 			msleep(15);
@@ -186,9 +223,9 @@ int run_led_test()
 	printf("[LEDTEST] stopping LED service\n");
 	fflush(stdout);
 	osd_led_service_stop();
+	printf("[LEDTEST] readback mismatches: %d\n", mismatches);
 	printf("[LEDTEST] done\n");
 	fflush(stdout);
-	return 0;
 }
 
 } // namespace
@@ -209,10 +246,23 @@ int main(int argc, char** argv)
 	bool doRumble = false;
 	bool doLeds = false;
 	for (int i = 1; i < argc; i++) {
-		if (strcmp(argv[i], "--seconds") == 0 && i + 1 < argc) seconds = atoi(argv[++i]);
-		else if (strcmp(argv[i], "--rumble") == 0)             doRumble = true;
-		else if (strcmp(argv[i], "--leds") == 0)               doLeds = true;
+		if (strcmp(argv[i], "--seconds") == 0) {
+			if (i + 1 < argc) seconds = atoi(argv[++i]);
+			else printf("WARNING: --seconds needs a value, keeping %d\n", seconds);
+		}
+		else if (strcmp(argv[i], "--rumble") == 0) doRumble = true;
+		else if (strcmp(argv[i], "--leds") == 0)   doLeds = true;
+		// Complain rather than ignore. A typo'd "--led" would otherwise run the
+		// report loop in silence, and a watcher waiting on EV_LED cannot tell
+		// that apart from an LED implementation that writes nothing - the two
+		// look identical in the log this program exists to produce. Warnings go
+		// to stdout, where Log:: and every trace line below already go, so that
+		// a redirected capture keeps them instead of dropping them on a console
+		// nobody is reading.
+		else printf("WARNING: ignoring unrecognised argument \"%s\"\n", argv[i]);
 	}
+	if (doLeds && doRumble)
+		printf("WARNING: --rumble ignored, --leds does not run the report loop\n");
 
 	Log::open("inputtest.log");
 	printf("=== AAE evdev input test ===\n");
@@ -241,15 +291,16 @@ int main(int argc, char** argv)
 
 	// Deliberately after EvdevInput_Initialize(), not instead of it: the LED
 	// writes go to the device fds that call opened, so running this without a
-	// device pass would prove nothing. The report loop below has nothing to
-	// say about output, so the run ends here.
+	// device pass would prove nothing. It replaces the report loop rather than
+	// running inside it because that loop dispatches EV_KEY and mouse events
+	// only, and so has nothing to say about LED output.
 	if (doLeds) {
 		printf("\n--- leds ---\n");
-		const int rc = run_led_test();
+		run_led_test();
 		remove_joystick();
 		RawInput_Shutdown();
 		Log::close();
-		return rc;
+		return 0;
 	}
 
 	printf("\n--- events ---\n");
