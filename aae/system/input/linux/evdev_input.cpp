@@ -12,6 +12,12 @@
 // The gamepad half of the port lives in evdev_joystick.cpp, matching the
 // Windows split between rawinput.cpp and Joystick.cpp.
 //
+// One deliberate exception to "the sys_input.h contract": the keyboard-LED
+// section at the end of this file implements osdepend.h's osd_led_* calls as
+// well. They are hosted here, rather than with the rest of the LED code in
+// aae/aae/led_service_handler.cpp, because driving a LED is an EV_LED write
+// onto an open keyboard fd -- and this file is what owns those fds.
+//
 // NO WORKER THREAD -- see the rationale on EvdevInput_Poll in evdev_input.h.
 //==============================================================================
 #include "evdev_input.h"
@@ -33,6 +39,14 @@
 //------------------------------------------------------------------------------
 unsigned char key[256] = {0};
 int mouse_b = 0;
+
+// The LED helpers are defined with the rest of the LED code at the end of this
+// file, where the service state lives. Declared up here, OUTSIDE the anonymous
+// namespace below, on purpose: ScanDevices() sits inside that namespace and
+// EvdevInput_Poll() sits outside it, and both call these. Declaring them inside
+// would create a second, never-defined pair of symbols.
+static void PollLeds();
+static void LedAdoptDevice(EvdevDevice& dev);
 
 namespace {
 
@@ -348,6 +362,7 @@ void ScanDevices()
 					RegisterKeyboard(existing, s_devices[existing]);
 				else if (s_devices[existing].kind() == EvdevKind::Mouse)
 					RegisterMouse(existing, s_devices[existing]);
+				LedAdoptDevice(s_devices[existing]);
 			}
 			continue;
 		}
@@ -377,6 +392,7 @@ void ScanDevices()
 			RegisterKeyboard(idx, s_devices[idx]);
 		else
 			RegisterMouse(idx, s_devices[idx]);
+		LedAdoptDevice(s_devices[idx]);
 	}
 
 	// Reported on TRANSITION only: ScanDevices runs every ~2 seconds for
@@ -486,6 +502,10 @@ void EvdevInput_Poll()
 			}
 		}
 	}
+
+	// Re-assert the game's LED state. Defined with the rest of the LED code at
+	// the end of this file; forward-declared above.
+	PollLeds();
 
 	// Hotplug: re-enumerate periodically rather than taking a libudev
 	// dependency for it. At 60fps this is roughly every two seconds, which is
@@ -672,4 +692,174 @@ int RawInput_MouseSeenInput(int index)
 {
 	if (index < 0 || index >= s_numMice) return 0;
 	return s_mice[index].seen ? 1 : 0;
+}
+
+//==============================================================================
+// Keyboard LEDs -- the osdepend.h LED contract.
+//
+// Declared locally rather than by including osdepend.h -- not because that
+// header is heavy (it is 319 lines and includes only <cstdint>), but because:
+//
+//   1. aae/system/ is the OSD layer and must not depend on the aae/aae/
+//      emulator layer. Nothing under aae/system/ includes osdepend.h today,
+//      and this file is not going to be the first.
+//   2. The include would have to be spelled "aae/osdepend.h" here against the
+//      plain "osdepend.h" used at every other site in the tree, because
+//      aae_inputtest puts a different root on the include path than aae does.
+//
+// linux_main.cpp forward-declares osd_led_service_stop the same way.
+//
+// They live here rather than in led_service_handler.cpp because this file owns
+// the open device fds: driving a LED is an EV_LED write onto a keyboard fd that
+// is already open for reading.
+//
+// Unlike the Win32 implementation there is NO service thread. That one needs
+// one because IOCTL_KEYBOARD_SET_INDICATORS goes through SetupAPI handles that
+// can block; here it is a write() to an already-open fd, so it runs inline on
+// the thread that owns the device table and there is no locking to get wrong.
+//
+// The four declarations below transcribe osdepend.h's LED block so it can be
+// eyeballed against this file without opening that header. Read them as
+// documentation, NOT as a trip-wire: since nothing here includes osdepend.h,
+// they only prove the definitions match themselves. A drift would not
+// necessarily be caught -- the Itanium ABI leaves the return type out of the
+// mangled name, so changing osd_get_leds() to unsigned would break neither the
+// compile nor the link, and would just silently violate ODR.
+//==============================================================================
+void osd_led_service_start();
+void osd_led_service_stop();
+void osd_set_leds(int state);
+int  osd_get_leds();
+
+// How long the desired mask may go un-reasserted. Nothing calls EVIOCGRAB, so
+// libinput owns these same indicators and overwrites them whenever it syncs its
+// own lock state - typically on the next key press.
+//
+// This has no Windows counterpart despite appearances: the Win32 worker applies
+// only when the mask CHANGES (led_service_handler.cpp), and its 250ms wait is a
+// clean-shutdown wake that re-applies nothing. There the keyboard class driver
+// holds the indicator state; here another client is actively fighting for it.
+// 250ms is picked on its own merits - fast enough that a clobbered lamp
+// corrects within about a quarter second, cheap enough to vanish next to the
+// per-frame read loop.
+static const int kLedReapplyMs = 250;
+
+static bool s_ledServiceActive = false;
+static int  s_ledDesiredMask   = 0;
+
+// What each device's LEDs looked like before AAE started driving them, so
+// quitting does not leave a desktop user's NumLock light wrong. Indexed like
+// s_devices; a device that appears later has no entry and simply is not
+// restored, which is correct - AAE never saw its original state.
+static std::vector<int> s_ledSnapshot;
+
+static void ApplyLeds()
+{
+	for (auto& dev : s_devices)
+		if (dev.IsOpen() && dev.SupportsLeds())
+			dev.SetLeds(s_ledDesiredMask);
+}
+
+// A device that just arrived - or came back from a replug - has its LEDs
+// cleared. Bring it up to the current lamp state immediately rather than
+// leaving it dark until the game next changes the mask, which for a game that
+// sets its lamps once at startup would be never.
+static void LedAdoptDevice(EvdevDevice& dev)
+{
+	if (!s_ledServiceActive) return;
+	if (!dev.IsOpen() || !dev.SupportsLeds()) return;
+	dev.SetLeds(s_ledDesiredMask);
+}
+
+void osd_led_service_start()
+{
+	if (s_ledServiceActive) return;
+
+	s_ledSnapshot.assign(s_devices.size(), 0);
+	int targets = 0;
+	for (size_t i = 0; i < s_devices.size(); i++) {
+		if (!s_devices[i].IsOpen() || !s_devices[i].SupportsLeds()) continue;
+		s_ledSnapshot[i] = s_devices[i].GetLeds();
+		targets++;
+	}
+
+	s_ledServiceActive = true;
+	s_ledDesiredMask   = 0;
+
+	if (targets == 0)
+		LOG_WARN("evdev: LED service started but no device can take LED writes - "
+		         "game lamps will not light. A keyboard opened read-only is the "
+		         "usual cause; see the per-device warnings above.");
+	else
+		LOG_INFO("evdev: LED service started, %d device(s)", targets);
+
+	ApplyLeds();
+}
+
+void osd_led_service_stop()
+{
+	if (!s_ledServiceActive) return;
+	s_ledServiceActive = false;
+
+	// Put back what the desktop had, rather than clearing to zero as the Win32
+	// path does. Deliberate divergence: on a desktop these are the user's real
+	// lock lights, and leaving NumLock dark after quitting is a papercut.
+	for (size_t i = 0; i < s_devices.size() && i < s_ledSnapshot.size(); i++) {
+		if (!s_devices[i].IsOpen() || !s_devices[i].SupportsLeds()) continue;
+		s_devices[i].SetLeds(s_ledSnapshot[i]);
+	}
+	s_ledSnapshot.clear();
+	s_ledDesiredMask = 0;
+}
+
+void osd_set_leds(int state)
+{
+	s_ledDesiredMask = state & 0x07;      // Num | Caps | Scroll
+	if (!s_ledServiceActive) return;
+	ApplyLeds();
+}
+
+// Reports what was REQUESTED, not what the hardware currently shows - the same
+// semantic as the Win32 implementation. Do not "improve" this to read EVIOCGLED:
+// callers use it to read back their own last request.
+int osd_get_leds()
+{
+	return s_ledDesiredMask;
+}
+
+//------------------------------------------------------------------------------
+// Called from EvdevInput_Poll. Split out to keep the poll loop readable.
+//------------------------------------------------------------------------------
+static void PollLeds()
+{
+	if (!s_ledServiceActive) return;
+
+	static int  ledCountdown = 0;
+	static bool ledWasPaused = false;
+
+	// On the pause edge, hand the LEDs back to the desktop; on resume, take
+	// them again. Holding a user's lock lights hostage while AAE sits
+	// unfocused is rude, and it is the same reasoning as restoring on exit.
+	if (s_paused != ledWasPaused) {
+		ledWasPaused = s_paused;
+		for (size_t i = 0; i < s_devices.size(); i++) {
+			if (!s_devices[i].IsOpen() || !s_devices[i].SupportsLeds()) continue;
+			const int mask = s_paused
+				? (i < s_ledSnapshot.size() ? s_ledSnapshot[i] : 0)
+				: s_ledDesiredMask;
+			s_devices[i].SetLeds(mask);
+		}
+		ledCountdown = 0;
+		return;
+	}
+
+	if (s_paused) return;
+
+	if (--ledCountdown <= 0) {
+		ApplyLeds();
+		// ~250ms at 60fps. Frame-counted rather than clock-based because the
+		// poll is already the heartbeat; a device whose LEDs nothing is
+		// fighting over simply sees writes the kernel discards.
+		ledCountdown = 15;
+	}
 }

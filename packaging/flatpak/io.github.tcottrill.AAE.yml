@@ -170,11 +170,35 @@ modules:
       # printed "Could NOT find GLEW", built all 139 objects happily, and then
       # failed at link with 200 undefined __glew* symbols.
       - cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=/app
-      - cmake --build build --target aae
+      # env -u SOURCE_DATE_EPOCH: flatpak-builder pins that variable to the
+      # MANIFEST's mtime for reproducible builds, and GCC substitutes it into
+      # __DATE__/__TIME__ - so the startup banner's "built ..." stamp froze at
+      # whenever this file was last edited and stopped identifying builds.
+      # Two rebuilds hours apart shipped byte-identical banners, which cost a
+      # debugging session spent proving a new binary was actually installed.
+      # The banner is this project's build fingerprint; unpinning only this
+      # compile step makes it honest again. (ccache does not cache __TIME__
+      # users by default, so linux_main.cpp genuinely recompiles each build.)
+      - env -u SOURCE_DATE_EPOCH cmake --build build --target aae
+      # aae_inputtest: the input-stack diagnostic. Shipped deliberately, even
+      # though it is a developer tool and not the entry point.
+      #
+      # SteamOS is an immutable image with no toolchain, so anything not built
+      # here cannot be built later on the machine. Without this, the only way
+      # to answer "do the keyboard LEDs work in the sandbox" is to launch a
+      # game and watch, and the only way to see WHY they do not is to read a
+      # log after the fact. It links the evdev backend but not aae_core, so it
+      # costs a handful of translation units.
+      #
+      #   flatpak run --command=aae_inputtest io.github.tcottrill.AAE --leds
+      - cmake --build build --target aae_inputtest
     post-install:
       # CMakeLists puts the executable in x64/Release beside its data; the
       # Flatpak layout wants it in /app/bin with the data under /app/share.
       - install -Dm755 x64/Release/aae /app/bin/aae
+      # aae_inputtest has no RUNTIME_OUTPUT_DIRECTORY override, so unlike aae
+      # it lands in the build directory rather than x64/Release.
+      - install -Dm755 build/aae_inputtest /app/bin/aae_inputtest
       # Vulkan shaders (Phase 4b). If the SDK provides glslc, the cmake build
       # above compiled shaders/vk/*.spv next to the binary - install them.
       # If it does not, this is a quiet no-op and the aae-data module's

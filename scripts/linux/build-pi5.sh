@@ -6,8 +6,20 @@
 # against that machine's glibc. Here we simply build natively, which the Pi is
 # perfectly capable of.
 #
-#   bash scripts/linux/build-pi5.sh            # prereq check + build
-#   bash scripts/linux/build-pi5.sh --check    # prereq check only, no build
+#   bash scripts/linux/build-pi5.sh              # prereq check + build
+#   bash scripts/linux/build-pi5.sh --check      # prereq check only, no build
+#   bash scripts/linux/build-pi5.sh --with-tools # also build aae_inputtest
+#
+# --with-tools adds aae_inputtest, the input-stack diagnostic. It is not part
+# of a normal build because it is a developer tool, but it is the quickest way
+# to answer input questions on real hardware without launching a game:
+#
+#   ./build-pi5/aae_inputtest            # print every input state change
+#   ./build-pi5/aae_inputtest --leds     # drive the keyboard LEDs and exit
+#
+# --leds in particular walks a fixed mask sequence through the same code path
+# the cabinet lamp drivers use, so "do the LEDs work on this machine" is one
+# command rather than "start Asteroids and watch the keyboard".
 #
 # WHY VULKAN IS NOT OPTIONAL ON THIS TARGET
 #
@@ -134,6 +146,14 @@ say ""
 say "=== building (this takes a while on a Pi) ==="
 cmake --build build-pi5 --target aae -j"$(nproc)"
 
+# aae_inputtest links the real evdev backend but not aae_core, so it costs a
+# handful of translation units rather than a second full build.
+if [ "$MODE" = "--with-tools" ]; then
+    say ""
+    say "=== building aae_inputtest ==="
+    cmake --build build-pi5 --target aae_inputtest -j"$(nproc)"
+fi
+
 say ""
 say "=== done ==="
 say "Binary: $REPO_DIR/x64/Release/aae"
@@ -143,3 +163,12 @@ say "    cd $REPO_DIR/x64/Release && ./aae asteroid"
 say ""
 say "If it fails to start, the log says why:"
 say "    grep -E 'PickPhysicalDevice|chain online|ERROR' $REPO_DIR/x64/Release/systemlog.txt"
+
+if [ "$MODE" = "--with-tools" ]; then
+    say ""
+    say "Check the keyboard LEDs without launching a game:"
+    say "    $REPO_DIR/build-pi5/aae_inputtest --leds"
+    say ""
+    say "If the lamps stay dark, the log line to look for names the cause:"
+    say "    grep -E 'LED service|has keyboard LEDs' $REPO_DIR/x64/Release/systemlog.txt"
+fi

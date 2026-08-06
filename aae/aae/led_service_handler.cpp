@@ -1,32 +1,79 @@
 #ifdef _WIN32
 #include "framework.h"   // Win32 window helpers
 #endif
+#include "led_service_handler.h"  // osd_set_leds() and the set_led_status surface
 #include "sys_log.h"
 #include <stdint.h>
 #include <string.h>
 
-#ifndef _WIN32
-// -----------------------------------------------------------------------------
-// Keyboard LEDs are Windows-only in AAE.
+// ---------------------------------------------------------------------------
+// Platform-neutral LED bookkeeping.
 //
-// The whole implementation below drives the keyboard's Num/Caps/Scroll LEDs
-// through IOCTL_KEYBOARD_SET_INDICATORS (ntddkbd.h) over a SetupAPI device
-// handle. Linux exposes the same LEDs through evdev EV_LED writes, which is a
-// completely different mechanism and belongs with the evdev backend rather
-// than bolted onto this file - so it is scheduled with the rest of evdev
-// rather than half-done here.
+// These latch the driver-facing LED indices and fold them into the mask that
+// osd_set_leds() takes. Nothing about it is platform-specific, so it lives
+// OUTSIDE the #ifdef: it used to exist twice -- a real copy in the Win32
+// branch and a do-nothing copy in the other -- which meant a non-Windows build
+// discarded LED state before the osd_ layer was ever reached. Nothing
+// observable changes today, because the Linux osd_set_leds() -- now in the
+// evdev backend, see the note below the bookkeeping -- is still a stub; this
+// matters once the Linux osd_ layer is real, and it means only that layer has
+// to be written rather than this bookkeeping as well.
 //
-// These stubs keep the exported surface intact so nothing else needs guarding.
-// -----------------------------------------------------------------------------
-void set_led_status(int, int)          {}
-int  get_led_status(int)               { return 0; }
-void set_led_status_all(int, int, int) {}
-void osd_led_service_start()           {}
-void osd_led_service_stop()            {}
-void osd_set_leds(int)                 {}
-int  osd_get_leds()                    { return 0; }
+// LED mapping: 0 -> NumLock, 1 -> CapsLock, 2 -> ScrollLock.
+// ---------------------------------------------------------------------------
+static int g_led0_numlock    = 0;
+static int g_led1_capslock   = 0;
+static int g_led2_scrolllock = 0;
 
-#else   // ================================================ Win32 implementation
+static int led_mask()
+{
+	int mask = 0;
+	if (g_led0_numlock)    mask |= (1 << 0);
+	if (g_led1_capslock)   mask |= (1 << 1);
+	if (g_led2_scrolllock) mask |= (1 << 2);
+	return mask;
+}
+
+// which: 0..2 as above. Any other index is ignored -- omegrace.cpp asks for
+// index 3, which has no keyboard indicator to map onto.
+void set_led_status(int which, int on)
+{
+	const int v = (on != 0) ? 1 : 0;
+
+	if      (which == 0) g_led0_numlock    = v;
+	else if (which == 1) g_led1_capslock   = v;
+	else if (which == 2) g_led2_scrolllock = v;
+	else return;
+
+	osd_set_leds(led_mask());
+}
+
+// Currently latched state for one LED, or 0 for an invalid index.
+int get_led_status(int which)
+{
+	if (which == 0) return g_led0_numlock;
+	if (which == 1) return g_led1_capslock;
+	if (which == 2) return g_led2_scrolllock;
+	return 0;
+}
+
+void set_led_status_all(int led0, int led1, int led2)
+{
+	g_led0_numlock    = (led0 != 0) ? 1 : 0;
+	g_led1_capslock   = (led1 != 0) ? 1 : 0;
+	g_led2_scrolllock = (led2 != 0) ? 1 : 0;
+
+	osd_set_leds(led_mask());
+}
+
+// The Linux osd_led_* implementations live in the evdev backend
+// (aae/system/input/linux/evdev_input.cpp), where the open device fds are.
+//
+// Deliberately "Linux" and not "non-Windows": this file no longer carries a
+// catch-all stub arm, so any third target -- osdepend.h marks Teensy STUB --
+// must bring its own osd_led_* definitions or take an undefined reference.
+
+#ifdef _WIN32   // ========================================= Win32 implementation
 // This header provides IOCTL_KEYBOARD_SET_INDICATORS and KEYBOARD_INDICATOR_PARAMETERS.
 #include <ntddkbd.h>
 #include <setupapi.h>
@@ -41,9 +88,6 @@ static const GUID kGuidKeyboardInterface =
 	{ 0xbc, 0x8c, 0x00, 0xa0, 0xc9, 0x14, 0x05, 0xdd }
 };
 
-static int g_led0_numlock = 0;
-static int g_led1_capslock = 0;
-static int g_led2_scrolllock = 0;
 static HANDLE g_kbdLedHandles[64];
 static int g_kbdLedHandleCount = 0;
 static HANDLE g_ledEvent = NULL;         // signals "LED state changed"
@@ -346,77 +390,6 @@ void osd_set_leds(int state)
 int osd_get_leds()
 {
 	return (int)InterlockedCompareExchange(&g_ledDesiredMask, 0, 0);
-}
-
-// -----------------------------------------------------------------------------
-// set_led_status
-// Compatibility wrapper for legacy driver code.
-//
-// LED mapping:
-//   0 -> NumLock
-//   1 -> CapsLock
-//   2 -> ScrollLock
-//
-// Parameters:
-//   which - LED index (0..2)
-//   on    - non-zero = on, 0 = off
-// -----------------------------------------------------------------------------
-void set_led_status(int which, int on)
-{
-	const int v = (on != 0) ? 1 : 0;
-
-	if (which == 0) g_led0_numlock = v;
-	else if (which == 1) g_led1_capslock = v;
-	else if (which == 2) g_led2_scrolllock = v;
-	else return;
-
-	int mask = 0;
-	if (g_led0_numlock)   mask |= (1 << 0); // NumLock
-	if (g_led1_capslock)  mask |= (1 << 1); // CapsLock
-	if (g_led2_scrolllock) mask |= (1 << 2); // ScrollLock
-
-	osd_set_leds(mask);
-}
-
-// -----------------------------------------------------------------------------
-// get_led_status
-// Returns the currently latched LED state from set_led_status.
-//
-// Parameters:
-//   which - LED index (0..2)
-//
-// Returns:
-//   1 if on, 0 if off, or 0 for invalid index.
-// -----------------------------------------------------------------------------
-int get_led_status(int which)
-{
-	if (which == 0) return g_led0_numlock;
-	if (which == 1) return g_led1_capslock;
-	if (which == 2) return g_led2_scrolllock;
-	return 0;
-}
-
-// -----------------------------------------------------------------------------
-// set_led_status_all
-// Sets all three LEDs at once using the same mapping as set_led_status.
-//
-// Parameters:
-//   led0 - NumLock (0/1)
-//   led1 - CapsLock (0/1)
-//   led2 - ScrollLock (0/1)
-// -----------------------------------------------------------------------------
-void set_led_status_all(int led0, int led1, int led2)
-{
-	g_led0_numlock = (led0 != 0) ? 1 : 0;
-	g_led1_capslock = (led1 != 0) ? 1 : 0;
-	g_led2_scrolllock = (led2 != 0) ? 1 : 0;
-
-	int mask = 0;
-	if (g_led0_numlock)   mask |= (1 << 0);
-	if (g_led1_capslock)  mask |= (1 << 1);
-	if (g_led2_scrolllock) mask |= (1 << 2);
-
-	osd_set_leds(mask);
 }
 
 #endif // _WIN32

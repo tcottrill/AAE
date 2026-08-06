@@ -44,6 +44,7 @@ void emulator_end();
 bool emulator_apply_pending_switch();
 
 // osdepend.h
+void osd_led_service_start();
 void osd_led_service_stop();
 
 //------------------------------------------------------------------------------
@@ -307,6 +308,27 @@ int main(int argc, char** argv)
 		         "not respond to the keyboard. If devices are present, this is "
 		         "almost certainly permissions: sudo usermod -aG input $USER");
 	}
+	// Keyboard LEDs stand in for a cabinet's start-button lamps (asteroid,
+	// bwidow, bzone, mhavoc, milliped, omegrace, pacman all drive them). The
+	// service must start AFTER EvdevInput_Initialize(): it snapshots each
+	// device's current LED state so quitting can put it back, and there are no
+	// devices to snapshot before that call.
+	//
+	// NOT gated by [main] led_service the way winmain.cpp is, and deliberately
+	// so: aae.ini is not loaded yet at this point. setup_config() runs from
+	// run_a_game(), well after this line, so get_config_int() here would only
+	// ever return its own default and the switch would be a lie.
+	//
+	// Nothing is lost by omitting it. The Windows gate exists because
+	// IOCTL_KEYBOARD_SET_INDICATORS aimed at an Ultimarc-style encoder can
+	// wedge that machine's whole keyboard input path; an EV_LED write to one
+	// evdev node cannot do that, so there is no hazard here to switch off.
+	//
+	// If a real off switch is wanted on Linux it has to be read somewhere the
+	// ini exists. It cannot simply move into the evdev backend: aae_inputtest
+	// links that backend but not iniFile.cpp, so the reference would not link.
+	osd_led_service_start();
+
 	install_joystick();
 
 	emulator_init(argc, argv);
