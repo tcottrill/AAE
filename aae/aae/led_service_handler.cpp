@@ -14,9 +14,10 @@
 // OUTSIDE the #ifdef: it used to exist twice -- a real copy in the Win32
 // branch and a do-nothing copy in the other -- which meant a non-Windows build
 // discarded LED state before the osd_ layer was ever reached. Nothing
-// observable changes today, because the non-Windows osd_set_leds() below is
-// itself a no-op; this matters once the Linux osd_ layer is real, and it means
-// only that layer has to be written rather than this bookkeeping as well.
+// observable changes today, because the Linux osd_set_leds() -- now in the
+// evdev backend, see the note below the bookkeeping -- is still a stub; this
+// matters once the Linux osd_ layer is real, and it means only that layer has
+// to be written rather than this bookkeeping as well.
 //
 // LED mapping: 0 -> NumLock, 1 -> CapsLock, 2 -> ScrollLock.
 // ---------------------------------------------------------------------------
@@ -65,8 +66,12 @@ void set_led_status_all(int led0, int led1, int led2)
 	osd_set_leds(led_mask());
 }
 
-// The non-Windows osd_led_* implementations live in the evdev backend
+// The Linux osd_led_* implementations live in the evdev backend
 // (aae/system/input/linux/evdev_input.cpp), where the open device fds are.
+//
+// Deliberately "Linux" and not "non-Windows": this file no longer carries a
+// catch-all stub arm, so any third target -- osdepend.h marks Teensy STUB --
+// must bring its own osd_led_* definitions or take an undefined reference.
 
 #ifdef _WIN32   // ========================================= Win32 implementation
 // This header provides IOCTL_KEYBOARD_SET_INDICATORS and KEYBOARD_INDICATOR_PARAMETERS.

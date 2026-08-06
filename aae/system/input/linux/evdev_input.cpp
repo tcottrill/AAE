@@ -12,6 +12,12 @@
 // The gamepad half of the port lives in evdev_joystick.cpp, matching the
 // Windows split between rawinput.cpp and Joystick.cpp.
 //
+// One deliberate exception to "the sys_input.h contract": the keyboard-LED
+// section at the end of this file implements osdepend.h's osd_led_* calls as
+// well. They are hosted here, rather than with the rest of the LED code in
+// aae/aae/led_service_handler.cpp, because driving a LED is an EV_LED write
+// onto an open keyboard fd -- and this file is what owns those fds.
+//
 // NO WORKER THREAD -- see the rationale on EvdevInput_Poll in evdev_input.h.
 //==============================================================================
 #include "evdev_input.h"
@@ -677,13 +683,29 @@ int RawInput_MouseSeenInput(int index)
 //==============================================================================
 // Keyboard LEDs -- the osdepend.h LED contract.
 //
-// Declared locally rather than by including osdepend.h, which would drag the
-// whole emulator surface into the input backend; linux_main.cpp forward-
-// declares osd_led_service_stop the same way.
+// Declared locally rather than by including osdepend.h -- not because that
+// header is heavy (it is 319 lines and includes only <cstdint>), but because:
+//
+//   1. aae/system/ is the OSD layer and must not depend on the aae/aae/
+//      emulator layer. Nothing under aae/system/ includes osdepend.h today,
+//      and this file is not going to be the first.
+//   2. The include would have to be spelled "aae/osdepend.h" here against the
+//      plain "osdepend.h" used at every other site in the tree, because
+//      aae_inputtest puts a different root on the include path than aae does.
+//
+// linux_main.cpp forward-declares osd_led_service_stop the same way.
 //
 // Stubs for now: a later task fills these in. They live here rather than in
 // led_service_handler.cpp because this file owns the open device fds the real
 // implementation needs.
+//
+// The four declarations below transcribe osdepend.h's LED block so it can be
+// eyeballed against this file without opening that header. Read them as
+// documentation, NOT as a trip-wire: since nothing here includes osdepend.h,
+// they only prove the definitions match themselves. A drift would not
+// necessarily be caught -- the Itanium ABI leaves the return type out of the
+// mangled name, so changing osd_get_leds() to unsigned would break neither the
+// compile nor the link, and would just silently violate ODR.
 //==============================================================================
 void osd_led_service_start();
 void osd_led_service_stop();
