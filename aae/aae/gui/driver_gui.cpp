@@ -94,7 +94,14 @@ static constexpr float kMarqueeFieldSel  = kSelBarWidth - 40.0f; // stay inside 
 static constexpr float kMarqueeFieldList = 940.0f;               // list rows: near full screen width
 static constexpr float kSelBarHeight = 30.0f;   // Vertical padding around the text
 static constexpr float kSelBarYOffset = 8.0f;    // Nudge up to center on text (half font height * scale)
-static constexpr rgb_t kSelBarColor = MAKE_RGBA(18, 14, 55, 130);  // Dark indigo, semi-transparent
+// Indigo highlight behind the selected title. Alpha is deliberately high:
+// this draws over a black background, so the effective colour is roughly
+// RGB * (A/255). The old (18,14,55,130) landed near (9,7,28) once composited,
+// which is invisible on any monitor that is not both bright and well
+// calibrated. (52,44,125,215) composites to about (44,37,105) - clearly a bar,
+// while still dark enough that the RGB_SOFTRED title on top keeps its
+// contrast. Raise the RGB triple to lighten, raise alpha to make it flatter.
+static constexpr rgb_t kSelBarColor = MAKE_RGBA(52, 44, 125, 215);
 
 // ---- Title "bling" (tuning knobs) ----------------------------------------
 // Hue ping-pongs between Min and Max.  Occasionally a bright flash sweeps

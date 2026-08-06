@@ -605,8 +605,9 @@ ROM_START(redbaron)
 ROM_REGION(0x10000, REGION_CPU1, 0)
 ROM_LOAD("037006-01.bc3", 0x3000, 0x0800, CRC(9fcffea0) SHA1(69b76655ee75742fcaa0f39a4a1cf3aa58088343))
 ROM_LOAD("037007-01.a3", 0x3800, 0x0800, CRC(60250ede) SHA1(9c48952bd69863bee0c6dce09f3613149e0151ef))
-ROM_LOAD("037587-01.fh1", 0x4800, 0x1000, CRC(60f23983) SHA1(7a9e5380bf49bf50a2d8ab0e0bd1ba3ac8efde24))
-ROM_LOAD("037587-01.fh1", 0x5000, 0x1000, CRC(60f23983) SHA1(7a9e5380bf49bf50a2d8ab0e0bd1ba3ac8efde24))
+
+ROM_LOAD("037587-01.fh1", 0x4800, 0x0800, CRC(60f23983) SHA1(7a9e5380bf49bf50a2d8ab0e0bd1ba3ac8efde24))
+ROM_CONTINUE(0x5800, 0x0800)
 ROM_LOAD("037000-01.e1", 0x5000, 0x0800, CRC(69bed808) SHA1(27d99efc74113cdcbbf021734b8a5a5fdb78c04c))
 ROM_LOAD("036998-01.j1", 0x6000, 0x0800, CRC(d1104dd7) SHA1(0eab47cb45ede9dcc4dd7498dcf3a8d8194460b4))
 ROM_LOAD("036997-01.k1", 0x6800, 0x0800, CRC(7434acb4) SHA1(c950c4c12ab556b5051ad356ab4a0ed6b779ba1f))
@@ -616,6 +617,27 @@ ROM_RELOAD(0xf800, 0x0800)
 ROM_REGION(0x100, REGION_PROMS, 0)
 ROM_LOAD("036408-01.k7", 0x0000, 0x0100, CRC(5903af03) SHA1(24bc0366f394ad0ec486919212e38be0f08d0239))
 ROM_END
+
+ROM_START(redbarona) // Analog Vec Gen A035742-02
+ROM_REGION(0x10000, REGION_CPU1, 0)
+ROM_LOAD("037001-01e.e1", 0x4800, 0x0800, CRC(b9486a6a) SHA1(76cf42569c4ef0a2ad7171e3c766c1a815a62a0e))
+ROM_LOAD("037000-01e.fh1", 0x5000, 0x0800, CRC(69bed808) SHA1(27d99efc74113cdcbbf021734b8a5a5fdb78c04c))
+ROM_LOAD("036999-01e.j1", 0x5800, 0x0800, CRC(48d49819) SHA1(caf1521ae7bbf3afa91069dae62201748b482a50))
+ROM_LOAD("036998-01e.k1", 0x6000, 0x0800, CRC(d1104dd7) SHA1(0eab47cb45ede9dcc4dd7498dcf3a8d8194460b4))
+ROM_LOAD("036997-01e.lm1", 0x6800, 0x0800, CRC(7434acb4) SHA1(c950c4c12ab556b5051ad356ab4a0ed6b779ba1f))
+ROM_LOAD("036996-01e.n1", 0x7000, 0x0800, CRC(c0e7589e) SHA1(c1aedc95966afffd860d7e0009d5a43e8b292036))
+ROM_LOAD("036995-01e.p1", 0x7800, 0x0800, CRC(ad81d1da) SHA1(8bd66e5f34fc1c75f31eb6b168607e52aa3aa4df))
+ROM_RELOAD(0xf800, 0x0800)
+
+// Vector Generator ROMs
+ROM_LOAD("037006-01e.bc3", 0x3000, 0x0800, CRC(9fcffea0) SHA1(69b76655ee75742fcaa0f39a4a1cf3aa58088343))
+ROM_LOAD("037007-01e.a3", 0x3800, 0x0800, CRC(60250ede) SHA1(9c48952bd69863bee0c6dce09f3613149e0151ef))
+
+// AVG PROM
+ROM_REGION(0x100, REGION_PROMS, 0)
+ROM_LOAD("036408-01.k7", 0x0000, 0x0100, CRC(5903af03) SHA1(24bc0366f394ad0ec486919212e38be0f08d0239)) // 74S287N or compatible bprom like the 82S129
+ROM_END
+
 
 ROM_START(bradley)
 ROM_REGION(0x10000, REGION_CPU1, 0)
@@ -634,8 +656,8 @@ ROM_REGION(0x100, REGION_PROMS, 0)
 ROM_LOAD("036408-01.k7", 0x0000, 0x0100, CRC(5903af03) SHA1(24bc0366f394ad0ec486919212e38be0f08d0239))
 ROM_END
 
-// Battlezone (Revision 1)
-AAE_DRIVER_BEGIN(drv_bzone, "bzone", "Battlezone (Revision 1)")
+// Battlezone (Revision 2)
+AAE_DRIVER_BEGIN(drv_bzone, "bzone", "Battlezone (Revision 2)")
 AAE_DRIVER_ROM(rom_bzone)
 AAE_DRIVER_FUNCS(&init_bzone, &run_bzone, &end_bzone)
 AAE_DRIVER_INPUT(input_ports_bzone)
@@ -668,8 +690,8 @@ AAE_DRIVER_NVRAM(atari_vg_earom_handler)
 AAE_DRIVER_LAYOUT_NONE()
 AAE_DRIVER_END()
 
-// Battlezone (Revision A)
-AAE_DRIVER_BEGIN(drv_bzonea, "bzonea", "Battlezone (Revision A)")
+// Battlezone (Revision 1)
+AAE_DRIVER_BEGIN(drv_bzonea, "bzonea", "Battlezone (Revision 1)")
 AAE_DRIVER_ROM(rom_bzonea)
 AAE_DRIVER_FUNCS(&init_bzone, &run_bzone, &end_bzone)
 AAE_DRIVER_INPUT(input_ports_bzone)
@@ -693,7 +715,7 @@ AAE_DRIVER_LAYOUT_NONE()
 AAE_DRIVER_END()
 
 // Battlezone Cocktail Proto
-AAE_DRIVER_BEGIN(drv_bzonec, "bzonec", "Battlezone Cocktail Proto")
+AAE_DRIVER_BEGIN(drv_bzonec, "bzonec", "Battlezone Cocktail")
 AAE_DRIVER_ROM(rom_bzonec)
 AAE_DRIVER_FUNCS(&init_bzone, &run_bzone, &end_bzone)
 AAE_DRIVER_INPUT(input_ports_bzone)
@@ -741,7 +763,7 @@ AAE_DRIVER_LAYOUT_NONE()
 AAE_DRIVER_END()
 
 // Red Baron
-AAE_DRIVER_BEGIN(drv_redbaron, "redbaron", "Red Baron")
+AAE_DRIVER_BEGIN(drv_redbaron, "redbaron", "Red Baron (Revision 2)")
 AAE_DRIVER_ROM(rom_redbaron)
 AAE_DRIVER_FUNCS(&init_redbaron, &run_bzone, &end_bzone)
 AAE_DRIVER_INPUT(input_ports_redbaron)
@@ -765,6 +787,32 @@ AAE_DRIVER_NVRAM(atari_vg_earom_handler)
 AAE_DRIVER_LAYOUT_NONE()
 AAE_DRIVER_END()
 
+
+// Red Baron
+AAE_DRIVER_BEGIN(drv_redbarona, "redbarona", "Red Baron (Revision 1)")
+AAE_DRIVER_ROM(rom_redbarona)
+AAE_DRIVER_FUNCS(&init_redbaron, &run_bzone, &end_bzone)
+AAE_DRIVER_INPUT(input_ports_redbaron)
+AAE_DRIVER_SAMPLES(redbaron_samples)
+AAE_DRIVER_ART(redbaronart)
+AAE_DRIVER_CPUS(
+	AAE_CPU_ENTRY(
+		CPU_M6502, 1512000, 100, 1, INT_TYPE_NMI, nullptr,
+		RedBaronRead, RedBaronWrite,
+		nullptr, nullptr, nullptr, nullptr
+	),
+	AAE_CPU_NONE_ENTRY(), AAE_CPU_NONE_ENTRY(), AAE_CPU_NONE_ENTRY()
+)
+AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_BW | VECTOR_USES_OVERLAY1, ORIENTATION_DEFAULT)
+AAE_DRIVER_SCREEN(1024, 768, 0, 512, 0, 395)
+AAE_DRIVER_RASTER_NONE()
+AAE_DRIVER_HISCORE_NONE()
+AAE_DRIVER_VECTORRAM(0x2000, 0x1000)
+AAE_DRIVER_NVRAM(atari_vg_earom_handler)
+AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_END()
+
+
 // Bradley Trainer
 AAE_DRIVER_BEGIN(drv_bradley, "bradley", "Bradley Trainer")
 AAE_DRIVER_ROM(rom_bradley)
@@ -781,7 +829,7 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_NONE_ENTRY(), AAE_CPU_NONE_ENTRY(), AAE_CPU_NONE_ENTRY()
 )
 AAE_DRIVER_VIDEO_CORE(45, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW, ORIENTATION_DEFAULT)
-AAE_DRIVER_SCREEN(1024, 768, 0, 460, 0, 395)
+AAE_DRIVER_SCREEN(1024, 768, 0, 530, 0, 545)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x2000, 0x1000)
@@ -794,4 +842,5 @@ AAE_REGISTER_DRIVER(drv_bzonea)
 AAE_REGISTER_DRIVER(drv_bzonec)
 AAE_REGISTER_DRIVER(drv_bzonep)
 AAE_REGISTER_DRIVER(drv_redbaron)
+AAE_REGISTER_DRIVER(drv_redbarona)
 AAE_REGISTER_DRIVER(drv_bradley)
