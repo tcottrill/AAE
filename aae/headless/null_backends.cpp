@@ -28,6 +28,7 @@
 #include "sys_input.h"            // mouse_b, key[], get_mouse_mickeys_ex, RawInput_*
 #include "led_service_handler.h"  // set_led_status (distinct from osd_set_leds)
 #include "fileio/texture_handler.h" // game_tex[10]
+#include "aae_mame_driver.h"      // struct GameOptions / extern options
 
 #include <cstdio>
 #include <cstdarg>
@@ -262,6 +263,29 @@ int num_joysticks = 0;
 JOYSTICK_INFO joy[MAX_JOYSTICKS] = {};
 int mouse_b = 0;
 unsigned char key[256] = {};
+
+// --- global cheat flag ------------------------------------------------------
+// `options` (aae_mame_driver.h: a one-int struct, `int cheat`) is defined in
+// aae_emulator.cpp - executable-side, and not linked here - while its only
+// reader inside aae_core is inptport.cpp's input_port_joy(), which gates
+// IPF_CHEAT port bits on `!options.cheat`. That read arrived with c40c338
+// ("IPF_CHEAT ports get joystick bindings again"); before it the guard
+// rejected IPF_CHEAT unconditionally and named no exe-side symbol at all,
+// which is why this target linked up to that point and stopped afterwards.
+// headless_main.cpp calls load_input_port_settings() deliberately (see the
+// long comment there), and that pulls in inptport.obj, so the symbol has to
+// resolve regardless of what runs.
+//
+// Initialized to 1, not left zero: aae_emulator.cpp hardwires
+// `options.cheat = 1` on the start-game path, so 1 is the value every real
+// AAE run uses and the one that keeps headless behaviour identical to the
+// executable's. A zero-initialized definition would in fact link and produce
+// the same vector counts today - the joy code input_port_joy() returns is
+// only ever consumed as `joy != IP_JOY_NONE && osd_joy_pressed(joy)`, and
+// osd_joy_pressed() is inert here because num_joysticks/mouse_b above are
+// both 0 - but it would silently re-create the exact stripped-binding bug
+// c40c338 fixed the moment this target grows real input.
+struct GameOptions options = { 1 };
 
 // --- discrete sample playback + mixer channel/stream API --------------------
 // mixer.cpp (executable-side - owns the XAudio2/ALSA backend) is where all of
