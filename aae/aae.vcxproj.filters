@@ -25,6 +25,9 @@
     <ClCompile Include="system\input\Joystick.cpp">
       <Filter>Source Files\system\input</Filter>
     </ClCompile>
+    <ClCompile Include="system\input\pad_map.cpp">
+      <Filter>Source Files\system\input</Filter>
+    </ClCompile>
     <ClCompile Include="system\window\win10_win11_required_code.cpp">
       <Filter>Source Files\system\window</Filter>
     </ClCompile>
@@ -208,6 +211,9 @@
       <Filter>Source Files\system\graphics</Filter>
     </ClInclude>
     <ClInclude Include="system\input\joystick.h">
+      <Filter>Source Files\system\input</Filter>
+    </ClInclude>
+    <ClInclude Include="system\input\pad_map.h">
       <Filter>Source Files\system\input</Filter>
     </ClInclude>
     <ClInclude Include="system\math\circle.h">

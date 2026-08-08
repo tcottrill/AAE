@@ -230,6 +230,7 @@
     <ClInclude Include="system\graphics\texrect.h" />
     <ClInclude Include="system\graphics\vk\sys_vk.h" />
     <ClInclude Include="system\input\joystick.h" />
+    <ClInclude Include="system\input\pad_map.h" />
     <ClInclude Include="system\input\rawinput_win32.h" />
     <ClInclude Include="system\math\circle.h" />
     <ClInclude Include="system\math\MathUtils.h" />
@@ -297,6 +298,7 @@
     <ClCompile Include="system\graphics\texrect.cpp" />
     <ClCompile Include="system\graphics\vk\sys_vk.cpp" />
     <ClCompile Include="system\input\Joystick.cpp" />
+    <ClCompile Include="system\input\pad_map.cpp" />
     <ClCompile Include="system\input\rawinput.cpp" />
     <ClCompile Include="system\util\iniFile.cpp" />
     <ClCompile Include="system\util\path_helper.cpp" />
