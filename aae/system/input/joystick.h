@@ -329,6 +329,11 @@ typedef struct JOYSTICK_INFO {
     int flags;
     int num_sticks;
     int num_buttons;
+    // 1 = this device fills the canonical XInput-order layout above
+    // (XInput pads; DirectInput pads matched by pad_map). Chord detection
+    // scans ONLY these devices. Raw DI sticks (Ultimarc etc.) stay 0 so
+    // their arbitrary high buttons can never fire menu/exit/pause.
+    int is_gamepad;
     JOYSTICK_STICK_INFO stick[MAX_JOYSTICK_STICKS];
     JOYSTICK_BUTTON_INFO button[MAX_JOYSTICK_BUTTONS];
 } JOYSTICK_INFO;

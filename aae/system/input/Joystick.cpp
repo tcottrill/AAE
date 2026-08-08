@@ -142,6 +142,7 @@ static void clear_all_joystick_state()
 		joy[i].flags = 0;
 		joy[i].num_sticks = 0;
 		joy[i].num_buttons = 0;
+		joy[i].is_gamepad = 0;
 
 		for (int s = 0; s < MAX_JOYSTICK_STICKS; ++s) {
 			joy[i].stick[s].flags = 0;
@@ -173,6 +174,7 @@ static void reset_single_joystick(int index)
 	joy[index].flags = 0;
 	joy[index].num_sticks = 0;
 	joy[index].num_buttons = 0;
+	joy[index].is_gamepad = 0;
 
 	for (int s = 0; s < MAX_JOYSTICK_STICKS; ++s) {
 		joy[index].stick[s].flags = 0;
@@ -303,6 +305,8 @@ namespace xinput {
 		j.num_buttons = 16;
 		for (int b = 0; b < j.num_buttons; ++b)
 			j.button[b].name = BUTTON_NAMES[b];
+
+		j.is_gamepad = 1;
 	}
 
 	static void apply_dpad_to_left_stick(JOYSTICK_INFO& j, WORD buttons)
