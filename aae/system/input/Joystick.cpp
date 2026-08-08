@@ -1586,7 +1586,10 @@ void set_joystick_hotplug_callback(JoystickHotplugCallback callback)
 
 bool joystick_using_xinput()
 {
-	return s_active_driver == JoystickDriver::XInput;
+	// Hybrid mode is XInput serving the pads with DirectInput8 alongside for
+	// generic HID sticks, so combo detection must treat both as XInput-active.
+	return s_active_driver == JoystickDriver::XInput ||
+	       s_active_driver == JoystickDriver::Hybrid;
 }
 
 const char* joystick_driver_name()
