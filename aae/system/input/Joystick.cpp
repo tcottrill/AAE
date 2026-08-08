@@ -194,13 +194,57 @@ static void reset_single_joystick(int index)
 	}
 }
 
+//------------------------------------------------------------------------------
+// Canonical gamepad descriptor (shared by XInput and DirectInput Sony pads)
+//------------------------------------------------------------------------------
+
+static const char* const BUTTON_NAMES[16] = {
+	"A", "B", "X", "Y",
+	"LB", "RB",
+	"Back", "Start",
+	"LStick", "RStick",
+	"DPadUp", "DPadDown", "DPadLeft", "DPadRight",
+	"LT", "RT"
+};
+
+// Axis position (|pos| out of 127) beyond which the digital d1/d2 view of a
+// canonical-pad stick reports pressed. Shared by XInput and DI Sony pads.
+static constexpr int DIGITAL_THRESHOLD = 32;
+
+// Shared canonical-pad descriptor: 2 named sticks, 16 canonical buttons,
+// gamepad-class. Used by the XInput path and by DirectInput Sony pads.
+static void setup_pad_descriptor(int index)
+{
+	JOYSTICK_INFO& j = joy[index];
+
+	j.flags = JOYFLAG_DIGITAL | JOYFLAG_ANALOGUE | JOYFLAG_SIGNED;
+	j.num_sticks = 2;
+
+	j.stick[0].flags = j.flags;
+	j.stick[0].num_axis = 2;
+	j.stick[0].name = "Left Stick";
+	j.stick[0].axis[0].name = "X";
+	j.stick[0].axis[1].name = "Y";
+
+	j.stick[1].flags = j.flags;
+	j.stick[1].num_axis = 2;
+	j.stick[1].name = "Right Stick";
+	j.stick[1].axis[0].name = "X";
+	j.stick[1].axis[1].name = "Y";
+
+	j.num_buttons = 16;
+	for (int b = 0; b < j.num_buttons; ++b)
+		j.button[b].name = BUTTON_NAMES[b];
+
+	j.is_gamepad = 1;
+}
+
 //==============================================================================
 // XInput Implementation
 //==============================================================================
 
 namespace xinput {
 	static constexpr int MAX_CONTROLLERS = 4;
-	static constexpr int DIGITAL_THRESHOLD = 32;
 	static constexpr int TRIGGER_THRESHOLD = 30;
 
 	// Stale packet detection
@@ -218,15 +262,6 @@ namespace xinput {
 
 	// Keep track of rumble duration internally
 	static int s_rumble_timer[MAX_CONTROLLERS] = {};
-
-	static const char* const BUTTON_NAMES[16] = {
-		"A", "B", "X", "Y",
-		"LB", "RB",
-		"Back", "Start",
-		"LStick", "RStick",
-		"DPadUp", "DPadDown", "DPadLeft", "DPadRight",
-		"LT", "RT"
-	};
 
 	static void reset_state()
 	{
@@ -284,28 +319,7 @@ namespace xinput {
 
 	static void setup_descriptor(int index)
 	{
-		JOYSTICK_INFO& j = joy[index];
-
-		j.flags = JOYFLAG_DIGITAL | JOYFLAG_ANALOGUE | JOYFLAG_SIGNED;
-		j.num_sticks = 2;
-
-		j.stick[0].flags = j.flags;
-		j.stick[0].num_axis = 2;
-		j.stick[0].name = "Left Stick";
-		j.stick[0].axis[0].name = "X";
-		j.stick[0].axis[1].name = "Y";
-
-		j.stick[1].flags = j.flags;
-		j.stick[1].num_axis = 2;
-		j.stick[1].name = "Right Stick";
-		j.stick[1].axis[0].name = "X";
-		j.stick[1].axis[1].name = "Y";
-
-		j.num_buttons = 16;
-		for (int b = 0; b < j.num_buttons; ++b)
-			j.button[b].name = BUTTON_NAMES[b];
-
-		j.is_gamepad = 1;
+		setup_pad_descriptor(index);
 	}
 
 	static void apply_dpad_to_left_stick(JOYSTICK_INFO& j, WORD buttons)
@@ -916,6 +930,7 @@ namespace dinput {
 		int   num_extra;              // extra 1-axis sticks after X/Y
 		LONG  DIJOYSTATE2::* extra[6];  // source members for the extras
 		int   has_pov;
+		int   sony;                   // pad_map_is_sony matched: fill canonical layout
 	};
 
 	static IDirectInput8A* s_di = nullptr;
@@ -986,6 +1001,8 @@ namespace dinput {
 	// 1-axis sticks, then a digital hat).
 	static void setup_descriptor(int d)
 	{
+		if (s_devices[d].sony) { setup_pad_descriptor(d); return; }
+
 		JOYSTICK_INFO& j = joy[d];
 		Device& D = s_devices[d];
 
@@ -1020,6 +1037,7 @@ namespace dinput {
 		j.num_buttons = D.num_buttons;
 		for (int b = 0; b < j.num_buttons; b++)
 			j.button[b].name = "Button";
+		j.is_gamepad = 0;     // raw stick: never chord-scanned
 	}
 
 	// EnumObjects callback: note which optional axes exist.
@@ -1056,6 +1074,8 @@ namespace dinput {
 			return DIENUM_CONTINUE;
 		}
 
+		const bool sony = pad_map_is_sony(vid, pid);
+
 		IDirectInputDevice8A* dev = nullptr;
 		if (FAILED(s_di->CreateDevice(inst->guidInstance, &dev, nullptr)) || !dev)
 			return DIENUM_CONTINUE;
@@ -1086,24 +1106,39 @@ namespace dinput {
 		snprintf(D.name, sizeof(D.name), "%s", inst->tszInstanceName);
 		D.num_buttons = MIN((int)caps.dwButtons, MAX_JOYSTICK_BUTTONS);
 		D.has_pov = (caps.dwPOVs > 0) ? 1 : 0;
+		D.sony = sony ? 1 : 0;
 		D.alive = 1;
 
-		// map optional axes to extra 1-axis sticks (0..255)
-		D.num_extra = 0;
-		if (probe.z)           D.extra[D.num_extra++] = &DIJOYSTATE2::lZ;
-		if (probe.rx)          D.extra[D.num_extra++] = &DIJOYSTATE2::lRx;
-		if (probe.ry)          D.extra[D.num_extra++] = &DIJOYSTATE2::lRy;
-		if (probe.rz)          D.extra[D.num_extra++] = &DIJOYSTATE2::lRz;
-		// sliders handled through lRz-style members is device-specific;
-		// rglSlider needs array access -- covered separately in poll
+		if (sony)
+		{
+			// Canonical pad: left stick lX/lY, right stick lZ/lRz, all signed.
+			// No extra sliders; L2/R2 analog intentionally not exposed
+			// (parity with the XInput path, which exposes none).
+			D.num_extra = 0;
+			set_axis_range(dev, DIJOFS_X,  -128, 127);
+			set_axis_range(dev, DIJOFS_Y,  -128, 127);
+			set_axis_range(dev, DIJOFS_Z,  -128, 127);
+			set_axis_range(dev, DIJOFS_RZ, -128, 127);
+		}
+		else
+		{
+			// map optional axes to extra 1-axis sticks (0..255)
+			D.num_extra = 0;
+			if (probe.z)           D.extra[D.num_extra++] = &DIJOYSTATE2::lZ;
+			if (probe.rx)          D.extra[D.num_extra++] = &DIJOYSTATE2::lRx;
+			if (probe.ry)          D.extra[D.num_extra++] = &DIJOYSTATE2::lRy;
+			if (probe.rz)          D.extra[D.num_extra++] = &DIJOYSTATE2::lRz;
+			// sliders handled through lRz-style members is device-specific;
+			// rglSlider needs array access -- covered separately in poll
 
-		// X/Y signed -128..127; optional axes 0..255
-		set_axis_range(dev, DIJOFS_X, -128, 127);
-		set_axis_range(dev, DIJOFS_Y, -128, 127);
-		if (probe.z)  set_axis_range(dev, DIJOFS_Z, 0, 255);
-		if (probe.rx) set_axis_range(dev, DIJOFS_RX, 0, 255);
-		if (probe.ry) set_axis_range(dev, DIJOFS_RY, 0, 255);
-		if (probe.rz) set_axis_range(dev, DIJOFS_RZ, 0, 255);
+			// X/Y signed -128..127; optional axes 0..255
+			set_axis_range(dev, DIJOFS_X, -128, 127);
+			set_axis_range(dev, DIJOFS_Y, -128, 127);
+			if (probe.z)  set_axis_range(dev, DIJOFS_Z, 0, 255);
+			if (probe.rx) set_axis_range(dev, DIJOFS_RX, 0, 255);
+			if (probe.ry) set_axis_range(dev, DIJOFS_RY, 0, 255);
+			if (probe.rz) set_axis_range(dev, DIJOFS_RZ, 0, 255);
+		}
 
 		dev->Acquire();
 
@@ -1111,9 +1146,10 @@ namespace dinput {
 		s_num_devices++;
 		*added = true;
 
-		LOG_INFO("DirectInput: joystick %d registered: %s [%s] (%d buttons%s)",
+		LOG_INFO("DirectInput: joystick %d registered: %s [%s] (%d buttons%s%s)",
 			s_num_devices, D.name, D.guid_str, D.num_buttons,
-			D.has_pov ? ", hat" : "");
+			D.has_pov ? ", hat" : "",
+			D.sony ? ", sony pad map" : "");
 
 		return DIENUM_CONTINUE;
 	}
@@ -1189,6 +1225,66 @@ namespace dinput {
 				continue;
 			}
 			D.alive = 1;
+
+			if (D.sony)
+			{
+				// Sticks: DI reports up as negative already; no inversion.
+				j.stick[0].axis[0].pos = clamp_int((int)st.lX, -128, 127);
+				j.stick[0].axis[1].pos = clamp_int((int)st.lY, -128, 127);
+				j.stick[1].axis[0].pos = clamp_int((int)st.lZ, -128, 127);
+				j.stick[1].axis[1].pos = clamp_int((int)st.lRz, -128, 127);
+				for (int s = 0; s < 2; ++s)
+					for (int a = 0; a < 2; ++a)
+					{
+						j.stick[s].axis[a].d1 = (j.stick[s].axis[a].pos < -DIGITAL_THRESHOLD) ? 1 : 0;
+						j.stick[s].axis[a].d2 = (j.stick[s].axis[a].pos > DIGITAL_THRESHOLD) ? 1 : 0;
+					}
+
+				// Buttons: Sony raw order -> canonical slots.
+				uint8_t raw[PAD_SONY_RAW_BUTTONS];
+				for (int b = 0; b < PAD_SONY_RAW_BUTTONS; ++b)
+					raw[b] = st.rgbButtons[b];
+				uint8_t canonical[PAD_BTN_COUNT];
+				pad_map_sony_buttons(raw, canonical);
+
+				// D-pad: POV hat -> canonical 10..13 + stick[0] override,
+				// mirroring xinput's apply_dpad_to_left_stick behavior.
+				int px = 0, py = 0;
+				DWORD pov = st.rgdwPOV[0];
+				if ((pov & 0xFFFF) != 0xFFFF)
+				{
+					int deg = pov / 100;
+					if (deg > 337 || deg < 23)         py = -1;
+					else if (deg < 68)  { py = -1; px = 1; }
+					else if (deg < 113)                 px = 1;
+					else if (deg < 158) { py = 1; px = 1; }
+					else if (deg < 203)                 py = 1;
+					else if (deg < 248) { py = 1; px = -1; }
+					else if (deg < 293)                 px = -1;
+					else                { py = -1; px = -1; }
+				}
+				canonical[PAD_BTN_DPAD_UP]    = (py < 0) ? 1 : 0;
+				canonical[PAD_BTN_DPAD_DOWN]  = (py > 0) ? 1 : 0;
+				canonical[PAD_BTN_DPAD_LEFT]  = (px < 0) ? 1 : 0;
+				canonical[PAD_BTN_DPAD_RIGHT] = (px > 0) ? 1 : 0;
+				if (px)
+				{
+					j.stick[0].axis[0].pos = px * 127;
+					j.stick[0].axis[0].d1 = (px < 0);
+					j.stick[0].axis[0].d2 = (px > 0);
+				}
+				if (py)
+				{
+					j.stick[0].axis[1].pos = py * 127;
+					j.stick[0].axis[1].d1 = (py < 0);
+					j.stick[0].axis[1].d2 = (py > 0);
+				}
+
+				for (int b = 0; b < PAD_BTN_COUNT; ++b)
+					j.button[b].b = canonical[b];
+
+				continue;   // generic fill below must not run for this device
+			}
 
 			// stick 0: signed X/Y with digital thresholds
 			j.stick[0].axis[0].pos = clamp_int((int)st.lX, -128, 127);
