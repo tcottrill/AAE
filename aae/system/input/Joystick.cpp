@@ -12,6 +12,7 @@
 //------------------------------------------------------------------------------
 
 #include "joystick.h"
+#include "pad_map.h"
 #include "sys_log.h"
 
 #include <windows.h>
@@ -81,14 +82,12 @@ JOYSTICK_INFO joy[MAX_JOYSTICKS];
 //------------------------------------------------------------------------------
 
 static int  s_comboHoldFrames[MAX_JOYSTICKS][JOY_MAX_COMBOS] = {};
-static constexpr int COMBO_CONFIRM_FRAMES = 2; // must be held this many frames to trigger
 static JoystickHotplugCallback s_hotplug_callback = nullptr;
 
 // Generalized combo edge-detection state.
 // Each distinct buttonMask gets its own slot so combos don't interfere.
 static WORD s_comboMasks[JOY_MAX_COMBOS] = {};
 static int  s_numCombos = 0;
-static bool s_comboWasHeld[MAX_JOYSTICKS][JOY_MAX_COMBOS] = {};
 
 static int get_combo_index(WORD mask)
 {
@@ -497,15 +496,6 @@ namespace xinput {
 		for (int i = 0; i < MAX_CONTROLLERS; ++i)
 			if (s_connected[i]) return true;
 		return false;
-	}
-
-	// NEW: Expose cached buttons for combo system
-	static WORD get_cached_buttons(int player)
-	{
-		if (player < 0 || player >= MAX_JOYSTICKS) return 0;
-		int x_idx = s_joy_to_xinput[player];
-		if (x_idx < 0 || x_idx >= MAX_CONTROLLERS) return 0;
-		return s_cached_states[x_idx].Gamepad.wButtons;
 	}
 
 	// NEW: Rumble implementation
@@ -1340,27 +1330,33 @@ void remove_joystick()
 	_joystick_installed = 0;
 }
 
-bool joystick_check_combo(int player, uint16_t buttonMask)
+// System chords are global shortcuts: scan every gamepad-class device and
+// fire when any of them holds the full mask for PAD_COMBO_CONFIRM_FRAMES
+// consecutive polls. The player parameter is legacy (all call sites pass 0)
+// and no longer selects a device. Non-gamepad devices (raw DirectInput
+// sticks, WinMM) are never scanned, so a cab stick's high buttons can't
+// phantom-trigger menu/exit/pause. Reads the canonical joy[] state filled
+// by poll_joystick() -- call sites must poll first, which the frame loop
+// already does.
+bool joystick_check_combo(int /*player*/, uint16_t buttonMask)
 {
-	if (!joystick_using_xinput()) return false;
-	if (player < 0 || player >= MAX_JOYSTICKS) return false;
-
-	// Fix: Read from cached state instead of invoking XInputGetState again.
-	// This fixes a bug where `player` (joy index) was wrongly used as the physical XInput slot!
-	WORD buttons = xinput::get_cached_buttons(player);
-	bool comboHeld = (buttons & buttonMask) == buttonMask;
-
 	int idx = get_combo_index(buttonMask);
 
-	if (comboHeld)
-		s_comboHoldFrames[player][idx]++;
-	else
-		s_comboHoldFrames[player][idx] = 0;
+	bool triggered = false;
+	for (int d = 0; d < MAX_JOYSTICKS; ++d) {
+		if (!joy[d].is_gamepad) {
+			s_comboHoldFrames[d][idx] = 0;
+			continue;
+		}
 
-	// Trigger exactly once when hold count reaches the threshold
-	bool triggered = (s_comboHoldFrames[player][idx] == COMBO_CONFIRM_FRAMES);
+		uint8_t canonical[PAD_BTN_COUNT];
+		for (int b = 0; b < PAD_BTN_COUNT; ++b)
+			canonical[b] = (joy[d].button[b].b != 0) ? 1 : 0;
 
-	s_comboWasHeld[player][idx] = comboHeld;
+		bool held = (pad_map_chord_mask(canonical) & buttonMask) == buttonMask;
+		if (pad_map_combo_step(held, &s_comboHoldFrames[d][idx]))
+			triggered = true;
+	}
 	return triggered;
 }
 

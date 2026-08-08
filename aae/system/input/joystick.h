@@ -118,7 +118,7 @@
 // ---------------------------
 // Edge-triggered combo detection for system-level shortcuts. A combo
 // fires once when ALL specified buttons are held simultaneously for
-// COMBO_CONFIRM_FRAMES (2) consecutive polls, then won't fire again
+// PAD_COMBO_CONFIRM_FRAMES (2) consecutive polls, then won't fire again
 // until the combo is fully released and re-pressed.
 //
 //   // Predefined combos:
