@@ -127,6 +127,28 @@ No changes to `inptport.cpp` defaults, menus, or drivers.
   the DI stick occupies `joy[0]` and shifts the pad's index up.
 - **No devices / WinMM-only:** unchanged behavior, chords inert.
 
+## Part C — Linux evdev parity (SteamOS / Steam controllers) — added 2026-08-08
+
+The owner's primary target is SteamOS (Deck + Steam Machine Flatpak). Steam
+Input consumes every physical controller there — Deck built-ins, the new
+Steam Controller, DualSense, Xbox — and re-presents it to the game as a
+virtual Xbox 360 pad over uinput/evdev. The evdev backend already fills
+`joy[]` in the canonical layout (BTN_SOUTH-family → canonical slots), so
+Steam-brand support means finishing Part B on Linux:
+
+- Tag evdev devices that advertise gamepad capability as `is_gamepad`;
+  generic HID sticks stay untagged (same Ultimarc guard as Windows).
+- Replace `evdev_joystick.cpp`'s private player-0-only
+  `joystick_check_combo` (and its stale driver comments) with the shared
+  canonical implementation, so chords work from any pad, identically to
+  Windows.
+- Verify with the existing Phase-3c uinput harness (`aae_uinput_test` +
+  `aae_inputtest` under WSL): a fabricated X360-style virtual pad is
+  exactly what Steam Input presents on SteamOS.
+
+Non-goal: driving the Steam Controller natively without Steam running (its
+lizard mode presents as keyboard/mouse; Steam is always present on SteamOS).
+
 ## Out of scope
 
 - `gamecontrollerdb.txt` (community mapping file) parsing — the built-in
@@ -137,3 +159,4 @@ No changes to `inptport.cpp` defaults, menus, or drivers.
 - Rumble, LEDs, touchpad, motion.
 - PS-glyph labels on the CONTROLLER GUIDE screen (positions match; Xbox
   names shown; dual-labeling is a possible later polish).
+- Native (non-Steam-Input) Steam Controller hidraw support.
