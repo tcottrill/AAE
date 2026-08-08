@@ -72,3 +72,6 @@ flatpak-build.log
 build-flatpak/
 flatpak-repo/
 .flatpak-builder/
+
+# Brainstorming session mockups (superpowers visual companion)
+.superpowers/
