@@ -500,6 +500,35 @@ void list_all_roms()
 }
 
 // ---------------------------------------------------------------------------
+// utility_exit
+// Quit path for every list-and-exit command line option. They all run inside
+// emulator_init (directly, or via gameparse) and so never reach the normal
+// shutdown sequence in WinMain.
+//
+// By the time WinMain calls emulator_init it has already brought up RawInput,
+// the LED service thread, the joystick layer and a GL or Vulkan context, and
+// its teardown for all of them sits AFTER the emulator_init call. Quitting
+// from in here skips every one of them, so the process must not then run the
+// C++ static destructors: they unwind library state that those still-live
+// subsystems reference, and the process aborts with 0xC0000409 (fail-fast)
+// after having done its job correctly.
+//
+// _Exit ends the process without touching static destructors or atexit
+// handlers. Nothing is left buffered when we get here: saveFile() fcloses any
+// list file just written, and Log::close() flushes and joins the log worker.
+//
+// The LED service is still stopped explicitly rather than left to die with
+// the process, so its keyboard device handles are closed and no further
+// indicator IOCTLs are in flight - see the encoder-wedging note in winmain.
+// ---------------------------------------------------------------------------
+static void utility_exit()
+{
+	osd_led_service_stop();
+	Log::close();
+	_Exit(0);
+}
+
+// ---------------------------------------------------------------------------
 // gameparse
 // Parses command-line arguments for the currently selected game.
 // Handles -listroms, -verifyroms, -listsamples, -verifysamples, -window,
@@ -581,13 +610,7 @@ void gameparse(int argc, char* argv[])
 				LOG_INFO("%s | CRC: %s | SHA1: %s", fname, crcbuf, rom.sha ? rom.sha : "NULL");
 			}
 		}
-		LogClose();
-		// Log::close() first: exit() runs static destructors WITHOUT unwinding,
-		// and sys_log owns a still-joinable worker std::thread. Its destructor
-		// then calls std::terminate - "terminate called without an active
-		// exception", i.e. the process aborts after doing its job correctly.
-		Log::close();
-		exit(0);
+		utility_exit();
 
 		// -------------------------------------------------------------------------
 	case 2: // -verifyroms: check each ROM file against expected CRC
@@ -614,13 +637,7 @@ void gameparse(int argc, char* argv[])
 				LOG_INFO("%s", logOutput.c_str());
 			}
 		}
-		LogClose();
-		// Log::close() first: exit() runs static destructors WITHOUT unwinding,
-		// and sys_log owns a still-joinable worker std::thread. Its destructor
-		// then calls std::terminate - "terminate called without an active
-		// exception", i.e. the process aborts after doing its job correctly.
-		Log::close();
-		exit(0);
+		utility_exit();
 
 		// -------------------------------------------------------------------------
 	case 3: // -listsamples: list sample names for this game
@@ -631,13 +648,7 @@ void gameparse(int argc, char* argv[])
 				logOutput += samples[i];
 		}
 		LOG_INFO("%s sample list: %s", drv->name, logOutput.c_str());
-		LogClose();
-		// Log::close() first: exit() runs static destructors WITHOUT unwinding,
-		// and sys_log owns a still-joinable worker std::thread. Its destructor
-		// then calls std::terminate - "terminate called without an active
-		// exception", i.e. the process aborts after doing its job correctly.
-		Log::close();
-		exit(0);
+		utility_exit();
 
 		// -------------------------------------------------------------------------
 	case 4: // -verifysamples: check sample files for this game
@@ -1660,35 +1671,6 @@ void emulator_run()
 	if (++frames > 0x0fffffff) frames = 0;
 
 	if (config.debug_profile_code) LOG_INFO("Frame end");
-}
-
-// ---------------------------------------------------------------------------
-// utility_exit
-// Quit path for the list-and-exit command line options, which run inside
-// emulator_init and so never reach the normal shutdown sequence in WinMain.
-//
-// By the time WinMain calls emulator_init it has already brought up RawInput,
-// the LED service thread, the joystick layer and a GL or Vulkan context, and
-// its teardown for all of them sits AFTER the emulator_init call. Quitting
-// from in here skips every one of them, so the process must not then run the
-// C++ static destructors: they unwind library state that those still-live
-// subsystems reference, and the process aborts with 0xC0000409 (fail-fast)
-// after having done its job correctly. That was the long-standing crash on
-// -listallgames and -listromstotext.
-//
-// _Exit ends the process without touching static destructors or atexit
-// handlers. Nothing is left buffered when we get here: saveFile() fcloses the
-// list file it just wrote, and Log::close() flushes and joins the log worker.
-//
-// The LED service is still stopped explicitly rather than left to die with
-// the process, so its keyboard device handles are closed and no further
-// indicator IOCTLs are in flight - see the encoder-wedging note in winmain.
-// ---------------------------------------------------------------------------
-static void utility_exit()
-{
-	osd_led_service_stop();
-	Log::close();
-	_Exit(0);
 }
 
 // ---------------------------------------------------------------------------
