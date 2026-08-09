@@ -500,18 +500,18 @@ void list_all_roms()
 }
 
 // ---------------------------------------------------------------------------
-// utility_exit
-// Quit path for every list-and-exit command line option. They all run inside
-// emulator_init (directly, or via gameparse) and so never reach the normal
-// shutdown sequence in WinMain.
+// emulator_exit_now
+// Declared in aae_emulator.h. Used by every list-and-exit command line option
+// (here and in gameparse) and by the fatal out-of-memory path in memory.cpp.
 //
-// By the time WinMain calls emulator_init it has already brought up RawInput,
-// the LED service thread, the joystick layer and a GL or Vulkan context, and
-// its teardown for all of them sits AFTER the emulator_init call. Quitting
-// from in here skips every one of them, so the process must not then run the
-// C++ static destructors: they unwind library state that those still-live
-// subsystems reference, and the process aborts with 0xC0000409 (fail-fast)
-// after having done its job correctly.
+// All of those quit from inside emulator_init or a running game, and so never
+// reach WinMain's shutdown sequence. By that point WinMain has brought up
+// RawInput, the LED service thread, the joystick layer and a GL or Vulkan
+// context, and its teardown for all of them sits AFTER the emulator_init call.
+// Their worker threads are therefore still running, and a joinable std::thread
+// destructor calls std::terminate - so the C++ static destructors must not run
+// at all. Letting them run is what made the list options abort with
+// 0xC0000409 (fail-fast) after doing their job correctly.
 //
 // _Exit ends the process without touching static destructors or atexit
 // handlers. Nothing is left buffered when we get here: saveFile() fcloses any
@@ -521,11 +521,11 @@ void list_all_roms()
 // the process, so its keyboard device handles are closed and no further
 // indicator IOCTLs are in flight - see the encoder-wedging note in winmain.
 // ---------------------------------------------------------------------------
-static void utility_exit()
+[[noreturn]] void emulator_exit_now(int code)
 {
 	osd_led_service_stop();
 	Log::close();
-	_Exit(0);
+	_Exit(code);
 }
 
 // ---------------------------------------------------------------------------
@@ -610,7 +610,7 @@ void gameparse(int argc, char* argv[])
 				LOG_INFO("%s | CRC: %s | SHA1: %s", fname, crcbuf, rom.sha ? rom.sha : "NULL");
 			}
 		}
-		utility_exit();
+		emulator_exit_now(0);
 
 		// -------------------------------------------------------------------------
 	case 2: // -verifyroms: check each ROM file against expected CRC
@@ -637,7 +637,7 @@ void gameparse(int argc, char* argv[])
 				LOG_INFO("%s", logOutput.c_str());
 			}
 		}
-		utility_exit();
+		emulator_exit_now(0);
 
 		// -------------------------------------------------------------------------
 	case 3: // -listsamples: list sample names for this game
@@ -648,7 +648,7 @@ void gameparse(int argc, char* argv[])
 				logOutput += samples[i];
 		}
 		LOG_INFO("%s sample list: %s", drv->name, logOutput.c_str());
-		utility_exit();
+		emulator_exit_now(0);
 
 		// -------------------------------------------------------------------------
 	case 4: // -verifysamples: check sample files for this game
@@ -674,7 +674,7 @@ void gameparse(int argc, char* argv[])
 			}
 		}
 		LOG_INFO("%s sample verify: %s", drv->name, logOutput.c_str());
-		break;
+		emulator_exit_now(0);
 
 	default:
 		break;
@@ -1785,14 +1785,14 @@ void emulator_init(int argc, char** argv)
 		{
 			LOG_INFO("Listing all ROMs to text...");
 			list_all_roms();
-			utility_exit();
+			emulator_exit_now(0);
 		}
 
 		if (std::strcmp(argv[i], "-listallgames") == 0)
 		{
 			LOG_INFO("Listing all games to text...");
 			list_all_games();
-			utility_exit();
+			emulator_exit_now(0);
 		}
 	}
 

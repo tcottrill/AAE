@@ -12,6 +12,7 @@
 //==========================================================================
 
 #include "aae_mame_driver.h"
+#include "aae_emulator.h"   // emulator_exit_now
 #include "memory.h"
 #include <stdlib.h>
 #include <string.h>
@@ -140,7 +141,13 @@ void new_memory_region(int num, int size, int type)
 		
 		if (Machine->memory_region[num] == nullptr)
 		{
-			LOG_INFO("Can't allocate system ram for Cpu Emulation! - This is bad. Exiting System!"); exit(1);
+			// emulator_exit_now rather than exit(): this runs with the render
+			// context and the input, audio and LED worker threads all live, so
+			// running the static destructors here reports a 0xC0000409
+			// fail-fast instead of the allocation failure that actually
+			// happened.
+			LOG_ERROR("Can't allocate system ram for Cpu Emulation! - This is bad. Exiting System!");
+			emulator_exit_now(1);
 		}
 
 		memset(Machine->memory_region[num], 0, size);

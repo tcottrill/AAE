@@ -30,5 +30,19 @@ int  get_exit_confirm_selection();
 // -----------------------------------------------------------------------------
 bool emulator_is_gui_active();
 
+// -----------------------------------------------------------------------------
+// emulator_exit_now
+// Ends the process from a point that cannot reach WinMain's shutdown sequence,
+// which is where RawInput, the LED service, the render context and the log are
+// torn down. Their worker threads are still running at that point, and a
+// joinable std::thread destructor calls std::terminate, so the C++ static
+// destructors must NOT run - that is what made the list-and-exit options abort
+// with 0xC0000409 after doing their job correctly.
+//
+// Stops the LED service, closes the log, then _Exit(code). Anything else the
+// caller wants flushed must already be on disk.
+// -----------------------------------------------------------------------------
+[[noreturn]] void emulator_exit_now(int code);
+
 
 
