@@ -180,9 +180,11 @@ WRITE_HANDLER(rallyx_coin_counter_w)
 	//coin_counter_w(offset, data);
 }
 
+// Start-button lamps: 0xa184 drives the 1-player lamp, 0xa185 the 2-player
+// one. The offset is range-relative, so it is already the 0/1 LED index.
 WRITE_HANDLER(rallyx_leds_w)
 {
-	//set_led_status(offset, data & 1);
+	set_led_status(address, data & 1);
 }
 
 WRITE_HANDLER(rallyx_play_sound_w)
