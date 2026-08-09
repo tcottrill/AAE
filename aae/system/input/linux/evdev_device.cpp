@@ -72,6 +72,8 @@ EvdevDevice& EvdevDevice::operator=(EvdevDevice&& other) noexcept
 		m_name         = std::move(other.m_name);
 		m_devNode      = std::move(other.m_devNode);
 		m_identity     = std::move(other.m_identity);
+		m_vendorId     = other.m_vendorId;
+		m_productId    = other.m_productId;
 		m_weakIdentity = other.m_weakIdentity;
 		m_seenInput    = other.m_seenInput;
 		m_writable     = other.m_writable;
@@ -135,6 +137,16 @@ bool EvdevDevice::Open(const std::string& devNode, const std::string& identity)
 	if (ioctl(m_fd, EVIOCGNAME(sizeof(nameBuf) - 1), nameBuf) < 0 || !nameBuf[0])
 		snprintf(nameBuf, sizeof(nameBuf), "Unnamed device (%s)", devNode.c_str());
 	m_name = nameBuf;
+
+	// USB vendor/product. Zeroed on failure so a device that will not answer
+	// EVIOCGID simply matches no family table rather than matching by luck.
+	struct input_id id {};
+	if (ioctl(m_fd, EVIOCGID, &id) == 0) {
+		m_vendorId  = id.vendor;
+		m_productId = id.product;
+	} else {
+		m_vendorId = m_productId = 0;
+	}
 
 	if (!identity.empty()) {
 		m_identity     = EvdevSanitizeIdentity(identity);

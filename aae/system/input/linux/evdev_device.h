@@ -19,6 +19,7 @@
 
 #include <linux/input.h>
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -54,6 +55,13 @@ public:
 	const std::string& name()     const { return m_name; }      // EVIOCGNAME
 	const std::string& devNode()  const { return m_devNode; }
 	const std::string& identity() const { return m_identity; }  // ini-safe
+
+	// EVIOCGID. Zero when the ioctl failed. Used to recognise device families
+	// whose kernel driver reports buttons differently - see pad_map_is_sony
+	// and the face-button note above EvdevButtonToAae.
+	uint16_t vendorId()  const { return m_vendorId; }
+	uint16_t productId() const { return m_productId; }
+
 	bool  weakIdentity() const { return m_weakIdentity; }
 	bool  seenInput()    const { return m_seenInput; }
 	void  MarkSeen()           { m_seenInput = true; }
@@ -96,6 +104,8 @@ private:
 	std::string m_name;
 	std::string m_devNode;
 	std::string m_identity;
+	uint16_t    m_vendorId  = 0;
+	uint16_t    m_productId = 0;
 	bool        m_weakIdentity = false;
 	bool        m_seenInput    = false;
 	bool        m_writable     = false;

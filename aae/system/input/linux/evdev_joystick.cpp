@@ -65,6 +65,10 @@ struct PadSlot {
 	// EvdevButtonToAae maps. Classify() also admits BTN_JOYSTICK flight sticks
 	// and bare ABS_X/ABS_Y devices, so this is NOT implied by being attached.
 	bool        isGamepad = false;
+	// True when this device's driver names the face buttons by compass point
+	// rather than by printed letter, so the north button must be read as
+	// canonical Y and the west one as canonical X - see EvdevButtonToAae.
+	bool        sonyFaceLayout = false;
 	std::string name;
 	std::string identity;
 
@@ -208,16 +212,37 @@ void SetupDescriptor(int index)
 //------------------------------------------------------------------------------
 // evdev BTN_* -> AAE_JOYBTN_*.
 //
-// A wart worth stating plainly: the kernel's cardinal names do not line up
-// with the letters printed on an Xbox pad. BTN_NORTH is aliased to BTN_X and
-// BTN_WEST to BTN_Y in <linux/input-event-codes.h>, whereas physically the
-// north button is Y and the west button is X. The xpad driver emits the
-// ALIASES for the printed letters, so matching on BTN_X / BTN_Y (rather than
-// reasoning about compass points) is what puts the right letter on the right
-// button. Using BTN_NORTH here would swap X and Y on every controller.
+// The two upper face buttons cannot be decided from the event code alone.
+// <linux/input-event-codes.h> gives ONE pair of numbers TWO sets of names:
+// BTN_X == BTN_NORTH == 0x133 and BTN_Y == BTN_WEST == 0x134. Which name is
+// the truthful one depends entirely on the driver that emitted the event, and
+// the two families disagree:
+//
+//   * xpad (Xbox and XInput-alike pads, including Steam Input's virtual X360
+//     pad) emits by PRINTED LETTER - physical X, the west button, is 0x133,
+//     and physical Y, the north button, is 0x134.
+//   * hid-playstation (DualSense, DualShock 4) emits by COMPASS POINT -
+//     Square, the west button, is 0x134, and Triangle, the north button, is
+//     0x133. Exactly the other way round.
+//
+// So the switch below reads the codes the xpad way, which is right for every
+// device except Sony's, and sonyFaceLayout swaps that one pair back for pads
+// pad_map_is_sony() recognises. Without it Triangle lands on canonical X and
+// Square on canonical Y, and every binding on those two buttons - the
+// controller guide among them - answers to the wrong one. The DirectInput
+// path in the Win32 Joystick.cpp resolves the same ambiguity with the same
+// table, so both platforms agree on what Triangle is.
+//
+// The other codes are unambiguous and are the same for both families.
 //------------------------------------------------------------------------------
-uint16_t EvdevButtonToAae(int code)
+uint16_t EvdevButtonToAae(int code, bool sonyFaceLayout)
 {
+	if (sonyFaceLayout) {
+		// 0x133 = BTN_X = BTN_NORTH = Triangle, 0x134 = BTN_Y = BTN_WEST = Square.
+		if (code == BTN_NORTH) return AAE_JOYBTN_Y;
+		if (code == BTN_WEST)  return AAE_JOYBTN_X;
+	}
+
 	switch (code) {
 	case BTN_A:       return AAE_JOYBTN_A;
 	case BTN_B:       return AAE_JOYBTN_B;
@@ -277,6 +302,7 @@ void AttachPad(int devIndex, const EvdevDevice& dev)
 	p.name      = dev.name();   // refresh on slot reuse: a weak-identity slot
 	                            // can be re-attached by a different device
 	p.isGamepad = dev.HasKeyCode(BTN_GAMEPAD);
+	p.sonyFaceLayout = pad_map_is_sony(dev.vendorId(), dev.productId());
 	p.buttons   = 0;
 	p.trigL = p.trigR = 0;
 
@@ -287,12 +313,13 @@ void AttachPad(int devIndex, const EvdevDevice& dev)
 	ReadAxisRange(dev, ABS_HAT0X, p.hatX);
 	ReadAxisRange(dev, ABS_HAT0Y, p.hatY);
 
-	LOG_INFO("evdev: gamepad %d connected: %s (X %d..%d flat %d, RX %d..%d flat %d, "
-	         "rumble %s)",
-	         slot, p.name.c_str(),
+	LOG_INFO("evdev: gamepad %d connected: %s [%04x:%04x] (X %d..%d flat %d, "
+	         "RX %d..%d flat %d, rumble %s%s)",
+	         slot, p.name.c_str(), dev.vendorId(), dev.productId(),
 	         p.lx.min, p.lx.max, p.lx.flat,
 	         p.rx.min, p.rx.max, p.rx.flat,
-	         dev.SupportsRumble() ? "yes" : "no");
+	         dev.SupportsRumble() ? "yes" : "no",
+	         p.sonyFaceLayout ? ", Sony face layout (north=Y, west=X)" : "");
 
 	if (s_hotplugCallback) s_hotplugCallback(slot, true, nullptr);
 }
@@ -360,7 +387,7 @@ void HandlePadEvent(PadSlot& p, const input_event& ev)
 {
 	if (ev.type == EV_KEY) {
 		if (ev.value == 2) return;                 // auto-repeat, not a change
-		const uint16_t bit = EvdevButtonToAae(ev.code);
+		const uint16_t bit = EvdevButtonToAae(ev.code, p.sonyFaceLayout);
 		if (bit) {
 			if (ev.value) p.buttons |= bit;
 			else          p.buttons &= (uint16_t)~bit;
