@@ -276,6 +276,7 @@ if(WIN32)
         aae/system/window/win10_win11_required_code.cpp
         aae/system/input/rawinput.cpp
         aae/system/input/Joystick.cpp
+        aae/system/input/pad_map.cpp
         aae/system/audio/xaudio2_backend.cpp
         aae/system/audio/audio_3d.cpp
         aae/system/util/wintimer.cpp
@@ -343,9 +344,13 @@ elseif(UNIX AND NOT APPLE)
     #                       PCM stream, not a voice mixer). Reused by Teensy.
     #   audio_3d_null.cpp - positional audio is Phase 3d; this stub logs the
     #                       gap at startup instead of silently centre-panning.
+    #   pad_map.cpp       - pure gamepad-normalization logic (chord masks,
+    #                       combo hold counters) shared with the Windows
+    #                       Joystick.cpp; evdev_joystick.cpp's chord path.
     set(AAE_LINUX_EXTRA_SOURCES
         aae/system/audio/voice_mixer.cpp
         aae/system/audio/linux/audio_3d_null.cpp
+        aae/system/input/pad_map.cpp
     )
     set(AAE_PLATFORM_SOURCES "")
     set(_aae_missing_backends "")
@@ -429,8 +434,8 @@ endif()
 list(LENGTH AAE_COMMON_SOURCES _aae_common_count)
 list(LENGTH AAE_PLATFORM_SOURCES _aae_platform_count)
 math(EXPR _aae_exe_count "${_aae_common_count} + ${_aae_platform_count}")
-if(WIN32 AND NOT _aae_exe_count EQUAL 54)
-    message(FATAL_ERROR "aae executable source count is ${_aae_exe_count} (common=${_aae_common_count} + platform=${_aae_platform_count}), expected 54 on Windows - it has drifted from aae/aae.vcxproj's <ClCompile> list. Anything that moves between aae.vcxproj and aae_core.vcxproj must move between AAE_COMMON_SOURCES and AAE_CORE_SOURCES here too.")
+if(WIN32 AND NOT _aae_exe_count EQUAL 55)
+    message(FATAL_ERROR "aae executable source count is ${_aae_exe_count} (common=${_aae_common_count} + platform=${_aae_platform_count}), expected 55 on Windows - it has drifted from aae/aae.vcxproj's <ClCompile> list. Anything that moves between aae.vcxproj and aae_core.vcxproj must move between AAE_COMMON_SOURCES and AAE_CORE_SOURCES here too.")
 endif()
 
 # =============================================================================
@@ -991,6 +996,7 @@ if(UNIX AND NOT APPLE)
         aae/system/input/linux/evdev_device.cpp
         aae/system/input/linux/evdev_keymap.cpp
         aae/system/input/linux/evdev_joystick.cpp
+        aae/system/input/pad_map.cpp
         aae/system/util/sys_log.cpp
     )
     target_compile_features(aae_inputtest PRIVATE cxx_std_17)

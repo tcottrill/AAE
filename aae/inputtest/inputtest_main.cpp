@@ -438,10 +438,15 @@ int main(int argc, char** argv)
 				fflush(stdout);
 			}
 
-			if (joystick_check_combo(p, JOY_COMBO_PAUSE)) { printf("[pad%d] COMBO: PAUSE (Start+Back)\n", p); fflush(stdout); }
-			if (joystick_check_combo(p, JOY_COMBO_ESC))   { printf("[pad%d] COMBO: ESC (LStick+Back)\n", p);  fflush(stdout); }
-			if (joystick_check_combo(p, JOY_COMBO_MENU))  { printf("[pad%d] COMBO: MENU (LStick+Start)\n", p); fflush(stdout); }
 		}
+
+		// Once per frame, OUTSIDE the pad loop: joystick_check_combo scans
+		// every connected pad internally, so calling it per pad would advance
+		// each hold counter N times per frame and hide the 2-frame debounce.
+		// No [padN] prefix - the fire is global, not owned by any one pad.
+		if (joystick_check_combo(0, JOY_COMBO_PAUSE)) { printf("COMBO: PAUSE (Start+Back)\n"); fflush(stdout); }
+		if (joystick_check_combo(0, JOY_COMBO_ESC))   { printf("COMBO: ESC (LStick+Back)\n");  fflush(stdout); }
+		if (joystick_check_combo(0, JOY_COMBO_MENU))  { printf("COMBO: MENU (LStick+Start)\n"); fflush(stdout); }
 
 		// Rumble, once, a second after a pad first appears - the uinput
 		// harness prints the magnitudes it receives, which is what turns

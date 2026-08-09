@@ -1,0 +1,39 @@
+# Any-pad chord test, first pad's half.
+#
+# Verifies the shared pad_map combo semantics in evdev_joystick.cpp:
+#   (a) a held chord fires COMBO exactly ONCE per hold (edge-triggered at
+#       PAD_COMBO_CONFIRM_FRAMES consecutive polls, not once per frame), and
+#   (c) a full release re-arms it, so a second press fires a second time.
+#
+# The second pad's half ((b), any-pad scanning) is chord_anypad_pad2.txt,
+# run by a SECOND aae_uinput_test instance - the harness creates one pad per
+# instance, so two instances yield two pads. Launch order:
+#
+#   sudo ./aae_uinput_test --script tools/linux/tests/chord_anypad_pad2.txt &
+#   sleep 1
+#   sudo ./aae_uinput_test --script tools/linux/tests/chord_anypad_pad1.txt \
+#        --exec "./build-linux/aae_inputtest --seconds 15"
+#
+# Expected: exactly FOUR "COMBO: PAUSE" lines in the aae_inputtest output -
+# two from this pad, two from the other one.
+
+sleep 2000
+
+echo pad1: press PAUSE chord (Start+Back), hold ~500ms - expect ONE COMBO: PAUSE
+key pad BTN_SELECT 1
+key pad BTN_START 1
+sleep 500
+echo pad1: release chord
+key pad BTN_SELECT 0
+key pad BTN_START 0
+sleep 500
+
+echo pad1: press the same chord again - re-armed, expect a SECOND single fire
+key pad BTN_SELECT 1
+key pad BTN_START 1
+sleep 500
+key pad BTN_SELECT 0
+key pad BTN_START 0
+
+echo pad1: done, holding devices open for pad2's turn
+sleep 6000
