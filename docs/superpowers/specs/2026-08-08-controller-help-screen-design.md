@@ -1,9 +1,11 @@
 # Controller Help Screen — Design
 
 **Date:** 2026-08-08
-**Status:** Architecture approved; the button/chord *labels* below show today's
-defaults and will be updated once the owner finishes rethinking button
-assignments (in progress 2026-08-08). Everything else is final.
+**Status:** APPROVED as written (owner confirmed the current input scheme is
+final, 2026-08-08 evening). Since this spec was drafted, the gamepad
+normalization work merged (75858b0): the labels below are now also literally
+true on DualSense/DS4 pads (Create=Back, Options=Start, R3=RS click), and on
+SteamOS via Steam Input's virtual pads. Xbox names stay on the screen.
 
 ## Goal
 
