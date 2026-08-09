@@ -625,6 +625,70 @@ git commit -m "docs(input): canonical pad layout + chord contract in joystick.h"
 
 ---
 
+### Task 7: Linux evdev parity (SteamOS / Steam Input) — added 2026-08-08
+
+**Why:** the owner's primary target is SteamOS, where Steam Input presents every
+controller (Deck built-ins, Steam Controller, DualSense, Xbox) as a virtual
+X360 pad over evdev. The evdev backend already fills `joy[]` canonically and
+keeps a per-pad `AAE_JOYBTN` mask; this task brings its chord path and
+`is_gamepad` tagging to parity with Windows.
+
+**Files:**
+- Modify: `aae/system/input/linux/evdev_joystick.cpp`
+- Modify: whichever CMake file lists `evdev_joystick.cpp` (grep; likely the
+  Linux build lists `aae/system/input/pad_map.cpp` needs adding beside it —
+  pad_map is pure C++17, no OS includes)
+- Test: existing `aae_inputtest` + `tools/linux/uinput_devices.cpp` harness
+
+- [ ] **Step 1:** Add `#include "../pad_map.h"` (or the include-path spelling the
+  file uses for sibling headers — match `joystick.h`'s spelling there). Add
+  `pad_map.cpp` to the Linux CMake target(s) that compile `evdev_joystick.cpp`
+  (both the emulator and `aae_inputtest` if listed separately).
+- [ ] **Step 2:** In the evdev `SetupDescriptor`, set `j.is_gamepad = 1;` (every
+  attached device is a pad by construction — `AttachPad` only accepts
+  gamepad-capable devices; verify that claim by reading `ScanPads`, and if
+  generic sticks can attach, gate the flag on gamepad capability instead).
+  Confirm `ResetJoyEntry` clears the field (it zero-fills; verify).
+- [ ] **Step 3:** Replace the private combo implementation (currently
+  player-0-only at ~line 557) with the shared any-pad semantics:
+
+```cpp
+//------------------------------------------------------------------------------
+// Combos -- same contract as Joystick.cpp: system chords are global, scanned
+// across every connected pad; the player parameter is legacy and ignored.
+//------------------------------------------------------------------------------
+bool joystick_check_combo(int /*player*/, uint16_t buttonMask)
+{
+	const int idx = GetComboIndex(buttonMask);
+
+	bool triggered = false;
+	for (int p = 0; p < s_numPads; ++p) {
+		const bool held = s_pads[p].connected &&
+			(s_pads[p].buttons & buttonMask) == buttonMask;
+		if (pad_map_combo_step(held, &s_pads[p].comboHoldFrames[idx]))
+			triggered = true;
+	}
+	return triggered;
+}
+```
+
+  Delete the local `COMBO_CONFIRM_FRAMES` (use `PAD_COMBO_CONFIRM_FRAMES`
+  via pad_map.h — check no other local use remains) and rewrite the stale
+  comment block above the function (it references the deleted
+  `joystick_using_xinput()` gating rationale).
+- [ ] **Step 4:** Build the Linux side under WSL (`scripts/linux/build.sh` or the
+  documented cmake invocation) — green, plus the standalone pad_map tests
+  still pass.
+- [ ] **Step 5:** Harness verification under WSL (needs sudo for uinput):
+  fabricate an X360-style virtual pad with `aae_uinput_test`, run
+  `aae_inputtest`, and confirm (a) chords fire once per 2-frame hold,
+  (b) a second virtual pad can also fire chords, (c) release-to-rearm.
+  Capture the inputtest output in the report. If WSL/uinput is unavailable
+  in this environment, report DONE_WITH_CONCERNS stating exactly what was
+  not run — do not fake it.
+- [ ] **Step 6:** Commit (evdev_joystick.cpp + CMake file only).
+
 ## Out of scope (from the spec — do not add)
 
-- `gamecontrollerdb.txt` parsing, Switch Pro, rumble/LED/touchpad/motion, PS glyphs on the help screen, Linux evdev `is_gamepad` tagging (follow-up owned by the Linux hardware pass — but do not break the evdev build).
+- `gamecontrollerdb.txt` parsing, Switch Pro, rumble/LED/touchpad/motion, PS glyphs on the help screen.
+- Native (non-Steam-Input) Steam Controller hidraw support — lizard mode is keyboard/mouse; Steam is always present on SteamOS.

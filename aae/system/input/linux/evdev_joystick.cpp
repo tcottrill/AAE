@@ -19,6 +19,7 @@
 #include "evdev_device.h"
 
 #include "joystick.h"
+#include "pad_map.h"
 #include "sys_log.h"
 
 #include <algorithm>
@@ -37,7 +38,6 @@ namespace {
 
 constexpr int DIGITAL_THRESHOLD    = 32;   // out of 127, matching Joystick.cpp
 constexpr int TRIGGER_THRESHOLD    = 30;   // out of 255
-constexpr int COMBO_CONFIRM_FRAMES = 2;
 constexpr int RESCAN_FRAMES        = 120;  // ~2s at 60fps
 
 const char* const kButtonNames[16] = {
@@ -60,6 +60,11 @@ const char* const kButtonNames[16] = {
 struct PadSlot {
 	int         devIndex  = -1;      // into s_devices, -1 when detached
 	bool        connected = false;
+	// True only for devices with BTN_GAMEPAD (BTN_SOUTH/BTN_A): the kernel's
+	// definition of a gamepad-class device, and the only kind whose buttons
+	// EvdevButtonToAae maps. Classify() also admits BTN_JOYSTICK flight sticks
+	// and bare ABS_X/ABS_Y devices, so this is NOT implied by being attached.
+	bool        isGamepad = false;
 	std::string name;
 	std::string identity;
 
@@ -155,6 +160,7 @@ void ResetJoyEntry(int index)
 	j.flags = 0;
 	j.num_sticks = 0;
 	j.num_buttons = 0;
+	j.is_gamepad = 0;
 	for (int s = 0; s < MAX_JOYSTICK_STICKS; s++) {
 		j.stick[s].flags = 0;
 		j.stick[s].num_axis = 0;
@@ -176,6 +182,10 @@ void SetupDescriptor(int index)
 {
 	JOYSTICK_INFO& j = joy[index];
 	j.flags = JOYFLAG_DIGITAL | JOYFLAG_ANALOGUE | JOYFLAG_SIGNED;
+	// Same meaning as on Windows (joystick.h): 1 = fills the canonical XInput
+	// layout and is eligible for system chords. Gated on BTN_GAMEPAD rather
+	// than hardcoded because Classify() also attaches BTN_JOYSTICK sticks.
+	j.is_gamepad = s_pads[index].isGamepad ? 1 : 0;
 	j.num_sticks = 2;
 
 	j.stick[0].flags = j.flags;
@@ -264,6 +274,9 @@ void AttachPad(int devIndex, const EvdevDevice& dev)
 	PadSlot& p = s_pads[slot];
 	p.devIndex  = devIndex;
 	p.connected = true;
+	p.name      = dev.name();   // refresh on slot reuse: a weak-identity slot
+	                            // can be re-attached by a different device
+	p.isGamepad = dev.HasKeyCode(BTN_GAMEPAD);
 	p.buttons   = 0;
 	p.trigL = p.trigR = 0;
 
@@ -547,27 +560,24 @@ void set_joystick_hotplug_callback(JoystickHotplugCallback callback)
 }
 
 //------------------------------------------------------------------------------
-// Combos
-//
-// Note this does NOT gate on joystick_using_xinput() the way Joystick.cpp
-// does. That check exists there because the WinMM fallback cannot read the
-// XInput button mask at all; it is a limitation of that path, not part of the
-// contract, and combos work normally on evdev.
+// Combos -- same contract as Joystick.cpp: system chords are global, scanned
+// across every connected pad; the player parameter is legacy and ignored.
+// Non-gamepad devices (isGamepad == false) are never scanned, matching the
+// Windows rule that raw sticks cannot fire menu/exit/pause; their counters
+// are zeroed each scan, which also covers a pad that disconnects mid-hold.
 //------------------------------------------------------------------------------
-bool joystick_check_combo(int player, uint16_t buttonMask)
+bool joystick_check_combo(int /*player*/, uint16_t buttonMask)
 {
-	if (player < 0 || player >= s_numPads) return false;
-	if (!s_pads[player].connected) return false;
+	const int idx = GetComboIndex(buttonMask);
 
-	const bool held = (s_pads[player].buttons & buttonMask) == buttonMask;
-	const int  idx  = GetComboIndex(buttonMask);
-
-	if (held) s_pads[player].comboHoldFrames[idx]++;
-	else      s_pads[player].comboHoldFrames[idx] = 0;
-
-	// Fires exactly once, on the frame the count REACHES the threshold - not
-	// every frame after it. Equality, not >=, is what makes it edge-triggered.
-	return s_pads[player].comboHoldFrames[idx] == COMBO_CONFIRM_FRAMES;
+	bool triggered = false;
+	for (int p = 0; p < s_numPads; ++p) {
+		const bool held = s_pads[p].connected && s_pads[p].isGamepad &&
+			(s_pads[p].buttons & buttonMask) == buttonMask;
+		if (pad_map_combo_step(held, &s_pads[p].comboHoldFrames[idx]))
+			triggered = true;
+	}
+	return triggered;
 }
 
 //------------------------------------------------------------------------------

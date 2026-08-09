@@ -66,6 +66,15 @@
 //   [8]  LStick         [9]  RStick         [10] DPadUp        [11] DPadDown
 //   [12] DPadLeft       [13] DPadRight      [14] LT (digital)  [15] RT (digital)
 //
+// This is the canonical contract for every gamepad-class device, not just
+// XInput pads. DirectInput-served Sony pads (DualSense 054C:0CE6, DualSense
+// Edge 054C:0DF2, DualShock 4 054C:05C4/09CC) are remapped into this same
+// button order, as are the pads seen by the Linux evdev backend -- including
+// Steam Input's virtual X360 pads on SteamOS. Anything matching this layout
+// sets is_gamepad = 1 (see JOYSTICK_INFO below) and is eligible for button
+// combo detection; raw DirectInput sticks (Ultimarc etc.) and WinMM devices
+// keep their own native layout and are never gamepad-class.
+//
 // WinMM stick layout varies by device. Typically:
 //   stick[0]      = Main stick (X/Y, optionally Z/throttle)
 //   stick[1..N-1] = Rudder / sliders
@@ -114,19 +123,27 @@
 // WinMM does NOT support hotplug; the device list is fixed at init time.
 //
 //
-// BUTTON COMBOS (XINPUT ONLY)
-// ---------------------------
-// Edge-triggered combo detection for system-level shortcuts. A combo
-// fires once when ALL specified buttons are held simultaneously for
-// COMBO_CONFIRM_FRAMES (2) consecutive polls, then won't fire again
-// until the combo is fully released and re-pressed.
+// BUTTON COMBOS (ALL GAMEPAD-CLASS DEVICES)
+// ------------------------------------------
+// Edge-triggered combo detection for system-level shortcuts. Each call
+// scans the canonical joy[] state (see the layout above) of every
+// connected gamepad-class device -- XInput pads, remapped Sony DI pads,
+// and (on the Linux build) evdev pads including Steam Input's virtual
+// X360 pads. Any one of them can fire a chord; a combo fires once when
+// ALL specified buttons are held simultaneously, on the SAME device,
+// for PAD_COMBO_CONFIRM_FRAMES (2, defined in pad_map.h) consecutive
+// polls, then won't fire again until fully released and re-pressed.
+// Raw DirectInput sticks (Ultimarc etc.), WinMM devices, and non-
+// BTN_GAMEPAD evdev devices are never gamepad-class, so their arbitrary
+// high buttons can never phantom-trigger a chord.
 //
 //   // Predefined combos:
 //   JOY_COMBO_PAUSE   -- Start + Back          (pause / unpause)
 //   JOY_COMBO_ESC     -- LStick + Back         (ESC / return to GUI)
 //   JOY_COMBO_MENU    -- LStick + Start        (open / close menu)
 //
-//   // Usage in frame loop:
+//   // Usage in frame loop (after poll_joystick() has run -- the frame
+//   // loop already calls it, so this is normally already satisfied):
 //   if (joystick_check_combo(0, JOY_COMBO_PAUSE))
 //       toggle_pause();
 //
@@ -140,12 +157,7 @@
 //       take_screenshot();
 //
 // Up to JOY_MAX_COMBOS (16) distinct combo masks can be tracked at once.
-// Combo detection always returns false on the WinMM path.
-//
-// NOTE: joystick_check_combo() performs its own XInputGetState call
-// independent of poll_joystick(). This means each combo check per
-// frame is an additional XInput query. For typical use (2-3 combos)
-// this is negligible; if checking many combos, consider batching.
+// The 'player' parameter is legacy and ignored -- see the declaration below.
 //
 //
 // QUERY FUNCTIONS
@@ -329,6 +341,11 @@ typedef struct JOYSTICK_INFO {
     int flags;
     int num_sticks;
     int num_buttons;
+    // 1 = this device fills the canonical XInput-order layout above
+    // (XInput pads; DirectInput pads matched by pad_map). Chord detection
+    // scans ONLY these devices. Raw DI sticks (Ultimarc etc.) stay 0 so
+    // their arbitrary high buttons can never fire menu/exit/pause.
+    int is_gamepad;
     JOYSTICK_STICK_INFO stick[MAX_JOYSTICK_STICKS];
     JOYSTICK_BUTTON_INFO button[MAX_JOYSTICK_BUTTONS];
 } JOYSTICK_INFO;
@@ -475,8 +492,10 @@ void set_joystick_hotplug_callback(JoystickHotplugCallback callback);
 #define JOY_COMBO_MENU    (AAE_JOYBTN_LEFT_THUMB | AAE_JOYBTN_START)  // LS + Start    : open/close menu
 
 // Edge-triggered combo check: returns true once per press (not every frame while held).
-// All bits in buttonMask must be simultaneously held to trigger.
-// Always returns false on the WinMM fallback path.
+// All bits in buttonMask must be simultaneously held, on the same device, to trigger.
+// 'player' is legacy and ignored -- chords are scanned globally across every
+// connected gamepad-class device, not tied to a specific player slot.
+// Always returns false when no gamepad-class device is connected.
 bool joystick_check_combo(int player, uint16_t buttonMask);
 
 //------------------------------------------------------------------------------

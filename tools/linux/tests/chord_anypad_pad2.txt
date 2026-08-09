@@ -1,0 +1,26 @@
+# Any-pad chord test, second pad's half - proves (b): system chords are
+# scanned across EVERY connected pad, not just player 0. Run by a second
+# "sudo aae_uinput_test" instance alongside chord_anypad_pad1.txt (see that
+# file's header for the launch recipe; the tool hard-exits without root). This instance's pad attaches as a second
+# joy[] slot; its chords must fire COMBO lines exactly like the first pad's.
+
+sleep 6000
+
+echo pad2: press PAUSE chord (Start+Back) on the SECOND pad - expect ONE COMBO: PAUSE
+key pad BTN_SELECT 1
+key pad BTN_START 1
+sleep 500
+echo pad2: release chord
+key pad BTN_SELECT 0
+key pad BTN_START 0
+sleep 500
+
+echo pad2: press again - expect a second single fire
+key pad BTN_SELECT 1
+key pad BTN_START 1
+sleep 500
+key pad BTN_SELECT 0
+key pad BTN_START 0
+
+echo pad2: done
+sleep 1500
