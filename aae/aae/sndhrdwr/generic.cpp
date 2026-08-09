@@ -1,8 +1,5 @@
 #include "../driver.h"
 
-#pragma warning( disable : 4715 )
-//'sound_start': not all control paths return a value (but they do)
-
 //Ripped right out of antique mame
 
 /***************************************************************************
@@ -251,11 +248,8 @@ int sound_start(void)
 getout:
 	/* TODO: should also free the resources allocated before */
 	WRLOG("Samples only value here is %d", samples_only);
-	if (samples_only)
-
-		//osd_start_audio_stream(0, 1);
-
-		return 1;
+	//if (samples_only) osd_start_audio_stream(0, 1);
+	return 1;
 }
 
 void sound_stop(void)

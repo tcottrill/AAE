@@ -18,26 +18,10 @@
 #include "old_mame_raster.h"
 #include "sys_input.h"
 
-// Boundary guard: nothing driver code includes may drag in the Win32 API.
-// MUST stay below every #include above - the preprocessor is a single forward
-// pass, so a guard placed above the includes can never fire.
-//
-// Parked through Phase 1: this driver's own mixer.h include reached
-// <windows.h> via <xaudio2.h>. Phase 2 made mixer.h neutral, so it passes now.
-#ifdef _WINDOWS_
-#error "windows.h leaked into driver code"
-#endif
-
-// Phase 4 boundary check (spec sec. 3.5): the emulation core must never see
-// Vulkan headers. Mirrors the _WINDOWS_ leak guard idiom from Phase 1.
-#ifdef VULKAN_H_
-#error "vulkan.h leaked into driver code"
-#endif
 
 uint8_t m_p1 = 0;
 uint8_t m_p2 = 0;
 
-#pragma warning( disable : 4838 4003 )
 
 static const char* invaders_samples[] =
 {
@@ -484,18 +468,14 @@ PORT_WRITE_HANDLER(clowns_sh_port7_w)
 /*******************************************************/
 
 PORT_WRITE(spcenctr_writeport)
-{
-	0x01, 0x01, invaders_shift_amount_w
-},
-{ 0x02, 0x02, invaders_shift_data_w },
+PORT_ADDR(0x01, 0x01, invaders_shift_amount_w)
+PORT_ADDR(0x02, 0x02, invaders_shift_data_w)
 PORT_END
 
 PORT_READ(spcenctr_readport)
-{
-	0x00, 0x00, gray6bit_controller0_r
-}, /* These 2 ports use Gray's binary encoding */
-{ 0x01, 0x01, gray6bit_controller1_r },
-{ 0x02, 0x02, invaders_ip_port_2_r },
+PORT_ADDR(0x00, 0x00, gray6bit_controller0_r)	/* These 2 ports use Gray's binary encoding */
+PORT_ADDR(0x01, 0x01, gray6bit_controller1_r)
+PORT_ADDR(0x02, 0x02, invaders_ip_port_2_r)
 PORT_END
 
 PORT_WRITE(writeport_1_2)

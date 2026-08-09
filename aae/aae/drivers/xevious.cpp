@@ -27,7 +27,6 @@
 #include "inptport.h"
 #include "timer.h"
 
-#pragma warning(disable : 4838 4003)
 
 
 // ============================================================================

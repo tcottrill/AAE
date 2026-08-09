@@ -306,7 +306,7 @@ PORT_END
 PORT_WRITE(ZektorPortWrite)
 PORT_ADDR(0x38, 0x38, sega_sh_speech_w)
 PORT_ADDR(0x3c, 0x3c, Zektor_AY8910_w)
-//PORT_ADDR(0x3d, 0x3d, Zektor_AY8910_w, NULL)
+//PORT_ADDR(0x3d, 0x3d, Zektor_AY8910_w)
 PORT_ADDR(0x3e, 0x3e, Zektor1_sh_w)
 PORT_ADDR(0x3f, 0x3f, Zektor2_sh_w)
 PORT_ADDR(0xbd, 0xbd, sega_mult1_w)

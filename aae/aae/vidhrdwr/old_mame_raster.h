@@ -1,7 +1,6 @@
 #ifndef RASTER_H
 #define RASTER_H
 
-#pragma warning(disable:4996 4102)
 
 #include <cstddef>
 #include <cstdint>

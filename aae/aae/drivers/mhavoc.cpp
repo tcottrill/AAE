@@ -195,7 +195,9 @@
 #include "mixer.h"
 #include "okim6295_loader.h"
 
-#pragma warning( disable :  4244)
+#ifdef _MSC_VER
+#pragma warning( disable :  4244)  // MSVC only: intentional narrowing in the gamma/alpha bank math
+#endif
 
 #define mh_debug 0
 #define MHAVOC_CLOCK		10000000

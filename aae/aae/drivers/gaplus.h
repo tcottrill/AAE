@@ -34,28 +34,9 @@ void gaplus_init_machine(void);
 // Memory handlers (declared for use in MEM_READ/MEM_WRITE tables)
 // ---------------------------------------------------------------------------
 
-READ_HANDLER(gaplus_sharedram_r);
-WRITE_HANDLER(gaplus_sharedram_w);
-READ_HANDLER(gaplus_snd_sharedram_r);
-WRITE_HANDLER(gaplus_snd_sharedram_w);
 
-READ_HANDLER(gaplus_customio_1_r);
-READ_HANDLER(gaplus_customio_2_r);
-READ_HANDLER(gaplus_customio_3_r);
-WRITE_HANDLER(gaplus_customio_1_w);
-WRITE_HANDLER(gaplus_customio_2_w);
-WRITE_HANDLER(gaplus_customio_3_w);
 
-WRITE_HANDLER(gaplus_interrupt_enable_2_w);
-WRITE_HANDLER(gaplus_interrupt_ctrl_2_w);
-WRITE_HANDLER(gaplus_interrupt_ctrl_3a_w);
-WRITE_HANDLER(gaplus_interrupt_ctrl_3b_w);
-WRITE_HANDLER(gaplus_reset_2_3_w);
-WRITE_HANDLER(gaplus_cpu_enable_w);
 
-WRITE_HANDLER(gaplus_videoram_w);
-WRITE_HANDLER(gaplus_colorram_w);
-WRITE_HANDLER(gaplus_scroll_w);
 
 /* defined in gaplus_video.cpp but referenced by the CPU1 memory map in
    gaplus.cpp, so it must have external (non-static) linkage */
@@ -74,7 +55,6 @@ void gaplus_interrupt_3(void);
 // ---------------------------------------------------------------------------
 
 void gaplus_starfield_update(void);
-WRITE_HANDLER_NS(gaplus_starfield_control_w);
 void gaplus_flipscreen_w(int data);
 
 // ---------------------------------------------------------------------------

@@ -36,7 +36,9 @@ static int xmin, xmax;
 static int ymin, ymax;
 static int flip_x, flip_y, swap_xy;
 
-#pragma warning( disable : 4244)
+#ifdef _MSC_VER
+#pragma warning( disable : 4244)  // MSVC only: intentional narrowing in the DVG vector decode
+#endif
 
 #define vecmemrdwd(address) ((dvg_vectorram[pc]) | (dvg_vectorram[pc+1]<<8))
 

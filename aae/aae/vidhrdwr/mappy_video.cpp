@@ -2,15 +2,19 @@
 
   mappy_video.cpp  --  AAE video hardware for Mappy / Dig Dug 2 / Motos / Tower of Druaga
 
-  The hardware is a 60x36 tile display (28x32 active tiles plus 2 top / 2
-  bottom rows) running at 60 Hz.  Tiles are 8x8, 2bpp, drawn from a single
-  ROM bank.  Sprites are 16x16, 4bpp.  A per-scanline horizontal scroll
-  register covers the central 32 rows (rows 2-33); the top 2 and bottom 2
-  rows do not scroll.
+  The hardware is a 36x60 tile map (36x28 visible) running at 60 Hz.  Tiles
+  are 8x8, 2bpp, drawn from a single ROM bank.  Sprites are 16x16, 4bpp.  A
+  scroll register covers the central 32 COLUMNS (columns 2-33); the left 2
+  and right 2 columns are the HUD and do not scroll.
 
   Converted from MAME 0.33 vidhrdw/mappy.c (Aaron Giles / Mirko Buffoni / JROK)
 
- 
+  ORIENTATION
+  -----------
+  Drawing happens in the native frame: 36 tiles across (288px) by 60 down
+  (480px), visible 288x224, scrolling vertically.  The driver's
+  ORIENTATION_ROTATE_90 turns that into the 224x288 portrait picture, so the
+  left and right HUD columns become the screen's top and bottom bands.
 ***************************************************************************/
 
 #include "mappy.h"
@@ -37,8 +41,8 @@ static int common_vh_start(void)
         return 1;
     memset(dirtybuffer, 1, videoram_size);
 
-    /* 60 tiles wide, 36 tiles tall (pixels) */
-    if ((tmpbitmap = osd_create_bitmap(60 * 8, 36 * 8)) == nullptr)
+    /* 36 tiles wide, 60 tiles tall (pixels) - the scrolling axis is Y */
+    if ((tmpbitmap = osd_create_bitmap(36 * 8, 60 * 8)) == nullptr)
     {
         free(dirtybuffer);
         dirtybuffer = nullptr;
@@ -210,15 +214,15 @@ void mappy_vh_screenrefresh(struct osd_bitmap* bitmap, int full_refresh)
             dirtybuffer[offs] = 0;
 
             /* the tile map is stored in a non-linear layout:
-               - top 2 rows:    last 64 bytes of videoram
-               - bottom 2 rows: second-to-last 64 bytes
-               - middle 32 rows: the rest, column-major */
+               - left 2 columns:  last 64 bytes of videoram
+               - right 2 columns: second-to-last 64 bytes
+               - middle 32 columns: the rest, row-major */
 
             if (offs >= videoram_size - 64)
             {
                 int off = offs;
 
-                /* Motos swaps a few tile positions in the top rows */
+                /* Motos swaps a few tile positions in this band */
                 if (motos_special_display)
                 {
                     if (off == 0x07d1 || off == 0x07d0 ||
@@ -229,24 +233,24 @@ void mappy_vh_screenrefresh(struct osd_bitmap* bitmap, int full_refresh)
                         off += 0x10;
                 }
 
-                mx = off % 32;
-                my = (off - (videoram_size - 64)) / 32;
-                sx = 29 - mx;
-                sy = my;
+                mx = (off - (videoram_size - 64)) / 32;
+                my = off % 32;
+                sx = mx;
+                sy = my - 2;
             }
             else if (offs >= videoram_size - 128)
             {
-                mx = offs % 32;
-                my = (offs - (videoram_size - 128)) / 32;
-                sx = 29 - mx;
-                sy = my + 34;
+                mx = (offs - (videoram_size - 128)) / 32;
+                my = offs % 32;
+                sx = mx + 34;
+                sy = my - 2;
             }
             else
             {
-                mx = offs / 32;
-                my = offs % 32;
-                sx = 59 - mx;
-                sy = my + 2;
+                mx = offs % 32;
+                my = offs / 32;
+                sx = mx + 2;
+                sy = my;
             }
 
             drawgfx(tmpbitmap, Machine->gfx[0],
@@ -256,38 +260,33 @@ void mappy_vh_screenrefresh(struct osd_bitmap* bitmap, int full_refresh)
         }
     }
 
-    /* --- copy the tile layer to the screen with horizontal scroll ---
-       Use copybitmap (which ignores Machine->orientation) instead of
-       copyscrollbitmap. copyscrollbitmap swaps src width/height when a
-       SWAP_XY display rotation is active, which mis-sizes this non-square
-       480x288 tile cache (row height 480/36=13 instead of 288/36=8) and
-       corrupts the tile layer when the game is rotated. The scroll here is
-       only a uniform middle-band shift -- the top 2 and bottom 2 HUD rows
-       never scroll -- so three clipped copybitmap passes reproduce the old
-       copyscrollbitmap output exactly while staying correct under rotation.
-       (This matches galaga, which also composites its tile layer with
-       copybitmap.) */
+    /* --- copy the tile layer to the screen with vertical scroll ---
+       Three clipped copybitmap passes: the 2 left and 2 right HUD columns
+       unscrolled, the middle 32 shifted by -mappy_scroll along Y and wrapped.
+       copyscrollbitmap cannot be used here -- it slices its columns from a
+       width/height it swaps under SWAP_XY, which mis-sizes this non-square
+       288x480 cache (13px columns instead of 8). */
     {
-        const int srcw = tmpbitmap->width;          /* 480 */
-        int s = (mappy_scroll - 256) % srcw;        /* normalize to [0, srcw) */
-        if (s < 0) s += srcw;
+        const int srch = tmpbitmap->height;         /* 480 */
+        int s = (-(int)mappy_scroll) % srch;        /* normalize to [0, srch) */
+        if (s < 0) s += srch;
 
         struct rectangle clip;
 
-        /* top 2 HUD rows (unscrolled) */
+        /* left 2 HUD columns (unscrolled) */
         clip = Machine->drv->visible_area;
-        clip.min_y = 0;        clip.max_y = 2 * 8 - 1;
+        clip.min_x = 0;        clip.max_x = 2 * 8 - 1;
         copybitmap(bitmap, tmpbitmap, 0, 0, 0, 0, &clip, TRANSPARENCY_NONE, 0);
 
-        /* middle 32 rows (scrolled horizontally, wrapped across srcw) */
+        /* middle 32 columns (scrolled vertically, wrapped across srch) */
         clip = Machine->drv->visible_area;
-        clip.min_y = 2 * 8;    clip.max_y = 34 * 8 - 1;
-        copybitmap(bitmap, tmpbitmap, 0, 0, s,        0, &clip, TRANSPARENCY_NONE, 0);
-        copybitmap(bitmap, tmpbitmap, 0, 0, s - srcw, 0, &clip, TRANSPARENCY_NONE, 0);
+        clip.min_x = 2 * 8;    clip.max_x = 34 * 8 - 1;
+        copybitmap(bitmap, tmpbitmap, 0, 0, 0, s,        &clip, TRANSPARENCY_NONE, 0);
+        copybitmap(bitmap, tmpbitmap, 0, 0, 0, s - srch, &clip, TRANSPARENCY_NONE, 0);
 
-        /* bottom 2 HUD rows (unscrolled) */
+        /* right 2 HUD columns (unscrolled) */
         clip = Machine->drv->visible_area;
-        clip.min_y = 34 * 8;   clip.max_y = 36 * 8 - 1;
+        clip.min_x = 34 * 8;   clip.max_x = 36 * 8 - 1;
         copybitmap(bitmap, tmpbitmap, 0, 0, 0, 0, &clip, TRANSPARENCY_NONE, 0);
     }
 
@@ -297,13 +296,15 @@ void mappy_vh_screenrefresh(struct osd_bitmap* bitmap, int full_refresh)
         /* bit 1 of spriteram_3 byte 1 = inactive (sprite disabled) */
         if ((spriteram_3[offs + 1] & 2) == 0)
         {
+            /* X spans the 36-tile width and carries the 9th position bit
+               (0x100); Y is the scrolling axis. */
             int sprite =  spriteram[offs];
             int color  =  spriteram[offs + 1];
-            int x      =  spriteram_2[offs]     - 16;
-            int y      = (spriteram_2[offs + 1] - 40)
+            int x      = (spriteram_2[offs + 1] - 40)
                         + 0x100 * (spriteram_3[offs + 1] & 1);
-            int flipx  =  spriteram_3[offs] & 2;
-            int flipy  =  spriteram_3[offs] & 1;
+            int y      =  28 * 8 - spriteram_2[offs];
+            int flipx  =  spriteram_3[offs] & 1;
+            int flipy  =  spriteram_3[offs] & 2;
 
             switch (spriteram_3[offs] & 0x0c)
             {
@@ -311,63 +312,63 @@ void mappy_vh_screenrefresh(struct osd_bitmap* bitmap, int full_refresh)
                 mappy_draw_sprite(bitmap, sprite, color, flipx, flipy, x, y);
                 break;
 
-            case 4:     /* double height (16x32) */
+            case 4:     /* double width (32x16) */
                 sprite &= ~1;
-                if (!flipy)
+                if (!flipx)
                 {
-                    mappy_draw_sprite(bitmap, sprite,     color, flipx, flipy, x, y);
-                    mappy_draw_sprite(bitmap, sprite + 1, color, flipx, flipy, x, y + 16);
+                    mappy_draw_sprite(bitmap, sprite,     color, flipx, flipy, x,      y);
+                    mappy_draw_sprite(bitmap, sprite + 1, color, flipx, flipy, x + 16, y);
                 }
                 else
                 {
-                    mappy_draw_sprite(bitmap, sprite,     color, flipx, flipy, x, y + 16);
-                    mappy_draw_sprite(bitmap, sprite + 1, color, flipx, flipy, x, y);
+                    mappy_draw_sprite(bitmap, sprite,     color, flipx, flipy, x + 16, y);
+                    mappy_draw_sprite(bitmap, sprite + 1, color, flipx, flipy, x,      y);
                 }
                 break;
 
-            case 8:     /* double width (32x16) */
+            case 8:     /* double height (16x32) */
                 sprite &= ~2;
-                if (!flipx)
+                if (!flipy)
                 {
-                    mappy_draw_sprite(bitmap, sprite + 2, color, flipx, flipy, x,       y);
-                    mappy_draw_sprite(bitmap, sprite,     color, flipx, flipy, x + 16,  y);
+                    mappy_draw_sprite(bitmap, sprite + 2, color, flipx, flipy, x, y);
+                    mappy_draw_sprite(bitmap, sprite,     color, flipx, flipy, x, y - 16);
                 }
                 else
                 {
-                    mappy_draw_sprite(bitmap, sprite,     color, flipx, flipy, x,       y);
-                    mappy_draw_sprite(bitmap, sprite + 2, color, flipx, flipy, x + 16,  y);
+                    mappy_draw_sprite(bitmap, sprite,     color, flipx, flipy, x, y);
+                    mappy_draw_sprite(bitmap, sprite + 2, color, flipx, flipy, x, y - 16);
                 }
                 break;
 
             case 12:    /* double size (32x32) */
                 sprite &= ~3;
-                if (!flipy && !flipx)
+                if (!flipx && !flipy)
                 {
                     mappy_draw_sprite(bitmap, sprite + 2, color, flipx, flipy, x,      y);
-                    mappy_draw_sprite(bitmap, sprite + 3, color, flipx, flipy, x,      y + 16);
-                    mappy_draw_sprite(bitmap, sprite,     color, flipx, flipy, x + 16, y);
-                    mappy_draw_sprite(bitmap, sprite + 1, color, flipx, flipy, x + 16, y + 16);
+                    mappy_draw_sprite(bitmap, sprite + 3, color, flipx, flipy, x + 16, y);
+                    mappy_draw_sprite(bitmap, sprite,     color, flipx, flipy, x,      y - 16);
+                    mappy_draw_sprite(bitmap, sprite + 1, color, flipx, flipy, x + 16, y - 16);
                 }
-                else if (flipy && flipx)
+                else if (flipx && flipy)
                 {
                     mappy_draw_sprite(bitmap, sprite + 1, color, flipx, flipy, x,      y);
-                    mappy_draw_sprite(bitmap, sprite,     color, flipx, flipy, x,      y + 16);
-                    mappy_draw_sprite(bitmap, sprite + 3, color, flipx, flipy, x + 16, y);
-                    mappy_draw_sprite(bitmap, sprite + 2, color, flipx, flipy, x + 16, y + 16);
+                    mappy_draw_sprite(bitmap, sprite,     color, flipx, flipy, x + 16, y);
+                    mappy_draw_sprite(bitmap, sprite + 3, color, flipx, flipy, x,      y - 16);
+                    mappy_draw_sprite(bitmap, sprite + 2, color, flipx, flipy, x + 16, y - 16);
                 }
-                else if (flipx)
+                else if (flipy)
                 {
                     mappy_draw_sprite(bitmap, sprite,     color, flipx, flipy, x,      y);
-                    mappy_draw_sprite(bitmap, sprite + 1, color, flipx, flipy, x,      y + 16);
-                    mappy_draw_sprite(bitmap, sprite + 2, color, flipx, flipy, x + 16, y);
-                    mappy_draw_sprite(bitmap, sprite + 3, color, flipx, flipy, x + 16, y + 16);
+                    mappy_draw_sprite(bitmap, sprite + 1, color, flipx, flipy, x + 16, y);
+                    mappy_draw_sprite(bitmap, sprite + 2, color, flipx, flipy, x,      y - 16);
+                    mappy_draw_sprite(bitmap, sprite + 3, color, flipx, flipy, x + 16, y - 16);
                 }
-                else /* flipy only */
+                else /* flipx only */
                 {
                     mappy_draw_sprite(bitmap, sprite + 3, color, flipx, flipy, x,      y);
-                    mappy_draw_sprite(bitmap, sprite + 2, color, flipx, flipy, x,      y + 16);
-                    mappy_draw_sprite(bitmap, sprite + 1, color, flipx, flipy, x + 16, y);
-                    mappy_draw_sprite(bitmap, sprite,     color, flipx, flipy, x + 16, y + 16);
+                    mappy_draw_sprite(bitmap, sprite + 2, color, flipx, flipy, x + 16, y);
+                    mappy_draw_sprite(bitmap, sprite + 1, color, flipx, flipy, x,      y - 16);
+                    mappy_draw_sprite(bitmap, sprite,     color, flipx, flipy, x + 16, y - 16);
                 }
                 break;
             }
@@ -381,31 +382,33 @@ void mappy_vh_screenrefresh(struct osd_bitmap* bitmap, int full_refresh)
 
         offs = *--save;
 
+        /* sx is in tiles, sy in pixels: only the scrolling axis needs
+           sub-tile precision. */
         if (offs >= videoram_size - 64)
         {
-            mx = offs % 32;
-            my = (offs - (videoram_size - 64)) / 32;
-            sx = (29 - mx) * 8;
-            sy = my;
+            mx = (offs - (videoram_size - 64)) / 32;
+            my = offs % 32;
+            sx = mx;
+            sy = 8 * (my - 2);
         }
         else if (offs >= videoram_size - 128)
         {
-            mx = offs % 32;
-            my = (offs - (videoram_size - 128)) / 32;
-            sx = (29 - mx) * 8;
-            sy = my + 34;
+            mx = (offs - (videoram_size - 128)) / 32;
+            my = offs % 32;
+            sx = mx + 34;
+            sy = 8 * (my - 2);
         }
         else
         {
-            mx = offs / 32;
-            my = offs % 32;
-            sx = (8 * (59 - mx)) + mappy_scroll - 256;
-            sy = my + 2;
+            mx = offs % 32;
+            my = offs / 32;
+            sx = mx + 2;
+            sy = (8 * my) - mappy_scroll;
         }
 
         drawgfx(bitmap, Machine->gfx[0],
                 videoram[offs], colorram[offs],
-                0, 0, sx, 8 * sy,
+                0, 0, 8 * sx, sy,
                 nullptr, TRANSPARENCY_COLOR, 0);
     }
 }

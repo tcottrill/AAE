@@ -14,7 +14,9 @@
 #include <algorithm>       // std::min / std::max (clip)
 #include <cstddef>         // offsetof
 
+#ifdef _MSC_VER
 #pragma warning( disable :  4244 )
+#endif
 
 template<typename T>
 inline T clip(T val, T minval, T maxval) {

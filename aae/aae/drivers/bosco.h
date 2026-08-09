@@ -3,7 +3,6 @@
 #ifndef BOSCO_H
 #define BOSCO_H
 
-#pragma warning(disable:4996 4102)
 
 void boscoint1();
 void boscoint2();

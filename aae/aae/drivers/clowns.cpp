@@ -7,7 +7,6 @@
 
 // This is only a test.
 
-#pragma warning( disable : 4838 4003 )
 
 static const char* clowns_samples[] =
 {

@@ -3,7 +3,6 @@
 #ifndef DIGDUG_H
 #define DIGDUG_H
 
-#pragma warning(disable:4996 4102)
 
 void digdugint1();
 void digdugint2();

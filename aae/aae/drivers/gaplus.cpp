@@ -6,7 +6,28 @@
 #include "namco.h"
 #include "timer.h"
 
-#pragma warning( disable : 4838 4003 )
+// Memory handlers for the MEM_READ/MEM_WRITE tables below. These are
+// static, so they are declared here rather than in the header - a header
+// declaration would give every other includer an undefined static.
+READ_HANDLER(gaplus_sharedram_r);
+WRITE_HANDLER(gaplus_sharedram_w);
+READ_HANDLER(gaplus_snd_sharedram_r);
+WRITE_HANDLER(gaplus_snd_sharedram_w);
+READ_HANDLER(gaplus_customio_1_r);
+READ_HANDLER(gaplus_customio_2_r);
+READ_HANDLER(gaplus_customio_3_r);
+WRITE_HANDLER(gaplus_customio_1_w);
+WRITE_HANDLER(gaplus_customio_2_w);
+WRITE_HANDLER(gaplus_customio_3_w);
+WRITE_HANDLER(gaplus_interrupt_enable_2_w);
+WRITE_HANDLER(gaplus_interrupt_ctrl_2_w);
+WRITE_HANDLER(gaplus_interrupt_ctrl_3a_w);
+WRITE_HANDLER(gaplus_interrupt_ctrl_3b_w);
+WRITE_HANDLER(gaplus_reset_2_3_w);
+WRITE_HANDLER(gaplus_videoram_w);
+WRITE_HANDLER(gaplus_colorram_w);
+WRITE_HANDLER_NS(gaplus_starfield_control_w);
+
 
 // ---------------------------------------------------------------------------
 // Shared state

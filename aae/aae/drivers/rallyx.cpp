@@ -191,7 +191,7 @@ WRITE_HANDLER(rallyx_play_sound_w)
 
 	if (data == 0 && last != 0)
 		sample_start(0, 0, 0);
-		last = data;
+	last = data;
 }
 
 
@@ -223,17 +223,17 @@ MEM_END
 
 MEM_WRITE(rallyx_writemem)
 MEM_ADDR(0x0000, 0x3fff, MWA_ROM)
-//MEM_ADDR(0x8000, 0x83ff, videoram_w, &videoram, &videoram_size )
-//MEM_ADDR(0x8400, 0x87ff, rallyx_videoram2_w, &rallyx_videoram2 )
-//MEM_ADDR(0x8800, 0x8bff, colorram_w, &colorram )
-//MEM_ADDR(0x8c00, 0x8fff, rallyx_colorram2_w, &rallyx_colorram2 )
-MEM_ADDR(0x9800, 0x9fff, MWA_RAM )
-//MEM_ADDR(0xa004, 0xa00f, MWA_RAM, &rallyx_radarattr )
+//MEM_ADDR(0x8000, 0x83ff, videoram_w)	/* MAME: &videoram, &videoram_size */
+//MEM_ADDR(0x8400, 0x87ff, rallyx_videoram2_w)	/* MAME: &rallyx_videoram2 */
+//MEM_ADDR(0x8800, 0x8bff, colorram_w)	/* MAME: &colorram */
+//MEM_ADDR(0x8c00, 0x8fff, rallyx_colorram2_w)	/* MAME: &rallyx_colorram2 */
+MEM_ADDR(0x9800, 0x9fff, MWA_RAM)
+//MEM_ADDR(0xa004, 0xa00f, MWA_RAM)	/* MAME: &rallyx_radarattr */
 MEM_ADDR(0xa080, 0xa080, watchdog_reset_w)
 MEM_ADDR(0xa100, 0xa11f, rallyx_sound_w)
-//MEM_ADDR(0xa130, 0xa130, MWA_RAM, &rallyx_scrollx )
-//MEM_ADDR(0xa140, 0xa140, MWA_RAM, &rallyx_scrolly )
-MEM_ADDR( 0xa170, 0xa170, MWA_NOP )
+//MEM_ADDR(0xa130, 0xa130, MWA_RAM)	/* MAME: &rallyx_scrollx */
+//MEM_ADDR(0xa140, 0xa140, MWA_RAM)	/* MAME: &rallyx_scrolly */
+MEM_ADDR(0xa170, 0xa170, MWA_NOP)
 MEM_ADDR(0xa180, 0xa180, rallyx_play_sound_w)
 MEM_ADDR(0xa181, 0xa181, rallyx_interrupt_enable_w)
 MEM_ADDR(0xa182, 0xa182, MWA_NOP)
@@ -241,9 +241,9 @@ MEM_ADDR(0xa183, 0xa183, rallyx_flipscreen_w)
 MEM_ADDR(0xa184, 0xa185, rallyx_leds_w)
 MEM_ADDR(0xa186, 0xa186, rallyx_coin_lockout_w)
 MEM_ADDR(0xa187, 0xa187, rallyx_coin_counter_w)
-//MEM_ADDR(0x8014, 0x801f, MWA_RAM), &spriteram, &spriteram_size )	/* these are here just to initialize */
-//MEM_ADDR(0x8034, 0x803f, MWA_RAM, &rallyx_radarx, &rallyx_radarram_size ) /* ditto */
-//MEM_ADDR(0x8834, 0x883f, MWA_RAM, &rallyx_radary )
+//MEM_ADDR(0x8014, 0x801f, MWA_RAM)	/* MAME: &spriteram, &spriteram_size; here just to initialize */
+//MEM_ADDR(0x8034, 0x803f, MWA_RAM)	/* MAME: &rallyx_radarx, &rallyx_radarram_size; ditto */
+//MEM_ADDR(0x8834, 0x883f, MWA_RAM)	/* MAME: &rallyx_radary */
 MEM_END
 
 int init_rallyx()

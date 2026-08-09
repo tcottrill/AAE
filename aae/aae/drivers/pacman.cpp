@@ -101,7 +101,7 @@ void pacman_vh_convert_color_prom(unsigned char* palette, unsigned char* colorta
 
 	LOG_INFO("INIT: Pacman Color Prom init");
 
-	for (i = 0; i < Machine->drv->total_colors; i++)
+	for (i = 0; i < (int)Machine->drv->total_colors; i++)
 	{
 		int bit0, bit1, bit2;
 
@@ -278,7 +278,9 @@ void pacman_vh_stop(void)
 //////////////////////////////////////////////////////////////
 //MAIN pacman HANDLERS
 //////////////////////////////////////////////////////////////
-static WRITE_HANDLER_NS(pacman_leds_w) // REVIEW THIS, This is important.
+// Start-button lamps: 0x5004 drives the 1-player lamp, 0x5005 the 2-player one.
+// The offset is range-relative, so it is already the 0/1 LED index.
+static WRITE_HANDLER_NS(pacman_leds_w)
 {
 	set_led_status(address, data & 1);
 }
@@ -513,6 +515,7 @@ MEM_ADDR(0x4400, 0x47ff, m_colorram_w)
 MEM_ADDR(0x5000, 0x5000, pacintenablew)
 MEM_ADDR(0x5002, 0x5002, MWA_ROM)
 MEM_ADDR(0x5003, 0x5003, pengo_flipscreen_w)
+MEM_ADDR(0x5004, 0x5005, pacman_leds_w)			/* player 1 / player 2 start lamps */
 MEM_ADDR(0x5006, 0x5006, mspacman_activate_rom)	/* Not actually, just handy */
 MEM_ADDR(0x5004, 0x5007, MWA_ROM)
 MEM_ADDR(0x5040, 0x505f, namcosndw)
@@ -713,7 +716,7 @@ void multipac_vh_convert_color_prom(unsigned char* palette, unsigned char* color
 		memcpy(&PROM[0x0030], &PROM[0x1060], 0x10);
 	}
 
-	for (i = 0; i < Machine->drv->total_colors; i++)
+	for (i = 0; i < (int)Machine->drv->total_colors; i++)
 	{
 		int bit0, bit1, bit2;
 
@@ -961,22 +964,29 @@ MEM_ADDR(0x50c0, 0x50ff, maketrax_special_port3_r)
 MEM_ADDR(0x8000, 0xbfff, MRA_ROM)
 MEM_END
 
-// AAE's Z80 core has no separate opcode/data fetch space (no
-// memory_set_opcode_base support), so unlike MAME's shadow-copy trick these
-// protection-bypass patches are applied directly to the live ROM.
+// Patch the protection using a copy of the opcodes, so the game's power-on
+// ROM checksum test will not fail. REGION_CPU1 is allocated at twice 64K: the
+// low half is the ROM as loaded and stays pristine for data reads (that is
+// what the checksum routine sums), the high half is the instruction-fetch
+// image and carries the patches. Patching the live ROM instead makes all four
+// program ROMs report bad in the boot self-test.
 static void maketrax_rom_decode(void)
 {
 	unsigned char* rom = Machine->memory_region[CPU0];
+	int diff = memory_region_length(REGION_CPU1) / 2;
 
-	rom[0x0415] = 0xc9;
-	rom[0x1978] = 0x18;
-	rom[0x238e] = 0xc9;
-	rom[0x3ae5] = 0xe6;
-	rom[0x3ae7] = 0x00;
-	rom[0x3ae8] = 0xc9;
-	rom[0x3aed] = 0x86;
-	rom[0x3aee] = 0xc0;
-	rom[0x3aef] = 0xb0;
+	memcpy(rom + diff, rom, diff);
+	memory_set_opcode_base(CPU0, rom + diff);
+
+	rom[0x0415 + diff] = 0xc9;
+	rom[0x1978 + diff] = 0x18;
+	rom[0x238e + diff] = 0xc9;
+	rom[0x3ae5 + diff] = 0xe6;
+	rom[0x3ae7 + diff] = 0x00;
+	rom[0x3ae8 + diff] = 0xc9;
+	rom[0x3aed + diff] = 0x86;
+	rom[0x3aee + diff] = 0xc0;
+	rom[0x3aef + diff] = 0xb0;
 }
 
 int init_maketrax()
@@ -1023,13 +1033,12 @@ static void eyes_decode(unsigned char* data)
 	}
 }
 
-int init_eyes()
+// ROM decrypt hook: runs from Step 3b, before vh_open decodes the gfx and
+// frees the DISPOSE region. By init_eyes() time REGION_GFX1 is already gone.
+static void eyes_rom_decrypt()
 {
 	int i;
 	unsigned char* RAM;
-
-	LOG_INFO("INIT: Eyes / Mr. TNT Driver Init");
-	init_z80(pacman_readmem, pacman_writemem, pacman_readport, pacman_writeport, CPU0);
 
 	/* CPU ROMs: data lines D3 and D5 swapped */
 	RAM = Machine->memory_region[CPU0];
@@ -1043,6 +1052,12 @@ int init_eyes()
 	RAM = memory_region(REGION_GFX1);
 	for (i = 0; i < memory_region_length(REGION_GFX1); i += 8)
 		eyes_decode(&RAM[i]);
+}
+
+int init_eyes()
+{
+	LOG_INFO("INIT: Eyes / Mr. TNT Driver Init");
+	init_z80(pacman_readmem, pacman_writemem, pacman_readport, pacman_writeport, CPU0);
 
 	videoram = &Machine->memory_region[0][0x4000];
 	colorram = &Machine->memory_region[0][0x4400];
@@ -1065,14 +1080,13 @@ int init_eyes()
 // below are restricted to their respective halves of that region.
 ///////////////////////////////////////////////////////////////////////////
 
-int init_ponpoko()
+// ROM decrypt hook: runs from Step 3b, before vh_open decodes the gfx and
+// frees the DISPOSE region (same reason as eyes_rom_decrypt above).
+static void ponpoko_rom_decrypt()
 {
 	int i, j;
 	unsigned char* RAM;
 	unsigned char temp;
-
-	LOG_INFO("INIT: Ponpoko Driver Init");
-	init_z80(pacman_readmem, pacman_writemem, pacman_readport, pacman_writeport, CPU0);
 
 	RAM = memory_region(REGION_GFX1);
 
@@ -1099,6 +1113,12 @@ int init_ponpoko()
 			RAM[i + j + 0x00] = temp;
 		}
 	}
+}
+
+int init_ponpoko()
+{
+	LOG_INFO("INIT: Ponpoko Driver Init");
+	init_z80(pacman_readmem, pacman_writemem, pacman_readport, pacman_writeport, CPU0);
 
 	videoram = &Machine->memory_region[0][0x4000];
 	colorram = &Machine->memory_region[0][0x4400];
@@ -2156,7 +2176,7 @@ ROM_LOAD("82s126.3m", 0x0100, 0x0100, CRC(77245b66) SHA1(0c4d0bee858b97632411c44
 ROM_END
 
 ROM_START(crush)
-ROM_REGION(0x10000, REGION_CPU1, 0)
+ROM_REGION(0x20000, REGION_CPU1, 0)	/* 64k for code + 64k for opcode copy to hack protection */
 ROM_LOAD("crushkrl.6e", 0x0000, 0x1000, CRC(a8dd8f54) SHA1(4e3a973ea74a9e145c6997513b98fc80aa478442))
 ROM_LOAD("crushkrl.6f", 0x1000, 0x1000, CRC(91387299) SHA1(3ad8c28e02c45667e32860953b157832445a82c8))
 ROM_LOAD("crushkrl.6h", 0x2000, 0x1000, CRC(d4455f27) SHA1(53f8ffc28be664fa8a2d756b4c70045a3f041bea))
@@ -2250,7 +2270,7 @@ ROM_LOAD("82s126.3m", 0x0100, 0x0100, CRC(77245b66) SHA1(0c4d0bee858b97632411c44
 ROM_END
 
 ROM_START(maketrax)
-ROM_REGION(0x10000, REGION_CPU1, 0)
+ROM_REGION(0x20000, REGION_CPU1, 0)	/* 64k for code + 64k for opcode copy to hack protection */
 ROM_LOAD("maketrax.6e", 0x0000, 0x1000, CRC(0150fb4a) SHA1(ba41582d5432670654479b4bf6d938d2168858af))
 ROM_LOAD("maketrax.6f", 0x1000, 0x1000, CRC(77531691) SHA1(68a450bcc8d832368d0f1cb2815cb5c03451796e))
 ROM_LOAD("maketrax.6h", 0x2000, 0x1000, CRC(a2cdc51e) SHA1(80d80235cda3ce19c1dbafacf3d47b1325ad4728))
@@ -2979,6 +2999,7 @@ AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0, 0)
 AAE_DRIVER_NVRAM_NONE()
 AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_ROM_DECRYPT(&eyes_rom_decrypt)
 AAE_DRIVER_END()
 ///////////////////////////////////////////////////////////////////////
 // Eyes (Techstar Inc.)
@@ -3016,6 +3037,7 @@ AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0, 0)
 AAE_DRIVER_NVRAM_NONE()
 AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_ROM_DECRYPT(&eyes_rom_decrypt)
 AAE_DRIVER_END()
 ///////////////////////////////////////////////////////////////////////
 // Mr. TNT
@@ -3053,6 +3075,7 @@ AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0, 0)
 AAE_DRIVER_NVRAM_NONE()
 AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_ROM_DECRYPT(&eyes_rom_decrypt)
 AAE_DRIVER_END()
 ///////////////////////////////////////////////////////////////////////
 // Lizard Wizard
@@ -3201,6 +3224,7 @@ AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0, 0)
 AAE_DRIVER_NVRAM_NONE()
 AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_ROM_DECRYPT(&ponpoko_rom_decrypt)
 AAE_DRIVER_END()
 ///////////////////////////////////////////////////////////////////////
 // Ponpoko (Venture Line) - ORIENTATION_DEFAULT (ROT0)
@@ -3238,6 +3262,7 @@ AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0, 0)
 AAE_DRIVER_NVRAM_NONE()
 AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_ROM_DECRYPT(&ponpoko_rom_decrypt)
 AAE_DRIVER_END()
 ///////////////////////////////////////////////////////////////////////
 // Pacman Super ABC (Two-Bit Score multigame kit) - banked, own gfxdecode/CLUT
@@ -3290,7 +3315,7 @@ AAE_REGISTER_DRIVER(drv_crush)
 //AAE_REGISTER_DRIVER(drv_mbrush)
 //AAE_REGISTER_DRIVER(drv_paintrlr)
 AAE_REGISTER_DRIVER(drv_maketrax)
-//AAE_REGISTER_DRIVER(drv_eyes)
+AAE_REGISTER_DRIVER(drv_eyes)
 //AAE_REGISTER_DRIVER(drv_eyes2)
 //AAE_REGISTER_DRIVER(drv_mrtnt)
 //AAE_REGISTER_DRIVER(drv_lizwiz)

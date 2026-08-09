@@ -21,15 +21,12 @@
 #include "old_mame_raster.h"
 #include "timer.h"
 int foodf_nvram_size=0x200;
-#pragma warning(disable : 4838 4003)
 
 // Read a 16-bit word from a host-order (little-endian) RAM byte array, matching
 // the order the AAE 68000 core stores words.
 #define RDWORD(p)		(*(UINT16*)(p))
 #define WRWORD(a,d)     (*(UINT16*)(a) = (d))
 
-#define COMBINE_WORD(w,d)     (((w) & ((d) >> 16)) | ((d) & 0xffff))
-#define COMBINE_WORD_MEM(a,d) (WRWORD ((a), (RDWORD (a) & ((d) >> 16)) | (d)))
 #define WRITE_WORD_FF(a,d)       (*(unsigned short *)(a) = (d))
 // ---------------------------------------------------------------------------
 // Memory
@@ -73,7 +70,10 @@ READ16_HANDLER(foodf_nvram_r)
 WRITE16_HANDLER(foodf_nvram_w)
 {
 	//LOG_INFO("NVRAM write: offset %03x, data %01x", address, data);
-	COMBINE_WORD_MEM(&foodf_nvram[address], data);
+	/* WRITE16_HANDLER passes a bare 16-bit value with no mem_mask in the high
+	   half, and the region is wired word-only, so this is a plain store with
+	   nothing to read-modify-write. */
+	WRWORD(&foodf_nvram[address], data);
 }
 
 // ---------------------------------------------------------------------------

@@ -39,10 +39,6 @@ void DAC_data_16_w(int num, int data);       /* unsigned 16-bit: 0..65535 */
 void DAC_signed_data_16_w(int num, int data);/* signed   16-bit: 0..65535 (treated as signed) */
 
 /* Convenience write handlers wired directly into memory maps */
-WRITE_HANDLER(DAC_0_data_w);
-WRITE_HANDLER(DAC_1_data_w);
-WRITE_HANDLER(DAC_0_signed_data_w);
-WRITE_HANDLER(DAC_1_signed_data_w);
 
 
 #endif /* DAC_H */

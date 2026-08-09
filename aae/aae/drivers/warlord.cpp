@@ -106,7 +106,6 @@ Off On  On                          For every 5 coins, add 1 coin
 // windows.h was included here solely for the Win32 typedef INT, used below as
 // a plain int cast. Casting to int directly needs no header at all.
 
-#pragma warning( disable : 4838 4003 )
 
 // ---------------------------------------------------------------------------
 // VBLANK latch: Warlords IN0 bit 6 is ACTIVE HIGH for VBLANK (per port def).
@@ -313,7 +312,7 @@ int warlords_vh_start(void)
 
 WRITE_HANDLER(warlord_led_w)
 {
-	set_led_status(address, ~data >> 7);
+	set_led_status(address, ~data & 0x80);
 }
 
 WRITE_HANDLER(irq_ack)
@@ -449,8 +448,8 @@ MEM_END
 
 MEM_WRITE(warlords_writemem)
 MEM_ADDR(0x0000, 0x03ff, MWA_RAM)
-//MEM_ADDR(0x0400, 0x07bf, videoram_w, &videoram, &videoram_size),
-//MEM_ADDR(0x07c0, 0x07ff, MWA_RAM, &spriteram),
+//MEM_ADDR(0x0400, 0x07bf, videoram_w)	/* MAME: &videoram, &videoram_size */
+//MEM_ADDR(0x07c0, 0x07ff, MWA_RAM)	/* MAME: &spriteram */
 MEM_ADDR(0x1000, 0x100f, pokey_1_w)
 MEM_ADDR(0x1800, 0x1800, MWA_NOP)        /* IRQ Acknowledge */
 MEM_ADDR(0x1c00, 0x1c02, MWA_NOP)

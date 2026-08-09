@@ -19,7 +19,6 @@
 #include "galaxian_vid.h"
 #include "galsnd_stream.h"
 
-#pragma warning( disable : 4838 4003 )
 
 extern unsigned char* galaxian_attributesram;
 extern unsigned char* galaxian_bulletsram;
@@ -201,42 +200,38 @@ void run_galaxian()
 }
 
 MEM_READ(galaxian_readmem)
-//{ 0x0000, 0x3fff, MRA_ROM},
-//{ 0x4000, 0x47ff, MRA_RAM },
-//{ 0x5000, 0x53ff, MRA_RAM },
-//{ 0x5400, 0x57ff, galaxian_videoram_r },
-//{ 0x5800, 0x58ff, MRA_RAM },
-{
-	0x6000, 0x6000, ip_port_0_r
-},
-{ 0x6800, 0x6800, ip_port_1_r },
-{ 0x7000, 0x7000, ip_port_2_r },
-//{ 0x7800, 0x78ff, MRA_ROM },//watchdog_reset_r },
+//MEM_ADDR(0x0000, 0x3fff, MRA_ROM)
+//MEM_ADDR(0x4000, 0x47ff, MRA_RAM)
+//MEM_ADDR(0x5000, 0x53ff, MRA_RAM)
+//MEM_ADDR(0x5400, 0x57ff, galaxian_videoram_r)
+//MEM_ADDR(0x5800, 0x58ff, MRA_RAM)
+MEM_ADDR(0x6000, 0x6000, ip_port_0_r)
+MEM_ADDR(0x6800, 0x6800, ip_port_1_r)
+MEM_ADDR(0x7000, 0x7000, ip_port_2_r)
+//MEM_ADDR(0x7800, 0x78ff, MRA_ROM)	//watchdog_reset_r
 MEM_END
 
 MEM_WRITE(galaxian_writemem)
-{
-	0x0000, 0x27ff, MWA_ROM
-},
-//{ 0x4000, 0x47ff, MWA_RAM },
-//{ 0x5000, 0x53ff, MWA_RAM, &galaxian_videoram },
-//{ 0x5800, 0x583f, MWA_RAM, &galaxian_attributesram },
-//{ 0x5840, 0x585f, MWA_RAM, &galaxian_spriteram, &galaxian_spriteram_size },
-//{ 0x5860, 0x587f, MWA_RAM, &galaxian_bulletsram, &galaxian_bulletsram_size },
-//{ 0x5880, 0x58ff, MWA_RAM },
-//{ 0x6000, 0x6001, galaxian_leds_w },
-//{ 0x6002, 0x6002, galaxian_coin_lockout_w },
-//{ 0x6003, 0x6003, galaxian_coin_counter_w },
-{ 0x6004, 0x6007, galaxian_stream_lfo_freq_w },
-{ 0x6800, 0x6802, galaxian_stream_background_enable_w },
-{ 0x6803, 0x6803, galaxian_sample_bang_w },
-{ 0x6805, 0x6805, galaxian_sample_shoot_w },
-{ 0x6806, 0x6807, galaxian_stream_vol_w },
-{ 0x7001, 0x7001, interrupt_enable_w },
-{ 0x7004, 0x7004, galaxian_stars_enable_w },
-{ 0x7006, 0x7006, galaxian_flip_screen_x_w },
-{ 0x7007, 0x7007, galaxian_flip_screen_y_w },
-{ 0x7800, 0x7800, galaxian_stream_pitch_w },
+MEM_ADDR(0x0000, 0x27ff, MWA_ROM)
+//MEM_ADDR(0x4000, 0x47ff, MWA_RAM)
+//MEM_ADDR(0x5000, 0x53ff, MWA_RAM)	/* MAME: &galaxian_videoram */
+//MEM_ADDR(0x5800, 0x583f, MWA_RAM)	/* MAME: &galaxian_attributesram */
+//MEM_ADDR(0x5840, 0x585f, MWA_RAM)	/* MAME: &galaxian_spriteram, &galaxian_spriteram_size */
+//MEM_ADDR(0x5860, 0x587f, MWA_RAM)	/* MAME: &galaxian_bulletsram, &galaxian_bulletsram_size */
+//MEM_ADDR(0x5880, 0x58ff, MWA_RAM)
+//MEM_ADDR(0x6000, 0x6001, galaxian_leds_w)
+//MEM_ADDR(0x6002, 0x6002, galaxian_coin_lockout_w)
+//MEM_ADDR(0x6003, 0x6003, galaxian_coin_counter_w)
+MEM_ADDR(0x6004, 0x6007, galaxian_stream_lfo_freq_w)
+MEM_ADDR(0x6800, 0x6802, galaxian_stream_background_enable_w)
+MEM_ADDR(0x6803, 0x6803, galaxian_sample_bang_w)
+MEM_ADDR(0x6805, 0x6805, galaxian_sample_shoot_w)
+MEM_ADDR(0x6806, 0x6807, galaxian_stream_vol_w)
+MEM_ADDR(0x7001, 0x7001, interrupt_enable_w)
+MEM_ADDR(0x7004, 0x7004, galaxian_stars_enable_w)
+MEM_ADDR(0x7006, 0x7006, galaxian_flip_screen_x_w)
+MEM_ADDR(0x7007, 0x7007, galaxian_flip_screen_y_w)
+MEM_ADDR(0x7800, 0x7800, galaxian_stream_pitch_w)
 MEM_END
 
 PORT_READ(galaxian_readport)

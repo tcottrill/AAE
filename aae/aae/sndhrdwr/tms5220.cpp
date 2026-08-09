@@ -57,7 +57,6 @@
 #include "mixer.h"
 //#include "wav_resample.h"
 
-#pragma warning(disable : 4838 4309)
 
 // --------------------------------------------------------
 // ROM Tables, Lookup Constants, and Filter Coefficients

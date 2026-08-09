@@ -153,7 +153,6 @@ Off Off 						1 coin 2 plays
 extern void osd_modify_pen(int pen, unsigned char red, unsigned char green, unsigned char blue);
 // Video Section Start ---------------------------
 
-#pragma warning( disable : 4838 4003 )
 
 static struct GfxLayout charlayout =
 {
@@ -535,8 +534,8 @@ WRITE_HANDLER(missile_w)
 		//coin_counter_w(0, data & 0x20);
 		//coin_counter_w(1, data & 0x10);
 		//coin_counter_w(2, data & 0x08);
-		//osd_led_w(0, ~data >> 1);
-		//osd_led_w(1, ~data >> 2);
+		set_led_status(0, ~data & 0x02);
+		set_led_status(1, ~data & 0x04);
 		ctrld = data & 1;
 		MEM[address] = data;
 		return;
@@ -788,7 +787,7 @@ AAE_DRIVER_RASTER(missile_gfxdecodeinfo, 8, 32 * 2, missile_vh_convert_color_pro
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0, 0)
 AAE_DRIVER_NVRAM_NONE()
-AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_LAYOUT("default.lay", "Upright_Artwork")
 AAE_DRIVER_END()
 
 AAE_REGISTER_DRIVER(drv_missile)

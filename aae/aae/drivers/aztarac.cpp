@@ -37,7 +37,6 @@ ART_START(aztarac_art)
 ART_LOAD("aztarac.zip", "aztarac_bezel.png", ART_TEX, 3)
 ART_END
 
-#pragma warning(disable : 4838)
 
 // Video Variables
 static int last_x = 0;

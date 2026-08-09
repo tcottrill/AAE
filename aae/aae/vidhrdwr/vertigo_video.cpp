@@ -589,7 +589,7 @@ void vertigo_vproc(int cycles, int irq4)
              cut and run for just 100 cycles to make sure the
              loop is actually entered.
             */
-			if ((cmc->jpos != irq4) && cycles > 100)
+			if ((cmc->jpos != (uint32_t)irq4) && cycles > 100)
 			{
 				cycles=100;
 			}

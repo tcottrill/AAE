@@ -29,7 +29,6 @@
 #include "old_mame_raster.h"
 #include "timer.h"
 
-#pragma warning(disable : 4838 4003)
 
 // ---------------------------------------------------------------------------
 // RAM

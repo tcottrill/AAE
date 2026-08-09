@@ -363,6 +363,7 @@ int vector_update()
 
 			if (curpoint->intensity != 0 && curpoint->col) {
 				if (!render_clip_line(&coords, &clip))
+				{
 					if (curpoint->status == VTEX)
 					{
 						add_tex(coords.x0, coords.y0, curpoint->intensity, curpoint->col);
@@ -370,6 +371,7 @@ int vector_update()
 					else {
 						add_line(coords.x0, coords.y0, coords.x1 + .00001f, coords.y1 + .00001f, curpoint->intensity, curpoint->col);
 					}
+				}
 			}
 			lastx = curpoint->x;
 			lasty = curpoint->y;

@@ -25,7 +25,6 @@
 #include <vector>
 #include <string>
 
-
 static const char* bosco_samples[] =
 {
 	"bosco.zip",
@@ -112,7 +111,6 @@ static struct rectangle radarvisibleareaflip =
 	0 * 8, 8 * 8 - 1,
 	0 * 8, 28 * 8 - 1
 };
-
 
 //This bosco Uses the NAMCO Interface
 static struct namco_interface bosco_namco_interface =
@@ -307,7 +305,6 @@ void bosco_vh_convert_color_prom(unsigned char* palette, unsigned char* colortab
 //MAIN bosco HANDLERS
 //////////////////////////////////////////////////////////////
 
-
 WRITE_HANDLER(bosco_flipscreen_w)
 {
 	if (flipscreen != (~data & 1))
@@ -361,14 +358,11 @@ WRITE_HANDLER(boscohaltw)
 		cpu_needs_reset(2);
 		cpu_enable(CPU1, 1);
 		cpu_enable(CPU2, 1);
-
-		//LOG_INFO("CPUS ENABLED");
 	}
 	else if (!data)
 	{
 		cpu_enable(CPU1, 0);
 		cpu_enable(CPU2, 0);
-		//LOG_INFO("CPUS ENABLED without reset");
 	}
 
 	reset23 = data;
@@ -377,13 +371,11 @@ WRITE_HANDLER(boscohaltw)
 void bosco_nmi_generate_1(int param)
 {
 	cpu_do_int_imm(CPU0, INT_TYPE_NMI);
-	//LOG_INFO("NMI CPU0");
 }
 
 void bosco_nmi_generate_2(int param)
 {
 	cpu_do_int_imm(CPU1, INT_TYPE_NMI);
-	//LOG_INFO("NMI CPU1");
 }
 
 READ_HANDLER(bosco_dsw_r)
@@ -767,13 +759,10 @@ WRITE_HANDLER(bosco_customio_1_w)
 
 WRITE_HANDLER(bosco_customio_data_2_w)
 {
-	int offset = address;// &0x0f;
-
-	//LOG_INFO("OFFSET for CUSTOMIO  2 is %x", offset);
+	int offset = address;
 
 	customio_2[offset] = data;
 
-	//LOG_INFO("%04x: custom IO 2 offset %02x data %02x\n", 0, offset, data);
 	switch (customio_command_2)
 	{
 	case 0x82:
@@ -813,8 +802,7 @@ READ_HANDLER(bosco_customio_data_2_r)
 	case 0x91:
 		if (offset == 2)
 		{
-			//LOG_INFO("WARNING Returning weird mem location %x", GI[CPU0][0x89cd]);
-			Machine->memory_region[CPU0][0x89cc];//program_read_byte(0x89cc /cd);  cpu_readmem16??
+			Machine->memory_region[CPU0][0x89cc];
 		}
 		else if (offset <= 3)
 			return 0;
@@ -845,10 +833,8 @@ WRITE_HANDLER(bosco_customio_2_w)
 
 		break;
 	}
-	//LOG_INFO("NMI TIMER 2 SET ");
 	nmi_timer_2 = timer_set(TIME_IN_USEC(50), CPU1, bosco_nmi_generate_2);
 }
-
 
 static void bosco_vh_screenrefresh(struct osd_bitmap* bitmap, int full_refresh)
 {
@@ -1066,7 +1052,6 @@ void boscoint1()
 	bosco_vh_interrupt();	/* update the background stars position */
 	if (interrupt_enable_1)
 	{
-		//LOG_INFO("bosco interrupt CPU0 called");
 		cpu_do_int_imm(CPU0, INT_TYPE_INT);
 	}
 }
@@ -1075,18 +1060,15 @@ void boscoint2()
 {
 	if (interrupt_enable_2)
 	{
-		//LOG_INFO("bosco interrupt CPU1 called?");
 		cpu_do_int_imm(CPU1, INT_TYPE_INT);
 	}
 }
 
 void boscoint3()
 {
-	//LOG_INFO("Iterrupt 3 status here is %d", inten3);
 	if (interrupt_enable_3)
 	{
 		cpu_do_int_imm(CPU2, INT_TYPE_NMI);
-		//LOG_INFO("bosco interrupt CPU2 called?");
 	}
 }
 
@@ -1480,13 +1462,13 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_ENTRY(CPU_MZ80, 3072000, 400, 1, INT_TYPE_INT, &boscoint2, boscoCPU2_Read, boscoCPU2_Write, boscoPortRead, boscoPortWrite, nullptr, nullptr),
 	AAE_CPU_ENTRY(CPU_MZ80, 3072000, 400, 2, INT_TYPE_INT, &boscoint3, boscoCPU3_Read, boscoCPU3_Write, boscoPortRead, boscoPortWrite, nullptr, nullptr),
 	AAE_CPU_NONE_ENTRY())
-	AAE_DRIVER_VIDEO_CORE(60,DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_RASTER_COLOR | VIDEO_SUPPORTS_DIRTY, ORIENTATION_DEFAULT)
+	AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_RASTER_COLOR | VIDEO_SUPPORTS_DIRTY, ORIENTATION_DEFAULT)
 	AAE_DRIVER_SCREEN(36 * 8, 28 * 8, 0 * 8, 36 * 8 - 1, 0 * 8, 28 * 8 - 1)
 	AAE_DRIVER_RASTER(bosco_gfxdecodeinfo, 32 + 64, 64 * 4 + 64 * 4 + 4, bosco_vh_convert_color_prom)
 	AAE_DRIVER_HISCORE_NONE()
 	AAE_DRIVER_VECTORRAM(0, 0)
 	AAE_DRIVER_NVRAM_NONE()
 	AAE_DRIVER_LAYOUT("default.lay", "Upright_Artwork")
-AAE_DRIVER_END()
+	AAE_DRIVER_END()
 
 	AAE_REGISTER_DRIVER(drv_bosco)

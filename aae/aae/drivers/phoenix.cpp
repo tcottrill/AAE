@@ -42,7 +42,6 @@
 #include <cstdint>
 #include <cmath>
 
-#pragma warning(disable : 4838 4003)
 
 // ============================================================================
 // Video state
@@ -389,7 +388,7 @@ READ_HANDLER(phoenix_paged_ram_r)
 WRITE_HANDLER(phoenix_paged_ram_w)
 {
 	if ((address >= BACKGROUND_VIDEORAM_OFFSET) &&
-		(address < BACKGROUND_VIDEORAM_OFFSET + videoram_size))
+		(address < (UINT32)(BACKGROUND_VIDEORAM_OFFSET + videoram_size)))
 	{
 		if (data != current_ram_page[address])
 			dirtybuffer[address - BACKGROUND_VIDEORAM_OFFSET] = 1;

@@ -30,7 +30,6 @@
 #ifndef XEVIOUS_H
 #define XEVIOUS_H
 
-#pragma warning(disable:4996 4102)
 
 // ---------------------------------------------------------------------------
 // Driver entry points

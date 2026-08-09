@@ -20,26 +20,11 @@ extern unsigned char* rallyx_colorram2;
 extern unsigned char* rallyx_radarx;
 extern unsigned char* rallyx_radary;
 extern unsigned char* rallyx_radarattr;
-// extern int, NOT `size_t rallyx_radarram_size;`. This used to DEFINE the
-// symbol a second time, with a different type - drivers/rallyx.cpp:44 defines
-// it as `int rallyx_radarram_size = 0x0b`. MSVC merged the two as tentative
-// definitions and nobody noticed; GNU ld (with -fno-common, the default since
-// GCC 10) rejects it outright as a multiple definition.
-//
-// The type mismatch was the real defect: on a 64-bit build size_t is 8 bytes
-// and int is 4, so the two translation units disagreed about the object's
-// size and layout - undefined behaviour that happened to work.
 extern int rallyx_radarram_size;
 extern unsigned char* rallyx_scrollx;
 extern unsigned char* rallyx_scrolly;
 //static unsigned char* dirtybuffer2;	/* keep track of modified portions of the screen */
 extern unsigned char* rallyx_radarcarx, * rallyx_radarcary, * rallyx_radarcarcolor;
-// tmpbitmap1 is the shared global declared extern in old_mame_raster.h and
-// defined in old_mame_raster.cpp - the same one bosco, jrpacman and xevious
-// use. This file used to shadow it with a file-local `static` copy, which
-// MSVC accepted despite the extern declaration already being in scope; g++
-// rejects it outright. Only one game runs at a time, so sharing is exactly
-// what the header intends.
 extern int rallyx_flipscreen;
 
 static struct rectangle spritevisiblearea =
@@ -98,7 +83,7 @@ void rallyx_vh_convert_color_prom(unsigned char* palette, unsigned char* colorta
 		color_prom++;
 	}
 
-	/* color_prom now points to the beginning of the lookup table */
+	/* color_prom points to the beginning of the lookup table */
 
 	/* character lookup table */
 	/* sprites use the same color lookup table as characters */
@@ -189,8 +174,6 @@ void rallyx_vh_screenrefresh()//struct osd_bitmap* bitmap)
 	copyscrollbitmap(main_bitmap, tmpbitmap1, 1, &scrollx, 1, &scrolly, &visible_area, TRANSPARENCY_NONE, 0);
 
 	// draw the sprites
-
-	/* draw the sprites */
 	for (offs = 0; offs < spriteram_size; offs += 2)
 	{
 		sx = spriteram[offs + 1] + ((spriteram_2[offs + 1] & 0x80) << 1) - 1;

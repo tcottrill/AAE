@@ -380,11 +380,11 @@ void run_omega()
 }
 
 MEM_READ(OmegaRead)
-//{ 0x0000, 0x3fff, MRA_ROM },
-//{ 0x4000, 0x4bff, MRA_RAM },
+//MEM_ADDR(0x0000, 0x3fff, MRA_ROM)
+//MEM_ADDR(0x4000, 0x4bff, MRA_RAM)
 MEM_ADDR(0x5c00, 0x5cff, nvram_r) /* NVRAM */
-//{ 0x8000, 0x8fff, MRA_RAM, &vectorram, &vectorram_size },
-//{ 0x9000, 0x9fff, MRA_ROM }, /* vector rom */
+//MEM_ADDR(0x8000, 0x8fff, MRA_RAM)	/* MAME: &vectorram, &vectorram_size */
+//MEM_ADDR(0x9000, 0x9fff, MRA_ROM)	/* vector rom */
 /* 9000-9fff is ROM, hopefully there are no writes to it */
 MEM_END
 
@@ -415,7 +415,7 @@ PORT_ADDR(0x16, 0x16, o_input_port_5_r) /* 2nd controller (cocktail) */
 PORT_END
 
 PORT_WRITE(OmegaPortWrite)
-PORT_ADDR(0x21, 0x21, omega_reset)
+PORT_ADDR(0x0A, 0x0A, omega_reset)
 PORT_ADDR(0x13, 0x13, omegrace_leds_w) // coin counters, leds, flip screen
 PORT_ADDR(0x14, 0x14, omegrace_soundlatch_w) //Sound command
 PORT_END
@@ -638,14 +638,16 @@ AAE_DRIVER_CPUS(
 		/*r16*/      nullptr,
 		/*w16*/      nullptr
 	),
-	// CPU1: Sound Z80 @ 1.512 MHz; bootleg sets INT_TYPE_NONE (no CPU interrupt callback)
+	// CPU1: Sound Z80 @ 1.512 MHz -- identical to Omega Race. The bootleg copies
+	// only the main board; the sound board, sound.k5 and the 250 Hz sound-engine
+	// NMI (MAME: MDRV_CPU_PERIODIC_INT(nmi_line_pulse,250)) are the same.
 	AAE_CPU_ENTRY(
 		/*type*/     CPU_MZ80,
 		/*freq*/     1512000,
 		/*div*/      100,
 		/*ipf*/      25,
-		/*int type*/ INT_TYPE_NONE,
-		/*int cb*/   nullptr,
+		/*int type*/ INT_TYPE_INT,
+		/*int cb*/   &omega_nmi_interrupt,
 		/*r8*/       SoundMemRead,
 		/*w8*/       SoundMemWrite,
 		/*pr*/       SoundPortRead,

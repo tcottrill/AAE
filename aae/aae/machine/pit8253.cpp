@@ -31,7 +31,9 @@
 #include <cstring>
 #include <functional>
 
+#ifdef _MSC_VER
 #pragma warning( disable : 4244 )   // double->int / int64 truncation (as upstream)
+#endif
 
 /***************************************************************************
 
@@ -180,7 +182,7 @@ static void decrease_counter_value(struct pit8253_timer *timer, u64 cycles)
     hundreds  = (value >>  8)  & 0xF;
     thousands = (value >> 12)  & 0xF;
 
-    if (cycles <= units)
+    if (cycles <= (u64)units)
     {
         units -= cycles;
     }
@@ -190,7 +192,7 @@ static void decrease_counter_value(struct pit8253_timer *timer, u64 cycles)
         units = (10 - cycles % 10) % 10;
 
         cycles = (cycles + 9) / 10; /* the +9 is so we get a carry if cycles%10 wasn't 0 */
-        if (cycles <= tens)
+        if (cycles <= (u64)tens)
         {
             tens -= cycles;
         }
@@ -200,7 +202,7 @@ static void decrease_counter_value(struct pit8253_timer *timer, u64 cycles)
             tens = (10 - cycles % 10) % 10;
 
             cycles = (cycles + 9) / 10;
-            if (cycles <= hundreds)
+            if (cycles <= (u64)hundreds)
             {
                 hundreds -= cycles;
             }
@@ -744,7 +746,7 @@ static void simulate2(struct pit8253_timer *timer, u64 elapsed_cycles)
     if (timer->output_callback != NULL)
     {
         timer->cycles_to_output = cycles_to_output;
-        if (cycles_to_output == CYCLES_NEVER || timer->clockin == 0)
+        if ((UINT32)cycles_to_output == CYCLES_NEVER || timer->clockin == 0)
             pit_timer_reset(timer->outputtimer, TIME_NEVER);
         else
             pit_timer_reset(timer->outputtimer, cycles_to_output / timer->clockin);

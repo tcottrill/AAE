@@ -21,7 +21,6 @@
 #include "timer.h"
 
 
-#pragma warning( disable : 4838 4003 )
 
 
 static const char* yiear_samples[] = {
@@ -400,24 +399,24 @@ void end_yiear()
 
 
 MEM_READ(yiear_readmem)
-{ 0x4c00, 0x4c00, ip_port_3_r },
-{ 0x4d00, 0x4d00, ip_port_4_r },
-{ 0x4e00, 0x4e00, ip_port_0_r },
-{ 0x4e01, 0x4e01, ip_port_1_r },
-{ 0x4e02, 0x4e02, ip_port_2_r },
-{ 0x4e03, 0x4e03, ip_port_5_r },
-{ 0x5000, 0x5fff, MRA_RAM },
-{ 0x8000, 0xffff, MRA_ROM },
+MEM_ADDR(0x4c00, 0x4c00, ip_port_3_r)
+MEM_ADDR(0x4d00, 0x4d00, ip_port_4_r)
+MEM_ADDR(0x4e00, 0x4e00, ip_port_0_r)
+MEM_ADDR(0x4e01, 0x4e01, ip_port_1_r)
+MEM_ADDR(0x4e02, 0x4e02, ip_port_2_r)
+MEM_ADDR(0x4e03, 0x4e03, ip_port_5_r)
+MEM_ADDR(0x5000, 0x5fff, MRA_RAM)
+MEM_ADDR(0x8000, 0xffff, MRA_ROM)
 MEM_END
 
 MEM_WRITE(yiear_writemem)
-{0x4000, 0x4000, yiear_interrupt_enable_w},
-{ 0x4f00, 0x4f00, yiear_4f00_w },
-//{ 0x5030, 0x51AF, MWA_RAM, &spriteram, &spriteram_size },
-{ 0x5607, 0x5607, yiear_audio_out_w, &yiear_soundport },
-{ 0x5000, 0x57FF, MWA_RAM },	/* sprites and audio are in this area */
-//{ 0x5800, 0x5FFF, videoram_w, &videoram, &videoram_size },
-{ 0x8000, 0xFFFF, MWA_ROM }, 
+MEM_ADDR(0x4000, 0x4000, yiear_interrupt_enable_w)
+MEM_ADDR(0x4f00, 0x4f00, yiear_4f00_w)
+//MEM_ADDR(0x5030, 0x51AF, MWA_RAM)	/* MAME: &spriteram, &spriteram_size */
+MEM_ADDR8(0x5607, 0x5607, yiear_audio_out_w, &yiear_soundport)
+MEM_ADDR(0x5000, 0x57FF, MWA_RAM)	/* sprites and audio are in this area */
+//MEM_ADDR(0x5800, 0x5FFF, videoram_w)	/* MAME: &videoram, &videoram_size */
+MEM_ADDR(0x8000, 0xFFFF, MWA_ROM)
 MEM_END
 
 

@@ -126,6 +126,11 @@ void atari_vg_earom_handler(void* file, int read_or_write)
 		if (file)
 			osd_fread(file, earom, EAROM_SIZE);
 		else
+			/* EAROM_SIZE is a BYTE count here, so this covers the first 16
+			   of the 64 int entries - the same span load/save use. Widening
+			   it (or narrowing earom to unsigned char) would change the .hi
+			   file format and invalidate existing high scores, so the
+			   -Wmemset-elt-size warning is accepted deliberately. */
 			memset(earom, 0, EAROM_SIZE);
 	}
 }

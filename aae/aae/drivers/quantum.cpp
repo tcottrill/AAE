@@ -20,7 +20,6 @@
 #include "aae_pokey.h"
 #include "timer.h"
 
-#pragma warning(disable : 4838)
 
 /*
 QUANTUM MEMORY MAP (per schem):

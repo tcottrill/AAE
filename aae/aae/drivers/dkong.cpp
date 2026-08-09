@@ -31,7 +31,6 @@
 #include "old_mame_raster.h"
 #include <math.h>
 
-#pragma warning(disable : 4838 4003 4244)
 
 // ---------------------------------------------------------------------------
 // State
@@ -536,7 +535,7 @@ AAE_DRIVER_RASTER(dkong_gfxdecodeinfo, 256, 256, dkong_vh_convert_color_prom)
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0, 0)
 AAE_DRIVER_NVRAM_NONE()
-AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_LAYOUT("default.lay", "Upright_Artwork")
 AAE_DRIVER_END()
 
 AAE_REGISTER_DRIVER(drv_dkong)
@@ -848,7 +847,7 @@ AAE_DRIVER_RASTER(dkongjr_gfxdecodeinfo, 256, 256, dkong_vh_convert_color_prom)
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0, 0)
 AAE_DRIVER_NVRAM_NONE()
-AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_LAYOUT("default.lay", "Upright_Artwork")
 AAE_DRIVER_END()
 
 AAE_REGISTER_DRIVER(drv_dkongjr)

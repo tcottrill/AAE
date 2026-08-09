@@ -191,7 +191,6 @@ static uint8_t g_in0_vblank_bit = 0x00;  /* starts outside vblank, bit 6 low */
 static inline void milliped_vblank_begin(int dum) { g_in0_vblank_bit = 0x00; } /* bit 6 HIGH = in vblank (ACTIVE_HIGH) */
 static inline void milliped_vblank_end(int dum) { g_in0_vblank_bit = 0x40; } /* bit 6 LOW  = not in vblank          */
 
-#pragma warning( disable : 4838 4003 )
 
 static int dsw_select;
 
@@ -540,7 +539,7 @@ void end_milliped()
 
 WRITE_HANDLER(milliped_led_w)
 {
-	set_led_status(address, ~data >> 7);
+	set_led_status(address, ~data & 0x80);
 }
 
 /* called on reset */
@@ -551,35 +550,35 @@ void milliped_init_machine(void)
 /* PORT HANDLERS */
 
 MEM_READ(milliped_readmem)
-{0x0000, 0x03ff, MRA_RAM},
-{0x0400, 0x040f, pokey_1_r},
-{ 0x0800, 0x080f, pokey_2_r },
-{ 0x1000, 0x13ff, MRA_RAM },
-{ 0x2000, 0x2000, milliped_IN0_r },
-{ 0x2001, 0x2001, milliped_IN1_r },
-{ 0x2010, 0x2010, ip_port_2_r },
-{ 0x2011, 0x2011, ip_port_3_r },
-{ 0x2030, 0x2030, EaromRead },
-{ 0x4000, 0x7fff, MRA_ROM },
-{ 0xf000, 0xffff, MRA_ROM },		
+MEM_ADDR(0x0000, 0x03ff, MRA_RAM)
+MEM_ADDR(0x0400, 0x040f, pokey_1_r)
+MEM_ADDR(0x0800, 0x080f, pokey_2_r)
+MEM_ADDR(0x1000, 0x13ff, MRA_RAM)
+MEM_ADDR(0x2000, 0x2000, milliped_IN0_r)
+MEM_ADDR(0x2001, 0x2001, milliped_IN1_r)
+MEM_ADDR(0x2010, 0x2010, ip_port_2_r)
+MEM_ADDR(0x2011, 0x2011, ip_port_3_r)
+MEM_ADDR(0x2030, 0x2030, EaromRead)
+MEM_ADDR(0x4000, 0x7fff, MRA_ROM)
+MEM_ADDR(0xf000, 0xffff, MRA_ROM)
 MEM_END
 
 MEM_WRITE(milliped_writemem)
-{0x0000, 0x03ff, MWA_RAM },
-{0x0400, 0x040f, pokey_1_w},
-{ 0x0800, 0x080f, pokey_2_w },
-//{ 0x1000, 0x13ff, videoram_w, &videoram, &videoram_size },
-//{ 0x13c0, 0x13ff, MWA_RAM, &spriteram },
-{ 0x2480, 0x249f, milliped_paletteram_w },
-//{ 0x2500, 0x2502, coin_counter_w },
-{ 0x2503, 0x2504, milliped_led_w },
-{ 0x2505, 0x2505, milliped_input_select_w },
-{ 0x2506, 0x2507, MWA_NOP }, /* unused outputs */
-{ 0x2600, 0x2600, milliped_irq_ack }, 
-{ 0x2680, 0x2680, watchdog_reset_w },
-{ 0x2700, 0x2700, EaromCtrl },
-{ 0x2780, 0x27bf, EaromWrite },
-{ 0x4000, 0x73ff, MWA_ROM },
+MEM_ADDR(0x0000, 0x03ff, MWA_RAM)
+MEM_ADDR(0x0400, 0x040f, pokey_1_w)
+MEM_ADDR(0x0800, 0x080f, pokey_2_w)
+//MEM_ADDR(0x1000, 0x13ff, videoram_w)	/* MAME: &videoram, &videoram_size */
+//MEM_ADDR(0x13c0, 0x13ff, MWA_RAM)	/* MAME: &spriteram */
+MEM_ADDR(0x2480, 0x249f, milliped_paletteram_w)
+//MEM_ADDR(0x2500, 0x2502, coin_counter_w)
+MEM_ADDR(0x2503, 0x2504, milliped_led_w)
+MEM_ADDR(0x2505, 0x2505, milliped_input_select_w)
+MEM_ADDR(0x2506, 0x2507, MWA_NOP)	/* unused outputs */
+MEM_ADDR(0x2600, 0x2600, milliped_irq_ack)
+MEM_ADDR(0x2680, 0x2680, watchdog_reset_w)
+MEM_ADDR(0x2700, 0x2700, EaromCtrl)
+MEM_ADDR(0x2780, 0x27bf, EaromWrite)
+MEM_ADDR(0x4000, 0x73ff, MWA_ROM)
 MEM_END
 
 int  init_milliped(void)

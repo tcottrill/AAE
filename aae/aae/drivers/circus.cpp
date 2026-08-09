@@ -40,7 +40,6 @@
 #include "old_mame_raster.h"
 #include "dac.h"
 
-#pragma warning( disable : 4838 4003 )
 
 /*--------------------------------------------------------------------------
   Sprite state: shared across all four game variants.
@@ -306,13 +305,13 @@ MEM_READ(circus_readmem)
 MEM_ADDR(0xa000, 0xa000, circus_IN0_r)
 MEM_ADDR(0xc000, 0xc000, circus_DSW_r)
 MEM_ADDR(0xd000, 0xd000, circus_IN2_r)
-{ 0x0000, 0x01ff, MRA_RAM},
-{ 0x1000, 0x1fff, MRA_ROM },
-{ 0x4000, 0x43ff, MRA_RAM },
-//{ 0xa000, 0xa000, ip_port_0_r },
-//{ 0xc000, 0xc000, ip_port_1_r }, /* DSW */
-//{ 0xd000, 0xd000, ip_port_2_r },
-{ 0xf000, 0xffff, MRA_ROM },
+MEM_ADDR(0x0000, 0x01ff, MRA_RAM)
+MEM_ADDR(0x1000, 0x1fff, MRA_ROM)
+MEM_ADDR(0x4000, 0x43ff, MRA_RAM)
+//MEM_ADDR(0xa000, 0xa000, ip_port_0_r)
+//MEM_ADDR(0xc000, 0xc000, ip_port_1_r)	/* DSW */
+//MEM_ADDR(0xd000, 0xd000, ip_port_2_r)
+MEM_ADDR(0xf000, 0xffff, MRA_ROM)
 MEM_END
 
 MEM_WRITE(circus_writemem)

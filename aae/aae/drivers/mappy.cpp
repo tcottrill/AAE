@@ -50,7 +50,36 @@
 #include "namco.h"
 #include "timer.h"
 
-#pragma warning( disable : 4838 4003 )
+// Memory handlers for the MEM_READ/MEM_WRITE tables below. These are
+// static, so they are declared here rather than in the header - a header
+// declaration would give every other includer an undefined static.
+READ_HANDLER(mappy_sharedram_r);
+READ_HANDLER(mappy_sharedram_r2);
+READ_HANDLER(digdug2_sharedram_r2);
+READ_HANDLER(motos_sharedram_r2);
+READ_HANDLER(todruaga_sharedram_r2);
+WRITE_HANDLER(mappy_sharedram_w);
+READ_HANDLER(mappy_cpu1ram_r);
+READ_HANDLER(digdug2_cpu1ram_r);
+READ_HANDLER(motos_cpu1ram_r);
+READ_HANDLER(todruaga_cpu1ram_r);
+WRITE_HANDLER(mappy_customio_w_1);
+WRITE_HANDLER(mappy_customio_w_2);
+READ_HANDLER(mappy_customio_r_1);
+READ_HANDLER(mappy_customio_r_2);
+READ_HANDLER(digdug2_customio_r_1);
+READ_HANDLER(digdug2_customio_r_2);
+READ_HANDLER(todruaga_customio_r_1);
+READ_HANDLER(todruaga_customio_r_2);
+WRITE_HANDLER(mappy_interrupt_enable_1_w);
+WRITE_HANDLER(mappy_interrupt_enable_2_w);
+WRITE_HANDLER(mappy_cpu_enable_w);
+WRITE_HANDLER(mappy_sound_w);
+WRITE_HANDLER(mappy_sound_enable_w);
+WRITE_HANDLER(mappy_videoram_w);
+WRITE_HANDLER(mappy_colorram_w);
+WRITE_HANDLER(mappy_scroll_w);
+
 
 // ---------------------------------------------------------------------------
 // Shared state
@@ -71,8 +100,7 @@ static unsigned char interrupt_enable_2 = 0;
 
 /* credit tracking for custom I/O emulation */
 static int credits = 0;
-
-
+int mappy_flipscreen = 0;
 // ---------------------------------------------------------------------------
 // Namco sound interface -- 8 voices, matches original mappy hardware
 // ---------------------------------------------------------------------------
@@ -711,47 +739,48 @@ WRITE_HANDLER(mappy_scroll_w)
 // GFX layouts
 // ---------------------------------------------------------------------------
 
-/* 8x8 characters, 2bpp, rotated 90 degrees in ROM */
+
+/* layout of the 8x8x2 character data */
 static struct GfxLayout mappy_charlayout =
 {
-    8, 8,           /* 8x8 tile size */
-    256,            /* 256 characters */
-    2,              /* 2 bits per pixel */
-    { 0, 4 },       /* bitplanes packed 4 pixels per byte */
-    { 7*8, 6*8, 5*8, 4*8, 3*8, 2*8, 1*8, 0*8 },   /* rotated 90 degrees */
-    { 8*8+0, 8*8+1, 8*8+2, 8*8+3, 0, 1, 2, 3 },   /* bits packed in groups of four */
-    16 * 8          /* 16 bytes per character */
+    8,8,             /* 8*8 characters */
+    256,             /* 256 characters */
+    2,             /* 2 bits per pixel */
+    { 0, 4 },      /* the two bitplanes for 4 pixels are packed into one byte */
+    { 8 * 8 + 0, 8 * 8 + 1, 8 * 8 + 2, 8 * 8 + 3, 0, 1, 2, 3 },   /* bits are packed in groups of four */
+    { 0 * 8, 1 * 8, 2 * 8, 3 * 8, 4 * 8, 5 * 8, 6 * 8, 7 * 8 },   /* characters are rotated 90 degrees */
+    16 * 8           /* every char takes 16 bytes */
 };
 
-/* 16x16 sprites, 4bpp, 128 sprites (mappy, todruaga low count) */
+
+/* layout of the 16x16x4 sprite data */
 static struct GfxLayout mappy_spritelayout =
 {
-    16, 16,         /* 16x16 sprite size */
+    16,16,       /* 16*16 sprites */
     128,            /* 128 sprites */
-    4,              /* 4 bits per pixel */
-    { 0, 4, 8192*8, 8192*8+4 }, /* two bitplane pairs, second pair offset 8k bytes */
-    { 39*8, 38*8, 37*8, 36*8, 35*8, 34*8, 33*8, 32*8,
-       7*8,  6*8,  5*8,  4*8,  3*8,  2*8,  1*8,  0*8 },
-    { 0, 1, 2, 3, 8*8+0, 8*8+1, 8*8+2, 8*8+3,
-      16*8+0, 16*8+1, 16*8+2, 16*8+3,
-      24*8+0, 24*8+1, 24*8+2, 24*8+3 },
-    64 * 8          /* 64 bytes per sprite */
+    4,                 /* 4 bits per pixel */
+    { 0, 4, 8192 * 8, 8192 * 8 + 4 },     /* the two bitplanes for 4 pixels are packed into one byte */
+    { 0, 1, 2, 3, 8 * 8, 8 * 8 + 1, 8 * 8 + 2, 8 * 8 + 3, 16 * 8 + 0, 16 * 8 + 1, 16 * 8 + 2, 16 * 8 + 3,
+            24 * 8 + 0, 24 * 8 + 1, 24 * 8 + 2, 24 * 8 + 3 },
+    { 0 * 8, 1 * 8, 2 * 8, 3 * 8, 4 * 8, 5 * 8, 6 * 8, 7 * 8,
+            32 * 8, 33 * 8, 34 * 8, 35 * 8, 36 * 8, 37 * 8, 38 * 8, 39 * 8 },
+    64 * 8    /* every sprite takes 64 bytes */
 };
 
-/* 16x16 sprites, 4bpp, 256 sprites (digdug2, motos have more sprite ROM) */
+
 static struct GfxLayout digdug2_spritelayout =
 {
-    16, 16,
+    16,16,       /* 16*16 sprites */
     256,            /* 256 sprites */
-    4,
-    { 0, 4, 16384*8, 16384*8+4 }, /* second bitplane pair at 16k bytes */
-    { 39*8, 38*8, 37*8, 36*8, 35*8, 34*8, 33*8, 32*8,
-       7*8,  6*8,  5*8,  4*8,  3*8,  2*8,  1*8,  0*8 },
-    { 0, 1, 2, 3, 8*8+0, 8*8+1, 8*8+2, 8*8+3,
-      16*8+0, 16*8+1, 16*8+2, 16*8+3,
-      24*8+0, 24*8+1, 24*8+2, 24*8+3 },
-    64 * 8
+    4,                 /* 4 bits per pixel */
+    { 0, 4, 16384 * 8, 16384 * 8 + 4 },   /* the two bitplanes for 4 pixels are packed into one byte */
+    { 0, 1, 2, 3, 8 * 8, 8 * 8 + 1, 8 * 8 + 2, 8 * 8 + 3, 16 * 8 + 0, 16 * 8 + 1, 16 * 8 + 2, 16 * 8 + 3,
+            24 * 8 + 0, 24 * 8 + 1, 24 * 8 + 2, 24 * 8 + 3 },
+    { 0 * 8, 1 * 8, 2 * 8, 3 * 8, 4 * 8, 5 * 8, 6 * 8, 7 * 8,
+            32 * 8, 33 * 8, 34 * 8, 35 * 8, 36 * 8, 37 * 8, 38 * 8, 39 * 8 },
+    64 * 8    /* every sprite takes 64 bytes */
 };
+
 
 
 /* Mappy GFX decode: chars from offset 0, sprites from offset 0x1000 in GFX1 */
@@ -839,7 +868,6 @@ int init_mappy(void)
 
     /* start sound CPU halted; main CPU will enable it via mappy_cpu_enable_w */
     cpu_enable(CPU1, 0);
-
     mappy_init_machine();
     mappy_vh_start();
     namco_sh_start(&namco_interface);
@@ -873,7 +901,6 @@ int init_digdug2(void)
     mappy_customio_2 = &Machine->memory_region[CPU0][0x4810];
 
     cpu_enable(CPU1, 0);
-
     mappy_init_machine();
     mappy_vh_start();
     namco_sh_start(&namco_interface);
@@ -1518,8 +1545,10 @@ AAE_DRIVER_CPUS(
 )
 
 AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION,
-    VIDEO_TYPE_RASTER_COLOR | VIDEO_SUPPORTS_DIRTY, ORIENTATION_DEFAULT)
-AAE_DRIVER_SCREEN(28 * 8, 36 * 8, 0, 28 * 8 - 1, 0, 36 * 8 - 1)
+    VIDEO_TYPE_RASTER_COLOR | VIDEO_SUPPORTS_DIRTY, ORIENTATION_ROTATE_90)
+
+AAE_DRIVER_SCREEN(36 * 8, 28 * 8, 0 * 8, 36 * 8 - 1, 0 * 8, 28 * 8 - 1)
+
 AAE_DRIVER_RASTER(mappy_gfxdecodeinfo, 32, 64 * 4 + 16 * 16, mappy_vh_convert_color_prom)
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0, 0)
@@ -1552,8 +1581,8 @@ AAE_DRIVER_CPUS(
 )
 
 AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION,
-    VIDEO_TYPE_RASTER_COLOR | VIDEO_SUPPORTS_DIRTY, ORIENTATION_DEFAULT)
-AAE_DRIVER_SCREEN(28 * 8, 36 * 8, 0, 28 * 8 - 1, 0, 36 * 8 - 1)
+    VIDEO_TYPE_RASTER_COLOR | VIDEO_SUPPORTS_DIRTY, ORIENTATION_ROTATE_90)
+AAE_DRIVER_SCREEN(36 * 8, 28 * 8, 0 * 8, 36 * 8 - 1, 0 * 8, 28 * 8 - 1)
 AAE_DRIVER_RASTER(mappy_gfxdecodeinfo, 32, 64 * 4 + 16 * 16, mappy_vh_convert_color_prom)
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0, 0)
@@ -1586,8 +1615,8 @@ AAE_DRIVER_CPUS(
 )
 
 AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION,
-    VIDEO_TYPE_RASTER_COLOR | VIDEO_SUPPORTS_DIRTY, ORIENTATION_DEFAULT)
-AAE_DRIVER_SCREEN(28 * 8, 36 * 8, 0, 28 * 8 - 1, 0, 36 * 8 - 1)
+    VIDEO_TYPE_RASTER_COLOR | VIDEO_SUPPORTS_DIRTY, ORIENTATION_ROTATE_90)
+AAE_DRIVER_SCREEN(36 * 8, 28 * 8, 0 * 8, 36 * 8 - 1, 0 * 8, 28 * 8 - 1)
 AAE_DRIVER_RASTER(digdug2_gfxdecodeinfo, 32, 64 * 4 + 16 * 16, mappy_vh_convert_color_prom)
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0, 0)
@@ -1619,8 +1648,8 @@ AAE_DRIVER_CPUS(
     AAE_CPU_NONE_ENTRY()
 )
 
-AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_RASTER_COLOR | VIDEO_SUPPORTS_DIRTY, ORIENTATION_DEFAULT)
-AAE_DRIVER_SCREEN(28 * 8, 36 * 8, 0, 28 * 8 - 1, 0, 36 * 8 - 1)
+AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_RASTER_COLOR | VIDEO_SUPPORTS_DIRTY, ORIENTATION_ROTATE_90)
+AAE_DRIVER_SCREEN(36 * 8, 28 * 8, 0 * 8, 36 * 8 - 1, 0 * 8, 28 * 8 - 1)
 /* motos uses the digdug2 gfx decode (256 sprites) */
 AAE_DRIVER_RASTER(digdug2_gfxdecodeinfo, 32, 64 * 4 + 16 * 16, mappy_vh_convert_color_prom)
 AAE_DRIVER_HISCORE_NONE()
@@ -1654,8 +1683,8 @@ AAE_DRIVER_CPUS(
 )
 
 AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION,
-    VIDEO_TYPE_RASTER_COLOR | VIDEO_SUPPORTS_DIRTY, ORIENTATION_DEFAULT)
-AAE_DRIVER_SCREEN(28 * 8, 36 * 8, 0, 28 * 8 - 1, 0, 36 * 8 - 1)
+    VIDEO_TYPE_RASTER_COLOR | VIDEO_SUPPORTS_DIRTY, ORIENTATION_ROTATE_90)
+AAE_DRIVER_SCREEN(36 * 8, 28 * 8, 0 * 8, 36 * 8 - 1, 0 * 8, 28 * 8 - 1)
 /* todruaga has 64 sprite color sets instead of 16, hence the larger color table */
 AAE_DRIVER_RASTER(todruaga_gfxdecodeinfo, 32, 64 * 4 + 64 * 16, mappy_vh_convert_color_prom)
 AAE_DRIVER_HISCORE_NONE()

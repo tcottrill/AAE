@@ -72,7 +72,9 @@
 #include "mixer.h"
 #include "ccpu.h"
 
+#ifdef _MSC_VER
 #pragma warning( disable : 4018 4244)
+#endif
 
 /*************************************
  *
@@ -274,14 +276,14 @@ void starcas_sound(UINT8 sound_val, UINT8 bits_changed)
 
 		static int last_pitch = 0;
 
-		if (cpu_getcurrentframe() > last_frame)
+		if ((UINT32)cpu_getcurrentframe() > last_frame)
 		{
 			if (current_pitch > target_pitch)
 				current_pitch -= 300;
 			if (current_pitch < target_pitch)
 				current_pitch += 200;
 			
-			if (current_pitch != last_pitch)
+			if (current_pitch != (UINT32)last_pitch)
 			{
 				last_pitch = current_pitch;
 			}
@@ -457,7 +459,7 @@ void solarq_sound(UINT8 sound_val, UINT8 bits_changed)
 			}
 		}
 
-		if (sample_playing(2) && (last_frame < cpu_getcurrentframe()))
+		if (sample_playing(2) && (last_frame < (UINT32)cpu_getcurrentframe()))
 		{
 			if (current_volume > target_volume)
 				current_volume -= 20;
@@ -879,7 +881,7 @@ void wotwc_sound(UINT8 sound_val, UINT8 bits_changed)
 		target_pitch = 0x10000 + (target_pitch << 12);
 
 		// once per frame slide the pitch toward the target
-		if (cpu_getcurrentframe() > last_frame)
+		if ((UINT32)cpu_getcurrentframe() > last_frame)
 		{
 			if (current_pitch > target_pitch)
 				current_pitch -= 300;

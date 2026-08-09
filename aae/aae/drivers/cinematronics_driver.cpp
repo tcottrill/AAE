@@ -76,7 +76,7 @@ static int ccpuinput_type = 0;
  *  Coin handlers
  *
  *************************************/
-static int input_changed(int coin_inserted)
+static void input_changed(int coin_inserted)
 {
 	/* on the falling edge of a new coin, set the coin_detected flag */
 	if (coin_inserted == 0)
@@ -280,7 +280,7 @@ void qb3_ram_bank_w(int data)
 	ccpu_qb3_bank_switch();
 }
 
-static int mux_set(int data) // mux_select_w
+static void mux_set(int data) // mux_select_w
 {
 	mux_select = data;
 	LOG_INFO("MUX SELECT");

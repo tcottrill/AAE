@@ -3,7 +3,6 @@
 #ifndef pacman_H
 #define pacman_H
 
-#pragma warning(disable:4996 4102)
 
 extern void pacman_vh_convert_color_prom(unsigned char* palette, unsigned char* colortable, const unsigned char* color_prom);
 int  init_pacman();

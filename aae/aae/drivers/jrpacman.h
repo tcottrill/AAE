@@ -3,7 +3,6 @@
 #ifndef JRPACMAN_H
 #define JRPACMAN_H
 
-#pragma warning(disable:4996 4102)
 
 // ----------------------------------------------------------------------------
 // jrpacman.h -- Jr. Pac-Man AAE driver declarations

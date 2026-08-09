@@ -26,6 +26,14 @@
 #include "aae_mame_driver.h" /* Machine, WRITE_HANDLER */
 #include "cpu_control.h"     /* cpu_scale_by_cycles - mid-frame write position */
 
+// Memory handlers for the MEM_READ/MEM_WRITE tables below. These are
+// static, so they are declared here rather than in the header - a header
+// declaration would give every other includer an undefined static.
+WRITE_HANDLER(DAC_0_data_w);
+WRITE_HANDLER(DAC_1_data_w);
+WRITE_HANDLER(DAC_0_signed_data_w);
+WRITE_HANDLER(DAC_1_signed_data_w);
+
 /* -------------------------------------------------------------------------
    Module-level state
    ------------------------------------------------------------------------- */

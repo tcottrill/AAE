@@ -102,7 +102,6 @@ const rectangle visible_area =
  255
 };
 
-#pragma warning( disable : 4838 4003 )
 
 static struct GfxLayout charlayout =
 {

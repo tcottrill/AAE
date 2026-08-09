@@ -5,7 +5,9 @@
 
 #include "gaplus.h"
 #include "old_mame_raster.h"
-#pragma warning(disable : 4244)
+#ifdef _MSC_VER
+#pragma warning(disable : 4244)  // MSVC only: intentional float->int narrowing in the starfield
+#endif
 
 // ---------------------------------------------------------------------------
 // Color PROM conversion
@@ -20,7 +22,7 @@ void gaplus_vh_convert_color_prom(unsigned char* palette, unsigned char* colorta
 #define TOTAL_COLORS(gfxn) (Machine->gfx[gfxn]->total_colors * Machine->gfx[gfxn]->color_granularity)
 #define COLOR(gfxn,offs) (colortable[Machine->drv->gfxdecodeinfo[gfxn].color_codes_start + offs])
 
-	for (i = 0; i < Machine->drv->total_colors; i++)
+	for (i = 0; i < (int)Machine->drv->total_colors; i++)
 	{
 		int bit0, bit1, bit2, bit3;
 

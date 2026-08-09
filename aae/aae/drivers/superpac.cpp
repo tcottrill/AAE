@@ -72,7 +72,6 @@
 #include "namco.h"
 #include "timer.h"
 
-#pragma warning( disable : 4838 4003 )
 
 
 // ---------------------------------------------------------------------------
@@ -103,6 +102,12 @@ static int coin1, coin2, start1, start2;
 static const int superpac_crednum[] = { 1, 2, 3, 6, 7, 1, 3, 1 };
 static const int superpac_credden[] = { 1, 1, 1, 1, 1, 2, 2, 3 };
 
+static int superpac_flip_screen = 0;
+
+/* Sprites are rendered into their own layer so that the "super priority"
+   sprite pen can be re-applied on top of the high priority characters.
+   Allocated in init_superpac() / init_pacnpal(), freed in end_*(). */
+static struct osd_bitmap* superpac_sprite_bitmap = nullptr;
 
 // ---------------------------------------------------------------------------
 // Namco sound interface -- 8 voices, matches Super Pac-Man hardware
@@ -183,6 +188,17 @@ WRITE_HANDLER(superpac_customio_w_2)
     superpac_customio_2[address] = data;
 }
 
+WRITE_HANDLER(superpac_flipscreen_w)
+{
+    superpac_flip_screen=data;
+}
+
+READ_HANDLER(superpac_flipscreen_r)
+{
+    superpac_flip_screen=1;
+
+    return superpac_flip_screen;	/* return value not used */
+}
 
 // ---------------------------------------------------------------------------
 // superpac_update_credits
@@ -636,20 +652,162 @@ void superpac_vh_convert_color_prom(unsigned char*       palette,
 
 
 // ---------------------------------------------------------------------------
-// Sprite drawing helper
+// Palette-dependent pen constants
+//
+// This driver uses the MAME 0.69 palette convention: the palette PROM is read
+// in reverse, chars map to palette entries 0-15 and sprites to 16-31.  MAME
+// 0.90 uses the mirror image of that (palette read forward, chars 16-31,
+// sprites 0-15), so its pen numbers translate as  aae_pen = 31 - mame090_pen:
+//
+//   mame090 sprite transparent pen 15  ->  16   (sprite LUT nibble 0x0f)
+//   mame090 sprite priority    pen  0  ->  31   (sprite LUT nibble 0x00)
+//   mame090 tilemap transparent pen 31 ->   0   (char   LUT nibble 0x00)
+//
+// Both conventions resolve to identical physical colors; only the indices
+// differ.  The three constants below are the 0.90 values expressed in ours.
+// ---------------------------------------------------------------------------
+
+#define SUPERPAC_SPRITE_TRANSPARENT 16  /* sprite pen that shows the background */
+#define SUPERPAC_SPRITE_PRIORITY    31  /* sprite pen that beats everything */
+#define SUPERPAC_CHAR_TRANSPARENT    0  /* char pen that shows what is beneath */
+
+
+// ---------------------------------------------------------------------------
+// Sprite drawing
 //
 // Sprites are 2bpp, 16x16, with 64 color sets.
 // Transparency color is pen 16 (first entry of the sprite color range).
+//
+// Sprite format (3 attribute bytes spread over the three sprite RAM banks):
+//
+//   spriteram
+//     0   xxxxxxxx  tile number
+//     1   --xxxxxx  color
+//   spriteram_2
+//     0   xxxxxxxx  Y position
+//     1   xxxxxxxx  X position
+//   spriteram_3
+//     0   ----x---  Y size (16 / 32)
+//     0   -----x--  X size (16 / 32)
+//     0   ------x-  Y flip
+//     0   -------x  X flip
+//     1   ------x-  disable
+//     1   -------x  X position MSB
+//
+// Note the byte order: spriteram_2[offs] is Y and spriteram_2[offs+1] is X.
+// The tile map above is drawn into a 288x224 bitmap that the video core then
+// rotates 90 degrees, so sprite X here is the same axis as tile "sx".
+//
+// Ported from MAME 0.90 mappy_draw_sprites(), which the Super Pac-Man board
+// shares (same custom sprite hardware); the (sy & 0xff) - 32 step fixes the
+// vertical wraparound that the older 0.69 code got wrong.
 // ---------------------------------------------------------------------------
 
-static void superpac_draw_sprite(struct osd_bitmap* dest,
-                                  unsigned int code, unsigned int color,
-                                  int flipx, int flipy,
-                                  int sx, int sy)
+static void superpac_draw_sprites(struct osd_bitmap* bitmap)
 {
-    drawgfx(dest, Machine->gfx[1], code, color, flipx, flipy, sx, sy,
-            &Machine->drv->visible_area, TRANSPARENCY_COLOR, 16);
-     
+    static const int gfx_offs[2][2] =
+    {
+        { 0, 1 },
+        { 2, 3 }
+    };
+    int offs;
+
+    for (offs = 0; offs < spriteram_size; offs += 2)
+    {
+        /* is it on? */
+        if ((spriteram_3[offs + 1] & 2) == 0)
+        {
+            int sprite = spriteram[offs];
+            int color  = spriteram[offs + 1] & 0x3f;
+            int sx = spriteram_2[offs + 1] + 0x100 * (spriteram_3[offs + 1] & 1) - 40;
+            int sy = 256 - spriteram_2[offs] + 1;   /* sprites are buffered and delayed by one scanline */
+            int flipx = (spriteram_3[offs] & 0x01);
+            int flipy = (spriteram_3[offs] & 0x02) >> 1;
+            int sizex = (spriteram_3[offs] & 0x04) >> 2;
+            int sizey = (spriteram_3[offs] & 0x08) >> 3;
+            int x, y;
+
+            sprite &= ~sizex;
+            sprite &= ~(sizey << 1);
+
+            if (superpac_flip_screen)
+            {
+                flipx ^= 1;
+                flipy ^= 1;
+            }
+
+            sy -= 16 * sizey;
+            sy = (sy & 0xff) - 32;                  /* fix wraparound */
+
+            for (y = 0; y <= sizey; y++)
+            {
+                for (x = 0; x <= sizex; x++)
+                {
+                    drawgfx(bitmap, Machine->gfx[1],
+                        sprite + gfx_offs[y ^ (sizey * flipy)][x ^ (sizex * flipx)],
+                        color,
+                        flipx, flipy,
+                        sx + 16 * x, sy + 16 * y,
+                        &Machine->drv->visible_area,
+                        TRANSPARENCY_COLOR, SUPERPAC_SPRITE_TRANSPARENT);
+                }
+            }
+        }
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// High priority character pass
+//
+// A character whose color RAM byte has bit 6 set is drawn a second time, over
+// the sprites, with its background pen transparent -- so only the "ink" of the
+// tile covers the sprite instead of the whole 8x8 cell.
+// ---------------------------------------------------------------------------
+
+static void superpac_draw_priority_chars(struct osd_bitmap* bitmap)
+{
+    int offs;
+
+    for (offs = videoram_size - 1; offs >= 0; offs--)
+    {
+        if (colorram[offs] & 0x40)
+        {
+            int sx, sy, mx, my;
+
+            mx = offs % 32;
+            my = offs / 32;
+
+            if (my <= 1)
+            {
+                sx = my + 34;
+                sy = mx - 2;
+            }
+            else if (my >= 30)
+            {
+                sx = my - 30;
+                sy = mx - 2;
+            }
+            else
+            {
+                sx = mx + 2;
+                sy = my - 2;
+            }
+
+            if (superpac_flip_screen)
+            {
+                sx = 35 - sx;
+                sy = 27 - sy;
+            }
+
+            drawgfx(bitmap, Machine->gfx[0],
+                videoram[offs],
+                colorram[offs],
+                0, 0, 8 * sx, 8 * sy,
+                &Machine->drv->visible_area,
+                TRANSPARENCY_COLOR, SUPERPAC_CHAR_TRANSPARENT);
+        }
+    }
 }
 
 
@@ -694,24 +852,29 @@ void superpac_vh_screenrefresh(struct osd_bitmap* bitmap, int full_refresh)
             /* Note that 32*32 = 1024, while 28*36 = 1008: therefore 16 bytes of Video RAM */
             /* don't map to a screen position. We don't check that here, however: range */
             /* checking is performed by drawgfx(). */
+            mx = offs % 32;
+            my = offs / 32;
 
-             mx = offs / 32;
-             my = offs % 32;
-          
-            if (mx <= 1)
+            if (my <= 1)
             {
-                sx = 29 - my;
-                sy = mx + 34;
+                sx = my + 34;
+                sy = mx - 2;
             }
-            else if (mx >= 30)
+            else if (my >= 30)
             {
-                sx = 29 - my;
-                sy = mx - 30;
+                sx = my - 30;
+                sy = mx - 2;
             }
             else
             {
-                sx = 29 - mx;
-                sy = my + 2;
+                sx = mx + 2;
+                sy = my - 2;
+            }
+
+            if (superpac_flip_screen)
+            {
+                sx = 35 - sx;
+                sy = 27 - sy;
             }
 
             drawgfx(tmpbitmap, Machine->gfx[0],
@@ -725,87 +888,38 @@ void superpac_vh_screenrefresh(struct osd_bitmap* bitmap, int full_refresh)
     /* copy the character mapped graphics */
     copybitmap(bitmap, tmpbitmap, 0, 0, 0, 0, &Machine->drv->visible_area, TRANSPARENCY_NONE, 0);
 
-    /* Draw the sprites. */
-    for (offs = 0; offs < spriteram_size; offs += 2)
+    /* Draw the sprites.  They go into a private layer first: the high priority
+       characters below are drawn over the sprites, but sprite pen 31 has to
+       come back out on top of even those, so we need the sprite layer kept
+       around after it has been composited. */
+    if (superpac_sprite_bitmap)
     {
-        /* is it on? */
+        int x, y;
 
-        if ((spriteram_3[offs + 1] & 2) == 0)
+        fillbitmap(superpac_sprite_bitmap, SUPERPAC_SPRITE_TRANSPARENT,
+                   &Machine->drv->visible_area);
+        superpac_draw_sprites(superpac_sprite_bitmap);
+        copybitmap(bitmap, superpac_sprite_bitmap, 0, 0, 0, 0,
+                   &Machine->drv->visible_area,
+                   TRANSPARENCY_PEN, SUPERPAC_SPRITE_TRANSPARENT);
+
+        superpac_draw_priority_chars(bitmap);
+
+        /* Sprite color 31 still has priority over that (ghost eyes in Pac & Pal) */
+        for (y = Machine->drv->visible_area.min_y; y <= Machine->drv->visible_area.max_y; y++)
         {
-            int sprite = spriteram[offs];
-            int color = spriteram[offs + 1];
-            int x = spriteram_2[offs] - 17;
-            int y = (spriteram_2[offs + 1] - 40) + 0x100 * (spriteram_3[offs + 1] & 1);
-            int flipx = spriteram_3[offs] & 2;
-            int flipy = spriteram_3[offs] & 1;
-
-            switch (spriteram_3[offs] & 0x0c)
+            for (x = Machine->drv->visible_area.min_x; x <= Machine->drv->visible_area.max_x; x++)
             {
-            case 0:		/* normal size */
-                superpac_draw_sprite(bitmap, sprite, color, flipx, flipy, x, y);
-                break;
-
-            case 4:		/* 2x vertical */
-                sprite &= ~1;
-                if (!flipy)
-                {
-                    superpac_draw_sprite(bitmap, sprite, color, flipx, flipy, x, y);
-                    superpac_draw_sprite(bitmap, 1 + sprite, color, flipx, flipy, x, 16 + y);
-                }
-                else
-                {
-                    superpac_draw_sprite(bitmap, sprite, color, flipx, flipy, x, 16 + y);
-                    superpac_draw_sprite(bitmap, 1 + sprite, color, flipx, flipy, x, y);
-                }
-                break;
-
-            case 8:		/* 2x horizontal */
-                sprite &= ~2;
-                if (!flipx)
-                {
-                    superpac_draw_sprite(bitmap, 2 + sprite, color, flipx, flipy, x, y);
-                    superpac_draw_sprite(bitmap, sprite, color, flipx, flipy, 16 + x, y);
-                }
-                else
-                {
-                    superpac_draw_sprite(bitmap, sprite, color, flipx, flipy, x, y);
-                    superpac_draw_sprite(bitmap, 2 + sprite, color, flipx, flipy, 16 + x, y);
-                }
-                break;
-
-            case 12:		/* 2x both ways */
-                sprite &= ~3;
-                if (!flipy && !flipx)
-                {
-                    superpac_draw_sprite(bitmap, 2 + sprite, color, flipx, flipy, x, y);
-                    superpac_draw_sprite(bitmap, 3 + sprite, color, flipx, flipy, x, 16 + y);
-                    superpac_draw_sprite(bitmap, sprite, color, flipx, flipy, 16 + x, y);
-                    superpac_draw_sprite(bitmap, 1 + sprite, color, flipx, flipy, 16 + x, 16 + y);
-                }
-                else if (flipy && flipx)
-                {
-                    superpac_draw_sprite(bitmap, 1 + sprite, color, flipx, flipy, x, y);
-                    superpac_draw_sprite(bitmap, sprite, color, flipx, flipy, x, 16 + y);
-                    superpac_draw_sprite(bitmap, 3 + sprite, color, flipx, flipy, 16 + x, y);
-                    superpac_draw_sprite(bitmap, 2 + sprite, color, flipx, flipy, 16 + x, 16 + y);
-                }
-                else if (flipx)
-                {
-                    superpac_draw_sprite(bitmap, sprite, color, flipx, flipy, x, y);
-                    superpac_draw_sprite(bitmap, 1 + sprite, color, flipx, flipy, x, 16 + y);
-                    superpac_draw_sprite(bitmap, 2 + sprite, color, flipx, flipy, 16 + x, y);
-                    superpac_draw_sprite(bitmap, 3 + sprite, color, flipx, flipy, 16 + x, 16 + y);
-                }
-                else /* flipy */
-                {
-                    superpac_draw_sprite(bitmap, 3 + sprite, color, flipx, flipy, x, y);
-                    superpac_draw_sprite(bitmap, 2 + sprite, color, flipx, flipy, x, 16 + y);
-                    superpac_draw_sprite(bitmap, 1 + sprite, color, flipx, flipy, 16 + x, y);
-                    superpac_draw_sprite(bitmap, sprite, color, flipx, flipy, 16 + x, 16 + y);
-                }
-                break;
+                if (read_pixel(superpac_sprite_bitmap, x, y) == SUPERPAC_SPRITE_PRIORITY)
+                    plot_pixel(bitmap, x, y, SUPERPAC_SPRITE_PRIORITY);
             }
         }
+    }
+    else
+    {
+        /* no sprite layer available -- draw straight to the screen and skip
+           the two priority passes */
+        superpac_draw_sprites(bitmap);
     }
 }
 
@@ -829,34 +943,34 @@ void superpac_vh_screenrefresh(struct osd_bitmap* bitmap, int full_refresh)
 
 static struct GfxLayout charlayout =
 {
-    8,8,                                           /* 8*8 characters */
-    256,                                           /* 256 characters */
-    2,                                             /* 2 bits per pixel */
-    { 0, 4 },                                      /* the two bitplanes for 4 pixels are packed into one byte */
-    { 7 * 8, 6 * 8, 5 * 8, 4 * 8, 3 * 8, 2 * 8, 1 * 8, 0 * 8 },    /* characters are rotated 90 degrees */
-    { 8 * 8 + 0, 8 * 8 + 1, 8 * 8 + 2, 8 * 8 + 3, 0, 1, 2, 3 },    /* bits are packed in groups of four */
-    16 * 8                                           /* every char takes 16 bytes */
+    8,8,
+    256,
+    2,
+    { 0, 4 },
+    { 8 * 8 + 0, 8 * 8 + 1, 8 * 8 + 2, 8 * 8 + 3, 0, 1, 2, 3 },
+    { 0 * 8, 1 * 8, 2 * 8, 3 * 8, 4 * 8, 5 * 8, 6 * 8, 7 * 8 },
+    16 * 8
 };
 
 
-/* SUPERPAC -- ROM SPV-2.3F (8K) */
 static struct GfxLayout spritelayout =
 {
-    16,16,                                         /* 16*16 sprites */
-    128,                                           /* 128 sprites */
-    2,                                             /* 2 bits per pixel */
-    { 0, 4 },                                      /* the two bitplanes for 4 pixels are packed into one byte */
-    { 39 * 8, 38 * 8, 37 * 8, 36 * 8, 35 * 8, 34 * 8, 33 * 8, 32 * 8,
-            7 * 8, 6 * 8, 5 * 8, 4 * 8, 3 * 8, 2 * 8, 1 * 8, 0 * 8 },
+    16,16,
+    128,
+    2,
+    { 0, 4 },
     { 0, 1, 2, 3, 8 * 8, 8 * 8 + 1, 8 * 8 + 2, 8 * 8 + 3,
             16 * 8 + 0, 16 * 8 + 1, 16 * 8 + 2, 16 * 8 + 3, 24 * 8 + 0, 24 * 8 + 1, 24 * 8 + 2, 24 * 8 + 3 },
-    64 * 8                                           /* every sprite takes 64 bytes */
+    { 0 * 8, 1 * 8, 2 * 8, 3 * 8, 4 * 8, 5 * 8, 6 * 8, 7 * 8,
+            32 * 8, 33 * 8, 34 * 8, 35 * 8, 36 * 8, 37 * 8, 38 * 8, 39 * 8 },
+    64 * 8
 };
+
 
 struct GfxDecodeInfo superpac_gfxdecodeinfo[] =
 {
-    { REGION_GFX1, 0, &charlayout,   0,     64 },
-    { REGION_GFX2, 0, &spritelayout, 64*4,  64 },
+    { REGION_GFX1, 0, &charlayout,      0, 64 },
+    { REGION_GFX2, 0, &spritelayout, 64 * 4, 64 },
     { -1 }
 };
 
@@ -917,6 +1031,10 @@ int init_superpac(void)
     if (generic_vh_start() != 0)
         return 0;
 
+    /* private sprite layer, same size as the screen */
+    superpac_sprite_bitmap = osd_create_bitmap(Machine->gamedrv->screen_width,
+                                               Machine->gamedrv->screen_height);
+
     namco_sh_start(&namco_interface);
 
     interrupt_enable_1 = 0;
@@ -928,6 +1046,12 @@ int init_superpac(void)
 
 void end_superpac(void)
 {
+    if (superpac_sprite_bitmap)
+    {
+        osd_free_bitmap(superpac_sprite_bitmap);
+        superpac_sprite_bitmap = nullptr;
+    }
+
     generic_vh_stop();
 }
 
@@ -961,6 +1085,10 @@ int init_pacnpal(void)
     if (generic_vh_start() != 0)
         return 0;
 
+    /* private sprite layer, same size as the screen */
+    superpac_sprite_bitmap = osd_create_bitmap(Machine->gamedrv->screen_width,
+                                               Machine->gamedrv->screen_height);
+
     namco_sh_start(&namco_interface);
 
     interrupt_enable_1 = 0;
@@ -972,6 +1100,12 @@ int init_pacnpal(void)
 
 void end_pacnpal(void)
 {
+    if (superpac_sprite_bitmap)
+    {
+        osd_free_bitmap(superpac_sprite_bitmap);
+        superpac_sprite_bitmap = nullptr;
+    }
+
     generic_vh_stop();
 }
 
@@ -1394,29 +1528,30 @@ INPUT_PORTS_END
      * PROMs are flagged BAD_DUMP in the reference -- CRC/SHA1 match pacnpal
      * PROMs and are used as-is since no clean dump is known.
      */
-    ROM_START(pacnchmp)
+    ROM_START( pacnchmp )
     ROM_REGION(0x10000, REGION_CPU1, 0)
-    ROM_LOAD("pap3.1d", 0xa000, 0x2000, CRC(20a07d3d) SHA1(2135ad154b575a73cfb1b0f0f282dfc013672aec))
-    ROM_LOAD("pap3.1c", 0xc000, 0x2000, CRC(505bae56) SHA1(590ce9f0e92115a71eb76b71ab4eac16ffa2a28e))
-    ROM_LOAD("pap1.1b", 0xe000, 0x2000, CRC(3cac401c) SHA1(38a14228469fa4a20cbc5d862198dc901842682e))
+	ROM_LOAD( "pap3-3.1d",      0xa000, 0x2000, CRC(20a07d3d) SHA1(2135ad154b575a73cfb1b0f0f282dfc013672aec) )
+	ROM_LOAD( "pap3-2.1c",      0xc000, 0x2000, CRC(505bae56) SHA1(590ce9f0e92115a71eb76b71ab4eac16ffa2a28e) )
+	ROM_LOAD( "pap3-1.1b",      0xe000, 0x2000, CRC(3cac401c) SHA1(38a14228469fa4a20cbc5d862198dc901842682e) )
 
     ROM_REGION(0x10000, REGION_CPU2, 0)
-    ROM_LOAD("pap14.1k", 0xf000, 0x1000, CRC(330e20de) SHA1(5b23e5dcc38dc644a36efc8b03eba34cea540bea))
+	ROM_LOAD( "pap1-4.1k",     0xf000, 0x1000, CRC(330e20de) SHA1(5b23e5dcc38dc644a36efc8b03eba34cea540bea) )
 
     ROM_REGION(0x1000, REGION_GFX1, ROMREGION_DISPOSE)
-    ROM_LOAD("pap2.3c", 0x0000, 0x1000, CRC(93d15c30) SHA1(5da4120b680726c83a651b445254604cbf7cc883))
+	ROM_LOAD( "pap2-6.3c",      0x0000, 0x1000, CRC(93d15c30) SHA1(5da4120b680726c83a651b445254604cbf7cc883) )
 
     ROM_REGION(0x2000, REGION_GFX2, ROMREGION_DISPOSE)
-    ROM_LOAD("pap2.3f", 0x0000, 0x2000, CRC(39f44aa4) SHA1(0696539cb2c7fcda2f6c295c7d65678dac18950b))
+	ROM_LOAD( "pap2-5.3f",      0x0000, 0x2000, CRC(39f44aa4) SHA1(0696539cb2c7fcda2f6c295c7d65678dac18950b) )
 
     ROM_REGION(0x0220, REGION_PROMS, 0)
-    ROM_LOAD("papi6.4c", 0x0000, 0x0020, CRC(52634b41) SHA1(dfb109c8e2c62ae1612ba0e3272468d152123842))  /* palette -- bad dump, borrowed from pacnpal */
-    ROM_LOAD("papi5.4e", 0x0020, 0x0100,  CRC(ac46203c) SHA1(3f47f1991aab9640c0d5f70fad85d20d6cf2ea3d))  /* char color LUT -- bad dump */
-    ROM_LOAD("papi4.3l", 0x0120, 0x0100, CRC(686bde84) SHA1(541d08b43dbfb789c2867955635d2c9e051fedd9))  /* sprite color LUT -- bad dump */
+	ROM_LOAD( "pap2-6.4c",     0x0000, 0x0020, CRC(18c3db79) SHA1(a37d3cbfc5d4bd740b02ae69a374292e937215e2)  )  // palette
+	ROM_LOAD( "pap2-5.4e",     0x0020, 0x0100, CRC(875b49bb) SHA1(34b4622eecefd9fe0e9d883246d5c0e0c7f9ad43)  )  // chars
+	ROM_LOAD( "pap2-4.3l",     0x0120, 0x0100, CRC(23701566) SHA1(afa22f5b9eb77679b5d5c2ed27d6590776a59f6f)  )  // sprites
 
     ROM_REGION(0x0100, REGION_SOUND1, 0)
-    ROM_LOAD("papi3.3m", 0x0000, 0x0100, CRC(83c31a98) SHA1(8f1219a6c2b565ae9d8f72a9c277dc4bd38ec40f))
+	ROM_LOAD( "pap1-3.3m",     0x0000, 0x0100, CRC(94782db5) SHA1(ac0114f0611c81dfac9469253048ae0214d570ee) )
     ROM_END
+
 
 // ---------------------------------------------------------------------------
 // Driver descriptors
@@ -1480,11 +1615,9 @@ AAE_DRIVER_CPUS(
 )
 
 AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION,
-    VIDEO_TYPE_RASTER_COLOR | VIDEO_SUPPORTS_DIRTY, ORIENTATION_DEFAULT)
+    VIDEO_TYPE_RASTER_COLOR | VIDEO_SUPPORTS_DIRTY, ORIENTATION_ROTATE_90)
 /* screen is 224 wide x 288 tall in natural orientation (pre-rotation) */
-//AAE_DRIVER_SCREEN(28 * 8, 36 * 8, 0, 28 * 8 - 1, 0, 36 * 8 - 1)
-AAE_DRIVER_SCREEN(28 * 8, 36 * 8,  0 * 8, 28 * 8 - 1, 0 * 8, 36 * 8 - 1 )
-
+AAE_DRIVER_SCREEN(36 * 8, 28 * 8, 0 * 8, 36 * 8 - 1, 0 * 8, 28 * 8 - 1)
 /* 32 palette entries, 512-entry color LUT (64 char sets + 64 sprite sets, 4 pixels each) */
 AAE_DRIVER_RASTER(superpac_gfxdecodeinfo, 32, 4 * (64 + 64), superpac_vh_convert_color_prom)
 AAE_DRIVER_HISCORE_NONE()
@@ -1519,9 +1652,8 @@ AAE_DRIVER_CPUS(
     AAE_CPU_NONE_ENTRY()
 )
 
-AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION,
-    VIDEO_TYPE_RASTER_COLOR | VIDEO_SUPPORTS_DIRTY, ROT90)
-AAE_DRIVER_SCREEN(28 * 8, 36 * 8, 0, 28 * 8 - 1, 0, 36 * 8 - 1)
+AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_RASTER_COLOR | VIDEO_SUPPORTS_DIRTY, ORIENTATION_ROTATE_90)
+AAE_DRIVER_SCREEN(36 * 8, 28 * 8, 0 * 8, 36 * 8 - 1, 0 * 8, 28 * 8 - 1)
 AAE_DRIVER_RASTER(superpac_gfxdecodeinfo, 32, 4 * (64 + 64), superpac_vh_convert_color_prom)
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0, 0)
@@ -1575,8 +1707,8 @@ AAE_DRIVER_CPUS(
     AAE_CPU_NONE_ENTRY()
 )
 
-AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_RASTER_COLOR | VIDEO_SUPPORTS_DIRTY, ORIENTATION_DEFAULT)
-AAE_DRIVER_SCREEN(28 * 8, 36 * 8, 0, 28 * 8 - 1, 0, 36 * 8 - 1)
+AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_RASTER_COLOR | VIDEO_SUPPORTS_DIRTY, ORIENTATION_ROTATE_90)
+AAE_DRIVER_SCREEN(36 * 8, 28 * 8, 0 * 8, 36 * 8 - 1, 0 * 8, 28 * 8 - 1)
 AAE_DRIVER_RASTER(superpac_gfxdecodeinfo, 32, 4 * (64 + 64), superpac_vh_convert_color_prom)
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0, 0)
@@ -1609,9 +1741,8 @@ AAE_DRIVER_CPUS(
     AAE_CPU_NONE_ENTRY()
 )
 
-AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION,
-    VIDEO_TYPE_RASTER_COLOR | VIDEO_SUPPORTS_DIRTY, ROT90)
-AAE_DRIVER_SCREEN(28 * 8, 36 * 8, 0, 28 * 8 - 1, 0, 36 * 8 - 1)
+AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_RASTER_COLOR | VIDEO_SUPPORTS_DIRTY, ORIENTATION_ROTATE_90)
+AAE_DRIVER_SCREEN(36 * 8, 28 * 8, 0 * 8, 36 * 8 - 1, 0 * 8, 28 * 8 - 1)
 AAE_DRIVER_RASTER(superpac_gfxdecodeinfo, 32, 4 * (64 + 64), superpac_vh_convert_color_prom)
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0, 0)
@@ -1640,9 +1771,8 @@ AAE_CPU_NONE_ENTRY(),
 AAE_CPU_NONE_ENTRY()
 )
 
-AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION,
-VIDEO_TYPE_RASTER_COLOR | VIDEO_SUPPORTS_DIRTY, ROT90)
-AAE_DRIVER_SCREEN(28 * 8, 36 * 8, 0, 28 * 8 - 1, 0, 36 * 8 - 1)
+AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_RASTER_COLOR | VIDEO_SUPPORTS_DIRTY, ORIENTATION_ROTATE_90)
+AAE_DRIVER_SCREEN(36 * 8, 28 * 8, 0 * 8, 36 * 8 - 1, 0 * 8, 28 * 8 - 1)
 AAE_DRIVER_RASTER(superpac_gfxdecodeinfo, 32, 4 * (64 + 64), superpac_vh_convert_color_prom)
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0, 0)

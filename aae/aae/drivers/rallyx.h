@@ -3,7 +3,6 @@
 #ifndef RALLYX_H
 #define RALLYX_H
 
-#pragma warning(disable:4996 4102)
 
 
 int  init_rallyx();
