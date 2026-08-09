@@ -98,6 +98,14 @@
 #define AAE_DRIVER_CPUS(e0, e1, e2, e3) \
     { e0, e1, e2, e3 },
 
+// ==== Optional ROM decrypt hook ==============================================
+// Emits AAEDriver::rom_decrypt. When used it must appear after
+// AAE_DRIVER_LAYOUT / AAE_DRIVER_LAYOUT_NONE and before AAE_DRIVER_END.
+// Drivers without a decrypt simply omit the macro - the trailing field
+// value-initializes to nullptr.
+#define AAE_DRIVER_ROM_DECRYPT(fn) \
+    (fn),
+
 // ==== Epilog =================================================================
 #define AAE_DRIVER_END() };
 

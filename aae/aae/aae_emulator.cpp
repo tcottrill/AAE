@@ -918,6 +918,15 @@ void run_game(void)
 		}
 	}
 
+	// Step 3b: Optional ROM decrypt/de-swizzle. Must run before vh_open
+	// (Step 11) decodes the gfx regions and frees the ROMREGION_DISPOSE ones;
+	// init_game() at Step 14 is too late for these transforms.
+	if (Machine->gamedrv->rom_decrypt)
+	{
+		LOG_INFO("Running driver ROM decrypt hook...");
+		Machine->gamedrv->rom_decrypt();
+	}
+
 	// Step 4: OpenGL init (guarded - only runs once per process lifetime).
 	LOG_INFO("OpenGL init...");
 	init_gl();

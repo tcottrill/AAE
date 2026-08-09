@@ -255,6 +255,15 @@ struct AAEDriver
 	// -----------------------------------------------------------------
 	const char* layoutFile;     // path to .lay XML file, e.g. "artwork\\invaders\\default.lay"
 	const char* defaultView;    // view name to activate, e.g. "Upright_Artwork"
+
+	// Optional ROM decrypt/de-swizzle hook (nullptr for most drivers). Runs
+	// once, immediately after the ROM regions are loaded and BEFORE vh_open
+	// decodes the graphics and frees ROMREGION_DISPOSE regions. Any driver
+	// that must transform a gfx region (eyes, ponpoko) needs it here: by
+	// init_game() time the region has already been decoded and freed, so a
+	// decrypt there scribbles through a null pointer. Set with
+	// AAE_DRIVER_ROM_DECRYPT(); omitting the macro leaves it nullptr.
+	void (*rom_decrypt)();
 };
 
 // Resolves the ROM archive (zip) base name for a driver. AAE_DRIVER_ROM stores
