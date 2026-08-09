@@ -1291,6 +1291,10 @@ namespace dinput {
 			j.stick[0].axis[1].pos = clamp_int((int)st.lY, -128, 127);
 			for (int a = 0; a < 2; a++)
 			{
+				// +-64 is the historical raw-stick feel for generic DirectInput
+				// devices (Ultimarc etc.), deliberately NOT the file-scope
+				// DIGITAL_THRESHOLD (32) used for gamepad-class pads. Do not
+				// "unify" these -- they tune different hardware.
 				j.stick[0].axis[a].d1 = (j.stick[0].axis[a].pos < -64) ? 1 : 0;
 				j.stick[0].axis[a].d2 = (j.stick[0].axis[a].pos > 64) ? 1 : 0;
 			}
