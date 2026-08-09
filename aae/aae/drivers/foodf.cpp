@@ -95,9 +95,20 @@ READ16_HANDLER(foodf_digital_r) { return (UINT16)input_port_4_r(0); }
 READ_HANDLER(foodf_digital_rb)  { return (UINT8)input_port_4_r(0); }
 
 // PFFlip / Update / INT3RST / INT4RST / LEDs / coin counters.
-// Not required for boot; left as a no-op for now.
-WRITE16_HANDLER(foodf_digital_w) { }
-WRITE_HANDLER(foodf_digital_wb)  { }
+// Only the start-button lamps are wired up: bit 4 is the 1-player lamp and
+// bit 5 the 2-player one, both active high. The rest of the latch is not
+// required for boot.
+WRITE16_HANDLER(foodf_digital_w)
+{
+	set_led_status(0, (data >> 4) & 1);
+	set_led_status(1, (data >> 5) & 1);
+}
+
+WRITE_HANDLER(foodf_digital_wb)
+{
+	set_led_status(0, (data >> 4) & 1);
+	set_led_status(1, (data >> 5) & 1);
+}
 
 READ16_HANDLER(foodf_nop16_r) { return 0; }
 READ_HANDLER(foodf_nop_rb)    { return 0; }

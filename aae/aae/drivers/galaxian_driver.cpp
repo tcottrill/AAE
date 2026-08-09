@@ -199,6 +199,13 @@ void run_galaxian()
 	galaxian_sh_update_stream();
 }
 
+// Start-button lamps: 0x6000 drives the 1-player lamp, 0x6001 the 2-player
+// one. The offset is range-relative, so it is already the 0/1 LED index.
+WRITE_HANDLER(galaxian_leds_w)
+{
+	set_led_status(address, data & 1);
+}
+
 MEM_READ(galaxian_readmem)
 //MEM_ADDR(0x0000, 0x3fff, MRA_ROM)
 //MEM_ADDR(0x4000, 0x47ff, MRA_RAM)
@@ -219,7 +226,7 @@ MEM_ADDR(0x0000, 0x27ff, MWA_ROM)
 //MEM_ADDR(0x5840, 0x585f, MWA_RAM)	/* MAME: &galaxian_spriteram, &galaxian_spriteram_size */
 //MEM_ADDR(0x5860, 0x587f, MWA_RAM)	/* MAME: &galaxian_bulletsram, &galaxian_bulletsram_size */
 //MEM_ADDR(0x5880, 0x58ff, MWA_RAM)
-//MEM_ADDR(0x6000, 0x6001, galaxian_leds_w)
+MEM_ADDR(0x6000, 0x6001, galaxian_leds_w)		/* 1P / 2P start lamps */
 //MEM_ADDR(0x6002, 0x6002, galaxian_coin_lockout_w)
 //MEM_ADDR(0x6003, 0x6003, galaxian_coin_counter_w)
 MEM_ADDR(0x6004, 0x6007, galaxian_stream_lfo_freq_w)
