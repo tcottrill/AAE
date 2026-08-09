@@ -155,6 +155,8 @@ typedef struct {
 	// or a game launched straight from the command line). Cleared to 0 in
 	// aae.ini the moment the user dismisses it, so it only ever shows once.
 	int first_run;
+	// Controller guide one-shot: 0 = not yet shown; set to 1 when dismissed.
+	int controller_help_shown;
 	int flip_gui_controls;
 	int starting_monitor;
 	

@@ -13,6 +13,7 @@
 
 #include "opengl_renderer.h"
 #include "menu.h"
+#include "controller_help.h"
 #include "iniFile.h"
 #include "os_input.h"
 #include "led_service_handler.h"
@@ -77,18 +78,22 @@ static int last_led_status = 0;
 
 void video_loop(void)
 {
-	// Handle automatic pausing when the menu is active
+	// Handle automatic pausing while a UI overlay is up: the menu, or the
+	// controller guide over a real game (the guide never pauses the GUI
+	// frontend). One edge detector for both means the menu's CONTROLLER
+	// HELP entry (menu closes, guide opens the same frame) keeps the game
+	// paused straight through with no unpause blip.
 	static int last_menu_status = 0;
 	static int was_paused_before_menu = 0;
 
-	int current_menu_status = get_menu_status();
+	int current_menu_status = get_menu_status() || controller_help_wants_pause();
 
 	if (current_menu_status != last_menu_status)
 	{
 		if (current_menu_status)
 		{
-			// Menu opened: capture current state and pause
-			reset_custom_input_state(); // Reset the custom menu key handling. 
+			// Overlay opened: capture current state and pause
+			reset_custom_input_state(); // Reset the custom menu key handling.
 			// TODO: HACK to stop multiple keypresses, refactor.
 			was_paused_before_menu = paused;
 			if (!paused)
@@ -99,7 +104,7 @@ void video_loop(void)
 		}
 		else
 		{
-			// Menu closed: unpause only if it wasn't already paused manually
+			// Overlay closed: unpause only if it wasn't already paused manually
 			reset_custom_input_state(); // Reset the custom menu key handling.
 			if (!was_paused_before_menu)
 			{
@@ -118,10 +123,23 @@ void video_loop(void)
 	{
 		LOG_INFO("openglerror in video loop 1: %d", err);
 	}
-	if (get_menu_status())
+	// The controller guide owns the screen exclusively while it is up: skip
+	// the menu draw so its strokes never share the batch with the guide's
+	// (they would flush together at VF.End() on top of the guide's backdrop).
+	// Status and drawing are separate -- get_menu_status() stays 1 if the
+	// menu was left open, so the pause edge detector above sees one
+	// continuous open state and the menu resumes drawing on dismiss.
+	// Defensive: no current path reaches guide-visible with menu status 1
+	// (the CONTROLLER HELP entry closes the menu first, and every other open
+	// path is gated on the menu being closed).
+	if (get_menu_status() && !controller_help_active())
 	{
 		do_the_menu();
 	}
+
+	// Controller guide: first-gamepad one-shot + on-demand help screen.
+	// Drawn before the first-run notice so the notice keeps top priority.
+	do_the_controller_help();
 
 	// One-shot first-run acknowledgement, drawn last so it sits over the menu
 	// as well as over the game/GUI underneath. Self-clearing: it dismisses

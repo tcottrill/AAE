@@ -50,6 +50,7 @@
 #include "emu_vector_draw.h"   // cache_clear - retained beam/texlist drop on game switch
 #include "gl_fbo.h"
 #include "menu.h"
+#include "controller_help.h"
 #include "aae_avg.h"
 #include "os_input.h"
 #include "os_basic.h"
@@ -1195,6 +1196,10 @@ void msg_loop(void)
 	// that dismisses it must not also toggle the menu, pause, or exit. The
 	// panel does its own polling from video_loop().
 	if (first_run_notice_active())
+		return;
+
+	// The controller guide owns input the same way while it is up.
+	if (controller_help_active())
 		return;
 
 	if (osd_key_pressed_memory(OSD_KEY_RESET_MACHINE))

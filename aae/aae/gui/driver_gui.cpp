@@ -48,6 +48,7 @@
 #include "vector_fonts.h"
 #include "driver_gui.h"
 #include "menu.h"
+#include "controller_help.h"
 #include "game_list.h"
 #include "emu_vector_draw.h"
 #include "opengl_renderer.h"  // g_proj
@@ -242,6 +243,7 @@ static void initStarGPU()
 //     bit0 = Select/Start (Button1 / Joy Fire1)
 //     bit1 = Exit
 //     bit2 = Menu (Button2)
+//     bit4 = Controller guide (Button4 / Joy Fire4 = Y)
 //   IN1: navigation
 //     bit0 = Up    (IPF_COUNTER - accelerating repeat for list scrolling)
 //     bit1 = Down  (IPF_COUNTER - accelerating repeat for list scrolling)
@@ -338,6 +340,7 @@ static ShotState s_shot = {};
 
 struct GuiInputState {
 	bool start;
+	bool help;
 	bool prevItem;
 	bool nextItem;
 	bool prevLetter;
@@ -715,7 +718,7 @@ static void drawGameList()
 		offset += kLineSpacing;
 	}
 
-	VF.PrintCentered(kFooterY1, RGB_CYAN, kFooterScale, "Press A to Select Game");
+	VF.PrintCentered(kFooterY1, RGB_CYAN, kFooterScale, "Press A to Select Game - Y=HELP");
 	VF.PrintCentered(kFooterY2, RGB_CYAN, kFooterScale, "2026 TEST GUI BUILD - Press <TAB> for Menu");
 
 	updateShotAnimation();
@@ -731,7 +734,7 @@ static void pollInput()
 	s_in = {}; // Reset every frame
 
 	if (get_menu_status() != 0 || get_exit_confirm_status() != 0 ||
-		first_run_notice_active() != 0)
+		first_run_notice_active() != 0 || controller_help_active() != 0)
 	{
 		input_cooldown = 10;
 		return;
@@ -762,10 +765,16 @@ static void pollInput()
 
 	// Start Game
 	s_in.start = ((in0 & 0x01) != 0) || mouseb[1];
+
+	// Controller guide (Button4 = Joy Fire4 = Y)
+	s_in.help = (in0 & 0x10) != 0;
 }
 
 static void processLogic()
 {
+	if (s_in.help)
+		controller_help_open();
+
 	if (s_in.start && s_selection && !s_shot.active)
 	{
 		s_shot.reset();
@@ -851,7 +860,14 @@ void run_gui()
 	vector_clear_list();
 
 	moveStars(s_stars, kNumStars);
-	drawStars(s_stars, kNumStars);
+
+	// While the controller guide owns the screen, emit no GUI visuals at
+	// all -- the guide draws a full black backdrop and nothing may end up
+	// batched on top of it. Logic and input keep running unpaused (the
+	// pollInput gate arms the dismiss cooldown every frame).
+	const bool guideUp = controller_help_active() != 0;
+	if (!guideUp)
+		drawStars(s_stars, kNumStars);
 
 	if (input_cooldown) { input_cooldown--; }
 
@@ -863,7 +879,8 @@ void run_gui()
 
 	// 3. Update visuals (which safely consume the polled logical actions)
 	updateGlyphAnimation();
-	drawGameList();
+	if (!guideUp)
+		drawGameList();
 }
 
 void end_gui()

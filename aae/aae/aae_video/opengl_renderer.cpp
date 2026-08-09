@@ -68,6 +68,7 @@
 #include "os_basic.h"
 #include "MathUtils.h"
 #include "menu.h"
+#include "controller_help.h"   // controller_help_active (PAUSED overlay gate)
 #include "aae_emulator.h"   // get_exit_confirm_status / get_exit_confirm_selection
 #include "mame_layout.h"
 // iniFile.h, with the capital F the file actually has. Spelled "inifile.h"
@@ -853,7 +854,12 @@ void render_ui_overlays(int winW, int winH, bool fboSpace)
 	//------------------------------------------------------------------
 	// Dim background and draw PAUSED text if needed
 	//------------------------------------------------------------------
-	if (paused || get_menu_status())
+	// Skipped while the controller guide is up: it holds paused=1 itself, and
+	// this block runs BEFORE video_loop -- on the VK chain these VF strokes
+	// ride the deferred beam queue and would be recorded AFTER the guide's
+	// backdrop, stamping PAUSED on top of it (GL flushes immediately and is
+	// merely dimmed pointlessly under the opaque backdrop).
+	if ((paused || get_menu_status()) && !controller_help_active())
 	{
 		if (vk)
 			vkchain_ui_dim_quad(127);

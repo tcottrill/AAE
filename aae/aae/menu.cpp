@@ -1,4 +1,5 @@
 #include "menu.h"
+#include "controller_help.h"
 #include "sys_window.h"
 #include "aae_mame_driver.h"
 #include "opengl_renderer.h"
@@ -713,6 +714,10 @@ void MenuManager::BuildRootMenu() {
     m_items.push_back(MenuItem::Link("JOY CONFIG (THIS GAME)", [this]() { TransitionTo(MenuID::LocalJoy);   }));
     m_items.push_back(MenuItem::Link("ANALOG CONFIG", [this]() { TransitionTo(MenuID::Analog);     }));
     m_items.push_back(MenuItem::Link("INPUT DEVICES", [this]() { TransitionTo(MenuID::InputDevices); }));
+    m_items.push_back(MenuItem::Link("CONTROLLER HELP", []() {
+        set_menu_status(0);        // close the menu so the guide has the screen
+        controller_help_open();
+    }));
     m_items.push_back(MenuItem::Link("DIPSWITCHES", [this]() { TransitionTo(MenuID::DipSwitch);  }));
     m_items.push_back(MenuItem::Link(inGui ? "VIDEO SETUP (GLOBAL)" : "VIDEO SETUP",
         [this]() { TransitionTo(MenuID::Video);      }));
@@ -1953,19 +1958,20 @@ namespace {
         return lines;
     }
 
-    // True while any key or any joystick fire button is physically down.
-    // key[] is the raw Allegro-style keystate both backends fill; only the
-    // aggregate JOYn_FIRE codes are polled so a drifting analog stick can
-    // never dismiss the panel on its own.
-    bool NoticeAnyInputDown() {
-        for (int k = 1; k <= AAEKEY_MAX; ++k) {
-            if (key[k]) return true;
-        }
-        return osd_joy_pressed(OSD_JOY_FIRE)  || osd_joy_pressed(OSD_JOY2_FIRE) ||
-               osd_joy_pressed(OSD_JOY3_FIRE) || osd_joy_pressed(OSD_JOY4_FIRE);
-    }
-
 }  // namespace
+
+// True while any key or any joystick fire button is physically down.
+// key[] is the raw Allegro-style keystate both backends fill; only the
+// aggregate JOYn_FIRE codes are polled so a drifting analog stick can
+// never dismiss a panel on its own. Shared by the first-run notice and
+// the controller guide (see menu.h).
+int ui_any_input_down() {
+    for (int k = 1; k <= AAEKEY_MAX; ++k) {
+        if (key[k]) return 1;
+    }
+    return (osd_joy_pressed(OSD_JOY_FIRE)  || osd_joy_pressed(OSD_JOY2_FIRE) ||
+            osd_joy_pressed(OSD_JOY3_FIRE) || osd_joy_pressed(OSD_JOY4_FIRE)) ? 1 : 0;
+}
 
 int first_run_notice_active() { return config.first_run ? 1 : 0; }
 
@@ -1978,7 +1984,7 @@ void do_the_first_run_notice() {
     // here with a button held; without this the panel would vanish before
     // it was ever readable.
     static bool s_armed = false;
-    const bool anyDown = NoticeAnyInputDown();
+    const bool anyDown = ui_any_input_down() != 0;
 
     if (!s_armed) {
         if (!anyDown) s_armed = true;
