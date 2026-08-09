@@ -1,0 +1,60 @@
+# Sony face-button layout test.
+#
+# BTN_X == BTN_NORTH == 0x133 and BTN_Y == BTN_WEST == 0x134 are the same two
+# codes under two naming conventions, and the driver decides which convention
+# is truthful: xpad emits them by printed letter, hid-playstation by compass
+# point. evdev_joystick.cpp reads them the xpad way and swaps the pair for
+# devices pad_map_is_sony() recognises.
+#
+# Both pads here have the SAME button set and are driven with the SAME codes;
+# the only difference is the USB id, so any difference in the output is the
+# per-device swap and nothing else.
+#
+#   sudo ./aae_uinput_test --script tools/linux/tests/sony_face_buttons.txt \
+#        --sony-pad --exec "./build-linux/aae_inputtest --seconds 20"
+#
+# Expected in the aae_inputtest output, matching pads to slots by the
+# "pad[N] <name>" lines it prints on connect:
+#   AAE Test Gamepad    BTN_NORTH -> button X,  BTN_WEST -> button Y
+#   AAE Test DualSense  BTN_NORTH -> button Y,  BTN_WEST -> button X
+
+# Pads are picked up by a rescan that runs about every two seconds.
+sleep 2500
+
+echo ---- generic pad (AAE Test Gamepad, 0xAAE0:0x0004) ----
+echo pad: BTN_NORTH (0x133) - expect button X
+key pad BTN_NORTH 1
+sleep 300
+key pad BTN_NORTH 0
+sleep 300
+
+echo pad: BTN_WEST (0x134) - expect button Y
+key pad BTN_WEST 1
+sleep 300
+key pad BTN_WEST 0
+sleep 500
+
+echo ---- sony pad (AAE Test DualSense, 0x054C:0x0CE6) ----
+echo pspad: BTN_NORTH (0x133) = Triangle - expect button Y
+key pspad BTN_NORTH 1
+sleep 300
+key pspad BTN_NORTH 0
+sleep 300
+
+echo pspad: BTN_WEST (0x134) = Square - expect button X
+key pspad BTN_WEST 1
+sleep 300
+key pspad BTN_WEST 0
+sleep 500
+
+echo ---- control: A and B must be identical on both pads ----
+key pad BTN_SOUTH 1
+sleep 200
+key pad BTN_SOUTH 0
+sleep 200
+key pspad BTN_SOUTH 1
+sleep 200
+key pspad BTN_SOUTH 0
+sleep 500
+
+echo done

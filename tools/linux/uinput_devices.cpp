@@ -40,6 +40,8 @@
 //
 //   --exec "<command>"                      run <command> as the invoking user
 //                                           while the devices exist
+//   --sony-pad                              also create 'pspad', a SECOND pad
+//                                           identifying as a DualSense
 //
 // --exec turns the whole test into ONE command and one password prompt:
 //
@@ -58,7 +60,7 @@
 //   syn   <dev>
 //   sleep <ms>
 //   echo  <text>
-// <dev> is one of: kbd1 kbd2 mouse pad
+// <dev> is one of: kbd1 kbd2 mouse pad  (and pspad with --sony-pad)
 //==============================================================================
 
 #include <linux/uinput.h>
@@ -360,7 +362,7 @@ static VirtualDevice* find_device(const char* shortName)
 //------------------------------------------------------------------------------
 // The device set.
 //------------------------------------------------------------------------------
-static bool create_all()
+static bool create_all(bool wantSonyPad)
 {
 	std::vector<int> fullKeyboard;
 	for (size_t i = 0; i < sizeof(kKeyNames) / sizeof(kKeyNames[0]); i++) {
@@ -372,6 +374,8 @@ static bool create_all()
 	g_devices.push_back({"kbd2",  "AAE Test Keyboard Beta"});
 	g_devices.push_back({"mouse", "AAE Test Mouse"});
 	g_devices.push_back({"pad",   "AAE Test Gamepad"});
+	if (wantSonyPad)
+		g_devices.push_back({"pspad", "AAE Test DualSense"});
 
 	printf("Creating virtual devices:\n");
 
@@ -397,10 +401,22 @@ static bool create_all()
 		{ABS_HAT0X,   -1,    1,  0},    // d-pad as a hat
 		{ABS_HAT0Y,   -1,    1,  0},
 	};
-	if (!create_device(g_devices[3],
-	                   {BTN_SOUTH, BTN_EAST, BTN_NORTH, BTN_WEST, BTN_TL, BTN_TR,
-	                    BTN_SELECT, BTN_START, BTN_MODE, BTN_THUMBL, BTN_THUMBR},
-	                   {}, padAxes, true, 0xAAE0, 0x0004)) return false;
+	const std::vector<int> padButtons = {
+		BTN_SOUTH, BTN_EAST, BTN_NORTH, BTN_WEST, BTN_TL, BTN_TR,
+		BTN_SELECT, BTN_START, BTN_MODE, BTN_THUMBL, BTN_THUMBR
+	};
+	if (!create_device(g_devices[3], padButtons, {}, padAxes, true, 0xAAE0, 0x0004))
+		return false;
+
+	// A pad whose ONLY difference from the one above is the USB id it reports.
+	// 054C:0CE6 is a DualSense, which the kernel serves with hid-playstation -
+	// the driver that emits the face buttons by compass point rather than by
+	// printed letter. Same button set on purpose: driving BTN_NORTH/BTN_WEST on
+	// both pads in one run is what makes the per-device swap visible, because
+	// nothing else about the two devices differs.
+	if (wantSonyPad &&
+	    !create_device(g_devices[4], padButtons, {}, padAxes, true, 0x054C, 0x0CE6))
+		return false;
 
 	printf("\nAxis ranges advertised by 'pad' (deliberately non-standard):\n"
 	       "  ABS_X/ABS_Y     0..1023   unsigned\n"
@@ -493,9 +509,12 @@ static void msleep(int ms)
 // a reason that has nothing to do with the backend under test.
 static void sleep_servicing_ff(int ms)
 {
-	VirtualDevice* pad = find_device("pad");
+	// Every device, not just "pad": with --sony-pad there are two pads that
+	// advertise FF_RUMBLE, and an unanswered upload blocks the client in the
+	// kernel. Devices with no FF simply never produce a request.
 	while (ms > 0 && !g_stop) {
-		if (pad && pad->fd >= 0) service_ff(*pad);
+		for (VirtualDevice& d : g_devices)
+			if (d.fd >= 0) service_ff(d);
 		const int slice = ms < 10 ? ms : 10;
 		msleep(slice);
 		ms -= slice;
@@ -670,9 +689,11 @@ int main(int argc, char** argv)
 	const char* mode = (argc > 1) ? argv[1] : "--hold";
 	const char* scriptPath = nullptr;
 	const char* execCmd = nullptr;
+	bool wantSonyPad = false;
 
 	for (int i = 2; i < argc; i++) {
 		if (strcmp(argv[i], "--exec") == 0 && i + 1 < argc) execCmd = argv[++i];
+		else if (strcmp(argv[i], "--sony-pad") == 0)        wantSonyPad = true;
 		else if (argv[i][0] != '-' && !scriptPath)          scriptPath = argv[i];
 	}
 
@@ -685,7 +706,7 @@ int main(int argc, char** argv)
 	signal(SIGINT,  on_signal);
 	signal(SIGTERM, on_signal);
 
-	if (!create_all()) {
+	if (!create_all(wantSonyPad)) {
 		destroy_all();
 		return 1;
 	}
@@ -722,9 +743,9 @@ int main(int argc, char** argv)
 	else {   // --hold
 		printf("Devices held open. Force-feedback uploads will be printed here.\n"
 		       "Press Ctrl-C to remove them.\n\n");
-		VirtualDevice* pad = find_device("pad");
 		while (!g_stop) {
-			if (pad) service_ff(*pad);
+			for (VirtualDevice& d : g_devices)
+				if (d.fd >= 0) service_ff(d);
 			msleep(20);
 		}
 		printf("\nRemoving devices.\n");
