@@ -100,7 +100,18 @@ namespace Log {
     void close();
 
     // Writes a formatted log message at the specified level with source info.
+    //
+    // The format attribute makes GCC and Clang type-check every LOG_* call the
+    // way they check printf, so a format/argument mismatch is a build warning
+    // on the Linux side instead of garbage in systemlog.txt. MSVC has no
+    // equivalent, which is why the Linux build is the one that catches these.
+    // format is parameter 5, the varargs start at 6.
+#if defined(__GNUC__) || defined(__clang__)
+    void write(Level level, const char* file, const char* function, int line, const char* format, ...)
+        __attribute__((format(printf, 5, 6)));
+#else
     void write(Level level, const char* file, const char* function, int line, const char* format, ...);
+#endif
 
     // Change the minimum level of messages to log.
     void setLevel(Level level);

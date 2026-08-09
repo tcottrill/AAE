@@ -158,5 +158,5 @@ void new_memory_region(int num, int size, int type)
 		}
 	}
 	else
-		LOG_ERROR("Error, your'trying to allocate a memory space num that does not exist: ", num);
+		LOG_ERROR("Error, you're trying to allocate a memory region number that does not exist: %d", num);
 }

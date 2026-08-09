@@ -7,6 +7,7 @@
 // -----------------------------------------------------------------------------
 
 #include <stdio.h>
+#include <cinttypes> // PRIu64 - uint64_t is not %llu on every platform
 #include <cstring> // Required for memcpy
 #include "cpu_6502.h"
 #include "sys_log.h"
@@ -2505,7 +2506,7 @@ void cpu_6502::log_instruction_usage()
 	{
 		if (instruction_count[i] > 0)
 		{
-			LOG_INFO("Opcode %02X (%s): %llu", i, mnemonics[i], instruction_count[i]);
+			LOG_INFO("Opcode %02X (%s): %" PRIu64, i, mnemonics[i], instruction_count[i]);
 		}
 	}
 }
