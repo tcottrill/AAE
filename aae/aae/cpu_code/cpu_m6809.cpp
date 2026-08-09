@@ -9,7 +9,6 @@
 #include "timer.h"
 #include <cstdlib>
 
-#pragma warning( disable : 4244 )
 
 // =============================================================================
 // Construction / reset / ticks

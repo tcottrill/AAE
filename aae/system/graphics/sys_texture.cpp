@@ -33,7 +33,7 @@ TEX::~TEX() {
 }
 
 TEX::TEX(const std::string& filename, const std::string& archive, int filter, bool modernGL)
-	: name(filename), archive(archive),  filter(filter), modernGL(modernGL), loaded(false)
+	: name(filename), archive(archive), loaded(false), filter(filter), modernGL(modernGL)
 {
 	stbi_set_flip_vertically_on_load(true);
 	

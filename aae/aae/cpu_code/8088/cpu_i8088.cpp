@@ -10,7 +10,6 @@
 #include "cpu_i8088_priv.h"
 #include "sys_log.h"
 
-#pragma warning( disable : 4244 )
 
 static const uint8_t parity[0x100] = {
 	1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,

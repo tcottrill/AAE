@@ -80,7 +80,9 @@ static std::filesystem::path exe_dir()
 	// already uses in aae_emulator.cpp and old_mame_raster.h.
 #ifdef _MSC_VER
 #pragma warning(push)
+#ifdef _MSC_VER
 #pragma warning(disable : 4996)
+#endif
 #endif
 	if (const char* dataDir = std::getenv("AAE_DATA_DIR"))
 		if (dataDir[0])

@@ -17,7 +17,9 @@
 #include <cstdint>
 #include <string.h>
 
+#ifdef _MSC_VER
 #pragma warning(disable: 4996)
+#endif
 
 class CSHA1
 {

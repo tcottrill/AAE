@@ -540,7 +540,7 @@ int load_sample_from_buffer(const uint8_t* data, size_t size, const char* name, 
 		sample->name = name;
 	}
 
-	if (force_resample && sample->fx.rate != SYS_FREQ) {
+	if (force_resample && sample->fx.rate != (uint32_t)SYS_FREQ) {
 		if (sample->fx.bits == 8) resample_wav_8(sample.get(), SYS_FREQ);
 		else                                resample_wav_16(sample.get(), SYS_FREQ, /*use_cubic=*/true);
 	}

@@ -246,7 +246,8 @@ void cpu_m68000::ea_write(int mode, int reg, int size, uint32_t v) {
 	if (mode == 0) {
 		if (size == 0) dar[reg] = (dar[reg] & ~0xffu) | (v & 0xff);
 		else if (size == 1) dar[reg] = (dar[reg] & ~0xffffu) | (v & 0xffff);
-		else dar[reg] = v; return;
+		else dar[reg] = v;
+		return;
 	}
 	if (mode == 1) { dar[8 + reg] = size == 1 ? sext16(v) : v; return; }
 	uint32_t a = ea_addr(mode, reg, size);
@@ -841,7 +842,8 @@ static void op_4(cpu_m68000* c) {
 		c->set_sr(imm); c->stopped = true; c->cycles_left -= 4; return;
 	}                          // STOP
 	case 0x4E76: if (c->flag_v) { c->take_exception(7); }
-			   else c->cycles_left -= 4; return;                   // TRAPV
+			   else c->cycles_left -= 4;
+			   return;                   // TRAPV
 	case 0x4E77: {
 		uint16_t cc = (uint16_t)c->read16(c->dar[15]); c->dar[15] += 2;                            // RTR
 		uint32_t np = c->read32(c->dar[15]); c->dar[15] += 4; c->set_ccr((uint8_t)(cc & 0x1F)); c->pc = np; c->cycles_left -= 20; return;
@@ -870,7 +872,10 @@ static void op_4(cpu_m68000* c) {
 		uint32_t a = 0, dst; if (mode == 0) dst = c->dar[reg] & 0xff; else { a = c->ea_addr(mode, reg, 0); dst = c->read8(a); }
 		uint32_t res = (0x9a - dst - (c->flag_x ? 1 : 0)) & 0xff;
 		if (res != 0x9a) {
-			if ((res & 0x0f) == 0x0a) res = (res & 0xf0) + 0x10; res &= 0xff; if (res) c->flag_z = 0; c->flag_c = 1; c->flag_x = 1;
+			if ((res & 0x0f) == 0x0a) res = (res & 0xf0) + 0x10;
+			res &= 0xff;
+			if (res) c->flag_z = 0;
+			c->flag_c = 1; c->flag_x = 1;
 			if (mode == 0) c->dar[reg] = (c->dar[reg] & ~0xffu) | res; else c->write8(a, (uint8_t)res);
 		}
 		else { c->flag_c = 0; c->flag_x = 0; }

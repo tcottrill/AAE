@@ -24,7 +24,6 @@
 #include "osdepend.h"
 
 void os_init_input(void);
-static int pseudo_to_key_code(int keycode);
 // osd_key_pressed_for: multi-keyboard — routes the check to the player's
 // assigned device. Declared in osdepend.h along with the rest of the
 // OSD input contract.

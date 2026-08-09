@@ -3,7 +3,9 @@
 #include "sys_log.h"
 #include <cmath>
 
-#pragma warning( disable : 4244 )
+#ifdef _MSC_VER
+#pragma warning( disable : 4244 )  // MSVC only: intentional 16->8 bit narrowing throughout this core
+#endif
 
 int cpu_i8080::get_ticks(int reset)
 {

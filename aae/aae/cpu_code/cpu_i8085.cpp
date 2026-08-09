@@ -22,7 +22,9 @@
 #include "sys_log.h"
 #include <cmath>
 
-#pragma warning( disable : 4244 )
+#ifdef _MSC_VER
+#pragma warning( disable : 4244 )  // MSVC only: intentional 16->8 bit narrowing throughout this core
+#endif
 
 
 // ============================================================================
@@ -449,7 +451,7 @@ int cpu_i8085::exec(int cycles)
 {
 	uint8_t opcode, temp8, reg, reg2;
 	uint16_t temp16;
-	uint32_t temp32;
+	//uint32_t temp32;
 
 	while (cycles > 0)
 	{

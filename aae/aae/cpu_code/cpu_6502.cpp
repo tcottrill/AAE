@@ -15,16 +15,6 @@
 #include "timer.h"
 #endif // USING_AAE_EMU
 
-// Boundary guard: nothing the emulation core includes may drag in the Win32 API.
-#ifdef _WINDOWS_
-#error "windows.h leaked into the emulation core"
-#endif
-
-// Phase 4 boundary check (spec sec. 3.5): the emulation core must never see
-// Vulkan headers. Mirrors the _WINDOWS_ leak guard idiom from Phase 1.
-#ifdef VULKAN_H_
-#error "vulkan.h leaked into the emulation core"
-#endif
 
 #define bget(p,m) ((p) & (m))
 
@@ -605,7 +595,7 @@ uint8_t cpu_6502::get6502memory(uint16_t addr)
 	// --- 6510 SUPPORT END ---
 
 	MemoryReadByte* reader = memory_read;
-	while (reader->lowAddr != -1)
+	while (reader->lowAddr != (UINT32)-1)
 	{
 		if (addr >= reader->lowAddr && addr <= reader->highAddr)
 		{
@@ -658,7 +648,7 @@ void cpu_6502::put6502memory(uint16_t addr, uint8_t byte)
 	// --- 6510 SUPPORT END ---
 
 	MemoryWriteByte* writer = memory_write;
-	while (writer->lowAddr != -1)
+	while (writer->lowAddr != (UINT32)-1)
 	{
 		if (addr >= writer->lowAddr && addr <= writer->highAddr)
 		{

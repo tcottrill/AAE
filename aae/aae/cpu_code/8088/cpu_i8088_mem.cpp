@@ -8,7 +8,6 @@
 #include "cpu_i8088.h"
 #include "sys_log.h"
 
-#pragma warning( disable : 4244 )
 
 #define I8088_ADDR_MASK 0xFFFFF /* 1 MB physical address wrap */
 

@@ -72,8 +72,6 @@
 #include <cstdlib>
 #include <cstdint>
 
-#pragma warning(push)
-#pragma warning(disable : 4244)
 
 namespace aae {
 	namespace math {
@@ -534,7 +532,6 @@ namespace std {
 	};
 }
 
-#pragma warning(pop)
 // Restore prior clamp macro if we temporarily undefined it
 #ifdef AAE_RESTORE_CLAMP_MACRO
 #pragma pop_macro("clamp")

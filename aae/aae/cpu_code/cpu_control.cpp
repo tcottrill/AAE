@@ -511,8 +511,9 @@ void cpu_do_int_imm(int cpunum, int int_type)
 }
 
 // Point a CPU's instruction-stream fetches at a decrypted-opcode buffer.
-// AAE equivalent of MAME's memory_set_opcode_base. Currently only the 6809
-// core supports it (used by the konami1 opcode scramble in Gyruss).
+// AAE equivalent of MAME's memory_set_opcode_base. Supported by the 6809
+// (konami1 opcode scramble in Gyruss)
+// Call AFTER the CPU has been created by init_6809.
 void memory_set_opcode_base(int cpunum, unsigned char* base)
 {
 	if (cpunum < 0 || cpunum >= MAX_CPU) return;
@@ -520,6 +521,10 @@ void memory_set_opcode_base(int cpunum, unsigned char* base)
 	{
 	case CPU_M6809:
 		if (m_cpu_6809[cpunum]) m_cpu_6809[cpunum]->set_opcode_base(base);
+		break;
+
+	case CPU_MZ80:
+		if (m_cpu_z80[cpunum]) m_cpu_z80[cpunum]->set_opcode_base(base);
 		break;
 	default:
 		LOG_ERROR("memory_set_opcode_base: CPU %d type %d does not support opcode base",

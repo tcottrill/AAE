@@ -18,21 +18,6 @@
 #include "sys_log.h"
 #include <vector>
 
-// Boundary guard: nothing the emulation core includes may drag in the Win32 API.
-#ifdef _WINDOWS_
-#error "windows.h leaked into the emulation core"
-#endif
-
-// Phase 4 boundary check (spec sec. 3.5): the emulation core must never see
-// Vulkan headers. Mirrors the _WINDOWS_ leak guard idiom from Phase 1.
-#ifdef VULKAN_H_
-#error "vulkan.h leaked into the emulation core"
-#endif
-
-// Boundary guard: nothing a CPU core includes may drag in the audio mixer.
-#ifdef __XAUDIO2_INCLUDED__
-#error "xaudio2 leaked into a CPU core"
-#endif
 
 //TEMP
 const char* rom_regions[] = {

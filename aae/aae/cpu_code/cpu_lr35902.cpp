@@ -4,7 +4,6 @@
 #include <cmath>
 #include <cstdlib>
 
-#pragma warning( disable : 4244 )
 
 // =============================================================================
 // Construction / lifecycle

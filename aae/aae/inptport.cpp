@@ -320,7 +320,7 @@ struct ipd inputport_defaults[] =
 int input_type_key(int type)
 {
 	for (int i = 0; inputport_defaults[i].type != IPT_END; ++i) {
-		if (inputport_defaults[i].type == type)
+		if (inputport_defaults[i].type == (UINT32)type)
 			return inputport_defaults[i].keyboard;
 	}
 	return OSD_KEY_NONE;
@@ -585,7 +585,7 @@ const char* input_port_name(const struct InputPort* in)
 		type = in->type & (~IPF_MASK | IPF_PLAYERMASK);
 
 	while (inputport_defaults[i].type != IPT_END &&
-		inputport_defaults[i].type != type)
+		inputport_defaults[i].type != (UINT32)type)
 		i++;
 
 	if ((in->type & ~IPF_MASK) == IPT_EXTENSION)
@@ -601,7 +601,7 @@ int input_port_type_key(int type)
 	i = 0;
 
 	while (inputport_defaults[i].type != IPT_END &&
-		inputport_defaults[i].type != type)
+		inputport_defaults[i].type != (UINT32)type)
 		i++;
 
 	return inputport_defaults[i].keyboard;
@@ -614,7 +614,7 @@ int input_port_type_joy(int type)
 	i = 0;
 
 	while (inputport_defaults[i].type != IPT_END &&
-		inputport_defaults[i].type != type)
+		inputport_defaults[i].type != (UINT32)type)
 		i++;
 
 	return inputport_defaults[i].joystick;
@@ -646,7 +646,7 @@ int input_port_key(const struct InputPort* in)
 	i = 0;
 
 	while (inputport_defaults[i].type != IPT_END &&
-		inputport_defaults[i].type != type)
+		inputport_defaults[i].type != (UINT32)type)
 		i++;
 
 	if ((in->type & ~IPF_MASK) == IPT_EXTENSION)
@@ -681,7 +681,7 @@ int input_port_joy(const struct InputPort* in)
 	i = 0;
 
 	while (inputport_defaults[i].type != IPT_END &&
-		inputport_defaults[i].type != type)
+		inputport_defaults[i].type != (UINT32)type)
 		i++;
 
 	if ((in->type & ~IPF_MASK) == IPT_EXTENSION)

@@ -468,13 +468,17 @@ int osd_joy_pressed(int joycode)
 		switch (joycode)
 		{
 		case OSD_JOY_FIRE1:
-			if (mouse_b & 1) return 1; break;
+			if (mouse_b & 1) return 1;
+			break;
 		case OSD_JOY_FIRE2:
-			if (mouse_b & 2) return 1; break;
+			if (mouse_b & 2) return 1;
+			break;
 		case OSD_JOY_FIRE3:
-			if (mouse_b & 4) return 1; break;
+			if (mouse_b & 4) return 1;
+			break;
 		case OSD_JOY_FIRE: /* any mouse button */
-			if (mouse_b) return 1; break;
+			if (mouse_b) return 1;
+			break;
 		}
 	}
 

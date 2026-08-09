@@ -17,7 +17,6 @@
 #include "sys_log.h"
 #include <cstdlib>
 
-#pragma warning( disable : 4244 )
 
 
 // ============================================================================

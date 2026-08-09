@@ -159,6 +159,23 @@ public:
 	// mz80step() will pick it up on the next execution cycle.
 	void   mz80AssertInt() { m_irq_line = true; }
 
+	// Point instruction-stream fetches (opcodes, immediate operands, index
+	// displacements -- everything ImmedByte/ImmedWord pull) at a separate
+	// 64K buffer, leaving plain data reads on the normal handler tables.
+	// AAE equivalent of MAME's memory_set_opcode_base; call through
+	// memory_set_opcode_base() in cpu_control, not directly.
+	//
+	// This is how the Kural protection patches in Make Trax / Crush Roller
+	// stay invisible to the game's own power-on ROM checksum: the patched
+	// bytes exist only in the fetch buffer, so the checksum -- an ordinary
+	// data read -- still sees the untouched ROM.
+	//
+	// The buffer is a snapshot: writes to guest RAM are NOT mirrored into it,
+	// so this is only safe for CPUs that never execute out of RAM (same
+	// constraint MAME's opcode base carries). Pass nullptr to go back to
+	// fetching through the memory handlers.
+	void   set_opcode_base(uint8_t* base) { m_opcode_base = base; }
+
 	std::function<void()> reti_hook;  // optional: notify external daisy-chained device on RETI
 
 	// Optional callback invoked at the moment IM2 actually takes an interrupt
@@ -249,6 +266,9 @@ private:
 	uint8_t* m_rgbStack;			// takes place of the SP register
 	uint8_t* m_rgbMemory;			// direct access to memory buffer (RAM)
 	uint8_t* m_rgbStackBase;
+	// Separate instruction-fetch buffer; null means fetch through the normal
+	// memory handlers. See set_opcode_base().
+	uint8_t* m_opcode_base = nullptr;
 	int cCycles;
 
 	uint16_t z80pc;

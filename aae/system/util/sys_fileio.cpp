@@ -14,7 +14,9 @@ size_t filesz = 0;
 size_t uncomp_size = 0;
 uint32_t last_crc = 0;
 
+#ifdef _MSC_VER
 #pragma warning(disable : 4996)
+#endif
 
 // -----------------------------------------------------------------------------
 // Portable shims for the MSVC-only calls this file used to make directly.
@@ -115,7 +117,14 @@ uint8_t* loadFile(const char* filename) {
         LOG_INFO("Memory allocation failed: %zu bytes", filesz);
         return nullptr;
     }
-    fread(buf, 1, filesz, fd);
+    /* A short read would otherwise leave the tail uninitialized; zero it so
+       callers always get deterministic bytes. */
+    size_t got = fread(buf, 1, filesz, fd);
+    if (got != filesz)
+    {
+        LOG_INFO("Short read: got %zu of %zu bytes", got, filesz);
+        memset(buf + got, 0, filesz - got);
+    }
     fclose(fd);
     return buf;
 }

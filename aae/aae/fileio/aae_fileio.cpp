@@ -331,7 +331,7 @@ int load_roms(const char* archname, const struct RomModule* p)
                 file_index = mz_zip_reader_locate_file(&zip_archive, p[i].filename, 0, 0);
             }
 
-            if (file_index == -1) {
+            if (file_index == (mz_uint)-1) {
                 LOG_ERROR("File not found in zip: %s", p[i].filename ? p[i].filename : "<null>");
                 ret = EXIT_FAILURE;
                 goto end;
@@ -348,7 +348,7 @@ int load_roms(const char* archname, const struct RomModule* p)
             // CHANGED: Assignment only, declaration moved to top
             current_uncomp_size = (unsigned int)file_stat.m_uncomp_size;
 
-            if (p[i].romSize != file_stat.m_uncomp_size)
+            if ((mz_uint64)p[i].romSize != file_stat.m_uncomp_size)
             {
                 if (p[i + 1].filename != (char*)-2) // Not ROM_CONTINUE
                 {
@@ -369,7 +369,7 @@ int load_roms(const char* archname, const struct RomModule* p)
                 }
 
                 crc = static_cast<int>(file_stat.m_crc32);
-                if (p[i].crc && crc != p[i].crc) {
+                if (p[i].crc && (unsigned int)crc != p[i].crc) {
                     LOG_ERROR("CRC mismatch: Expected %x, Got %x", p[i].crc, crc);
                 }
             }

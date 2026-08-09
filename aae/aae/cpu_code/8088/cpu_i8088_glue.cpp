@@ -9,7 +9,6 @@
 #include "cpu_i8088.h"
 #include "cpu_i8088_priv.h"
 
-#pragma warning( disable : 4244 )
 
 cpu_i8088::cpu_i8088(uint8_t* mem, MemoryReadByte* read_mem, MemoryWriteByte* write_mem,
                      z80PortRead* port_read, z80PortWrite* port_write, uint16_t /*addr*/)

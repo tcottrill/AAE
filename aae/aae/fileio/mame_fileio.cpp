@@ -161,7 +161,7 @@ int readint(void* f, UINT32* num)
 	int i;
 
 	*num = 0;
-	for (i = 0; i < sizeof(UINT32); i++)
+	for (i = 0; i < (int)sizeof(UINT32); i++)
 	{
 		unsigned char c;
 
@@ -178,7 +178,7 @@ void writeint(void* f, UINT32 num)
 {
 	int i;
 
-	for (i = 0; i < sizeof(UINT32); i++)
+	for (i = 0; i < (int)sizeof(UINT32); i++)
 	{
 		unsigned char c;
 
@@ -193,7 +193,7 @@ int readword(void* f, UINT16* num)
 	int i, res;
 
 	res = 0;
-	for (i = 0; i < sizeof(UINT16); i++)
+	for (i = 0; i < (int)sizeof(UINT16); i++)
 	{
 		unsigned char c;
 
@@ -211,7 +211,7 @@ void writeword(void* f, UINT16 num)
 {
 	int i;
 
-	for (i = 0; i < sizeof(UINT16); i++)
+	for (i = 0; i < (int)sizeof(UINT16); i++)
 	{
 		unsigned char c;
 

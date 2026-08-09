@@ -42,7 +42,9 @@
 #include <stdlib.h>
 #include "timer.h"
 
+#ifdef _MSC_VER
 #pragma warning( disable : 4244) //16 bit to 8 bit port return
+#endif
 
 // Precomputed parity table.
 static uint8_t ZSTable[256] =
@@ -137,10 +139,15 @@ cpu_z80::cpu_z80(uint8_t* MEM, MemoryReadByte* read_mem, MemoryWriteByte* write_
 
 //ADDRESSING OPCODES
 
+// Instruction-stream fetch. Normally reads through the memory handlers (so
+// bank switching works); when a driver has installed an opcode base the bytes
+// come from that buffer instead, leaving data reads on the untouched memory.
 uint8_t cpu_z80::ImmedByte()
 {
 	//return m_rgbMemory[z80pc++];
-	return mz80GetMemory(z80pc++);
+	const uint16_t addr = z80pc++;
+	if (m_opcode_base) return m_opcode_base[addr];
+	return mz80GetMemory(addr);
 }
 
 UINT16 cpu_z80::ImmedWord()
@@ -150,8 +157,11 @@ UINT16 cpu_z80::ImmedWord()
 	//b = (m_rgbMemory[z80pc++] & 0xFFFF);
 	//return ((b << 8) | a);
 
-	uint8_t a = mz80GetMemory(z80pc++);
-	uint8_t b = mz80GetMemory(z80pc++);
+	const uint16_t lo = z80pc++;
+	const uint16_t hi = z80pc++;
+	uint8_t a, b;
+	if (m_opcode_base) { a = m_opcode_base[lo]; b = m_opcode_base[hi]; }
+	else               { a = mz80GetMemory(lo); b = mz80GetMemory(hi); }
 	return static_cast<uint16_t>((b << 8) | a);
 }
 

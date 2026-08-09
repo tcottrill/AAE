@@ -92,7 +92,11 @@ static void z80ctc_timercallback(int param);
 
 void z80ctc_init(z80ctc_interface* intf)
 {
-    memset(ctcs, 0, sizeof(ctcs));
+    /* Value-initialize rather than memset: z80ctc holds std::function
+       callbacks, and on a second game load memset would overwrite live
+       ones without releasing them. POD members still end up zeroed. */
+    for (auto& c : ctcs)
+        c = z80ctc{};
 
     for (int i = 0; i < intf->num; i++)
     {
