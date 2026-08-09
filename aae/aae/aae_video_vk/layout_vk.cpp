@@ -707,7 +707,10 @@ namespace
     // LayoutData (Layout_Parse stores them in a std::map keyed by name), and
     // g_layoutData is cleared between games, so the name is a safe key.
     std::map<std::string, VkTexture> s_layoutTex;
-    bool s_layoutReal = false;
+
+    // A layout is loaded and composited for this game - either a parsed .lay
+    // or the synthetic screen-only view. Both walk the same layer loop.
+    bool s_layoutLoaded = false;
 
     VkTexture* LayoutTexFor(const LayoutElement* elem)
     {
@@ -872,12 +875,12 @@ void LayoutVK_FreeTextures(VkContext& ctx)
     for (auto& kv : s_layoutTex)
         VK_DestroyTexture(ctx, kv.second);
     s_layoutTex.clear();
-    s_layoutReal = false;
+    s_layoutLoaded = false;
 }
 
 bool LayoutVK_Active(void)
 {
-    return s_layoutReal && g_layoutEnabled && g_activeView != nullptr;
+    return s_layoutLoaded && g_layoutEnabled && g_activeView != nullptr;
 }
 
 void LayoutVK_LoadForGame(VkContext& ctx, const AAEDriver* drv)
@@ -889,16 +892,28 @@ void LayoutVK_LoadForGame(VkContext& ctx, const AAEDriver* drv)
     if (!drv)
         return;
 
+    // Synthetic screen-only fallback, shared with the GL loader; every exit
+    // below that would otherwise leave the layout off takes it. Textures are
+    // freed first because Layout_CreateSyntheticForGame clears the element
+    // map that owns their names.
+    auto synthetic = [&](void) {
+        LayoutVK_FreeTextures(ctx);
+        Layout_CreateSyntheticForGame(drv);
+        s_layoutLoaded = g_layoutEnabled && g_activeView != nullptr;
+        };
+
     std::string zipFile, artDir;
     if (!Layout_FindArtworkSource(drv, zipFile, artDir))
     {
         LOG_INFO("LayoutVK: no .lay file found for game '%s'", drv->name ? drv->name : "?");
+        synthetic();
         return;
     }
 
     if (!Layout_Parse(drv->layoutFile, zipFile, artDir, g_layoutData))
     {
         LOG_WARN("LayoutVK: layout parse failed for game '%s'", drv->name ? drv->name : "?");
+        synthetic();
         return;
     }
 
@@ -909,12 +924,13 @@ void LayoutVK_LoadForGame(VkContext& ctx, const AAEDriver* drv)
     if (!g_activeView)
     {
         LOG_WARN("LayoutVK: layout loaded but view '%s' not found", viewName.c_str());
+        synthetic();
         return;
     }
 
     g_layoutAspect = g_activeView->boundsW / g_activeView->boundsH;
     g_layoutEnabled = true;
-    s_layoutReal = true;
+    s_layoutLoaded = true;
 
     // Same menu-availability bookkeeping as Layout_LoadForGame. The GL loader
     // tests element->textureID; the VK cache is the equivalent presence test.
@@ -1129,6 +1145,21 @@ bool LayoutVK_ComputeFrame(int swapW, int swapH, LayoutVKFrame& out)
             {
                 overlayX = d.x; overlayY = d.y; overlayW = d.w; overlayH = d.h;
                 haveOverlay = true;
+                break;
+            }
+        }
+    }
+
+    // Any visible backdrop drawable, under the same toggle RecordUnderlay
+    // gates on. The screen layer blends additively over whatever this puts
+    // down, so the caller has to keep a route that can perform that blend.
+    if (g_layoutShowBackdrop)
+    {
+        for (const auto& d : view.drawables)
+        {
+            if (d.layer == LayerType::Backdrop && d.element && LayoutTexFor(d.element))
+            {
+                out.hasBackdrop = true;
                 break;
             }
         }

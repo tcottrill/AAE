@@ -1444,43 +1444,71 @@ void Layout_LoadForGame(const AAEDriver* drv)
 	}
 
 	// ---- Fallback: create a synthetic screen-only layout ----
-	// If no .lay file was loaded (either not found, parse failed, or the
-	// driver has no layoutFile), create a minimal layout so that
-	// final_render_raster() always uses the layout path. This gives every
-	// raster game the correct additive-blend compositing.
 	if (!g_layoutEnabled)
+		Layout_CreateSyntheticForGame(drv);
+}
+
+// ====================================================================
+// Layout_CreateSyntheticForGame
+//
+// Builds the screen-only view used when a game has no .lay artwork,
+// sized to the 4:3 / 3:4 monitor aspect so non-square game pixels are
+// corrected. Shared by both renderer front ends: the aspect picked here
+// must match the one run_game Step 12 gives the window, so do not
+// duplicate these constants elsewhere.
+// ====================================================================
+void Layout_CreateSyntheticForGame(const AAEDriver* drv)
+{
+	if (!Machine || !Machine->drv)
 	{
-		const rectangle& va = Machine->drv->visible_area;
-		float scrW = (float)(va.max_x - va.min_x + 1);
-		float scrH = (float)(va.max_y - va.min_y + 1);
-
-		// Apply orientation - match what fbo_init_raster() does
-		if (Machine->drv->rotation & ORIENTATION_SWAP_XY)
-		{
-			float t = scrW;
-			scrW = scrH;
-			scrH = t;
-		}
-
-		// Stretch the synthetic view to the physical monitor aspect
-		// (4:3 landscape, 3:4 portrait), like MAME's standard view.
-		// Game pixels are rarely square: e.g. the Circus set is 248x256
-		// and would otherwise display nearly square instead of 4:3.
-		if (scrW > 0.0f && scrH > 0.0f)
-		{
-			const bool isVertical = (Machine->drv->rotation & ORIENTATION_SWAP_XY) != 0;
-			const float targetAspect = isVertical ? (3.0f / 4.0f) : (4.0f / 3.0f);
-			scrW = scrH * targetAspect;
-		}
-
-		Layout_CreateDefaultScreen(g_layoutData, scrW, scrH);
-		g_activeView = &g_layoutData.views[0];
-		g_layoutAspect = scrW / scrH;
-		g_layoutEnabled = true;
-
-		LOG_INFO("Synthetic layout created for '%s': %.0fx%.0f aspect=%.3f",
-			drv->name, scrW, scrH, g_layoutAspect);
+		// Callers dereference g_activeView without a null check, so a
+		// missing view is logged rather than left silent.
+		LOG_WARN("Layout_CreateSyntheticForGame: no Machine->drv; no view built");
+		return;
 	}
+
+	const rectangle& va = Machine->drv->visible_area;
+	float scrW = (float)(va.max_x - va.min_x + 1);
+	float scrH = (float)(va.max_y - va.min_y + 1);
+
+	// Apply orientation - match what fbo_init_raster() does
+	if (Machine->drv->rotation & ORIENTATION_SWAP_XY)
+	{
+		float t = scrW;
+		scrW = scrH;
+		scrH = t;
+	}
+
+	// Degenerate visible_area: clamped rather than bailed on, because this
+	// must always leave a view behind and g_layoutAspect below must never
+	// divide by zero.
+	if (scrW <= 0.0f || scrH <= 0.0f)
+	{
+		LOG_WARN("Layout_CreateSyntheticForGame: degenerate visible_area for '%s'; using 240 lines",
+			(drv && drv->name) ? drv->name : "?");
+		scrW = 320.0f;
+		scrH = 240.0f;
+	}
+
+	// Stretch the synthetic view to the physical monitor aspect
+	// (4:3 landscape, 3:4 portrait), like MAME's standard view.
+	// Game pixels are rarely square: e.g. the Circus set is 248x256
+	// and would otherwise display nearly square instead of 4:3.
+	// Only the oriented HEIGHT survives; the width is re-derived from the
+	// monitor aspect. That is the non-square-pixel correction.
+	{
+		const bool isVertical = (Machine->drv->rotation & ORIENTATION_SWAP_XY) != 0;
+		const float targetAspect = isVertical ? (3.0f / 4.0f) : (4.0f / 3.0f);
+		scrW = scrH * targetAspect;
+	}
+
+	Layout_CreateDefaultScreen(g_layoutData, scrW, scrH);
+	g_activeView = &g_layoutData.views[0];
+	g_layoutAspect = scrW / scrH;
+	g_layoutEnabled = true;
+
+	LOG_INFO("Synthetic layout created for '%s': %.0fx%.0f aspect=%.3f",
+		(drv && drv->name) ? drv->name : "?", scrW, scrH, g_layoutAspect);
 }
 
 // ====================================================================

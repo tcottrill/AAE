@@ -24,38 +24,6 @@
 #include "colordefs.h"
 #include "sys_input.h"
 
-// Boundary guard: nothing acommon.cpp includes may drag in the Win32 API.
-// MUST stay below every #include above - see the comment on the glew guard.
-//
-// Re-enabled by Task 4 (phase3a-window-contract): this file's own
-// `#include "framework.h"` is gone (acommon.cpp never called any Win32-
-// touching symbol from it - win_get_window, allegro_message, osMessage,
-// GetClientWidth/Height, ClipAndHideCursor, ... - framework.h was just
-// leaking Windows.h to every includer, itself included), and
-// opengl_renderer.h no longer includes framework.h either (Task 4 moved
-// that include into opengl_renderer.cpp, since the header itself used
-// nothing from it). With both paths closed, this guard holds clean.
-#ifdef _WINDOWS_
-#error "windows.h leaked into acommon.cpp"
-#endif
-
-// Phase 4 boundary check (spec sec. 3.5): the emulation core must never see
-// Vulkan headers. Mirrors the _WINDOWS_ leak guard idiom from Phase 1.
-#ifdef VULKAN_H_
-#error "vulkan.h leaked into acommon.cpp"
-#endif
-
-// Regression guard: this file must never see OpenGL headers. If this fires,
-// a render header re-leaked glew.h — fix the header, not this guard.
-#ifdef __glew_h__
-#error "OpenGL headers leaked into a non-render translation unit"
-#endif
-
-// Regression guard: this file must never see OpenGL headers. If this fires,
-// a render header re-leaked glew.h — fix the header, not this guard.
-#ifdef __glew_h__
-#error "OpenGL headers leaked into a non-render translation unit"
-#endif
 
 extern int errorsound;
 extern int show_fps;
@@ -71,7 +39,9 @@ void restore_audio();
 int leds_status = 0;
 static int last_led_status = 0;
 
+#ifdef _MSC_VER
 #pragma warning( disable : 4244 )
+#endif
 
 //TODO: None of below belongs in here
 

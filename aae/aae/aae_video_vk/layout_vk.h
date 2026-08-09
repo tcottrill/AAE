@@ -209,19 +209,17 @@ private:
 // cache. Sets g_layoutEnabled / g_activeView / g_layoutAspect and the menu
 // availability flags exactly as the GL loader does.
 //
-// Deliberate difference from GL: when no .lay file is found this does NOT
-// build the synthetic screen-only layout. The synthetic view exists so GL's
-// raster composite always has a layout to walk; the VK chain already has its
-// own aspect-fit letterbox composite for that case, and leaving
-// g_layoutEnabled false keeps it byte-identical. (Layout_ComputeGameAspect
-// returns the same number either way: the synthetic view's aspect IS the
-// 4:3 / 3:4 target the game-dimension fallback computes.)
+// When no .lay file is found (or it fails to parse, or its view is missing)
+// this takes the shared synthetic screen-only fallback,
+// Layout_CreateSyntheticForGame - the same call the GL loader makes - so an
+// artwork-less game still composites through LayoutVK_ComputeFrame.
 //
 // Must be called device-idle with no frame open.
 // -----------------------------------------------------------------------------
 void LayoutVK_LoadForGame(VkContext& ctx, const AAEDriver* drv);
 
-// True when a real .lay layout is loaded and renderable for this game.
+// True when a layout is loaded and renderable for this game - a parsed .lay
+// or the synthetic screen-only view built for a game without one.
 bool LayoutVK_Active(void);
 
 // Destroys the per-game layout textures (device-idle) and drops the cache.
@@ -260,6 +258,10 @@ struct LayoutVKFrame
     bool  hasOverlay = false;
     int   overlayMode = 0;              // 0 = pure multiply, 1 = doubled
     float ovXform[4] = { 1, 1, 0, 0 };  // screen UV -> overlay UV
+
+    // A visible backdrop drawable is recorded under the screen, so the screen
+    // layer's additive blend has artwork to let its black pixels show through.
+    bool  hasBackdrop = false;
 
     // Layout -> pixel mapping. Non-rotated path uses scale/offset; the
     // rotated path uses the layout center + per-axis scale.

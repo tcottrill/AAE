@@ -85,7 +85,9 @@ void allegro_message(const char* title, const char* message);
 #error "OpenGL headers leaked into a non-render translation unit"
 #endif
 
+#ifdef _MSC_VER
 #pragma warning(disable : 4996 4244)
+#endif
 
 using namespace std;
 using namespace chrono;
@@ -966,14 +968,10 @@ void run_game(void)
 	// Step 7: MAME .lay layout loading (raster games only).
 	// Searches external and local artwork paths for ZIP or loose .lay files.
 	// Falls back to a synthetic screen-only layout if nothing is found.
-	// Layout_LoadForGame bakes layout textures via glGenTextures
-	// (mame_layout.cpp Layout_LoadTextures), so it is GL-only; the Vulkan
-	// chain runs the SAME search order and the SAME parser through its own
-	// texture loader (vkchain_load_layout -> LayoutVK_LoadForGame). The VK
-	// side deliberately skips the synthetic screen-only fallback: with the
-	// layout left disabled, Layout_ComputeGameAspect uses the game-dimension
-	// path, which yields the same 4:3 / 3:4 target aspect the synthetic view
-	// would have produced, and the VK chain keeps its own letterbox composite.
+	// Layout_LoadForGame bakes layout textures via glGenTextures, so it is
+	// GL-only; the Vulkan chain runs the same search order and parser through
+	// vkchain_load_layout -> LayoutVK_LoadForGame. Both end at the same
+	// synthetic screen-only fallback when a game has no .lay.
 	if (!(Machine->gamedrv->video_attributes & VIDEO_TYPE_VECTOR))
 	{
 		if (active_renderer() == RENDERER_OPENGL)

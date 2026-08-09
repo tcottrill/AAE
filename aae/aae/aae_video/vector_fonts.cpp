@@ -19,7 +19,9 @@
 #include <chrono>          // shared wall clock for marquee scrolling
 
 // Disable warnings about double-to-float conversions in the font data.
+#ifdef _MSC_VER
 #pragma warning(disable : 4305)
+#endif
 
 static constexpr float CHAR_GAP = 2.0f;     // Inter-character gap (unscaled units)
 static constexpr float SPACE_WIDTH = 7.0f;   // Space character width (unscaled units)

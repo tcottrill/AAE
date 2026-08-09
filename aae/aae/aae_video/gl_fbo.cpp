@@ -41,7 +41,6 @@
 #include <array>
 #include <initializer_list>
 
-#pragma warning(disable : 4305 4244)
 
 // ---------------------------------------------------------------------------
 // FBO and texture handle definitions

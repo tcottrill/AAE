@@ -35,6 +35,8 @@
 #include "screen_quad_vk.h"    // ScreenQuadVK - RT->swapchain composite
 #include "crt_post_vk.h"       // CrtPostVK - raster CRT/monitor + scanline overlay
 #include "layout_vk.h"         // LayoutQuadVK + the MAME .lay raster compositor
+#include "mame_layout.h"       // Layout_GetPixelAspect - the non-square-pixel
+                               // correction Step 12 applied to the window
 #include "sys_str.h"           // aae_stricmp (raster_effect "NONE" test)
 #include "vector_draw_vk.h"    // VectorDrawVK - beam vector renderer;
                                // pulls in vector_draw.h (beam batch access)
@@ -219,9 +221,9 @@ static bool      s_crtPostFailed = false;
 // composites raster artwork in mame_layout.cpp's Layout_Render, NOT in
 // final_render's art_tex[] path (that one is vector-only); this is the quad
 // recorder that mirrors it. Game-independent like ScreenQuadVK: one init at
-// chain start, one shutdown at the end. When it fails to init - or the game
-// has no .lay file - the raster branch keeps its plain aspect-fit letterbox
-// composite.
+// chain start, one shutdown at the end. It composites every raster game; only
+// if it fails to init does the raster branch fall back to the plain
+// aspect-fit letterbox composite.
 static LayoutQuadVK g_layoutQuad;
 static bool         s_layoutQuadInit = false;
 
@@ -958,7 +960,7 @@ static bool EnsureMonitorTarget(int w, int h)
 		if (!s_rtMonitor.Init(g_vk, ci))
 		{
 			s_rtMonitorFailed = true;
-			LOG_ERROR("vkchain: CRT monitor RT init failed; gel/rotated monitor pass disabled");
+			LOG_ERROR("vkchain: CRT monitor RT init failed; offscreen monitor pass disabled");
 			return false;
 		}
 		s_rtMonitorPendW = 0;
@@ -1523,12 +1525,13 @@ void vkchain_render(void)
 			// driver-oriented into the raster FBO and Layout_Render turns the
 			// whole composition.
 			//
-			// NATIVE dims, not the prescaled RT dims: prescale is a uniform
-			// scale on both axes so the ratio is the same either way, but the
-			// native pair is the one GL's layout math uses
-			// (Layout_InitGameDimensions, mame_layout.cpp:1494) and it avoids
-			// carrying the RT's per-axis integer truncation into the aspect.
-			float gameAspect = (float)s_rasterNativeW / (float)s_rasterNativeH;
+			// Aspect-fit letterbox, used only when LayoutQuadVK failed to
+			// init; otherwise the composite runs through LayoutVK_ComputeFrame
+			// below. NATIVE dims (not prescaled, which would carry the RT's
+			// per-axis truncation) times Layout_GetPixelAspect give the
+			// 4:3 / 3:4 shape run_game Step 12 gave the window, so it fills it.
+			float gameAspect = ((float)s_rasterNativeW * Layout_GetPixelAspect())
+				/ (float)s_rasterNativeH;
 			if (rot == 1 || rot == 2)
 				gameAspect = 1.0f / gameAspect;
 			const int sw = (int)g_vk.swapchainExtent.width;
@@ -1543,9 +1546,9 @@ void vkchain_render(void)
 			// which fits the view, then draws backdrop -> screen (with the
 			// overlay color gel multiplied in) -> bezel, and owns the display
 			// rotation for all of them. LayoutVK_ComputeFrame resolves the
-			// same geometry; when it declines (this game has no .lay, or the
-			// compositor failed to init) the chain keeps the plain aspect-fit
-			// letterbox composite.
+			// same geometry for every raster game; one without a .lay carries
+			// the shared synthetic screen-only view. It declines only if
+			// LayoutQuadVK failed to init, leaving the letterbox above.
 			LayoutVKFrame lay{};
 			const bool layoutActive = s_layoutQuadInit &&
 				LayoutVK_ComputeFrame(sw, sh, lay) && lay.hasScreen;
@@ -1566,24 +1569,31 @@ void vkchain_render(void)
 			// write img5b (fbo_mono), Layout_Render then composites img5b in
 			// place of img5a - which is how the gel multiply and the rigid
 			// rotation come to act on the MONITOR OUTPUT rather than the raw
-			// game image. Two things about the direct-to-swapchain monitor draw
-			// cannot express that:
+			// game image. Three things about the direct-to-swapchain monitor
+			// draw cannot express that:
 			//   * the gel - CrtPostVK's shaders take ONE texture, so they
-			//     cannot multiply the layout's overlay; and
+			//     cannot multiply the layout's overlay;
 			//   * rotation - DrawQuad_ drives its quad from a uvrect, which can
-			//     flip but cannot turn 90 degrees.
-			// So the intermediate RT is engaged exactly when either applies,
-			// and the composite that samples it (the layout's dual-source gel
-			// quad, or ScreenQuadVK's permuted corner UVs, or both) supplies
-			// what the monitor quad cannot. When NEITHER applies the monitor
-			// still draws straight onto the swapchain at the rect above: the
+			//     flip but cannot turn 90 degrees; and
+			//   * a backdrop - the monitor pipeline is blend-disabled, so it
+			//     REPLACES the artwork under the screen rect instead of adding
+			//     to it, and the game's black pixels bury the backdrop that
+			//     GL's additive screen quad lets them show through.
+			// So the intermediate RT is engaged exactly when any applies,
+			// and the composite that samples it (the layout's additive,
+			// optionally dual-source screen quad, or ScreenQuadVK's permuted
+			// corner UVs) supplies what the monitor quad cannot. When NONE
+			// applies the monitor still draws straight onto the swapchain at
+			// the rect above: the
 			// same output-sized post with one resample fewer, and byte-for-byte
 			// the picture this chain already shipped.
 			const bool wantMono  = VkMonoMonitorActive(vattr);
 			const bool wantColor = !wantMono && VkColorMonitorActive(vattr);
 			const bool monitorWanted = wantMono || wantColor;
 			const bool gelActive = layoutActive && lay.hasOverlay;
-			const bool needIntermediate = monitorWanted && (gelActive || rot != 0);
+			const bool backdropActive = layoutActive && lay.hasBackdrop;
+			const bool needIntermediate =
+				monitorWanted && (gelActive || backdropActive || rot != 0);
 
 			// Intermediate size = the on-screen pixel extent of the quad that
 			// will sample it, measured in the monitor image's OWN frame.
@@ -1595,9 +1605,8 @@ void vkchain_render(void)
 			// the ROTATED bounding box instead, and a 90/270 turn swaps those
 			// two axes, so they are swapped back. The letterbox path is the
 			// same story: vw/vh were fitted to the INVERTED aspect for rot
-			// 1/2, so un-swapping recovers the unrotated extent - exactly what
-			// GL's synthetic screen-only layout produces for a game with no
-			// .lay file. Net effect either way: one monitor fragment covers
+			// 1/2, so un-swapping recovers the unrotated extent.
+			// Net effect either way: one monitor fragment covers
 			// one screen pixel of the composited quad, so the shadow mask and
 			// beam ripple resolve on screen pixels just as GL's img5b resize
 			// achieves.
@@ -2706,9 +2715,9 @@ void vkchain_load_artwork(const struct artworks* p)
 // inside LayoutVK_LoadForGame, so the device must be idle first and no frame
 // may be open.
 //
-// Note the GL call is unconditional for raster games because Layout_LoadForGame
-// also builds a synthetic screen-only view; the VK loader deliberately does
-// not (see layout_vk.h), so games with no .lay simply leave the layout off.
+// Both loaders build the synthetic screen-only view when a game has no .lay
+// (Layout_CreateSyntheticForGame), so a raster game always has a layout to
+// composite.
 // ---------------------------------------------------------------------------
 void vkchain_load_layout(const struct AAEDriver* drv)
 {

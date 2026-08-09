@@ -169,6 +169,13 @@ float Layout_ComputeGameAspect();
 struct AAEDriver;
 void Layout_LoadForGame(const AAEDriver* drv);
 
+// Build the screen-only view used when a game has no .lay artwork, sized
+// to the physical monitor aspect (4:3 landscape, 3:4 portrait) so the
+// game's non-square pixels are corrected. Sets g_layoutData, g_activeView,
+// g_layoutAspect and g_layoutEnabled. Shared by the GL and Vulkan loaders
+// because the aspect must match the one Step 12 gives the window.
+void Layout_CreateSyntheticForGame(const AAEDriver* drv);
+
 // Renderer-neutral half of Layout_LoadForGame: probes the four artwork
 // locations for this driver's .lay file and reports where it lives.
 //   outZipFile - path to the ZIP holding the layout (empty => loose files)

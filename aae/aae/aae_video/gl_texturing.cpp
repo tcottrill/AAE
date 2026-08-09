@@ -13,7 +13,6 @@
 #include "MathUtils.h"  // aae::math::mat4 / value_ptr for the core-profile quads
 #include "config.h"     // RENDERER_VULKAN (show_error runs on both chains)
 
-#pragma warning( disable : 4305 4244 )
 
 int errorsound = 0;
 
