@@ -1,17 +1,11 @@
 AAE Game List
 Name            Description
 ----            -----------
-mhavoc          Major Havoc (Revision 3)
-mhavoc2         Major Havoc (Revision 2)
-mhavocrv        Major Havoc (Return To VAX - Mod by Jeff Askey)
-mhavocpe        Major Havoc (The Promised End 1.01 adpcm)
-mhavocp         Major Havoc (Prototype)
-alphaone        Alpha One (Major Havoc Prototype - 3 Lives)
-alphaonea       Alpha One (Major Havoc Prototype - 5 Lives)
-starwars        Star Wars (Revision 2)
-starwars1       Star Wars (Revision 1)
-esb             Star Wars: Empire Strike Back
-tomcat          TomCat (Star Wars hardware, prototype)
+yiear           Yie Ar Kung-Fu (set 1)
+xevious         Xevious (Namco)
+warlords        Warlords
+depthch         Depth Charge
+topgunnr        Top Gunner
 tempestm        Tempest Multigame (1999 Clay Cowgill)
 tempest         Tempest (Revision 3)
 tempest3        Tempest (Revision 2B)
@@ -21,17 +15,15 @@ temptube        Tempest Tubes
 aliensv         Aliens (Tempest Alpha)
 vbrakout        Vector Breakout (1999 Clay Cowgill)
 vortex          Vortex (Tempest Beta)
-warlords        Warlords
-spacezap        Space Zap
-yiear           Yie Ar Kung-Fu (set 1)
-xevious         Xevious (Namco)
-depthch         Depth Charge
-topgunnr        Top Gunner
 superpac        Super Pac-Man
 superpcm        Super Pac-Man (Midway)
 pacnpal         Pac & Pal
 pacnpal2        Pac & Pal (set 2)
 pacnchmp        Pac-Man & Chomp Chomp
+starwars        Star Wars (Revision 2)
+starwars1       Star Wars (Revision 1)
+esb             Star Wars: Empire Strike Back
+tomcat          TomCat (Star Wars hardware, prototype)
 zektor          Zektor
 tacscan         Tac/Scan
 startrek        Star Trek
@@ -56,6 +48,7 @@ multi15         Multipac (v1.5)
 puckman         PuckMan (Japan set 1)
 crush           Crush Roller (Kural Samno)
 maketrax        Make Trax
+eyes            Eyes (Digitrex Techstar)
 ponpoko         Ponpoko
 superabc        Pacman Super ABC
 omegrace        Omega Race
@@ -103,16 +96,25 @@ dkong           Donkey Kong (US)
 dkongjr         Donkey Kong Junior (US)
 breakout        Breakout
 pong            Pong
+mhavoc          Major Havoc (Revision 3)
+mhavoc2         Major Havoc (Revision 2)
+mhavocrv        Major Havoc (Return To VAX - Mod by Jeff Askey)
+mhavocpe        Major Havoc (The Promised End 1.01 adpcm)
+mhavocp         Major Havoc (Prototype)
+alphaone        Alpha One (Major Havoc Prototype - 3 Lives)
+alphaonea       Alpha One (Major Havoc Prototype - 5 Lives)
 gaplus          gaplus (US)
 foodf           Food Fight (Atari)
-centiped        Centipede
+centiped        Centipede V4 1 Player
+centiped3       Centipede V3 2 Player
 cchasm          Cosmic Chasm (set 2)
 cchasm1         Cosmic Chasm (set 1)
-bzone           Battlezone (Revision 1)
-bzonea          Battlezone (Revision A)
-bzonec          Battlezone Cocktail Proto
+bzone           Battlezone (Revision 2)
+bzonea          Battlezone (Revision 1)
+bzonec          Battlezone Cocktail
 bzonep          Battlezone Plus (Clay Cowgill)
-redbaron        Red Baron
+redbaron        Red Baron (Revision 2)
+redbarona       Red Baron (Revision 1)
 bradley         Bradley Trainer
 spacduel        Space Duel
 spacduel0       Space Duel (prototype)
@@ -125,6 +127,7 @@ lunarbat        Lunar Battle (Prototype, Late)
 lunarba1        Lunar Battle (Prototype, Early)
 bosco           Bosconian
 aztarac         Aztarac
+spacezap        Space Zap
 meteorts        Meteorites (Asteroids Bootleg)
 asterock        Asterock (Asteroids Bootleg)
 asteroidb       Asteroids (Bootleg on Lunar Lander Hardware)
@@ -134,4 +137,4 @@ astdelux1       Asteroids Deluxe (Revision 1)
 astdelux2       Asteroids Deluxe (Revision 2)
 astdelux        Asteroids Deluxe (Revision 3)
 
-Total games: 132
+Total games: 135

@@ -478,6 +478,33 @@ I like playing Star Trek with the old one, the bad vectors bug the crap out of m
 My next target is more vector monitor simulation settings, I want more knobs to tweak. I don't plan on adding any more raster games, except maybe for Sprint 1. 
 
 
+7/18/26 to 8/6/26
+
+A lot has changes and I wasn't keeping up with it, so in no particular order:
+Split out the emulation "core" files from the video/input/sound engines. This is eventually to allow for multiple ports, with a final target of a Teensy or PI based true vector monitor emulation driver, ala https://github.com/english1234/vstcm or the Masteroids etc line of boards by Arcade Jason.
+Built a new glow shader, that finally looks better then my original. That's always subjective but I like it and it's now default. The old shader is an option. 
+I burned a ton of time on a phosphor persistence shader replacement, but so far they have all been disappointing. 
+Migrated my untitled game engine vulkan core to AAE. Rewrote all the OpenGL code as Vulkan equivalents.  Vulkan is now the default renderer for AAE. 
+
+Wrote complete Linux backend equivalents to the Windows/Input/Sound code for AAE. No SDL here. 
+Added LED drivers to the Linux SteamOS port but it seems the user may need to be added to the input group for them to work which is a pain.
+Went through several (dozen) revisions to get everything working correctly on SteamOS. I have not tried a standard Linux port, Steam OS is super easy to use, and will be my defacto standard going forward. 
+Retuned a bunch of code to try to get everything running on the Raspberry PI 4/5. This took 3 days of revisions and a lot of concessions to get everything full speed. My new glow shader looks like garbage on the PI, and the old one looks good but is WAY to intensive for it to run. Did a ton of Vulkan profiling, but it's about as good as I can get it for now. I'm not really enthused about spending more time on it. The B/W raster shader is too slow so it has to be disabled.
+
+Discovered I broke Battlezone and that forced another round of Pokey work around POTGO. I think I have it nailed this time, at least for all the pokey based games I am emulating. I may eat those words, but for now it's good again. No errors in Asteroids Deluxe test mode. 
+
+Added an alternate version of Red Baron, and did some general driver cleanups with the vulkan conversion.
+Microsoft hosed me over with the July security updates. You now have to run as administration in Windows 11 to get the LEDS to work.
+
+Fixed gamepad button combos (LS+Start menu, LS+Back exit, Start+Back pause) being dead since the July multi-HID update. The new hybrid DirectInput8+XInput driver mode was not recognized as XInput by the combo detection gate, so every chord silently returned false while normal pad input kept working.
+PS5/PS4 controllers now work properly: DualSense and DualShock 4 are remapped to the standard Xbox button layout (Cross=A, Create=Back, Options=Start, R3=coin, etc.), and the system button combos (menu/exit/pause) now work from any connected gamepad - while generic sticks like the Ultimarc can never trigger them by accident. The same combo engine now runs on the Linux/SteamOS build, so Steam Input's virtual pads (Steam Deck, Steam Controller) get working combos too.
+Added a CONTROLLER GUIDE screen: a drawn controller with the button layout, coin/start mapping and the button combos, on a full black background that takes over the screen. Shows once the first time a gamepad is detected, and any time after from Y in the game list or the CONTROLLER HELP menu entry (which also pauses the game if you open it mid-play).
+General Cleanup on all drivers. 
+Fixed the LEDS and verified them on all games that support them. I had no idea the default version 4 of centipede did not support 2 players, so I added version 3 that does. 
+
+
+
+
 
 
 
