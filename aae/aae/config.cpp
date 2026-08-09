@@ -192,6 +192,8 @@ void setup_config() {
     // First-run notice. Absent from the ini means "never shown", so a fresh
     // install (and anyone upgrading over an old aae.ini) sees it once.
     config.first_run = get_config_int("main", "first_run", 1);
+    // Controller guide one-shot: 0 = not yet shown; set to 1 when dismissed.
+    config.controller_help_shown = get_config_int("main", "controller_help_shown", 0);
 
     config.kbleds = get_config_int("main", "kbleds", 1);
     config.colordepth = get_config_int("main", "colordepth", 32);

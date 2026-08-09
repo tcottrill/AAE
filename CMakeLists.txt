@@ -241,6 +241,7 @@ set(AAE_COMMON_SOURCES
     aae/aae/aae_video_vk/vulkan_renderer.cpp
     aae/aae/acommon.cpp
     aae/aae/config.cpp
+    aae/aae/controller_help.cpp
     aae/aae/fileio/mame_fileio.cpp
     aae/aae/fileio/texture_handler.cpp
     aae/aae/gui/driver_gui.cpp
@@ -434,8 +435,8 @@ endif()
 list(LENGTH AAE_COMMON_SOURCES _aae_common_count)
 list(LENGTH AAE_PLATFORM_SOURCES _aae_platform_count)
 math(EXPR _aae_exe_count "${_aae_common_count} + ${_aae_platform_count}")
-if(WIN32 AND NOT _aae_exe_count EQUAL 55)
-    message(FATAL_ERROR "aae executable source count is ${_aae_exe_count} (common=${_aae_common_count} + platform=${_aae_platform_count}), expected 55 on Windows - it has drifted from aae/aae.vcxproj's <ClCompile> list. Anything that moves between aae.vcxproj and aae_core.vcxproj must move between AAE_COMMON_SOURCES and AAE_CORE_SOURCES here too.")
+if(WIN32 AND NOT _aae_exe_count EQUAL 56)
+    message(FATAL_ERROR "aae executable source count is ${_aae_exe_count} (common=${_aae_common_count} + platform=${_aae_platform_count}), expected 56 on Windows - it has drifted from aae/aae.vcxproj's <ClCompile> list. Anything that moves between aae.vcxproj and aae_core.vcxproj must move between AAE_COMMON_SOURCES and AAE_CORE_SOURCES here too.")
 endif()
 
 # =============================================================================

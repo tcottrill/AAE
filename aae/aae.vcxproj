@@ -194,6 +194,7 @@
     <ClInclude Include="aae\aae_video\vector_fonts.h" />
     <ClInclude Include="aae\acommon.h" />
     <ClInclude Include="aae\config.h" />
+    <ClInclude Include="aae\controller_help.h" />
     <ClInclude Include="aae\deftypes.h" />
     <ClInclude Include="aae\driver_macros.h" />
     <ClInclude Include="aae\fileio\mame_fileio.h" />
@@ -276,6 +277,7 @@
     <ClCompile Include="aae\aae_video\vector_fonts.cpp" />
     <ClCompile Include="aae\acommon.cpp" />
     <ClCompile Include="aae\config.cpp" />
+    <ClCompile Include="aae\controller_help.cpp" />
     <ClCompile Include="aae\fileio\mame_fileio.cpp" />
     <ClCompile Include="aae\fileio\texture_handler.cpp" />
     <ClCompile Include="aae\gui\driver_gui.cpp" />

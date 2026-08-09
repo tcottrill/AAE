@@ -64,6 +64,10 @@ public:
     void Begin();
     void End();
     void DrawQuad(float x, float y, float width, float height, rgb_t color);
+    // Queue one line segment in VF screen space (1024x768). Rides the same
+    // drawVerts batch as glyph strokes, so it renders through Begin()/End()
+    // on both the GL and Vulkan chains at the font stroke width.
+    void DrawLine(float x0, float y0, float x1, float y1, rgb_t color);
 
     // Text rendering. clipL/clipR bound the visible x range in UNROTATED
     // string-local space (defaults = no clipping); strokes are clipped

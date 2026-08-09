@@ -62,4 +62,10 @@ void set_points_lines();
 int  first_run_notice_active();
 void do_the_first_run_notice();
 
+// True (non-zero) while any key or any joystick fire button is physically
+// down. The shared "press any button" poll used by the first-run notice and
+// the controller guide; only the aggregate JOYn_FIRE codes are checked, so
+// analog stick drift can never register as a press.
+int  ui_any_input_down();
+
 #endif // MENU_H

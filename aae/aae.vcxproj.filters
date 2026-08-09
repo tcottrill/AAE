@@ -91,6 +91,9 @@
     <ClCompile Include="aae\config.cpp">
       <Filter>Source Files\aae</Filter>
     </ClCompile>
+    <ClCompile Include="aae\controller_help.cpp">
+      <Filter>Source Files\aae</Filter>
+    </ClCompile>
     <ClCompile Include="aae\vidhrdwr\osd_video.cpp">
       <Filter>Source Files\aae\vidhrdwr</Filter>
     </ClCompile>
@@ -310,6 +313,9 @@
       <Filter>Source Files\aae</Filter>
     </ClInclude>
     <ClInclude Include="aae\config.h">
+      <Filter>Source Files\aae</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\controller_help.h">
       <Filter>Source Files\aae</Filter>
     </ClInclude>
     <ClInclude Include="aae\deftypes.h">

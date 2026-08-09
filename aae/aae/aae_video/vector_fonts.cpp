@@ -526,6 +526,16 @@ void VectorFont::DrawQuad(float x, float y, float width, float height, rgb_t col
 }
 
 // ----
+// DrawLine
+// ----
+void VectorFont::DrawLine(float x0, float y0, float x1, float y1, rgb_t color)
+{
+	const aae::math::vec2 origin(0.0f, 0.0f);
+	drawVerts.push_back({ aae::math::vec2(x0, y0), origin, 0.0f, color });
+	drawVerts.push_back({ aae::math::vec2(x1, y1), origin, 0.0f, color });
+}
+
+// ----
 // Print (Legacy Overload)
 // ----
 void VectorFont::Print(float x, int y, rgb_t color, float scale, const char* fmt, ...)
