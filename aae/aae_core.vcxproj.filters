@@ -57,6 +57,9 @@
     <ClCompile Include="aae\cpu_code\cpu_m68000.cpp">
       <Filter>cpu_code</Filter>
     </ClCompile>
+    <ClCompile Include="aae\cpu_code\cpu_m6800.cpp">
+      <Filter>cpu_code</Filter>
+    </ClCompile>
     <ClCompile Include="aae\cpu_code\cpu_m6809.cpp">
       <Filter>cpu_code</Filter>
     </ClCompile>
@@ -187,6 +190,9 @@
       <Filter>machine</Filter>
     </ClCompile>
     <ClCompile Include="aae\machine\pacplus_decode.cpp">
+      <Filter>machine</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\machine\mc6821.cpp">
       <Filter>machine</Filter>
     </ClCompile>
     <ClCompile Include="aae\machine\pit8253.cpp">
@@ -337,6 +343,9 @@
     <ClInclude Include="aae\cpu_code\cpu_m68000.h">
       <Filter>cpu_code</Filter>
     </ClInclude>
+    <ClInclude Include="aae\cpu_code\cpu_m6800.h">
+      <Filter>cpu_code</Filter>
+    </ClInclude>
     <ClInclude Include="aae\cpu_code\cpu_m6809.h">
       <Filter>cpu_code</Filter>
     </ClInclude>
@@ -458,6 +467,9 @@
       <Filter>machine</Filter>
     </ClInclude>
     <ClInclude Include="aae\machine\pacplus_decode.h">
+      <Filter>machine</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\machine\mc6821.h">
       <Filter>machine</Filter>
     </ClInclude>
     <ClInclude Include="aae\machine\pit8253.h">

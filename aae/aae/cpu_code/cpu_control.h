@@ -45,6 +45,7 @@
 #include "cpu_6502.h"
 #include "cpu_z80.h"
 #include "cpu_m6809.h"
+#include "cpu_m6800.h"
 #include "cpu_i8080.h"
 #include "cpu_i8085.h"
 #include "cpu_i8039.h"
@@ -82,6 +83,7 @@
 extern cpu_z80* m_cpu_z80[MAX_CPU];
 extern cpu_6502* m_cpu_6502[MAX_CPU];
 extern cpu_m6809* m_cpu_6809[MAX_CPU];
+extern cpu_m6800* m_cpu_6800[MAX_CPU];
 extern cpu_i8080* m_cpu_i8080[MAX_CPU];
 extern cpu_i8085* m_cpu_i8085[MAX_CPU];
 extern cpu_i8039* m_cpu_i8039[MAX_CPU];
@@ -100,6 +102,12 @@ enum
 	CPU_CCPU,
 	CPU_8039,
 	CPU_8035,
+	// The 6800, 6802 and 6808 are instruction-set identical and all run on the
+	// cpu_m6800 core. Three names so a driver can say which part the board
+	// actually carries; a 6802's on-chip RAM is mapped by the driver.
+	CPU_M6800,
+	CPU_M6802,
+	CPU_M6808,
 	CPU_COUNT
 };
 
@@ -181,6 +189,7 @@ enum
 
 void init6502(struct MemoryReadByte* read, struct MemoryWriteByte* write, int mem_top, int cpunum);
 void init6809(struct MemoryReadByte* read, struct MemoryWriteByte* write, int cpunum);
+void init6800(struct MemoryReadByte* read, struct MemoryWriteByte* write, int cpunum);
 void init_z80(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum);
 void init8080(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum);
 void init8085(struct MemoryReadByte* read, struct MemoryWriteByte* write, struct z80PortRead* portread, struct z80PortWrite* portwrite, int cpunum);

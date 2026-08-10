@@ -46,6 +46,7 @@ static int watchdog_counter = 0;
 // CPU instances
 
 cpu_m6809* m_cpu_6809[MAX_CPU];
+cpu_m6800* m_cpu_6800[MAX_CPU];
 cpu_i8080* m_cpu_i8080[MAX_CPU];
 cpu_z80* m_cpu_z80[MAX_CPU];
 cpu_6502* m_cpu_6502[MAX_CPU];
@@ -146,6 +147,17 @@ void init6809(struct MemoryReadByte* read, struct MemoryWriteByte* write, int cp
 	LOG_INFO("Finished Configuring CPU %d", cpunum);
 }
 
+// Shared by CPU_M6800 / CPU_M6802 / CPU_M6808: one core covers all three, since
+// they differ only in on-chip clock and RAM, never in the instruction set.
+void init6800(struct MemoryReadByte* read, struct MemoryWriteByte* write, int cpunum)
+{
+	active_cpu = cpunum;
+	LOG_INFO("Start Configuring CPU %d", cpunum);
+	m_cpu_6800[cpunum] = new cpu_m6800(Machine->memory_region[cpunum], read, write, cpunum);
+	m_cpu_6800[cpunum]->reset6800();
+	LOG_INFO("Finished Configuring CPU %d", cpunum);
+}
+
 void special_tickcount_update_6502(int ticks, int cpu_num)
 {
 	cyclecount[cpu_num] += ticks;
@@ -170,6 +182,9 @@ int get_exact_cyclecount(int cpu)
 	case CPU_8039:
 	case CPU_8035: pending = m_cpu_i8039[cpu]->get_ticks(0);			break;
 	case CPU_M6809: pending = m_cpu_6809[cpu]->get6809ticks(0);         break;
+	case CPU_M6800:
+	case CPU_M6802:
+	case CPU_M6808: pending = m_cpu_6800[cpu]->get6800ticks(0);         break;
 	case CPU_68000: pending = 0; // avoid double count with Musashi
 		break;
 	default:        pending = 0; break;
@@ -294,6 +309,12 @@ int cpu_getppc()
 	case CPU_M6809:
 		return m_cpu_6809[active_cpu]->get_ppc();
 		break;
+
+	case CPU_M6800:
+	case CPU_M6802:
+	case CPU_M6808:
+		return m_cpu_6800[active_cpu]->get_ppc();
+		break;
 	}
 	return 0;
 }
@@ -326,6 +347,12 @@ int cpu_getpc()
 
 	case CPU_M6809:
 		return m_cpu_6809[active_cpu]->get_pc();
+		break;
+
+	case CPU_M6800:
+	case CPU_M6802:
+	case CPU_M6808:
+		return m_cpu_6800[active_cpu]->get_pc();
 		break;
 
 	case CPU_68000:
@@ -498,6 +525,14 @@ void cpu_do_int_imm(int cpunum, int int_type)
 		);
 		break;
 
+	case CPU_M6800:
+	case CPU_M6802:
+	case CPU_M6808:
+		m_cpu_6800[cpunum]->m6800_Cause_Interrupt(
+			(int_type == INT_TYPE_NMI) ? M6800_INT_NMI : M6800_INT_IRQ
+		);
+		break;
+
 	case CPU_68000:
 		m_cpu_68000[cpunum]->irq_line(int_type);
 		break;
@@ -613,6 +648,14 @@ int cpu_exec_now(int cpu, int cycles)
 		m_cpu_6809[cpu]->exec6809(cycles);
 		ticks = m_cpu_6809[cpu]->get6809ticks(0xff);
 		break;
+
+	case CPU_M6800:
+	case CPU_M6802:
+	case CPU_M6808:
+		m_cpu_6800[cpu]->exec6800(cycles);
+		ticks = m_cpu_6800[cpu]->get6800ticks(0xff);
+		break;
+
 	case CPU_68000:
 		ticks = m_cpu_68000[cpu]->exec(cycles);
 		break;
@@ -865,6 +908,12 @@ void cpu_reset(int cpunum)
 		m_cpu_6809[cpunum]->reset6809();
 		break;
 
+	case CPU_M6800:
+	case CPU_M6802:
+	case CPU_M6808:
+		m_cpu_6800[cpunum]->reset6800();
+		break;
+
 	case CPU_CCPU:
 		ccpu_reset();
 		break;
@@ -900,6 +949,9 @@ void cpu_clear_pending_int(int int_type, int cpunum)
 	case CPU_M6502: m_cpu_6502[cpunum]->m6502clearpendingint();     break;
 	case CPU_8039:
 	case CPU_8035:  m_cpu_i8039[cpunum]->clear_pending_interrupts(); break;
+	case CPU_M6800:
+	case CPU_M6802:
+	case CPU_M6808: m_cpu_6800[cpunum]->m6800_Clear_Pending_Interrupts(); break;
 	default: break;
 	}
 }
@@ -940,6 +992,9 @@ void free_cpu_memory()
 		case CPU_8039:
 		case CPU_8035:   delete m_cpu_i8039[x];  m_cpu_i8039[x] = nullptr; break;
 		case CPU_M6809:  delete m_cpu_6809[x];   m_cpu_6809[x] = nullptr; break;
+		case CPU_M6800:
+		case CPU_M6802:
+		case CPU_M6808:  delete m_cpu_6800[x];   m_cpu_6800[x] = nullptr; break;
 		case CPU_68000:  delete m_cpu_68000[x];  m_cpu_68000[x] = nullptr; break;
 		default: break;
 		}
@@ -1010,6 +1065,13 @@ void init_cpu_config()
 		case CPU_M6809:
 			LOG_INFO("Init 6809 %d called", i);
 			init6809(C.memory_read, C.memory_write, i);
+			break;
+
+		case CPU_M6800:
+		case CPU_M6802:
+		case CPU_M6808:
+			LOG_INFO("Init 6800-family CPU %d called (type %d)", i, C.cpu_type);
+			init6800(C.memory_read, C.memory_write, i);
 			break;
 
 		default:

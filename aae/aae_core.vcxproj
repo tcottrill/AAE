@@ -101,6 +101,7 @@
     <ClCompile Include="aae\cpu_code\cpu_i8080.cpp" />
     <ClCompile Include="aae\cpu_code\cpu_i8085.cpp" />
     <ClCompile Include="aae\cpu_code\cpu_lr35902.cpp" />
+    <ClCompile Include="aae\cpu_code\cpu_m6800.cpp" />
     <ClCompile Include="aae\cpu_code\cpu_m6809.cpp" />
     <ClCompile Include="aae\cpu_code\cpu_m68000.cpp" />
     <ClCompile Include="aae\cpu_code\cpu_z80.cpp" />
@@ -153,6 +154,7 @@
     <ClCompile Include="aae\machine\74148.cpp" />
     <ClCompile Include="aae\machine\earom.cpp" />
     <ClCompile Include="aae\machine\mathbox.cpp" />
+    <ClCompile Include="aae\machine\mc6821.cpp" />
     <ClCompile Include="aae\machine\pacplus_decode.cpp" />
     <ClCompile Include="aae\machine\pit8253.cpp" />
     <ClCompile Include="aae\machine\SegaG80crypt.cpp" />
@@ -201,6 +203,7 @@
     <ClInclude Include="aae\cpu_code\cpu_i8085.h" />
     <ClInclude Include="aae\cpu_code\cpu_lr35902.h" />
     <ClInclude Include="aae\cpu_code\cpu_m68000.h" />
+    <ClInclude Include="aae\cpu_code\cpu_m6800.h" />
     <ClInclude Include="aae\cpu_code\cpu_m6809.h" />
     <ClInclude Include="aae\cpu_code\cpu_z80.h" />
     <ClInclude Include="aae\cpu_code\timer.h" />
@@ -248,6 +251,7 @@
     <ClInclude Include="aae\machine\74148.h" />
     <ClInclude Include="aae\machine\earom.h" />
     <ClInclude Include="aae\machine\mathbox.h" />
+    <ClInclude Include="aae\machine\mc6821.h" />
     <ClInclude Include="aae\machine\pacplus_decode.h" />
     <ClInclude Include="aae\machine\pit8253.h" />
     <ClInclude Include="aae\machine\SegaG80crypt.h" />

@@ -7,7 +7,7 @@
 # without also having to invent build plumbing on a machine we cannot reach
 # from here.
 #
-# Source lists below are copy-pasted out of aae/aae_core.vcxproj (88 files,
+# Source lists below are copy-pasted out of aae/aae_core.vcxproj (90 files,
 # 86 plus machine_state.cpp added in Task 6, plus cpu_code/ccpu.cpp moved in
 # from aae.vcxproj in a later task - see the notes above AAE_CORE_SOURCES) and
 # aae/aae.vcxproj (47 files) - NOT globbed. A file(GLOB) would silently
@@ -17,7 +17,7 @@
 # vcxproj AND to the matching list below.
 #
 # Three targets:
-#   aae_core     - STATIC library, the 88 emulation-core translation units.
+#   aae_core     - STATIC library, the 90 emulation-core translation units.
 #                  Its include directories deliberately omit
 #                  aae/aae/aae_video, aae/aae/gui and aae/system/window - see
 #                  the comment above AAE_CORE_INCLUDE_DIRS.
@@ -86,6 +86,7 @@ set(AAE_CORE_SOURCES
     aae/aae/cpu_code/cpu_i8080.cpp
     aae/aae/cpu_code/cpu_i8085.cpp
     aae/aae/cpu_code/cpu_lr35902.cpp
+    aae/aae/cpu_code/cpu_m6800.cpp
     aae/aae/cpu_code/cpu_m6809.cpp
     aae/aae/cpu_code/cpu_m68000.cpp
     aae/aae/cpu_code/ccpu.cpp
@@ -139,6 +140,7 @@ set(AAE_CORE_SOURCES
     aae/aae/machine/74148.cpp
     aae/aae/machine/earom.cpp
     aae/aae/machine/mathbox.cpp
+    aae/aae/machine/mc6821.cpp
     aae/aae/machine/pacplus_decode.cpp
     aae/aae/machine/pit8253.cpp
     aae/aae/machine/SegaG80crypt.cpp
@@ -179,8 +181,8 @@ set(AAE_CORE_SOURCES
     aae/aae/vidhrdwr/xevious_video.cpp
 )
 list(LENGTH AAE_CORE_SOURCES _aae_core_count)
-if(NOT _aae_core_count EQUAL 97)
-    message(FATAL_ERROR "aae_core source list has ${_aae_core_count} entries, expected 97 - it has drifted from aae/aae_core.vcxproj")
+if(NOT _aae_core_count EQUAL 99)
+    message(FATAL_ERROR "aae_core source list has ${_aae_core_count} entries, expected 99 - it has drifted from aae/aae_core.vcxproj")
 endif()
 
 # -----------------------------------------------------------------------------
