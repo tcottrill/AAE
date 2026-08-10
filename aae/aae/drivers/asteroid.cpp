@@ -167,16 +167,17 @@ WRITE_HANDLER(asteroid_noise_reset_w)
 	//sample_stop (2);
 }
 
+// Thrust runs on the software-mixer path, not a backend voice. 
 WRITE_HANDLER(astdelux_sounds_w)
 {
 	static int lastthrust = 0;
 	if (!(data & 0x80) && (lastthrust & 0x80))
 	{
-		sample_stop(4);
+		sample_end_mixer(4);
 	}
 	if ((data & 0x80) && !(lastthrust & 0x80))
 	{
-		sample_start(4, kThrust, 1);
+		sample_start_mixer(4, kThrust, 1);
 	}
 	lastthrust = data;
 }
@@ -235,13 +236,14 @@ WRITE_HANDLER(asteroid_sounds_w)
 		saucer = data & 0x80;
 		break;
 	case 3:
+		// Mixer path + graceful loop exit: see the note above astdelux_sounds_w.
 		if ((data & 0x80) && !(lastthrust & 0x80))
 		{
-			sample_start(4, kThrust, 1);
+			sample_start_mixer(4, kThrust, 1);
 		}
 		if (!(data & 0x80) && (lastthrust & 0x80))
 		{
-			sample_stop(4);
+			sample_end_mixer(4);
 		}
 		lastthrust = data;
 		break;
@@ -272,7 +274,6 @@ WRITE_HANDLER(asteroid_explode_w)
 	// explosions of the same size (which a volume-only compare would miss).
 
 	// size/volume class (data>>6, 0..3) -> which sample to play.
-	// Reorder these to taste if a given .wav sounds wrong for a class.
 	static const int explode_sample[4] = { kExplode1, kExplode2, kExplode3, kExplode4 };
 
 	static uint8_t prev = 0;
@@ -498,13 +499,13 @@ MEM_END
 /////////////////// MAIN() for program ///////////////////////////////////////////////////
 void end_asteroid()
 {
-	sample_stop(4);
+	sample_stop_mixer(4);
 	dvg_end();
 }
 
 void end_astdelux()
 {
-	sample_stop(4);
+	sample_stop_mixer(4);
 	pokey_sh_stop();
 }
 

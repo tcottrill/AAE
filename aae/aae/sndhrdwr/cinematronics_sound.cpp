@@ -449,13 +449,20 @@ void solarq_sound(UINT8 sound_val, UINT8 bits_changed)
 			if (current_shift & 0x04)
 			{
 				target_volume = 0;
-				sample_stop(2);
+				// Release: fade to zero on the software-mixer path. The
+				// volume-ramp block below only handles the attack; the
+				// mixer's own fade takes the stop to silence.
+				sample_end_mixer(2);
 			}
 			else
 			{
 				target_volume = config.mainvol;
 				current_volume = 0;
-				sample_start(2, 2, 1);
+				sample_start_mixer(2, 2, 1);
+				// The attack ramp below walks the volume up from silence;
+				// without this the first frame plays at the channel's
+				// previous level.
+				sample_set_volume(2, 0);
 			}
 		}
 
@@ -468,7 +475,7 @@ void solarq_sound(UINT8 sound_val, UINT8 bits_changed)
 			if (current_volume > 0)
 				sample_set_volume(2, current_volume);
 			else
-				sample_stop(2);
+				sample_end_mixer(2);
 			last_frame = cpu_getcurrentframe();
 		}
 
@@ -480,10 +487,12 @@ void solarq_sound(UINT8 sound_val, UINT8 bits_changed)
 
 		if (shift_diff & 0x20)
 		{
+			// Nuke: looped on the software-mixer path, faded out on release
+			// like thrust above.
 			if (current_shift & 0x20)
-				sample_start(6, 6, 1);	// Nuke +
+				sample_start_mixer(6, 6, 1);
 			else
-				sample_stop(6);
+				sample_end_mixer(6);
 		}
 
 		if ((shift_diff & 0x40) && (0 == (current_shift & 0x40)))

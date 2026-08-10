@@ -184,29 +184,30 @@ void sega_sh_speech_w(UINT16 port, UINT8 data, struct z80PortWrite* pPW)
 }
 void spacfury1_sh_w(UINT16 port, UINT8 data, struct z80PortWrite* pPW)
 {
+	/* Edge detection for the two looped channels: a level test guarded by
+	   sample_playing() misses a re-press that lands during the release fade
+	   (the channel still counts as playing while it fades), which would leave
+	   the loop silenced with the bit held. */
+	static UINT8 last = 0;
+
 	data ^= 0xff;
 
 	/* craft growing */
 	if (data & 0x01)
 		sample_start(1, 0x15, 0);
 
-	/* craft moving */
-	if (data & 0x02)
-	{
-		if (!sample_playing(2))
-			sample_start(2, 0x16, 1);
-	}
-	else
-		sample_stop(2);
+	/* craft moving. Looped on the software-mixer path so the release fades
+	   to silence instead of clicking. */
+	if ((data & 0x02) && !(last & 0x02))
+		sample_start_mixer(2, 0x16, 1);
+	if (!(data & 0x02) && (last & 0x02))
+		sample_end_mixer(2);
 
-	/* Thrust */
-	if (data & 0x04)
-	{
-		if (!sample_playing(3))
-			sample_start(3, 0x19, 1);
-	}
-	else
-		sample_stop(3);
+	/* Thrust: same treatment. */
+	if ((data & 0x04) && !(last & 0x04))
+		sample_start_mixer(3, 0x19, 1);
+	if (!(data & 0x04) && (last & 0x04))
+		sample_end_mixer(3);
 
 	/* star spin */
 	if (data & 0x40)
@@ -215,6 +216,8 @@ void spacfury1_sh_w(UINT16 port, UINT8 data, struct z80PortWrite* pPW)
 	/* partial warship? */
 	if (data & 0x80)
 		sample_start(4, 0x1e, 0);
+
+	last = data;
 }
 
 void spacfury2_sh_w(UINT16 port, UINT8 data, struct z80PortWrite* pPW)
@@ -369,14 +372,16 @@ void Zektor2_sh_w(UINT16 port, UINT8 data, struct z80PortWrite* pPW)
 
 	data ^= 0xff;
 
-	/* Play thrust sample */
+	/* Play thrust sample. Looped on the software-mixer path so the release
+	   fades to silence (sample_end_mixer) instead of stopping at whatever
+	   amplitude the wav holds at its end. */
 	if (data & 0x0f)
 	{
-		if (data != lastdata) { sample_start(4, 25, 1); lastdata = data; }
+		if (data != lastdata) { sample_start_mixer(4, 25, 1); lastdata = data; }
 	}
 	else
 	{
-		sample_end(4); lastdata = data;
+		sample_end_mixer(4); lastdata = data;
 	}
 
 	/* Play skitter sample */
