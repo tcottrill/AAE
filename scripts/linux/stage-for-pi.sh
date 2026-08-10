@@ -35,22 +35,28 @@ set -e
 
 DEST=""
 FORCE_CONFIG=0
+PRUNE_DATA=0
 for arg in "$@"; do
     case "$arg" in
         --force-config) FORCE_CONFIG=1 ;;
+        --prune)        PRUNE_DATA=1 ;;
         -*)             echo "unknown option: $arg" >&2; exit 1 ;;
         *)              DEST="$arg" ;;
     esac
 done
 
 if [ -z "$DEST" ]; then
-    echo "usage: $0 <destination-directory> [--force-config]" >&2
+    echo "usage: $0 <destination-directory> [--force-config] [--prune]" >&2
     echo "  e.g. $0 /home/you/aae-pi-payload   (then copy it to the Pi)" >&2
     echo "       $0 /mnt/e/aae-pi              (a pen drive mounted at E:)" >&2
     echo >&2
     echo "  Re-staging PRESERVES the target's aae.ini, video.ini and ini/ -" >&2
     echo "  those hold tuning done on that machine (Pi glow values especially)." >&2
     echo "  --force-config overwrites them with this machine's config instead." >&2
+    echo >&2
+    echo "  --prune deletes roms/artwork/samples the source tree no longer has." >&2
+    echo "  Without it those are reported and kept, because roms and artwork may" >&2
+    echo "  have been added ON the target." >&2
     exit 1
 fi
 
@@ -64,15 +70,22 @@ echo
 # --- Source. Everything the CMake build compiles, minus the Windows build
 # --- output trees that live inside aae/ (aae/x64, aae/aae/x64) and are
 # --- hundreds of MB of .obj/.pdb the Pi has no use for.
+#
+# --delete on all three source transfers, unconditionally: nobody edits source
+# on the target, so this tree is authoritative. Without it a header deleted or
+# renamed here lingers on the payload forever and stays on the include path,
+# where it silently shadows the real one - the worst kind of stale file,
+# because the build still succeeds. The x64/ and .vs/ excludes are protected
+# from deletion too (rsync never deletes what it was told to ignore).
 echo "source tree..."
-rsync -a --info=stats1 \
+rsync -a --delete --info=stats1 \
     --exclude 'x64/' \
     --exclude '.vs/' \
     "$SRC/aae/" "$DEST/aae/"
 
 cp "$SRC/CMakeLists.txt" "$DEST/"
 mkdir -p "$DEST/scripts"
-rsync -a "$SRC/scripts/linux/" "$DEST/scripts/linux/"
+rsync -a --delete "$SRC/scripts/linux/" "$DEST/scripts/linux/"
 
 # tools/ is NOT optional, however Windows-looking it seems. CMakeLists.txt
 # declares
@@ -85,7 +98,7 @@ rsync -a "$SRC/scripts/linux/" "$DEST/scripts/linux/"
 # glslc.exe is skipped: it is the vendored WINDOWS shader compiler, useless on
 # ARM, and the prebuilt .spv below make it unnecessary anyway.
 echo "tools (uinput test harness - CMake needs it to configure)..."
-rsync -a --exclude '*.exe' "$SRC/tools/" "$DEST/tools/"
+rsync -a --delete --exclude '*.exe' "$SRC/tools/" "$DEST/tools/"
 
 # --- Data. Everything resolves relative to the executable, and CMakeLists
 # --- builds into x64/Release, so the data has to sit exactly there.
@@ -94,11 +107,36 @@ rsync -a --exclude '*.exe' "$SRC/tools/" "$DEST/tools/"
 # the .spv compiled on Windows run verbatim on ARM. That is what lets the Pi
 # build without installing glslc.
 echo
+# Data is NOT pruned by default, and that asymmetry with the source tree above
+# is deliberate: roms and artwork are exactly the things a user adds ON the
+# target, and a refresh that deleted them would be unforgivable. So extras are
+# counted and reported, and --prune is what actually removes them.
+#
+# The cost of not pruning is that a payload accumulates: re-staging after the
+# tree's data set was trimmed left a 357M payload carrying 279M of artwork
+# against a source tree holding 12M. The report below is what makes that
+# visible instead of silent.
 echo "game data (roms/artwork/samples/shaders)..."
 mkdir -p "$DEST/x64/Release"
+STALE_TOTAL=0
 for d in roms artwork samples shaders pleiads snap; do
     if [ -d "$SRC/x64/Release/$d" ]; then
-        rsync -a --info=stats1 "$SRC/x64/Release/$d/" "$DEST/x64/Release/$d/"
+        if [ "$PRUNE_DATA" = "1" ]; then
+            rsync -a --delete --info=stats1 \
+                "$SRC/x64/Release/$d/" "$DEST/x64/Release/$d/"
+        else
+            rsync -a --info=stats1 "$SRC/x64/Release/$d/" "$DEST/x64/Release/$d/"
+            # -n is a dry run, so this only counts what --delete WOULD remove.
+            # Run after the real transfer, so every remaining candidate is a
+            # file the destination has and this tree does not.
+            stale=$(rsync -ain --delete \
+                "$SRC/x64/Release/$d/" "$DEST/x64/Release/$d/" \
+                | grep -c '^\*deleting' || true)
+            if [ "$stale" -gt 0 ]; then
+                echo "  note: $d/ has $stale file(s) not in this tree (kept)"
+                STALE_TOTAL=$((STALE_TOTAL + stale))
+            fi
+        fi
     fi
 done
 
@@ -148,6 +186,11 @@ rm -f "$DEST/x64/Release/"*.exe \
 
 echo
 echo "=== staged: $(du -sh "$DEST" | cut -f1)"
+if [ "$STALE_TOTAL" -gt 0 ]; then
+    echo "=== $STALE_TOTAL data file(s) on the payload are not in this tree."
+    echo "    Added on the target, or left by an earlier stage - this cannot"
+    echo "    tell which. Re-run with --prune to delete them."
+fi
 echo
 echo "Next, on the Pi (after copying this directory across):"
 echo "    cd <payload>"
