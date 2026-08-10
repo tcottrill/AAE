@@ -7,6 +7,7 @@
  */
 
 #include "mathbox.h"
+#include "sys_log.h"   // LOG_DEBUG, used by the MB_TEST tracing below
 
 /* math box scratch registers */
 s16 mb_reg[16];
