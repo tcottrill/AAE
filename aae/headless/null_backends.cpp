@@ -113,6 +113,18 @@ namespace Log {
 	void setConsoleOutputEnabled(bool) {}
 }
 
+// --- immediate process exit --------------------------------------------------
+// The real emulator_exit_now (aae_emulator.cpp) exists so the exe's list-and-
+// exit options and memory.cpp's fatal OOM path can die without running static
+// destructors while WinMain-owned worker threads are still live. Reached from
+// aae_core via new_memory_region()'s OOM branch. Headless has no such threads,
+// but the contract is [[noreturn]] die-now, so honour it the same way.
+[[noreturn]] void emulator_exit_now(int code)
+{
+	std::fflush(stdout);
+	_Exit(code);
+}
+
 // --- path helper ------------------------------------------------------------
 // path_helper.cpp (the real getpathM) is executable-side: it resolves paths
 // relative to the running .exe via GetModuleFileName. That is an OSD/platform
