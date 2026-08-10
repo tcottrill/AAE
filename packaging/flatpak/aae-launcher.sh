@@ -129,6 +129,33 @@ for d in roms artwork samples; do
     fi
 done
 
+# Say what this folder is FOR, in the folder itself. The metainfo explains it
+# too, but nobody reads a package description while looking at an empty
+# directory wondering where to put a rom. Written once and never overwritten.
+if [ -d "$USER_DIR" ] && [ ! -f "$USER_DIR/README.txt" ]; then
+    cat > "$USER_DIR/README.txt" <<'EOF'
+AAE - roms and artwork
+======================
+
+Put additional rom sets in    roms/
+Put additional artwork in     artwork/
+
+Both folders already hold links to the sets that shipped with AAE. Drop your
+own files in beside them; a file you add wins over a shipped one with the same
+name, so this is also how you substitute a better dump or your own overlay.
+
+Roms are zip files named after the game, matching the names AAE lists in its
+game menu (asteroid.zip, bzone.zip, and so on).
+
+This folder is deliberately outside the app's data directory: removing AAE
+with --delete-data clears settings, hiscores and NVRAM, and leaves everything
+here untouched.
+
+A collection kept somewhere else - another drive, or an SD card - can be used
+instead by setting mame_rom_path and mame_artwork_path in aae.ini.
+EOF
+fi
+
 # Writable state: create empty, and never overwrite what is already there -
 # these hold the user's hiscores, key bindings and NVRAM.
 #
@@ -198,6 +225,16 @@ ln -sfn "$DATA_DIR/systemlog.txt" "$HOME/aae.log" 2>/dev/null || true
 # warnings go to stderr and were landing in the middle of the report, which
 # meant reading it required knowing to append 2>/dev/null - exactly the sort of
 # extra thing this is meant to save.
+# --install-steam-art copies the library artwork (capsules, hero, logo) into
+# Steam's per-user grid folder for an existing "AAE" non-Steam shortcut, so
+# Game Mode shows real art instead of a grey tile. Steam offers no way for an
+# app to provide this itself; see install_steam_art.py for the whole story.
+# python3 is part of the Freedesktop runtime, so this adds no dependency.
+if [ "$1" = "--install-steam-art" ]; then
+    shift
+    exec python3 /app/share/aae-steam/install_steam_art.py "$@"
+fi
+
 if [ "$1" = "--diag" ]; then
     LOG="$DATA_DIR/systemlog.txt"
     if [ ! -f "$LOG" ]; then
@@ -210,6 +247,22 @@ if [ "$1" = "--diag" ]; then
     echo "======================================="
     exit 0
 fi
+
+# Self-installing Steam artwork. This launcher runs on every start - and a
+# Game Mode start comes THROUGH the Steam shortcut - so the first launch from
+# that shortcut installs its own library art (visible after the next Steam
+# restart). Update policy: art WE installed refreshes automatically when an
+# app update ships new images; art the USER put there (or a logo position
+# they dragged) is detected by hash and never touched - see the policy note
+# in install_steam_art.py. Reports "no AAE shortcut" to its log until the
+# user has done the one step Steam reserves for them: Add to Steam.
+# Never allowed to delay or break the actual game start.
+#
+# Its own log, not systemlog.txt: AAE opens that itself moments later and
+# would truncate these lines away. Overwritten each launch - only the latest
+# attempt is ever interesting.
+python3 /app/share/aae-steam/install_steam_art.py \
+    > "$DATA_DIR/steam-art.log" 2>&1 || true
 
 # cd there too: Log::open("systemlog.txt") in linux_main.cpp is relative to the
 # working directory, not to AAE_DATA_DIR, so without this the log write fails

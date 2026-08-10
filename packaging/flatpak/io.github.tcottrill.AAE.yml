@@ -18,9 +18,8 @@
 # depends only on the runtime, which is the same everywhere.
 #
 # NOTE ON REDISTRIBUTION: this bundles roms/, artwork/ and samples/ so the
-# thing installs and runs in one step. That makes it a private sideload
-# artefact - Flathub would not accept a package containing arcade ROMs. If
-# this is ever published, the data modules below are what has to come out.
+# thing installs and runs in one step. As of the 1.96 release the bundled
+# data set contains no copyrighted ROMs, so the bundle is distributable.
 
 app-id: io.github.tcottrill.AAE
 runtime: org.freedesktop.Platform
@@ -81,6 +80,13 @@ finish-args:
   # clears settings and saves for an ini format change without touching a rom
   # collection.
   - --filesystem=~/AAE:create
+
+  # Steam's per-user data, for --install-steam-art: reading shortcuts.vdf is
+  # covered by home:ro above, but copying the artwork into
+  # userdata/<uid>/config/grid/ needs write access to exactly this subtree.
+  # No :create - if Steam is not installed there is nothing to do, and the
+  # installer script reports that rather than conjuring an empty directory.
+  - --filesystem=~/.local/share/Steam/userdata
 
 modules:
   # GLU is not in the Freedesktop runtime either, and two things need it:
@@ -224,6 +230,15 @@ modules:
       # aae/aae.ico, which already ships 16 through 256.
       - install -Dm644 packaging/flatpak/io.github.tcottrill.AAE.png
           /app/share/icons/hicolor/256x256/apps/io.github.tcottrill.AAE.png
+      # Steam library artwork + its installer, for --install-steam-art (see
+      # the launcher). Generated from images/aae-social-preview.png by
+      # scripts in the session records; regenerate only if the source art
+      # changes.
+      - install -Dm644 packaging/flatpak/steam/capsule_portrait.png /app/share/aae-steam/capsule_portrait.png
+      - install -Dm644 packaging/flatpak/steam/capsule_wide.png     /app/share/aae-steam/capsule_wide.png
+      - install -Dm644 packaging/flatpak/steam/hero.png             /app/share/aae-steam/hero.png
+      - install -Dm644 packaging/flatpak/steam/logo.png             /app/share/aae-steam/logo.png
+      - install -Dm755 packaging/flatpak/steam/install_steam_art.py /app/share/aae-steam/install_steam_art.py
 
   # Data ships as its own module so it is obvious what would have to be
   # removed to make this redistributable, and so a data-only change does not

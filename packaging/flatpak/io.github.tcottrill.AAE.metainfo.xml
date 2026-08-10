@@ -18,11 +18,16 @@
       number of raster titles alongside it.
     </p>
     <p>
-      This build is packaged for local installation and is not intended for
-      distribution: it bundles game data, so it is a private sideload artefact
-      rather than a publishable application.
+      Adding your own ROMs and artwork: put them in the AAE folder in your home
+      directory, which is created the first time AAE runs. On SteamOS that is
+      /home/deck/AAE/roms and /home/deck/AAE/artwork. A file you add there wins
+      over a bundled one of the same name, and the folder is left alone if the
+      app is uninstalled with --delete-data, so a collection is never lost to a
+      settings reset.
     </p>
   </description>
+
+  <url type="homepage">https://www.aae-emulator.com/</url>
 
   <launchable type="desktop-id">io.github.tcottrill.AAE.desktop</launchable>
 
@@ -40,6 +45,19 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="1.96" date="2026-08-10">
+      <description>
+        <p>Audio release. Looped samples now fade to silence when they stop
+        instead of cutting off mid-waveform, which removes the click at the end
+        of the thrust sounds in Asteroids, Asteroids Deluxe, Zektor, Space Fury
+        and Solar Quest. Lunar Lander's thrust gains a sub-bass layer so it
+        reaches a subwoofer.</p>
+        <p>Also in this release: a 6800/6802/6808 CPU core and an MC6821 PIA,
+        start-button lamps for Galaxian and Food Fight, and accuracy fixes
+        across the driver set.</p>
+      </description>
+    </release>
+
     <release version="0.1" date="2026-07-29">
       <description>
         <p>First Linux package. X11/GLX renderer, ALSA audio, and evdev input
