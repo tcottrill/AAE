@@ -31,11 +31,17 @@ mkdir -p "$DATA_DIR"
 # "shaders/vk/<name>.spv" with plain relative fopen, which resolves against
 # the working directory - and we cd to $DATA_DIR below - so the link is what
 # makes renderer=vulkan (the default) find its pipelines at all.
-for d in pleiads shaders; do
+for d in shaders; do
     if [ -d "$APP_DATA/$d" ]; then
         ln -sfn "$APP_DATA/$d" "$DATA_DIR/$d"
     fi
 done
+
+# Drop the pleiads link an older bundle left here. The dangling-symlink sweep
+# below only runs inside roms/, artwork/ and samples/, so a link at the top of
+# the data directory has nothing else to clear it. -xtype l deletes it only
+# while its target is missing, so a real directory put here by hand is safe.
+find "$DATA_DIR" -maxdepth 1 -name pleiads -xtype l -delete 2>/dev/null || true
 
 # roms/, artwork/ and samples/ get the same zero-copy treatment but ONE LEVEL
 # DOWN: a real writable directory holding a symlink per shipped file, rather

@@ -262,20 +262,22 @@ modules:
           # screenshots happened to be in the dev tree: 13MB of them last
           # build, a quarter of the whole bundle.
           - snap
+          # pleiads/ is not installed (see the note in build-commands), so
+          # there is no reason to copy its 2.7MB into the sandbox to ignore it.
+          - pleiads
     build-commands:
       - mkdir -p /app/share/aae
       - cp -r aaedata/roms    /app/share/aae/ 2>/dev/null || true
       - cp -r aaedata/artwork /app/share/aae/ 2>/dev/null || true
       - cp -r aaedata/samples /app/share/aae/ 2>/dev/null || true
       - cp -r aaedata/ini     /app/share/aae/ 2>/dev/null || true
-      # pleiads/ is copied by EXTENSION rather than wholesale. The directory in
-      # the tree is half reference material - a 2.6MB photo of the PCB and the
-      # SVM7910E datasheet - which is worth keeping in the repo and pointless
-      # inside /app, where nobody can find it. Only the melody/effect samples
-      # the driver actually plays are runtime data.
-      - mkdir -p /app/share/aae/pleiads
-      - cp aaedata/pleiads/*.wav /app/share/aae/pleiads/ 2>/dev/null || true
-      - cp aaedata/pleiads/readme.txt /app/share/aae/pleiads/ 2>/dev/null || true
+      # pleiads/ is NOT shipped. It looks like runtime data and is not: the
+      # driver loads its melody and effect samples from samples/pleiads.zip
+      # (see the sample_names table in drivers/phoenix.cpp), and nothing in the
+      # source ever opens the pleiads/ directory. What lives there is the
+      # SOURCE material behind those samples - the raw recordings off the
+      # 7910E, a 2.6MB photo of the PCB and the SVM7910E datasheet - which
+      # belongs in the repo and is 2.7MB of nothing inside /app.
       # Vulkan SPIR-V fallback (Phase 4b): the shared output tree carries the
       # Windows-compiled .spv, and SPIR-V is platform-independent. -n so the
       # SDK-built copies installed by the aae module (when glslc exists there)
