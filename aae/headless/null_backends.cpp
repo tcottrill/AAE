@@ -314,6 +314,10 @@ void set_led_status_all(int, int, int) {}
 
 void sample_stop(int) {}
 void sample_start(int, int, int) {}
+void sample_start_mixer(int, int, int) {}
+void sample_stop_mixer(int) {}
+void sample_end_mixer(int) {}
+int  mixer_add_sub_octave(int, float, float) { return 0; }
 void sample_set_volume(int, int) {}
 void sample_set_volume_mixer(int, int) {}
 void sample_set_freq(int, int) {}

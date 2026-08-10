@@ -144,7 +144,11 @@
 //       Remove from mix list, reset position.
 //
 //   void sample_end_mixer(chanid)
-//       Clear loop flag -- sample plays to end, then stops.
+//       Graceful release: clears the loop flag AND fades the channel to
+//       silence over ~30 ms (2 frames at 60fps), stopping it the moment it
+//       reaches zero. Kills the click a looped sample makes when it stops at
+//       a non-zero amplitude. The channel's set volume is untouched -- the
+//       next start plays at the configured level.
 //
 //   void sample_set_position(chanid, pos_frames)
 //       Seek the channel's playback position (in frames). Software-mixer
@@ -312,6 +316,10 @@
 //   void biquad_lowpass_inplace_i16(int16_t*, n, fs, fc, Q=0.707, passes=1)
 //       Apply biquad lowpass in-place on int16 buffer. Multiple passes for
 //       steeper rolloff.
+//
+//   int mixer_add_sub_octave(samplenum, cutoff_hz, gain_db)
+//       Bass-reinforce a loaded sample in place: layer an octave-down copy
+//       under the original, low-passed to pure sub. See declaration below.
 //
 //
 // UTILITY FUNCTIONS
@@ -638,6 +646,23 @@ int mixer_upload_sample16(int samplenum,
 	uint32_t frames,
 	int freq,
 	bool stereo = false);
+
+// -----------------------------------------------------------------------------
+// mixer_add_sub_octave
+// Bass-reinforce a loaded sample in place: layer an octave-down copy of the
+// sample under itself, low-passed to pure sub content, for samples whose low
+// end sits above the subwoofer band. Rebuilds the sample at 2x length (both
+// layers loop seamlessly), mono 16-bit. Call after the sample loads and
+// before anything plays it.
+//
+// Parameters:
+//   samplenum - sample ID (same index sample_start takes)
+//   cutoff_hz - low-pass corner for the sub layer (e.g. 70.0f)
+//   gain_db   - sub layer level relative to the original (0 = equal)
+//
+// Returns 0 on success, -1 on failure.
+// -----------------------------------------------------------------------------
+int mixer_add_sub_octave(int samplenum, float cutoff_hz, float gain_db);
 
 // -----------------------------------------------------------------------------
 // Sample loading from memory buffers (no file I/O)

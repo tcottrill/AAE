@@ -217,6 +217,17 @@ static std::list<int> audio_list;
 static std::vector<std::shared_ptr<SAMPLE>> lsamples;
 static CHANNEL channel[MAX_CHANNELS];
 
+// Release fade for the software-mixer path, armed by sample_end_mixer and
+// applied per OUTPUT SAMPLE by the mix loop: ch.vol walks down by this step
+// until it reaches zero, and the channel stops there. That guarantees the
+// stop lands at silence no matter what amplitude the sample data holds when
+// playback ends - a looped wav cut anywhere else steps to silence and the
+// step is an audible click. ch.volume (the set level) is never touched, so
+// every start path restores the channel to its configured loudness.
+// Zero = no fade active. ~2 frames at 60fps.
+constexpr int MIXER_END_FADE_MS = 30;
+static double fade_step[MAX_CHANNELS] = {};
+
 // Streaming backend - owns the engine, mastering voice, output source voice,
 // ring buffers, and (as of Task 2) the per-channel voice path. mixer.cpp only
 // ever holds an opaque VoiceHandle* per channel and routes all voice
@@ -637,6 +648,110 @@ int mixer_upload_sample16(int samplenum,
 }
 
 // -----------------------------------------------------------------------------
+// mixer_add_sub_octave
+// Bass-reinforce a loaded sample in place: layer an octave-down copy of the
+// sample under itself, low-passed to pure sub content. For samples whose
+// "low" energy sits above the subwoofer band (llander's thrust rumble is
+// centered 60-120 Hz) this puts the same character an octave lower, where a
+// sub crossover can pick it up.
+//
+// The octave-down stretch doubles the loop length, so the sample is rebuilt
+// at 2x length - the original tiled twice, the sub layer once - and both
+// layers loop seamlessly. Output is always mono 16-bit at the sample's rate.
+// Only scales DOWN (never up) when the summed layers would clip, keeping
+// ~1.5 dB of headroom.
+//
+// Parameters:
+//   samplenum - sample ID (same index sample_start takes)
+//   cutoff_hz - low-pass corner for the sub layer (e.g. 70.0f)
+//   gain_db   - sub layer level relative to the original (0 = equal)
+//
+// Returns 0 on success, -1 on failure.
+// -----------------------------------------------------------------------------
+int mixer_add_sub_octave(int samplenum, float cutoff_hz, float gain_db)
+{
+	// Copy the source out as mono 16-bit under the lock, then process
+	// unlocked; mixer_upload_sample16 re-locks to swap the PCM back in.
+	std::vector<int16_t> mono;
+	int rate = 0;
+	{
+		std::scoped_lock lock(audioMutex);
+
+		if (samplenum < 0 || samplenum >= static_cast<int>(lsamples.size()) ||
+			!lsamples[samplenum] || !lsamples[samplenum]->buffer) {
+			LOG_ERROR("mixer_add_sub_octave: invalid samplenum %d", samplenum);
+			return -1;
+		}
+
+		auto& s = lsamples[samplenum];
+		const int chn = (s->fx.channels == 2) ? 2 : 1;
+		const uint32_t frames = s->sampleCount / chn;
+		if (frames == 0) {
+			LOG_ERROR("mixer_add_sub_octave: sample %d is empty", samplenum);
+			return -1;
+		}
+		rate = static_cast<int>(s->fx.rate);
+
+		mono.resize(frames);
+		if (s->fx.bits == 8 && s->data8) {
+			const uint8_t* d = s->data8.get();
+			for (uint32_t i = 0; i < frames; i++) {
+				int acc = 0;
+				for (int c = 0; c < chn; c++) acc += Make16bit(d[i * chn + c]);
+				mono[i] = static_cast<int16_t>(acc / chn);
+			}
+		}
+		else if (s->data16) {
+			const int16_t* d = s->data16.get();
+			for (uint32_t i = 0; i < frames; i++) {
+				int acc = 0;
+				for (int c = 0; c < chn; c++) acc += d[i * chn + c];
+				mono[i] = static_cast<int16_t>(acc / chn);
+			}
+		}
+		else {
+			LOG_ERROR("mixer_add_sub_octave: sample %d has no PCM", samplenum);
+			return -1;
+		}
+	}
+	if (rate <= 0) return -1;
+
+	const uint32_t n = static_cast<uint32_t>(mono.size());
+
+	// Octave down = stretch to 2x length at the same rate.
+	std::vector<int16_t> sub(static_cast<size_t>(n) * 2);
+	cubic_interpolation_16_into(mono.data(), static_cast<int32_t>(n),
+		sub.data(), static_cast<int32_t>(sub.size()));
+
+	// Keep only true sub content; two passes for a steeper skirt.
+	biquad_lowpass_inplace_i16(sub.data(), static_cast<int>(sub.size()),
+		static_cast<float>(rate), cutoff_hz, 0.707f, 2);
+
+	// Original tiled twice + sub layer once.
+	const double g = dBToAmplitude(gain_db);
+	std::vector<double> mix(sub.size());
+	double peak = 0.0;
+	for (size_t i = 0; i < mix.size(); i++) {
+		mix[i] = static_cast<double>(mono[i % n]) + g * sub[i];
+		peak = (std::max)(peak, std::fabs(mix[i]));
+	}
+
+	// Normalize only if the sum would eat the headroom.
+	const double target = 32767.0 * dBToAmplitude(-1.5);
+	const double scale = (peak > target) ? target / peak : 1.0;
+
+	std::vector<int16_t> out(mix.size());
+	for (size_t i = 0; i < out.size(); i++)
+		out[i] = static_cast<int16_t>(std::lround(mix[i] * scale));
+
+	LOG_INFO("mixer_add_sub_octave: sample %d reinforced (cutoff %.0f Hz, gain %+.1f dB, scale %.2f)",
+		samplenum, cutoff_hz, gain_db, scale);
+
+	return mixer_upload_sample16(samplenum, out.data(),
+		static_cast<uint32_t>(out.size()), rate, false);
+}
+
+// -----------------------------------------------------------------------------
 // mixer_init
 // Initializes the mixer with an integer frames-per-second clock and starts the
 // audio worker thread. Audio generation is frame-locked: one call to
@@ -920,6 +1035,11 @@ static void mixer_update_internal()
 				uint32_t idx = static_cast<uint32_t>(ch.pos_q32 >> 32);
 				if (idx >= totalFrames) {
 					if (!ch.looping) {
+						// Data can run out while a release fade is mid-walk
+						// (released near the sample's end); the armed step
+						// must not survive into this channel's next use.
+						fade_step[chan] = 0.0;
+						ch.vol = VolumeByteToLinear(ch.volume);
 						ch.state = SoundState::Stopped;
 						ch.isPlaying = false;
 						ch.playing_sample.reset();
@@ -990,6 +1110,23 @@ static void mixer_update_internal()
 
 				fmixL += static_cast<int32_t>(sL * vol * gL);
 				fmixR += static_cast<int32_t>(sR * vol * gR);
+
+				// Release fade (sample_end_mixer): one gain step per output
+				// sample, and the channel ends the moment it reaches zero -
+				// the same stop the end-of-data path above performs, but at
+				// guaranteed-silent level.
+				if (fade_step[chan] > 0.0) {
+					ch.vol -= fade_step[chan];
+					if (ch.vol <= 0.0) {
+						ch.vol = 0.0;
+						fade_step[chan] = 0.0;
+						ch.state = SoundState::Stopped;
+						ch.isPlaying = false;
+						ch.playing_sample.reset();
+						it = audio_list.erase(it);
+						continue;
+					}
+				}
 
 				ch.pos_q32 += ch.step_q32;
 				++it;
@@ -1176,6 +1313,11 @@ static void stop_channel_locked(int chanid)
 		ch.voice = nullptr;
 	}
 	audio_list.remove(chanid);
+
+	// A release fade may have walked ch.vol partway down; ch.volume is the
+	// source of truth, so re-sync the applied gain and disarm the fade.
+	fade_step[chanid] = 0.0;
+	ch.vol = VolumeByteToLinear(ch.volume);
 
 	ch.state             = SoundState::Stopped;
 	ch.isPlaying         = false;
@@ -1683,6 +1825,11 @@ void sample_start_mixer(int chanid, int samplenum, int loop)
 	ch.loaded_sample_num = samplenum;
 	ch.playing_sample = lsamples[samplenum]; // pin lifetime; survives sample_remove
 	ch.looping = loop;
+	// Restart during (or after) a sample_end_mixer release fade: disarm it and
+	// bring the applied gain back to the channel's set level, so the sample
+	// comes back at the loudness the driver configured, not the fade residue.
+	fade_step[chanid] = 0.0;
+	ch.vol = VolumeByteToLinear(ch.volume);
 	ch.pos_q32 = 0;
 	// step_q32 reflects sample-native-rate -> output-rate. For samples that were
 	// resampled to SYS_FREQ at load (the default), this is exactly 1<<32 and the
@@ -1707,7 +1854,14 @@ void sample_end_mixer(int chanid)
 		return;
 	}
 	std::scoped_lock lock(audioMutex);
-	channel[chanid].looping = 0;
+	auto& ch = channel[chanid];
+	ch.looping = 0;
+	// Arm the release fade (see fade_step at the top of the file): walk the
+	// applied gain to zero over MIXER_END_FADE_MS and stop there, instead of
+	// letting the sample run to its data end and stop at whatever level the
+	// final samples happen to hold.
+	if (!ch.voice && ch.state == SoundState::Playing && ch.vol > 0.0 && SYS_FREQ > 0)
+		fade_step[chanid] = ch.vol / ((double)SYS_FREQ * MIXER_END_FADE_MS / 1000.0);
 }
 
 void sample_stop_mixer(int chanid)
@@ -1760,6 +1914,11 @@ void stream_start(int chanid, int /*stream*/, int bits, int frame_rate, bool ste
 		ch.voice = nullptr;
 	}
 	audio_list.remove(chanid);
+
+	// Same fade cleanup as sample_start_mixer: a leftover release fade must
+	// not decay a freshly started stream to silence.
+	fade_step[chanid] = 0.0;
+	ch.vol = VolumeByteToLinear(ch.volume);
 
 	// Build the per-frame stream SAMPLE inline -- create_sample takes its own
 	// lock so we can't call it from inside this scope without re-entering the
