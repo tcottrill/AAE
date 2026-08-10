@@ -472,6 +472,11 @@ int init_llander()
 	//init6502(LlanderRead, LlanderWrite, 0x7fff, CPU0);
 
 	llander_zeropage = &Machine->memory_region[CPU0][0x00];
+	// lthrust.wav's rumble is centered 60-120 Hz with almost nothing below
+	// 60 Hz, so it never reaches a subwoofer. Layer in an octave-down copy
+	// of itself (low-passed to pure sub) before the loop starts - the $3C00
+	// thrust ladder then modulates the reinforced sample as usual.
+	mixer_add_sub_octave(0, 70.0f, 0.0f);
 	sample_start(1, 0, 1);
 	sample_set_volume(1, 5);
 
