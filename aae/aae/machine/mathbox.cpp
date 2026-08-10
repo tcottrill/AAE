@@ -263,7 +263,7 @@ void mb_go(int addr, int data)
 	}
 
 #ifdef MB_TEST
-	LOG_DEBUG("  result %04x\", mb_result & 0xffff);
+	LOG_DEBUG("  result %04x", mb_result & 0xffff);
 #endif
 }
 
