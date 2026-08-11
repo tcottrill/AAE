@@ -1,0 +1,71 @@
+8/10/26
+Release 1.96
+**AAE now runs on Linux.** The emulation core was split out from the video, input and sound
+engines, and complete new Linux back-ends were written for all three — **no SDL anywhere**. That gets
+AAE onto SteamOS and the Raspberry Pi, with a longer-term target of driving a real vector monitor
+from a Teensy or Pi. 
+
+- Going forward one of the main OS targets is Steam OS. You can install from the desktop, add roms and artwork in the AAE folders. 
+Then right click and add to Steam Game Mode. After first launch in Game Mode, and a reboot (required) the artwork will appear 
+and it will look like an installed steam game.
+
+- I HAVE NOT TESTED BUILDING ON A VANILLA LINUX BUILD. 
+
+**Vulkan is now the default renderer.** The entire OpenGL pipeline was rewritten as Vulkan
+equivalents, ported over from my own unreleased game engine. OpenGL 3.3 is still there and still 
+fully supported — Vulkan is simply what starts by default, and AAE falls back to OpengGL 3.3 on its 
+own if Vulkan won't initialize.
+
+- **A new glow shader** — a dual-filter pyramid bloom that finally looks better than my original.
+  That's subjective, but I like it, and it's the default now. The classic 8-pass blur is still
+  selectable. *(I also burned a ton of time on a phosphor-persistence replacement and they were
+  all disappointing, so that one is still on the shelf.)*
+- **Controllers** — PS5 DualSense and PS4 DualShock 4 are remapped to the standard Xbox layout,
+  and the system button chords (menu, exit, pause) work from any gamepad while generic sticks
+  can't trigger them by accident. The same combo engine runs on Linux, so Steam Input's virtual
+  pads get working chords too.
+- **A Controller Guide screen** — a drawn controller showing the button layout, coin/start
+  mapping and the chords. It appears once the first time a gamepad is detected, and any time
+  after from **Y** in the game list or the CONTROLLER HELP menu entry.
+
+Many driver cleanups, the pokey was once again updated, hopefully for the last time!
+See the build details on how to add roms and artwork to the Steam OS build. 
+Many SOUND Updates. 
+
+Note: The new glow shader looks like crap on the PI 5. The old one looks fine but it's too slow, the PI 5 just doesn't 
+have enough pixel pushing power. Black and white shader and color raster shaders are disabled as well. 
+
+
+
+Release 1.7
+New Drivers this release:
+Multipac15 from Clay Cowgill (I regret ever selling my cocktail with this installed)
+Super ABC from Two Bit
+Various other Pacman hardware based games
+I added the original old PONG driver from MAME by Jurgen Buchmueller
+Created a SIMULATION of Breakout, it's very close and is built from various sources, including MAME's Netlist , Dice, and the handful
+of real Breakout videos on youtube.
+Added BootHill to the Invaders Midway 8080 driver. 
+Added Space Zap because it's black and white. 
+
+I don't think I'll be adding any more drivers to this. I have the ones I want now, for anything else just go play MAME, it's better. 
+
+Code Enhancements this release:
+Added my B/W raster monitor shader code from my PetGPT emulator source, I think it looks very nice. (https://github.com/tcottrill/Pet-GPT)
+The B/W monitor code seemed lonely, so I added a color raster monitor shader as well. The old bitmaps are still supported. On 4K, I think the color shader looks better then the bitmap version. There are lots of knobs to tweak on both, so you should be able to find something that makes you happy.
+I wasted a couple of days trying to make a better B/W & Color Vector Shader (again), but it's just not there yet. The line rendering and bloom looks NOTHING like my real Space Duel on a 6100 monitor, when it does, I'll add it.  
+Added multiple mouse, multiple keyboard support, playing close attention to supporting multiple Ultimarc hardware. I have pretty much one of everything made by him in my possession. At this point it's very similar to modern MAME.
+Adjusted the Menu with a new Input option to match. 
+Updated the Joystick code to support Direct Input 8 so I can support the HID slots there as well. Xbox controllers are still supported with Xinput. 
+Finally fixed aspect ratio support in the Raster Games. 
+Because of the long HID driver names, I had to correct issues in the INI support, as well as marquee scrolling to the GUI and MENU options. 
+Migrated out all the GLEnums and did a hard clean pass on the Opengl Code in preparation for adding Vulkan support.
+Cleaned up the SegaG80 driver code. Added a fake dipswitch for the old (smooth, inaccurate) rendering engine because Star Trek bugs me.  
+Various Sound, CPU bug fixes (I think I am just about  done there) and other little code fixes. 
+
+
+
+
+ 
+
+

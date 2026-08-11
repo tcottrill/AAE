@@ -1,0 +1,344 @@
+==============================================================================
+A.A.E. - ANOTHER ARCADE EMULATOR
+CREDITS AND ACKNOWLEDGEMENTS
+==============================================================================
+
+A.A.E. is built on the work of a great many people. It began as, and remains,
+a derivative of the M.A.M.E. project, and almost nothing in it would have been
+possible without the decades of research, disassembly and documentation done
+by the emulation community.
+
+A.A.E. original code is copyright (C) Tim Cottrill, released under the
+GNU General Public License v3 or later. All M.A.M.E.-derived code remains the
+copyright of the M.A.M.E. Team and its individual contributors.
+
+
+------------------------------------------------------------------------------
+THE M.A.M.E. PROJECT
+------------------------------------------------------------------------------
+
+The foundation of this emulator. Drivers, hardware documentation, memory maps,
+timing research, sound emulation and countless "unique ways of doing things"
+originate with M.A.M.E. and the M.A.M.E. Team.
+
+Thank you to everyone who has contributed to that project over the years.
+
+
+------------------------------------------------------------------------------
+A.A.E. ENGINE
+------------------------------------------------------------------------------
+
+Written by Tim Cottrill. Copyright (C) Tim Cottrill, GNU GPL v3 or later.
+
+Everything below is original A.A.E. code rather than emulation of arcade
+hardware - it is the engine the emulated machines are displayed and heard
+through, and it shares no code with M.A.M.E.
+
+  OpenGL renderer
+      Core-profile GL rendering chain: framebuffer pipeline, shader system
+      and the shader set itself.
+      Vector beam renderer - anti-aliased beam geometry with per-segment
+      joins and caps, phosphor persistence and a multi-pass glow cascade.
+      Raster path with prescaled render targets, tiled scanline overlay and
+      the mono and colour CRT monitor shaders, including shadow mask,
+      halation and pixel-exact output sizing.
+      M.A.M.E. .lay artwork layout compositor - backdrop, screen, overlay
+      gel and bezel layers, with display-time system rotation.
+      Vector font engine for the front-end and in-game overlays.
+
+  Vulkan renderer
+      A complete second rendering chain, written from scratch on Vulkan 1.3
+      dynamic rendering, at feature parity with the OpenGL path and
+      selectable at runtime.
+      Beam renderer with instanced coverage-anti-aliased geometry;
+      supersampled render targets; phosphor trail and dual-filter pyramid
+      glow; raster CRT and scanline post chain; streamed raster game
+      texture; .lay layout compositor; textured vector shots; per-pass GPU
+      timing via timestamp queries; and framebuffer readback for
+      screenshots.
+
+  Audio engine
+      Mixer and voice mixer with sample streaming, and 2D positional audio.
+      Backend-neutral audio interface with an XAudio2 implementation on
+      Windows and an ALSA / PulseAudio implementation on Linux, the latter
+      including matrix surround encoding for stereo output.
+
+  Input layer
+      Unified joystick and gamepad layer over XInput and WinMM, with
+      hotplug detection, rumble, and edge-triggered button combos.
+      Win32 Raw Input support for multiple mice and keyboards, with
+      per-player device routing and assignments that stay stable across
+      reboots and enumeration changes.
+      evdev backend providing the same on Linux.
+
+  Emulation infrastructure
+      The CPU cores listed under "Original A.A.E. cores" below, the
+      configuration and menu systems, the front-end, and the Windows and
+      Linux platform layers.
+
+
+------------------------------------------------------------------------------
+VECTOR HEADS
+------------------------------------------------------------------------------
+
+A.A.E. exists because of vector games, and vector emulation exists because of
+these people. This list is carried in the source itself.
+
+    Brad Oliver
+    Aaron Giles
+    Bernd Wiebelt
+    Allard van der Bas
+    Al Kossow                    (VECSIM)
+    Hedley Rainnie               (VECSIM)
+    Eric Smith                   (VECSIM)
+    Neil Bradley                 (technical advice)
+    Andrew Caldwell              (anti-aliasing)
+
+The vector rendering core (vector.c, 1997/1998) is copyright the M.A.M.E.
+Project and has been heavily modified in A.A.E. for hardware-accelerated
+rendering under OpenGL and Vulkan.
+
+
+------------------------------------------------------------------------------
+VECTOR HARDWARE EMULATION
+------------------------------------------------------------------------------
+
+Vector rendering core (vector.c)
+    Brad Oliver, Aaron Giles, Bernd Wiebelt, Allard van der Bas.
+
+Atari AVG / DVG vector generators
+    Mathis Rosenhauer.
+    Anti-aliasing and beam handling: Andrew Caldwell.
+
+VECSIM (Atari vector simulation)
+    Design and most code copyright Eric Smith, from his VECSIM emulator.
+    Al Kossow and Hedley Rainnie.
+
+Cinematronics CCPU
+    Original CPU emulation copyright 1997/1998 Jeff Mitchell and the
+    Retrocade Alliance; copyright 1997 Zonn Moore.
+    M.A.M.E. CCPU implementation written by Aaron Giles.
+
+Atari Math Box
+    Eric Smith. Copyright 1991, 1992, 1993, 1996 Eric Smith.
+
+Atari Slapstic
+    Aaron Giles.
+
+Sega G80 vector hardware
+    Aaron Giles.
+
+
+------------------------------------------------------------------------------
+CPU EMULATION CORES
+------------------------------------------------------------------------------
+
+A.A.E. now runs a family of its own CPU cores, written from published
+manufacturer documentation and sharing a common memory-handler interface.
+These are original work and replaced the third-party engines A.A.E. used
+previously.
+
+  Original A.A.E. cores
+  ---------------------
+    Motorola MC68000 / MC68000E
+        From-scratch, per-instance C++ implementation of the original
+        MC68000, written to replace the Musashi engine.
+
+    Motorola MC6809 / MC6809E
+        Documented instruction set, written for A.A.E.
+
+    Intel 8039 / MCS-48
+        Clean-room implementation, written from the published Intel MCS-48
+        User's Manual and 8039 datasheet. Not derived from other cores.
+
+    Sharp LR35902
+        The Game Boy's 8080/Z80 hybrid, written for A.A.E.
+
+    Intel 8085A
+        Extended to a full 8085A from the A.A.E. 8080 core. Cross-checked
+        against the Intel 8085A datasheet and the M.A.M.E. I8085 core by
+        Juergen Buchmueller.
+
+  Cores with earlier origins
+  --------------------------
+    Zilog Z80
+        Original Z80 emulator by Edward Massey (1997), ported to C by
+        Jeff Mitchell.
+
+    MOS 6502 family
+        Original 6502 core by Neil Bradley.
+
+    Intel 8080
+        Written by Mike Chambers (2018), copyright (C) 2010-2013
+        Mike Chambers.
+
+    Zilog Z80 family peripherals (CTC and friends)
+        Copyright (C) 1997 Tatsuyuki Satoh.
+
+    Cinematronics CCPU
+        See the vector hardware section above.
+
+
+------------------------------------------------------------------------------
+SOUND EMULATION
+------------------------------------------------------------------------------
+
+Atari POKEY
+    The current A.A.E. POKEY is a clean-room reimplementation. It stands on
+    the shoulders of Ron Fries, whose original POKEY emulator defined this
+    field and whose channel-rendering approach informed the design.
+    M.A.M.E.'s POKEY device: Brad Oliver, Eric Smith, Juergen Buchmueller.
+
+General Instrument AY-3-8910
+    M.A.M.E. device by Couriersud, based in turn on code snippets by
+    Ville Hallik, Michael Cuddy, Tatsuyuki Satoh, Fabrice Frances and
+    Nicola Salmoria.
+
+Texas Instruments TMS5220 speech
+    Frank Palazzolo, Aaron Giles, Jonathan Gevaryahu, Raphael Nabet,
+    Couriersud, Michael Zapf.
+
+Texas Instruments TMS36xx
+    Juergen Buchmueller.
+
+Texas Instruments SN76477
+    Zsolt Vasvari.
+
+Bally/Midway Astrocade sound
+    Aaron Giles, Frank Palazzolo. Portions derived from the POKEY emulator
+    by Ron Fries.
+
+Namco sound hardware
+    Nicola Salmoria, Aaron Giles.
+
+Sega G80, Star Wars and Cinematronics sound hardware
+    M.A.M.E. Team.
+
+Digital sound samples
+    Recorded, restored and contributed by many people across the arcade
+    preservation community.
+
+
+------------------------------------------------------------------------------
+GAME DRIVERS
+------------------------------------------------------------------------------
+
+Attribution follows the M.A.M.E. source for each driver. Where A.A.E. carries
+an older credit from the version it was adapted from, both are shown.
+
+  Vector games
+    Asteroids / Lunar Lander .... Brad Oliver, Bernd Wiebelt,
+                                  Allard van der Bas
+    Aztarac ..................... Mathis Rosenhauer
+    Battlezone .................. Brad Oliver, Nicola Salmoria
+    Black Widow / Gravitar ...... Brad Oliver, Bernd Wiebelt,
+                                  Allard van der Bas
+    Cinematronics hardware ...... Aaron Giles
+    Cosmic Chasm ................ Mathis Rosenhauer
+    Major Havoc ................. Mike Appolo
+    Omega Race .................. Bernd Wiebelt
+    Quantum ..................... Hedley Rainnie, Aaron Giles, Couriersud,
+                                  Paul Forgey
+    Sega G80 vector games ....... Aaron Giles
+    Star Wars ................... Steve Baines (original driver),
+                                  Frank Palazzolo (sound support)
+    Tempest ..................... Brad Oliver, Bernd Wiebelt,
+                                  Allard van der Bas
+    Vertigo / Top Gunner ........ Mathis Rosenhauer
+
+  Raster games
+    Astrocade hardware .......... Nicola Salmoria, Mike Coates,
+                                  Frank Palazzolo, Aaron Giles
+    Bosconian ................... Nicola Salmoria
+    Centipede / Millipede ....... Nicola Salmoria
+                                  A.A.E. driver adapted from the version by
+                                  Ivan Mackintosh; cocktail mode from
+                                  Scott Brasington
+    Circus ...................... Mike Coates
+    Clowns ...................... Nicola Salmoria, Tormod Tjaberg,
+                                  Mirko Buffoni, Lee Taylor,
+                                  Valerio Verrando, Zsolt Vasvari
+    Dig Dug ..................... Nicola Salmoria
+                                  A.A.E. version adapted from the M.A.M.E.
+                                  0.34 driver by Aaron Giles
+    Donkey Kong ................. Couriersud
+    Food Fight .................. Aaron Giles
+    Galaga ...................... Nicola Salmoria
+    Galaxian .................... Aaron Giles, Couriersud,
+                                  Stephane Humbert, Robbbert
+    Gaplus ...................... Manuel Abadia, Ernesto Corvi,
+                                  Nicola Salmoria
+    Gyruss ...................... Nicola Salmoria, Couriersud
+    Mappy / Super Pac-Man ....... Nicola Salmoria
+                                  A.A.E. version converted from the M.A.M.E.
+                                  0.33 driver by Aaron Giles,
+                                  Mirko Buffoni and JROK
+    Missile Command ............. Aaron Giles
+    Pac-Man / Jr. Pac-Man ....... Nicola Salmoria, Stephane Humbert
+    Phoenix ..................... Richard Davies
+    Pong / Breakout (discrete) .. Couriersud
+    Rally-X ..................... Nicola Salmoria
+    Space Invaders and
+      8080/BW hardware .......... Nicola Salmoria, Tormod Tjaberg,
+                                  Mirko Buffoni, Lee Taylor,
+                                  Valerio Verrando, Zsolt Vasvari,
+                                  Aaron Giles, Jonathan Gevaryahu,
+                                  hap, Robbbert
+    VIC Dual hardware ........... Zsolt Vasvari
+    Warlords .................... Nicola Salmoria
+                                  A.A.E. driver adapted from the version by
+                                  Lee Taylor and John Clegg
+    Xevious ..................... Nicola Salmoria
+    Yie Ar Kung-Fu .............. Phil Stroffolino
+
+  Hacks and multigame hardware
+    MultiPac .................... M.A.M.E. 0.55 driver by XzeriX;
+                                  multigame hardware by Clay Cowgill
+    Battlezone Plus ............. Clay Cowgill
+
+
+------------------------------------------------------------------------------
+ARTWORK
+------------------------------------------------------------------------------
+
+Cabinet artwork, bezels, overlays and backdrops are the work of a large number
+of very talented people in the arcade preservation community. Scanning,
+cleaning and restoring this material is painstaking work and it is a large
+part of why these games look right.
+
+
+------------------------------------------------------------------------------
+THIRD-PARTY LIBRARIES
+------------------------------------------------------------------------------
+
+    GLEW ........................ Copyright (C) 2008-2019 Nigel Stewart;
+                                  (C) 2002-2008 Milan Ikits and
+                                  Marcelo E. Magallon; portions from the
+                                  Mesa 3-D graphics library,
+                                  (C) 1999-2007 Brian Paul
+    stb_image / stb_image_write /
+    stb_truetype ................ Sean Barrett (public domain);
+                                  stbi_info by Jetro Lauha
+    miniz ....................... Rich Geldreich
+    TinyXML-2 ................... Original code by Lee Thomason
+    JSON for Modern C++ ......... Niels Lohmann
+    OpenGL / Vulkan headers ..... The Khronos Group Inc.
+    Vulkan SDK components ....... LunarG, Valve Corporation,
+                                  The Khronos Group Inc.
+    Vector math ................. Portions (C) 2006-2007 Erin Catto
+    SHA-1 ....................... Copyright 2005 Mark Muir
+    UTF-8 conversion ............ Giovanni Dicanio
+
+
+------------------------------------------------------------------------------
+A NOTE OF THANKS
+------------------------------------------------------------------------------
+
+A.A.E. is built using M.A.M.E. source code and information collected over more
+than two decades by dedicated people who gave their time and knowledge to
+create something genuinely special.
+
+Thank you to everyone who has contributed over the years - and especially to
+the vector teams, without whom none of this would exist.
+
+==============================================================================
