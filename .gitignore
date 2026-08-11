@@ -53,6 +53,9 @@ dkms.conf
 # Visual Studio IDE cache (IntelliSense ipch, Browse.VC.db)
 .vs/
 
+# Local Claude Code state and internal planning docs (moved from docs/)
+.claude/
+
 # CMake build output (aae/aae.vcxproj remains the primary Windows build;
 # this is the Task 5 CMake build tree added alongside it)
 build-cmake/
