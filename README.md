@@ -100,6 +100,9 @@ Everything else, in no particular order:
   <img src="images/llander_1.png" alt="Lunar Lander with the ROM-patched in-game artwork" width="49%">
   <img src="images/no_error.png" alt="Atari vector self-test — no Pokey error" width="49%">
 </p>
+<p align="center">
+  <img src="images/help.png" alt="The Controller Guide screen" width="70%">
+</p>
 
 See [CHANGELOG.txt](CHANGELOG.txt) — the complete revival diary — for everything else.
 
