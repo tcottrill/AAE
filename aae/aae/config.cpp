@@ -12,6 +12,7 @@
 #include "iniFile.h"
 #include "sys_str.h"   // aae_stricmp
 #include "aae_mame_driver.h"
+#include "aae_emulator.h"  // emulator_is_gui_active
 #include "menu.h"
 #include "sys_log.h"
 #include "path_helper.h"
@@ -39,11 +40,7 @@ void setup_config() {
     LOG_DEBUG("INI PATH (aae.ini) %s", g_aaeIniPath);
 
     // Load all fields from aae.ini
-    // 48000, not 22050. This is the fallback when [main] samplerate is absent,
-    // and 22050 caps the output at an 11 kHz bandwidth - audibly thin, and then
-    // resampled UP anyway on any HDMI sink, which is 48 kHz-native almost
-    // without exception. 48000 is also what the ALSA/HDMI path wants, so the
-    // common case now involves no rate conversion at all.
+    // 48000 is default
     config.samplerate = get_config_int("main", "samplerate", 48000);
 
     // Speaker request (Linux output only). Default 2 - measured, not guessed:
@@ -125,6 +122,8 @@ void setup_config() {
     config.fire_point_size = get_config_int("main", "fire_point_size", 12);
     config.vecglow = get_config_int("main", "vectorglow", 5);
     config.vectrail = get_config_int("main", "vectortrail", 1);
+    config.starwars_fuzz = get_config_int("main", "starwars_fuzz", 1);
+    config.gui_vector_only = get_config_int("main", "gui_vector_only", 0);
     config.glow_filter  = get_config_int("main", "glow_filter", 0);
     // Pyramid glow (glow_filter=1) defaults. On the Pi 5 (Mesa v3d - the
     // project's only aarch64 target) the same values render visibly hotter
@@ -147,7 +146,9 @@ void setup_config() {
     config.gain = get_config_int("main", "gain", 1);
     config.line_smoothing  = get_config_float("main", "line_smoothing",  1.0f);
     config.corner_strength = get_config_float("main", "corner_strength", 0.85f);
-    config.shots_textured  = get_config_int  ("main", "shots_textured",  0);
+    // Textured shots are the default look for the asteroid family (the only
+    // games this flag affects - see emu_vector_draw.cpp add_tex).
+    config.shots_textured  = get_config_int  ("main", "shots_textured",  1);
     config.debug = get_config_int("main", "debug", 0);
     {
         // Value is expected lowercase in the ini, matching house style.
@@ -160,6 +161,14 @@ void setup_config() {
         // What the VIDEO menu edits; applies at the next launch (see config.h).
         config.renderer_pending = config.renderer;
         LOG_INFO("Config: renderer=%s", (config.renderer == RENDERER_VULKAN) ? "vulkan" : "opengl");
+    }
+    {
+        // DVG engine for the Asteroids family: "mame" (the MAME 0.111 avgdvg
+        // port, default) or "vecsim" (the legacy Eric Smith simulator).
+        // Lowercase expected, like renderer=. See config.h.
+        const char* d = get_config_string("main", "dvg_engine", "mame");
+        config.dvg_engine = (d && strcmp(d, "vecsim") == 0) ? DVG_ENGINE_VECSIM : DVG_ENGINE_MAME;
+        LOG_INFO("Config: dvg_engine=%s", (config.dvg_engine == DVG_ENGINE_VECSIM) ? "vecsim" : "mame");
     }
     config.vk_validation = get_config_int("main", "vk_validation", 0);
     // Beam supersampling for the Vulkan vector chain: 1 = 1024x1024 beam
@@ -178,7 +187,8 @@ void setup_config() {
 
     // Volumes are stored as real byte volumes (0..255) only.
     config.mainvol = clamp_int(get_config_int("main", "mainvol", 220), 0, 255);
-    config.pokeyvol = clamp_int(get_config_int("main", "pokeyvol", 200), 0, 255);
+    config.pokeyvol = clamp_int(get_config_int("main", "pokeyvol", 255), 0, 255);
+    config.samplevol = clamp_int(get_config_int("main", "samplevol", 255), 0, 255);
     config.noisevol = clamp_int(get_config_int("main", "noisevol", 50), 0, 255);
 
     config.drawzero = get_config_int("main", "drawzero", 0);
@@ -287,6 +297,15 @@ void setup_config() {
     config.color_mask_strength   = get_config_float("monitorcolor", "color_mask_strength",   0.10f);
     config.color_mask_scale      = get_config_float("monitorcolor", "color_mask_scale",      2.0f);
 
+    // Color VECTOR games share the [monitorcolor] knobs with the color raster
+    // games, but the shader starts OFF for them: only an explicit color_enable
+    // in the game's own ini (written by COLOR MONITOR SETUP during gameplay)
+    // turns it on - the aae.ini global value does not carry over. The GUI
+    // driver also declares VECTOR_USES_COLOR; it is skipped so a GUI-side
+    // menu save doesn't write this forced 0 back to aae.ini as the global.
+    if (is_color_vector_attr(Machine->gamedrv->video_attributes) && !emulator_is_gui_active())
+        config.color_enable = 0;
+
     // Load game-specific overrides for select fields
     // Let getpathM join the filename: it uses std::filesystem, so the separator
     // is correct on both platforms. The old hand-appended "\\" produced a
@@ -310,6 +329,7 @@ void setup_config() {
         config.fire_point_size = get_config_int("main", "fire_point_size", config.fire_point_size);
         config.vecglow = get_config_int("main", "vectorglow", config.vecglow);
         config.vectrail = get_config_int("main", "vectortrail", config.vectrail);
+        config.starwars_fuzz = get_config_int("main", "starwars_fuzz", config.starwars_fuzz);
         config.glow_filter  = get_config_int("main", "glow_filter", config.glow_filter);
         config.glow2_gain   = get_config_float("main", "glow2_gain",   config.glow2_gain);
         config.glow2_spread = get_config_float("main", "glow2_spread", config.glow2_spread);
@@ -333,6 +353,13 @@ void setup_config() {
         // Per-game system rotation override (e.g. for cab-specific setups)
         config.system_rotation = get_config_int("main", "system_rotation", config.system_rotation);
 
+        // Per-game DVG engine override (asteroid family only; see config.h)
+        {
+            const char* d = get_config_string("main", "dvg_engine",
+                (config.dvg_engine == DVG_ENGINE_VECSIM) ? "vecsim" : "mame");
+            config.dvg_engine = (d && strcmp(d, "vecsim") == 0) ? DVG_ENGINE_VECSIM : DVG_ENGINE_MAME;
+        }
+
         // somegame.ini available - sound override options
         config.psnoise = get_config_int("main", "psnoise", config.psnoise);
         config.hvnoise = get_config_int("main", "hvnoise", config.hvnoise);
@@ -341,6 +368,7 @@ void setup_config() {
         // Volumes are stored as real byte volumes (0..255) only.
         config.mainvol = clamp_int(get_config_int("main", "mainvol", config.mainvol), 0, 255);
         config.pokeyvol = clamp_int(get_config_int("main", "pokeyvol", config.pokeyvol), 0, 255);
+        config.samplevol = clamp_int(get_config_int("main", "samplevol", config.samplevol), 0, 255);
         config.noisevol = clamp_int(get_config_int("main", "noisevol", config.noisevol), 0, 255);
 
         config.samplerate = get_config_int("main", "samplerate", config.samplerate);
@@ -390,7 +418,7 @@ void setup_config() {
     config.mono_brightness      = clamp_float(config.mono_brightness,      0.0f, 0.25f);
     config.mono_tint            = clamp_int  (config.mono_tint,            0, 2);
 
-    config.color_enable          = clamp_int  (config.color_enable,          0, 1);
+    config.color_enable          = clamp_int  (config.color_enable,          0, 2);
     config.color_blur_h          = clamp_float(config.color_blur_h,          0.0f, 2.5f);
     config.color_blur_v          = clamp_float(config.color_blur_v,          0.0f, 1.0f);
     config.color_converge        = clamp_float(config.color_converge,        0.0f, 2.0f);
@@ -410,14 +438,45 @@ void setup_config() {
     LOG_INFO("Configured Mame Rom Path is %s", config.exrompath);
 }
 
-void setup_video_config() {
+void setup_video_config(const char* section) {
 
     LOG_DEBUG("SETUP VIDEO CONFIG CALLED");
+    std::string name = Machine->gamedrv->name;
 
+    // video.ini carries the on-screen geometry for EVERY game. video2.ini is a
+    // second set of rects for the VECSIM DVG engine, which parks the beam
+    // differently than the MAME avgdvg port and so needs its own calibration -
+    // but only for the drivers that actually consult config.dvg_engine (the
+    // Asteroids family and Omega Race, see config.h). Every other vector game
+    // is hard-wired to the MAME engine and has no section in video2.ini.
+    //
+    // Selecting the file globally off the flag therefore stranded all of them
+    // (~38 sections, the whole Cinematronics set among them) on the
+    // 0/1024/0/1024 defaults below - no bezel/crop rect, and for the
+    // Cinematronics games no Y-flip, since these encode the flip by inverting
+    // the rect (solarq: bottom=1023, top=0). Choose per game instead: take
+    // video2.ini only when it has something to say about THIS game.
     std::string temppath = getpathM(0, "video.ini");
+    if (config.dvg_engine == DVG_ENGINE_VECSIM)
+    {
+        const std::string alt = getpathM(0, "video2.ini");
+        SetIniFile(alt.c_str());
+        if (has_config_section(name))
+            temppath = alt;
+        else
+            LOG_INFO("VIDEO CONFIG: no [%s] in video2.ini - using video.ini", name.c_str());
+    }
     aae_strcpy(g_videoIniPath, sizeof(g_videoIniPath), temppath.c_str());
     SetIniFile(g_videoIniPath);
-    std::string name = Machine->gamedrv->name;
+
+    // A driver may ask for another set's geometry: the Tempest Multigame's
+    // banks map to the sets they contain (tempmg_setbank), so Vector Breakout
+    // inside the multigame gets its own [vbrakout] rect. Fall back to the
+    // driver's own section when the requested one is absent.
+    if (section && has_config_section(section))
+        name = section;
+    else if (section)
+        LOG_INFO("VIDEO CONFIG: no [%s] section - using [%s]", section, name.c_str());
 
     const char* scalePrefix = "full";
     if (config.bezel && !config.artcrop)  scalePrefix = "bezel";
@@ -444,23 +503,7 @@ void setup_video_config() {
         bezelx = get_config_int(name.c_str(), "bezcropx", 0);
         bezely = get_config_int(name.c_str(), "bezcropy", 0);
     }
-    /*
-    // Try reading new sane keys first (e.g. full_left, full_right)
-    game_rect_left = get_config_int(name.c_str(), key("_left").c_str(), -9999);
-
-    if (game_rect_left == -9999) {
-        // Fallback to reading legacy misnamed keys (fullsx = left, fullsy = right, fullex = bottom, fulley = top)
-        game_rect_left = get_config_int(name.c_str(), key("sx").c_str(), 0);
-        game_rect_right = get_config_int(name.c_str(), key("sy").c_str(), 1024);
-        game_rect_bottom = get_config_int(name.c_str(), key("ex").c_str(), 0);
-        game_rect_top = get_config_int(name.c_str(), key("ey").c_str(), 1024);
-    }
-    else {
-        game_rect_right = get_config_int(name.c_str(), key("_right").c_str(), 1024);
-        game_rect_bottom = get_config_int(name.c_str(), key("_bottom").c_str(), 0);
-        game_rect_top = get_config_int(name.c_str(), key("_top").c_str(), 1024);
-    }
-    */
+   
     game_rect_left = get_config_int(name.c_str(), key("_left").c_str(), 0);
     game_rect_right = get_config_int(name.c_str(), key("_right").c_str(), 1024);
     game_rect_bottom = get_config_int(name.c_str(), key("_bottom").c_str(), 0);

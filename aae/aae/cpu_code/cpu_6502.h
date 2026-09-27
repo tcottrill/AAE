@@ -36,27 +36,13 @@
 // 07/01/25 Moved the stack operations back to not using the Memory Handlers. This was a good speed up and did not affect Major Havoc.
 // I left the old code commented out, just in case.
 // 09/01/25 Fixed a newly introduced BCD bug in SBC  if (hi & 0x0100) hi -= 0x60;  // <-- high-digit BCD adjust
-// Updated ABC and SBC code to handle NMOS edge cases. 
-// Rewrote the IRQ after CLI handling to work correctly. 
-// Doubled down on my targeted NMOS first support, added some undocumented upcodes. 
+// Updated ABC and SBC code to handle NMOS edge cases.
+// Rewrote the IRQ after CLI handling to work correctly.
+// Doubled down on my targeted NMOS first support, added some undocumented upcodes.
 // Updated (again) changed the ADC/SBC code.
+// cpu_6502.cpp
 // 01/18/2025 Partial Re-Write with claude.ai. Corrected all documented and undocumented instructions. Added 65C02 Support, 6510 Support
-// and 2A03 support. This CPU Core now passes both NMOS and CMOS Klaus Tests, as well as most Lorentz tests, the rest need specific things that I do not want to add yet. 
-// Added IRQ_HOLD for Emulators that need it like the Commodore PET. Default is IRQ_PULSE.
-// TESTED with the Commodore 64 and NES, see AI generated test emulators on my GitHub. 
-
-// 03/06/2026 Added readop() --an inline function that reads directly from the MEM[] array, bypassing the memory read handler chain.This separates instruction fetches from data fetches.
-// Previously, all memory reads -- opcode fetches, operand fetches, and data reads -- went through get6502memory() and the full handler chain.
-// This caused problems for drivers like Missile Command where the read handler inspects the currently executing opcode(via cpu_getppc()) to decide 
-// whether to return video RAM data or ROM data.When an opcode fetch itself went through that handler, the handler would misidentify it as a data access and return 
-// video RAM instead of ROM, corrupting the instruction stream. readop() is now used for the opcode fetch in step6502() and for all operand fetches from PC in the addressing modes : 
-// abs, absx, absy, relative, indirect, zp, zpx, zpy, indx, indy, indzp, indabsx, and zprel.Data reads from the effective address(the actual LDA / STA / CMP targets) remain routed 
-// through get6502memory() and the memory handlers as before.
-// Also moved PPC = PC to execute before the opcode fetch so that get_ppc() returns the address of the opcode itself, not the byte after it.
-// Both changes are MOSTLY! backward - compatible.For all existing drivers, MEM[addr] and get6502memory(addr) return the same value for ROM / RAM regions since the MRA_RAM / MRA_ROM handlers just 
-// read from MEM.Only drivers with custom read handlers that inspect execution context(like Missile Command) are affected. 
-// AND Major Havoc, which needed an override to be able to read banked rom data.m_cpu_6502[CPU0]->opfetch_through_handlers(true);
-
+// and 2A03 support. Passes both NMOS and CMOS Klaus Tests. Added IRQ_HOLD for Emulators that need it like the Commodore PET. Default is pulse.
 
 #ifndef _6502_H_
 #define _6502_H_
@@ -65,17 +51,24 @@
 
 #include <cstdint>
 #include <string>
-#include "deftypes.h"
 
-// undefine USING_AAE_EMU to skip the timer code.  
+// Define USING_AAE_EMU for the AAE build: the core then drives AAE's timers
+// from step6502(), takes its memory-handler types from deftypes.h and fetches
+// opcodes directly from MEM by default. This line is the only difference
+// between the AAE cpu_code copy and this file.
 #define USING_AAE_EMU
+
+#ifdef USING_AAE_EMU
+#include "deftypes.h"
+#else
+#include "cpu_fw.h"
+#endif
 
 enum irqmode
 {
 	IRQ_PULSE,
 	IRQ_HOLD
 };
-
 
 enum CpuModel {
 	CPU_NMOS_6502,
@@ -111,18 +104,74 @@ public:
 
 	void init6502(uint16_t addrmaskval, CpuModel model = CPU_NMOS_6502);
 	void reset6502();
+	// Hardware reset sequence, preserving A/X/Y and decrementing the current S.
+	// The original reset6502() remains the host's untimed initialization API.
+	void reset_bus6502();
+	// Immediate IRQ entry: call at a CPU boundary only, never from a memory
+	// handler, cycle_cb or a timer callback. irq6502() only latches a request.
 	void execute_irq();
 	void irq6502(int irqmode = IRQ_PULSE);
+	// NMI request. At an instruction boundary the seven-cycle sequence runs
+	// immediately (and reaches the AAE timers). While the core is busy - from
+	// a memory handler, cycle_cb or a timer callback fired by the step - the
+	// edge is latched and taken at the next instruction boundary, as hardware
+	// does with an NMI edge during an instruction. Ignored while STP/JAM parked.
 	void nmi6502();
+	// Pin APIs are safe from cycle_cb: true means asserted (electrically low).
+	// IRQ is level-sensitive; NMI latches an inactive-to-active edge.
+	void set_irq_line(bool asserted);
+	void set_nmi_line(bool asserted);
+	// Runs at least timerTicks machine cycles and returns the count actually
+	// spent. A parked CPU still lets time pass, one cycle per step.
 	int exec6502(int timerTicks);
+	// A parked WAI/STP/JAM step advances the optional host clock once, counts
+	// one machine cycle in get6502ticks() and the AAE timers, reports one
+	// elapsed cycle and returns zero CPU cycles.
 	int step6502();
+	enum class RunState { Running, Waiting, Stopped, Jammed };
+	RunState get_run_state() const { return run_state; }
 	int get6502ticks(int reset);
+
+	// Snapshot of the most recent step6502(), nmi6502(), or reset_bus6502().
+	// Direct reset6502()/execute_irq() calls are outside this report.
+	// step6502() and get6502ticks() retain their legacy CPU-cycle semantics.
+	// Emitted bus cycles are the only cycle source; there is no per-opcode
+	// table any more. The external SingleStepTests vectors are the reference.
+	struct CycleReport {
+		int cpu_cycles = 0;       // bus cycles actually performed, including without a callback
+		uint64_t elapsed_cycles = 0; // callback ticks, including stalled attempts
+		uint64_t stall_cycles = 0;
+		bool bus_timing_active = false;
+	};
+	CycleReport get_last_cycle_report() const { return last_cycle_report; }
 
 	// 2. Add a callback setter for the 6510 Port
 	// The emulator calls this to set a function that triggers when the port changes.
 	typedef void (*PortCallback)(uint8_t data, uint8_t direction);
 	void set_6510_port_callback(PortCallback cb) { port_cb = cb; }
 
+	// -------------------------------------------------------------------------
+	// Cycle-accurate mode (opt-in). The hook advances the rest of the machine
+	// by one cycle and returns true if the bus is available to the CPU this
+	// cycle (false -> a read stalls, e.g. VIC bad line). When the hook is null
+	// the core still counts bus cycles but does not advance an external machine.
+	// -------------------------------------------------------------------------
+	typedef bool (*CycleCallback)(void* user);
+	void set_cycle_callback(CycleCallback cb, void* user) { cycle_cb = cb; cycle_user = user; }
+	// Observe completed CPU bus transfers without repeating memory-mapped reads.
+	typedef void (*BusCallback)(uint8_t value, void* user);
+	void set_bus_callback(BusCallback cb, void* user) { bus_cb=cb; bus_user=user; }
+	// Wait states inserted by a memory handler, for boards without a cycle
+	// callback: the board held the CPU (RDY low or a stretched phi0) for
+	// `cycles` before completing the access the handler is servicing.  They
+	// count as machine time everywhere - this instruction's cycle count (so
+	// the frame budget and the AAE timers see them) and the pending-tick
+	// readers such as the POKEY adapter's catch-up.  Call only from a memory
+	// handler while an instruction is executing.  No-op for cycles <= 0.
+	void bus_wait(int cycles);
+
+	// Allow the emulator to set input pins (like cassette sense)
+	void set_6510_port_in(uint8_t val) { port_in = val; }
 
 	// -------------------------------------------------------------------------
 	// Instruction Usage Profiler
@@ -139,6 +188,12 @@ public:
 	uint8_t m6502_get_reg(int regnum);
 	void m6502_set_reg(int regnum, uint8_t val);
 	uint16_t get_pc();
+	// True while the cycle callback is running for a WRITE bus cycle. The
+	// machine needs it because ANTIC DMA and a WSYNC wait do not treat writes
+	// the same way - see cpu_cycle_tick() in atari800.cpp.
+	bool cycle_is_write = false;
+	BusCallback bus_cb = nullptr;
+	void* bus_user = nullptr;
 	uint16_t get_ppc();
 	void set_pc(uint16_t pc);
 
@@ -158,26 +213,20 @@ public:
 	std::string disassemble(uint16_t pc, int* bytesUsed = nullptr);
 
 	// -------------------------------------------------------------------------
-	// Opcode fetch routing
-	// -------------------------------------------------------------------------
-	// When enabled, opcode and operand fetches go through the memory handler
-	// chain (get6502memory) instead of reading directly from MEM[].
-	// Required for games with bank-switched ROM (e.g. Major Havoc) where the
-	// flat MEM array does not reflect the currently selected bank.
-	// Default is false (direct MEM access, matching MAME cpu_readop behavior).
-	void opfetch_through_handlers(bool s) { use_handler_for_opfetch = s; }
-
-	// -------------------------------------------------------------------------
 	// Stack operations
 	// -------------------------------------------------------------------------
 	void push16(uint16_t val);
 	void push8(uint8_t val);
 	uint16_t pull16();
 	uint8_t pull8();
+	// Bypass handlers for stack operations only, preserving bus timing/observers.
+	// Defaults to false. The RAM address still obeys the CPU address mask.
+	void set_direct_stack_access(bool enabled) { direct_stack_page = enabled; }
+	// AAE-compatible fetch policy; this core defaults to handlers for banked hosts.
+	void opfetch_through_handlers(bool enabled) { use_handler_for_opfetch = enabled; }
 
 	uint8_t A = 0, P = 0, X = 0, Y = 0, S = 0xFF;
 	uint16_t PC = 0, PPC = 0;
-
 
 private:
 	// Store the model
@@ -187,6 +236,12 @@ private:
 	// -------------------------------------------------------------------------
 	bool direct_zero_page = false;
 	bool direct_stack_page = false;
+#ifdef USING_AAE_EMU
+	// MAME cpu_readop behavior; Major Havoc opts into handlers for banked ROM.
+	bool use_handler_for_opfetch = false;
+#else
+	bool use_handler_for_opfetch = true;
+#endif
 	// -------------------------------------------------------------------------
 	// CPU internal state
 	// -------------------------------------------------------------------------
@@ -197,22 +252,61 @@ private:
 
 	int clockticks6502 = 0;
 	int clocktickstotal = 0;
+
+	// Cycle-accurate mode state + primitives (see set_cycle_callback).
+	CycleCallback cycle_cb = nullptr;
+	void*         cycle_user = nullptr;
+	int           cycles_emitted = 0;   // explicit cycle primitives spent this instruction
+	uint64_t      elapsed_cycles = 0;
+	CycleReport   last_cycle_report;
+	inline void   wait_for_bus_cycle();
+	void          finish_cycle_report();
+	bool          indexed_access_is_read() const;
+	void          adc_nmos_value(uint8_t value);
+	void          sbc_nmos_value(uint8_t value);
+	void          interrupt_entry(uint16_t vector);
+	void          push_cycle(uint8_t value);
+	uint8_t       pull_cycle();
+	inline uint8_t read_cycle(uint16_t addr, bool stack = false);
+	inline void    write_cycle(uint16_t addr, uint8_t v, bool stack = false);
+	uint8_t stack_read(uint16_t addr);
+	void stack_write(uint16_t addr, uint8_t value);
+	uint8_t readop(uint16_t addr);
+	uint8_t fetch_cycle(uint16_t addr);
+	uint8_t operand_cycle();
+	inline void    idle_cycle();                          // tick world for an internal/dummy cycle
 	// IRQ Handling
 	int _irqMode = 0;
 	int _irqPending = 0;
 	uint8_t irq_inhibit_one = 0;
+	bool pin_irq_enabled = false, irq_line = false, irq_polled = false;
+	bool nmi_line = false, nmi_latched = false, nmi_polled = false;
+	bool nmi_immediate = false;  // reentrant nmi6502(): take at the next boundary
+	// True while the core is busy (an instruction, a parked cycle, or the
+	// timer update that ends a step): nmi6502() must latch, not execute.
+	bool in_instruction = false;
+	RunState run_state = RunState::Running;
+	uint16_t irq_history = 0, nmi_history = 0;
+	void poll_interrupt_pins();
+	void take_nmi();
 	int cpu_num = 0;
 
 	bool debug = false;
 	bool mmem = false;
 	bool log_debug_rw = false;
-	bool use_handler_for_opfetch = false;
 	bool kil_logged = false;   // one-shot log when a KIL/JAM opcode halts the CPU
 
-	// 6510 Internal State
-	uint8_t io_port_data = 0; // $0001
-	uint8_t io_port_dir = 0;  // $0000
+	// 6510 Emulation State
+	uint8_t ddr = 0x00;       // $0000 Data Direction
+	uint8_t port_out = 0x00;  // $0001 Output Latch (What CPU wrote)
+	uint8_t port_in = 0xFF;   // $0001 Input Pins (External hardware, default high)
+	bool skip_poll = false;   // BRK: no interrupt poll at the end of the sequence
+
+	// Callback for banking
 	PortCallback port_cb = nullptr;
+
+	// Helper to check for changes
+	void check_and_notify_6510(uint8_t old_ddr, uint8_t old_port);
 
 	// -------------------------------------------------------------------------
 	// Processor status flags
@@ -239,11 +333,6 @@ private:
 	// -------------------------------------------------------------------------
 	uint8_t get6502memory(uint16_t addr);
 	void put6502memory(uint16_t addr, uint8_t byte);
-
-	// Direct read from MEM[] array, bypassing memory handlers.
-	// Used for opcode and operand fetches (equivalent to MAME cpu_readop).
-	// Data reads still go through get6502memory() and the handler chain.
-	inline uint8_t readop(uint16_t addr);
 
 	// -------------------------------------------------------------------------
 	// IRQ helper
@@ -285,7 +374,8 @@ private:
 	// -------------------------------------------------------------------------
 	// Addressing modes
 	// -------------------------------------------------------------------------
-	void implied6502(); void immediate6502(); void abs6502(); void relative6502();
+	void implied6502(); void immediate6502(); void abs6502(); void abs_jsr6502();
+	void relative6502();
 	void indirect6502(); void absx6502(); void absy6502(); void zp6502();
 	void zpx6502(); void zpy6502(); void indx6502(); void indy6502();
 	void indabsx6502(); void indzp6502(); void zprel6502(); // For BBR/BBS
@@ -310,7 +400,7 @@ private:
 	void tsx6502(); void txa6502(); void txs6502(); void tya6502();
 	void bra6502(); void dea6502(); void ina6502(); void phx6502();
 	void plx6502(); void phy6502(); void ply6502(); void stz6502();
-	void tsb6502(); void trb6502(); 
+	void tsb6502(); void trb6502();
 	// CMOS specific ALU helpers
 	void adc65c02();
 	void sbc65c02();
@@ -326,15 +416,15 @@ private:
 	void slo6502(); void rra6502(); void rla6502(); void sre6502();
 	void anc6502(); void alr6502(); void arr6502(); void axs6502();
 	//Lorentz Tests
-	void ane6502(); void lxa6502(); void shs6502(); void shy6502(); 
+	void ane6502(); void lxa6502(); void shs6502(); void shy6502();
 	void shx6502(); void ahx6502(); void las6502();
 	void kil6502();                       // NMOS JAM/KIL: freezes the PC
+	void wai6502();
+	void stp6502();
 	uint16_t sh_target(uint16_t base, uint8_t store_value);  // SHx page-cross target
 	// C6502 Special Instructions
 	void rmb_smb_6502(); // Handles RMB0-7 and SMB0-7
 	void bbr_bbs_6502(); // Handles BBR0-7 and BBS0-7
-
-
 };
 
 #endif // _6502_H_

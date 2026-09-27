@@ -31,6 +31,7 @@ UINT8 CCPUROMSIZE = 16;
 
 extern  void cinemat_vector_callback(INT16 sx, INT16 sy, INT16 ex, INT16 ey, UINT8 shift);
 extern  void cini_sound_control_w(int offset, int data);
+extern  void qb3_sound_w(int rega);
 
 typedef struct
 {
@@ -68,6 +69,7 @@ typedef struct
 
 static ccpuRegs ccpu;
 static int ccpu_icount;
+static bool ccpu_new_frame = true;
 
 /* Standard CCPU data RAM -- 256 words used by most games */
 UINT16 CCPURAM[0x100];
@@ -83,8 +85,8 @@ UINT16 QB3RAM[0x400];
 static bool  qb3_mode = false;      /* true when running QB3 */
 static UINT8 qb3_ram_bank = 0;      /* current bank (0-3) */
 
-/* Cycles budget for the current frame -- captured at ccpu_execute entry
-   so qb3_frame_r can estimate how far into the frame we are. */
+/* Cycle budget of the current ccpu_execute call (one scheduler slice) --
+   qb3_frame_r adds progress within it to the frame position. */
 static int ccpu_cycles_this_frame = 0;
 
 UINT8 outport[16];
@@ -196,8 +198,15 @@ int get_ccpu_ticks()
 	return ccpu_icount;
 }
 
+/* True once the game has executed FRM this frame (drawing finished). */
+int ccpu_is_waiting()
+{
+	return ccpu.waiting ? 1 : 0;
+}
+
 void ccpu_wdt_timer_trigger(void)
 {
+	ccpu_new_frame = true;
 	ccpu.waiting = 0;
 	ccpu.watchdog++;
 	//if (gamenum != SUNDANCE)
@@ -223,6 +232,7 @@ static void ccpu_init(int index, int clock, const void* _config, int (*irqcallba
 
 void ccpu_reset(void)
 {
+	ccpu_new_frame = true;
 	LOG_INFO("CCPU Reset Called");
 	/* zero registers */
 	ccpu.PC = 0;
@@ -303,14 +313,17 @@ void ccpu_qb3_bank_switch()
    budget for this frame. */
 int ccpu_qb3_frame_r()
 {
-	if (ccpu_cycles_this_frame <= 0)
+	const int fps = Machine->gamedrv->fps;
+	const int cpf = (fps > 0) ? Machine->gamedrv->cpu[0].cpu_freq / fps : 0;
+	if (cpf <= 0)
 		return 1;  /* safety fallback */
 
-	/* cycles remaining / total cycles gives fraction of frame remaining.
-	   We want to return 1 when less than 90% of the frame has elapsed,
-	   i.e. when more than 10% of cycles remain. */
-	int elapsed = ccpu_cycles_this_frame - ccpu_icount;
-	int pct = (elapsed * 100) / ccpu_cycles_this_frame;
+	/* ccpu_execute runs one scheduler slice, not the whole frame (QB3 is
+	   interleaved with its sound Z80), so measure against the full frame:
+	   cycles the scheduler has already run this frame plus progress in
+	   the current slice. Return 1 until 90% of the frame has elapsed. */
+	const int elapsed = cpu_scale_by_cycles(cpf, 0) + (ccpu_cycles_this_frame - ccpu_icount);
+	const int pct = (elapsed * 100) / cpf;
 	return (pct < 90) ? 1 : 0;
 }
 
@@ -573,7 +586,13 @@ static int ccpu_execute(int cycles)
 				if ((opcode & 0x07) == 6) vec_control_write(~*ccpu.acc & 1);
 				if ((opcode & 0x07) == 7) MUX_VAL = ~*ccpu.acc & 1;
 
-				if ((opcode & 0x07) < 8) cini_sound_control_w(opcode & 0x07, ~*ccpu.acc & 1);
+				/* QB3 (MAME qb3_sound_w / qb3_ram_bank_w): port 4 pushes the
+				   low nibble of A into the sound FIFO, and ports 0 and 4 are
+				   removed from the sound latch. */
+				if (qb3_mode && (opcode & 0x07) == 4)
+					qb3_sound_w(ccpu.A);
+				else if (!(qb3_mode && (opcode & 0x07) == 0))
+					cini_sound_control_w(opcode & 0x07, ~*ccpu.acc & 1);
 			}
 
 			NEXT_ACC_A(); CYCLES(1);
@@ -852,7 +871,12 @@ static int ccpu_execute(int cycles)
 
 int run_ccpu(int cycles)
 {
-	cache_clear();
-	vector_clear_list();
+	// Sound CPUs require multiple CCPU slices per frame. Preserve all vectors
+	// until the frame is presented, including slices spent waiting at FRM.
+	if (ccpu_new_frame) {
+		cache_clear();
+		vector_clear_list();
+		ccpu_new_frame = false;
+	}
 	return ccpu_execute(cycles);
 }

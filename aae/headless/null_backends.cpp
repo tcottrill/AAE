@@ -304,7 +304,7 @@ struct GameOptions options = { 1 };
 // these live. Reached because asteroid.cpp/bzone.cpp are compiled directly
 // into aae_headless (see the CMakeLists.txt comment on why) and their
 // explosion/thrust/saucer sample effects call sample_start()/sample_stop()/
-// etc. directly, and because aae_pokey.cpp (genuinely aae_core - the POKEY
+// etc. directly, and because c012294_interface.cpp (genuinely aae_core - the POKEY
 // sound chip used by both games) streams its output through
 // mixer_alloc_channel()/stream_start()/stream_update()/stream_stop(). No
 // audio ever needs to actually play for a vector-count proof, so these are

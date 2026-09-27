@@ -12,9 +12,9 @@
 //==========================================================================
 
 #include "bwidow.h"
-#include "aae_avg.h"
-#include "earom.h"
-#include "aae_pokey.h"
+#include "mame_late_avgdvg.h"
+#include "er2055.h"
+#include "c012294_interface.h"
 #include "aae_mame_driver.h"
 #include "driver_registry.h"    // AAE_REGISTER_DRIVER
 #include "timer.h"
@@ -27,6 +27,16 @@
 #define IN_P1 (1 << 5)
 #define IN_P2 (1 << 6)
 
+// IRQ rate - DELIBERATELY 240 Hz. The board's IRQ is the 3 kHz clock divided
+// by 12: 12.096 MHz / 4096 / 12 = 246.09375 Hz (1.512 MHz / 6144), and the
+// game draws one picture per four IRQs, a 61.5 Hz picture. Black Widow,
+// Gravitar, Space Duel and Lunar Battle all run here at 60 fps with a periodic
+// timer at 240 Hz (init_bwidow / init_spacduel): exactly four IRQs per
+// presented frame (6300 CPU cycles each, 25200 per frame), so the game is
+// frame-locked to the 60 Hz display at the cost of running 2.5% slow - the
+// same chosen trade as Asteroids, Tempest and Quantum, not an oversight.
+// Hardware-exact alternative: TIME_IN_HZ(12096000.0 / 4096 / 12), as the
+// 40 fps games (llander, bzone) do.
 void bwidow_interrupt(int dummy)
 {
 	//LOG_INFO("BWidow Interrupt");
@@ -62,7 +72,7 @@ READ_HANDLER(IN0read)
 	// slice by cpu_exec_now) so edge-waiting loops (self-test) see a real
 	// ~3KHz square wave. Same fix as llander_IN0_r.
 	if ((get_eterna_ticks(0) + m_cpu_6502[CPU0]->get6502ticks(0)) & 0x100) { bitset(val, 0x80); }
-	if (!avg_check())
+	if (!avgdvg_done())
 	{
 		bitclr(val, 0x40);
 	}
@@ -126,14 +136,9 @@ WRITE_HANDLER(irq_ack_w)
 	//Machine->memory_region[CPU0][0x88c0] = data;
 }
 
-// Driver-private, deliberately NOT the exported avgdvg_reset_w from
-// vidhrdwr/aae_avg.h (defined at aae_avg.cpp:644). It used to reuse that
-// name, so the extern declaration was in scope and then a static of the same
-// name was defined - MSVC accepts that, g++ rejects it. Renamed rather than
-// made public: two external definitions would collide at link time.
 WRITE_HANDLER(bwidow_avgdvg_reset_w)
 {
-//	LOG_INFO("AVG RESET");
+	avgdvg_reset(0, 0);
 }
 
 WRITE_HANDLER(bwidow_misc_w)
@@ -170,10 +175,35 @@ void run_bwidow()
 	//avg_clear();
 }
 
+// ---------------------------------------------------------------------------
+// EAROM (ER2055) - MAME bwidow.cpp earom_read/earom_write/earom_control_w.
+// CK = DB0, C1 = /DB2, C2 = DB1, CS1 = DB3, /CS2 = GND. `address` is the
+// offset from the range start, so & 0x3f is right for both the Black Widow
+// (0x8940) and Space Duel / Gravitar (0x0f00) write windows.
+// ---------------------------------------------------------------------------
+static er2055 earom;
+
+READ_HANDLER(earom_read)
+{
+	return er2055_data(&earom);
+}
+
+WRITE_HANDLER(earom_write)
+{
+	er2055_set_address(&earom, address & 0x3f);
+	er2055_set_data(&earom, data);
+}
+
+WRITE_HANDLER(earom_control_w)
+{
+	er2055_set_control(&earom, (data >> 3) & 1, true, !((data >> 2) & 1), (data >> 1) & 1);
+	er2055_set_clk(&earom, data & 1);
+}
+
 MEM_READ(BwidowRead)
 MEM_ADDR(0x6000, 0x600f, pokey_1_r)
 MEM_ADDR(0x6800, 0x680f, pokey_2_r)
-MEM_ADDR(0x7000, 0x7000, EaromRead)
+MEM_ADDR(0x7000, 0x7000, earom_read)
 MEM_ADDR(0x7800, 0x7800, IN0read)
 MEM_ADDR(0x8000, 0x8000, ip_port_3_r)
 MEM_ADDR(0x8800, 0x8800, ip_port_4_r)
@@ -183,10 +213,11 @@ MEM_WRITE(BwidowWrite)
 MEM_ADDR(0x6000, 0x67ff, pokey_1_w)
 MEM_ADDR(0x6800, 0x6fff, pokey_2_w)
 MEM_ADDR(0x8800, 0x8800, bwidow_misc_w)
-MEM_ADDR(0x8840, 0x8840, advdvg_go_w)
+MEM_ADDR(0x8840, 0x8840, avgdvg_go_w)
+MEM_ADDR(0x8880, 0x8880, bwidow_avgdvg_reset_w)
 MEM_ADDR(0x88c0, 0x88c0, irq_ack_w)
-MEM_ADDR(0x8900, 0x8900, EaromCtrl)
-MEM_ADDR(0x8940, 0x897f, EaromWrite)
+MEM_ADDR(0x8900, 0x8900, earom_control_w)
+MEM_ADDR(0x8940, 0x897f, earom_write)
 MEM_ADDR(0x8980, 0x89ed, watchdog_reset_w)
 MEM_ADDR(0x9000, 0xffff, MWA_ROM)
 MEM_END
@@ -195,20 +226,20 @@ MEM_READ(SpaceDuelRead)
 MEM_ADDR(0x800, 0x800, IN0read)
 MEM_ADDR(0x1000, 0x100f, pokey_1_r)
 MEM_ADDR(0x1400, 0x140f, pokey_2_r)
-MEM_ADDR(0x0a00, 0x0a00, EaromRead)
+MEM_ADDR(0x0a00, 0x0a00, earom_read)
 MEM_ADDR(0x0900, 0x0907, SDControls)
 MEM_END
 
 MEM_WRITE(SpaceDuelWrite)
 MEM_ADDR(0x1000, 0x100f, pokey_1_w)
 MEM_ADDR(0x1400, 0x140f, pokey_2_w)
-MEM_ADDR(0x0c80, 0x0c80, advdvg_go_w)
+MEM_ADDR(0x0c80, 0x0c80, avgdvg_go_w)
 MEM_ADDR(0x0c00, 0x0c00, spacduel_misc_w)
 MEM_ADDR(0x0d00, 0x0d00, watchdog_reset_w)
 MEM_ADDR(0x0d80, 0x0d80, bwidow_avgdvg_reset_w)
 MEM_ADDR(0x0e00, 0x0e00, irq_ack_w)
-MEM_ADDR(0x0f00, 0x0f3f, EaromWrite)
-MEM_ADDR(0x0e80, 0x0e80, EaromCtrl)
+MEM_ADDR(0x0f00, 0x0f3f, earom_write)
+MEM_ADDR(0x0e80, 0x0e80, earom_control_w)
 MEM_ADDR(0x2800, 0x8fff, MWA_ROM)
 MEM_ADDR(0xf000, 0xffff, MWA_ROM)
 MEM_ADDR(0x0905, 0x0906, MWA_ROM)
@@ -219,7 +250,12 @@ int init_bwidow()
 	pokey_sh_start(&pokey_interface);
 	//init6502(BwidowRead, BwidowWrite, 0xffff, CPU0);
 	avg_start();
-	timer_set(TIME_IN_HZ(246), CPU0, bwidow_interrupt);
+	timer_set(TIME_IN_HZ(240), CPU0, bwidow_interrupt); // 240 by choice, board is 246.09375 - see bwidow_interrupt
+
+	er2055_init(&earom);
+	nvram_set_region(earom.rom, sizeof(earom.rom), 0x00);
+	earom_control_w(0, 0, nullptr);   // MAME machine_reset(): earom_control_w(0)
+
 	return 1;
 }
 /////////////////// MAIN() for program ///////////////////////////////////////////////////
@@ -228,7 +264,12 @@ int init_spacduel()
 	pokey_sh_start(&pokey_interface);
 	//init6502(SpaceDuelRead, SpaceDuelWrite, 0xffff, CPU0);
 	avg_start();
-	timer_set(TIME_IN_HZ(246), CPU0, bwidow_interrupt);
+	timer_set(TIME_IN_HZ(240), CPU0, bwidow_interrupt); // 240 by choice, board is 246.09375 - see bwidow_interrupt
+
+	er2055_init(&earom);
+	nvram_set_region(earom.rom, sizeof(earom.rom), 0x00);
+	earom_control_w(0, 0, nullptr);   // MAME machine_reset(): earom_control_w(0)
+
 	return 1;
 }
 void end_bwidow()
@@ -785,12 +826,12 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_NONE_ENTRY()
 )
 
-AAE_DRIVER_VIDEO_CORE(45,0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT)
+AAE_DRIVER_VIDEO_CORE(60,0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT)
 AAE_DRIVER_SCREEN(1024, 768, 0, 520, 0, 395)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x2000, 0x800)
-AAE_DRIVER_NVRAM(atari_vg_earom_handler)
+AAE_DRIVER_NVRAM(generic_nvram_handler)
 AAE_DRIVER_LAYOUT_NONE()
 AAE_DRIVER_END()
 
@@ -813,13 +854,14 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_NONE_ENTRY()
 )
 
-AAE_DRIVER_VIDEO_CORE(45,0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT)
+AAE_DRIVER_VIDEO_CORE(60,0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT)
 AAE_DRIVER_SCREEN(1024, 768, 0, 520, 0, 395)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x2000, 0x800)
-AAE_DRIVER_NVRAM(atari_vg_earom_handler)
+AAE_DRIVER_NVRAM(generic_nvram_handler)
 AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_CLONE_OF("spacduel")
 AAE_DRIVER_END()
 
 // Space Duel (Revision 1)
@@ -841,13 +883,14 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_NONE_ENTRY()
 )
 
-AAE_DRIVER_VIDEO_CORE(45,0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT)
+AAE_DRIVER_VIDEO_CORE(60,0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT)
 AAE_DRIVER_SCREEN(1024, 768, 0, 520, 0, 395)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x2000, 0x800)
-AAE_DRIVER_NVRAM(atari_vg_earom_handler)
+AAE_DRIVER_NVRAM(generic_nvram_handler)
 AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_CLONE_OF("spacduel")
 AAE_DRIVER_END()
 
 // Black Widow
@@ -874,7 +917,7 @@ AAE_DRIVER_SCREEN(1024, 768, 0, 540, 0, 450)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x2000, 0x800)
-AAE_DRIVER_NVRAM(atari_vg_earom_handler)
+AAE_DRIVER_NVRAM(generic_nvram_handler)
 AAE_DRIVER_LAYOUT_NONE()
 AAE_DRIVER_END()
 
@@ -903,7 +946,7 @@ AAE_DRIVER_SCREEN(1000, 790, 0, 460, 0, 395)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x2000, 0x800)
-AAE_DRIVER_NVRAM(atari_vg_earom_handler)
+AAE_DRIVER_NVRAM(generic_nvram_handler)
 AAE_DRIVER_LAYOUT_NONE()
 AAE_DRIVER_END()
 
@@ -931,8 +974,9 @@ AAE_DRIVER_SCREEN(1000, 790, 0, 460, 0, 395)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x2000, 0x800)
-AAE_DRIVER_NVRAM(atari_vg_earom_handler)
+AAE_DRIVER_NVRAM(generic_nvram_handler)
 AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_CLONE_OF("gravitar")
 AAE_DRIVER_END()
 
 // Gravitar (Prototype)
@@ -959,8 +1003,9 @@ AAE_DRIVER_SCREEN(1000, 790, 0, 460, 0, 395)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x2000, 0x800)
-AAE_DRIVER_NVRAM(atari_vg_earom_handler)
+AAE_DRIVER_NVRAM(generic_nvram_handler)
 AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_CLONE_OF("gravitar")
 AAE_DRIVER_END()
 
 // Lunar Battle (Prototype, Late)
@@ -982,13 +1027,14 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_NONE_ENTRY()
 )
 
-AAE_DRIVER_VIDEO_CORE(45,0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT)
+AAE_DRIVER_VIDEO_CORE(60,0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT)
 AAE_DRIVER_SCREEN(1000, 790, 0, 460, 0, 395)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x2000, 0x800)
-AAE_DRIVER_NVRAM(atari_vg_earom_handler)
+AAE_DRIVER_NVRAM(generic_nvram_handler)
 AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_CLONE_OF("gravitar")
 AAE_DRIVER_END()
 
 // Lunar Battle (Prototype, Early)
@@ -1010,13 +1056,14 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_NONE_ENTRY()
 )
 
-AAE_DRIVER_VIDEO_CORE(45,0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT)
+AAE_DRIVER_VIDEO_CORE(60,0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_DEFAULT)
 AAE_DRIVER_SCREEN(1000, 790, 0, 460, 0, 395)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x2000, 0x800)
-AAE_DRIVER_NVRAM(atari_vg_earom_handler)
+AAE_DRIVER_NVRAM(generic_nvram_handler)
 AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_CLONE_OF("gravitar")
 AAE_DRIVER_END()
 
 AAE_REGISTER_DRIVER(drv_spacduel)

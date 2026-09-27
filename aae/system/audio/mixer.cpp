@@ -139,6 +139,7 @@
  // Note for ME: This is the FULL INTEGER version of this code, for AAE only: 8/15/25
 
 #include "mixer.h"
+#include "mixer_groups.h"
 #include "audio_backend.h"   // IAudioBackend + create_audio_backend(); NOT xaudio2_backend.h
 #include "audio_3d.h"
 #include "error_wav.h"
@@ -211,7 +212,15 @@ constexpr int MAX_SOUNDS = 255;
 static std::atomic<bool> sound_paused{ false };
 static int sound_id = -1;
 static int g_master_pct = 80;          // canonical master volume in percent (0..100)
-static int last_master_pct = 80;       // saved by pause_audio, restored by restore_audio
+// Group volume bytes (mixer_groups.h). Index by MixerGroup. NONE stays 255.
+// Persist across mixer_init/mixer_end: they are user config, reapplied by the
+// emulator (AAE_ApplyAudioVolumesFromConfig) at every game start.
+static int g_group_vol[MIXER_GROUP_COUNT] = { 255, 255, 255 };
+
+// Per-game trims from the running driver (AAE_DRIVER_SOUND_TRIM), multiplied
+// under g_group_vol. Reset to 255 by mixer_init; the emulator applies the
+// driver's values right after init.
+static int g_group_trim[MIXER_GROUP_COUNT] = { 255, 255, 255 };
 static std::mutex audioMutex;
 static std::list<int> audio_list;
 static std::vector<std::shared_ptr<SAMPLE>> lsamples;
@@ -227,6 +236,15 @@ static CHANNEL channel[MAX_CHANNELS];
 // Zero = no fade active. ~2 frames at 60fps.
 constexpr int MIXER_END_FADE_MS = 30;
 static double fade_step[MAX_CHANNELS] = {};
+
+// The one place a channel's applied linear gain is derived: its own byte
+// under its group's byte. Callers hold audioMutex (or are inside a start
+// function that already does).
+static inline float channel_gain(const CHANNEL& ch)
+{
+	const int g = (ch.group >= 0 && ch.group < MIXER_GROUP_COUNT) ? ch.group : MIXER_GROUP_NONE;
+	return mixer_group_channel_gain(ch.volume, g_group_vol[g], g_group_trim[g]);
+}
 
 // Streaming backend - owns the engine, mastering voice, output source voice,
 // ring buffers, and (as of Task 2) the per-channel voice path. mixer.cpp only
@@ -846,6 +864,13 @@ int mixer_init(int rate, int fps)  // <<< integer FPS
 	}
 	g_backend = std::move(backend);
 
+	// A new session always starts unpaused. This must precede the master
+	// push below: mixer_set_master_volume defers the backend write while
+	// paused, and the previous game may have been quit from the pause menu.
+	sound_paused = false;
+
+	for (int g = 0; g < MIXER_GROUP_COUNT; ++g) g_group_trim[g] = 255;
+
 	// Apply the canonical 80% default through the perceptual curve so g_master_pct
 	// and the actual XAudio2 gain agree from the start.
 	mixer_set_master_volume(80);
@@ -860,8 +885,6 @@ int mixer_init(int rate, int fps)  // <<< integer FPS
 	for (int i = 0; i < MAX_CHANNELS; ++i) {
 		channel[i] = CHANNEL();
 	}
-
-	sound_paused = false;
 
 	// FIX: Reset ALL thread state flags BEFORE starting the thread
 	audioThreadExit.store(false, std::memory_order_release);
@@ -947,7 +970,10 @@ static inline int16_t mixer_soft_clip(int32_t v)
 		return static_cast<int16_t>(v);
 	const float over = static_cast<float>(std::abs(v) - kKnee) / kFold;
 	const float y = static_cast<float>(kKnee) + kFold * std::tanh(over);
-	const int32_t q = static_cast<int32_t>(y); // tanh < 1 keeps y < 32768; trunc caps at 32767
+	// float tanh() returns exactly 1.0f for over > ~9 (extreme overmix),
+	// making y = 32768.0 - clamp so the int16 cast can't wrap to -32768.
+	int32_t q = static_cast<int32_t>(y);
+	if (q > 32767) q = 32767;
 	return static_cast<int16_t>(v < 0 ? -q : q);
 }
 
@@ -1039,7 +1065,7 @@ static void mixer_update_internal()
 						// (released near the sample's end); the armed step
 						// must not survive into this channel's next use.
 						fade_step[chan] = 0.0;
-						ch.vol = VolumeByteToLinear(ch.volume);
+						ch.vol = channel_gain(ch);
 						ch.state = SoundState::Stopped;
 						ch.isPlaying = false;
 						ch.playing_sample.reset();
@@ -1226,6 +1252,24 @@ void mixer_update()
 	audioCV.notify_one();
 }
 
+// -----------------------------------------------------------------------------
+// mixer_wavwrite_start / mixer_wavwrite_stop
+// -wavwrite session capture, forwarded to the backend (see audio_backend.h).
+// -----------------------------------------------------------------------------
+bool mixer_wavwrite_start(const char* path)
+{
+	if (!g_backend) {
+		LOG_ERROR("mixer_wavwrite_start: no audio backend - cannot record");
+		return false;
+	}
+	return g_backend->CaptureStart(path);
+}
+
+void mixer_wavwrite_stop(void)
+{
+	if (g_backend) g_backend->CaptureStop();
+}
+
 void mixer_end()
 {
 	// FIX: Check if mixer is even active
@@ -1252,6 +1296,9 @@ void mixer_end()
 	audioThreadActive.store(false, std::memory_order_release);
 	
 	LOG_INFO("mixer_end: audio thread stopped, cleaning up resources...");
+
+	// Finalize any -wavwrite capture before voices/backend are torn down.
+	if (g_backend) g_backend->CaptureStop();
 
 	// Tear down positional first so any matrix work in flight stops touching
 	// voices we're about to destroy.
@@ -1317,7 +1364,7 @@ static void stop_channel_locked(int chanid)
 	// A release fade may have walked ch.vol partway down; ch.volume is the
 	// source of truth, so re-sync the applied gain and disarm the fade.
 	fade_step[chanid] = 0.0;
-	ch.vol = VolumeByteToLinear(ch.volume);
+	ch.vol = channel_gain(ch);
 
 	ch.state             = SoundState::Stopped;
 	ch.isPlaying         = false;
@@ -1462,7 +1509,7 @@ void sample_set_volume(int chanid, int volume)
 	volume = std::clamp(volume, 0, 255);
 	ch.volume = volume;
 
-	const float gain = VolumeByteToLinear(volume);
+	const float gain = channel_gain(ch);
 	ch.vol = static_cast<double>(gain);
 
 	if (ch.voice) {
@@ -1663,6 +1710,10 @@ void sample_start(int chanid, int samplenum, int loop)
 	ch.stream_type = 0;
 	ch.pos_q32     = 0;
 	ch.step_q32    = (1ull << 32);
+	// A release fade (sample_end_mixer) only ever decays inside the mix loop,
+	// so once the channel leaves the mix list an armed step would otherwise
+	// stay set forever and keep mixer_set_group_volume skipping this voice.
+	fade_step[chanid] = 0.0;
 
 	// If there is an existing voice on this channel, stop and destroy it.
 	if (ch.voice) {
@@ -1691,6 +1742,7 @@ void sample_start(int chanid, int samplenum, int loop)
 	ch.looping = loop;
 	ch.volume = 255;
 	ch.pan = 128;
+	ch.group = mixer_group_for_start(chanid, /*is_stream=*/false);
 	ch.frequency = sample->fx.rate;
 	ch.loaded_sample_num = samplenum;
 	ch.playing_sample = sample;       // pin SAMPLE memory for the backend's buffer reads
@@ -1710,7 +1762,7 @@ void sample_start(int chanid, int samplenum, int loop)
 	}
 
 	// We have to set the volume manually here to avoid a scoped_lock recursive error.
-	const float gain = VolumeByteToLinear(ch.volume);
+	const float gain = channel_gain(ch);
 	ch.vol = gain;
 	g_backend->VoiceSetVolume(ch.voice, gain);
 
@@ -1825,11 +1877,12 @@ void sample_start_mixer(int chanid, int samplenum, int loop)
 	ch.loaded_sample_num = samplenum;
 	ch.playing_sample = lsamples[samplenum]; // pin lifetime; survives sample_remove
 	ch.looping = loop;
+	ch.group = mixer_group_for_start(chanid, /*is_stream=*/false);
 	// Restart during (or after) a sample_end_mixer release fade: disarm it and
 	// bring the applied gain back to the channel's set level, so the sample
 	// comes back at the loudness the driver configured, not the fade residue.
 	fade_step[chanid] = 0.0;
-	ch.vol = VolumeByteToLinear(ch.volume);
+	ch.vol = channel_gain(ch);
 	ch.pos_q32 = 0;
 	// step_q32 reflects sample-native-rate -> output-rate. For samples that were
 	// resampled to SYS_FREQ at load (the default), this is exactly 1<<32 and the
@@ -1917,8 +1970,9 @@ void stream_start(int chanid, int /*stream*/, int bits, int frame_rate, bool ste
 
 	// Same fade cleanup as sample_start_mixer: a leftover release fade must
 	// not decay a freshly started stream to silence.
+	ch.group = mixer_group_for_start(chanid, /*is_stream=*/true);
 	fade_step[chanid] = 0.0;
-	ch.vol = VolumeByteToLinear(ch.volume);
+	ch.vol = channel_gain(ch);
 
 	// Build the per-frame stream SAMPLE inline -- create_sample takes its own
 	// lock so we can't call it from inside this scope without re-entering the
@@ -2127,15 +2181,15 @@ void stream_set_native_rate(int chanid, int native_rate)
 
 void restore_audio()
 {
-	mixer_set_master_volume(last_master_pct);
 	sound_paused = false;
+	// g_master_pct is the canonical level; it may have changed while paused.
+	if (g_backend) g_backend->SetMasterVolume(VolumePercentToLinear(g_master_pct));
 }
 
 void pause_audio()
 {
-	last_master_pct = g_master_pct;
-	mixer_set_master_volume(0);
 	sound_paused = true;
+	if (g_backend) g_backend->SetMasterVolume(0.0f);
 #ifdef USE_VUMETER
 	mixer_reset_vu();
 #endif
@@ -2365,10 +2419,16 @@ void mixer_set_master_volume(int volumePercent)
 	volumePercent = std::clamp(volumePercent, 0, 100);
 	g_master_pct = volumePercent;
 	const float amplitude = VolumePercentToLinear(volumePercent);
-	if (g_backend) g_backend->SetMasterVolume(amplitude);
+
+	// The backend gain is the mute while paused (pause_audio). Record the new
+	// level now; restore_audio pushes g_master_pct to the backend. Pushing it
+	// here would un-mute a paused game and, worse, restore_audio used to put
+	// the pre-pause level back, discarding a menu adjustment made while paused.
+	if (g_backend && !sound_paused) g_backend->SetMasterVolume(amplitude);
 
 	float dB = (amplitude > 0.0f) ? 20.0f * log10f(amplitude) : -1000.0f;
-	LOG_INFO("Master volume: %d%% -> %.2f dB -> %.6f linear", volumePercent, dB, amplitude);
+	LOG_INFO("Master volume: %d%% -> %.2f dB -> %.6f linear%s", volumePercent, dB, amplitude,
+		sound_paused ? " (deferred: paused)" : "");
 }
 
 float mixer_get_master_volume()
@@ -2379,6 +2439,71 @@ float mixer_get_master_volume()
 int mixer_get_master_volume_percent()
 {
 	return g_master_pct;
+}
+
+// Re-derive every channel tagged with `group` (stopped ones too; the next
+// start re-derives anyway). A software-mixer channel mid release fade is
+// left alone: its ch.vol is walking to zero and will stop there. Fades never
+// apply to voice-path channels, so those are always updated. Caller holds
+// audioMutex.
+static void regroup_channels_locked(int group)
+{
+	for (int i = 0; i < MAX_CHANNELS; ++i) {
+		auto& ch = channel[i];
+		if (ch.group != group) continue;
+		if (!ch.voice && fade_step[i] > 0.0) continue;
+		const float gain = channel_gain(ch);
+		ch.vol = static_cast<double>(gain);
+		if (ch.voice && g_backend) g_backend->VoiceSetVolume(ch.voice, gain);
+	}
+}
+
+void mixer_set_group_volume(int group, int volume255)
+{
+	if (group <= MIXER_GROUP_NONE || group >= MIXER_GROUP_COUNT) {
+		LOG_ERROR("mixer_set_group_volume: invalid group %d", group);
+		return;
+	}
+	volume255 = std::clamp(volume255, 0, 255);
+
+	std::scoped_lock lock(audioMutex);
+	if (g_group_vol[group] == volume255) return;
+	g_group_vol[group] = volume255;
+	regroup_channels_locked(group);
+
+	LOG_INFO("Group volume: group %d -> %d (%.2f dB)", group, volume255,
+		20.0f * log10f(std::max(VolumeByteToLinear(volume255), 1e-6f)));
+}
+
+int mixer_get_group_volume(int group)
+{
+	if (group < 0 || group >= MIXER_GROUP_COUNT) return 255;
+	std::scoped_lock lock(audioMutex);
+	return g_group_vol[group];
+}
+
+void mixer_set_group_trim(int group, int trim255)
+{
+	if (group <= MIXER_GROUP_NONE || group >= MIXER_GROUP_COUNT) {
+		LOG_ERROR("mixer_set_group_trim: invalid group %d", group);
+		return;
+	}
+	trim255 = std::clamp(trim255, 0, 255);
+
+	std::scoped_lock lock(audioMutex);
+	if (g_group_trim[group] == trim255) return;
+	g_group_trim[group] = trim255;
+	regroup_channels_locked(group);
+
+	LOG_INFO("Group trim: group %d -> %d (%.2f dB)", group, trim255,
+		20.0f * log10f(std::max(VolumeByteToLinear(trim255), 1e-6f)));
+}
+
+int mixer_get_group_trim(int group)
+{
+	if (group < 0 || group >= MIXER_GROUP_COUNT) return 255;
+	std::scoped_lock lock(audioMutex);
+	return g_group_trim[group];
 }
 
 int mixer_get_output_channels()

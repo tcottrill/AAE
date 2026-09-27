@@ -9,6 +9,7 @@
 #include "gl_texturing.h" // For game_tex[0]
 #include "gl_shader.h"    // fragTexColor + bind_shader / set_uniform*
 #include "vector_draw.h"  // beam_add_line / beam_add_shot / beam_clear
+#include "mame_vector.h"  // vector_get_beam - per-game line width scale
 #include "MathUtils.h"    // aae::math::value_ptr
 #include <vector>
 #include <algorithm>       // std::min / std::max (clip)
@@ -37,6 +38,29 @@ colors vec_colors[256];
 // the lines/points; this list feeds the legacy textured-shot pass selected by
 // config.shots_textured.
 std::vector<txdata> texlist;
+
+// Does the running game draw vector SHOTS at all? Only the asteroid family
+// does. Both DVG engines mark every zero-length lit vector as a "textured
+// point", so Lunar Lander and Omega Race reach add_tex as well - their dots are
+// ordinary beam dots and must render as such. Declared by the driver's video
+// start, cleared for every game by run_game.
+static bool g_game_has_shots = false;
+
+void set_game_has_shots(bool has)
+{
+    g_game_has_shots = has;
+}
+
+// Did this game's artwork supply the shot sprite (ART_LOAD "shot.png" ->
+// GAME_TEX 0)? Set per game by load_artwork (GL) / VkArt_LoadForGame (VK).
+// Without it the textured pass has nothing to sample, so shots fall back to the
+// procedural beam sprite.
+static bool g_shot_tex_ready = false;
+
+void set_shot_texture_ready(bool ready)
+{
+    g_shot_tex_ready = ready;
+}
 
 void set_texture_id(rtex_t* id)
 {
@@ -77,14 +101,29 @@ static void cache_texpoint(float ex, float ey, float tx, float ty, int intensity
 
 void add_line(float sx, float sy, float ex, float ey, int intensity, rgb_t col)
 {
-    // The modern beam renderer is the only vector engine.
-    beam_add_line(sx, sy, ex, ey, intensity, col);
+    // The modern beam renderer is the only vector engine. Line half-width is
+    // the configured beam width scaled by the per-game factor a driver can
+    // set via vector_set_beam() (1.0 default, reset by vector_start()) -
+    // e.g. 0.5f draws half-thickness lines for a sharp B/W monitor look.
+    beam_add_line(sx, sy, ex, ey, intensity, col,
+                  config.linewidth * 0.5f * vector_get_beam());
 }
 
 void add_tex(float ex, float ey, int intensity, rgb_t col)
 {
-    // Procedural shots by default; legacy textured shots when selected.
-    if (!config.shots_textured) { beam_add_shot(ex, ey, intensity, col); return; }
+    // Not a shot game: both DVG engines route every zero-length lit vector here,
+    // so llander/omegrace dots land in add_tex too. Those are plain beam dots -
+    // draw them exactly like the degenerate vectors mame_vector.cpp emits, not
+    // as a shot sprite of either kind.
+    if (!g_game_has_shots)
+    {
+        add_line(ex, ey, ex + 0.00001f, ey + 0.00001f, intensity, col);
+        return;
+    }
+
+    // Asteroids family: textured shots (the default), falling back to the
+    // procedural beam sprite when the user picks it or shot.png did not load.
+    if (!config.shots_textured || !g_shot_tex_ready) { beam_add_shot(ex, ey, intensity, col); return; }
 
     float xoff = config.fire_point_size;
     float yoff = config.fire_point_size;
@@ -147,7 +186,11 @@ static void ensure_shot_buffers()
 // the same projection as the beams (proj).
 void draw_textured_shots(const aae::math::mat4& proj)
 {
-    if (texlist.empty()) return;
+    // No geometry, or no shot texture registered for this game - nothing to draw.
+    // (tex is only bound by the artwork loader; it stays null for every game
+    // without a GAME_TEX 0 entry, and *tex would fault. Mirrors the VK pass,
+    // which skips on a null VkArt_GetShotTex().)
+    if (texlist.empty() || tex == nullptr || *tex == 0) return;
 
     ensure_shot_buffers();
 

@@ -7,7 +7,6 @@
 // -----------------------------------------------------------------------------
 
 #include <stdio.h>
-#include <cinttypes> // PRIu64 - uint64_t is not %llu on every platform
 #include <cstring> // Required for memcpy
 #include "cpu_6502.h"
 #include "sys_log.h"
@@ -39,28 +38,6 @@ static const char* mnemonics[256] = {
 	"BNE","CMP","KIL","DCP","NOP","CMP","DEC","DCP","CLD","CMP","NOP","DCP","NOP","CMP","DEC","DCP", // D0-DF
 	"CPX","SBC","NOP","ISC","CPX","SBC","INC","ISC","INX","SBC","NOP","SBC","CPX","SBC","INC","ISC", // E0-EF
 	"BEQ","SBC","KIL","ISC","NOP","SBC","INC","ISC","SED","SBC","NOP","ISC","NOP","SBC","INC","ISC"  // F0-FF
-};
-
-// -----------------------------------------------------------------------------
-// Cycle count table
-// -----------------------------------------------------------------------------
-static const uint32_t ticks[256] = {
-	7, 6, 2, 8, 3, 3, 5, 5, 3, 2, 2, 2, 4, 4, 6, 6,
-	2, 5, 2, 8, 4, 4, 6, 6, 2, 4, 2, 7, 4, 4, 7, 7,
-	6, 6, 2, 8, 3, 3, 5, 5, 4, 2, 2, 2, 4, 4, 6, 6,
-	2, 5, 2, 8, 4, 4, 6, 6, 2, 4, 2, 7, 4, 4, 7, 7,
-	6, 6, 2, 8, 3, 3, 5, 5, 3, 2, 2, 2, 3, 4, 6, 6,
-	2, 5, 2, 8, 4, 4, 6, 6, 2, 4, 2, 7, 4, 4, 7, 7,
-	6, 6, 2, 8, 3, 3, 5, 5, 4, 2, 2, 2, 5, 4, 6, 6,
-	2, 5, 2, 8, 4, 4, 6, 6, 2, 4, 2, 7, 4, 4, 7, 7,
-	2, 6, 2, 6, 3, 3, 3, 3, 2, 2, 2, 2, 4, 4, 4, 4,
-	2, 6, 2, 6, 4, 4, 4, 4, 2, 5, 2, 5, 5, 5, 5, 5,
-	2, 6, 2, 6, 3, 3, 3, 3, 2, 2, 2, 2, 4, 4, 4, 4,
-	2, 5, 2, 5, 4, 4, 4, 4, 2, 4, 2, 4, 4, 4, 4, 4,
-	2, 6, 2, 8, 3, 3, 5, 5, 2, 2, 2, 2, 4, 4, 6, 6,
-	2, 5, 2, 8, 4, 4, 6, 6, 2, 4, 2, 7, 4, 4, 7, 7,
-	2, 6, 2, 8, 3, 3, 5, 5, 2, 2, 2, 2, 4, 4, 6, 6,
-	2, 5, 2, 8, 4, 4, 6, 6, 2, 4, 2, 7, 4, 4, 7, 7
 };
 
 // -----------------------------------------------------------------------------
@@ -100,7 +77,7 @@ const cpu_6502::OpEntry cpu_6502::initial_opcode_table[256] = {
 	{ &cpu_6502::ora6502, &cpu_6502::absx6502    },   // 0x1D
 	{ &cpu_6502::asl6502, &cpu_6502::absx6502    },   // 0x1E
 	{ &cpu_6502::slo6502, &cpu_6502::absx6502    },   // 0x1F (UNDOC)
-	{ &cpu_6502::jsr6502, &cpu_6502::abs6502     },   // 0x20
+	{ &cpu_6502::jsr6502, &cpu_6502::abs_jsr6502 },   // 0x20
 	{ &cpu_6502::and6502, &cpu_6502::indx6502    },   // 0x21
 	{ &cpu_6502::nop6502, &cpu_6502::implied6502 },   // 0x22
 	{ &cpu_6502::rla6502, &cpu_6502::indx6502    },   // 0x23 (UNDOC)
@@ -421,6 +398,17 @@ void cpu_6502::init6502(uint16_t addrmaskval, CpuModel model)
 		opcode_table[0xFC].addressing_mode = &cpu_6502::absx6502;
 
 		// FIX: Map CMOS Zero Page Indirect instructions ($zp)
+		// WDC reserved opcodes are one-byte, one-cycle NOPs.
+		for (int op = 0; op < 256; ++op) {
+			if ((op & 15) == 3 || (op & 15) == 0x0b) {
+				opcode_table[op] = {&cpu_6502::nop6502, &cpu_6502::implied6502};
+			}
+		}
+		opcode_table[0x44] = {&cpu_6502::nop6502, &cpu_6502::zp6502};
+		for (int op : {0x54, 0xd4, 0xf4}) opcode_table[op] = {&cpu_6502::nop6502, &cpu_6502::zpx6502};
+		for (int op : {0x5c, 0xdc, 0xfc}) opcode_table[op] = {&cpu_6502::nop6502, &cpu_6502::abs6502};
+		opcode_table[0xcb] = {&cpu_6502::wai6502, &cpu_6502::implied6502};
+		opcode_table[0xdb] = {&cpu_6502::stp6502, &cpu_6502::implied6502};
 		// Opcodes: 12, 32, 52, 72, 92, B2, D2, F2
 		// -----------------------------------------------------------
 		opcode_table[0x12].instruction = &cpu_6502::ora6502; opcode_table[0x12].addressing_mode = &cpu_6502::indzp6502;
@@ -462,7 +450,7 @@ void cpu_6502::init6502(uint16_t addrmaskval, CpuModel model)
 		{
 			opcode_table[op].instruction = &cpu_6502::nop6502;
 			// Use zp6502 to consume the operand byte (PC+2 total)
-			opcode_table[op].addressing_mode = &cpu_6502::zp6502;
+			opcode_table[op].addressing_mode = (op & 0x10) ? &cpu_6502::zpx6502 : &cpu_6502::zp6502;
 		}
 		for (uint8_t op : nops_imm)
 		{
@@ -472,7 +460,8 @@ void cpu_6502::init6502(uint16_t addrmaskval, CpuModel model)
 
 		// 2b. NMOS JAM/KIL opcodes: 02,12,22,32,42,52,62,72,92,B2,D2,F2.
 		// Real hardware wedges the CPU; freezing the PC keeps crashed code at
-		// the jam point instead of free-running through memory.
+		// the jam point (instead of free-running through memory), matching
+		// what a real C64 does when a program dies.
 		static const uint8_t kil_ops[] = {
 			0x02, 0x12, 0x22, 0x32, 0x42, 0x52,
 			0x62, 0x72, 0x92, 0xB2, 0xD2, 0xF2
@@ -493,7 +482,7 @@ void cpu_6502::init6502(uint16_t addrmaskval, CpuModel model)
 		{
 			opcode_table[op].instruction = &cpu_6502::nop6502;
 			// Use abs6502 to consume 2 operand bytes (PC+3 total)
-			opcode_table[op].addressing_mode = &cpu_6502::abs6502;
+			opcode_table[op].addressing_mode = op == 0x0C ? &cpu_6502::abs6502 : &cpu_6502::absx6502;
 		}
 		opcode_table[0xEB].instruction = &cpu_6502::sbc6502;
 		opcode_table[0xEB].addressing_mode = &cpu_6502::immediate6502;
@@ -551,52 +540,26 @@ int cpu_6502::get6502ticks(int reset)
 }
 
 // -----------------------------------------------------------------------------
-// readop - Read opcode or operand bytes from the instruction stream.
-//
-// By default, reads directly from the MEM array, bypassing memory handlers.
-// This matches MAME's cpu_readop() / cpu_readop_arg() behavior and is
-// required for games like Missile Command where the read handler inspects
-// the current opcode and would misinterpret an instruction fetch as a
-// data access.
-//
-// When use_handler_for_opfetch is set (via opfetch_through_handlers(true)),
-// opcode fetches go through the full memory handler chain instead. This is
-// needed for games with bank-switched ROM (e.g. Major Havoc) where the
-// flat MEM array does not reflect the currently selected bank.
-//
-// All data reads (LDA effective address, etc.) always use get6502memory()
-// which routes through the memory handlers.
-// -----------------------------------------------------------------------------
-inline uint8_t cpu_6502::readop(uint16_t addr)
-{
-	if (use_handler_for_opfetch)
-		return get6502memory(addr);
-	return MEM[addr & addrmask];
-}
-
-// -----------------------------------------------------------------------------
 // get6502memory
 // -----------------------------------------------------------------------------
 uint8_t cpu_6502::get6502memory(uint16_t addr)
 {
 	addr &= addrmask;
 
-	// --- 6510 SUPPORT START ---
 	if (cpu_model == CPU_6510 && addr < 2)
 	{
-		if (addr == 0) return io_port_dir; // Return Direction Register
+		if (addr == 0) return ddr;
 		if (addr == 1)
 		{
-			// Return Input Bits (from external hardware) combined with Output bits
-			// Usually requires a callback to get external pins,
-			// but often returning the latched data is enough for simple emulation.
-			return io_port_data;
+			// Accurate Logic:
+			// If Bit is Output (1): Return the Latch value (port_out)
+			// If Bit is Input (0):  Return the Pin value (port_in)
+			return (port_out & ddr) | (port_in & ~ddr);
 		}
 	}
-	// --- 6510 SUPPORT END ---
 
 	MemoryReadByte* reader = memory_read;
-	while (reader->lowAddr != (UINT32)-1)
+	while (reader->lowAddr != -1)
 	{
 		if (addr >= reader->lowAddr && addr <= reader->highAddr)
 		{
@@ -624,32 +587,20 @@ void cpu_6502::put6502memory(uint16_t addr, uint8_t byte)
 {
 	addr &= addrmask;
 
-	// --- 6510 SUPPORT START ---
 	if (cpu_model == CPU_6510 && addr < 2)
 	{
-		if (addr == 0)
-		{
-			io_port_dir = byte;
-		}
-		else // addr == 1
-		{
-			// 6510 Logic: Only bits set to '1' in Direction Register can be written.
-			// Bits set to '0' in Direction are inputs (external hardware drives them).
+		uint8_t old_ddr = ddr;
+		uint8_t old_port = port_out;
 
-			// Mask the write based on direction
-			io_port_data = (io_port_data & ~io_port_dir) | (byte & io_port_dir);
-		}
+		if (addr == 0) ddr = byte;
+		if (addr == 1) port_out = byte;
 
-		// Alert the external system (C64 MMU) that the banking might have changed
-		if (port_cb) port_cb(io_port_data, io_port_dir);
-
-		// Return immediately. The 6510 does NOT write these to external RAM.
+		check_and_notify_6510(old_ddr, old_port);
 		return;
 	}
-	// --- 6510 SUPPORT END ---
 
 	MemoryWriteByte* writer = memory_write;
-	while (writer->lowAddr != (UINT32)-1)
+	while (writer->lowAddr != -1)
 	{
 		if (addr >= writer->lowAddr && addr <= writer->highAddr)
 		{
@@ -668,6 +619,19 @@ void cpu_6502::put6502memory(uint16_t addr, uint8_t byte)
 
 	if (log_debug_rw)
 		LOG_INFO("Warning! Unhandled Write %02X at %x", byte, addr);
+}
+
+void cpu_6502::check_and_notify_6510(uint8_t old_ddr, uint8_t old_port)
+{
+	if (port_cb)
+	{
+		// Notify on any change of either register: what the board sees also
+		// depends on the input bits (a C64 reads them as pulled high), so a
+		// DDR change with the same output latch still changes the banking.
+		if (old_ddr != ddr || old_port != port_out) {
+			port_cb(port_out, ddr);
+		}
+	}
 }
 
 // -----------------------------------------------------------------------------
@@ -758,15 +722,21 @@ void cpu_6502::set_pc(uint16_t pc)
 void cpu_6502::reset6502()
 {
 	LOG_INFO("6502 Reset");
+	run_state = RunState::Running;
 
 	A = X = Y = 0;
 	P = F_T | F_I | F_Z;
 	_irqPending = 0;
 	kil_logged = false;
+	irq_inhibit_one = 0;
+	irq_polled = nmi_polled = nmi_latched = nmi_immediate = false;
+	irq_history = nmi_history = 0;
+	in_instruction = false;
 
 	PC = PPC = 0;
 	_irqPending = 0;
 	clocktickstotal = 0;
+	clockticks6502 = 0;   // untimed host initialization; reset_bus6502() is the timed one
 
 	S = 0xFF;
 
@@ -774,7 +744,15 @@ void cpu_6502::reset6502()
 	PC |= get6502memory(0xFFFD & addrmask) << 8;
 
 	LOG_INFO("reset: PC is %X", PC);
-	clockticks6502 += 6;
+
+	if (cpu_model == CPU_6510) {
+		ddr = 0x00;       // Hardware resets to 0 (Input)
+		port_out = 0x00;
+		port_in = 0xFF;   // Inputs usually pulled high
+
+		// Note: The C64 KERNAL ROM will write 0x2F and 0x37 shortly after boot.
+		// We don't need to force it here, let the ROM do it.
+	}
 }
 
 // -----------------------------------------------------------------------------
@@ -782,14 +760,10 @@ void cpu_6502::reset6502()
 // -----------------------------------------------------------------------------
 void cpu_6502::execute_irq()
 {
-	push16(PC);
-	push8(P & ~F_B);
-	P |= F_I;
-	PC = get6502memory(0xFFFE & addrmask);
-	PC |= get6502memory(0xFFFF & addrmask) << 8;
+	if (run_state == RunState::Stopped || run_state == RunState::Jammed) return;
+	run_state = RunState::Running;
+	interrupt_entry(0xFFFE);
 
-	clockticks6502 += 7;
-	clocktickstotal += 7;
 
 	if (_irqMode == IRQ_PULSE)
 	{
@@ -806,18 +780,117 @@ void cpu_6502::irq6502(int irqmode)
 	_irqMode = irqmode;
 }
 
+void cpu_6502::set_irq_line(bool asserted)
+{
+	pin_irq_enabled = true;
+	irq_line = asserted;
+	if (!in_instruction && asserted && !(P & F_I)) irq_polled = true;
+}
+
+void cpu_6502::set_nmi_line(bool asserted)
+{
+	if (asserted && !nmi_line) {
+		nmi_latched = true;
+		if (!in_instruction) nmi_polled = true;
+	}
+	nmi_line = asserted;
+}
+
+void cpu_6502::poll_interrupt_pins()
+{
+	// Poll before the last bus cycle. A taken same-page NMOS branch retains
+	// its earlier polling point. Samples contain I before that cycle's effects.
+	const bool branch = (opcode & 0x1f) == 0x10;
+	const unsigned mask = branch && cycles_emitted == 3 ? 4 : 2;
+	irq_polled = (irq_history & mask) != 0;
+	nmi_polled = nmi_latched && (nmi_immediate || (nmi_history & mask) != 0);
+}
+
 // -----------------------------------------------------------------------------
-// Execute a non-maskable interrupt (NMI).
+// Execute a non-maskable interrupt (NMI). See the header for the boundary
+// versus busy contract.
 // -----------------------------------------------------------------------------
 void cpu_6502::nmi6502()
 {
-	push16(PC);
-	push8(P & ~F_B);
+	if (run_state == RunState::Stopped || run_state == RunState::Jammed) return;
+	if (in_instruction) {
+		// Latched now; nmi_immediate keeps poll_interrupt_pins() from dropping
+		// it, and nmi_polled covers a request raised after the poll.
+		nmi_latched = nmi_immediate = nmi_polled = true;
+		return;
+	}
+	take_nmi();
+#ifdef USING_AAE_EMU
+	timer_update(clockticks6502, cpu_num);
+#endif // USING_AAE_EMU
+}
+
+void cpu_6502::take_nmi()
+{
+	run_state = RunState::Running;
+	const bool was_in_instruction = in_instruction;
+	in_instruction = true;
+	nmi_latched = nmi_polled = nmi_immediate = false;
+	cycles_emitted = 0;
+	elapsed_cycles = 0;
+	interrupt_entry(0xFFFA);
+	finish_cycle_report();
+	in_instruction = was_in_instruction;
+}
+
+void cpu_6502::reset_bus6502()
+{
+	run_state = RunState::Running;
+	cycles_emitted = 0;
+	elapsed_cycles = 0;
+	irq_inhibit_one = 0;
+	irq_polled = nmi_polled = nmi_latched = false;
+	kil_logged = false;
+	(void)fetch_cycle(PC);
+	(void)fetch_cycle(PC);
+	for (int i = 0; i < 3; ++i) {
+		(void)read_cycle(BASE_STACK + S, true);
+		--S;
+	}
+	P |= F_I | F_T;
+	if (cpu_model == CPU_CMOS_65C02) P &= ~F_D;
+	const uint8_t lo = read_cycle(0xfffc);
+	const uint8_t hi = read_cycle(0xfffd);
+	PC = lo | (hi << 8);
+	finish_cycle_report();
+}
+
+// IRQ/NMI discard two reads at the current PC, then push PC/status and
+// fetch the vector. Call only at an instruction boundary, never from cycle_cb.
+void cpu_6502::interrupt_entry(uint16_t vector)
+{
+	(void)fetch_cycle(PC);
+	(void)fetch_cycle(PC);
+	push_cycle(static_cast<uint8_t>(PC >> 8));
+	push_cycle(static_cast<uint8_t>(PC));
+	if (vector == 0xfffe && cpu_model != CPU_CMOS_65C02 && nmi_latched) {
+		vector = 0xfffa;
+		nmi_latched = nmi_polled = nmi_immediate = false;
+	}
+	push_cycle((P | F_T) & ~F_B);
 	P |= F_I;
-	PC = get6502memory(0xFFFA & addrmask);
-	PC |= get6502memory(0xFFFB & addrmask) << 8;
-	clockticks6502 += 7;
-	clocktickstotal += 7;
+	if (cpu_model == CPU_CMOS_65C02) P &= ~F_D;
+	const uint8_t lo = read_cycle(vector);
+	const uint8_t hi = read_cycle(static_cast<uint16_t>(vector + 1));
+	PC = lo | (hi << 8);
+}
+
+// Instruction-only helpers: keep the public raw stack API untimed for hosts.
+void cpu_6502::push_cycle(uint8_t value)
+{
+	write_cycle(BASE_STACK + S, value, true);
+	--S;
+}
+
+uint8_t cpu_6502::pull_cycle()
+{
+	++S;
+	return read_cycle(BASE_STACK + S, true);
 }
 
 // -----------------------------------------------------------------------------
@@ -825,8 +898,8 @@ void cpu_6502::nmi6502()
 // -----------------------------------------------------------------------------
 void cpu_6502::push16(uint16_t val)
 {
-	put6502memory(BASE_STACK + S, (val >> 8) & 0xFF);
-	put6502memory(BASE_STACK + ((S - 1) & 0xFF), val & 0xFF);
+	stack_write(BASE_STACK + S, (val >> 8) & 0xFF);
+	stack_write(BASE_STACK + ((S - 1) & 0xFF), val & 0xFF);
 	S -= 2;
 }
 
@@ -835,7 +908,7 @@ void cpu_6502::push16(uint16_t val)
 // -----------------------------------------------------------------------------
 void cpu_6502::push8(uint8_t val)
 {
-	put6502memory(BASE_STACK + S--, val);
+	stack_write(BASE_STACK + S--, val);
 }
 
 // -----------------------------------------------------------------------------
@@ -843,8 +916,8 @@ void cpu_6502::push8(uint8_t val)
 // -----------------------------------------------------------------------------
 uint16_t cpu_6502::pull16()
 {
-	uint16_t val = get6502memory(BASE_STACK + ((S + 1) & 0xFF)) |
-		(static_cast<uint16_t>(get6502memory(BASE_STACK + ((S + 2) & 0xFF))) << 8);
+	uint16_t val = stack_read(BASE_STACK + ((S + 1) & 0xFF)) |
+		(static_cast<uint16_t>(stack_read(BASE_STACK + ((S + 2) & 0xFF))) << 8);
 	S += 2;
 	return val;
 }
@@ -854,7 +927,7 @@ uint16_t cpu_6502::pull16()
 // -----------------------------------------------------------------------------
 uint8_t cpu_6502::pull8()
 {
-	return get6502memory(BASE_STACK + ++S);
+	return stack_read(BASE_STACK + ++S);
 }
 
 // -----------------------------------------------------------------------------
@@ -864,63 +937,206 @@ uint8_t cpu_6502::pull8()
 int cpu_6502::exec6502(int timerTicks)
 {
 	int cycles = 0;
-	while (cycles < timerTicks)
-		cycles += step6502();
+	while (cycles < timerTicks) {
+		const int step = step6502();
+		// A parked CPU reports zero CPU cycles but one elapsed machine cycle,
+		// so a cycle-budget host (AAE's cpu_run) still makes progress.
+		cycles += step ? step : 1;
+	}
 	return cycles;
+}
+
+// -----------------------------------------------------------------------------
+// Cycle primitives always count; an optional callback advances the host machine.
+// -----------------------------------------------------------------------------
+inline void cpu_6502::wait_for_bus_cycle()
+{
+	if (cycle_cb) {
+		bool available;
+		do {
+			++elapsed_cycles;
+			available = cycle_cb(cycle_user);
+		} while (!available);
+	} else ++elapsed_cycles;
+	++cycles_emitted;
+	++clocktickstotal;
+	irq_history = static_cast<uint16_t>((irq_history << 1) | (irq_line && !(P & F_I)));
+	nmi_history = static_cast<uint16_t>((nmi_history << 1) | (nmi_latched ? 1 : 0));
+}
+
+// Wait states from a memory handler (see cpu_6502.h).  The held cycles are
+// dead bus cycles: they are added to this instruction's emitted count, so
+// finish_cycle_report() hands them to the scheduler and the AAE timers like
+// any other cycle, and to clocktickstotal, which get6502ticks() exposes to
+// the POKEY adapter's catch-up before the access completes.  The cycle
+// callback, when a machine has one, already models its own stalls and is
+// not called here.
+void cpu_6502::bus_wait(int cycles)
+{
+	if (cycles <= 0) return;
+	cycles_emitted += cycles;
+	elapsed_cycles += (uint64_t)cycles;
+	clocktickstotal += cycles;
+}
+
+uint8_t cpu_6502::stack_read(uint16_t addr)
+{
+	return direct_stack_page ? MEM[addr & addrmask] : get6502memory(addr);
+}
+
+uint8_t cpu_6502::readop(uint16_t addr)
+{
+	return use_handler_for_opfetch ? get6502memory(addr) : MEM[addr & addrmask];
+}
+
+uint8_t cpu_6502::fetch_cycle(uint16_t addr)
+{
+	wait_for_bus_cycle();
+	const uint8_t result = readop(addr);
+	if (bus_cb) bus_cb(result, bus_user);
+	return result;
+}
+
+uint8_t cpu_6502::operand_cycle()
+{
+	return opcode_table[opcode].addressing_mode == &cpu_6502::immediate6502
+		? fetch_cycle(savepc) : read_cycle(savepc);
+}
+
+void cpu_6502::stack_write(uint16_t addr, uint8_t value)
+{
+	if (direct_stack_page) MEM[addr & addrmask] = value;
+	else put6502memory(addr, value);
+}
+
+inline uint8_t cpu_6502::read_cycle(uint16_t addr, bool stack)
+{
+	wait_for_bus_cycle();
+	const uint8_t result = stack ? stack_read(addr) : get6502memory(addr);
+	if(bus_cb) bus_cb(result,bus_user);
+	return result;
+}
+
+inline void cpu_6502::write_cycle(uint16_t addr, uint8_t v, bool stack)
+{
+	// A write cycle ignores RDY - HRM 4.9: "The 6502 does not respond to RDY
+	// during a write cycle and therefore always performs this write on the next
+	// available cycle regardless." The machine still gets the tick, and is told
+	// this one is a write so it can decide (ANTIC DMA halts the CPU on any
+	// cycle; a WSYNC wait does not stop a write).
+	cycle_is_write = true;
+	wait_for_bus_cycle();
+	cycle_is_write = false;
+	if (stack) stack_write(addr, v);
+	else put6502memory(addr, v);
+	if(bus_cb) bus_cb(v,bus_user);
+}
+
+inline void cpu_6502::idle_cycle()
+{
+	// An NMOS 6502 "internal" cycle is still a (dummy) read on the bus, so
+	// ANTIC's HALT and a WSYNC RDY wait stop it like any other read (HRM 2.5:
+	// "these dead cycles cannot be overlapped by DMA - the CPU must still be
+	// halted"). Letting it through made every refresh cycle that landed on a
+	// PHA/PLA internal cycle vanish, so long cycle-counted sequences ran
+	// several cycles early (acid800 gtia_pmretrigger).
+	(void)fetch_cycle(PC);
 }
 
 // -----------------------------------------------------------------------------
 // Execute a Single 6502 Instruction.
 // -----------------------------------------------------------------------------
+void cpu_6502::finish_cycle_report()
+{
+	CycleReport report;
+	report.cpu_cycles = cycles_emitted;
+	report.elapsed_cycles = elapsed_cycles;
+	report.stall_cycles = elapsed_cycles - cycles_emitted;
+	report.bus_timing_active = cycle_cb != nullptr;
+	clockticks6502 = cycles_emitted;   // the step's cycle count is the emitted bus cycles
+	last_cycle_report = report;
+}
+
 int cpu_6502::step6502()
 {
+	if (run_state == RunState::Waiting && (irq_line || _irqPending || nmi_latched)) {
+		run_state = RunState::Running;
+		nmi_polled = nmi_latched;
+		if (irq_line && !(P & F_I)) irq_polled = true;
+	}
+	if (run_state != RunState::Running) {
+		// The host must keep running while the CPU is parked. No instruction
+		// or memory transfer completes, and a denied bus does not stop the host.
+		// One machine cycle still passes: it is counted, and the AAE timers run
+		// so the interrupt that ends a WAI can arrive.
+		in_instruction = true;
+		if (cycle_cb) (void)cycle_cb(cycle_user);
+		++clocktickstotal;
+		last_cycle_report = {};
+		last_cycle_report.elapsed_cycles = 1;
+		last_cycle_report.bus_timing_active = cycle_cb != nullptr;
+#ifdef USING_AAE_EMU
+		timer_update(1, cpu_num);
+#endif // USING_AAE_EMU
+		in_instruction = false;
+		return 0;
+	}
 	clockticks6502 = 0;
+	cycles_emitted = 0;
+	elapsed_cycles = 0;
+	irq_history = nmi_history = 0;
+	in_instruction = true;
 
-	bool interrupts_allowed = (irq_inhibit_one == 0) && !(P & F_I);
+	const bool interrupts_allowed = (irq_inhibit_one == 0) && !(P & F_I);
 
-	// Check for IRQ
-	if (_irqPending && interrupts_allowed) {
+	if (nmi_polled) {
+		take_nmi();
+	}
+	else if ((pin_irq_enabled && irq_polled) || (_irqPending && interrupts_allowed)) {
+		irq_polled = false;
 		execute_irq();
 
+		// Cycle-accurate mode: advance the world for the IRQ's cycles too.
+		finish_cycle_report();
+
 		if (irq_inhibit_one > 0) irq_inhibit_one--;
-		return clockticks6502;
+	}
+	else {
+		// Normal Instruction Fetch
+		PPC = PC;
+		opcode = fetch_cycle(PC++);
+		P |= F_T;
+
+		if (debug) {
+			int bytes = 0;
+			std::string op = disassemble(PC - 1, &bytes);
+			LOG_INFO("%04X: %-20s A:%02X X:%02X Y:%02X S:%02X P:%02X",
+				PC - 1, op.c_str(), A, X, Y, S, P);
+		}
+
+		(this->*opcode_table[opcode].addressing_mode)();
+		(this->*opcode_table[opcode].instruction)();
+		if (skip_poll) { skip_poll = false; irq_polled = nmi_polled = false; }
+		else poll_interrupt_pins();
+		finish_cycle_report();
+
+		if (irq_inhibit_one > 0)
+			irq_inhibit_one--;
 	}
 
-	// Save the address of the current instruction BEFORE fetching the opcode.
-	// This is what cpu_getppc() / cpu_getpreviouspc() returns to drivers
-	// like Missile Command that need to inspect which opcode is executing
-	// (e.g. checking for STA ($ZZ,X) = 0x81 or LDA ($ZZ,X) = 0xA1).
-	PPC = PC;
-
-	// Normal Instruction Fetch -- use readop() to bypass memory handlers.
-	// This is equivalent to MAME's cpu_readop(PC) which reads from OP_ROM.
-	opcode = readop(PC++);
-	P |= F_T;
-	
-	if (debug) {
-		int bytes = 0;
-		std::string op = disassemble(PPC, &bytes);
-		LOG_INFO("%04X: %-20s A:%02X X:%02X Y:%02X S:%02X P:%02X",
-			PPC, op.c_str(), A, X, Y, S, P);
-	}
-
-	(this->*opcode_table[opcode].addressing_mode)();
-	(this->*opcode_table[opcode].instruction)();
-
-	clockticks6502 += ticks[opcode];
-	clocktickstotal += clockticks6502;
-
+	// Single accounting point for every path. Copy the result first: a timer
+	// callback may call nmi6502()/irq6502(), which only latch while
+	// in_instruction is still set, so this step's count survives.
+	const int ran = clockticks6502;
 #ifdef USING_AAE_EMU
-	timer_update(clockticks6502, cpu_num);
+	timer_update(ran, cpu_num);
 #endif // USING_AAE_EMU
 
 	if (clocktickstotal > 0x0FFFFFFF)
 		clocktickstotal = 0;
 
-	if (irq_inhibit_one > 0)
-		irq_inhibit_one--;
-
-	return clockticks6502;
+	in_instruction = false;
+	return ran;
 }
 
 // -----------------------------------------------------------------------------
@@ -928,9 +1144,21 @@ int cpu_6502::step6502()
 // -----------------------------------------------------------------------------
 void cpu_6502::abs6502()
 {
-	// Operand fetch from instruction stream - bypass handlers via readop()
-	savepc = readop(PC) | (readop(PC + 1) << 8);
+	uint8_t lo = fetch_cycle(PC);
+	uint8_t hi = fetch_cycle(PC + 1);
+	savepc = lo | (hi << 8);
 	PC += 2;
+}
+
+// JSR is the one absolute-addressed instruction that does NOT fetch both
+// operand bytes up front. Its bus sequence is opcode, ADL, an internal cycle
+// that reads the stack, push PCH, push PCL, ADH - the high byte arrives on
+// cycle 6, after the pushes. Fetch only the low byte here and let jsr6502()
+// finish in order, so each of the six cycles is the bus cycle it really is
+// (which decides whether ANTIC's RDY can halt it - see read_cycle()).
+void cpu_6502::abs_jsr6502()
+{
+	savepc = fetch_cycle(PC);        // ADL only; PC still points at it
 }
 
 void cpu_6502::immediate6502()
@@ -940,21 +1168,26 @@ void cpu_6502::immediate6502()
 
 void cpu_6502::implied6502()
 {
-	// NOP (handled inside instruction)
+	if (cpu_model == CPU_CMOS_65C02 && opcode != 0xea &&
+		opcode_table[opcode].instruction == &cpu_6502::nop6502) return;
+    // NMOS implied instructions read the next opcode without incrementing
+    // PC on their second cycle. This is a read bus cycle, so RDY/ANTIC
+    // refresh can stall it (not an unstalled trailing idle cycle).
+    (void)fetch_cycle(PC);
 }
 
 void cpu_6502::relative6502()
 {
-	// Branch offset from instruction stream - bypass handlers via readop()
-	savepc = readop(PC++);
+	savepc = fetch_cycle(PC++);
 	if (savepc & 0x80)
 		savepc |= 0xFF00;
 }
 
 void cpu_6502::indirect6502()
 {
-	// Pointer address from instruction stream - bypass handlers via readop()
-	uint16_t addr_ptr = readop(PC) | (readop(PC + 1) << 8);
+	const uint8_t ptr_lo = fetch_cycle(PC++);
+	const uint8_t ptr_hi = fetch_cycle(PC++);
+	uint16_t addr_ptr = ptr_lo | (ptr_hi << 8);
 	uint16_t lo = addr_ptr;
 	uint16_t hi = addr_ptr + 1;
 
@@ -963,96 +1196,125 @@ void cpu_6502::indirect6502()
 	{
 		hi = lo & 0xFF00; // Wrap to beginning of page
 	}
-	if (cpu_model == CPU_CMOS_65C02) {
-		clockticks6502++;
-	}
-	// The actual pointer dereference reads from DATA memory, so use get6502memory()
-	savepc = get6502memory(lo) | (get6502memory(hi) << 8);
-	PC += 2;
+	const uint8_t target_lo = read_cycle(lo);
+	// CMOS first reads the NMOS wrapped high-byte address, then corrects it.
+	// On a non-crossing pointer this is simply two reads of the same address.
+	uint8_t target_hi = read_cycle(cpu_model == CPU_CMOS_65C02 ? ((lo & 0xff00) | (hi & 0xff)) : hi);
+	if (cpu_model == CPU_CMOS_65C02) target_hi = read_cycle(hi);
+	savepc = target_lo | (target_hi << 8);
+}
+
+bool cpu_6502::indexed_access_is_read() const
+{
+	const auto instruction = opcode_table[opcode].instruction;
+	return instruction != &cpu_6502::sta6502 && instruction != &cpu_6502::stz6502 &&
+		instruction != &cpu_6502::shs6502 && instruction != &cpu_6502::shx6502 &&
+		instruction != &cpu_6502::shy6502 && instruction != &cpu_6502::ahx6502 &&
+		instruction != &cpu_6502::asl6502 && instruction != &cpu_6502::lsr6502 &&
+		instruction != &cpu_6502::rol6502 && instruction != &cpu_6502::ror6502 &&
+		instruction != &cpu_6502::inc6502 && instruction != &cpu_6502::dec6502 &&
+		instruction != &cpu_6502::slo6502 && instruction != &cpu_6502::sre6502 &&
+		instruction != &cpu_6502::rla6502 && instruction != &cpu_6502::rra6502 &&
+		instruction != &cpu_6502::dcp6502 && instruction != &cpu_6502::isc6502 &&
+		instruction != &cpu_6502::rra_2a03 && instruction != &cpu_6502::isc_2a03;
 }
 
 void cpu_6502::absx6502()
 {
-	// Base address from instruction stream - bypass handlers via readop()
-	savepc = readop(PC) | (readop(PC + 1) << 8);
-	if (ticks[opcode] == 4 && ((savepc ^ (savepc + X)) & 0xFF00))
-		clockticks6502++;
-	savepc += X;
+	uint8_t lo = fetch_cycle(PC);
+	uint8_t hi = fetch_cycle(PC + 1);
+	uint16_t base = lo | (hi << 8);
+	uint16_t addr = base + X;
+	bool crossed = ((base ^ addr) & 0xFF00) != 0;
+	const auto ins = opcode_table[opcode].instruction;
+	const bool cmos_shift = cpu_model == CPU_CMOS_65C02 && (ins == &cpu_6502::asl6502 || ins == &cpu_6502::lsr6502 || ins == &cpu_6502::rol6502 || ins == &cpu_6502::ror6502);
+	if (indexed_access_is_read() || cmos_shift) {
+		if (crossed) { read_cycle(cpu_model == CPU_CMOS_65C02 ? static_cast<uint16_t>(PC + 1) : ((base & 0xFF00) | (addr & 0x00FF))); }
+	} else {
+		read_cycle(cpu_model == CPU_CMOS_65C02 ? static_cast<uint16_t>(PC + 1) : ((base & 0xFF00) | (addr & 0x00FF)));   // store/RMW: always a dummy read
+	}
+	savepc = addr;
 	PC += 2;
 }
 
 void cpu_6502::absy6502()
 {
-	// Base address from instruction stream - bypass handlers via readop()
-	savepc = readop(PC) | (readop(PC + 1) << 8);
-	if (ticks[opcode] == 4 && ((savepc ^ (savepc + Y)) & 0xFF00))
-		clockticks6502++;
-	savepc += Y;
+	uint8_t lo = fetch_cycle(PC);
+	uint8_t hi = fetch_cycle(PC + 1);
+	uint16_t base = lo | (hi << 8);
+	uint16_t addr = base + Y;
+	bool crossed = ((base ^ addr) & 0xFF00) != 0;
+	if (indexed_access_is_read()) {
+		if (crossed) { read_cycle(cpu_model == CPU_CMOS_65C02 ? static_cast<uint16_t>(PC + 1) : ((base & 0xFF00) | (addr & 0x00FF))); }
+	} else {
+		read_cycle(cpu_model == CPU_CMOS_65C02 ? static_cast<uint16_t>(PC + 1) : ((base & 0xFF00) | (addr & 0x00FF)));   // store/RMW: always a dummy read
+	}
+	savepc = addr;
 	PC += 2;
 }
 
 void cpu_6502::zp6502()
 {
-	// Zero-page address from instruction stream - bypass handlers via readop()
-	savepc = readop(PC++);
+	savepc = fetch_cycle(PC++);
 }
 
 void cpu_6502::zpx6502()
 {
-	// Zero-page address from instruction stream - bypass handlers via readop()
-	savepc = (readop(PC++) + X) & 0xFF;
+	uint8_t zp = fetch_cycle(PC++);
+	read_cycle(zp);                  // dummy read at the un-indexed zp (index-add cycle)
+	savepc = (zp + X) & 0xFF;
 }
 
 void cpu_6502::zpy6502()
 {
-	// Zero-page address from instruction stream - bypass handlers via readop()
-	savepc = (readop(PC++) + Y) & 0xFF;
+	uint8_t zp = fetch_cycle(PC++);
+	read_cycle(zp);
+	savepc = (zp + Y) & 0xFF;
 }
 
 void cpu_6502::indx6502()
 {
-	// Zero-page base from instruction stream - bypass handlers via readop()
-	value = (readop(PC++) + X) & 0xFF;
-	// The pointer dereference reads from zero-page DATA memory, so use get6502memory()
-	savepc = get6502memory(value) | (get6502memory((value + 1) & 0xFF) << 8);
+	uint8_t zp = fetch_cycle(PC++);              // fetch zero-page pointer base
+	read_cycle(zp);                             // dummy read during index add
+	uint8_t ptr = (zp + X) & 0xFF;
+	uint8_t lo = read_cycle(ptr);
+	uint8_t hi = read_cycle((ptr + 1) & 0xFF);
+	savepc = lo | (hi << 8);
 }
 
 void cpu_6502::indy6502()
 {
-	uint16_t temp;
-	// Zero-page base from instruction stream - bypass handlers via readop()
-	value = readop(PC++);
-	temp = (value & 0xFF00) | ((value + 1) & 0x00FF);  //zero-page wraparound
-	// The pointer dereference reads from zero-page DATA memory, so use get6502memory()
-	savepc = get6502memory(value) | (get6502memory(temp) << 8);
-	if (ticks[opcode] == 5)
-		if ((savepc >> 8) != ((savepc + Y) >> 8))
-			clockticks6502++; //one cycle penalty for page-crossing on some opcodes
-	savepc += Y;
+	uint8_t zp = fetch_cycle(PC++);              // fetch zero-page pointer
+	uint8_t lo = read_cycle(zp);                // pointer low
+	uint8_t hi = read_cycle((zp + 1) & 0xFF);   // pointer high (zero-page wraparound)
+	uint16_t base = lo | (hi << 8);
+	uint16_t addr = base + Y;
+	bool crossed = ((base ^ addr) & 0xFF00) != 0;
+	if (indexed_access_is_read()) {
+		if (crossed) { read_cycle(cpu_model == CPU_CMOS_65C02 ? static_cast<uint16_t>(PC - 1) : ((base & 0xFF00) | (addr & 0x00FF))); }
+	} else {
+		read_cycle(cpu_model == CPU_CMOS_65C02 ? static_cast<uint16_t>(PC - 1) : ((base & 0xFF00) | (addr & 0x00FF)));   // store/RMW: always a dummy read
+	}
+	savepc = addr;
 }
 
 void cpu_6502::indabsx6502()
 {
-	// Base address from instruction stream - bypass handlers via readop()
-	help = readop(PC) | (readop(PC + 1) << 8);
+	const uint16_t operand = PC;
+	const uint8_t lo = fetch_cycle(PC++);
+	const uint8_t hi = fetch_cycle(PC++);
+	help = lo | (hi << 8);
 	help += X;
-	// Pointer dereference from DATA memory - use get6502memory()
-	savepc = get6502memory(help) | (get6502memory(help + 1) << 8);
+	(void)fetch_cycle(operand);
+	const uint8_t target_lo = read_cycle(help);
+	const uint8_t target_hi = read_cycle(static_cast<uint16_t>(help + 1));
+	savepc = target_lo | (target_hi << 8);
 }
 
 void cpu_6502::indzp6502()
 {
-	// Zero-page address from instruction stream - bypass handlers via readop()
-	value = readop(PC++);
-	// Pointer dereference from zero-page DATA memory - use get6502memory()
-	savepc = get6502memory(value) | (get6502memory((value + 1) & 0xFF) << 8);
-
-	// 65C02 Fix: These instructions take 5 cycles.
-	// The static ticks[] table usually has '2' for these slots.
-	// We add 3 extra cycles here to correct it.
-	if (cpu_model == CPU_CMOS_65C02) {
-		clockticks6502 += 3;
-	}
+	value = fetch_cycle(PC++);
+	savepc = read_cycle(value) | (read_cycle((value + 1) & 0xFF) << 8);
 }
 
 // -----------------------------------------------------------------------------
@@ -1061,9 +1323,10 @@ void cpu_6502::indzp6502()
 // -----------------------------------------------------------------------------
 void cpu_6502::zprel6502()
 {
-	// Both operands from instruction stream - bypass handlers via readop()
-	help = readop(PC++); // Zero Page Address
-	savepc = readop(PC++); // Relative Offset
+	help = fetch_cycle(PC++); // Zero Page Address
+	value = read_cycle(help);
+	(void)read_cycle(help);
+	savepc = fetch_cycle(PC++); // Relative Offset
 	if (savepc & 0x80)
 		savepc |= 0xFF00; // Sign extend
 }
@@ -1073,7 +1336,7 @@ void cpu_6502::zprel6502()
 // -----------------------------------------------------------------------------
 void cpu_6502::adc_2a03()
 {
-	const uint8_t m = get6502memory(savepc);
+	const uint8_t m = operand_cycle();
 	const int     cin = (P & F_C) ? 1 : 0;
 	const uint16_t sum = (uint16_t)A + m + cin;
 	const uint8_t  bin = (uint8_t)sum;
@@ -1088,7 +1351,7 @@ void cpu_6502::adc_2a03()
 
 void cpu_6502::sbc_2a03()
 {
-	const uint8_t m = get6502memory(savepc);
+	const uint8_t m = operand_cycle();
 	const int     cin = (P & F_C) ? 1 : 0;
 	const uint16_t diff = (uint16_t)A - m - (1 - cin);
 	const uint8_t  bin = (uint8_t)diff;
@@ -1106,34 +1369,17 @@ void cpu_6502::sbc_2a03()
 // -----------------------------------------------------------------------------
 void cpu_6502::adc65c02()
 {
-	const uint8_t m = get6502memory(savepc);
-	const int     cin = (P & F_C) ? 1 : 0;
-	const uint16_t sum = (uint16_t)A + m + cin;
-	const uint8_t  bin = (uint8_t)sum;
-
-	P &= ~(F_V | F_C);
-	if ((~(A ^ m) & (A ^ bin) & 0x80) != 0) P |= F_V;
-
-	if (P & F_D)
-	{
-		clockticks6502++;
-		uint16_t dec = sum;
-		if (((A & 0x0F) + (m & 0x0F) + cin) > 9) dec += 0x06;
-		if (dec > 0x0099) { dec += 0x60; P |= F_C; }
-		A = (uint8_t)dec;
-		set_nz(A);
+	const uint8_t m = operand_cycle();
+	if (P & F_D) {
+		(void)read_cycle(opcode == 0x69 ? 0x7f : savepc);
 	}
-	else
-	{
-		if (sum & 0x0100) P |= F_C;
-		A = bin;
-		set_nz(A);
-	}
+	adc_nmos_value(m);
+	set_nz(A); // CMOS observes the corrected result.
 }
 
 void cpu_6502::sbc65c02()
 {
-	const uint8_t m = get6502memory(savepc);
+	const uint8_t m = operand_cycle();
 	const int     cin = (P & F_C) ? 1 : 0;
 	const uint16_t diff = (uint16_t)A - m - (1 - cin);
 	const uint8_t  bin = (uint8_t)diff;
@@ -1143,7 +1389,7 @@ void cpu_6502::sbc65c02()
 
 	if (P & F_D)
 	{
-		clockticks6502++;
+		(void)read_cycle(opcode == 0xe9 ? 0x00 : savepc);
 		uint16_t dec = diff;
 		const int lo_raw = (int)(A & 0x0F) - (int)(m & 0x0F) - (1 - cin);
 		const int lo_borr = (lo_raw < 0) ? 1 : 0;
@@ -1167,60 +1413,55 @@ void cpu_6502::sbc65c02()
 // -----------------------------------------------------------------------------
 // Standard NMOS Arithmetic Implementations
 // -----------------------------------------------------------------------------
-inline void cpu_6502::adc6502()
+void cpu_6502::adc6502()
 {
-	const uint8_t m = get6502memory(savepc);
-	const int     cin = (P & F_C) ? 1 : 0;
-	const uint16_t sum = (uint16_t)A + m + cin;
-	const uint8_t  bin = (uint8_t)sum;
-
-	P &= ~(F_V | F_C);
-	if ((~(A ^ m) & (A ^ bin) & 0x80) != 0) P |= F_V;
-
-	if (P & F_D)
-	{
-		uint16_t dec = sum;
-		if (((A & 0x0F) + (m & 0x0F) + cin) > 9) dec += 0x06;
-		if (dec > 0x0099) { dec += 0x60; P |= F_C; }
-		A = (uint8_t)dec;
-	}
-	else
-	{
-		if (sum & 0x0100) P |= F_C;
-		A = bin;
-	}
-	set_nz(bin);
+	adc_nmos_value(operand_cycle());
 }
 
-inline void cpu_6502::sbc6502()
+// Decimal logic reused from C:/Source2026/shared/ref6502/ref6502.c op_adc/op_sbc.
+// NMOS N/V use the low-nibble-corrected ADC intermediate, Z the binary sum.
+void cpu_6502::adc_nmos_value(uint8_t m)
 {
-	const uint8_t m = get6502memory(savepc);
-	const int     cin = (P & F_C) ? 1 : 0;
-	const uint16_t diff = (uint16_t)A - m - (1 - cin);
-	const uint8_t  bin = (uint8_t)diff;
+	const uint8_t a = A;
+	const unsigned cin = (P & F_C) ? 1 : 0;
+	const unsigned binary = a + m + cin;
+	unsigned result = binary;
+	if (P & F_D) {
+		unsigned low = (a & 15) + (m & 15) + cin;
+		if (low >= 10) low = ((low + 6) & 15) + 16;
+		result = (a & 0xf0) + (m & 0xf0) + low;
+	}
+	P &= ~(F_N | F_V | F_Z | F_C);
+	if (static_cast<uint8_t>(binary) == 0) P |= F_Z;
+	if (result & 0x80) P |= F_N;
+	if ((~(a ^ m) & (a ^ result) & 0x80) != 0) P |= F_V;
+	if ((P & F_D) && result >= 0xa0) result += 0x60;
+	if (result >= 0x100) P |= F_C;
+	A = static_cast<uint8_t>(result);
+}
 
+void cpu_6502::sbc_nmos_value(uint8_t m)
+{
+	const uint8_t a = A;
+	const int borrow = (P & F_C) ? 0 : 1;
+	const int binary = a - m - borrow;
 	P &= ~(F_V | F_C);
-	if (((A ^ m) & (A ^ bin) & 0x80) != 0) P |= F_V;
-
-	if (P & F_D)
-	{
-		uint16_t dec = diff;
-		const int lo_raw = (int)(A & 0x0F) - (int)(m & 0x0F) - (1 - cin);
-		const int lo_borr = (lo_raw < 0) ? 1 : 0;
-		if (lo_borr) dec -= 0x06;
-
-		int hi = (int)(A >> 4) - (int)(m >> 4) - lo_borr;
-		if (hi < 0) { dec -= 0x60; /* decimal high correction */ P &= ~F_C; }
-		else { /* no borrow */ P |= F_C; }
-
-		A = (uint8_t)dec;
+	if (binary >= 0) P |= F_C;
+	if (((a ^ m) & (a ^ binary) & 0x80) != 0) P |= F_V;
+	set_nz(static_cast<uint8_t>(binary));
+	int result = binary;
+	if (P & F_D) {
+		int low = (a & 15) - (m & 15) - borrow;
+		if (low < 0) low = ((low - 6) & 15) - 16;
+		result = (a & 0xf0) - (m & 0xf0) + low;
+		if (result < 0) result -= 0x60;
 	}
-	else
-	{
-		if (!(diff & 0x0100)) P |= F_C;
-		A = bin;
-	}
-	set_nz(bin);
+	A = static_cast<uint8_t>(result);
+}
+
+void cpu_6502::sbc6502()
+{
+	sbc_nmos_value(operand_cycle());
 }
 
 // -----------------------------------------------------------------------------
@@ -1230,7 +1471,7 @@ inline void cpu_6502::sbc6502()
 // -----------------------------------------------------------------------------
 void cpu_6502::and6502()
 {
-	value = get6502memory(savepc);
+	value = operand_cycle();
 	A &= value;
 	set_nz(A);
 }
@@ -1242,7 +1483,7 @@ void cpu_6502::and6502()
 // -----------------------------------------------------------------------------
 void cpu_6502::eor6502()
 {
-	A ^= get6502memory(savepc);
+	A ^= operand_cycle();
 	set_nz(A);
 }
 
@@ -1253,7 +1494,7 @@ void cpu_6502::eor6502()
 // -----------------------------------------------------------------------------
 void cpu_6502::ora6502()
 {
-	A |= get6502memory(savepc);
+	A |= operand_cycle();
 	set_nz(A);
 }
 
@@ -1265,7 +1506,7 @@ void cpu_6502::ora6502()
 // -----------------------------------------------------------------------------
 void cpu_6502::bit6502()
 {
-	value = get6502memory(savepc);
+	value = operand_cycle();
 
 	// 65C02 Specific: Immediate Mode ($89) ONLY touches the Z flag.
 	// All other modes (ZeroPage, Absolute, etc) touch N, V, and Z.
@@ -1296,7 +1537,7 @@ void cpu_6502::bit6502()
 // -----------------------------------------------------------------------------
 void cpu_6502::cmp6502()
 {
-	value = get6502memory(savepc);
+	value = operand_cycle();
 	if (A >= value)
 		P |= F_C;
 	else
@@ -1312,7 +1553,7 @@ void cpu_6502::cmp6502()
 // -----------------------------------------------------------------------------
 void cpu_6502::cpx6502()
 {
-	value = get6502memory(savepc);
+	value = operand_cycle();
 
 	// Set Carry if X >= value
 	if (X >= value)
@@ -1331,7 +1572,7 @@ void cpu_6502::cpx6502()
 // -----------------------------------------------------------------------------
 void cpu_6502::cpy6502()
 {
-	value = get6502memory(savepc);
+	value = operand_cycle();
 
 	// Set Carry if Y >= value
 	if (Y >= value)
@@ -1349,7 +1590,7 @@ void cpu_6502::cpy6502()
 // -----------------------------------------------------------------------------
 inline void cpu_6502::lda6502()
 {
-	A = get6502memory(savepc);
+	A = operand_cycle();
 	set_nz(A);
 }
 
@@ -1360,7 +1601,7 @@ inline void cpu_6502::lda6502()
 // -----------------------------------------------------------------------------
 void cpu_6502::ldx6502()
 {
-	X = get6502memory(savepc);
+	X = operand_cycle();
 	set_nz(X);
 }
 
@@ -1371,7 +1612,7 @@ void cpu_6502::ldx6502()
 // -----------------------------------------------------------------------------
 void cpu_6502::ldy6502()
 {
-	Y = get6502memory(savepc);
+	Y = operand_cycle();
 	set_nz(Y);
 }
 
@@ -1381,7 +1622,7 @@ void cpu_6502::ldy6502()
 // -----------------------------------------------------------------------------
 void cpu_6502::sta6502()
 {
-	put6502memory(savepc, A);
+	write_cycle(savepc, A);
 }
 
 // -----------------------------------------------------------------------------
@@ -1390,7 +1631,7 @@ void cpu_6502::sta6502()
 // -----------------------------------------------------------------------------
 void cpu_6502::stx6502()
 {
-	put6502memory(savepc, X);
+	write_cycle(savepc, X);
 }
 
 // -----------------------------------------------------------------------------
@@ -1399,7 +1640,7 @@ void cpu_6502::stx6502()
 // -----------------------------------------------------------------------------
 void cpu_6502::sty6502()
 {
-	put6502memory(savepc, Y);
+	write_cycle(savepc, Y);
 }
 
 // -----------------------------------------------------------------------------
@@ -1408,7 +1649,7 @@ void cpu_6502::sty6502()
 // -----------------------------------------------------------------------------
 void cpu_6502::stz6502()
 {
-	put6502memory(savepc, 0);
+	write_cycle(savepc, 0);
 }
 
 // -----------------------------------------------------------------------------
@@ -1418,8 +1659,11 @@ void cpu_6502::stz6502()
 // -----------------------------------------------------------------------------
 void cpu_6502::inc6502()
 {
-	uint8_t result = get6502memory(savepc) + 1;
-	put6502memory(savepc, result);
+	uint8_t m = operand_cycle();
+	if (cpu_model == CPU_CMOS_65C02) (void)operand_cycle();
+	else write_cycle(savepc, m);              // RMW dummy write of the unmodified value
+	uint8_t result = m + 1;
+	write_cycle(savepc, result);
 	set_nz(result);
 }
 
@@ -1430,8 +1674,11 @@ void cpu_6502::inc6502()
 // -----------------------------------------------------------------------------
 void cpu_6502::dec6502()
 {
-	uint8_t result = get6502memory(savepc) - 1;
-	put6502memory(savepc, result);
+	uint8_t m = operand_cycle();
+	if (cpu_model == CPU_CMOS_65C02) (void)operand_cycle();
+	else write_cycle(savepc, m);
+	uint8_t result = m - 1;
+	write_cycle(savepc, result);
 	set_nz(result);
 }
 
@@ -1502,10 +1749,12 @@ void cpu_6502::dea6502()
 // -----------------------------------------------------------------------------
 void cpu_6502::asl6502()
 {
-	value = get6502memory(savepc);
+	value = operand_cycle();
+	if (cpu_model == CPU_CMOS_65C02) (void)operand_cycle();
+	else write_cycle(savepc, value);
 	P = (P & ~F_C) | ((value >> 7) & F_C);
 	value <<= 1;
-	put6502memory(savepc, value);
+	write_cycle(savepc, value);
 	set_nz(value);
 }
 
@@ -1529,10 +1778,12 @@ void cpu_6502::asla6502()
 // -----------------------------------------------------------------------------
 void cpu_6502::lsr6502()
 {
-	value = get6502memory(savepc);
+	value = operand_cycle();
+	if (cpu_model == CPU_CMOS_65C02) (void)operand_cycle();
+	else write_cycle(savepc, value);
 	P = (P & ~F_C) | (value & F_C);
 	value >>= 1;
-	put6502memory(savepc, value);
+	write_cycle(savepc, value);
 	set_nz(value);
 }
 
@@ -1558,10 +1809,12 @@ void cpu_6502::lsra6502()
 void cpu_6502::rol6502()
 {
 	saveflags = P & F_C;
-	value = get6502memory(savepc);
+	value = operand_cycle();
+	if (cpu_model == CPU_CMOS_65C02) (void)operand_cycle();
+	else write_cycle(savepc, value);
 	P = (P & ~F_C) | ((value >> 7) & F_C);
 	value = (value << 1) | saveflags;
-	put6502memory(savepc, value);
+	write_cycle(savepc, value);
 	set_nz(value);
 }
 
@@ -1588,11 +1841,13 @@ void cpu_6502::rola6502()
 void cpu_6502::ror6502()
 {
 	saveflags = P & F_C;
-	value = get6502memory(savepc);
+	value = operand_cycle();
+	if (cpu_model == CPU_CMOS_65C02) (void)operand_cycle();
+	else write_cycle(savepc, value);
 	P = (P & ~F_C) | (value & F_C);
 	value >>= 1;
 	if (saveflags) value |= F_N;
-	put6502memory(savepc, value);
+	write_cycle(savepc, value);
 	set_nz(value);
 }
 
@@ -1621,9 +1876,10 @@ inline void cpu_6502::bcc6502()
 {
 	if (!(P & F_C))
 	{
+		idle_cycle();                                   // taken: dummy opcode fetch
 		oldpc = PC;
-		PC += (int8_t)savepc;  // C-style cast used here
-		clockticks6502 += ((oldpc ^ PC) & 0xFF00) ? 2 : 1;
+		PC += (int8_t)savepc;
+		if ((oldpc ^ PC) & 0xFF00) (void)read_cycle((oldpc&0xff00)|(PC&0xff)); // page-fix dummy read
 	}
 }
 
@@ -1636,9 +1892,10 @@ inline void cpu_6502::bcs6502()
 {
 	if (P & F_C)
 	{
+		idle_cycle();                                   // taken: dummy opcode fetch
 		oldpc = PC;
 		PC += (int8_t)(savepc);
-		clockticks6502 += ((oldpc ^ PC) & 0xFF00) ? 2 : 1;
+		if ((oldpc ^ PC) & 0xFF00) (void)read_cycle((oldpc&0xff00)|(PC&0xff)); // page-fix dummy read
 	}
 }
 
@@ -1651,9 +1908,10 @@ inline void cpu_6502::beq6502()
 {
 	if (P & F_Z)
 	{
+		idle_cycle();                                   // taken: dummy opcode fetch
 		oldpc = PC;
 		PC += (int8_t)(savepc);
-		clockticks6502 += ((oldpc ^ PC) & 0xFF00) ? 2 : 1;
+		if ((oldpc ^ PC) & 0xFF00) (void)read_cycle((oldpc&0xff00)|(PC&0xff)); // page-fix dummy read
 	}
 }
 
@@ -1666,9 +1924,10 @@ inline void cpu_6502::bmi6502()
 {
 	if (P & F_N)
 	{
+		idle_cycle();                                   // taken: dummy opcode fetch
 		oldpc = PC;
 		PC += (int8_t)(savepc);
-		clockticks6502 += ((oldpc ^ PC) & 0xFF00) ? 2 : 1;
+		if ((oldpc ^ PC) & 0xFF00) (void)read_cycle((oldpc&0xff00)|(PC&0xff)); // page-fix dummy read
 	}
 }
 
@@ -1681,9 +1940,10 @@ inline void cpu_6502::bne6502()
 {
 	if (!(P & F_Z))
 	{
+		idle_cycle();                                   // taken: dummy opcode fetch
 		oldpc = PC;
 		PC += (int8_t)(savepc);
-		clockticks6502 += ((oldpc ^ PC) & 0xFF00) ? 2 : 1;
+		if ((oldpc ^ PC) & 0xFF00) (void)read_cycle((oldpc&0xff00)|(PC&0xff)); // page-fix dummy read
 	}
 }
 
@@ -1696,9 +1956,10 @@ void cpu_6502::bpl6502()
 {
 	if (!(P & F_N))
 	{
+		idle_cycle();                                   // taken: dummy opcode fetch
 		oldpc = PC;
 		PC += (int8_t)(savepc);
-		clockticks6502 += ((oldpc ^ PC) & 0xFF00) ? 2 : 1;
+		if ((oldpc ^ PC) & 0xFF00) (void)read_cycle((oldpc&0xff00)|(PC&0xff)); // page-fix dummy read
 	}
 }
 
@@ -1711,9 +1972,10 @@ void cpu_6502::bvc6502()
 {
 	if (!(P & F_V))
 	{
+		idle_cycle();                                   // taken: dummy opcode fetch
 		oldpc = PC;
 		PC += (int8_t)(savepc);
-		clockticks6502 += ((oldpc ^ PC) & 0xFF00) ? 2 : 1;
+		if ((oldpc ^ PC) & 0xFF00) (void)read_cycle((oldpc&0xff00)|(PC&0xff)); // page-fix dummy read
 	}
 }
 
@@ -1726,9 +1988,10 @@ void cpu_6502::bvs6502()
 {
 	if (P & F_V)
 	{
+		idle_cycle();                                   // taken: dummy opcode fetch
 		oldpc = PC;
 		PC += (int8_t)(savepc);
-		clockticks6502 += ((oldpc ^ PC) & 0xFF00) ? 2 : 1;
+		if ((oldpc ^ PC) & 0xFF00) (void)read_cycle((oldpc&0xff00)|(PC&0xff)); // page-fix dummy read
 	}
 }
 
@@ -1739,8 +2002,10 @@ void cpu_6502::bvs6502()
 // -----------------------------------------------------------------------------
 inline void cpu_6502::bra6502()
 {
+	idle_cycle();
+	oldpc = PC;
 	PC += (int8_t)(savepc);
-	clockticks6502++;
+	if ((oldpc ^ PC) & 0xff00) { (void)read_cycle((oldpc & 0xff00) | (PC & 0xff)); }
 }
 // -----------------------------------------------------------------------------
 // Jump (JMP)
@@ -1758,9 +2023,18 @@ inline void cpu_6502::jmp6502()
 // -----------------------------------------------------------------------------
 inline void cpu_6502::jsr6502()
 {
-	PC--;
-	push16(PC);
-	PC = savepc;
+	// Cycles 3-6 of JSR (1-2 are the opcode fetch and abs_jsr6502's ADL read).
+	// Only the two stack pushes are write cycles; every other cycle is a bus
+	// read and is therefore halted by RDY when ANTIC takes the bus.
+	// PC still points at ADL, so the pushed return address - the last byte of
+	// this instruction - is PC+1.
+	const uint16_t ret = (uint16_t)(PC + 1);
+	(void)read_cycle((uint16_t)(BASE_STACK + S), true);            // 3
+	write_cycle((uint16_t)(BASE_STACK + S), (uint8_t)(ret >> 8), true);          // 4
+	write_cycle((uint16_t)(BASE_STACK + ((S - 1) & 0xFF)), (uint8_t)ret, true);  // 5
+	S -= 2;
+	const uint8_t adh = fetch_cycle(ret);                                  // 6: instruction operand
+	PC = (uint16_t)((savepc & 0x00FF) | (adh << 8));
 }
 
 // -----------------------------------------------------------------------------
@@ -1770,8 +2044,17 @@ inline void cpu_6502::jsr6502()
 // -----------------------------------------------------------------------------
 inline void cpu_6502::rts6502()
 {
-	PC = pull16();
-	PC++;
+	// Cycles 3-6 (1-2 are the opcode fetch and implied6502's dummy read at PC).
+	// RTS has no write cycles at all: the stack-pointer increment and the final
+	// PC increment both appear on the bus as reads, so all six cycles are
+	// halted by RDY when ANTIC takes the bus.
+	(void)read_cycle((uint16_t)(BASE_STACK + S), true);            // 3
+	const uint8_t lo = read_cycle((uint16_t)(BASE_STACK + ((S + 1) & 0xFF)), true);  // 4
+	const uint8_t hi = read_cycle((uint16_t)(BASE_STACK + ((S + 2) & 0xFF)), true);  // 5
+	S += 2;
+	const uint16_t ret = (uint16_t)(lo | (hi << 8));
+	(void)fetch_cycle(ret);                                 // 6: discarded instruction read
+	PC = (uint16_t)(ret + 1);
 }
 
 // -----------------------------------------------------------------------------
@@ -1784,8 +2067,11 @@ void cpu_6502::rti6502()
 	// Unlike CLI/PLP, RTI has NO one-instruction IRQ delay on the real 6502:
 	// a pending IRQ is taken immediately after RTI restores I=0. Adding the
 	// delay here made every IRQ-driven loop run one mainline instruction late.
-	P = pull8() | F_T | F_B;
-	PC = pull16();
+	(void)read_cycle(BASE_STACK + S, true);
+	P = pull_cycle() | F_T | F_B;
+	const uint8_t lo = pull_cycle();
+	const uint8_t hi = pull_cycle();
+	PC = lo | (hi << 8);
 }
 
 // -----------------------------------------------------------------------------
@@ -1797,13 +2083,24 @@ void cpu_6502::rti6502()
 void cpu_6502::brk6502()
 {
 	PC++;
-	push16(PC);
+	push_cycle(static_cast<uint8_t>(PC >> 8));
+	push_cycle(static_cast<uint8_t>(PC));
+	uint16_t vector = 0xfffe;
+	if (cpu_model != CPU_CMOS_65C02 && nmi_latched) {
+		vector = 0xfffa;
+		nmi_latched = nmi_polled = false;
+	}
 	// Ensure both Bit 4 (B) and Bit 5 (T) are set
-	push8(P | F_B | F_T);
+	push_cycle(P | F_B | F_T);
 	P |= F_I;
 	if (cpu_model == CPU_CMOS_65C02)
 		P &= ~F_D;    // only the 65C02 clears decimal on interrupt entry
-	PC = get6502memory(0xFFFE & addrmask) | (get6502memory(0xFFFF & addrmask) << 8);
+	const uint8_t lo = read_cycle(vector);
+	const uint8_t hi = read_cycle(static_cast<uint16_t>(vector + 1));
+	PC = lo | (hi << 8);
+	// The interrupt sequence does not poll: an NMI that misses the hijack
+	// window (Lorenz NMI test) is taken after the handler's first instruction.
+	skip_poll = true;
 }
 
 // -----------------------------------------------------------------------------
@@ -1813,10 +2110,11 @@ void cpu_6502::brk6502()
 // -----------------------------------------------------------------------------
 void cpu_6502::nop6502()
 {
-	// All NOP variants (official $EA plus the undocumented multi-byte ones)
-	// simply consume their operand bytes - the addressing mode already did
-	// that. No logging here: code that uses undocumented NOPs in hot loops
-	// turned a per-execution log line into massive spam.
+	if (opcode_table[opcode].addressing_mode != &cpu_6502::implied6502)
+		(void)read_cycle(cpu_model == CPU_CMOS_65C02 &&
+			(opcode == 0x5c || opcode == 0xdc || opcode == 0xfc) ? static_cast<uint16_t>(PC - 1) : savepc);
+	// Addressing consumes the operand bytes; the read above supplies the final
+	// data/dummy cycle for multi-byte NOPs. Implied NOPs are already complete.
 }
 
 // -----------------------------------------------------------------------------
@@ -1827,7 +2125,8 @@ void cpu_6502::nop6502()
 // -----------------------------------------------------------------------------
 void cpu_6502::kil6502()
 {
-	PC--;                     // re-execute this opcode forever
+	PC--;
+	run_state = RunState::Jammed;
 	if (!kil_logged) {
 		kil_logged = true;
 		LOG_INFO("6502 JAM (KIL opcode %02X) at %04X - CPU halted", opcode, PC);
@@ -1972,7 +2271,7 @@ void cpu_6502::txs6502()
 // -----------------------------------------------------------------------------
 void cpu_6502::pha6502()
 {
-	push8(A);
+	push_cycle(A);
 }
 
 // -----------------------------------------------------------------------------
@@ -1983,7 +2282,7 @@ void cpu_6502::pha6502()
 void cpu_6502::php6502()
 {
 	// Ensure both Bit 4 (B) and Bit 5 (T) are set
-	push8(P | F_B | F_T);
+	push_cycle(P | F_B | F_T);
 }
 
 // -----------------------------------------------------------------------------
@@ -1993,7 +2292,8 @@ void cpu_6502::php6502()
 // -----------------------------------------------------------------------------
 void cpu_6502::pla6502()
 {
-	A = pull8();
+	(void)read_cycle(BASE_STACK + S, true);
+	A = pull_cycle();
 	set_nz(A);
 }
 
@@ -2005,7 +2305,8 @@ void cpu_6502::pla6502()
 void cpu_6502::plp6502()
 {
 	const bool was_I = (P & F_I) != 0;
-	P = pull8() | F_T | F_B;
+	(void)read_cycle(BASE_STACK + S, true);
+	P = pull_cycle() | F_T | F_B;
 	if (was_I && !(P & F_I)) irq_inhibit_one = 2;
 }
 
@@ -2015,7 +2316,7 @@ void cpu_6502::plp6502()
 // -----------------------------------------------------------------------------
 void cpu_6502::phx6502()
 {
-	push8(X);
+	push_cycle(X);
 }
 
 // -----------------------------------------------------------------------------
@@ -2025,7 +2326,8 @@ void cpu_6502::phx6502()
 // -----------------------------------------------------------------------------
 void cpu_6502::plx6502()
 {
-	X = pull8();
+	(void)read_cycle(BASE_STACK + S, true);
+	X = pull_cycle();
 	set_nz(X);
 }
 
@@ -2035,7 +2337,7 @@ void cpu_6502::plx6502()
 // -----------------------------------------------------------------------------
 void cpu_6502::phy6502()
 {
-	push8(Y);
+	push_cycle(Y);
 }
 
 // -----------------------------------------------------------------------------
@@ -2045,7 +2347,8 @@ void cpu_6502::phy6502()
 // -----------------------------------------------------------------------------
 void cpu_6502::ply6502()
 {
-	Y = pull8();
+	(void)read_cycle(BASE_STACK + S, true);
+	Y = pull_cycle();
 	set_nz(Y);
 }
 
@@ -2057,8 +2360,20 @@ void cpu_6502::ply6502()
 // -----------------------------------------------------------------------------
 inline void cpu_6502::lax6502()
 {
-	A = X = get6502memory(savepc);
+	A = X = operand_cycle();
 	set_nz(A);
+}
+
+void cpu_6502::wai6502()
+{
+	(void)fetch_cycle(PC);
+	run_state = RunState::Waiting;
+}
+
+void cpu_6502::stp6502()
+{
+	(void)fetch_cycle(PC);
+	run_state = RunState::Stopped;
 }
 
 // -----------------------------------------------------------------------------
@@ -2069,7 +2384,7 @@ inline void cpu_6502::lax6502()
 // -----------------------------------------------------------------------------
 inline void cpu_6502::sax6502()
 {
-	put6502memory(savepc, A & X);
+	write_cycle(savepc, A & X);
 }
 
 // -----------------------------------------------------------------------------
@@ -2080,9 +2395,10 @@ inline void cpu_6502::sax6502()
 // -----------------------------------------------------------------------------
 void cpu_6502::trb6502()
 {
-	uint8_t v = get6502memory(savepc);
+	uint8_t v = operand_cycle();
+	(void)operand_cycle();
 	set_z(A & v);
-	put6502memory(savepc, v & ~A);
+	write_cycle(savepc, v & ~A);
 }
 
 // -----------------------------------------------------------------------------
@@ -2093,9 +2409,10 @@ void cpu_6502::trb6502()
 // -----------------------------------------------------------------------------
 void cpu_6502::tsb6502()
 {
-	uint8_t v = get6502memory(savepc);
+	uint8_t v = operand_cycle();
+	(void)operand_cycle();
 	set_z(A & v);
-	put6502memory(savepc, v | A);
+	write_cycle(savepc, v | A);
 }
 
 // -----------------------------------------------------------------------------
@@ -2106,8 +2423,10 @@ void cpu_6502::tsb6502()
 // -----------------------------------------------------------------------------
 inline void cpu_6502::dcp6502()
 {
-	uint8_t m = get6502memory(savepc) - 1;
-	put6502memory(savepc, m);
+	uint8_t m = operand_cycle();
+	write_cycle(savepc, m);
+	--m;
+	write_cycle(savepc, m);
 	uint16_t result = (uint16_t)A - m;
 	P = (P & ~(F_C | F_Z | F_N)) | ((result < 0x100) ? F_C : 0) | ((A == m) ? F_Z : 0) | ((result & 0x80) ? F_N : 0);
 }
@@ -2118,10 +2437,11 @@ inline void cpu_6502::dcp6502()
 void cpu_6502::rra_2a03()
 {
 	uint8_t carry_in = (P & F_C) ? 0x80 : 0;
-	value = get6502memory(savepc);
+	value = operand_cycle();
+	write_cycle(savepc, value);
 	P = (P & ~F_C) | (value & 1);
 	value = (value >> 1) | carry_in;
-	put6502memory(savepc, value);
+	write_cycle(savepc, value);
 
 	// ADC (Binary) logic
 	const uint8_t m = value;
@@ -2141,8 +2461,10 @@ void cpu_6502::rra_2a03()
 // -----------------------------------------------------------------------------
 void cpu_6502::isc_2a03()
 {
-	uint8_t m = get6502memory(savepc) + 1;
-	put6502memory(savepc, m);
+	uint8_t m = operand_cycle();
+	write_cycle(savepc, m);
+	++m;
+	write_cycle(savepc, m);
 
 	// SBC (Binary) logic
 	const int cin = (P & F_C) ? 1 : 0;
@@ -2161,42 +2483,20 @@ void cpu_6502::isc_2a03()
 // -----------------------------------------------------------------------------
 void cpu_6502::isc6502()
 {
-	uint8_t m = get6502memory(savepc) + 1;
-	put6502memory(savepc, m);
-
-	// SBC Logic (NMOS)
-	const int cin = (P & F_C) ? 1 : 0;
-	const uint16_t diff = (uint16_t)A - m - (1 - cin);
-	const uint8_t  bin = (uint8_t)diff;
-
-	P &= ~(F_V | F_C);
-	if (((A ^ m) & (A ^ bin) & 0x80) != 0) P |= F_V;
-
-	if (P & F_D)
-	{
-		uint16_t dec = diff;
-		const int lo_raw = (int)(A & 0x0F) - (int)(m & 0x0F) - (1 - cin);
-		const int lo_borr = (lo_raw < 0) ? 1 : 0;
-		if (lo_borr) dec -= 0x06;
-		int hi = (int)(A >> 4) - (int)(m >> 4) - lo_borr;
-		if (hi < 0) { dec -= 0x60; P &= ~F_C; }
-		else { P |= F_C; }
-		A = (uint8_t)dec;
-	}
-	else
-	{
-		if (!(diff & 0x0100)) P |= F_C;
-		A = bin;
-	}
-	set_nz(bin); // NMOS: Flags on Binary Result
+	uint8_t m = operand_cycle();
+	write_cycle(savepc, m);
+	++m;
+	write_cycle(savepc, m);
+	sbc_nmos_value(m);
 }
 
 inline void cpu_6502::slo6502()
 {
-	value = get6502memory(savepc);
+	value = operand_cycle();
+	write_cycle(savepc, value);
 	P = (P & ~F_C) | (value >> 7);
 	value <<= 1;
-	put6502memory(savepc, value);
+	write_cycle(savepc, value);
 	A |= value;
 	set_nz(A);
 }
@@ -2206,34 +2506,13 @@ inline void cpu_6502::slo6502()
 // -----------------------------------------------------------------------------
 void cpu_6502::rra6502()
 {
-	uint8_t carry_in = (P & F_C) ? 0x80 : 0;
-	value = get6502memory(savepc);
-	P = (P & ~F_C) | (value & 1);
-	value = (value >> 1) | carry_in;
-	put6502memory(savepc, value);
-
-	// ADC Logic (NMOS)
-	const uint8_t m = value;
-	const int     cin = (P & F_C) ? 1 : 0;
-	const uint16_t sum = (uint16_t)A + m + cin;
-	const uint8_t  bin = (uint8_t)sum;
-
-	P &= ~(F_V | F_C);
-	if ((~(A ^ m) & (A ^ bin) & 0x80) != 0) P |= F_V;
-
-	if (P & F_D)
-	{
-		uint16_t dec = sum;
-		if (((A & 0x0F) + (m & 0x0F) + cin) > 9) dec += 0x06;
-		if (dec > 0x0099) { dec += 0x60; P |= F_C; }
-		A = (uint8_t)dec;
-	}
-	else
-	{
-		if (sum & 0x0100) P |= F_C;
-		A = bin;
-	}
-	set_nz(bin); // NMOS: Flags on Binary Result
+	const uint8_t carry_in = (P & F_C) ? 0x80 : 0;
+	uint8_t m = operand_cycle();
+	write_cycle(savepc, m);
+	P = (P & ~F_C) | (m & 1);
+	m = (m >> 1) | carry_in;
+	write_cycle(savepc, m);
+	adc_nmos_value(m);
 }
 
 // -----------------------------------------------------------------------------
@@ -2245,7 +2524,8 @@ void cpu_6502::rra6502()
 // -----------------------------------------------------------------------------
 inline void cpu_6502::rla6502()
 {
-	value = get6502memory(savepc);
+	value = operand_cycle();
+	write_cycle(savepc, value);
 
 	// Save the bit that will become the new carry
 	uint8_t new_carry = (value >> 7) & 1;
@@ -2260,7 +2540,7 @@ inline void cpu_6502::rla6502()
 	P = (P & ~F_C) | (new_carry ? F_C : 0);
 
 	// Write back to memory
-	put6502memory(savepc, value);
+	write_cycle(savepc, value);
 
 	// AND with accumulator
 	A &= value;
@@ -2276,10 +2556,11 @@ inline void cpu_6502::rla6502()
 // -----------------------------------------------------------------------------
 inline void cpu_6502::sre6502()
 {
-	value = get6502memory(savepc);
+	value = operand_cycle();
+	write_cycle(savepc, value);
 	P = (P & ~F_C) | (value & 0x01); // Set Carry from bit 0
 	value >>= 1;
-	put6502memory(savepc, value);
+	write_cycle(savepc, value);
 
 	A ^= value;
 	set_nz(A);
@@ -2293,7 +2574,8 @@ inline void cpu_6502::sre6502()
 void cpu_6502::rmb_smb_6502()
 {
 	// savepc contains the Zero Page address (fetched by zp6502 mode)
-	uint8_t val = get6502memory(savepc);
+	uint8_t val = operand_cycle();
+	(void)operand_cycle();
 
 	// Decode Bit (High nibble 0-7) and Action (High nibble bit 3)
 	// RMB: 0x07, 17, 27... SMB: 0x87, 97, A7...
@@ -2306,7 +2588,7 @@ void cpu_6502::rmb_smb_6502()
 		val &= ~bit_mask; // RMB (Reset)
 	}
 
-	put6502memory(savepc, val);
+	write_cycle(savepc, val);
 }
 
 // -----------------------------------------------------------------------------
@@ -2316,13 +2598,8 @@ void cpu_6502::rmb_smb_6502()
 // -----------------------------------------------------------------------------
 void cpu_6502::bbr_bbs_6502()
 {
-	// Hardware base is 5 cycles. 
-   // The ticks[] table for 'xF' (SLO abs) is usually 6.
-   // Correction:
-	clockticks6502 -= 1;
-
 	// help contains ZP address, savepc contains relative offset (fetched by zprel6502)
-	uint8_t val = get6502memory(help);
+	uint8_t val = value;
 
 	// Decode Bit
 	uint8_t bit_mask = 1 << ((opcode >> 4) & 7);
@@ -2335,15 +2612,12 @@ void cpu_6502::bbr_bbs_6502()
 	// If Opcode has bit 7 clear (BBR), we want condition false.
 	if (((opcode & 0x80) != 0) == condition)
 	{
+		(void)fetch_cycle(PC);
 		oldpc = PC;
 		PC += (int8_t)savepc;
-
-		// Standard branch timing: +1 for taking it
-		clockticks6502++;
-
-		// +1 for page crossing (standard behavior for 65C02 branches)
-		if ((oldpc ^ PC) & 0xFF00)
-			clockticks6502++;
+		if ((oldpc ^ PC) & 0xFF00) {
+			(void)read_cycle(oldpc);
+		}
 	}
 }
 // -----------------------------------------------------------------------------
@@ -2353,7 +2627,7 @@ void cpu_6502::bbr_bbs_6502()
 // ANC - AND with immediate, then set C = N
 void cpu_6502::anc6502()
 {
-	value = get6502memory(savepc);
+	value = operand_cycle();
 	A &= value;
 	set_nz(A);
 	// Carry = bit7(A)
@@ -2363,7 +2637,7 @@ void cpu_6502::anc6502()
 // ALR - AND immediate, then LSR
 void cpu_6502::alr6502()
 {
-	value = get6502memory(savepc);
+	value = operand_cycle();
 	A &= value;
 	P = (P & ~F_C) | (A & 0x01 ? F_C : 0);
 	A >>= 1;
@@ -2372,8 +2646,9 @@ void cpu_6502::alr6502()
 
 void cpu_6502::arr6502()
 {
-	value = get6502memory(savepc);
+	value = operand_cycle();
 	A &= value;
+	const uint8_t unrotated = A;
 
 	// Perform ROR on A (rotate right through carry)
 	uint8_t old_carry = (P & F_C) ? 0x80 : 0;
@@ -2392,16 +2667,22 @@ void cpu_6502::arr6502()
 	if (((A >> 6) ^ (A >> 5)) & 0x01)
 		P |= F_V;
 
-	// Note: Decimal mode ARR is even more complex. (TODO: SO FIX THIS)
-	// If you need full BCD ARR accuracy, the flags and result
-	// calculation changes significantly. Most software doesn't use it.
+	if ((P & F_D) && cpu_model != CPU_NES_2A03) {
+		// Decimal corrections affect A/C, retaining the pre-correction N/Z/V.
+		if ((unrotated & 15) + (unrotated & 1) > 5)
+			A = (A & 0xf0) | ((A + 6) & 15);
+		if ((unrotated & 0xf0) + (unrotated & 0x10) > 0x50) {
+			A = static_cast<uint8_t>(A + 0x60);
+			P |= F_C;
+		} else P &= ~F_C;
+	}
 }
 
 void cpu_6502::axs6502()
 {
 	// AXS: X = (A & X) - immediate, sets flags like CMP
 	// Does NOT use borrow (like CMP, not SBC)
-	value = get6502memory(savepc);
+	value = operand_cycle();
 	uint8_t temp = A & X;
 	uint16_t result = (uint16_t)temp - value;
 
@@ -2422,7 +2703,7 @@ void cpu_6502::axs6502()
 // -----------------------------------------------------------------------------
 void cpu_6502::ane6502()
 {
-	value = get6502memory(savepc);
+	value = operand_cycle();
 	A = (A | 0xEE) & X & value;  // Magic constant 0xEE
 	set_nz(A);
 }
@@ -2432,30 +2713,32 @@ void cpu_6502::ane6502()
 // -----------------------------------------------------------------------------
 void cpu_6502::lxa6502()
 {
-	value = get6502memory(savepc);
+	value = operand_cycle();
 	A = X = (A | 0xEE) & value;  // Magic constant 0xEE
 	set_nz(A);
 }
 
 // -----------------------------------------------------------------------------
-// SHS / TAS (0x9B)
-// -----------------------------------------------------------------------------
 // The SHx family stores reg & (high(base)+1). The addressing mode has already
 // resolved savepc = base + index. On a page cross, the high byte of the target
 // address itself is corrupted to the stored value (real NMOS quirk).
-uint16_t cpu_6502::sh_target(uint16_t base, uint8_t store_value)
+// -----------------------------------------------------------------------------
+inline uint16_t cpu_6502::sh_target(uint16_t base, uint8_t store_value)
 {
 	if ((base & 0xFF00) != (savepc & 0xFF00))
 		return (uint16_t)((store_value << 8) | (savepc & 0x00FF));
 	return savepc;
 }
 
+// -----------------------------------------------------------------------------
+// SHS / TAS (0x9B): S = A & X, then store A & X & (H+1) at abs,Y
+// -----------------------------------------------------------------------------
 void cpu_6502::shs6502()
 {
 	S = A & X;
 	uint16_t base = savepc - Y;
 	uint8_t store_value = A & X & (uint8_t)((base >> 8) + 1);
-	put6502memory(sh_target(base, store_value), store_value);
+	write_cycle(sh_target(base, store_value), store_value);
 }
 
 // -----------------------------------------------------------------------------
@@ -2465,7 +2748,7 @@ void cpu_6502::shy6502()
 {
 	uint16_t base = savepc - X;
 	uint8_t store_value = Y & (uint8_t)((base >> 8) + 1);
-	put6502memory(sh_target(base, store_value), store_value);
+	write_cycle(sh_target(base, store_value), store_value);
 }
 
 // -----------------------------------------------------------------------------
@@ -2475,7 +2758,7 @@ void cpu_6502::shx6502()
 {
 	uint16_t base = savepc - Y;
 	uint8_t store_value = X & (uint8_t)((base >> 8) + 1);
-	put6502memory(sh_target(base, store_value), store_value);
+	write_cycle(sh_target(base, store_value), store_value);
 }
 
 // -----------------------------------------------------------------------------
@@ -2488,12 +2771,12 @@ void cpu_6502::ahx6502()
 {
 	uint16_t base = savepc - Y;
 	uint8_t store_value = A & X & (uint8_t)((base >> 8) + 1);
-	put6502memory(sh_target(base, store_value), store_value);
+	write_cycle(sh_target(base, store_value), store_value);
 }
 
 void cpu_6502::las6502()
 {
-	value = get6502memory(savepc);
+	value = operand_cycle();
 	S &= value;
 	A = X = S;
 	set_nz(A);
@@ -2506,7 +2789,7 @@ void cpu_6502::log_instruction_usage()
 	{
 		if (instruction_count[i] > 0)
 		{
-			LOG_INFO("Opcode %02X (%s): %" PRIu64, i, mnemonics[i], instruction_count[i]);
+			LOG_INFO("Opcode %02X (%s): %llu", i, mnemonics[i], instruction_count[i]);
 		}
 	}
 }
@@ -2538,14 +2821,14 @@ std::string cpu_6502::disassemble(uint16_t pc, int* bytesUsed)
 	};
 
 	char buffer[64] = {};
-	uint8_t opcode = get6502memory(pc);
-	uint8_t op1 = get6502memory(pc + 1);
-	uint8_t op2 = get6502memory(pc + 2);
+	uint8_t opcode = readop(pc);
+	uint8_t op1 = readop(pc + 1);
+	uint8_t op2 = readop(pc + 2);
 
 	switch (length[opcode])
 	{
 	case 1:
-		snprintf(buffer, sizeof(buffer),"%02X       %-4s", opcode, mnemonics[opcode]);
+		sprintf_s(buffer, sizeof(buffer), "%02X       %-4s", opcode, mnemonics[opcode]);
 		break;
 
 	case 2:
@@ -2553,11 +2836,11 @@ std::string cpu_6502::disassemble(uint16_t pc, int* bytesUsed)
 		{
 			int8_t offset = static_cast<int8_t>(op1);
 			uint16_t target = pc + 2 + offset;
-			snprintf(buffer, sizeof(buffer),"%02X %02X    %-4s $%04X", opcode, op1, mnemonics[opcode], target);
+			sprintf_s(buffer, sizeof(buffer), "%02X %02X    %-4s $%04X", opcode, op1, mnemonics[opcode], target);
 		}
 		else
 		{
-			snprintf(buffer, sizeof(buffer),"%02X %02X    %-4s $%02X", opcode, op1, mnemonics[opcode], op1);
+			sprintf_s(buffer, sizeof(buffer), "%02X %02X    %-4s $%02X", opcode, op1, mnemonics[opcode], op1);
 		}
 		break;
 
@@ -2566,21 +2849,21 @@ std::string cpu_6502::disassemble(uint16_t pc, int* bytesUsed)
 		uint16_t addr = static_cast<uint16_t>(op1) | (static_cast<uint16_t>(op2) << 8);
 		if (opcode == 0x4C || opcode == 0x20) // JMP abs, JSR abs
 		{
-			snprintf(buffer, sizeof(buffer),"%02X %02X %02X %-4s $%04X", opcode, op1, op2, mnemonics[opcode], addr);
+			sprintf_s(buffer, sizeof(buffer), "%02X %02X %02X %-4s $%04X", opcode, op1, op2, mnemonics[opcode], addr);
 		}
 		else if (opcode == 0x6C) // JMP (indirect)
 		{
-			snprintf(buffer, sizeof(buffer),"%02X %02X %02X %-4s ($%04X)", opcode, op1, op2, mnemonics[opcode], addr);
+			sprintf_s(buffer, sizeof(buffer), "%02X %02X %02X %-4s ($%04X)", opcode, op1, op2, mnemonics[opcode], addr);
 		}
 		else
 		{
-			snprintf(buffer, sizeof(buffer),"%02X %02X %02X %-4s $%02X%02X", opcode, op1, op2, mnemonics[opcode], op2, op1);
+			sprintf_s(buffer, sizeof(buffer), "%02X %02X %02X %-4s $%02X%02X", opcode, op1, op2, mnemonics[opcode], op2, op1);
 		}
 		break;
 	}
 
 	default:
-		snprintf(buffer, sizeof(buffer),"%02X       ???", opcode);
+		sprintf_s(buffer, sizeof(buffer), "%02X       ???", opcode);
 		break;
 	}
 

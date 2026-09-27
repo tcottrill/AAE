@@ -12,10 +12,17 @@
 //     6808 is a 6802 with that RAM disabled. Nothing about those differences is
 //     visible to the instruction decoder, so a 6802's internal RAM is mapped by
 //     the driver like any other RAM region rather than being built into the core.
-//   - Documented MC6800 instruction set only. The 6801/6803 additions (ABX, MUL,
-//     LDD/STD, ADDD/SUBD, PSHX/PULX, BRN, JSR-direct, the 16-bit shifts) are NOT
-//     part of this core, and the two "halt and catch fire" test opcodes ($9D,
-//     $DD) are treated as illegal rather than locking the CPU up.
+//   - Documented MC6800 instruction set by default. The two "halt and catch
+//     fire" test opcodes ($9D, $DD) are treated as illegal rather than locking
+//     the CPU up.
+//   - 6803 MODE (set_m6803_mode): enables the 6801/6803 instruction additions
+//     (ABX, MUL, LDD/STD, ADDD/SUBD, PSHX/PULX, JSR-direct, LSRD/ASLD), the
+//     6801 CPX (which DOES move carry), the on-chip register block at
+//     $0000-$001F (ports 1/2 via driver callbacks, free-running counter,
+//     output-compare register, TCSR) and the OCI/TOI timer interrupts
+//     (vectors $FFF4/$FFF2). Internal RAM $80-$FF is mapped by the driver
+//     like any other RAM, as with the 6802. Added for the Irem M52 sound
+//     board (Moon Patrol); modeled on MAME 0.57 m6800.c.
 //   - Style modeled on cpu_m6809: a flat class with a big switch in step().
 //     The 6800's four addressing modes (immediate / direct / indexed / extended)
 //     are far simpler than the 6809's postbyte scheme, so the accumulator opcode
@@ -119,6 +126,19 @@ public:
     uint16_t GetSP() const { return m_SP; }
     uint8_t  GetCC() const { return m_CC; }
 
+    // ---- 6803 mode -------------------------------------------------------
+    // Port callbacks receive the PORT NUMBER (1 or 2). The data callback gets
+    // the raw data-register value; DDR masking is the board glue's business.
+    using m6803_port_in_t  = uint8_t (*)(int port);
+    using m6803_port_out_t = void    (*)(int port, uint8_t data);
+
+    void set_m6803_mode(bool on) { m_is_6803 = on; }
+    void set_m6803_ports(m6803_port_in_t in, m6803_port_out_t out)
+    {
+        m_port_in = in;
+        m_port_out = out;
+    }
+
     // Test/debug register setters (used by a test harness to seed state).
     void SetA(uint8_t v)   { m_A = v; }
     void SetB(uint8_t v)   { m_B = v; }
@@ -145,6 +165,35 @@ private:
     bool m_nmi_line = false;
     bool m_irq_line = false;
     bool m_wai      = false;  // WAI: registers pre-stacked, waiting for an interrupt
+
+    // ---- 6803 mode state ---------------------------------------------------
+    // TCSR bits (hardware layout): OLVL/IEDG/ETOI/EOCI/EICI are writable,
+    // TOF/OCF/ICF are set by hardware and cleared by the read-TCSR-then-
+    // touch-the-register protocol.
+    enum {
+        TCSR_OLVL = 0x01, TCSR_IEDG = 0x02, TCSR_ETOI = 0x04,
+        TCSR_EOCI = 0x08, TCSR_EICI = 0x10, TCSR_TOF  = 0x20,
+        TCSR_OCF  = 0x40, TCSR_ICF  = 0x80,
+    };
+    bool m_is_6803 = false;
+    m6803_port_in_t  m_port_in  = nullptr;
+    m6803_port_out_t m_port_out = nullptr;
+    uint8_t  m_p1ddr = 0, m_p2ddr = 0;     // data direction registers
+    uint8_t  m_p1data = 0, m_p2data = 0;   // output data registers
+    uint8_t  m_tcsr = 0;                   // timer control/status
+    uint8_t  m_pending_tcsr = 0;           // flags seen by the last TCSR read
+    uint16_t m_counter = 0;                // free-running counter (E clock)
+    uint16_t m_ocr = 0xffff;               // output compare register
+
+    uint8_t  int_reg_r(uint16_t addr);     // $0000-$001F reads
+    void     int_reg_w(uint16_t addr, uint8_t v);
+    void     timer_tick(int cycles);       // advance counter, set TOF/OCF
+    bool     timer_irq_ready() const       // unmasked-and-enabled timer flag up?
+    {
+        return m_is_6803 &&
+            (((m_tcsr & TCSR_OCF) && (m_tcsr & TCSR_EOCI)) ||
+             ((m_tcsr & TCSR_TOF) && (m_tcsr & TCSR_ETOI)));
+    }
 
     // ---- Debug / memory options -------------------------------------------
     bool mmem = false;            // MAME-style memory handling (block unhandled)

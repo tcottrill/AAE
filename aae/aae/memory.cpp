@@ -30,6 +30,7 @@ const char* rom_regions[] = {
 	"REGION_GFX2",
 	"REGION_GFX3",
 	"REGION_GFX4",
+	"REGION_GFX5",
 	"REGION_PROMS",
 	"REGION_SOUND1",
 	"REGION_SOUND2",

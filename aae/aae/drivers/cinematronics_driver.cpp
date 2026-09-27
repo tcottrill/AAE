@@ -12,7 +12,7 @@
 // code, 0.29 through .90 mixed with code of my own. This emulator was
 // created solely for my amusement and learning and is provided only
 // as an archival experience.
-//
+//sam
 // All MAME code used and abused in this emulator remains the copyright
 // of the dedicated people who spend countless hours creating it. All
 // MAME code should be annotated as belonging to the MAME TEAM.
@@ -98,39 +98,36 @@ static int speedfrk_wheel_r(int offset)
 {
 	static const UINT8 speedfrk_steer[] = { 0xe, 0x6, 0x2, 0x0, 0x3, 0x7, 0xf };
 
-	static int last_wheel = 0, last_frame = 0;
-	int delta_wheel = 0;
+	// the shift register is cleared once per 'frame': WHEEL is a self-centering
+	// dial (IPF_CENTER, MAME's PORT_RESET), so it reads this frame's movement.
+	// Every read must see it - the game reads the 4 steering bits one by one.
+	int delta_wheel = (INT8)readinputportbytag("WHEEL") / 8;
 
-	// the shift register is cleared once per 'frame'
-	if (cpu_getcurrentframe() > last_frame)
-	{
-		delta_wheel = (INT8)readinputportbytag("WHEEL") / 8;
-		//LOG_INFO("DELTA WHEEL is %d", delta_wheel);
+	if (delta_wheel > 3)
+		delta_wheel = 3;
+	else if (delta_wheel < -3)
+		delta_wheel = -3;
 
-		if (delta_wheel > 3)
-			delta_wheel = 3;
-		else if (delta_wheel < -3)
-			delta_wheel = -3;
-	}
-	last_frame = cpu_getcurrentframe();
-	//LOG_INFO("Return %x for speedfreak", (speedfrk_steer[delta_wheel + 3] >> offset) & 1);
 	return (speedfrk_steer[delta_wheel + 3] >> offset) & 1;
 }
 
+// Latched gear (bits 0-3 = 1st-4th, active low); MAME's m_gear.
+static int speedfrk_gear = 0x0e;
+
+// offset is the CCPU input number (4-6); MAME's handler sees 0-2.
 static int speedfrk_gear_r(int offset)
 {
-	static int gear = 0x0e;
 	int gearval = readinputportbytag("GEAR");
 
 	// check the fake gear input port and determine the bit settings for the gear
 	if ((gearval & 0x0f) != 0x0f)
-		gear = gearval & 0x0f;
+		speedfrk_gear = gearval & 0x0f;
 
 	// add the start key into the mix -- note that it overlaps 4th gear
 	if (!(readinputportbytag("INPUTS") & 0x80))
-		gear &= ~0x08;
+		speedfrk_gear &= ~0x08;
 
-	return (gear >> offset) & 1;
+	return (speedfrk_gear >> (offset - 4)) & 1;
 }
 
 /*************************************
@@ -298,6 +295,7 @@ UINT8 joystick_read(void)
 
 void run_cinemat(void)
 {
+	demon_sound_update();
 	cinevid_update();
 }
 
@@ -401,6 +399,7 @@ int init_speedfrk()
 	video_type_set(COLOR_BILEVEL, 0);
 	init_ccpu(1, CCPU_MEMSIZE_8K);
 	ccpuinput_type = CCPU_INPUTS::SPEEDFRK;
+	speedfrk_gear = 0x0e;
 	return 1;
 }
 
@@ -410,6 +409,7 @@ int init_demon()
 	init_cinemat_snd(demon_sound);
 	video_type_set(COLOR_BILEVEL, 0);
 	init_ccpu(0, CCPU_MEMSIZE_16K);
+	demon_sound_start();
 	return 1;
 }
 
@@ -444,9 +444,10 @@ int init_wotwc()
 int init_qb3()
 {
 	init_cinemat();
-	init_cinemat_snd(wotwc_sound);
+	init_cinemat_snd(demon_sound);
 	video_type_set(COLOR_QB3, 0);
 	init_ccpu(0, CCPU_MEMSIZE_32K);
+	qb3_sound_start();
 
 	/* Enable QB3 RAM banking -- 4 banks of 256 words selected by P register.
 	   This must be called AFTER init_ccpu so the mode flag is not cleared
@@ -475,6 +476,7 @@ int init_cinemat()
 
 void end_cinemat()
 {
+	demon_sound_stop();
 	ccpu_reset();
 	cache_clear();
 	vector_clear_list();
@@ -648,15 +650,6 @@ static const char* speedfrk_samples[] =
 	0
 };
 
-static const char* demon_samples[] = {
-	"starhawk.zip",
-	"explode.wav",
-	"rlaser.wav",
-	"llaser.wav",
-	"k.wav",
-	"master.wav",
-	"kexit.wav",
-	 0 };
 
 /*************************************
  *
@@ -1083,14 +1076,16 @@ PORT_BIT(0x0070, IP_ACTIVE_LOW, IPT_UNUSED) /* gear shift, fake below */
 PORT_BIT(0x000f, IP_ACTIVE_LOW, IPT_UNUSED) /* steering wheel, fake below */
 
 PORT_START("WHEEL")/* fake - steering wheel (in4) */
-PORT_ANALOG(0xff, 0x00, IPT_DIAL, 100, 1, 0x00, 0xff)
+/* MAME 0.159: IPT_DIAL PORT_SENSITIVITY(100) PORT_KEYDELTA(10) PORT_RESET.
+   IPF_CENTER is the old-core PORT_RESET: the value is this frame's delta. */
+PORT_ANALOG(0xff, 0x00, IPT_DIAL | IPF_CENTER, 100, 10, 0x00, 0xff)
 
-PORT_START("GEAR") /* fake - gear shift (in5) */
-PORT_BIT(0x0f, IP_ACTIVE_HIGH, IPT_UNUSED)
-PORT_BITX(0x10, IP_ACTIVE_LOW, IPT_JOYSTICK_DOWN | IPF_PLAYER2, "1st gear", IP_KEY_DEFAULT, IP_JOY_DEFAULT)
-PORT_BITX(0x20, IP_ACTIVE_LOW, IPT_JOYSTICK_LEFT | IPF_PLAYER2, "2nd gear", IP_KEY_DEFAULT, IP_JOY_DEFAULT)
-PORT_BITX(0x40, IP_ACTIVE_LOW, IPT_JOYSTICK_RIGHT | IPF_PLAYER2, "3rd gear", IP_KEY_DEFAULT, IP_JOY_DEFAULT)
-PORT_BITX(0x80, IP_ACTIVE_LOW, IPT_JOYSTICK_UP | IPF_PLAYER2, "4th gear", IP_KEY_DEFAULT, IP_JOY_DEFAULT)
+PORT_START("GEAR") /* fake - gear shift (in5), bit layout as MAME 0.159 */
+PORT_BITX(0x01, IP_ACTIVE_LOW, IPT_JOYSTICK_DOWN | IPF_PLAYER2, "1st gear", IP_KEY_DEFAULT, IP_JOY_DEFAULT)
+PORT_BITX(0x02, IP_ACTIVE_LOW, IPT_JOYSTICK_LEFT | IPF_PLAYER2, "2nd gear", IP_KEY_DEFAULT, IP_JOY_DEFAULT)
+PORT_BITX(0x04, IP_ACTIVE_LOW, IPT_JOYSTICK_RIGHT | IPF_PLAYER2, "3rd gear", IP_KEY_DEFAULT, IP_JOY_DEFAULT)
+PORT_BITX(0x08, IP_ACTIVE_LOW, IPT_JOYSTICK_UP | IPF_PLAYER2, "4th gear", IP_KEY_DEFAULT, IP_JOY_DEFAULT)
+PORT_BIT(0xf0, IP_ACTIVE_LOW, IPT_UNUSED)
 INPUT_PORTS_END
 
 /***************************************************************************
@@ -1646,6 +1641,8 @@ ROM_LOAD16_BYTE("demon.7t", 0x0000, 0x1000, CRC(866596c1) SHA1(65202dcd5c6bf6c11
 ROM_LOAD16_BYTE("demon.7p", 0x0001, 0x1000, CRC(1109e2f1) SHA1(c779b6af1ca09e2e295fc9a0e221ddf283b683ed))
 ROM_LOAD16_BYTE("demon.7u", 0x2000, 0x1000, CRC(d447a3c3) SHA1(32f6fb01231aa4f3d93e32d639a89f0cf9624a71))
 ROM_LOAD16_BYTE("demon.7r", 0x2001, 0x1000, CRC(64b515f0) SHA1(2dd9a6d784ec1baf31e8c6797ddfdc1423c69470))
+ROM_REGION(0x10000, REGION_CPU2, 0)
+ROM_LOAD("demon.snd", 0x0000, 0x1000, CRC(1e2cc262) SHA1(2aae537574ac69c92a3c6400b971e994de88d915))
 ROM_END
 
 ROM_START(boxingb)
@@ -1683,7 +1680,11 @@ AAE_DRIVER_CPUS(AAE_CPU_ENTRY(CPU_CCPU, 4980750, 1, 1, 0, 0, nullptr, nullptr, n
 	AAE_CPU_NONE_ENTRY(),
 	AAE_CPU_NONE_ENTRY(),
 	AAE_CPU_NONE_ENTRY())
-	AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW | VECTOR_USES_OVERLAY1 , ORIENTATION_DEFAULT)
+	// Orientation for every Cinematronics game lives here, copied from MAME
+	// 0.159's GAME() lines. video.ini rects must stay non-inverted
+	// (left < right, bottom < top): an inverted rect flips the beams a
+	// second time on top of these flags.
+	AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW | VECTOR_USES_OVERLAY1 , ORIENTATION_FLIP_Y ^ ORIENTATION_FLIP_X)
 	AAE_DRIVER_SCREEN(1024, 768, 0, 1024, 0, 768)
 	AAE_DRIVER_RASTER_NONE()
 	AAE_DRIVER_HISCORE_NONE()
@@ -1703,7 +1704,7 @@ AAE_DRIVER_END()
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY())
-	AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW | VECTOR_USES_OVERLAY1, ORIENTATION_DEFAULT)
+	AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW | VECTOR_USES_OVERLAY1, ORIENTATION_FLIP_Y)
 	AAE_DRIVER_SCREEN(1024, 768, 0, 1024, 0, 768)
 	AAE_DRIVER_RASTER_NONE()
 	AAE_DRIVER_HISCORE_NONE()
@@ -1723,7 +1724,7 @@ AAE_DRIVER_END()
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY())
-	AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW, ORIENTATION_DEFAULT | ORIENTATION_FLIP_Y)
+	AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW, ORIENTATION_FLIP_Y)
 	AAE_DRIVER_SCREEN(1024, 768, 0, 1024, 0, 768)
 	AAE_DRIVER_RASTER_NONE()
 	AAE_DRIVER_HISCORE_NONE()
@@ -1743,7 +1744,7 @@ AAE_DRIVER_END()
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY())
-	AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW | VECTOR_USES_OVERLAY2 , ORIENTATION_DEFAULT)
+	AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW | VECTOR_USES_OVERLAY2 , ORIENTATION_FLIP_Y)
 	AAE_DRIVER_SCREEN(1024, 768, 0, 1024, 0, 772)
 	AAE_DRIVER_RASTER_NONE()
 	AAE_DRIVER_HISCORE_NONE()
@@ -1762,7 +1763,7 @@ AAE_DRIVER_END()
 	AAE_DRIVER_CPUS(AAE_CPU_ENTRY(CPU_CCPU, 4980750, 1, 1, 0, 0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr),
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY(),
-		AAE_CPU_NONE_ENTRY())AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW | VECTOR_USES_OVERLAY1, ORIENTATION_ROTATE_270)
+		AAE_CPU_NONE_ENTRY())AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW | VECTOR_USES_OVERLAY1, ORIENTATION_FLIP_X ^ ORIENTATION_ROTATE_270)
 	AAE_DRIVER_SCREEN(1024, 768, 0, 1024, 0, 769)
 	AAE_DRIVER_RASTER_NONE()
 	AAE_DRIVER_HISCORE_NONE()
@@ -1782,7 +1783,7 @@ AAE_DRIVER_END()
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY())
-	AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW | VECTOR_USES_OVERLAY1, ORIENTATION_SWAP_XY)
+	AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW | VECTOR_USES_OVERLAY1, ORIENTATION_FLIP_X ^ ORIENTATION_ROTATE_270)
 	AAE_DRIVER_SCREEN(1024, 768, 0, 1024, 0, 768)
 	AAE_DRIVER_RASTER_NONE()
 	AAE_DRIVER_HISCORE_NONE()
@@ -1801,7 +1802,7 @@ AAE_DRIVER_END()
 	AAE_DRIVER_CPUS(AAE_CPU_ENTRY(CPU_CCPU, 4980750, 1, 1, 0, 0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr),
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY(),
-		AAE_CPU_NONE_ENTRY())AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW, ORIENTATION_DEFAULT)
+		AAE_CPU_NONE_ENTRY())AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW, ORIENTATION_FLIP_Y)
 		AAE_DRIVER_SCREEN(1024, 768, 0, 1024, 0, 780)
 	AAE_DRIVER_RASTER_NONE()
 	AAE_DRIVER_HISCORE_NONE()
@@ -1821,7 +1822,7 @@ AAE_DRIVER_END()
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY())
-	AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW | VECTOR_USES_OVERLAY1, ORIENTATION_DEFAULT | ORIENTATION_FLIP_Y)
+	AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW | VECTOR_USES_OVERLAY1, ORIENTATION_FLIP_Y)
 	AAE_DRIVER_SCREEN(1024, 768, 0, 1024, 0, 768)
 	AAE_DRIVER_RASTER_NONE()
 	AAE_DRIVER_HISCORE_NONE()
@@ -1841,7 +1842,7 @@ AAE_DRIVER_END()
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY())
-	AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW, ORIENTATION_DEFAULT | ORIENTATION_FLIP_Y)
+	AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW, ORIENTATION_FLIP_Y)
 	AAE_DRIVER_SCREEN(1024, 768, 0, 1024, 0, 768)
 	AAE_DRIVER_RASTER_NONE()
 	AAE_DRIVER_HISCORE_NONE()
@@ -1861,7 +1862,7 @@ AAE_DRIVER_END()
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY())
-	AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW, ORIENTATION_DEFAULT )
+	AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW, ORIENTATION_FLIP_Y)
 	AAE_DRIVER_SCREEN(1024, 768, 0, 1024, 0, 768)
 	AAE_DRIVER_RASTER_NONE()
 	AAE_DRIVER_HISCORE_NONE()
@@ -1881,7 +1882,7 @@ AAE_DRIVER_END()
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY())
-	AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW, ORIENTATION_DEFAULT | ORIENTATION_FLIP_Y)
+	AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW, ORIENTATION_FLIP_Y)
 	AAE_DRIVER_SCREEN(1024, 768, 0, 1024, 0, 768)
 	AAE_DRIVER_RASTER_NONE()
 	AAE_DRIVER_HISCORE_NONE()
@@ -1895,13 +1896,15 @@ AAE_DRIVER_END()
 	AAE_DRIVER_ROM(rom_demon)
 	AAE_DRIVER_FUNCS(&init_demon, &run_cinemat, &end_cinemat)
 	AAE_DRIVER_INPUT(input_ports_demon)
-	AAE_DRIVER_SAMPLES(demon_samples)
+	AAE_DRIVER_SAMPLES_NONE()
 	AAE_DRIVER_ART(demon_art)
-	AAE_DRIVER_CPUS(AAE_CPU_ENTRY(CPU_CCPU, 4980750, 1, 1, 0, 0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr),
-		AAE_CPU_NONE_ENTRY(),
+	AAE_DRIVER_CPUS(AAE_CPU_ENTRY(CPU_CCPU, 4980750, 400, 1, 0, 0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr),
+		AAE_CPU_ENTRY_EX(CPU_MZ80, 3579545, 400, 0, INT_TYPE_NONE, nullptr,
+			DemonSoundRead, DemonSoundWrite, DemonSoundPortRead, DemonSoundPortWrite,
+			nullptr, nullptr, &demon_sound_post_cpu_init),
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY())
-	AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW | VECTOR_USES_OVERLAY2, ORIENTATION_DEFAULT)
+	AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW | VECTOR_USES_OVERLAY2, ORIENTATION_FLIP_Y)
 	AAE_DRIVER_SCREEN(1024, 768, 0, 1024, 0, 800 )
 	AAE_DRIVER_RASTER_NONE()
 	AAE_DRIVER_HISCORE_NONE()
@@ -1921,7 +1924,7 @@ AAE_DRIVER_END()
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY())
-	AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW, ORIENTATION_DEFAULT)
+	AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW, ORIENTATION_FLIP_Y)
 	AAE_DRIVER_SCREEN(1024, 768, 0, 1024, 0, 800)
 	AAE_DRIVER_RASTER_NONE()
 	AAE_DRIVER_HISCORE_NONE()
@@ -1941,7 +1944,7 @@ AAE_DRIVER_END()
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY())
-	AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW | VECTOR_USES_OVERLAY2, ORIENTATION_DEFAULT )
+	AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW | VECTOR_USES_OVERLAY2, ORIENTATION_FLIP_Y)
 	AAE_DRIVER_SCREEN(1024, 768, 0, 1024, 0, 768)
 	AAE_DRIVER_RASTER_NONE()
 	AAE_DRIVER_HISCORE_NONE()
@@ -1961,13 +1964,14 @@ AAE_DRIVER_CPUS(AAE_CPU_ENTRY(CPU_CCPU, 4980750, 1, 1, 0, 0, nullptr, nullptr, n
 	AAE_CPU_NONE_ENTRY(),
 	AAE_CPU_NONE_ENTRY(),
 	AAE_CPU_NONE_ENTRY())
-		AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR | VECTOR_USES_OVERLAY2, ORIENTATION_DEFAULT )
+		AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR | VECTOR_USES_OVERLAY2, ORIENTATION_FLIP_Y)
 		AAE_DRIVER_SCREEN(1024, 768, 0, 1024, 0, 768)
 		AAE_DRIVER_RASTER_NONE()
 		AAE_DRIVER_HISCORE_NONE()
 		AAE_DRIVER_VECTORRAM(0, 0)
 		AAE_DRIVER_NVRAM_NONE()
 		AAE_DRIVER_LAYOUT_NONE()
+		AAE_DRIVER_CLONE_OF("wotw")
 AAE_DRIVER_END()
 
 
@@ -1976,13 +1980,15 @@ AAE_DRIVER_END()
 	AAE_DRIVER_ROM(rom_qb3)
 	AAE_DRIVER_FUNCS(&init_qb3, &run_cinemat, &end_cinemat)
 	AAE_DRIVER_INPUT(input_ports_qb3)
-	AAE_DRIVER_SAMPLES(wotw_samples)
+	AAE_DRIVER_SAMPLES_NONE()
 	AAE_DRIVER_ART_NONE()
-	AAE_DRIVER_CPUS(AAE_CPU_ENTRY(CPU_CCPU, 4980750, 1, 1, 0, 0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr),
-		AAE_CPU_NONE_ENTRY(),
+	AAE_DRIVER_CPUS(AAE_CPU_ENTRY(CPU_CCPU, 4980750, 400, 1, 0, 0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr),
+		AAE_CPU_ENTRY_EX(CPU_MZ80, 3579545, 400, 0, INT_TYPE_NONE, nullptr,
+			DemonSoundRead, DemonSoundWrite, DemonSoundPortRead, DemonSoundPortWrite,
+			nullptr, nullptr, &demon_sound_post_cpu_init),
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY())
-	AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW, ORIENTATION_DEFAULT)
+	AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW, ORIENTATION_FLIP_Y)
 	AAE_DRIVER_SCREEN(1120, 780, 0, 1120, 0, 780)
 	AAE_DRIVER_RASTER_NONE()
 	AAE_DRIVER_HISCORE_NONE()

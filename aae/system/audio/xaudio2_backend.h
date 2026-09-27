@@ -67,6 +67,9 @@ public:
 	bool VoiceSetOutputMatrix(VoiceHandle* v, uint32_t srcChannels,
 	                          uint32_t dstChannels, const float* matrix) override;
 
+	bool CaptureStart(const char* path) override;
+	void CaptureStop() override;
+
 private:
 	static constexpr int kNumBuffers = 5;
 
@@ -79,4 +82,8 @@ private:
 	bool                    m_com_init_local = false;
 	uint32_t                m_output_channels = 0;
 	uint32_t                m_output_channel_mask = 0;
+
+	// -wavwrite capture state. The XAPO is AddRef'd by the effect chain;
+	// we keep one ref of our own between CaptureStart and CaptureStop.
+	struct CaptureXAPO*     m_capture_xapo = nullptr;
 };

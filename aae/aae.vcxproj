@@ -222,6 +222,7 @@
     <ClInclude Include="system\audio\emptywav.h" />
     <ClInclude Include="system\audio\error_wav.h" />
     <ClInclude Include="system\audio\mixer.h" />
+    <ClInclude Include="system\audio\wav_writer.h" />
     <ClInclude Include="system\audio\audio_backend.h" />
     <ClInclude Include="system\audio\xaudio2_backend.h" />
     <ClInclude Include="system\graphics\colordefs.h" />
@@ -294,6 +295,7 @@
     <ClCompile Include="system\3rdparty\tinyxml2.cpp" />
     <ClCompile Include="system\audio\audio_3d.cpp" />
     <ClCompile Include="system\audio\mixer.cpp" />
+    <ClCompile Include="system\audio\wav_writer.cpp" />
     <ClCompile Include="system\audio\xaudio2_backend.cpp" />
     <ClCompile Include="system\graphics\sys_gl.cpp" />
     <ClCompile Include="system\graphics\sys_texture.cpp" />

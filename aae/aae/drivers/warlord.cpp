@@ -100,11 +100,115 @@ Off On  On                          For every 5 coins, add 1 coin
 #include "warlord.h"
 #include "driver_registry.h"
 #include "old_mame_raster.h"
-#include "earom.h"
-#include "aae_pokey.h"
+#include "c012294_interface.h"
 #include "timer.h"
+#include "cpu_6502.h"
 // windows.h was included here solely for the Win32 typedef INT, used below as
 // a plain int cast. Casting to int directly needs no header at all.
+
+// ---------------------------------------------------------------------------
+// CPU / video bus sharing (HACK - stand-in until the schematic settles it)
+//
+// The 6502 on this board family shares its bus with the video circuit and is
+// wait-stated against the video's access slot: MAME's centiped.cpp notes the
+// CPU "slows down to 0.75MHz while accessing playfield RAM" but, like AAE
+// until now, models neither the stall nor its effect on POKEY, which keeps
+// clocking at 1.512 MHz while the CPU is held.
+//
+// Why it matters here.  Warlords' original source (WDBALL.MAC, BSINIT) has
+// an anti-copy check labelled "POKEY PROTECT":
+//
+//     LDA I,0
+//     STA P.INIT      ;START POKY INIT      (SKCTL = 0, write on cycle 4)
+//     LDY P.RNDM                             (RANDOM, read on cycle 4)
+//     ...
+//     TYA
+//     EOR P.RNDM                             (RANDOM again, well into init)
+//     EOR I,8         ;A:=8 IF POKEY
+//
+// and shifts that A into the four per-player masks, so it only works when the
+// two reads are equal.  The second read is $FF (RANDOM held in init).  A real
+// POKEY fills RANDOM with ones one bit per clock after entering init and
+// only reads $FF from the 9th clock on (Altirra's measured 0xFFE00 >> n, the
+// die schematic, Altirra HRM); with the ROM's 4-cycle gap delivered exactly,
+// the first read is $E0 | <five old chain bits> and the masks come out
+// wrong ($01,$02,$04,$09 seen in AAE).  Atari shipped this check, so on the
+// real board the read lands 9 or more POKEY clocks after the write - the CPU
+// is being held between the two accesses.  Rather than make the POKEY core
+// lie (MAME's instant reset), the driver inserts the wait state here.
+//
+// What is modelled: every POKEY access costs the CPU WARLORDS_BUS_WAIT dead
+// bus cycles before it completes (cpu_6502::bus_wait), which the POKEY
+// adapter sees as machine time.  8 cycles is one character slot at 1.512 MHz
+// and puts the protect check's read 12 clocks after its write.  What is NOT
+// modelled: the playfield-RAM stall itself, and whatever the true condition
+// and length of the hold are; the Warlords schematic (what drives RDY / the
+// phi0 stretch, and for which addresses) decides both.  Adjust or remove
+// this once that is known.  POKEY accesses are few per frame, so the cost
+// to the CPU budget is negligible.
+// ---------------------------------------------------------------------------
+// UPDATE: the stall below is 100% NEEDED and is now 1.  The analysis above
+// was right that the check needs >= 9 POKEY clocks after the SKCTL write and
+// wrong about where they come from.  They come from the CLOCK RATIO, not from
+// a CPU hold:
+//
+//   * 6502 phi0 (pin 37) is a bare wire to P4 (74LS163A) pin 11 = dot/16 =
+//     756 kHz.  POKEY phi2 (pin 7) is P4 pin 12 = dot/8 = 1.512 MHz.  Those
+//     are adjacent bits of one free-running counter, so POKEY ticks exactly
+//     TWICE per CPU cycle, always.  [schematic sheets 01B, 02B]
+//   * So the ROM's 4-CPU-cycle gap between STA $100F and LDY $100A is EIGHT
+//     POKEY clocks, and the check passes with both RANDOM reads = $FF and the
+//     four per-player masks at 01/02/04/08.
+//   * There is no hold to model: RDY (6502 pin 2) is tied HIGH, on the same
+//     net as SO and NMI, and nothing drives it anywhere.  phi0 has no gate in
+//     its path.  The playfield IS shared with the video, but by a zero-wait
+//     SLOT interleave -- the CPU's own clock switches the playfield address
+//     between the video counters and the CPU once per cycle (two 74LS257
+//     muxes, [sheet 02A "Playfield Address Selector"]), so neither ever waits.
+//
+
+
+/*
+Hypothesis: on the Warlords board the POKEY takes every CPU write twice. 
+The first take lands one POKEY clock early and captures whatever the undriven data bus still holds. 
+For the protection check that byte is $10, which puts the chip into Init one clock before the real write. 
+That is the extra clock.
+
+How it happens:
+
+Clocks: the CPU runs on 4H and the POKEY on 2H, so the POKEY gets two clock pulses per CPU cycle, 
+one in the middle and one at the end. 
+Write gating: the POKEY qualifies writes only with its own clock, its chip select and R/W. 
+On this board the chip select is a plain address decode and R/W is wired straight from the CPU. 
+Both are valid about 225 ns into the cycle, before the mid-cycle pulse starts at 330 ns. 
+The POKEY therefore sees a complete write on the mid-cycle pulse as well.
+Bus state: the 6502 drives write data only in the second half of its cycle, and E2 is switched off 
+while the POKEY is selected. Nothing drives the data bus during the mid-cycle pulse, so it holds the 
+last byte by capacitance. For STA $100F that byte is the operand high byte, $10.
+Init: the low two bits of $10 are 00, which is SKCTL's Init condition. Init is asserted on the mid-cycle clock, 
+and the real $00 lands one clock later and changes nothing. The read: LDY $100A samples at the end of its fourth cycle. 
+From the early write that is 4 × 2 + 1 = 9 POKEY clocks, not 8. 
+Your silicon ramp gives $FF from clock 9, so both RANDOM reads are $FF and the check passes every time.
+*/
+
+static const int WARLORDS_BUS_WAIT = 1;
+
+static inline void warlords_bus_wait()
+{
+	if (m_cpu_6502[0]) m_cpu_6502[0]->bus_wait(WARLORDS_BUS_WAIT);
+}
+
+static uint8_t warlords_pokey_r(uint32_t a, struct MemoryReadByte* m)
+{
+	warlords_bus_wait();
+	return pokey_1_r(a, m);
+}
+
+static void warlords_pokey_w(uint32_t a, uint8_t d, struct MemoryWriteByte* m)
+{
+	warlords_bus_wait();
+	pokey_1_w(a, d, m);
+}
 
 
 // ---------------------------------------------------------------------------
@@ -441,7 +545,7 @@ MEM_ADDR(0x0800, 0x0800, ip_port_2_r)	/* DSW1 */
 MEM_ADDR(0x0801, 0x0801, ip_port_3_r)	/* DSW2 */
 MEM_ADDR(0x0c00, 0x0c00, warlords_IN0_r)	/* IN0 — custom handler for VBLANK latch */
 MEM_ADDR(0x0c01, 0x0c01, ip_port_1_r)	/* IN1 */
-MEM_ADDR(0x1000, 0x100f, pokey_1_r)  	/* Read the 4 paddle values & the random # gen */
+MEM_ADDR(0x1000, 0x100f, warlords_pokey_r)  	/* Read the 4 paddle values & the random # gen (bus wait, see top) */
 MEM_ADDR(0x5000, 0x7fff, MRA_ROM)
 MEM_ADDR(0xf800, 0xffff, MRA_ROM)		/* for the reset / interrupt vectors */
 MEM_END
@@ -450,7 +554,7 @@ MEM_WRITE(warlords_writemem)
 MEM_ADDR(0x0000, 0x03ff, MWA_RAM)
 //MEM_ADDR(0x0400, 0x07bf, videoram_w)	/* MAME: &videoram, &videoram_size */
 //MEM_ADDR(0x07c0, 0x07ff, MWA_RAM)	/* MAME: &spriteram */
-MEM_ADDR(0x1000, 0x100f, pokey_1_w)
+MEM_ADDR(0x1000, 0x100f, warlords_pokey_w)	/* bus wait, see top */
 MEM_ADDR(0x1800, 0x1800, MWA_NOP)        /* IRQ Acknowledge */
 MEM_ADDR(0x1c00, 0x1c02, MWA_NOP)
 MEM_ADDR(0x1c03, 0x1c06, warlord_led_w)	 /* 4 start lights */
@@ -503,8 +607,30 @@ AAE_DRIVER_ART_NONE()
 AAE_DRIVER_CPUS(
 	AAE_CPU_ENTRY(
 		/*type*/     CPU_M6502,
-		/*freq*/     756000,
-		/*div*/      100,
+		/*freq*/     12096000 / 16,  /* 756 kHz.  REVERTED to the original value:
+		                              * "every CPU cycle two POKEY clocks" is not a
+		                              * bug, it is what the board does, and it is
+		                              * what makes the POKEY PROTECT check work
+		                              * without any bus stall.  Evidence:
+		                              *  1. Schematic pin trace: 6502 phi0 (pin 37)
+		                              *     is a bare wire to P4 (74LS163A) pin 11
+		                              *     = dot/16 = 756 kHz; POKEY phi2 (pin 7)
+		                              *     is P4 pin 12 = dot/8 = 1.512 MHz, the
+		                              *     next bit up.  Adjacent bits of one
+		                              *     free-running counter, so the 2:1 ratio
+		                              *     is hard-wired.  [sheets 01B, 02B]
+		                              *  2. Audio pitch judged by ear against the
+		                              *     real game: 756 kHz/1.512 MHz is right,
+		                              *     1.512/3.024 is an octave sharp.
+		                              *  3. With this value the protect check
+		                              *     passes with BOTH RANDOM reads = $FF at
+		                              *     an 8-POKEY-clock gap, and the four
+		                              *     per-player masks come out 01/02/04/08.
+		                              * The Centipede analogy is what misled this:
+		                              * Warlords is not clocked like Centipede.
+		                              * Frame rate is unaffected -- 60.115 Hz comes
+		                              * from the video chain, not the CPU. */
+		/*div*/      200,
 		/*ipf*/      4,
 		/*int type*/ INT_TYPE_INT,
 		/*int cb*/   &warlords_interrupt,

@@ -71,6 +71,9 @@
 #include "aae_mame_driver.h"
 #include "mixer.h"
 #include "ccpu.h"
+#include "ay8910.h"
+#include "z80fmly.h"
+#include "demon_fifo.h"
 
 #ifdef _MSC_VER
 #pragma warning( disable : 4018 4244)
@@ -94,11 +97,11 @@
 #define SHIFTREG2_RISING_EDGE(bit)		RISING_EDGE(bit, (last_shift2 ^ current_shift), current_shift)
 #define SHIFTREG2_FALLING_EDGE(bit)		FALLING_EDGE(bit, (last_shift2 ^ current_shift), current_shift)
 
- // circular queue with read and write pointers for demon
-#define QUEUE_ENTRY_COUNT  10
-static int sound_latch_rp = 0;
-static int sound_latch_wp = 0;
-static int sound_latch[QUEUE_ENTRY_COUNT];
+static DemonSoundFifo demon_fifo;
+static bool demon_board_active = false;
+// Logged at shutdown: zero acks means the CTC hooks were never installed.
+static unsigned demon_command_count = 0;
+static unsigned demon_ack_count = 0;
 
 void (*sound_write) (unsigned char, unsigned char) = nullptr;
 
@@ -108,6 +111,15 @@ static UINT32 last_shift16 = 0;
 static UINT32 last_shift2 = 0;
 static UINT32 current_pitch = 0x20000;
 static UINT32 last_frame = 0;
+// Solar Quest thrust fade state.
+static int solarq_target_volume = 0;
+static int solarq_current_volume = 0;
+// Speed Freak noise level at the previous latch (crash trigger edge).
+static int speedfrk_last_noise = 0;
+// Tail Gunner OUT register and sound mux register (current and previous).
+static UINT8 OldOutReg = 0;
+static UINT8 XRreg = 0;
+static UINT8 OldXRreg = 0x22;
 
 static UINT8 sound_control;
 
@@ -122,6 +134,19 @@ void init_cinemat_snd(void (*snd_pointer)(UINT8, UINT8))
 	last_shift16 = 0xffff;
 	last_shift2 = 0xffff;
 	current_pitch = 0x20000;
+
+	/* the frame counter restarts at 0 for every game, so a stale last_frame
+	   from the previous game froze the per-frame drone pitch (Star Castle)
+	   and thrust fade (Solar Quest) until the new count caught up */
+	last_frame = 0;
+	solarq_target_volume = 0;
+	solarq_current_volume = 0;
+	speedfrk_last_noise = 0;
+	/* Tail Gunner mux: same values as a first boot, so the first sound
+	   after a restart is not swallowed by the previous game's state */
+	OldOutReg = 0;
+	XRreg = 0;
+	OldXRreg = 0x22;
 
 	sound_write = snd_pointer;
 }
@@ -314,17 +339,55 @@ void starcas_sound(UINT8 sound_val, UINT8 bits_changed)
  *************************************/
 
 
+// Speed Freak sample/channel numbers (speedfrk_samples[] order).
+enum { SPEEDFRK_OFFROAD = 0, SPEEDFRK_ENGINE = 1, SPEEDFRK_HORN = 2, SPEEDFRK_CRASH = 3 };
+// engine.wav's fundamental, and the constant that maps the engine counter
+// to a tone: tone = CLOCK / (4096 - value). Tune CLOCK by ear; 135000 puts
+// the in-game RPM range (values ~250..3150) at about 35..143 Hz.
+static const double SPEEDFRK_ENGINE_WAV_HZ = 73.6;
+static const double SPEEDFRK_ENGINE_CLOCK = 135000.0;
+
 void speedfrk_sound(UINT8 sound_val, UINT8 bits_changed)
 {
-	/* on the falling edge of bit 0x08, clock the inverse of bit 0x04 into the top of the shiftreg */
-	if ((0x08))
-	{
-		current_shift = ((current_shift >> 1) & 0x7fff) | ((~sound_val << 13) & 1);
-		/* high 12 bits control the frequency - counts from value to $FFF, carry triggers */
-		/* another counter */
+	/* Once per frame the game drops bit 0x02, clocks a 16-bit word into the
+	   shift register (16 falling edges of 0x08, inverted data on 0x04) and
+	   raises 0x02 again to latch it (measured from gameplay traces). */
+	if (SOUNDVAL_FALLING_EDGE(0x08))
+		current_shift = ((current_shift >> 1) & 0x7fff) | ((((~sound_val) >> 2) & 1) << 15);
 
-		/* low 4 bits control the volume of the noise output (explosion?) */
+	if (SOUNDVAL_RISING_EDGE(0x02))
+	{
+		/* high 12 bits: engine counter, counts from the value up to $FFF, so
+		   the engine tone is proportional to 1/(4096 - value). $FFF = off. */
+		const int engine = (current_shift >> 4) & 0xfff;
+		if (engine >= 0xfff)
+		{
+			if (sample_playing(SPEEDFRK_ENGINE)) sample_stop(SPEEDFRK_ENGINE);
+		}
+		else
+		{
+			if (!sample_playing(SPEEDFRK_ENGINE))
+				sample_start(SPEEDFRK_ENGINE, SPEEDFRK_ENGINE, 1);
+			const double tone = SPEEDFRK_ENGINE_CLOCK / (4096.0 - engine);
+			const int base = sample_get_freq(SPEEDFRK_ENGINE);
+			if (base > 0)
+				sample_set_freq(SPEEDFRK_ENGINE, (int)(base * tone / SPEEDFRK_ENGINE_WAV_HZ));
+		}
+
+		/* low 4 bits: noise volume. The game ramps it to 15 and decays it
+		   over ~0.7 s on a crash; crash.wav carries that envelope. */
+		const int noise = current_shift & 0x0f;
+		if (noise && !speedfrk_last_noise)
+			sample_start(SPEEDFRK_CRASH, SPEEDFRK_CRASH, 0);
+		speedfrk_last_noise = noise;
 	}
+
+	/* horn - 0=on, 1=off. The game pulses bit 0x80 low for ~0.5 s during
+	   play; unconfirmed against schematics. */
+	if (SOUNDVAL_FALLING_EDGE(0x80))
+		sample_start(SPEEDFRK_HORN, SPEEDFRK_HORN, 1);
+	if (SOUNDVAL_RISING_EDGE(0x80))
+		sample_stop(SPEEDFRK_HORN);
 
 	/* off-road - 1=on, 0=off */
 	if (SOUNDVAL_RISING_EDGE(0x10))
@@ -397,7 +460,6 @@ void armora_sound(UINT8 sound_val, UINT8 bits_changed)
 void solarq_sound(UINT8 sound_val, UINT8 bits_changed)
 {
 	UINT32 shift_diff, shift_diff16;
-	static int target_volume, current_volume;
 
 	cinemat_shift(sound_val, bits_changed, 0x80, 0x10);
 
@@ -448,7 +510,7 @@ void solarq_sound(UINT8 sound_val, UINT8 bits_changed)
 		{
 			if (current_shift & 0x04)
 			{
-				target_volume = 0;
+				solarq_target_volume = 0;
 				// Release: fade to zero on the software-mixer path. The
 				// volume-ramp block below only handles the attack; the
 				// mixer's own fade takes the stop to silence.
@@ -456,8 +518,11 @@ void solarq_sound(UINT8 sound_val, UINT8 bits_changed)
 			}
 			else
 			{
-				target_volume = config.mainvol;
-				current_volume = 0;
+				// Full channel level: MAIN VOLUME is applied once at the
+				// backend master, and SAMPLE VOLUME scales this channel as
+				// part of the sample group (mixer_groups.h).
+				solarq_target_volume = 255;
+				solarq_current_volume = 0;
 				sample_start_mixer(2, 2, 1);
 				// The attack ramp below walks the volume up from silence;
 				// without this the first frame plays at the channel's
@@ -468,12 +533,12 @@ void solarq_sound(UINT8 sound_val, UINT8 bits_changed)
 
 		if (sample_playing(2) && (last_frame < (UINT32)cpu_getcurrentframe()))
 		{
-			if (current_volume > target_volume)
-				current_volume -= 20;
-			if (current_volume < target_volume)
-				current_volume += 20;
-			if (current_volume > 0)
-				sample_set_volume(2, current_volume);
+			if (solarq_current_volume > solarq_target_volume)
+				solarq_current_volume -= 20;
+			if (solarq_current_volume < solarq_target_volume)
+				solarq_current_volume += 20;
+			if (solarq_current_volume > 0)
+				sample_set_volume(2, solarq_current_volume);
 			else
 				sample_end_mixer(2);
 			last_frame = cpu_getcurrentframe();
@@ -603,10 +668,6 @@ void tailg_sound(UINT8 sound_val, UINT8 bits_changed)
 {
 	/*logerror ("Error %d soundval %d bitschanged\n",sound_val,bits_changed);*/
 
-	static UINT8 OldOutReg = 0;
-	static UINT8 XRreg = 0;
-	static UINT8 OldXRreg = 0x22;
-
 	UINT8   outReg;
 	UINT8   outDiff;		/* changed bits */
 	UINT8	outLow;			/* changed bits that have just gone low */
@@ -659,8 +720,10 @@ void tailg_sound(UINT8 sound_val, UINT8 bits_changed)
 		if (xrHigh & 0x08)
 			sample_stop(3);
 
+		/* laser - 0=on: loops while held (MAME start(2, 2, true)); the
+		   release below lets the current pass finish instead of cutting */
 		if (xrLow & 0x04)
-			sample_start(2, 2, 0);
+			sample_start(2, 2, 1);
 
 		if (xrHigh & 0x04)
 			sample_end(2);
@@ -821,9 +884,9 @@ void boxingb_sound(UINT8 sound_val, UINT8 bits_changed)
 		sample_set_freq(8, 44100 * freq / 1050);
 
 		/* set the volume */
+		/* 4 levels: MAME set_volume(vol / 3.0) -> 0, 85, 170, 255 */
 		vol = (~current_shift >> 12) & 3;
-		if (vol) sample_set_volume(8, 255);
-		else  sample_set_volume(8, 0);
+		sample_set_volume(8, vol * 255 / 3);
 		
 		/* cannon - falling edge */
 		if (SHIFTREG2_RISING_EDGE(0x4000))
@@ -925,28 +988,126 @@ void wotwc_sound(UINT8 sound_val, UINT8 bits_changed)
 
 void demon_sound(UINT8 sound_val, UINT8 bits_changed)
 {
-	int pc = 0;//(register_PC);//activecpu_get_pc();
+	// CPUs are interleaved by the scheduler; never execute the Z80 reentrantly.
+	if ((bits_changed & 0x10) && !(sound_val & 0x10)) ++demon_command_count;
+	demon_fifo.write_command(sound_val, bits_changed);
+}
 
-	pc = pc & 0xffff;
-	//LOG_INFO("Writing Sound Latch %x ", pc & 0xffff);
-	if (pc == 0x0fbc ||
-		pc == 0x1fed ||
-		pc == 0x2ff1 ||
-		pc == 0x3fd3)
-	{
-		sound_latch[sound_latch_wp] = ((sound_val & 0x07) << 3);
-		//LOG_INFO("Writing Sound Latch 1 %04x data = %x",pc,sound_latch[sound_latch_wp] );
+// QB3: OUT port 4 bypasses the sound latch and clocks the low nibble of the
+// CCPU A register into the FIFO (MAME qb3_sound_w).
+void qb3_sound_w(int rega)
+{
+	demon_sound(~rega & 0x0f, 0x10);
+}
+
+static UINT8 demon_porta_r() { return demon_fifo.read_port_a(); }
+static UINT8 demon_portb_r() { return demon_fifo.read_port_b(); }
+static void demon_portb_w(UINT8 data)
+{
+	if ((data ^ demon_fifo.read_port_b()) & 4)
+		ay8910_set_mute((data & 4) != 0);
+	demon_fifo.write_port_b(data);
+}
+
+static void demon_ctc_interrupt(int state)
+{
+	if (!m_cpu_z80[CPU1]) return;
+	// Demon opts into strict daisy priority. Keep Cosmic Chasm's existing
+	// callback contract unchanged, including its legacy combined state.
+	state = z80ctc_irq_state(0);
+	if (state & Z80_INT_REQ) m_cpu_z80[CPU1]->mz80AssertInt();
+	else m_cpu_z80[CPU1]->mz80ClearPendingInterrupt();
+}
+
+PORT_WRITE_HANDLER(demon_ctc_w) { z80ctc_0_w(port & 3, data); }
+
+MEM_READ(DemonSoundRead)
+MEM_ADDR(0x0000, 0x1fff, MRA_ROM)
+MEM_ADDR(0x3000, 0x33ff, MRA_RAM)
+MEM_ADDR(0x4000, 0x4001, ay8910_0_data_r)
+MEM_ADDR(0x5000, 0x5001, ay8910_1_data_r)
+MEM_ADDR(0x6000, 0x6001, ay8910_2_data_r)
+MEM_END
+
+MEM_WRITE(DemonSoundWrite)
+MEM_ADDR(0x0000, 0x1fff, MWA_ROM)
+MEM_ADDR(0x3000, 0x33ff, MWA_RAM)
+MEM_ADDR(0x4002, 0x4002, ay8910_0_data_w)
+MEM_ADDR(0x4003, 0x4003, ay8910_0_control_w)
+MEM_ADDR(0x5002, 0x5002, ay8910_1_data_w)
+MEM_ADDR(0x5003, 0x5003, ay8910_1_control_w)
+MEM_ADDR(0x6002, 0x6002, ay8910_2_data_w)
+MEM_ADDR(0x6003, 0x6003, ay8910_2_control_w)
+MEM_ADDR(0x7000, 0x7000, MWA_NOP)
+MEM_END
+
+PORT_READ(DemonSoundPortRead)
+PORT_END
+
+PORT_WRITE(DemonSoundPortWrite)
+PORT_ADDR(0x00, 0x03, demon_ctc_w)
+PORT_ADDR(0x1c, 0x1f, demon_ctc_w)
+PORT_END
+
+int demon_sound_start()
+{
+	demon_fifo.reset();
+	memset(Machine->memory_region[CPU1] + 0x3000, 0, 0x400);
+	z80ctc_interface ctc = {};
+	ctc.num = 1;
+	ctc.baseclock[0] = 3579545;
+	ctc.cpu[0] = CPU1;
+	ctc.intr[0] = demon_ctc_interrupt;
+	z80ctc_init(&ctc);
+	AY8910Config ay = {};
+	ay.num_chips = 3;
+	ay.base_clock = 3579545;
+	for (int i = 0; i < 3; ++i) ay.mixing_level[i] = 64;
+	ay.port_a_read[0] = demon_porta_r;
+	ay.port_b_read[0] = demon_portb_r;
+	ay.port_b_write[0] = demon_portb_w;
+	if (ay8910_sh_start(&ay) != 0) {
+		LOG_ERROR("Demon: AY8910 sound initialization failed");
+		return 1;
 	}
-	if (pc == 0x0fc8 ||
-		pc == 0x1ff9 ||
-		pc == 0x2ffd ||
-		pc == 0x3fdf)
-	{
-		sound_latch[sound_latch_wp] |= (sound_val & 0x07);
+	// AY0 channel A controls the analog filter; it is not an audible voice.
+	ay8910_set_output_mask(0, 6);
+	demon_command_count = demon_ack_count = 0;
+	demon_board_active = true;
+	return 0;
+}
 
-		//LOG_INFO("Writing Sound Latch 2 %04x data = %x",pc,sound_latch[sound_latch_wp] );
+int qb3_sound_start()
+{
+	// Same board as Demon. MAME patches the sound ROM so command $0A (sent on
+	// a cube rotate) does not make the sound program overwrite itself.
+	Machine->memory_region[CPU1][0x11dc] = 0x09;
+	return demon_sound_start();
+}
 
-		sound_latch_wp++;
-		if (sound_latch_wp == QUEUE_ENTRY_COUNT)  sound_latch_wp = 0;
+void demon_sound_post_cpu_init(int cpunum)
+{
+	if (cpunum != CPU1 || !m_cpu_z80[CPU1]) return;
+	m_cpu_z80[CPU1]->int_ack_fn = []() -> int { ++demon_ack_count; return z80ctc_interrupt(0); };
+	m_cpu_z80[CPU1]->reti_hook = []() { z80ctc_reti(0); };
+}
+
+void demon_sound_update()
+{
+	if (demon_board_active) ay8910_sh_update();
+}
+
+void demon_sound_stop()
+{
+	if (!demon_board_active) return;
+	LOG_INFO("Demon sound board: %u FIFO commands, %u CTC interrupts acknowledged",
+		demon_command_count, demon_ack_count);
+	z80ctc_reset(0);
+	if (m_cpu_z80[CPU1]) {
+		m_cpu_z80[CPU1]->int_ack_fn = nullptr;
+		m_cpu_z80[CPU1]->reti_hook = nullptr;
 	}
+	ay8910_sh_stop();
+	demon_fifo.reset();
+	demon_board_active = false;
 }

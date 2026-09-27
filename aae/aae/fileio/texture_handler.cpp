@@ -517,6 +517,14 @@ void load_artwork(const struct artworks* p)
 
 		case GAME_TEX:
 			goodload = make_single_bitmap(&game_tex[p[i].target], p[i].filename, p[i].zipfile, 0);
+			// Slot 0 is the vector shot sprite (asteroid family). Hand it to the
+			// vector seam so the legacy textured-shot pass has something to bind;
+			// games without this entry keep the procedural beam shots.
+			if (goodload && p[i].target == 0)
+			{
+				set_texture_id(&game_tex[0]);
+				set_shot_texture_ready(true);
+			}
 			break;
 
 		default:

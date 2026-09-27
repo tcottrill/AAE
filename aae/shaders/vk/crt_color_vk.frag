@@ -43,14 +43,66 @@ layout(push_constant) uniform Push {
     vec4 p0;      // srcW, srcH, lodBias, blurH
     vec4 p1;      // blurV, converge, halation, halRadius
     vec4 p2;      // scanline, contrast, bright, saturation
-    vec4 p3;      // maskType, maskStrength, maskScale, unused
+    vec4 p3;      // maskType, maskStrength, maskScale, softPhosphor
     vec4 tint;
 } pc;
 
 layout(location = 0) in vec2 vUV;
 layout(location = 0) out vec4 fragColor;
 
+// A low-contrast, band-limited phosphor approximation. The three cosine
+// components form round peaks on a triangular lattice without hard cell edges.
+// Suppress frequencies approaching Nyquist, then integrate over a pixel box.
+float softPhosphorDots(vec2 q, vec2 qdx, vec2 qdy) {
+    const float tau = 6.28318530718;
+    vec3 phase = tau * vec3(q.x - q.y / 1.732050808,
+                            q.x + q.y / 1.732050808,
+                            2.0 * q.y / 1.732050808);
+    // Explicit first-order gradients: differentiating q again would nest
+    // derivatives through outputSize, which GLSL leaves undefined.
+    vec3 dx = tau * vec3(qdx.x - qdx.y / 1.732050808,
+                         qdx.x + qdx.y / 1.732050808,
+                         2.0 * qdx.y / 1.732050808);
+    vec3 dy = tau * vec3(qdy.x - qdy.y / 1.732050808,
+                         qdy.x + qdy.y / 1.732050808,
+                         2.0 * qdy.y / 1.732050808);
+    vec3 freq = max(abs(dx), abs(dy)) / tau;
+    vec3 fade = vec3(1.0) - smoothstep(vec3(0.25), vec3(0.5), freq);
+    vec3 hx = max(abs(dx) * 0.5, vec3(0.00001));
+    vec3 hy = max(abs(dy) * 0.5, vec3(0.00001));
+    return dot(cos(phase), fade * (sin(hx) / hx) * (sin(hy) / hy)) / 3.0;
+}
+
+vec3 softPhosphor(vec3 col, vec2 uv, float strength, float scale) {
+    // Screen-relative pitch: identical tube density at 1080p and 2160p.
+    // Derivatives measure the actual game rectangle, including letterboxing.
+    vec2 outputSize = vec2(
+        1.0 / max(length(vec2(dFdx(uv.x), dFdy(uv.x))), 0.000001),
+        1.0 / max(length(vec2(dFdx(uv.y), dFdy(uv.y))), 0.000001));
+    float pitch = max(1.5 * scale * outputSize.y / 1080.0, 0.001);
+    vec2 q = uv * outputSize / pitch;
+    vec2 qdx = dFdx(uv) * outputSize / pitch;
+    vec2 qdy = dFdy(uv) * outputSize / pitch;
+    vec3 grain = vec3(softPhosphorDots(q, qdx, qdy),
+                     softPhosphorDots(q - vec2(0.5, 0.288675135), qdx, qdy),
+                     softPhosphorDots(q - vec2(0.0, 0.577350269), qdx, qdy));
+    col = clamp(col, 0.0, 1.0);
+    // Retain phosphor texture on saturated vector cores. Multiplying by
+    // (1-col) erased it on exactly the bright RGB strokes it should affect.
+    // A perceptual strength curve gives the low end of the control useful
+    // range. Zero-mean grain preserves dim/mid-level energy; highlight
+    // clipping costs a little light, bounded by the modest modulation depth.
+    float depth = 0.30 * sqrt(clamp(strength, 0.0, 1.0));
+    return clamp(col * (vec3(1.0) + depth * grain), 0.0, 1.0);
+}
+
+
 void main(){
+    if (pc.p3.w != 0.0) {
+        fragColor = vec4(softPhosphor(texture(uTex, vUV).rgb, vUV,
+                                     pc.p3.y, pc.p3.z), 1.0);
+        return;
+    }
     vec2  uSrcSize      = pc.p0.xy;
     float uLodBias      = pc.p0.z;
     float uBlurH        = pc.p0.w;

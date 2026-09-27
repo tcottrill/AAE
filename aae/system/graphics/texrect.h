@@ -39,6 +39,17 @@ public:
 	// caller -- replaces the old fixed-function gl_ModelViewProjectionMatrix.
 	void Render(const float* mvp);
 
+	// Stream the quad through the VAO with the CALLER's shader program
+	// already bound. The caller owns all program state (its own uProj,
+	// sampler and uniforms); this only submits the geometry. Attribute
+	// layout matches Render(): location 0 = vec2 position, 1 = vec2 uv.
+	void RenderGeometry();
+
+	// The letterboxed/pillarboxed destination rectangle in window pixels,
+	// as computed by UpdateScreenRect. Lets a caller lay a second, TILED
+	// quad (a scanline/aperture texture) over exactly the game image.
+	void GetScreenRect(float* x, float* y, float* w, float* h) const;
+
 private:
 	void SetVertex(int idx, float x, float y, float tx, float ty);
 
@@ -47,6 +58,8 @@ private:
 	rvao_t     vao_ = 0;
 	rbuf_t     vbo_ = 0;
 	std::int32_t sampler_loc_, uproj_loc_;
+	float      rect_x_ = 0.0f, rect_y_ = 0.0f;
+	float      rect_w_ = 0.0f, rect_h_ = 0.0f;
 };
 
 #endif // TEXRECT_H

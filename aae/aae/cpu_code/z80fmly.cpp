@@ -250,6 +250,19 @@ int z80ctc_r(int which, int ch)
 int z80ctc_0_r(int offset) { return z80ctc_r(0, offset); }
 int z80ctc_1_r(int offset) { return z80ctc_r(1, offset); }
 
+int z80ctc_irq_state(int which)
+{
+    // MAME daisy-chain priority: only requests above the first IEO may
+    // assert INT. A request accumulated by that channel waits for RETI.
+    int state = 0;
+    for (int ch = 0; ch < 4; ++ch) {
+        const int channel = ctcs[which].int_state[ch];
+        if (channel & Z80_INT_IEO) return state | Z80_INT_IEO;
+        state |= channel;
+    }
+    return state;
+}
+
 int z80ctc_interrupt(int which)
 {
     z80ctc* ctc = ctcs + which;

@@ -205,7 +205,27 @@ Sound Commands:
 #include "aae_mame_driver.h"
 #include "driver_registry.h"
 #include "ay8910.h"
+#include "sound_latch.h"
+#include "mame_late_avgdvg.h"
 #include "old_mame_vecsim_dvg.h"
+#include "config.h"
+#include "timer.h"      // timer_set / TIME_IN_HZ: the 244.140625 Hz INT/NMI timers
+
+// DVG engine selection ([main] dvg_engine=mame|vecsim, per-game overridable),
+// same scheme as drivers/asteroid.cpp. Latched from config.dvg_engine in
+// init_omega; honored by omegrace and the deltrace bootleg.
+static int use_vecsim = 0;
+
+// ---- omegrace60: frame-locked 60 fps entry ---------------------------------
+// The ROM has no frame limiter: every main-loop pass polls the VG busy bit
+// (port 0x0B) and restarts the VG the moment it reads done. The 60 fps entry
+// therefore reports "done" exactly once per presented frame (set in
+// run_omega60, cleared on VG go), so the ROM kicks once per 60 Hz frame.
+// Design: docs/superpowers/specs/2026-09-14-omegrace60-driver-design.md
+static int frame_lock = 0;      // 1 while the omegrace60 entry is running
+static int vg_frame_done = 1;   // frame-locked "VG done" flag
+static int lock_kicks = 0;      // debug: VG kicks since the last 60-frame log
+static int lock_frames = 0;     // debug: frames since the last 60-frame log
 
 
 ART_START(omegarace_art)
@@ -230,7 +250,6 @@ int scrflip = 0;
 int angle = 1;
 int angle2 = 1;
 
-int soundlatch = 0;
 
 
 /*
@@ -256,35 +275,40 @@ static unsigned char spinnerTable[64] = {
 	0x30, 0x34, 0x24, 0x20, 0x28, 0x2c, 0x0c, 0x08 };
 
 
-static int cpu1_counter = 0;
-static int cpu2_counter = 0;
+// Board timebase: the schematic's INT divider is 12 MHz / 49152 = 244.140625 Hz
+// (12288 Z80 cycles at 3 MHz), and the sound board's NMI is the SAME net
+// (GBNMI, J4-14), not a separate 250 Hz source. (The old ipf 25 with a
+// divide-by-4 was 250 Hz, 2.4% fast, and the divider chain cannot make 250.)
+//
+// - omegrace / deltrace: exact rate from a periodic timer on each CPU
+//   (OMEGA_IRQ_HZ, armed in init_omega); ipf 0, no ipf callback. AAE timers
+//   accumulate across frames, so the rate is exact over time.
+// - omegrace60: ipf 4 at 60 fps firing these on every pass = 240 Hz at fixed
+//   cycle positions. 1.7% slow by design: the frame lock needs exactly four
+//   ticks per presented frame.
+#define OMEGA_IRQ_HZ 244.140625
 
-void  omega_interrupt()
+void omega_interrupt()
 {
-	cpu1_counter++; if ((cpu1_counter & 4) == 4) {
-		cpu_do_int_imm(CPU0, INT_TYPE_INT); cpu1_counter = 0;
-		//LOG_INFO("Omega Race Interrupt");
-	}
+	cpu_do_int_imm(CPU0, INT_TYPE_INT);
+}
+
+void omega_nmi_interrupt()
+{
+	cpu_do_int_imm(CPU1, INT_TYPE_NMI);
 }
 
 
-void  omega_nmi_interrupt()
-{
-	cpu2_counter++; if ((cpu2_counter & 4) == 4) {
-		cpu_do_int_imm(CPU1, INT_TYPE_NMI); cpu2_counter = 0; 
-		//LOG_INFO("Omega Race NMI Interrupt");
-	}
-}
-
-
+// Generic soundlatch 0 behind the board's z80 I/O ports; the IRQ kick on
+// write is the board wiring and stays here.
 PORT_WRITE_HANDLER(omegrace_soundlatch_w)
 {
-	soundlatch = data;
+	soundlatch_set(0, data);
 	cpu_do_int_imm(CPU1, INT_TYPE_INT);
 }
 PORT_READ_HANDLER(omegrace_soundlatch_r)
 {
-	return soundlatch;
+	return soundlatch_get(0);
 }
 
 
@@ -300,7 +324,12 @@ READ_HANDLER(nvram_r)
 
 PORT_WRITE_HANDLER(omega_reset)
 {
-	LOG_INFO("DVG reset called");
+	/* VGRST: the real DVG state machine must be reset to a known state
+	 * before the next VGGO (MAME 0.111 maps port 0x0a to avgdvg_reset_w). */
+	if (use_vecsim)
+		vecsim_dvg_reset();
+	else
+		avgdvg_reset(0, 0);
 }
 
 PORT_READ_HANDLER(omegrace_watchdog_r)
@@ -312,14 +341,37 @@ PORT_READ_HANDLER(omegrace_watchdog_r)
 
 PORT_READ_HANDLER(omegrace_vg_go)
 {
-	dvg_go_w(0, 0, 0);
+	if (frame_lock)
+	{
+		vg_frame_done = 0;
+		lock_kicks++;
+		if (use_vecsim)
+		{
+			/* the legacy engine draws the whole list inside its go but refuses
+			 * a go while its early-clearing busy timer is armed */
+			vecsim_test_clear_busy();
+			vecsim_dvg_go();
+		}
+		else
+		{
+			avgdvg_go(0, 0);
+			avgdvg_run_to_halt();   /* draw the whole list now, not over the frame */
+		}
+		return 0;
+	}
+	if (use_vecsim)
+		vecsim_dvg_go();
+	else
+		avgdvg_go(0, 0);
 	return 0;
 }
 
 
 PORT_READ_HANDLER(omegrace_vg_status_r)
 {
-	if (dvg_done())
+	if (frame_lock)
+		return vg_frame_done ? 0 : 0x80;
+	if (use_vecsim ? vecsim_dvg_done() : avgdvg_done())
 		return 0;
 	else
 		return 0x80;
@@ -377,6 +429,35 @@ PORT_WRITE_HANDLER(omegrace_leds_w)
 void run_omega()
 {
 	ay8910_sh_update();
+	/* debug: the ROM's IRQ handler increments 0x4017 once per INT, so ticks
+	 * per fps frames is the delivered INT rate (expect 244 at 40 fps). */
+	if (config.debug_profile_code)
+	{
+		static int frames = 0, ticks = 0;
+		static UINT8 prev = 0;
+		UINT8 now = Machine->memory_region[CPU0][0x4017];
+		ticks += (UINT8)(now - prev);
+		prev = now;
+		if (++frames >= Machine->gamedrv->fps)
+		{
+			LOG_INFO("omegrace: INT ticks in the last %d frames = %d (expect %.1f)",
+				frames, ticks, OMEGA_IRQ_HZ);
+			frames = 0; ticks = 0;
+		}
+	}
+}
+
+// omegrace60 per-frame hook: AAE calls this after cpu_run and before render.
+void run_omega60()
+{
+	ay8910_sh_update();
+	vg_frame_done = 1;
+	if (config.debug_profile_code && ++lock_frames >= 60)
+	{
+		LOG_INFO("omegrace60: VG kicks in the last 60 frames = %d (expect 60)", lock_kicks);
+		lock_kicks = 0;
+		lock_frames = 0;
+	}
 }
 
 MEM_READ(OmegaRead)
@@ -432,21 +513,77 @@ PORT_ADDR(0x03, 0x03, ay8910_1_data_port_w)
 PORT_END
 
 /////////////////// MAIN() for program ///////////////////////////////////////////////////
-int init_omega()
+#define BITSWAP8(val,B7,B6,B5,B4,B3,B2,B1,B0) \
+		(((((val) >> (B7)) & 1) << 7) | \
+		 ((((val) >> (B6)) & 1) << 6) | \
+		 ((((val) >> (B5)) & 1) << 5) | \
+		 ((((val) >> (B4)) & 1) << 4) | \
+		 ((((val) >> (B3)) & 1) << 3) | \
+		 ((((val) >> (B2)) & 1) << 2) | \
+		 ((((val) >> (B1)) & 1) << 1) | \
+		 ((((val) >> (B0)) & 1) << 0))
+
+// Shared by init_omega (stock 40 fps entries) and init_omega60.
+static int init_omega_common()
 {
 	//init_z80(OmegaRead, OmegaWrite, OmegaPortRead, OmegaPortWrite, 0);
 	////init_z80((SoundMemRead, SoundMemWrite, SoundPortRead, SoundPortWrite, 1);
 	nvram_set_region(orace_nvram, 0xff, 0x00);
-	dvg_start();
+
+	/* Omega Race has two pairs of the state PROM output lines swapped
+	 * before going into the decoder. Since all other avg/dvg games
+	 * connect the PROM in a consistent way to the decoder, swap the
+	 * bits here so dvgprom.bin becomes a standard DVG state PROM.
+	 * Must run BEFORE dvg_start() latches the PROM pointer. (The vecsim
+	 * engine is behavioral and never reads the PROM - the swap is
+	 * harmless there, so it runs unconditionally.) */
+	{
+		UINT8 *prom = Machine->memory_region[REGION_PROMS];
+		int i;
+		for (i = 0; i < 0x100; i++)
+			prom[i] = BITSWAP8(prom[i], 7, 6, 5, 4, 1, 0, 3, 2);
+	}
+
+	use_vecsim = (config.dvg_engine == DVG_ENGINE_VECSIM);
+	LOG_INFO("Omega Race DVG engine: %s", use_vecsim ? "vecsim (legacy)" : "mame");
+	if (use_vecsim)
+		vecsim_dvg_start();
+	else
+		dvg_start();
 	ay8910_sh_start(&ay8910_cfg);
 
 	LOG_INFO("End of Omega Race Driver Init");
 	return 0;
 }
 
+// Stock entries: exact 244.140625 Hz INT (CPU0) and sound NMI (CPU1) from
+// periodic timers, the same one net on the board. The CPU entries carry ipf 0.
+int init_omega()
+{
+	int r = init_omega_common();
+	timer_set(TIME_IN_HZ(OMEGA_IRQ_HZ), CPU0, [](int) { omega_interrupt(); });
+	timer_set(TIME_IN_HZ(OMEGA_IRQ_HZ), CPU1, [](int) { omega_nmi_interrupt(); });
+	LOG_INFO("Omega Race: INT/NMI timers at %.6f Hz", OMEGA_IRQ_HZ);
+	return r;
+}
+
+int init_omega60()
+{
+	int r = init_omega_common();
+	frame_lock = 1;
+	vg_frame_done = 1;      /* the first kick must go through */
+	lock_kicks = 0;
+	lock_frames = 0;
+	LOG_INFO("Omega Race 60 fps entry: frame-locked VG done, 240 Hz tick");
+	return r;
+}
+
 void end_omega()
 {
+	frame_lock = 0;
 	LOG_INFO("OMEGA RACE END CALLED");
+	if (use_vecsim)
+		vecsim_dvg_end();
 	ay8910_sh_stop();
 }
 
@@ -530,6 +667,90 @@ PORT_START("IN5") /* IN5 - port 0x16 - second spinner */
 PORT_ANALOG(0x3f, 0x00, IPT_DIAL | IPF_COCKTAIL, 12, 10, 0, 0)
 INPUT_PORTS_END
 
+// omegrace60 port list: identical to omegrace except the two dials' keyboard/
+// joystick-button delta. That delta is added once per FRAME, so at 60 fps the
+// stock 10 spins the ship 1.5x faster than at 40 fps; 7 (= 10 * 40/60, rounded)
+// restores the stock units-per-second. Sensitivity stays 12 so mouse / real
+// spinner input (per real time, not per frame) is unchanged.
+INPUT_PORTS_START(omegrace60)
+PORT_START("SW0") /* SW0 */
+PORT_DIPNAME(0x03, 0x03, "1st Bonus Life")
+PORT_DIPSETTING(0x00, "40k")
+PORT_DIPSETTING(0x01, "50k")
+PORT_DIPSETTING(0x02, "70k")
+PORT_DIPSETTING(0x03, "100k")
+PORT_DIPNAME(0x0c, 0x0c, "2nd & 3rd Bonus Life")
+PORT_DIPSETTING(0x00, "150k 250k")
+PORT_DIPSETTING(0x04, "250k 500k")
+PORT_DIPSETTING(0x08, "500k 750k")
+PORT_DIPSETTING(0x0c, "750k 1500k")
+PORT_DIPNAME(0x30, 0x30, "Credit(s)/Ships")
+PORT_DIPSETTING(0x00, "1C/2S 2C/4S")
+PORT_DIPSETTING(0x10, "1C/2S 2C/5S")
+PORT_DIPSETTING(0x20, "1C/3S 2C/6S")
+PORT_DIPSETTING(0x30, "1C/3S 2C/7S")
+PORT_DIPNAME(0x40, 0x40, DEF_STR(Unused))
+PORT_DIPSETTING(0x00, DEF_STR(Off))
+PORT_DIPSETTING(0x40, DEF_STR(On))
+PORT_DIPNAME(0x80, 0x40, DEF_STR(Unused))
+PORT_DIPSETTING(0x00, DEF_STR(Off))
+PORT_DIPSETTING(0x80, DEF_STR(On))
+
+PORT_START("SW1") /* SW1 */
+PORT_DIPNAME(0x07, 0x07, DEF_STR(Coin_A))
+PORT_DIPSETTING(0x06, DEF_STR(2C_1C))
+PORT_DIPSETTING(0x07, DEF_STR(1C_1C))
+PORT_DIPSETTING(0x03, "4 Coins/5 Credits")
+PORT_DIPSETTING(0x04, DEF_STR(3C_4C))
+PORT_DIPSETTING(0x05, DEF_STR(2C_3C))
+PORT_DIPSETTING(0x00, DEF_STR(1C_2C))
+PORT_DIPSETTING(0x01, DEF_STR(1C_3C))
+PORT_DIPSETTING(0x02, DEF_STR(1C_5C))
+PORT_DIPNAME(0x38, 0x38, DEF_STR(Coin_B))
+PORT_DIPSETTING(0x30, DEF_STR(2C_1C))
+PORT_DIPSETTING(0x38, DEF_STR(1C_1C))
+PORT_DIPSETTING(0x18, "4 Coins/5 Credits")
+PORT_DIPSETTING(0x20, DEF_STR(3C_4C))
+PORT_DIPSETTING(0x28, DEF_STR(2C_3C))
+PORT_DIPSETTING(0x00, DEF_STR(1C_2C))
+PORT_DIPSETTING(0x08, DEF_STR(1C_3C))
+PORT_DIPSETTING(0x10, DEF_STR(1C_5C))
+PORT_DIPNAME(0x40, 0x00, DEF_STR(Free_Play))
+PORT_DIPSETTING(0x00, DEF_STR(Off))
+PORT_DIPSETTING(0x40, DEF_STR(On))
+PORT_DIPNAME(0x80, 0x00, DEF_STR(Cabinet))
+PORT_DIPSETTING(0x00, DEF_STR(Upright))
+PORT_DIPSETTING(0x80, DEF_STR(Cocktail))
+
+PORT_START("IN2") /* IN2 -port 0x11 */
+PORT_BIT(0x01, IP_ACTIVE_LOW, IPT_COIN1)
+PORT_BIT(0x02, IP_ACTIVE_LOW, IPT_COIN2)
+PORT_BIT(0x04, IP_ACTIVE_LOW, IPT_UNKNOWN)
+PORT_BIT(0x08, IP_ACTIVE_LOW, IPT_UNKNOWN)
+PORT_BIT(0x10, IP_ACTIVE_LOW, IPT_TILT)
+PORT_BIT(0x20, IP_ACTIVE_LOW, IPT_BUTTON2)
+PORT_BIT(0x40, IP_ACTIVE_LOW, IPT_BUTTON1)
+PORT_BITX(0x80, 0x80, IPT_DIPSWITCH_NAME | IPF_TOGGLE, DEF_STR(Service_Mode), OSD_KEY_F2, IP_JOY_NONE)
+PORT_DIPSETTING(0x80, DEF_STR(Off))
+PORT_DIPSETTING(0x00, DEF_STR(On))
+
+PORT_START("IN3") /* IN3 - port 0x12 */
+PORT_BIT(0x01, IP_ACTIVE_LOW, IPT_BUTTON2 | IPF_COCKTAIL)
+PORT_BIT(0x02, IP_ACTIVE_LOW, IPT_BUTTON1 | IPF_COCKTAIL)
+PORT_BIT(0x04, IP_ACTIVE_LOW, IPT_START3 | IPF_COCKTAIL)
+PORT_BIT(0x08, IP_ACTIVE_LOW, IPT_START4 | IPF_COCKTAIL)
+PORT_BIT(0x10, IP_ACTIVE_LOW, IPT_UNKNOWN)
+PORT_BIT(0x20, IP_ACTIVE_LOW, IPT_UNKNOWN)
+PORT_BIT(0x40, IP_ACTIVE_LOW, IPT_START1)
+PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_START2)
+
+PORT_START("IN4") /* IN4 - port 0x15 - spinner; key delta 7 for 60 fps */
+PORT_ANALOG(0x3f, 0x00, IPT_DIAL, 12, 7, 0, 0)
+
+PORT_START("IN5") /* IN5 - port 0x16 - second spinner; key delta 7 for 60 fps */
+PORT_ANALOG(0x3f, 0x00, IPT_DIAL | IPF_COCKTAIL, 12, 7, 0, 0)
+INPUT_PORTS_END
+
 
 ROM_START(omegrace)
 ROM_REGION(0x10000, REGION_CPU1, 0)
@@ -571,14 +792,14 @@ AAE_DRIVER_SAMPLES_NONE()
 AAE_DRIVER_ART(omegarace_art)
 
 AAE_DRIVER_CPUS(
-	// CPU0: Main Z80 @ 3.020 MHz, 100 divs, 25 int passes, standard INT via omega_interrupt
+	// CPU0: Main Z80 @ 3.020 MHz, 100 divs; INT from the 244.140625 Hz timer (init_omega)
 	AAE_CPU_ENTRY(
 		/*type*/     CPU_MZ80,
 		/*freq*/     3020000,
 		/*div*/      100,
-		/*ipf*/      25,
+		/*ipf*/      0,
 		/*int type*/ INT_TYPE_INT,
-		/*int cb*/   &omega_interrupt,
+		/*int cb*/   nullptr,           // timer drives omega_interrupt
 		/*r8*/       OmegaRead,
 		/*w8*/       OmegaWrite,
 		/*pr*/       OmegaPortRead,
@@ -586,14 +807,14 @@ AAE_DRIVER_CPUS(
 		/*r16*/      nullptr,
 		/*w16*/      nullptr
 	),
-	// CPU1: Sound Z80 @ 1.512 MHz, 100 divs, 25 int passes, INT via omega_nmi_interrupt
+	// CPU1: Sound Z80 @ 1.512 MHz, 100 divs; NMI from the 244.140625 Hz timer (init_omega)
 	AAE_CPU_ENTRY(
 		/*type*/     CPU_MZ80,
 		/*freq*/     1512000,
 		/*div*/      100,
-		/*ipf*/      25,
+		/*ipf*/      0,
 		/*int type*/ INT_TYPE_INT,
-		/*int cb*/   &omega_nmi_interrupt,
+		/*int cb*/   nullptr,           // timer drives omega_nmi_interrupt
 		/*r8*/       SoundMemRead,
 		/*w8*/       SoundMemWrite,
 		/*pr*/       SoundPortRead,
@@ -623,14 +844,14 @@ AAE_DRIVER_SAMPLES_NONE()
 AAE_DRIVER_ART(omegarace_art)
 
 AAE_DRIVER_CPUS(
-	// CPU0: Main Z80 (same as Omega Race)
+	// CPU0: Main Z80 (same as Omega Race: INT from the 244.140625 Hz timer)
 	AAE_CPU_ENTRY(
 		/*type*/     CPU_MZ80,
 		/*freq*/     3020000,
 		/*div*/      100,
-		/*ipf*/      25,
+		/*ipf*/      0,
 		/*int type*/ INT_TYPE_INT,
-		/*int cb*/   &omega_interrupt,
+		/*int cb*/   nullptr,           // timer drives omega_interrupt
 		/*r8*/       OmegaRead,
 		/*w8*/       OmegaWrite,
 		/*pr*/       OmegaPortRead,
@@ -639,15 +860,15 @@ AAE_DRIVER_CPUS(
 		/*w16*/      nullptr
 	),
 	// CPU1: Sound Z80 @ 1.512 MHz -- identical to Omega Race. The bootleg copies
-	// only the main board; the sound board, sound.k5 and the 250 Hz sound-engine
-	// NMI (MAME: MDRV_CPU_PERIODIC_INT(nmi_line_pulse,250)) are the same.
+	// only the main board; the sound board, sound.k5 and the sound-engine NMI
+	// (the board's 244.140625 Hz INT net; MAME models it as 250 Hz) are the same.
 	AAE_CPU_ENTRY(
 		/*type*/     CPU_MZ80,
 		/*freq*/     1512000,
 		/*div*/      100,
-		/*ipf*/      25,
+		/*ipf*/      0,
 		/*int type*/ INT_TYPE_INT,
-		/*int cb*/   &omega_nmi_interrupt,
+		/*int cb*/   nullptr,           // timer drives omega_nmi_interrupt
 		/*r8*/       SoundMemRead,
 		/*w8*/       SoundMemWrite,
 		/*pr*/       SoundPortRead,
@@ -666,8 +887,64 @@ AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x8000, 0x1000)
 AAE_DRIVER_NVRAM(generic_nvram_handler)
 AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_CLONE_OF("omegrace")
+AAE_DRIVER_END()
+
+// Omega Race (60 fps): same ROM set (rom_omegrace -> omegrace.zip), ports and
+// art as omegrace; 60 fps video core, ipf 4 with every-pass callbacks (240 Hz
+// tick), frame-locked VG done via init_omega60/run_omega60.
+AAE_DRIVER_BEGIN(drv_omegrace60, "omegrace60", "Omega Race (60 fps)")
+AAE_DRIVER_ROM(rom_omegrace)
+AAE_DRIVER_FUNCS(&init_omega60, &run_omega60, &end_omega)
+AAE_DRIVER_INPUT(input_ports_omegrace60)   /* dial key delta scaled for 60 fps */
+AAE_DRIVER_SAMPLES_NONE()
+AAE_DRIVER_ART(omegarace_art)
+
+AAE_DRIVER_CPUS(
+	// CPU0: Main Z80 @ 3.020 MHz, 100 divs, 4 int passes = 4 INTs per 60 Hz frame
+	AAE_CPU_ENTRY(
+		/*type*/     CPU_MZ80,
+		/*freq*/     3020000,
+		/*div*/      100,
+		/*ipf*/      4,
+		/*int type*/ INT_TYPE_INT,
+		/*int cb*/   &omega_interrupt,
+		/*r8*/       OmegaRead,
+		/*w8*/       OmegaWrite,
+		/*pr*/       OmegaPortRead,
+		/*pw*/       OmegaPortWrite,
+		/*r16*/      nullptr,
+		/*w16*/      nullptr
+	),
+	// CPU1: Sound Z80 @ 1.512 MHz, 4 int passes = 4 NMIs per 60 Hz frame
+	AAE_CPU_ENTRY(
+		/*type*/     CPU_MZ80,
+		/*freq*/     1512000,
+		/*div*/      100,
+		/*ipf*/      4,
+		/*int type*/ INT_TYPE_INT,
+		/*int cb*/   &omega_nmi_interrupt,
+		/*r8*/       SoundMemRead,
+		/*w8*/       SoundMemWrite,
+		/*pr*/       SoundPortRead,
+		/*pw*/       SoundPortWrite,
+		/*r16*/      nullptr,
+		/*w16*/      nullptr
+	),
+	AAE_CPU_NONE_ENTRY(),
+	AAE_CPU_NONE_ENTRY()
+)
+
+AAE_DRIVER_VIDEO_CORE(60, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW | VECTOR_USES_OVERLAY1, ORIENTATION_DEFAULT)
+AAE_DRIVER_SCREEN(1024, 768, 0, 1044, 0, 1024)
+AAE_DRIVER_RASTER_NONE()
+AAE_DRIVER_HISCORE_NONE()
+AAE_DRIVER_VECTORRAM(0x8000, 0x1000)
+AAE_DRIVER_NVRAM(generic_nvram_handler)
+AAE_DRIVER_LAYOUT_NONE()
 AAE_DRIVER_END()
 
 // Registrations
 AAE_REGISTER_DRIVER(drv_omegrace)
 AAE_REGISTER_DRIVER(drv_deltrace)
+AAE_REGISTER_DRIVER(drv_omegrace60)

@@ -24,6 +24,9 @@ int  ay8910_sh_start (const AY8910Config* cfg);
 void ay8910_sh_stop  (void);
 void ay8910_sh_update(void);
 void ay8910_reset    (int chip);    // -1 = all chips
+// Output routing only; PSG registers and oscillator state are preserved.
+void ay8910_set_output_mask(int chip, uint8_t mask); // bits 0-2: A/B/C
+void ay8910_set_mute(bool muted);
 
 // Direct register access
 void    ay8910_write(int chip, int addr, uint8_t data);

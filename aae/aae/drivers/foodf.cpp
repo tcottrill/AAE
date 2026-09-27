@@ -17,7 +17,7 @@
 #include "aae_mame_driver.h"
 #include "driver_registry.h"
 #include "cpu_control.h"
-#include "aae_pokey.h"
+#include "c012294_interface.h"
 #include "old_mame_raster.h"
 #include "timer.h"
 int foodf_nvram_size=0x200;

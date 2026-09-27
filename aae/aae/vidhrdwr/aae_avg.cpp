@@ -11,7 +11,7 @@
 // THE CODE BELOW IS DERIVED FROM MAME and COPYRIGHT the MAME TEAM.
 //============================================================================
 
-#include "aae_avg.h"
+#include "mame_late_avgdvg.h"
 #include "timer.h"
 
 unsigned char vec_ram[0x8000]; // Only used by aztarac and quantum, review.

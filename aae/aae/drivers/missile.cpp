@@ -146,8 +146,7 @@ Off Off 						1 coin 2 plays
 #include "driver_registry.h"
 #include "old_mame_raster.h"
 #include "missile.h"
-#include "aae_pokey.h"
-#include "earom.h"
+#include "c012294_interface.h"
 #include "timer.h"
 
 extern void osd_modify_pen(int pen, unsigned char red, unsigned char green, unsigned char blue);

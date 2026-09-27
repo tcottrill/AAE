@@ -492,20 +492,41 @@ void CrtPostVK::RecordScanlines(VkContext& ctx, VkCommandBuffer cmd, uint32_t fr
     if (!initialized_ || targetW <= 0 || targetH <= 0 || texW <= 0 || texH <= 0)
         return;
 
+    // GL render_scanlines covers the full rw x rh target. targetW/targetH are
+    // that same rw/rh (the caller passes the PRESCALED game RT dims, already
+    // truncated the way GL truncates them), so the full-target rect below is
+    // GL's case verbatim.
+    RecordScanlinesRect(ctx, cmd, frameIndex, texView, texW, texH,
+                        0.0f, 0.0f, (float)targetW, (float)targetH,
+                        targetW, targetH);
+}
+
+void CrtPostVK::RecordScanlinesRect(VkContext& ctx, VkCommandBuffer cmd, uint32_t frameIndex,
+                                    VkImageView texView,
+                                    int texW, int texH,
+                                    float x0, float y0, float x1, float y1,
+                                    int targetW, int targetH)
+{
+    if (!initialized_ || targetW <= 0 || targetH <= 0 || texW <= 0 || texH <= 0)
+        return;
+
+    const float rw = x1 - x0;
+    const float rh = y1 - y0;
+    if (rw <= 0.0f || rh <= 0.0f)
+        return;
+
     VkPipeline pipe = GetPipeline_(ctx, KIND_SCAN, VK_ActiveColorFormat(ctx));
     if (!pipe)
         return;
 
-    // GL render_scanlines: u = (float)rw / scan_x, v = (float)rh / scan_y over
-    // the full rw x rh target. targetW/targetH are that same rw/rh (the caller
-    // passes the PRESCALED game RT dims, already truncated the way GL
-    // truncates them), so this is GL's line verbatim.
-    const float u = (float)targetW / (float)texW;
-    const float v = (float)targetH / (float)texH;
+    // GL render_scanlines: u = (float)rw / scan_x, v = (float)rh / scan_y -
+    // one texture repeat per texW/texH target pixels, over the rect.
+    const float u = rw / (float)texW;
+    const float v = rh / (float)texH;
 
     CrtPush push{};
-    push.rect[0] = 0.0f;            push.rect[1] = 0.0f;
-    push.rect[2] = (float)targetW;  push.rect[3] = (float)targetH;
+    push.rect[0] = x0;              push.rect[1] = y0;
+    push.rect[2] = x1;              push.rect[3] = y1;
     push.tsize[0] = (float)targetW; push.tsize[1] = (float)targetH;
     push.tsize[2] = 0.0f;           push.tsize[3] = 0.0f;
     // (u,v) at the rect's TOP-left corner, (u,v) at the BOTTOM-right corner.
@@ -552,7 +573,7 @@ void CrtPostVK::RecordMonitor(VkContext& ctx, VkCommandBuffer cmd, uint32_t fram
     push.p2[0] = p.scanline;  push.p2[1] = p.contrast;
     push.p2[2] = p.bright;    push.p2[3] = p.saturation;
     push.p3[0] = p.maskType;  push.p3[1] = p.maskStrength;
-    push.p3[2] = p.maskScale; push.p3[3] = 0.0f;
+    push.p3[2] = p.maskScale; push.p3[3] = p.softPhosphor;
     push.tint[0] = p.tint[0]; push.tint[1] = p.tint[1];
     push.tint[2] = p.tint[2]; push.tint[3] = 0.0f;
 

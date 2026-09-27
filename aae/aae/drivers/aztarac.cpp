@@ -25,10 +25,12 @@
 #include "driver_registry.h"
 #include "cpu_control.h"
 #include "ay8910.h"
+#include "sound_latch.h"
 #include "math.h"
 #include "timer.h"
+#include "config.h"     // config.debug_profile_code
 #include "emu_vector_draw.h"
-#include "aae_avg.h"
+#include "mame_late_avgdvg.h"
 
 #define READ_WORD16(a)    (*(UINT16 *)(a))
 #define WRITE_WORD16(a,d) (*(UINT16 *)(a) = (d))
@@ -51,9 +53,12 @@ static void add_vector(int x, int y, int color, int intensity)
 
 unsigned char aztarac_program_rom[0x00c000];
 unsigned char aztarac_main_ram[0x2000];
+/* Vector RAM (0xff8000-0xffafff), formerly the shared legacy vec_ram global */
+static unsigned char vec_ram[0x3000];
 unsigned char generic_nvram[0x200];
 
-static int sound_command = 0;
+// sound_command is now generic soundlatch 0; sound_status stays local -
+// it is a handshake register, not a command latch.
 static int sound_status = 0;
 
 static AY8910Config ay8910_cfg =
@@ -77,10 +82,21 @@ void  aztarac_interrupt()
 	cpu_do_int_imm(CPU0, INT_TYPE_68K4);
 }
 
+// Sound Z80 timed IRQ: a 100 Hz periodic (MAME 0.286 aztarac.cpp
+// snd_timed_irq, attotime::from_hz(100)) toggling status bit 4 and asserting
+// IRQ when it sets. The Z80's ack (aztarac_snd_irq_ack) clears the bit, so
+// with prompt acks every tick re-sets it: a 100 Hz IRQ (measured 100/s).
+// Armed as a timer on CPU1 in init_aztarac; the CPU entry carries no ipf
+// callback. (Was ipf 100 at 40 fps = 4000 ticks/s - 40x too fast.)
+#define AZTARAC_SND_IRQ_HZ 100.0
+static int aztarac_snd_timer = -1;
+static int dbg_snd_ticks = 0, dbg_snd_irqs = 0;   // debug counters
+
 void  aztarac_sound_interrupt()
 {
+	dbg_snd_ticks++;
 	sound_status ^= 0x10;
-	if (sound_status & 0x10) cpu_do_int_imm(CPU1, INT_TYPE_INT);
+	if (sound_status & 0x10) { cpu_do_int_imm(CPU1, INT_TYPE_INT); dbg_snd_irqs++; }
 }
 
 void read_vectorram(int addr, int* x, int* y, int* c)
@@ -112,14 +128,16 @@ READ16_HANDLER(nvram_r)
 
 READ16_HANDLER(joystick_r)
 {
-	return (((input_port_0_r(address) - 0xf) << 8) |
+	return ((((input_port_0_r(address) - 0xf) & 0xff) << 8) |
 		((input_port_1_r(address) - 0xf) & 0xff));
 }
 
 READ_HANDLER(joystick_rb)
 {
-	return (((input_port_0_r(address) - 0xf) << 8) |
-		((input_port_1_r(address) - 0xf) & 0xff));
+	// The 68000 reads X from the even (high) byte and Y from the odd
+	// (low) byte. Returning the packed word here truncates X away.
+	const int value = (address & 1) ? input_port_1_r(address) : input_port_0_r(address);
+	return static_cast<UINT8>((value - 0xf) & 0xff);
 }
 
 WRITE16_HANDLER(aztarac_ubr_w)
@@ -195,7 +213,7 @@ WRITE16_HANDLER(aztarac_sound_w)
 	if (data & 0xff)
 	{
 		data &= 0xff;
-		sound_command = data;
+		soundlatch_set(0, (UINT8)data);
 		sound_status ^= 0x21;
 		if (sound_status & 0x20) { cpu_do_int_imm(CPU1, INT_TYPE_INT); }
 	}
@@ -210,7 +228,7 @@ READ_HANDLER(aztarac_snd_command_r)
 {
 	sound_status |= 0x01;
 	sound_status &= ~0x20;
-	return sound_command;
+	return soundlatch_get(0);
 }
 
 WRITE_HANDLER(aztarac_snd_status_w)
@@ -316,6 +334,18 @@ void run_aztarac()
 {
 	ay8910_sh_update();
 	watchdog_reset_w(0, 0, 0);
+	/* debug: sound timer ticks per second (expect 100) and Z80 IRQs (100 with
+	 * prompt acks; fewer only if the Z80 leaves one unacknowledged) */
+	if (config.debug_profile_code)
+	{
+		static int frames = 0;
+		if (++frames >= Machine->gamedrv->fps)
+		{
+			LOG_INFO("aztarac: sound timer ticks in the last %d frames = %d (expect %.0f); Z80 IRQs %d (expect %.0f)",
+				frames, dbg_snd_ticks, AZTARAC_SND_IRQ_HZ, dbg_snd_irqs, AZTARAC_SND_IRQ_HZ);
+			frames = 0; dbg_snd_ticks = 0; dbg_snd_irqs = 0;
+		}
+	}
 }
 
 int init_aztarac()
@@ -332,12 +362,24 @@ int init_aztarac()
 	ay8910_sh_start(&ay8910_cfg);
 
 	aztarac_vectorram = vec_ram;
+
+	// Sound Z80 timed IRQ source (see AZTARAC_SND_IRQ_HZ); period in CPU1 cycles.
+	if (aztarac_snd_timer >= 0)
+		timer_remove(aztarac_snd_timer);
+	aztarac_snd_timer = timer_set(TIME_IN_HZ(AZTARAC_SND_IRQ_HZ), CPU1, [](int) { aztarac_sound_interrupt(); });
+	LOG_INFO("Aztarac: sound IRQ timer at %.0f Hz", AZTARAC_SND_IRQ_HZ);
+
 	LOG_INFO("End aztarac Init");
 	return 0;
 }
 
 void end_aztarac()
 {
+	if (aztarac_snd_timer >= 0)
+	{
+		timer_remove(aztarac_snd_timer);
+		aztarac_snd_timer = -1;
+	}
 	ay8910_sh_stop();
 }
 
@@ -366,14 +408,16 @@ PORT_START("IN1") /* IN1 */
 PORT_ANALOG(0x1f, 0xf, IPT_AD_STICK_Y | IPF_CENTER | IPF_REVERSE, 100, 1, 0, 0x1e)
 
 PORT_START("IN2")
-PORT_ANALOGX(0xff, 0x00, IPT_DIAL | IPF_REVERSE, 25, 10, 0, 0, OSD_KEY_Z, OSD_KEY_X, 0, 0)
+// JOY2 directions use P1's right thumbstick when only one pad is present.
+PORT_ANALOGX(0xff, 0x00, IPT_DIAL | IPF_REVERSE, 25, 10, 0, 0, OSD_KEY_Z, OSD_KEY_X, OSD_JOY2_LEFT, OSD_JOY2_RIGHT)
 
 PORT_START("IN3")
 PORT_BIT(0x02, IP_ACTIVE_LOW, IPT_BUTTON1)
 PORT_BIT(0x01, IP_ACTIVE_LOW, IPT_BUTTON2)
-PORT_BIT(0x04, IP_ACTIVE_LOW, IPT_START1)
-PORT_BIT(0x08, IP_ACTIVE_LOW, IPT_START2)
-PORT_BIT(0x10, IP_ACTIVE_LOW, IPT_COIN1)
+PORT_BITX(0x04, IP_ACTIVE_LOW, IPT_START1, IP_NAME_DEFAULT, IP_KEY_DEFAULT, OSD_JOY_FIRE8)
+// Keep two-player start on the keyboard so Menu starts only one player.
+PORT_BITX(0x08, IP_ACTIVE_LOW, IPT_START2, IP_NAME_DEFAULT, IP_KEY_DEFAULT, IP_JOY_NONE)
+PORT_BITX(0x10, IP_ACTIVE_LOW, IPT_COIN1, IP_NAME_DEFAULT, IP_KEY_DEFAULT, OSD_JOY_FIRE7)
 PORT_BIT(0x20, IP_ACTIVE_LOW, IPT_UNKNOWN)
 PORT_BIT(0x40, IP_ACTIVE_LOW, IPT_UNKNOWN)
 PORT_BITX(0x80, IP_ACTIVE_LOW, IPT_SERVICE, "Service Mode", OSD_KEY_F2, IP_JOY_NONE)
@@ -424,14 +468,14 @@ AAE_DRIVER_CPUS(
 		/*w16*/      AztaracWriteWord,
 		/*post_init*/ &aztarac_post_cpu_init
 	),
-	// CPU1: Z80 @ 2 MHz, sound CPU, 100 passes/frame, no core-driven INT
+	// CPU1: Z80 @ 2 MHz, sound CPU; timed IRQ from the 100 Hz timer (init_aztarac)
 	AAE_CPU_ENTRY(
 		/*type*/     CPU_MZ80,
 		/*freq*/     2000000,
 		/*div*/      100,
-		/*ipf*/      100,
+		/*ipf*/      0,
 		/*int type*/ INT_TYPE_NONE,
-		/*int cb*/   &aztarac_sound_interrupt,
+		/*int cb*/   nullptr,           // timer drives aztarac_sound_interrupt
 		/*r8*/       AztaracSoundMemRead,
 		/*w8*/       AztaracSoundMemWrite,
 		/*pr*/       AztaracSoundPortRead,

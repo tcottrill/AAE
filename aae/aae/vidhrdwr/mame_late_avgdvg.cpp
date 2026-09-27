@@ -1,25 +1,24 @@
 /*************************************************************************
 
-    avgdvg.cpp: Atari DVG and AVG
+	avgdvg.cpp: Atari DVG and AVG
 
-    Some parts of this code are based on the original version by Eric
-    Smith, Brad Oliver, Bernd Wiebelt, Aaron Giles, Andrew Caldwell
+	Some parts of this code are based on the original version by Eric
+	Smith, Brad Oliver, Bernd Wiebelt, Aaron Giles, Andrew Caldwell
 
-    The schematics and Jed Margolin's article on Vector Generators were
-    very helpful in understanding the hardware.
+	The schematics and Jed Margolin's article on Vector Generators were
+	very helpful in understanding the hardware.
 
-    Adjusted for AAE emulator with proper timer-driven state machine
-    using timer_alloc / timer_adjust from AAE's timer system.
+	Adjusted for AAE emulator with proper timer-driven state machine
+	using timer_alloc / timer_adjust from AAE's timer system.
 
 **************************************************************************/
 
 #include "aae_mame_driver.h"
 #include "mame_late_avgdvg.h"
-//#include "newer_mame_vector.h"
+#include "emu_vector_draw.h"   // cache_clear - drop retained beam/texlist at frame start
 #include "timer.h"
 #include "sys_log.h"
 #include <stdlib.h>
-
 
 /*************************************
  *
@@ -27,16 +26,15 @@
  *
  *************************************/
 
-UINT8 *tempest_colorram;
-UINT8 *mhavoc_colorram;
-UINT16 *quantum_colorram;
-UINT16 *quantum_vectorram;
+UINT8* tempest_colorram;
+UINT8* mhavoc_colorram;
+UINT16 quantum_colorram[0x20];
+UINT16* quantum_vectorram;
 
 int vector_updates;
 
-unsigned char *vectorram;
+unsigned char* vectorram;
 unsigned int vectorram_size;
-
 
 /*************************************
  *
@@ -58,12 +56,11 @@ unsigned int vectorram_size;
 
 #define ST3 (vg->state_latch & 8)
 
-
-/*************************************
- *
- *  Typedefs
- *
- *************************************/
+ /*************************************
+  *
+  *  Typedefs
+  *
+  *************************************/
 
 typedef struct _vgvector
 {
@@ -114,18 +111,17 @@ typedef struct _vgdata
 	INT32 clipx_max;
 	INT32 clipy_max;
 
-	UINT8 *state_prom;
+	UINT8* state_prom;
 } vgdata;
 
 typedef struct _vgconf
 {
-	int (*handler[8])(vgdata *);
-	UINT8 (*state_addr)(vgdata *);
-	void (*update_databus)(vgdata *);
-	void (*vggo)(vgdata *);
-	void (*vgrst)(vgdata *);
+	int (*handler[8])(vgdata*);
+	UINT8(*state_addr)(vgdata*);
+	void (*update_databus)(vgdata*);
+	void (*vggo)(vgdata*);
+	void (*vgrst)(vgdata*);
 } vgconf;
-
 
 /*************************************
  *
@@ -142,8 +138,8 @@ static int vg_halt_timer = -1;
 
 static int flip_x, flip_y;
 
-static vgdata vgd, *vg;
-static vgconf *vgc;
+static vgdata vgd, * vg;
+static vgconf* vgc;
 static int nvect;
 static vgvector vectbuf[MAXVECT];
 
@@ -151,6 +147,13 @@ static vgvector vectbuf[MAXVECT];
 static int lastx;
 static int lasty;
 
+/* Vertical picture shift for DVG games (<<16 fixed point, screen up = negative) */
+static INT32 dvg_yshift;
+
+void dvg_set_yshift(int shift)
+{
+	dvg_yshift = shift << 16;
+}
 
 /*************************************
  *
@@ -160,7 +163,6 @@ static int lasty;
 
 static void run_state_machine(int dummy);
 static void vg_set_halt(int dummy);
-
 
 /*************************************
  *
@@ -178,14 +180,13 @@ void avg_set_flip_y(int flip)
 	flip_y = flip;
 }
 
-static void avg_apply_flipping(int *x, int *y)
+static void avg_apply_flipping(int* x, int* y)
 {
 	if (flip_x)
 		*x += (xcenter - *x) << 1;
 	if (flip_y)
 		*y += (ycenter - *y) << 1;
 }
-
 
 /*************************************
  *
@@ -195,12 +196,24 @@ static void avg_apply_flipping(int *x, int *y)
 
 static void vg_flush(void)
 {
-	int i;
+	int i = 0;
+
+	/* MAME 0.159 avgdvg_device::vg_flush: establish this batch's first
+	 * point with the beam blanked. VGGO can discard a partial Quantum /
+	 * Tempest pass, so the previous displayed endpoint is not a valid
+	 * starting position and connecting to it creates a stray lit segment.
+	 * Bound the scan so empty and clip-only batches are safe as well. */
+	while (i < nvect && vectbuf[i].status == VGCLIP)
+		i++;
+	if (i < nvect)
+		vector_add_point(vectbuf[i].x, vectbuf[i].y, vectbuf[i].color, 0);
 
 	for (i = 0; i < nvect; i++)
 	{
 		if (vectbuf[i].status == VGVECTOR)
+		{
 			vector_add_point(vectbuf[i].x, vectbuf[i].y, vectbuf[i].color, vectbuf[i].intensity);
+		}
 
 		if (vectbuf[i].status == VGCLIP)
 			vector_add_clip(vectbuf[i].x, vectbuf[i].y, vectbuf[i].arg1, vectbuf[i].arg2);
@@ -235,14 +248,13 @@ static void vg_add_clip(int xmin, int ymin, int xmax, int ymax)
 	}
 }
 
-
 /*************************************
  *
  *  DVG handler functions
  *
  *************************************/
 
-static void dvg_data(vgdata *vg)
+static void dvg_data(vgdata* vg)
 {
 	/*
 	 * DVG uses low bit of state for address
@@ -250,7 +262,7 @@ static void dvg_data(vgdata *vg)
 	vg->data = vectorram[(vg->pc << 1) | (vg->state_latch & 1)];
 }
 
-static UINT8 dvg_state_addr(vgdata *vg)
+static UINT8 dvg_state_addr(vgdata* vg)
 {
 	UINT8 addr;
 
@@ -262,7 +274,7 @@ static UINT8 dvg_state_addr(vgdata *vg)
 	return addr;
 }
 
-static int dvg_dmapush(vgdata *vg)
+static int dvg_dmapush(vgdata* vg)
 {
 	if (OP0 == 0)
 	{
@@ -272,7 +284,7 @@ static int dvg_dmapush(vgdata *vg)
 	return 0;
 }
 
-static int dvg_dmald(vgdata *vg)
+static int dvg_dmald(vgdata* vg)
 {
 	if (OP0)
 	{
@@ -292,34 +304,47 @@ static void dvg_draw_to(int x, int y, int intensity)
 	if (((x | y) & 0x400) == 0)
 	{
 		int lvl = intensity << 4;
+		if (lvl) { lvl = lvl | 0x0f; }
+		int sx, sy;
 
 		/* Textured point detection: if beam hasn't moved, use
 		 * overloaded high-intensity encoding that newer_mame_vector
 		 * will decode as a textured point (shot dot, etc.) */
 		if (x == lastx && y == lasty)
 		{
-			lvl = intensity << 12;
+			if (intensity > 4)
+			{
+				lvl = intensity << 12;
+			}
 		}
 
-		vg_add_point_buf(xcenter + ((x - 0x200) << 16),
-						 ycenter - ((y - 0x200) << 16),
-						 MAKE_RGBA(intensity << 4, intensity << 4, intensity << 4, 0xff), lvl);
+		sx = (x - xmin) << 16;
+		sy = (ymax - y) << 16;
+
+		/* Cocktail-mode 180-degree rotation (asteroids): not present in the
+		 * MAME 0.111 DVG path, carried over from AAE's legacy vecsim. */
+		avg_apply_flipping(&sx, &sy);
+
+		/* Screen-fixed shift (applied after flipping so overlays stay put) */
+		sy -= dvg_yshift;
+	
+		vg_add_point_buf(sx, sy, MAKE_RGBA(intensity << 4, intensity << 4, intensity << 4, 0xff), lvl);
 
 		lastx = x;
 		lasty = y;
 	}
 }
 
-static int dvg_gostrobe(vgdata *vg)
+static int dvg_gostrobe(vgdata* vg)
 {
 	int scale, fin, dx, dy, c, mx, my, countx, county, bit, cycles;
 
 	if (vg->op == 0xf)
 	{
 		scale = (vg->scale +
-				 (((vg->dvy & 0x800) >> 11)
-				  | (((vg->dvx & 0x800) ^ 0x800) >> 10)
-				  | ((vg->dvx & 0x800)  >> 9))) & 0xf;
+			(((vg->dvy & 0x800) >> 11)
+				| (((vg->dvx & 0x800) ^ 0x800) >> 10)
+				| ((vg->dvx & 0x800) >> 9))) & 0xf;
 
 		vg->dvy &= 0xf00;
 		vg->dvx &= 0xf00;
@@ -420,7 +445,7 @@ static int dvg_gostrobe(vgdata *vg)
 	return cycles;
 }
 
-static int dvg_haltstrobe(vgdata *vg)
+static int dvg_haltstrobe(vgdata* vg)
 {
 	vg->halt = OP0;
 
@@ -433,14 +458,14 @@ static int dvg_haltstrobe(vgdata *vg)
 	return 0;
 }
 
-static int dvg_latch3(vgdata *vg)
+static int dvg_latch3(vgdata* vg)
 {
 	vg->dvx = (vg->dvx & 0xff) | ((vg->data & 0xf) << 8);
 	vg->intensity = vg->data >> 4;
 	return 0;
 }
 
-static int dvg_latch2(vgdata *vg)
+static int dvg_latch2(vgdata* vg)
 {
 	vg->dvx &= 0xf00;
 	if (vg->op != 0xf)
@@ -453,7 +478,7 @@ static int dvg_latch2(vgdata *vg)
 	return 0;
 }
 
-static int dvg_latch1(vgdata *vg)
+static int dvg_latch1(vgdata* vg)
 {
 	vg->dvy = (vg->dvy & 0xff)
 		| ((vg->data & 0xf) << 8);
@@ -468,7 +493,7 @@ static int dvg_latch1(vgdata *vg)
 	return 0;
 }
 
-static int dvg_latch0(vgdata *vg)
+static int dvg_latch0(vgdata* vg)
 {
 	vg->dvy &= 0xf00;
 	if (vg->op == 0xf)
@@ -479,7 +504,6 @@ static int dvg_latch0(vgdata *vg)
 	vg->pc++;
 	return 0;
 }
-
 
 /********************************************************************
  *
@@ -492,24 +516,24 @@ static int dvg_latch0(vgdata *vg)
  *
  *******************************************************************/
 
-static void avg_data(vgdata *vg)
+static void avg_data(vgdata* vg)
 {
 	vg->data = vectorram[vg->pc ^ 1];
 }
 
-static void starwars_data(vgdata *vg)
+static void starwars_data(vgdata* vg)
 {
 	vg->data = vectorram[vg->pc];
 }
 
-static void quantum_data(vgdata *vg)
+static void quantum_data(vgdata* vg)
 {
 	vg->data = quantum_vectorram[vg->pc >> 1];
 }
 
-static void mhavoc_data(vgdata *vg)
+static void mhavoc_data(vgdata* vg)
 {
-	UINT8 *bank;
+	UINT8* bank;
 
 	if (vg->pc & 0x2000)
 	{
@@ -522,14 +546,14 @@ static void mhavoc_data(vgdata *vg)
 	}
 }
 
-static UINT8 avg_state_addr(vgdata *vg)
+static UINT8 avg_state_addr(vgdata* vg)
 {
 	return (((vg->state_latch >> 4) ^ 1) << 7)
 		| (vg->op << 4)
 		| (vg->state_latch & 0xf);
 }
 
-static int avg_latch0(vgdata *vg)
+static int avg_latch0(vgdata* vg)
 {
 	vg->dvy = (vg->dvy & 0x1f00) | vg->data;
 	vg->pc++;
@@ -537,7 +561,7 @@ static int avg_latch0(vgdata *vg)
 	return 0;
 }
 
-static int quantum_st2st3(vgdata *vg)
+static int quantum_st2st3(vgdata* vg)
 {
 	/* Quantum doesn't decode latch0 or latch2 but ST2 and ST3 are fed
 	 * into the address controller which increments the PC
@@ -546,7 +570,7 @@ static int quantum_st2st3(vgdata *vg)
 	return 0;
 }
 
-static int avg_latch1(vgdata *vg)
+static int avg_latch1(vgdata* vg)
 {
 	vg->dvy12 = (vg->data >> 4) & 1;
 	vg->op = vg->data >> 5;
@@ -560,7 +584,7 @@ static int avg_latch1(vgdata *vg)
 	return 0;
 }
 
-static int quantum_latch1(vgdata *vg)
+static int quantum_latch1(vgdata* vg)
 {
 	vg->dvy = vg->data & 0x1fff;
 	vg->dvy12 = (vg->data >> 12) & 1;
@@ -573,7 +597,7 @@ static int quantum_latch1(vgdata *vg)
 	return 0;
 }
 
-static int bzone_latch1(vgdata *vg)
+static int bzone_latch1(vgdata* vg)
 {
 	/*
 	 * Battle Zone has clipping hardware. We need to remember the
@@ -602,7 +626,7 @@ static int bzone_latch1(vgdata *vg)
 	return avg_latch1(vg);
 }
 
-static int mhavoc_latch1(vgdata *vg)
+static int mhavoc_latch1(vgdata* vg)
 {
 	/*
 	 * Major Havoc just has ymin clipping
@@ -617,7 +641,7 @@ static int mhavoc_latch1(vgdata *vg)
 	return avg_latch1(vg);
 }
 
-static int avg_latch2(vgdata *vg)
+static int avg_latch2(vgdata* vg)
 {
 	vg->dvx = (vg->dvx & 0x1f00) | vg->data;
 	vg->pc++;
@@ -625,7 +649,7 @@ static int avg_latch2(vgdata *vg)
 	return 0;
 }
 
-static int avg_latch3(vgdata *vg)
+static int avg_latch3(vgdata* vg)
 {
 	vg->int_latch = vg->data >> 4;
 	vg->dvx = ((vg->int_latch & 1) << 12)
@@ -636,7 +660,7 @@ static int avg_latch3(vgdata *vg)
 	return 0;
 }
 
-static int quantum_latch3(vgdata *vg)
+static int quantum_latch3(vgdata* vg)
 {
 	vg->int_latch = vg->data >> 12;
 	vg->dvx = vg->data & 0xfff;
@@ -645,8 +669,7 @@ static int quantum_latch3(vgdata *vg)
 	return 0;
 }
 
-
-static int avg_strobe0(vgdata *vg)
+static int avg_strobe0(vgdata* vg)
 {
 	int i;
 
@@ -670,8 +693,8 @@ static int avg_strobe0(vgdata *vg)
 		 */
 		i = 0;
 		while ((((vg->dvy ^ (vg->dvy << 1)) & 0x1000) == 0)
-			   && (((vg->dvx ^ (vg->dvx << 1)) & 0x1000) == 0)
-			   && (i++ < 16))
+			&& (((vg->dvx ^ (vg->dvx << 1)) & 0x1000) == 0)
+			&& (i++ < 16))
 		{
 			vg->dvy = (vg->dvy & 0x1000) | ((vg->dvy << 1) & 0x1fff);
 			vg->dvx = (vg->dvx & 0x1000) | ((vg->dvx << 1) & 0x1fff);
@@ -686,7 +709,7 @@ static int avg_strobe0(vgdata *vg)
 	return 0;
 }
 
-static int quantum_strobe0(vgdata *vg)
+static int quantum_strobe0(vgdata* vg)
 {
 	int i;
 
@@ -701,8 +724,8 @@ static int quantum_strobe0(vgdata *vg)
 		 */
 		i = 0;
 		while ((((vg->dvy ^ (vg->dvy << 1)) & 0x800) == 0)
-			   && (((vg->dvx ^ (vg->dvx << 1)) & 0x800) == 0)
-			   && (i++ < 16))
+			&& (((vg->dvx ^ (vg->dvx << 1)) & 0x800) == 0)
+			&& (i++ < 16))
 		{
 			vg->dvy = (vg->dvy << 1) & 0xfff;
 			vg->dvx = (vg->dvx << 1) & 0xfff;
@@ -714,7 +737,7 @@ static int quantum_strobe0(vgdata *vg)
 	return 0;
 }
 
-static int avg_common_strobe1(vgdata *vg)
+static int avg_common_strobe1(vgdata* vg)
 {
 	if (OP2)
 	{
@@ -726,7 +749,7 @@ static int avg_common_strobe1(vgdata *vg)
 	return 0;
 }
 
-static int avg_strobe1(vgdata *vg)
+static int avg_strobe1(vgdata* vg)
 {
 	int i;
 
@@ -744,7 +767,7 @@ static int avg_strobe1(vgdata *vg)
 	return avg_common_strobe1(vg);
 }
 
-static int quantum_strobe1(vgdata *vg)
+static int quantum_strobe1(vgdata* vg)
 {
 	int i;
 
@@ -760,7 +783,7 @@ static int quantum_strobe1(vgdata *vg)
 	return avg_common_strobe1(vg);
 }
 
-static int avg_common_strobe2(vgdata *vg)
+static int avg_common_strobe2(vgdata* vg)
 {
 	if (OP2)
 	{
@@ -786,11 +809,23 @@ static int avg_common_strobe2(vgdata *vg)
 				 * have the AVG drawing all the time. In the emulation we
 				 * somehow have to divide the stream of vectors into
 				 * 'frames'.
+				 *
+				 * AAE: cut only when the buffer holds a real pass. After a
+				 * mid-list VGGO restart (Quantum strobes it several times a
+				 * second in play) the jump-to-zero already in flight lands
+				 * here with an all-but-empty buffer; clearing the list for it
+				 * blanked a frame. Same "> 10 vectors" test MAME's go_w uses
+				 * to ignore Major Havoc's short lists. A too-short buffer is
+				 * simply carried into the next pass.
 				 */
 
-				vector_clear_list();
-				vector_updates++;
-				vg_flush();
+				if (nvect > 10)
+				{
+					cache_clear();
+					vector_clear_list();
+					vector_updates++;
+					vg_flush();
+				}
 			}
 		}
 		else
@@ -810,7 +845,7 @@ static int avg_common_strobe2(vgdata *vg)
 	return 0;
 }
 
-static int avg_strobe2(vgdata *vg)
+static int avg_strobe2(vgdata* vg)
 {
 	if ((OP2 == 0) && (vg->dvy12 == 0))
 	{
@@ -821,7 +856,7 @@ static int avg_strobe2(vgdata *vg)
 	return avg_common_strobe2(vg);
 }
 
-static int mhavoc_strobe2(vgdata *vg)
+static int mhavoc_strobe2(vgdata* vg)
 {
 	if (OP2 == 0)
 	{
@@ -862,7 +897,7 @@ static int mhavoc_strobe2(vgdata *vg)
 	return avg_common_strobe2(vg);
 }
 
-static int tempest_strobe2(vgdata *vg)
+static int tempest_strobe2(vgdata* vg)
 {
 	if ((OP2 == 0) && (vg->dvy12 == 0))
 	{
@@ -875,7 +910,7 @@ static int tempest_strobe2(vgdata *vg)
 	return avg_common_strobe2(vg);
 }
 
-static int quantum_strobe2(vgdata *vg)
+static int quantum_strobe2(vgdata* vg)
 {
 	if ((OP2 == 0) && (vg->dvy12 == 0) && (vg->dvy & 0x800))
 	{
@@ -886,7 +921,7 @@ static int quantum_strobe2(vgdata *vg)
 	return avg_common_strobe2(vg);
 }
 
-static int starwars_strobe2(vgdata *vg)
+static int starwars_strobe2(vgdata* vg)
 {
 	if ((OP2 == 0) && (vg->dvy12 == 0))
 	{
@@ -897,7 +932,7 @@ static int starwars_strobe2(vgdata *vg)
 	return avg_common_strobe2(vg);
 }
 
-static int bzone_strobe2(vgdata *vg)
+static int bzone_strobe2(vgdata* vg)
 {
 	if ((OP2 == 0) && (vg->dvy12 == 0))
 	{
@@ -919,8 +954,7 @@ static int bzone_strobe2(vgdata *vg)
 	return avg_common_strobe2(vg);
 }
 
-
-static int avg_common_strobe3(vgdata *vg)
+static int avg_common_strobe3(vgdata* vg)
 {
 	int cycles = 0;
 
@@ -953,7 +987,7 @@ static int avg_common_strobe3(vgdata *vg)
 	return cycles;
 }
 
-static int avg_strobe3(vgdata *vg)
+static int avg_strobe3(vgdata* vg)
 {
 	int cycles;
 
@@ -962,13 +996,13 @@ static int avg_strobe3(vgdata *vg)
 	if ((vg->op & 5) == 0)
 	{
 		vg_add_point_buf(vg->xpos, vg->ypos, VECTOR_COLOR111(vg->color),
-						 (((vg->int_latch >> 1) == 1) ? vg->intensity : vg->int_latch & 0xe) << 4);
+			(((vg->int_latch >> 1) == 1) ? vg->intensity : vg->int_latch & 0xe) << 4);
 	}
 
 	return cycles;
 }
 
-static int bzone_strobe3(vgdata *vg)
+static int bzone_strobe3(vgdata* vg)
 {
 	/* Battle Zone is B/W */
 	int cycles;
@@ -978,13 +1012,13 @@ static int bzone_strobe3(vgdata *vg)
 	if ((vg->op & 5) == 0)
 	{
 		vg_add_point_buf(vg->xpos, vg->ypos, VECTOR_COLOR111(7),
-						 (((vg->int_latch >> 1) == 1) ? vg->intensity : vg->int_latch & 0xe) << 4);
+			(((vg->int_latch >> 1) == 1) ? vg->intensity : vg->int_latch & 0xe) << 4);
 	}
 
 	return cycles;
 }
 
-static int tempest_strobe3(vgdata *vg)
+static int tempest_strobe3(vgdata* vg)
 {
 	int cycles, r, g, b, bit0, bit1, bit2, bit3, x, y;
 	UINT8 data;
@@ -1008,15 +1042,20 @@ static int tempest_strobe3(vgdata *vg)
 
 		avg_apply_flipping(&x, &y);
 
+		/* MAME 0.286 avg_tempest_device: transpose X/Y. The Y invert that the
+		 * ROM keeps set in OUT0 (K_MVINVY, normal play and the self test)
+		 * arrives through flip_y above. AAE used to bake that inversion in
+		 * here and ignore the latch; once the driver honoured OUT0 the
+		 * picture was inverted twice and mirrored left-right. */
 		vg_add_point_buf(y - ycenter + xcenter,
-						 x - xcenter + ycenter, MAKE_RGB(r, g, b),
-						 (((vg->int_latch >> 1) == 1) ? vg->intensity : vg->int_latch & 0xe) << 4);
+			x - xcenter + ycenter, MAKE_RGB(r, g, b),
+			(((vg->int_latch >> 1) == 1) ? vg->intensity : vg->int_latch & 0xe) << 4);
 	}
 
 	return cycles;
 }
 
-static int mhavoc_strobe3(vgdata *vg)
+static int mhavoc_strobe3(vgdata* vg)
 {
 	int cycles, r, g, b, bit0, bit1, bit2, bit3, dx, dy, i;
 	UINT8 data;
@@ -1098,22 +1137,27 @@ static int mhavoc_strobe3(vgdata *vg)
 	return cycles;
 }
 
-static int starwars_strobe3(vgdata *vg)
+static int starwars_strobe3(vgdata* vg)
 {
-	int cycles;
+	int cycles, z;
 
 	cycles = avg_common_strobe3(vg);
+	// Star wars needs a lift to the intensity to get the right brightness. The original code was:
+	z = ((vg->int_latch >> 1) * vg->intensity) >> 3;
+	// I am tweaking it to get a better brightness match with my rendering. The original code was too dark.
+	if (z) { z = z + 0x3f; }
+	// Don't allow the intensity to go over 0xff, otherwise it will wrap around and become very dark.
+	if (z > 0xff) z = 0xff;
 
 	if ((vg->op & 5) == 0)
 	{
-		vg_add_point_buf(vg->xpos, vg->ypos, VECTOR_COLOR111(vg->color),
-						 ((vg->int_latch >> 1) * vg->intensity) >> 3);
+		vg_add_point_buf(vg->xpos, vg->ypos, VECTOR_COLOR111(vg->color),z) ;
 	}
 
 	return cycles;
 }
 
-static int quantum_strobe3(vgdata *vg)
+static int quantum_strobe3(vgdata* vg)
 {
 	int cycles = 0, r, g, b, bit0, bit1, bit2, bit3, x, y;
 
@@ -1144,9 +1188,10 @@ static int quantum_strobe3(vgdata *vg)
 
 		avg_apply_flipping(&x, &y);
 
-		vg_add_point_buf(y - ycenter + xcenter,
-						 x - xcenter + ycenter, MAKE_RGB(r, g, b),
-						 ((vg->int_latch == 2) ? vg->intensity : vg->int_latch) << 4);
+		/* Transpose with inverted screen-Y, same as tempest_strobe3 */
+		vg_add_point_buf((ycenter + xcenter) - y,
+			x - xcenter + ycenter, MAKE_RGB(r, g, b),
+			((vg->int_latch == 2) ? vg->intensity : vg->int_latch) << 4);
 	}
 	if (OP2)
 	{
@@ -1160,19 +1205,32 @@ static int quantum_strobe3(vgdata *vg)
 	return cycles;
 }
 
-static void avg_vggo(vgdata *vg)
+static void avg_vggo(vgdata* vg)
 {
 	vg->pc = 0;
 	vg->sp = 0;
 }
 
-static void dvg_vggo(vgdata *vg)
+/* MAME avg_tempest_device::vggo, used by Tempest and Quantum: these games keep
+ * the AVG in an endless loop (frames are cut at the jump to address 0, see
+ * avg_common_strobe2) and still strobe VGGO from time to time - in play, Quantum
+ * does it several times a second. The vectors buffered since the last jump are
+ * a partial pass; if they are not discarded here they get flushed into the
+ * display list as stray line fragments ("the screen starts flickering"). */
+static void tempest_vggo(vgdata* vg)
+{
+	vg->pc = 0;
+	vg->sp = 0;
+	nvect = 0;
+}
+
+static void dvg_vggo(vgdata* vg)
 {
 	vg->dvy = 0;
 	vg->op = 0;
 }
 
-static void avg_vgrst(vgdata *vg)
+static void avg_vgrst(vgdata* vg)
 {
 	vg->state_latch = 0;
 	vg->bin_scale = 0;
@@ -1180,19 +1238,18 @@ static void avg_vgrst(vgdata *vg)
 	vg->color = 0;
 }
 
-static void mhavoc_vgrst(vgdata *vg)
+static void mhavoc_vgrst(vgdata* vg)
 {
 	avg_vgrst(vg);
 	vg->enspkl = 0;
 }
 
-static void dvg_vgrst(vgdata *vg)
+static void dvg_vgrst(vgdata* vg)
 {
 	vg->state_latch = 0;
 	vg->dvy = 0;
 	vg->op = 0;
 }
-
 
 /*************************************
  *
@@ -1206,7 +1263,6 @@ static void vg_set_halt(int dummy)
 	vg->halt = dummy;
 	vg->sync_halt = dummy;
 }
-
 
 /********************************************************************
  *
@@ -1258,7 +1314,6 @@ static void run_state_machine(int dummy)
 	timer_adjust(vg_run_timer, TIME_IN_HZ(MASTER_CLOCK) * cycles, 0, 0);
 }
 
-
 /*************************************
  *
  *  VG halt/vggo
@@ -1272,35 +1327,49 @@ int avgdvg_done(void)
 
 void avgdvg_go(int offset, int data)
 {
-	if (vg->sync_halt && (nvect > 10))
+	if (vg->sync_halt)
 	{
-		/*
-		 * This is a good time to start a new frame. Major Havoc
-		 * sometimes sets VGGO after a very short vector list. That's
-		 * why we ignore frames with less than 10 vectors.
-		 */
-		vector_clear_list();
-		vector_updates++;
+		/* The generator is halted, so the buffer holds a complete pass that
+		 * ended in HALT: Vector Breakout waits for HALT, then strobes VGRST and
+		 * VGGO every frame. Display it before the variant's vggo can touch the
+		 * buffer. Major Havoc sometimes sets VGGO after a very short vector
+		 * list, hence the 10-vector threshold on starting a new frame (MAME
+		 * go_w). */
+		if (nvect > 10)
+		{
+			cache_clear();
+			vector_clear_list();
+			vector_updates++;
+		}
+		vg_flush();
 	}
+
+	/* MAME order (avgdvg_device_base::go_w): vggo before the flush, so the
+	 * Tempest / Quantum variant discards a half-built pass when VGGO arrives
+	 * while the generator is still running. Those games keep the AVG in an
+	 * endless loop and strobe VGGO mid-list during play; flushing that partial
+	 * pass put stray line fragments on screen. MAME discards the buffer at
+	 * every VGGO, halted or not, which blanks HALT-terminated lists on this
+	 * variant (Vector Breakout is black in HBMAME too) - hence the block
+	 * above. Variants whose vggo keeps the buffer behave exactly as before. */
+	vgc->vggo(vg);
 	vg_flush();
 
-	vgc->vggo(vg);
 	vg_set_halt(0);
 
 	/* Fire the state machine immediately */
 	timer_adjust(vg_run_timer, TIME_NOW, 0, 0);
 }
 
-void avgdvg_go_w(UINT32 address, UINT8 data, struct MemoryWriteByte *psMemWrite)
+void avgdvg_go_w(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite)
 {
 	avgdvg_go(0, 0);
 }
 
-void avgdvg_go_word_w(unsigned int offset, unsigned int data)
+void avgdvg_go_word_w(UINT32 address, UINT16 data, struct MemoryWriteWord* psMemWrite)
 {
 	avgdvg_go(0, 0);
 }
-
 
 /*************************************
  *
@@ -1314,16 +1383,45 @@ void avgdvg_reset(int offset, int data)
 	vg_set_halt(1);
 }
 
-void avgdvg_reset_w(UINT32 address, UINT8 data, struct MemoryWriteByte *psMemWrite)
+void avgdvg_discard(void)
+{
+	nvect = 0;
+	cache_clear();
+	vector_clear_list();
+	vector_updates++;
+}
+
+void avgdvg_run_to_halt(void)
+{
+	/* Each run_state_machine call executes VGSLICE (10000) master cycles;
+	 * 4096 slices is ~3.4 s of beam time, far beyond any real list. */
+	int slices = 0;
+	while (!vg->halt)
+	{
+		run_state_machine(0);
+		if (++slices >= 4096)
+		{
+			LOG_INFO("avgdvg_run_to_halt: no halt strobe after %d slices, forcing halt", slices);
+			break;
+		}
+	}
+	/* run_state_machine re-armed vg_run_timer (and possibly vg_halt_timer)
+	 * on its way out; neither may fire into the next frame. */
+	timer_enable(vg_run_timer, 0);
+	timer_enable(vg_halt_timer, 0);
+	vg_flush();
+	vg_set_halt(1);
+}
+
+void avgdvg_reset_w(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite)
 {
 	avgdvg_reset(0, 0);
 }
 
-void avgdvg_reset_word_w(unsigned int offset, unsigned int data)
+void avgdvg_reset_word_w(UINT32 address, UINT16 data, struct MemoryWriteWord* psMemWrite)
 {
 	avgdvg_reset(0, 0);
 }
-
 
 /*************************************
  *
@@ -1344,12 +1442,13 @@ static int avgdvg_init(void)
 	flip_x = flip_y = 0;
 
 	lastx = lasty = 0;
+	dvg_yshift = 0;
 
 	/* Allocate the two persistent timers used by the state machine.
 	 * These are created once at init and then re-armed via timer_adjust
 	 * every time the VG runs. They are never destroyed during gameplay. */
 	vg_halt_timer = timer_alloc([](int param) { vg_set_halt(param); });
-	vg_run_timer  = timer_alloc([](int param) { run_state_machine(param); });
+	vg_run_timer = timer_alloc([](int param) { run_state_machine(param); });
 
 	/*
 	 * The x and y DACs use 10 bit of the counter values which are in
@@ -1363,7 +1462,6 @@ static int avgdvg_init(void)
 
 	return vector_start();
 }
-
 
 /*************************************
  *
@@ -1457,7 +1555,7 @@ static vgconf avg_tempest =
 	},
 	avg_state_addr,
 	avg_data,
-	avg_vggo,
+	tempest_vggo,     /* discards the partial pass at VGGO (MAME avg_tempest_device) */
 	avg_vgrst
 };
 
@@ -1493,10 +1591,9 @@ static vgconf avg_quantum =
 	},
 	avg_state_addr,
 	quantum_data,
-	avg_vggo,
+	tempest_vggo,     /* discards the partial pass at VGGO (MAME avg_quantum_device) */
 	avg_vgrst
 };
-
 
 /*************************************
  *
@@ -1533,7 +1630,9 @@ int avg_start_starwars()
 	vectorram_size = Machine->drv->vectorram_size;
 	vgc = &avg_starwars;
 	vg = &vgd;
-	vg->state_prom = &memory_region(REGION_PROMS)[0] + 0x1000;
+	/* AAE loads the AVG state PROM at offset 0 of REGION_PROMS (0x100 bytes);
+	 * MAME 0.111 kept the mathbox PROMs below it, hence its +0x1000 offset. */
+	vg->state_prom = memory_region(REGION_PROMS);
 	return avgdvg_init();
 }
 

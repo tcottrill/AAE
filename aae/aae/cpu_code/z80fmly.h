@@ -84,6 +84,9 @@ void z80ctc_1_trg3_w(int offset, int data);
 // Z80 DaisyChain control
 int z80ctc_interrupt(int which);
 void z80ctc_reti(int which);
+// Read-only daisy-chain state: an in-service channel blocks its own pending
+// request and all lower priorities. Opt-in; legacy callbacks are unchanged.
+int z80ctc_irq_state(int which);
 
 // ---------------------------------------------------------------------------
 // Z80 PIO 

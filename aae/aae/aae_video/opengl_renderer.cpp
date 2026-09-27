@@ -79,12 +79,13 @@
 // Pi would hit.
 #include "iniFile.h"
 #include "mame_vector.h"
+#include "fuzz_state.h"                        // Fuzz_Get (composite defocus/whiteout)
 #include "config.h"                            // RENDERER_VULKAN (overlay reuse guard)
 #include "../aae_video_vk/vulkan_renderer.h"   // vkchain_ui_dim_quad (overlay reuse seam)
 #include <chrono>   // for optional frame-time profiling
 #include <cstring>  // strcmp for raster_effect name check
 #include <cmath>    // log2f for the mono monitor halation mip bias
-#include "aae_avg.h"
+#include "mame_late_avgdvg.h"
 // ---------------------------------------------------------------------------
 // Module-level globals
 // ---------------------------------------------------------------------------
@@ -396,11 +397,15 @@ void glchain_init_raster_overlay()
 		return;
 	}
 
-	// Only raster games use the scanlines overlay; skip for vector games.
+	// Raster games use the overlay, and so do COLOR VECTOR games: those ran
+	// on ordinary shadow-mask tubes, so the same scanline/aperture textures
+	// apply (end_render_fbo4 lays them over the vector composite). B/W
+	// vector tubes have continuous phosphor and no mask, so they skip it.
 	if (Machine && Machine->drv &&
-		!(Machine->drv->video_attributes & VIDEO_RASTER_CLASS_MASK))
+		!(Machine->drv->video_attributes & VIDEO_RASTER_CLASS_MASK) &&
+		!is_color_vector_attr(Machine->drv->video_attributes))
 	{
-		LOG_INFO("Raster overlay: skipped (not a raster game).");
+		LOG_INFO("Raster overlay: skipped (not a raster or color vector game).");
 		return;
 	}
 
@@ -496,6 +501,160 @@ void set_render_fbo4()
 // Unbinds FBO4 and blits img4a (the composited frame) to the backbuffer,
 // scaled and positioned by screen_rect to match the window size and aspect.
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Color VECTOR monitor treatment.
+//
+// A color X-Y monitor (Wells-Gardner 6100 / Amplifone class) was an ordinary
+// color shadow-mask CRT, so these games get exactly what the color RASTER
+// games get - the same colorMonitorFrag shader and the same overlay textures,
+// driven by the same [monitorcolor] settings and the same COLOR MONITOR SETUP
+// menu. Only the plumbing differs, because the vector pipeline has no img5a:
+// the treatment runs on the FINAL BLIT of the 1024x1024 composite instead.
+//
+// Running it there is deliberate. gl_FragCoord is then true window pixels, so
+// the shadow mask and the tiled overlay land 1:1 on screen - the same
+// output-resolution property the raster path buys with fbo_resize_mono.
+// Evaluating the mask inside the 1024x1024 composite and letting the blit
+// rescale it would turn the triads into moire.
+//
+// The GUI driver declares VECTOR_USES_COLOR too, so it is excluded here just
+// as it is from glow and phosphor trails.
+// ---------------------------------------------------------------------------
+static bool color_vector_game()
+{
+	return Machine && Machine->drv &&
+		is_color_vector_attr(Machine->drv->video_attributes) &&
+		!emulator_is_gui_active();
+}
+
+// Shader treatment. A selected texture overlay is the ALTERNATE to the
+// shader and stands it down - same rule as color_monitor_active().
+static bool color_vector_shader_active()
+{
+	const bool overlay_selected = config.raster_effect && config.raster_effect[0] &&
+		aae_stricmp(config.raster_effect, "NONE") != 0;
+
+	return !overlay_selected &&
+		config.color_enable != 0 &&
+		fragColorMonitor != 0 &&
+		color_vector_game();
+}
+
+// Texture-overlay treatment (scanlines.png / aperture4x6.png / ...).
+// g_scanrezTex is only non-zero when raster_effect names a file that loaded,
+// so this and the shader path are naturally mutually exclusive.
+static bool color_vector_overlay_active()
+{
+	return g_scanrezTex != 0 && color_vector_game();
+}
+
+// Tiles g_scanrezTex over the on-screen game rectangle with a multiply
+// blend. Window-space twin of render_scanlines(), which does the same thing
+// in raster FBO space; tiling at window resolution keeps the overlay's own
+// pixels crisp instead of upscaling them with the game image.
+static void render_vector_overlay()
+{
+	int scan_x = 0, scan_y = 0;
+	get_texture_size(g_scanrezTex, &scan_x, &scan_y);
+	if (scan_x <= 0 || scan_y <= 0) return;
+
+	float rx = 0.0f, ry = 0.0f, rw = 0.0f, rh = 0.0f;
+	screen_rect->GetScreenRect(&rx, &ry, &rw, &rh);
+	if (rw <= 0.0f || rh <= 0.0f) return;
+
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_DST_COLOR, GL_ZERO);   // standard multiply
+
+	glUseProgram(fragScanlineMultiply);
+	set_uniform1i(fragScanlineMultiply, "u_scanTex", 0);
+	set_uniform_mat4f(fragScanlineMultiply, "u_projection", aae::math::value_ptr(g_proj));
+
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, g_scanrezTex);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+
+	const float u = rw / (float)scan_x;
+	const float v = rh / (float)scan_y;
+
+	ScanQuadVert verts[4] = {
+		{ rx,      ry,      0.0f, 0.0f },
+		{ rx + rw, ry,      u,    0.0f },
+		{ rx + rw, ry + rh, u,    v    },
+		{ rx,      ry + rh, 0.0f, v    }
+	};
+
+	glBindVertexArray(g_scanVAO);
+	glBindBuffer(GL_ARRAY_BUFFER, g_scanVBO);
+	glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(verts), verts);
+	glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+	glBindVertexArray(0);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+	glUseProgram(0);
+	glBindTexture(GL_TEXTURE_2D, 0);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+}
+
+// Blits img4a through colorMonitorFrag. uSrcSize is the driver's visible
+// area, exactly as in render_color_monitor() - for the vector drivers that
+// is the beam coordinate space (~520x395 for the Atari games), which is a
+// sane pseudo-raster size, so the scanline pitch and the blur/halation radii
+// land in the same ballpark as a real color raster game.
+static void render_vector_color_monitor()
+{
+	const rectangle& va = Machine->drv->visible_area;
+	int vw = (va.max_x - va.min_x + 1);
+	int vh = (va.max_y - va.min_y + 1);
+
+	if (Machine->drv->rotation & ORIENTATION_SWAP_XY)
+	{
+		const int t = vw;
+		vw = vh;
+		vh = t;
+	}
+	if (vw <= 0) vw = 1;
+	if (vh <= 0) vh = 1;
+
+	// Halation reads uTex's mip pyramid. img4a is created mipmap-capable
+	// (gl_fbo.cpp), but nothing else in the vector path builds its chain,
+	// so do it here with the composite finished and FBO4 already unbound.
+	fbo_generate_mipmaps({ img4a });
+
+	// One game pixel spans 1024/vw texels of img4a, so shift the halation
+	// mip level by that ratio - the vector twin of the raster path's
+	// log2(prescale).
+	const float lodBias = log2f((float)1024.0f / (float)vw);
+
+	bind_shader(fragColorMonitor);
+	set_uniform1i(fragColorMonitor, "uTex", 0);
+	set_uniform1i(fragColorMonitor, "uSoftPhosphor", config.color_enable == 2);
+	set_uniform_mat4f(fragColorMonitor, "uProj", aae::math::value_ptr(g_proj));
+	set_uniform2f(fragColorMonitor, "uSrcSize", (float)vw, (float)vh);
+	set_uniform1f(fragColorMonitor, "uLodBias", lodBias);
+	set_uniform1f(fragColorMonitor, "uBlurH", config.color_blur_h);
+	set_uniform1f(fragColorMonitor, "uBlurV", config.color_blur_v);
+	set_uniform1f(fragColorMonitor, "uConverge", config.color_converge);
+	set_uniform1f(fragColorMonitor, "uHalation", config.color_halation);
+	set_uniform1f(fragColorMonitor, "uHalRadius", config.color_halation_radius);
+	set_uniform1f(fragColorMonitor, "uScanline", config.color_scanline);
+	set_uniform1f(fragColorMonitor, "uContrast", config.color_contrast);
+	set_uniform1f(fragColorMonitor, "uBright", config.color_brightness);
+	set_uniform1f(fragColorMonitor, "uSaturation", config.color_saturation);
+	set_uniform1i(fragColorMonitor, "uMaskType", config.color_mask_type);
+	set_uniform1f(fragColorMonitor, "uMaskStrength", config.color_mask_strength);
+	set_uniform1f(fragColorMonitor, "uMaskScale", config.color_mask_scale);
+
+	// Trilinear so the halation taps can read the mip chain just built.
+	set_texture(&img4a, 1, 1, 0, 0);
+	screen_rect->RenderGeometry();
+
+	unbind_shader();
+	glBindTexture(GL_TEXTURE_2D, 0);
+}
+
 void end_render_fbo4()
 {
 	check_gl_error_named("end_render_fbo4 (enter)");
@@ -515,11 +674,24 @@ void end_render_fbo4()
 
 	glDisable(GL_BLEND);
 
-	// Blit img4a to the screen. Blending disabled: this is a straight copy.
-	// screen_rect->Render() handles letterboxing / pillarboxing for the
-	// configured aspect ratio (1.33f = 4:3).
-	set_texture(&img4a, 1, 0, 0, 0);
-	screen_rect->Render(aae::math::value_ptr(g_proj));   // g_proj == the set_ortho above
+	if (color_vector_shader_active())
+	{
+		// Color CRT shader in place of the plain copy.
+		render_vector_color_monitor();
+	}
+	else
+	{
+		// Blit img4a to the screen. Blending disabled: this is a straight copy.
+		// screen_rect->Render() handles letterboxing / pillarboxing for the
+		// configured aspect ratio (1.33f = 4:3).
+		set_texture(&img4a, 1, 0, 0, 0);
+		screen_rect->Render(aae::math::value_ptr(g_proj));   // g_proj == the set_ortho above
+	}
+
+	// Texture overlay (the alternate to the shader) multiplies over the
+	// blitted game image.
+	if (color_vector_overlay_active())
+		render_vector_overlay();
 
 	check_gl_error_named("end_render_fbo4 (exit)");
 }
@@ -1202,6 +1374,9 @@ void final_render(int left, int right, int bottom, int top)
 	set_uniform1i(fragMulti, "useglow", useglow);
 	set_uniform1f(fragMulti, "glowamt", (float)(config.vecglow * 0.01));
 	set_uniform1i(fragMulti, "brighten", gamenum);
+	// Star Wars Death Star explosion defocus/whiteout. 0 for every other game,
+	// and the shader's uFuzz > 0 branch leaves their output untouched.
+	set_uniform1f(fragMulti, "uFuzz", Fuzz_Get());
 
 	glActiveTexture(GL_TEXTURE1); set_texture(&img1b, 1, 1, 0, 0);
 	glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, img3a); set_texture(&img3b, 1, 0, 0, 0);
@@ -1593,6 +1768,7 @@ static void render_color_monitor()
 
 	bind_shader(fragColorMonitor);
 	set_uniform1i(fragColorMonitor, "uTex", 0);
+	set_uniform1i(fragColorMonitor, "uSoftPhosphor", config.color_enable == 2);
 	set_uniform_mat4f(fragColorMonitor, "uProj", aae::math::value_ptr(proj));
 	set_uniform2f(fragColorMonitor, "uSrcSize", (float)vw, (float)vh);
 	set_uniform1f(fragColorMonitor, "uLodBias", log2f(prescale));

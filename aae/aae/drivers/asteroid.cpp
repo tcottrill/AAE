@@ -15,10 +15,12 @@
 #include "aae_mame_driver.h"
 #include "mixer.h"
 #include "driver_registry.h"    // AAE_REGISTER_DRIVER
-#include "earom.h"
-#include "aae_pokey.h"
+#include "er2055.h"
+#include "c012294_interface.h"
 #include "acommon.h"
+#include "mame_late_avgdvg.h"
 #include "old_mame_vecsim_dvg.h"
+#include "config.h"
 
 #define MASTER_CLOCK (12096000)
 #define CLOCK_3KHZ   (MASTER_CLOCK / 4096)
@@ -72,6 +74,40 @@ static const char* deluxesamples[] =
 };
 
 static int THREEKHZ_CLOCK = 0;
+
+// DVG engine selection ([main] dvg_engine=mame|vecsim, per-game overridable).
+// Latched here from config.dvg_engine by every init_* so the per-frame
+// handlers below don't re-read config. All eight romsets in this file honor
+// it; every other vector driver stays hard-wired to the MAME engine.
+static int use_vecsim = 0;
+
+static int asteroid_vg_done(void)
+{
+	return use_vecsim ? vecsim_dvg_done() : avgdvg_done();
+}
+
+WRITE_HANDLER(asteroid_vg_go_w)
+{
+	if (use_vecsim)
+		vecsim_dvg_go_w(address, data, psMemWrite);
+	else
+		avgdvg_go_w(address, data, psMemWrite);
+}
+
+// Cocktail 180-degree flip, routed to whichever engine is active. The vecsim
+// engine has a single swap_xy toggle rather than separate X/Y flips.
+static void asteroid_vg_set_flip(int flip)
+{
+	if (use_vecsim)
+	{
+		vecsim_set_screen_flipping(flip);
+	}
+	else
+	{
+		avg_set_flip_x(flip);
+		avg_set_flip_y(flip);
+	}
+}
 /*
 	Asteroids Voice breakdown:
 	0 - thump
@@ -106,6 +142,16 @@ void clock3k_update()
 	THREEKHZ_CLOCK ^= 1;
 }
 
+// NMI rate - DELIBERATELY WRONG. The board's NMI is the 3 kHz clock divided by
+// 12: CLOCK_3KHZ / 12 = 12.096 MHz / 4096 / 12 = 246.09375 Hz (6144 CPU
+// cycles). Every Asteroids / Asteroids Deluxe entry here runs at 60 fps with
+// ipf 4 and this callback firing on every pass, i.e. 240 Hz: exactly four NMIs
+// per presented frame at fixed cycle positions, so the game is frame-locked to
+// the 60 Hz display. That underclocks the game (and its NMI-driven timers) by
+// 2.5% against hardware - a chosen trade for steady 60 fps presentation, not
+// an oversight. The hardware-exact alternative is a periodic
+// timer_set(TIME_IN_HZ(CLOCK_3KHZ / 12.0), CPU0, ...) with ipf 0, as
+// llander.cpp and omegrace.cpp do for their 40 fps entries.
 void asteroid_interrupt()
 {
 	// Turn off interrupts if self-test is enabled
@@ -283,7 +329,6 @@ WRITE_HANDLER(asteroid_explode_w)
 	if (pitch > prev_pitch && pitch >= 0x3C)      // fresh timer loaded => explosion start
 	{
 		const int cls = data >> 6;                // 0..3
-		sample_set_volume(8, config.mainvol);     // optional: lower volume for larger explosions
 		sample_start(8, explode_sample[cls], 0);
 		//LOG_INFO("explode: data=%02X class=%d sample=%d", data, cls, explode_sample[cls]);
 	}
@@ -318,7 +363,11 @@ WRITE_HANDLER(astdelux_bank_switch_w)
 
 	astdelux_newbank = (data >> 7) & 1;
 
-	if (readinputportbytag("COCKTAIL") & 0x01) set_screen_flipping(astdelux_newbank);
+	if (readinputportbytag("COCKTAIL") & 0x01)
+	{
+		/* 180-degree rotate for the player facing the other way */
+		asteroid_vg_set_flip(astdelux_newbank);
+	}
 
 	if (astdelux_bank != astdelux_newbank) {
 		/* Perform bankswitching on page 2 and page 3 */
@@ -342,7 +391,11 @@ WRITE_HANDLER(asteroid_bank_switch_w)
 	int asteroid_newbank;
 	asteroid_newbank = (data >> 2) & 1;
 
-	if (readinputportbytag("COCKTAIL") & 0x01) set_screen_flipping(asteroid_newbank);
+	if (readinputportbytag("COCKTAIL") & 0x01)
+	{
+		/* 180-degree rotate for the player facing the other way */
+		asteroid_vg_set_flip(asteroid_newbank);
+	}
 
 	if (asteroid_bank != asteroid_newbank) {
 		/* Perform bankswitching on page 2 and page 3 */
@@ -372,7 +425,7 @@ READ_HANDLER(asteroid_IN0_r)
 	if ((get_eterna_ticks(0) + m_cpu_6502[CPU0]->get6502ticks(0)) & 0x100)
 		res |= 0x02;
 
-	if (!dvg_done())
+	if (!asteroid_vg_done())
 	{
 		//LOG_INFO("DVG returning IN0 BUSY? Cycles %d", cpu_getcycles(0));
 		res |= 0x04;
@@ -396,7 +449,7 @@ READ_HANDLER(asterock_IN0_r)
 	// 3KHz clock on bit 2 (see asteroid_IN0_r for the in-slice tick rationale).
 	if ((get_eterna_ticks(0) + m_cpu_6502[CPU0]->get6502ticks(0)) & 0x100)
 		res |= 0x04;
-	if (!dvg_done())
+	if (!asteroid_vg_done())
 		res |= 0x1;
 
 	if (res & bitmask)
@@ -446,23 +499,47 @@ void run_astdelux()
 }
 /////////////////END MAIN LOOP/////////////////////////////////////////////
 
+// ---------------------------------------------------------------------------
+// EAROM (ER2055), Asteroids Deluxe only - MAME asteroid.cpp earom_read/
+// earom_write/earom_control_w. CK = DB0, C1 = /DB2, C2 = DB1, CS1 = DB3,
+// /CS2 = GND. `address` is the offset from the range start.
+// ---------------------------------------------------------------------------
+static er2055 earom;
+
+READ_HANDLER(earom_read)
+{
+	return er2055_data(&earom);
+}
+
+WRITE_HANDLER(earom_write)
+{
+	er2055_set_address(&earom, address & 0x3f);
+	er2055_set_data(&earom, data);
+}
+
+WRITE_HANDLER(earom_control_w)
+{
+	er2055_set_control(&earom, (data >> 3) & 1, true, !((data >> 2) & 1), (data >> 1) & 1);
+	er2055_set_clk(&earom, data & 1);
+}
+
 MEM_READ(AsteroidDeluxeRead)
 MEM_ADDR(0x2000, 0x2007, asteroid_IN0_r)
 MEM_ADDR(0x2400, 0x2407, asteroid_IN1_r)
 MEM_ADDR(0x2800, 0x2803, asteroid_DSW1_r)
 MEM_ADDR(0x2c00, 0x2c0f, pokey_1_r)
-MEM_ADDR(0x2c40, 0x2c7f, EaromRead)
+MEM_ADDR(0x2c40, 0x2c7f, earom_read)
 MEM_END
 
 MEM_WRITE(AsteroidDeluxeWrite)
 MEM_ADDR(0x2c00, 0x2c0f, pokey_1_w)
-MEM_ADDR(0x3000, 0x3000, dvg_go_w)
+MEM_ADDR(0x3000, 0x3000, asteroid_vg_go_w)
 MEM_ADDR(0x3c03, 0x3c03, astdelux_sounds_w)
 MEM_ADDR(0x3c04, 0x3c04, astdelux_bank_switch_w)
 MEM_ADDR(0x3600, 0x3600, asteroid_explode_w)
 MEM_ADDR(0x3400, 0x3400, watchdog_reset_w)
-MEM_ADDR(0x3200, 0x323f, EaromWrite)
-MEM_ADDR(0x3a00, 0x3a00, EaromCtrl)
+MEM_ADDR(0x3200, 0x323f, earom_write)
+MEM_ADDR(0x3a00, 0x3a00, earom_control_w)
 MEM_ADDR(0x3c00, 0x3c01, astdelux_led_w)
 MEM_ADDR(0x4800, 0x7fff, MWA_ROM)
 MEM_END
@@ -485,7 +562,7 @@ MEM_END
 
 MEM_WRITE(AsteroidWrite)
 MEM_ADDR(0x0000, 0x03ff, MWA_RAM)
-MEM_ADDR(0x3000, 0x3000, dvg_go_w)
+MEM_ADDR(0x3000, 0x3000, asteroid_vg_go_w)
 MEM_ADDR(0x3200, 0x3200, asteroid_bank_switch_w)
 MEM_ADDR(0x3400, 0x3400, watchdog_reset_w)
 MEM_ADDR(0x3600, 0x3600, asteroid_explode_w)
@@ -497,14 +574,38 @@ MEM_ADDR(0x6800, 0x7fff, MWA_ROM) //Program Rom
 MEM_END
 
 /////////////////// MAIN() for program ///////////////////////////////////////////////////
+
+// Latch the engine choice for this run and start it. The vecsim start is the
+// asteroid variant (textured shot dots via GAME_TEX 0, loaded by the art
+// lists in this file) - that is what the asteroid family always used on the
+// legacy engine.
+static void asteroid_vg_start(void)
+{
+	use_vecsim = (config.dvg_engine == DVG_ENGINE_VECSIM);
+	LOG_INFO("Asteroid DVG engine: %s", use_vecsim ? "vecsim (legacy)" : "mame");
+	if (use_vecsim)
+		vecsim_dvg_start_asteroid();
+	else
+	dvg_start();
+
+	// The asteroid family is the only DVG game with shots. Both engines mark
+	// every zero-length lit vector as a shot dot, so without this flag llander
+	// and omegrace would get shot sprites for their ordinary dots (and, with
+	// textured shots on, quads for a texture they never loaded).
+	set_game_has_shots(true);
+}
+
 void end_asteroid()
 {
+	if (use_vecsim)
+		vecsim_dvg_end();
 	sample_stop_mixer(4);
-	dvg_end();
 }
 
 void end_astdelux()
 {
+	if (use_vecsim)
+		vecsim_dvg_end();
 	sample_stop_mixer(4);
 	pokey_sh_stop();
 }
@@ -513,7 +614,7 @@ int init_asteroid(void)
 {
 	//init6502(AsteroidRead, AsteroidWrite, 0x7fff, CPU0);
 
-	dvg_start_asteroid();
+	asteroid_vg_start();
 	//timer_set(TIME_IN_HZ(MASTER_CLOCK / 4096), 0, clock3k_update);
 
 	LOG_INFO("End init");
@@ -524,7 +625,7 @@ int init_asterock(void)
 {
 	//init6502(AsterockRead, AsteroidWrite, 0x7fff, CPU0);
 
-	dvg_start_asteroid();
+	asteroid_vg_start();
 	//timer_set(TIME_IN_HZ(MASTER_CLOCK / 4096), 0, clock3k_update);
 
 	LOG_INFO("End Asterock init");
@@ -536,8 +637,12 @@ int init_astdelux(void)
 	int k;
 
 	//init6502(AsteroidDeluxeRead, AsteroidDeluxeWrite, 0x7fff, CPU0);
-	dvg_start_asteroid();
+	asteroid_vg_start();
 	k = pokey_sh_start(&pokey_interface);
+
+	er2055_init(&earom);
+	nvram_set_region(earom.rom, sizeof(earom.rom), 0x00);
+	earom_control_w(0, 0, nullptr);   // MAME machine_reset(): earom_control_w(0)
 
 	return 0;
 }
@@ -890,12 +995,13 @@ AAE_DRIVER_CPUS(
 )
 
 AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_BW, ORIENTATION_DEFAULT)
-AAE_DRIVER_SCREEN(1024, 768, 0, 1040, 0, 820)
+AAE_DRIVER_SCREEN(1024, 768, 0, 1040, 70, 950)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x4000, 0x800)
 AAE_DRIVER_NVRAM_NONE()
 AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_CLONE_OF("asteroid")
 AAE_DRIVER_END()
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -930,6 +1036,7 @@ AAE_DRIVER_HISCORE(asteroid_hiload, asteroid_hisave)
 AAE_DRIVER_VECTORRAM(0x4000, 0x800)
 AAE_DRIVER_NVRAM_NONE()
 AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_CLONE_OF("asteroid")
 AAE_DRIVER_END()
 //////////////////////////////////////////////////////////////////////////////////////////////
 // Asteroids (Bootleg on Lunar Lander Hardware)
@@ -957,12 +1064,13 @@ AAE_DRIVER_CPUS(
 	AAE_CPU_NONE_ENTRY()
 )
 AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_BW, ORIENTATION_DEFAULT)
-AAE_DRIVER_SCREEN(1024, 768, 0, 1040, 0, 820)
+AAE_DRIVER_SCREEN(1024, 768, 0, 1040, 70, 950)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x4000, 0x800)
 AAE_DRIVER_NVRAM_NONE()
 AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_CLONE_OF("asteroid")
 AAE_DRIVER_END()
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -997,6 +1105,7 @@ AAE_DRIVER_HISCORE(asteroid1_hiload, asteroid1_hisave)
 AAE_DRIVER_VECTORRAM(0x4000, 0x800)
 AAE_DRIVER_NVRAM_NONE()
 AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_CLONE_OF("asteroid")
 AAE_DRIVER_END()
 //////////////////////////////////////////////////////////////////////////////////////////////
 // Asteroids (Revision 2)
@@ -1055,8 +1164,10 @@ AAE_DRIVER_SCREEN(1024, 768, 0, 1040, 70, 950)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x4000, 0x800)
-AAE_DRIVER_NVRAM(atari_vg_earom_handler)
+AAE_DRIVER_NVRAM(generic_nvram_handler)
 AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_CLONE_OF("astdelux")
+AAE_DRIVER_SOUND_TRIM(170, 255)   // samples ~4 dB under the POKEY (set by ear)
 AAE_DRIVER_END()
 // Asteroids Deluxe (Revision 2)
 AAE_DRIVER_BEGIN(drv_astdelux2, "astdelux2", "Asteroids Deluxe (Revision 2)")
@@ -1082,8 +1193,10 @@ AAE_DRIVER_SCREEN(1024, 768, 0, 1040, 70, 950)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x4000, 0x800)
-AAE_DRIVER_NVRAM(atari_vg_earom_handler)
+AAE_DRIVER_NVRAM(generic_nvram_handler)
 AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_CLONE_OF("astdelux")
+AAE_DRIVER_SOUND_TRIM(170, 255)   // samples ~4 dB under the POKEY (set by ear)
 AAE_DRIVER_END()
 
 // Asteroids Deluxe (Revision 3)
@@ -1108,8 +1221,10 @@ AAE_DRIVER_SCREEN(1024, 768, 0, 1040, 70, 950)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x4000, 0x800)
-AAE_DRIVER_NVRAM(atari_vg_earom_handler)
+AAE_DRIVER_NVRAM(generic_nvram_handler)
 AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_STANDALONE()
+AAE_DRIVER_SOUND_TRIM(170, 255)   // samples ~4 dB under the POKEY (set by ear)
 AAE_DRIVER_END()
 
 AAE_REGISTER_DRIVER(drv_meteorts)

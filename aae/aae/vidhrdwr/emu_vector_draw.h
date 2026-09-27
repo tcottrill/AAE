@@ -34,4 +34,16 @@ void add_line(float sx, float sy, float ex, float ey, int intensity, rgb_t col);
 void set_texture_id(rtex_t* id);
 void cache_clear();
 
+// Does this game draw vector shots at all? Both DVG engines flag every
+// zero-length lit vector as a "textured point", so games such as Lunar Lander
+// and Omega Race reach add_tex as well - their dots are ordinary beam dots.
+// Declared by the driver's video start (only the asteroid family sets it);
+// run_game clears it for every game first.
+void set_game_has_shots(bool has);
+
+// Did this game's artwork supply the shot sprite (GAME_TEX slot 0)? Set per game
+// by the GL/VK artwork loaders; when false, shots fall back to the procedural
+// beam sprite instead of the legacy textured quads.
+void set_shot_texture_ready(bool ready);
+
 #endif

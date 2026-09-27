@@ -17,10 +17,19 @@
 #include "mixer.h"
 #include "driver_registry.h"    // AAE_REGISTER_DRIVER
 #include "llander.h"
-#include "old_mame_vecsim_dvg.h"
+#include "mame_late_avgdvg.h"
+#include "config.h"     // config.debug_profile_code
+#include "timer.h"      // timer_set / TIME_IN_HZ: the NMI timer
+
+// Board NMI: the 3 kHz clock (12.096 MHz / 4096 = 2953.125 Hz) divided by 12 =
+// 246.09375 Hz, exactly 6144 cycles of the 1.512 MHz 6502 (4.063492 ms). Armed
+// as a periodic timer in init_llander; the CPU entries carry ipf 0. (The old
+// ipf 6 at 40 fps was 240 Hz, 2.5% slow.)
+#define LLANDER_NMI_HZ (12096000.0 / 4096.0 / 12.0)
 
 static int lamp0 = 0;
 static uint8_t* llander_zeropage;
+static int nmi_count = 0;   // debug: NMIs delivered since the last per-second log
 
 static const char* llander_samples[] = {
 	"llander.zip",
@@ -36,6 +45,7 @@ void llander_interrupt()
 	if (readinputport(0) & 0x02)
 	{
 		cpu_do_int_imm(CPU0, INT_TYPE_NMI);
+		nmi_count++;
 	}
 }
 
@@ -64,7 +74,7 @@ READ_HANDLER(llander_IN0_r)
 {
 	int val = readinputportbytag("IN0");
 
-	if (dvg_done())
+	if (avgdvg_done())
 		val |= 0x01;
 	// 3KHz clock on bit 6. eternaticks only advances at scheduler-slice
 	// boundaries; add the cycles executed so far inside the current slice
@@ -144,7 +154,7 @@ MEM_END
 
 MEM_WRITE(LlanderWrite)
 MEM_ADDR(0x0000, 0x01ff, llander_zeropage_w)
-MEM_ADDR(0x3000, 0x3000, dvg_go_w)
+MEM_ADDR(0x3000, 0x3000, avgdvg_go_w)
 MEM_ADDR(0x3200, 0x3200, ll_led_write)
 MEM_ADDR(0x3400, 0x3400, watchdog_reset_w)
 MEM_ADDR(0x3c00, 0x3c00, llander_sounds_w)
@@ -156,6 +166,17 @@ MEM_END
 
 void run_llander()
 {
+	/* debug: delivered NMI rate, expect 246.09 per second (0 in self-test) */
+	if (config.debug_profile_code)
+	{
+		static int frames = 0;
+		if (++frames >= Machine->gamedrv->fps)
+		{
+			LOG_INFO("llander: NMIs in the last %d frames = %d (expect %.2f)",
+				frames, nmi_count, LLANDER_NMI_HZ);
+			frames = 0; nmi_count = 0;
+		}
+	}
 }
 
 // Returns 1 if the fake "Artwork Mod" dipswitch (DSW2, llander set only) is On.
@@ -485,6 +506,11 @@ int init_llander()
 		llander_install_artwork_mod();
 
 	dvg_start();
+
+	// NMI at the board's 246.09375 Hz (see LLANDER_NMI_HZ); the self-test gate
+	// stays inside llander_interrupt.
+	timer_set(TIME_IN_HZ(LLANDER_NMI_HZ), CPU0, [](int) { llander_interrupt(); });
+	LOG_INFO("Lunar Lander: NMI timer at %.5f Hz", LLANDER_NMI_HZ);
 	return 0;
 }
 
@@ -647,7 +673,8 @@ PORT_BIT(0x04, IP_ACTIVE_LOW, IPT_TILT)
 	AAE_DRIVER_ART(nullptr)
 
 	AAE_DRIVER_CPUS(
-		AAE_CPU_ENTRY(CPU_M6502, 1512000, 100, 6, INT_TYPE_NMI, llander_interrupt,
+		// ipf 0: the NMI comes from the 246.09375 Hz timer armed in init_llander
+		AAE_CPU_ENTRY(CPU_M6502, 1512000, 100, 0, INT_TYPE_NMI, nullptr,
 			LlanderRead, LlanderWrite, nullptr, nullptr, nullptr, nullptr),
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY(),
@@ -677,7 +704,8 @@ PORT_BIT(0x04, IP_ACTIVE_LOW, IPT_TILT)
 	AAE_DRIVER_SAMPLES(llander_samples)
 	AAE_DRIVER_ART(nullptr)
 	AAE_DRIVER_CPUS(
-		AAE_CPU_ENTRY(CPU_M6502, 1512000, 100, 6, INT_TYPE_NMI, llander_interrupt,
+		// ipf 0: the NMI comes from the 246.09375 Hz timer armed in init_llander
+		AAE_CPU_ENTRY(CPU_M6502, 1512000, 100, 0, INT_TYPE_NMI, nullptr,
 			LlanderRead, LlanderWrite, nullptr, nullptr, nullptr, nullptr),
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY(),
@@ -695,6 +723,7 @@ PORT_BIT(0x04, IP_ACTIVE_LOW, IPT_TILT)
 	// No NVRAM handler
 	AAE_DRIVER_NVRAM_NONE()
 	AAE_DRIVER_LAYOUT_NONE()
+	AAE_DRIVER_CLONE_OF("llander")
 	AAE_DRIVER_END()
 
 	AAE_REGISTER_DRIVER(llander)

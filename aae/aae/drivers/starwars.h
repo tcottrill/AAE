@@ -6,5 +6,4 @@ int init_esb();
 int init_starwars();
 void run_starwars();
 void end_starwars();
-void starwars_interrupt();
 

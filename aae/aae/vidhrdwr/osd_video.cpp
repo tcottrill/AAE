@@ -498,10 +498,10 @@ int vh_open(void)
 	// after you've filled current_palette from the game's palette:
 	if (Machine->drv->video_attributes & VIDEO_MODIFIES_PALETTE)
 	{
-		// from palette
-		if (aae_palette_start(Machine->gamedrv->total_colors) != 0) {
+		// from palette; aae_palette_start returns true on success
+		if (!aae_palette_start(Machine->gamedrv->total_colors)) {
 			LOG_ERROR("palette_start failed");
-			return 1; // or suitable error path (placeholder, come back to this)
+			return 1;
 		}
 	}
 

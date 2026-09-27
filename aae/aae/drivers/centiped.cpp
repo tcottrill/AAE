@@ -15,8 +15,8 @@
 #include "warlord.h"
 #include "driver_registry.h"
 #include "old_mame_raster.h"
-#include "earom.h"
-#include "aae_pokey.h"
+#include "er2055.h"
+#include "c012294_interface.h"
 #include "centiped_vid.h"
 #include "timer.h"
 
@@ -198,6 +198,31 @@ void end_centiped()
 	pokey_sh_stop();
 }
 
+// ---------------------------------------------------------------------------
+// EAROM (ER2055) - MAME centiped.cpp centiped_state::earom_read/earom_write/
+// earom_control_w. NOTE the bit order differs from the vector boards:
+// CK = DB0, C1 = /DB1, C2 = DB2, CS1 = DB3, /CS2 = GND. `address` is the
+// offset from the range start.
+// ---------------------------------------------------------------------------
+static er2055 earom;
+
+READ_HANDLER(earom_read)
+{
+	return er2055_data(&earom);
+}
+
+WRITE_HANDLER(earom_write)
+{
+	er2055_set_address(&earom, address & 0x3f);
+	er2055_set_data(&earom, data);
+}
+
+WRITE_HANDLER(earom_control_w)
+{
+	er2055_set_control(&earom, (data >> 3) & 1, true, !((data >> 1) & 1), (data >> 2) & 1);
+	er2055_set_clk(&earom, data & 1);
+}
+
 int init_centiped(void)
 {
 	// Raster drivers set the videoram/spriteram pointers themselves.
@@ -212,6 +237,10 @@ int init_centiped(void)
 	aae_set_lines_per_frame(262);
 
 	powerup_counter = 25;
+
+	er2055_init(&earom);
+	nvram_set_region(earom.rom, sizeof(earom.rom), 0x00);
+	earom_control_w(0, 0, nullptr);   // MAME machine_reset(): earom_control_w(0)
 
 	centiped_vh_start();
 
@@ -401,7 +430,7 @@ MEM_ADDR(0x0c01, 0x0c01, centiped_IN1_r)			/* IN1: starts, fire, coins */
 MEM_ADDR(0x0c02, 0x0c02, centiped_IN2_r)			/* IN2: trackball Y */
 MEM_ADDR(0x0c03, 0x0c03, ip_port_3_r)				/* IN3: joysticks */
 MEM_ADDR(0x1000, 0x100f, pokey_1_r)					/* POKEY */
-MEM_ADDR(0x1700, 0x173f, EaromRead)					/* EAROM */
+MEM_ADDR(0x1700, 0x173f, earom_read)					/* EAROM */
 //MEM_ADDR(0x2000, 0x3fff, MRA_ROM)					/* program ROM */
 //MEM_ADDR(0xf800, 0xffff, MRA_ROM)					/* reset / interrupt vectors */
 MEM_END
@@ -413,8 +442,8 @@ MEM_WRITE(centiped_writemem)
 MEM_ADDR(0x1000, 0x100f, pokey_1_w)					/* POKEY */
 //MEM_ADDR(0x1400, 0x140f, centiped_paletteram_w)	/* full palette RAM */
 MEM_ADDR(0x1404, 0x1407, centiped_vh_charpalette_w)	/* character palette */
-MEM_ADDR(0x1600, 0x163f, EaromWrite)				/* EAROM */
-MEM_ADDR(0x1680, 0x1680, EaromCtrl)					/* EAROM control */
+MEM_ADDR(0x1600, 0x163f, earom_write)				/* EAROM */
+MEM_ADDR(0x1680, 0x1680, earom_control_w)					/* EAROM control */
 MEM_ADDR(0x1800, 0x1800, irq_ack)					/* IRQ acknowledge */
 //MEM_ADDR(0x1c00, 0x1c02, MWA_NOP)					/* coin counters */
 MEM_ADDR(0x1c03, 0x1c04, centiped_led_w)			/* start button lamps */
@@ -494,7 +523,7 @@ AAE_DRIVER_SCREEN(256, 256, 0, 255, 0, 239)
 AAE_DRIVER_RASTER(centiped_gfxdecodeinfo, 4 + 4 * 4, 4 * 4 + 4 * 4 * 4 * 4, centiped_vh_convert_color_prom)
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0, 0)
-AAE_DRIVER_NVRAM(atari_vg_earom_handler)
+AAE_DRIVER_NVRAM(generic_nvram_handler)
 AAE_DRIVER_LAYOUT("default.lay", "Upright_Artwork")
 AAE_DRIVER_END()
 
@@ -532,8 +561,9 @@ AAE_DRIVER_SCREEN(256, 256, 0, 255, 0, 239)
 AAE_DRIVER_RASTER(centiped_gfxdecodeinfo, 4 + 4 * 4, 4 * 4 + 4 * 4 * 4 * 4, centiped_vh_convert_color_prom)
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0, 0)
-AAE_DRIVER_NVRAM(atari_vg_earom_handler)
+AAE_DRIVER_NVRAM(generic_nvram_handler)
 AAE_DRIVER_LAYOUT("default.lay", "Upright_Artwork")
+AAE_DRIVER_CLONE_OF("centiped")
 AAE_DRIVER_END()
 
 

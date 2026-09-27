@@ -41,6 +41,11 @@ int  timer_set_elapsed(int cpu_index);
 // timer_alloc creates a dormant timer with a callback but doesn't start it.
 // timer_adjust arms/re-arms an allocated timer.
 int    timer_alloc(std::function<void(int)> callback);
+// Same as above, but pins the slot to a specific CPU's cycle stream (default
+// overload above always uses CPU 0). Needed for devices clocked from, and
+// read back on, a non-zero CPU - e.g. Star Wars' 6532 RIOT, which lives on
+// the audio CPU (CPU 1), not the main CPU.
+int    timer_alloc(std::function<void(int)> callback, int cpu);
 void   timer_adjust(int timer_id, double duration, int param, double period);
 
 #endif

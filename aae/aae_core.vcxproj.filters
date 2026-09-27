@@ -123,6 +123,12 @@
     <ClCompile Include="aae\drivers\dkong.cpp">
       <Filter>drivers\raster</Filter>
     </ClCompile>
+    <ClCompile Include="aae\drivers\mario.cpp">
+      <Filter>drivers\raster</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\drivers\mpatrol.cpp">
+      <Filter>drivers\raster</Filter>
+    </ClCompile>
     <ClCompile Include="aae\drivers\foodf.cpp">
       <Filter>drivers\raster</Filter>
     </ClCompile>
@@ -183,7 +189,7 @@
     <ClCompile Include="aae\machine\74148.cpp">
       <Filter>machine</Filter>
     </ClCompile>
-    <ClCompile Include="aae\machine\earom.cpp">
+    <ClCompile Include="aae\machine\er2055.cpp">
       <Filter>machine</Filter>
     </ClCompile>
     <ClCompile Include="aae\machine\mathbox.cpp">
@@ -201,13 +207,19 @@
     <ClCompile Include="aae\machine\SegaG80crypt.cpp">
       <Filter>machine</Filter>
     </ClCompile>
+    <ClCompile Include="aae\machine\riot6532.cpp">
+      <Filter>machine</Filter>
+    </ClCompile>
     <ClCompile Include="aae\machine\slapstic.cpp">
       <Filter>machine</Filter>
     </ClCompile>
     <ClCompile Include="aae\machine\starwars_machine.cpp">
       <Filter>machine</Filter>
     </ClCompile>
-    <ClCompile Include="aae\sndhrdwr\aae_pokey.cpp">
+    <ClCompile Include="aae\sndhrdwr\c012294_interface.cpp">
+      <Filter>sndhrdwr</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\sndhrdwr\c012294.c">
       <Filter>sndhrdwr</Filter>
     </ClCompile>
     <ClCompile Include="aae\sndhrdwr\astrocade_sound.cpp">
@@ -220,6 +232,15 @@
       <Filter>sndhrdwr</Filter>
     </ClCompile>
     <ClCompile Include="aae\sndhrdwr\dac.cpp">
+      <Filter>sndhrdwr</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\sndhrdwr\msm5205.cpp">
+      <Filter>sndhrdwr</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\sndhrdwr\irem_snd.cpp">
+      <Filter>sndhrdwr</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\sndhrdwr\hc55516.cpp">
       <Filter>sndhrdwr</Filter>
     </ClCompile>
     <ClCompile Include="aae\sndhrdwr\exidy440_sound.cpp">
@@ -311,6 +332,20 @@
     </ClCompile>
     <ClCompile Include="aae\sndhrdwr\segag80snd.cpp">
       <Filter>sndhrdwr</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\vidhrdwr\fuzz_state.cpp" />
+    <ClCompile Include="aae\drivers\frogger.cpp">
+      <Filter>drivers\raster</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\drivers\williams.cpp">
+      <Filter>drivers\raster</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\drivers\qix.cpp">
+      <Filter>drivers\raster</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\sndhrdwr\sound_latch.cpp" />
+    <ClCompile Include="aae\vidhrdwr\mame_late_avgdvg.cpp">
+      <Filter>vidhrdwr</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -460,7 +495,7 @@
     <ClInclude Include="aae\machine\74148.h">
       <Filter>machine</Filter>
     </ClInclude>
-    <ClInclude Include="aae\machine\earom.h">
+    <ClInclude Include="aae\machine\er2055.h">
       <Filter>machine</Filter>
     </ClInclude>
     <ClInclude Include="aae\machine\mathbox.h">
@@ -478,13 +513,19 @@
     <ClInclude Include="aae\machine\SegaG80crypt.h">
       <Filter>machine</Filter>
     </ClInclude>
+    <ClInclude Include="aae\machine\riot6532.h">
+      <Filter>machine</Filter>
+    </ClInclude>
     <ClInclude Include="aae\machine\slapstic.h">
       <Filter>machine</Filter>
     </ClInclude>
     <ClInclude Include="aae\machine\starwars_machine.h">
       <Filter>machine</Filter>
     </ClInclude>
-    <ClInclude Include="aae\sndhrdwr\aae_pokey.h">
+    <ClInclude Include="aae\sndhrdwr\c012294_interface.h">
+      <Filter>sndhrdwr</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\sndhrdwr\c012294.h">
       <Filter>sndhrdwr</Filter>
     </ClInclude>
     <ClInclude Include="aae\sndhrdwr\astrocade_sound.h">
@@ -497,6 +538,9 @@
       <Filter>sndhrdwr</Filter>
     </ClInclude>
     <ClInclude Include="aae\sndhrdwr\dac.h">
+      <Filter>sndhrdwr</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\sndhrdwr\hc55516.h">
       <Filter>sndhrdwr</Filter>
     </ClInclude>
     <ClInclude Include="aae\sndhrdwr\exidy440_sound.h">
@@ -573,6 +617,20 @@
     </ClInclude>
     <ClInclude Include="aae\sndhrdwr\segag80snd.h">
       <Filter>sndhrdwr</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\vidhrdwr\fuzz_state.h" />
+    <ClInclude Include="aae\drivers\frogger.h">
+      <Filter>drivers\raster</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\drivers\williams.h">
+      <Filter>drivers\raster</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\drivers\qix.h">
+      <Filter>drivers\raster</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\sndhrdwr\sound_latch.h" />
+    <ClInclude Include="aae\vidhrdwr\mame_late_avgdvg.h">
+      <Filter>vidhrdwr</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

@@ -59,6 +59,7 @@ void cpu_m6809::reset()
     m_PC = read16(0xFFFE);  // RESET vector
     m_PPC = m_PC;
     m_pc_after_last_fetch = m_PC;
+    m_pc_change_reason = PcChangeReason::Reset;
     notify_pc_change();     // let any add-on prime itself for the entry point
 }
 
@@ -662,7 +663,10 @@ int cpu_m6809::service_interrupt(uint16_t vector, bool set_F, bool entire)
     if (set_F) set_flag(CC_F, true);
     m_PC = read16(vector);
     m_pc_after_last_fetch = m_PC;
-    notify_pc_change();     // entering the handler is a non-sequential PC change
+    // Entering the handler is a non-sequential PC change, but it is NOT a
+    // program-visible jump -- see PcChangeReason::Interrupt in cpu_m6809.h.
+    m_pc_change_reason = PcChangeReason::Interrupt;
+    notify_pc_change();
     return cycles;
 }
 
@@ -1004,8 +1008,24 @@ int cpu_m6809::step()
         // / taken branch / SWI / PULS-PC / TFR-to-PC). Notify any registered
         // add-on exactly once, here, instead of sprinkling calls through the
         // decoder. (Interrupts/reset notify from their own paths.)
-        if (m_PC != m_pc_after_last_fetch)
+        //
+        // RTI (opcode 0x3B) is the one case here that is not a program-visible
+        // jump either -- it just resumes whatever flow the interrupt entry
+        // suspended (see PcChangeReason::Rti in cpu_m6809.h). Detect it from
+        // `op`, the opcode this step() fetched at the very top (not from
+        // m_last_opcode): exec_page10()/exec_page11() overwrite m_last_opcode
+        // with their OWN sub-opcode when op is the 0x10/0x11 prefix, and $10 $3B
+        // / $11 $3B are real (unrelated) prefixed instructions, not RTI. Using
+        // `op` -- which is always the un-prefixed, top-level fetched byte --
+        // means a prefixed sub-opcode of 0x3B can never be mistaken for RTI.
+        // SWI/SWI2/SWI3 fall through to the ordinary Jump case below: they are
+        // software instructions the program itself executes, not hardware
+        // interrupts, so from the slapstic's point of view they are just
+        // another program-visible control transfer.
+        if (m_PC != m_pc_after_last_fetch) {
+            m_pc_change_reason = (op == 0x3B) ? PcChangeReason::Rti : PcChangeReason::Jump;
             notify_pc_change();
+        }
 
     // One instruction done: charge its cost (consumed = -cycles, since `cycles`
     // started at 0 and the opcode switch subtracted from it) and drive the timer.
@@ -1022,6 +1042,14 @@ int cpu_m6809::exec(int cycles)
 {
     int instr_budget = cycles;
     int total = 0;
+
+    // Clear any stale yield request left over from a previous exec() call.
+    // Normally request_yield() and the check below consume a request within
+    // the same exec() call it was raised in, but a request could in theory
+    // survive to here (e.g. raised on the very last step of a call, with
+    // nothing after it to observe the flag) -- start every call with a clean
+    // slate so it can't cause an unrelated later call to return early.
+    m_yield_requested = false;
 
     // SYNC/CWAI wait-state: idle in SMALL CHUNKS, not the whole slice at once.
     // charge_cycles() drives timer_update(), and a timer callback can assert an
@@ -1050,6 +1078,15 @@ int cpu_m6809::exec(int cycles)
         int c = step();
         total += c;
         instr_budget -= c; // Standard cycle deduction
+
+        // MAME-style synchronize(): a memory-write handler called from
+        // inside that step() (e.g. the Star Wars sound latch) asked us to
+        // end the timeslice right here, even though instr_budget is still
+        // positive. Return now with total < cycles so the caller (cpu_run's
+        // scheduler) can see the short return and hand control to the other
+        // CPU immediately, instead of running this CPU out to its full
+        // budget first.
+        if (m_yield_requested) break;
     }
     return total;
 }

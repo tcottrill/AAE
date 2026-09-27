@@ -78,7 +78,8 @@ void GameList::build(const AAEDriver* drivers)
 	head_ = &nodes_.front();
 }
 
-void GameList::build(const std::vector<const AAEDriver*>& reg)
+void GameList::build(const std::vector<const AAEDriver*>& reg,
+                     bool (*keep)(const AAEDriver*))
 {
 	nodes_.clear();
 	head_ = nullptr;
@@ -87,6 +88,7 @@ void GameList::build(const std::vector<const AAEDriver*>& reg)
 	for (std::size_t idx = 0; idx < reg.size(); ++idx) {
 		const AAEDriver* d = reg[idx];
 		if (!d || !d->name) continue;
+		if (keep && !keep(d)) continue;   // filtered out; idx still advances
 		GameNode node;
 		node.gameNum = static_cast<int>(idx);  // preserve original index
 

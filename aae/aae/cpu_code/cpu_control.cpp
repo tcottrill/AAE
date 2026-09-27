@@ -32,6 +32,7 @@ static int cpu_framecounter = 0; //This is strictly for the cinematronics games.
 static int cpurunning[MAX_CPU];
 static int ran_this_frame[MAX_CPU];
 static int current_slice;
+static int s_slice_divisions = 1;   // cpu_run's max_divisions, mirrored for getscanline
 /* (needed by cpu_getfcount) */
 static int iloops[MAX_CPU];
 //
@@ -42,6 +43,14 @@ static int active_cpu = 0;
 static int totalcpu = 0;
 static int watchdog_timer = 0;
 static int watchdog_counter = 0;
+
+// ---------------------------------------------------------------------------
+// cpu_yield() support (MAME-style scheduler().synchronize()).
+// Set (per-CPU) when cpu_yield() is called while that CPU is active_cpu and
+// its core actually honored the request by returning early; cpu_run()'s
+// scheduler loop checks and clears it. See cpu_yield() below.
+// ---------------------------------------------------------------------------
+static bool s_cpu_yield_pending[MAX_CPU];
 
 // CPU instances
 
@@ -56,6 +65,9 @@ cpu_m68000* m_cpu_68000[MAX_CPU];
 
 /* override OP base handler */
 static int (*setOPbasefunc)(int);
+
+// Optional per-CPU reset hook (see cpu_set_reset_callback / cpu_reset below).
+static void (*reset_callback[MAX_CPU])(void);
 
 //Machine->gamedrv->cpu_type[0]
 
@@ -184,7 +196,8 @@ int get_exact_cyclecount(int cpu)
 	case CPU_M6809: pending = m_cpu_6809[cpu]->get6809ticks(0);         break;
 	case CPU_M6800:
 	case CPU_M6802:
-	case CPU_M6808: pending = m_cpu_6800[cpu]->get6800ticks(0);         break;
+	case CPU_M6808:
+	case CPU_M6803: pending = m_cpu_6800[cpu]->get6800ticks(0);         break;
 	case CPU_68000: pending = 0; // avoid double count with Musashi
 		break;
 	default:        pending = 0; break;
@@ -249,15 +262,43 @@ int aae_cpu_getscanlinecycles(void) {
 // cycles since the beginning of THIS frame (CPU0-based)
 // Uses ran_this_frame which is the scheduler's definitive count,
 // avoiding double-count from pending CPU ticks outside execution.
+//
+// Clamp, don't wrap: ran_this_frame[0] reaches cpf (plus instruction
+// overshoot) at the end of the frame, and a modulo there hands the last
+// scanline's whole time window to line 0. Line (lines_per_frame - 1) becomes
+// unrepresentable - qix's video CPU boots by spinning until the scanline
+// register reads 255, so it hung forever. On hardware the wrap happens at
+// the START of the next frame, which the per-frame reset already models.
 int aae_cpu_getcurrentcycles_in_frame(void) {
 	const int cpf = aae_cycles_per_frame_cpu0();
 	if (cpf <= 0) return 0;
-	return ran_this_frame[0] % cpf;
+	int cyc = ran_this_frame[0];
+	if (cyc >= cpf) cyc = cpf - 1;
+	return cyc;
 }
 
 // current scanline: multiply-first to avoid truncation drift,
 // clamped to valid range
+//
+// Two timebases, chosen by caller:
+//   - CPU0 reads its own progress: cycle-precise and monotonic within the
+//     frame, exactly as before.
+//   - Any OTHER CPU gets the scheduler's slice position instead. CPU0 runs
+//     each global slice first and finishes whole instructions, so its cycle
+//     count overshoots the slice target by a few cycles - enough that
+//     (cyc*lines)/cpf can skip line values entirely from another CPU's point
+//     of view. Qix's video 6809 spins "LDA $9800 / BNE" waiting for the
+//     scanline to read EXACTLY zero; whether zero was observable depended on
+//     how CPU0's last instruction happened to land, and the game froze when
+//     it wasn't. The slice index advances by exactly one every slice, so
+//     with divisions >= lines_per_frame every line value is observable, in
+//     order, every frame - which is what the beam counter does.
 int aae_cpu_getscanline(void) {
+	if (active_cpu != 0 && s_slice_divisions > 0) {
+		int line = (current_slice * s_lines_per_frame) / s_slice_divisions;
+		if (line >= s_lines_per_frame) line = s_lines_per_frame - 1;
+		return line;
+	}
 	const int cpf = aae_cycles_per_frame_cpu0();
 	if (cpf <= 0) return 0;
 	const int cyc = aae_cpu_getcurrentcycles_in_frame();
@@ -313,6 +354,7 @@ int cpu_getppc()
 	case CPU_M6800:
 	case CPU_M6802:
 	case CPU_M6808:
+	case CPU_M6803:
 		return m_cpu_6800[active_cpu]->get_ppc();
 		break;
 	}
@@ -352,6 +394,7 @@ int cpu_getpc()
 	case CPU_M6800:
 	case CPU_M6802:
 	case CPU_M6808:
+	case CPU_M6803:
 		return m_cpu_6800[active_cpu]->get_pc();
 		break;
 
@@ -365,6 +408,12 @@ int cpu_getpc()
 void cpu_needs_reset(int cpunum)
 {
 	reset_cpu_status[cpunum] = 1;
+}
+
+void cpu_set_reset_callback(int cpunum, void (*cb)(void))
+{
+	if (cpunum < 0 || cpunum >= MAX_CPU) return;
+	reset_callback[cpunum] = cb;
 }
 
 void cpu_enable(int cpunum, int val)
@@ -528,6 +577,7 @@ void cpu_do_int_imm(int cpunum, int int_type)
 	case CPU_M6800:
 	case CPU_M6802:
 	case CPU_M6808:
+	case CPU_M6803:
 		m_cpu_6800[cpunum]->m6800_Cause_Interrupt(
 			(int_type == INT_TYPE_NMI) ? M6800_INT_NMI : M6800_INT_IRQ
 		);
@@ -652,6 +702,7 @@ int cpu_exec_now(int cpu, int cycles)
 	case CPU_M6800:
 	case CPU_M6802:
 	case CPU_M6808:
+	case CPU_M6803:
 		m_cpu_6800[cpu]->exec6800(cycles);
 		ticks = m_cpu_6800[cpu]->get6800ticks(0xff);
 		break;
@@ -667,6 +718,58 @@ int cpu_exec_now(int cpu, int cycles)
 	cyclecount[cpu] += ticks;
 	// NOTE THE CPU CODE ITSELF IS UPDATING THE TIMERS NOW, except for the 8080/8085/8039
 	return ticks;
+}
+
+// -----------------------------------------------------------------------------
+// cpu_yield
+// MAME-style scheduler().synchronize(). Called from within a memory-write
+// handler while a CPU is executing (active_cpu is that CPU): requests that
+// active_cpu stop at the end of the instruction currently in progress and
+// return early from cpu_exec_now(), so cpu_run()'s scheduler loop notices
+// and moves on to the next CPU due this global slice right away, instead of
+// running the writer out to the end of its per-CPU slice first.
+//
+// Two things have to line up for a call here to actually shorten the
+// timeslice:
+//   1. The CORE has to know how to stop early. Only cpu_m6809 does today
+//      (see cpu_m6809::request_yield() / cpu_m6809::exec()). Add a core by
+//      giving it the same "flag checked after each step(), cleared at the
+//      top of exec()" pattern.
+//   2. The SCHEDULER has to notice. s_cpu_yield_pending[active_cpu] is set
+//      here and checked/cleared inside cpu_run()'s per-CPU while loop, right
+//      after each cpu_exec_now() call.
+//
+// Harmless outside cpu_run(): if called during init or from a timer callback
+// that fires outside CPU execution, active_cpu is whatever it was last left
+// at (0, or the CPU whose context a caller like cpu_reset()/cpu_do_int_imm()
+// is temporarily running in) -- this just sets a flag that nothing is
+// looking at (cpu_run() is not on the stack) and/or nudges a core that is
+// not presently inside exec(); that core's *next* exec() call clears the
+// flag before doing any work, so a stray request never lingers or affects a
+// later, unrelated slice.
+// -----------------------------------------------------------------------------
+void cpu_yield(void)
+{
+	if (active_cpu < 0 || active_cpu >= MAX_CPU) return;
+
+	switch (Machine->gamedrv->cpu[active_cpu].cpu_type)
+	{
+	case CPU_M6809:
+		if (m_cpu_6809[active_cpu]) {
+			m_cpu_6809[active_cpu]->request_yield();
+			s_cpu_yield_pending[active_cpu] = true;
+		}
+		break;
+
+	default:
+		// Not implemented for CPU_MZ80, CPU_M6502, CPU_8080, CPU_8085,
+		// CPU_8039/CPU_8035, CPU_M6800/CPU_M6802/CPU_M6808/CPU_M6803, or
+		// CPU_68000: none of those cores has a yield-request hook, so this
+		// is a harmless no-op for them -- the latch write itself still
+		// happens, only the "hand off to the other CPU right now" behavior
+		// is unavailable until a core gets the same treatment as cpu_m6809.
+		break;
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -729,6 +832,7 @@ void cpu_run(void)
 			if (divisions[i] > max_divisions) max_divisions = divisions[i];
 		}
 	}
+	s_slice_divisions = max_divisions;   // published for aae_cpu_getscanline
 
 	// -----------------------------------------------------------------------
 	// IPT_VBLANK: compute the CPU0 cycle at which VBLANK begins.
@@ -811,6 +915,13 @@ void cpu_run(void)
 				// Safety: avoid zero/negative runs
 				if (running <= 0) break;
 
+				// Cleared just before running so that only a cpu_yield()
+				// call made DURING this cpu_exec_now() (i.e. by the
+				// instruction(s) we are about to execute) is observed below
+				// -- not a leftover from an earlier run this slice that
+				// already handled its yield.
+				s_cpu_yield_pending[active_cpu] = false;
+
 				ran = cpu_exec_now(active_cpu, running);
 
 				// Scheduler-owned accounting
@@ -849,6 +960,31 @@ void cpu_run(void)
 					else {
 						next_interrupt_cycles = target_cycles;
 					}
+				}
+
+				// MAME-style synchronize(): a latch write during this run
+				// asked to end this CPU's timeslice right here, and the core
+				// honored it (cpu_exec_now returned before using up
+				// 'running'). Interrupt-pass and VBLANK boundaries above
+				// have already been evaluated against the cycles we DID
+				// run, so they are unaffected by leaving early.
+				//
+				// Skip this on the frame's LAST global slice: there is no
+				// later slice left this frame for the yielding CPU to catch
+				// up in, and target_cycles is this CPU's final target for
+				// the whole frame, so breaking here would permanently lose
+				// the remainder of its per-frame cycle budget instead of
+				// just deferring it. Every other slice, breaking is exactly
+				// the point -- the CPU picks up the shortfall the next time
+				// its target_cycles advances (target_cycles is a running
+				// per-frame total, so 'ran_this_frame[active_cpu] <
+				// target_cycles' stays true and the while loop keeps this
+				// CPU on the hook for the cycles it skipped).
+				if (s_cpu_yield_pending[active_cpu])
+				{
+					s_cpu_yield_pending[active_cpu] = false;
+					if (current_slice != max_divisions - 1)
+						break;
 				}
 			}
 
@@ -911,6 +1047,7 @@ void cpu_reset(int cpunum)
 	case CPU_M6800:
 	case CPU_M6802:
 	case CPU_M6808:
+	case CPU_M6803:
 		m_cpu_6800[cpunum]->reset6800();
 		break;
 
@@ -926,6 +1063,14 @@ void cpu_reset(int cpunum)
 	if (cpunum == 0)vid_tickcount = 0;
 	//Reset any timers on that CPU.
 	timer_cpu_reset(cpunum);
+
+	// Driver-supplied reset hook (AAE has no per-driver machine_reset()):
+	// runs in this CPU's context, after the core's own reset (which already
+	// ran notify_pc_change / any opcode-base override) so it can re-establish
+	// state the core reset doesn't know about (banking, slapstic, etc).
+	if (reset_callback[cpunum])
+		reset_callback[cpunum]();
+
 	active_cpu = prev_active_cpu;
 }
 
@@ -951,7 +1096,8 @@ void cpu_clear_pending_int(int int_type, int cpunum)
 	case CPU_8035:  m_cpu_i8039[cpunum]->clear_pending_interrupts(); break;
 	case CPU_M6800:
 	case CPU_M6802:
-	case CPU_M6808: m_cpu_6800[cpunum]->m6800_Clear_Pending_Interrupts(); break;
+	case CPU_M6808:
+	case CPU_M6803: m_cpu_6800[cpunum]->m6800_Clear_Pending_Interrupts(); break;
 	default: break;
 	}
 }
@@ -994,7 +1140,8 @@ void free_cpu_memory()
 		case CPU_M6809:  delete m_cpu_6809[x];   m_cpu_6809[x] = nullptr; break;
 		case CPU_M6800:
 		case CPU_M6802:
-		case CPU_M6808:  delete m_cpu_6800[x];   m_cpu_6800[x] = nullptr; break;
+		case CPU_M6808:
+		case CPU_M6803:  delete m_cpu_6800[x];   m_cpu_6800[x] = nullptr; break;
 		case CPU_68000:  delete m_cpu_68000[x];  m_cpu_68000[x] = nullptr; break;
 		default: break;
 		}
@@ -1016,6 +1163,11 @@ void init_cpu_config()
 		interrupt_enable[x] = 1;
 		interrupt_vector[x] = 0xff;
 		cyclecount[x] = 0;
+		// Clear any reset callback left over from a previous game, so it
+		// never leaks into the next driver. A driver that wants one
+		// re-registers it below via its post_cpu_init hook, which runs
+		// after this loop for the CPU it applies to.
+		reset_callback[x] = nullptr;
 		if (Machine->gamedrv->cpu[x].cpu_type)  totalcpu++;
 	}
 
@@ -1072,6 +1224,13 @@ void init_cpu_config()
 		case CPU_M6808:
 			LOG_INFO("Init 6800-family CPU %d called (type %d)", i, C.cpu_type);
 			init6800(C.memory_read, C.memory_write, i);
+			break;
+
+		case CPU_M6803:
+			LOG_INFO("Init 6803 CPU %d called", i);
+			init6800(C.memory_read, C.memory_write, i);
+			m_cpu_6800[i]->set_m6803_mode(true);
+			m_cpu_6800[i]->reset6800();   // re-vector with internal regs live
 			break;
 
 		default:

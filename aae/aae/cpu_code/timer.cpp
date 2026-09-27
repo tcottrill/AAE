@@ -31,6 +31,14 @@ struct Timer {
 	// accumulate across frame boundaries and are only reset by explicit
 	// timer_reset() calls.
 	bool elapsed_only = false;
+	// timer_alloc'd timers are persistent (MAME semantics): when a one-shot
+	// firing completes they are disabled, never removed, so the slot stays
+	// valid for the next timer_adjust.
+	bool persistent = false;
+	// Bumped by every timer_adjust. Lets firing code detect that a callback
+	// re-armed its own timer (e.g. MAME-style self-rescheduling state
+	// machines) so the re-arm isn't clobbered by disable/remove afterwards.
+	unsigned generation = 0;
 };
 
 static std::vector<std::optional<Timer>> timers;
@@ -190,14 +198,26 @@ void timer_update(int cycles, int cpunum)
 			int param = timers[i]->callback_param;
 			bool is_oneshot = timers[i]->one_shot;
 			double repeat = timers[i]->repeat;
+			unsigned gen = timers[i]->generation;
 
 			if (cb) cb(param);
 
 			// After callback, the slot may have been removed or replaced
 			if (!timers[i]) break;
 
+			// The callback re-armed this timer via timer_adjust: honor the
+			// new schedule instead of disabling/removing it.
+			if (timers[i]->generation != gen)
+				continue;
+
 			if (is_oneshot) {
-				timer_remove(static_cast<int>(i));
+				if (timers[i]->persistent) {
+					// MAME timer_alloc semantics: go dormant, keep the slot
+					timers[i]->enabled = false;
+				}
+				else {
+					timer_remove(static_cast<int>(i));
+				}
 				break;
 			}
 			else if (repeat > 0.0) {
@@ -271,12 +291,12 @@ double timer_timeelapsed(int id)
 	return 0.0;
 }
 
-int timer_alloc(std::function<void(int)> callback)
+int timer_alloc(std::function<void(int)> callback, int cpu)
 {
 	int index = timer_allocate_slot();
 	auto& timer = timers[index].emplace();
 
-	timer.cpu = 0;       // default CPU 0; timer_adjust will set real timing
+	timer.cpu = cpu & 0x0f;
 	timer.period = 0;
 	timer.count = 0;
 	timer.callback = std::move(callback);
@@ -285,11 +305,17 @@ int timer_alloc(std::function<void(int)> callback)
 	timer.enabled = false;   // not armed yet
 	timer.repeat = 0.0;
 	timer.elapsed_only = false;
+	timer.persistent = true;  // MAME semantics: slot survives one-shot firings
 
 	if (VERBOSE) {
-		LOG_INFO("Timer %d allocated (dormant)", index);
+		LOG_INFO("Timer %d allocated (dormant) on CPU %d", index, timer.cpu);
 	}
 	return index;
+}
+
+int timer_alloc(std::function<void(int)> callback)
+{
+	return timer_alloc(std::move(callback), 0);   // default CPU 0; timer_adjust will set real timing
 }
 
 void timer_adjust(int timer_id, double duration, int param, double period)
@@ -298,16 +324,28 @@ void timer_adjust(int timer_id, double duration, int param, double period)
 		|| !timers[timer_id].has_value())
 		return;
 
-	auto& t = *timers[timer_id];
-
 	// Use CPU 0's frequency for cycle conversion, the duration is already in seconds via TIME_IN_HZ)
-	double freq = Machine->gamedrv->cpu[t.cpu].cpu_freq;
+	double freq = Machine->gamedrv->cpu[timers[timer_id]->cpu].cpu_freq;
+
+	timers[timer_id]->generation++;
 
 	if (duration <= 0.0) {
-		// TIME_NOW: fire the callback immediately
-		if (t.callback) {
-			t.callback(param);
+		// TIME_NOW: fire the callback immediately.
+		// The callback may itself call timer_adjust on this same timer
+		// (MAME-style self-rescheduling) or allocate new timers, which can
+		// reallocate the timers vector - so re-fetch by index afterwards
+		// and only apply the post-fire state if the callback did NOT re-arm.
+		unsigned gen = timers[timer_id]->generation;
+		auto cb = timers[timer_id]->callback;
+		if (cb) {
+			cb(param);
 		}
+		if (timer_id >= static_cast<int>(timers.size()) || !timers[timer_id].has_value())
+			return;
+		if (timers[timer_id]->generation != gen)
+			return;   // callback re-armed the timer; keep its schedule
+
+		auto& t = *timers[timer_id];
 		// If there's a repeat period, arm the timer for that period
 		if (period > 0.0) {
 			t.period = freq * period;
@@ -321,6 +359,7 @@ void timer_adjust(int timer_id, double duration, int param, double period)
 		}
 	}
 	else {
+		auto& t = *timers[timer_id];
 		// Arm the timer to fire after 'duration' seconds
 		t.period = freq * duration;
 		t.count = 0;
@@ -340,6 +379,6 @@ void timer_adjust(int timer_id, double duration, int param, double period)
 
 	if (VERBOSE) {
 		LOG_INFO("Timer %d adjusted: duration=%f, param=%d, period=%f, enabled=%d",
-			timer_id, duration, param, period, t.enabled);
+			timer_id, duration, param, period, timers[timer_id]->enabled ? 1 : 0);
 	}
 }

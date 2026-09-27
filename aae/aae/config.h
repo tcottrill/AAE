@@ -6,6 +6,12 @@
 #define RENDERER_OPENGL 0
 #define RENDERER_VULKAN 1
 
+// DVG engine selection for the Asteroids family ([main] dvg_engine= in
+// aae.ini or a per-game ini): the MAME 0.111 avgdvg port (default) or the
+// legacy Eric Smith VECSIM simulator. Latched by the driver at game init.
+#define DVG_ENGINE_MAME   0
+#define DVG_ENGINE_VECSIM 1
+
 typedef struct {
 	char rompath[256];
 	char samplepath[256];
@@ -45,6 +51,7 @@ typedef struct {
 	int cocktail;
 	int mainvol;
 	int pokeyvol;
+	int samplevol;   // game-sample group volume (0..255), see mixer_groups.h
 	int artwork;
 	int bezel;
 	int burnin;
@@ -52,6 +59,19 @@ typedef struct {
 	int vid_rotate;
 	int vecglow;
 	int vectrail;
+
+	// GUI game browser: 1 = list only vector games, hiding the raster ones.
+	// Global only (a per-game override of a list-wide filter is meaningless).
+	// Hides games from the browser; it does not remove support - launching a
+	// raster game by name from the command line still works, and
+	// -listallgames still reports everything.
+	int gui_vector_only;
+
+	// Star Wars only: defocus the screen and blow the picture out to white for
+	// the length of the Death Star explosion. Driven from the game's own
+	// explosion phase bytes (see drivers/starwars.cpp), so it needs no timer.
+	// 0 = off, 1 = on. Shaping constants live in the composite shaders.
+	int starwars_fuzz;
 
 	// --- Glow blur selector + dual-filter pyramid tuning (glow_filter=1) ---
 	// All live-adjustable from the VECTOR MONITOR SETUP menu; both renderers
@@ -89,6 +109,12 @@ typedef struct {
 	int hack;
 	int cheat;
 	int debug;
+	// DVG_ENGINE_MAME (default) or DVG_ENGINE_VECSIM. [main] dvg_engine=
+	// "mame"|"vecsim", per-game overridable. Only the asteroid driver
+	// (asteroid/astdelux + bootlegs) consults it; every other vector game is
+	// hard-wired to the MAME engine. Read once at game init - no runtime
+	// switching, same policy as `renderer` below.
+	int dvg_engine;
 	int renderer;         // RENDERER_VULKAN (default) or RENDERER_OPENGL
 	// The VIDEO menu's RENDERER item edits THIS, never `renderer` above.
 	// init_gl() latches s_active from config.renderer on EVERY game load, so
@@ -220,7 +246,7 @@ typedef struct {
 	// plus RGB misconvergence, saturation and shadow-mask emulation. Applied
 	// on img5a when the driver has VIDEO_TYPE_RASTER_COLOR.
 	// Persisted in aae.ini [monitorcolor]; per-game ini can override.
-	int   color_enable;           // 0 = off, 1 = on
+	int   color_enable;           // 0 = off, 1 = legacy CRT, 2 = 6100 soft phosphor
 	float color_blur_h;           // horizontal beam sigma, source px (0..2.5)
 	float color_blur_v;           // vertical beam sigma, source px (0..1)
 	float color_converge;         // RGB misconvergence, source px (0..2)
@@ -240,12 +266,23 @@ typedef struct {
 	// Persisted in aae.ini [main] system_rotation as an integer (0,1,3,5,6).
 	int system_rotation;
 
+	// --- Session WAV recording (command-line -wavwrite, MAME-style) ---
+	// CLI-only: never read from or written to any ini. Path may be empty,
+	// in which case emulator_init substitutes <gamename>.wav at capture
+	// start. 260 = Windows MAX_PATH (config.h avoids <windows.h>, same as
+	// kbd_player_path above).
+	int  wavwrite;
+	char wavwrite_path[260];
+
 }settings;
 
 // This setting required c++ 17 to compile
 inline settings config;
 
-void setup_video_config();
+// section: optional video.ini section to read instead of the driver's own
+// (the Tempest Multigame passes the set name of the bank it switched to).
+// Falls back to the driver's section when that one is absent.
+void setup_video_config(const char* section = nullptr);
 void setup_config();
 void setup_game_config();
 void sanity_check_config();

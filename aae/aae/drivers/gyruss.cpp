@@ -25,6 +25,7 @@
 #include "cpu_i8039.h"
 #include "memory.h"
 #include "ay8910.h"
+#include "sound_latch.h"
 #include "dac.h"
 #include "old_mame_raster.h"
 #include "timer.h"
@@ -43,8 +44,6 @@
 //   audio RAM    region[CPU2][0x6000..0x63ff]   (flat)
 static unsigned char* gyruss_sharedram = nullptr;
 
-static int gyruss_soundlatch  = 0;
-static int gyruss_soundlatch2 = 0;
 static int main_irq_enable    = 0;
 static int m6809_irq_enable   = 0;
 static int flipscreen         = 0;
@@ -101,8 +100,9 @@ void gyruss_noop_interrupt() {}   // audio Z80 / i8039: IRQs are externally trig
 // ---------------------------------------------------------------------------
 // Sound-latch + cross-CPU IRQ triggers
 // ---------------------------------------------------------------------------
-WRITE_HANDLER(gyruss_soundlatch_w)  { gyruss_soundlatch = data; }
-READ_HANDLER(gyruss_soundlatch_r)   { return (UINT8)gyruss_soundlatch; }
+// Generic latches: 0 = main -> 6809 command, 1 = 6809 -> i8039 command.
+WRITE_HANDLER(gyruss_soundlatch_w)  { soundlatch_set(0, data); }
+READ_HANDLER(gyruss_soundlatch_r)   { return soundlatch_get(0); }
 
 WRITE_HANDLER(gyruss_sh_irqtrigger_w) { cpu_do_int_imm(CPU2, INT_TYPE_INT); }  // -> audio Z80
 
@@ -138,10 +138,10 @@ WRITE_HANDLER(gyruss_sharedram_w)
 // ---------------------------------------------------------------------------
 // Z80 I/O-port handlers (audio CPU) and i8039 port handlers
 // ---------------------------------------------------------------------------
-void gyruss_soundlatch2_port_w(UINT16 port, UINT8 data, struct z80PortWrite*) { gyruss_soundlatch2 = data; }
+void gyruss_soundlatch2_port_w(UINT16 port, UINT8 data, struct z80PortWrite*) { soundlatch_set(1, data); }
 void gyruss_i8039_irq_port_w  (UINT16 port, UINT8 data, struct z80PortWrite*) { cpu_do_int_imm(CPU3, INT_TYPE_INT); }
 
-UINT16 gyruss_i8039_sndcmd_port_r(UINT16 port, struct z80PortRead*) { return (UINT16)gyruss_soundlatch2; }
+UINT16 gyruss_i8039_sndcmd_port_r(UINT16 port, struct z80PortRead*) { return (UINT16)soundlatch_get(1); }
 void   gyruss_dac_port_w        (UINT16 port, UINT8 data, struct z80PortWrite*) { DAC_data_w(0, data); }
 void   gyruss_port_nop_w        (UINT16 port, UINT8 data, struct z80PortWrite*) {}
 
@@ -418,7 +418,6 @@ int init_gyruss()
 {
 	LOG_INFO("Starting Gyruss Init");
 
-	gyruss_soundlatch = gyruss_soundlatch2 = 0;
 	main_irq_enable = m6809_irq_enable = 0;
 	flipscreen = 0;
 	scanline = 0;

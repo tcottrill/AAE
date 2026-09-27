@@ -105,6 +105,31 @@ public:
     // clean per-CPU replacement for the old global 'slapstic_en' gate.
     bool in_opcode_fetch() const { return m_in_opcode_fetch; }
 
+    // Why the PC just changed non-sequentially -- valid for the duration of the
+    // opbase_override callback invoked from notify_pc_change() (it is set
+    // immediately before each call, see the notify_pc_change() call sites in
+    // cpu_m6809.cpp). An add-on like the ESB slapstic hook needs this because
+    // an interrupt entry/return moves the PC non-sequentially too, but it is
+    // NOT a program-visible jump: m_PPC (the "previous PC") is only updated at
+    // the START of an instruction, so if an IRQ/FIRQ/NMI is taken mid-instruction
+    // while executing inside the slapstic region, the interrupt-entry notify
+    // would otherwise look exactly like a jump OUT of the region using the
+    // interrupted instruction's start address, and the RTI back in would look
+    // like a jump INTO the region -- two spurious tweaks bracketing whatever
+    // the interrupted code was actually doing to the bank state.
+    enum class PcChangeReason {
+        Jump,       // normal instruction-driven PC change: jump / call / taken
+                    // branch / RTS / PULS-PC / TFR-to-PC. SWI/SWI2/SWI3 are
+                    // included here too -- they are software instructions the
+                    // program itself executes (program-visible flow), unlike a
+                    // hardware interrupt, so they behave exactly like any other
+                    // instruction that jumps.
+        Interrupt,  // NMI / FIRQ / IRQ entry (service_interrupt() vectoring)
+        Rti,        // the RTI instruction (opcode 0x3B) just returned
+        Reset,      // core reset() vectoring from $FFFE
+    };
+    PcChangeReason pc_change_reason() const { return m_pc_change_reason; }
+
     // Debug surface.
     uint16_t GetPC()         const { return m_PC; }
     uint16_t GetPPC()        const { return m_PPC; }
@@ -127,6 +152,17 @@ public:
     // core lowers it again when the interrupt is taken (see exec()).
     void     m6809_Cause_Interrupt(int type);
     void     m6809_Clear_Pending_Interrupts();
+
+    // ---- MAME-style scheduler().synchronize() support ----------------------
+    // Requests that exec() stop as soon as the step() in progress finishes,
+    // returning fewer cycles than it was asked to run, instead of running its
+    // full budget. Set by cpu_control's cpu_yield() (via a memory-write
+    // handler called from WITHIN step()) when this CPU is active_cpu; cleared
+    // at the top of the next exec() call so a request never outlives the
+    // exec() call it was meant for. See cpu_yield() in cpu_control.cpp for
+    // the scheduler-side half of this (it has to notice the short return and
+    // hand control to the other CPU).
+    void     request_yield() { m_yield_requested = true; }
 
     // Test/debug register accessors (read-only snapshots).
     uint8_t  GetA()  const { return m_D.d8.A; }
@@ -180,11 +216,13 @@ private:
     bool m_nmi_enabled = false;  // NMI masked from reset until first write to S
     bool m_sync        = false;  // SYNC: waiting for any interrupt line
     bool m_cwai        = false;  // CWAI: registers pre-stacked, waiting
+    bool m_yield_requested = false; // scheduler asked us to stop early (see request_yield())
 
     // ---- Add-on hook support state ----------------------------------------
     bool     m_in_opcode_fetch     = false; // last bus access was a fetch (see in_opcode_fetch)
     uint8_t* m_opcode_base         = nullptr; // decrypted-opcode base (see set_opcode_base)
     uint16_t m_pc_after_last_fetch = 0;     // PC right after the last fetch; used to detect non-sequential PC changes
+    PcChangeReason m_pc_change_reason = PcChangeReason::Reset; // see pc_change_reason()
 
     // ---- Debug / memory options -------------------------------------------
     bool mmem = false;            // MAME-style memory handling (block unhandled)

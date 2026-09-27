@@ -326,6 +326,12 @@ void VkArt_LoadForGame(VkContext& ctx, const struct artworks* p)
             art_loaded[i] = 0;
     }
 
+    // Tell the vector seam whether this game has a shot sprite at all. Both DVG
+    // engines mark zero-length lit vectors as textured points, so without this
+    // a texture-less game (Lunar Lander, Omega Race) would queue shot quads the
+    // pass below has nothing to sample.
+    set_shot_texture_ready(s_shotHave);
+
     // --- Same post-load bookkeeping as GL load_artwork: disable config flags
     // for layers that failed so the renderer/menu never reference them. ---
     if (!art_loaded[0] && config.artwork)

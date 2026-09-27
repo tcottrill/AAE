@@ -15,10 +15,10 @@
 #include "aae_mame_driver.h"
 #include "driver_registry.h"
 #include "cpu_control.h"
-#include "aae_avg.h"
-#include "earom.h"
-#include "aae_pokey.h"
+#include "mame_late_avgdvg.h"
+#include "c012294_interface.h"
 #include "timer.h"
+#include "config.h"     // config.debug_profile_code
 
 
 /*
@@ -55,10 +55,24 @@ ART_END
 unsigned char program_rom[0x14000];
 unsigned char main_ram[0x5000];
 unsigned char nv_ram[0x200];
+/* Vector RAM (0x800000-0x801fff). The 68K core stores words byteswapped in
+ * base arrays (see byteswap of program_rom), so the AVG engine can read this
+ * as a UINT16 array via quantum_vectorram. */
+static unsigned char quantum_vram[0x2000];
+
+// IRQ1 rate - DELIBERATELY 240 Hz. The board's IRQ is the 3 kHz clock divided
+// by 12: 12.096 MHz / 4096 / 12 = 246.09375 Hz (MAME: CLOCK_3KHZ / 12, with a
+// 60 Hz picture). The entries run 60 fps with ipf 4 and this firing on every
+// pass = 240 Hz, four per presented frame at fixed cycle positions: the same
+// 2.5%-underclocked, frame-locked choice as Asteroids. (It was ipf 3 = 180 Hz,
+// which ran the game ~27% slow.) Hardware-exact alternative: ipf 0 and
+// timer_set(TIME_IN_HZ(12096000.0 / 4096 / 12), CPU0, ...) in init_quantum.
+static int quantum_irq_count = 0;   // debug: IRQs since the last per-second log
 
 void  quantum_interrupt()
 {
 	cpu_do_int_imm(CPU0, INT_TYPE_68K1);
+	quantum_irq_count++;
 }
 
 READ16_HANDLER(quantum_trackball_r)
@@ -68,7 +82,7 @@ READ16_HANDLER(quantum_trackball_r)
 
 READ16_HANDLER(quantum_switches_r)
 {
-	return (input_port_0_r(0) | (avg_check() ? 1 : 0));
+	return (input_port_0_r(0) | (avgdvg_done() ? 1 : 0));
 }
 
 static int quantum_input_1_r(int offset)
@@ -153,17 +167,22 @@ static struct POKEYinterface pokey_interface =
 MEM_READ(QuantumReadByte)
 MEM_ADDR8(0x000000, 0x013fff, NULL, program_rom)
 MEM_ADDR8(0x018000, 0x01cfff, NULL, main_ram)
+/* Vector RAM must be byte-accessible too: the POST RAM test uses byte
+ * writes/reads and reports "RAM 0" if they don't stick. The 68K core's
+ * byte macros (B[A^1]) handle the word byte-order. */
+MEM_ADDR8(0x800000, 0x801fff, NULL, quantum_vram)
 MEM_END
 
 MEM_WRITE(QuantumWriteByte)
 MEM_ADDR8(0x000000, 0x013fff, MWA_ROM, NULL)
 MEM_ADDR8(0x018000, 0x01cfff, NULL, main_ram)
+MEM_ADDR8(0x800000, 0x801fff, NULL, quantum_vram)
 MEM_END
 
 MEM_READ16(QuantumReadWord)
 MEM_ADDR16(0x000000, 0x013fff, NULL, program_rom)
 MEM_ADDR16(0x018000, 0x01cfff, NULL, main_ram)
-MEM_ADDR16(0x800000, 0x801fff, NULL, vec_ram)
+MEM_ADDR16(0x800000, 0x801fff, NULL, quantum_vram)
 MEM_ADDR16(0x840000, 0x84003f, quantum_snd_read, NULL)
 MEM_ADDR16(0x900000, 0x9001ff, NULL, nv_ram)
 MEM_ADDR16(0x940000, 0x940001, quantum_trackball_r, NULL)
@@ -176,28 +195,39 @@ MEM_END
 MEM_WRITE16(QuantumWriteWord)
 MEM_ADDR16(0x000000, 0x013fff, MWA_ROM16, NULL)
 MEM_ADDR16(0x018000, 0x01cfff, NULL, main_ram)
-MEM_ADDR16(0x800000, 0x801fff, NULL, vec_ram)
+MEM_ADDR16(0x800000, 0x801fff, NULL, quantum_vram)
 MEM_ADDR16(0x840000, 0x84003f, quantum_snd_write, NULL)
 MEM_ADDR16(0x900000, 0x9001ff, NULL, nv_ram)
 MEM_ADDR16(0x950000, 0x95001f, NULL, quantum_colorram)
 MEM_ADDR16(0x958000, 0x958001, quantum_led_write, NULL)
 MEM_ADDR16(0x960000, 0x960001, MWA_NOP16, NULL)
 MEM_ADDR16(0x968000, 0x968001, avgdvg_reset_word_w, NULL)
-MEM_ADDR16(0x978000, 0x978001, avgdvg_go_word_w, NULL) // service mode quirk
+MEM_ADDR16(0x970000, 0x970001, avgdvg_go_word_w, NULL)   /* VGGO (MAME 0.111) */
+MEM_ADDR16(0x978000, 0x978001, watchdog_reset_w16, NULL) /* watchdog, NOT VGGO */
 MEM_END
 
 void run_quantum()
 {
-	avg_clear();
 	watchdog_reset_w(0, 0, 0);
 	pokey_sh_update();
+	/* debug: delivered IRQ rate, expect 240 per 60 frames */
+	if (config.debug_profile_code)
+	{
+		static int frames = 0;
+		if (++frames >= Machine->gamedrv->fps)
+		{
+			LOG_INFO("quantum: IRQs in the last %d frames = %d (expect 240)",
+				frames, quantum_irq_count);
+			frames = 0; quantum_irq_count = 0;
+		}
+	}
 }
 
 int init_quantum()
 {
 	LOG_INFO("Starting Quantum Init");
 	memset(main_ram, 0x00, sizeof(main_ram));
-	memset(vec_ram, 0x00, 0x2000);            // driver uses vec_ram[0..0x1FFF]
+	memset(quantum_vram, 0x00, sizeof(quantum_vram));
 	memset(nv_ram, 0x00, sizeof(nv_ram));
 	nvram_set_region(nv_ram, 0x200, 0xff);
 	// program_rom is fully overwritten by the memcpy below; no memset needed.
@@ -205,6 +235,7 @@ int init_quantum()
 	memcpy(program_rom, Machine->memory_region[CPU0], 0x14000);
 	byteswap(program_rom, 0x14000);
 
+	quantum_vectorram = (UINT16 *)quantum_vram;
 	avg_start_quantum();
 
 	pokey_sh_start(&pokey_interface);
@@ -324,7 +355,7 @@ AAE_DRIVER_CPUS(
 		/*type*/     CPU_68000,
 		/*freq*/     6048000,
 		/*div*/      100,
-		/*ipf*/      3,
+		/*ipf*/      4,                  // 4 IRQs per 60 Hz frame = 240 Hz (see quantum_interrupt)
 		/*int type*/ INT_TYPE_68K1,
 		/*int cb*/   &quantum_interrupt,
 		/*r8*/       QuantumReadByte,
@@ -346,6 +377,7 @@ AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x0, 0x2000)
 AAE_DRIVER_NVRAM(generic_nvram_handler)
 AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_CLONE_OF("quantum")
 AAE_DRIVER_END()
 
 // Quantum (Revision 2)
@@ -361,7 +393,7 @@ AAE_DRIVER_CPUS(
 		/*type*/     CPU_68000,
 		/*freq*/     6000000,
 		/*div*/      100,
-		/*ipf*/      3,
+		/*ipf*/      4,                  // 4 IRQs per 60 Hz frame = 240 Hz (see quantum_interrupt)
 		/*int type*/ INT_TYPE_68K1,
 		/*int cb*/   &quantum_interrupt,
 		/*r8*/       QuantumReadByte,
@@ -398,7 +430,7 @@ AAE_DRIVER_CPUS(
 		/*type*/     CPU_68000,
 		/*freq*/     6048000,
 		/*div*/      100,
-		/*ipf*/      3,
+		/*ipf*/      4,                  // 4 IRQs per 60 Hz frame = 240 Hz (see quantum_interrupt)
 		/*int type*/ INT_TYPE_68K1,
 		/*int cb*/   &quantum_interrupt,
 		/*r8*/       QuantumReadByte,
@@ -420,6 +452,7 @@ AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x0, 0x2000)
 AAE_DRIVER_NVRAM(generic_nvram_handler)
 AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_CLONE_OF("quantum")
 AAE_DRIVER_END()
 AAE_REGISTER_DRIVER(drv_quantum1)
 AAE_REGISTER_DRIVER(drv_quantum)

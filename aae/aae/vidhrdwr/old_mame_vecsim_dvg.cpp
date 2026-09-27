@@ -1,6 +1,6 @@
 #include "old_mame_vecsim_dvg.h"
 #include "timer.h"
-#include "aae_avg.h"
+#include "mame_late_avgdvg.h"
 #include "emu_vector_draw.h"
 #include "texture_handler.h"
 #include "mame_vector.h"
@@ -22,14 +22,13 @@
 // I prefer this to what is currently in MAME.
 
 // Variables
-int vector_updates;
+// vector_updates is shared with the MAME engine (defined in
+// mame_late_avgdvg.cpp, extern'd via its header); only one engine runs
+// per game so the counter never double-counts.
 static int busy;
-static UINT8 vector_engine;
-unsigned char* dvg_vectorram;
-unsigned int dvg_vectorram_size;
+static unsigned char* dvg_vectorram;
+static unsigned int dvg_vectorram_size;
 static int ASTEROID_DVG = 0;
-static int yval = 1130;
-
 static int width, height;
 static int xcenter, ycenter;
 static int xmin, xmax;
@@ -40,14 +39,18 @@ static int flip_x, flip_y, swap_xy;
 #pragma warning( disable : 4244)  // MSVC only: intentional narrowing in the DVG vector decode
 #endif
 
+// Fixed-point shift for beam coordinates (was inherited from the retired
+// aae_avg.h; the position setup in opcode 0xa hardcodes << 16 to match).
+#define VEC_SHIFT 16
+
 #define vecmemrdwd(address) ((dvg_vectorram[pc]) | (dvg_vectorram[pc+1]<<8))
 
-void set_screen_flipping(int val)
+void vecsim_set_screen_flipping(int val)
 {
 	swap_xy = val;
 }
 
-int dvg_done(void)
+int vecsim_dvg_done(void)
 {
 	return { !busy };
 }
@@ -57,22 +60,32 @@ static void dvg_clr_busy(int dummy)
 	busy = 0;
 }
 
-void dvg_reset(int offset, int data)
+static void dvg_reset(int offset, int data)
 {
 	dvg_clr_busy(0);
 }
 
-void dvg_reset_w(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite)
+void vecsim_dvg_reset_w(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite)
 {
 	dvg_reset(0, 0);
 }
 
-int dvg_vector_timer(int scale)
+static int dvg_vector_timer(int scale)
 {
-	return scale;
+	/* Per MAME 0.111 dvg_gostrobe: a vector op with effective scale S runs
+	 * its bit-rate multipliers for fin = 2 << S input pulses at 8 master
+	 * cycles each (12.096 MHz). Returned in fin units; dvg_go converts to
+	 * seconds. The old linear "return scale" (4.5us per scale step) let
+	 * scale-heavy frames finish up to 16x too fast, and games that pace
+	 * themselves on the halt flag (omegrace) ran fast by the same factor,
+	 * floating with scene content. scale > 9 arrives here as -1: the
+	 * hardware's (2 << S) & 0x7ff is 0 for those, so charge nothing. */
+	if (scale < 0)
+		return 0;
+	return 2 << scale;
 }
 
-int dvg_generate_vector_list(void)
+static int dvg_generate_vector_list(void)
 {
 	int pc = 0;
 	int sp = 0;
@@ -177,8 +190,6 @@ int dvg_generate_vector_list(void)
 
 			//Do overall draw scaling
 			scale = (secondwd >> 12) & 0x0f;
-			//currenty = (yval - y) << VEC_SHIFT;          // TODO: FIX THIS
-			//currentx = x << VEC_SHIFT;
 			// set the current X,Y
 			currentx = (x - xmin) << 16;
 			currenty = (ymax - y) << 16;
@@ -265,7 +276,7 @@ int dvg_generate_vector_list(void)
 	return total_length;
 }
 
-void dvg_go(int offset, int data)
+static void dvg_go(int offset, int data)
 {
 	int total_length;
 
@@ -278,27 +289,36 @@ void dvg_go(int offset, int data)
 	vector_updates++;
 	busy = 1;
 
-	/* DVG case */
-	if (vector_engine == USE_DVG)
-	{
-		total_length = dvg_generate_vector_list();
-		timer_pulse(TIME_IN_NSEC(4500) * total_length, CPU0, dvg_clr_busy);
-	}
+	total_length = dvg_generate_vector_list();
+	/* total_length is in fin units of 8 cycles @ 12.096 MHz (see
+	 * dvg_vector_timer). */
+	timer_pulse(TIME_IN_HZ(12096000) * 8 * total_length, CPU0, dvg_clr_busy);
 }
 
-void dvg_go_w(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite)
+void vecsim_dvg_go_w(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite)
 {
 	dvg_go(0, 0);
 }
 
-int dvg_init()
+/* Plain-call strobes for drivers that don't GO/RST through a memory-write
+ * handler (omegrace strobes GO from a port READ and VGRST from a port write). */
+void vecsim_dvg_go(void)
 {
-	// 
+	dvg_go(0, 0);
+}
+
+void vecsim_dvg_reset(void)
+{
+	dvg_reset(0, 0);
+}
+
+static int dvg_init()
+{
+	//
 	dvg_vectorram = &memory_region(REGION_CPU1)[Machine->gamedrv->vectorram];
 	dvg_vectorram_size = Machine->gamedrv->vectorram_size;
 	//
 
-	vector_engine = USE_DVG;
 	busy = 0;
 	vector_updates = 0;
 
@@ -314,10 +334,12 @@ int dvg_init()
 	xcenter = ((xmax + xmin) / 2) << 16;
 	ycenter = ((ymax + ymin) / 2) << 16;
 
+
+
 	return 1;
 }
 
-int dvg_start_asteroid(void)
+int vecsim_dvg_start_asteroid(void)
 {
 	set_texture_id(&game_tex[0]);
 	ASTEROID_DVG = 1;
@@ -325,13 +347,14 @@ int dvg_start_asteroid(void)
 	return dvg_init();
 }
 
-int dvg_start(void)
+int vecsim_dvg_start(void)
 {
 	ASTEROID_DVG = 0;
+	swap_xy = 0;
 	return dvg_init();
 }
 
-int dvg_end()
+int vecsim_dvg_end()
 {
 	busy = 0;
 	vector_updates = 0;
@@ -339,7 +362,7 @@ int dvg_end()
 	return 1;
 }
 
-void test_clear_busy()
+void vecsim_test_clear_busy()
 {
 	busy = 0;
 	vector_updates = 0;

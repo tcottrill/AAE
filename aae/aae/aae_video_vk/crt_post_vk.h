@@ -88,6 +88,7 @@ struct CrtMonitorParamsVK
     float maskType = 0.0f;      // uMaskType (0 grille, 1 slot, 2 dot triad)
     float maskStrength = 0.0f;  // uMaskStrength
     float maskScale = 1.0f;     // uMaskScale
+    float softPhosphor = 0.0f; // separate 6100 shader mode, bypasses raster processing
 };
 
 struct CrtPostVKCreateInfo
@@ -130,6 +131,17 @@ public:
                          VkImageView texView,
                          int texW, int texH,
                          int targetW, int targetH);
+
+    // Same tiled multiply at an explicit y-down target rect. The VECTOR path
+    // needs this: there the overlay covers only the letterboxed game
+    // rectangle of the swapchain, not a whole game RT. Tiling is 1:1 with
+    // TARGET pixels (u = rect width / texW), so the overlay's own pixels stay
+    // crisp instead of being upscaled with the game image.
+    void RecordScanlinesRect(VkContext& ctx, VkCommandBuffer cmd, uint32_t frameIndex,
+                             VkImageView texView,
+                             int texW, int texH,
+                             float x0, float y0, float x1, float y1,
+                             int targetW, int targetH);
 
     // Monitor CRT pass. srcView/srcSampler are the game RT's mipped sampled
     // view; the quad is drawn into the ALREADY-OPEN swapchain pass at the

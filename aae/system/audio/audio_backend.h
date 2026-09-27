@@ -65,6 +65,14 @@ public:
 	virtual uint32_t OutputChannelCount() const = 0;
 	virtual uint32_t OutputChannelMask() const = 0;
 
+	// --- Session audio capture (-wavwrite) --------------------------------
+	// Start recording the FINAL mixed output (all paths combined) to a
+	// 16-bit PCM stereo WAV at `path`. Default: unsupported. A backend that
+	// implements this must make CaptureStop idempotent and also call it
+	// from its own Shutdown().
+	virtual bool CaptureStart(const char* path) { (void)path; return false; }
+	virtual void CaptureStop() {}
+
 	int OutputRate() const { return m_rate; }
 	int FramesPerUpdate() const { return m_frames_per_update; }
 

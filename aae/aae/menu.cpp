@@ -42,7 +42,7 @@ void allegro_message(const char* title, const char* message);
 void AAE_ApplyAudioVolumesFromConfig(int force);
 void setup_ambient(int style);
 void init_raster_overlay();
-void setup_video_config();
+// setup_video_config() is declared in config.h (included above).
 
 // Pull in emulator_is_gui_active() so SaveConfigIfRequired and GetTitleText
 // can detect when the menu is being used from the GUI frontend instead of
@@ -672,6 +672,7 @@ void MenuManager::SaveConfigIfRequired(MenuID fromId) {
         // Volumes stored as real 0..255 byte values.
         my_set_config_int("main", "mainvol",  config.mainvol,  audPath);
         my_set_config_int("main", "pokeyvol", config.pokeyvol, audPath);
+        my_set_config_int("main", "samplevol", config.samplevol, audPath);
         my_set_config_int("main", "noisevol", config.noisevol, audPath);
         my_set_config_int("main", "hvnoise",  config.hvnoise,  audPath);
         my_set_config_int("main", "psnoise",  config.psnoise,  audPath);
@@ -898,12 +899,20 @@ void MenuManager::BuildVideoMenu() {
         m_items.push_back(link);
     }
 
-    // Color monitor / screen effect submenu (affects color raster games only).
+    // Color monitor / screen effect submenu. Applies to color RASTER games
+    // and to color VECTOR games: a color X-Y monitor was an ordinary
+    // shadow-mask tube, so it runs the same shader and overlay textures off
+    // the same [monitorcolor] settings.
     {
         MenuItem link = MenuItem::Link("COLOR MONITOR SETUP",
             [this]() { TransitionTo(MenuID::ColorMonitor); });
-        link.isDisabledFn = [gameUsesMonitor]() { return !gameUsesMonitor(VIDEO_TYPE_RASTER_COLOR); };
-        link.disabledReason = "NOT A COLOR RASTER GAME";
+        link.isDisabledFn = []() {
+            if (emulator_is_gui_active()) return false;
+            if (!Machine || !Machine->drv) return true;
+            const int va = Machine->drv->video_attributes;
+            return (va & VIDEO_TYPE_RASTER_COLOR) == 0 && !is_color_vector_attr(va);
+        };
+        link.disabledReason = "NOT A COLOR GAME";
         m_items.push_back(link);
     }
 
@@ -1086,6 +1095,7 @@ void MenuManager::BuildColorMonitorMenu() {
     // inis keep working unchanged:
     //   OFF    -> color_enable=0, raster_effect="NONE"  (raw pixels)
     //   SHADER -> color_enable=1, raster_effect="NONE"  (color CRT shader)
+    //   6100 SOFT PHOSPHOR -> color_enable=2, raster_effect="NONE"
     //   *.png  -> color_enable=0, raster_effect=<file>  (texture overlay)
     {
         static std::string s_screenEffect;
@@ -1093,10 +1103,11 @@ void MenuManager::BuildColorMonitorMenu() {
             aae_stricmp(config.raster_effect, "NONE") != 0)
             s_screenEffect = config.raster_effect;
         else
-            s_screenEffect = config.color_enable ? "SHADER" : "OFF";
+            s_screenEffect = config.color_enable == 2 ? "6100 SOFT PHOSPHOR" :
+                (config.color_enable ? "SHADER" : "OFF");
 
         std::vector<std::string> fxOptions = {
-            "OFF", "SHADER", "aperture4x6.png", "scanlines.png", "scanrez2.png", "scanrez2r.png"
+            "OFF", "SHADER", "6100 SOFT PHOSPHOR", "aperture4x6.png", "scanlines.png", "scanrez2.png", "scanrez2r.png"
         };
         // Include any custom filename that came from the ini but is not listed.
         bool alreadyListed = false;
@@ -1117,6 +1128,10 @@ void MenuManager::BuildColorMonitorMenu() {
                 }
                 else if (v == "SHADER") {
                     config.color_enable = 1;
+                    config.raster_effect = (char*)"NONE";
+                }
+                else if (v == "6100 SOFT PHOSPHOR") {
+                    config.color_enable = 2;
                     config.raster_effect = (char*)"NONE";
                 }
                 else {
@@ -1166,8 +1181,13 @@ void MenuManager::BuildColorMonitorMenu() {
     // Everything below SCREEN EFFECT tunes the shader; grey it all out
     // (live) whenever the shader is not the selected effect.
     for (size_t i = firstShaderKnob; i < m_items.size(); ++i) {
-        m_items[i].isDisabledFn = []() { return config.color_enable == 0; };
-        m_items[i].disabledReason = "SHADER OFF";
+        // Soft phosphor only uses strength and size. Preserve legacy knob
+        // values for switching back, but do not suggest they affect this mode.
+        const bool softKnob = i == firstShaderKnob + 1 || i == firstShaderKnob + 2;
+        m_items[i].isDisabledFn = [softKnob]() {
+            return config.color_enable == 0 || (config.color_enable == 2 && !softKnob);
+        };
+        m_items[i].disabledReason = "NOT USED BY THIS EFFECT";
     }
 }
 void MenuManager::BuildSoundMenu() {
@@ -1224,12 +1244,18 @@ void MenuManager::BuildSoundMenu() {
     };
 
     // Clamp before building so the display starts in a sane state.
-    config.mainvol  = clamp_int(config.mainvol,  0, 255);
-    config.pokeyvol = clamp_int(config.pokeyvol, 0, 255);
-    config.noisevol = clamp_int(config.noisevol, 0, 255);
+    config.mainvol   = clamp_int(config.mainvol,   0, 255);
+    config.samplevol = clamp_int(config.samplevol, 0, 255);
+    config.pokeyvol  = clamp_int(config.pokeyvol,  0, 255);
+    config.noisevol  = clamp_int(config.noisevol,  0, 255);
 
+    // MAIN is the backend master. SAMPLE and CHIP are mixer group volumes
+    // (mixer_groups.h): SAMPLE scales recorded game sounds, CHIP scales every
+    // emulated sound chip stream (POKEY, AY8910, SN76477, Namco, DAC, TMS5220).
+    // ROM-decoded speech played through sample_start (OKI, Bosco) is SAMPLE.
     addVolItemPercent("MAIN VOLUME",    &config.mainvol);
-    addVolItemPercent("POKEY/AY VOLUME",&config.pokeyvol);
+    addVolItemPercent("SAMPLE VOLUME",  &config.samplevol);
+    addVolItemPercent("CHIP VOLUME",    &config.pokeyvol);
     addVolItemPercent("AMBIENT VOLUME", &config.noisevol);
 
     m_items.push_back(MenuItem::Bool("HV CHATTER", &config.hvnoise));

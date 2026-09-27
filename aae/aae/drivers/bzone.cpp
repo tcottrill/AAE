@@ -13,15 +13,26 @@
 // THE CODE BELOW IS FROM MAME and COPYRIGHT the MAME TEAM.
 //============================================================================
 
+#include <cmath>
 #include "bzone.h"
 #include "aae_mame_driver.h"
 #include "mixer.h"
 #include "driver_registry.h"    // AAE_REGISTER_DRIVER
-#include "aae_avg.h"
-#include "earom.h"
+#include "mame_late_avgdvg.h"
+#include "er2055.h"
 #include "mathbox.h"
-#include "aae_pokey.h"
+#include "c012294_interface.h"
 #include "timer.h"
+#include "config.h"     // config.debug_profile_code
+
+// Board NMI: the 3 kHz clock (12.096 MHz / 4096 = 2953.125 Hz) divided by 12 =
+// 246.09375 Hz, exactly 6144 cycles of the 1.512 MHz 6502. The game draws one
+// picture per six NMIs (~41 Hz), so these entries present at 40 fps and take
+// the hardware-exact rate from a periodic timer (armed in init_bzone /
+// init_redbaron; the CPU entries carry no ipf callback). Battlezone, Bradley
+// Trainer and Red Baron share the board. (Was TIME_IN_HZ(240), 2.5% slow.)
+#define BZONE_NMI_HZ (12096000.0 / 4096.0 / 12.0)
+static int bzone_nmi_count = 0;   // debug: NMIs since the last per-second log
 
 #define IN0_3KHZ (1<<7)
 #define IN0_VG_HALT (1<<6)
@@ -68,10 +79,18 @@ static const char* redbaron_samples[] = {
 	"spin.wav",
 	 0 };
 
+static void bzone_engine_tick(double dt_s);   // the SOUND latch's engine ramp, below
+
 void bzone_interrupt(int dummy)
 {
 	if (readinputport(0) & 0x10)
+	{
 		cpu_do_int_imm(CPU0, INT_TYPE_NMI);
+		bzone_nmi_count++;
+	}
+	// Once per NMI period (4.06 ms), self test or not. A no-op for Red Baron,
+	// which never starts the engine channel.
+	bzone_engine_tick(1.0 / BZONE_NMI_HZ);
 }
 
 // Translation table for one-joystick emulation
@@ -138,8 +157,9 @@ static struct POKEYinterface redbaron_pokey_interface =
 
 WRITE_HANDLER(bzone_pokey_w)
 {
-	if (soundEnable)
-		pokey_1_w(address, data, 0);
+	// Sound enable gates the output amplifier, not POKEY register writes.
+	// In particular, POTGO must reach the chip while attract mode is muted.
+	pokey_1_w(address, data, 0);
 }
 
 READ_HANDLER(BzoneIN0read)
@@ -155,7 +175,7 @@ READ_HANDLER(BzoneIN0read)
 	if ((get_eterna_ticks(0) + m_cpu_6502[CPU0]->get6502ticks(0)) & 0x100) res |= IN0_3KHZ;
 	else res &= ~IN0_3KHZ;
 
-	if (avg_check())	res |= IN0_VG_HALT;
+	if (avgdvg_done())	res |= IN0_VG_HALT;
 	else res &= ~IN0_VG_HALT;
 
 	return res;
@@ -203,54 +223,103 @@ WRITE_HANDLER(RedBaronSoundsWrite)
 	}
 }
 
+// Battlezone's SOUND latch ($1840), played from recorded samples. Ported from
+// the Battlezone C port's bz_sounds.c. The NMI rewrites the latch every tick:
+//   D0 explosion      D1 = which explosion (set: explode1, clear: explode2)
+//   D2 shell fired    D3 = loud / soft: set by the PLAYER's shot -> fire1,
+//                     cleared by the ENEMY's shot -> fire2
+//   D4 engine fast (tank moving)   D5 master sound enable   D6 start lamp
+//   D7 engine on
+//  - one-shots start on the RISING edge of D0 / D2 (restarting them on any
+//    latch change while the bit is set - e.g. the start lamp D6 blinking - cut
+//    them short / re-fired them);
+//  - the engine's 1.0 -> 1.66 pitch change RAMPS with an RC-like time constant,
+//    as the PCB's engine oscillator does, always from the sample's own base
+//    rate (set_freq(get_freq * 1.66) compounded on every latch change);
+//  - D7 gates the engine with a short fade, so attract mode is silent like the
+//    PCB.
+// bzone_engine_tick() runs once per NMI period from bzone_interrupt().
+#define BZ_CH_SHELL      2
+#define BZ_CH_ENGINE     3
+#define BZ_CH_EXPLODE    7
+#define BZ_ENGINE_FAST   1.66   // fast rumble = 1.66 x the slow rate
+#define BZ_ENGINE_TAU_S  0.35   // RC time constant of the pitch ramp, seconds (by ear; tune)
+#define BZ_ENGINE_FADE_S 0.05   // D7 on/off fade
+
+static UINT8  bz_snd_last = 0;        // previous latch value
+static int    bz_engine_base = 0;     // engine1's native rate, Hz (0 = not known yet)
+static int    bz_engine_vol = 255;    // the mixer's volume for the channel at start (0..255)
+static double bz_engine_rate = 1.0;
+static double bz_engine_gain = 0.0;
+
+static void bzone_sound_reset()
+{
+	bz_snd_last = 0;
+	bz_engine_base = 0;
+	bz_engine_vol = 255;
+	bz_engine_rate = 1.0;
+	bz_engine_gain = 0.0;
+	soundEnable = 1;   // as at power-on: the POKEY's init writes must get through before the game first sets D5
+}
+
 WRITE_HANDLER(BzoneSounds)
 {
-	static int lastValue = 0;
+	UINT8 rise = (UINT8)(data & ~bz_snd_last);
+	bz_snd_last = (UINT8)data;
 
 	//set_aae_leds(~data & 0x40, 0, 0);
 	set_led_status(0, ~data & 0x40);
 
-	// Enable/disable all sound output
+	// D5 mutes the POKEY mixer output; its clocks and registers keep running.
+	pokey_set_muted(0, (data & 0x20) == 0);
+
+	// D5: enable/disable all sound output
 	if (data & 0x20)
 	{
-		soundEnable = 1; 
-		if (!sample_playing(3)) 
-		{ sample_start(3, 2, 1); }
+		soundEnable = 1;
+		if (!sample_playing(BZ_CH_ENGINE))
+		{
+			sample_start(BZ_CH_ENGINE, kEngine1, 1);
+			bz_engine_vol = sample_get_volume(BZ_CH_ENGINE);
+			sample_set_volume(BZ_CH_ENGINE, (int)(bz_engine_gain * bz_engine_vol));
+			bz_engine_base = sample_get_freq(BZ_CH_ENGINE);
+			bz_engine_rate = 1.0;
+		}
 	}
-	else { soundEnable = 0; }
-
-	// If sound is off, don't bother playing samples
-	if (!soundEnable) { sample_stop(3); sample_stop(7); return; }
-
-	if (lastValue == data) return;
-	lastValue = data;
-
-	// Enable explosion output
-	if (data & 0x01)
+	else
 	{
-		if (data & 0x02) { sample_start(7, 4, 0); }
-		else { sample_start(7, 5, 0); }
+		soundEnable = 0;
+		sample_stop(BZ_CH_ENGINE);
+		sample_stop(BZ_CH_EXPLODE);
+		sample_stop(BZ_CH_SHELL);
+		return;
 	}
 
-	// Enable shell output
-	if (data & 0x04)
+	// Explosion, on the rising edge of D0
+	if (rise & 0x01)
 	{
-		if (data & 0x08) { sample_start(2, 0, 0); } // loud shell
-		else { sample_start(2, 1, 0); } // soft shell
+		sample_start(BZ_CH_EXPLODE, (data & 0x02) ? kExplode1 : kExplode2, 0);
 	}
 
-	// Enable engine output, really missing the volume ramp here. 
-	if (data & 0x80)
+	// Shell, on the rising edge of D2: loud = the player's, soft = the enemy's
+	if (rise & 0x04)
 	{
-		if (data & 0x10)
-		{ 	//Data is 0xb0
-			sample_set_freq(3, (int) (sample_get_freq(3) * 1.66));
-		}// Fast rumble
-		else
-		{//data is 0xa0
-		 sample_set_freq(3, sample_get_freq(3) ); // Slow rumble  
-		}	
+		sample_start(BZ_CH_SHELL, (data & 0x08) ? kFire1 : kFire2, 0);
 	}
+}
+
+// The engine: rate glides toward 1.66 (D4 set) or 1.0, volume toward D7.
+static void bzone_engine_tick(double dt_s)
+{
+	if (!soundEnable || bz_engine_base <= 0) return;
+
+	double target = (bz_snd_last & 0x10) ? BZ_ENGINE_FAST : 1.0;
+	double gain_target = (bz_snd_last & 0x80) ? 1.0 : 0.0;
+
+	bz_engine_rate += (target - bz_engine_rate) * (1.0 - exp(-dt_s / BZ_ENGINE_TAU_S));
+	bz_engine_gain += (gain_target - bz_engine_gain) * (1.0 - exp(-dt_s / BZ_ENGINE_FADE_S));
+	sample_set_freq(BZ_CH_ENGINE, (int)(bz_engine_base * bz_engine_rate + 0.5));
+	sample_set_volume(BZ_CH_ENGINE, (int)(bz_engine_gain * bz_engine_vol + 0.5));
 }
 
 READ_HANDLER(analog_data_r)
@@ -269,6 +338,17 @@ void run_bzone()
 {
 	//if (!paused && soundEnable) { pokey_sh_update(); }
 	pokey_sh_update();
+	/* debug: delivered NMI rate, expect 246.09 per second (0 in self-test) */
+	if (config.debug_profile_code)
+	{
+		static int frames = 0;
+		if (++frames >= Machine->gamedrv->fps)
+		{
+			LOG_INFO("bzone: NMIs in the last %d frames = %d (expect %.2f)",
+				frames, bzone_nmi_count, BZONE_NMI_HZ);
+			frames = 0; bzone_nmi_count = 0;
+		}
+	}
 }
 
 MEM_READ(BradleyRead)
@@ -285,7 +365,7 @@ MEM_END
 
 MEM_WRITE(BradleyWrite)
 MEM_ADDR(0x1000, 0x1000, MWA_ROM)
-MEM_ADDR(0x1200, 0x1200, advdvg_go_w)
+MEM_ADDR(0x1200, 0x1200, avgdvg_go_w)
 MEM_ADDR(0x1400, 0x1400, MWA_ROM)
 MEM_ADDR(0x1600, 0x1600, MWA_ROM)
 MEM_ADDR(0x1820, 0x182f, pokey_1_w)
@@ -307,7 +387,7 @@ MEM_END
 
 MEM_WRITE(BzoneWrite)
 MEM_ADDR(0x1000, 0x1000, MWA_ROM)
-MEM_ADDR(0x1200, 0x1200, advdvg_go_w)
+MEM_ADDR(0x1200, 0x1200, avgdvg_go_w)
 MEM_ADDR(0x1400, 0x1400, watchdog_reset_w)
 MEM_ADDR(0x1600, 0x1600, avgdvg_reset_w)
 MEM_ADDR(0x1820, 0x182f, bzone_pokey_w)
@@ -315,6 +395,32 @@ MEM_ADDR(0x1860, 0x187f, MathboxGo)
 MEM_ADDR(0x1840, 0x1840, BzoneSounds)
 MEM_ADDR(0x3000, 0xffff, MWA_ROM)
 MEM_END
+
+// ---------------------------------------------------------------------------
+// EAROM (ER2055), Red Baron only - MAME bzone.cpp redbaron_state::earom_read/
+// earom_write/earom_control_w. CK = EDB0, C1 = /EDB2, C2 = EDB1, CS1 = EDB3,
+// /CS2 = GND. Red Baron's address bit 5 is wired inverted (MAME:
+// set_address((offset ^ 0x20) & 0x3f)). `address` is the offset from the
+// range start.
+// ---------------------------------------------------------------------------
+static er2055 earom;
+
+READ_HANDLER(earom_read)
+{
+	return er2055_data(&earom);
+}
+
+WRITE_HANDLER(earom_write)
+{
+	er2055_set_address(&earom, (address ^ 0x20) & 0x3f);
+	er2055_set_data(&earom, data);
+}
+
+WRITE_HANDLER(earom_control_w)
+{
+	er2055_set_control(&earom, (data >> 3) & 1, true, !((data >> 2) & 1), (data >> 1) & 1);
+	er2055_set_clk(&earom, data & 1);
+}
 
 MEM_READ(RedBaronRead)
 MEM_ADDR(0x0800, 0x0800, BzoneIN0read)
@@ -325,19 +431,19 @@ MEM_ADDR(0x1802, 0x1802, ip_port_4_r)
 MEM_ADDR(0x1804, 0x1804, MathboxLowbitRead)
 MEM_ADDR(0x1806, 0x1806, MathboxHighbitRead)
 MEM_ADDR(0x1810, 0x181f, pokey_1_r)
-MEM_ADDR(0x1820, 0x185f, EaromRead)
+MEM_ADDR(0x1820, 0x185f, earom_read)
 MEM_END
 
 MEM_WRITE(RedBaronWrite)
 //MEM_ADDR( 0x0a00, 0x0a00, MWA_ROM)
 //MEM_ADDR( 0x0c00, 0x0c00, MWA_ROM)
-MEM_ADDR(0x1200, 0x1200, advdvg_go_w)
+MEM_ADDR(0x1200, 0x1200, avgdvg_go_w)
 MEM_ADDR(0x1600, 0x1600, avgdvg_reset_w)
 MEM_ADDR(0x1400, 0x1400, watchdog_reset_w)
 MEM_ADDR(0x1808, 0x1808, RedBaronSoundsWrite)
 MEM_ADDR(0x1810, 0x181f, bzone_pokey_w)
-MEM_ADDR(0x180c, 0x180c, EaromCtrl)
-MEM_ADDR(0x1820, 0x185f, EaromWrite)
+MEM_ADDR(0x180c, 0x180c, earom_control_w)
+MEM_ADDR(0x1820, 0x185f, earom_write)
 MEM_ADDR(0x1860, 0x187f, MathboxGo)
 
 MEM_ADDR(0x3000, 0x37ff, MWA_ROM)
@@ -345,25 +451,44 @@ MEM_ADDR(0x5000, 0x7fff, MWA_ROM)
 MEM_END
 
 //////////////////// MAIN() for program ///////////////////////////////////////////////////
+// Hands the mathbox its PROM regions. Returns non-zero and flags have_error
+// when the regions are missing, which aborts the game start.
+static int bzone_mathbox_start()
+{
+	if (!mathbox_init(Machine->memory_region[REGION_USER2], Machine->memory_region[REGION_USER3])) {
+		have_error = 1;
+		return 1;
+	}
+	return 0;
+}
+
 int init_redbaron()
 {
-	
-	//init6502(RedBaronRead, RedBaronWrite, 0x7fff, CPU0);
-	pokey_sh_start(&redbaron_pokey_interface);
-	avg_start_redbaron();
-	bzone_timer = timer_set(TIME_IN_HZ(240), CPU0, bzone_interrupt);
 
-	return 0;
+	//init6502(RedBaronRead, RedBaronWrite, 0x7fff, CPU0);
+	bzone_sound_reset();   // no engine state left over from a Battlezone session
+	pokey_sh_start(&redbaron_pokey_interface);
+	avg_start_bzone();   /* MAME 0.111: Red Baron uses the bzone AVG variant */
+	bzone_timer = timer_set(TIME_IN_HZ(BZONE_NMI_HZ), CPU0, bzone_interrupt);
+
+	er2055_init(&earom);
+	nvram_set_region(earom.rom, sizeof(earom.rom), 0x00);
+	earom_control_w(0, 0, nullptr);   // MAME machine_reset(): earom_control_w(0)
+
+	return bzone_mathbox_start();
 }
 
 int init_bzone()
 {
 	//init6502(BzoneRead, BzoneWrite, 0x7fff, CPU0);
+	bzone_sound_reset();
 	pokey_sh_start(&bzone_pokey_interface);
 	avg_start_bzone();
-	bzone_timer = timer_set(TIME_IN_HZ(240), CPU0, bzone_interrupt);
+	bzone_timer = timer_set(TIME_IN_HZ(BZONE_NMI_HZ), CPU0, bzone_interrupt);
 
-	return 0;
+	// No EAROM on Battlezone hardware (only Red Baron fits the ER2055), so
+	// nothing is registered for NVRAM here.
+	return bzone_mathbox_start();
 }
 void end_bzone()
 {
@@ -535,6 +660,34 @@ INPUT_PORTS_END
 
 //////////////////  END OF MAIN PROGRAM /////////////////////////////////////////////
 
+// Mathbox PROMs: the same seven parts as Tempest's 136002-126..132 (identical
+// CRCs), under Atari's 0361xx numbers. 036180 = 127 (word bits 3-0) ...
+// 036175 = 132 (bits 23-20); merged into three byte planes, low nibble then
+// high nibble at each plane. Order verified against MBUCOD (see
+// machine/mathbox.cpp). Battlezone and Red Baron zips use different socket
+// suffixes, hence two macros.
+#define BZONE_MATHBOX_PROMS() \
+	ROM_REGION(0x20, REGION_USER2, 0) \
+	ROM_LOAD("036174-01.b1", 0x0000, 0x0020, CRC(8b04f921) SHA1(317b3397482f13b2d1bc21f296d3b3f9a118787b)) \
+	ROM_REGION(0x300, REGION_USER3, 0) \
+	ROM_LOAD_NIB_LOW ("036180-01.f1", 0x0000, 0x0100, CRC(276eadd5) SHA1(55718cd8ec4bcf75076d5ef0ee1ed2551e19d9ba)) \
+	ROM_LOAD_NIB_HIGH("036179-01.h1", 0x0000, 0x0100, CRC(823b61ae) SHA1(d99a839874b45f64e14dae92a036e47a53705d16)) \
+	ROM_LOAD_NIB_LOW ("036178-01.j1", 0x0100, 0x0100, CRC(09f5a4d5) SHA1(d6f2ac07ca9ee385c08831098b0dcaf56808993b)) \
+	ROM_LOAD_NIB_HIGH("036177-01.k1", 0x0100, 0x0100, CRC(8119b847) SHA1(c4fbaedd4ce1ad6a4128cbe902b297743edb606a)) \
+	ROM_LOAD_NIB_LOW ("036176-01.l1", 0x0200, 0x0100, CRC(b31f6e24) SHA1(ce5f8ca34d06a5cfa0076b47400e61e0130ffe74)) \
+	ROM_LOAD_NIB_HIGH("036175-01.m1", 0x0200, 0x0100, CRC(2af82e87) SHA1(3816835a9ccf99a76d246adf204989d9261bb065))
+
+#define REDBARON_MATHBOX_PROMS() \
+	ROM_REGION(0x20, REGION_USER2, 0) \
+	ROM_LOAD("036174-01.a1", 0x0000, 0x0020, CRC(8b04f921) SHA1(317b3397482f13b2d1bc21f296d3b3f9a118787b)) \
+	ROM_REGION(0x300, REGION_USER3, 0) \
+	ROM_LOAD_NIB_LOW ("036180-01.l1", 0x0000, 0x0100, CRC(276eadd5) SHA1(55718cd8ec4bcf75076d5ef0ee1ed2551e19d9ba)) \
+	ROM_LOAD_NIB_HIGH("036179-01.k1", 0x0000, 0x0100, CRC(823b61ae) SHA1(d99a839874b45f64e14dae92a036e47a53705d16)) \
+	ROM_LOAD_NIB_LOW ("036178-01.j1", 0x0100, 0x0100, CRC(09f5a4d5) SHA1(d6f2ac07ca9ee385c08831098b0dcaf56808993b)) \
+	ROM_LOAD_NIB_HIGH("036177-01.h1", 0x0100, 0x0100, CRC(8119b847) SHA1(c4fbaedd4ce1ad6a4128cbe902b297743edb606a)) \
+	ROM_LOAD_NIB_LOW ("036176-01.f1", 0x0200, 0x0100, CRC(b31f6e24) SHA1(ce5f8ca34d06a5cfa0076b47400e61e0130ffe74)) \
+	ROM_LOAD_NIB_HIGH("036175-01.e1", 0x0200, 0x0100, CRC(2af82e87) SHA1(3816835a9ccf99a76d246adf204989d9261bb065))
+
 ROM_START(bzone)
 ROM_REGION(0x10000, REGION_CPU1, 0)
 ROM_LOAD("036422-01.bc3", 0x3000, 0x0800, CRC(7414177b) SHA1(147d97a3b475e738ce00b1a7909bbd787ad06eda))
@@ -548,6 +701,7 @@ ROM_LOAD("036409-01.n1", 0x7800, 0x0800, CRC(1e14e919) SHA1(448fab30535e6fad7e0a
 ROM_RELOAD(0xf800, 0x0800)
 ROM_REGION(0x100, REGION_PROMS, 0)
 ROM_LOAD("036408-01.k7", 0x0000, 0x0100, CRC(5903af03) SHA1(24bc0366f394ad0ec486919212e38be0f08d0239))
+BZONE_MATHBOX_PROMS()
 ROM_END
 
 ROM_START(bzonea)
@@ -565,6 +719,7 @@ ROM_RELOAD(0xf800, 0x0800)
 
 ROM_REGION(0x100, REGION_PROMS, 0)
 ROM_LOAD("036408-01.k7", 0x0000, 0x0100, CRC(5903af03) SHA1(24bc0366f394ad0ec486919212e38be0f08d0239))
+BZONE_MATHBOX_PROMS()
 ROM_END
 
 ROM_START(bzonec)
@@ -582,6 +737,7 @@ ROM_RELOAD(0xf800, 0x0800)
 
 ROM_REGION(0x100, REGION_PROMS, 0)
 ROM_LOAD("036408-01.k7", 0x0000, 0x0100, CRC(5903af03) SHA1(24bc0366f394ad0ec486919212e38be0f08d0239))
+BZONE_MATHBOX_PROMS()
 ROM_END
 
 ROM_START(bzonep)
@@ -599,6 +755,7 @@ ROM_RELOAD(0xf800, 0x0800)
 
 ROM_REGION(0x100, REGION_PROMS, 0)
 ROM_LOAD("036408-01.k7", 0x0000, 0x0100, CRC(5903af03) SHA1(24bc0366f394ad0ec486919212e38be0f08d0239))
+BZONE_MATHBOX_PROMS()
 ROM_END
 
 ROM_START(redbaron)
@@ -616,6 +773,7 @@ ROM_LOAD("036995-01.n1", 0x7800, 0x0800, CRC(ad81d1da) SHA1(8bd66e5f34fc1c75f31e
 ROM_RELOAD(0xf800, 0x0800)
 ROM_REGION(0x100, REGION_PROMS, 0)
 ROM_LOAD("036408-01.k7", 0x0000, 0x0100, CRC(5903af03) SHA1(24bc0366f394ad0ec486919212e38be0f08d0239))
+REDBARON_MATHBOX_PROMS()
 ROM_END
 
 ROM_START(redbarona) // Analog Vec Gen A035742-02
@@ -636,6 +794,7 @@ ROM_LOAD("037007-01e.a3", 0x3800, 0x0800, CRC(60250ede) SHA1(9c48952bd69863bee0c
 // AVG PROM
 ROM_REGION(0x100, REGION_PROMS, 0)
 ROM_LOAD("036408-01.k7", 0x0000, 0x0100, CRC(5903af03) SHA1(24bc0366f394ad0ec486919212e38be0f08d0239)) // 74S287N or compatible bprom like the 82S129
+REDBARON_MATHBOX_PROMS()
 ROM_END
 
 
@@ -654,6 +813,7 @@ ROM_LOAD("btn1.bin", 0x7800, 0x0800, CRC(182c8c64) SHA1(511af60d86551291d2dc2844
 ROM_RELOAD(0xf800, 0x0800)
 ROM_REGION(0x100, REGION_PROMS, 0)
 ROM_LOAD("036408-01.k7", 0x0000, 0x0100, CRC(5903af03) SHA1(24bc0366f394ad0ec486919212e38be0f08d0239))
+BZONE_MATHBOX_PROMS()
 ROM_END
 
 // Battlezone (Revision 2)
@@ -686,8 +846,10 @@ AAE_DRIVER_SCREEN(1024, 768, 0, 512, 0, 395)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x2000, 0x1000)
-AAE_DRIVER_NVRAM(atari_vg_earom_handler)
+AAE_DRIVER_NVRAM_NONE()
 AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_STANDALONE()
+AAE_DRIVER_SOUND_TRIM(170, 255)   // samples ~4 dB under the POKEY (set by ear)
 AAE_DRIVER_END()
 
 // Battlezone (Revision 1)
@@ -710,8 +872,10 @@ AAE_DRIVER_SCREEN(1024, 768, 0, 460, 0, 395)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x2000, 0x1000)
-AAE_DRIVER_NVRAM(atari_vg_earom_handler)
+AAE_DRIVER_NVRAM_NONE()
 AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_CLONE_OF("bzone")
+AAE_DRIVER_SOUND_TRIM(170, 255)   // samples ~4 dB under the POKEY (set by ear)
 AAE_DRIVER_END()
 
 // Battlezone Cocktail Proto
@@ -734,8 +898,10 @@ AAE_DRIVER_SCREEN(1024, 768, 0, 460, 0, 395)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x2000, 0x1000)
-AAE_DRIVER_NVRAM(atari_vg_earom_handler)
+AAE_DRIVER_NVRAM_NONE()
 AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_CLONE_OF("bzone")
+AAE_DRIVER_SOUND_TRIM(170, 255)   // samples ~4 dB under the POKEY (set by ear)
 AAE_DRIVER_END()
 
 // Battlezone Plus (Clay Cowgill)
@@ -758,8 +924,10 @@ AAE_DRIVER_SCREEN(1024, 768, 0, 460, 0, 395)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x2000, 0x1000)
-AAE_DRIVER_NVRAM(atari_vg_earom_handler)
+AAE_DRIVER_NVRAM_NONE()
 AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_CLONE_OF("bzone")
+AAE_DRIVER_SOUND_TRIM(170, 255)   // samples ~4 dB under the POKEY (set by ear)
 AAE_DRIVER_END()
 
 // Red Baron
@@ -777,13 +945,13 @@ AAE_DRIVER_CPUS(
 	),
 	AAE_CPU_NONE_ENTRY(), AAE_CPU_NONE_ENTRY(), AAE_CPU_NONE_ENTRY()
 )
-AAE_DRIVER_VIDEO_CORE(60,DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_BW | VECTOR_USES_OVERLAY1, ORIENTATION_DEFAULT)
+AAE_DRIVER_VIDEO_CORE(40, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW | VECTOR_USES_OVERLAY1, ORIENTATION_DEFAULT)   // ~41 Hz picture (6 NMIs), like bzone
 //AAE_DRIVER_SCREEN(1024, 768, 0, 460, 0, 395)
 AAE_DRIVER_SCREEN(1024, 768, 0, 512, 0, 395)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x2000, 0x1000)
-AAE_DRIVER_NVRAM(atari_vg_earom_handler)
+AAE_DRIVER_NVRAM(generic_nvram_handler)
 AAE_DRIVER_LAYOUT_NONE()
 AAE_DRIVER_END()
 
@@ -803,13 +971,14 @@ AAE_DRIVER_CPUS(
 	),
 	AAE_CPU_NONE_ENTRY(), AAE_CPU_NONE_ENTRY(), AAE_CPU_NONE_ENTRY()
 )
-AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_BW | VECTOR_USES_OVERLAY1, ORIENTATION_DEFAULT)
+AAE_DRIVER_VIDEO_CORE(40, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW | VECTOR_USES_OVERLAY1, ORIENTATION_DEFAULT)   // ~41 Hz picture (6 NMIs), like bzone
 AAE_DRIVER_SCREEN(1024, 768, 0, 512, 0, 395)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x2000, 0x1000)
-AAE_DRIVER_NVRAM(atari_vg_earom_handler)
+AAE_DRIVER_NVRAM(generic_nvram_handler)
 AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_CLONE_OF("redbaron")
 AAE_DRIVER_END()
 
 
@@ -828,12 +997,12 @@ AAE_DRIVER_CPUS(
 	),
 	AAE_CPU_NONE_ENTRY(), AAE_CPU_NONE_ENTRY(), AAE_CPU_NONE_ENTRY()
 )
-AAE_DRIVER_VIDEO_CORE(45, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW, ORIENTATION_DEFAULT)
+AAE_DRIVER_VIDEO_CORE(40, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW, ORIENTATION_DEFAULT)   // was 45; same board/picture rate as bzone
 AAE_DRIVER_SCREEN(1024, 768, 0, 530, 0, 545)
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x2000, 0x1000)
-AAE_DRIVER_NVRAM(atari_vg_earom_handler)
+AAE_DRIVER_NVRAM_NONE()
 AAE_DRIVER_LAYOUT_NONE()
 AAE_DRIVER_END()
 

@@ -255,6 +255,12 @@ void update_or_add_entry(const char* section, const char* key, const char* value
     SaveIniFile();
 }
 
+bool has_config_section(const char* section) {
+    // A [header] line creates the map entry in LoadIniFile even when no keys
+    // follow it, so plain membership - not "has entries" - is the question.
+    return ini_data.find(section ? section : "") != ini_data.end();
+}
+
 int get_config_int(const char* section, const char* key, int defval) {
     return std::atoi(get_value(section, key, std::to_string(defval).c_str()).c_str());
 }
@@ -316,6 +322,10 @@ float get_config_float(const std::string& section, const std::string& key, float
 
 bool get_config_bool(const std::string& section, const std::string& key, bool defaultValue) {
     return get_config_bool(section.c_str(), key.c_str(), defaultValue);
+}
+
+bool has_config_section(const std::string& section) {
+    return has_config_section(section.c_str());
 }
 
 std::string get_config_string(const std::string& section, const std::string& key, const std::string& defaultValue) {

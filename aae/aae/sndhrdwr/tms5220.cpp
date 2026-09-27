@@ -133,7 +133,11 @@ static_assert((int16_t)k1table[31] ==  27968, "k1table[31] must be 0x6D40 as sig
 static_assert((int16_t)k10table[0] == -13056, "k10table[0] must be 0xCD00 as signed 16-bit");
 static_assert((int16_t)k10table[7] ==  19712, "k10table[7] must be 0x4D00 as signed 16-bit");
 
-static unsigned char chirptable[41] = {
+// Signed excitation values stored as bytes (MAME declared this plain `char`,
+// which is signed on x86). Read through (signed char) at the use site: taken
+// unsigned, every negative step (0xd4 = -44) became a large positive one and
+// voiced speech came out far too loud and harsh.
+static const unsigned char chirptable[41] = {
 	0x00, 0x2a, 0xd4, 0x32, 0xb2, 0x12, 0x25, 0x14,
 	0x02, 0xe1, 0xc5, 0x02, 0x5f, 0x5a, 0x05, 0x0f,
 	0x26, 0xfc, 0xa5, 0xa5, 0xd6, 0xdd, 0xdc, 0xfc,
@@ -404,7 +408,7 @@ tryagain:
 		else
 		{
 			if (pitch_count < (int)sizeof(chirptable))
-				current_val = (chirptable[pitch_count] * current_energy) / 256;
+				current_val = ((signed char)chirptable[pitch_count] * current_energy) / 256;
 			else
 				current_val = 0x00;
 		}
@@ -706,6 +710,9 @@ int tms5220_sh_start(struct TMS5220interface* iinterface)
 	// linear, but for LPC speech the difference is below the noise floor of
 	// the synth itself.
 	stream_set_native_rate(tms5220_channel, emulation_rate);
+	// Honour the interface's volume (0..255, the mixer's dB-tapered scale);
+	// it used to be ignored and the chip always played at full level.
+	sample_set_volume_mixer(tms5220_channel, intfa->volume);
 
 	tms5220_reset();
 	tms5220_set_irq(iinterface->irq);

@@ -67,8 +67,14 @@ struct RomModule
 #define COMMA ,
 #define CRC(n)            (0x ## n)
 #define SHA1(x)           COMMA#x
-#define ROM_LOAD_NORMAL 0
-#define ROM_LOAD_16     1
+#define ROM_LOAD_NORMAL     0
+#define ROM_LOAD_16         1
+// 4-bit PROMs (256x4 etc.): each source byte holds one nibble in its low four
+// bits. NIB_LOW merges it into bits 3-0 of the destination byte, NIB_HIGH into
+// bits 7-4, leaving the other nibble alone. A region is malloc'd, not
+// cleared, so a table must load both nibbles of every byte it uses.
+#define ROM_LOAD_NIB_LOW_T  2
+#define ROM_LOAD_NIB_HIGH_T 3
 #define ROM_REGION_START 999
 #define	ROMREGION_DISPOSE 0x10
 
@@ -80,12 +86,20 @@ struct RomModule
     { NULL, ROM_REGION_START, (romSize), (regionId), 0, NULL, (disposableFlag) },
 #define ROM_LOAD(filename, loadAddr, romSize, ...) { filename, loadAddr, romSize, ROM_LOAD_NORMAL, __VA_ARGS__ },
 #define ROM_LOAD16_BYTE(filename,loadAddr,romSize, ...) { filename,loadAddr,romSize, ROM_LOAD_16, __VA_ARGS__ },
+#define ROM_LOAD_NIB_LOW(filename, loadAddr, romSize, ...)  { filename, loadAddr, romSize, ROM_LOAD_NIB_LOW_T,  __VA_ARGS__ },
+#define ROM_LOAD_NIB_HIGH(filename, loadAddr, romSize, ...) { filename, loadAddr, romSize, ROM_LOAD_NIB_HIGH_T, __VA_ARGS__ },
 #define ROM_RELOAD(loadAddr,romSize) { (char *)-1, loadAddr,romSize, ROM_LOAD_NORMAL , 0 , 0 },
 #define ROM_CONTINUE(loadAddr,romSize) { (char *)-2, loadAddr,romSize, ROM_LOAD_NORMAL, 0 , 0 },
 #define ROM_END {NULL, 0, 0, 0, 0, 0}};
 
-// Loads all ROMs defined in a RomModule list from a ZIP archive
-int load_roms(const char* archname, const struct RomModule* p);
+// Loads all ROMs defined in a RomModule list from a ZIP archive.
+// `parentname` is the parent set's zip base name (AAEDriver::parent /
+// driver_parent_archive()), or nullptr for parent/standalone sets. When a
+// ROM isn't found in the own archive by filename, the loader retries by CRC
+// in the own archive, then by filename and CRC in the parent archive (opened
+// lazily). If the own archive doesn't exist at all but the parent does
+// (MAME merged sets), the parent archive is used alone.
+int load_roms(const char* archname, const char* parentname, const struct RomModule* p);
 
 // Saves a char buffer to disk as text (legacy wrapper)
 int save_file_char(const char* filename, const char* buf, int size);
@@ -101,8 +115,9 @@ int save_hi_aae(int start, int size, int image);
 void nvram_set_region(void* ptr, int size, int fill = 0x00);
 void generic_nvram_handler(void* file, int read_or_write);
 
-// Verification Logic
-int verify_rom(const char* archname, const struct RomModule* p, int romnum);
+// Verification Logic. `parentname` is the parent set's zip base name
+// (driver_parent_archive()), or nullptr; see load_roms() for the lookup order.
+int verify_rom(const char* archname, const char* parentname, const struct RomModule* p, int romnum);
 int verify_sample(const char** p, int num);
 
 // Batch Sample Loader - loads all samples from a driver's game_samples list

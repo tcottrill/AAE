@@ -48,22 +48,24 @@
 #include "aae_video_vk/vulkan_renderer.h"   // vkchain_load_artwork (Plan 8)
 #include "vector_draw.h"
 #include "emu_vector_draw.h"   // cache_clear - retained beam/texlist drop on game switch
+#include "fuzz_state.h"        // Fuzz_Set - clear the defocus level on game switch
+#include "sound_latch.h"       // soundlatch_reset_all - clear command latches on game switch
 #include "gl_fbo.h"
 #include "menu.h"
 #include "controller_help.h"
-#include "aae_avg.h"
+#include "mame_late_avgdvg.h"
 #include "os_input.h"
 #include "os_basic.h"
 #include "timer.h"
 #include "vector_fonts.h"
 #include "gl_texturing.h"
 #include "mixer.h"
+#include "mixer_groups.h"   // MIXER_GROUP_SAMPLE / MIXER_GROUP_CHIP
 #ifdef _WIN32
 #include "utf8conv.h"   // Win32 UTF-8/UTF-16 conversion
 #endif
 #include "old_mame_raster.h"
 #include "osd_video.h"
-#include "game_list.h"
 #include "FrameLimiter.h"
 #include "driver_registry.h"   // AllDrivers(), FindDriverByName(), AAE_REGISTER_DRIVER
 #include "joystick.h"
@@ -102,7 +104,6 @@ static double g_lastFrameTimestampMs = 0.0;
 static int x_override = 0;
 static int y_override = 0;
 // -window / -nowindow override (3=window, 2=nowindow, 0=no override)
-static int win_override = 0;
 
 // 1 when the user launched with a game name argument (e.g. "aae asteroid")
 // Used to skip the GUI and exit directly on ESC instead of returning to GUI.
@@ -124,9 +125,6 @@ int art_loaded[6] = {};
 // leds_status is defined in acommon.cpp and written by game drivers (e.g. llander).
 // ResetPerGameRuntimeState() resets it to 0 between games.
 extern int leds_status;
-
-// Complete list of all supported games, built from the driver registry.
-GameList gList;
 
 // Runtime GUI driver index (resolved from the registry at startup, not hardcoded).
 static int g_guiGameIndex = -1;
@@ -361,9 +359,12 @@ static void RequestReturnToGui(const char* reason)
 
 // ---------------------------------------------------------------------------
 // AAE_ApplyAudioVolumesFromConfig
-// Applies config.mainvol to the mixer. Uses a change-filter to avoid
-// calling mixer_set_master_volume_255() every single frame.
-//   force - if non-zero, always apply regardless of whether value changed.
+// Pushes the three mixer-side volumes from config:
+//   mainvol   -> backend master (change-filtered so we don't log every frame)
+//   samplevol -> MIXER_GROUP_SAMPLE
+//   pokeyvol  -> MIXER_GROUP_CHIP   (ini key kept for compatibility)
+// Ambient (noisevol) is applied by setup_ambient, not here.
+//   force - if non-zero, always apply the master regardless of change.
 // ---------------------------------------------------------------------------
 void AAE_ApplyAudioVolumesFromConfig(int force)
 {
@@ -374,6 +375,10 @@ void AAE_ApplyAudioVolumesFromConfig(int force)
 		mixer_set_master_volume_255(v255);
 		g_lastAppliedMainVol255 = v255;
 	}
+
+	// The mixer early-outs on an unchanged group byte, so no filter needed.
+	mixer_set_group_volume(MIXER_GROUP_SAMPLE, config.samplevol);
+	mixer_set_group_volume(MIXER_GROUP_CHIP,   config.pokeyvol);
 }
 
 // ---------------------------------------------------------------------------
@@ -532,7 +537,7 @@ void list_all_roms()
 // gameparse
 // Parses command-line arguments for the currently selected game.
 // Handles -listroms, -verifyroms, -listsamples, -verifysamples, -window,
-// -nowindow, and resolution override flags (-WxH).
+// -nowindow, -wavwrite, and resolution override flags (-WxH).
 //
 // Only called from emulator_init() when a matching game name was found on
 // the command line AND additional arguments follow the game name.
@@ -543,7 +548,6 @@ void gameparse(int argc, char* argv[])
 	int w = 0;
 	int retval = 0;
 
-	win_override = 0;
 
 	const AAEDriver* drv = aae::AllDrivers().at(gamenum);
 	Machine->gamedrv = drv;
@@ -558,8 +562,8 @@ void gameparse(int argc, char* argv[])
 		else if (arg == "-verifyroms")     list = 2;
 		else if (arg == "-listsamples")    list = 3;
 		else if (arg == "-verifysamples")  list = 4;
-		else if (arg == "-window")         win_override = 3;
-		else if (arg == "-nowindow")       win_override = 2;
+		// -window / -nowindow are handled by winmain's ParseCommandLineArgs,
+		// which runs before the window exists (the only place the mode counts).
 
 		// Note: -ror / -rol / -norotate are parsed earlier in emulator_init()
 		// as global options so they work even without a game name on the
@@ -573,6 +577,18 @@ void gameparse(int argc, char* argv[])
 		{
 			prescale_override = std::atoi(argv[++i]);
 			if (prescale_override < 1) prescale_override = 1;
+		}
+		else if (arg == "-wavwrite")
+		{
+			// MAME-style session audio recording. Filename optional: the
+			// next argument is taken as the path unless it is another
+			// option; empty path -> <gamename>.wav at capture start.
+			config.wavwrite = 1;
+			if (i + 1 < argc && argv[i + 1][0] != '-' && argv[i + 1][0] != '/')
+			{
+				snprintf(config.wavwrite_path, sizeof(config.wavwrite_path),
+				         "%s", argv[++i]);
+			}
 		}
 
 		for (int j = 0; gfx_res[j].desc != nullptr; j++)
@@ -622,7 +638,7 @@ void gameparse(int argc, char* argv[])
 				drv->rom[x].loadAddr != ROM_REGION_START && drv->rom[x].loadAddr != 0x999)
 			{
 				logOutput = fname;
-				retval = verify_rom(driver_rom_archive(drv), drv->rom, x);
+				retval = verify_rom(driver_rom_archive(drv), driver_parent_archive(drv), drv->rom, x);
 				switch (retval)
 				{
 				case 0: logOutput += " BAD? ";    break;
@@ -792,7 +808,6 @@ static void ResetPerGameRuntimeState()
 
 	x_override = 0;
 	y_override = 0;
-	win_override = 0;
 
 	for (int i = 0; i < 6; ++i)
 		art_loaded[i] = 0;
@@ -905,15 +920,6 @@ void run_game(void)
 	LOG_INFO("Orientation: driver=0x%X system=0x%X composed=0x%X",
 		Machine->drv->rotation, config.system_rotation, Machine->orientation);
 
-	// Scale stored volume byte values to the internal mixer range.
-	// Guard prevents double-scaling if run_game() is called more than once.
-	if (config.mainvol <= 1.0f && config.pokeyvol <= 1.0f && config.noisevol <= 1.0f)
-	{
-		config.mainvol *= 12.75f;
-		config.pokeyvol *= 12.75f;
-		config.noisevol *= 12.75f;
-	}
-
 	init_machine();
 	reset_memory_tracking();    // must be before any ROM/memory allocations
 
@@ -923,7 +929,7 @@ void run_game(void)
 	// Step 3: ROM loading.
 	if (Machine->gamedrv->rom)
 	{
-		if (load_roms(driver_rom_archive(Machine->gamedrv), Machine->gamedrv->rom) == EXIT_FAILURE)
+		if (load_roms(driver_rom_archive(Machine->gamedrv), driver_parent_archive(Machine->gamedrv), Machine->gamedrv->rom) == EXIT_FAILURE)
 		{
 			LOG_ERROR("ROM loading failed.");
 			have_error = 10;
@@ -958,6 +964,17 @@ void run_game(void)
 			fbo_init_raster();
 		init_raster_overlay();
 	}
+	else if (is_color_vector_attr(Machine->gamedrv->video_attributes))
+	{
+		// Color VECTOR games run the same screen effects as color raster
+		// games (their tubes were ordinary shadow-mask CRTs), so the overlay
+		// TEXTURE still has to be loaded here - none of the raster FBO
+		// machinery above, just the effect image. Without this the texture
+		// only ever appeared after picking it in the menu (which calls
+		// init_raster_overlay directly), never on a fresh launch from a
+		// per-game raster_effect.
+		init_raster_overlay();
+	}
 
 	// Step 6: Legacy artwork loading and texture resize.
 	// load_artwork creates GL textures (texture_handler.cpp load_texture ->
@@ -965,6 +982,15 @@ void run_game(void)
 	// kill the process. The Vulkan chain loads the same table through its own
 	// texture loader instead (vkchain_load_artwork: same search order, same
 	// art_loaded[]/config-flag/menu-flag bookkeeping, VkTexture uploads).
+	// Vector-shot state is per game and must not leak across a game switch: the
+	// DVG engines flag zero-length vectors as shot dots for every game, so a
+	// stale flag would give llander's dots asteroid's shot sprite. Cleared here;
+	// the artwork loaders below re-arm the texture flag when this game's art
+	// list has a GAME_TEX 0 shot sprite, and the driver's video start re-arms
+	// the has-shots flag (asteroid family only).
+	set_game_has_shots(false);
+	set_shot_texture_ready(false);
+
 	if (Machine->gamedrv->artwork && active_renderer() == RENDERER_OPENGL)
 	{
 		load_artwork(Machine->gamedrv->artwork);
@@ -1022,8 +1048,27 @@ void run_game(void)
 		config.samplerate = granted;
 	}
 
+	// -wavwrite: record the whole session's audio. Started here because the
+	// backend (and its granted rate) must exist; stopped by mixer_end().
+	if (config.wavwrite)
+	{
+		char wavpath[sizeof(config.wavwrite_path)];
+		if (config.wavwrite_path[0] != '\0')
+			snprintf(wavpath, sizeof(wavpath), "%s", config.wavwrite_path);
+		else
+			snprintf(wavpath, sizeof(wavpath), "%s.wav", Machine->gamedrv->name);
+
+		if (!mixer_wavwrite_start(wavpath))
+			LOG_ERROR("-wavwrite: could not start audio capture to '%s'", wavpath);
+	}
+
 	// Apply initial volume settings from config. This also sets the g_lastAppliedMainVol255
 	AAE_ApplyAudioVolumesFromConfig(1);
+
+	// Per-game balance declared by the driver (AAE_DRIVER_SOUND_TRIM), applied
+	// under the user's SAMPLE / CHIP knobs. mixer_init reset both to 255.
+	mixer_set_group_trim(MIXER_GROUP_SAMPLE, mixer_trim_from_driver(Machine->gamedrv->sample_trim));
+	mixer_set_group_trim(MIXER_GROUP_CHIP,   mixer_trim_from_driver(Machine->gamedrv->chip_trim));
 
 	// Load game samples from the driver's game_samples list. These are typically
 	// used for discrete sound effects or voice samples. Music is usually streamed
@@ -1115,6 +1160,13 @@ void run_game(void)
 	if (have_error != 0) goto fail;
 
 	// Step 14: Driver-specific initialization.
+	// Clear the composite defocus/whiteout level first: only Star Wars ever
+	// sets it, so without this a level left over from a mid-explosion exit
+	// would follow us into the next game.
+	Fuzz_Set(0.0f);
+	// Same idea for the generic sound command latches: a byte left over from
+	// the previous game must not replay as a command into this one.
+	soundlatch_reset_all();
 	Machine->gamedrv->init_game();
 	did_driver_init = true;
 	if (have_error != 0) goto fail;
@@ -1245,7 +1297,11 @@ void msg_loop(void)
 		throttle ^= 1;
 		frameavg = 0;
 		fps_count = 0;
-		SetvSync(throttle);
+		// Unthrottled always needs vsync off, but throttled must NOT force it
+		// back on: FIFO paces to the display refresh and overrides the game's
+		// own fps (see the note at VK_Init in vulkan_renderer.cpp). Honor the
+		// user's setting instead and let FrameLimiter do the pacing.
+		SetvSync(throttle && config.forcesync);
 	}
 
 	// F9 toggles mouse capture (pointer confine + cursor hide).
@@ -1845,9 +1901,6 @@ void emulator_init(int argc, char** argv)
 
 	FrameLimiter::Init(reg.at(gamenum)->fps);
 	g_lastFrameTimestampMs = TimerGetTimeMS();
-
-	// Build the game list used by the GUI for display/selection.
-	gList.build(aae::AllDrivers());
 
 	// Clear any stale per-game state before the first run.
 	ResetPerGameRuntimeState();

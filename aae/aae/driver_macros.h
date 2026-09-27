@@ -106,6 +106,42 @@
 #define AAE_DRIVER_ROM_DECRYPT(fn) \
     (fn),
 
+// ==== Optional parent set (clone) ============================================
+// Emits AAEDriver::rom_decrypt and AAEDriver::parent together. Use in place
+// of AAE_DRIVER_ROM_DECRYPT() / AAE_DRIVER_ROM_DECRYPT_NONE() for a clone set
+// (MAME's clone_of) so the ROM loader can fall back to the parent zip - by
+// filename, then by CRC - for any ROM file missing from this set's own zip,
+// and load entirely from the parent zip for MAME merged sets. Must appear
+// after AAE_DRIVER_LAYOUT / AAE_DRIVER_LAYOUT_NONE and before AAE_DRIVER_END,
+// in the same position AAE_DRIVER_ROM_DECRYPT would occupy.
+//
+// AAE_DRIVER_CLONE_OF(parent)
+//   Use for a clone with no ROM decrypt hook. `parent` is the parent set's
+//   zip base name, e.g. "starwars".
+//
+// AAE_DRIVER_ROM_DECRYPT_CLONE_OF(fn, parent)
+//   Use for a clone that also needs a ROM decrypt hook.
+//
+// Drivers that are neither a decrypt hook nor a clone simply omit all of
+// these macros - both trailing fields value-initialize to nullptr.
+#define AAE_DRIVER_CLONE_OF(parent) \
+    nullptr, (parent),
+
+#define AAE_DRIVER_ROM_DECRYPT_CLONE_OF(fn, parent) \
+    (fn), (parent),
+
+// ==== Optional per-game sound trims ==========================================
+// Emits AAEDriver::sample_trim, chip_trim (0..255; 0 = no trim). It must be
+// the LAST macro before AAE_DRIVER_END, after AAE_DRIVER_ROM_DECRYPT /
+// AAE_DRIVER_CLONE_OF when a driver uses those. A driver that uses neither
+// must emit AAE_DRIVER_STANDALONE() first so the two fields in between are
+// filled; otherwise the trims would land in rom_decrypt / parent.
+#define AAE_DRIVER_STANDALONE() \
+    nullptr, nullptr,
+
+#define AAE_DRIVER_SOUND_TRIM(sample_, chip_) \
+    (sample_), (chip_),
+
 // ==== Epilog =================================================================
 #define AAE_DRIVER_END() };
 

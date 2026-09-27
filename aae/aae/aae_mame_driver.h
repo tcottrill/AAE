@@ -40,7 +40,10 @@ inline FILE* errorlog = nullptr;
 
 // Raster Defines, new.
 #define MAX_GFX_ELEMENTS 32	/* multipac decodes 16 tile+sprite bank pairs */
-#define MAX_MEMORY_REGIONS 16
+// Sized from the REGION_* enum in memory.h so the two cannot drift: the enum
+// gained REGION_USER1..3 (17 entries) while this stayed 16, which left
+// REGION_USER3 one past the end of Machine->memory_region[].
+#define MAX_MEMORY_REGIONS REGION_MAX
 #define MAX_PENS 256	/* can't handle more than 256 colors on screen */
 #define MAX_LAYERS 4	/* MAX_LAYERS is the maximum number of gfx layers */
 /* which we can handle. Currently, 4 is enough. */
@@ -161,6 +164,17 @@ struct artworks
 /* mask for testing raster class */
 #define VIDEO_RASTER_CLASS_MASK  (VIDEO_TYPE_RASTER_COLOR | VIDEO_TYPE_RASTER_BW)
 
+// A COLOR VECTOR game: an X-Y monitor game whose tube is a color
+// shadow-mask CRT (Wells-Gardner 6100 / Amplifone class). Those were
+// ordinary shadow-mask tubes, so they get the SAME monitor treatment as
+// color raster games - the color CRT shader or the overlay textures.
+// NOTE: the front-end GUI driver also declares these bits, so callers that
+// must exclude it test emulator_is_gui_active() separately.
+inline bool is_color_vector_attr(int vattr)
+{
+	return (vattr & VIDEO_TYPE_VECTOR) != 0 && (vattr & VECTOR_USES_COLOR) != 0;
+}
+
 /* bit 1 of the video attributes indicates whether or not dirty rectangles will work */
 #define	VIDEO_SUPPORTS_DIRTY		0x0002
 
@@ -264,6 +278,24 @@ struct AAEDriver
 	// decrypt there scribbles through a null pointer. Set with
 	// AAE_DRIVER_ROM_DECRYPT(); omitting the macro leaves it nullptr.
 	void (*rom_decrypt)();
+
+	// Optional parent set's ROM archive (zip) base name, i.e. MAME's
+	// clone_of for this set (e.g. "starwars" for the "starwars1" clone).
+	// nullptr for parent/standalone sets. Lets the ROM loader fall back to
+	// the parent zip - by filename, then by CRC - for any ROM file the
+	// set's own zip doesn't have, and to load entirely from a MAME merged
+	// parent zip when the clone's own zip doesn't exist at all. Set with
+	// AAE_DRIVER_CLONE_OF() / AAE_DRIVER_ROM_DECRYPT_CLONE_OF(); omitting
+	// both leaves it nullptr.
+	const char* parent;
+
+	// Optional per-game sound balance (see mixer_groups.h). Bytes on the same
+	// perceptual curve as the user's SAMPLE / CHIP VOLUME knobs, multiplied
+	// under them: 170 pulls that group down ~4 dB, 255 leaves it alone, and
+	// 0 (the value a driver gets by omitting the macro) also means no trim.
+	// Set with AAE_DRIVER_SOUND_TRIM(sample, chip).
+	int sample_trim;
+	int chip_trim;
 };
 
 // Resolves the ROM archive (zip) base name for a driver. AAE_DRIVER_ROM stores
@@ -278,6 +310,16 @@ inline const char* driver_rom_archive(const AAEDriver* drv)
 	const char* n = drv->rom_name;
 	if (n && strncmp(n, "rom_", 4) == 0) return n + 4;
 	return n ? n : drv->name;
+}
+
+// Resolves the parent set's ROM archive (zip) base name for a driver, i.e.
+// MAME's clone_of for this set. Returns nullptr for parent/standalone sets
+// that have no AAEDriver::parent set. Used by the ROM loader to fall back
+// to the parent zip when a ROM isn't found in the set's own zip.
+inline const char* driver_parent_archive(const AAEDriver* drv)
+{
+	if (!drv) return nullptr;
+	return drv->parent;
 }
 
 struct RunningMachine

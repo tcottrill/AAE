@@ -109,7 +109,17 @@
           explicit GameList(const std::vector<const AAEDriver*>& reg); // NEW
 
           void              build(const AAEDriver* drivers); // (re)build
-          void              build(const std::vector<const AAEDriver*>& reg);
+
+          // Registry build, with an optional per-driver filter.
+          //
+          // `keep` == nullptr keeps everything. When supplied, rejected
+          // drivers are skipped INSIDE the walk, so surviving nodes retain
+          // their true registry index in gameNum. That matters: gameNum is
+          // used directly as an index into aae::AllDrivers() to launch a
+          // game, so pre-compacting `reg` before calling this would shift
+          // every index and launch the wrong title.
+          void              build(const std::vector<const AAEDriver*>& reg,
+                                  bool (*keep)(const AAEDriver*) = nullptr);
           std::size_t       size() const;
 
           GameNode* head();

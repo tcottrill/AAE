@@ -153,6 +153,23 @@ void Rect2::Render(const float* mvp) {
 	glUseProgram(0);
 }
 
+void Rect2::RenderGeometry() {
+	glBindVertexArray(vao_);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo_);
+	glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(verts_), verts_);
+	glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+
+	glBindVertexArray(0);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+}
+
+void Rect2::GetScreenRect(float* x, float* y, float* w, float* h) const {
+	if (x) *x = rect_x_;
+	if (y) *y = rect_y_;
+	if (w) *w = rect_w_;
+	if (h) *h = rect_h_;
+}
+
 void Rect2::UpdateScreenRect(int screen_width, int screen_height, float aspectRatio, int rotated)
 {
 	float indices[32] =
@@ -191,6 +208,11 @@ void Rect2::UpdateScreenRect(int screen_width, int screen_height, float aspectRa
 	else {
 		xadj = ((float)screen_width - used_width) / 2.0f;
 	}
+
+	rect_x_ = xadj;
+	rect_y_ = yadj;
+	rect_w_ = used_width;
+	rect_h_ = used_height;
 
 	int v = 8 * rotated;
 

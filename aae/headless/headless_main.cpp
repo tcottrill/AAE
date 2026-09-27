@@ -49,6 +49,8 @@ void add_line(float, float, float, float, int, rgb_t) { ++g_vector_count; }
 void add_tex(float, float, int, rgb_t) {}
 void cache_clear() {}
 void set_texture_id(rtex_t*) {}
+void set_game_has_shots(bool) {}
+void set_shot_texture_ready(bool) {}
 
 // ---------------------------------------------------------------------------
 // vector_add_point / vector_add_clip / vector_clear_list
@@ -188,7 +190,7 @@ int main(int argc, char** argv)
 
 	if (drv->rom)
 	{
-		if (load_roms(driver_rom_archive(drv), drv->rom) == EXIT_FAILURE)
+		if (load_roms(driver_rom_archive(drv), driver_parent_archive(drv), drv->rom) == EXIT_FAILURE)
 		{
 			std::printf("headless: ROM loading failed for '%s'\n", gameName);
 			return 2;

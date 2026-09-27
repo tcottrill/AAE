@@ -86,6 +86,7 @@ TODO:	remove the 1 analog device per port limitation
 #include "inptport.h"
 #include "osdepend.h"
 #include "os_input.h"
+#include "config.h"     // config.debug_profile_code (analog settings log)
 
 
 /* Use the MRU code for 4way joysticks */
@@ -201,10 +202,15 @@ struct ipd inputport_defaults[] =
 	{ IPT_BUTTON8 | IPF_PLAYER1, "P1 Button 8",    OSD_KEY_V,       OSD_JOY_FIRE8 },
 	{ IPT_BUTTON9 | IPF_PLAYER1, "P1 Button 9",    OSD_KEY_B,       OSD_JOY_FIRE9 },
 	{ IPT_BUTTON10 | IPF_PLAYER1, "P1 Button 10",   OSD_KEY_N,       OSD_JOY_FIRE10 },
-	{ IPT_JOYSTICKRIGHT_UP | IPF_PLAYER1, "P1 Right/Up",    OSD_KEY_I,       OSD_JOY_FIRE2 },
-	{ IPT_JOYSTICKRIGHT_DOWN | IPF_PLAYER1, "P1 Right/Down",  OSD_KEY_K,       OSD_JOY_FIRE3 },
-	{ IPT_JOYSTICKRIGHT_LEFT | IPF_PLAYER1, "P1 Right/Left",  OSD_KEY_J,       OSD_JOY_FIRE1 },
-	{ IPT_JOYSTICKRIGHT_RIGHT | IPF_PLAYER1, "P1 Right/Right", OSD_KEY_L,       OSD_JOY_FIRE4 },
+	/* The second (fire) stick of twin-stick games defaults to the JOY2
+	 * directions: the second pad if one is present, otherwise the first pad's
+	 * right thumbstick (osd_joy_pressed fallback). Was buttons 1-4. A cfg
+	 * saved against the old defaults is rejected by the loader (defaults
+	 * differ) and the new ones apply. */
+	{ IPT_JOYSTICKRIGHT_UP | IPF_PLAYER1, "P1 Right/Up",    OSD_KEY_I,       OSD_JOY2_UP },
+	{ IPT_JOYSTICKRIGHT_DOWN | IPF_PLAYER1, "P1 Right/Down",  OSD_KEY_K,       OSD_JOY2_DOWN },
+	{ IPT_JOYSTICKRIGHT_LEFT | IPF_PLAYER1, "P1 Right/Left",  OSD_KEY_J,       OSD_JOY2_LEFT },
+	{ IPT_JOYSTICKRIGHT_RIGHT | IPF_PLAYER1, "P1 Right/Right", OSD_KEY_L,       OSD_JOY2_RIGHT },
 	{ IPT_JOYSTICKLEFT_UP | IPF_PLAYER1, "P1 Left/Up",     OSD_KEY_E,       OSD_JOY_UP },
 	{ IPT_JOYSTICKLEFT_DOWN | IPF_PLAYER1, "P1 Left/Down",   OSD_KEY_D,       OSD_JOY_DOWN },
 	{ IPT_JOYSTICKLEFT_LEFT | IPF_PLAYER1, "P1 Left/Left",   OSD_KEY_S,       OSD_JOY_LEFT },
@@ -326,24 +332,58 @@ int input_type_key(int type)
 	return OSD_KEY_NONE;
 }
 
+/* The compiled default table as built, captured once before default.cfg is
+ * applied. default.cfg used to overwrite every entry of inputport_defaults[]
+ * wholesale and was re-saved at every exit, so once the file existed no
+ * change to the compiled defaults could ever reach the user (the Black Widow
+ * fire-stick default was pinned to the old buttons this way). Format 4 stores,
+ * next to each saved binding, the compiled default it was saved against; on
+ * load only bindings the user actually changed from that baseline are
+ * applied, so a binding still at its old compiled default follows the new
+ * compiled default. Format 3 files (no baseline) are applied as before. */
+#define MAMEDEFSTRING_V4 "MAMEDEF\4"
+#define MAX_COMPILED_DEFAULTS 1024
+static UINT16 compiled_def_key[MAX_COMPILED_DEFAULTS], compiled_def_joy[MAX_COMPILED_DEFAULTS];
+static int compiled_def_count = -1;
+
+static void capture_compiled_defaults(void)
+{
+	if (compiled_def_count >= 0) return;
+	int i = 0;
+	while (inputport_defaults[i].type != IPT_END && i < MAX_COMPILED_DEFAULTS)
+	{
+		compiled_def_key[i] = inputport_defaults[i].keyboard;
+		compiled_def_joy[i] = inputport_defaults[i].joystick;
+		i++;
+	}
+	compiled_def_count = i;
+}
+
 static void load_default_keys(void)
 {
 	void* f;
 
+	capture_compiled_defaults();
+
 	if ((f = osd_fopen("default", 0, OSD_FILETYPE_CONFIG, 0)) != 0)
 	{
 		char buf[8];
+		int v4;
 
 		/* read header */
 		if (osd_fread(f, buf, 8) != 8)
 			goto getout;
-		if (memcmp(buf, MAMEDEFSTRING, 8) != 0)
+		if (memcmp(buf, MAMEDEFSTRING_V4, 8) == 0)
+			v4 = 1;
+		else if (memcmp(buf, MAMEDEFSTRING, 8) == 0)
+			v4 = 0;
+		else
 			goto getout;	/* header invalid */
 
 		for (;;)
 		{
 			UINT32 type;
-			UINT16 keyboard, joystick;
+			UINT16 keyboard, joystick, base_keyboard = 0, base_joystick = 0;
 			int i;
 
 			if (readint(f, &type) != 0)
@@ -352,6 +392,16 @@ static void load_default_keys(void)
 				goto getout;
 			if (readword(f, &joystick) != 0)
 				goto getout;
+			if (v4)
+			{
+				if (readword(f, &base_keyboard) != 0)
+					goto getout;
+				if (readword(f, &base_joystick) != 0)
+					goto getout;
+				/* never customized from its baseline: let the compiled default stand */
+				if (keyboard == base_keyboard && joystick == base_joystick)
+					continue;
+			}
 
 			i = 0;
 			while (inputport_defaults[i].type != IPT_END)
@@ -378,8 +428,10 @@ static void save_default_keys(void)
 	{
 		int i;
 
-		/* write header */
-		osd_fwrite(f, MAMEDEFSTRING, 8);
+		capture_compiled_defaults();
+
+		/* write header (format 4: binding + the compiled baseline it was saved against) */
+		osd_fwrite(f, MAMEDEFSTRING_V4, 8);
 
 		i = 0;
 		while (inputport_defaults[i].type != IPT_END)
@@ -387,6 +439,8 @@ static void save_default_keys(void)
 			writeint(f, inputport_defaults[i].type);
 			writeword(f, inputport_defaults[i].keyboard);
 			writeword(f, inputport_defaults[i].joystick);
+			writeword(f, (i < compiled_def_count) ? compiled_def_key[i] : inputport_defaults[i].keyboard);
+			writeword(f, (i < compiled_def_count) ? compiled_def_joy[i] : inputport_defaults[i].joystick);
 			i++;
 		}
 
@@ -492,6 +546,48 @@ int load_input_port_settings(void)
 
 	getout:
 		osd_fclose(f);
+	}
+
+	// Debug: digital bindings the cfg changed away from the driver defaults
+	// (keyboard / joystick codes), so a stale per-game cfg is visible.
+	if (config.debug_profile_code)
+	{
+		struct InputPort* p = Machine->input_ports;
+		struct InputPort* base = Machine->gamedrv->input_ports;
+		while (p->type != IPT_END)
+		{
+			struct InputPort* d = base + (p - Machine->input_ports);
+			if (p->keyboard != d->keyboard || p->joystick != d->joystick)
+				LOG_INFO("binding '%s': cfg key %d joy %d (driver default key %d joy %d; resolved default key %d joy %d)",
+					input_port_name(p), p->keyboard, p->joystick, d->keyboard, d->joystick,
+					input_port_key(d), input_port_joy(d));
+			p++;
+		}
+	}
+
+	// Debug: the EFFECTIVE analog settings after the cfg load. The cfg's
+	// "current settings" pass above overwrites each port entry wholesale,
+	// including an analog extension entry's type word, which carries the
+	// sensitivity and key-delta bits - so a value changed in the menu and
+	// saved to cfg silently overrides the driver's defaults on every later run.
+	if (config.debug_profile_code)
+	{
+		struct InputPort* p = Machine->input_ports;
+		struct InputPort* base = Machine->gamedrv->input_ports;
+		while (p->type != IPT_END)
+		{
+			/* IP_GET_SENSITIVITY / IP_GET_DELTA take the ANALOG entry and read
+			 * the extension entry that follows it */
+			if ((p->type & ~IPF_MASK) == IPT_EXTENSION && p > Machine->input_ports)
+			{
+				struct InputPort* a = p - 1;
+				struct InputPort* d = base + (a - Machine->input_ports);
+				LOG_INFO("analog port '%s': effective sensitivity %d%% keydelta %d (driver default %d%% / %d)",
+					input_port_name(a), IP_GET_SENSITIVITY(a), IP_GET_DELTA(a),
+					IP_GET_SENSITIVITY(d), IP_GET_DELTA(d));
+			}
+			p++;
+		}
 	}
 
 	//Update the input port tags regardless if there is a save file or not.

@@ -11,6 +11,7 @@
 #include "vector_post_vk.h"
 #include "sys_log.h"
 #include "gpu_profiler_vk.h"   // GPU_ZONE - per-pass GPU timing ([main] vk_profile)
+#include "fuzz_state.h"        // Fuzz_Get (composite defocus/whiteout)
 
 #include <stdio.h>
 #include <string.h>
@@ -973,6 +974,7 @@ void VectorPostVK::RecordComposite(VkContext& ctx, VkCommandBuffer cmd, uint32_t
     push.params[0] = (float)vecglow * 0.01f;      // glowamt
     push.params[1] = usefb   ? 1.0f : 0.0f;
     push.params[2] = useglow ? 1.0f : 0.0f;
+    push.params[3] = Fuzz_Get();                  // Star Wars explosion fuzz
 
     DrawMultiQuad(ctx, cmd, frameIndex, pipe, push, tw, th);
 }
@@ -1016,6 +1018,7 @@ void VectorPostVK::RecordFrameBuild(VkContext& ctx, VkCommandBuffer cmd, uint32_
     push.params[0] = (float)vecglow * 0.01f;
     push.params[1] = usefb   ? 1.0f : 0.0f;
     push.params[2] = useglow ? 1.0f : 0.0f;
+    push.params[3] = Fuzz_Get();                  // Star Wars explosion fuzz
     DrawMultiQuad(ctx, cmd, frameIndex, pipeFrameMulti_, push, 1024, 1024);
 
     // OVERLAY1: modulate the CRT image in place (GL DST_COLOR/SRC_COLOR "2x

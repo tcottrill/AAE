@@ -111,6 +111,7 @@ set(AAE_CORE_SOURCES
     aae/aae/drivers/circus.cpp
     aae/aae/drivers/digdug.cpp
     aae/aae/drivers/galaga.cpp
+    aae/aae/drivers/frogger.cpp
     aae/aae/drivers/galaxian_driver.cpp
     aae/aae/drivers/invaders.cpp
     aae/aae/drivers/jrpacman.cpp
@@ -122,6 +123,7 @@ set(AAE_CORE_SOURCES
     aae/aae/drivers/omegrace.cpp
     aae/aae/drivers/pacman.cpp
     aae/aae/drivers/phoenix.cpp
+    aae/aae/drivers/qix.cpp
     aae/aae/drivers/quantum.cpp
     aae/aae/drivers/rallyx.cpp
     aae/aae/drivers/segag80.cpp
@@ -138,20 +140,22 @@ set(AAE_CORE_SOURCES
     aae/aae/game_list.cpp
     aae/aae/inptport.cpp
     aae/aae/machine/74148.cpp
-    aae/aae/machine/earom.cpp
+    aae/aae/machine/er2055.cpp
     aae/aae/machine/mathbox.cpp
     aae/aae/machine/mc6821.cpp
     aae/aae/machine/pacplus_decode.cpp
     aae/aae/machine/pit8253.cpp
+    aae/aae/machine/riot6532.cpp
     aae/aae/machine/SegaG80crypt.cpp
     aae/aae/machine/slapstic.cpp
     aae/aae/machine/starwars_machine.cpp
     aae/aae/machine_state.cpp
     aae/aae/memory.cpp
     aae/aae/os_input.cpp
-    aae/aae/sndhrdwr/aae_pokey.cpp
+    aae/aae/sndhrdwr/c012294_interface.cpp
     aae/aae/sndhrdwr/astrocade_sound.cpp
     aae/aae/sndhrdwr/ay8910.cpp
+    aae/aae/sndhrdwr/sound_latch.cpp
     aae/aae/sndhrdwr/galsnd_stream.cpp
     aae/aae/sndhrdwr/namco.cpp
     aae/aae/sndhrdwr/segag80snd.cpp
@@ -166,6 +170,7 @@ set(AAE_CORE_SOURCES
     aae/aae/sndhrdwr/tms36xx.cpp
     aae/aae/sndhrdwr/tms5220.cpp
     aae/aae/vidhrdwr/aae_avg.cpp
+    aae/aae/vidhrdwr/fuzz_state.cpp
     aae/aae/vidhrdwr/mame_vector.cpp
     aae/aae/vidhrdwr/centiped_vid.cpp
     aae/aae/vidhrdwr/astrocde_video.cpp
@@ -181,8 +186,8 @@ set(AAE_CORE_SOURCES
     aae/aae/vidhrdwr/xevious_video.cpp
 )
 list(LENGTH AAE_CORE_SOURCES _aae_core_count)
-if(NOT _aae_core_count EQUAL 99)
-    message(FATAL_ERROR "aae_core source list has ${_aae_core_count} entries, expected 99 - it has drifted from aae/aae_core.vcxproj")
+if(NOT _aae_core_count EQUAL 102)
+    message(FATAL_ERROR "aae_core source list has ${_aae_core_count} entries, expected 102 - it has drifted from aae/aae_core.vcxproj")
 endif()
 
 # -----------------------------------------------------------------------------

@@ -108,6 +108,10 @@ enum
 	CPU_M6800,
 	CPU_M6802,
 	CPU_M6808,
+	// 6803: same core with 6803 mode enabled (6801 instruction additions,
+	// on-chip ports/timer at $00-$1F, OCI/TOI interrupts). Internal RAM
+	// $80-$FF is mapped by the driver like the 6802's.
+	CPU_M6803,
 	CPU_COUNT
 };
 
@@ -223,6 +227,14 @@ int get_video_ticks(int val);
 void cpu_needs_reset(int cpunum);
 void cpu_reset(int cpunum);
 void cpu_reset_all();
+
+// Optional per-CPU reset hook, invoked at the end of cpu_reset(cpunum) after
+// the core's own reset has run. AAE has no per-driver machine_reset() the way
+// MAME does, so a driver that needs to re-establish state on reset (banking,
+// slapstic, etc - see the Star Wars driver) registers one here. Cleared per
+// CPU by init_cpu_config() at the start of every game load so a callback
+// never leaks from one driver into the next.
+void cpu_set_reset_callback(int cpunum, void (*cb)(void));
 int get_active_cpu();
 int cpu_getpc();
 int cpu_getppc();
@@ -256,6 +268,17 @@ int cpu_getvblank(void);
 void cpu_clear_vblank(void);
 int cpu_exec_now(int cpu, int cycles);
 void cpu_run(void);
+
+// MAME-style scheduler().synchronize(): ends the CURRENTLY EXECUTING CPU's
+// (active_cpu) timeslice at the end of the instruction in progress, handing
+// control back to cpu_run()'s scheduler so the next CPU due this global
+// slice runs immediately instead of waiting for this CPU to exhaust its
+// whole per-CPU slice. Intended to be called from a cross-CPU latch write
+// handler (see aae/aae/sndhrdwr/starwars_snd.cpp). Currently only the 6809
+// core (cpu_m6809) honors the request; other cores are unaffected (no-op).
+// Safe to call from outside cpu_run() (init, a timer callback that fires
+// outside CPU execution, etc.) -- it is then just a no-op.
+void cpu_yield(void);
 void free_cpu_memory();
 void cpu_enable(int cpunum, int val);
 

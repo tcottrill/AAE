@@ -483,7 +483,33 @@ int osd_joy_pressed(int joycode)
 	}
 
 	/* route through the INPUT DEVICES per-player assignment */
+	const int requested = joy_num;
 	joy_num = resolve_joy(joy_num);
+
+	/* Twin-stick on one gamepad. The OSD code space has no right-thumbstick
+	 * codes; an XInput pad's right stick lives in stick[1] of the same
+	 * device. When a JOY2 DIRECTION is asked for and there is no second
+	 * device to answer it, read player 1's device's second stick instead.
+	 * The two twin-stick games, Black Widow and Robotron, default their
+	 * fire stick to the JOY2 directions, so one pad plays them twin-stick;
+	 * with two pads present, JOY2 still means the second pad, as before. */
+	if (requested == 1 && (joy_num < 0 || joy_num + 1 > num_joysticks) &&
+		joycode >= OSD_JOY_LEFT && joycode <= OSD_JOY_DOWN)
+	{
+		const int p1 = resolve_joy(0);
+		if (p1 >= 0 && p1 < num_joysticks && joy[p1].num_sticks >= 2)
+		{
+			switch (joycode)
+			{
+			case OSD_JOY_LEFT:  return joy[p1].stick[1].axis[0].d1;
+			case OSD_JOY_RIGHT: return joy[p1].stick[1].axis[0].d2;
+			case OSD_JOY_UP:    return joy[p1].stick[1].axis[1].d1;
+			case OSD_JOY_DOWN:  return joy[p1].stick[1].axis[1].d2;
+			}
+		}
+		return 0;
+	}
+
 	if (joy_num < 0)
 		return 0;
 

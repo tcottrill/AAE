@@ -5,6 +5,12 @@
 
 void SetIniFile(const char* szFileName);
 
+// True if the currently loaded ini declares [szSection] at all, whether or not
+// that section holds any keys. Lets a caller tell "this file says nothing about
+// this game" apart from "every key happened to read back its default".
+bool  has_config_section(const char* szSection);
+bool  has_config_section(const std::string& section);
+
 int   get_config_int(const char* szSection, const char* szKey, int iDefaultValue);
 float get_config_float(const char* szSection, const char* szKey, float fltDefaultValue);
 bool  get_config_bool(const char* szSection, const char* szKey, bool bolDefaultValue);

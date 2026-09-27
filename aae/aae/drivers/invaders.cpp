@@ -79,6 +79,7 @@ static int flipscreen;
 static int screen_red;
 static int screen_red_enabled;		/* 1 for games that can turn the screen red */
 static int color_map_select;
+static int redraw_screen;			/* color map or screen red changed; replot all of video RAM */
 static int shift_data1, shift_data2, shift_amount;
 
 static unsigned char invaders_palette[] = /* V.V */ /* Smoothed pure colors, overlays are not so contrasted */
@@ -179,7 +180,7 @@ void invaders_flipscreen_w(int data)
 	if (data != color_map_select)
 	{
 		color_map_select = data;
-		//redraw_screen = 1;
+		redraw_screen = 1;
 	}
 
 	if (input_port_3_r(0) & 0x01)
@@ -187,7 +188,7 @@ void invaders_flipscreen_w(int data)
 		if (data != flipscreen)
 		{
 			flipscreen = data;
-			//redraw_screen = 1;
+			redraw_screen = 1;
 		}
 	}
 }
@@ -196,8 +197,52 @@ void invaders_screen_red_w(int data)
 	if (screen_red_enabled && (data != screen_red))
 	{
 		screen_red = data;
-		//redraw_screen = 1;
+		redraw_screen = 1;
 	}
+}
+
+/***************************************************************************
+
+  Space Invaders Part II (Taito) color board - from MAME 0.109 vidhrdw/8080bw.c.
+  Two 1K PROMs hold a 32x32 color map, one per player (selected by the
+  cocktail flip bit on sound port 5). Base hit turns the whole screen red.
+
+***************************************************************************/
+
+void invadpt2_init_palette(unsigned char* palette, unsigned char* colortable, const unsigned char* color_prom)
+{
+	/* this bit arrangement is a little unusual but is confirmed by screen shots */
+	for (int i = 0; i < 8; i++)
+	{
+		palette[3 * i + 0] = (i & 0x01) ? 0xff : 0x00;
+		palette[3 * i + 1] = (i & 0x04) ? 0xff : 0x00;
+		palette[3 * i + 2] = (i & 0x02) ? 0xff : 0x00;
+	}
+}
+
+static void invadpt2_plot(int offset)
+{
+	int data = invaders_videoram[offset];
+	int row = offset / 32;
+	int x = 8 * (offset % 32);
+	int col;
+
+	/* 32 x 32 colormap */
+	if (!screen_red)
+	{
+		int colbase = color_map_select ? 0x0400 : 0;
+		col = memory_region(REGION_PROMS)[colbase | (row >> 3 << 5) | (x >> 3)] & 0x07;
+	}
+	else
+		col = 1;	/* red */
+
+	plot_byte(x, row + (256 - 224), data, col, 0);
+}
+
+WRITE_HANDLER(invadpt2_videoram_w)
+{
+	invaders_videoram[address] = data;
+	invadpt2_plot(address);
 }
 
 //FROM invaders Machine.c
@@ -494,6 +539,13 @@ MEM_ADDR(0x2400, 0x3fff, invaders_videoram_w)
 MEM_ADDR(0x4000, 0x57ff, MWA_ROM)
 MEM_END
 
+MEM_WRITE(invadpt2_writemem)
+MEM_ADDR(0x2000, 0x23ff, MWA_RAM)
+MEM_ADDR(0x0000, 0x1fff, MWA_ROM)
+MEM_ADDR(0x2400, 0x3fff, invadpt2_videoram_w)
+MEM_ADDR(0x4000, 0x57ff, MWA_ROM)
+MEM_END
+
 PORT_READ(invaders_readport)
 PORT_ADDR(0x00, 0x00, invaders_ip_port_0_r)
 PORT_ADDR(0x01, 0x01, invaders_ip_port_1_r)
@@ -556,6 +608,30 @@ void end_invaders()
 	invaders_vh_stop();
 }
 
+void run_invadpt2()
+{
+	if (redraw_screen)
+	{
+		for (int offs = 0; offs < 0x1c00; offs++)
+			invadpt2_plot(offs);
+		redraw_screen = 0;
+	}
+	run_invaders();
+}
+
+int init_invadpt2()
+{
+	invaders_videoram = &Machine->memory_region[0][0x2400];
+	screen_red_enabled = 1;
+	screen_red = 0;
+	color_map_select = 0;
+	redraw_screen = 0;
+	flipscreen = 0;
+	flip = 0;
+	invaders_vh_start();
+	return 0;
+}
+
 int init_invaddlx()
 {
 	invaders_videoram = &Machine->memory_region[0][0x2400];
@@ -594,6 +670,19 @@ ROM_LOAD("invdelux.g", 0x0800, 0x0800, CRC(4268c12d) SHA1(df02419f01cf0874afd1f1
 ROM_LOAD("invdelux.f", 0x1000, 0x0800, CRC(f4aa1880) SHA1(995d77b67cb4f2f3781c2c8747cb058b7c1b3412))
 ROM_LOAD("invdelux.e", 0x1800, 0x0800, CRC(408849c1) SHA1(f717e81017047497a2e9f33f0aafecfec5a2ed7d))
 ROM_LOAD("invdelux.d", 0x4000, 0x0800, CRC(e8d5afcd) SHA1(91fde9a9e7c3dd53aac4770bd169721a79b41ed1))
+ROM_END
+
+ROM_START(invadpt2)
+ROM_REGION(0x10000, REGION_CPU1, 0)     /* 64k for code */
+ROM_LOAD("pv01", 0x0000, 0x0800, CRC(7288a511) SHA1(ff617872784c28ed03591aefa9f0519e5651701f))
+ROM_LOAD("pv02", 0x0800, 0x0800, CRC(097dd8d5) SHA1(8d68654d54d075c0f0d7f63c87ff4551ce8b7fbf))
+ROM_LOAD("pv03", 0x1000, 0x0800, CRC(1766337e) SHA1(ea959bf06c9930d83a07559e191a28641efb07ac))
+ROM_LOAD("pv04", 0x1800, 0x0800, CRC(8f0e62e0) SHA1(a967b155f15f8432222fcc78b23121b00c405c5c))
+ROM_LOAD("pv05", 0x4000, 0x0800, CRC(19b505e9) SHA1(6a31a37586782ce421a7d2cffd8f958c00b7b415))
+
+ROM_REGION(0x0800, REGION_PROMS, 0)		/* color maps player 1/player 2 */
+ROM_LOAD("pv06.1", 0x0000, 0x0400, CRC(a732810b) SHA1(a5fabffa73ca740909e23b9530936f9274dff356))
+ROM_LOAD("pv07.2", 0x0400, 0x0400, CRC(2c5b91cb) SHA1(7fa4d4aef85473b1b4f18734230c164e72be44e7))
 ROM_END
 
 ROM_START(clowns)
@@ -682,7 +771,8 @@ PORT_BIT(0x04, IP_ACTIVE_HIGH, IPT_UNKNOWN)
 PORT_BIT(0x08, IP_ACTIVE_HIGH, IPT_UNKNOWN)
 PORT_BIT(0x10, IP_ACTIVE_HIGH, IPT_UNKNOWN)
 PORT_BIT(0x20, IP_ACTIVE_HIGH, IPT_UNKNOWN)
-PORT_BIT(0x40, IP_ACTIVE_LOW, IPT_UNKNOWN)	/* otherwise high score entry ends right away */
+// Name Reset - if name of high scorer was rude, owner can press this button
+PORT_BITX(0x40, IP_ACTIVE_LOW, IPT_SERVICE, "Name Reset", OSD_KEY_F1, IP_JOY_NONE)
 PORT_BIT(0x80, IP_ACTIVE_HIGH, IPT_UNKNOWN)
 
 PORT_START("IN1")
@@ -848,6 +938,43 @@ INPUT_PORTS_END
 	AAE_DRIVER_LAYOUT("default.lay", "Upright_Artwork")
 	AAE_DRIVER_END()
 
+	// Space Invaders Part II (Taito) - invaders hardware plus the PROM color board
+	AAE_DRIVER_BEGIN(drv_invadpt2, "invadpt2", "Space Invaders Part II (Taito)")
+	AAE_DRIVER_ROM(rom_invadpt2)
+	AAE_DRIVER_FUNCS(&init_invadpt2, &run_invadpt2, &end_invaders)
+	AAE_DRIVER_INPUT(input_ports_invadpt2)
+	AAE_DRIVER_SAMPLES(invaders_samples)
+	AAE_DRIVER_ART_NONE()
+
+	AAE_DRIVER_CPUS(
+		AAE_CPU_ENTRY(
+			/*type*/     CPU_8080,
+			/*freq*/     2000000,
+			/*div*/      100,
+			/*ipf*/      2,
+			/*int type*/ INT_TYPE_INT,
+			/*int cb*/   &invaders_interrupt,
+			/*r8*/       invaders_readmem,
+			/*w8*/       invadpt2_writemem,
+			/*pr*/       invaders_readport,
+			/*pw*/       invaders_writeport,
+			/*r16*/      nullptr,
+			/*w16*/      nullptr
+		),
+		AAE_CPU_NONE_ENTRY(),
+		AAE_CPU_NONE_ENTRY(),
+		AAE_CPU_NONE_ENTRY()
+	)
+
+	AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_RASTER_COLOR, ORIENTATION_ROTATE_270 | ORIENTATION_FLIP_X)
+	AAE_DRIVER_SCREEN(32 * 8, 32 * 8, 0 * 8, 32 * 8 - 1, 0 * 8, 28 * 8 - 1)
+	AAE_DRIVER_RASTER(0, 8, 0, invadpt2_init_palette)
+	AAE_DRIVER_HISCORE_NONE()
+	AAE_DRIVER_VECTORRAM(0, 0)
+	AAE_DRIVER_NVRAM_NONE()
+	AAE_DRIVER_LAYOUT("default.lay", "Upright_Artwork")
+	AAE_DRIVER_END()
+
 	// Space Invaders Deluxe
 	AAE_DRIVER_BEGIN(drv_invaddlx, "invaddlx", "Space Invaders Deluxe")
 	AAE_DRIVER_ROM(rom_invaddlx)
@@ -887,6 +1014,7 @@ AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0, 0)
 AAE_DRIVER_NVRAM_NONE()
 AAE_DRIVER_LAYOUT("default.lay", "Upright_Artwork")
+AAE_DRIVER_CLONE_OF("invadpt2")
 AAE_DRIVER_END()
 
 // Clowns
@@ -961,6 +1089,7 @@ AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0, 0)
 AAE_DRIVER_NVRAM_NONE()
 AAE_DRIVER_LAYOUT("default.lay", "Upright_Artwork")
+AAE_DRIVER_CLONE_OF("clowns")
 AAE_DRIVER_END()
 
 // Boot Hill
@@ -1001,6 +1130,7 @@ AAE_DRIVER_LAYOUT("default.lay", "Upright_Artwork")
 AAE_DRIVER_END()
 
 AAE_REGISTER_DRIVER(drv_invaders)
+AAE_REGISTER_DRIVER(drv_invadpt2)
 AAE_REGISTER_DRIVER(drv_invaddlx)
 AAE_REGISTER_DRIVER(drv_clowns)
 AAE_REGISTER_DRIVER(drv_clowns1)

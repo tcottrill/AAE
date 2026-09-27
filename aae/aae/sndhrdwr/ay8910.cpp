@@ -57,6 +57,7 @@ public:
     uint8_t read_data();
 
     void render(int16_t* dst, int n);
+    uint8_t output_mask = 7;
 
 private:
     int chip_index = 0;
@@ -89,6 +90,7 @@ void AY8910Chip::configure(int chip_index_, int master_clock, int sys_freq,
                            AY8910PortWrite pa_w_, AY8910PortWrite pb_w_)
 {
     chip_index = chip_index_;
+    output_mask = 7;
     pa_r = pa_r_;
     pb_r = pb_r_;
     pa_w = pa_w_;
@@ -451,9 +453,9 @@ void AY8910Chip::render(int16_t* dst, int n)
 
         // ---- Mix: (area * volume) / STEP per channel, sum -----------------
         int32_t sum = static_cast<int32_t>(
-            (static_cast<int64_t>(vola) * VolA
-           + static_cast<int64_t>(volb) * VolB
-           + static_cast<int64_t>(volc) * VolC) / AY8910_STEP);
+            (static_cast<int64_t>(vola) * ((output_mask & 1) ? VolA : 0)
+           + static_cast<int64_t>(volb) * ((output_mask & 2) ? VolB : 0)
+           + static_cast<int64_t>(volc) * ((output_mask & 4) ? VolC : 0)) / AY8910_STEP);
 
 #if AY8910_ENABLE_DC_BLOCK
         const int32_t in_dc  = sum;
@@ -483,6 +485,7 @@ struct AY8910Bank {
     int16_t*       buffer      [MAX_8910]   = { nullptr, nullptr, nullptr, nullptr, nullptr };
     AY8910Chip     chip        [MAX_8910];
     bool           active                   = false;
+    bool           muted                    = false;
 };
 AY8910Bank g_bank;
 
@@ -502,6 +505,8 @@ void update_bank_to_now()
     if (delta < 10) return;
     for (int i = 0; i < g_bank.num_chips; ++i) {
         g_bank.chip[i].render(g_bank.buffer[i] + g_bank.sample_pos, delta);
+        if (g_bank.muted)
+            std::memset(g_bank.buffer[i] + g_bank.sample_pos, 0, delta * sizeof(int16_t));
     }
     g_bank.sample_pos = newpos;
 }
@@ -540,6 +545,8 @@ int ay8910_sh_start(const AY8910Config* cfg)
     g_bank.sys_freq   = config.samplerate;
     g_bank.buffer_len = g_bank.sys_freq / Machine->gamedrv->fps;
     g_bank.sample_pos = 0;
+
+    g_bank.muted = false;
 
     for (int i = 0; i < g_bank.num_chips; ++i) {
         g_bank.mixing_level[i] = cfg->mixing_level[i];
@@ -598,6 +605,8 @@ void ay8910_sh_update(void)
     if (remains > 0) {
         for (int i = 0; i < g_bank.num_chips; ++i) {
             g_bank.chip[i].render(g_bank.buffer[i] + g_bank.sample_pos, remains);
+            if (g_bank.muted)
+                std::memset(g_bank.buffer[i] + g_bank.sample_pos, 0, remains * sizeof(int16_t));
         }
     }
     for (int i = 0; i < g_bank.num_chips; ++i) {
@@ -619,6 +628,19 @@ void ay8910_reset(int chip)
     }
     if (chip < 0 || chip >= g_bank.num_chips) return;
     g_bank.chip[chip].reset();
+}
+
+void ay8910_set_output_mask(int chip, uint8_t mask)
+{
+    if (!g_bank.active || chip < 0 || chip >= g_bank.num_chips) return;
+    update_bank_to_now();
+    g_bank.chip[chip].output_mask = mask & 7;
+}
+
+void ay8910_set_mute(bool muted)
+{
+    update_bank_to_now();
+    g_bank.muted = muted;
 }
 
 void ay8910_write(int chip, int addr, uint8_t data)

@@ -172,6 +172,9 @@
     <ClCompile Include="aae\led_service_handler.cpp">
       <Filter>Source Files\aae</Filter>
     </ClCompile>
+    <ClCompile Include="system\audio\wav_writer.cpp">
+      <Filter>Source Files\system\audio</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="resource.h">
@@ -412,6 +415,9 @@
       <Filter>Source Files\system\util</Filter>
     </ClInclude>
     <ClInclude Include="system\audio\audio_backend.h">
+      <Filter>Source Files\system\audio</Filter>
+    </ClInclude>
+    <ClInclude Include="system\audio\wav_writer.h">
       <Filter>Source Files\system\audio</Filter>
     </ClInclude>
   </ItemGroup>

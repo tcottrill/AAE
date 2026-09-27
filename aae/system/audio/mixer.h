@@ -199,10 +199,9 @@
 //       For voice-path channels, also updates the backend voice gain via
 //       IAudioBackend::VoiceSetVolume.
 //
-//       NOTE: get_volume() reverse-maps the float gain linearly, NOT through
-//       the inverse dB curve. This means set(X) -> get() may not return X.
-//       The sweep system (mixer_ramp_volume) reads back through get_volume(),
-//       so interpolation operates on the linear-gain scale, not the byte scale.
+//       get_volume() returns the stored byte, so set(X) -> get() == X. The
+//       sweep system (mixer_ramp_volume) reads back through get_volume() and
+//       interpolates on the byte scale, independent of group volume.
 //
 //   void sample_set_pan(chanid, pan)        // pan: 0..255, 128=center
 //   int  sample_get_pan(chanid)             // returns 0..255
@@ -242,9 +241,22 @@
 //   void  mixer_set_master_volume_255(int v)          // convenience: 0..255 -> percent
 //
 // Master volume is applied on the backend's mastering voice
-// (IAudioBackend::SetMasterVolume). Default is 0.80 linear (~-1.9 dB) set
-// during mixer_init.
+// (IAudioBackend::SetMasterVolume). Default is 80% on the perceptual curve
+// (~0.748 linear, ~-2.5 dB) set during mixer_init. While pause_audio() holds
+// the backend muted, mixer_set_master_volume() only records the new level;
+// restore_audio() pushes it, and mixer_get_master_volume() reads 0 meanwhile.
 //
+//
+// GROUP VOLUME
+// ------------
+//   void  mixer_set_group_volume(int group, int vol255)  // MixerGroup, 0..255
+//   int   mixer_get_group_volume(int group)
+//
+// Two user knobs layered over per-channel volume: MIXER_GROUP_SAMPLE for
+// sample_start / sample_start_mixer channels and MIXER_GROUP_CHIP for
+// stream_start channels. Applied gain = curve(ch.volume) * curve(group) * curve(driver trim).
+// Reserved ambient channels (17..19) are in no group. See mixer_groups.h.
+//   void  mixer_set_group_trim(int group, int trim255)  // per-game, from the driver
 //
 // PARAMETER SWEEPS (RAMPS)
 // ------------------------
@@ -268,8 +280,9 @@
 //
 // PAUSE / RESUME
 // --------------
-//   void pause_audio()         // mutes master volume, freezes software mixer
-//   void restore_audio()       // restores previous master volume, resumes mixing
+//   void pause_audio()         // mutes the backend, freezes software mixer
+//   void restore_audio()       // pushes the current master level (changes made
+//                              // while paused apply here), resumes mixing
 //
 //
 // RESAMPLING
@@ -511,6 +524,10 @@ struct CHANNEL {
 	int frequency = 0;
 	int volume = 255;
 	int pan = 128;
+	// Group volume membership (see mixer_groups.h). Assigned by the start
+	// function: stream_start -> CHIP, sample_start/sample_start_mixer ->
+	// SAMPLE, reserved ambient channels -> NONE. Multiplies into ch.vol.
+	int group = 0;   // MixerGroup; 0 == MIXER_GROUP_NONE
 	std::shared_ptr<SAMPLE> playing_sample;     // pins SAMPLE memory while live; survives sample_remove
 
 	// Positional audio (voice path only). When is_positional is true, the per-
@@ -591,6 +608,22 @@ inline void mixer_set_master_volume_255(int vol255) {
 	mixer_set_master_volume(percent);  // existing function
 }
 
+// Group volumes (see mixer_groups.h). group is a MixerGroup value; volume255
+// is 0..255 through the same perceptual curve as MAIN VOLUME, 255 = identity.
+// Setting a group re-derives the applied gain of every channel in that group
+// immediately (voice path and software mixer), so it is safe to drive from a
+// menu keypress. The one exception is a software-mixer channel mid
+// sample_end_mixer release fade, which finishes fading at its old level.
+// Unchanged values are a no-op.
+void mixer_set_group_volume(int group, int volume255);
+int  mixer_get_group_volume(int group);   // 0..255; 255 for an invalid group
+
+// Per-game trims declared by the driver (AAE_DRIVER_SOUND_TRIM), multiplied
+// under the group volume. Not user-visible. mixer_init resets both to 255;
+// the emulator applies the running driver's values right after it.
+void mixer_set_group_trim(int group, int trim255);
+int  mixer_get_group_trim(int group);   // 0..255; 255 for an invalid group
+
 // Mixer core functions
 int mixer_init(int rate, int fps);
 // Just signals the audio thread to process
@@ -605,6 +638,16 @@ void mixer_end();
 // computes phase steps from the sample rate must read THIS after mixer_init
 // rather than reusing the requested value. Returns 0 before mixer_init.
 int mixer_get_output_rate(void);
+
+// -----------------------------------------------------------------------------
+// Session WAV capture (-wavwrite). Forwards to the backend, which records the
+// FINAL output (voice path + software mix combined) to a 16-bit PCM stereo
+// WAV. Start after mixer_init; stop is called automatically by mixer_end.
+// Returns false when no backend exists or the backend does not support
+// capture (e.g. no sound device, non-XAudio2 backend).
+// -----------------------------------------------------------------------------
+bool mixer_wavwrite_start(const char* path);
+void mixer_wavwrite_stop(void);
 
 // Speaker request for the OUTPUT device, set by the emulator from
 // [main] speakers BEFORE mixer_init: 2 = stereo (default), 6 = discrete 5.1

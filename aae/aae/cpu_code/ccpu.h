@@ -104,6 +104,7 @@ UINT8 joystick_read(void);
 UINT16 get_ccpu_inputs(int offset);
 UINT16 get_ccpu_switches(int offset);
 int get_ccpu_ticks();
+int ccpu_is_waiting();
 
 /***************************************************************************
 	QB3 RAM BANKING SUPPORT

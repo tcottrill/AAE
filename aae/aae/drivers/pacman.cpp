@@ -2516,6 +2516,7 @@ AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0, 0)
 AAE_DRIVER_NVRAM_NONE()
 AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_CLONE_OF("puckman")
 AAE_DRIVER_END()
 
 // Ms. Pac-Man
@@ -2591,7 +2592,7 @@ AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0, 0)
 AAE_DRIVER_NVRAM_NONE()
 AAE_DRIVER_LAYOUT("default.lay", "Upright_Artwork")
-
+AAE_DRIVER_CLONE_OF("puckman")
 AAE_DRIVER_END()
 ///////////////////////////////////////////////////////////////////////
 // Multipac v1.5 (Clay Cowgill multigame)
@@ -2703,6 +2704,7 @@ AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0, 0)
 AAE_DRIVER_NVRAM_NONE()
 AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_CLONE_OF("puckman")
 AAE_DRIVER_END()
 ///////////////////////////////////////////////////////////////////////
 // Pac-Man (Midway, harder)
@@ -2740,6 +2742,7 @@ AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0, 0)
 AAE_DRIVER_NVRAM_NONE()
 AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_CLONE_OF("puckman")
 AAE_DRIVER_END()
 ///////////////////////////////////////////////////////////////////////
 // Ms. Pac-Man (bootleg) - NOT encrypted, plain load on stock pacman hardware
@@ -2777,6 +2780,7 @@ AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0, 0)
 AAE_DRIVER_NVRAM_NONE()
 AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_CLONE_OF("mspacman")
 AAE_DRIVER_END()
 ///////////////////////////////////////////////////////////////////////
 // Crush Roller (Kural Samno) - maketrax protection
@@ -2851,6 +2855,7 @@ AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0, 0)
 AAE_DRIVER_NVRAM_NONE()
 AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_CLONE_OF("crush")
 AAE_DRIVER_END()
 ///////////////////////////////////////////////////////////////////////
 // Magic Brush (bootleg)
@@ -2888,6 +2893,7 @@ AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0, 0)
 AAE_DRIVER_NVRAM_NONE()
 AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_CLONE_OF("crush")
 AAE_DRIVER_END()
 ///////////////////////////////////////////////////////////////////////
 // Paint Roller (bootleg)
@@ -2925,6 +2931,7 @@ AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0, 0)
 AAE_DRIVER_NVRAM_NONE()
 AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_CLONE_OF("crush")
 AAE_DRIVER_END()
 ///////////////////////////////////////////////////////////////////////
 // Make Trax - maketrax protection, ROT270
@@ -2962,6 +2969,7 @@ AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0, 0)
 AAE_DRIVER_NVRAM_NONE()
 AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_CLONE_OF("crush")
 AAE_DRIVER_END()
 ///////////////////////////////////////////////////////////////////////
 // Eyes (Digitrex Techstar)
@@ -3037,7 +3045,7 @@ AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0, 0)
 AAE_DRIVER_NVRAM_NONE()
 AAE_DRIVER_LAYOUT_NONE()
-AAE_DRIVER_ROM_DECRYPT(&eyes_rom_decrypt)
+AAE_DRIVER_ROM_DECRYPT_CLONE_OF(&eyes_rom_decrypt, "eyes")
 AAE_DRIVER_END()
 ///////////////////////////////////////////////////////////////////////
 // Mr. TNT
@@ -3262,7 +3270,7 @@ AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0, 0)
 AAE_DRIVER_NVRAM_NONE()
 AAE_DRIVER_LAYOUT_NONE()
-AAE_DRIVER_ROM_DECRYPT(&ponpoko_rom_decrypt)
+AAE_DRIVER_ROM_DECRYPT_CLONE_OF(&ponpoko_rom_decrypt, "ponpoko")
 AAE_DRIVER_END()
 ///////////////////////////////////////////////////////////////////////
 // Pacman Super ABC (Two-Bit Score multigame kit) - banked, own gfxdecode/CLUT

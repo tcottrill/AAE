@@ -300,6 +300,20 @@ static const char* gui_samples[] =
 
 // Game selection list (registry-backed, circular doubly-linked)
 static GameList  s_gameList;
+
+// gui_vector_only filter: keep only drivers whose video hardware is the vector
+// generator. The test is derived from the driver itself rather than a name
+// list, so raster drivers added later are excluded automatically and a new
+// vector clone appears automatically - nothing here to maintain as the driver
+// table grows. The "gui" driver is itself VIDEO_TYPE_VECTOR, so it survives
+// and the s_guiDriverIndex skip below keeps working unchanged.
+//
+// GUI-only: launching by name from the command line, -listallgames and
+// list_all_roms all read aae::AllDrivers() directly and stay complete.
+static bool keep_vector_only(const AAEDriver* d)
+{
+	return d && (d->video_attributes & VIDEO_TYPE_VECTOR) != 0;
+}
 static const GameNode* s_selection = nullptr;
 static int       s_guiDriverIndex = -1;  // Registry index of the GUI driver (to skip)
 static int       s_lastPlayedGameNum = -1;  // Persists until program restart
@@ -822,7 +836,10 @@ int init_gui()
 				break;
 			}
 		}
-		s_gameList.build(reg);
+		s_gameList.build(reg, config.gui_vector_only ? keep_vector_only : nullptr);
+		if (config.gui_vector_only)
+			LOG_INFO("GUI list: gui_vector_only on - listing %d of %d drivers",
+				(int)s_gameList.size(), (int)reg.size());
 		s_selection = s_gameList.head();
 		if (s_selection && s_guiDriverIndex >= 0 && s_selection->gameNum == s_guiDriverIndex)
 			s_selection = s_selection->next;

@@ -186,11 +186,11 @@
 #include "mhavoc.h"
 #include "aae_mame_driver.h"
 #include "driver_registry.h"
-#include "aae_pokey.h"
-#include "earom.h"
+#include "c012294_interface.h"
 #include "tms5220.h"
 #include "timer.h"
-#include "aae_avg.h"
+#include "config.h"     // config.debug_profile_code
+#include "mame_late_avgdvg.h"
 #include "mixer.h"
 #include "okim6295_loader.h"
 
@@ -202,6 +202,14 @@
 #define MHAVOC_CLOCK		10000000
 #define MHAVOC_CLOCK_2_5M	(MHAVOC_CLOCK/4)
 #define MHAVOC_CLOCK_1_25M	(MHAVOC_CLOCK/8)
+// The IRQ clock that steps both LS161s (alpha IRQ every 12 counts until
+// acked, gamma IRQ level = count bit 3): 10 MHz / 16 / 16 / 8 = 4882.8125 Hz
+// (MAME 0.286 mhavoc.cpp "5k_timer", MHAVOC_CLOCK_5K), exactly 512 alpha
+// cycles. Armed as a periodic timer on CPU0 (mhavoc_arm_irq_clock); the CPU
+// entries carry no ipf callback. (Was ipf 100 at 50 fps = 5000 Hz, 2.4% fast.)
+#define MHAVOC_CLOCK_5K		(MHAVOC_CLOCK / 16.0 / 16.0 / 8.0)
+static int mhavoc_irq_timer = -1;
+static int dbg_clock_ticks = 0, dbg_alpha_irqs = 0, dbg_gamma_pulses = 0;   // debug counters
 #define OKI_CLOCK           1056000 // Courtesy of HBMAME
 
 static struct POKEYinterface pokey_interface_alphaone =
@@ -277,8 +285,6 @@ static int rom_bank[4] = { 0x10000, 0x12000, 0x14000, 0x16000 };
 static int rom_bank_sel = 0;
 unsigned char* cur_bank;
 
-static int MHAVGDONE = 1;
-float sweep;
 
 /*************************************
 *
@@ -337,7 +343,6 @@ WRITE_HANDLER(speech_strobe_w)
 	const int sid = nameToNum(name);
 	if (sid < 0) return;   // no such OKI sample in this ROM
 
-	sample_set_volume(7, config.mainvol);
 	sample_start(7, sid, 0);
 }
 
@@ -387,6 +392,11 @@ void end_mhavoc()
 {
 	LOG_INFO("End Major Havoc Called");
 
+	if (mhavoc_irq_timer >= 0)
+	{
+		timer_remove(mhavoc_irq_timer);
+		mhavoc_irq_timer = -1;
+	}
 	mhavoc_sh_stop();
 	if (!has_gamma_cpu) { save_hi_aae(0x1800, 0x100, 0); }
 	//Reset all game specific variables.
@@ -400,7 +410,6 @@ void run_reset()
 	alpha_irq_clock = 0;
 	alpha_irq_clock_enable = 1;
 	gamma_irq_clock = 0;
-	MHAVGDONE = 1;
 	alpha_data = 0;
 	alpha_rcvd = 0;
 	alpha_xmtd = 0;
@@ -420,9 +429,11 @@ void run_reset()
  *  Interrupt handling
  *
  *************************************/
- //We are running this at 250mhz/4, so each of the clock number have to be multiplied by 4. (400 passes, 125 cycles)
+ // One tick of the 4882.8125 Hz IRQ clock (see MHAVOC_CLOCK_5K); called from
+ // the periodic timer armed by mhavoc_arm_irq_clock.
 void mhavoc_interrupt()
 {
+	dbg_clock_ticks++;
 	/* clock the LS161 driving the alpha CPU IRQ */
 	if (alpha_irq_clock_enable)
 	{
@@ -433,6 +444,7 @@ void mhavoc_interrupt()
 			cpu_do_int_imm(CPU0, INT_TYPE_INT);
 			alpha_irq_clock_enable = 0;
 			alpha_irq_clock = 0;
+			dbg_alpha_irqs++;
 		}
 	}
 
@@ -444,8 +456,19 @@ void mhavoc_interrupt()
 		{
 			//LOG_INFO("IRQ GAMMA CPU");
 			cpu_do_int_imm(CPU1, INT_TYPE_INT);
+			dbg_gamma_pulses++;
 		}
 	}
+}
+
+// Arm (or re-arm) the IRQ clock timer. Shared by init_mhavoc and init_alphone.
+static void mhavoc_arm_irq_clock(void)
+{
+	if (mhavoc_irq_timer >= 0)
+		timer_remove(mhavoc_irq_timer);
+	mhavoc_irq_timer = timer_set(TIME_IN_HZ(MHAVOC_CLOCK_5K), CPU0, [](int) { mhavoc_interrupt(); });
+	LOG_INFO("Major Havoc: IRQ clock timer at %.4f Hz (%d alpha cycles)",
+		(double)MHAVOC_CLOCK_5K, (int)(MHAVOC_CLOCK_2_5M / MHAVOC_CLOCK_5K));
 }
 
 WRITE_HANDLER(mhavoc_alpha_irq_ack_w)
@@ -468,47 +491,14 @@ WRITE_HANDLER(mhavoc_gamma_irq_ack_w)
 	gamma_irq_clock = 0;
 }
 
-static void mhavoc_clr_busy(int dummy)
-{
-	MHAVGDONE = 1;
-}
-
-// Driver-private, deliberately NOT the exported avgdvg_reset_w from
-// vidhrdwr/aae_avg.h (defined at aae_avg.cpp:644) - same reasoning as
-// bwidow_avgdvg_reset_w. This file is compiled into the aae executable
-// rather than aae_core, so it did not show up in the g++ survey of the core;
-// it has the identical defect and would have failed the first Linux build of
-// the exe in Phase 3c.
 WRITE_HANDLER(mhavoc_avgdvg_reset_w)
 {
-	LOG_INFO("---------------------------AVGDVG RESET ------------------------");
-	total_length = 0;
+	avgdvg_reset(0, 0);
 }
 
 WRITE_HANDLER(avg_mgo)
 {
-	if (!MHAVGDONE) { return; }
-
-	avg_video_update();
-
-	if (total_length > 10)
-	{
-		MHAVGDONE = 0;
-		// Clear the video tick count.
-		get_video_ticks(0xff);
-
-		// There is a method to this madness, the time for the sweep is what it should be if the game was running 30FPS instead of 50.
-		//That's why the multiplication by 1.666
-		// Alpha One is slower, it runs at a different scale causing a faster draw time.
-		sweep = (float)(TIME_IN_NSEC(1500) * total_length) * Machine->gamedrv->cpu[CPU0].cpu_freq; // This is the rough time for 50fps.
-		if (has_gamma_cpu)
-			sweep = sweep * 1.666;
-
-		if (config.debug_profile_code) {
-			LOG_INFO("Sweep Timer %f", sweep);
-		}
-	}
-	else { MHAVGDONE = 1; }
+	avgdvg_go(0, 0);
 }
 
 WRITE_HANDLER(mhavoc_out_0_w)
@@ -546,15 +536,6 @@ READ_HANDLER(mhavoc_port_0_r)
 {
 	UINT8 res;
 
-	if (!MHAVGDONE)
-	{
-		if (get_video_ticks(0) > sweep)
-		{
-			mhavoc_clr_busy(0);
-			//LOG_INFO("Mhavoc DONE Set HERE %x at Frame %d Cycles %d", MHAVGDONE, cpu_getcurrentframe(), cpu_getcycles_cpu(0));
-		}
-	}
-
 	// Bits 7-6 = selected based on Player 1
 		// Bits 5-4 = common
 	if (player_1)
@@ -567,7 +548,7 @@ READ_HANDLER(mhavoc_port_0_r)
 	if (!(get_eterna_ticks(0) & 0x400))
 		res |= 0x02;
 
-	if (MHAVGDONE)
+	if (avgdvg_done())
 		res |= 0x01;
 
 	if (gamma_rcvd)
@@ -610,20 +591,11 @@ READ_HANDLER(alphaone_port_0_r)
 
 	res = readinputport(0) & 0xfc;
 
-	if (!MHAVGDONE)
-	{
-		if (get_video_ticks(0) > sweep)
-		{
-			MHAVGDONE = 1;
-			total_length = 0;
-		}
-	}
-
 	/* Emulate the 2.4Khz source on bit 2 (divide 2.5Mhz by 1024) */
 	if (!(get_eterna_ticks(0) & 0x400))
 		res |= 0x02;
 
-	if (MHAVGDONE)
+	if (avgdvg_done())
 		res |= 0x01;
 
 	return res;
@@ -744,6 +716,18 @@ void run_mhavoc()
 		watchdog_reset_w(0, 0, 0);
 	}
 	mhavoc_sh_update();
+	/* debug: IRQ clock ticks per second (expect 4882.8), alpha IRQs and
+	 * gamma IRQ pulses delivered */
+	if (config.debug_profile_code)
+	{
+		static int frames = 0;
+		if (++frames >= Machine->gamedrv->fps)
+		{
+			LOG_INFO("mhavoc: IRQ clock ticks in the last %d frames = %d (expect %.1f); alpha IRQs %d, gamma pulses %d",
+				frames, dbg_clock_ticks, (double)MHAVOC_CLOCK_5K, dbg_alpha_irqs, dbg_gamma_pulses);
+			frames = 0; dbg_clock_ticks = 0; dbg_alpha_irqs = 0; dbg_gamma_pulses = 0;
+		}
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -871,6 +855,7 @@ int init_alphone()
 	mhavoc_sh_start();
 	//Init the video
 	avg_start_alphaone();
+	mhavoc_arm_irq_clock();
 	return 0;
 }
 
@@ -883,6 +868,7 @@ int init_mhavoc(void)
 	mhavoc_sh_start();
 	//Init the video
 	avg_start_mhavoc();
+	mhavoc_arm_irq_clock();
 
 	LOG_INFO("MHAVOC Init complete");
 	return 0;
@@ -1196,7 +1182,7 @@ AAE_DRIVER_ART_NONE()
 AAE_DRIVER_CPUS(
 	// CPU0: Alpha 6502 @ 2.5 MHz with interrupts
 	AAE_CPU_ENTRY_EX(
-		CPU_M6502, 2500000, 400, 100, INT_TYPE_INT, &mhavoc_interrupt,
+		CPU_M6502, 2500000, 400, 0, INT_TYPE_INT, nullptr,   // IRQ clock from the 4882.8125 Hz timer
 		AlphaRead, AlphaWrite, nullptr, nullptr, nullptr, nullptr, &mhavoc_post_cpu_init
 	),
 	// CPU1: Gamma 6502 @ 1.25 MHz, no interrupts
@@ -1227,7 +1213,7 @@ AAE_DRIVER_ART_NONE()
 
 AAE_DRIVER_CPUS(
 	AAE_CPU_ENTRY_EX(
-		CPU_M6502, 2500000, 400, 100, INT_TYPE_INT, &mhavoc_interrupt,
+		CPU_M6502, 2500000, 400, 0, INT_TYPE_INT, nullptr,   // IRQ clock from the 4882.8125 Hz timer
 		AlphaRead, AlphaWrite, nullptr, nullptr, nullptr, nullptr, &mhavoc_post_cpu_init
 	),
 	AAE_CPU_ENTRY(
@@ -1245,6 +1231,7 @@ AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x4000, 0x1000)
 AAE_DRIVER_NVRAM(generic_nvram_handler)
 AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_CLONE_OF("mhavoc")
 AAE_DRIVER_END()
 
 // Major Havoc (Return To VAX - Mod by Jeff Askey)
@@ -1257,7 +1244,7 @@ AAE_DRIVER_ART_NONE()
 
 AAE_DRIVER_CPUS(
 	AAE_CPU_ENTRY_EX(
-		CPU_M6502, 2500000, 400, 100, INT_TYPE_INT, &mhavoc_interrupt,
+		CPU_M6502, 2500000, 400, 0, INT_TYPE_INT, nullptr,   // IRQ clock from the 4882.8125 Hz timer
 		AlphaRead, AlphaWrite, nullptr, nullptr, nullptr, nullptr, &mhavoc_post_cpu_init
 	),
 	AAE_CPU_ENTRY(
@@ -1275,6 +1262,7 @@ AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x4000, 0x1000)
 AAE_DRIVER_NVRAM(generic_nvram_handler)
 AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_CLONE_OF("mhavoc")
 AAE_DRIVER_END()
 
 // Major Havoc (The Promised End 1.01 adpcm)
@@ -1287,7 +1275,7 @@ AAE_DRIVER_SAMPLES_NONE()
 AAE_DRIVER_ART_NONE()
 AAE_DRIVER_CPUS(
 	AAE_CPU_ENTRY_EX(
-		CPU_M6502, 2500000, 400, 100, INT_TYPE_INT, &mhavoc_interrupt,
+		CPU_M6502, 2500000, 400, 0, INT_TYPE_INT, nullptr,   // IRQ clock from the 4882.8125 Hz timer
 		AlphaRead, AlphaWrite, nullptr, nullptr, nullptr, nullptr, &mhavoc_post_cpu_init
 	),
 	AAE_CPU_ENTRY(
@@ -1315,7 +1303,7 @@ AAE_DRIVER_SAMPLES_NONE()
 AAE_DRIVER_ART_NONE()
 AAE_DRIVER_CPUS(
 	AAE_CPU_ENTRY_EX(
-		CPU_M6502, 2500000, 400, 100, INT_TYPE_INT, &mhavoc_interrupt,
+		CPU_M6502, 2500000, 400, 0, INT_TYPE_INT, nullptr,   // IRQ clock from the 4882.8125 Hz timer
 		AlphaRead, AlphaWrite, nullptr, nullptr, nullptr, nullptr, &mhavoc_post_cpu_init
 	),
 	AAE_CPU_ENTRY(
@@ -1332,6 +1320,7 @@ AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x4000, 0x1000)
 AAE_DRIVER_NVRAM(generic_nvram_handler)
 AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_CLONE_OF("mhavoc")
 AAE_DRIVER_END()
 
 // Alpha One (Major Havoc Prototype - 3 Lives)
@@ -1345,7 +1334,7 @@ AAE_DRIVER_ART_NONE()
 AAE_DRIVER_CPUS(
 	// Single 6502 using Alpha One maps
 	AAE_CPU_ENTRY_EX(
-		CPU_M6502, 2500000, 400, 100, INT_TYPE_INT, &mhavoc_interrupt,
+		CPU_M6502, 2500000, 400, 0, INT_TYPE_INT, nullptr,   // IRQ clock from the 4882.8125 Hz timer
 		AlphaOneRead, AlphaOneWrite, nullptr, nullptr, nullptr, nullptr, &mhavoc_post_cpu_init
 	),
 	AAE_CPU_NONE_ENTRY(),
@@ -1360,6 +1349,7 @@ AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x4000, 0x1000)
 AAE_DRIVER_NVRAM(generic_nvram_handler)
 AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_CLONE_OF("mhavoc")
 AAE_DRIVER_END()
 
 // Alpha One (Major Havoc Prototype - 5 Lives)
@@ -1372,7 +1362,7 @@ AAE_DRIVER_ART_NONE()
 
 AAE_DRIVER_CPUS(
 	AAE_CPU_ENTRY_EX(
-		CPU_M6502, 2500000, 400, 100, INT_TYPE_INT, &mhavoc_interrupt,
+		CPU_M6502, 2500000, 400, 0, INT_TYPE_INT, nullptr,   // IRQ clock from the 4882.8125 Hz timer
 		AlphaOneRead, AlphaOneWrite, nullptr, nullptr, nullptr, nullptr, &mhavoc_post_cpu_init
 	),
 	AAE_CPU_NONE_ENTRY(),
@@ -1387,6 +1377,7 @@ AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x4000, 0x1000)
 AAE_DRIVER_NVRAM(generic_nvram_handler)
 AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_CLONE_OF("mhavoc")
 AAE_DRIVER_END()
 
 AAE_REGISTER_DRIVER(drv_mhavoc)

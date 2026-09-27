@@ -407,7 +407,11 @@ static bool EnsureRotTarget(void)
 	ci.height = kRotCanvas;
 	ci.filter = rtFilterVK::Linear;
 	ci.colorFormat = VK_FORMAT_UNDEFINED;   // = the swapchain format (see s_rtRot)
-	ci.mipLevels = 1;                       // blitted 1:1-ish, never minified hard
+	// Full chain: the plain rotated blit is 1:1-ish and never minified hard,
+	// but the color VECTOR monitor pass samples this canvas with textureLod
+	// for its halation taps (GL's fbo_generate_mipmaps({img4a})). The levels
+	// only cost memory until GenerateMips is actually called.
+	ci.mipLevels = -1;
 	if (!s_rtRot.Init(g_vk, ci))
 	{
 		s_rtRotFailed = true;
@@ -869,12 +873,20 @@ static void EnsureCrtPost(void)
 {
 	if (s_crtPostInit || s_crtPostFailed)
 		return;
-	// Needs the game RT's format for the scanline pipeline variant.
-	if (!s_rtGame.IsValid())
+
+	// Init pre-builds the scanline pipeline variant against the surface the
+	// scanline pass draws into, so that surface has to be known here. RASTER
+	// draws it into the game RT, hence the wait. A color VECTOR game has no
+	// game RT at all - its overlay draws into the swapchain pass - so there
+	// the swapchain format is the right variant and nothing needs waiting
+	// for. Without this exemption the whole chain stays offline for vector
+	// games and every color-vector gate below reads false.
+	// (Every other variant is built lazily per format by GetPipeline_.)
+	if (!s_rtGame.IsValid() && !GameIsVector())
 		return;
 
 	CrtPostVKCreateInfo ci{};
-	ci.gameRtFormat = s_rtGame.GetFormat();
+	ci.gameRtFormat = s_rtGame.IsValid() ? s_rtGame.GetFormat() : g_vk.swapchainFormat;
 	if (g_crtPost.Init(g_vk, &ci))
 	{
 		s_crtPostInit = true;
@@ -922,6 +934,40 @@ static bool VkColorMonitorActive(int vattr)
 
 	return !overlay_selected && config.color_enable != 0 && s_crtPostInit &&
 		(vattr & VIDEO_TYPE_RASTER_COLOR) != 0;
+}
+
+// ---------------------------------------------------------------------------
+// Color VECTOR monitor treatment. GL twins: color_vector_game /
+// color_vector_shader_active / color_vector_overlay_active.
+//
+// A color X-Y monitor (Wells-Gardner 6100 / Amplifone class) was an ordinary
+// color shadow-mask CRT, so these games get exactly what the color RASTER
+// games get - the same crt_color_vk shader and the same overlay textures, off
+// the same [monitorcolor] settings and the same COLOR MONITOR SETUP menu.
+// The front-end GUI driver declares VECTOR_USES_COLOR too and is excluded,
+// just as it is from glow and phosphor trails.
+// ---------------------------------------------------------------------------
+static bool VkColorVectorGame(int vattr)
+{
+	return is_color_vector_attr(vattr) && !emulator_is_gui_active();
+}
+
+// A selected texture overlay is the ALTERNATE to the shader and stands it
+// down - same rule as VkColorMonitorActive.
+static bool VkColorVectorShaderActive(int vattr)
+{
+	const bool overlay_selected = config.raster_effect && config.raster_effect[0] &&
+		aae_stricmp(config.raster_effect, "NONE") != 0;
+
+	return !overlay_selected && config.color_enable != 0 && s_crtPostInit &&
+		VkColorVectorGame(vattr);
+}
+
+// s_scanHave is only true when raster_effect named a file that loaded, so
+// this and the shader path are naturally mutually exclusive.
+static bool VkColorVectorOverlayActive(int vattr)
+{
+	return s_scanHave && s_crtPostInit && VkColorVectorGame(vattr);
 }
 
 // ---------------------------------------------------------------------------
@@ -1054,7 +1100,45 @@ static void FillMonitorParams(bool monoPass, CrtMonitorParamsVK& mp)
 		mp.maskType     = (float)config.color_mask_type;
 		mp.maskStrength = config.color_mask_strength;
 		mp.maskScale    = config.color_mask_scale;
+		mp.softPhosphor = config.color_enable == 2 ? 1.0f : 0.0f;
 	}
+}
+
+// ---------------------------------------------------------------------------
+// FillVectorMonitorParams - the color knobs as above, but with the two
+// source-geometry fields re-derived for the VECTOR canvas. GL twin:
+// render_vector_color_monitor (opengl_renderer.cpp).
+//
+// The vector chain has no s_rasterNativeW/H and no prescale: the source is the
+// square kRotCanvas composite. uSrcSize comes from the driver's visible area
+// instead - for the vector drivers that is the beam coordinate space (~520x395
+// for the Atari games), a sane pseudo-raster size, so the scanline pitch and
+// the blur/halation radii land in the same ballpark as a real raster game.
+// ---------------------------------------------------------------------------
+static void FillVectorMonitorParams(CrtMonitorParamsVK& mp)
+{
+	FillMonitorParams(/*monoPass=*/false, mp);
+
+	int vw = 1, vh = 1;
+	if (Machine && Machine->drv)
+	{
+		const rectangle& va = Machine->drv->visible_area;
+		vw = (va.max_x - va.min_x + 1);
+		vh = (va.max_y - va.min_y + 1);
+		if (Machine->drv->rotation & ORIENTATION_SWAP_XY)
+		{
+			const int t = vw; vw = vh; vh = t;
+		}
+	}
+	if (vw <= 0) vw = 1;
+	if (vh <= 0) vh = 1;
+
+	mp.srcW = (float)vw;
+	mp.srcH = (float)vh;
+	// One game pixel spans kRotCanvas/vw texels of the canvas, so shift the
+	// halation mip level by that ratio - the vector twin of the raster path's
+	// log2(prescale).
+	mp.lodBias = log2f((float)kRotCanvas / (float)vw);
 }
 
 int vkchain_init(void)
@@ -1097,7 +1181,14 @@ int vkchain_init(void)
 	}
 
 	const bool validation = (config.vk_validation != 0);
-	if (!VK_Init(g_vk, *present, validation, /*vsync=*/true))
+	// vsync follows config.forcesync, matching the GL path (init_gl calls
+	// glchain_set_vsync(config.forcesync)). This used to be hard-wired true,
+	// which selected FIFO unconditionally and paced presentation at the
+	// display refresh - so GLSwapBuffers() burned the whole frame budget
+	// before FrameLimiter::Throttle() ever ran, and any driver whose fps was
+	// not the monitor rate (asteroid at 62) silently played back at 60.
+	// FrameLimiter is the pacing authority; vsync is a user preference.
+	if (!VK_Init(g_vk, *present, validation, /*vsync=*/(config.forcesync != 0)))
 	{
 		LOG_ERROR("vkchain_init: VK_Init failed");
 		VK_Shutdown(g_vk);
@@ -1900,6 +1991,7 @@ void vkchain_render(void)
 		VkCommandBuffer cmd = g_vk.cmdBuffers[g_vk.frameIndex];
 		const int sw = (int)g_vk.swapchainExtent.width;
 		const int sh = (int)g_vk.swapchainExtent.height;
+		const int vattr = (Machine && Machine->drv) ? Machine->drv->video_attributes : 0;
 
 		// Artwork layer set for this frame, mirroring final_render's gates
 		// exactly: config flag AND art_loaded AND (for the overlay) the
@@ -1907,7 +1999,6 @@ void vkchain_render(void)
 		// loaded by vkchain_load_artwork (run_game Step 6).
 		VectorArtworkVK art{};
 		{
-			const int vattr = (Machine && Machine->drv) ? Machine->drv->video_attributes : 0;
 			VkTexture* t = nullptr;
 			if (config.artwork && art_loaded[0] && (t = VkArt_Get(0)) != nullptr)
 			{
@@ -1946,7 +2037,22 @@ void vkchain_render(void)
 		// as-is and only the content inside it needs turning.
 		// Requires the composite blitter; if either the RT or ScreenQuadVK is
 		// unavailable this stays false and the untouched non-rotated path runs.
-		const bool rotActive = (rot != 0) && s_screenQuadInit && EnsureRotTarget();
+		//
+		// Color VECTOR monitor treatment (GL: render_vector_color_monitor /
+		// render_vector_overlay in end_render_fbo4). The SHADER needs GL's
+		// fbo4 - one finished image to post-process - and only the canvas
+		// route produces that here, so it forces the canvas on exactly as a
+		// rotation does. The texture OVERLAY needs nothing extra: it just
+		// multiplies over whatever landed on the swapchain.
+		// The CRT post chain is shared with the raster path, which brings it
+			// online off its game RT. A vector game has no game RT, so it has to
+			// be pulled up from here or every gate below reads false.
+			EnsureCrtPost();
+
+			const bool cvShader  = VkColorVectorShaderActive(vattr);
+		const bool cvOverlay = VkColorVectorOverlayActive(vattr);
+		const bool canvasActive =
+			((rot != 0) || cvShader) && s_screenQuadInit && EnsureRotTarget();
 
 		// Mirror glchain_render's !paused guard; unlike the direct path,
 		// pause here shows the RETAINED frame (composite below still runs),
@@ -2033,16 +2139,18 @@ void vkchain_render(void)
 			// The rotated path stays suspended: its output RT is another
 			// offscreen pass, and resuming only to suspend again would be a
 			// pointless swapchain pass open/close.
-			if (!rotActive)
+			if (!canvasActive)
 			{
 				VK_ResumeFramePass(g_vk, cmd, s_imageIndex);
 				passSuspended = false;
 			}
 		}
 
-		if (sw > 0 && sh > 0 && rotActive)
+		if (sw > 0 && sh > 0 && canvasActive)
 		{
-			// ---- Rotated composite: build GL's fbo4 in s_rtRot, then blit.
+			// ---- Canvas composite: build GL's fbo4 in s_rtRot, then blit.
+			// Taken for a system rotation, for the color vector monitor
+			// shader, or both.
 			//
 			// The letterbox collapses to the identity square (lx=ly=0,
 			// vw=vh=1024), which turns every mapped coordinate below back
@@ -2091,17 +2199,107 @@ void vkchain_render(void)
 
 			s_rotTargetActive = false;
 			s_rtRot.End(g_vk, cmd);
+
+			// The color pass's halation taps read the canvas mip pyramid via
+			// textureLod, so build it here - after End (level 0 is
+			// SHADER_READ_ONLY) and while the swapchain pass is still
+			// suspended (vkCmdBlitImage is illegal inside a pass). GL twin:
+			// fbo_generate_mipmaps({img4a}) in render_vector_color_monitor.
+			//
+			// UNCONDITIONAL, like the raster path's s_rtGame cascade: the RT's
+			// sampler carries maxLod = mip count, so a blit that minifies the
+			// canvas reads the tail whether or not the shader is on - and the
+			// tail stays UNDEFINED until the first GenerateMips.
+			if (s_rtRot.GetMipLevels() > 1)
+			{
+				GPU_ZONE("canvas_mips");
+				s_rtRot.GenerateMips(g_vk, cmd);
+			}
+
+			// A rotation cannot ride the monitor quad: CrtPostVK drives its
+			// quad from a uvrect, which flips but does not rotate. So when
+			// both are on, the monitor runs OFFSCREEN into s_rtMonitor (the
+			// raster path's intermediate, free here - a game is never both
+			// raster and vector) and the rotated ScreenQuadVK blit puts that
+			// on screen. Sized like the raster route: the on-screen extent
+			// measured in the monitor image's OWN frame, so one monitor
+			// fragment covers one screen pixel.
+			int mvw = (int)(m.vw + 0.5f);
+			int mvh = (int)(m.vh + 0.5f);
+			if (rot == 1 || rot == 2) { const int t = mvw; mvw = mvh; mvh = t; }
+
+			const bool cvOffscreen =
+				cvShader && (rot != 0) && EnsureMonitorTarget(mvw, mvh);
+			const bool cvDirect = cvShader && (rot == 0);
+
+			CrtMonitorParamsVK vmp{};
+			if (cvOffscreen || cvDirect)
+				FillVectorMonitorParams(vmp);
+
+			if (cvOffscreen)
+			{
+				GPU_ZONE("monitor");
+				const int rtW = s_rtMonitor.GetWidth();
+				const int rtH = s_rtMonitor.GetHeight();
+				s_rtMonitor.Begin(g_vk, cmd, /*clear=*/true, 0.0f, 0.0f, 0.0f, 1.0f);
+				g_crtPost.RecordMonitor(g_vk, cmd, g_vk.frameIndex,
+					/*colorPass=*/true,
+					s_rtRot.VK_GetColorView(), s_rtRot.VK_GetSampler(),
+					vmp,
+					0.0f, 0.0f, (float)rtW, (float)rtH,
+					rtW, rtH);
+				s_rtMonitor.End(g_vk, cmd);
+			}
+
 			VK_ResumeFramePass(g_vk, cmd, s_imageIndex);
 			passSuspended = false;
 
-			// GL end_render_fbo4: blit the square canvas onto the letterbox
-			// rect with blending DISABLED and the rotation's corner UVs.
-			GPU_ZONE("rot_blit");
-			g_screenQuad.RecordRect(g_vk, cmd, g_vk.frameIndex,
-				s_rtRot.VK_GetColorView(), s_rtRot.VK_GetSampler(),
-				m.lx, m.ly, m.lx + m.vw, m.ly + m.vh,
-				(uint32_t)sw, (uint32_t)sh,
-				/*flipUV_Y=*/false, RGB_WHITE, rot, SQBlendVK::None);
+			// The letterbox rect in CrtPostVK's Y-DOWN frame. ScreenQuadVK
+			// takes it y-up; the box is vertically centered, so the two agree
+			// numerically, but derive it rather than lean on that.
+			const float ly0 = (float)sh - (m.ly + m.vh);
+			const float ly1 = (float)sh - m.ly;
+
+			if (cvDirect)
+			{
+				// Straight onto the swapchain at the letterbox rect: 1
+				// fragment = 1 screen pixel, so the shadow mask is
+				// pixel-exact by construction - the same output-resolution
+				// property GL gets by running the pass on its final blit.
+				GPU_ZONE("monitor");
+				g_crtPost.RecordMonitor(g_vk, cmd, g_vk.frameIndex,
+					/*colorPass=*/true,
+					s_rtRot.VK_GetColorView(), s_rtRot.VK_GetSampler(),
+					vmp,
+					m.lx, ly0, m.lx + m.vw, ly1,
+					sw, sh);
+			}
+			else
+			{
+				// GL end_render_fbo4: blit the square canvas onto the
+				// letterbox rect with blending DISABLED and the rotation's
+				// corner UVs. Sources the monitor output when it ran
+				// offscreen, otherwise the raw canvas.
+				GPU_ZONE("rot_blit");
+				g_screenQuad.RecordRect(g_vk, cmd, g_vk.frameIndex,
+					cvOffscreen ? s_rtMonitor.VK_GetColorView() : s_rtRot.VK_GetColorView(),
+					cvOffscreen ? s_rtMonitor.VK_GetSampler() : s_rtRot.VK_GetSampler(),
+					m.lx, m.ly, m.lx + m.vw, m.ly + m.vh,
+					(uint32_t)sw, (uint32_t)sh,
+					/*flipUV_Y=*/false, RGB_WHITE, rot, SQBlendVK::None);
+			}
+
+			// Texture overlay (the alternate to the shader) multiplies over
+			// the blitted game image, tiled 1:1 on window pixels.
+			if (cvOverlay)
+			{
+				GPU_ZONE("overlay");
+				g_crtPost.RecordScanlinesRect(g_vk, cmd, g_vk.frameIndex,
+					s_scanTex.view,
+					(int)s_scanTex.width, (int)s_scanTex.height,
+					m.lx, ly0, m.lx + m.vw, ly1,
+					sw, sh);
+			}
 		}
 		else if (sw > 0 && sh > 0)
 		{
@@ -2138,6 +2336,20 @@ void vkchain_render(void)
 				g_vectorPost.RecordComposite(g_vk, cmd, g_vk.frameIndex,
 					x0, (float)sh - yTopUp, x1, (float)sh - yBotUp,
 					config.vectrail, config.vecglow);
+			}
+
+			// Texture overlay over the composited game image, tiled 1:1 on
+			// window pixels. The overlay needs no canvas, so it lands here on
+			// the direct route too - this is the branch a color vector game
+			// takes when an overlay PNG is the selected screen effect.
+			if (cvOverlay)
+			{
+				GPU_ZONE("overlay");
+				g_crtPost.RecordScanlinesRect(g_vk, cmd, g_vk.frameIndex,
+					s_scanTex.view,
+					(int)s_scanTex.width, (int)s_scanTex.height,
+					m.lx, (float)sh - (m.ly + m.vh), m.lx + m.vw, (float)sh - m.ly,
+					sw, sh);
 			}
 		}
 
@@ -2786,11 +2998,16 @@ void vkchain_init_raster_overlay(void)
 		return;
 	}
 
-	// Only raster games use the scanlines overlay; skip for vector games.
+	// Raster games use the overlay, and so do COLOR VECTOR games: those ran
+	// on ordinary shadow-mask tubes, so the same textures apply (the vector
+	// branch lays them over the letterboxed composite). B/W vector tubes have
+	// continuous phosphor and no mask, so they skip it. GL twin:
+	// glchain_init_raster_overlay.
 	if (Machine && Machine->drv &&
-		!(Machine->drv->video_attributes & VIDEO_RASTER_CLASS_MASK))
+		!(Machine->drv->video_attributes & VIDEO_RASTER_CLASS_MASK) &&
+		!is_color_vector_attr(Machine->drv->video_attributes))
 	{
-		LOG_INFO("Raster overlay (VK): skipped (not a raster game).");
+		LOG_INFO("Raster overlay (VK): skipped (not a raster or color vector game).");
 		return;
 	}
 

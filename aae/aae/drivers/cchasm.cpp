@@ -16,10 +16,11 @@
 //              CTC ch0 and ch2 trigger inputs used for handshaking
 //
 // Inter-CPU communication uses four sound latches:
-//   soundlatch  (68000 -> Z80, command byte)
-//   soundlatch2 (68000 -> Z80, data byte + triggers NMI + CTC trg2)
-//   soundlatch3 (Z80 -> 68000, status byte)
-//   soundlatch4 (Z80 -> 68000, data byte + triggers 68000 IRQ1)
+//   soundlatch  = generic latch 0 (68000 -> Z80, command byte)
+//   soundlatch2 = generic latch 1 (68000 -> Z80, data byte + triggers NMI + CTC trg2)
+//   soundlatch3 = generic latch 2 (Z80 -> 68000, status byte)
+//   soundlatch4 = generic latch 3 (Z80 -> 68000, data byte + triggers 68000 IRQ1)
+// (storage in sndhrdwr/sound_latch; every trigger/flag side effect is here)
 //
 // FPS: 40 Hz (per original MAME driver)
 // Orientation: ROT270 (vertical monitor, rotated 270 degrees)
@@ -42,6 +43,7 @@
 #include "driver_registry.h"
 #include "cpu_control.h"
 #include "ay8910.h"
+#include "sound_latch.h"
 #include "dac.h"
 #include "timer.h"
 #include "emu_vector_draw.h"
@@ -101,10 +103,6 @@ static int m6840_cr[3];                // control registers
 // ===========================================================================
 // Inter-CPU communication: four sound latches
 // ===========================================================================
-static int soundlatch = 0;   // 68000 -> Z80 (command)
-static int soundlatch2 = 0;   // 68000 -> Z80 (data, triggers NMI + CTC trg2)
-static int soundlatch3 = 0;   // Z80 -> 68000 (status)
-static int soundlatch4 = 0;   // Z80 -> 68000 (data, triggers 68000 IRQ1)
 
 static int sound_flags = 0;   // handshaking flags
 // bit 6: set by Z80 when writing soundlatch4 (cleared by 68000 read)
@@ -415,10 +413,10 @@ static int cchasm_io_read_reg(int reg)
 {
 	switch (reg)
 	{
-	case 0x0: return soundlatch3;
+	case 0x0: return soundlatch_get(2);
 	case 0x1:
 		sound_flags &= ~0x40;
-		return soundlatch4;
+		return soundlatch_get(3);
 	case 0x2:
 	{
 		// Return sound handshaking flags + coin/test inputs + bit 3 always set
@@ -437,10 +435,10 @@ static void cchasm_io_write_reg(int reg, int val)
 	switch (reg)
 	{
 	case 0:
-		soundlatch = val;
+		soundlatch_set(0, (UINT8)val);
 		break;
 	case 1:
-		soundlatch2 = val;
+		soundlatch_set(1, (UINT8)val);
 		sound_flags |= 0x80;
 		z80ctc_0_trg2_w(0, 1);
 		cpu_do_int_imm(CPU1, INT_TYPE_NMI);
@@ -517,11 +515,11 @@ READ_HANDLER(cchasm_snd_io_r)
 	}
 	case 0x01: return ay8910_read(0);
 	case 0x21: return ay8910_read(1);
-	case 0x40: return soundlatch;
+	case 0x40: return soundlatch_get(0);
 	case 0x41:
 		sound_flags &= ~0x80;
 		z80ctc_0_trg2_w(0, 0);
-		return soundlatch2;
+		return soundlatch_get(1);
 	default:
 		LOG_INFO("cchasm Z80: Read from unmapped snd_io at 0x%04x (sel=0x%02x)", address, sel);
 		return 0;
@@ -537,10 +535,10 @@ WRITE_HANDLER(cchasm_snd_io_w)
 	case 0x01: ay8910_write(0, 1, data); break;
 	case 0x20: ay8910_write(1, 0, data); break;
 	case 0x21: ay8910_write(1, 1, data); break;
-	case 0x40: soundlatch3 = data; break;
+	case 0x40: soundlatch_set(2, data); break;
 	case 0x41:
 		sound_flags |= 0x40;
-		soundlatch4 = data;
+		soundlatch_set(3, data);
 		cpu_do_int_imm(CPU0, INT_TYPE_68K1);
 		break;
 	case 0x61:
@@ -674,10 +672,6 @@ int init_cchasm()
 		m6840_cr[i] = 0;
 	}
 
-	soundlatch = 0;
-	soundlatch2 = 0;
-	soundlatch3 = 0;
-	soundlatch4 = 0;
 	sound_flags = 0;
 
 	ctc_tone_output[0] = 0;
@@ -955,6 +949,7 @@ AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0, 0)
 AAE_DRIVER_NVRAM_NONE()
 AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_CLONE_OF("cchasm")
 AAE_DRIVER_END()
 
 AAE_REGISTER_DRIVER(drv_cchasm)

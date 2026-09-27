@@ -1,301 +1,232 @@
-/*
- * mathbox.c: math box simulation (Battlezone/Red Baron/Tempest)
- *
- * Copyright 1991, 1992, 1993, 1996 Eric Smith
- *
- * $Header: /usr2/eric/vg/atari/vecsim/RCS/mathbox.c,v 1.1 1996/08/29 07:23:59 eric Exp eric $
- */
-
+//==========================================================================
+// AAE - Another Arcade Emulator
+// Copyright (C) 2025-2026 Tim Cottrill - GNU GPL v3 or later.
+//==========================================================================
+// mathbox.cpp - the Atari Math Box (Battlezone, Red Baron, Tempest): four
+// Am2901 bit slices driven by 256 x 24-bit microcode PROMs.
+//
+// This is a microcode interpreter, not a transcription of the functions.
+// It executes Mike Albaugh's real microcode from the PROMs the driver loads
+// (Tempest 136002-126..132, Battlezone / Red Baron 036174-01..036180-01 -
+// identical contents), so its results are whatever the board computes, bit
+// for bit, as far as the documented 2901 behaviour goes (MBUDOC.DOC).
+// Ported from the Tempest C port's mathbox.c
+// (C:\Source2026\Tempest-Full-Disassembly-and-C-Port\c_src).
+//
+// A 6502 write to the GO range (offset 0-31) loads the uPC from the mapping
+// PROM, presents the byte on the D bus and clocks the ALU until an
+// instruction with STALL=1. The model runs that to completion inside the
+// write, so the status busy bit always reads 0.
+//
+// Microcode word (24 bits; MBUCOD.V05 $OUT macro):
+//   23-20 A    register A / jump target high nibble
+//   19-16 B    register B / jump target low nibble
+//   15    I2HI source-select I2 for the high byte slices
+//   14    I2LO source-select I2 for the low byte slices
+//   13-12 I1,I0
+//   11    STALL stop the clock after this instruction
+//   10-8  I5-I3 ALU function
+//   7     LDAB  jump latch := A,B fields
+//   6-4   I8-I6 destination
+//   3     SIGN  MSB* = OVR xor F15 (else 0)
+//   2     JMP   jump to the latch if MSB* = 0
+//   1     MULT  invert I1 if the latched Q0 was 0 (CADD)
+//   0     CARIN
+//
+// PROM to word-bit mapping, verified against the MBUCOD source by the C
+// port's tools/gen_roms.py (uPC $20 = $1073B4, uPC $10+n = $0n3B10):
+//   127 (036180) bits 3-0     128 (036179) bits 7-4
+//   129 (036178) bits 11-8    130 (036177) bits 15-12
+//   131 (036176) bits 19-16   132 (036175) bits 23-20
+// MAME's ROM tables pair these the other way round; MAME never reads them.
+//
+// Am2901 semantics (standard datasheet tables):
+//   source I2I1I0: 0 A,Q  1 A,B  2 0,Q  3 0,B  4 0,A  5 D,A  6 D,Q  7 D,0
+//   function I5-3: 0 R+S  1 S-R  2 R-S  3 R|S  4 R&S  5 ~R&S  6 R^S  7 ~(R^S)
+//   dest     I8-6: 0 QREG 1 NOP 2 RAMA 3 RAMF 4 RAMQD 5 RAMD 6 RAMQU 7 RAMU
+// D bus = the 6502 data byte on both halves (D7 tied to D15, MBUDOC).
+// Carry ripples slice to slice (four 4-bit slices); OVR is the top slice's.
+//
+// Documentation gaps, chosen and flagged rather than guessed silently:
+//   - C4/OVR of EXOR/EXNOR: the datasheet's expressions are not in MBUDOC;
+//     modelled as 0 and every SIGN use after them is counted (xor_sign).
+//   - Q0 latch when Q0 is not driven (dest 0-3): holds its previous value.
+//     The microcode only CADDs after RAMQD, where Q0 is driven.
+//   - RAMU shifts in 0 ("garbage from floating input", MBUDOC).
+//==========================================================================
 #include "mathbox.h"
-#include "sys_log.h"   // LOG_DEBUG, used by the MB_TEST tracing below
+#include "sys_log.h"
 
-/* math box scratch registers */
-s16 mb_reg[16];
+#define MB_STEP_CAP 4096u
 
-/* math box result */
-s16 mb_result = 0;
+static uint8_t       mb_map[32];
+static uint32_t      mb_ucode[256];
+static bool          mb_loaded = false;
+static bool          mb_runaway_logged = false;
+static mathbox_state m;
 
-#define REG0 mb_reg [0x00]
-#define REG1 mb_reg [0x01]
-#define REG2 mb_reg [0x02]
-#define REG3 mb_reg [0x03]
-#define REG4 mb_reg [0x04]
-#define REG5 mb_reg [0x05]
-#define REG6 mb_reg [0x06]
-#define REG7 mb_reg [0x07]
-#define REG8 mb_reg [0x08]
-#define REG9 mb_reg [0x09]
-#define REGa mb_reg [0x0a]
-#define REGb mb_reg [0x0b]
-#define REGc mb_reg [0x0c]
-#define REGd mb_reg [0x0d]
-#define REGe mb_reg [0x0e]
-#define REGf mb_reg [0x0f]
-
-/*define MB_TEST*/
-
-void mb_go(int addr, int data)
+void mathbox_reset()
 {
-	s32 mb_temp;  /* temp 32-bit multiply results */
-	s16 mb_q;     /* temp used in division */
-	int msb;
+	for (int i = 0; i < 16; i++) m.r[i] = 0;
+	m.q = 0; m.y = 0; m.jt = 0; m.q0 = 1;
+	m.starts = m.steps = m.runaway = m.xor_sign = 0;
+}
 
-#ifdef MB_TEST
-	LOG_DEBUG("math box command %02x data %02x  ", addr, data);
-#endif
+bool mathbox_init(const uint8_t* map, const uint8_t* planes)
+{
+	mb_loaded = false;
+	mb_runaway_logged = false;
+	if (!map || !planes) {
+		LOG_ERROR("Mathbox: PROM regions missing (map %p, microcode %p) - the mapping PROM and the six microcode PROMs must be in the romset", (const void*)map, (const void*)planes);
+		return false;
+	}
+	for (int i = 0; i < 32; i++) mb_map[i] = map[i];
+	for (int i = 0; i < 256; i++)
+		mb_ucode[i] = ((uint32_t)planes[0x200 + i] << 16) | ((uint32_t)planes[0x100 + i] << 8) | planes[i];
+	mb_loaded = true;
+	mathbox_reset();
+	LOG_INFO("Mathbox: microcode PROMs loaded (uPC $20 = $%06X)", mb_ucode[0x20]);
+	return true;
+}
 
-	switch (addr)
-	{
-	case 0x00: mb_result = REG0 = (REG0 & 0xff00) | data;        break;
-	case 0x01: mb_result = REG0 = (REG0 & 0x00ff) | (data << 8); break;
-	case 0x02: mb_result = REG1 = (REG1 & 0xff00) | data;        break;
-	case 0x03: mb_result = REG1 = (REG1 & 0x00ff) | (data << 8); break;
-	case 0x04: mb_result = REG2 = (REG2 & 0xff00) | data;        break;
-	case 0x05: mb_result = REG2 = (REG2 & 0x00ff) | (data << 8); break;
-	case 0x06: mb_result = REG3 = (REG3 & 0xff00) | data;        break;
-	case 0x07: mb_result = REG3 = (REG3 & 0x00ff) | (data << 8); break;
-	case 0x08: mb_result = REG4 = (REG4 & 0xff00) | data;        break;
-	case 0x09: mb_result = REG4 = (REG4 & 0x00ff) | (data << 8); break;
+const mathbox_state* mathbox_get_state() { return &m; }
+uint32_t mathbox_ucode_word(int upc) { return mb_ucode[upc & 0xFF]; }
 
-	case 0x0a: mb_result = REG5 = (REG5 & 0xff00) | data;        break;
-		/* note: no function loads low part of REG5 without performing a computation */
+static void pick(int src, uint16_t a, uint16_t b, uint16_t q, uint16_t d,
+                 uint16_t* r, uint16_t* s)
+{
+	switch (src & 7) {
+	case 0: *r = a; *s = q; break;
+	case 1: *r = a; *s = b; break;
+	case 2: *r = 0; *s = q; break;
+	case 3: *r = 0; *s = b; break;
+	case 4: *r = 0; *s = a; break;
+	case 5: *r = d; *s = a; break;
+	case 6: *r = d; *s = q; break;
+	default: *r = d; *s = 0; break;
+	}
+}
 
-	case 0x0c: mb_result = REG6 = data; break;
-		/* note: no function loads high part of REG6 */
+// One microinstruction; returns 1 when it carried STALL.
+static int mb_step(uint16_t d, uint8_t* upc)
+{
+	uint32_t w = mb_ucode[*upc];
+	int ra_i = (int)((w >> 20) & 15), rb_i = (int)((w >> 16) & 15);
+	int i2hi = (int)((w >> 15) & 1), i2lo = (int)((w >> 14) & 1);
+	int i10 = (int)((w >> 12) & 3);
+	int stall = (int)((w >> 11) & 1), func = (int)((w >> 8) & 7);
+	int ldab = (int)((w >> 7) & 1), dest = (int)((w >> 4) & 7);
+	int sign = (int)((w >> 3) & 1), jmp = (int)((w >> 2) & 1);
+	int mult = (int)((w >> 1) & 1);
+	unsigned c = (unsigned)(w & 1);
+	uint16_t av = m.r[ra_i], bv = m.r[rb_i];
+	uint16_t rh, sh, rl, sl, R, S, F = 0;
+	unsigned ovr = 0;
 
-	case 0x15: mb_result = REG7 = (REG7 & 0xff00) | data;        break;
-	case 0x16: mb_result = REG7 = (REG7 & 0x00ff) | (data << 8); break;
+	if (mult && m.q0 == 0) i10 ^= 2;                 // CADD: ADD n,m -> ADD 0,m
+	pick((i2hi << 2) | i10, av, bv, m.q, d, &rh, &sh);
+	pick((i2lo << 2) | i10, av, bv, m.q, d, &rl, &sl);
+	R = (uint16_t)((rh & 0xFF00) | (rl & 0x00FF));
+	S = (uint16_t)((sh & 0xFF00) | (sl & 0x00FF));
 
-	case 0x1a: mb_result = REG8 = (REG8 & 0xff00) | data;        break;
-	case 0x1b: mb_result = REG8 = (REG8 & 0x00ff) | (data << 8); break;
-
-	case 0x0d: mb_result = REGa = (REGa & 0xff00) | data;        break;
-	case 0x0e: mb_result = REGa = (REGa & 0x00ff) | (data << 8); break;
-	case 0x0f: mb_result = REGb = (REGb & 0xff00) | data;        break;
-	case 0x10: mb_result = REGb = (REGb & 0x00ff) | (data << 8); break;
-
-	case 0x17: mb_result = REG7; break;
-	case 0x19: mb_result = REG8; break;
-	case 0x18: mb_result = REG9; break;
-
-	case 0x0b:
-
-		REG5 = (s16)((REG5 & 0x00ff) | ((data & 0xff) << 8));
-		REGf = -1;  // was 0xffff; (explicitly mean "negative sentinel")
-		REG4 -= REG2;
-		REG5 -= REG3;
-
-	step_048:
-
-		mb_temp = ((s32)REG0) * ((s32)REG4);
-		REGc = mb_temp >> 16;
-		REGe = mb_temp & 0xffff;
-
-		mb_temp = ((s32)-REG1) * ((s32)REG5);
-		REG7 = mb_temp >> 16;
-		mb_q = mb_temp & 0xffff;
-
-		REG7 += REGc;
-
-		/* rounding */
-		REGe = (REGe >> 1) & 0x7fff;
-		REGc = (mb_q >> 1) & 0x7fff;
-		mb_q = REGc + REGe;
-		if (mb_q < 0)
-			REG7++;
-
-		mb_result = REG7;
-
-		if (REGf < 0)
+	for (int k = 0; k < 4; k++) {                      // four 2901 slices
+		unsigned r4 = (R >> (4 * k)) & 15u, s4 = (S >> (4 * k)) & 15u, f4, c4;
+		switch (func) {
+		case 0: case 1: case 2: {
+			unsigned rr = (func == 1) ? (~r4 & 15u) : r4;
+			unsigned ss = (func == 2) ? (~s4 & 15u) : s4;
+			unsigned sum = rr + ss + c;
+			unsigned c3 = ((rr & 7u) + (ss & 7u) + c) >> 3;
+			f4 = sum & 15u; c4 = sum >> 4; ovr = c3 ^ c4;
 			break;
-
-		REG7 += REG2;
-
-		/* fall into command 12 */
-		[[fallthrough]];
-
-	case 0x12:
-
-		mb_temp = ((s32)REG1) * ((s32)REG4);
-		REGc = mb_temp >> 16;
-		REG9 = mb_temp & 0xffff;
-
-		mb_temp = ((s32)REG0) * ((s32)REG5);
-		REG8 = mb_temp >> 16;
-		mb_q = mb_temp & 0xffff;
-
-		REG8 += REGc;
-
-		/* rounding */
-		REG9 = (REG9 >> 1) & 0x7fff;
-		REGc = (mb_q >> 1) & 0x7fff;
-		REG9 += REGc;
-		if (REG9 < 0)
-			REG8++;
-		REG9 <<= 1;  /* why? only to get the desired load address? */
-
-		mb_result = REG8;
-
-		if (REGf < 0)
-			break;
-
-		REG8 += REG3;
-
-		REG9 &= 0xff00;
-
-		/* fall into command 13 */
-		[[fallthrough]];
-
-	case 0x13:
-#ifdef MB_TEST
-		LOG_DEBUG( "\nR7: %04x  R8: %04x  R9: %04x", REG7, REG8, REG9);
-#endif
-
-		REGc = REG9;
-		mb_q = REG8;
-		goto step_0bf;
-
-	case 0x14:
-		REGc = REGa;
-		mb_q = REGb;
-
-	step_0bf:
-		REGe = REG7 ^ mb_q;  /* save sign of result */
-		REGd = mb_q;
-		if (mb_q >= 0)
-			mb_q = REGc;
-		else
-		{
-			REGd = -mb_q - 1;
-			mb_q = -REGc - 1;
-			if ((mb_q < 0) && ((mb_q + 1) < 0))
-				REGd++;
-			mb_q++;
 		}
-
-		/* step 0c9: */
-		  /* REGc = abs (REG7) */
-		if (REG7 >= 0)
-			REGc = REG7;
-		else
-			REGc = -REG7;
-
-		REGf = REG6;  /* step counter */
-
-		do
-		{
-			REGd -= REGc;
-			msb = ((mb_q & 0x8000) != 0);
-			mb_q <<= 1;
-			if (REGd >= 0)
-				mb_q++;
-			else
-				REGd += REGc;
-			REGd <<= 1;
-			REGd += msb;
-		} while (--REGf >= 0);
-
-		if (REGe >= 0)
-			mb_result = mb_q;
-		else
-			mb_result = -mb_q;
-		break;
-
-	case 0x11:
-		REG5 = (REG5 & 0x00ff) | (data << 8);
-		REGf = 0x0000;  /* do everything in one step */
-		goto step_048;
-		break;
-
-	case 0x1c:
-		/* window test? */
-		REG5 = (REG5 & 0x00ff) | (data << 8);
-		do
-		{
-			REGe = (REG4 + REG7) >> 1;
-			REGf = (REG5 + REG8) >> 1;
-			if ((REGb < REGe) && (REGf < REGe) && ((REGe + REGf) >= 0))
-			{
-				REG7 = REGe; REG8 = REGf;
-			}
-			else
-			{
-				REG4 = REGe; REG5 = REGf;
-			}
-		} while (--REG6 >= 0);
-
-		mb_result = REG8;
-		break;
-
-	case 0x1d:
-		REG3 = (REG3 & 0x00ff) | (data << 8);
-
-		REG2 -= REG0;
-		if (REG2 < 0)
-			REG2 = -REG2;
-
-		REG3 -= REG1;
-		if (REG3 < 0)
-			REG3 = -REG3;
-
-		/* fall into command 1e */
-		[[fallthrough]];
-
-	case 0x1e:
-		/* result = max (REG2, REG3) + 3/8 * min (REG2, REG3) */
-		if (REG3 >= REG2)
-		{
-			REGc = REG2; REGd = REG3;
+		case 3: f4 = r4 | s4; c4 = (f4 != 15u) | c; ovr = c4; break;
+		case 4: f4 = r4 & s4; c4 = (f4 != 0u) | c; ovr = c4; break;
+		case 5: f4 = ~r4 & s4 & 15u; c4 = (f4 != 0u) | c; ovr = c4; break;
+		case 6: f4 = r4 ^ s4; c4 = 0; ovr = 0; break;
+		default: f4 = ~(r4 ^ s4) & 15u; c4 = 0; ovr = 0; break;
 		}
-		else
-		{
-			REGd = REG2; REGc = REG3;
-		}
-		REGc >>= 2;
-		REGd += REGc;
-		REGc >>= 1;
-		mb_result = REGd = (REGc + REGd);
-		break;
+		F = (uint16_t)(F | (f4 << (4 * k)));
+		c = c4;
+	}
+	unsigned f15 = (F >> 15) & 1u;
+	unsigned msb = sign ? (ovr ^ f15) : 0u;
+	if (sign && func >= 6 && (jmp || dest == 4 || dest == 5)) m.xor_sign++;
 
-	case 0x1f:
-		//LOG_DEBUG("math box function 0x1f\n");
-		  /* $$$ do some computation here (selftest? signature analysis? */
+	m.y = F;
+	switch (dest) {
+	case 0: m.q = F; break;
+	case 1: break;
+	case 2: m.r[rb_i] = F; m.y = av; break;
+	case 3: m.r[rb_i] = F; break;
+	case 4:
+		m.r[rb_i] = (uint16_t)((F >> 1) | (msb << 15));
+		m.q0 = (uint8_t)(m.q & 1u);
+		m.q = (uint16_t)((m.q >> 1) | ((F & 1u) << 15));
+		break;
+	case 5:
+		m.r[rb_i] = (uint16_t)((F >> 1) | (msb << 15));
+		m.q0 = (uint8_t)(m.q & 1u);
+		break;
+	case 6:
+		m.r[rb_i] = (uint16_t)((F << 1) | (m.q >> 15));
+		m.q = (uint16_t)(m.q << 1);
+		m.q0 = 0;
+		break;
+	default:
+		m.r[rb_i] = (uint16_t)(F << 1);
+		m.q0 = 0;
 		break;
 	}
 
-#ifdef MB_TEST
-	LOG_DEBUG("  result %04x", mb_result & 0xffff);
-#endif
+	if (ldab) m.jt = (uint8_t)((w >> 16) & 0xFF);
+	if (jmp && msb == 0) *upc = m.jt;
+	else *upc = (uint8_t)(*upc + 1);
+	m.steps++;
+	return stall;
 }
 
-int mb_status_r(int offset)
+static void mb_write(uint8_t offset, uint8_t data)
 {
-	return 0x00; /* always done! */
-}
-
-int mb_lo_r(int offset)
-{
-	return mb_result & 0xff;
-}
-
-int mb_hi_r(int offset)
-{
-	return (mb_result >> 8) & 0xff;
+	uint8_t upc = mb_map[offset & 0x1F];
+	uint16_t d = (uint16_t)(data | (data << 8));
+	unsigned n;
+	m.starts++;
+	for (n = 0; n < MB_STEP_CAP; n++)
+		if (mb_step(d, &upc)) break;
+	if (n == MB_STEP_CAP) {
+		m.runaway++;
+		if (!mb_runaway_logged) {
+			// The self test's signature analysis starts every mapping entry,
+			// and some never STALL on the board either; not an error.
+			LOG_INFO("Mathbox: start at offset $%02X (uPC $%02X) ran %u steps without STALL; further runaways not logged",
+				offset & 0x1F, mb_map[offset & 0x1F], MB_STEP_CAP);
+			mb_runaway_logged = true;
+		}
+	}
 }
 
 UINT8 MathboxStatusRead(UINT32 address, struct MemoryReadByte* psMemRead)
 {
-	return 0x00;
+	(void)address; (void)psMemRead;
+	return 0x00;   // the write ran to completion: never busy
 }
+
 UINT8 MathboxLowbitRead(UINT32 address, struct MemoryReadByte* psMemRead)
 {
-	return mb_lo_r(0);
+	(void)address; (void)psMemRead;
+	return (UINT8)(m.y & 0xFF);
 }
+
 UINT8 MathboxHighbitRead(UINT32 address, struct MemoryReadByte* psMemRead)
 {
-	return mb_hi_r(0);
+	(void)address; (void)psMemRead;
+	return (UINT8)(m.y >> 8);
 }
+
 void MathboxGo(UINT32 address, UINT8 data, struct MemoryWriteByte* psMemWrite)
 {
-	mb_go(address & 0x1f, data);
+	(void)psMemWrite;
+	if (!mb_loaded) return;
+	mb_write((uint8_t)(address & 0x1F), data);
 }

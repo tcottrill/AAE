@@ -43,13 +43,16 @@ This file is Copyright 1997, Steve Baines.
 
 Release 2.0 (5 August 1997)
 
-See drivers\starwars.c for notes
+Ported to MAME 0.159 matrix-processor/divider/busy-flag/X2212 behaviour
+(machine/starwars.c) - see drivers\starwars.c for notes
 
 ******************************************************************/
 
+#include <random>
 #include "aae_mame_driver.h"
 #include "starwars_machine.h"
-#include "aae_avg.h"
+#include "mame_late_avgdvg.h"
+#include "timer.h"
 
 extern int bank1;
 extern int bank2;
@@ -59,7 +62,7 @@ extern int bank2;
 #define kYaw		1
 #define kThrust		2
 
-/* Constants for mathbox operations */
+/* Constants for matrix processor operations */
 #define NOP			0x00
 #define LAC			0x01
 #define READ_ACC	0x02
@@ -73,15 +76,36 @@ extern int bank2;
 /* Debugging flag */
 #define MATHDEBUG	0
 
+#define MASTER_CLOCK (12096000)
+
 /* Local variables */
 static UINT8 control_num = kPitch;
 
 static int MPA; /* PROM address counter */
 static int BIC; /* Block index counter  */
-static int PRN; /* Pseudo-random number */
 
-static int div_result;
-static int divisor, dividend;
+/* Matrix processor busy flag (starwars_input_1_r bit 7 / IN1) and the
+ * one-shot timer that clears it once the (emulated) processor time for the
+ * last run_mproc() has elapsed - see starwars_state::math_run_clear /
+ * m_math_timer in MAME 0.159 machine/starwars.c. */
+static int math_run;
+static int math_busy_timer = -1;
+
+/* Matrix processor accumulator/registers. These are file-static (one
+ * instance, like the single starwars_state MAME allocates) rather than
+ * function-local statics so their lifetime/reset behaviour is explicit.
+ * MAME's starwars_mproc_reset() does NOT reset m_A/m_B/m_C/m_ACC, only
+ * m_MPA/m_BIC/m_math_run, so swmathbox_reset() below mirrors that and
+ * leaves these alone. */
+static INT16 A, B, C;
+static INT32 ACC;
+
+/* Starwars divider state - UINT16 so the restoring-division wraparound
+ * matches MAME's m_dvd_shift/m_quotient_shift/m_divisor/m_dividend. */
+static UINT16 dvd_shift;
+static UINT16 quotient_shift;
+static UINT16 divisor;
+static UINT16 dividend;
 
 /* Store decoded PROM elements */
 static UINT8 PROM_STR[1024]; /* Storage for instruction strobe only */
@@ -89,7 +113,7 @@ static UINT8 PROM_MAS[1024]; /* Storage for direct address only */
 static UINT8 PROM_AM[1024]; /* Storage for address mode select only */
 
 /* Local function prototypes */
-static void run_mbox(void);
+static void run_mproc(void);
 
 /*************************************
  *
@@ -101,18 +125,36 @@ READ_HANDLER_NS(starwars_input_1_r)
 {
 	int x = input_port_1_r(1);
 
-	/* Kludge to enable Starwars Mathbox Self-test                  */
-	/* The mathbox looks like it's running, from this address... :) */
-	if (cpu_getpc() == 0xf978 || cpu_getpc() == 0xf655)
+	/* matrix processor busy flag - starwars_state::matrix_flag_r in MAME
+	 * 0.159. Replaces the old "we happen to be at this PC" kludge. */
+	if (math_run)
 		x |= 0x80;
+	else
+		x &= ~0x80;
 
 	/* set the AVG done flag */
-	if (avg_check())
+	if (avgdvg_done())
 		x |= 0x40;
 	else
 		x &= ~0x40;
 
 	return x;
+}
+
+/*************************************
+ *
+ *	X2212 nvram store
+ *
+ *************************************/
+
+// A write anywhere in $46a0-$46bf pulses /STORE: one rising edge copies the
+// live SRAM into the EEPROM. Mirrors starwars_state::starwars_nstore_w,
+// which pulses the x2212 device's store line 0 -> 1 -> 0.
+WRITE_HANDLER_NS(starwars_nstore_w)
+{
+	x2212_store_line_w(0);
+	x2212_store_line_w(1);
+	x2212_store_line_w(0);
 }
 
 /*************************************
@@ -125,7 +167,9 @@ WRITE_HANDLER_NS(starwars_out_w)
 {
 	unsigned char* RAM = memory_region(REGION_CPU1);
 
-	switch (address)
+	// MAME maps this latch at 0x4680-0x469f with the register selected by
+	// offset & 7 (the top bits are just address-decode don't-cares).
+	switch (address & 7)
 	{
 	case 0:		/* Coin counter 1 */
 		//coin_counter_w(0, data);
@@ -156,16 +200,18 @@ WRITE_HANDLER_NS(starwars_out_w)
 		}
 		break;
 
-	case 5:		/* reset PRNG */
-		PRN = 0;
+	case 5:		/* reset PRNG - MAME 0.159 does nothing here (the PRNG is
+				   now machine().rand(), which is free-running) */
 		break;
 
 	case 6:		/* LED 1 */
 		set_led_status(0, ~data & 0x80);
 		break;
 
-	case 7:
-		LOG_INFO("recall"); /* what's that? */
+	case 7:		/* NVRAM array recall - active-low line, so the recall
+				   input to the x2212 is ~data & 0x80 (matches
+				   starwars_state::starwars_out_w case 7) */
+		x2212_recall_line_w(~data & 0x80);
 		break;
 	}
 }
@@ -198,7 +244,7 @@ WRITE_HANDLER_NS(starwars_adc_select_w)
 
 /*************************************
  *
- *	Mathbox initialization
+ *	Matrix Processor initialization
  *
  *************************************/
 
@@ -224,26 +270,44 @@ void swmathbox_init(void)
 
 /*************************************
  *
- *	Mathbox reset
+ *	Matrix Processor busy-flag timer init
+ *
+ *	Allocates the one-shot timer that clears math_run once the emulated
+ *	matrix processor time for the last run_mproc() has elapsed - MAME's
+ *	m_math_timer (allocated once in starwars_mproc_init, re-armed each
+ *	run_mproc() via m_math_timer->adjust()). Called once from both
+ *	init_starwars() and init_esb() (TomCat shares init_starwars); like
+ *	avgdvg_init()'s vg_halt_timer/vg_run_timer, timer_init() wipes all
+ *	timers before every driver init runs, so allocating here unconditionally
+ *	can never leak or double-arm a timer across game (re)loads.
+ *
+ *************************************/
+
+void swmathbox_timer_init(void)
+{
+	math_busy_timer = timer_alloc([](int param) { math_run = 0; });
+}
+
+/*************************************
+ *
+ *	Matrix Processor reset
  *
  *************************************/
 
 void swmathbox_reset(void)
 {
 	MPA = BIC = 0;
-	PRN = 0;
+	math_run = 0;
 }
 
 /*************************************
  *
- *	Mathbox execution
+ *	Matrix Processor execution
  *
  *************************************/
 
-void run_mbox(void)
+static void run_mproc(void)
 {
-	static short ACC, A, B, C;
-
 	UINT8* RAM = memory_region(REGION_CPU1);
 	int RAMWORD = 0;
 	int MA_byte;
@@ -251,12 +315,19 @@ void run_mbox(void)
 	int M_STOP = 100000; /* Limit on number of instructions allowed before halt */
 	int MA;
 	int IP15_8, IP7, IP6_0; /* Instruction PROM values */
+	int mptime;
 
-	//LOG_INFO("Running Mathbox...\n");
+	//LOG_INFO("Running Matrix Processor...\n");
+
+	mptime = 0;
+	math_run = 1;
 
 	/* loop until finished */
 	while (M_STOP > 0)
 	{
+		/* each step of the matrix processor takes five clock cycles */
+		mptime += 5;
+
 		/* fetch the current instruction data */
 		IP15_8 = PROM_STR[MPA];
 		IP7 = PROM_AM[MPA];
@@ -274,7 +345,9 @@ void run_mbox(void)
 			MA = IP6_0;
 
 		/* convert RAM offset to eight bit addressing (2kx8 rather than 1k*16)
-			and apply base address offset */
+			and apply base address offset. AAE's Math RAM lives directly in
+			the main CPU region at 0x5000-0x5fff (unlike MAME's dedicated
+			"mathram" share), so MA_byte is offset by that base here. */
 
 		MA_byte = 0x5000 + (MA << 1);
 		RAMWORD = (RAM[MA_byte + 1] & 0x00ff) | ((RAM[MA_byte] & 0x00ff) << 8);
@@ -289,15 +362,27 @@ void run_mbox(void)
 		 * IP15_8 provide the instruction strobes
 		 */
 
-		 /* 0x01 - LAC */
+		/* The accumulator is built from two ls299 (msb) and two ls164
+		 * (lsb). You can only read/write the 16 msb. The lsb are
+		 * used while adding up multiplication results giving better
+		 * accuracy.
+		 */
+
+		/* 0x10 - CLEAR_ACC */
+		if (IP15_8 & CLEAR_ACC)
+		{
+			ACC = 0;
+		}
+
+		/* 0x01 - LAC (also clears lsb)*/
 		if (IP15_8 & LAC)
-			ACC = RAMWORD;
+			ACC = (RAMWORD << 16);
 
 		/* 0x02 - READ_ACC */
 		if (IP15_8 & READ_ACC)
 		{
-			RAM[MA_byte + 1] = (ACC & 0x00ff);
-			RAM[MA_byte] = (ACC & 0xff00) >> 8;
+			RAM[MA_byte + 1] = ((ACC >> 16) & 0xff);
+			RAM[MA_byte] = ((ACC >> 24) & 0xff);
 		}
 
 		/* 0x04 - M_HALT */
@@ -308,27 +393,61 @@ void run_mbox(void)
 		if (IP15_8 & INC_BIC)
 			BIC = (BIC + 1) & 0x1ff; /* Restrict to 9 bits */
 
-		/* 0x10 - CLEAR_ACC */
-		if (IP15_8 & CLEAR_ACC)
-			ACC = 0;
-
-		/* 0x20 - LDC */
+		/* 0x20 - LDC*/
 		if (IP15_8 & LDC)
 		{
-			C = RAMWORD;
-			/* TODO: this next line is accurate to the schematics, but doesn't seem to work right */
-			/* ACC=ACC+(  ( (long)((A-B)*C) )>>14  ); */
-			/* round the result - this fixes bad trench vectors in Star Wars */
-			ACC += ((((long)((A - B) * C)) >> 13) + 1) >> 1;
+			C = (INT16)RAMWORD;
+
+			/* This is a serial subtractor - multiplier (74ls384) -
+			 * accumulator. For the full calculation 33 GMCLK pulses
+			 * are generated. The calculation performed is:
+			 *
+			 * ACC = ACC + (A - B) * C
+			 *
+			 * 1. pulse: Bit 0 of A and B are subtracted. Bit 0 of the
+			 * multiplication between multiplicand C and 0 is
+			 * calculated (bit 0 of A-B is not yet at the multiplier
+			 * input). Bit 0 of ACC is added to 0 (again, 'real' results
+			 * from the previous operations are no yet there).
+			 *
+			 * 2. pulse: Bit 1 of A-B is calculated. Bit 1 of
+			 * mutliplication is calculated based on bit 0 of A-B and
+			 * bit 1 of C. Bit 1 of ACC is added to the multiplication
+			 * result from first pulse.
+			 *
+			 * 3. pulse: Bit 2 of A-B is calculated. Bit 2 of
+			 * mutliplication is calculated based on bit 1 of A-B and
+			 * bit 2 of C. Bit 2 of ACC is added to the multiplication
+			 * between bit 1 of C and bit 0 of A-B.
+			 *
+			 * etc.
+			 *
+			 * This pipeline causes the shifts between A-B, C and ACC.
+			 * The 32 bit ACC and one bit adder form a ring so it
+			 * takes 33 clock pulses to do a full rotation.
+			 */
+
+			ACC += (((INT32)(A - B) << 1) * C) << 1;
+
+			/* A and B are sign extended (requred by the ls384). After
+			 * multiplication they just contain the sign.
+			 */
+			A = (A & 0x8000) ? 0xffff : 0;
+			B = (B & 0x8000) ? 0xffff : 0;
+
+			/* The multiply-add holds the main matrix processor counter
+			 * for 33 cycles
+			 */
+			mptime += 33;
 		}
 
 		/* 0x40 - LDB */
 		if (IP15_8 & LDB)
-			B = RAMWORD;
+			B = (INT16)RAMWORD;
 
 		/* 0x80 - LDA */
 		if (IP15_8 & LDA)
-			A = RAMWORD;
+			A = (INT16)RAMWORD;
 
 		/*
 		 * Now update the PROM address counter
@@ -341,6 +460,12 @@ void run_mbox(void)
 
 		M_STOP--; /* Decrease count */
 	}
+
+	/* Arm the busy-flag clear timer for mptime master-clock periods - see
+	 * starwars_state::run_mproc()'s m_math_timer->adjust() in MAME 0.159.
+	 * math_busy_timer is allocated once by swmathbox_timer_init(); this just
+	 * re-arms the existing slot (one-shot: period 0). */
+	timer_adjust(math_busy_timer, TIME_IN_HZ(MASTER_CLOCK) * mptime, 1, 0);
 }
 
 /*************************************
@@ -351,34 +476,54 @@ void run_mbox(void)
 
 READ_HANDLER_NS(swmathbx_prng_r)
 {
-	PRN = (int)((PRN + 0x2364) ^ 2); /* This is a total bodge for now, but it works!*/
-	return PRN;
+	/*
+	 * The PRNG is a modified 23 bit LFSR. Taps are at 4 and 22 so the
+	 * resulting LFSR polynomial is,
+	 *
+	 * x^5 + x^{23} + 1
+	 *
+	 * which is prime. It has a loop length of 8388607. The feedback
+	 * bit is inverted so the PRNG can start with 0. Only 8 bits from
+	 * bit 8 to 15 can be read by the CPU. The PRNG runs constantly at
+	 * a clock speed of 3 MHz.
+	 *
+	 * MAME 0.159 just returns machine().rand() rather than modelling the
+	 * LFSR. AAE has no equivalent machine-wide PRNG helper, so this uses a
+	 * dedicated Mersenne Twister seeded from a real entropy source (the old
+	 * "(PRN + 0x2364) ^ 2" bodge produced a short, entirely predictable
+	 * cycle and is removed).
+	 */
+	static std::mt19937 rng(std::random_device{}());
+	static std::uniform_int_distribution<int> dist(0, 255);
+	return (UINT8)dist(rng);
 }
 
 /*************************************
  *
- *	Mathbox divider
+ *	Starwars divider
  *
  *************************************/
 
 READ_HANDLER_NS(swmathbx_reh_r)
 {
-	return (div_result & 0xff00) >> 8;
+	return (quotient_shift & 0xff00) >> 8;
 }
 
 READ_HANDLER_NS(swmathbx_rel_r)
 {
-	return div_result & 0x00ff;
+	return quotient_shift & 0x00ff;
 }
 
 WRITE_HANDLER_NS(swmathbx_w)
 {
+	int i;
+
 	data &= 0xff;	/* ASG 971002 -- make sure we only get bytes here */
 	switch (address)
 	{
 	case 0:	/* mw0 */
 		MPA = data << 2;	/* Set starting PROM address */
-		run_mbox();			/* and run the Mathbox */
+		run_mproc();			/* and run the Matrix Processor */
 		break;
 
 	case 1:	/* mw1 */
@@ -391,6 +536,8 @@ WRITE_HANDLER_NS(swmathbx_w)
 
 	case 4: /* dvsrh */
 		divisor = (divisor & 0x00ff) | (data << 8);
+		dvd_shift = dividend;
+		quotient_shift = 0;
 		break;
 
 	case 5: /* dvsrl */
@@ -402,10 +549,25 @@ WRITE_HANDLER_NS(swmathbx_w)
 
 		divisor = (divisor & 0xff00) | data;
 
-		if (dividend >= 2 * divisor)
-			div_result = 0x7fff;
-		else
-			div_result = (int)(((long)dividend << 14) / (long)divisor);
+		/*
+		 * Simple restoring division as shown in the
+		 * schematics. The algorithm produces the same "wrong"
+		 * results as the hardware if divisor < 2*dividend or
+		 * divisor > 0x8000.
+		 */
+		for (i = 1; i < 16; i++)
+		{
+			quotient_shift <<= 1;
+			if (((INT32)dvd_shift + (divisor ^ 0xffff) + 1) & 0x10000)
+			{
+				quotient_shift |= 1;
+				dvd_shift = (dvd_shift + (divisor ^ 0xffff) + 1) << 1;
+			}
+			else
+			{
+				dvd_shift <<= 1;
+			}
+		}
 		break;
 
 	case 6: /* dvddh */

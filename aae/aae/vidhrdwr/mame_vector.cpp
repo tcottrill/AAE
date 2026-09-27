@@ -59,7 +59,7 @@ struct _render_bounds
 int translucency;
 static int flicker;                              /* beam flicker value     */
 static float flicker_correction = 0.0f;
-static float beam_width;
+static float beam_width = 1.0f;   /* per-game width scale, see vector_set_beam */
 static point* vector_list;
 static int vector_index;
 static int prev_vector_index = 0;

@@ -29,6 +29,7 @@
 #include "memory.h"
 #include "dac.h"
 #include "old_mame_raster.h"
+#include "sound_latch.h"
 #include <math.h>
 
 
@@ -45,7 +46,8 @@ static int gfx_bank = 0;   // always 0 for plain dkong (Jr/3 bank the chars)
 static unsigned char color_codes[256] = { 0 };
 
 // ---- Sound CPU plumbing (the i8035 reads these; the main Z80 writes them) ----
-static int dkong_soundlatch = 0;          // background tune select
+// Tune select lives in generic soundlatch 0; the ^0x0f munge on the DK
+// board (inverted data lines into the latch) stays in the wrapper.
 static int page = 0;          // i8035 P2 bank/decay/status latch
 static int mcustatus = 0;          // status bit fed back to main IN2.6
 static int p[8] = { 255,255,255,255,255,255,255,255 };
@@ -101,7 +103,7 @@ WRITE_HANDLER(dkong_palettebank_w)   // 7d86/7d87: two-bit palette bank
 }
 
 // ---- Sound: main-CPU side ----
-WRITE_HANDLER(dkong_sh_tuneselect) { dkong_soundlatch = data ^ 0x0f; }
+WRITE_HANDLER(dkong_sh_tuneselect) { soundlatch_set(0, data ^ 0x0f); }
 
 WRITE_HANDLER(dkong_sh1_w)           // 7d00/01/02: walk / jump / boom samples
 {
@@ -146,7 +148,7 @@ static UINT16 dkong_sh_gettune(UINT16 port, struct z80PortRead*)
 {
 	unsigned char* SND = Machine->memory_region[CPU1];
 	if ((page & 0x40) && (port == 0x20))
-		return (UINT16)dkong_soundlatch;
+		return (UINT16)soundlatch_get(0);
 	return (UINT16)SND[0x800 + (page & 7) * 256 + (port & 0xff)];
 }
 
@@ -389,7 +391,6 @@ int init_dkong()
 	flipscreen = 0;
 	palette_bank = 0;
 	gfx_bank = 0;
-	dkong_soundlatch = 0;
 	page = 0;
 	mcustatus = 0;
 	for (int i = 0; i < 8; i++) p[i] = 255;
@@ -556,7 +557,7 @@ AAE_REGISTER_DRIVER(drv_dkong)
 
 static int dkongjr_walk = 0;   // 0 = climbing, 1 = walking (selects climb sample)
 
-WRITE_HANDLER(dkongjr_sh_tuneselect) { dkong_soundlatch = data; }   // no ^0x0f
+WRITE_HANDLER(dkongjr_sh_tuneselect) { soundlatch_set(0, data); }   // no ^0x0f
 
 WRITE_HANDLER(dkongjr_gfxbank_w)     // 0x7c80: character bank select
 {
@@ -703,7 +704,6 @@ int init_dkongjr()
 	flipscreen = 0;
 	palette_bank = 0;
 	gfx_bank = 0;
-	dkong_soundlatch = 0;
 	page = 0;
 	mcustatus = 0;
 	dkongjr_walk = 0;

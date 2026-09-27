@@ -174,12 +174,49 @@ void generic_nvram_handler(void* file, int read_or_write)
 }
 
 // -----------------------------------------------------------------------------
-// verify_rom
-// Uses sys_fileio::loadZip and getters to verify
+// find_file_by_crc
+// Linear scan of an open zip's central directory for an entry whose CRC32
+// matches `crc`. Used as the fallback lookup when a ROM file was renamed
+// (or the set only differs from its parent by filename) but the content is
+// identical to what the RomModule table expects. `crc` == 0 is treated as
+// "unknown" and never matches, matching the RomModule convention elsewhere
+// in this file (crc == 0 skips the CRC check).
 // -----------------------------------------------------------------------------
-int verify_rom(const char* archname, const struct RomModule* p, int romnum)
+static mz_uint find_file_by_crc(mz_zip_archive* zip, unsigned int crc)
 {
-    std::string zipPath;
+    if (!zip || !crc) return (mz_uint)-1;
+    mz_uint numFiles = mz_zip_reader_get_num_files(zip);
+    for (mz_uint i = 0; i < numFiles; ++i)
+    {
+        mz_zip_archive_file_stat st;
+        if (!mz_zip_reader_file_stat(zip, i, &st)) continue;
+        if (st.m_crc32 == crc) return i;
+    }
+    return (mz_uint)-1;
+}
+
+// Resolves the on-disk zip path for a ROM archive base name, trying the
+// configured mame_rom_path first, then the default roms path. Returns true
+// and fills `outPath` if the zip exists.
+static bool resolve_rom_zip_path(const char* archname, std::string& outPath)
+{
+    outPath = get_config_string("main", "mame_rom_path", "roms");
+    outPath.append("/").append(archname).append(".zip");
+    if (file_exists(outPath)) return true;
+
+    outPath = getpathM("roms", 0) + "/" + archname + ".zip";
+    return file_exists(outPath);
+}
+
+// -----------------------------------------------------------------------------
+// verify_rom
+// Looks up ROM romnum in archname's zip, falling back to a CRC scan of the
+// same zip, then to parentname's zip (by filename, then CRC) when the own
+// zip doesn't have it. `parentname` may be nullptr for parent/standalone
+// sets. Both archives (whichever were opened) are closed on every exit path.
+// -----------------------------------------------------------------------------
+int verify_rom(const char* archname, const char* parentname, const struct RomModule* p, int romnum)
+{
     if (!archname || !p) return 4;
 
     const auto& rom = p[romnum];
@@ -190,55 +227,115 @@ int verify_rom(const char* archname, const struct RomModule* p, int romnum)
     if (rom.loadAddr == ROM_REGION_START || rom.loadAddr == 0x999)
         return 4;
 
-    zipPath = get_config_string("main", "mame_rom_path", "roms");
-    zipPath.append("/");
-    zipPath.append(archname);
-    zipPath.append(".zip");
+    std::string ownPath;
+    bool ownExists = resolve_rom_zip_path(archname, ownPath);
 
-    if (!file_exists(zipPath)) {
-        zipPath = getpathM("roms", 0) + "/" + archname + ".zip";
-        if (!file_exists(zipPath)) {
-            LOG_INFO("ROM ZIP not found: %s", zipPath.c_str());
-            return 5; // NOZIP
+    mz_zip_archive ownZip;
+    memset(&ownZip, 0, sizeof(ownZip));
+    bool ownOpen = ownExists && mz_zip_reader_init_file(&ownZip, ownPath.c_str(), 0);
+
+    mz_zip_archive parentZip;
+    memset(&parentZip, 0, sizeof(parentZip));
+    bool parentOpen = false;
+    std::string parentPath;
+
+    if (!ownOpen && !parentname) {
+        LOG_INFO("ROM ZIP not found: %s", ownPath.c_str());
+        return 5; // NOZIP
+    }
+
+    mz_zip_archive* srcZip = nullptr;
+    mz_uint fileIndex = (mz_uint)-1;
+    int method = 0; // 0 = own by name, 1 = own by CRC, 2 = parent by name, 3 = parent by CRC
+
+    if (ownOpen) {
+        fileIndex = mz_zip_reader_locate_file(&ownZip, rom.filename, 0, 0);
+        if (fileIndex == (mz_uint)-1) {
+            fileIndex = find_file_by_crc(&ownZip, rom.crc);
+            method = 1;
+        }
+        if (fileIndex != (mz_uint)-1) srcZip = &ownZip;
+    }
+
+    if (fileIndex == (mz_uint)-1 && parentname) {
+        if (resolve_rom_zip_path(parentname, parentPath))
+            parentOpen = mz_zip_reader_init_file(&parentZip, parentPath.c_str(), 0);
+
+        if (parentOpen) {
+            fileIndex = mz_zip_reader_locate_file(&parentZip, rom.filename, 0, 0);
+            method = 2;
+            if (fileIndex == (mz_uint)-1) {
+                fileIndex = find_file_by_crc(&parentZip, rom.crc);
+                method = 3;
+            }
+            if (fileIndex != (mz_uint)-1) srcZip = &parentZip;
         }
     }
 
-    // Use Generic Loader
-    unsigned char* buf = loadZip(zipPath.c_str(), rom.filename);
-    if (!buf) {
-        LOG_INFO("ROM file not found in zip: %s", rom.filename);
-        return 4; // NOFILE
+    int result;
+    if (fileIndex == (mz_uint)-1 || !srcZip) {
+        if (!ownOpen && !parentOpen) {
+            LOG_INFO("ROM ZIP not found: %s", ownPath.c_str());
+            result = 5; // NOZIP
+        } else {
+            LOG_INFO("ROM file not found in zip: %s", rom.filename);
+            result = 4; // NOFILE
+        }
     }
+    else {
+        if (method != 0) {
+            LOG_INFO("ROM %s found in %s archive via %s", rom.filename,
+                (method == 2 || method == 3) ? "parent" : "own",
+                (method == 1 || method == 3) ? "CRC" : "name");
+        }
 
-    // Use Generic State Getters
-    unsigned int actualSize = (unsigned int)getLastZSize();
+        mz_zip_archive_file_stat st;
+        if (!mz_zip_reader_file_stat(srcZip, fileIndex, &st)) {
+            LOG_INFO("Could not stat ROM in zip: %s", rom.filename);
+            result = 4;
+        }
+        else {
+            unsigned int actualSize = (unsigned int)st.m_uncomp_size;
+            if (actualSize != static_cast<unsigned int>(rom.romSize)) {
+                LOG_INFO("ROM size mismatch: %s expected %d, got %u", rom.filename, rom.romSize, actualSize);
+                result = 3; // BADSIZE
+            }
+            else {
+                unsigned char* buf = (unsigned char*)malloc(actualSize);
+                if (!buf || !mz_zip_reader_extract_to_mem(srcZip, fileIndex, buf, actualSize, 0)) {
+                    LOG_INFO("ROM file failed to extract from zip: %s", rom.filename);
+                    result = 4;
+                }
+                else {
+                    result = 1; // OK
 
-    if (actualSize != static_cast<unsigned int>(rom.romSize)) {
-        LOG_INFO("ROM size mismatch: %s expected %d, got %u", rom.filename, rom.romSize, actualSize);
-        free(buf);
-        return 3; // BADSIZE
-    }
+                    if (rom.sha) {
+                        const char* calcSha = sha1.CalculateHash(buf, actualSize);
+                        if (strcmp(calcSha, rom.sha) != 0) {
+                            LOG_INFO("ROM SHA1 mismatch: %s expected %s", rom.filename, rom.sha);
+                            result = 0; // BAD?
+                        }
+                    }
 
-    if (rom.sha) {
-        const char* calcSha = sha1.CalculateHash(buf, actualSize);
-        if (strcmp(calcSha, rom.sha) != 0) {
-            LOG_INFO("ROM SHA1 mismatch: %s expected %s", rom.filename, rom.sha);
-            free(buf);
-            return 0; // BAD?
+                    // A CRC-fallback lookup (method 1/3) already matched the
+                    // expected CRC by construction; only re-check it for
+                    // ROMs found by name, same as before this fallback existed.
+                    if (result == 1 && rom.crc && (method == 0 || method == 2)) {
+                        unsigned int fileCrc = st.m_crc32;
+                        if (fileCrc != rom.crc) {
+                            LOG_INFO("ROM CRC mismatch: %s expected %08X, got %08X", rom.filename, rom.crc, fileCrc);
+                            result = 0; // BAD?
+                        }
+                    }
+                }
+                if (buf) free(buf);
+            }
         }
     }
 
-    if (rom.crc) {
-        int fileCrc = (int)getLastZCrc(); // From sys_fileio
-        if (fileCrc != static_cast<int>(rom.crc)) {
-            LOG_INFO("ROM CRC mismatch: %s expected %08X, got %08X", rom.filename, rom.crc, fileCrc);
-            free(buf);
-            return 0; // BAD?
-        }
-    }
-
-    free(buf);
-    return 1; // OK
+    if (ownOpen) mz_zip_reader_end(&ownZip);
+    if (parentOpen) mz_zip_reader_end(&parentZip);
+    return result;
 }
 
 int verify_sample(const char** samples, int num)
@@ -268,23 +365,30 @@ int verify_sample(const char** samples, int num)
 // does not support (it only supports loading one specific file).
 // Therefore, we keep the direct miniz implementation here, but clean it up.
 // -----------------------------------------------------------------------------
-int load_roms(const char* archname, const struct RomModule* p)
+int load_roms(const char* archname, const char* parentname, const struct RomModule* p)
 {
     mz_bool status;
     mz_uint file_index = -1;
-    mz_zip_archive zip_archive;
+    mz_zip_archive zip_archive;         // own archive
+    mz_zip_archive parent_zip_archive;  // parent archive (opened lazily)
     mz_zip_archive_file_stat file_stat;
     std::string temppath;
     unsigned char* zipdata = 0;
     const char* shatest = 0;
     const char* last_reload_filename = nullptr;
+    mz_zip_archive* last_source_zip = nullptr;  // archive that supplied the preceding real ROM (for ROM_RELOAD)
+    mz_uint last_source_index = (mz_uint)-1;    // its file index in that archive (for ROM_RELOAD)
+    mz_zip_archive* src_zip = nullptr;          // archive the current entry was actually found in
     int skip = 0;
     int ret = EXIT_SUCCESS;
     int i, j = 0;
     int crc = 0;
     int cpunum = 0;
     int region = 0;
-    unsigned int current_uncomp_size = 0; 
+    unsigned int current_uncomp_size = 0;
+    bool own_open = false;
+    bool parent_open = false;
+    bool parent_attempted = false;
 
     temppath = config.exrompath;
     temppath.append("/");
@@ -299,10 +403,37 @@ int load_roms(const char* archname, const struct RomModule* p)
     DLOG("ROM Path: %s", temppath.c_str());
 
     memset(&zip_archive, 0, sizeof(zip_archive));
-    status = mz_zip_reader_init_file(&zip_archive, temppath.c_str(), 0);
-    if (!status) {
-        LOG_ERROR("Zip File %s failed to open. Archive missing?", archname);
-        return EXIT_FAILURE;
+    memset(&parent_zip_archive, 0, sizeof(parent_zip_archive));
+
+    if (file_exists(temppath.c_str()))
+        own_open = mz_zip_reader_init_file(&zip_archive, temppath.c_str(), 0) != 0;
+
+    // Opens the parent archive on first use only. A MAME merged set keeps
+    // clone ROMs inside the parent zip, so this is also how we recover when
+    // the own zip doesn't exist at all (own_open == false below).
+    auto open_parent_if_needed = [&]() -> bool {
+        if (parent_attempted) return parent_open;
+        parent_attempted = true;
+        if (!parentname) return false;
+
+        std::string parentpath = config.exrompath;
+        parentpath.append("/").append(parentname).append(".zip");
+        if (!file_exists(parentpath.c_str()))
+            parentpath = getpathM("roms", 0) + "/" + parentname + ".zip";
+
+        if (!file_exists(parentpath.c_str())) return false;
+
+        parent_open = mz_zip_reader_init_file(&parent_zip_archive, parentpath.c_str(), 0) != 0;
+        if (parent_open) LOG_INFO("Opened parent archive: %s.zip", parentname);
+        return parent_open;
+    };
+
+    if (!own_open) {
+        if (!open_parent_if_needed()) {
+            LOG_ERROR("Zip File %s failed to open. Archive missing?", archname);
+            return EXIT_FAILURE;
+        }
+        LOG_INFO("Archive %s.zip not found; loading from parent archive %s.zip instead", archname, parentname);
     }
 
     DLOG("ROM_START(%s)", archname);
@@ -320,18 +451,57 @@ int load_roms(const char* archname, const struct RomModule* p)
 
             if (p[i].filename == (char*)-1) // ROM_RELOAD
             {
+                // Reuse the exact archive + file index that supplied the preceding
+                // real ROM, rather than re-locating it by name: if that ROM was
+                // found via the CRC fallback (own or parent), its on-disk filename
+                // differs from what the RomModule table expects, so a by-name
+                // lookup here would fail even though we already know exactly
+                // which zip entry to re-read. last_reload_filename is kept only
+                // for logging.
                 if (last_reload_filename == 0) last_reload_filename = p[i - 1].filename;
-                file_index = mz_zip_reader_locate_file(&zip_archive, last_reload_filename, 0, 0);
+                src_zip = last_source_zip;
+                file_index = last_source_index;
                 LOG_INFO("ROM_RELOAD(0x%04x, 0x%04x)", p[i].loadAddr, p[i].romSize);
             }
             else
             {
                 LOG_INFO("Starting to load Rom: %s", p[i].filename);
                 last_reload_filename = nullptr;
-                file_index = mz_zip_reader_locate_file(&zip_archive, p[i].filename, 0, 0);
+
+                file_index = (mz_uint)-1;
+                src_zip = nullptr;
+                int method = 0; // 0 own/name, 1 own/CRC, 2 parent/name, 3 parent/CRC
+
+                if (own_open) {
+                    file_index = mz_zip_reader_locate_file(&zip_archive, p[i].filename, 0, 0);
+                    if (file_index == (mz_uint)-1) {
+                        file_index = find_file_by_crc(&zip_archive, p[i].crc);
+                        method = 1;
+                    }
+                    if (file_index != (mz_uint)-1) src_zip = &zip_archive;
+                }
+
+                if (file_index == (mz_uint)-1 && open_parent_if_needed()) {
+                    file_index = mz_zip_reader_locate_file(&parent_zip_archive, p[i].filename, 0, 0);
+                    method = 2;
+                    if (file_index == (mz_uint)-1) {
+                        file_index = find_file_by_crc(&parent_zip_archive, p[i].crc);
+                        method = 3;
+                    }
+                    if (file_index != (mz_uint)-1) src_zip = &parent_zip_archive;
+                }
+
+                if (file_index != (mz_uint)-1 && method != 0) {
+                    LOG_INFO("ROM %s supplied by %s archive via %s", p[i].filename,
+                        (method == 2 || method == 3) ? "parent" : "own",
+                        (method == 1 || method == 3) ? "CRC" : "name");
+                }
+
+                last_source_zip = src_zip;
+                last_source_index = file_index;
             }
 
-            if (file_index == (mz_uint)-1) {
+            if (file_index == (mz_uint)-1 || !src_zip) {
                 LOG_ERROR("File not found in zip: %s", p[i].filename ? p[i].filename : "<null>");
                 ret = EXIT_FAILURE;
                 goto end;
@@ -342,7 +512,7 @@ int load_roms(const char* archname, const struct RomModule* p)
                 else if (p[i].filename)   LOG_INFO("Loading Rom: %s", p[i].filename);
             }
 
-            status = mz_zip_reader_file_stat(&zip_archive, file_index, &file_stat);
+            status = mz_zip_reader_file_stat(src_zip, file_index, &file_stat);
             if (status != MZ_TRUE) { LOG_ERROR("Could not read file in Zip, corrupt?"); ret = EXIT_FAILURE; goto end; }
 
             // CHANGED: Assignment only, declaration moved to top
@@ -358,7 +528,7 @@ int load_roms(const char* archname, const struct RomModule* p)
             }
 
             zipdata = (unsigned char*)malloc(current_uncomp_size);
-            status = mz_zip_reader_extract_to_mem(&zip_archive, file_index, zipdata, current_uncomp_size, 0);
+            status = mz_zip_reader_extract_to_mem(src_zip, file_index, zipdata, current_uncomp_size, 0);
             if (status != MZ_TRUE) { LOG_ERROR("File Failed to Extract"); ret = EXIT_FAILURE; goto end; }
 
             if (p[i].filename != (char*)-1 && p[i].filename != (char*)-2)
@@ -375,6 +545,11 @@ int load_roms(const char* archname, const struct RomModule* p)
             }
 
             region = cpunum;
+
+            if (!Machine->memory_region[region]) {
+                LOG_ERROR("ROM %s targets memory region %d, which was not allocated", p[i].filename ? p[i].filename : "<reload>", region);
+                ret = EXIT_FAILURE; goto end;
+            }
 
         gohere:
             if (p[i].filename == (char*)-2) 
@@ -397,6 +572,18 @@ int load_roms(const char* archname, const struct RomModule* p)
                 for (j = 0; j < p[i].romSize; j++)
                     Machine->memory_region[region][(j * 2) + p[i].loadAddr] = zipdata[j];
                 break;
+            case ROM_LOAD_NIB_LOW_T:
+                for (j = 0; j < p[i].romSize; j++) {
+                    unsigned char* dst = &Machine->memory_region[region][j + p[i].loadAddr];
+                    *dst = (unsigned char)((*dst & 0xF0) | (zipdata[j + skip] & 0x0F));
+                }
+                break;
+            case ROM_LOAD_NIB_HIGH_T:
+                for (j = 0; j < p[i].romSize; j++) {
+                    unsigned char* dst = &Machine->memory_region[region][j + p[i].loadAddr];
+                    *dst = (unsigned char)((*dst & 0x0F) | ((zipdata[j + skip] & 0x0F) << 4));
+                }
+                break;
             default:
                 LOG_ERROR("Invalid load type in ROM loader"); break;
             }
@@ -412,7 +599,8 @@ int load_roms(const char* archname, const struct RomModule* p)
 
 end:
     if (zipdata) free(zipdata); // Safety cleanup if goto end happened
-    mz_zip_reader_end(&zip_archive);
+    if (own_open) mz_zip_reader_end(&zip_archive);
+    if (parent_open) mz_zip_reader_end(&parent_zip_archive);
     LOG_INFO("Finished loading roms");
 
     return ret;

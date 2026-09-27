@@ -19,7 +19,7 @@ layout(push_constant) uniform Push {
     vec4 p0;      //  48: srcW, srcH, lodBias, blurH
     vec4 p1;      //  64: blurV, converge, halation, halRadius
     vec4 p2;      //  80: scanline, contrast, bright, saturation
-    vec4 p3;      //  96: maskType, maskStrength, maskScale, unused
+    vec4 p3;      //  96: maskType, maskStrength, maskScale, softPhosphor
     vec4 tint;    // 112: phosphor tint rgb, unused
 } pc;
 

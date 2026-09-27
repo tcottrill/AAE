@@ -670,6 +670,11 @@ void ParseCommandLineArgs(WindowSetup& config, Win32WindowState& win32Config)
 		std::wstring arg = argv[i];
 		if      (arg == L"-fullscreen")    config.useFullscreen  = true;
 		else if (arg == L"-windowed")      config.useFullscreen  = false;
+		// Documented alternate forms (AAE Command Line Options.txt). They used to
+		// be parsed only by gameparse() into a variable nothing read, so they
+		// never had any effect; this is the one place the mode is decided.
+		else if (arg == L"-window")        config.useFullscreen  = false;
+		else if (arg == L"-nowindow")      config.useFullscreen  = true;
 		else if (arg == L"-nocenter")      config.centerWindow   = false;
 		else if (arg == L"-aspectwindow")  config.useAspectRatio = true;
 		else if (arg == L"-disableNC")     win32Config.disableNC = true;
@@ -1138,6 +1143,26 @@ void Win32Window::ToggleBorderlessFullscreen()
 		config.clientHeight = client.bottom - client.top;
 		ViewOrtho(config.clientWidth, config.clientHeight);
 		UpdateCursorState();
+	}
+
+	// Windowed restore: the saved rect can predate the running game's aspect.
+	// Starting fullscreen captures the pre-game window, and when the game then
+	// loads WindowUtil_UpdateAspect only re-fits the viewport while fullscreen,
+	// so a vertical game's first ALT+ENTER restored a landscape window. A
+	// windowed window is always at the game aspect (WM_SIZING enforces it), so
+	// a mismatch here can only be that stale rect: re-fit it. An explicit
+	// [main] screenw/screenh size is the user's and is kept as is.
+	if (!config.borderlessFullscreen && !config.explicitWindowSize &&
+		config.clientHeight > 0 && config.aspectRatio > 0.0f)
+	{
+		const float have = (float)config.clientWidth / (float)config.clientHeight;
+		const float diff = (have > config.aspectRatio) ? have - config.aspectRatio : config.aspectRatio - have;
+		if (diff > 0.01f * config.aspectRatio)
+		{
+			LOG_INFO("Restored windowed client aspect %.3f != game aspect %.3f (stale pre-game rect) - re-fitting",
+				have, config.aspectRatio);
+			WindowUtil_UpdateAspect(config.aspectRatio);
+		}
 	}
 	LOG_INFO("Now in %s mode %d", config.borderlessFullscreen ? "borderless fullscreen" : "windowed", config.borderlessFullscreen);
 	LOG_INFO("Setting Client size: %d x %d", config.clientWidth, config.clientHeight);

@@ -172,8 +172,8 @@ Address  R / W  D7 D6 D5 D4 D3 D2 D1 D0   Function
 #include "warlord.h"
 #include "driver_registry.h"
 #include "old_mame_raster.h"
-#include "earom.h"
-#include "aae_pokey.h"
+#include "er2055.h"
+#include "c012294_interface.h"
 #include "timer.h"
 
  // ---------------------------------------------------------------------------
@@ -549,6 +549,31 @@ void milliped_init_machine(void)
 
 /* PORT HANDLERS */
 
+// ---------------------------------------------------------------------------
+// EAROM (ER2055) - MAME centiped.cpp centiped_state::earom_read/earom_write/
+// earom_control_w. NOTE the bit order differs from the vector boards:
+// CK = DB0, C1 = /DB1, C2 = DB2, CS1 = DB3, /CS2 = GND. `address` is the
+// offset from the range start.
+// ---------------------------------------------------------------------------
+static er2055 earom;
+
+READ_HANDLER(earom_read)
+{
+	return er2055_data(&earom);
+}
+
+WRITE_HANDLER(earom_write)
+{
+	er2055_set_address(&earom, address & 0x3f);
+	er2055_set_data(&earom, data);
+}
+
+WRITE_HANDLER(earom_control_w)
+{
+	er2055_set_control(&earom, (data >> 3) & 1, true, !((data >> 1) & 1), (data >> 2) & 1);
+	er2055_set_clk(&earom, data & 1);
+}
+
 MEM_READ(milliped_readmem)
 MEM_ADDR(0x0000, 0x03ff, MRA_RAM)
 MEM_ADDR(0x0400, 0x040f, pokey_1_r)
@@ -558,7 +583,7 @@ MEM_ADDR(0x2000, 0x2000, milliped_IN0_r)
 MEM_ADDR(0x2001, 0x2001, milliped_IN1_r)
 MEM_ADDR(0x2010, 0x2010, ip_port_2_r)
 MEM_ADDR(0x2011, 0x2011, ip_port_3_r)
-MEM_ADDR(0x2030, 0x2030, EaromRead)
+MEM_ADDR(0x2030, 0x2030, earom_read)
 MEM_ADDR(0x4000, 0x7fff, MRA_ROM)
 MEM_ADDR(0xf000, 0xffff, MRA_ROM)
 MEM_END
@@ -576,8 +601,8 @@ MEM_ADDR(0x2505, 0x2505, milliped_input_select_w)
 MEM_ADDR(0x2506, 0x2507, MWA_NOP)	/* unused outputs */
 MEM_ADDR(0x2600, 0x2600, milliped_irq_ack)
 MEM_ADDR(0x2680, 0x2680, watchdog_reset_w)
-MEM_ADDR(0x2700, 0x2700, EaromCtrl)
-MEM_ADDR(0x2780, 0x27bf, EaromWrite)
+MEM_ADDR(0x2700, 0x2700, earom_control_w)
+MEM_ADDR(0x2780, 0x27bf, earom_write)
 MEM_ADDR(0x4000, 0x73ff, MWA_ROM)
 MEM_END
 
@@ -587,6 +612,11 @@ int  init_milliped(void)
 	aae_set_lines_per_frame(262);
 	pokey_sh_start(&milliped_pokey_interface);
 	milliped_vh_start();
+
+	er2055_init(&earom);
+	nvram_set_region(earom.rom, sizeof(earom.rom), 0x00);
+	earom_control_w(0, 0, nullptr);   // MAME machine_reset(): earom_control_w(0)
+
 	return 0;
 }
 
@@ -750,7 +780,7 @@ AAE_DRIVER_SCREEN(256, 256, 0, 255, 0, 239)
 AAE_DRIVER_RASTER(milliped_gfxdecodeinfo, 32, 32, milliped_vh_convert_color_prom)
 AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0, 0)
-AAE_DRIVER_NVRAM(atari_vg_earom_handler)
+AAE_DRIVER_NVRAM(generic_nvram_handler)
 //AAE_DRIVER_LAYOUT_NONE()
 AAE_DRIVER_LAYOUT("default.lay", "Upright_Artwork")
 
