@@ -16,6 +16,7 @@
 #include "mixer.h"
 #include "driver_registry.h"    // AAE_REGISTER_DRIVER
 #include "er2055.h"
+#include "eeprom_93cxx.h"
 #include "c012294_interface.h"
 #include "acommon.h"
 #include "mame_late_avgdvg.h"
@@ -1227,6 +1228,266 @@ AAE_DRIVER_STANDALONE()
 AAE_DRIVER_SOUND_TRIM(170, 255)   // samples ~4 dB under the POKEY (set by ear)
 AAE_DRIVER_END()
 
+//============================================================================
+// Asteroids Deluxe Multigame (Braze, 2011) on Asteroids Deluxe hardware.
+//
+// The kit replaces the program and vector ROMs with two EPROMs whose address
+// and data lines are scrambled on the board. This driver loads PLAIN copies
+// (descrambled by C:\astdeluxbraze\re\descramble.py), so it has no descramble
+// step: adld-11b_plain.512 (64K program, eight 8K banks) and
+// adlv-11b_plain.256 (32K vector, four 8K units).
+//
+// Banking (worked out from the ROMs: the menu's ROM check reads the signature
+// $00/$40/$80/$C0 at $9FFE and at $57FE after selecting each game):
+//   $DA00 bits 7-6 = pair p (0 menu, 1 Asteroids, 2 Asteroids Deluxe,
+//   3 Lunar Lander); the program writes $D900 = $DA00 << 1 after it.
+//   CPU $6000-$7FFF and $E000-$FFFF (vectors): program bank 2p+1
+//   CPU $8000-$9FFF:                           program bank 2p
+//   CPU $4800-$5FFF (vector ROM):              vector unit p, $0800-$1FFF
+// The switch is made from vector RAM ($47F0: STA $DA00 / ASL / STA $D900 /
+// JMP $9Fxx). Every game's RESET goes to a stub at $9F00 that selects pair 0,
+// so the latch is not assumed to clear on RESET; init selects pair 0.
+//
+// Serial EEPROM, a 93C46 in 8-bit mode (128 bytes, machine/eeprom_93cxx), for
+// Braze's settings and scores: $DC00 chip select, $D300 clock (written high
+// then low), $D500 data in, $D800 data out - all on bit 7.
+// The Asteroids Deluxe game keeps its own high scores in the board's ER2055
+// EAROM as usual. Both chips are saved in astdelbz11b.nv: 128 bytes of EEPROM,
+// then the EAROM's 64.
+//============================================================================
+static int bz_pair = -1;
+static UINT8 bz_d900, bz_da00;
+static eeprom_93cxx bz_eeprom;
+
+
+static void bz_select(int pair)
+{
+	UINT8* RAM = Machine->memory_region[CPU0];
+	const UINT8* prog = Machine->memory_region[REGION_USER1];
+	const UINT8* vect = prog + 0x10000;
+
+	pair &= 3;
+	memcpy(RAM + 0x6000, prog + (2 * pair + 1) * 0x2000, 0x2000);
+	memcpy(RAM + 0xe000, prog + (2 * pair + 1) * 0x2000, 0x2000);
+	memcpy(RAM + 0x8000, prog + (2 * pair) * 0x2000, 0x2000);
+	memcpy(RAM + 0x4800, vect + pair * 0x2000 + 0x0800, 0x1800);
+	// AAE hack: pair 3 is Lunar Lander, whose stars are plain dots, not shots.
+	// Both DVG engines send every zero-length vector to add_tex, so turn the
+	// textured-shot path off while it runs (llander.cpp never turns it on).
+	set_game_has_shots(pair != 3);
+	if (pair != bz_pair)
+		LOG_INFO("braze: pair %d selected (program banks %d/%d, vector unit %d)", pair, 2 * pair + 1, 2 * pair, pair);
+	bz_pair = pair;
+}
+
+WRITE_HANDLER(bz_da00_w)
+{
+	bz_da00 = data;
+	bz_select(data >> 6);
+}
+
+WRITE_HANDLER(bz_d900_w)
+{
+	bz_d900 = data;
+	if (data != (UINT8)(bz_da00 << 1))
+		LOG_INFO("braze: $D900 = %02X does not follow $DA00 = %02X", data, bz_da00);
+}
+
+// ---- serial EEPROM: the board puts each pin on bit 7 of its own address ------
+WRITE_HANDLER(bz_ee_cs_w)  { eeprom_93cxx_set_cs(&bz_eeprom, (data >> 7) & 1); }
+WRITE_HANDLER(bz_ee_clk_w) { eeprom_93cxx_set_clk(&bz_eeprom, (data >> 7) & 1); }
+WRITE_HANDLER(bz_ee_di_w)  { eeprom_93cxx_set_di(&bz_eeprom, (data >> 7) & 1); }
+READ_HANDLER(bz_ee_do_r)   { return eeprom_93cxx_do(&bz_eeprom) ? 0x80 : 0x00; }
+
+// The EEPROM and the EAROM, in one file. First boot: an erased EEPROM (FF) and
+// a clear EAROM (00, as init_astdelux leaves it).
+static void astdelbz11b_nvram_handler(void* file, int read_or_write)
+{
+	if (read_or_write) {
+		osd_fwrite(file, bz_eeprom.rom, bz_eeprom.size);
+		osd_fwrite(file, earom.rom, sizeof earom.rom);
+		LOG_INFO("braze: saved EEPROM (%d bytes) and EAROM (%d bytes)", bz_eeprom.size, (int)sizeof earom.rom);
+	}
+	else if (file) {
+		osd_fread(file, bz_eeprom.rom, bz_eeprom.size);
+		osd_fread(file, earom.rom, sizeof earom.rom);
+		LOG_INFO("braze: loaded EEPROM and EAROM");
+	}
+}
+
+// ---- anything else the kit touches above $8000 is logged, once per address ----
+WRITE_HANDLER(bz_unknown_w)
+{
+	static UINT8 seen[0x4000];
+	unsigned a = 0xa000 + address;              // handlers get the offset from the range start
+	if (!seen[a - 0xa000]) {
+		seen[a - 0xa000] = 1;
+		LOG_INFO("braze: write %02X to unhandled $%04X (PC $%04X)", data, a, cpu_getppc());
+	}
+}
+
+MEM_READ(AstDelBzRead)
+MEM_ADDR(0x2000, 0x2007, asteroid_IN0_r)
+MEM_ADDR(0x2400, 0x2407, asteroid_IN1_r)
+MEM_ADDR(0x2800, 0x2803, asteroid_DSW1_r)
+MEM_ADDR(0x2c00, 0x2c0f, pokey_1_r)
+MEM_ADDR(0x2c40, 0x2c7f, earom_read)
+MEM_ADDR(0xd800, 0xd800, bz_ee_do_r)
+MEM_END
+
+MEM_WRITE(AstDelBzWrite)
+MEM_ADDR(0x2c00, 0x2c0f, pokey_1_w)
+MEM_ADDR(0x3000, 0x3000, asteroid_vg_go_w)
+MEM_ADDR(0x3c03, 0x3c03, astdelux_sounds_w)
+MEM_ADDR(0x3c04, 0x3c04, astdelux_bank_switch_w)
+MEM_ADDR(0x3600, 0x3600, asteroid_explode_w)
+MEM_ADDR(0x3400, 0x3400, watchdog_reset_w)
+MEM_ADDR(0x3200, 0x323f, earom_write)
+MEM_ADDR(0x3a00, 0x3a00, earom_control_w)
+MEM_ADDR(0x3c00, 0x3c01, astdelux_led_w)
+MEM_ADDR(0x4800, 0x7fff, MWA_ROM)
+MEM_ADDR(0x8000, 0x9fff, MWA_ROM)
+MEM_ADDR(0xd300, 0xd300, bz_ee_clk_w)
+MEM_ADDR(0xd500, 0xd500, bz_ee_di_w)
+MEM_ADDR(0xd900, 0xd900, bz_d900_w)
+MEM_ADDR(0xda00, 0xda00, bz_da00_w)
+MEM_ADDR(0xdc00, 0xdc00, bz_ee_cs_w)
+MEM_ADDR(0xa000, 0xdfff, bz_unknown_w)
+MEM_ADDR(0xe000, 0xffff, MWA_ROM)
+MEM_END
+
+int init_astdelbz11b(void)
+{
+	init_astdelux();                     // POKEY, DVG, the EAROM
+	eeprom_93cxx_init(&bz_eeprom, 7, 8); // 93C46, x8
+	bz_pair = -1;
+	bz_select(0);                                          // the menu
+	return 0;
+}
+
+
+//----------------------------------------------------------------------------
+// The same kit on an ASTEROIDS board (adla-11b.512 with the shared vector
+// EPROM adlv-11b.256). Same scramble, banking ($DA00/$D900) and EEPROM. The
+// board has no POKEY and no EAROM, so the kit adds a POKEY at $D100-$D10F,
+// and the program drives the Asteroids board's own latches and discrete
+// sound ($3200 RAM swap and lamps, $3600 explosions, $3A00 thump,
+// $3C00-$3C05 sounds). Only the EEPROM is saved.
+//----------------------------------------------------------------------------
+MEM_READ(AstBzRead)
+MEM_ADDR(0x2000, 0x2007, asteroid_IN0_r)
+MEM_ADDR(0x2400, 0x2407, asteroid_IN1_r)
+MEM_ADDR(0x2800, 0x2803, asteroid_DSW1_r)
+MEM_ADDR(0xd100, 0xd10f, pokey_1_r)
+MEM_ADDR(0xd800, 0xd800, bz_ee_do_r)
+MEM_END
+
+MEM_WRITE(AstBzWrite)
+MEM_ADDR(0x3000, 0x3000, asteroid_vg_go_w)
+MEM_ADDR(0x3200, 0x3200, asteroid_bank_switch_w)
+MEM_ADDR(0x3400, 0x3400, watchdog_reset_w)
+MEM_ADDR(0x3600, 0x3600, asteroid_explode_w)
+MEM_ADDR(0x3a00, 0x3a00, asteroid_thump_w)
+MEM_ADDR(0x3c00, 0x3c05, asteroid_sounds_w)
+MEM_ADDR(0x4800, 0x7fff, MWA_ROM)
+MEM_ADDR(0x8000, 0x9fff, MWA_ROM)
+MEM_ADDR(0xd100, 0xd10f, pokey_1_w)
+MEM_ADDR(0xd300, 0xd300, bz_ee_clk_w)
+MEM_ADDR(0xd500, 0xd500, bz_ee_di_w)
+MEM_ADDR(0xd900, 0xd900, bz_d900_w)
+MEM_ADDR(0xda00, 0xda00, bz_da00_w)
+MEM_ADDR(0xdc00, 0xdc00, bz_ee_cs_w)
+MEM_ADDR(0xa000, 0xdfff, bz_unknown_w)
+MEM_ADDR(0xe000, 0xffff, MWA_ROM)
+MEM_END
+
+int init_astbz11b(void)
+{
+	init_asteroid();                            // DVG, shot dots
+	pokey_sh_start(&pokey_interface);           // the kit's POKEY, at $D100
+	eeprom_93cxx_init(&bz_eeprom, 7, 8);        // 93C46, x8
+	nvram_set_region(bz_eeprom.rom, bz_eeprom.size, 0xff);
+	bz_pair = -1;
+	bz_select(0);                               // the menu
+	return 0;
+}
+
+ROM_START(astbz11b)
+ROM_REGION(0x10000, REGION_CPU1, 0)
+ROM_REGION(0x18000, REGION_USER1, 0)
+ROM_LOAD("adla-11b_plain.512", 0x00000, 0x10000, CRC(47f7ba32) SHA1(bfd7e8a397b417b369a882a326b8e86026c43b02))
+ROM_LOAD("adlv-11b_plain.256", 0x10000, 0x08000, CRC(a5d7e449) SHA1(834756c80b92a0e2191cd438ca7a5a7dcf85a306))
+// DVG PROM
+ROM_REGION(0x100, REGION_PROMS, 0)
+ROM_LOAD("034602-01.c8", 0x0000, 0x0100, CRC(97953db8) SHA1(8cbded64d1dd35b18c4d5cece00f77e7b2cab2ad))
+ROM_END
+
+// v1.1B (Nov 2012): bug fixes to the menu banks (0, 1) and the menu's vector
+// unit, one byte in bank 6, two in bank 7; same scramble, banking and EEPROM.
+ROM_START(astdelbz11b)
+ROM_REGION(0x10000, REGION_CPU1, 0)
+ROM_REGION(0x18000, REGION_USER1, 0)
+ROM_LOAD("adld-11b_plain.512", 0x00000, 0x10000, CRC(562d77f7) SHA1(e04f6853c7003ab0439c49888c123d2f72cf3fdc))
+ROM_LOAD("adlv-11b_plain.256", 0x10000, 0x08000, CRC(a5d7e449) SHA1(834756c80b92a0e2191cd438ca7a5a7dcf85a306))
+// DVG PROM
+ROM_REGION(0x100, REGION_PROMS, 0)
+ROM_LOAD("034602-01.c8", 0x0000, 0x0100, CRC(97953db8) SHA1(8cbded64d1dd35b18c4d5cece00f77e7b2cab2ad))
+ROM_END
+
+
+AAE_DRIVER_BEGIN(drv_astdelbz11b, "astdelbz11b", "Asteroids Deluxe Multigame (Braze v1.1B)")
+AAE_DRIVER_ROM(rom_astdelbz11b)
+AAE_DRIVER_FUNCS(&init_astdelbz11b, &run_astdelux, &end_astdelux)
+AAE_DRIVER_INPUT(input_ports_astdelux)
+AAE_DRIVER_SAMPLES(deluxesamples)
+AAE_DRIVER_ART(astdeluxart)
+AAE_DRIVER_CPUS(
+	AAE_CPU_ENTRY(CPU_M6502, 1512000, 100, 4, INT_TYPE_NMI, asteroid_interrupt, AstDelBzRead, AstDelBzWrite,
+		nullptr,
+		nullptr,
+		nullptr,
+		nullptr),
+	AAE_CPU_NONE_ENTRY(),
+	AAE_CPU_NONE_ENTRY(),
+	AAE_CPU_NONE_ENTRY()
+)
+AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_BW | VECTOR_USES_OVERLAY1, ORIENTATION_DEFAULT)
+AAE_DRIVER_SCREEN(1024, 768, 0, 1040, 70, 950)
+AAE_DRIVER_RASTER_NONE()
+AAE_DRIVER_HISCORE_NONE()
+AAE_DRIVER_VECTORRAM(0x4000, 0x800)
+AAE_DRIVER_NVRAM(astdelbz11b_nvram_handler)
+AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_CLONE_OF("astdelux")
+AAE_DRIVER_SOUND_TRIM(170, 255)
+AAE_DRIVER_END()
+
+AAE_DRIVER_BEGIN(drv_astbz11b, "astbz11b", "Asteroids Multigame (Braze v1.1B)")
+AAE_DRIVER_ROM(rom_astbz11b)
+AAE_DRIVER_FUNCS(&init_astbz11b, &run_astdelux, &end_astdelux)
+AAE_DRIVER_INPUT(input_ports_asteroid)
+AAE_DRIVER_SAMPLES(asteroidsamples)
+AAE_DRIVER_ART(asteroidsart)
+AAE_DRIVER_CPUS(
+	AAE_CPU_ENTRY(CPU_M6502, 1512000, 100, 4, INT_TYPE_NMI, asteroid_interrupt, AstBzRead, AstBzWrite,
+		nullptr,
+		nullptr,
+		nullptr,
+		nullptr),
+	AAE_CPU_NONE_ENTRY(),
+	AAE_CPU_NONE_ENTRY(),
+	AAE_CPU_NONE_ENTRY()
+)
+AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_BW, ORIENTATION_DEFAULT)
+AAE_DRIVER_SCREEN(1024, 768, 0, 1040, 70, 950)
+AAE_DRIVER_RASTER_NONE()
+AAE_DRIVER_HISCORE_NONE()
+AAE_DRIVER_VECTORRAM(0x4000, 0x800)
+AAE_DRIVER_NVRAM(generic_nvram_handler)
+AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_CLONE_OF("asteroid")
+AAE_DRIVER_END()
+
 AAE_REGISTER_DRIVER(drv_meteorts)
 AAE_REGISTER_DRIVER(drv_asterock)
 AAE_REGISTER_DRIVER(drv_asteroidb)
@@ -1235,3 +1496,5 @@ AAE_REGISTER_DRIVER(drv_asteroid)
 AAE_REGISTER_DRIVER(drv_astdelux1)
 AAE_REGISTER_DRIVER(drv_astdelux2)
 AAE_REGISTER_DRIVER(drv_astdelux)
+AAE_REGISTER_DRIVER(drv_astdelbz11b)
+AAE_REGISTER_DRIVER(drv_astbz11b)

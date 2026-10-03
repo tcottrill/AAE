@@ -1,3 +1,62 @@
+9/27/26
+Release 1.99 WIP - TEST BUILD ONLY
+**This build includes entirely new POKEY emulation. It's 75x slower than the old one but cycle
+accurate. I'll get the speed up as soon as I can. Try the shield sound on Space Duel compared to
+M.A.M.E. - mine matches my real arcade machine.**
+
+This is a test build only (Windows 10/11 x64). I'll have a full build out when I finish testing.
+
+- Quantum driver rewritten to work properly.
+- Many Atari vector drivers retimed to be closer to correct.
+- Corrected the Warlords driver to be schematic accurate.
+- Fixed the input bug on Aztarac.
+- Overhauled most of the sound in the Cinematronics drivers.
+- QB-3 now has perfect audio.
+- Demon now has perfect audio.
+- Speed Freak has had the steering fixed, first time it has ever been correct and you can actually steer.
+- Added support for all samples in Speed Freak and simulated motor noise.
+- Battlezone input fixed to work with the new POKEY.
+- Star Wars driver completely rewritten with RIOT chip emulation, TMS sound is now correct.
+- Lunar Lander MAME artwork has been removed, custom vector onscreen artwork is controlled by a fake dip switch.
+- Added support for parent/child merged roms as in MAME (clone_of tags added and corrected across
+  Atari, Namco, Sega, Cinematronics and other drivers).
+- Volume normalization mostly complete.
+- Fixed Williams driver rendering.
+- New "6100 SOFT PHOSPHOR" color CRT screen effect (color_enable=2, Vulkan and OpenGL).
+- aae.ini: new dvg_engine option block. video.ini: the ripoff section now uses the correct key names.
+
+**The Atari Math Box is now emulated from its microcode.** Battlezone, Red Baron, Bradley Trainer
+and every Tempest-hardware game (Tempest, Tempest Tubes, Aliens, Vortex, Vector Breakout, the
+Multigame) run the real Am2901 bit-slice microcode from the mapping and microcode PROMs, ported from
+the Tempest C port's interpreter, instead of Eric Smith's 1990s functional re-creation. Results are
+whatever the board's microcode computes, bit for bit.
+
+- **Romsets must now include the seven mathbox PROMs** (Tempest 136002-126..132, Battlezone / Red
+  Baron 036174-01..036180-01 - identical parts). Every standard MAME set already has them. bzonep,
+  aliensv and vbrakout are now clones of bzone / tempest and take the PROMs from the parent zip if
+  their own lacks them; bradley.zip needs the current MAME version.
+- The ROM loader understands 4-bit PROM dumps (ROM_LOAD_NIB_LOW / ROM_LOAD_NIB_HIGH). The six
+  microcode PROMs are packed in the order verified against Atari's MBUCOD source - MAME's tables
+  pair them the other way round, but MAME never reads them.
+
+**Tempest Multigame is now "tempmg"**, with the same romset layout and filenames as HBMAME, so one
+tempmg.zip works in both. The old "tempestm" set and zip are gone. Each bank now reads its own
+game's video.ini rect (Vector Breakout's differs from Tempest's), and the bank switch clears the
+previous game's picture. tools\make_tempmg.ps1 builds tempmg.zip from whatever zips you have,
+matching files by CRC; tools\make_tempmg_readme.txt says where the Cowgill ROMs still live online.
+
+- **Vector Breakout draws again.** Every build since 9/14 showed a black screen: the MAME-style
+  mid-list VGGO handling discarded HALT-terminated display lists on the Tempest vector generator.
+  (HBMAME has the same fault.) A HALT-terminated pass is now displayed when VGGO arrives while the
+  generator is halted; a VGGO while running still discards the partial pass, as Tempest and
+  Quantum need.
+- Tempest's OUT0 video inverts are now modelled: player 2 on a cocktail gets the 180-degree turn
+  the board does. The Cabinet DIP now defaults to Upright (it was Cocktail; if your saved
+  cfg\tempest.cfg still says Cocktail, set it back in the DIP menu).
+- Fixed a core bug where the last memory region slot was one past the end of the region array.
+- Tempest driver cleaned up: the POKEY-protection instrumentation is gone (the POKEY no longer
+  needs it), tempest3 (rev 2B) has its checksums, dead code removed.
+
 8/10/26
 Release 1.96
 **AAE now runs on Linux.** The emulation core was split out from the video, input and sound
@@ -28,12 +87,16 @@ own if Vulkan won't initialize.
   mapping and the chords. It appears once the first time a gamepad is detected, and any time
   after from **Y** in the game list or the CONTROLLER HELP menu entry.
 
+New drivers: Frogger, and the first-generation Williams games - Defender, Stargate, Robotron: 2084,
+Joust, Bubbles, Splat! and Sinistar. The Williams driver comes from MAME 0.53 with the modern ROM
+names, and includes the special-chip blitter, the 49-way joystick and Sinistar's CVSD speech.
+
 Many driver cleanups, the pokey was once again updated, hopefully for the last time!
 See the build details on how to add roms and artwork to the Steam OS build. 
 Many SOUND Updates. 
 
 Note: The new glow shader looks like crap on the PI 5. The old one looks fine but it's too slow, the PI 5 just doesn't 
-have enough pixel pushing power. Black and white shader and color raster shaders are disabled as well. 
+have enough pixel pushing power. Black and white shader and color raster shaders are disabled as well on the PI. 
 
 
 

@@ -158,6 +158,7 @@
     <ClCompile Include="aae\inptport.cpp" />
     <ClCompile Include="aae\machine\74148.cpp" />
     <ClCompile Include="aae\machine\er2055.cpp" />
+    <ClCompile Include="aae\machine\eeprom_93cxx.cpp" />
     <ClCompile Include="aae\machine\mathbox.cpp" />
     <ClCompile Include="aae\machine\mc6821.cpp" />
     <ClCompile Include="aae\machine\pacplus_decode.cpp" />
@@ -268,6 +269,7 @@
     <ClInclude Include="aae\inptport.h" />
     <ClInclude Include="aae\machine\74148.h" />
     <ClInclude Include="aae\machine\er2055.h" />
+    <ClInclude Include="aae\machine\eeprom_93cxx.h" />
     <ClInclude Include="aae\machine\mathbox.h" />
     <ClInclude Include="aae\machine\mc6821.h" />
     <ClInclude Include="aae\machine\pacplus_decode.h" />

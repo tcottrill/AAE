@@ -60,7 +60,9 @@ pressed, so you can use whichever you prefer without changing any setting.
   Start                2 PLAYER START         -
   LS (click)           COIN 2                 -
   RS (click)           COIN 1  (insert coin)  -
-  Right stick          -                      -
+  Right stick          Fire stick in the two  -
+                       twin-stick games
+                       (Black Widow, Robotron)
   LT / RT              -  (see section 8)     -
 
 The two you will reach for constantly:
@@ -250,12 +252,18 @@ Also unavailable on the pad:
     RS), and the triggers sit past that limit. They cannot be bound in JOY
     CONFIG either.
 
-  * The RIGHT STICK is not mapped to any game control.
+  * The RIGHT STICK is only reachable as the "Joy 2" directions, and only
+    as a fallback: with a single pad plugged in, a control bound to Joy 2
+    Up/Down/Left/Right reads that pad's right stick. The two twin-stick
+    games (Black Widow, Robotron) bind their fire stick there by default;
+    Gravitar and Space Duel are stick-plus-buttons games and do not use it.
+    With two pads present, Joy 2 means the second pad.
 
   * The D-pad cannot be bound as four separate buttons. It only ever acts as
     a direction, merged with the left stick.
 
-So: 10 usable buttons plus one stick. That is more than any game in the set
+So: 10 usable buttons plus one stick, plus the right stick for the twin-stick
+games. That is more than any game in the set
 needs, but it does mean the triggers sit idle.
 
 

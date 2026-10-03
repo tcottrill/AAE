@@ -505,8 +505,90 @@ Fixed the LEDS and verified them on all games that support them. I had no idea t
 General Driver cleanup, affected almost every driver
 Checked and fixed all the keyboard leds in all the games that support them (that I emulate).
 Added a new mixer option for adding gain to trigger a subwoofer for sample playback. Check out Lunar Lander. 
-Fixed and finalized the Steam OS build over several revisions. Added some placeholder artwork that I am not particularly fond of. 
-Spent a ton of time on source cleanup and prepping for an actual release. 
+Fixed and finalized the Steam OS build over several revisions. Added some placeholder artwork that I am not particularly fond of.
+Spent a ton of time on source cleanup and prepping for an actual release.
+
+9/14/26
+- Omega Race: new "omegrace60" entry, "Omega Race (60 fps)". Same ROM set as
+  omegrace. The VG done bit is reported once per presented frame so the ROM's
+  own polling loop kicks the vector generator exactly once per 60 Hz frame; the
+  whole display list is drawn at kick time (avgdvg_run_to_halt). Tick is 240 Hz
+  (4 per frame), so the game runs 1.7% slow versus the 244.140625 Hz board.
+  No ROM patch. Set debug_profile_code=1 to log kicks per 60 frames.
+  omegrace60's dials use key delta 7 (not 10) so keyboard/joystick spin per
+  second matches the 40 fps entry; mouse/spinner input is unchanged.
+- Omega Race / Delta Race: main INT and sound NMI now come from periodic timers
+  at the board's exact 244.140625 Hz (12 MHz / 49152, one shared divider net),
+  replacing the ipf-25-divide-by-4 scheme that ran 250 Hz, 2.4% fast.
+- Command line: -window and -nowindow now work. They were parsed by gameparse
+  into a variable nothing read; the window mode is decided by winmain's early
+  ParseCommandLineArgs, which only knew -fullscreen / -windowed. Both forms are
+  now handled there and the dead gameparse copy is removed.
+- Lunar Lander (both sets): NMI from a periodic timer at the board's 246.09375 Hz
+  (3 kHz clock / 12 = 12.096 MHz / 4096 / 12, 6144 CPU cycles), replacing ipf 6
+  at 40 fps = 240 Hz, 2.5% slow. Self-test still gates the NMI off.
+- Asteroids / Asteroids Deluxe: left at 60 fps with 4 NMIs per frame (240 Hz),
+  which is 2.5% slower than the board's 246.09375 Hz - a deliberate choice for
+  frame-locked 60 fps presentation, now documented at asteroid_interrupt().
+- Quantum (all three sets): IRQ1 was ipf 3 at 60 fps = 180 Hz against the board's
+  246.09375 Hz (3 kHz / 12), running the game ~27% slow. Now ipf 4 = 240 Hz,
+  four per frame, the same deliberate 2.5% underclock as Asteroids.
+- AVG core (Tempest, Quantum): Quantum strobes VGGO several times a second in
+  play with the AVG mid-list. Brought in MAME 0.286's handling (vggo first in
+  avgdvg_go; Tempest/Quantum vggo discards the half-built buffer instead of
+  flushing it into the picture as stray fragments). Two AAE-only additions,
+  beyond MAME: the jump-to-zero frame cut only replaces the picture when the
+  buffer holds a real pass (> 10 vectors; an in-flight jump right after a
+  VGGO restart used to blank a frame), and a flushed list that opens with a
+  lit vector is led by a move to the beam's last position (the renderer
+  otherwise drew it from the screen corner - the stray white diagonal).
+- Major Havoc (all 7 sets incl. Alpha One): the IRQ clock stepping both LS161s
+  (alpha IRQ every 12 counts, gamma IRQ level on count bit 3) now comes from a
+  periodic timer at the board's 10 MHz / 16 / 16 / 8 = 4882.8125 Hz (512 alpha
+  cycles), replacing ipf 100 at 50 fps = 5000 Hz, 2.4% fast. Measured 4883
+  ticks/s, 407 alpha IRQs/s, 610 gamma pulses/s.
+- Aztarac: the sound Z80's timed IRQ now comes from a 100 Hz periodic timer
+  (MAME 0.286 snd_timed_irq): each tick toggles status bit 4 and asserts IRQ
+  when it sets; the Z80's ack clears the bit, so it is a 100 Hz IRQ (measured).
+  It was ipf 100 at 40 fps = 4000 ticks/s, 40x too fast. Main 68000 vblank
+  IRQ4 at 40 Hz unchanged.
+- Black Widow / Gravitar / Space Duel / Lunar Battle and the Tempest family:
+  already at 60 fps with 240 Hz IRQs (four per frame), 2.5% slower than the
+  board's 246.09375 Hz by choice; now documented at bwidow_interrupt and
+  tempest_interrupt (the old "Should be 246" comment read as a bug).
+- Input: twin-stick on one gamepad. A "Joy 2" direction with no second device
+  present now reads player 1's pad's right thumbstick (an XInput pad's second
+  stick, previously unreachable from any binding). The fire stick of the two
+  twin-stick games, Black Widow and Robotron, defaults to the Joy 2 directions
+  (was buttons 1-4); with two pads, Joy 2 is still the second pad. Gravitar,
+  Space Duel and Lunar Battle are stick-plus-buttons games and are unaffected.
+  Per-game
+  cfgs saved against the old defaults are rejected by the loader and the new
+  defaults apply. Also logs, with debug_profile_code=1, every binding a cfg
+  changed away from the driver default.
+- Window: ALT+ENTER out of fullscreen restored a landscape-sized window for a
+  vertical game when the game had been STARTED fullscreen (vector and raster
+  alike). The saved windowed rect was the pre-game window; the game's aspect
+  only re-fits the viewport while fullscreen. The restore now re-fits the
+  window when its client aspect does not match the game aspect (a windowed
+  window is always at the game aspect, so a mismatch is only ever that stale
+  rect). Explicit screenw/screenh sizes are kept.
+- Input: cfg/default.cfg is now format 4 ("MAMEDEF\4"): each saved global
+  binding carries the compiled default it was saved against, and on load only
+  bindings the user actually changed from that baseline are applied. The old
+  format overwrote the whole compiled default table and was re-saved at every
+  exit, so once the file existed no compiled-default change could ever reach
+  the user (it pinned Black Widow's fire stick to the old buttons). Format 3
+  files still load as before; delete default.cfg once to pick up new defaults.
+- Input: with debug_profile_code=1 the cfg loader logs every analog port's
+  EFFECTIVE sensitivity and key delta next to the driver default. The cfg's
+  "current settings" pass restores an analog extension entry's type word
+  wholesale, so a sensitivity saved from the menu overrides the driver on
+  every later run; this makes that visible.
+- Battlezone (4 sets), Bradley Trainer, Red Baron (2 sets): NMI timer at the
+  board's exact 246.09375 Hz (3 kHz / 12), was 240 Hz, 2.5% slow. The game
+  draws a picture every six NMIs (~41 Hz), so Red Baron (was 60 fps) and
+  Bradley (was 45 fps) now present at 40 fps like Battlezone.
 
 
 

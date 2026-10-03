@@ -141,6 +141,7 @@ set(AAE_CORE_SOURCES
     aae/aae/inptport.cpp
     aae/aae/machine/74148.cpp
     aae/aae/machine/er2055.cpp
+    aae/aae/machine/eeprom_93cxx.cpp
     aae/aae/machine/mathbox.cpp
     aae/aae/machine/mc6821.cpp
     aae/aae/machine/pacplus_decode.cpp

@@ -104,6 +104,14 @@ mhavocp         Major Havoc (Prototype)
 alphaone        Alpha One (Major Havoc Prototype - 3 Lives)
 alphaonea       Alpha One (Major Havoc Prototype - 5 Lives)
 gaplus          gaplus (US)
+robotron        Robotron: 2084 (Solid Blue label)
+joust           Joust (White/Green label)
+stargate        Stargate
+bubbles         Bubbles
+splat           Splat!
+defender        Defender (Red label)
+sinistar        Sinistar (revision 3)
+frogger         Frogger (Konami)
 foodf           Food Fight (Atari)
 centiped        Centipede V4 1 Player
 centiped3       Centipede V3 2 Player
@@ -137,4 +145,4 @@ astdelux1       Asteroids Deluxe (Revision 1)
 astdelux2       Asteroids Deluxe (Revision 2)
 astdelux        Asteroids Deluxe (Revision 3)
 
-Total games: 135
+Total games: 143

@@ -44,6 +44,11 @@
                                             m_point * 0.1 after loading).
   vectorglow            int       5         Vector glow intensity.
   vectortrail           int       1         Vector phosphor trail (1 = on).
+  starwars_fuzz         int       1         Star Wars only: bloom / white-out
+                                            the Death Star explosion the way
+                                            a real monitor does (1 = on).
+                                            Press F7 in-game to fire the
+                                            explosion on demand.
   drawzero              int       0         Draw zero-intensity vectors.
   explode_point_size    int       12        Point size for explosion effects.
   fire_point_size       int       12        Point size for fire/shot effects.
@@ -71,7 +76,15 @@
 
   samplerate            int       22050     Audio sample rate in Hz.
   mainvol               int       220       Master volume (0-255).
-  pokeyvol              int       200       POKEY chip volume (0-255).
+  samplevol             int       255       Game sample volume (0-255). Scales
+                                            recorded sound effects on top of
+                                            each driver's own levels.
+  pokeyvol              int       255       Sound-chip volume (0-255). Scales
+                                            every emulated chip stream (POKEY,
+                                            AY8910, SN76477, Namco, DAC, TMS5220).
+                                            Shown as CHIP VOLUME in the menu.
+                                            Per-game balance is built into the
+                                            driver; these knobs sit on top.
   noisevol              int       50        Background noise volume (0-255).
   psnoise               int       0         Power-supply noise effect.
   hvnoise               int       0         High-voltage noise effect.
@@ -102,6 +115,15 @@
   kbleds                int       1         Keyboard LED control (1 = on).
   starting_monitor      int       1         Starting monitor (1-based).
   flip_gui_controls     int       0         Swap up/down with right/left controls for panels with no joystick.
+  gui_vector_only       int       0         List only vector games in the GUI
+                                            game browser, hiding the raster
+                                            ones (1 = on).  Hides them from
+                                            the browser only: launching a
+                                            raster game by name on the command
+                                            line still works, and
+                                            -listallgames still lists every
+                                            game.  Global only - not
+                                            overridable per game.
   showinfo              int       0         Show readme info on game start.
   hack                  int       0         Enable game-specific hacks.
 
@@ -182,6 +204,7 @@
   bezel                 artwork             artcrop
   overlay               explode_point_size  fire_point_size
   vectorglow            vectortrail         gain
+  starwars_fuzz
   prescale              vid_rotate          anisfilter
   translucent           m_line              m_point
   linewidth             pointsize           raster_effect
@@ -190,8 +213,8 @@
   ---------------------------------------------------------------------------
 
   psnoise               hvnoise             pshiss
-  mainvol               pokeyvol            noisevol
-  samplerate
+  mainvol               samplevol           pokeyvol
+  noisevol              samplerate
 
   ROTATION
   ---------------------------------------------------------------------------
@@ -274,7 +297,7 @@
   - Command-line flags (-ror, -nobezel, -prescale, etc.) override INI
     values and survive INI reloads during the session.
 
-  - Volume values (mainvol, pokeyvol, noisevol) are clamped to 0-255.
+  - Volume values (mainvol, samplevol, pokeyvol, noisevol) are clamped to 0-255.
 
   - m_line and m_point are the authoritative line/point settings;
     linewidth and pointsize are derived (multiplied by 0.1) after loading.

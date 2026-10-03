@@ -192,6 +192,9 @@
     <ClCompile Include="aae\machine\er2055.cpp">
       <Filter>machine</Filter>
     </ClCompile>
+    <ClCompile Include="aae\machine\eeprom_93cxx.cpp">
+      <Filter>machine</Filter>
+    </ClCompile>
     <ClCompile Include="aae\machine\mathbox.cpp">
       <Filter>machine</Filter>
     </ClCompile>
@@ -496,6 +499,9 @@
       <Filter>machine</Filter>
     </ClInclude>
     <ClInclude Include="aae\machine\er2055.h">
+      <Filter>machine</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\machine\eeprom_93cxx.h">
       <Filter>machine</Filter>
     </ClInclude>
     <ClInclude Include="aae\machine\mathbox.h">
