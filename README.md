@@ -25,7 +25,7 @@
   <img alt="Games" src="https://img.shields.io/badge/games-135-44CC11">
 </p>
 
-**10/3/2026 — Braze Multigame support.** Added support for the Braze Technologies Multigame ROM sets (Asteroids, Asteroids Deluxe and Lunar Lander in one package). Braze Technologies has stopped selling this hardware, but the ROM images remain the property of their respective owners. To respect those rights, this release does **not** include any code to decode, decrypt or otherwise de-obfuscate the Multigame ROM images. Support is limited to running images that have already been prepared by their owner. No ROMs are distributed with AAE.
+**10/3/2026 — Braze Multigame support.** Added support for the Braze Technologies Multigame ROM sets (Asteroids, Asteroids Deluxe and Lunar Lander in one package). Braze Technologies has stopped selling this hardware, but the ROM images remain the property of their respective owners. To respect those rights, the next release will **not** include any code to decode, decrypt or otherwise de-obfuscate the Multigame ROM images. Support is limited to running images that have already been prepared by their owner. No ROMs are distributed with AAE.
 
 <p align="center">
   <img src="images/multigame_asteroids_selftest.png" alt="Asteroids Multigame — Asteroids selftest" width="49%">
