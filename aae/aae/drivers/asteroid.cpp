@@ -1233,8 +1233,7 @@ AAE_DRIVER_END()
 //
 // The kit replaces the program and vector ROMs with two EPROMs whose address
 // and data lines are scrambled on the board. This driver loads PLAIN copies
-// (descrambled by C:\astdeluxbraze\re\descramble.py), so it has no descramble
-// step: adld-11b_plain.512 (64K program, eight 8K banks) and
+// so it has no descramble step: adld-11b_plain.512 (64K program, eight 8K banks) and
 // adlv-11b_plain.256 (32K vector, four 8K units).
 //
 // Banking (worked out from the ROMs: the menu's ROM check reads the signature
