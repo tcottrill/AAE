@@ -170,7 +170,7 @@ uint16_t cpu_z80::GetPC()
 	return z80pc;
 }
 
-uint16_t cpu_z80::GetPPC()
+int cpu_z80::GetPPC()
 {
 	return z80ppc;
 }

@@ -122,7 +122,7 @@ public:
 
 	//PC Manipulations
 	uint16_t GetPC();
-	uint16_t GetPPC();
+	int GetPPC();
 	void SetPC(uint16_t wAddr);
 	void AdjustPC(int8_t cb);
 
@@ -272,7 +272,7 @@ private:
 	int cCycles;
 
 	uint16_t z80pc;
-	uint16_t z80ppc;
+	int z80ppc; // -1 while dispatching NMI/IRQ (no current instruction)
 	uint8_t m_regR;
 	uint8_t m_regI;
 
