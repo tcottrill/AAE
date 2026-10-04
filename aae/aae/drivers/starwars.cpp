@@ -272,11 +272,16 @@ WRITE_HANDLER(irqclr)
 
 /********************************************************/
 
-// Periodic main-CPU IRQ. The IRQ rate is 180 Hz, the rate older MAME used
-// (30 fps x 6 passes, commented "183Hz ?") and the speed that plays
-// correctly; MAME 0.159 and current MAME use CLOCK_3KHZ/12 = 246 Hz, which
-// was tried and ran the game about 37% too fast, so it was reverted by
-// choice. The scheduler no longer injects this (CPU0 now runs with ipf 0 /
+// Periodic main-CPU IRQ at the hardware rate, 3 kHz / 12 = 246.09 Hz (6144
+// cycles), as in MAME 0.159 and current MAME. Atari's source agrees: the
+// handler's game-frame divider is commented "12.*4.2MS==>50. MS, 20 PER
+// SECOND". The game paces itself on the picture: the IRQ handler (DOVG,
+// $F034) restarts the vector generator no sooner than 6 IRQs after the last
+// VGGO and only once VGHALT is set, so a heavy display list stretches a
+// game pass past 12 IRQs. An earlier 180 Hz setting only approximated that
+// stretch; measured against the Star Wars disassembly's emulator twin, 246 Hz
+// here gives the same passes per second and vector draw times, scene for
+// scene. The scheduler no longer injects this (CPU0 now runs with ipf 0 /
 // no int callback - see the driver entries below), so a real timer drives
 // the IRQ line instead, held until irqclr() above clears it. The IRQ is
 // timer-driven so frame rate does not affect game speed.
@@ -296,8 +301,8 @@ static void starwars_irq_gen(int param)
 static void starwars_start_irq_timer()
 {
 	main_irq_timer = timer_alloc(starwars_irq_gen);
-	// 1512000 / 180 = 8400 cycles = 180 Hz
-	timer_adjust(main_irq_timer, TIME_IN_CYCLES(8400, 0), 0, TIME_IN_CYCLES(8400, 0));
+	// 1512000 / 246.09 = 6144 cycles (3 kHz / 12)
+	timer_adjust(main_irq_timer, TIME_IN_CYCLES(6144, 0), 0, TIME_IN_CYCLES(6144, 0));
 }
 
 // CPU0 reset callback (registered below via post_cpu_init), matching MAME's

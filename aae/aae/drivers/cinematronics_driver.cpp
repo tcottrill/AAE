@@ -55,16 +55,10 @@
 #define CCPU_MEMSIZE_16K       	16
 #define CCPU_MEMSIZE_32K       	32
 
-#define CCPU_MONITOR_BILEV  	0
-#define CCPU_MONITOR_16LEV  	1
-#define CCPU_MONITOR_64LEV  	2
-#define CCPU_MONITOR_WOWCOL 	3
-
 // Coin Handling.
 static UINT8 coin_detected;
 static UINT8 coin_last_reset;
-static UINT8 mux_select;
-
+static UINT8 coin_last_input;
 
 namespace CCPU_INPUTS {
 	enum input_handler { CCPUIN, BOXINGB, SUNDANCE, SPEEDFRK, QB3 };
@@ -79,11 +73,20 @@ static int ccpuinput_type = 0;
 static void input_changed(int coin_inserted)
 {
 	/* on the falling edge of a new coin, set the coin_detected flag */
-	if (coin_inserted == 0)
+	if (coin_inserted == 0 && coin_last_input != 0)
 		coin_detected = 1;
+	coin_last_input = coin_inserted;
 }
 
-static int coin_read(int coin_input_r)
+/* Samples the active-low COIN1 bit (SWITCHES bit 7) for a new coin edge.
+   Called on every switch read and once per frame, so a coin pulse is
+   latched even if the game does not poll while it is held. */
+static void coin_sample(void)
+{
+	input_changed((readinputportbytag("SWITCHES") & 0x80) ? 1 : 0);
+}
+
+static int coin_read(void)
 {
 	return !coin_detected;
 }
@@ -139,11 +142,11 @@ static int speedfrk_gear_r(int offset)
 
 static const struct
 {
-	const char* portname;
+	int pad;			/* 1 = PAD1, 2 = PAD2, 0 = not a keypad bit */
 	UINT16 bitmask;
 } sundance_port_map[16] =
 {
-	{"PAD1", 0x155},	/* bit  0 is set if P1 1,3,5,7,9 is pressed */
+	{ 1, 0x155 },	/* bit  0 is set if P1 1,3,5,7,9 is pressed */
 	{ 0, 0 },
 	{ 0, 0 },
 	{ 0, 0 },
@@ -153,22 +156,44 @@ static const struct
 	{ 0, 0 },
 	{ 0, 0 },
 
-	{ "PAD2", 0x1a1 },	/* bit  8 is set if P2 1,6,8,9 is pressed */
-	{ "PAD1", 0x1a1 },	/* bit  9 is set if P1 1,6,8,9 is pressed */
-	{ "PAD2", 0x155 },	/* bit 10 is set if P2 1,3,5,7,9 is pressed */
+	{ 2, 0x1a1 },	/* bit  8 is set if P2 1,6,8,9 is pressed */
+	{ 1, 0x1a1 },	/* bit  9 is set if P1 1,6,8,9 is pressed */
+	{ 2, 0x155 },	/* bit 10 is set if P2 1,3,5,7,9 is pressed */
 	{ 0, 0 },
 
-	{ "PAD1", 0x093 },	/* bit 12 is set if P1 1,2,5,8 is pressed */
-	{ "PAD2", 0x093 },	/* bit 13 is set if P2 1,2,5,8 is pressed */
-	{ "PAD1", 0x048 },	/* bit 14 is set if P1 4,8 is pressed */
-	{ "PAD2", 0x048 },	/* bit 15 is set if P2 4,8 is pressed */
+	{ 1, 0x093 },	/* bit 12 is set if P1 1,2,5,8 is pressed */
+	{ 2, 0x093 },	/* bit 13 is set if P2 1,2,5,8 is pressed */
+	{ 1, 0x048 },	/* bit 14 is set if P1 4,7 is pressed */
+	{ 2, 0x048 },	/* bit 15 is set if P2 4,7 is pressed */
 };
+
+/* Each key is a 4-bit code across the masks above, so two held keys OR
+   into a code no single key makes (e.g. 4+5), which the game draws as
+   garbage.  Report one key per pad: the most recently pressed wins, and
+   if it is released while others are held, one of those takes over. */
+static UINT16 sundance_pad_prev[2];
+static UINT16 sundance_pad_active[2];
+
+static UINT16 sundance_pad_r(int pad)
+{
+	int i = pad - 1;
+	int raw = readinputportbytag(pad == 1 ? "PAD1" : "PAD2") & 0x1ff;
+	int pressed = raw & ~sundance_pad_prev[i];
+
+	if (pressed)
+		sundance_pad_active[i] = pressed & -pressed;
+	else if (!(raw & sundance_pad_active[i]))
+		sundance_pad_active[i] = raw & -raw;
+
+	sundance_pad_prev[i] = raw;
+	return sundance_pad_active[i];
+}
 
 static int sundance_read(int offset)
 {
 	// handle special keys first
-	if (sundance_port_map[offset].portname)
-		return (readinputportbytag(sundance_port_map[offset].portname) & sundance_port_map[offset].bitmask) ? 0 : 1;
+	if (sundance_port_map[offset].pad)
+		return (sundance_pad_r(sundance_port_map[offset].pad) & sundance_port_map[offset].bitmask) ? 0 : 1;
 	else
 		return (readinputport(1) >> offset) & 1;
 }
@@ -182,7 +207,7 @@ static int sundance_read(int offset)
 static int boxingb_dial_r(int offset)
 {
 	UINT16 value = readinputportbytag("DIAL");
-	offset -= 0x0b;
+	offset -= 0x0c;
 
 	if (!MUX_VAL) offset += 4;
 	return (value >> offset) & 1;
@@ -230,7 +255,7 @@ UINT16 get_ccpu_inputs(int offset)
 		break;
 	}
 
-	default: LOG_INFO("Somehting is wrong with the CCPU Input config.!");
+	default: LOG_INFO("Something is wrong with the CCPU input config!");
 	}
 
 	return 0;
@@ -239,17 +264,15 @@ UINT16 get_ccpu_inputs(int offset)
 UINT16 get_ccpu_switches(int offset)
 {
 	static const UINT8 switch_shuffle[8] = { 2,5,4,3,0,1,6,7 };
-	static int coindown = 0;
-	UINT16 test = readinputportbytag("SWITCHES");
-
+	/* Bit 7 is the coin latch (MAME coin_input_r): set on a coin's falling
+	   edge, held until the game pulses coin reset on output 5. */
 	if (offset == 7)
 	{
-		if ((test & 0x80) && coindown) { coindown--; } //Clear Countdown
-		else if ((test & 0x80) == 0 && coindown) { bitset(test, 0x80); } //Ignore Coin down.
-		else if ((test & 0x80) == 0 && coindown == 0) { coindown = 2; } //Set coin countdown
+		coin_sample();
+		return coin_read() & 1;
 	}
 
-	return (test >> switch_shuffle[offset]) & 1;
+	return (readinputportbytag("SWITCHES") >> switch_shuffle[offset]) & 1;
 }
 
 /*************************************
@@ -268,33 +291,21 @@ void coin_handler(int data)//coin_reset_w
 	coin_last_reset = data;
 }
 
-void qb3_ram_bank_w(int data)
-{
-	/* QB3 RAM bank switch -- triggers ccpu to latch P register low 2 bits
-	   as the active data RAM bank.  This is called from the OUT port 0
-	   handler inside ccpu_execute when qb3_mode is active, so this
-	   driver-side stub is kept for any external callers. */
-	ccpu_qb3_bank_switch();
-}
-
-static void mux_set(int data) // mux_select_w
-{
-	mux_select = data;
-	LOG_INFO("MUX SELECT");
-}
-
 UINT8 joystick_read(void)
 {
 	int xval = (INT16)(cpunum_get_reg(0, CCPU_X) << 4) >> 4;
 
-	//LOG_INFO("joystick read XVAL %x: MUXVAL %x  ", xval, MUX_VAL);
-	//LOG_INFO("Returned value %x",( (readinputportbytag(MUX_VAL ? "IN2" : "IN3") << 4) - xval) < 0x800);
+	/* Space Wars and Speed Freak also run without JMI but have no analog
+	   ports; like MAME's read_safe(0), treat a missing port as 0. */
+	const char* tag = MUX_VAL ? "ANALOGX" : "ANALOGY";
+	UINT32 analog = (port_tag_to_index(tag) != -1) ? readinputportbytag(tag) : 0;
 
-	return ((readinputportbytag(MUX_VAL ? "ANALOGX" : "ANALOGY") << 4) - xval) < 0x800;
+	return ((analog << 4) - xval) < 0x800;
 }
 
 void run_cinemat(void)
 {
+	coin_sample();
 	demon_sound_update();
 	cinevid_update();
 }
@@ -361,6 +372,8 @@ int init_sundance()
 	video_type_set(COLOR_16LEVEL, 1);
 	init_ccpu(0, CCPU_MEMSIZE_8K);
 	ccpuinput_type = CCPU_INPUTS::SUNDANCE;
+	sundance_pad_prev[0] = sundance_pad_prev[1] = 0;
+	sundance_pad_active[0] = sundance_pad_active[1] = 0;
 	return 1;
 }
 
@@ -450,8 +463,7 @@ int init_qb3()
 	qb3_sound_start();
 
 	/* Enable QB3 RAM banking -- 4 banks of 256 words selected by P register.
-	   This must be called AFTER init_ccpu so the mode flag is not cleared
-	   by ccpu_reset. */
+	   This must be called AFTER init_cinemat, which turns QB3 mode off. */
 	ccpu_set_qb3_mode(true);
 
 	/* QB3 uses a custom input handler that provides a frame position
@@ -465,10 +477,12 @@ int init_cinemat()
 	// reset the coin states
 	coin_detected = 0;
 	coin_last_reset = 0;
+	coin_last_input = 1;
+	// QB3 banking/output routing is per-game; init_qb3 turns it back on
+	ccpu_set_qb3_mode(false);
 	// reset mux select
-	mux_select = 0;
 	MUX_VAL = 0;
-	
+
 	video_type_set(COLOR_BILEVEL, 0);
 	ccpuinput_type = CCPU_INPUTS::CCPUIN;
 	return 1;
@@ -650,7 +664,6 @@ static const char* speedfrk_samples[] =
 	0
 };
 
-
 /*************************************
  *
  *  Sundance
@@ -788,7 +801,6 @@ INPUT_PORTS_END
 
 INPUT_PORTS_START(barrier)
 
-
 PORT_START("INPUTS") /* inputs */
 PORT_BITX(0x0001, IP_ACTIVE_LOW, 0, "Skill A", OSD_KEY_A, IP_JOY_NONE)
 PORT_BIT(0x0002, IP_ACTIVE_LOW, IPT_UNUSED)
@@ -806,7 +818,6 @@ PORT_BIT(0x1000, IP_ACTIVE_LOW, IPT_JOYSTICK_UP | IPF_4WAY | IPF_PLAYER1)
 PORT_BIT(0x2000, IP_ACTIVE_LOW, IPT_JOYSTICK_UP | IPF_4WAY | IPF_PLAYER2)
 PORT_BIT(0x4000, IP_ACTIVE_LOW, IPT_JOYSTICK_LEFT | IPF_4WAY | IPF_PLAYER1)
 PORT_BIT(0x8000, IP_ACTIVE_LOW, IPT_JOYSTICK_RIGHT | IPF_4WAY | IPF_PLAYER2)
-
 
 PORT_START("SWITCHES") /* switches */
 PORT_DIPNAME(0x01, 0x00, DEF_STR(Lives))
@@ -845,8 +856,6 @@ INPUT_PORTS_END
 
 ***************************************************************************/
 
-
-
 INPUT_PORTS_START(starhawk)
 PORT_START("INPUTS") /* input */
 PORT_BIT(0x0001, IP_ACTIVE_LOW, IPT_JOYSTICK_UP | IPF_8WAY | IPF_PLAYER1)
@@ -881,14 +890,12 @@ PORT_DIPSETTING(0x40, DEF_STR(Off))
 PORT_DIPSETTING(0x00, DEF_STR(On))
 PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_COIN1)
 
-
 PORT_START("IN2") /* analog stick X - unused */
 PORT_BIT(0xff, IP_ACTIVE_LOW, IPT_UNUSED)
 
 PORT_START("IN3") /* analog stick Y - unused */
 PORT_BIT(0xff, IP_ACTIVE_LOW, IPT_UNUSED)
 INPUT_PORTS_END
-
 
 /***************************************************************************
 
@@ -979,10 +986,10 @@ PORT_BIT(0x0080, IP_ACTIVE_LOW, IPT_START1)
 PORT_BIT(0xff00, IP_ACTIVE_LOW, IPT_UNUSED)
 
 PORT_START("ANALOGX") /* analog stick X */
-PORT_ANALOG(0xff, 0x80, IPT_AD_STICK_X, 100, 5,  0x20, 0xe0)
+PORT_ANALOG(0xff, 0x80, IPT_AD_STICK_X, 100, 5, 0x20, 0xe0)
 
 PORT_START("ANALOGY")/* analog stick Y */
-PORT_ANALOG(0xff, 0x80, IPT_AD_STICK_Y, 100, 5,  0x20, 0xe0)
+PORT_ANALOG(0xff, 0x80, IPT_AD_STICK_Y, 100, 5, 0x20, 0xe0)
 
 INPUT_PORTS_END
 
@@ -1078,620 +1085,620 @@ PORT_BIT(0x000f, IP_ACTIVE_LOW, IPT_UNUSED) /* steering wheel, fake below */
 PORT_START("WHEEL")/* fake - steering wheel (in4) */
 /* MAME 0.159: IPT_DIAL PORT_SENSITIVITY(100) PORT_KEYDELTA(10) PORT_RESET.
    IPF_CENTER is the old-core PORT_RESET: the value is this frame's delta. */
-PORT_ANALOG(0xff, 0x00, IPT_DIAL | IPF_CENTER, 100, 10, 0x00, 0xff)
-
-PORT_START("GEAR") /* fake - gear shift (in5), bit layout as MAME 0.159 */
-PORT_BITX(0x01, IP_ACTIVE_LOW, IPT_JOYSTICK_DOWN | IPF_PLAYER2, "1st gear", IP_KEY_DEFAULT, IP_JOY_DEFAULT)
-PORT_BITX(0x02, IP_ACTIVE_LOW, IPT_JOYSTICK_LEFT | IPF_PLAYER2, "2nd gear", IP_KEY_DEFAULT, IP_JOY_DEFAULT)
-PORT_BITX(0x04, IP_ACTIVE_LOW, IPT_JOYSTICK_RIGHT | IPF_PLAYER2, "3rd gear", IP_KEY_DEFAULT, IP_JOY_DEFAULT)
-PORT_BITX(0x08, IP_ACTIVE_LOW, IPT_JOYSTICK_UP | IPF_PLAYER2, "4th gear", IP_KEY_DEFAULT, IP_JOY_DEFAULT)
-PORT_BIT(0xf0, IP_ACTIVE_LOW, IPT_UNUSED)
-INPUT_PORTS_END
-
-/***************************************************************************
-
-  Sundance
-
-***************************************************************************/
-
-INPUT_PORTS_START(sundance)
-PORT_START("SWITCHES")
-PORT_DIPNAME(0x03, 0x02, "Time")
-PORT_DIPSETTING(0x00, "0:45/coin")
-PORT_DIPSETTING(0x02, "1:00/coin")
-PORT_DIPSETTING(0x01, "1:30/coin")
-PORT_DIPSETTING(0x03, "2:00/coin")
-PORT_DIPNAME(0x04, 0x00, DEF_STR(Language))
-PORT_DIPSETTING(0x04, DEF_STR(Japanese))
-PORT_DIPSETTING(0x00, DEF_STR(English))
-PORT_DIPNAME(0x08, 0x08, DEF_STR(Coinage)) // supposedly coinage, doesn't work
-PORT_DIPSETTING(0x08, "1 coin/2 players")
-PORT_DIPSETTING(0x00, "2 coins/2 players")
-PORT_DIPNAME(0x10, 0x10, DEF_STR(Unknown))
-PORT_DIPSETTING(0x10, DEF_STR(Off))
-PORT_DIPSETTING(0x00, DEF_STR(On))
-PORT_DIPNAME(0x20, 0x20, DEF_STR(Unknown))
-PORT_DIPSETTING(0x20, DEF_STR(Off))
-PORT_DIPSETTING(0x00, DEF_STR(On))
-PORT_DIPNAME(0x40, 0x40, DEF_STR(Unknown))
-PORT_DIPSETTING(0x40, DEF_STR(Off))
-PORT_DIPSETTING(0x00, DEF_STR(On))
-PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_COIN1)
-
-PORT_START("INPUTS") /* inputs */
-PORT_BIT(0x8000, IP_ACTIVE_LOW, IPT_UNUSED) /* player 1 motion */
-PORT_BIT(0x4000, IP_ACTIVE_LOW, IPT_UNUSED) /* player 2 motion */
-PORT_BIT(0x2000, IP_ACTIVE_LOW, IPT_UNUSED) /* player 1 motion */
-PORT_BIT(0x1000, IP_ACTIVE_LOW, IPT_UNUSED) /* player 2 motion */
-PORT_BIT(0x0800, IP_ACTIVE_LOW, IPT_UNUSED) /* 2 suns */
-PORT_BIT(0x0400, IP_ACTIVE_LOW, IPT_UNUSED) /* player 1 motion */
-PORT_BIT(0x0200, IP_ACTIVE_LOW, IPT_UNUSED) /* player 2 motion */
-PORT_BIT(0x0100, IP_ACTIVE_LOW, IPT_UNUSED) /* player 1 motion */
-PORT_BIT(0x0080, IP_ACTIVE_LOW, IPT_BUTTON1 | IPF_PLAYER1)
-PORT_BIT(0x0040, IP_ACTIVE_LOW, IPT_UNUSED) /* 4 suns */
-PORT_BIT(0x0020, IP_ACTIVE_LOW, IPT_UNUSED) /* Grid */
-PORT_BIT(0x0010, IP_ACTIVE_LOW, IPT_UNUSED) /* 3 suns */
-PORT_BIT(0x0008, IP_ACTIVE_LOW, IPT_START2)
-PORT_BIT(0x0004, IP_ACTIVE_LOW, IPT_START1)
-PORT_BIT(0x0002, IP_ACTIVE_LOW, IPT_BUTTON1 | IPF_PLAYER2)
-PORT_BIT(0x0001, IP_ACTIVE_LOW, IPT_UNUSED) /* player 2 motion */
-
-PORT_START("PAD1")
-PORT_BITX(0x0001, IP_ACTIVE_HIGH, IPT_BUTTON1 | IPF_PLAYER1, "P1 Pad 1", OSD_KEY_7_PAD, IP_JOY_NONE)
-PORT_BITX(0x0002, IP_ACTIVE_HIGH, IPT_BUTTON2 | IPF_PLAYER1, "P1 Pad 2", OSD_KEY_8_PAD, IP_JOY_NONE)
-PORT_BITX(0x0004, IP_ACTIVE_HIGH, IPT_BUTTON3 | IPF_PLAYER1, "P1 Pad 3", OSD_KEY_9_PAD, IP_JOY_NONE)
-PORT_BITX(0x0008, IP_ACTIVE_HIGH, IPT_BUTTON4 | IPF_PLAYER1, "P1 Pad 4", OSD_KEY_4_PAD, IP_JOY_NONE)
-PORT_BITX(0x0010, IP_ACTIVE_HIGH, IPT_BUTTON5 | IPF_PLAYER1, "P1 Pad 5", OSD_KEY_5_PAD, IP_JOY_NONE)
-PORT_BITX(0x0020, IP_ACTIVE_HIGH, IPT_BUTTON6 | IPF_PLAYER1, "P1 Pad 6", OSD_KEY_6_PAD, IP_JOY_NONE)
-PORT_BITX(0x0040, IP_ACTIVE_HIGH, IPT_BUTTON7 | IPF_PLAYER1, "P1 Pad 7", OSD_KEY_1_PAD, IP_JOY_NONE)
-PORT_BITX(0x0080, IP_ACTIVE_HIGH, IPT_BUTTON8 | IPF_PLAYER1, "P1 Pad 8", OSD_KEY_2_PAD, IP_JOY_NONE)
-PORT_BITX(0x0100, IP_ACTIVE_HIGH, IPT_BUTTON9 | IPF_PLAYER1, "P1 Pad 9", OSD_KEY_3_PAD, IP_JOY_NONE)
-
-PORT_START("PAD2")
-PORT_BITX(0x0001, IP_ACTIVE_HIGH, IPT_BUTTON1 | IPF_PLAYER2, "P2 Pad 1", OSD_KEY_Q, IP_JOY_NONE)
-PORT_BITX(0x0002, IP_ACTIVE_HIGH, IPT_BUTTON2 | IPF_PLAYER2, "P2 Pad 2", OSD_KEY_W, IP_JOY_NONE)
-PORT_BITX(0x0004, IP_ACTIVE_HIGH, IPT_BUTTON3 | IPF_PLAYER2, "P2 Pad 3", OSD_KEY_E, IP_JOY_NONE)
-PORT_BITX(0x0008, IP_ACTIVE_HIGH, IPT_BUTTON4 | IPF_PLAYER2, "P2 Pad 4", OSD_KEY_A, IP_JOY_NONE)
-PORT_BITX(0x0010, IP_ACTIVE_HIGH, IPT_BUTTON5 | IPF_PLAYER2, "P2 Pad 5", OSD_KEY_S, IP_JOY_NONE)
-PORT_BITX(0x0020, IP_ACTIVE_HIGH, IPT_BUTTON6 | IPF_PLAYER2, "P2 Pad 6", OSD_KEY_D, IP_JOY_NONE)
-PORT_BITX(0x0040, IP_ACTIVE_HIGH, IPT_BUTTON7 | IPF_PLAYER2, "P2 Pad 7", OSD_KEY_Z, IP_JOY_NONE)
-PORT_BITX(0x0080, IP_ACTIVE_HIGH, IPT_BUTTON8 | IPF_PLAYER2, "P2 Pad 8", OSD_KEY_X, IP_JOY_NONE)
-PORT_BITX(0x0100, IP_ACTIVE_HIGH, IPT_BUTTON9 | IPF_PLAYER2, "P2 Pad 9", OSD_KEY_C, IP_JOY_NONE)
-
-INPUT_PORTS_END
-
-/***************************************************************************
-
-  Warrior
-
-***************************************************************************/
-
-INPUT_PORTS_START(warrior)
-
-PORT_START("SWITCHES")
-PORT_DIPNAME(0x01, 0x01, DEF_STR(Unknown))
-PORT_DIPSETTING(0x01, DEF_STR(Off))
-PORT_DIPSETTING(0x00, DEF_STR(On))
-PORT_DIPNAME(0x02, 0x02, DEF_STR(Unknown))
-PORT_DIPSETTING(0x02, DEF_STR(Off))
-PORT_DIPSETTING(0x00, DEF_STR(On))
-PORT_SERVICE(0x04, IP_ACTIVE_HIGH)
-PORT_DIPNAME(0x08, 0x08, DEF_STR(Unknown))
-PORT_DIPSETTING(0x08, DEF_STR(Off))
-PORT_DIPSETTING(0x00, DEF_STR(On))
-PORT_DIPNAME(0x10, 0x10, DEF_STR(Unknown))
-PORT_DIPSETTING(0x10, DEF_STR(Off))
-PORT_DIPSETTING(0x00, DEF_STR(On))
-PORT_DIPNAME(0x20, 0x20, DEF_STR(Unknown))
-PORT_DIPSETTING(0x20, DEF_STR(Off))
-PORT_DIPSETTING(0x00, DEF_STR(On))
-PORT_DIPNAME(0x40, 0x40, DEF_STR(Unknown))
-PORT_DIPSETTING(0x40, DEF_STR(Off))
-PORT_DIPSETTING(0x00, DEF_STR(On))
-PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_COIN1)
-
-PORT_START("INPUTS") /* inputs */
-PORT_BIT(0x8000, IP_ACTIVE_LOW, IPT_UNKNOWN)
-PORT_BIT(0x4000, IP_ACTIVE_LOW, IPT_START1)
-PORT_BIT(0x2000, IP_ACTIVE_LOW, IPT_START2)
-PORT_BIT(0x1000, IP_ACTIVE_LOW, IPT_BUTTON1 | IPF_PLAYER1)
-PORT_BIT(0x0800, IP_ACTIVE_LOW, IPT_JOYSTICK_DOWN | IPF_PLAYER1)
-PORT_BIT(0x0400, IP_ACTIVE_LOW, IPT_JOYSTICK_UP | IPF_PLAYER1)
-PORT_BIT(0x0200, IP_ACTIVE_LOW, IPT_JOYSTICK_LEFT | IPF_PLAYER1)
-PORT_BIT(0x0100, IP_ACTIVE_LOW, IPT_JOYSTICK_RIGHT | IPF_PLAYER1)
-PORT_BIT(0x0080, IP_ACTIVE_LOW, IPT_UNKNOWN)
-PORT_BIT(0x0040, IP_ACTIVE_LOW, IPT_UNKNOWN)
-PORT_BIT(0x0020, IP_ACTIVE_LOW, IPT_UNKNOWN)
-PORT_BIT(0x0010, IP_ACTIVE_LOW, IPT_BUTTON1 | IPF_PLAYER2)
-PORT_BIT(0x0008, IP_ACTIVE_LOW, IPT_JOYSTICK_DOWN | IPF_PLAYER2)
-PORT_BIT(0x0004, IP_ACTIVE_LOW, IPT_JOYSTICK_UP | IPF_PLAYER2)
-PORT_BIT(0x0002, IP_ACTIVE_LOW, IPT_JOYSTICK_LEFT | IPF_PLAYER2)
-PORT_BIT(0x0001, IP_ACTIVE_LOW, IPT_JOYSTICK_RIGHT | IPF_PLAYER2)
-
-PORT_START("IN2") /* analog stick X - unused */
-PORT_BIT(0xff, IP_ACTIVE_LOW, IPT_UNUSED)
-
-PORT_START("IN3") /* analog stick Y - unused */
-PORT_BIT(0xff, IP_ACTIVE_LOW, IPT_UNUSED)
-INPUT_PORTS_END
-
-/***************************************************************************
-
-  Armor Attack
-
-***************************************************************************/
-
-INPUT_PORTS_START(armora)
-PORT_START("SWITCHES")
-PORT_DIPNAME(0x03, 0x03, DEF_STR(Lives))
-PORT_DIPSETTING(0x00, "2")
-PORT_DIPSETTING(0x02, "3")
-PORT_DIPSETTING(0x01, "4")
-PORT_DIPSETTING(0x03, "5")
-PORT_DIPNAME(0x0c, 0x0c, DEF_STR(Coinage))
-PORT_DIPSETTING(0x04, DEF_STR(2C_1C))
-PORT_DIPSETTING(0x00, DEF_STR(4C_3C))
-PORT_DIPSETTING(0x0c, DEF_STR(1C_1C))
-PORT_DIPSETTING(0x08, DEF_STR(2C_3C))
-PORT_DIPNAME(0x10, 0x00, DEF_STR(Demo_Sounds))
-PORT_DIPSETTING(0x10, DEF_STR(Off))
-PORT_DIPSETTING(0x00, DEF_STR(On))
-PORT_DIPNAME(0x20, 0x20, DEF_STR(Unknown))
-PORT_DIPSETTING(0x20, DEF_STR(Off))
-PORT_DIPSETTING(0x00, DEF_STR(On))
-PORT_SERVICE(0x40, IP_ACTIVE_HIGH)
-PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_COIN1)
-
-PORT_START("INPUTS") /* inputs */
-PORT_BIT(0x8000, IP_ACTIVE_LOW, IPT_BUTTON2 | IPF_PLAYER1)
-PORT_BIT(0x4000, IP_ACTIVE_LOW, IPT_JOYSTICK_RIGHT | IPF_2WAY | IPF_PLAYER1)
-PORT_BIT(0x2000, IP_ACTIVE_LOW, IPT_BUTTON1 | IPF_PLAYER1)
-PORT_BIT(0x1000, IP_ACTIVE_LOW, IPT_JOYSTICK_LEFT | IPF_2WAY | IPF_PLAYER1)
-PORT_BIT(0x0800, IP_ACTIVE_LOW, IPT_UNUSED)
-PORT_BIT(0x0400, IP_ACTIVE_LOW, IPT_UNUSED)
-PORT_BIT(0x0200, IP_ACTIVE_LOW, IPT_UNUSED)
-PORT_BIT(0x0100, IP_ACTIVE_LOW, IPT_UNUSED)
-PORT_BIT(0x0080, IP_ACTIVE_LOW, IPT_UNUSED)
-PORT_BIT(0x0040, IP_ACTIVE_LOW, IPT_UNUSED)
-PORT_BIT(0x0020, IP_ACTIVE_LOW, IPT_BUTTON1 | IPF_PLAYER2)
-PORT_BIT(0x0010, IP_ACTIVE_LOW, IPT_BUTTON2 | IPF_PLAYER2)
-PORT_BIT(0x0008, IP_ACTIVE_LOW, IPT_START2)
-PORT_BIT(0x0004, IP_ACTIVE_LOW, IPT_JOYSTICK_RIGHT | IPF_2WAY | IPF_PLAYER2)
-PORT_BIT(0x0002, IP_ACTIVE_LOW, IPT_START1)
-PORT_BIT(0x0001, IP_ACTIVE_LOW, IPT_JOYSTICK_LEFT | IPF_2WAY | IPF_PLAYER2)
-
-PORT_START("IN2") /* analog stick X - unused */
-PORT_BIT(0xff, IP_ACTIVE_LOW, IPT_UNUSED)
-
-PORT_START("IN3") /* analog stick Y - unused */
-PORT_BIT(0xff, IP_ACTIVE_LOW, IPT_UNUSED)
-INPUT_PORTS_END
-
-/***************************************************************************
-
-  Solar Quest
-
-***************************************************************************/
-
-INPUT_PORTS_START(solarq)
-PORT_START("SWITCHES")
-PORT_DIPNAME(0x05, 0x05, DEF_STR(Coinage))
-PORT_DIPSETTING(0x01, DEF_STR(2C_1C))
-PORT_DIPSETTING(0x00, DEF_STR(4C_3C))
-PORT_DIPSETTING(0x05, DEF_STR(1C_1C))
-PORT_DIPSETTING(0x04, DEF_STR(2C_3C))
-PORT_DIPNAME(0x02, 0x02, DEF_STR(Bonus_Life))
-PORT_DIPSETTING(0x02, "25 captures")
-PORT_DIPSETTING(0x00, "40 captures")
-PORT_DIPNAME(0x18, 0x10, DEF_STR(Lives))
-PORT_DIPSETTING(0x18, "2")
-PORT_DIPSETTING(0x08, "3")
-PORT_DIPSETTING(0x10, "4")
-PORT_DIPSETTING(0x00, "5")
-PORT_DIPNAME(0x20, 0x20, DEF_STR(Free_Play))
-PORT_DIPSETTING(0x20, DEF_STR(Off))
-PORT_DIPSETTING(0x00, DEF_STR(On))
-PORT_SERVICE(0x40, IP_ACTIVE_HIGH)
-PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_COIN1)
-
-PORT_START("INPUTS") /* inputs */
-PORT_BIT(0x8000, IP_ACTIVE_LOW, IPT_UNUSED)
-PORT_BIT(0x4000, IP_ACTIVE_LOW, IPT_UNUSED)
-PORT_BIT(0x2000, IP_ACTIVE_LOW, IPT_UNUSED)
-PORT_BIT(0x1000, IP_ACTIVE_LOW, IPT_UNUSED)
-PORT_BIT(0x0800, IP_ACTIVE_LOW, IPT_UNUSED)
-PORT_BIT(0x0400, IP_ACTIVE_LOW, IPT_UNUSED)
-PORT_BIT(0x0200, IP_ACTIVE_LOW, IPT_UNUSED)
-PORT_BIT(0x0100, IP_ACTIVE_LOW, IPT_UNUSED)
-PORT_BIT(0x0080, IP_ACTIVE_LOW, IPT_UNUSED)
-PORT_BIT(0x0040, IP_ACTIVE_LOW, IPT_UNUSED)
-PORT_BIT(0x0020, IP_ACTIVE_LOW, IPT_JOYSTICK_LEFT | IPF_2WAY | IPF_PLAYER1)
-PORT_BIT(0x0010, IP_ACTIVE_LOW, IPT_JOYSTICK_RIGHT | IPF_2WAY | IPF_PLAYER1)
-PORT_BIT(0x0008, IP_ACTIVE_LOW, IPT_START1) /* also hyperspace */
-PORT_BIT(0x0008, IP_ACTIVE_LOW, IPT_BUTTON3 | IPF_PLAYER1)
-PORT_BIT(0x0004, IP_ACTIVE_LOW, IPT_BUTTON2 | IPF_PLAYER1)
-PORT_BIT(0x0002, IP_ACTIVE_LOW, IPT_BUTTON1 | IPF_PLAYER1)
-PORT_BIT(0x0001, IP_ACTIVE_LOW, IPT_START2) /* also nova */
-PORT_BIT(0x0001, IP_ACTIVE_LOW, IPT_BUTTON4 | IPF_PLAYER1)
-
-PORT_START("IN2") /* analog stick X - unused */
-PORT_BIT(0xff, IP_ACTIVE_LOW, IPT_UNUSED)
-
-PORT_START("IN3")/* analog stick Y - unused */
-PORT_BIT(0xff, IP_ACTIVE_LOW, IPT_UNUSED)
-INPUT_PORTS_END
-
-/***************************************************************************
-
-  Demon
-
-***************************************************************************/
-
-INPUT_PORTS_START(demon)
-PORT_START("SWITCHES")
-PORT_DIPNAME(0x03, 0x03, DEF_STR(Coinage))
-PORT_DIPSETTING(0x01, DEF_STR(2C_1C))
-PORT_DIPSETTING(0x00, DEF_STR(4C_3C))
-PORT_DIPSETTING(0x03, DEF_STR(1C_1C))
-PORT_DIPSETTING(0x02, DEF_STR(2C_3C))
-PORT_DIPNAME(0x0c, 0x00, DEF_STR(Lives))
-PORT_DIPSETTING(0x00, "3")
-PORT_DIPSETTING(0x04, "4")
-PORT_DIPSETTING(0x08, "5")
-PORT_DIPSETTING(0x0c, "6")
-PORT_DIPNAME(0x30, 0x30, "Starting Difficulty")
-PORT_DIPSETTING(0x30, "1")
-PORT_DIPSETTING(0x10, "5")
-PORT_DIPSETTING(0x00, "10")
-/*	PORT_DIPSETTING(    0x20, "1" )*/
-PORT_DIPNAME(0x40, 0x40, DEF_STR(Free_Play))
-PORT_DIPSETTING(0x40, DEF_STR(Off))
-PORT_DIPSETTING(0x00, DEF_STR(On))
-PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_COIN1)
-
-PORT_START("INPUTS")/* inputs */
-PORT_BIT(0x0001, IP_ACTIVE_LOW, IPT_START1)
-PORT_BIT(0x0002, IP_ACTIVE_LOW, IPT_START2)
-PORT_BIT(0x0004, IP_ACTIVE_LOW, IPT_JOYSTICK_LEFT | IPF_2WAY | IPF_PLAYER1)
-PORT_BIT(0x0008, IP_ACTIVE_LOW, IPT_JOYSTICK_RIGHT | IPF_2WAY | IPF_PLAYER1)
-PORT_BIT(0x0010, IP_ACTIVE_LOW, IPT_BUTTON2 | IPF_PLAYER1)
-PORT_BIT(0x0020, IP_ACTIVE_LOW, IPT_BUTTON1 | IPF_PLAYER1)
-PORT_BIT(0x0040, IP_ACTIVE_LOW, IPT_UNKNOWN)
-PORT_SERVICE(0x0080, IP_ACTIVE_LOW)
-PORT_BIT(0x0100, IP_ACTIVE_LOW, IPT_TILT)
-PORT_BIT(0x0200, IP_ACTIVE_LOW, IPT_BUTTON3 | IPF_PLAYER1)
-PORT_BIT(0x0400, IP_ACTIVE_LOW, IPT_BUTTON3 | IPF_PLAYER2)
-PORT_BIT(0x0800, IP_ACTIVE_LOW, IPT_JOYSTICK_LEFT | IPF_2WAY | IPF_PLAYER2)
-PORT_BIT(0x1000, IP_ACTIVE_LOW, IPT_JOYSTICK_RIGHT | IPF_2WAY | IPF_PLAYER2)
-PORT_BIT(0x2000, IP_ACTIVE_LOW, IPT_BUTTON2 | IPF_PLAYER2)
-PORT_BIT(0x4000, IP_ACTIVE_LOW, IPT_BUTTON1 | IPF_PLAYER2)
-PORT_BIT(0x8000, IP_ACTIVE_LOW, IPT_UNKNOWN) /* also mapped to Button 3, player 2 */
-
-PORT_START("IN2") /* analog stick X - unused */
-PORT_BIT(0xff, IP_ACTIVE_LOW, IPT_UNUSED)
-
-PORT_START("IN3") /* analog stick Y - unused */
-PORT_BIT(0xff, IP_ACTIVE_LOW, IPT_UNUSED)
-INPUT_PORTS_END
-
-/***************************************************************************
-
-  War of the Worlds
-
-***************************************************************************/
-
-INPUT_PORTS_START(wotw)
-PORT_START("SWITCHES")
-PORT_DIPNAME(0x01, 0x01, DEF_STR(Unknown))
-PORT_DIPSETTING(0x01, DEF_STR(Off))
-PORT_DIPSETTING(0x00, DEF_STR(On))
-PORT_DIPNAME(0x02, 0x02, DEF_STR(Lives))
-PORT_DIPSETTING(0x02, "3")
-PORT_DIPSETTING(0x00, "5")
-PORT_DIPNAME(0x04, 0x04, DEF_STR(Unknown))
-PORT_DIPSETTING(0x04, DEF_STR(Off))
-PORT_DIPSETTING(0x00, DEF_STR(On))
-PORT_DIPNAME(0x08, 0x08, DEF_STR(Coinage))
-PORT_DIPSETTING(0x08, DEF_STR(1C_1C))
-PORT_DIPSETTING(0x00, DEF_STR(2C_3C))
-PORT_DIPNAME(0x10, 0x10, DEF_STR(Unknown))
-PORT_DIPSETTING(0x10, DEF_STR(Off))
-PORT_DIPSETTING(0x00, DEF_STR(On))
-PORT_DIPNAME(0x20, 0x20, DEF_STR(Free_Play))
-PORT_DIPSETTING(0x20, DEF_STR(Off))
-PORT_DIPSETTING(0x00, DEF_STR(On))
-PORT_SERVICE(0x40, IP_ACTIVE_LOW)
-PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_COIN1)
-
-PORT_START("INPUTS") /* inputs */
-PORT_BIT(0x8000, IP_ACTIVE_LOW, IPT_UNUSED)
-PORT_BIT(0x4000, IP_ACTIVE_LOW, IPT_UNUSED)
-PORT_BIT(0x2000, IP_ACTIVE_LOW, IPT_UNUSED)
-PORT_BIT(0x1000, IP_ACTIVE_LOW, IPT_BUTTON1)
-PORT_BIT(0x0800, IP_ACTIVE_LOW, IPT_UNUSED)
-PORT_BIT(0x0400, IP_ACTIVE_LOW, IPT_BUTTON2)
-PORT_BIT(0x0200, IP_ACTIVE_LOW, IPT_UNUSED)
-PORT_BIT(0x0100, IP_ACTIVE_LOW, IPT_JOYSTICK_RIGHT | IPF_2WAY)
-PORT_BIT(0x0080, IP_ACTIVE_LOW, IPT_UNUSED)
-PORT_BIT(0x0040, IP_ACTIVE_LOW, IPT_JOYSTICK_LEFT | IPF_2WAY)
-PORT_BIT(0x0020, IP_ACTIVE_LOW, IPT_UNUSED)
-PORT_BIT(0x0010, IP_ACTIVE_LOW, IPT_UNUSED)
-PORT_BIT(0x0008, IP_ACTIVE_LOW, IPT_UNUSED)
-PORT_BIT(0x0004, IP_ACTIVE_LOW, IPT_START2)
-PORT_BIT(0x0002, IP_ACTIVE_LOW, IPT_UNUSED)
-PORT_BIT(0x0001, IP_ACTIVE_LOW, IPT_START1)
-
-PORT_START("IN2") /* analog stick X - unused */
-PORT_BIT(0xff, IP_ACTIVE_LOW, IPT_UNUSED)
-
-PORT_START("IN3") /* analog stick Y - unused */
-PORT_BIT(0xff, IP_ACTIVE_LOW, IPT_UNUSED)
-INPUT_PORTS_END
-
-/***************************************************************************
-
-  Boxing Bugs
-
-***************************************************************************/
-
-INPUT_PORTS_START(boxingb)
-PORT_START("SWITCHES")
-PORT_DIPNAME(0x03, 0x03, DEF_STR(Coinage))
-PORT_DIPSETTING(0x01, DEF_STR(2C_1C))
-PORT_DIPSETTING(0x00, DEF_STR(4C_3C))
-PORT_DIPSETTING(0x03, DEF_STR(1C_1C))
-PORT_DIPSETTING(0x02, DEF_STR(2C_3C))
-PORT_DIPNAME(0x04, 0x00, DEF_STR(Lives))
-PORT_DIPSETTING(0x04, "3")
-PORT_DIPSETTING(0x00, "5")
-PORT_DIPNAME(0x08, 0x00, DEF_STR(Bonus_Life))
-PORT_DIPSETTING(0x00, "30,000")
-PORT_DIPSETTING(0x08, "50,000")
-PORT_DIPNAME(0x10, 0x00, DEF_STR(Demo_Sounds))
-PORT_DIPSETTING(0x10, DEF_STR(Off))
-PORT_DIPSETTING(0x00, DEF_STR(On))
-PORT_DIPNAME(0x20, 0x20, DEF_STR(Free_Play))
-PORT_DIPSETTING(0x20, DEF_STR(Off))
-PORT_DIPSETTING(0x00, DEF_STR(On))
-PORT_SERVICE(0x40, IP_ACTIVE_LOW)
-PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_COIN1)
-
-PORT_START("INPUTS") /* inputs */
-PORT_BIT(0xf000, IP_ACTIVE_HIGH, IPT_UNUSED)	/* dial */
-PORT_BIT(0x0800, IP_ACTIVE_LOW, IPT_UNUSED)
-PORT_BIT(0x0400, IP_ACTIVE_LOW, IPT_UNUSED)
-PORT_BIT(0x0200, IP_ACTIVE_LOW, IPT_UNUSED)
-PORT_BIT(0x0100, IP_ACTIVE_LOW, IPT_UNUSED)
-PORT_BIT(0x0080, IP_ACTIVE_LOW, IPT_UNUSED)
-PORT_BIT(0x0040, IP_ACTIVE_LOW, IPT_UNUSED)
-PORT_BIT(0x0020, IP_ACTIVE_LOW, IPT_BUTTON1 | IPF_PLAYER1)
-PORT_BIT(0x0010, IP_ACTIVE_LOW, IPT_BUTTON2 | IPF_PLAYER1)
-PORT_BIT(0x0008, IP_ACTIVE_LOW, IPT_BUTTON3 | IPF_PLAYER1)
-PORT_BIT(0x0008, IP_ACTIVE_LOW, IPT_START1)
-PORT_BIT(0x0004, IP_ACTIVE_LOW, IPT_BUTTON3 | IPF_PLAYER2)
-PORT_BIT(0x0004, IP_ACTIVE_LOW, IPT_START2)
-PORT_BIT(0x0002, IP_ACTIVE_LOW, IPT_BUTTON2 | IPF_PLAYER2)
-PORT_BIT(0x0001, IP_ACTIVE_LOW, IPT_BUTTON1 | IPF_PLAYER2)
-
-PORT_START("IN2") /* analog stick X - unused */
-PORT_BIT(0xff, IP_ACTIVE_LOW, IPT_UNUSED)
-
-PORT_START("IN3") /* analog stick Y - unused */
-PORT_BIT(0xff, IP_ACTIVE_LOW, IPT_UNUSED)
-
-PORT_START("DIAL")/* fake (in4) */
-PORT_ANALOG(0xff, 0x80, IPT_DIAL, 100, 5, 0x00, 0xff)
-INPUT_PORTS_END
-
-/***************************************************************************
-
-   Boxing Bugs
-
-***************************************************************************/
-INPUT_PORTS_START(qb3)
-
-PORT_START("SWITCHES")
-PORT_DIPNAME(0x03, 0x02, DEF_STR(Lives))
-PORT_DIPSETTING(0x00, "2")
-PORT_DIPSETTING(0x02, "3")
-PORT_DIPSETTING(0x01, "4")
-PORT_DIPSETTING(0x03, "5")
-PORT_DIPNAME(0x04, 0x00, DEF_STR(Unknown))
-PORT_DIPSETTING(0x04, DEF_STR(Off))
-PORT_DIPSETTING(0x00, DEF_STR(On))
-PORT_DIPNAME(0x08, 0x08, DEF_STR(Free_Play))	// read at $244, $2c1
-PORT_DIPSETTING(0x08, DEF_STR(Off))
-PORT_DIPSETTING(0x00, DEF_STR(On))
-PORT_DIPNAME(0x10, 0x00, DEF_STR(Unknown))	// read at $27d
-PORT_DIPSETTING(0x10, DEF_STR(Off))
-PORT_DIPSETTING(0x00, DEF_STR(On))
-PORT_DIPNAME(0x20, 0x20, DEF_STR(Unknown))	 // read at $282
-PORT_DIPSETTING(0x20, DEF_STR(Off))
-PORT_DIPSETTING(0x00, DEF_STR(On))
-PORT_SERVICE(0x40, IP_ACTIVE_LOW)
-PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_COIN1)
-
-PORT_START("INPUTS")
-PORT_BIT(0x0001, IP_ACTIVE_LOW, IPT_JOYSTICKLEFT_UP)
-PORT_BIT(0x0002, IP_ACTIVE_LOW, IPT_JOYSTICKLEFT_DOWN)
-PORT_BIT(0x0004, IP_ACTIVE_LOW, IPT_JOYSTICKRIGHT_LEFT)
-PORT_BIT(0x0008, IP_ACTIVE_LOW, IPT_JOYSTICKRIGHT_UP)
-PORT_BIT(0x0010, IP_ACTIVE_LOW, IPT_JOYSTICKRIGHT_RIGHT)
-PORT_BIT(0x0020, IP_ACTIVE_LOW, IPT_JOYSTICKRIGHT_DOWN)
-PORT_BIT(0x0040, IP_ACTIVE_LOW, IPT_START1)
-PORT_BIT(0x0080, IP_ACTIVE_LOW, IPT_START2)
-PORT_BIT(0x0100, IP_ACTIVE_LOW, IPT_BUTTON4)					// read at $1a5; if 0 add 8 to $25
-PORT_DIPNAME(0x0200, 0x0200, "Debug")
-PORT_DIPSETTING(0x0200, DEF_STR(Off))
-PORT_DIPSETTING(0x0000, DEF_STR(On))
-PORT_BIT(0x0400, IP_ACTIVE_LOW, IPT_BUTTON2)					// read at $c7; jmp to $3AF1 if 0
-PORT_BIT(0x0800, IP_ACTIVE_LOW, IPT_JOYSTICKLEFT_RIGHT)
-PORT_DIPNAME(0x1000, 0x1000, "Infinite Lives")
-PORT_DIPSETTING(0x1000, DEF_STR(Off))
-PORT_DIPSETTING(0x0000, DEF_STR(On))
-PORT_BIT(0x2000, IP_ACTIVE_LOW, IPT_JOYSTICKLEFT_LEFT)
-PORT_BIT(0x4000, IP_ACTIVE_LOW, IPT_BUTTON1)
-PORT_BIT(0x8000, IP_ACTIVE_LOW, IPT_UNKNOWN)
-
-INPUT_PORTS_END
-
-////////////// CINEMATRONICS ROMS //////////////
-
-ROM_START(spacewar)
-ROM_REGION(0x1000, REGION_CPU1, 0)
-ROM_LOAD16_BYTE("spacewar.1l", 0x0000, 0x0800, CRC(edf0fd53) SHA1(a543d8b95bc77ec061c6b10161a6f3e07401e251))
-ROM_LOAD16_BYTE("spacewar.2r", 0x0001, 0x0800, CRC(4f21328b) SHA1(8889f1a9353d6bb1e1078829c1ba77557853739b))
-ROM_END
-
-ROM_START(barrier)
-ROM_REGION(0x1000, REGION_CPU1, 0)
-ROM_LOAD16_BYTE("barrier.t7", 0x0000, 0x0800, CRC(7c3d68c8) SHA1(1138029552b73e94522b3b48096befc057d603c7))
-ROM_LOAD16_BYTE("barrier.p7", 0x0001, 0x0800, CRC(aec142b5) SHA1(b268936b82e072f38f1f1dd54e0bc88bcdf19925))
-ROM_END
-
-ROM_START(starhawk)
-ROM_REGION(0x1000, REGION_CPU1, 0)
-ROM_LOAD16_BYTE("u7", 0x0000, 0x0800, CRC(376e6c5c) SHA1(7d9530ed2e75464578b541f61408ba64ee9d2a95))
-ROM_LOAD16_BYTE("r7", 0x0001, 0x0800, CRC(bb71144f) SHA1(79591cd3ef8df78ec26e158f7e82ca0dcd72260d))
-ROM_END
-
-ROM_START(speedfrk)
-ROM_REGION(0x2000, REGION_CPU1, 0)
-ROM_LOAD16_BYTE("speedfrk.t7", 0x0000, 0x0800, CRC(3552c03f) SHA1(c233dd064195b336556d7405b51065389b228c78))
-ROM_LOAD16_BYTE("speedfrk.p7", 0x0001, 0x0800, CRC(4b90cdec) SHA1(69e2312acdc22ef52236b1c4dfee9f51fcdcaa52))
-ROM_LOAD16_BYTE("speedfrk.u7", 0x1000, 0x0800, CRC(616c7cf9) SHA1(3c5bf59a09d85261f69e4b9d499cb7a93d79fb57))
-ROM_LOAD16_BYTE("speedfrk.r7", 0x1001, 0x0800, CRC(fbe90d63) SHA1(e42b17133464ae48c90263bba01a7d041e938a05))
-ROM_END
-
-ROM_START(solarq)
-ROM_REGION(0x4000, REGION_CPU1, 0)
-ROM_LOAD16_BYTE("solar.6t", 0x0000, 0x1000, CRC(1f3c5333) SHA1(58d847b5f009a0363ae116768b22d0bcfb3d60a4))
-ROM_LOAD16_BYTE("solar.6p", 0x0001, 0x1000, CRC(d6c16bcc) SHA1(6953bdc698da060d37f6bc33a810ba44595b1257))
-ROM_LOAD16_BYTE("solar.6u", 0x2000, 0x1000, CRC(a5970e5c) SHA1(9ac07924ca86d003964022cffdd6a0436dde5624))
-ROM_LOAD16_BYTE("solar.6r", 0x2001, 0x1000, CRC(b763fff2) SHA1(af1fd978e46a4aee3048e6e36c409821d986f7ee))
-ROM_END
-
-ROM_START(sundance)
-ROM_REGION(0x2000, REGION_CPU1, 0)
-ROM_LOAD16_BYTE("sundance.t7", 0x0000, 0x0800, CRC(d5b9cb19) SHA1(72dca386b48a582186898c32123d61b4fd58632e))
-ROM_LOAD16_BYTE("sundance.p7", 0x0001, 0x0800, CRC(445c4f20) SHA1(972d0b0613f154ee3347206cae05ee8c36796f84))
-ROM_LOAD16_BYTE("sundance.u7", 0x1000, 0x0800, CRC(67887d48) SHA1(be225dbd3508fad2711286834880065a4fc0a2fc))
-ROM_LOAD16_BYTE("sundance.r7", 0x1001, 0x0800, CRC(10b77ebd) SHA1(3d43bd47c498d5ea74a7322f8d25dbc0c0187534))
-ROM_END
-
-ROM_START(wotw)
-ROM_REGION(0x4000, REGION_CPU1, 0)
-ROM_LOAD16_BYTE("wow_le.t7", 0x0000, 0x1000, CRC(b16440f9) SHA1(9656a26814736f8ff73575063b5ebbb2e8aa7dd0))
-ROM_LOAD16_BYTE("wow_lo.p7", 0x0001, 0x1000, CRC(bfdf4a5a) SHA1(db4eceb68e17020d0a597ba105ec3b91ce48b7c1))
-ROM_LOAD16_BYTE("wow_ue.u7", 0x2000, 0x1000, CRC(9b5cea48) SHA1(c2bc002e550a0d36e713d07f6aefa79c70b8e284))
-ROM_LOAD16_BYTE("wow_uo.r7", 0x2001, 0x1000, CRC(c9d3c866) SHA1(57a47bf06838fe562981321249fe5ae585316f22))
-ROM_END
-
-ROM_START(wotwc)
-ROM_REGION(0x4000, REGION_CPU1, 0)
-ROM_LOAD16_BYTE("wow_le.t7", 0x0000, 0x1000, CRC(b16440f9) SHA1(9656a26814736f8ff73575063b5ebbb2e8aa7dd0))
-ROM_LOAD16_BYTE("wow_lo.p7", 0x0001, 0x1000, CRC(bfdf4a5a) SHA1(db4eceb68e17020d0a597ba105ec3b91ce48b7c1))
-ROM_LOAD16_BYTE("wow_ue.u7", 0x2000, 0x1000, CRC(9b5cea48) SHA1(c2bc002e550a0d36e713d07f6aefa79c70b8e284))
-ROM_LOAD16_BYTE("wow_uo.r7", 0x2001, 0x1000, CRC(c9d3c866) SHA1(57a47bf06838fe562981321249fe5ae585316f22))
-ROM_END
-
-ROM_START(starcas)
-ROM_REGION(0x2000, REGION_CPU1, 0)
-ROM_LOAD16_BYTE("starcas3.t7", 0x0000, 0x0800, CRC(b5838b5d) SHA1(6ac30be55514cba55180c85af69072b5056d1d4c))
-ROM_LOAD16_BYTE("starcas3.p7", 0x0001, 0x0800, CRC(f6bc2f4d) SHA1(ef6f01556b154cfb3e37b2a99d6ea6292e5ec844))
-ROM_LOAD16_BYTE("starcas3.u7", 0x1000, 0x0800, CRC(188cd97c) SHA1(c021e93a01e9c65013073de551a8c24fd1a68bde))
-ROM_LOAD16_BYTE("starcas3.r7", 0x1001, 0x0800, CRC(c367b69d) SHA1(98354d34ceb03e080b1846611d533be7bdff01cc))
-ROM_END
-
-ROM_START(tailg)
-ROM_REGION(0x2000, REGION_CPU1, 0)
-ROM_LOAD16_BYTE("tgunner.t70", 0x0000, 0x0800, CRC(21ec9a04) SHA1(b442f34360d1d4769e7bca73a2d79ce97d335460))
-ROM_LOAD16_BYTE("tgunner.p70", 0x0001, 0x0800, CRC(8d7410b3) SHA1(59ead49bd229a873f15334d0999c872d3d6581d4))
-ROM_LOAD16_BYTE("tgunner.t71", 0x1000, 0x0800, CRC(2c954ab6) SHA1(9edf189a19b50a9abf458d4ef8ba25b53934385e))
-ROM_LOAD16_BYTE("tgunner.p71", 0x1001, 0x0800, CRC(8e2c8494) SHA1(65e461ec4938f9895e5ac31442193e06c8731dc1))
-ROM_END
-
-ROM_START(ripoff)
-ROM_REGION(0x2000, REGION_CPU1, 0)
-ROM_LOAD16_BYTE("ripoff.t7", 0x0000, 0x0800, CRC(40c2c5b8) SHA1(bc1f3b540475c9868443a72790a959b1f36b93c6))
-ROM_LOAD16_BYTE("ripoff.p7", 0x0001, 0x0800, CRC(a9208afb) SHA1(ea362494855be27a07014832b01e65c1645385d0))
-ROM_LOAD16_BYTE("ripoff.u7", 0x1000, 0x0800, CRC(29c13701) SHA1(5e7672deffac1fa8f289686a5527adf7e51eb0bb))
-ROM_LOAD16_BYTE("ripoff.r7", 0x1001, 0x0800, CRC(150bd4c8) SHA1(e1e2f0dfec4f53d8ff67b0e990514c304f496b3a))
-ROM_END
-
-ROM_START(armora)
-ROM_REGION(0x4000, REGION_CPU1, 0)
-ROM_LOAD16_BYTE("ar414le.t6", 0x0000, 0x1000, CRC(d7e71f84) SHA1(0b29278a6a698f07eae597bc0a8650e91eaabffa))
-ROM_LOAD16_BYTE("ar414lo.p6", 0x0001, 0x1000, CRC(df1c2370) SHA1(b74834d1a591a741892ec41269a831d3590ff766))
-ROM_LOAD16_BYTE("ar414ue.u6", 0x2000, 0x1000, CRC(b0276118) SHA1(88f33cb2f46a89819c85f810c7cff812e918391e))
-ROM_LOAD16_BYTE("ar414uo.r6", 0x2001, 0x1000, CRC(229d779f) SHA1(0cbdd83eb224146944049346f30d9c72d3ad5f52))
-ROM_END
-
-ROM_START(warrior)
-ROM_REGION(0x2000, REGION_CPU1, 0)
-ROM_LOAD16_BYTE("warrior.t7", 0x0000, 0x0800, CRC(ac3646f9) SHA1(515c3acb638fad27fa57f6b438c8ec0b5b76f319))
-ROM_LOAD16_BYTE("warrior.p7", 0x0001, 0x0800, CRC(517d3021) SHA1(0483dcaf92c336a07d2c535823348ee886567e85))
-ROM_LOAD16_BYTE("warrior.u7", 0x1000, 0x0800, CRC(2e39340f) SHA1(4b3cfb3674dd2a668d4d65e28cb37d7ad20f118d))
-ROM_LOAD16_BYTE("warrior.r7", 0x1001, 0x0800, CRC(8e91b502) SHA1(27614c3a8613f49187039cfb05ee96303caf72ba))
-ROM_END
-
-ROM_START(demon)
-ROM_REGION(0x4000, REGION_CPU1, 0)
-ROM_LOAD16_BYTE("demon.7t", 0x0000, 0x1000, CRC(866596c1) SHA1(65202dcd5c6bf6c11fe76a89682a1505b1870cc9))
-ROM_LOAD16_BYTE("demon.7p", 0x0001, 0x1000, CRC(1109e2f1) SHA1(c779b6af1ca09e2e295fc9a0e221ddf283b683ed))
-ROM_LOAD16_BYTE("demon.7u", 0x2000, 0x1000, CRC(d447a3c3) SHA1(32f6fb01231aa4f3d93e32d639a89f0cf9624a71))
-ROM_LOAD16_BYTE("demon.7r", 0x2001, 0x1000, CRC(64b515f0) SHA1(2dd9a6d784ec1baf31e8c6797ddfdc1423c69470))
-ROM_REGION(0x10000, REGION_CPU2, 0)
-ROM_LOAD("demon.snd", 0x0000, 0x1000, CRC(1e2cc262) SHA1(2aae537574ac69c92a3c6400b971e994de88d915))
-ROM_END
-
-ROM_START(boxingb)
-ROM_REGION(0x8000, REGION_CPU1, 0)
-ROM_LOAD16_BYTE("u1a", 0x0000, 0x1000, CRC(d3115b0f) SHA1(9448e7ac1cdb5c7e0739623151be230ab630c4ea))
-ROM_LOAD16_BYTE("u1b", 0x0001, 0x1000, CRC(3a44268d) SHA1(876ebe942ded787cfe357563a33d3e26a1483c5a))
-ROM_LOAD16_BYTE("u2a", 0x2000, 0x1000, CRC(c97a9cbb) SHA1(8bdeb9ee6b24c0a4554bbf4532a43481a0360019))
-ROM_LOAD16_BYTE("u2b", 0x2001, 0x1000, CRC(98d34ff5) SHA1(6767a02a99a01712383300f9acb96cdeffbc9c69))
-ROM_LOAD16_BYTE("u3a", 0x4000, 0x1000, CRC(5bb3269b) SHA1(a9dbc91b1455760f10bad0d2ccf540e040a00d4e))
-ROM_LOAD16_BYTE("u3b", 0x4001, 0x1000, CRC(85bf83ad) SHA1(9229042e39c53fae56dc93f8996bf3a3fcd35cb8))
-ROM_LOAD16_BYTE("u4a", 0x6000, 0x1000, CRC(25b51799) SHA1(46465fe62907ae66a0ce730581e4e9ba330d4369))
-ROM_LOAD16_BYTE("u4b", 0x6001, 0x1000, CRC(7f41de6a) SHA1(d01dffad3cb6e76c535a034ea0277dce5801c5f1))
-ROM_END
-
-ROM_START(qb3)
-ROM_REGION(0x8000, REGION_CPU1, 0)
-ROM_LOAD16_BYTE("qb3_le_t7.bin", 0x0000, 0x2000, CRC(adaaee4c) SHA1(35c6bbb50646a3ddec12f115fcf3f2283e15b0a0))
-ROM_LOAD16_BYTE("qb3_lo_p7.bin", 0x0001, 0x2000, CRC(72f6199f) SHA1(ae8f81f218940cfc3aef8f82dfe8cc14220770ce))
-ROM_LOAD16_BYTE("qb3_ue_u7.bin", 0x4000, 0x2000, CRC(050a996d) SHA1(bf29236112746b5925b29fb231f152a4bde3f4f9))
-ROM_LOAD16_BYTE("qb3_uo_r7.bin", 0x4001, 0x2000, CRC(33fa77a2) SHA1(27a6853f8c2614a2abd7bfb9a62c357797312068))
-
-ROM_REGION(0x10000, REGION_CPU2, 0)
-ROM_LOAD("qb3_snd_u12.bin", 0x0000, 0x1000, CRC(f86663de) SHA1(29c7e75ba22be00d59fc8de5de6d94fcee287a09))
-ROM_LOAD("qb3_snd_u11.bin", 0x1000, 0x1000, CRC(32ed58fc) SHA1(483a19f0d540d7d348fce4274fba254ee95bc8d6))
-ROM_END
-
-// Solar Quest
-AAE_DRIVER_BEGIN(drv_solarq, "solarq", "Solar Quest")
-AAE_DRIVER_ROM(rom_solarq)
-AAE_DRIVER_FUNCS(&init_solarq, &run_cinemat, &end_cinemat)
-AAE_DRIVER_INPUT(input_ports_solarq)
-AAE_DRIVER_SAMPLES(solarq_samples)
-AAE_DRIVER_ART(solarq_art)
-AAE_DRIVER_CPUS(AAE_CPU_ENTRY(CPU_CCPU, 4980750, 1, 1, 0, 0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr),
-	AAE_CPU_NONE_ENTRY(),
-	AAE_CPU_NONE_ENTRY(),
-	AAE_CPU_NONE_ENTRY())
+	PORT_ANALOG(0xff, 0x00, IPT_DIAL | IPF_CENTER, 100, 10, 0x00, 0xff)
+
+	PORT_START("GEAR") /* fake - gear shift (in5), bit layout as MAME 0.159 */
+	PORT_BITX(0x01, IP_ACTIVE_LOW, IPT_JOYSTICK_DOWN | IPF_PLAYER2, "1st gear", IP_KEY_DEFAULT, IP_JOY_DEFAULT)
+	PORT_BITX(0x02, IP_ACTIVE_LOW, IPT_JOYSTICK_LEFT | IPF_PLAYER2, "2nd gear", IP_KEY_DEFAULT, IP_JOY_DEFAULT)
+	PORT_BITX(0x04, IP_ACTIVE_LOW, IPT_JOYSTICK_RIGHT | IPF_PLAYER2, "3rd gear", IP_KEY_DEFAULT, IP_JOY_DEFAULT)
+	PORT_BITX(0x08, IP_ACTIVE_LOW, IPT_JOYSTICK_UP | IPF_PLAYER2, "4th gear", IP_KEY_DEFAULT, IP_JOY_DEFAULT)
+	PORT_BIT(0xf0, IP_ACTIVE_LOW, IPT_UNUSED)
+	INPUT_PORTS_END
+
+	/***************************************************************************
+
+	  Sundance
+
+	***************************************************************************/
+
+	INPUT_PORTS_START(sundance)
+	PORT_START("SWITCHES")
+	PORT_DIPNAME(0x03, 0x02, "Time")
+	PORT_DIPSETTING(0x00, "0:45/coin")
+	PORT_DIPSETTING(0x02, "1:00/coin")
+	PORT_DIPSETTING(0x01, "1:30/coin")
+	PORT_DIPSETTING(0x03, "2:00/coin")
+	PORT_DIPNAME(0x04, 0x00, DEF_STR(Language))
+	PORT_DIPSETTING(0x04, DEF_STR(Japanese))
+	PORT_DIPSETTING(0x00, DEF_STR(English))
+	PORT_DIPNAME(0x08, 0x08, DEF_STR(Coinage)) // supposedly coinage, doesn't work
+	PORT_DIPSETTING(0x08, "1 coin/2 players")
+	PORT_DIPSETTING(0x00, "2 coins/2 players")
+	PORT_DIPNAME(0x10, 0x10, DEF_STR(Unknown))
+	PORT_DIPSETTING(0x10, DEF_STR(Off))
+	PORT_DIPSETTING(0x00, DEF_STR(On))
+	PORT_DIPNAME(0x20, 0x20, DEF_STR(Unknown))
+	PORT_DIPSETTING(0x20, DEF_STR(Off))
+	PORT_DIPSETTING(0x00, DEF_STR(On))
+	PORT_DIPNAME(0x40, 0x40, DEF_STR(Unknown))
+	PORT_DIPSETTING(0x40, DEF_STR(Off))
+	PORT_DIPSETTING(0x00, DEF_STR(On))
+	PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_COIN1)
+
+	PORT_START("INPUTS") /* inputs */
+	PORT_BIT(0x8000, IP_ACTIVE_LOW, IPT_UNUSED) /* player 1 motion */
+	PORT_BIT(0x4000, IP_ACTIVE_LOW, IPT_UNUSED) /* player 2 motion */
+	PORT_BIT(0x2000, IP_ACTIVE_LOW, IPT_UNUSED) /* player 1 motion */
+	PORT_BIT(0x1000, IP_ACTIVE_LOW, IPT_UNUSED) /* player 2 motion */
+	PORT_BIT(0x0800, IP_ACTIVE_LOW, IPT_UNUSED) /* 2 suns */
+	PORT_BIT(0x0400, IP_ACTIVE_LOW, IPT_UNUSED) /* player 1 motion */
+	PORT_BIT(0x0200, IP_ACTIVE_LOW, IPT_UNUSED) /* player 2 motion */
+	PORT_BIT(0x0100, IP_ACTIVE_LOW, IPT_UNUSED) /* player 1 motion */
+	PORT_BIT(0x0080, IP_ACTIVE_LOW, IPT_BUTTON1 | IPF_PLAYER1)
+	PORT_BIT(0x0040, IP_ACTIVE_LOW, IPT_UNUSED) /* 4 suns */
+	PORT_BIT(0x0020, IP_ACTIVE_LOW, IPT_UNUSED) /* Grid */
+	PORT_BIT(0x0010, IP_ACTIVE_LOW, IPT_UNUSED) /* 3 suns */
+	PORT_BIT(0x0008, IP_ACTIVE_LOW, IPT_START2)
+	PORT_BIT(0x0004, IP_ACTIVE_LOW, IPT_START1)
+	PORT_BIT(0x0002, IP_ACTIVE_LOW, IPT_BUTTON1 | IPF_PLAYER2)
+	PORT_BIT(0x0001, IP_ACTIVE_LOW, IPT_UNUSED) /* player 2 motion */
+
+	PORT_START("PAD1")
+	PORT_BITX(0x0001, IP_ACTIVE_HIGH, IPT_BUTTON1 | IPF_PLAYER1, "P1 Pad 1", OSD_KEY_7_PAD, IP_JOY_NONE)
+	PORT_BITX(0x0002, IP_ACTIVE_HIGH, IPT_BUTTON2 | IPF_PLAYER1, "P1 Pad 2", OSD_KEY_8_PAD, IP_JOY_NONE)
+	PORT_BITX(0x0004, IP_ACTIVE_HIGH, IPT_BUTTON3 | IPF_PLAYER1, "P1 Pad 3", OSD_KEY_9_PAD, IP_JOY_NONE)
+	PORT_BITX(0x0008, IP_ACTIVE_HIGH, IPT_BUTTON4 | IPF_PLAYER1, "P1 Pad 4", OSD_KEY_4_PAD, IP_JOY_NONE)
+	PORT_BITX(0x0010, IP_ACTIVE_HIGH, IPT_BUTTON5 | IPF_PLAYER1, "P1 Pad 5", OSD_KEY_5_PAD, IP_JOY_NONE)
+	PORT_BITX(0x0020, IP_ACTIVE_HIGH, IPT_BUTTON6 | IPF_PLAYER1, "P1 Pad 6", OSD_KEY_6_PAD, IP_JOY_NONE)
+	PORT_BITX(0x0040, IP_ACTIVE_HIGH, IPT_BUTTON7 | IPF_PLAYER1, "P1 Pad 7", OSD_KEY_1_PAD, IP_JOY_NONE)
+	PORT_BITX(0x0080, IP_ACTIVE_HIGH, IPT_BUTTON8 | IPF_PLAYER1, "P1 Pad 8", OSD_KEY_2_PAD, IP_JOY_NONE)
+	PORT_BITX(0x0100, IP_ACTIVE_HIGH, IPT_BUTTON9 | IPF_PLAYER1, "P1 Pad 9", OSD_KEY_3_PAD, IP_JOY_NONE)
+
+	PORT_START("PAD2")
+	PORT_BITX(0x0001, IP_ACTIVE_HIGH, IPT_BUTTON1 | IPF_PLAYER2, "P2 Pad 1", OSD_KEY_Q, IP_JOY_NONE)
+	PORT_BITX(0x0002, IP_ACTIVE_HIGH, IPT_BUTTON2 | IPF_PLAYER2, "P2 Pad 2", OSD_KEY_W, IP_JOY_NONE)
+	PORT_BITX(0x0004, IP_ACTIVE_HIGH, IPT_BUTTON3 | IPF_PLAYER2, "P2 Pad 3", OSD_KEY_E, IP_JOY_NONE)
+	PORT_BITX(0x0008, IP_ACTIVE_HIGH, IPT_BUTTON4 | IPF_PLAYER2, "P2 Pad 4", OSD_KEY_A, IP_JOY_NONE)
+	PORT_BITX(0x0010, IP_ACTIVE_HIGH, IPT_BUTTON5 | IPF_PLAYER2, "P2 Pad 5", OSD_KEY_S, IP_JOY_NONE)
+	PORT_BITX(0x0020, IP_ACTIVE_HIGH, IPT_BUTTON6 | IPF_PLAYER2, "P2 Pad 6", OSD_KEY_D, IP_JOY_NONE)
+	PORT_BITX(0x0040, IP_ACTIVE_HIGH, IPT_BUTTON7 | IPF_PLAYER2, "P2 Pad 7", OSD_KEY_Z, IP_JOY_NONE)
+	PORT_BITX(0x0080, IP_ACTIVE_HIGH, IPT_BUTTON8 | IPF_PLAYER2, "P2 Pad 8", OSD_KEY_X, IP_JOY_NONE)
+	PORT_BITX(0x0100, IP_ACTIVE_HIGH, IPT_BUTTON9 | IPF_PLAYER2, "P2 Pad 9", OSD_KEY_C, IP_JOY_NONE)
+
+	INPUT_PORTS_END
+
+	/***************************************************************************
+
+	  Warrior
+
+	***************************************************************************/
+
+	INPUT_PORTS_START(warrior)
+
+	PORT_START("SWITCHES")
+	PORT_DIPNAME(0x01, 0x01, DEF_STR(Unknown))
+	PORT_DIPSETTING(0x01, DEF_STR(Off))
+	PORT_DIPSETTING(0x00, DEF_STR(On))
+	PORT_DIPNAME(0x02, 0x02, DEF_STR(Unknown))
+	PORT_DIPSETTING(0x02, DEF_STR(Off))
+	PORT_DIPSETTING(0x00, DEF_STR(On))
+	PORT_SERVICE(0x04, IP_ACTIVE_HIGH)
+	PORT_DIPNAME(0x08, 0x08, DEF_STR(Unknown))
+	PORT_DIPSETTING(0x08, DEF_STR(Off))
+	PORT_DIPSETTING(0x00, DEF_STR(On))
+	PORT_DIPNAME(0x10, 0x10, DEF_STR(Unknown))
+	PORT_DIPSETTING(0x10, DEF_STR(Off))
+	PORT_DIPSETTING(0x00, DEF_STR(On))
+	PORT_DIPNAME(0x20, 0x20, DEF_STR(Unknown))
+	PORT_DIPSETTING(0x20, DEF_STR(Off))
+	PORT_DIPSETTING(0x00, DEF_STR(On))
+	PORT_DIPNAME(0x40, 0x40, DEF_STR(Unknown))
+	PORT_DIPSETTING(0x40, DEF_STR(Off))
+	PORT_DIPSETTING(0x00, DEF_STR(On))
+	PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_COIN1)
+
+	PORT_START("INPUTS") /* inputs */
+	PORT_BIT(0x8000, IP_ACTIVE_LOW, IPT_UNKNOWN)
+	PORT_BIT(0x4000, IP_ACTIVE_LOW, IPT_START1)
+	PORT_BIT(0x2000, IP_ACTIVE_LOW, IPT_START2)
+	PORT_BIT(0x1000, IP_ACTIVE_LOW, IPT_BUTTON1 | IPF_PLAYER1)
+	PORT_BIT(0x0800, IP_ACTIVE_LOW, IPT_JOYSTICK_DOWN | IPF_PLAYER1)
+	PORT_BIT(0x0400, IP_ACTIVE_LOW, IPT_JOYSTICK_UP | IPF_PLAYER1)
+	PORT_BIT(0x0200, IP_ACTIVE_LOW, IPT_JOYSTICK_LEFT | IPF_PLAYER1)
+	PORT_BIT(0x0100, IP_ACTIVE_LOW, IPT_JOYSTICK_RIGHT | IPF_PLAYER1)
+	PORT_BIT(0x0080, IP_ACTIVE_LOW, IPT_UNKNOWN)
+	PORT_BIT(0x0040, IP_ACTIVE_LOW, IPT_UNKNOWN)
+	PORT_BIT(0x0020, IP_ACTIVE_LOW, IPT_UNKNOWN)
+	PORT_BIT(0x0010, IP_ACTIVE_LOW, IPT_BUTTON1 | IPF_PLAYER2)
+	PORT_BIT(0x0008, IP_ACTIVE_LOW, IPT_JOYSTICK_DOWN | IPF_PLAYER2)
+	PORT_BIT(0x0004, IP_ACTIVE_LOW, IPT_JOYSTICK_UP | IPF_PLAYER2)
+	PORT_BIT(0x0002, IP_ACTIVE_LOW, IPT_JOYSTICK_LEFT | IPF_PLAYER2)
+	PORT_BIT(0x0001, IP_ACTIVE_LOW, IPT_JOYSTICK_RIGHT | IPF_PLAYER2)
+
+	PORT_START("IN2") /* analog stick X - unused */
+	PORT_BIT(0xff, IP_ACTIVE_LOW, IPT_UNUSED)
+
+	PORT_START("IN3") /* analog stick Y - unused */
+	PORT_BIT(0xff, IP_ACTIVE_LOW, IPT_UNUSED)
+	INPUT_PORTS_END
+
+	/***************************************************************************
+
+	  Armor Attack
+
+	***************************************************************************/
+
+	INPUT_PORTS_START(armora)
+	PORT_START("SWITCHES")
+	PORT_DIPNAME(0x03, 0x03, DEF_STR(Lives))
+	PORT_DIPSETTING(0x00, "2")
+	PORT_DIPSETTING(0x02, "3")
+	PORT_DIPSETTING(0x01, "4")
+	PORT_DIPSETTING(0x03, "5")
+	PORT_DIPNAME(0x0c, 0x0c, DEF_STR(Coinage))
+	PORT_DIPSETTING(0x04, DEF_STR(2C_1C))
+	PORT_DIPSETTING(0x00, DEF_STR(4C_3C))
+	PORT_DIPSETTING(0x0c, DEF_STR(1C_1C))
+	PORT_DIPSETTING(0x08, DEF_STR(2C_3C))
+	PORT_DIPNAME(0x10, 0x00, DEF_STR(Demo_Sounds))
+	PORT_DIPSETTING(0x10, DEF_STR(Off))
+	PORT_DIPSETTING(0x00, DEF_STR(On))
+	PORT_DIPNAME(0x20, 0x20, DEF_STR(Unknown))
+	PORT_DIPSETTING(0x20, DEF_STR(Off))
+	PORT_DIPSETTING(0x00, DEF_STR(On))
+	PORT_SERVICE(0x40, IP_ACTIVE_HIGH)
+	PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_COIN1)
+
+	PORT_START("INPUTS") /* inputs */
+	PORT_BIT(0x8000, IP_ACTIVE_LOW, IPT_BUTTON2 | IPF_PLAYER1)
+	PORT_BIT(0x4000, IP_ACTIVE_LOW, IPT_JOYSTICK_RIGHT | IPF_2WAY | IPF_PLAYER1)
+	PORT_BIT(0x2000, IP_ACTIVE_LOW, IPT_BUTTON1 | IPF_PLAYER1)
+	PORT_BIT(0x1000, IP_ACTIVE_LOW, IPT_JOYSTICK_LEFT | IPF_2WAY | IPF_PLAYER1)
+	PORT_BIT(0x0800, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_BIT(0x0400, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_BIT(0x0200, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_BIT(0x0100, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_BIT(0x0080, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_BIT(0x0040, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_BIT(0x0020, IP_ACTIVE_LOW, IPT_BUTTON1 | IPF_PLAYER2)
+	PORT_BIT(0x0010, IP_ACTIVE_LOW, IPT_BUTTON2 | IPF_PLAYER2)
+	PORT_BIT(0x0008, IP_ACTIVE_LOW, IPT_START2)
+	PORT_BIT(0x0004, IP_ACTIVE_LOW, IPT_JOYSTICK_RIGHT | IPF_2WAY | IPF_PLAYER2)
+	PORT_BIT(0x0002, IP_ACTIVE_LOW, IPT_START1)
+	PORT_BIT(0x0001, IP_ACTIVE_LOW, IPT_JOYSTICK_LEFT | IPF_2WAY | IPF_PLAYER2)
+
+	PORT_START("IN2") /* analog stick X - unused */
+	PORT_BIT(0xff, IP_ACTIVE_LOW, IPT_UNUSED)
+
+	PORT_START("IN3") /* analog stick Y - unused */
+	PORT_BIT(0xff, IP_ACTIVE_LOW, IPT_UNUSED)
+	INPUT_PORTS_END
+
+	/***************************************************************************
+
+	  Solar Quest
+
+	***************************************************************************/
+
+	INPUT_PORTS_START(solarq)
+	PORT_START("SWITCHES")
+	PORT_DIPNAME(0x05, 0x05, DEF_STR(Coinage))
+	PORT_DIPSETTING(0x01, DEF_STR(2C_1C))
+	PORT_DIPSETTING(0x00, DEF_STR(4C_3C))
+	PORT_DIPSETTING(0x05, DEF_STR(1C_1C))
+	PORT_DIPSETTING(0x04, DEF_STR(2C_3C))
+	PORT_DIPNAME(0x02, 0x02, DEF_STR(Bonus_Life))
+	PORT_DIPSETTING(0x02, "25 captures")
+	PORT_DIPSETTING(0x00, "40 captures")
+	PORT_DIPNAME(0x18, 0x10, DEF_STR(Lives))
+	PORT_DIPSETTING(0x18, "2")
+	PORT_DIPSETTING(0x08, "3")
+	PORT_DIPSETTING(0x10, "4")
+	PORT_DIPSETTING(0x00, "5")
+	PORT_DIPNAME(0x20, 0x20, DEF_STR(Free_Play))
+	PORT_DIPSETTING(0x20, DEF_STR(Off))
+	PORT_DIPSETTING(0x00, DEF_STR(On))
+	PORT_SERVICE(0x40, IP_ACTIVE_HIGH)
+	PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_COIN1)
+
+	PORT_START("INPUTS") /* inputs */
+	PORT_BIT(0x8000, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_BIT(0x4000, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_BIT(0x2000, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_BIT(0x1000, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_BIT(0x0800, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_BIT(0x0400, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_BIT(0x0200, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_BIT(0x0100, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_BIT(0x0080, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_BIT(0x0040, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_BIT(0x0020, IP_ACTIVE_LOW, IPT_JOYSTICK_LEFT | IPF_2WAY | IPF_PLAYER1)
+	PORT_BIT(0x0010, IP_ACTIVE_LOW, IPT_JOYSTICK_RIGHT | IPF_2WAY | IPF_PLAYER1)
+	PORT_BIT(0x0008, IP_ACTIVE_LOW, IPT_START1) /* also hyperspace */
+	PORT_BIT(0x0008, IP_ACTIVE_LOW, IPT_BUTTON3 | IPF_PLAYER1)
+	PORT_BIT(0x0004, IP_ACTIVE_LOW, IPT_BUTTON2 | IPF_PLAYER1)
+	PORT_BIT(0x0002, IP_ACTIVE_LOW, IPT_BUTTON1 | IPF_PLAYER1)
+	PORT_BIT(0x0001, IP_ACTIVE_LOW, IPT_START2) /* also nova */
+	PORT_BIT(0x0001, IP_ACTIVE_LOW, IPT_BUTTON4 | IPF_PLAYER1)
+
+	PORT_START("IN2") /* analog stick X - unused */
+	PORT_BIT(0xff, IP_ACTIVE_LOW, IPT_UNUSED)
+
+	PORT_START("IN3")/* analog stick Y - unused */
+	PORT_BIT(0xff, IP_ACTIVE_LOW, IPT_UNUSED)
+	INPUT_PORTS_END
+
+	/***************************************************************************
+
+	  Demon
+
+	***************************************************************************/
+
+	INPUT_PORTS_START(demon)
+	PORT_START("SWITCHES")
+	PORT_DIPNAME(0x03, 0x03, DEF_STR(Coinage))
+	PORT_DIPSETTING(0x01, DEF_STR(2C_1C))
+	PORT_DIPSETTING(0x00, DEF_STR(4C_3C))
+	PORT_DIPSETTING(0x03, DEF_STR(1C_1C))
+	PORT_DIPSETTING(0x02, DEF_STR(2C_3C))
+	PORT_DIPNAME(0x0c, 0x00, DEF_STR(Lives))
+	PORT_DIPSETTING(0x00, "3")
+	PORT_DIPSETTING(0x04, "4")
+	PORT_DIPSETTING(0x08, "5")
+	PORT_DIPSETTING(0x0c, "6")
+	PORT_DIPNAME(0x30, 0x30, "Starting Difficulty")
+	PORT_DIPSETTING(0x30, "1")
+	PORT_DIPSETTING(0x10, "5")
+	PORT_DIPSETTING(0x00, "10")
+	/*	PORT_DIPSETTING(    0x20, "1" )*/
+	PORT_DIPNAME(0x40, 0x40, DEF_STR(Free_Play))
+	PORT_DIPSETTING(0x40, DEF_STR(Off))
+	PORT_DIPSETTING(0x00, DEF_STR(On))
+	PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_COIN1)
+
+	PORT_START("INPUTS")/* inputs */
+	PORT_BIT(0x0001, IP_ACTIVE_LOW, IPT_START1)
+	PORT_BIT(0x0002, IP_ACTIVE_LOW, IPT_START2)
+	PORT_BIT(0x0004, IP_ACTIVE_LOW, IPT_JOYSTICK_LEFT | IPF_2WAY | IPF_PLAYER1)
+	PORT_BIT(0x0008, IP_ACTIVE_LOW, IPT_JOYSTICK_RIGHT | IPF_2WAY | IPF_PLAYER1)
+	PORT_BIT(0x0010, IP_ACTIVE_LOW, IPT_BUTTON2 | IPF_PLAYER1)
+	PORT_BIT(0x0020, IP_ACTIVE_LOW, IPT_BUTTON1 | IPF_PLAYER1)
+	PORT_BIT(0x0040, IP_ACTIVE_LOW, IPT_UNKNOWN)
+	PORT_SERVICE(0x0080, IP_ACTIVE_LOW)
+	PORT_BIT(0x0100, IP_ACTIVE_LOW, IPT_TILT)
+	PORT_BIT(0x0200, IP_ACTIVE_LOW, IPT_BUTTON3 | IPF_PLAYER1)
+	PORT_BIT(0x0400, IP_ACTIVE_LOW, IPT_BUTTON3 | IPF_PLAYER2)
+	PORT_BIT(0x0800, IP_ACTIVE_LOW, IPT_JOYSTICK_LEFT | IPF_2WAY | IPF_PLAYER2)
+	PORT_BIT(0x1000, IP_ACTIVE_LOW, IPT_JOYSTICK_RIGHT | IPF_2WAY | IPF_PLAYER2)
+	PORT_BIT(0x2000, IP_ACTIVE_LOW, IPT_BUTTON2 | IPF_PLAYER2)
+	PORT_BIT(0x4000, IP_ACTIVE_LOW, IPT_BUTTON1 | IPF_PLAYER2)
+	PORT_BIT(0x8000, IP_ACTIVE_LOW, IPT_UNKNOWN) /* also mapped to Button 3, player 2 */
+
+	PORT_START("IN2") /* analog stick X - unused */
+	PORT_BIT(0xff, IP_ACTIVE_LOW, IPT_UNUSED)
+
+	PORT_START("IN3") /* analog stick Y - unused */
+	PORT_BIT(0xff, IP_ACTIVE_LOW, IPT_UNUSED)
+	INPUT_PORTS_END
+
+	/***************************************************************************
+
+	  War of the Worlds
+
+	***************************************************************************/
+
+	INPUT_PORTS_START(wotw)
+	PORT_START("SWITCHES")
+	PORT_DIPNAME(0x01, 0x01, DEF_STR(Unknown))
+	PORT_DIPSETTING(0x01, DEF_STR(Off))
+	PORT_DIPSETTING(0x00, DEF_STR(On))
+	PORT_DIPNAME(0x02, 0x02, DEF_STR(Lives))
+	PORT_DIPSETTING(0x02, "3")
+	PORT_DIPSETTING(0x00, "5")
+	PORT_DIPNAME(0x04, 0x04, DEF_STR(Unknown))
+	PORT_DIPSETTING(0x04, DEF_STR(Off))
+	PORT_DIPSETTING(0x00, DEF_STR(On))
+	PORT_DIPNAME(0x08, 0x08, DEF_STR(Coinage))
+	PORT_DIPSETTING(0x08, DEF_STR(1C_1C))
+	PORT_DIPSETTING(0x00, DEF_STR(2C_3C))
+	PORT_DIPNAME(0x10, 0x10, DEF_STR(Unknown))
+	PORT_DIPSETTING(0x10, DEF_STR(Off))
+	PORT_DIPSETTING(0x00, DEF_STR(On))
+	PORT_DIPNAME(0x20, 0x20, DEF_STR(Free_Play))
+	PORT_DIPSETTING(0x20, DEF_STR(Off))
+	PORT_DIPSETTING(0x00, DEF_STR(On))
+	PORT_SERVICE(0x40, IP_ACTIVE_LOW)
+	PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_COIN1)
+
+	PORT_START("INPUTS") /* inputs */
+	PORT_BIT(0x8000, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_BIT(0x4000, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_BIT(0x2000, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_BIT(0x1000, IP_ACTIVE_LOW, IPT_BUTTON1)
+	PORT_BIT(0x0800, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_BIT(0x0400, IP_ACTIVE_LOW, IPT_BUTTON2)
+	PORT_BIT(0x0200, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_BIT(0x0100, IP_ACTIVE_LOW, IPT_JOYSTICK_RIGHT | IPF_2WAY)
+	PORT_BIT(0x0080, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_BIT(0x0040, IP_ACTIVE_LOW, IPT_JOYSTICK_LEFT | IPF_2WAY)
+	PORT_BIT(0x0020, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_BIT(0x0010, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_BIT(0x0008, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_BIT(0x0004, IP_ACTIVE_LOW, IPT_START2)
+	PORT_BIT(0x0002, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_BIT(0x0001, IP_ACTIVE_LOW, IPT_START1)
+
+	PORT_START("IN2") /* analog stick X - unused */
+	PORT_BIT(0xff, IP_ACTIVE_LOW, IPT_UNUSED)
+
+	PORT_START("IN3") /* analog stick Y - unused */
+	PORT_BIT(0xff, IP_ACTIVE_LOW, IPT_UNUSED)
+	INPUT_PORTS_END
+
+	/***************************************************************************
+
+	  Boxing Bugs
+
+	***************************************************************************/
+
+	INPUT_PORTS_START(boxingb)
+	PORT_START("SWITCHES")
+	PORT_DIPNAME(0x03, 0x03, DEF_STR(Coinage))
+	PORT_DIPSETTING(0x01, DEF_STR(2C_1C))
+	PORT_DIPSETTING(0x00, DEF_STR(4C_3C))
+	PORT_DIPSETTING(0x03, DEF_STR(1C_1C))
+	PORT_DIPSETTING(0x02, DEF_STR(2C_3C))
+	PORT_DIPNAME(0x04, 0x00, DEF_STR(Lives))
+	PORT_DIPSETTING(0x04, "3")
+	PORT_DIPSETTING(0x00, "5")
+	PORT_DIPNAME(0x08, 0x00, DEF_STR(Bonus_Life))
+	PORT_DIPSETTING(0x00, "30,000")
+	PORT_DIPSETTING(0x08, "50,000")
+	PORT_DIPNAME(0x10, 0x00, DEF_STR(Demo_Sounds))
+	PORT_DIPSETTING(0x10, DEF_STR(Off))
+	PORT_DIPSETTING(0x00, DEF_STR(On))
+	PORT_DIPNAME(0x20, 0x20, DEF_STR(Free_Play))
+	PORT_DIPSETTING(0x20, DEF_STR(Off))
+	PORT_DIPSETTING(0x00, DEF_STR(On))
+	PORT_SERVICE(0x40, IP_ACTIVE_LOW)
+	PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_COIN1)
+
+	PORT_START("INPUTS") /* inputs */
+	PORT_BIT(0xf000, IP_ACTIVE_HIGH, IPT_UNUSED)	/* dial */
+	PORT_BIT(0x0800, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_BIT(0x0400, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_BIT(0x0200, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_BIT(0x0100, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_BIT(0x0080, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_BIT(0x0040, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_BIT(0x0020, IP_ACTIVE_LOW, IPT_BUTTON1 | IPF_PLAYER1)
+	PORT_BIT(0x0010, IP_ACTIVE_LOW, IPT_BUTTON2 | IPF_PLAYER1)
+	PORT_BIT(0x0008, IP_ACTIVE_LOW, IPT_BUTTON3 | IPF_PLAYER1)
+	PORT_BIT(0x0008, IP_ACTIVE_LOW, IPT_START1)
+	PORT_BIT(0x0004, IP_ACTIVE_LOW, IPT_BUTTON3 | IPF_PLAYER2)
+	PORT_BIT(0x0004, IP_ACTIVE_LOW, IPT_START2)
+	PORT_BIT(0x0002, IP_ACTIVE_LOW, IPT_BUTTON2 | IPF_PLAYER2)
+	PORT_BIT(0x0001, IP_ACTIVE_LOW, IPT_BUTTON1 | IPF_PLAYER2)
+
+	PORT_START("IN2") /* analog stick X - unused */
+	PORT_BIT(0xff, IP_ACTIVE_LOW, IPT_UNUSED)
+
+	PORT_START("IN3") /* analog stick Y - unused */
+	PORT_BIT(0xff, IP_ACTIVE_LOW, IPT_UNUSED)
+
+	PORT_START("DIAL")/* fake (in4) */
+	PORT_ANALOG(0xff, 0x80, IPT_DIAL, 100, 5, 0x00, 0xff)
+	INPUT_PORTS_END
+
+	/***************************************************************************
+
+	   Boxing Bugs
+
+	***************************************************************************/
+	INPUT_PORTS_START(qb3)
+
+	PORT_START("SWITCHES")
+	PORT_DIPNAME(0x03, 0x02, DEF_STR(Lives))
+	PORT_DIPSETTING(0x00, "2")
+	PORT_DIPSETTING(0x02, "3")
+	PORT_DIPSETTING(0x01, "4")
+	PORT_DIPSETTING(0x03, "5")
+	PORT_DIPNAME(0x04, 0x00, DEF_STR(Unknown))
+	PORT_DIPSETTING(0x04, DEF_STR(Off))
+	PORT_DIPSETTING(0x00, DEF_STR(On))
+	PORT_DIPNAME(0x08, 0x08, DEF_STR(Free_Play))	// read at $244, $2c1
+	PORT_DIPSETTING(0x08, DEF_STR(Off))
+	PORT_DIPSETTING(0x00, DEF_STR(On))
+	PORT_DIPNAME(0x10, 0x00, DEF_STR(Unknown))	// read at $27d
+	PORT_DIPSETTING(0x10, DEF_STR(Off))
+	PORT_DIPSETTING(0x00, DEF_STR(On))
+	PORT_DIPNAME(0x20, 0x20, DEF_STR(Unknown))	 // read at $282
+	PORT_DIPSETTING(0x20, DEF_STR(Off))
+	PORT_DIPSETTING(0x00, DEF_STR(On))
+	PORT_SERVICE(0x40, IP_ACTIVE_LOW)
+	PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_COIN1)
+
+	PORT_START("INPUTS")
+	PORT_BIT(0x0001, IP_ACTIVE_LOW, IPT_JOYSTICKLEFT_UP)
+	PORT_BIT(0x0002, IP_ACTIVE_LOW, IPT_JOYSTICKLEFT_DOWN)
+	PORT_BIT(0x0004, IP_ACTIVE_LOW, IPT_JOYSTICKRIGHT_LEFT)
+	PORT_BIT(0x0008, IP_ACTIVE_LOW, IPT_JOYSTICKRIGHT_UP)
+	PORT_BIT(0x0010, IP_ACTIVE_LOW, IPT_JOYSTICKRIGHT_RIGHT)
+	PORT_BIT(0x0020, IP_ACTIVE_LOW, IPT_JOYSTICKRIGHT_DOWN)
+	PORT_BIT(0x0040, IP_ACTIVE_LOW, IPT_START1)
+	PORT_BIT(0x0080, IP_ACTIVE_LOW, IPT_START2)
+	PORT_BIT(0x0100, IP_ACTIVE_LOW, IPT_BUTTON4)					// read at $1a5; if 0 add 8 to $25
+	PORT_DIPNAME(0x0200, 0x0200, "Debug")
+	PORT_DIPSETTING(0x0200, DEF_STR(Off))
+	PORT_DIPSETTING(0x0000, DEF_STR(On))
+	PORT_BIT(0x0400, IP_ACTIVE_LOW, IPT_BUTTON2)					// read at $c7; jmp to $3AF1 if 0
+	PORT_BIT(0x0800, IP_ACTIVE_LOW, IPT_JOYSTICKLEFT_RIGHT)
+	PORT_DIPNAME(0x1000, 0x1000, "Infinite Lives")
+	PORT_DIPSETTING(0x1000, DEF_STR(Off))
+	PORT_DIPSETTING(0x0000, DEF_STR(On))
+	PORT_BIT(0x2000, IP_ACTIVE_LOW, IPT_JOYSTICKLEFT_LEFT)
+	PORT_BIT(0x4000, IP_ACTIVE_LOW, IPT_BUTTON1)
+	PORT_BIT(0x8000, IP_ACTIVE_LOW, IPT_UNKNOWN)
+
+	INPUT_PORTS_END
+
+	////////////// CINEMATRONICS ROMS //////////////
+
+	ROM_START(spacewar)
+	ROM_REGION(0x1000, REGION_CPU1, 0)
+	ROM_LOAD16_BYTE("spacewar.1l", 0x0000, 0x0800, CRC(edf0fd53) SHA1(a543d8b95bc77ec061c6b10161a6f3e07401e251))
+	ROM_LOAD16_BYTE("spacewar.2r", 0x0001, 0x0800, CRC(4f21328b) SHA1(8889f1a9353d6bb1e1078829c1ba77557853739b))
+	ROM_END
+
+	ROM_START(barrier)
+	ROM_REGION(0x1000, REGION_CPU1, 0)
+	ROM_LOAD16_BYTE("barrier.t7", 0x0000, 0x0800, CRC(7c3d68c8) SHA1(1138029552b73e94522b3b48096befc057d603c7))
+	ROM_LOAD16_BYTE("barrier.p7", 0x0001, 0x0800, CRC(aec142b5) SHA1(b268936b82e072f38f1f1dd54e0bc88bcdf19925))
+	ROM_END
+
+	ROM_START(starhawk)
+	ROM_REGION(0x1000, REGION_CPU1, 0)
+	ROM_LOAD16_BYTE("u7", 0x0000, 0x0800, CRC(376e6c5c) SHA1(7d9530ed2e75464578b541f61408ba64ee9d2a95))
+	ROM_LOAD16_BYTE("r7", 0x0001, 0x0800, CRC(bb71144f) SHA1(79591cd3ef8df78ec26e158f7e82ca0dcd72260d))
+	ROM_END
+
+	ROM_START(speedfrk)
+	ROM_REGION(0x2000, REGION_CPU1, 0)
+	ROM_LOAD16_BYTE("speedfrk.t7", 0x0000, 0x0800, CRC(3552c03f) SHA1(c233dd064195b336556d7405b51065389b228c78))
+	ROM_LOAD16_BYTE("speedfrk.p7", 0x0001, 0x0800, CRC(4b90cdec) SHA1(69e2312acdc22ef52236b1c4dfee9f51fcdcaa52))
+	ROM_LOAD16_BYTE("speedfrk.u7", 0x1000, 0x0800, CRC(616c7cf9) SHA1(3c5bf59a09d85261f69e4b9d499cb7a93d79fb57))
+	ROM_LOAD16_BYTE("speedfrk.r7", 0x1001, 0x0800, CRC(fbe90d63) SHA1(e42b17133464ae48c90263bba01a7d041e938a05))
+	ROM_END
+
+	ROM_START(solarq)
+	ROM_REGION(0x4000, REGION_CPU1, 0)
+	ROM_LOAD16_BYTE("solar.6t", 0x0000, 0x1000, CRC(1f3c5333) SHA1(58d847b5f009a0363ae116768b22d0bcfb3d60a4))
+	ROM_LOAD16_BYTE("solar.6p", 0x0001, 0x1000, CRC(d6c16bcc) SHA1(6953bdc698da060d37f6bc33a810ba44595b1257))
+	ROM_LOAD16_BYTE("solar.6u", 0x2000, 0x1000, CRC(a5970e5c) SHA1(9ac07924ca86d003964022cffdd6a0436dde5624))
+	ROM_LOAD16_BYTE("solar.6r", 0x2001, 0x1000, CRC(b763fff2) SHA1(af1fd978e46a4aee3048e6e36c409821d986f7ee))
+	ROM_END
+
+	ROM_START(sundance)
+	ROM_REGION(0x2000, REGION_CPU1, 0)
+	ROM_LOAD16_BYTE("sundance.t7", 0x0000, 0x0800, CRC(d5b9cb19) SHA1(72dca386b48a582186898c32123d61b4fd58632e))
+	ROM_LOAD16_BYTE("sundance.p7", 0x0001, 0x0800, CRC(445c4f20) SHA1(972d0b0613f154ee3347206cae05ee8c36796f84))
+	ROM_LOAD16_BYTE("sundance.u7", 0x1000, 0x0800, CRC(67887d48) SHA1(be225dbd3508fad2711286834880065a4fc0a2fc))
+	ROM_LOAD16_BYTE("sundance.r7", 0x1001, 0x0800, CRC(10b77ebd) SHA1(3d43bd47c498d5ea74a7322f8d25dbc0c0187534))
+	ROM_END
+
+	ROM_START(wotw)
+	ROM_REGION(0x4000, REGION_CPU1, 0)
+	ROM_LOAD16_BYTE("wow_le.t7", 0x0000, 0x1000, CRC(b16440f9) SHA1(9656a26814736f8ff73575063b5ebbb2e8aa7dd0))
+	ROM_LOAD16_BYTE("wow_lo.p7", 0x0001, 0x1000, CRC(bfdf4a5a) SHA1(db4eceb68e17020d0a597ba105ec3b91ce48b7c1))
+	ROM_LOAD16_BYTE("wow_ue.u7", 0x2000, 0x1000, CRC(9b5cea48) SHA1(c2bc002e550a0d36e713d07f6aefa79c70b8e284))
+	ROM_LOAD16_BYTE("wow_uo.r7", 0x2001, 0x1000, CRC(c9d3c866) SHA1(57a47bf06838fe562981321249fe5ae585316f22))
+	ROM_END
+
+	ROM_START(wotwc)
+	ROM_REGION(0x4000, REGION_CPU1, 0)
+	ROM_LOAD16_BYTE("wow_le.t7", 0x0000, 0x1000, CRC(b16440f9) SHA1(9656a26814736f8ff73575063b5ebbb2e8aa7dd0))
+	ROM_LOAD16_BYTE("wow_lo.p7", 0x0001, 0x1000, CRC(bfdf4a5a) SHA1(db4eceb68e17020d0a597ba105ec3b91ce48b7c1))
+	ROM_LOAD16_BYTE("wow_ue.u7", 0x2000, 0x1000, CRC(9b5cea48) SHA1(c2bc002e550a0d36e713d07f6aefa79c70b8e284))
+	ROM_LOAD16_BYTE("wow_uo.r7", 0x2001, 0x1000, CRC(c9d3c866) SHA1(57a47bf06838fe562981321249fe5ae585316f22))
+	ROM_END
+
+	ROM_START(starcas)
+	ROM_REGION(0x2000, REGION_CPU1, 0)
+	ROM_LOAD16_BYTE("starcas3.t7", 0x0000, 0x0800, CRC(b5838b5d) SHA1(6ac30be55514cba55180c85af69072b5056d1d4c))
+	ROM_LOAD16_BYTE("starcas3.p7", 0x0001, 0x0800, CRC(f6bc2f4d) SHA1(ef6f01556b154cfb3e37b2a99d6ea6292e5ec844))
+	ROM_LOAD16_BYTE("starcas3.u7", 0x1000, 0x0800, CRC(188cd97c) SHA1(c021e93a01e9c65013073de551a8c24fd1a68bde))
+	ROM_LOAD16_BYTE("starcas3.r7", 0x1001, 0x0800, CRC(c367b69d) SHA1(98354d34ceb03e080b1846611d533be7bdff01cc))
+	ROM_END
+
+	ROM_START(tailg)
+	ROM_REGION(0x2000, REGION_CPU1, 0)
+	ROM_LOAD16_BYTE("tgunner.t70", 0x0000, 0x0800, CRC(21ec9a04) SHA1(b442f34360d1d4769e7bca73a2d79ce97d335460))
+	ROM_LOAD16_BYTE("tgunner.p70", 0x0001, 0x0800, CRC(8d7410b3) SHA1(59ead49bd229a873f15334d0999c872d3d6581d4))
+	ROM_LOAD16_BYTE("tgunner.t71", 0x1000, 0x0800, CRC(2c954ab6) SHA1(9edf189a19b50a9abf458d4ef8ba25b53934385e))
+	ROM_LOAD16_BYTE("tgunner.p71", 0x1001, 0x0800, CRC(8e2c8494) SHA1(65e461ec4938f9895e5ac31442193e06c8731dc1))
+	ROM_END
+
+	ROM_START(ripoff)
+	ROM_REGION(0x2000, REGION_CPU1, 0)
+	ROM_LOAD16_BYTE("ripoff.t7", 0x0000, 0x0800, CRC(40c2c5b8) SHA1(bc1f3b540475c9868443a72790a959b1f36b93c6))
+	ROM_LOAD16_BYTE("ripoff.p7", 0x0001, 0x0800, CRC(a9208afb) SHA1(ea362494855be27a07014832b01e65c1645385d0))
+	ROM_LOAD16_BYTE("ripoff.u7", 0x1000, 0x0800, CRC(29c13701) SHA1(5e7672deffac1fa8f289686a5527adf7e51eb0bb))
+	ROM_LOAD16_BYTE("ripoff.r7", 0x1001, 0x0800, CRC(150bd4c8) SHA1(e1e2f0dfec4f53d8ff67b0e990514c304f496b3a))
+	ROM_END
+
+	ROM_START(armora)
+	ROM_REGION(0x4000, REGION_CPU1, 0)
+	ROM_LOAD16_BYTE("ar414le.t6", 0x0000, 0x1000, CRC(d7e71f84) SHA1(0b29278a6a698f07eae597bc0a8650e91eaabffa))
+	ROM_LOAD16_BYTE("ar414lo.p6", 0x0001, 0x1000, CRC(df1c2370) SHA1(b74834d1a591a741892ec41269a831d3590ff766))
+	ROM_LOAD16_BYTE("ar414ue.u6", 0x2000, 0x1000, CRC(b0276118) SHA1(88f33cb2f46a89819c85f810c7cff812e918391e))
+	ROM_LOAD16_BYTE("ar414uo.r6", 0x2001, 0x1000, CRC(229d779f) SHA1(0cbdd83eb224146944049346f30d9c72d3ad5f52))
+	ROM_END
+
+	ROM_START(warrior)
+	ROM_REGION(0x2000, REGION_CPU1, 0)
+	ROM_LOAD16_BYTE("warrior.t7", 0x0000, 0x0800, CRC(ac3646f9) SHA1(515c3acb638fad27fa57f6b438c8ec0b5b76f319))
+	ROM_LOAD16_BYTE("warrior.p7", 0x0001, 0x0800, CRC(517d3021) SHA1(0483dcaf92c336a07d2c535823348ee886567e85))
+	ROM_LOAD16_BYTE("warrior.u7", 0x1000, 0x0800, CRC(2e39340f) SHA1(4b3cfb3674dd2a668d4d65e28cb37d7ad20f118d))
+	ROM_LOAD16_BYTE("warrior.r7", 0x1001, 0x0800, CRC(8e91b502) SHA1(27614c3a8613f49187039cfb05ee96303caf72ba))
+	ROM_END
+
+	ROM_START(demon)
+	ROM_REGION(0x4000, REGION_CPU1, 0)
+	ROM_LOAD16_BYTE("demon.7t", 0x0000, 0x1000, CRC(866596c1) SHA1(65202dcd5c6bf6c11fe76a89682a1505b1870cc9))
+	ROM_LOAD16_BYTE("demon.7p", 0x0001, 0x1000, CRC(1109e2f1) SHA1(c779b6af1ca09e2e295fc9a0e221ddf283b683ed))
+	ROM_LOAD16_BYTE("demon.7u", 0x2000, 0x1000, CRC(d447a3c3) SHA1(32f6fb01231aa4f3d93e32d639a89f0cf9624a71))
+	ROM_LOAD16_BYTE("demon.7r", 0x2001, 0x1000, CRC(64b515f0) SHA1(2dd9a6d784ec1baf31e8c6797ddfdc1423c69470))
+	ROM_REGION(0x10000, REGION_CPU2, 0)
+	ROM_LOAD("demon.snd", 0x0000, 0x1000, CRC(1e2cc262) SHA1(2aae537574ac69c92a3c6400b971e994de88d915))
+	ROM_END
+
+	ROM_START(boxingb)
+	ROM_REGION(0x8000, REGION_CPU1, 0)
+	ROM_LOAD16_BYTE("u1a", 0x0000, 0x1000, CRC(d3115b0f) SHA1(9448e7ac1cdb5c7e0739623151be230ab630c4ea))
+	ROM_LOAD16_BYTE("u1b", 0x0001, 0x1000, CRC(3a44268d) SHA1(876ebe942ded787cfe357563a33d3e26a1483c5a))
+	ROM_LOAD16_BYTE("u2a", 0x2000, 0x1000, CRC(c97a9cbb) SHA1(8bdeb9ee6b24c0a4554bbf4532a43481a0360019))
+	ROM_LOAD16_BYTE("u2b", 0x2001, 0x1000, CRC(98d34ff5) SHA1(6767a02a99a01712383300f9acb96cdeffbc9c69))
+	ROM_LOAD16_BYTE("u3a", 0x4000, 0x1000, CRC(5bb3269b) SHA1(a9dbc91b1455760f10bad0d2ccf540e040a00d4e))
+	ROM_LOAD16_BYTE("u3b", 0x4001, 0x1000, CRC(85bf83ad) SHA1(9229042e39c53fae56dc93f8996bf3a3fcd35cb8))
+	ROM_LOAD16_BYTE("u4a", 0x6000, 0x1000, CRC(25b51799) SHA1(46465fe62907ae66a0ce730581e4e9ba330d4369))
+	ROM_LOAD16_BYTE("u4b", 0x6001, 0x1000, CRC(7f41de6a) SHA1(d01dffad3cb6e76c535a034ea0277dce5801c5f1))
+	ROM_END
+
+	ROM_START(qb3)
+	ROM_REGION(0x8000, REGION_CPU1, 0)
+	ROM_LOAD16_BYTE("qb3_le_t7.bin", 0x0000, 0x2000, CRC(adaaee4c) SHA1(35c6bbb50646a3ddec12f115fcf3f2283e15b0a0))
+	ROM_LOAD16_BYTE("qb3_lo_p7.bin", 0x0001, 0x2000, CRC(72f6199f) SHA1(ae8f81f218940cfc3aef8f82dfe8cc14220770ce))
+	ROM_LOAD16_BYTE("qb3_ue_u7.bin", 0x4000, 0x2000, CRC(050a996d) SHA1(bf29236112746b5925b29fb231f152a4bde3f4f9))
+	ROM_LOAD16_BYTE("qb3_uo_r7.bin", 0x4001, 0x2000, CRC(33fa77a2) SHA1(27a6853f8c2614a2abd7bfb9a62c357797312068))
+
+	ROM_REGION(0x10000, REGION_CPU2, 0)
+	ROM_LOAD("qb3_snd_u12.bin", 0x0000, 0x1000, CRC(f86663de) SHA1(29c7e75ba22be00d59fc8de5de6d94fcee287a09))
+	ROM_LOAD("qb3_snd_u11.bin", 0x1000, 0x1000, CRC(32ed58fc) SHA1(483a19f0d540d7d348fce4274fba254ee95bc8d6))
+	ROM_END
+
+	// Solar Quest
+	AAE_DRIVER_BEGIN(drv_solarq, "solarq", "Solar Quest")
+	AAE_DRIVER_ROM(rom_solarq)
+	AAE_DRIVER_FUNCS(&init_solarq, &run_cinemat, &end_cinemat)
+	AAE_DRIVER_INPUT(input_ports_solarq)
+	AAE_DRIVER_SAMPLES(solarq_samples)
+	AAE_DRIVER_ART(solarq_art)
+	AAE_DRIVER_CPUS(AAE_CPU_ENTRY(CPU_CCPU, 4980750, 1, 1, 0, 0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr),
+		AAE_CPU_NONE_ENTRY(),
+		AAE_CPU_NONE_ENTRY(),
+		AAE_CPU_NONE_ENTRY())
 	// Orientation for every Cinematronics game lives here, copied from MAME
 	// 0.159's GAME() lines. video.ini rects must stay non-inverted
 	// (left < right, bottom < top): an inverted rect flips the beams a
 	// second time on top of these flags.
-	AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW | VECTOR_USES_OVERLAY1 , ORIENTATION_FLIP_Y ^ ORIENTATION_FLIP_X)
+	AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW | VECTOR_USES_OVERLAY1, ORIENTATION_FLIP_Y^ ORIENTATION_FLIP_X)
 	AAE_DRIVER_SCREEN(1024, 768, 0, 1024, 0, 768)
 	AAE_DRIVER_RASTER_NONE()
 	AAE_DRIVER_HISCORE_NONE()
 	AAE_DRIVER_VECTORRAM(0, 0)
 	AAE_DRIVER_NVRAM_NONE()
 	AAE_DRIVER_LAYOUT_NONE()
-AAE_DRIVER_END()
+	AAE_DRIVER_END()
 
 	// Star Castle
 	AAE_DRIVER_BEGIN(drv_starcas, "starcas", "Star Castle")
@@ -1711,7 +1718,7 @@ AAE_DRIVER_END()
 	AAE_DRIVER_VECTORRAM(0, 0)
 	AAE_DRIVER_NVRAM_NONE()
 	AAE_DRIVER_LAYOUT_NONE()
-AAE_DRIVER_END()
+	AAE_DRIVER_END()
 
 	// RipOff
 	AAE_DRIVER_BEGIN(drv_ripoff, "ripoff", "RipOff")
@@ -1731,7 +1738,7 @@ AAE_DRIVER_END()
 	AAE_DRIVER_VECTORRAM(0, 0)
 	AAE_DRIVER_NVRAM_NONE()
 	AAE_DRIVER_LAYOUT_NONE()
-AAE_DRIVER_END()
+	AAE_DRIVER_END()
 
 	// Armor Attack
 	AAE_DRIVER_BEGIN(drv_armora, "armora", "Armor Attack")
@@ -1744,14 +1751,14 @@ AAE_DRIVER_END()
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY())
-	AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW | VECTOR_USES_OVERLAY2 , ORIENTATION_FLIP_Y)
+	AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW | VECTOR_USES_OVERLAY2, ORIENTATION_FLIP_Y)
 	AAE_DRIVER_SCREEN(1024, 768, 0, 1024, 0, 772)
 	AAE_DRIVER_RASTER_NONE()
 	AAE_DRIVER_HISCORE_NONE()
 	AAE_DRIVER_VECTORRAM(0, 0)
 	AAE_DRIVER_NVRAM_NONE()
 	AAE_DRIVER_LAYOUT_NONE()
-AAE_DRIVER_END()
+	AAE_DRIVER_END()
 
 	// Barrier
 	AAE_DRIVER_BEGIN(drv_barrier, "barrier", "Barrier")
@@ -1763,14 +1770,14 @@ AAE_DRIVER_END()
 	AAE_DRIVER_CPUS(AAE_CPU_ENTRY(CPU_CCPU, 4980750, 1, 1, 0, 0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr),
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY(),
-		AAE_CPU_NONE_ENTRY())AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW | VECTOR_USES_OVERLAY1, ORIENTATION_FLIP_X ^ ORIENTATION_ROTATE_270)
+		AAE_CPU_NONE_ENTRY())AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW | VECTOR_USES_OVERLAY1, ORIENTATION_FLIP_X^ ORIENTATION_ROTATE_270)
 	AAE_DRIVER_SCREEN(1024, 768, 0, 1024, 0, 769)
 	AAE_DRIVER_RASTER_NONE()
 	AAE_DRIVER_HISCORE_NONE()
 	AAE_DRIVER_VECTORRAM(0, 0)
 	AAE_DRIVER_NVRAM_NONE()
 	AAE_DRIVER_LAYOUT_NONE()
-AAE_DRIVER_END()
+	AAE_DRIVER_END()
 
 	// Sundance
 	AAE_DRIVER_BEGIN(drv_sundance, "sundance", "Sundance")
@@ -1783,14 +1790,14 @@ AAE_DRIVER_END()
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY())
-	AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW | VECTOR_USES_OVERLAY1, ORIENTATION_FLIP_X ^ ORIENTATION_ROTATE_270)
+	AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW | VECTOR_USES_OVERLAY1, ORIENTATION_FLIP_X^ ORIENTATION_ROTATE_270)
 	AAE_DRIVER_SCREEN(1024, 768, 0, 1024, 0, 768)
 	AAE_DRIVER_RASTER_NONE()
 	AAE_DRIVER_HISCORE_NONE()
 	AAE_DRIVER_VECTORRAM(0, 0)
 	AAE_DRIVER_NVRAM_NONE()
 	AAE_DRIVER_LAYOUT_NONE()
-AAE_DRIVER_END()
+	AAE_DRIVER_END()
 
 	// Warrior
 	AAE_DRIVER_BEGIN(drv_warrior, "warrior", "Warrior")
@@ -1803,13 +1810,13 @@ AAE_DRIVER_END()
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY())AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW, ORIENTATION_FLIP_Y)
-		AAE_DRIVER_SCREEN(1024, 768, 0, 1024, 0, 780)
+	AAE_DRIVER_SCREEN(1024, 768, 0, 1024, 0, 780)
 	AAE_DRIVER_RASTER_NONE()
 	AAE_DRIVER_HISCORE_NONE()
 	AAE_DRIVER_VECTORRAM(0, 0)
 	AAE_DRIVER_NVRAM_NONE()
 	AAE_DRIVER_LAYOUT_NONE()
-AAE_DRIVER_END()
+	AAE_DRIVER_END()
 
 	// TailGunner
 	AAE_DRIVER_BEGIN(drv_tailg, "tailg", "TailGunner")
@@ -1829,7 +1836,7 @@ AAE_DRIVER_END()
 	AAE_DRIVER_VECTORRAM(0, 0)
 	AAE_DRIVER_NVRAM_NONE()
 	AAE_DRIVER_LAYOUT_NONE()
-AAE_DRIVER_END()
+	AAE_DRIVER_END()
 
 	// StarHawk
 	AAE_DRIVER_BEGIN(drv_starhawk, "starhawk", "StarHawk")
@@ -1849,7 +1856,7 @@ AAE_DRIVER_END()
 	AAE_DRIVER_VECTORRAM(0, 0)
 	AAE_DRIVER_NVRAM_NONE()
 	AAE_DRIVER_LAYOUT_NONE()
-AAE_DRIVER_END()
+	AAE_DRIVER_END()
 
 	// SpaceWar
 	AAE_DRIVER_BEGIN(drv_spacewar, "spacewar", "SpaceWar")
@@ -1869,7 +1876,7 @@ AAE_DRIVER_END()
 	AAE_DRIVER_VECTORRAM(0, 0)
 	AAE_DRIVER_NVRAM_NONE()
 	AAE_DRIVER_LAYOUT_NONE()
-AAE_DRIVER_END()
+	AAE_DRIVER_END()
 
 	// Speed Freak
 	AAE_DRIVER_BEGIN(drv_speedfrk, "speedfrk", "Speed Freak")
@@ -1889,7 +1896,7 @@ AAE_DRIVER_END()
 	AAE_DRIVER_VECTORRAM(0, 0)
 	AAE_DRIVER_NVRAM_NONE()
 	AAE_DRIVER_LAYOUT_NONE()
-AAE_DRIVER_END()
+	AAE_DRIVER_END()
 
 	// Demon
 	AAE_DRIVER_BEGIN(drv_demon, "demon", "Demon")
@@ -1905,13 +1912,13 @@ AAE_DRIVER_END()
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY())
 	AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW | VECTOR_USES_OVERLAY2, ORIENTATION_FLIP_Y)
-	AAE_DRIVER_SCREEN(1024, 768, 0, 1024, 0, 800 )
+	AAE_DRIVER_SCREEN(1024, 768, 0, 1024, 0, 800)
 	AAE_DRIVER_RASTER_NONE()
 	AAE_DRIVER_HISCORE_NONE()
 	AAE_DRIVER_VECTORRAM(0, 0)
 	AAE_DRIVER_NVRAM_NONE()
 	AAE_DRIVER_LAYOUT_NONE()
-AAE_DRIVER_END()
+	AAE_DRIVER_END()
 
 	// Boxing Bugs
 	AAE_DRIVER_BEGIN(drv_boxingb, "boxingb", "Boxing Bugs")
@@ -1924,14 +1931,14 @@ AAE_DRIVER_END()
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY())
-	AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW, ORIENTATION_FLIP_Y)
+	AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_FLIP_Y)
 	AAE_DRIVER_SCREEN(1024, 768, 0, 1024, 0, 800)
 	AAE_DRIVER_RASTER_NONE()
 	AAE_DRIVER_HISCORE_NONE()
 	AAE_DRIVER_VECTORRAM(0, 0)
 	AAE_DRIVER_NVRAM_NONE()
 	AAE_DRIVER_LAYOUT_NONE()
-AAE_DRIVER_END()
+	AAE_DRIVER_END()
 
 	// War of the Worlds (Black and White)
 	AAE_DRIVER_BEGIN(drv_wotw, "wotw", "War of the Worlds (B&W)")
@@ -1951,29 +1958,28 @@ AAE_DRIVER_END()
 	AAE_DRIVER_VECTORRAM(0, 0)
 	AAE_DRIVER_NVRAM_NONE()
 	AAE_DRIVER_LAYOUT_NONE()
-AAE_DRIVER_END()
+	AAE_DRIVER_END()
 
-// War of the Worlds (Color)
-AAE_DRIVER_BEGIN(drv_wotwc, "wotwc", "War of the Worlds (Color)")
-AAE_DRIVER_ROM(rom_wotwc)
-AAE_DRIVER_FUNCS(&init_wotwc, &run_cinemat, &end_cinemat)
-AAE_DRIVER_INPUT(input_ports_wotw)
-AAE_DRIVER_SAMPLES(wotw_samples)
-AAE_DRIVER_ART(wotw_art)
-AAE_DRIVER_CPUS(AAE_CPU_ENTRY(CPU_CCPU, 4980750, 1, 1, 0, 0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr),
-	AAE_CPU_NONE_ENTRY(),
-	AAE_CPU_NONE_ENTRY(),
-	AAE_CPU_NONE_ENTRY())
-		AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR | VECTOR_USES_OVERLAY2, ORIENTATION_FLIP_Y)
-		AAE_DRIVER_SCREEN(1024, 768, 0, 1024, 0, 768)
-		AAE_DRIVER_RASTER_NONE()
-		AAE_DRIVER_HISCORE_NONE()
-		AAE_DRIVER_VECTORRAM(0, 0)
-		AAE_DRIVER_NVRAM_NONE()
-		AAE_DRIVER_LAYOUT_NONE()
-		AAE_DRIVER_CLONE_OF("wotw")
-AAE_DRIVER_END()
-
+	// War of the Worlds (Color)
+	AAE_DRIVER_BEGIN(drv_wotwc, "wotwc", "War of the Worlds (Color)")
+	AAE_DRIVER_ROM(rom_wotwc)
+	AAE_DRIVER_FUNCS(&init_wotwc, &run_cinemat, &end_cinemat)
+	AAE_DRIVER_INPUT(input_ports_wotw)
+	AAE_DRIVER_SAMPLES(wotw_samples)
+	AAE_DRIVER_ART(wotw_art)
+	AAE_DRIVER_CPUS(AAE_CPU_ENTRY(CPU_CCPU, 4980750, 1, 1, 0, 0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr),
+		AAE_CPU_NONE_ENTRY(),
+		AAE_CPU_NONE_ENTRY(),
+		AAE_CPU_NONE_ENTRY())
+	AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR | VECTOR_USES_OVERLAY2, ORIENTATION_FLIP_Y)
+	AAE_DRIVER_SCREEN(1024, 768, 0, 1024, 0, 768)
+	AAE_DRIVER_RASTER_NONE()
+	AAE_DRIVER_HISCORE_NONE()
+	AAE_DRIVER_VECTORRAM(0, 0)
+	AAE_DRIVER_NVRAM_NONE()
+	AAE_DRIVER_LAYOUT_NONE()
+	AAE_DRIVER_CLONE_OF("wotw")
+	AAE_DRIVER_END()
 
 	// QB-3 (prototype)
 	AAE_DRIVER_BEGIN(drv_qb3, "qb3", "QB-3 (prototype)")
@@ -1988,14 +1994,14 @@ AAE_DRIVER_END()
 			nullptr, nullptr, &demon_sound_post_cpu_init),
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY())
-	AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW, ORIENTATION_FLIP_Y)
+	AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_FLIP_Y)
 	AAE_DRIVER_SCREEN(1120, 780, 0, 1120, 0, 780)
 	AAE_DRIVER_RASTER_NONE()
 	AAE_DRIVER_HISCORE_NONE()
 	AAE_DRIVER_VECTORRAM(0, 0)
 	AAE_DRIVER_NVRAM_NONE()
 	AAE_DRIVER_LAYOUT_NONE()
-AAE_DRIVER_END()
+	AAE_DRIVER_END()
 
 	AAE_REGISTER_DRIVER(drv_solarq)
 	AAE_REGISTER_DRIVER(drv_starcas)
