@@ -17,6 +17,7 @@
 #include "invaders.h"
 #include "old_mame_raster.h"
 #include "sys_input.h"
+#include "eeprom_93cxx.h"
 
 
 uint8_t m_p1 = 0;
@@ -1129,9 +1130,194 @@ AAE_DRIVER_NVRAM_NONE()
 AAE_DRIVER_LAYOUT("default.lay", "Upright_Artwork")
 AAE_DRIVER_END()
 
+//============================================================================
+// Space Invaders Multigame M8.03D (Braze Technologies, 2002) on Space
+// Invaders hardware.
+//
+// The kit replaces the program ROMs with one 128K EPROM (m803d.bin) whose
+// address and data lines are scrambled on the board; init descrambles it
+// into REGION_USER2 (MAME's init_invmulti). Banking (eight 16K banks):
+//   CPU $0000-$1FFF and mirror $8000-$9FFF: 8K at bank * $4000
+//   CPU $4000-$5FFF and mirror $C000-$DFFF: 8K at bank * $4000 + $2000
+//   write to $E000-$FFFF: bank = bit6 << 2 | bit4 << 1 | bit0
+// The two halves are memcpy'd into the flat CPU array (and its mirrors) when
+// the bank changes. RAM $2000-$3FFF is mirrored at $A000-$BFFF; writes to the
+// mirrored video RAM must still be plotted.
+// Serial EEPROM, a 93C46 in 8-bit mode (machine/eeprom_93cxx), at $6000-$7FFF:
+// read bit 0 = DO; write bit 0 = DI, bit 6 = CS, bit 4 = CLK. Saved in
+// invmulti.nv. I/O ports, interrupts, video and samples are plain Invaders.
+//============================================================================
+static eeprom_93cxx im_eeprom;
+static int im_bank = -1;
+
+static void invmulti_select(int bank)
+{
+	UINT8* RAM = Machine->memory_region[CPU0];
+	const UINT8* rom = Machine->memory_region[REGION_USER2];
+
+	bank &= 7;
+	if (bank == im_bank)
+		return;
+	im_bank = bank;
+	memcpy(RAM + 0x0000, rom + bank * 0x4000, 0x2000);
+	memcpy(RAM + 0x8000, rom + bank * 0x4000, 0x2000);
+	memcpy(RAM + 0x4000, rom + bank * 0x4000 + 0x2000, 0x2000);
+	memcpy(RAM + 0xc000, rom + bank * 0x4000 + 0x2000, 0x2000);
+}
+
+WRITE_HANDLER(invmulti_bank_w)
+{
+	invmulti_select(((data >> 6) & 1) << 2 | ((data >> 4) & 1) << 1 | (data & 1));
+}
+
+READ_HANDLER(invmulti_eeprom_r)
+{
+	return eeprom_93cxx_do(&im_eeprom) ? 1 : 0;
+}
+
+WRITE_HANDLER(invmulti_eeprom_w)
+{
+	eeprom_93cxx_set_di(&im_eeprom, data & 1);
+	eeprom_93cxx_set_cs(&im_eeprom, (data >> 6) & 1);
+	eeprom_93cxx_set_clk(&im_eeprom, (data >> 4) & 1);
+}
+
+// RAM mirror at $A000-$BFFF (offsets are from the start of each range)
+READ_HANDLER(invmulti_ram_mirror_r)
+{
+	return Machine->memory_region[CPU0][0x2000 + address];
+}
+
+WRITE_HANDLER(invmulti_work_ram_mirror_w)	// $A000-$A3FF
+{
+	Machine->memory_region[CPU0][0x2000 + address] = data;
+}
+
+MEM_READ(invmulti_readmem)
+MEM_ADDR(0x6000, 0x7fff, invmulti_eeprom_r)
+MEM_ADDR(0xa000, 0xbfff, invmulti_ram_mirror_r)
+MEM_END
+
+MEM_WRITE(invmulti_writemem)
+MEM_ADDR(0x2000, 0x23ff, MWA_RAM)
+MEM_ADDR(0x0000, 0x1fff, MWA_ROM)
+MEM_ADDR(0x2400, 0x3fff, invaders_videoram_w)
+MEM_ADDR(0x4000, 0x5fff, MWA_ROM)
+MEM_ADDR(0x6000, 0x7fff, invmulti_eeprom_w)
+MEM_ADDR(0x8000, 0x9fff, MWA_ROM)
+MEM_ADDR(0xa000, 0xa3ff, invmulti_work_ram_mirror_w)
+MEM_ADDR(0xa400, 0xbfff, invaders_videoram_w)	// offset 0 = video RAM offset 0
+MEM_ADDR(0xc000, 0xdfff, MWA_ROM)
+MEM_ADDR(0xe000, 0xffff, invmulti_bank_w)
+MEM_END
+
+int init_invmulti()
+{
+	const UINT8* src = Machine->memory_region[REGION_USER1];
+	UINT8* dest = Machine->memory_region[REGION_USER2];
+
+	// unscramble the ROM
+	for (int i = 0; i < 0x20000; i++)
+		dest[i] = BITSWAP8(src[(i & 0x100ff) | (BITSWAP8(((i >> 8) & 0xff), 7, 3, 4, 5, 0, 6, 1, 2) << 8)], 0, 6, 5, 7, 4, 3, 1, 2);
+
+	invaders_videoram = &Machine->memory_region[0][0x2400];
+	screen_red_enabled = 0;
+	flipscreen = 0;
+	flip = 0;
+	invaders_vh_start();
+
+	eeprom_93cxx_init(&im_eeprom, 7, 8);	// 93C46, x8
+	nvram_set_region(im_eeprom.rom, im_eeprom.size, 0xff);
+	im_bank = -1;
+	invmulti_select(0);
+	return 0;
+}
+
+ROM_START(invmulti)
+ROM_REGION(0x10000, REGION_CPU1, 0)
+ROM_REGION(0x20000, REGION_USER1, 0)
+ROM_LOAD("m803d.bin", 0x00000, 0x20000, CRC(6a62cb3c) SHA1(eb7b567098ad596859f417dd5c59c2cf1ebf1154))
+ROM_REGION(0x20000, REGION_USER2, 0)	// descrambled image
+ROM_END
+
+INPUT_PORTS_START(invmulti)
+PORT_START("IN0")
+PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_UNKNOWN)
+PORT_BIT(0x02, IP_ACTIVE_HIGH, IPT_UNKNOWN)
+PORT_BIT(0x04, IP_ACTIVE_HIGH, IPT_UNKNOWN)
+PORT_BIT(0x08, IP_ACTIVE_LOW, IPT_UNUSED)
+PORT_BIT(0x10, IP_ACTIVE_HIGH, IPT_BUTTON1)
+PORT_BIT(0x20, IP_ACTIVE_HIGH, IPT_JOYSTICK_LEFT | IPF_2WAY)
+PORT_BIT(0x40, IP_ACTIVE_HIGH, IPT_JOYSTICK_RIGHT | IPF_2WAY)
+PORT_BIT(0x80, IP_ACTIVE_HIGH, IPT_UNKNOWN)
+
+PORT_START("IN1")
+PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_COIN1)	/* active HIGH, unlike invaders */
+PORT_BIT(0x02, IP_ACTIVE_HIGH, IPT_START2)
+PORT_BIT(0x04, IP_ACTIVE_HIGH, IPT_START1)
+PORT_BIT(0x08, IP_ACTIVE_LOW, IPT_UNUSED)
+PORT_BIT(0x10, IP_ACTIVE_HIGH, IPT_BUTTON1)
+PORT_BIT(0x20, IP_ACTIVE_HIGH, IPT_JOYSTICK_LEFT | IPF_2WAY)
+PORT_BIT(0x40, IP_ACTIVE_HIGH, IPT_JOYSTICK_RIGHT | IPF_2WAY)
+PORT_BIT(0x80, IP_ACTIVE_HIGH, IPT_UNKNOWN)
+
+PORT_START("DSW0")
+PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_UNKNOWN)
+PORT_BIT(0x02, IP_ACTIVE_HIGH, IPT_UNKNOWN)
+PORT_BIT(0x04, IP_ACTIVE_HIGH, IPT_UNKNOWN)
+PORT_BIT(0x08, IP_ACTIVE_HIGH, IPT_UNKNOWN)
+PORT_BIT(0x10, IP_ACTIVE_HIGH, IPT_BUTTON1)
+PORT_BIT(0x20, IP_ACTIVE_HIGH, IPT_JOYSTICK_LEFT | IPF_2WAY)
+PORT_BIT(0x40, IP_ACTIVE_HIGH, IPT_JOYSTICK_RIGHT | IPF_2WAY)
+PORT_BIT(0x80, IP_ACTIVE_HIGH, IPT_UNKNOWN)
+
+PORT_START("FAKE")		/* Dummy port for cocktail mode */
+PORT_DIPNAME(0x01, 0x00, DEF_STR(Cabinet))
+PORT_DIPSETTING(0x00, DEF_STR(Upright))
+PORT_DIPSETTING(0x01, DEF_STR(Cocktail))
+INPUT_PORTS_END
+
+// Space Invaders Multigame (Braze M8.03D)
+AAE_DRIVER_BEGIN(drv_invmulti, "invmulti", "Space Invaders Multigame (Braze M8.03D)")
+AAE_DRIVER_ROM(rom_invmulti)
+AAE_DRIVER_FUNCS(&init_invmulti, &run_invaders, &end_invaders)
+AAE_DRIVER_INPUT(input_ports_invmulti)
+AAE_DRIVER_SAMPLES(invaders_samples)
+AAE_DRIVER_ART_NONE()
+
+AAE_DRIVER_CPUS(
+	AAE_CPU_ENTRY(
+		/*type*/     CPU_8080,
+		/*freq*/     2000000,
+		/*div*/      100,
+		/*ipf*/      2,
+		/*int type*/ INT_TYPE_INT,
+		/*int cb*/   &invaders_interrupt,
+		/*r8*/       invmulti_readmem,
+		/*w8*/       invmulti_writemem,
+		/*pr*/       invaders_readport,
+		/*pw*/       invaders_writeport,
+		/*r16*/      nullptr,
+		/*w16*/      nullptr
+	),
+	AAE_CPU_NONE_ENTRY(),
+	AAE_CPU_NONE_ENTRY(),
+	AAE_CPU_NONE_ENTRY()
+)
+
+AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_RASTER_BW, ORIENTATION_ROTATE_270 | ORIENTATION_FLIP_X)
+AAE_DRIVER_SCREEN(32 * 8, 32 * 8, 0 * 8, 32 * 8 - 1, 0 * 8, 28 * 8 - 1)
+AAE_DRIVER_RASTER(0, 21 / 3, 0, init_palette)
+AAE_DRIVER_HISCORE_NONE()
+AAE_DRIVER_VECTORRAM(0, 0)
+AAE_DRIVER_NVRAM(generic_nvram_handler)
+AAE_DRIVER_LAYOUT_NONE()
+AAE_DRIVER_END()
+
 AAE_REGISTER_DRIVER(drv_invaders)
 AAE_REGISTER_DRIVER(drv_invadpt2)
 AAE_REGISTER_DRIVER(drv_invaddlx)
 AAE_REGISTER_DRIVER(drv_clowns)
 AAE_REGISTER_DRIVER(drv_clowns1)
 AAE_REGISTER_DRIVER(drv_boothill)
+AAE_REGISTER_DRIVER(drv_invmulti)
