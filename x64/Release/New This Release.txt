@@ -1,3 +1,127 @@
+10/4/26
+Release 2.00
+
+POKEY: new cycle-accurate emulation
+- About two weeks of work went into a new cycle-accurate POKEY core
+  (c012294), written from the POKEY VHDL, the remastered chip schematics, 
+  the Altirra hardware documentation, and timing measured by custom test 
+  code running on a real Space Duel PCB.
+- Built from the schematics: the RANDOM shift chain, the timed serial port
+  and SKSTAT, the keyboard matrix scanner, and an output stage measured from
+  the silicon (replaces the old linear DAC).
+- AAE talks to the core through a catch-up adapter (c012294_interface),
+  which replaces the old C++ POKEY core.
+- Space Duel's shield sound is finally emulated accurately. 
+- It is about 75 times slower than the old core. Optimizations are coming
+  soon.
+- Verification isn't finished. A Warlords PCB is needed for the remaining
+  hardware checks. (POT Timing)
+
+New games and sets
+- Space Invaders Part II (Taito), invadpt2, with the PROM color board.
+- Braze Space Invaders Multigame (invmulti, M8.03D), with EEPROM saves.
+- Braze Asteroids / Asteroids Deluxe Multigame (astdelbz, astbz11b,
+  astdelbz11b), with EEPROM saves.
+  *NOTE* The Braze Asteroids Multigame descrambling code is not included at
+  this time.
+- Tempest Multigame: tempmg (HBMAME layout) replaces tempestm. Each game in
+  the multigame keeps its own screen geometry. The make_tempmg.ps1 tool
+  builds the set.
+- Omega Race (60 fps), omegrace60: a frame-locked 60 fps version of Omega
+  Race on the same ROM set, with no ROM patch.
+- Star Wars: starwarso added; ROM names now match MAME 0.286.
+- Parent/child merged romsets, as in MAME: a clone loads any missing ROMs
+  from its parent's zip and matches files by CRC.
+
+Timing: Atari vector games retimed to the boards
+- Lunar Lander, Battlezone, Bradley Trainer and Red Baron run at the board's
+  exact 246.09375 Hz (was 240 Hz, 2.5% slow). Red Baron and Bradley now
+  present at 40 fps like Battlezone.
+- Star Wars / Empire Strikes Back: main IRQ at the hardware rate of 246 Hz,
+  checked against the disassembly.
+- Omega Race / Delta Race: exact 244.140625 Hz (was 250 Hz, 2.4% fast).
+- Major Havoc (all sets): IRQ clock at the board's 4882.8125 Hz (was
+  2.4% fast).
+- Quantum: driver reworked. IRQ is now 240 Hz (was 180 Hz, about 27% slow)
+  and the vector generator handles Quantum's mid-list restarts the way MAME
+  0.286 does, so the stray fragments, blank frames and the white diagonal
+  line are gone.
+- Aztarac: the sound CPU's timer IRQ is now 100 Hz (was 40 times too fast).
+- Asteroids, Black Widow, Gravitar, Space Duel and the Tempest family stay
+  at 240 Hz (2.5% under the board) on purpose, for smooth 60 fps.
+
+Sound
+- Demon and QB3 now run the real Z80 + CTC + 3x AY8910 sound board instead
+  of samples. Both have perfect audio, and Demon's sounds no longer stick
+  on.
+- Star Wars / ESB: 6532 RIOT chip and the real sound board handshake, so
+  the music no longer cuts out; TMS5220 speech is now correct.
+- TMS5220 speech (Star Wars, Major Havoc) is no longer too loud and harsh.
+- Speed Freak: engine, crash and horn sounds.
+- Most Cinematronics sound overhauled: the Tail Gunner laser loops while
+  held, Boxing Bugs music has four volume levels, and Star Castle and Solar
+  Quest sounds no longer carry over from the previous game.
+- Battlezone: engine and effect samples driven from the sound latch.
+- Volumes normalized: new SAMPLE VOLUME and CHIP VOLUME controls on top of
+  the main volume, with per-game balance built into the drivers. Volume
+  changes made in the pause menu are now kept.
+
+Game fixes
+- Speed Freak: steering and gear shift work for the first time and match
+  the real steering wheel. It's still very hairy to drive!
+- Sundance: holding two keypad keys no longer draws garbage lines.
+- Aztarac: input fixed (the joystick X axis was lost).
+- Boxing Bugs: the dial was off by one bit.
+- Cinematronics: all games use MAME's screen orientation (Solar Quest was
+  upside down and mirrored); QB3 settings no longer carry over into the
+  next game; Space Wars and Speed Freak controls fixed; coin input matches
+  MAME.
+- Joust and Bubbles: sprites no longer vanish.
+- Vector Breakout shows a picture again.
+- Tempest: cocktail mode flips the screen for player 2; the Cabinet DIP
+  defaults to Upright.
+- Eliminator clones (elim2a, elim2c, elim4, elim4p): crash fixed.
+- Warlords: the driver now matches the schematics; POKEY bus timing passes
+  the protection checks with the new chip emulation.
+- Battlezone input fixed to work with the new POKEY.
+- Star Wars driver rewritten: math box and NVRAM from MAME 0.159, ESB memory
+  map and slapstic fixes.
+
+Input
+- Twin-stick on one gamepad: Black Widow and Robotron fire with the right
+  thumbstick. With two pads, the second pad still works as before.
+- Aztarac's aim dial also uses the right thumbstick; Start 1 and Coin 1 are
+  on gamepad buttons.
+- default.cfg format 4: only bindings you changed are saved, so new default
+  bindings in a release now reach you. Delete an old default.cfg once to
+  pick them up.
+
+Saves (EAROM / NVRAM)
+- New ER2055 EAROM chip model for Tempest, Asteroids Deluxe, Black Widow,
+  Gravitar, Space Duel, Red Baron, Centipede and Millipede. Saves use a new
+  64-byte .nv format, so old high-score files for these games won't carry
+  over.
+- Battlezone, Battlezone Plus and Bradley no longer keep an NVRAM file (the
+  board has no EAROM).
+
+Video and front end
+- New 6100 Soft Phosphor color CRT mode (color_enable=2, OpenGL and Vulkan).
+- Color vector games start with the color shader off unless the game's ini
+  turns it on.
+- Lunar Lander: the MAME artwork is removed; custom on-screen vector artwork
+  is switched by a fake DIP switch.
+- ALT+ENTER out of fullscreen now restores a correctly shaped window for
+  vertical games.
+- -window and -nowindow command-line options now work.
+
+Under the hood
+- 6502 core: cycle-exact bus timing, undocumented opcodes, interrupt fixes
+  (passes the Lorenz NMI test).
+- Math box: Am2901 microcode interpreter running from the real PROMs
+  (Tempest, Battlezone, Red Baron).
+- Scheduler: cpu_yield() and per-CPU timers.
+- Linux/flatpak build updated, with release and testing build scripts.
+
 9/27/26
 Release 1.99 WIP - TEST BUILD ONLY
 **This build includes entirely new POKEY emulation. It's 75x slower than the old one but cycle

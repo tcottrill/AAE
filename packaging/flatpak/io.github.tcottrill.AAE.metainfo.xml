@@ -45,6 +45,25 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="2.00" date="2026-10-04">
+      <description>
+        <p>A new cycle-accurate POKEY sound core, built from the chip's VHDL,
+        schematics and measurements from a real Space Duel board. Space Duel's
+        shield sound is now emulated accurately.</p>
+        <p>New games and sets: Space Invaders Part II, the Braze Space Invaders
+        and Asteroids/Asteroids Deluxe multigames with EEPROM saves, the
+        Tempest multigame (tempmg), a 60 fps Omega Race, and Star Wars
+        (starwarso). Clones now load missing ROMs from their parent's set.</p>
+        <p>The Atari vector games are retimed to their boards' real interrupt
+        rates. Demon and QB3 run their real sound boards, Star Wars music and
+        speech are fixed, and most Cinematronics sounds are overhauled, with
+        new sample and chip volume controls.</p>
+        <p>Also in this release: Speed Freak steering and gears work, many
+        game fixes, and a visible 6100 shadow-mask shader for color vector
+        monitors.</p>
+      </description>
+    </release>
+
     <release version="1.96" date="2026-08-10">
       <description>
         <p>Audio release. Looped samples now fade to silence when they stop
