@@ -62,7 +62,7 @@ dreams.
 
 The audio engine, input, frame timing, rendering pipeline, ROM loader, artwork handling, memory
 handling, the back-end driver registry — and, one by one, **every CPU core** — have been rewritten
-as custom, non-MAME code.
+as custom, non-MAME code. *Except Aaron Giles Cinematronics CCPU*
 
 Make no mistake: at its core this is still a MAME derivative, and it stands entirely on the
 shoulders of the MAME team's work. **All MAME code used (and abused) in this emulator remains the
