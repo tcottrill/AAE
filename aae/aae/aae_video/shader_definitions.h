@@ -639,9 +639,11 @@ uniform float uMaskStrength; // 0..1: how dark the "wrong" phosphors get
 uniform float uMaskScale;    // width of one phosphor stripe in OUTPUT px
 uniform int   uSoftPhosphor; // separate 6100 mode; bypasses raster processing
 
-// A low-contrast, band-limited phosphor approximation. The three cosine
-// components form round peaks on a triangular lattice without hard cell edges.
-// Suppress frequencies approaching Nyquist, then integrate over a pixel box.
+// Shadow-mask phosphor dots on a triangular (delta-gun) lattice: the
+// band-limited sum of three cosines, +3 on the lattice points, -1.5 between
+// them, 0 on average. Components approaching Nyquist fade toward that
+// average, so a pitch too fine for the display degrades to "no mask"
+// instead of moire. Integrated over the pixel box (sinc terms).
 float softPhosphorDots(vec2 q, vec2 qdx, vec2 qdy) {
     const float tau = 6.28318530718;
     vec3 phase = tau * vec3(q.x - q.y / 1.732050808,
@@ -656,10 +658,10 @@ float softPhosphorDots(vec2 q, vec2 qdx, vec2 qdy) {
                          qdy.x + qdy.y / 1.732050808,
                          2.0 * qdy.y / 1.732050808);
     vec3 freq = max(abs(dx), abs(dy)) / tau;
-    vec3 fade = vec3(1.0) - smoothstep(vec3(0.25), vec3(0.5), freq);
+    vec3 fade = vec3(1.0) - smoothstep(vec3(0.30), vec3(0.5), freq);
     vec3 hx = max(abs(dx) * 0.5, vec3(0.00001));
     vec3 hy = max(abs(dy) * 0.5, vec3(0.00001));
-    return dot(cos(phase), fade * (sin(hx) / hx) * (sin(hy) / hy)) / 3.0;
+    return dot(cos(phase), fade * (sin(hx) / hx) * (sin(hy) / hy));
 }
 
 vec3 softPhosphor(vec3 col, vec2 uv, float strength, float scale) {
@@ -668,21 +670,29 @@ vec3 softPhosphor(vec3 col, vec2 uv, float strength, float scale) {
     vec2 outputSize = vec2(
         1.0 / max(length(vec2(dFdx(uv.x), dFdy(uv.x))), 0.000001),
         1.0 / max(length(vec2(dFdx(uv.y), dFdy(uv.y))), 0.000001));
-    float pitch = max(1.5 * scale * outputSize.y / 1080.0, 0.001);
+    // Dot pitch in output px at 1080p: MASK SIZE 1 = 3 px, +1.5 px per step.
+    // From ~4.5 px (size 2) up the lattice is fully resolved at 1080p; finer
+    // pitches fade toward no mask rather than alias.
+    float pitch = max((1.5 + 1.5 * scale) * outputSize.y / 1080.0, 0.001);
     vec2 q = uv * outputSize / pitch;
     vec2 qdx = dFdx(uv) * outputSize / pitch;
     vec2 qdy = dFdy(uv) * outputSize / pitch;
-    vec3 grain = vec3(softPhosphorDots(q, qdx, qdy),
-                     softPhosphorDots(q - vec2(0.5, 0.288675135), qdx, qdy),
-                     softPhosphorDots(q - vec2(0.0, 0.577350269), qdx, qdy));
-    col = clamp(col, 0.0, 1.0);
-    // Retain phosphor texture on saturated vector cores. Multiplying by
-    // (1-col) erased it on exactly the bright RGB strokes it should affect.
-    // A perceptual strength curve gives the low end of the control useful
-    // range. Zero-mean grain preserves dim/mid-level energy; highlight
-    // clipping costs a little light, bounded by the modest modulation depth.
-    float depth = 0.30 * sqrt(clamp(strength, 0.0, 1.0));
-    return clamp(col * (vec3(1.0) + depth * grain), 0.0, 1.0);
+    vec3 lattice = vec3(softPhosphorDots(q, qdx, qdy),
+                        softPhosphorDots(q - vec2(0.5, 0.288675135), qdx, qdy),
+                        softPhosphorDots(q - vec2(0.0, 0.577350269), qdx, qdy));
+    // Per-gun transmittance: 1 on that gun's own dots, 0 between them,
+    // 1/3 on average.
+    vec3 dots = clamp((lattice + 1.5) / 4.5, 0.0, 1.0);
+    // Blend toward the mask by strength (sqrt gives the low end of the
+    // control a usable range), then restore the average light the mask
+    // removes. Bright strokes clip at the dot centres and go dark between
+    // them, so saturated vectors break into triads as on a real tube; dim
+    // strokes keep their average brightness. A fully faded lattice is 1/3
+    // everywhere, which the gain maps back to exactly the unmasked image.
+    float depth = sqrt(clamp(strength, 0.0, 1.0));
+    vec3  mask  = mix(vec3(1.0), dots, depth);
+    float gain  = 1.0 / (1.0 - depth * (2.0 / 3.0));
+    return clamp(clamp(col, 0.0, 1.0) * mask * gain, 0.0, 1.0);
 }
 
 
