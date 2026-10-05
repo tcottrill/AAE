@@ -30,7 +30,8 @@
 //     ROM PIA's CB1, COUNT240 (scanline >= 240) into CA1. MAME 0.53 does
 //     this with timer_set scanline callbacks; here the CPU0 interrupt
 //     callback runs 32x per frame (every 8 scanlines, the same cadence)
-//     and derives both signals from aae_cpu_getscanline().
+//     and derives both signals from its own pass count (pass k = scanline
+//     8k), not from the measured beam position.
 //   * Video RAM is 0x9800 bytes, COLUMN-major: x_pair = addr >> 8,
 //     y = addr & 0xff, two 4bpp pixels per byte (high nibble left). VRAM is
 //     copied to the bitmap in 8-line strips as the beam passes (from the
@@ -78,6 +79,7 @@ static int williams_d000_ram = 0;    // 1 = sinistar: D000-DFFF is RAM
 static int williams_has_cvsd = 0;    // 1 = sinistar: HC55516 running
 static int port_select = 0;          // widget PIA CB2 player mux
 static int williams_render_line = 0; // next unrendered scanline (beam-chasing redraw)
+static int williams_va11_pass = 0;    // VA11 callbacks taken this frame (each = 8 scanlines)
 
 static mc6821 pia_widget;            // C804-C807
 static mc6821 pia_rom;               // C80C-C80F
@@ -458,14 +460,19 @@ static mc6821_interface snd_pia_intf_sinistar(void)
 
 void williams_va11_interrupt(void)
 {
-	int scanline = aae_cpu_getscanline();
-	// Catch the bitmap up to the beam before servicing the PIA signals below
-	// (the IRQ they may raise isn't taken until this callback returns anyway).
+	// Pass k of 32 stands for the timer MAME 0.53/0.90 fires at scanline 8k;
+	// the 32nd is line 256 = line 0 of the next frame. Don't read the beam
+	// here: the scheduler's pass boundary (k*cpf/32 cycles) truncates to just
+	// before line 8k, so aae_cpu_getscanline() sometimes reports 8k-1 - that
+	// slipped VA11 and COUNT240 a whole strip late at random and Bubbles'
+	// beam-chasing sprite redraw lost sprites.
+	int scanline = (++williams_va11_pass) * 8;
 	if (scanline > williams_render_line)
 	{
 		williams_render_rows(williams_render_line, scanline);
 		williams_render_line = scanline;
 	}
+	scanline &= 0xff;
 	pia_rom.set_cb1((scanline & 0x20) ? 1 : 0);   // VA11
 	pia_rom.set_ca1((scanline >= 240) ? 1 : 0);   // COUNT240
 }
@@ -632,6 +639,7 @@ static int williams_common_init(const mc6821_interface& widget,
 	williams_has_cvsd = 0;
 	defender_bank = 0;
 	williams_render_line = 0;
+	williams_va11_pass = 0;
 
 	pia_widget.configure(widget);
 	pia_rom.configure(rom_pia_intf());
@@ -679,6 +687,7 @@ void run_williams(void)
 	palette_recalc();   // apply deferred color-register writes (milliped pattern)
 	williams_render_rows(williams_render_line, 256);   // finish off the bottom strip
 	williams_render_line = 0;
+	williams_va11_pass = 0;
 	DAC_sh_update();
 	if (williams_has_cvsd)
 		hc55516_sh_update();
