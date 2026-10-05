@@ -590,25 +590,134 @@ Spent a ton of time on source cleanup and prepping for an actual release.
   draws a picture every six NMIs (~41 Hz), so Red Baron (was 60 fps) and
   Bradley (was 45 fps) now present at 40 fps like Battlezone.
 
+10/4/26
+Changes since the 9/14 build.
 
+POKEY: new cycle-accurate emulation
+- About two weeks of work went into a new cycle-accurate POKEY core
+  (c012294), written from the POKEY VHDL, the remastered chip schematics, 
+  the Altirra hardware documentation, and timing measured by custom test 
+  code running on a real Space Duel PCB.
+- Built from the schematics: the RANDOM shift chain, the timed serial port
+  and SKSTAT, the keyboard matrix scanner, and an output stage measured from
+  the silicon (replaces the old linear DAC).
+- AAE talks to the core through a catch-up adapter (c012294_interface),
+  which replaces the old C++ POKEY core.
+- Space Duel's shield sound is finally emulated accurately. 
+- It is about 75 times slower than the old core. Optimizations are coming
+  soon.
+- Verification isn't finished. A Warlords PCB is needed for the remaining
+  hardware checks. (POT Timing)
 
- 
+New games / sets
+- Space Invaders Part II (Taito), invadpt2, ported from MAME 0.109 with the
+  PROM color board, the red screen when your base is hit, and Name Reset on
+  F1. invaddlx and clowns1 are now marked as clones.
+- Braze Space Invaders Multigame, invmulti (M8.03D): descrambled ROM, eight
+  banks, 93C46 EEPROM for saves.
+- Braze Asteroids / Asteroids Deluxe multigame (astdelbz, astbz11b,
+  astdelbz11b), with a new 93C46 serial EEPROM chip model and video2.ini
+  sections.
+  *NOTE* The Braze Asteroids Multigame descrambling code is not included at 
+  this time. 
+- Tempest Multigame: tempmg replaces tempestm, using HBMAME's ROM layout.
+  Each bank reads its own video.ini rect (Vector Breakout keeps its
+  geometry) and the vector buffer is cleared at each bank switch. The
+  make_tempmg.ps1 tool builds the set.
+- Star Wars: starwarso added, starwars1 loads its own 1f ROM, ROM names now
+  match MAME 0.286.
 
+Sound
+- Demon: real Z80 + CTC + 3x AY8910 sound board instead of Star Hawk
+  samples. Also fixes sounds sticking on (the CTC was never acknowledged).
+- QB3: runs the Demon sound board instead of War of the Worlds samples, with
+  MAME's sound ROM patch; fixed a qb3_frame_r flicker.
+- Star Wars / ESB: 6532 RIOT device and the MAME 0.159 sound handshake
+  (fixes the music cutting out), correct POKEY and TMS5220 clocks.
+- TMS5220: the chirp table is read as signed, so Star Wars and Major Havoc
+  speech is no longer too loud and harsh. The interface volume is applied.
+- Speed Freak: engine, crash and horn sounds decoded from the game's sound
+  word. 
+- Tail Gunner: the laser loops while held; sound state resets between games.
+- Boxing Bugs: four music volume levels instead of on/off.
+- Battlezone: the SOUND latch plays from samples (engine pitch ramp, D7 fade,
+  D5 mutes the POKEY).
+- Mixer: new SAMPLE and CHIP group volumes (samplevol knob; the POKEY/AY
+  menu item is now CHIP VOLUME). Per-game sound trims are declared in the
+  driver, since per-game ini files no longer ship. Asteroids Deluxe and
+  Battlezone samples are 4 dB lower. The master volume was applied twice on
+  some channels; fixed. Volume changes made in the pause menu are kept.
+  pokeyvol defaults to full.
 
+Driver fixes
+- Star Wars / ESB: main IRQ at the hardware rate of 246 Hz, checked against
+  the disassembly's emulator twin. Math box, divider and X2212 NVRAM ported
+  from MAME 0.159. ESB memory map fixes. The slapstic no longer treats
+  interrupt entry or RTI as a jump into or out of the bank region.
+- Cinematronics: every game uses MAME orientation, set only in the
+  driver (Solar Quest was upside down and mirrored); inverted video.ini rects
+  normalized. QB3 mode no longer carries over into the next game. Boxing
+  Bugs dial off-by-one fixed. Space Wars and Speed Freak no longer break on
+  the missing analog ports. Coin input follows MAME's latch. Boxing Bugs and
+  QB3 are flagged as color. Per-game sound state resets (Star Castle drone
+  pitch, Solar Quest thrust).
+- Speed Freak: steering and gear shift work (both were broken). Input is much 
+  improved and the game matches the real steering wheel. It's still very hairy 
+  to drive!
+- Sundance (Cinematronics): fixed the keypad input. Holding two keys ORed
+  their 4-bit codes into values no single key makes (e.g. pads 4+5, 7+9),
+  which the game drew as garbage lines. The keypad now reports one key at a
+  time; the last key pressed wins.
+- Aztarac: fixed the input bug. The joystick X axis was lost on byte reads
+  (the 68000 reads X from the high byte and Y from the low byte, and the old
+  handler returned the packed word); X is also masked on word reads now. The
+  aim dial takes P1's right thumbstick when only one pad is connected. Start
+  1 and Coin 1 are on gamepad buttons 8 and 7; Start 2 is keyboard-only so
+  the menu button starts a one-player game.
+- Williams: VRAM is drawn in beam-synced 8-line strips, so Joust sprites no
+  longer vanish. VA11/COUNT240 timing comes from the callback pass count,
+  fixing lost sprites in Bubbles.
+- Tempest: Vector Breakout shows a picture again (a frame that ends in HALT
+  is drawn at VGGO). OUT0 X/Y inverts modeled for cocktail player 2.
+  Cabinet DIP defaults to Upright.
+- Eliminator clones (elim2a, elim2c, elim4, elim4p): fixed a heap overflow
+  crash (CPU region was too small). The Z80 PPC keeps its -1 sentinel for
+  interrupts.
+- Warlords: POKEY bus-wait handlers to match the protection checks with the
+  proper chip emulation.
 
+EAROM / NVRAM
+- New ER2055 EAROM chip model (from MAME er2055_device) replaces
+  machine/earom.cpp in Tempest, Asteroids Deluxe, Black Widow, Gravitar,
+  Space Duel, Red Baron, Centipede and Millipede. Saves use a 64-byte raw .nv
+  format.
+- Battlezone, Battlezone Plus and Bradley no longer register NVRAM (that
+  board has no EAROM).
 
+Core / CPU / loader
+- 6502: cycle timing comes only from the bus cycles the core emits; IRQ/NMI
+  pin APIs; NMOS ADC/SBC edge cases; IRQ-after-CLI fix; undocumented
+  opcodes; the interrupt sequence no longer polls at its end (passes the
+  Lorenz NMI test); 6510 port notification fix.
+- 6809: records why the PC changed (jump, interrupt, RTI, reset).
+- Scheduler: cpu_yield() (6809 only so far) and per-CPU timer_alloc.
+- Math box: Am2901 microcode interpreter driven by the real PROMs, now
+  loaded for Tempest, Battlezone and Red Baron. New ROM_LOAD_NIB_LOW/HIGH
+  for 4-bit PROMs.
+- ROM loader: parent/child merged romsets as in MAME. AAE_DRIVER_CLONE_OF()
+  names the parent; the loader falls back to the parent zip and matches by
+  CRC. Clone tags added across the drivers.
+- Memory regions: the region array is sized from REGION_MAX (REGION_USER3
+  used to crash).
 
+Video / config
+- New 6100 Soft Phosphor color CRT mode (color_enable=2, GL and Vulkan).
+- Color vector games start with the color shader off unless the game's own
+  ini turns it on.
+- video.ini: the ripoff section uses the full_/bezel_/crop_ key names;
+  elim2a has new rects.
 
- 
-
-
-
-
-
- 
-
- 
-
-
- 
+Build
+- Linux/flatpak: CMake source list synced with the vcxproj (112 files), plus
+  release/testing build and stage scripts.
 
