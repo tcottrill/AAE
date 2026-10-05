@@ -1,10 +1,20 @@
 #!/bin/bash
 # Build the AAE Flatpak and export a single-file bundle for the Steam Machine.
 #
-#   wsl -d Ubuntu -- bash /mnt/c/Source2026/AAE_publish/scripts/linux/build-flatpak.sh
+#   wsl -d Ubuntu -- bash /mnt/c/Source2026/AAE_publish/scripts/linux/build-flatpak.sh --release
+#   wsl -d Ubuntu -- bash /mnt/c/Source2026/AAE_publish/scripts/linux/build-flatpak.sh --testing
 #
-# Produces aae.flatpak in the repo root. On the target:
-#   flatpak install --user aae.flatpak
+# (or the build-flatpak-release.sh / build-flatpak-testing.sh wrappers)
+#
+#   --release  roms/artwork/samples exactly as the public AAE repo ships them.
+#              Produces aae-release.flatpak - the only bundle fit to share.
+#   --testing  everything in the local x64/Release (full rom collection).
+#              Produces aae-testing.flatpak - for your own machines only.
+#
+# The mode is required, so a testing bundle is never built by accident.
+# Both install as the same app id, so installing one replaces the other.
+# On the target:
+#   flatpak install --user aae-release.flatpak
 #   flatpak run io.github.tcottrill.AAE
 #
 # TWO THINGS THIS SCRIPT EXISTS FOR
@@ -41,8 +51,15 @@
 #     --force-clean.
 set -e
 
+case "$1" in
+    --release) MODE=release ;;
+    --testing) MODE=testing ;;
+    *) echo "usage: $0 --release | --testing" >&2; exit 1 ;;
+esac
+
 REPO_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 MANIFEST="$REPO_DIR/packaging/flatpak/io.github.tcottrill.AAE.yml"
+BUNDLE="aae-$MODE.flatpak"
 APP_ID="io.github.tcottrill.AAE"
 
 WORK="$HOME/aae-flatpak"
@@ -53,6 +70,12 @@ if [ ! -f "$MANIFEST" ]; then
     echo "error: manifest not found at $MANIFEST" >&2
     exit 1
 fi
+
+# --- Bundled roms/artwork/samples. The manifest reads them from
+# --- build-flatpak-data/, never from x64/Release directly; this fills it
+# --- for the chosen mode (see export-game-data.sh).
+bash "$REPO_DIR/scripts/linux/export-game-data.sh" "$MODE" "$REPO_DIR/build-flatpak-data"
+echo
 
 # The full build log always lands in the repo, because the interesting line is
 # never near the end: a failing compile is followed by pages of warnings, and
@@ -94,7 +117,7 @@ echo "=== exporting bundle ===" | tee -a "$LOG"
 # the build looked like it had succeeded right up to the point where no file
 # appeared. Every stage that can fail writes to the log.
 set +e
-flatpak build-bundle "$WORK/repo" "$WORK/aae.flatpak" "$APP_ID" 2>&1 | tee -a "$LOG"
+flatpak build-bundle "$WORK/repo" "$WORK/$BUNDLE" "$APP_ID" 2>&1 | tee -a "$LOG"
 rc=${PIPESTATUS[0]}
 set -e
 if [ "$rc" -ne 0 ]; then
@@ -111,22 +134,22 @@ fi
 # otherwise completely succeeded. And a half-copied 300MB file that looks
 # finished is worse than no file: it installs, or seems to, and then behaves
 # like a build nobody wrote.
-TMP="$REPO_DIR/aae.flatpak.new"
-if ! cp "$WORK/aae.flatpak" "$TMP"; then
+TMP="$REPO_DIR/$BUNDLE.new"
+if ! cp "$WORK/$BUNDLE" "$TMP"; then
     echo "error: could not write $TMP - is the destination open elsewhere?" >&2
-    echo "       the finished bundle is still at $WORK/aae.flatpak" >&2
+    echo "       the finished bundle is still at $WORK/$BUNDLE" >&2
     exit 1
 fi
-if ! mv -f "$TMP" "$REPO_DIR/aae.flatpak"; then
-    echo "error: could not replace $REPO_DIR/aae.flatpak (file in use?)." >&2
+if ! mv -f "$TMP" "$REPO_DIR/$BUNDLE"; then
+    echo "error: could not replace $REPO_DIR/$BUNDLE (file in use?)." >&2
     echo "       the new bundle is at $TMP - rename it when the file is free." >&2
     exit 1
 fi
 
 echo
 echo "=== done ==="
-ls -lh "$REPO_DIR/aae.flatpak"
+ls -lh "$REPO_DIR/$BUNDLE"
 echo
 echo "Install on the Steam Machine with:"
-echo "    flatpak install --user aae.flatpak"
+echo "    flatpak install --user $BUNDLE"
 echo "    flatpak run $APP_ID"

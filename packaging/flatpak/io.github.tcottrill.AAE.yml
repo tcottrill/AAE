@@ -18,8 +18,11 @@
 # depends only on the runtime, which is the same everywhere.
 #
 # NOTE ON REDISTRIBUTION: this bundles roms/, artwork/ and samples/ so the
-# thing installs and runs in one step. As of the 1.96 release the bundled
-# data set contains no copyrighted ROMs, so the bundle is distributable.
+# thing installs and runs in one step. Those three are read from
+# build-flatpak-data/, which scripts/linux/build-flatpak.sh fills per mode:
+# --release with exactly what the public AAE repo (github.com/tcottrill/AAE)
+# ships - the only distributable bundle - and --testing with the local
+# x64/Release's full rom collection, for the developer's own machines.
 
 app-id: io.github.tcottrill.AAE
 runtime: org.freedesktop.Platform
@@ -144,6 +147,7 @@ modules:
           - build-linux
           - build-cmake
           - build-flatpak
+          - build-flatpak-data
           - flatpak-repo
           - x64
           # The MSBuild output trees. Skipped for size - they are hundreds of
@@ -280,11 +284,22 @@ modules:
           # pleiads/ is not installed (see the note in build-commands), so
           # there is no reason to copy its 2.7MB into the sandbox to ignore it.
           - pleiads
+          # roms/artwork/samples come from publicdata below, never from here.
+          - roms
+          - artwork
+          - samples
+      # roms/artwork/samples for the chosen --release/--testing mode, staged
+      # by build-flatpak.sh. Built without that script, this dir is missing
+      # and the build fails - deliberately, rather than guessing a data set.
+      - type: dir
+        path: ../../build-flatpak-data
+        dest: publicdata
     build-commands:
       - mkdir -p /app/share/aae
-      - cp -r aaedata/roms    /app/share/aae/ 2>/dev/null || true
-      - cp -r aaedata/artwork /app/share/aae/ 2>/dev/null || true
-      - cp -r aaedata/samples /app/share/aae/ 2>/dev/null || true
+      - test -d publicdata/roms && test -d publicdata/samples
+      - cp -r publicdata/roms    /app/share/aae/
+      - cp -r publicdata/artwork /app/share/aae/
+      - cp -r publicdata/samples /app/share/aae/
       - cp -r aaedata/ini     /app/share/aae/ 2>/dev/null || true
       # pleiads/ is NOT shipped. It looks like runtime data and is not: the
       # driver loads its melody and effect samples from samples/pleiads.zip
@@ -317,6 +332,9 @@ modules:
       - install -Dm644 aaedata/cfg/gui.cfg     /app/share/aae/cfg/gui.cfg
       - install -Dm644 aaedata/aae.ini   /app/share/aae/aae.ini
       - install -Dm644 aaedata/video.ini /app/share/aae/video.ini
+      # VECSIM DVG engine rects (config.cpp picks it per game when that
+      # engine is selected); without it those games fall back to video.ini.
+      - install -Dm644 aaedata/video2.ini /app/share/aae/video2.ini
       # Shipped documentation, linked beside aae.ini by the launcher so it
       # sits with the settings it describes. "AAE Xbox Controller Guide.txt"
       # is NOT here - it exists only in the repo root, so the aae module

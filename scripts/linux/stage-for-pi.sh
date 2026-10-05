@@ -1,7 +1,16 @@
 #!/bin/bash
 # Stage a MINIMAL AAE payload for copying to a Raspberry Pi 5.
 #
-#   wsl -d Ubuntu -- bash /mnt/c/Source2026/AAE_publish/scripts/linux/stage-for-pi.sh /mnt/e/aae-pi
+#   wsl -d Ubuntu -- bash /mnt/c/Source2026/AAE_publish/scripts/linux/stage-for-pi.sh --release /mnt/e/aae-pi
+#   wsl -d Ubuntu -- bash /mnt/c/Source2026/AAE_publish/scripts/linux/stage-for-pi.sh --testing /mnt/e/aae-pi
+#
+# (or the stage-for-pi-release.sh / stage-for-pi-testing.sh wrappers)
+#
+#   --release  roms/artwork/samples exactly as the public AAE repo ships them.
+#   --testing  everything in the local x64/Release (full rom collection).
+#
+# The mode is required. Either way those three folders are MIRRORED to the
+# chosen source, so switching modes on the same payload leaves nothing behind.
 #
 # INVOKE FROM POWERSHELL, AND PASS AN EXPLICIT /home/... PATH.
 #
@@ -34,10 +43,13 @@
 set -e
 
 DEST=""
+MODE=""
 FORCE_CONFIG=0
 PRUNE_DATA=0
 for arg in "$@"; do
     case "$arg" in
+        --release)      MODE=release ;;
+        --testing)      MODE=testing ;;
         --force-config) FORCE_CONFIG=1 ;;
         --prune)        PRUNE_DATA=1 ;;
         -*)             echo "unknown option: $arg" >&2; exit 1 ;;
@@ -45,24 +57,30 @@ for arg in "$@"; do
     esac
 done
 
-if [ -z "$DEST" ]; then
-    echo "usage: $0 <destination-directory> [--force-config] [--prune]" >&2
-    echo "  e.g. $0 /home/you/aae-pi-payload   (then copy it to the Pi)" >&2
-    echo "       $0 /mnt/e/aae-pi              (a pen drive mounted at E:)" >&2
+if [ -z "$DEST" ] || [ -z "$MODE" ]; then
+    echo "usage: $0 --release|--testing <destination-directory> [--force-config] [--prune]" >&2
+    echo "  e.g. $0 --release /home/you/aae-pi-payload   (then copy it to the Pi)" >&2
+    echo "       $0 --testing /mnt/e/aae-pi              (a pen drive mounted at E:)" >&2
     echo >&2
-    echo "  Re-staging PRESERVES the target's aae.ini, video.ini and ini/ -" >&2
+    echo "  --release  roms/artwork/samples exactly as the public AAE repo ships them" >&2
+    echo "  --testing  everything in the local x64/Release (full rom collection)" >&2
+    echo >&2
+    echo "  Re-staging PRESERVES the target's aae.ini, video.ini, video2.ini and ini/ -" >&2
     echo "  those hold tuning done on that machine (Pi glow values especially)." >&2
     echo "  --force-config overwrites them with this machine's config instead." >&2
     echo >&2
-    echo "  --prune deletes roms/artwork/samples the source tree no longer has." >&2
-    echo "  Without it those are reported and kept, because roms and artwork may" >&2
-    echo "  have been added ON the target." >&2
+    echo "  roms/artwork/samples are always mirrored to the mode's source; files" >&2
+    echo "  added to them on the target are removed." >&2
+    echo >&2
+    echo "  --prune deletes shaders/pleiads/snap files the source tree no longer" >&2
+    echo "  has. Without it those are reported and kept." >&2
     exit 1
 fi
 
 SRC="$(cd "$(dirname "$0")/../.." && pwd)"
 mkdir -p "$DEST"
 
+echo "=== $MODE payload"
 echo "=== staging from $SRC"
 echo "=== to           $DEST"
 echo
@@ -107,19 +125,20 @@ rsync -a --delete --exclude '*.exe' "$SRC/tools/" "$DEST/tools/"
 # the .spv compiled on Windows run verbatim on ARM. That is what lets the Pi
 # build without installing glslc.
 echo
-# Data is NOT pruned by default, and that asymmetry with the source tree above
-# is deliberate: roms and artwork are exactly the things a user adds ON the
-# target, and a refresh that deleted them would be unforgivable. So extras are
+# shaders/pleiads/snap are NOT pruned by default: extras on the target are
 # counted and reported, and --prune is what actually removes them.
 #
-# The cost of not pruning is that a payload accumulates: re-staging after the
-# tree's data set was trimmed left a 357M payload carrying 279M of artwork
-# against a source tree holding 12M. The report below is what makes that
-# visible instead of silent.
-echo "game data (roms/artwork/samples/shaders)..."
+# roms/, artwork/ and samples/ are different: export-game-data.sh mirrors
+# them from the public AAE repo (--release) or this tree's x64/Release
+# (--testing), so after a stage they match that source exactly - anything
+# added to those three on the target is removed. Keep personal roms outside
+# the payload and point aae.ini's mame_rom_path / mame_artwork_path at them.
 mkdir -p "$DEST/x64/Release"
+bash "$SRC/scripts/linux/export-game-data.sh" "$MODE" "$DEST/x64/Release"
+echo
+echo "game data (shaders/pleiads/snap)..."
 STALE_TOTAL=0
-for d in roms artwork samples shaders pleiads snap; do
+for d in shaders pleiads snap; do
     if [ -d "$SRC/x64/Release/$d" ]; then
         if [ "$PRUNE_DATA" = "1" ]; then
             rsync -a --delete --info=stats1 \
@@ -161,13 +180,13 @@ done
 if [ "$FORCE_CONFIG" = "1" ]; then
     echo "config (--force-config: OVERWRITING the target's settings)..."
     [ -d "$SRC/x64/Release/ini" ] && rsync -a "$SRC/x64/Release/ini/" "$DEST/x64/Release/ini/"
-    for f in aae.ini video.ini; do
+    for f in aae.ini video.ini video2.ini; do
         [ -f "$SRC/x64/Release/$f" ] && cp "$SRC/x64/Release/$f" "$DEST/x64/Release/"
     done
 else
     echo "config (seeding only - the target's own tuning is preserved)..."
     [ -d "$SRC/x64/Release/ini" ] && rsync -a --ignore-existing "$SRC/x64/Release/ini/" "$DEST/x64/Release/ini/"
-    for f in aae.ini video.ini; do
+    for f in aae.ini video.ini video2.ini; do
         if [ -f "$SRC/x64/Release/$f" ] && [ ! -f "$DEST/x64/Release/$f" ]; then
             cp "$SRC/x64/Release/$f" "$DEST/x64/Release/"
         elif [ -f "$DEST/x64/Release/$f" ]; then

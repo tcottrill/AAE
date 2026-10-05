@@ -189,7 +189,7 @@ fi
 # never overwrite. video.ini in particular drives flipping, resizing AND
 # window location together, so silently replacing it would reset the display
 # every update.
-for f in aae.ini video.ini; do
+for f in aae.ini video.ini video2.ini; do
     if [ -f "$APP_DATA/$f" ] && [ ! -f "$DATA_DIR/$f" ]; then
         cp "$APP_DATA/$f" "$DATA_DIR/$f"
     fi
