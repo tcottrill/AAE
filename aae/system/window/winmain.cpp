@@ -1,4 +1,4 @@
-// -----------------------------------------------------------------------------
+﻿// -----------------------------------------------------------------------------
 // winmain.cpp
 //
 // Main entry point and window management for the game engine.
@@ -16,7 +16,8 @@
 // - Modular game entry and exit flow: game_init(), game_run(), game_end()
 // - Robust joystick support with fallback logging
 // - Clean separation of platform-specific responsibilities
-// - Multi-monitor support: starting_monitor config key and -monitor N cmdline flag
+// - Multi-monitor support: starting_monitor / starting_monitor_id config keys and
+//   -monitor N / -monitorid <id> cmdline flags (see monitor_select.h)
 //
 // Notes:
 // - Uses CreateConfiguredWindow() and WindowSetup for centralized window creation
@@ -24,8 +25,14 @@
 // - Supports ALT+ENTER toggle to fullscreen
 // - Supports resize and aspect enforcement via WM_SIZING/WM_SIZE
 // - Saves valid client and window rects for FBO scaling and restoration
-// - starting_monitor is 1-based: 1 = primary, 2 = second monitor, etc.
-//   Values <= 0 or out of range fall back to primary with a log warning.
+// - starting_monitor numbering: 1 = OS primary, 2.. = the other monitors sorted
+//   left-to-right then top-to-bottom (NOT EnumDisplayMonitors order, which
+//   changes when drivers re-enumerate, e.g. toggling G-Sync). Values <= 0 or
+//   out of range fall back to primary.
+// - starting_monitor_id (optional string) is the stable per-physical-monitor
+//   device id printed in the systemlog monitor list. When that monitor is
+//   connected it wins over starting_monitor. -monitorid <id> overrides it on the
+//   command line; -monitor N clears any id so an explicit number wins.
 //
 // -----------------------------------------------------------------------------
 
@@ -49,6 +56,7 @@
 #endif
 #include "aae_mame_driver.h"  // for global 'done'
 #include "windows_util.h"
+#include "monitor_select.h"
 #include "opengl_renderer.h"
 #include "led_service_handler.h"
 
@@ -177,98 +185,36 @@ static Win32WindowState g_windowedFallbackWin32State;
 static RECT Win32_GetNearestMonitorRect(HWND hwnd)
 {
 	if (!hwnd) return RECT{ 0,0,0,0 };
-	MONITORINFO mi = { sizeof(mi) };
-	HMONITOR mon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
-	if (mon && GetMonitorInfo(mon, &mi)) return mi.rcMonitor;
-	return RECT{ 0,0,0,0 };
+	return monsel::FromWindow(hwnd).monitorRect;
 }
 
 // -----------------------------------------------------------------------------
 // Win32_GetPrimaryMonitorRect
-// Returns the RECT of the primary monitor (the one containing point 0,0).
+// Returns the RECT of the OS primary monitor (MONITORINFOF_PRIMARY).
 // -----------------------------------------------------------------------------
 static RECT Win32_GetPrimaryMonitorRect()
 {
-	MONITORINFO mi = { sizeof(mi) };
-	HMONITOR mon = MonitorFromPoint(POINT{ 0, 0 }, MONITOR_DEFAULTTOPRIMARY);
-	if (mon && GetMonitorInfo(mon, &mi)) return mi.rcMonitor;
-	return RECT{ 0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN) };
+	return monsel::Primary().monitorRect;
 }
 
 // -----------------------------------------------------------------------------
-// MonitorEnumData
-// Helper struct used by the EnumDisplayMonitors callback below.
-// Carries the 1-based target index and accumulates results during enumeration.
+// Win32_GetStartingMonitorRect
+// Resolves the monitor to start on from cfg.startingMonitorId (stable device
+// id, wins when that monitor is connected) and cfg.startingMonitor (number:
+// 1 = primary, 2.. = the others sorted left-to-right then top-to-bottom).
+// Never fails: falls back to the primary monitor. Logs the choice and why.
+// Enumeration ORDER is deliberately not used - it changes after driver
+// re-enumeration (e.g. toggling G-Sync). See shared monitor_select module.
 // -----------------------------------------------------------------------------
-struct MonitorEnumData {
-	int targetIndex;   // 1-based index we are looking for
-	int currentIndex;  // counts up as monitors are enumerated
-	RECT foundRect;    // filled in when we find the target
-	bool found;
-};
-
-// -----------------------------------------------------------------------------
-// MonitorEnumProc
-// EnumDisplayMonitors callback. Counts monitors and captures the rect of the
-// one matching targetIndex (1-based).
-// -----------------------------------------------------------------------------
-static BOOL CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC /*hdcMonitor*/, LPRECT /*lprcMonitor*/, LPARAM dwData)
+static RECT Win32_GetStartingMonitorRect(const WindowSetup& cfg)
 {
-	MonitorEnumData* data = reinterpret_cast<MonitorEnumData*>(dwData);
-	data->currentIndex++;
-
-	if (data->currentIndex == data->targetIndex)
-	{
-		MONITORINFO mi = { sizeof(mi) };
-		if (GetMonitorInfo(hMonitor, &mi))
-		{
-			data->foundRect = mi.rcMonitor;
-			data->found = true;
-		}
-		// Return FALSE to stop enumeration early once found
-		return FALSE;
-	}
-	// Keep enumerating
-	return TRUE;
-}
-
-// -----------------------------------------------------------------------------
-// Win32_GetMonitorRectByIndex
-// Returns the monitor rect for a 1-based monitor index.
-//   index 1 = primary monitor (enumeration order, primary is usually first)
-//   index 2 = second monitor, etc.
-// If the index is out of range or enumeration fails, logs a warning and
-// returns the primary monitor rect as a fallback.
-// Note: Windows enumerates monitors in an order that typically places the
-// primary monitor first, but this is not strictly guaranteed. For most
-// desktop setups this works as expected.
-// -----------------------------------------------------------------------------
-static RECT Win32_GetMonitorRectByIndex(int index)
-{
-	// Clamp values <= 0 up to 1 (treat as primary)
-	if (index <= 0)
-		index = 1;
-
-	MonitorEnumData data = {};
-	data.targetIndex  = index;
-	data.currentIndex = 0;
-	data.found        = false;
-	data.foundRect    = Win32_GetPrimaryMonitorRect(); // default if not found
-
-	EnumDisplayMonitors(nullptr, nullptr, MonitorEnumProc, reinterpret_cast<LPARAM>(&data));
-
-	if (!data.found)
-	{
-		LOG_WARN("starting_monitor %d is out of range -- falling back to primary monitor", index);
-		return Win32_GetPrimaryMonitorRect();
-	}
-
-	LOG_INFO("Monitor %d selected: (%d,%d)-(%d,%d)",
-		index,
-		data.foundRect.left, data.foundRect.top,
-		data.foundRect.right, data.foundRect.bottom);
-
-	return data.foundRect;
+	std::string reason;
+	monsel::MonitorDesc m = monsel::Select(cfg.startingMonitor, cfg.startingMonitorId, &reason);
+	LOG_INFO("Starting monitor %d selected: (%ld,%ld)-(%ld,%ld) name=\"%s\" id=%s (%s)",
+		m.number,
+		m.monitorRect.left, m.monitorRect.top, m.monitorRect.right, m.monitorRect.bottom,
+		m.friendlyName.c_str(), m.deviceId.c_str(), reason.c_str());
+	return m.monitorRect;
 }
 
 // -----------------------------------------------------------------------------
@@ -437,7 +383,7 @@ void GetWindowFrameSize(DWORD style, DWORD exStyle, int& frameW, int& frameH)
 // GetBorderlessFullscreenSetup
 // Builds a WindowSetup for borderless fullscreen on the specified monitor.
 // targetMonitor: the screen rect of the desired monitor, from
-//   Win32_GetMonitorRectByIndex() or Win32_GetPrimaryMonitorRect().
+//   Win32_GetStartingMonitorRect() or Win32_GetPrimaryMonitorRect().
 // At startup, the target is chosen from config.starting_monitor. At runtime
 // when the user presses ALT+ENTER, Win32_GetNearestMonitorRect(hwnd) is used
 // instead so we stay on whichever monitor the window is currently on.
@@ -646,6 +592,26 @@ void LoadWindowIniConfig(WindowSetup& config, Win32WindowState& win32Config)
 	if (config.startingMonitor <= 0)
 		config.startingMonitor = 1;
 
+	// Optional stable device id ([main] starting_monitor_id). When that monitor
+	// is connected it wins over the number. Copy it from the monitor list below.
+	{
+		std::string monId = get_config_string("main", "starting_monitor_id", "");
+		strncpy_s(config.startingMonitorId, sizeof(config.startingMonitorId), monId.c_str(), _TRUNCATE);
+	}
+
+	// Log every monitor once so the user can copy a device id into the ini.
+	{
+		std::string list = monsel::DescribeAll();
+		size_t pos = 0;
+		while (pos < list.size())
+		{
+			size_t nl = list.find('\n', pos);
+			if (nl == std::string::npos) nl = list.size();
+			LOG_INFO("Monitor list: %s", list.substr(pos, nl - pos).c_str());
+			pos = nl + 1;
+		}
+	}
+
 	LOG_INFO("Window config from %s: useFullscreen=%d window=%dx%d monitor=%d",
 		iniPath.c_str(),
 		config.useFullscreen ? 1 : 0,
@@ -656,7 +622,8 @@ void LoadWindowIniConfig(WindowSetup& config, Win32WindowState& win32Config)
 // -----------------------------------------------------------------------------
 // ParseCommandLineArgs
 // Applies command-line overrides to the given WindowSetup.
-// -monitor N   sets the starting monitor (1-based, overrides INI)
+// -monitor N   sets the starting monitor number (1 = primary; overrides INI and clears any id)
+// -monitorid <id>  sets the stable starting monitor device id (overrides INI)
 // All other flags work as before.
 // -----------------------------------------------------------------------------
 void ParseCommandLineArgs(WindowSetup& config, Win32WindowState& win32Config)
@@ -700,7 +667,14 @@ void ParseCommandLineArgs(WindowSetup& config, Win32WindowState& win32Config)
 			int mon = _wtoi(argv[++i]);
 			if (mon <= 0) mon = 1;
 			config.startingMonitor = mon;
-			LOG_INFO("Command-line override: starting_monitor = %d", config.startingMonitor);
+			// An explicit number on the command line wins over the ini device id.
+			config.startingMonitorId[0] = '\0';
+			LOG_INFO("Command-line override: starting_monitor = %d (starting_monitor_id cleared)", config.startingMonitor);
+		}
+		else if (arg == L"-monitorid" && i + 1 < argc) {
+			std::string id = win32::Utf16ToUtf8(std::wstring(argv[++i]));
+			strncpy_s(config.startingMonitorId, sizeof(config.startingMonitorId), id.c_str(), _TRUNCATE);
+			LOG_INFO("Command-line override: starting_monitor_id = %s", config.startingMonitorId);
 		}
 	}
 
@@ -746,7 +720,8 @@ static bool EarlyRendererIsVulkan(void)
 // GenerateFinalWindowSetup
 // Resolves the final window position, style, and size by:
 //   1. Reading INI config
-//   2. Resolving the target monitor rect from config.startingMonitor
+//   2. Resolving the target monitor rect from config.startingMonitorId /
+//      config.startingMonitor
 //   3. Computing windowed fallback on the same monitor (for ALT+ENTER restore)
 //   4. Applying command-line overrides
 //   5. Returning the appropriate WindowSetup for the chosen mode
@@ -766,7 +741,7 @@ WindowSetup GenerateFinalWindowSetup(bool forceWindowed = false)
 	// so we re-resolve after ParseCommandLineArgs if needed.
 	// For the windowed fallback we must compute this before ParseCommandLineArgs
 	// because the fallback is needed for ALT+ENTER restore.
-	RECT targetMonitor = Win32_GetMonitorRectByIndex(config.startingMonitor);
+	RECT targetMonitor = Win32_GetStartingMonitorRect(config);
 
 	// Always compute a windowed-mode fallback so ALT+ENTER restore works even
 	// when the app starts in fullscreen. Place the fallback on the same monitor.
@@ -788,7 +763,7 @@ WindowSetup GenerateFinalWindowSetup(bool forceWindowed = false)
 	// so the actual window is placed on the overridden monitor.
 	// We check by comparing: if startingMonitor changed, recompute.
 	// (LoadWindowIniConfig and ParseCommandLineArgs both write to config.startingMonitor)
-	targetMonitor = Win32_GetMonitorRectByIndex(config.startingMonitor);
+	targetMonitor = Win32_GetStartingMonitorRect(config);
 
 #ifndef WIN7BUILD
 	if (config.dpiAware) {
@@ -841,6 +816,7 @@ WindowSetup GenerateFinalWindowSetup(bool forceWindowed = false)
 	finalSetup.dpiAware        = config.dpiAware;
 	finalSetup.cursorClipEnabled = config.cursorClipEnabled;
 	finalSetup.startingMonitor = config.startingMonitor;
+	strncpy_s(finalSetup.startingMonitorId, sizeof(finalSetup.startingMonitorId), config.startingMonitorId, _TRUNCATE);
 	GetWin32WindowState().disableNC = win32Config.disableNC;
 	GetWin32WindowState().disableRoundedCorners = win32Config.disableRoundedCorners;
 
@@ -1314,6 +1290,42 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 	case WM_INPUT:
 		return RawInput_ProcessInput(hWnd, wParam, lParam);
+
+	case WM_DISPLAYCHANGE:
+	{
+		// Monitors were added/removed/re-arranged or a mode changed. Keep the
+		// window on screen. Skipped while the deferred startup fullscreen switch
+		// is pending: that path sizes the window itself.
+		if (s_pendingFullscreenToggle)
+			break;
+
+		RECT cur{};
+		if (!GetWindowRect(hWnd, &cur))
+			break;
+
+		if (g_windowSetup.borderlessFullscreen)
+		{
+			const RECT r = monsel::FromWindow(hWnd).monitorRect;
+			if (r.left != cur.left || r.top != cur.top ||
+			    r.right != cur.right || r.bottom != cur.bottom)
+			{
+				LOG_INFO("WM_DISPLAYCHANGE: re-fitting borderless fullscreen to (%ld,%ld)-(%ld,%ld)",
+					r.left, r.top, r.right, r.bottom);
+				// WM_SIZE updates the client size / viewport.
+				SetWindowPos(hWnd, nullptr, r.left, r.top, r.right - r.left, r.bottom - r.top,
+					SWP_NOZORDER | SWP_NOACTIVATE);
+			}
+		}
+		else if (!monsel::IsRectVisible(cur))
+		{
+			const RECT r = monsel::CenterInWorkArea(cur.right - cur.left, cur.bottom - cur.top, monsel::Primary());
+			LOG_INFO("WM_DISPLAYCHANGE: window no longer visible, moving to primary monitor at (%ld,%ld)",
+				r.left, r.top);
+			SetWindowPos(hWnd, nullptr, r.left, r.top, 0, 0,
+				SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+		}
+		break;
+	}
 
 	case WM_DEVICECHANGE:
 		// Joystick hotplug: flag a rescan (performed on the next

@@ -68,6 +68,11 @@ struct WindowSetup {
 	// Can be overridden at the command line with -monitor N.
 	// Values <= 0 or out of range fall back to the primary monitor.
 	int startingMonitor = 1;
+	// Stable device id of the monitor to launch on. Loaded from [main]
+	// starting_monitor_id; copied from the systemlog monitor list. Takes
+	// precedence over startingMonitor when that monitor is connected.
+	// Can be overridden at the command line with -monitorid <id>.
+	char startingMonitorId[512] = {};
 
 };
 // -----------------------------------------------------------------------------

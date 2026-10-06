@@ -282,6 +282,7 @@ if(WIN32)
         aae/system/3rdparty/glew.c
         aae/system/window/winmain.cpp
         aae/system/window/windows_util.cpp
+        aae/system/window/monitor_select.cpp
         aae/system/window/win10_win11_required_code.cpp
         aae/system/input/rawinput.cpp
         aae/system/input/Joystick.cpp

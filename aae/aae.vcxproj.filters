@@ -31,6 +31,9 @@
     <ClCompile Include="system\window\win10_win11_required_code.cpp">
       <Filter>Source Files\system\window</Filter>
     </ClCompile>
+    <ClCompile Include="system\window\monitor_select.cpp">
+      <Filter>Source Files\system\window</Filter>
+    </ClCompile>
     <ClCompile Include="system\window\windows_util.cpp">
       <Filter>Source Files\system\window</Filter>
     </ClCompile>
@@ -232,6 +235,9 @@
       <Filter>Source Files\system\math</Filter>
     </ClInclude>
     <ClInclude Include="system\window\win10_win11_required_code.h">
+      <Filter>Source Files\system\window</Filter>
+    </ClInclude>
+    <ClInclude Include="system\window\monitor_select.h">
       <Filter>Source Files\system\window</Filter>
     </ClInclude>
     <ClInclude Include="system\window\windows_util.h">

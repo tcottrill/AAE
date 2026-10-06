@@ -250,6 +250,7 @@
     <ClInclude Include="system\window\utf8conv.h" />
     <ClInclude Include="system\window\win10_win11_required_code.h" />
     <ClInclude Include="system\window\windows_util.h" />
+    <ClInclude Include="system\window\monitor_select.h" />
     <ClInclude Include="resource.h" />
   </ItemGroup>
   <ItemGroup>
@@ -311,6 +312,7 @@
     <ClCompile Include="system\util\wintimer.cpp" />
     <ClCompile Include="system\window\win10_win11_required_code.cpp" />
     <ClCompile Include="system\window\windows_util.cpp" />
+    <ClCompile Include="system\window\monitor_select.cpp" />
     <ClCompile Include="system\window\winmain.cpp" />
   </ItemGroup>
   <ItemGroup>
