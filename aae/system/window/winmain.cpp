@@ -80,10 +80,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 // -----------------------------------------------------------------------------
 HWND g_hWnd = nullptr;
 
-// True once InitOpenGLContext() has succeeded this session. Renderer=vulkan
-// sessions never set this (see wWinMain's GL-bring-up gate), so every other
-// GL/WGL call site in this file guards on it to stay a no-op under Vulkan.
-static bool g_glContextCreated = false;
+// GL/WGL call sites in this file guard on IsOpenGLInitialized(): renderer=vulkan
+// sessions skip context creation (see wWinMain's GL-bring-up gate), and a
+// Vulkan->GL fallback creates it later from init_gl(), not here.
 
 // Initialize the audio mixer
 const int audioSampleRate = 44100;
@@ -160,7 +159,7 @@ void Win32Window::RestoreViewport()
 {
 	// No-op under Vulkan: there is no GL context/viewport to restore, and
 	// WM_SIZE fires long before a renderer-agnostic resize hook exists here.
-	if (g_glContextCreated)
+	if (IsOpenGLInitialized())
 		glViewport(0, 0, g_windowSetup.clientWidth, g_windowSetup.clientHeight);
 }
 
@@ -1545,7 +1544,6 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance,
 	}
 
 	const bool wantVulkan = EarlyRendererIsVulkan();
-	g_glContextCreated = false;
 
 	if (!wantVulkan)
 	{
@@ -1556,7 +1554,6 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance,
 			LOG_ERROR("Failed to initialize OpenGL");
 			return -1;
 		}
-		g_glContextCreated = true;
 
 		// Present one black frame into the front buffer *before* the window is
 		// ever visible, so the first thing the user sees is black, not white.
@@ -1683,7 +1680,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance,
 			g_windowSetup.clientHeight = pre.bottom - pre.top;
 			ViewOrtho(g_windowSetup.clientWidth, g_windowSetup.clientHeight);
 		}
-		if (g_glContextCreated) {
+		if (IsOpenGLInitialized()) {
 			glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 			glClear(GL_COLOR_BUFFER_BIT);
 			glchain_swap_buffers();
@@ -1834,7 +1831,7 @@ exit_main:
 	osd_led_service_stop();
 	RestoreAccessibilityPopups();
 	TimerShutdown();
-	if (g_glContextCreated)
+	if (IsOpenGLInitialized())
 		DeleteGLContext();
 	RawInput_Shutdown();
 	LogClose();

@@ -62,6 +62,30 @@ int init_gl(void)
 			s_active = RENDERER_OPENGL;
 		}
 	}
+
+	// A renderer=vulkan session skipped GL context creation at startup (the
+	// window layer's EarlyRendererIsVulkan gate), so a Vulkan fallback lands
+	// here with no context current - every GL call then fails with
+	// GL_INVALID_OPERATION and the window stays dead. Create it now; the
+	// window was always made GL-compatible (Win32 pixel format is set by
+	// InitOpenGLContext itself, X11 visual is chosen before window creation).
+	if (!IsOpenGLInitialized())
+	{
+		LOG_INFO("Renderer: creating OpenGL context for the Vulkan fallback");
+		if (!InitOpenGLContext(false, false, true))
+		{
+			LOG_ERROR("Fallback OpenGL context creation failed - cannot continue");
+#ifndef _WIN32
+			// Windows InitOpenGLContext already showed the detailed reason.
+			allegro_message("AAE",
+				"Neither Vulkan nor OpenGL 3.3 could be started.\n"
+				"Update your graphics driver. Remote Desktop and some\n"
+				"virtual machines do not provide either API.");
+#endif
+			exit(1);
+		}
+	}
+
 	LOG_INFO("Renderer: OpenGL");
 	return glchain_init();
 }

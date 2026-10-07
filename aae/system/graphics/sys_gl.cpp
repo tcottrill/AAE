@@ -116,8 +116,21 @@ void sys_gl_set_x11_target(void* display, unsigned long window)
 static bool gOpenGLInitialized = false;
 
 void CheckGLErrorEx(const char* label, const char* file, int line) {
+	// glGetError() normally clears one flag per call, so a real context drains
+	// in a handful of reads. With NO context current it returns the same error
+	// forever (Windows opengl32), which turned this loop into a silent hang
+	// that filled the log. Cap it and say what that pattern means.
+	static bool s_warnedNoContext = false;
 	GLenum err;
+	int reads = 0;
 	while ((err = glGetError()) != GL_NO_ERROR) {
+		if (++reads > 8) {
+			if (!s_warnedNoContext) {
+				s_warnedNoContext = true;
+				LOG_ERROR("OpenGL: glGetError() is not clearing - no usable OpenGL context is current");
+			}
+			break;
+		}
 		const char* errStr = "UNKNOWN_ERROR";
 		switch (err) {
 		case GL_INVALID_ENUM:                  errStr = "GL_INVALID_ENUM"; break;
@@ -275,6 +288,22 @@ static void ReportOpenGLCapabilities()
 // -----------------------------------------------------------------------------
 #ifdef _WIN32
 
+// Logs and shows the reason context creation failed. The window is still
+// hidden at this point, so the box is unowned. Every renderer path needs
+// #version 330 core shaders, so anything below 3.3 cannot run at all.
+static bool FailOpenGLInit(const char* reason)
+{
+	LOG_ERROR("InitOpenGLContext: %s", reason);
+	char msg[512];
+	snprintf(msg, sizeof(msg),
+		"OpenGL could not be started:\n%s\n\n"
+		"AAE needs OpenGL 3.3 or newer. Install the graphics card\n"
+		"vendor's driver (NVIDIA/AMD/Intel). Remote Desktop and some\n"
+		"virtual machines only provide OpenGL 1.1.", reason);
+	MessageBoxA(nullptr, msg, "AAE", MB_OK | MB_ICONERROR);
+	return false;
+}
+
 bool InitOpenGLContext(bool forceLegacyGL2, bool enableMultisample, bool useCoreProfile)
 {
 	HWND hwnd = win_get_window();
@@ -292,22 +321,19 @@ bool InitOpenGLContext(bool forceLegacyGL2, bool enableMultisample, bool useCore
 
 	int tempFormat = ChoosePixelFormat(hDC, &tempPFD);
 	if (!tempFormat || !SetPixelFormat(hDC, tempFormat, &tempPFD)) {
-		LOG_ERROR("Failed to set temporary pixel format");
-		return false;
+		return FailOpenGLInit("Failed to set a pixel format on the window");
 	}
 
 	// Step 2: Create temporary OpenGL context
 	HGLRC tempContext = wglCreateContext(hDC);
 	if (!tempContext || !wglMakeCurrent(hDC, tempContext)) {
-		LOG_ERROR("Failed to create/make current temporary OpenGL context");
-		return false;
+		return FailOpenGLInit("Failed to create/make current the temporary OpenGL context");
 	}
 
 	// Step 3: Init GLEW
 	glewExperimental = GL_TRUE;
 	if (glewInit() != GLEW_OK) {
-		LOG_ERROR("GLEW init failed");
-		return false;
+		return FailOpenGLInit("GLEW init failed");
 	}
 
 	// Step 4: If requested, try MSAA with modern pixel format
@@ -391,7 +417,35 @@ bool InitOpenGLContext(bool forceLegacyGL2, bool enableMultisample, bool useCore
 		else {
 			wglMakeCurrent(nullptr, nullptr);
 			wglDeleteContext(tempContext);
-			wglMakeCurrent(hDC, hRC);
+			if (!wglMakeCurrent(hDC, hRC)) {
+				char why[128];
+				snprintf(why, sizeof(why),
+					"wglMakeCurrent failed on the final context (GetLastError=%lu)",
+					GetLastError());
+				wglDeleteContext(hRC);
+				hRC = nullptr;
+				return FailOpenGLInit(why);
+			}
+		}
+	}
+
+	// Gate on the version actually delivered. The legacy/2.1 fallbacks above
+	// can hand back whatever the driver has - Microsoft's GDI Generic 1.1
+	// under Remote Desktop or a VM - and the 330 core shaders cannot run on
+	// it; without this the session "started" and then only produced GL errors.
+	{
+		const char* ver = reinterpret_cast<const char*>(glGetString(GL_VERSION));
+		const char* rend = reinterpret_cast<const char*>(glGetString(GL_RENDERER));
+		int major = 0, minor = 0;
+		if (ver) sscanf_s(ver, "%d.%d", &major, &minor);
+		if (major < 3 || (major == 3 && minor < 3)) {
+			char why[256];
+			snprintf(why, sizeof(why), "Driver provides OpenGL %s (%s)",
+				ver ? ver : "unknown", rend ? rend : "unknown renderer");
+			wglMakeCurrent(nullptr, nullptr);
+			wglDeleteContext(hRC);
+			hRC = nullptr;
+			return FailOpenGLInit(why);
 		}
 	}
 
@@ -400,6 +454,7 @@ bool InitOpenGLContext(bool forceLegacyGL2, bool enableMultisample, bool useCore
 
 	LOG_INFO("OpenGL %s, GLSL %s", glGetString(GL_VERSION), glGetString(GL_SHADING_LANGUAGE_VERSION));
 	ReportOpenGLCapabilities();
+	gOpenGLInitialized = true;
 	return true;
 }
 
