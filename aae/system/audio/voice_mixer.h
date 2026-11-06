@@ -22,6 +22,7 @@
 #include <memory>
 #include <mutex>
 #include <vector>
+#include "mono_stereo_width.h"
 
 // One software voice. The backend hands mixer.cpp an opaque VoiceHandle*
 // that is really a pointer to one of these.
@@ -43,7 +44,9 @@ struct SoftVoice {
 class VoiceMixer {
 public:
 	// outChannels/outRate describe the single stream voices are summed into.
-	void Configure(uint32_t outChannels, uint32_t outRate);
+	// widenMono adds the HDMI mono widening to mono voices (mono_stereo_width.h);
+	// stereo output only.
+	void Configure(uint32_t outChannels, uint32_t outRate, bool widenMono = false);
 
 	// Sums every playing voice into `out` (interleaved int16), REPLACING its
 	// contents. frames = samples per channel.
@@ -78,6 +81,8 @@ public:
 	}
 
 private:
+	MonoStereoWidth m_width;
+	std::vector<int32_t> m_mono;
 	mutable std::mutex m_lock;
 	std::vector<std::unique_ptr<SoftVoice>> m_voices;
 	std::vector<int32_t> m_acc;          // Reused accumulator, see MixInto

@@ -19,6 +19,16 @@
 #include "wglew.h"
 #include "win32/win32_private.h"
 #else
+#ifdef AAE_HAVE_WAYLAND
+// The native Wayland path (an EGL context on a native_window nw::Window) lives
+// beside the GLX one. These come BEFORE glx.h on purpose: native_window's enums
+// have an enumerator called None, and glx.h drags in <X11/X.h>, which #defines
+// None to 0L - included the other way round, the nw headers do not compile.
+// EGL_NO_X11 keeps eglplatform.h from reaching for Xlib on its own account.
+#include <native_window/egl.h>
+#define EGL_NO_X11 1
+#include <EGL/egl.h>
+#endif
 // Linux: GLEW and GLX. glxew.h pulls <GL/glx.h> itself and must come after
 // glew.h. Xlib is reached only through GLX here - this file never touches a
 // window directly; LinuxWindow hands it the display/window via
@@ -43,6 +53,25 @@ static Display*    gDpy = nullptr;
 static GLXDrawable gWin = 0;
 static GLXContext  gCtx = nullptr;
 static GLXFBConfig gFbc = nullptr;   // chosen by sys_gl_choose_x11_visual()
+
+#ifdef AAE_HAVE_WAYLAND
+// The native Wayland window WaylandWindow hands us via sys_gl_set_wayland_target(),
+// and the EGL binding made on it. Same one-way dependency as the X11 pair above.
+// Mutually exclusive with it: a session is either X11 or Wayland, and
+// InitOpenGLContext picks by which target was set.
+static nw::Window*                      gWlWindow  = nullptr;
+static std::unique_ptr<nw::EglBinding>  gEglBinding;
+
+void sys_gl_set_wayland_target(void* nwWindow)
+{
+	nw::Window* w = static_cast<nw::Window*>(nwWindow);
+	// A binding must not outlive the window it was made on. Dropping the target is
+	// how WaylandWindow::Destroy() says the window is going away.
+	if (w != gWlWindow)
+		gEglBinding.reset();
+	gWlWindow = w;
+}
+#endif
 
 // -----------------------------------------------------------------------------
 // sys_gl_choose_x11_visual
@@ -242,13 +271,23 @@ static void ReportOpenGLCapabilities()
 	}
 #else
 	// GLX equivalent, queried directly rather than through GLEW so this does
-	// not depend on glxewInit() having run.
+	// not depend on glxewInit() having run. Guarded on gDpy because there is no
+	// X display at all on the native Wayland path - and on that path
+	// glxewInit() CANNOT have run successfully, which is why this never went
+	// through GLEW in the first place.
 	{
-		const char* exts = gDpy ? glXQueryExtensionsString(gDpy, DefaultScreen(gDpy)) : nullptr;
-		if (exts && strstr(exts, "GLX_EXT_swap_control"))
-			LOG_INFO("GLX_EXT_swap_control supported: vsync control available");
-		else
-			LOG_INFO("GLX_EXT_swap_control NOT advertised - vsync may be compositor-controlled");
+#ifdef AAE_HAVE_WAYLAND
+		if (gEglBinding) {
+			LOG_INFO("EGL swap control: eglSwapInterval, set by glchain_set_vsync");
+		} else
+#endif
+		{
+			const char* exts = gDpy ? glXQueryExtensionsString(gDpy, DefaultScreen(gDpy)) : nullptr;
+			if (exts && strstr(exts, "GLX_EXT_swap_control"))
+				LOG_INFO("GLX_EXT_swap_control supported: vsync control available");
+			else
+				LOG_INFO("GLX_EXT_swap_control NOT advertised - vsync may be compositor-controlled");
+		}
 	}
 #endif
 }
@@ -519,8 +558,108 @@ void glchain_swap_buffers()
 // legacy compatibility context - and the renderer's "#version 330 core"
 // shaders then fail at draw time, far away from the real cause.
 // -----------------------------------------------------------------------------
+#ifdef AAE_HAVE_WAYLAND
+// -----------------------------------------------------------------------------
+// InitOpenGLContext (EGL, native Wayland)
+//
+// The same contract as the GLX body below, for a session whose window is a
+// native_window nw::Window. Reached only when WaylandWindow has set a target; the
+// X11 path is untouched. Same request order as GLX and WGL: 4.2 first, then 3.3
+// (native_window reports an unmet version as a create() error, never a silent
+// downgrade, so the fall-back has to be ours).
+// -----------------------------------------------------------------------------
+static bool InitOpenGLContextEgl(bool forceLegacyGL2, bool enableMultisample, bool useCoreProfile)
+{
+	nw::GlRequirements req;
+	req.major       = forceLegacyGL2 ? 2 : 4;
+	req.minor       = forceLegacyGL2 ? 1 : 2;
+	// A 2.1 request cannot be a core profile; native_window rejects that
+	// combination outright.
+	req.coreProfile = useCoreProfile && !forceLegacyGL2;
+
+	nw::Error err;
+	gEglBinding = nw::EglBinding::create(gWlWindow, req, err);
+	if (!gEglBinding && !forceLegacyGL2) {
+		LOG_INFO("EGL: %d.%d context refused (%s), falling back to 3.3",
+		         req.major, req.minor, err.message.c_str());
+		req.major = 3;
+		req.minor = 3;
+		gEglBinding = nw::EglBinding::create(gWlWindow, req, err);
+	}
+	if (!gEglBinding) {
+		LOG_ERROR("EGL: could not create an OpenGL context: %s", err.message.c_str());
+		return false;
+	}
+
+	// create() leaves the context current already; say so explicitly rather than
+	// depend on that, since makeCurrent is also what re-fits the drawable.
+	if (!gEglBinding->makeCurrent(err)) {
+		LOG_ERROR("EGL: makeCurrent failed: %s", err.message.c_str());
+		gEglBinding.reset();
+		return false;
+	}
+
+	// glewContextInit() is what we want - the entry-point half of glewInit,
+	// resolved through glXGetProcAddressARB, which libglvnd dispatches to the
+	// CURRENT context whichever API made it, so it works on an EGL context. But
+	// libGLEW does not export it (nm -D lists glewInit and glxewInit only); it is
+	// file-local. glewInit() is glewContextInit() followed by glxewInit(), and
+	// glxewInit() is the half that cannot succeed here: it needs a current GLX
+	// display and there is no X display on this path, so a GLX-built GLEW
+	// returns GLEW_ERROR_NO_GLX_DISPLAY - AFTER every GL entry point has already
+	// been resolved. That one code is therefore the expected, harmless result;
+	// anything else is a real failure. (Nothing here reads the GLXEW_* flags.)
+	glewExperimental = GL_TRUE;   // required for core profiles
+	GLenum glewErr = glewInit();
+	if (glewErr != GLEW_OK && glewErr != GLEW_ERROR_NO_GLX_DISPLAY) {
+		LOG_ERROR("GLEW init failed: %s", glewGetErrorString(glewErr));
+		gEglBinding.reset();
+		return false;
+	}
+	if (glewErr == GLEW_ERROR_NO_GLX_DISPLAY)
+		LOG_INFO("GLEW: GL entry points loaded; the GLX half reports no X display, as expected on EGL");
+
+	// Do not trust the code alone: a GLEW that stopped before resolving anything
+	// would also return non-zero, and the symptom would be a crash on the first
+	// GL call far from here. Check three entry points the renderer cannot run
+	// without.
+	if (!glCreateShader || !glGenVertexArrays || !glGenFramebuffers) {
+		LOG_ERROR("EGL: required GL entry points did not load (glCreateShader=%p "
+		          "glGenVertexArrays=%p glGenFramebuffers=%p)",
+		          (void*)glCreateShader, (void*)glGenVertexArrays, (void*)glGenFramebuffers);
+		gEglBinding.reset();
+		return false;
+	}
+	// A core profile makes glewInit leave a spurious GL_INVALID_ENUM behind.
+	glGetError();
+
+	// Every renderer path needs #version 330 core shaders, so anything below 3.3
+	// cannot run at all (the Windows path gates on the same number).
+	if (!forceLegacyGL2 && !GLEW_VERSION_3_3) {
+		LOG_ERROR("EGL: the driver provided OpenGL %s; AAE needs 3.3 or newer",
+		          glGetString(GL_VERSION) ? (const char*)glGetString(GL_VERSION) : "(unknown)");
+		gEglBinding.reset();
+		return false;
+	}
+
+	if (enableMultisample)
+		glEnable(GL_MULTISAMPLE);
+
+	gOpenGLInitialized = true;
+	ReportOpenGLCapabilities();
+	return true;
+}
+#endif // AAE_HAVE_WAYLAND
+
 bool InitOpenGLContext(bool forceLegacyGL2, bool enableMultisample, bool useCoreProfile)
 {
+#ifdef AAE_HAVE_WAYLAND
+	// Native Wayland: no X display, no GLX. LinuxWindow (X11) never sets a Wayland
+	// target and WaylandWindow never sets an X11 one, so this picks exactly one.
+	if (gWlWindow)
+		return InitOpenGLContextEgl(forceLegacyGL2, enableMultisample, useCoreProfile);
+#endif
+
 	if (!gDpy || !gWin) {
 		LOG_ERROR("InitOpenGLContext: no X11 target - LinuxWindow must call "
 		          "sys_gl_set_x11_target() before this");
@@ -597,6 +736,12 @@ bool InitOpenGLContext(bool forceLegacyGL2, bool enableMultisample, bool useCore
 
 void DeleteGLContext()
 {
+#ifdef AAE_HAVE_WAYLAND
+	// Destroying the binding releases the context and the wl_egl_window, and the
+	// binding must go before the window it was made on - linux_main.cpp calls
+	// this ahead of WaylandWindow::Destroy().
+	gEglBinding.reset();
+#endif
 	if (gDpy && gCtx) {
 		glXMakeCurrent(gDpy, 0, nullptr);
 		glXDestroyContext(gDpy, gCtx);
@@ -607,6 +752,18 @@ void DeleteGLContext()
 
 void glchain_set_vsync(bool enabled)
 {
+#ifdef AAE_HAVE_WAYLAND
+	if (gEglBinding) {
+		// Applies to the draw surface of the CURRENT context on this thread, so
+		// this relies on the context still being current where the renderer calls
+		// it from - the same assumption the GLX swap-interval calls make.
+		EGLDisplay dpy = eglGetCurrentDisplay();
+		if (dpy == EGL_NO_DISPLAY || !eglSwapInterval(dpy, enabled ? 1 : 0))
+			LOG_INFO("SetvSync: eglSwapInterval(%d) failed (EGL error 0x%x); vsync is "
+			         "compositor-controlled", enabled ? 1 : 0, eglGetError());
+		return;
+	}
+#endif
 	if (!gDpy || !gWin) return;
 
 	typedef void (*PFNGLXSWAPINTERVALEXT)(Display*, GLXDrawable, int);
@@ -646,9 +803,32 @@ void glchain_swap_buffers()
 	static int s_swapCount = 0;
 	if (s_swapCount < 3) {
 		++s_swapCount;
+#ifdef AAE_HAVE_WAYLAND
+		if (gEglBinding)
+			LOG_INFO("GLSwapBuffers #%d (EGL, wl window=%p)", s_swapCount, (void*)gWlWindow);
+		else
+#endif
 		LOG_INFO("GLSwapBuffers #%d (dpy=%p win=%lu)", s_swapCount,
 		         (void*)gDpy, (unsigned long)gWin);
 	}
+
+#ifdef AAE_HAVE_WAYLAND
+	if (gEglBinding) {
+		// present() also re-fits the EGL drawable to the window's current
+		// framebuffer size before swapping, which is how a resize reaches the GL
+		// path. A persistent failure would otherwise print on every frame, so the
+		// log stops after a handful - the first few carry the information.
+		nw::Error err;
+		if (!gEglBinding->present(err)) {
+			static int s_errCount = 0;
+			if (s_errCount < 5) {
+				++s_errCount;
+				LOG_ERROR("EGL: present failed: %s", err.message.c_str());
+			}
+		}
+		return;
+	}
+#endif
 
 	if (gDpy && gWin)
 		glXSwapBuffers(gDpy, gWin);

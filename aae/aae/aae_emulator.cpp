@@ -138,10 +138,6 @@ static int bezel_override = -1;     // -nobezel command-line override
 static int overlay_override = -1;   // -nooverlay command-line override
 static int prescale_override = -1;  // -prescale X command-line override
 static int renderer_override = -1;  // -renderer opengl|vulkan command-line override
-// TEMPORARY VARIABLE
-// Tracks the last-applied bezel state for vertical vector games so we can
-// detect mid-game toggles and resize the window accordingly.
-static int g_lastBezelState = -1;  // -1 = not yet initialized
 
 // ---------------------------------------------------------------------------
 // MAME compatibility: RunningMachine and driver pointers.
@@ -1027,8 +1023,22 @@ void run_game(void)
 
 	// Step 9: Audio.
 	// Speaker request first - backend Init consumes it (see mixer.h).
-	mixer_set_speaker_config(config.speakers);
-	mixer_set_surround_encode(config.surround_encode);
+	// [main] audio_output resolves into the three legacy keys here, in one
+	// place. auto leaves them exactly as read from the ini.
+	{
+		int spk = config.speakers, hdmi = config.hdmi_passthrough;
+		switch (config.audio_output) {
+		case 1: hdmi = 1; break;                 // soundbar
+		case 2: hdmi = 0; spk = 6; break;        // 5.1 surround
+		case 3: hdmi = 0; spk = 2; break;        // stereo
+		default: break;                          // auto: legacy keys as-is
+		}
+		mixer_set_audio_output(config.audio_output);
+		mixer_set_output_filter(config.audio_filter);
+		mixer_set_speaker_config(spk);
+		mixer_set_surround_encode(config.surround_encode);
+		mixer_set_hdmi_passthrough(hdmi);
+	}
 	mixer_init(config.samplerate, Machine->gamedrv->fps);
 	did_mixer_init = true;
 	if (have_error != 0) goto fail;
@@ -1103,11 +1113,6 @@ void run_game(void)
 	Layout_InitGameDimensions();
 	gameAspect = Layout_ComputeGameAspect();
 	{
-		bool isVector = (Machine->gamedrv->video_attributes & VIDEO_TYPE_VECTOR) != 0;
-		bool isVertical = (Machine->gamedrv->rotation & ORIENTATION_SWAP_XY) != 0;
-		bool hasBezel = (g_bezelAvailable != 0);
-		bool bezelOn = (config.bezel != 0);
-
 		// Menu GAME ASPECT override ("AUTO" = keep the natural computed
 		// aspect). Loaded per-game from the game ini, globally from aae.ini.
 		{
@@ -1133,25 +1138,14 @@ void run_game(void)
 			gameAspect = ws.aspectRatio;
 		}
 
-		if (isVector && isVertical && hasBezel && bezelOn)
-		{
-			LOG_INFO("Step 12: vertical vector with bezel art active - keeping 4:3 window");
-			// The window keeps its shape, but screen_rect must still be re-fitted
-			// for THIS game - it is built once inside init_gl's init_one guard
-			// and is otherwise never refreshed on a game switch.
-			emulator_on_window_resize(GetWindowSetup().clientWidth,
-			                          GetWindowSetup().clientHeight);
-		}
-		else if (gameAspect > 0.0f)
-		{
+		// Every game, sideways vector games included, takes its computed
+		// aspect (3:4 portrait for sideways vector games, 4:3 when -ror/-rol
+		// turns it). Cabinet art is drawn at true aspect around that canvas
+		// (cabinet_quad.h) and spills into the side areas as "wings", so a
+		// bezel no longer forces a 4:3 window. WindowUtil_UpdateAspect also
+		// re-fits screen_rect for THIS game.
+		if (gameAspect > 0.0f)
 			WindowUtil_UpdateAspect(gameAspect);
-		}
-
-		// Seed the per-frame tracker so emulator_run() can detect toggles.
-		if (isVector && isVertical && hasBezel)
-			g_lastBezelState = bezelOn ? 1 : 0;
-		else
-			g_lastBezelState = -1;  // not tracking
 	}
 
 	// Step 13: Timers (must exist before init_game()).
@@ -1603,46 +1597,6 @@ void emulator_run()
 	// If msg_loop() triggered an exit or game switch, bail out immediately.
 	if (done)
 		return;
-
-	//-------------------- THIS IS A TEMPORARY HACK - REMOVE WHEN MOVED TO LAYOUTS FOR VECTOR --------------------------
-	// --- Vertical vector bezel toggle detection ---
-	// When the player toggles bezel art on/off for a vertical vector game,
-	// the window needs to resize: 4:3 with bezel, thinner without.
-	// Raster games handle this through the layout system; vector games
-	// don't use layouts yet, so we detect the change here per-frame.
-	{
-		bool isVector = (Machine->gamedrv->video_attributes & VIDEO_TYPE_VECTOR) != 0;
-		bool isVertical = (Machine->gamedrv->rotation & ORIENTATION_SWAP_XY) != 0;
-
-		if (isVector && isVertical && g_bezelAvailable)
-		{
-			int curBezel = (config.bezel != 0) ? 1 : 0;
-			if (g_lastBezelState != curBezel)
-			{
-				g_lastBezelState = curBezel;
-
-				// If user has an aspect override active, always use that
-				auto& ws = GetWindowSetup();
-				if (ws.aspectOverrideActive && ws.aspectRatio > 0.0f)
-				{
-					WindowUtil_UpdateAspect(ws.aspectRatio);
-				}
-				else if (curBezel)
-				{
-					// Bezel turned ON -> force 4:3
-					WindowUtil_UpdateAspect(4.0f / 3.0f);
-				}
-				else
-				{
-					// Bezel turned OFF -> use natural game aspect
-					float aspect = Layout_ComputeGameAspect();
-					if (aspect > 0.0f)
-						WindowUtil_UpdateAspect(aspect);
-				}
-			}
-		}
-	}
-	//-------------------- THIS IS A TEMPORARY HACK - REMOVE WHEN MOVED TO LAYOUTS FOR VECTOR --------------------------
 
 	static double s_lastAudioMs = 0.0;
 	const double  nowMs = TimerGetTimeMS();

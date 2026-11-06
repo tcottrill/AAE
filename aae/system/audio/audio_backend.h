@@ -65,6 +65,17 @@ public:
 	virtual uint32_t OutputChannelCount() const = 0;
 	virtual uint32_t OutputChannelMask() const = 0;
 
+	// --- HDMI stereo processing ([main] hdmi_passthrough, Linux) ---
+	// True when Init decided to hand a TV/soundbar plain stereo PCM on FL/FR
+	// with mono sources widened (mono_stereo_width.h). The decision is made once
+	// in Init and does not change. Everything but the Linux backend keeps the
+	// default and behaves exactly as before.
+	virtual bool HdmiStereoActive() const { return false; }
+
+	// Short uppercase description of the output mode this backend settled on
+	// at Init (shown in the Sound menu), e.g. "SOUNDBAR (HDMI)". Empty = none.
+	virtual const char* OutputModeDescription() const { return ""; }
+
 	// --- Session audio capture (-wavwrite) --------------------------------
 	// Start recording the FINAL mixed output (all paths combined) to a
 	// 16-bit PCM stereo WAV at `path`. Default: unsupported. A backend that

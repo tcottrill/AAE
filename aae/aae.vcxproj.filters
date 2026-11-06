@@ -426,6 +426,9 @@
     <ClInclude Include="system\audio\wav_writer.h">
       <Filter>Source Files\system\audio</Filter>
     </ClInclude>
+    <ClInclude Include="aae\aae_video\cabinet_quad.h">
+      <Filter>Source Files\aae\aae_video</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Image Include="appicon.ico" />

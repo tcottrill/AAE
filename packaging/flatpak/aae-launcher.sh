@@ -189,11 +189,27 @@ fi
 # never overwrite. video.ini in particular drives flipping, resizing AND
 # window location together, so silently replacing it would reset the display
 # every update.
-for f in aae.ini video.ini video2.ini; do
+# video2.ini was renamed video_vecsim.ini (2026-11): carry a seeded, possibly
+# tuned copy over to the new name before seeding, so it is not shadowed by a
+# fresh default.
+if [ -f "$DATA_DIR/video2.ini" ] && [ ! -f "$DATA_DIR/video_vecsim.ini" ]; then
+    mv "$DATA_DIR/video2.ini" "$DATA_DIR/video_vecsim.ini"
+fi
+for f in aae.ini video.ini video_vecsim.ini; do
     if [ -f "$APP_DATA/$f" ] && [ ! -f "$DATA_DIR/$f" ]; then
         cp "$APP_DATA/$f" "$DATA_DIR/$f"
     fi
 done
+
+# One-time settings migration: speakers=2 -> 0 (follow the output's layout).
+# The native PipeWire backend made 0 the default - it opens the stream in the
+# sink's real layout and fills every speaker - but the seed-once rule above
+# means an install from before then still forces stereo. Done ONCE, recorded
+# by a marker, so a user who sets speakers=2 again afterwards keeps it.
+if [ -f "$DATA_DIR/aae.ini" ] && [ ! -f "$DATA_DIR/.migrated-speakers-0" ]; then
+    sed -i 's/^speakers[[:space:]]*=[[:space:]]*2[[:space:]]*$/speakers=0/' "$DATA_DIR/aae.ini"
+    touch "$DATA_DIR/.migrated-speakers-0"
+fi
 
 # Shipped documentation, placed beside aae.ini - the settings reference is
 # not much use somewhere other than next to the settings file.

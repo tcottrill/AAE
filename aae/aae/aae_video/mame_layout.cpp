@@ -1585,6 +1585,19 @@ float Layout_ComputeGameAspect()
 	// aspect ratio is derived from the screen area only, then inverted.
 	const bool sysRotated = (config.system_rotation & ORIENTATION_SWAP_XY) != 0;
 
+	// Sideways vector games (driver rotation has SWAP_XY: barrier, sundance,
+	// tacscan) are ALWAYS a 3:4 portrait picture: exactly 0.75, or 4/3 when
+	// -ror/-rol turns it. The generic game-dimension path below only gets
+	// there through float arithmetic on the visible area; stating it directly
+	// keeps the canvas aspect exact for the cabinet-art placement
+	// (cabinet_quad.h). Vector only: raster and horizontal games are untouched.
+	if (Machine && Machine->drv &&
+		(Machine->drv->video_attributes & VIDEO_TYPE_VECTOR) &&
+		(Machine->drv->rotation & ORIENTATION_SWAP_XY))
+	{
+		return sysRotated ? (4.0f / 3.0f) : (3.0f / 4.0f);
+	}
+
 	// If a layout is active, compute aspect from the layout view.
 	// When bezel is off or zoom-to-screen is on, use the screen area
 	// aspect (gives 4:3 for horizontal games). When showing the full

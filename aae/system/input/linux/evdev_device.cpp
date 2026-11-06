@@ -50,6 +50,12 @@ int CountLetterKeys(const unsigned long* keyBits)
 	return n;
 }
 
+// SYN_DROPPED is logged for this many occurrences per device, then goes quiet.
+// An overflow is unusual enough to be worth a line and, on a device that keeps
+// overflowing, a flood - so the first few say it happened and the rest are
+// silent.
+constexpr int kMaxDropLogs = 3;
+
 } // namespace
 
 const char* EvdevKindName(EvdevKind kind)
@@ -87,6 +93,9 @@ EvdevDevice& EvdevDevice::operator=(EvdevDevice&& other) noexcept
 		// the WSL harness has no devices, so the move path never carried one.
 		m_hasLeds      = other.m_hasLeds;
 		m_ffEffectId   = other.m_ffEffectId;
+		m_keyDown      = other.m_keyDown;
+		m_dropping     = other.m_dropping;
+		m_synDropCount = other.m_synDropCount;
 		other.m_fd     = -1;
 		other.m_ffEffectId = -1;
 	}
@@ -177,6 +186,13 @@ void EvdevDevice::Close()
 	m_hasRumble = false;
 	m_hasLeds   = false;
 	m_ffEffectId = -1;
+
+	// Both describe the stream from THIS open of the node. A re-opened device
+	// is a fresh stream: a stale "down" bit would mean a phantom release at the
+	// first drop, and a stale m_dropping would swallow the new stream's first
+	// packet. m_synDropCount is deliberately kept - see the header.
+	m_keyDown.fill(0);
+	m_dropping  = false;
 }
 
 //------------------------------------------------------------------------------
@@ -273,6 +289,29 @@ void EvdevDevice::Classify()
 }
 
 //------------------------------------------------------------------------------
+// Reading, and surviving a kernel buffer overflow.
+//
+// Each client of an event node has a fixed-size queue in the kernel. If we fall
+// far enough behind that it fills, the kernel throws the queue away, queues a
+// single EV_SYN/SYN_DROPPED in its place, and carries on. What follows is the
+// REST of whatever packet was being built when it overflowed, up to the next
+// SYN_REPORT - events that are only meaningful as part of the packet we no
+// longer have. Everything that changed while the queue was full is gone for
+// good: in particular a key or button RELEASED during the overflow is never
+// reported, and without this the game holds it down forever (a stuck fire
+// button, a coin switch that never lets go).
+//
+// This is the documented recovery from the kernel's evdev docs / libevdev:
+//   1. Throw away SYN_DROPPED and everything up to AND including the next
+//      SYN_REPORT. That packet cannot be applied - half of it is missing.
+//   2. Ask the device what is true NOW (EVIOCGKEY, EVIOCGABS) and tell the
+//      caller about the difference, as ordinary events.
+//
+// Step 2 is done by emitting the same EV_KEY / EV_ABS events the device would
+// have produced, rather than by adding a state API for the callers to poll:
+// evdev_input.cpp and evdev_joystick.cpp already apply a batch of events and
+// know nothing else, and they stay that way.
+//------------------------------------------------------------------------------
 bool EvdevDevice::ReadEvents(std::vector<input_event>& out)
 {
 	out.clear();
@@ -283,7 +322,10 @@ bool EvdevDevice::ReadEvents(std::vector<input_event>& out)
 		const ssize_t n = read(m_fd, batch, sizeof(batch));
 		if (n > 0) {
 			const size_t count = (size_t)n / sizeof(input_event);
-			out.insert(out.end(), batch, batch + count);
+			// One event at a time, not a bulk insert: a drop can start or end
+			// anywhere inside this chunk, and can span chunks.
+			for (size_t i = 0; i < count; i++)
+				AcceptEvent(batch[i], out);
 			if ((size_t)n < sizeof(batch)) break;   // drained
 			continue;
 		}
@@ -296,6 +338,142 @@ bool EvdevDevice::ReadEvents(std::vector<input_event>& out)
 		return false;
 	}
 	return true;
+}
+
+//------------------------------------------------------------------------------
+// The per-event filter behind ReadEvents: passes ordinary events through
+// (remembering which keys they leave down) and swallows a SYN_DROPPED packet.
+//------------------------------------------------------------------------------
+void EvdevDevice::AcceptEvent(const input_event& ev, std::vector<input_event>& out)
+{
+	// Discarded and never passed on. A second SYN_DROPPED while already
+	// discarding (another overflow before we got to the end of the first
+	// packet) simply extends the same discard; the one resync at the end covers
+	// both.
+	if (ev.type == EV_SYN && ev.code == SYN_DROPPED) {
+		m_dropping = true;
+		return;
+	}
+
+	if (m_dropping) {
+		// Inside the damaged packet. Everything is swallowed, including its
+		// closing SYN_REPORT - that is the packet boundary, and it is what lets
+		// the repair below go in as a clean packet of its own. Key events in
+		// here are deliberately NOT tracked: they are an unreliable fragment,
+		// and the resync sets m_keyDown from the hardware instead.
+		if (ev.type == EV_SYN && ev.code == SYN_REPORT) {
+			m_dropping = false;
+			ResyncAfterDrop(ev, out);
+		}
+		return;
+	}
+
+	// What the caller has now been told is down. Value 2 is auto-repeat: the
+	// key is still down, and setting an already-set bit is harmless.
+	if (ev.type == EV_KEY && ev.code <= KEY_MAX) {
+		const unsigned long mask = 1ul << (ev.code % kBitsPerLong);
+		if (ev.value) m_keyDown[ev.code / kBitsPerLong] |= mask;
+		else          m_keyDown[ev.code / kBitsPerLong] &= ~mask;
+	}
+	out.push_back(ev);
+}
+
+//------------------------------------------------------------------------------
+// Bring the caller's picture of the device up to date after a SYN_DROPPED, by
+// appending the events that would have got it there.
+//
+//   * Keys and buttons: EVIOCGKEY against m_keyDown, DIFFERENCES ONLY. A key
+//     that is down now and was down before the drop is untouched - emitting a
+//     press for it would look like a fresh edge, and a held coin or start key
+//     must not insert a second credit. A key that was down and is now up gets
+//     the release that was lost; one that went down during the overflow gets
+//     its press.
+//   * Absolute axes: every axis the device has, at its current value. Absolute
+//     values are idempotent, so re-sending an unchanged one is harmless, and
+//     tracking each axis just to skip it would cost more than it saves.
+//   * Relative axes: nothing. A delta lost is lost; there is no "current
+//     value" to ask for, and replaying one would move the cursor or a spinner.
+//
+// The batch ends with a SYN_REPORT, standing in for the one AcceptEvent just
+// swallowed, so what the caller sees is a complete packet.
+//
+// If EVIOCGKEY fails (the fd is not a real evdev node, or the device is
+// vanishing under us) we cannot know what is held, so the safe answer is to
+// release everything we told the caller was down. A phantom release costs a
+// repeated press; a phantom hold costs a stuck game.
+//------------------------------------------------------------------------------
+void EvdevDevice::ResyncAfterDrop(const input_event& tail, std::vector<input_event>& out)
+{
+	// Stamped with the SYN_REPORT being replaced, so the batch looks like it
+	// came from the device at that moment.
+	auto emit = [&](uint16_t type, uint16_t code, int32_t value) {
+		input_event e = tail;
+		e.type  = type;
+		e.code  = code;
+		e.value = value;
+		out.push_back(e);
+	};
+
+	int keys = 0;
+	int axes = 0;
+	int keyErrno = 0;
+
+	unsigned long hw[kKeyWords] = {0};
+	if (ioctl(m_fd, EVIOCGKEY(sizeof(hw)), hw) < 0) {
+		keyErrno = errno;
+		for (size_t w = 0; w < kKeyWords; w++)
+			for (size_t b = 0; b < kBitsPerLong; b++)
+				if ((m_keyDown[w] >> b) & 1ul) {
+					emit(EV_KEY, (uint16_t)(w * kBitsPerLong + b), 0);
+					keys++;
+				}
+		m_keyDown.fill(0);
+	} else {
+		for (size_t w = 0; w < kKeyWords; w++) {
+			const unsigned long diff = hw[w] ^ m_keyDown[w];
+			if (!diff) continue;
+			for (size_t b = 0; b < kBitsPerLong; b++)
+				if ((diff >> b) & 1ul) {
+					emit(EV_KEY, (uint16_t)(w * kBitsPerLong + b), (int32_t)((hw[w] >> b) & 1ul));
+					keys++;
+				}
+			m_keyDown[w] = hw[w];
+		}
+
+		unsigned long absBits[BitsToLongs(ABS_MAX + 1)] = {0};
+		if (ioctl(m_fd, EVIOCGBIT(EV_ABS, sizeof(absBits)), absBits) >= 0) {
+			for (int code = 0; code <= ABS_MAX; code++) {
+				if (!TestBit(absBits, (size_t)code)) continue;
+
+				// Multitouch is a per-slot protocol: EVIOCGABS gives only the
+				// current slot's value, and a bare ABS_MT_* event outside its
+				// slot sequence would be applied to the wrong contact. A
+				// proper resync needs EVIOCGMTSLOTS per slot. AAE has no touch
+				// consumer, and a gamepad's touchpad is a separate node, so
+				// these are skipped rather than synthesised wrongly.
+				if (code >= ABS_MT_SLOT && code <= ABS_MT_TOOL_Y) continue;
+
+				input_absinfo info {};
+				if (!GetAbsInfo(code, &info)) continue;
+				emit(EV_ABS, (uint16_t)code, info.value);
+				axes++;
+			}
+		}
+	}
+
+	emit(EV_SYN, SYN_REPORT, 0);
+
+	// First few only; see kMaxDropLogs.
+	if (++m_synDropCount > kMaxDropLogs) return;
+	const char* quiet = (m_synDropCount == kMaxDropLogs)
+		? " (further drops on this device are not logged)" : "";
+	if (keyErrno)
+		LOG_WARN("evdev: SYN_DROPPED on '%s' - cannot read device state (%s), "
+		         "released %d held keys/buttons instead%s",
+		         m_name.c_str(), strerror(keyErrno), keys, quiet);
+	else
+		LOG_WARN("evdev: SYN_DROPPED on '%s' - resynced %d keys/buttons, %d axes%s",
+		         m_name.c_str(), keys, axes, quiet);
 }
 
 //------------------------------------------------------------------------------

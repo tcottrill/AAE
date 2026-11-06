@@ -19,6 +19,7 @@
 
 #include <linux/input.h>
 
+#include <array>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -69,6 +70,13 @@ public:
 	// Reads every pending event. Returns false if the device went away
 	// (ENODEV on unplug), which the caller uses to drop it. A read that would
 	// block returns true with an empty batch.
+	//
+	// The batch is already SYN_DROPPED-safe: when the kernel's per-client
+	// buffer overflows, the incomplete packet is discarded here and replaced by
+	// synthetic EV_KEY / EV_ABS events that bring the caller up to the device's
+	// real state, so a key released during the overflow cannot stay held. The
+	// callers apply the batch exactly as they would a normal one; they never
+	// see EV_SYN/SYN_DROPPED. Relative motion lost in the overflow stays lost.
 	bool ReadEvents(std::vector<input_event>& out);
 
 	// EVIOCGABS. False when the axis is not present.
@@ -99,6 +107,20 @@ public:
 private:
 	void Classify();
 
+	// ReadEvents' SYN_DROPPED handling. AcceptEvent is the per-event filter
+	// (it, not read(), decides what reaches the caller, because a drop can
+	// begin and end anywhere in a stream that arrives in 64-event chunks);
+	// ResyncAfterDrop appends the synthetic state events once the damaged
+	// packet has been swallowed. `tail` is that packet's SYN_REPORT, copied so
+	// the synthetic events carry a real timestamp.
+	void AcceptEvent(const input_event& ev, std::vector<input_event>& out);
+	void ResyncAfterDrop(const input_event& tail, std::vector<input_event>& out);
+
+	// EVIOCGKEY's bitmap is KEY_MAX+1 bits of unsigned long. Mirrors the
+	// BitsToLongs helper in the .cpp, which is not visible from here.
+	static constexpr size_t kKeyWords =
+		((size_t)KEY_MAX + 1 + 8 * sizeof(unsigned long) - 1) / (8 * sizeof(unsigned long));
+
 	int         m_fd = -1;
 	EvdevKind   m_kind = EvdevKind::Unknown;
 	std::string m_name;
@@ -112,6 +134,21 @@ private:
 	bool        m_hasRumble    = false;
 	bool        m_hasLeds      = false;
 	int         m_ffEffectId   = -1;   // -1 = nothing uploaded yet
+
+	// Which keys/buttons the caller has been told are down: every EV_KEY that
+	// ReadEvents passed through (value 1 or 2 sets the bit, 0 clears it). After
+	// a SYN_DROPPED this is what the real EVIOCGKEY state is diffed against.
+	std::array<unsigned long, kKeyWords> m_keyDown {};
+
+	// True from SYN_DROPPED until the SYN_REPORT that ends the damaged packet.
+	// A member, not a local: the damaged packet can straddle read() calls and
+	// even ReadEvents() calls.
+	bool        m_dropping     = false;
+
+	// Drops seen on this device. Survives Close()/Open() on purpose - it only
+	// bounds the log, and a flapping device must not get a fresh quota each
+	// time it reconnects.
+	int         m_synDropCount = 0;
 };
 
 //------------------------------------------------------------------------------

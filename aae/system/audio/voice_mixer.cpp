@@ -11,11 +11,12 @@
 
 #include <algorithm>
 
-void VoiceMixer::Configure(uint32_t outChannels, uint32_t outRate)
+void VoiceMixer::Configure(uint32_t outChannels, uint32_t outRate, bool widenMono)
 {
 	std::lock_guard<std::mutex> g(m_lock);
 	m_outChannels = outChannels ? outChannels : 2;
 	m_outRate     = outRate ? outRate : 44100;
+	m_width.configure(widenMono && m_outChannels == 2, m_outRate);
 }
 
 void VoiceMixer::SetMasterVolume(float linear)
@@ -59,6 +60,8 @@ void VoiceMixer::MixInto(int16_t* out, uint32_t frames)
 	// clamp. The buffer is a member rather than a local so the feed thread
 	// does not allocate once per period.
 	m_acc.assign(samples, 0);
+	const bool widen = m_width.enabled();
+	if (widen) m_mono.assign(frames, 0);
 
 	for (auto& vp : m_voices) {
 		SoftVoice* v = vp.get();
@@ -116,13 +119,24 @@ void VoiceMixer::MixInto(int16_t* out, uint32_t frames)
 					sample = ((int32_t)v->data[si] - 128) << 8;
 				}
 
-				m_acc[(size_t)f * m_outChannels + c] += (int32_t)(sample * v->gain);
+				const int32_t contribution = (int32_t)(sample * v->gain);
+				m_acc[(size_t)f * m_outChannels + c] += contribution;
+				// Only mono voices feed the HDMI widener; genuine stereo is never processed.
+				if (widen && v->channels == 1 && c == 0) m_mono[f] += contribution;
 			}
 
 			v->position += step;
 		}
 	}
 
+	if (widen) {
+		for (uint32_t f = 0; f < frames; ++f) {
+			int dl, dr;
+			m_width.process(m_mono[f], dl, dr);
+			m_acc[2 * f]     += dl;
+			m_acc[2 * f + 1] += dr;
+		}
+	}
 	for (size_t i = 0; i < samples; ++i) {
 		const int32_t s = (int32_t)(m_acc[i] * m_master);
 		out[i] = (int16_t)std::clamp(s, -32768, 32767);

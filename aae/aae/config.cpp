@@ -43,24 +43,63 @@ void setup_config() {
     // 48000 is default
     config.samplerate = get_config_int("main", "samplerate", 48000);
 
-    // Speaker request (Linux output only). Default 2 - measured, not guessed:
-    // on the Steam Machine, Dolphin's acclaimed "surround" is a plain stereo
-    // stream (pactl: s16le 2ch) room-filled downstream by PipeWire/the
-    // soundbar, while a discrete 6ch pulse stream loses its rears inside the
-    // SteamOS loopback graph even at 100% channel volume (speaker-test over
-    // PipeWire's NATIVE protocol delivers them fine - it is pulse-protocol
-    // specific). Stereo out therefore SOUNDS more surround than real 5.1
-    // there. speakers=6 keeps the discrete upmix for hardware that takes it.
-    config.speakers = get_config_int("main", "speakers", 2);
+    // Speaker request (Linux output only). 0 = follow the output's reported
+    // layout (the default): the native PipeWire backend opens the stream in
+    // the default sink's real layout, as the sibling video player does, and
+    // fills EVERY channel itself - arcade audio is near-mono, so any
+    // downstream difference-driven upmixer would leave the rears silent.
+    // 2 = always stereo (explicit override). 6 = legacy "surround when
+    // available", now the same as 0. Anything else falls back to 0.
+    config.speakers = get_config_int("main", "speakers", 0);
     if (config.speakers != 2 && config.speakers != 6 && config.speakers != 0)
-        config.speakers = 2;
+        config.speakers = 0;
 
-    // Matrix surround encode for the stereo path - see config.h. Default ON:
+    // Matrix surround encode, which only matters when the output ends up
+    // stereo (speakers=2, or a stereo-only sink) - see config.h. Default ON:
     // it is what makes downstream upmixers produce rears from our mono-heavy
     // content, verified against the PipeWire graph (both AAE's and Dolphin's
     // stereo streams get identical 6-port upmix treatment; only the L-R
     // content differs).
     config.surround_encode = get_config_int("main", "surround_encode", 1) ? 1 : 0;
+    // Linux: stereo PCM processing for a TV/soundbar that does its own surround
+    // (NOT bitstream passthrough). auto (default, -1) = on for an HDMI PipeWire
+    // sink; 1/on forces it, 0/off disables it. Windows ignores the key.
+    {
+        const std::string h = get_config_string(std::string("main"), std::string("hdmi_passthrough"), std::string("auto"));
+        if (aae_stricmp(h.c_str(), "auto") == 0)                                  config.hdmi_passthrough = -1;
+        else if (h == "1" || aae_stricmp(h.c_str(), "on") == 0)                   config.hdmi_passthrough = 1;
+        else if (h == "0" || aae_stricmp(h.c_str(), "off") == 0)                  config.hdmi_passthrough = 0;
+        else {
+            LOG_WARN("Config: hdmi_passthrough='%s' not understood (auto/on/off/1/0) - using auto", h.c_str());
+            config.hdmi_passthrough = -1;
+        }
+    }
+
+    // [main] audio_output = auto | soundbar | surround | stereo. GLOBAL device
+    // setting (aae.ini only; the per-game re-read below does not touch it).
+    {
+        const std::string a = get_config_string(std::string("main"), std::string("audio_output"), std::string("auto"));
+        if (aae_stricmp(a.c_str(), "auto") == 0)                                   config.audio_output = 0;
+        else if (aae_stricmp(a.c_str(), "soundbar") == 0)                          config.audio_output = 1;
+        else if (aae_stricmp(a.c_str(), "surround") == 0 || a == "5.1")            config.audio_output = 2;
+        else if (aae_stricmp(a.c_str(), "stereo") == 0)                            config.audio_output = 3;
+        else {
+            LOG_WARN("Config: audio_output='%s' not understood (auto/soundbar/surround/stereo) - using auto", a.c_str());
+            config.audio_output = 0;
+        }
+    }
+
+    // [main] audio_filter = off | light | warm. GLOBAL, live from the Sound menu.
+    {
+        const std::string f = get_config_string(std::string("main"), std::string("audio_filter"), std::string("light"));
+        if (aae_stricmp(f.c_str(), "off") == 0)        config.audio_filter = 0;
+        else if (aae_stricmp(f.c_str(), "light") == 0) config.audio_filter = 1;
+        else if (aae_stricmp(f.c_str(), "warm") == 0)  config.audio_filter = 2;
+        else {
+            LOG_WARN("Config: audio_filter='%s' not understood (off/light/warm) - using light", f.c_str());
+            config.audio_filter = 1;
+        }
+    }
 
     // Per-player mouse assignment: player 1 defaults to the merged system
     // mouse (legacy behavior), the rest to none. When a specific device is
@@ -168,6 +207,7 @@ void setup_config() {
         // Lowercase expected, like renderer=. See config.h.
         const char* d = get_config_string("main", "dvg_engine", "mame");
         config.dvg_engine = (d && strcmp(d, "vecsim") == 0) ? DVG_ENGINE_VECSIM : DVG_ENGINE_MAME;
+        config.dvg_engine_pending = config.dvg_engine;
         LOG_INFO("Config: dvg_engine=%s", (config.dvg_engine == DVG_ENGINE_VECSIM) ? "vecsim" : "mame");
     }
     config.vk_validation = get_config_int("main", "vk_validation", 0);
@@ -358,6 +398,7 @@ void setup_config() {
             const char* d = get_config_string("main", "dvg_engine",
                 (config.dvg_engine == DVG_ENGINE_VECSIM) ? "vecsim" : "mame");
             config.dvg_engine = (d && strcmp(d, "vecsim") == 0) ? DVG_ENGINE_VECSIM : DVG_ENGINE_MAME;
+            config.dvg_engine_pending = config.dvg_engine; // VIDEO SETUP edits this
         }
 
         // somegame.ini available - sound override options
@@ -443,28 +484,42 @@ void setup_video_config(const char* section) {
     LOG_DEBUG("SETUP VIDEO CONFIG CALLED");
     std::string name = Machine->gamedrv->name;
 
-    // video.ini carries the on-screen geometry for EVERY game. video2.ini is a
-    // second set of rects for the VECSIM DVG engine, which parks the beam
-    // differently than the MAME avgdvg port and so needs its own calibration -
-    // but only for the drivers that actually consult config.dvg_engine (the
-    // Asteroids family and Omega Race, see config.h). Every other vector game
-    // is hard-wired to the MAME engine and has no section in video2.ini.
+    // video.ini carries the on-screen geometry for EVERY game.
+    // video_vecsim.ini (named video2.ini before 2026-11) is a second set of
+    // rects for the VECSIM DVG engine - but only for the drivers that actually
+    // consult config.dvg_engine (the Asteroids family and Omega Race, see
+    // config.h). Every other vector game is hard-wired to the MAME engine and
+    // has no section there.
+    //
+    // Why two calibrations: the MAME path (mame_vector.cpp vector_update)
+    // stretches the driver's visible area to 0..1024 on each axis, while
+    // VECSIM hands its raw (x - xmin, ymax - y) coordinates straight to
+    // add_line. The same rect therefore shows the MAME picture 1024/880 too
+    // tall for the asteroid family. Converting a VECSIM rect to MAME keeps
+    // left and top: right = L + (R-L)*width/1024, bottom = T - (T-B)*height/1024.
     //
     // Selecting the file globally off the flag therefore stranded all of them
     // (~38 sections, the whole Cinematronics set among them) on the
     // 0/1024/0/1024 defaults below - no bezel/crop rect, and for the
     // Cinematronics games no Y-flip, since these encode the flip by inverting
     // the rect (solarq: bottom=1023, top=0). Choose per game instead: take
-    // video2.ini only when it has something to say about THIS game.
+    // video_vecsim.ini only when it has something to say about THIS game.
     std::string temppath = getpathM(0, "video.ini");
     if (config.dvg_engine == DVG_ENGINE_VECSIM)
     {
-        const std::string alt = getpathM(0, "video2.ini");
+        // Old installs may still have only the pre-rename video2.ini.
+        const char* altName = "video_vecsim.ini";
+        if (!file_exists(getpathM(0, altName)) && file_exists(getpathM(0, "video2.ini")))
+        {
+            altName = "video2.ini";
+            LOG_INFO("VIDEO CONFIG: no video_vecsim.ini - using the old video2.ini");
+        }
+        const std::string alt = getpathM(0, altName);
         SetIniFile(alt.c_str());
         if (has_config_section(name))
             temppath = alt;
         else
-            LOG_INFO("VIDEO CONFIG: no [%s] in video2.ini - using video.ini", name.c_str());
+            LOG_INFO("VIDEO CONFIG: no [%s] in %s - using video.ini", name.c_str(), altName);
     }
     aae_strcpy(g_videoIniPath, sizeof(g_videoIniPath), temppath.c_str());
     SetIniFile(g_videoIniPath);
@@ -504,16 +559,48 @@ void setup_video_config(const char* section) {
         bezely = get_config_int(name.c_str(), "bezcropy", 0);
     }
    
-    game_rect_left = get_config_int(name.c_str(), key("_left").c_str(), 0);
-    game_rect_right = get_config_int(name.c_str(), key("_right").c_str(), 1024);
-    game_rect_bottom = get_config_int(name.c_str(), key("_bottom").c_str(), 0);
-    game_rect_top = get_config_int(name.c_str(), key("_top").c_str(), 1024);
+    // An empty key ("bezel_left=") reads back as "" and atoi("") is 0, not the
+    // default, so a section with blank bezel/crop keys (ripoff, demon,
+    // spacewar...) produced a 0x0 rect and the game vanished in that mode -
+    // and the -debug arrows then had to walk each side out from 0. Read the
+    // four values as a set: if any is blank or the rect has no area, start
+    // from the full_ rect (then 0..1024), so -debug has a visible picture to
+    // adjust and F2 saves a real rect.
+    auto read_rect = [&](const char* prefix, int& l, int& r, int& b, int& t) -> bool {
+        const std::string p(prefix);
+        const std::string sl = get_config_string(name, p + "_left", "");
+        const std::string sr = get_config_string(name, p + "_right", "");
+        const std::string sb = get_config_string(name, p + "_bottom", "");
+        const std::string st = get_config_string(name, p + "_top", "");
+        if (sl.empty() || sr.empty() || sb.empty() || st.empty())
+            return false;
+        l = atoi(sl.c_str()); r = atoi(sr.c_str());
+        b = atoi(sb.c_str()); t = atoi(st.c_str());
+        return l != r && b != t;
+        };
+
+    int l = 0, r = 1024, b = 0, t = 1024;
+    if (!read_rect(scalePrefix, l, r, b, t))
+    {
+        if (strcmp(scalePrefix, "full") != 0 && read_rect("full", l, r, b, t))
+            LOG_INFO("VIDEO CONFIG: [%s] %s_ rect blank or empty - using full_ rect", name.c_str(), scalePrefix);
+        else
+        {
+            l = 0; r = 1024; b = 0; t = 1024;
+            LOG_INFO("VIDEO CONFIG: [%s] %s_ rect blank or empty - using 0..1024", name.c_str(), scalePrefix);
+        }
+    }
+    game_rect_left = l;
+    game_rect_right = r;
+    game_rect_bottom = b;
+    game_rect_top = t;
 
     LOG_INFO("VIDEO CONFIG: Left %d, Right %d, Bottom %d, Top %d ", game_rect_left, game_rect_right, game_rect_bottom, game_rect_top);
 }
 
 
 void setup_game_config() {
+    config.dvg_engine_selectable = 0; // the driver's init sets it again if it honors dvg_engine
     setup_config();
     set_points_lines();
 }

@@ -1,0 +1,13 @@
+# Optional graphics binding; independently buildable core has no GL dependency.
+find_package(OpenGL REQUIRED COMPONENTS EGL)
+pkg_check_modules(WAYLAND_EGL REQUIRED IMPORTED_TARGET wayland-egl)
+add_library(native_window_egl ${CMAKE_CURRENT_LIST_DIR}/src/egl.cpp)
+add_library(native_window::egl ALIAS native_window_egl)
+target_link_libraries(native_window_egl PUBLIC native_window::core PRIVATE OpenGL::EGL PkgConfig::WAYLAND_EGL)
+target_include_directories(native_window_egl PUBLIC ${CMAKE_CURRENT_LIST_DIR}/include)
+target_compile_features(native_window_egl PUBLIC cxx_std_17)
+if(BUILD_TESTING)
+  add_executable(native_window_egl_tests ${CMAKE_CURRENT_LIST_DIR}/tests/egl_tests.cpp)
+  target_link_libraries(native_window_egl_tests PRIVATE native_window::egl)
+  add_test(NAME native_window_egl_validation COMMAND native_window_egl_tests)
+endif()

@@ -148,6 +148,37 @@ struct LinuxWindow::Impl {
 // Created ONCE at Create() time - making one per SetCursorVisible call leaks an
 // X server resource on every toggle, and callers do toggle per-frame.
 //------------------------------------------------------------------------------
+// Title-bar allowance for a frame we cannot measure before mapping
+// (_NET_FRAME_EXTENTS only arrives afterwards). Must match frameAllowance in
+// SizeFromX11 (linux_main.cpp), which subtracts the same amount from the work
+// area height. 48 covers Breeze (~30) and Adwaita/Mutter (~37) title bars.
+static const int kX11FrameAllowance = 48;
+
+// _NET_WORKAREA for the screen: the desktop minus panels/docks (struts). false
+// where the WM does not set it (gamescope, bare WSLg) - the caller then uses the
+// whole screen.
+static bool read_work_area(Display* dpy, int scr, long* x, long* y, long* w, long* h)
+{
+	Atom workAtom = XInternAtom(dpy, "_NET_WORKAREA", True);
+	if (workAtom == None) return false;
+	Atom type = None; int format = 0;
+	unsigned long nitems = 0, after = 0;
+	unsigned char* data = nullptr;
+	bool ok = false;
+	if (XGetWindowProperty(dpy, RootWindow(dpy, scr), workAtom, 0, 4, False,
+	                       XA_CARDINAL, &type, &format, &nitems, &after, &data) == Success && data) {
+		if (type == XA_CARDINAL && format == 32 && nitems >= 4) {
+			const long* wa = reinterpret_cast<const long*>(data);
+			if (wa[2] > 0 && wa[3] > 0) {
+				*x = wa[0]; *y = wa[1]; *w = wa[2]; *h = wa[3];
+				ok = true;
+			}
+		}
+		XFree(data);
+	}
+	return ok;
+}
+
 static Cursor make_blank_cursor(Display* dpy, Window win)
 {
 	char zero[8] = { 0 };
@@ -184,12 +215,27 @@ bool LinuxWindow::Create(const WindowSetup& setup)
 	int w = setup.windowWidth  > 0 ? setup.windowWidth  : 1024;
 	int h = setup.windowHeight > 0 ? setup.windowHeight : 768;
 
+	// Center inside the WORK AREA, not the whole display. The default size is
+	// already work-area height minus the title-bar allowance (SizeFromX11), but
+	// centering that on the full screen ignored where the panel is: with a bottom
+	// taskbar the window's lower edge landed under it. The frame's title bar sits
+	// ABOVE the client (NorthWest gravity places the frame at x,y), so it is
+	// counted in the height being centered.
 	int x = 0, y = 0;
+	bool havePos = false;
 	if (setup.centerWindow) {
-		x = (DisplayWidth (m_impl->dpy, m_impl->screen) - w) / 2;
-		y = (DisplayHeight(m_impl->dpy, m_impl->screen) - h) / 2;
-		if (x < 0) x = 0;
-		if (y < 0) y = 0;
+		long waX = 0, waY = 0;
+		long waW = DisplayWidth (m_impl->dpy, m_impl->screen);
+		long waH = DisplayHeight(m_impl->dpy, m_impl->screen);
+		const bool haveWa = read_work_area(m_impl->dpy, m_impl->screen, &waX, &waY, &waW, &waH);
+		x = (int)waX + ((int)waW - w) / 2;
+		y = (int)waY + ((int)waH - (h + kX11FrameAllowance)) / 2;
+		if (x < (int)waX) x = (int)waX;
+		if (y < (int)waY) y = (int)waY;
+		havePos = true;
+		LOG_INFO("LinuxWindow: %s %ldx%ld+%ld+%ld -> window %dx%d at %d,%d",
+		         haveWa ? "work area" : "no _NET_WORKAREA, screen", waW, waH, waX, waY,
+		         w, h, x, y);
 	}
 
 	// ORDER MATTERS. The GL framebuffer config must be chosen FIRST, and this
@@ -369,6 +415,20 @@ bool LinuxWindow::Create(const WindowSetup& setup)
 
 	m_impl->netWmState     = XInternAtom(m_impl->dpy, "_NET_WM_STATE", False);
 	m_impl->netWmStateFull = XInternAtom(m_impl->dpy, "_NET_WM_STATE_FULLSCREEN", False);
+
+	// Without WM_NORMAL_HINTS PPosition most WMs ignore XCreateWindow's x/y and
+	// run their own placement, so the work-area centering above would be lost.
+	if (havePos) {
+		if (XSizeHints* hints = XAllocSizeHints()) {
+			hints->flags  = PPosition | PSize;
+			hints->x      = x;
+			hints->y      = y;
+			hints->width  = w;
+			hints->height = h;
+			XSetWMNormalHints(m_impl->dpy, m_impl->win, hints);
+			XFree(hints);
+		}
+	}
 
 	XMapWindow(m_impl->dpy, m_impl->win);
 	// XSync, not XFlush: XMapWindow is asynchronous, and everything after this

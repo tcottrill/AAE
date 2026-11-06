@@ -1,0 +1,20 @@
+native_window (native Wayland window library) - pinned vendored copy
+=====================================================================
+
+Directory:   aae/system/3rdparty/native_window/
+Source:      C:\Source2026\mp4_av_player_vs2022\shared\native_window
+Commit:      c4fe282 (2026-11-02), "Add native Wayland player and reliable
+             Windows/Linux audio passthrough" - the exact git-tracked files of
+             shared/native_window at that commit, layout preserved, byte for byte
+             (30 files, including tests/ and examples/, which AAE does not build).
+
+DO NOT EDIT THE COPY HERE. Change the master in
+mp4_av_player_vs2022/shared/native_window and re-copy the whole tree.
+
+Why a copy and not a reference: the Flatpak build (and any CI checkout) sees only
+the AAE tree, so the library has to live inside it.
+
+Used by: aae/system/window/linux/wayland_window.cpp (WaylandWindow, the native
+Wayland backend) and the EGL path in aae/system/graphics/sys_gl.cpp. Built by the
+Linux branch of the top-level CMakeLists.txt when the Wayland dependencies are
+present (option AAE_WAYLAND); the Windows build never sees it.

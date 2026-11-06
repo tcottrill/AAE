@@ -40,6 +40,7 @@
 #include "sys_str.h"           // aae_stricmp (raster_effect "NONE" test)
 #include "vector_draw_vk.h"    // VectorDrawVK - beam vector renderer;
                                // pulls in vector_draw.h (beam batch access)
+#include "../aae_video/cabinet_quad.h" // cabinet_canvas_aspect (shared GL/VK rule)
 #include "vector_post_vk.h"    // VectorPostVK - SSAA RT + trail + glow
 #include "shot_draw_vk.h"      // ShotDrawVK - textured vector shots;
                                // pulls in vector_draw_gl.h (txdata,
@@ -2004,6 +2005,8 @@ void vkchain_render(void)
 			{
 				art.backdropView = t->view;
 				art.backdropSampler = t->sampler;
+				art.backdropW = (float)t->width;    // true-aspect cabinet quad
+				art.backdropH = (float)t->height;
 			}
 			if (config.overlay && art_loaded[1] && (t = VkArt_Get(1)) != nullptr)
 			{
@@ -2011,17 +2014,28 @@ void vkchain_render(void)
 				art.overlaySampler = t->sampler;
 				art.overlay1 = (vattr & VECTOR_USES_OVERLAY1) != 0;
 				art.overlay2 = (vattr & VECTOR_USES_OVERLAY2) != 0;
+				// GL twin: overlay_flip_bits in opengl_renderer.cpp.
+				const int rot = (Machine && Machine->drv) ? Machine->drv->rotation : 0;
+				if (vattr & VIDEO_TYPE_VECTOR)
+				{
+					art.overlayFlipX = (rot & ORIENTATION_FLIP_X) != 0;
+					art.overlayFlipY = (rot & ORIENTATION_FLIP_Y) != 0;
+				}
 			}
 			if (config.bezel && art_loaded[3] && (t = VkArt_Get(3)) != nullptr)
 			{
 				art.bezelView = t->view;
 				art.bezelSampler = t->sampler;
+				art.bezelW = (float)t->width;
+				art.bezelH = (float)t->height;
 			}
 			art.rasterBW = (vattr & VIDEO_TYPE_RASTER_BW) != 0;
 			art.artcrop = (config.artcrop != 0);
 			art.bezelX = (float)bezelx;
 			art.bezelY = (float)bezely;
 			art.bezelZoom = bezelzoom;
+			// GL twin: cabinet_canvas_aspect_gl() (outer `rot` = system rotation).
+			art.canvasAspect = cabinet_canvas_aspect(GetWindowSetup().aspectRatio, rot);
 		}
 		const bool artActive = art.Any();
 
@@ -2253,6 +2267,22 @@ void vkchain_render(void)
 
 			VK_ResumeFramePass(g_vk, cmd, s_imageIndex);
 			passSuspended = false;
+
+			// Cabinet art wings (GL render_cabinet_wings twin). The square
+			// canvas blit below clips backdrop/bezel art that extends past the
+			// 4:3 picture, so draw those two layers straight into the swapchain
+			// through the same letterbox map the direct path uses, BEFORE the
+			// canvas covers the centre. Both centre writers are opaque (the
+			// monitor pass and SQBlendVK::None have blending disabled, straight
+			// replace), so the centre is exactly the canvas result and only the
+			// side areas keep the wings. System rotation keeps today's
+			// behaviour (no wings), as does a window with no side areas.
+			if (rot == 0 && cvShader && artActive && m.lx >= 1.0f)
+			{
+				GPU_ZONE("cab_wings");
+				g_vectorPost.RecordCabinetWings(g_vk, cmd, g_vk.frameIndex,
+					m.lx, m.ly, m.vw, m.vh, art);
+			}
 
 			// The letterbox rect in CrtPostVK's Y-DOWN frame. ScreenQuadVK
 			// takes it y-up; the box is vertically centered, so the two agree

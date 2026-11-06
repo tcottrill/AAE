@@ -67,6 +67,9 @@ public:
 	bool VoiceSetOutputMatrix(VoiceHandle* v, uint32_t srcChannels,
 	                          uint32_t dstChannels, const float* matrix) override;
 
+	bool HdmiStereoActive() const override { return m_hdmiStereo; }
+	const char* OutputModeDescription() const override { return m_modeDesc; }
+
 	bool CaptureStart(const char* path) override;
 	void CaptureStop() override;
 
@@ -76,6 +79,9 @@ private:
 	IXAudio2*               m_xaudio2 = nullptr;
 	IXAudio2MasteringVoice* m_master = nullptr;
 	IXAudio2SourceVoice*    m_source = nullptr;
+	IXAudio2SubmixVoice*    m_widenBus = nullptr;   // SOUNDBAR: mono voices -> WidenXAPO -> master
+	bool                    m_hdmiStereo = false;
+	const char*             m_modeDesc = "";        // string literal, see Init
 	BYTE*                   m_buffers[kNumBuffers]{};
 	DWORD                   m_buffer_size = 0;
 	int                     m_current = 0;
@@ -86,4 +92,15 @@ private:
 	// -wavwrite capture state. The XAPO is AddRef'd by the effect chain;
 	// we keep one ref of our own between CaptureStart and CaptureStop.
 	struct CaptureXAPO*     m_capture_xapo = nullptr;
+
+	// NATIVE mode surround upmix on the mastering voice (null when not used).
+	// We hold one ref; the effect chain holds its own.
+	struct UpmixXAPO*       m_upmix = nullptr;
+
+	// Global output filter ([main] audio_filter), always first in the master
+	// chain (null only if installing it failed). We hold one ref.
+	struct ToneXAPO*        m_tone = nullptr;
+
+	// Builds [tone, upmix, capture] on the mastering voice.
+	HRESULT ApplyMasterChain();
 };

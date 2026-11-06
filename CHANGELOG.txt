@@ -721,3 +721,173 @@ Build
 - Linux/flatpak: CMake source list synced with the vcxproj (112 files), plus
   release/testing build and stage scripts.
 
+
+10/4/26 to 11/4/26 (after Release 2.00)
+
+Release
+- README!!!!!!!!!!!!!!!.txt for each release zip: windows/ (win11 and win7),
+  steamos/ (Flatpak install, Game Mode) and rpi5/ (build-pi5.sh build and run).
+
+Windows display
+- Multi-monitor: the starting monitor is picked by identity, not by
+  EnumDisplayMonitors order (a G-Sync toggle re-enumerated the displays and
+  starting_monitor=1 opened on the secondary). Uses the shared monitor_select
+  module (vendored). Monitor 1 = OS primary, 2.. = the others sorted
+  left-to-right, top-to-bottom. New [main] starting_monitor_id / -monitorid <id>
+  (stable device path, falls back to the number, then the primary). systemlog
+  lists every monitor and why the start monitor was chosen. WM_DISPLAYCHANGE
+  re-fits fullscreen and rescues an off-screen window.
+- Vulkan->OpenGL fallback: a renderer=vulkan session skipped GL context
+  creation, so a failed Vulkan init (no vulkan-1.dll, no ICD) fell back with no
+  context current (endless GL_INVALID_OPERATION, dead window). init_gl() now
+  creates the context on fallback and exits with a clear message if OpenGL
+  can't start either.
+- OpenGL init hardening: CheckGLErrorEx caps its glGetError loop (it hung with
+  no context current). InitOpenGLContext checks wglMakeCurrent and refuses
+  anything below OpenGL 3.3 (GDI Generic 1.1 under RDP/VM), with a message box
+  naming the reason and the GL version/renderer offered.
+
+Logging
+- sys_log: bare file names on Linux too (baseName split only on '\'), and the
+  worker thread examines the queue only under queueMutex (it raced with
+  writers). Stress-tested with 8 threads x 2000 messages on MSVC and GCC.
+
+Artwork
+- Tail Gunner: new bezel from tailg_aae.zip (tailgunner_bezel.png, ART_TEX 3);
+  video.ini [tailg] section, bezel_ rect from the zip's default.lay.
+
+Linux audio
+- Native PipeWire backend replaces the libpulse simple API (ported from the
+  mp4 player, PCM only). Opens the stream in the default sink's real layout
+  and rate. Every channel gets content: fronts untouched, center = mono,
+  LFE = low-passed mono, surrounds = difference + -6 dB mono fill 12 ms late.
+  Master volume now scales the chip stream too, so volume and pause mute reach
+  the sound chips. Raw ALSA remains the no-server fallback. speakers default 0
+  = follow the output's layout; 2 forces stereo. Verified 6 channels on a
+  private PipeWire 1.6.2 server, 0 underruns.
+- Flatpak launcher: one-time migration of a seeded speakers=2 to speakers=0
+  (marker file, so a user who sets 2 again keeps it).
+- [main] hdmi_passthrough = auto (default) | 1 | 0: on an HDMI sink, mono
+  sources get a 12 ms delayed copy at 0.7 added to L and subtracted from R
+  (FL/FR correlation ~0.34), so a TV -> eARC -> Sonos path builds rears and
+  sub. Genuine stereo is never processed. Confirmed by ear on the Sonos.
+  docs/audio-soundbar-widening.md is the record.
+
+Linux input / window
+- evdev: recover from SYN_DROPPED. The damaged packet is discarded, then keys
+  (EVIOCGKEY, differences only) and absolute axes (EVIOCGABS) are resynced
+  from the device, so no key or fire button stays stuck.
+- Native Wayland window backend (shared native_window library from the mp4
+  player). [main] display = auto | wayland | x11, -wayland / -x11. auto uses
+  Wayland when WAYLAND_DISPLAY is set and not under gamescope; Game Mode stays
+  on X11. Failed Wayland connect falls back to X11 with the reason logged.
+  Vulkan gets a Wayland surface, OpenGL an EGL context. CMake option
+  AAE_WAYLAND; the flatpak gets --socket=wayland and keeps x11.
+- Windowed mode stays inside the usable work area: Wayland honours
+  xdg_toplevel.configure_bounds (larger margin fallback when none is sent);
+  X11 centers in _NET_WORKAREA with PPosition hints.
+
+
+11/5/26
+Windows audio: audio_output setting, soundbar mode, 5.1 upmix
+- New [main] audio_output = auto | soundbar | surround | stereo (config.audio_output,
+  global device setting, aae.ini only, applies at next game start). Resolved in
+  aae_emulator.cpp into speakers / hdmi_passthrough right before the mixer_set_*
+  calls; auto leaves the legacy keys untouched so Linux setups behave identically.
+- XAudio2Backend now honours it. Init queries the default render endpoint
+  (IMMDeviceEnumerator: friendly name + PKEY_AudioEndpoint_FormFactor) and decides
+  once: SOUNDBAR (hdmi_passthrough=1, or auto + HDMI/DisplayPort/S-PDIF endpoint),
+  STEREO (speakers=2), else NATIVE. SOUNDBAR: 2-channel mastering voice, a 2-channel
+  widen submix with WidenXAPO (MonoStereoWidth::processf) that mono per-channel
+  voices send to, and HdmiStereoActive() true so mixer.cpp's chip widener runs.
+  NATIVE on a >2 channel non-headphone endpoint: UpmixXAPO on the mastering voice,
+  a float port of LinuxAudioBackend::Upmix (fronts untouched, others added).
+- -wavwrite chain is now [UpmixXAPO, CaptureXAPO]; stopping capture restores the
+  upmix. New IAudioBackend::OutputModeDescription() and
+  mixer_get_output_mode_description() feed the Sound menu (OUTPUT MODE + ACTIVE rows).
+- Not tested on hardware.
+- Dual-mono sample files (2-channel WAVs with identical channels: spacfury, redbaron,
+  llander, zektor, aae.zip ambients) are folded to mono at load in load_sample_from_buffer
+  (sample_fold.h, |L-R| <= 2 on every frame, no gain change) so soundbar widening applies
+  to them. Unit test: audio/tests/test_sample_fold.cpp.
+- The shipped sample zips themselves were repacked: those 38 dual-mono WAVs in
+  spacfury/redbaron/llander/zektor/aae.zip are now 1-channel files (same rule), so the
+  load-time fold is only a safety net for older or third-party sample packs.
+- Verified on this PC with -wavwrite L/R correlation, soundbar vs stereo: Gyruss (chips)
+  0.345 vs 1.000, Zektor (voices) 0.342, Space Fury (repacked) 0.342 vs 1.000. 5.1 upmix
+  confirmed by ear on discrete 5.1 speakers. Soundbar mode not yet heard on the Sonos.
+
+11/5/26 Audio softening (MAME-style):
+- New global output filter [main] audio_filter = off|light|warm (default light), output_tone.h:
+  20 Hz DC-blocking high-pass + 2nd-order Butterworth low-pass (12 kHz light / 7 kHz warm).
+  LIVE via Sound menu > AUDIO FILTER (mixer_set_output_filter, atomic). Windows: ToneXAPO is the
+  first effect on the mastering voice (XAudio2Backend::ApplyMasterChain builds [tone, upmix,
+  capture], so -wavwrite records the filtered sound). Linux: applied to the int16 stereo mix in
+  ProduceDeviceFrames before the hdmi/encode/upmix branches. Test: audio/tests/test_output_tone.cpp.
+- Native-rate chip streams above the output rate (stream_set_native_rate: namco, astrocade, exidy440,
+  tms36xx, tms5220) are low-passed in stream_update with an 8th-order Butterworth (4 biquads, fc =
+  0.45*SYS_FREQ) before the linear-interpolation decimation, to stop aliasing.
+- Shipped aae.ini sets audio_output=auto and audio_filter=light.
+
+
+11/6/26
+Vector artwork and display
+- Overlays on vector games follow the driver's FLIP_X/FLIP_Y (GL drawOverlayQuad,
+  VK OverlayUv). The Cinematronics flips moved into driver ORIENTATION, which
+  flips only the beams, so the upright overlays (wotw, armora, demon, solarq)
+  were upside down.
+- setup_video_config: a blank or zero-area bezel_/crop_ rect falls back to the
+  full_ rect (then 0..1024) instead of 0x0, so the game stays visible for -debug.
+- Cabinet art at true aspect (cabinet_quad.h, shared by GL and VK): backdrop and
+  bezel are drawn at the image's own aspect instead of stretched over 4:3
+  (RipOff was 1.5x too wide, Battlezone 0.89x). In a window wider than 4:3 the
+  art continues into the side areas, as in MAME. Crop mode keeps
+  bezcropzoom/x/y. tools/vector_art_aspect_migrate.py converted every vector
+  game's bezel_/crop_ rects in video.ini and video2.ini; rects reshaped for
+  startrek, zektor, elim2/a/c, spacfury/a/b, starcas, wotwc.
+- Sideways vector games (barrier, sundance, tacscan): always an exact 3:4
+  portrait window (4:3 under -ror/-rol). Removed the 4:3-with-bezel special
+  case and the per-frame bezel-toggle resize hack (under -ror the art came out
+  1.78x stretched). cabinet_canvas_aspect handles 90/270 system rotation.
+- Tac/Scan: screen area is its real 768x1024 plus a small margin, so the bottom
+  border is no longer lost; fixed the screen height typo (76 -> 768).
+- Star Castle: screen area -32..1056 x -24..792 so the test-mode edge markers
+  (drawn outside 0..1024 x 0..768) fit; starcas.png padded to match; bezel/crop
+  rects scaled 1.0625 and the crop rect tuned.
+- New art: RipOff (flattened MAME inner + outer bezel in ripoff_aae.zip),
+  updates for wotw, demon and armora. Demon's bezel widened to 4591x4000 so its
+  opening is 4:3.
+- Removed unused/superseded artwork zips (armora_better, c64, demon, omegrace,
+  redbaron, ripoff, solarq, starcas, starcas_orig, tailg, wotw, boothill/).
+
+DVG engine
+- VIDEO SETUP > DVG ENGINE (MAME / VECSIM), shown only for drivers that honor
+  dvg_engine (asteroid family, Omega Race). Edits config.dvg_engine_pending,
+  shows "(NEXT RUN)", saves [main] dvg_engine to the game's ini on menu exit.
+- MAME-engine bezel geometry: mame_vector.cpp stretches the visible area to
+  0..1024 while VECSIM passes raw coordinates, so the copied bezel_/crop_
+  rects made the picture too tall. Converted every copied rect; added
+  MAME-engine [astbz11b] and [astdelbz11b] sections.
+- video2.ini renamed video_vecsim.ini. config.cpp falls back to an old
+  video2.ini; the Flatpak launcher and stage-for-pi.sh rename a seeded
+  video2.ini so tuned copies survive.
+
+Cinematronics
+- Tail Gunner: F2 toggles the test pattern (resets with START forced held for
+  2 s; next F2 resets normally). DIPs 0x08/0x10/0x40 never read: Unused.
+- Sundance: DIPs verified by disassembly. Coinage 0x08 works (MAME's "doesn't
+  work" note dropped); 0x10/0x20/0x40 never read: Unused.
+- Warrior: Time, Coinage and Unused names from current MAME.
+- War of the Worlds: Lives labels were swapped; 0x00 = 3 (default), 0x02 = 5.
+
+Asteroids bootlegs
+- asterock: ROM_RELOAD read the 0x400 vector ROM as 0x800 and aborted loading.
+  Own read map and NMI, MAME IN0 polarities, removed the address==7 hack that
+  hid the service switch, fixed the "DSW" tag. Parent's visible area.
+- asteroidb: $2000 is one Lunar Lander style byte (DVG done, self-test, tilt,
+  3 kHz, diag step), hyperspace at $2003. New asteroidb_IN0_r, read map,
+  llander-style NMI gate and input ports, so F2 test mode works.
+- RAM page swap resets to page 0 on every CPU reset (a watchdog reset with
+  RAMSEL set gave PAGE SELECT ERROR in asterock's self-test).
+- meteorts uses the plain asteroid map. asterock/asteroidb/meteorts video.ini
+  and video2.ini sections take the parent's rects.

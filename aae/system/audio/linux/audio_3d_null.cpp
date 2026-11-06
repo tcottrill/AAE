@@ -16,8 +16,8 @@
 // audio_3d_init() logs a warning rather than just returning false.
 //
 // mixer.cpp gates its entire positional path on g_3d_inited, so returning false
-// disables it cleanly with no other changes. AlsaBackend::VoiceSetOutputMatrix
-// returns false for the same reason.
+// disables it cleanly with no other changes. LinuxAudioBackend::
+// VoiceSetOutputMatrix returns false for the same reason.
 //
 // Doing it properly means reimplementing X3DAudio's channel-matrix
 // computation - self-contained DSP work, and not what a portability phase is

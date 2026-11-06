@@ -12,6 +12,7 @@
 #include "config.h"
 #include "sys_str.h"   // aae_stricmp
 #include "colordefs.h"
+#include "mixer.h"
 #include "mame_layout.h"      // Layout_ComputeGameAspect (GAME ASPECT menu item)
 #ifdef _WIN32
 #include "windows_util.h"   // Win32 dialog/monitor helpers
@@ -191,6 +192,10 @@ struct MenuItem {
     // Optional short reason shown after the value when the item is disabled
     // (e.g. "NOT LOADED"). Keep it short -- it has to fit in the value column.
     std::string disabledReason;
+    // Optional live replacement for disabledReason (info rows whose text
+    // changes while the menu is open, e.g. the Sound menu's ACTIVE row).
+    std::function<std::string()> disabledReasonFn;
+    std::string reasonText() const { return disabledReasonFn ? disabledReasonFn() : disabledReason; }
 
     // ------------------------------------------------------------------
     // Factory: Integer with optional string label list
@@ -533,7 +538,7 @@ void MenuManager::RecalculateLayout() {
 
         if (!item.isLink && item.getValueDisplay) {
             std::string val = item.disabled()
-                ? item.disabledReason   // use the reason string for width calc
+                ? item.reasonText()   // use the reason string for width calc
                 : item.getValueDisplay();
             // Values wider than VALUE_W_MAX marquee within the field, so the
             // box never needs to grow past it.
@@ -568,6 +573,17 @@ void MenuManager::SaveConfigIfRequired(MenuID fromId) {
         // mid-session (see BuildVideoMenu's RENDERER item).
         my_set_config_string("main", "renderer",
             (config.renderer_pending == RENDERER_VULKAN) ? "vulkan" : "opengl", 0);
+        // DVG engine: per game, and only written when changed so that merely
+        // visiting the menu doesn't pin every game to the current global.
+        // Once written for this game, keep writing: switching back to the
+        // live value must overwrite the change saved on an earlier exit.
+        static int s_dvgSavedGame = -1;
+        if (!inGui && config.dvg_engine_selectable &&
+            (config.dvg_engine_pending != config.dvg_engine || s_dvgSavedGame == gamenum)) {
+            my_set_config_string("main", "dvg_engine",
+                (config.dvg_engine_pending == DVG_ENGINE_VECSIM) ? "vecsim" : "mame", gamenum);
+            s_dvgSavedGame = gamenum;
+        }
         my_set_config_int("main", "screenw",     config.screenw,   0);
         my_set_config_int("main", "screenh",     config.screenh,   0);
         my_set_config_int("main", "gamma",       config.gamma,     0);
@@ -677,6 +693,14 @@ void MenuManager::SaveConfigIfRequired(MenuID fromId) {
         my_set_config_int("main", "hvnoise",  config.hvnoise,  audPath);
         my_set_config_int("main", "psnoise",  config.psnoise,  audPath);
         my_set_config_int("main", "pshiss",   config.pshiss,   audPath);
+
+        // Device setting: always the global aae.ini, even during gameplay.
+        static const char* const kAudioOutputNames[4] = { "auto", "soundbar", "surround", "stereo" };
+        my_set_config_string("main", "audio_output",
+            kAudioOutputNames[(config.audio_output >= 0 && config.audio_output <= 3) ? config.audio_output : 0], 0);
+        static const char* const kAudioFilterNames[3] = { "off", "light", "warm" };
+        my_set_config_string("main", "audio_filter",
+            kAudioFilterNames[(config.audio_filter >= 0 && config.audio_filter <= 2) ? config.audio_filter : 1], 0);
     }
 }
 
@@ -775,6 +799,33 @@ void MenuManager::BuildVideoMenu() {
         rend.hasLeft  = []() { return config.renderer_pending == RENDERER_VULKAN; };
         rend.hasRight = []() { return config.renderer_pending == RENDERER_OPENGL; };
         m_items.push_back(rend);
+    }
+
+    // DVG ENGINE: MAME avgdvg port or the legacy vecsim, for the games whose
+    // driver honors config.dvg_engine (asteroid family, Omega Race).
+    //
+    // Applies on the next launch of this game: drivers latch the engine at
+    // init, so like RENDERER this edits dvg_engine_pending, never the live
+    // value. Saved per game by SaveConfigIfRequired.
+    if (!emulator_is_gui_active() && config.dvg_engine_selectable) {
+        MenuItem dvg;
+        dvg.label = "DVG ENGINE";
+        dvg.getValueDisplay = []() {
+            const bool vs = (config.dvg_engine_pending == DVG_ENGINE_VECSIM);
+            const bool changed = (config.dvg_engine_pending != config.dvg_engine);
+            return std::string(vs ? "VECSIM" : "MAME") +
+                   (changed ? " (NEXT RUN)" : "");
+        };
+        dvg.onAdjust = [](int dir) {
+            (void)dir;   // two states: either direction toggles
+            config.dvg_engine_pending =
+                (config.dvg_engine_pending == DVG_ENGINE_VECSIM) ? DVG_ENGINE_MAME
+                                                                 : DVG_ENGINE_VECSIM;
+        };
+        dvg.onActivate = []() {};
+        dvg.hasLeft  = []() { return config.dvg_engine_pending == DVG_ENGINE_VECSIM; };
+        dvg.hasRight = []() { return config.dvg_engine_pending == DVG_ENGINE_MAME; };
+        m_items.push_back(dvg);
     }
 
     // Resolution presets. Index 0 is AUTO (screenw/screenh = 0): the startup
@@ -1261,6 +1312,39 @@ void MenuManager::BuildSoundMenu() {
     m_items.push_back(MenuItem::Bool("HV CHATTER", &config.hvnoise));
     m_items.push_back(MenuItem::Bool("PS HISS",    &config.pshiss));
     m_items.push_back(MenuItem::Bool("PS NOISE",   &config.psnoise));
+
+    // Cabinet-tone output filter (global, aae.ini). LIVE: pushed to the mixer
+    // on every adjust so the change is heard immediately.
+    config.audio_filter = clamp_int(config.audio_filter, 0, 2);
+    {
+        MenuItem filt = MenuItem::Integer("AUDIO FILTER", &config.audio_filter, 0, 2,
+            { "OFF", "LIGHT", "WARM" });
+        auto baseAdjust = filt.onAdjust;
+        filt.onAdjust = [baseAdjust](int dir) {
+            baseAdjust(dir);
+            mixer_set_output_filter(config.audio_filter);
+        };
+        m_items.push_back(filt);
+    }
+
+    // Output device mode (global, aae.ini). Applies when the next game starts:
+    // the backend decides its mode once at Init.
+    config.audio_output = clamp_int(config.audio_output, 0, 3);
+    m_items.push_back(MenuItem::Integer("OUTPUT MODE", &config.audio_output, 0, 3,
+        { "AUTO", "SOUNDBAR", "5.1 SURROUND", "STEREO" }));
+
+    MenuItem active;
+    active.label = "ACTIVE";
+    active.getValueDisplay = []() { return std::string(); };
+    active.isDisabled = true;
+    active.disabledReasonFn = []() {
+        std::string d = mixer_get_output_mode_description();
+        if (d.empty()) d = "NONE";
+        if (config.audio_output != mixer_get_audio_output())
+            d += " - NEW MODE AT NEXT GAME";
+        return d;
+    };
+    m_items.push_back(active);
 }
 
 void MenuManager::BuildDipSwitchMenu() {
@@ -1780,7 +1864,7 @@ void MenuManager::Draw() {
             if (it.disabled()) {
                 // Show the reason string (e.g. "NOT LOADED") without arrows.
                 VF.Print(menuX + VALUE_X_OFFSET, (int)y,
-                    RGB_DISABLED, FONT_SCALE, it.disabledReason.c_str());
+                    RGB_DISABLED, FONT_SCALE, it.reasonText().c_str());
             }
             else {
                 std::string val = it.getValueDisplay();

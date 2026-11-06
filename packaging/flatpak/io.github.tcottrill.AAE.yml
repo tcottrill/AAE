@@ -31,18 +31,39 @@ sdk: org.freedesktop.Sdk
 command: aae-launcher.sh
 
 finish-args:
-  # X11, not Wayland. Deliberate, and the reason the whole backend is X11+GLX:
-  # gamescope hosts its own XWayland server and every game in the SteamOS
-  # session runs inside it, taking frames with no copy inside X. X11 is the
-  # paved road on this target, not a fallback.
+  # BOTH Wayland and X11, deliberately - and not --socket=fallback-x11.
+  #
+  # Native Wayland is what AAE uses on a Wayland desktop (Plasma in Desktop
+  # Mode, GNOME, the Pi): the window, the cursor hiding and the pointer capture
+  # are done through the compositor's own protocols, with none of the
+  # workarounds the X11 path needs to coax XWayland into hiding the pointer.
+  #
+  # X11 stays for gamescope (Steam Game Mode). gamescope hosts its own XWayland
+  # server and every game in the SteamOS session runs inside it, taking frames
+  # with no copy inside X; that is the proven path on this target, so auto
+  # selection keeps it there. fallback-x11 would DROP the X socket whenever a
+  # Wayland one exists, which is exactly the Game Mode situation, so it cannot
+  # be used. [main] display (auto | wayland | x11) in aae.ini, or -wayland /
+  # -x11 on the command line, override the choice, and a Wayland attempt that
+  # fails falls back to X11 on its own.
+  #
+  # No module is needed to build the Wayland side: the 24.08 SDK ships
+  # wayland-client 1.23, wayland-cursor, wayland-egl, xkbcommon, wayland-protocols
+  # and wayland-scanner, and CMakeLists enables the backend when it finds them.
+  - --socket=wayland
   - --socket=x11
   - --share=ipc
 
   # GPU.
   - --device=dri
 
-  # Audio. PulseAudio covers the PipeWire-with-pulse-compat setup SteamOS
-  # uses; alsa_backend opens ALSA "default", which resolves to it.
+  # Audio. The backend speaks native PipeWire first (so it can ask the default
+  # sink for its real layout) and only falls back to ALSA when there is no
+  # PipeWire server. libpipewire comes from the SDK, so no extra module is
+  # needed; the socket below is the native-protocol endpoint, read-only is all
+  # a client needs. --socket=pulseaudio stays because the ALSA fallback opens
+  # "default", which resolves through the pulse socket inside the sandbox.
+  - --filesystem=xdg-run/pipewire-0:ro
   - --socket=pulseaudio
 
   # THE ONE THAT IS EASY TO MISS. Without --device=input the sandbox exposes
@@ -334,7 +355,7 @@ modules:
       - install -Dm644 aaedata/video.ini /app/share/aae/video.ini
       # VECSIM DVG engine rects (config.cpp picks it per game when that
       # engine is selected); without it those games fall back to video.ini.
-      - install -Dm644 aaedata/video2.ini /app/share/aae/video2.ini
+      - install -Dm644 aaedata/video_vecsim.ini /app/share/aae/video_vecsim.ini
       # Shipped documentation, linked beside aae.ini by the launcher so it
       # sits with the settings it describes. "AAE Xbox Controller Guide.txt"
       # is NOT here - it exists only in the repo root, so the aae module

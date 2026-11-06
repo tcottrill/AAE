@@ -650,10 +650,12 @@ bool mixer_wavwrite_start(const char* path);
 void mixer_wavwrite_stop(void);
 
 // Speaker request for the OUTPUT device, set by the emulator from
-// [main] speakers BEFORE mixer_init: 2 = stereo (default), 6 = discrete 5.1
-// (backend upmixes), 0 = auto-negotiate. Consumed by the Linux backend at
-// Init; the Windows XAudio2 backend ignores it. Lives here because the
-// backend already includes mixer.h and must not reach into aae-side config.
+// [main] speakers BEFORE mixer_init: 0 = follow the output's reported layout
+// (default; the backend fills every speaker), 2 = always stereo, 6 = legacy
+// "surround when available" (same as 0); anything else is treated as 0.
+// Consumed by the Linux backend at Init; the Windows XAudio2 backend ignores
+// it. Lives here because the backend already includes mixer.h and must not
+// reach into aae-side config.
 void mixer_set_speaker_config(int channels);
 int  mixer_get_speaker_config(void);
 
@@ -662,6 +664,31 @@ int  mixer_get_speaker_config(void);
 // emulator before mixer_init, consumed by the Linux backend at Init.
 void mixer_set_surround_encode(int enabled);
 int  mixer_get_surround_encode(void);
+
+// [main] hdmi_passthrough (Linux): stereo PCM processing for a TV or soundbar
+// that does its own surround - mono sources widened, output on FL/FR only (see
+// mono_stereo_width.h). NOT Dolby/DTS bitstream passthrough. -1 = auto (on for
+// an HDMI PipeWire sink), 0 = off, 1 = on; anything else means auto. Set by the
+// emulator before mixer_init and resolved once by the Linux backend at Init;
+// the Windows backend ignores it.
+void mixer_set_hdmi_passthrough(int mode);
+int  mixer_get_hdmi_passthrough(void);
+
+// [main] audio_output (config.h): 0 auto, 1 soundbar, 2 surround, 3 stereo.
+// Kept here only so the backend can log the raw setting; the emulator has
+// already resolved it into speakers / hdmi_passthrough before mixer_init.
+void mixer_set_audio_output(int mode);
+int  mixer_get_audio_output(void);
+
+// [main] audio_filter (output_tone.h): 0 off, 1 light, 2 warm. LIVE: the
+// backend reads it every buffer, so a change is heard immediately.
+void mixer_set_output_filter(int preset);
+int  mixer_get_output_filter(void);
+
+// Short uppercase description of the active output mode ("SOUNDBAR (HDMI)",
+// "5.1 SURROUND (6 CH)", "STEREO", ...). Empty string when no backend is up.
+// Pointer is valid until the backend is shut down.
+const char* mixer_get_output_mode_description(void);
 
 // Query the output device's actual channel layout (post-init). Useful for
 // diagnosing Atmos / surround setups and for sanity-checking that the OS is

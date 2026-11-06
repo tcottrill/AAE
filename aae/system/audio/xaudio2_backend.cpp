@@ -15,9 +15,14 @@
 // =============================================================================
 #include "xaudio2_backend.h"
 #include "mixer.h"
+#include "mono_stereo_width.h"
+#include "output_tone.h"
 #include "sys_log.h"
 #include "wav_writer.h"
 #include <xapo.h>
+#include <mmdeviceapi.h>
+#include <propidl.h>
+#include <string>
 #include <atomic>
 #include <cmath>
 #include <condition_variable>
@@ -26,6 +31,8 @@
 #include <mutex>
 #include <thread>
 #include <vector>
+
+#pragma comment(lib, "ole32.lib")
 
 #define HR(hr) if (FAILED(hr)) { LOG_ERROR("Error at line %d: HRESULT = 0x%08X\n", __LINE__, hr); }
 
@@ -328,6 +335,346 @@ struct CaptureXAPO final : public IXAPO {
 	}
 };
 
+// =============================================================================
+// InPlaceFloatXAPO: shared raw-IXAPO boilerplate (same approach as CaptureXAPO,
+// no xapobase.lib) for the two in-place float effects below. A derived class
+// implements OnLock (format known) and Run (process frames in place).
+//
+// Process() handles XAPO_BUFFER_SILENT the way both effects need: the buffer
+// is zeroed first and then processed, so a delay tail still plays out after
+// the input goes silent, and the output is marked VALID. A disabled effect is
+// a pure pass-through.
+// =============================================================================
+struct InPlaceFloatXAPO : public IXAPO {
+	std::atomic<ULONG> m_refs{ 1 };
+	uint32_t m_channels = 2;
+	uint32_t m_rate     = 48000;
+
+	virtual const wchar_t* Name() const = 0;
+	virtual void OnLock() = 0;
+	virtual void Run(float* buf, UINT32 frames) = 0;
+
+	HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppv) override
+	{
+		if (!ppv) return E_POINTER;
+		if (riid == __uuidof(IUnknown) || riid == __uuidof(IXAPO)) {
+			*ppv = static_cast<IXAPO*>(this);
+			AddRef();
+			return S_OK;
+		}
+		*ppv = nullptr;
+		return E_NOINTERFACE;
+	}
+	ULONG STDMETHODCALLTYPE AddRef() override
+	{
+		return m_refs.fetch_add(1, std::memory_order_relaxed) + 1;
+	}
+	ULONG STDMETHODCALLTYPE Release() override
+	{
+		const ULONG n = m_refs.fetch_sub(1, std::memory_order_acq_rel) - 1;
+		if (n == 0) delete this;
+		return n;
+	}
+
+	HRESULT STDMETHODCALLTYPE GetRegistrationProperties(
+		XAPO_REGISTRATION_PROPERTIES** ppProps) override
+	{
+		if (!ppProps) return E_POINTER;
+		auto* props = static_cast<XAPO_REGISTRATION_PROPERTIES*>(
+			CoTaskMemAlloc(sizeof(XAPO_REGISTRATION_PROPERTIES)));
+		if (!props) return E_OUTOFMEMORY;
+		std::memset(props, 0, sizeof(*props));
+		wcscpy_s(props->FriendlyName, Name());
+		wcscpy_s(props->CopyrightInfo, L"AAE");
+		props->MajorVersion = 1;
+		props->MinorVersion = 0;
+		props->Flags = XAPO_FLAG_CHANNELS_MUST_MATCH
+		             | XAPO_FLAG_FRAMERATE_MUST_MATCH
+		             | XAPO_FLAG_BITSPERSAMPLE_MUST_MATCH
+		             | XAPO_FLAG_BUFFERCOUNT_MUST_MATCH
+		             | XAPO_FLAG_INPLACE_SUPPORTED
+		             | XAPO_FLAG_INPLACE_REQUIRED;
+		props->MinInputBufferCount = 1;
+		props->MaxInputBufferCount = 1;
+		props->MinOutputBufferCount = 1;
+		props->MaxOutputBufferCount = 1;
+		*ppProps = props;
+		return S_OK;
+	}
+
+	HRESULT STDMETHODCALLTYPE IsInputFormatSupported(
+		const WAVEFORMATEX*, const WAVEFORMATEX*, WAVEFORMATEX** ppSupported) override
+	{
+		if (ppSupported) *ppSupported = nullptr;
+		return S_OK;
+	}
+	HRESULT STDMETHODCALLTYPE IsOutputFormatSupported(
+		const WAVEFORMATEX*, const WAVEFORMATEX*, WAVEFORMATEX** ppSupported) override
+	{
+		if (ppSupported) *ppSupported = nullptr;
+		return S_OK;
+	}
+	HRESULT STDMETHODCALLTYPE Initialize(const void*, UINT32) override { return S_OK; }
+	void STDMETHODCALLTYPE Reset() override {}
+
+	HRESULT STDMETHODCALLTYPE LockForProcess(
+		UINT32 InputLockedParameterCount,
+		const XAPO_LOCKFORPROCESS_BUFFER_PARAMETERS* pInputLockedParameters,
+		UINT32, const XAPO_LOCKFORPROCESS_BUFFER_PARAMETERS*) override
+	{
+		if (InputLockedParameterCount != 1 || !pInputLockedParameters ||
+		    !pInputLockedParameters[0].pFormat)
+			return E_INVALIDARG;
+		m_channels = pInputLockedParameters[0].pFormat->nChannels;
+		m_rate     = pInputLockedParameters[0].pFormat->nSamplesPerSec;
+		if (m_channels < 1 || m_channels > 8) return E_INVALIDARG;
+		OnLock();
+		return S_OK;
+	}
+	void STDMETHODCALLTYPE UnlockForProcess() override {}
+
+	void STDMETHODCALLTYPE Process(
+		UINT32 InputProcessParameterCount,
+		const XAPO_PROCESS_BUFFER_PARAMETERS* pIn,
+		UINT32 OutputProcessParameterCount,
+		XAPO_PROCESS_BUFFER_PARAMETERS* pOut,
+		BOOL IsEnabled) override
+	{
+		if (InputProcessParameterCount != 1 || !pIn) return;
+		const UINT32 frames = pIn[0].ValidFrameCount;
+		XAPO_BUFFER_FLAGS outFlags = pIn[0].BufferFlags;
+
+		if (IsEnabled && pIn[0].pBuffer && frames > 0) {
+			float* buf = static_cast<float*>(pIn[0].pBuffer);
+			if (pIn[0].BufferFlags == XAPO_BUFFER_SILENT)
+				std::memset(buf, 0, (size_t)frames * m_channels * sizeof(float));
+			Run(buf, frames);
+			outFlags = XAPO_BUFFER_VALID;
+		}
+		if (OutputProcessParameterCount == 1 && pOut) {
+			pOut[0].ValidFrameCount = frames;
+			pOut[0].BufferFlags = outFlags;
+		}
+	}
+
+	UINT32 STDMETHODCALLTYPE CalcInputFrames(UINT32 n) override  { return n; }
+	UINT32 STDMETHODCALLTYPE CalcOutputFrames(UINT32 n) override { return n; }
+};
+
+// =============================================================================
+// WidenXAPO: SOUNDBAR mode. Sits on a 2-channel submix ("widen bus") that only
+// mono per-channel voices send to. mid = 0.5*(L+R) goes through MonoStereoWidth
+// (12 ms late, 0.7, +dl to L, -dl to R) - the float twin of what voice_mixer.cpp
+// does for mono voices on Linux. Dual mono in, correlated-but-not-identical L/R
+// out, so a TV/soundbar that derives rears and sub from L-R has something to
+// work with.
+// =============================================================================
+struct WidenXAPO final : public InPlaceFloatXAPO {
+	MonoStereoWidth m_width;
+
+	const wchar_t* Name() const override { return L"AAE Mono Widen"; }
+	void OnLock() override { m_width.configure(true, m_rate); }
+	void Run(float* buf, UINT32 frames) override
+	{
+		if (m_channels != 2) return;
+		for (UINT32 i = 0; i < frames; ++i) {
+			float dl, dr;
+			m_width.processf(0.5f * (buf[i * 2] + buf[i * 2 + 1]), dl, dr);
+			buf[i * 2]     += dl;
+			buf[i * 2 + 1] += dr;
+		}
+	}
+};
+
+// =============================================================================
+// ToneXAPO: global "cabinet tone" output filter ([main] audio_filter). First
+// effect on the mastering voice, always installed; OFF is a true bypass inside
+// OutputTone. The preset is read live every buffer (menu changes are heard at
+// once). Sits before the upmix and the capture so -wavwrite records what is heard.
+// =============================================================================
+struct ToneXAPO final : public InPlaceFloatXAPO {
+	OutputTone m_tone;
+
+	const wchar_t* Name() const override { return L"AAE Output Tone"; }
+	void OnLock() override { m_tone.configure(m_rate, m_channels); }
+	void Run(float* buf, UINT32 frames) override
+	{
+		m_tone.process(buf, frames, mixer_get_output_filter());
+	}
+};
+
+// =============================================================================
+// UpmixXAPO: NATIVE mode on a real >2 channel endpoint. XAudio2's stock 2->5.1
+// matrix leaves center/LFE/rears empty, so this fills them from the FL/FR mix.
+//
+// Faithful float port of LinuxAudioBackend::Upmix (linux/alsa_backend.cpp,
+// the reference for every coefficient and the reasoning in its comments):
+//   FL/FR untouched      C = 0.5*(L+R)      LFE = ~120 Hz one-pole low-pass of C
+//   surrounds = +-0.5*(L-R) + kSurroundFill*mono, ~12 ms late (stride-2 ring)
+//   centre rear/height = delayed mono fill only
+// Differences from the Linux int16 code: float (no clamping, the device limiter
+// is downstream), and the non-front roles are ADDED to whatever the mastering
+// voice already holds in those channels rather than overwriting it.
+// Roles come from the master's SPEAKER_* mask in ascending-bit (interleave) order.
+// =============================================================================
+struct UpmixXAPO final : public InPlaceFloatXAPO {
+	enum Role : uint8_t { kRoleL, kRoleR, kRoleC, kRoleLFE, kRoleSurL, kRoleSurR, kRoleSurMono };
+	static constexpr float kSurroundFill = 0.5f;   // same final value as alsa_backend.cpp
+
+	Role  m_role[8] = {};
+	std::vector<float> m_delay;   // stride 2: [0]=0.5*(L-R) [1]=kSurroundFill*mono
+	size_t m_pos = 0;
+	float  m_lfe = 0.0f, m_lfeK = 0.0f;
+	uint32_t m_iL = 0, m_iR = 1;   // channel indices of the front pair
+
+	// Mirrors RoleOfSpeaker() in alsa_backend.cpp.
+	static Role RoleOfSpeaker(DWORD bit)
+	{
+		switch (bit) {
+		case SPEAKER_FRONT_LEFT:  case SPEAKER_FRONT_LEFT_OF_CENTER:  return kRoleL;
+		case SPEAKER_FRONT_RIGHT: case SPEAKER_FRONT_RIGHT_OF_CENTER: return kRoleR;
+		case SPEAKER_FRONT_CENTER:                                    return kRoleC;
+		case SPEAKER_LOW_FREQUENCY:                                   return kRoleLFE;
+		case SPEAKER_BACK_LEFT: case SPEAKER_SIDE_LEFT:
+		case SPEAKER_TOP_FRONT_LEFT: case SPEAKER_TOP_BACK_LEFT:      return kRoleSurL;
+		case SPEAKER_BACK_RIGHT: case SPEAKER_SIDE_RIGHT:
+		case SPEAKER_TOP_FRONT_RIGHT: case SPEAKER_TOP_BACK_RIGHT:    return kRoleSurR;
+		case SPEAKER_BACK_CENTER: case SPEAKER_TOP_CENTER:
+		case SPEAKER_TOP_FRONT_CENTER: case SPEAKER_TOP_BACK_CENTER:  return kRoleSurMono;
+		default:                                                      return kRoleC;
+		}
+	}
+
+	// Fills roles[] for `channels` interleaved channels. A mask whose bit count
+	// disagrees with the channel count (or 0) falls back to the standard layout
+	// for 4/6/8 channels; any other count returns false (no upmix is installed).
+	static bool Resolve(DWORD mask, uint32_t channels, Role* roles)
+	{
+		auto popcount = [](DWORD m) { uint32_t n = 0; for (; m; m &= m - 1) ++n; return n; };
+		if (channels < 3 || channels > 8) return false;
+		if (popcount(mask) != channels) {
+			switch (channels) {
+			case 4: mask = SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT | SPEAKER_BACK_LEFT | SPEAKER_BACK_RIGHT; break;
+			case 6: mask = SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT | SPEAKER_FRONT_CENTER | SPEAKER_LOW_FREQUENCY
+			             | SPEAKER_BACK_LEFT | SPEAKER_BACK_RIGHT; break;
+			case 8: mask = SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT | SPEAKER_FRONT_CENTER | SPEAKER_LOW_FREQUENCY
+			             | SPEAKER_BACK_LEFT | SPEAKER_BACK_RIGHT | SPEAKER_SIDE_LEFT | SPEAKER_SIDE_RIGHT; break;
+			default: return false;
+			}
+		}
+		uint32_t c = 0;
+		for (DWORD bit = 1; bit && c < channels; bit <<= 1)
+			if (mask & bit) roles[c++] = RoleOfSpeaker(bit);
+		return c == channels;
+	}
+
+	const wchar_t* Name() const override { return L"AAE Surround Upmix"; }
+
+	void OnLock() override
+	{
+		m_delay.assign(((size_t)(m_rate * 12 / 1000) + 1) * 2, 0.0f);
+		m_pos = 0;
+		m_lfe = 0.0f;
+		m_lfeK = 1.0f - expf(-2.0f * 3.14159265f * 120.0f / (float)m_rate);
+		m_iL = 0; m_iR = 1;
+		for (uint32_t c = m_channels; c-- > 0;) {
+			if (m_role[c] == kRoleL) m_iL = c;
+			if (m_role[c] == kRoleR) m_iR = c;
+		}
+	}
+
+	void Run(float* buf, UINT32 frames) override
+	{
+		const size_t slots = m_delay.size() / 2;
+		for (UINT32 i = 0; i < frames; ++i) {
+			float* frame = buf + (size_t)i * m_channels;
+			const float L = frame[m_iL], R = frame[m_iR];
+			const float mono = 0.5f * (L + R);
+
+			float* slot = &m_delay[m_pos * 2];
+			const float dDelayed = slot[0];
+			const float mDelayed = slot[1];
+			slot[0] = 0.5f * (L - R);
+			slot[1] = kSurroundFill * mono;
+			m_pos = (m_pos + 1 == slots) ? 0 : m_pos + 1;
+
+			m_lfe += m_lfeK * (mono - m_lfe);
+
+			for (uint32_t c = 0; c < m_channels; ++c) {
+				switch (m_role[c]) {
+				case kRoleL: case kRoleR: break;                 // untouched
+				case kRoleC:       frame[c] += mono;                   break;
+				case kRoleLFE:     frame[c] += m_lfe;                  break;
+				case kRoleSurL:    frame[c] +=  dDelayed + mDelayed;   break;
+				case kRoleSurR:    frame[c] += -dDelayed + mDelayed;   break;
+				case kRoleSurMono: frame[c] += mDelayed;               break;
+				}
+			}
+		}
+	}
+};
+
+// -----------------------------------------------------------------------------
+// Default render endpoint probe (the device XAudio2's default mastering voice
+// opens). Non-fatal: any failure leaves an empty name / unknown form factor.
+// Property keys are declared locally so no INITGUID / extra lib is needed.
+// -----------------------------------------------------------------------------
+namespace {
+const PROPERTYKEY kPkeyDeviceFriendlyName =
+	{ { 0xa45c254e, 0xdf1c, 0x4efd, { 0x80, 0x20, 0x67, 0xd1, 0x46, 0xa8, 0x50, 0xe0 } }, 14 };
+const PROPERTYKEY kPkeyEndpointFormFactor =
+	{ { 0x1da5d803, 0xd492, 0x4edd, { 0x8c, 0x23, 0xe0, 0xc0, 0xff, 0xee, 0x7f, 0x0e } }, 0 };
+
+struct EndpointInfo {
+	std::string name;
+	int formFactor = -1;   // EndpointFormFactor, -1 unknown
+};
+
+EndpointInfo QueryDefaultEndpoint()
+{
+	EndpointInfo info;
+	IMMDeviceEnumerator* en = nullptr;
+	IMMDevice* dev = nullptr;
+	IPropertyStore* props = nullptr;
+	if (SUCCEEDED(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
+	                               __uuidof(IMMDeviceEnumerator), (void**)&en)) &&
+	    SUCCEEDED(en->GetDefaultAudioEndpoint(eRender, eConsole, &dev)) &&
+	    SUCCEEDED(dev->OpenPropertyStore(STGM_READ, &props))) {
+		PROPVARIANT pv;
+		PropVariantInit(&pv);
+		if (SUCCEEDED(props->GetValue(kPkeyDeviceFriendlyName, &pv)) && pv.vt == VT_LPWSTR && pv.pwszVal) {
+			char utf8[512] = {};
+			if (WideCharToMultiByte(CP_UTF8, 0, pv.pwszVal, -1, utf8, (int)sizeof(utf8) - 1, nullptr, nullptr) > 0)
+				info.name = utf8;
+		}
+		PropVariantClear(&pv);
+		PropVariantInit(&pv);
+		if (SUCCEEDED(props->GetValue(kPkeyEndpointFormFactor, &pv)) && pv.vt == VT_UI4)
+			info.formFactor = (int)pv.ulVal;
+		PropVariantClear(&pv);
+	}
+	if (props) props->Release();
+	if (dev) dev->Release();
+	if (en) en->Release();
+	return info;
+}
+
+const char* FormFactorName(int ff)
+{
+	switch (ff) {
+	case Speakers:                   return "Speakers";
+	case LineLevel:                  return "LineLevel";
+	case Headphones:                 return "Headphones";
+	case Headset:                    return "Headset";
+	case SPDIF:                      return "S/PDIF";
+	case DigitalAudioDisplayDevice:  return "HDMI/DisplayPort";
+	case RemoteNetworkDevice:        return "RemoteNetwork";
+	case UnknownDigitalPassthrough:  return "UnknownDigital";
+	default:                         return "unknown";
+	}
+}
+} // namespace
+
 bool XAudio2Backend::Init(int rateHz, int fps)
 {
 	HRESULT hr;
@@ -346,7 +693,36 @@ bool XAudio2Backend::Init(int rateHz, int fps)
 	if (hrCI == S_OK || hrCI == S_FALSE) m_com_init_local = true;
 
 	HR(XAudio2Create(&m_xaudio2, 0, XAUDIO2_DEFAULT_PROCESSOR));
-	HR(m_xaudio2->CreateMasteringVoice(&m_master, XAUDIO2_DEFAULT_CHANNELS, rateHz, 0, 0));
+
+	// ---- Output mode (decided once) --------------------------------------
+	// audio_output has already been resolved by the emulator into speakers /
+	// hdmi_passthrough (aae_emulator.cpp); the raw value is only for the log.
+	const EndpointInfo ep = QueryDefaultEndpoint();
+	const int hdmiKey  = mixer_get_hdmi_passthrough();   // -1 auto, 0 off, 1 on
+	const int speakers = mixer_get_speaker_config();     // 0 follow device, 2, 6
+	const int audioOut = mixer_get_audio_output();       // 0 auto 1 soundbar 2 surround 3 stereo
+	static const char* const kOutNames[4] = { "auto", "soundbar", "surround", "stereo" };
+	const bool digitalEndpoint = (ep.formFactor == DigitalAudioDisplayDevice || ep.formFactor == SPDIF);
+	const bool headphones      = (ep.formFactor == Headphones || ep.formFactor == Headset);
+
+	enum class Mode { Soundbar, Stereo, Native } mode;
+	std::string why;
+	if (hdmiKey == 1) {
+		mode = Mode::Soundbar;
+		why = audioOut == 1 ? "forced by audio_output=soundbar" : "forced by hdmi_passthrough=1";
+	} else if (hdmiKey == -1 && digitalEndpoint) {
+		mode = Mode::Soundbar;
+		why = "endpoint is a digital HDMI/S-PDIF output";
+	} else if (speakers == 2) {
+		mode = Mode::Stereo;
+		why = audioOut == 3 ? "forced by audio_output=stereo" : "forced by speakers=2";
+	} else {
+		mode = Mode::Native;
+		why = audioOut == 2 ? "audio_output=surround, device layout" : "device layout";
+	}
+
+	const UINT32 masterChannels = (mode == Mode::Native) ? XAUDIO2_DEFAULT_CHANNELS : 2;
+	HR(m_xaudio2->CreateMasteringVoice(&m_master, masterChannels, rateHz, 0, 0));
 
 	// Capture the actual output layout. With XAUDIO2_DEFAULT_CHANNELS the
 	// channel count comes from the OS-configured endpoint (a stereo endpoint
@@ -361,8 +737,106 @@ bool XAudio2Backend::Init(int rateHz, int fps)
 		if (SUCCEEDED(m_master->GetChannelMask(&mask))) {
 			m_output_channel_mask = mask;
 		}
+		// A 2-channel master is FL/FR whatever the endpoint's own mask says.
+		if (mode != Mode::Native || m_output_channels == 2)
+			m_output_channel_mask = SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT;
 		LOG_INFO("XAudio2Backend::Init: master %u channels, mask=0x%08X",
 			m_output_channels, m_output_channel_mask);
+	}
+
+	const char* rawName = kOutNames[(audioOut >= 0 && audioOut <= 3) ? audioOut : 0];
+	const char* ffName  = FormFactorName(ep.formFactor);
+	const char* epName  = ep.name.empty() ? "unknown" : ep.name.c_str();
+
+	// Master chain at Init: [tone, upmix?]. Tone is always first and always
+	// installed (OFF is a pass-through inside OutputTone). If the chain with
+	// tone is refused, fall back to the chain without it.
+	m_tone = new ToneXAPO();
+	auto installInitChain = [this]() -> HRESULT {
+		HRESULT chr = ApplyMasterChain();
+		if (FAILED(chr) && m_tone) {
+			LOG_ERROR("XAudio2: installing the output tone filter failed (hr=0x%08X) - continuing without it", (unsigned)chr);
+			m_tone->Release();
+			m_tone = nullptr;
+			chr = ApplyMasterChain();
+		}
+		return chr;
+	};
+	if (mode != Mode::Native) installInitChain();
+
+	if (mode == Mode::Soundbar) {
+		m_hdmiStereo = true;
+		m_modeDesc = digitalEndpoint ? "SOUNDBAR (HDMI)" : "SOUNDBAR";
+
+		// 2-channel widen bus: only mono per-channel voices send here (see
+		// VoiceCreate). WidenXAPO adds the delayed antiphase copy in place.
+		auto* widen = new WidenXAPO();
+		XAUDIO2_EFFECT_DESCRIPTOR desc{};
+		desc.pEffect = static_cast<IXAPO*>(widen);
+		desc.InitialState = TRUE;
+		desc.OutputChannels = 2;
+		XAUDIO2_EFFECT_CHAIN chain{ 1, &desc };
+		hr = m_xaudio2->CreateSubmixVoice(&m_widenBus, 2, rateHz, 0, 1, nullptr, &chain);
+		widen->Release();   // the chain holds its own reference
+		if (FAILED(hr)) {
+			LOG_ERROR("XAudio2: widen bus creation failed (hr=0x%08X) - mono voices will not be widened", (unsigned)hr);
+			m_widenBus = nullptr;
+		}
+		LOG_INFO("XAudio2: audio_output=%s -> SOUNDBAR (%s; endpoint '%s', form factor %s): "
+		         "mono sources widened for the TV/soundbar's own upmix, stereo PCM on FL/FR%s",
+		         rawName, why.c_str(), epName, ffName,
+		         m_widenBus ? "" : " (voice widener unavailable)");
+	} else if (mode == Mode::Stereo) {
+		m_modeDesc = "STEREO";
+		LOG_INFO("XAudio2: audio_output=%s -> STEREO (%s; endpoint '%s', form factor %s): "
+		         "plain 2-channel output, no processing",
+		         rawName, why.c_str(), epName, ffName);
+	} else {
+		// NATIVE: keep the OS layout. On a real >2 channel endpoint (not the
+		// 8-channel Windows Sonic for Headphones view of a headphone device)
+		// fill center/LFE/surrounds ourselves - the stock matrix leaves them empty.
+		if (m_output_channels > 2 && !headphones) {
+			auto* up = new UpmixXAPO();
+			if (UpmixXAPO::Resolve(m_output_channel_mask, m_output_channels, up->m_role)) {
+				m_upmix = up;   // keep our ref for ApplyMasterChain rebuilds
+				if (FAILED(installInitChain())) {
+					LOG_ERROR("XAudio2: installing the surround upmix failed - fronts only");
+					m_upmix->Release();
+					m_upmix = nullptr;
+					ApplyMasterChain();
+				}
+			} else {
+				LOG_WARN("XAudio2: %u-channel layout (mask 0x%08X) not supported by the upmix - fronts only",
+					m_output_channels, m_output_channel_mask);
+				up->Release();
+			}
+			if (!m_upmix) installInitChain();   // tone only
+		} else {
+			installInitChain();                  // tone only
+		}
+
+		if (headphones && m_output_channels > 2)
+			m_modeDesc = "STEREO (HEADPHONES)";
+		else if (m_upmix)
+			m_modeDesc = m_output_channels == 6 ? "5.1 SURROUND (6 CH)"
+			           : m_output_channels == 8 ? "7.1 SURROUND (8 CH)"
+			           : "SURROUND";
+		else if (headphones)
+			m_modeDesc = "STEREO (HEADPHONES)";
+		else if (m_output_channels == 2)
+			m_modeDesc = "NATIVE 2 CH";
+		else
+			m_modeDesc = "NATIVE";
+
+		if (speakers == 6 && m_output_channels == 2)
+			LOG_WARN("XAudio2: speakers=6/audio_output=surround but the output device is stereo - set it to 5.1 in "
+			         "Windows Sound settings > device > Speaker setup / Configure");
+
+		LOG_INFO("XAudio2: audio_output=%s -> NATIVE (%s; endpoint '%s', form factor %s): %u channels, mask 0x%08X, "
+		         "surround upmix %s",
+		         rawName, why.c_str(), epName, ffName, m_output_channels, m_output_channel_mask,
+		         m_upmix ? "ON (fronts untouched, center/LFE/surrounds added)"
+		                 : (headphones && m_output_channels > 2 ? "OFF (headphone endpoint)" : "OFF"));
 	}
 
 	// Stereo 16-bit PCM source voice
@@ -469,8 +943,13 @@ void XAudio2Backend::Shutdown()
 {
 	CaptureStop();
 
+	// Order: source voices (the per-channel voices are destroyed by the mixer
+	// before this runs), then the widen bus they send to, then the master.
 	if (m_source) { m_source->DestroyVoice(); m_source = nullptr; }
+	if (m_widenBus) { m_widenBus->DestroyVoice(); m_widenBus = nullptr; }
 	if (m_master) { m_master->DestroyVoice(); m_master = nullptr; }
+	if (m_upmix)  { m_upmix->Release(); m_upmix = nullptr; }
+	if (m_tone)   { m_tone->Release();  m_tone = nullptr; }
 	if (m_xaudio2) { m_xaudio2->Release();    m_xaudio2 = nullptr; }
 
 	for (int i = 0; i < kNumBuffers; ++i) {
@@ -484,6 +963,8 @@ void XAudio2Backend::Shutdown()
 	m_frames_per_update = 0;
 	m_output_channels = 0;
 	m_output_channel_mask = 0;
+	m_hdmiStereo = false;
+	m_modeDesc = "";
 
 	if (m_com_init_local) { CoUninitialize(); m_com_init_local = false; }
 }
@@ -525,21 +1006,19 @@ bool XAudio2Backend::CaptureStart(const char* path)
 		return false;
 	}
 
-	XAUDIO2_EFFECT_DESCRIPTOR desc{};
-	desc.pEffect = static_cast<IXAPO*>(xapo);
-	desc.InitialState = TRUE;
-	desc.OutputChannels = m_output_channels;
-
-	XAUDIO2_EFFECT_CHAIN chain{ 1, &desc };
-	const HRESULT hr = m_master->SetEffectChain(&chain);
+	// Chain = [tone, upmix if active, capture]: the file records the final
+	// (filtered) output, and tone/upmix stay installed across start/stop.
+	m_capture_xapo = xapo;  // keep our ref; the chain holds its own
+	const HRESULT hr = ApplyMasterChain();
 	if (FAILED(hr)) {
 		LOG_ERROR("CaptureStart: SetEffectChain failed, hr=0x%08X", (unsigned)hr);
+		m_capture_xapo = nullptr;
+		ApplyMasterChain();   // restore the chain without capture
 		xapo->StopFile();
 		xapo->Release();
 		return false;
 	}
 
-	m_capture_xapo = xapo;  // keep our ref; the chain holds its own
 	LOG_INFO("CaptureStart: recording session audio to '%s'", path);
 	return true;
 }
@@ -550,11 +1029,43 @@ void XAudio2Backend::CaptureStop()
 
 	// Detach the effect first so Process() stops being called, then stop
 	// the writer and finalize the file.
-	if (m_master) m_master->SetEffectChain(nullptr);
-	m_capture_xapo->StopFile();
-	m_capture_xapo->Release();
-	m_capture_xapo = nullptr;
+	CaptureXAPO* cap = m_capture_xapo;
+	m_capture_xapo = nullptr;   // ApplyMasterChain builds the chain without it
+	if (m_master) ApplyMasterChain();
+	cap->StopFile();
+	cap->Release();
 	LOG_INFO("CaptureStop: recording finalized");
+}
+
+// One place that builds the mastering-voice effect chain:
+// [tone, upmix if m_upmix, capture if m_capture_xapo], each with the master's
+// channel count. Tone is first so the capture records what is heard.
+HRESULT XAudio2Backend::ApplyMasterChain()
+{
+	if (!m_master) return E_FAIL;
+	XAUDIO2_EFFECT_DESCRIPTOR descs[3]{};
+	UINT32 n = 0;
+	if (m_tone) {
+		descs[n].pEffect = static_cast<IXAPO*>(m_tone);
+		descs[n].InitialState = TRUE;
+		descs[n].OutputChannels = m_output_channels;
+		++n;
+	}
+	if (m_upmix) {
+		descs[n].pEffect = static_cast<IXAPO*>(m_upmix);
+		descs[n].InitialState = TRUE;
+		descs[n].OutputChannels = m_output_channels;
+		++n;
+	}
+	if (m_capture_xapo) {
+		descs[n].pEffect = static_cast<IXAPO*>(m_capture_xapo);
+		descs[n].InitialState = TRUE;
+		descs[n].OutputChannels = m_output_channels;
+		++n;
+	}
+	if (n == 0) return m_master->SetEffectChain(nullptr);
+	XAUDIO2_EFFECT_CHAIN chain{ n, descs };
+	return m_master->SetEffectChain(&chain);
 }
 
 // -----------------------------------------------------------------------------
@@ -571,7 +1082,13 @@ VoiceHandle* XAudio2Backend::VoiceCreate(const WaveFormat& fmt)
 
 	// The 8.0f max frequency ratio is important here and required for the
 	// StarCastle drone (extreme pitch shift).
-	if (FAILED(m_xaudio2->CreateSourceVoice(&h->voice, &wfx, 0, 8.0f))) {
+	// SOUNDBAR: mono voices go through the widen bus (their only send); stereo
+	// voices keep the default send to the master.
+	XAUDIO2_SEND_DESCRIPTOR send{ 0, m_widenBus };
+	XAUDIO2_VOICE_SENDS sends{ 1, &send };
+	const bool viaBus = m_widenBus && fmt.channels == 1;
+	if (FAILED(m_xaudio2->CreateSourceVoice(&h->voice, &wfx, 0, 8.0f, nullptr,
+	                                        viaBus ? &sends : nullptr))) {
 		delete h;
 		return nullptr;
 	}

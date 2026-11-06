@@ -1337,7 +1337,16 @@ AAE_DRIVER_CPUS(
 
 AAE_DRIVER_VIDEO_CORE(40, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR, ORIENTATION_SWAP_XY)
 //AAE_DRIVER_SCREEN(1024, 768, 512, 1536, 552, 1464)
-AAE_DRIVER_SCREEN(1024, 76, 512, 1536, 640 - 32, 1408 + 32)
+// Tac/Scan is a sideways (3:4) monitor. The vector DAC clips every beam to a
+// 1024-unit window (adjust_xy), which after the min_x-512 offset is x 512..1536
+// - that becomes the picture HEIGHT once SWAP_XY turns it. The game draws the
+// width in y 640..1408 (768 units), so the true picture is 768x1024 = 3:4.
+// The shared G80 area (y 608..1440) padded the width by 32 a side (picture 92%
+// wide) and x 512..1536 put the DAC edge lines exactly on the canvas edge, so
+// the bottom border line was lost. Here: the same 3:4 picture with a margin of
+// 16 (x) / 11 (y) units so the edge lines land inside the canvas:
+// 1056 x 790 units = 0.748.
+AAE_DRIVER_SCREEN(1024, 768, 512 - 16, 1536 + 16, 640 - 11, 1408 + 11)
 
 AAE_DRIVER_RASTER_NONE()
 AAE_DRIVER_HISCORE_NONE()

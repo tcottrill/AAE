@@ -86,6 +86,20 @@ struct VectorArtworkVK
     bool overlay2 = false;   // VECTOR_USES_OVERLAY2: gel drawn over the CRT
     bool rasterBW = false;   // VIDEO_TYPE_RASTER_BW: overlay1 uses DST_COLOR/ZERO
 
+    // Vector driver ORIENTATION_FLIP_X / FLIP_Y, applied to the overlay gel so
+    // it stays registered with the flipped beams (see OverlayUv in the .cpp).
+    bool overlayFlipX = false;
+    bool overlayFlipY = false;
+
+    // Texture sizes (px) of the backdrop/bezel, for the true-aspect cabinet
+    // quad (aae_video/cabinet_quad.h). 0 = unknown -> treated as 4:3.
+    float backdropW = 0.0f, backdropH = 0.0f;
+    float bezelW    = 0.0f, bezelH    = 0.0f;
+
+    // On-screen aspect the square canvas is displayed at (cabinet_canvas_aspect:
+    // ws.aspectRatio, inverted under 90/270 system rotation). 4/3 = historical.
+    float canvasAspect = 4.0f / 3.0f;
+
     bool  artcrop  = false;  // cabinet crop scaling for backdrop/bezel
     float bezelX   = 0.0f;
     float bezelY   = 0.0f;
@@ -186,6 +200,16 @@ public:
                                 float grL, float grR, float grB, float grT,
                                 const VectorArtworkVK& art,
                                 int targetW = 0, int targetH = 0);
+
+    // RecordCabinetWings: backdrop then bezel only, into the open swapchain
+    // pass through the letterbox map (lx/lyUp/vw/vh as RecordCompositeLayered).
+    // For the canvas path (rot == 0 with the color-vector shader), whose square
+    // canvas blit would clip cabinet art that extends past 0..1024. Drawn BEFORE
+    // that blit, which then covers the 4:3 centre.
+    void RecordCabinetWings(VkContext& ctx, VkCommandBuffer cmd, uint32_t frameIndex,
+                            float lx, float lyUp, float vw, float vh,
+                            const VectorArtworkVK& art,
+                            int targetW = 0, int targetH = 0);
 
     bool IsValid()    const { return initialized_; }
     bool BeamReady()  const { return beamReady_; }

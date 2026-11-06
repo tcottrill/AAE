@@ -156,7 +156,7 @@ void clock3k_update()
 void asteroid_interrupt()
 {
 	// Turn off interrupts if self-test is enabled
-	if (!(readinputport(0) & 0x80))
+	if (!(readinputportbytag("IN0") & 0x80))
 	{
 		cpu_do_int_imm(CPU0, INT_TYPE_NMI);
 	}
@@ -165,7 +165,16 @@ void asteroid_interrupt()
 void asterock_interrupt()
 {
 	// Turn off interrupts if self-test is enabled
-	if ((readinputport(0) & 0x80))
+	if ((readinputportbytag("IN0") & 0x80))
+	{
+		cpu_do_int_imm(CPU0, INT_TYPE_NMI);
+	}
+}
+
+void asteroidb_interrupt()
+{
+	// Self-test switch (bit 1, active low) off: run NMIs (as MAME llander_interrupt)
+	if ((readinputportbytag("IN0") & 0x02))
 	{
 		cpu_do_int_imm(CPU0, INT_TYPE_NMI);
 	}
@@ -385,10 +394,38 @@ WRITE_HANDLER(astdelux_bank_switch_w)
 }
 
 ////////////  CALL ASTEROIDS SWAPRAM  ////////////////////////////////////////////
-WRITE_HANDLER(asteroid_bank_switch_w)
+// RAMSEL ($3200 bit 2) swaps pages 2 and 3. AAE models it by swapping the
+// contents, so asteroid_bank records which way round they currently are.
+static int asteroid_bank = 0;
+
+static void asteroid_swap_ram_pages(void)
 {
 	UINT8 buffer[0x100];
-	static int asteroid_bank = 0;
+	memcpy(buffer, Machine->memory_region[CPU0] + 0x200, 0x100);
+	memcpy(Machine->memory_region[CPU0] + 0x200, Machine->memory_region[CPU0] + 0x300, 0x100);
+	memcpy(Machine->memory_region[CPU0] + 0x300, buffer, 0x100);
+}
+
+// MAME machine_reset(): RAM banks back to entry 0 on every reset. Without it a
+// watchdog reset taken while RAMSEL was set left the pages swapped with the
+// flag still 1, so the self-test's next RAMSEL write did nothing and it
+// reported PAGE SELECT ERROR (asterock re-runs its test through resets).
+static void asteroid_machine_reset(void)
+{
+	if (asteroid_bank)
+	{
+		asteroid_swap_ram_pages();
+		asteroid_bank = 0;
+	}
+}
+
+static void asteroid_post_cpu_init(int cpunum)
+{
+	cpu_set_reset_callback(cpunum, asteroid_machine_reset);
+}
+
+WRITE_HANDLER(asteroid_bank_switch_w)
+{
 	int asteroid_newbank;
 	asteroid_newbank = (data >> 2) & 1;
 
@@ -401,9 +438,7 @@ WRITE_HANDLER(asteroid_bank_switch_w)
 	if (asteroid_bank != asteroid_newbank) {
 		/* Perform bankswitching on page 2 and page 3 */
 		asteroid_bank = asteroid_newbank;
-		memcpy(buffer, Machine->memory_region[CPU0] + 0x200, 0x100);
-		memcpy(Machine->memory_region[CPU0] + 0x200, Machine->memory_region[CPU0] + 0x300, 0x100);
-		memcpy(Machine->memory_region[CPU0] + 0x300, buffer, 0x100);
+		asteroid_swap_ram_pages();
 	}
 
 	set_led_status(0, ~data & 0x02);
@@ -439,12 +474,13 @@ READ_HANDLER(asteroid_IN0_r)
 	return res;
 }
 
+// Matches MAME asterock_IN0_r (inverted sense vs asteroid_IN0_r).
 READ_HANDLER(asterock_IN0_r)
 {
 	int res;
 	int bitmask;
 
-	res = readinputport(0);
+	res = readinputportbytag("IN0");
 	bitmask = (1 << address);
 
 	// 3KHz clock on bit 2 (see asteroid_IN0_r for the in-slice tick rationale).
@@ -457,8 +493,28 @@ READ_HANDLER(asterock_IN0_r)
 		res = ~0x80;
 	else
 		res = 0x80;
-	if (address == 7) return 0;
 	return res;
+}
+
+// Lunar Lander style IN0 (MAME llander IN0 layout); MAME's asteroidb port puts
+// VG_HALT on bit 7 and has no clock, which breaks its self-test - this follows
+// the ROM. Whole byte at $2000, hyperspace at $2003 bit 7.
+READ_HANDLER(asteroidb_IN0_r)
+{
+	int res;
+
+	if (address == 0)
+	{
+		res = readinputportbytag("IN0") & 0xbe; // drop bits 0 and 6
+		if (asteroid_vg_done())
+			res |= 0x01;
+		if ((get_eterna_ticks(0) + m_cpu_6502[CPU0]->get6502ticks(0)) & 0x100)
+			res |= 0x40;
+		return res;
+	}
+	if (address == 3)
+		return readinputportbytag("HS");
+	return 0xff;
 }
 
 READ_HANDLER(asteroid_IN1_r)
@@ -556,9 +612,23 @@ MEM_ADDR(0x6800, 0x7fff, MRA_ROM)
 MEM_END
 
 MEM_READ(AsterockRead)
+MEM_ADDR(0x0000, 0x03ff, MRA_RAM)
 MEM_ADDR(0x2000, 0x2007, asterock_IN0_r)
 MEM_ADDR(0x2400, 0x2407, asteroid_IN1_r)
 MEM_ADDR(0x2800, 0x2803, asteroid_DSW1_r) /* DSW1 */
+MEM_ADDR(0x4000, 0x47ff, MRA_RAM)
+MEM_ADDR(0x5000, 0x57ff, MRA_ROM)
+MEM_ADDR(0x6800, 0x7fff, MRA_ROM)
+MEM_END
+
+MEM_READ(AsteroidbRead)
+MEM_ADDR(0x0000, 0x03ff, MRA_RAM)
+MEM_ADDR(0x2000, 0x2007, asteroidb_IN0_r)
+MEM_ADDR(0x2400, 0x2407, asteroid_IN1_r)
+MEM_ADDR(0x2800, 0x2803, asteroid_DSW1_r) /* DSW1 */
+MEM_ADDR(0x4000, 0x47ff, MRA_RAM)
+MEM_ADDR(0x5000, 0x57ff, MRA_ROM)
+MEM_ADDR(0x6800, 0x7fff, MRA_ROM)
 MEM_END
 
 MEM_WRITE(AsteroidWrite)
@@ -583,6 +653,7 @@ MEM_END
 static void asteroid_vg_start(void)
 {
 	use_vecsim = (config.dvg_engine == DVG_ENGINE_VECSIM);
+	config.dvg_engine_selectable = 1;   // VIDEO SETUP shows DVG ENGINE for this game
 	LOG_INFO("Asteroid DVG engine: %s", use_vecsim ? "vecsim (legacy)" : "mame");
 	if (use_vecsim)
 		vecsim_dvg_start_asteroid();
@@ -615,6 +686,7 @@ int init_asteroid(void)
 {
 	//init6502(AsteroidRead, AsteroidWrite, 0x7fff, CPU0);
 
+	asteroid_bank = 0;   // fresh RAM: pages in power-on order
 	asteroid_vg_start();
 	//timer_set(TIME_IN_HZ(MASTER_CLOCK / 4096), 0, clock3k_update);
 
@@ -626,6 +698,7 @@ int init_asterock(void)
 {
 	//init6502(AsterockRead, AsteroidWrite, 0x7fff, CPU0);
 
+	asteroid_bank = 0;   // fresh RAM: pages in power-on order
 	asteroid_vg_start();
 	//timer_set(TIME_IN_HZ(MASTER_CLOCK / 4096), 0, clock3k_update);
 
@@ -727,17 +800,14 @@ INPUT_PORTS_END
 
 INPUT_PORTS_START(asterock)
 PORT_START("IN0")
-// Bit 0 is VG_HALT, handled in the machine dependent part
-PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_UNKNOWN)
-/* Bit 2 and 3 are handled in the machine dependent part. */
-/* Bit 2 is the 3 KHz source and Bit 3 the VG_HALT bit    */
+PORT_BIT(0x01, IP_ACTIVE_LOW, IPT_UNKNOWN)	/* VG_HALT, handled in asterock_IN0_r */
 PORT_BIT(0x02, IP_ACTIVE_HIGH, IPT_UNKNOWN)
-PORT_BIT(0x04, IP_ACTIVE_HIGH, IPT_UNKNOWN)
-PORT_BIT(0x08, IP_ACTIVE_LOW, IPT_BUTTON3)
-PORT_BIT(0x10, IP_ACTIVE_HIGH, IPT_BUTTON1)
-PORT_BITX(0x20, IP_ACTIVE_HIGH, IPT_SERVICE, "Diagnostic Step", OSD_KEY_F1, IP_JOY_NONE)
+PORT_BIT(0x04, IP_ACTIVE_HIGH, IPT_UNKNOWN)	/* 3 kHz clock, handled in asterock_IN0_r */
+PORT_BIT(0x08, IP_ACTIVE_LOW, IPT_BUTTON3)	/* hyperspace */
+PORT_BIT(0x10, IP_ACTIVE_LOW, IPT_BUTTON1)	/* fire */
+PORT_BITX(0x20, IP_ACTIVE_LOW, IPT_SERVICE, "Diagnostic Step", OSD_KEY_F1, IP_JOY_NONE)
 PORT_BIT(0x40, IP_ACTIVE_LOW, IPT_TILT)
-PORT_SERVICE(0x80, IP_ACTIVE_HIGH)
+PORT_SERVICE(0x80, IP_ACTIVE_LOW)
 
 PORT_START("IN1")
 PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_COIN1)
@@ -749,24 +819,24 @@ PORT_BIT(0x20, IP_ACTIVE_HIGH, IPT_BUTTON2)
 PORT_BIT(0x40, IP_ACTIVE_HIGH, IPT_JOYSTICK_RIGHT | IPF_2WAY)
 PORT_BIT(0x80, IP_ACTIVE_HIGH, IPT_JOYSTICK_LEFT | IPF_2WAY)
 
-PORT_START("DSW")
+PORT_START("DSW1")
 PORT_DIPNAME(0x03, 0x03, "Language")
 PORT_DIPSETTING(0x00, "English")
 PORT_DIPSETTING(0x01, "French")
 PORT_DIPSETTING(0x02, "German")
 PORT_DIPSETTING(0x03, "Italian")
-PORT_DIPNAME(0x0C, 0x04, DEF_STR(Lives))
+PORT_DIPNAME(0x0c, 0x04, DEF_STR(Lives))
 PORT_DIPSETTING(0x00, "2")
 PORT_DIPSETTING(0x04, "3")
 PORT_DIPSETTING(0x08, "4")
 PORT_DIPSETTING(0x0c, "5")
 PORT_DIPNAME(0x10, 0x00, "Records Table")
-PORT_DIPSETTING(0x00, DEF_STR(Off))
-PORT_DIPSETTING(0x10, DEF_STR(On))
-PORT_DIPNAME(0x20, 0x00, DEF_STR(Unknown))
-PORT_DIPSETTING(0x00, DEF_STR(Off))
-PORT_DIPSETTING(0x20, DEF_STR(On))
-PORT_DIPNAME(0x80, 0x80, DEF_STR(Coinage))
+PORT_DIPSETTING(0x00, "Normal")
+PORT_DIPSETTING(0x10, "Special")
+PORT_DIPNAME(0x20, 0x00, "Coin Mode")
+PORT_DIPSETTING(0x00, "Normal")
+PORT_DIPSETTING(0x20, "Special")
+PORT_DIPNAME(0xc0, 0x80, DEF_STR(Coinage))
 PORT_DIPSETTING(0xc0, DEF_STR(2C_1C))
 PORT_DIPSETTING(0x80, DEF_STR(1C_1C))
 PORT_DIPSETTING(0x40, DEF_STR(1C_2C))
@@ -778,6 +848,60 @@ PORT_DIPSETTING(0x00, "Upright")
 PORT_DIPSETTING(0x01, "Cocktail")
 PORT_BIT(0xfe, IP_ACTIVE_HIGH, IPT_UNKNOWN)
 
+INPUT_PORTS_END
+
+INPUT_PORTS_START(asteroidb)
+PORT_START("IN0")
+PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_UNKNOWN)	/* VG done, handled in asteroidb_IN0_r */
+PORT_SERVICE(0x02, IP_ACTIVE_LOW)
+PORT_BIT(0x04, IP_ACTIVE_LOW, IPT_TILT)
+PORT_BIT(0x38, IP_ACTIVE_LOW, IPT_UNKNOWN)
+PORT_BIT(0x40, IP_ACTIVE_HIGH, IPT_UNKNOWN)	/* 3 kHz clock */
+PORT_BITX(0x80, IP_ACTIVE_LOW, IPT_SERVICE, "Diagnostic Step", OSD_KEY_F1, IP_JOY_NONE)
+
+PORT_START("IN1")
+PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_START1)
+PORT_BIT(0x02, IP_ACTIVE_LOW, IPT_COIN1)
+PORT_BIT(0x04, IP_ACTIVE_HIGH, IPT_BUTTON2)	/* thrust */
+PORT_BIT(0x08, IP_ACTIVE_LOW, IPT_COIN2)
+PORT_BIT(0x10, IP_ACTIVE_HIGH, IPT_START2)
+PORT_BIT(0x20, IP_ACTIVE_HIGH, IPT_BUTTON1)	/* fire */
+PORT_BIT(0x40, IP_ACTIVE_HIGH, IPT_JOYSTICK_RIGHT | IPF_2WAY)
+PORT_BIT(0x80, IP_ACTIVE_HIGH, IPT_JOYSTICK_LEFT | IPF_2WAY)
+
+PORT_START("DSW1")
+PORT_DIPNAME(0x03, 0x00, "Language")
+PORT_DIPSETTING(0x00, "English")
+PORT_DIPSETTING(0x01, "German")
+PORT_DIPSETTING(0x02, "French")
+PORT_DIPSETTING(0x03, "Spanish")
+PORT_DIPNAME(0x04, 0x04, DEF_STR(Lives))
+PORT_DIPSETTING(0x04, "3")
+PORT_DIPSETTING(0x00, "4")
+PORT_DIPNAME(0x08, 0x08, DEF_STR(Unknown))
+PORT_DIPSETTING(0x08, DEF_STR(Off))
+PORT_DIPSETTING(0x00, DEF_STR(On))
+PORT_DIPNAME(0x10, 0x10, DEF_STR(Unknown))
+PORT_DIPSETTING(0x10, DEF_STR(Off))
+PORT_DIPSETTING(0x00, DEF_STR(On))
+PORT_DIPNAME(0x20, 0x20, DEF_STR(Unknown))
+PORT_DIPSETTING(0x20, DEF_STR(Off))
+PORT_DIPSETTING(0x00, DEF_STR(On))
+PORT_DIPNAME(0xc0, 0x80, DEF_STR(Coinage))
+PORT_DIPSETTING(0xc0, DEF_STR(2C_1C))
+PORT_DIPSETTING(0x80, DEF_STR(1C_1C))
+PORT_DIPSETTING(0x40, DEF_STR(1C_2C))
+PORT_DIPSETTING(0x00, DEF_STR(Free_Play))
+
+PORT_START("HS")
+PORT_BIT(0x7f, IP_ACTIVE_LOW, IPT_UNUSED)
+PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_BUTTON3)	/* hyperspace */
+
+PORT_START("COCKTAIL")// Fake Cocktail Switch
+PORT_DIPNAME(0x01, 0x00, "Cabinet")
+PORT_DIPSETTING(0x00, "Upright")
+PORT_DIPSETTING(0x01, "Cocktail")
+PORT_BIT(0xfe, IP_ACTIVE_HIGH, IPT_UNKNOWN)
 INPUT_PORTS_END
 
 INPUT_PORTS_START(astdelux)
@@ -888,7 +1012,7 @@ ROM_LOAD("10505.4", 0x7000, 0x0400, CRC(8d3e421e) SHA1(5f5719ab84d4755e69bef205d
 ROM_LOAD("10505.5", 0x7400, 0x0400, CRC(d2ce7672) SHA1(b6012e09b2439a614a55bcf23be0692c42830e21))
 ROM_LOAD("10505.6", 0x7800, 0x0400, CRC(74103c87) SHA1(e568b5ac573a6d0474cf672b3c62abfbd3320799))
 ROM_LOAD("10505.7", 0x7c00, 0x0400, CRC(75a39768) SHA1(bf22998fd692fb01964d8894e421435c55d746a0))
-ROM_RELOAD(0xf800, 0x800)
+ROM_RELOAD(0xfc00, 0x0400)	/* for reset/interrupt vectors */
 // Vector ROM
 ROM_LOAD("10505.0", 0x5000, 0x0400, CRC(6bd2053f) SHA1(790f2858f44bbb1854e2d9d549e29f4815c4665b))
 ROM_LOAD("10505.1", 0x5400, 0x0400, CRC(231ce201) SHA1(710f4c19864d725ba1c9ea447a97e84001a679f7))
@@ -976,19 +1100,20 @@ AAE_DRIVER_SAMPLES(asteroidsamples)
 AAE_DRIVER_ART(asteroidsart)
 
 AAE_DRIVER_CPUS(
-	AAE_CPU_ENTRY(
+	AAE_CPU_ENTRY_EX(
 		/*type*/     CPU_M6502,
 		/*freq*/     1512000,
 		/*div*/      100,
 		/*ipf*/      4,                  // 4 NMIs per frame
 		/*int type*/ INT_TYPE_NMI,
 		/*int cb*/   asteroid_interrupt,
-		/*r8*/       AsterockRead,       // bootleg read map
+		/*r8*/       AsteroidRead,       // same map as asteroid (MAME: meteorts uses the asteroid machine)
 		/*w8*/       AsteroidWrite,
 		/*pr*/       nullptr,
 		/*pw*/       nullptr,
 		/*r16*/      nullptr,
-		/*w16*/      nullptr
+		/*w16*/      nullptr,
+		/*post*/     &asteroid_post_cpu_init  // MAME machine_reset: RAM banks to entry 0
 	),
 	AAE_CPU_NONE_ENTRY(),
 	AAE_CPU_NONE_ENTRY(),
@@ -1014,26 +1139,27 @@ AAE_DRIVER_INPUT(input_ports_asterock)
 AAE_DRIVER_SAMPLES(asteroidsamples)
 AAE_DRIVER_ART(asteroidsart)
 AAE_DRIVER_CPUS(
-	AAE_CPU_ENTRY(
+	AAE_CPU_ENTRY_EX(
 		CPU_M6502,
 		1512000,
 		100,
 		4,                  // 4 NMIs per frame
 		INT_TYPE_NMI,
-		asteroid_interrupt, // interrupt callback
-		AsteroidRead,
+		asterock_interrupt, // interrupt callback
+		AsterockRead,
 		AsteroidWrite,
 		nullptr, nullptr,
-		nullptr, nullptr
+		nullptr, nullptr,
+		&asteroid_post_cpu_init  // MAME machine_reset: RAM banks to entry 0
 	),
 	AAE_CPU_NONE_ENTRY(),
 	AAE_CPU_NONE_ENTRY(),
 	AAE_CPU_NONE_ENTRY()
 )
 AAE_DRIVER_VIDEO_CORE(60, DEFAULT_60HZ_VBLANK_DURATION, VIDEO_TYPE_VECTOR | VECTOR_USES_BW, ORIENTATION_DEFAULT)
-AAE_DRIVER_SCREEN(1024, 768, 0, 1040, 0, 820)
+AAE_DRIVER_SCREEN(1024, 768, 0, 1040, 70, 950)	// same visible area as asteroid (MAME asteroid_base)
 AAE_DRIVER_RASTER_NONE()
-AAE_DRIVER_HISCORE(asteroid_hiload, asteroid_hisave)
+AAE_DRIVER_HISCORE_NONE()
 AAE_DRIVER_VECTORRAM(0x4000, 0x800)
 AAE_DRIVER_NVRAM_NONE()
 AAE_DRIVER_LAYOUT_NONE()
@@ -1044,21 +1170,22 @@ AAE_DRIVER_END()
 AAE_DRIVER_BEGIN(drv_asteroidb, "asteroidb", "Asteroids (Bootleg on Lunar Lander Hardware)")
 AAE_DRIVER_ROM(rom_asteroidb)
 AAE_DRIVER_FUNCS(&init_asteroid, &run_asteroid, &end_asteroid)
-AAE_DRIVER_INPUT(input_ports_asteroid)
+AAE_DRIVER_INPUT(input_ports_asteroidb)
 AAE_DRIVER_SAMPLES(asteroidsamples)
 AAE_DRIVER_ART(asteroidsart)
 AAE_DRIVER_CPUS(
-	AAE_CPU_ENTRY(
+	AAE_CPU_ENTRY_EX(
 		CPU_M6502,
 		1512000,
 		100,
 		4,                  // 4 NMIs per frame
 		INT_TYPE_NMI,
-		asteroid_interrupt, // interrupt callback
-		AsteroidRead,
+		asteroidb_interrupt, // interrupt callback
+		AsteroidbRead,
 		AsteroidWrite,
 		nullptr, nullptr,
-		nullptr, nullptr
+		nullptr, nullptr,
+		&asteroid_post_cpu_init  // MAME machine_reset: RAM banks to entry 0
 	),
 	AAE_CPU_NONE_ENTRY(),
 	AAE_CPU_NONE_ENTRY(),
@@ -1083,7 +1210,7 @@ AAE_DRIVER_INPUT(input_ports_asteroid)
 AAE_DRIVER_SAMPLES(asteroidsamples)
 AAE_DRIVER_ART(asteroidsart)
 AAE_DRIVER_CPUS(
-	AAE_CPU_ENTRY(
+	AAE_CPU_ENTRY_EX(
 		CPU_M6502,
 		1512000,
 		100,
@@ -1093,7 +1220,8 @@ AAE_DRIVER_CPUS(
 		AsteroidRead,
 		AsteroidWrite,
 		nullptr, nullptr,
-		nullptr, nullptr
+		nullptr, nullptr,
+		&asteroid_post_cpu_init  // MAME machine_reset: RAM banks to entry 0
 	),
 	AAE_CPU_NONE_ENTRY(),
 	AAE_CPU_NONE_ENTRY(),
@@ -1117,7 +1245,7 @@ AAE_DRIVER_INPUT(input_ports_asteroid)
 AAE_DRIVER_SAMPLES(asteroidsamples)
 AAE_DRIVER_ART(asteroidsart)
 AAE_DRIVER_CPUS(
-	AAE_CPU_ENTRY(
+	AAE_CPU_ENTRY_EX(
 		CPU_M6502,
 		1512000,
 		100,
@@ -1127,7 +1255,8 @@ AAE_DRIVER_CPUS(
 		AsteroidRead,
 		AsteroidWrite,
 		nullptr, nullptr,
-		nullptr, nullptr
+		nullptr, nullptr,
+		&asteroid_post_cpu_init  // MAME machine_reset: RAM banks to entry 0
 	),
 	AAE_CPU_NONE_ENTRY(),
 	AAE_CPU_NONE_ENTRY(),

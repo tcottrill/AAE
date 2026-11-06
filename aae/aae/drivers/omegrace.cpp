@@ -545,6 +545,7 @@ static int init_omega_common()
 	}
 
 	use_vecsim = (config.dvg_engine == DVG_ENGINE_VECSIM);
+	config.dvg_engine_selectable = 1;   // VIDEO SETUP shows DVG ENGINE for this game
 	LOG_INFO("Omega Race DVG engine: %s", use_vecsim ? "vecsim (legacy)" : "mame");
 	if (use_vecsim)
 		vecsim_dvg_start();

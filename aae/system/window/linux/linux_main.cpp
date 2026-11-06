@@ -13,6 +13,9 @@
 //==============================================================================
 #include "sys_window.h"
 #include "linux/linux_window.h"
+#ifdef AAE_HAVE_WAYLAND
+#include "linux/wayland_window.h"
+#endif
 
 #include "sys_gl.h"
 #include "sys_timer.h"
@@ -26,6 +29,7 @@
 #include <X11/Xlib.h>   // screen-size probe below; the window owns its own Display
 #include <X11/Xatom.h>  // XA_CARDINAL - the _NET_WORKAREA read below
 
+#include <algorithm> // std::max - window margins below
 #include <chrono>   // frame-pacing instrumentation in main()
 #include <cmath>    // lroundf - aspect sizing below
 #include <cstdio>
@@ -57,9 +61,18 @@ void osd_led_service_stop();
 //------------------------------------------------------------------------------
 static WindowSetup g_windowSetup;
 static LinuxWindow g_window;
+#ifdef AAE_HAVE_WAYLAND
+static WaylandWindow g_waylandWindow;
+#endif
+
+// The backend actually in use. Both objects exist for the life of the process
+// (neither does anything until Create/Connect), and main() points this at the
+// one it selected - X11 until told otherwise, so a GetSystemWindow() call made
+// before selection still gets a valid object.
+static ISystemWindow* g_activeWindow = &g_window;
 
 WindowSetup& GetWindowSetup()   { return g_windowSetup; }
-ISystemWindow& GetSystemWindow() { return g_window; }
+ISystemWindow& GetSystemWindow() { return *g_activeWindow; }
 
 //------------------------------------------------------------------------------
 // The two windows_util.h entry points that portable code calls. Their Win32
@@ -99,58 +112,123 @@ void allegro_message(const char* title, const char* message)
 	fprintf(stderr, "%s: %s\n", title ? title : "MESSAGE", message ? message : "");
 }
 
-int main(int argc, char** argv)
+//------------------------------------------------------------------------------
+// Display backend selection: native Wayland, or X11 (through XWayland on a
+// Wayland desktop, natively elsewhere).
+//
+//   [main] display = auto | wayland | x11        (default: auto)
+//   -wayland / -x11 on the command line override it for one launch, the same
+//   way -fullscreen / -windowed override [window] fullscreen.
+//
+// auto picks Wayland when a Wayland compositor is reachable (WAYLAND_DISPLAY set)
+// and we are NOT under gamescope. Steam Game Mode is gamescope: it hosts its own
+// XWayland and everything in the session runs inside it, taking frames with no
+// copy, so X11 is the proven path there and stays the default. An explicit
+// `wayland` is honoured even under gamescope, for trying it.
+//
+// Whichever is chosen, a Wayland attempt that fails (no socket, a compositor
+// missing a required protocol, window creation refused) falls back to X11 with a
+// warning that says why, so an unusable Wayland session still gets a window.
+//------------------------------------------------------------------------------
+enum class DisplayBackend { X11, Wayland };
+
+struct BackendChoice {
+	DisplayBackend backend = DisplayBackend::X11;
+	std::string    detail;    // why, in the words of the log line
+};
+
+static std::string LowerCopy(const char* s)
 {
-	Log::open("systemlog.txt");
-	// Build stamp. Without one, "am I running the build you just gave me?"
-	// could only be answered by grepping the binary for strings that happened
-	// to be new - which wasted a round trip on a 300MB bundle.
-	LOG_INFO("AAE starting (Linux/X11/GLX) - built %s %s", __DATE__, __TIME__);
+	std::string r = s ? s : "";
+	for (char& c : r)
+		c = (char)tolower((unsigned char)c);
+	return r;
+}
 
-	SetIniFile(getpathM(nullptr, "aae.ini").c_str());
+#ifdef AAE_HAVE_WAYLAND
+// gamescope sets GAMESCOPE_WAYLAND_DISPLAY for its clients, and names itself in
+// XDG_CURRENT_DESKTOP in the session it launches. Either is enough.
+static bool UnderGamescope()
+{
+	const char* gs = getenv("GAMESCOPE_WAYLAND_DISPLAY");
+	if (gs && *gs) return true;
+	return LowerCopy(getenv("XDG_CURRENT_DESKTOP")).find("gamescope") != std::string::npos;
+}
+#endif
 
-	// Window geometry: fallback values only. The real default is computed from
-	// the screen size below - full size at the configured aspect, centered -
-	// matching what winmain.cpp's windowed startup produces on Windows.
-	g_windowSetup.windowWidth  = 1024;
-	g_windowSetup.windowHeight = 768;
-	g_windowSetup.centerWindow = true;
+static BackendChoice ChooseDisplayBackend(int argc, char** argv)
+{
+	BackendChoice c;
 
-	// Aspect for the default window, same [window] aspect_ratio key winmain.cpp
-	// reads, same 4:3 fallback.
-	{
-		std::string aspect = get_config_string("window", "aspect_ratio", "4:3");
-		int ax = 0, ay = 0;
-		if (sscanf(aspect.c_str(), "%d:%d", &ax, &ay) != 2 || ax <= 0 || ay <= 0) {
-			LOG_INFO("Invalid aspect ratio: %s - defaulting to 4:3", aspect.c_str());
-			ax = 4; ay = 3;
-		}
-		g_windowSetup.aspectRatio = (float)ax / (float)ay;
+	// get_config_string hands back a char*, not a std::string.
+	std::string request = LowerCopy(get_config_string("main", "display", "auto"));
+	std::string source  = "[main] display=" + request;
+
+	// Last switch wins, and a switch wins over the ini.
+	for (int i = 1; i < argc; ++i) {
+		if (!argv[i]) continue;
+		if      (strcmp(argv[i], "-wayland") == 0) { request = "wayland"; source = "-wayland switch"; }
+		else if (strcmp(argv[i], "-x11")     == 0) { request = "x11";     source = "-x11 switch"; }
 	}
 
-	// Mouse capture: ALWAYS on at startup, matching winmain.cpp. The cursor_clip
-	// ini key and -clip/-noclip switches are deliberately not consulted - a stale
-	// cursor_clip=0 made sessions start with a visible, unconfined pointer, and
-	// capture-by-default with no exceptions is the product decision (2026-07-29).
-	// F9 releases at runtime and a click on the window recaptures.
-	//
-	// Set BEFORE Create(), which seeds its own capture state from WindowSetup.
-	g_windowSetup.cursorClipEnabled = true;
+	if (request != "auto" && request != "wayland" && request != "x11") {
+		LOG_WARN("[main] display=%s is not auto, wayland or x11 - using auto", request.c_str());
+		request = "auto";
+		source  = "auto";
+	}
 
-	// Explicit window size, same [main] screenw/screenh contract as Windows:
-	// both positive = exact client size, 0 (the default) = AUTO, which keeps
-	// the computed work-area fit below. The WM may still clamp what we ask for.
-	const int cfgScreenW = get_config_int("main", "screenw", 0);
-	const int cfgScreenH = get_config_int("main", "screenh", 0);
-	const bool explicitSize = (cfgScreenW > 0 && cfgScreenH > 0);
-	// This platform's WindowUtil_UpdateAspect never resizes the window, but
-	// keep the shared contract's flag truthful all the same.
-	g_windowSetup.explicitWindowSize = explicitSize;
+	if (request == "x11") {
+		c.detail = source;
+		return c;
+	}
 
-	// screenRect is the primary monitor's pixel size. run_game() reads it to
-	// sanity-check the configured resolution, so it must be populated before
-	// emulator_init - winmain.cpp fills it from GetSystemMetrics at the same
-	// point. Queried through Xlib here without keeping a display open.
+#ifdef AAE_HAVE_WAYLAND
+	if (request == "wayland") {
+		c.backend = DisplayBackend::Wayland;
+		c.detail  = source;
+		return c;
+	}
+
+	// auto. Gamescope first: it reports a WAYLAND_DISPLAY of its own, and "no
+	// Wayland display" would be the wrong thing to blame.
+	if (UnderGamescope()) {
+		c.detail = "auto: gamescope detected - the proven Game Mode path; "
+		           "[main] display=wayland to try native";
+		return c;
+	}
+	const char* wl = getenv("WAYLAND_DISPLAY");
+	if (!wl || !*wl) {
+		c.detail = "auto: no WAYLAND_DISPLAY";
+		return c;
+	}
+	c.backend = DisplayBackend::Wayland;
+	c.detail  = std::string("auto, WAYLAND_DISPLAY=") + wl;
+	return c;
+#else
+	if (request == "wayland")
+		LOG_WARN("Wayland was requested (%s) but this build has no Wayland backend "
+		         "(configured with AAE_WAYLAND=OFF, or the dependencies were missing) "
+		         "- using X11", source.c_str());
+	c.detail = "this build has no Wayland backend";
+	return c;
+#endif
+}
+
+static void LogBackend(const char* name, const std::string& detail)
+{
+	LOG_INFO("Display backend: %s (%s)", name, detail.c_str());
+}
+
+//------------------------------------------------------------------------------
+// Default window size and screenRect, per backend.
+//------------------------------------------------------------------------------
+
+// X11. screenRect is the primary monitor's pixel size. run_game() reads it to
+// sanity-check the configured resolution, so it must be populated before
+// emulator_init - winmain.cpp fills it from GetSystemMetrics at the same
+// point. Queried through Xlib here without keeping a display open.
+static void SizeFromX11(bool explicitSize, int cfgScreenW, int cfgScreenH)
+{
 	if (Display* probe = XOpenDisplay(nullptr)) {
 		const int scr = DefaultScreen(probe);
 		g_windowSetup.screenRect.left   = 0;
@@ -192,7 +270,10 @@ int main(int argc, char** argv)
 			g_windowSetup.windowWidth  = cfgScreenW;
 			g_windowSetup.windowHeight = cfgScreenH;
 		} else {
-			const int frameAllowance = 32;
+			// Must match kX11FrameAllowance in linux_window.cpp, which centers the
+			// window in the work area with the same title-bar allowance. 32 was
+			// short of Mutter's ~37 px title bar.
+			const int frameAllowance = 48;
 			int clientH = (int)workH - frameAllowance;
 			int clientW = (int)lroundf(clientH * g_windowSetup.aspectRatio);
 			if (clientW > (int)workW) {           // too wide: clamp and recompute
@@ -211,6 +292,164 @@ int main(int argc, char** argv)
 		         workW, workH,
 		         g_windowSetup.windowWidth, g_windowSetup.windowHeight);
 	}
+}
+
+#ifdef AAE_HAVE_WAYLAND
+// Wayland. Must not touch X: this is the path for a session that has none.
+//
+// Two differences from the X11 sizing above, both because Wayland works in
+// LOGICAL units. screenRect stays in PIXELS (it is the monitor's pixel size, which
+// run_game() compares against pixel resolutions), but the default window is
+// computed and stored in LOGICAL units - pixels / the output's integer scale -
+// because that is what a Wayland window is sized in; the framebuffer comes out at
+// logical * scale. And there is no work area to read: a Wayland client cannot ask
+// where the panel is, so a fixed allowance stands in for panel plus decorations.
+// (The integer scale is also all the output reports, so a fractionally scaled
+// desktop yields a conservative default - it is only a default, and the window is
+// resizable.)
+static void SizeFromWayland(bool explicitSize, int cfgScreenW, int cfgScreenH)
+{
+	int px = 0, py = 0, scale = 1;
+	std::string outName;
+	const bool haveOutput = g_waylandWindow.QueryFirstOutput(&px, &py, &scale, &outName);
+	if (!haveOutput) {
+		// A compositor may legitimately report no output (a nested one that has not
+		// mapped anything yet). screenRect must still be non-zero, and the 1024x768
+		// already in g_windowSetup stands as the logical default.
+		px = 1024; py = 768; scale = 1;
+	}
+
+	g_windowSetup.screenRect.left   = 0;
+	g_windowSetup.screenRect.top    = 0;
+	g_windowSetup.screenRect.right  = px;
+	g_windowSetup.screenRect.bottom = py;
+
+	const int logicalW = (int)lroundf((float)px / (float)scale);
+	const int logicalH = (int)lroundf((float)py / (float)scale);
+
+	if (explicitSize) {
+		// screenw/screenh are PIXELS everywhere else, so convert, to land on the
+		// framebuffer size that was asked for. Honored literally, as on X11.
+		g_windowSetup.windowWidth  = (int)lroundf((float)cfgScreenW / (float)scale);
+		g_windowSetup.windowHeight = (int)lroundf((float)cfgScreenH / (float)scale);
+		if (g_windowSetup.windowWidth  < 1) g_windowSetup.windowWidth  = 1;
+		if (g_windowSetup.windowHeight < 1) g_windowSetup.windowHeight = 1;
+	} else if (haveOutput) {
+		// Fallback only. WaylandWindow::Create refits this to the compositor's
+		// xdg_toplevel.configure_bounds when it sends them (KWin, Mutter, most
+		// current compositors); this margin is what is left when it does not. It
+		// has to cover a panel PLUS the title bar: 64 did not (GNOME's 32 px top
+		// bar + a ~34 px client title bar, Plasma's 44-52 px panel + ~30 px server
+		// title bar), which put the bottom of the window under the taskbar. Scaled
+		// with the output so a tall display with a scaled-up panel is covered too,
+		// and a side margin for a vertical dock (Ubuntu).
+		const int heightAllowance = std::max(112, logicalH / 10);
+		const int widthAllowance  = std::max(64, logicalW / 20);
+		const int usableW = logicalW - widthAllowance;
+		int clientH = logicalH - heightAllowance;
+		int clientW = (int)lroundf(clientH * g_windowSetup.aspectRatio);
+		if (clientW > usableW) {              // too wide: clamp and recompute
+			clientW = usableW;
+			clientH = (int)lroundf(clientW / g_windowSetup.aspectRatio);
+		}
+		if (clientW > 0 && clientH > 0) {
+			g_windowSetup.windowWidth  = clientW;
+			g_windowSetup.windowHeight = clientH;
+		}
+	}
+
+	// wl_output only carries a name from version 4; plenty of compositors (Weston,
+	// so WSLg) send none, and an empty '' in the log reads like a bug.
+	const std::string outLabel = !haveOutput ? std::string("(none reported)")
+	                           : outName.empty() ? std::string("(unnamed)")
+	                           : "'" + outName + "'";
+	LOG_INFO("Primary output %s: %dx%d px, scale %d (logical %dx%d) -> "
+	         "default window %dx%d logical",
+	         outLabel.c_str(), px, py, scale, logicalW, logicalH,
+	         g_windowSetup.windowWidth, g_windowSetup.windowHeight);
+}
+#endif // AAE_HAVE_WAYLAND
+
+int main(int argc, char** argv)
+{
+	Log::open("systemlog.txt");
+	// Build stamp. Without one, "am I running the build you just gave me?"
+	// could only be answered by grepping the binary for strings that happened
+	// to be new - which wasted a round trip on a 300MB bundle. The window
+	// backend is not named here: it is not decided yet, and a banner that says
+	// "X11" over a Wayland session is exactly the kind of wrong that costs a
+	// debugging session. "Display backend:" below says it once it is.
+	LOG_INFO("AAE starting (Linux) - built %s %s", __DATE__, __TIME__);
+
+	SetIniFile(getpathM(nullptr, "aae.ini").c_str());
+
+	// Window geometry: fallback values only. The real default is computed from
+	// the screen size below - full size at the configured aspect, centered -
+	// matching what winmain.cpp's windowed startup produces on Windows.
+	g_windowSetup.windowWidth  = 1024;
+	g_windowSetup.windowHeight = 768;
+	g_windowSetup.centerWindow = true;
+
+	// Aspect for the default window, same [window] aspect_ratio key winmain.cpp
+	// reads, same 4:3 fallback.
+	{
+		std::string aspect = get_config_string("window", "aspect_ratio", "4:3");
+		int ax = 0, ay = 0;
+		if (sscanf(aspect.c_str(), "%d:%d", &ax, &ay) != 2 || ax <= 0 || ay <= 0) {
+			LOG_INFO("Invalid aspect ratio: %s - defaulting to 4:3", aspect.c_str());
+			ax = 4; ay = 3;
+		}
+		g_windowSetup.aspectRatio = (float)ax / (float)ay;
+	}
+
+	// Mouse capture: ALWAYS on at startup, matching winmain.cpp. The cursor_clip
+	// ini key and -clip/-noclip switches are deliberately not consulted - a stale
+	// cursor_clip=0 made sessions start with a visible, unconfined pointer, and
+	// capture-by-default with no exceptions is the product decision (2026-07-29).
+	// F9 releases at runtime and a click on the window recaptures.
+	//
+	// Set BEFORE Create(), which seeds its own capture state from WindowSetup.
+	g_windowSetup.cursorClipEnabled = true;
+
+	// Explicit window size, same [main] screenw/screenh contract as Windows:
+	// both positive = exact client size, 0 (the default) = AUTO, which keeps
+	// the computed work-area fit below. The WM may still clamp what we ask for.
+	const int cfgScreenW = get_config_int("main", "screenw", 0);
+	const int cfgScreenH = get_config_int("main", "screenh", 0);
+	const bool explicitSize = (cfgScreenW > 0 && cfgScreenH > 0);
+	// This platform's WindowUtil_UpdateAspect never resizes the window, but
+	// keep the shared contract's flag truthful all the same.
+	g_windowSetup.explicitWindowSize = explicitSize;
+
+	// Which window backend. Decided BEFORE sizing, because the two size the
+	// default window differently (see SizeFromX11 / SizeFromWayland), and the
+	// Wayland one needs its connection up to ask the compositor about outputs.
+	const BackendChoice choice = ChooseDisplayBackend(argc, argv);
+	bool useWayland    = (choice.backend == DisplayBackend::Wayland);
+	bool backendLogged = false;
+#ifdef AAE_HAVE_WAYLAND
+	if (useWayland) {
+		std::string reason;
+		if (!g_waylandWindow.Connect(&reason)) {
+			LOG_WARN("Wayland backend unavailable: %s - falling back to X11", reason.c_str());
+			useWayland    = false;
+			backendLogged = true;
+			LogBackend("X11", "fallback: Wayland connect failed; wanted by " + choice.detail);
+		}
+	}
+#endif
+	if (!backendLogged)
+		LogBackend(useWayland ? "Wayland" : "X11", choice.detail);
+
+	// screenRect and the default window size. screenRect is read by run_game() to
+	// sanity-check the configured resolution, so it must be populated before
+	// emulator_init.
+#ifdef AAE_HAVE_WAYLAND
+	if (useWayland)
+		SizeFromWayland(explicitSize, cfgScreenW, cfgScreenH);
+	else
+#endif
+		SizeFromX11(explicitSize, cfgScreenW, cfgScreenH);
 
 	// Startup window mode, from the same [window] fullscreen key the Video menu
 	// writes on save. Applied by Create() below, which requests EWMH fullscreen
@@ -258,14 +497,36 @@ int main(int argc, char** argv)
 		         g_windowSetup.useFullscreen ? "fullscreen" : "windowed");
 	}
 
-	if (!g_window.Create(g_windowSetup)) {
-		LOG_ERROR("Window creation failed - cannot continue");
-		Log::close();
-		return 1;
+	bool windowCreated = false;
+#ifdef AAE_HAVE_WAYLAND
+	if (useWayland) {
+		if (g_waylandWindow.Create(g_windowSetup)) {
+			g_activeWindow = &g_waylandWindow;
+			windowCreated  = true;
+		} else {
+			// The connection worked but the window did not (a compositor missing a
+			// required protocol, a refused configure). Same remedy as a failed
+			// connect: X11, with the reason in the log. The size computed above is
+			// in Wayland LOGICAL units, so redo it the X11 way first.
+			LOG_WARN("Wayland window creation failed - falling back to X11");
+			g_waylandWindow.Destroy();
+			useWayland = false;
+			LogBackend("X11", "fallback: Wayland window creation failed; wanted by " + choice.detail);
+			SizeFromX11(explicitSize, cfgScreenW, cfgScreenH);
+		}
+	}
+#endif
+	if (!windowCreated) {
+		if (!g_window.Create(g_windowSetup)) {
+			LOG_ERROR("Window creation failed - cannot continue");
+			Log::close();
+			return 1;
+		}
+		g_activeWindow = &g_window;
 	}
 
 	// Renderer selection, decided EARLY like winmain.cpp's EarlyRendererIsVulkan:
-	// under Vulkan no GLX context is created at all (the dispatch layer routes
+	// under Vulkan no GLX/EGL context is created at all (the dispatch layer routes
 	// every gl*chain call to vkchain, and ViewOrtho is a core-profile no-op, so
 	// nothing touches GL without a context - proven by the Windows VK path,
 	// which has skipped context creation since Plan 2). This also means a GLX
@@ -288,15 +549,15 @@ int main(int argc, char** argv)
 		// Core profile, matching winmain.cpp's InitOpenGLContext(false, false, true).
 		if (!InitOpenGLContext(false, false, true)) {
 			LOG_ERROR("OpenGL context creation failed - cannot continue");
-			g_window.Destroy();
+			g_activeWindow->Destroy();
 			Log::close();
 			return 1;
 		}
 	} else {
-		LOG_INFO("Renderer=vulkan: skipping GLX context creation (window layer)");
+		LOG_INFO("Renderer=vulkan: skipping GL context creation (window layer)");
 	}
 
-	g_window.EnableCursorClip(g_windowSetup.cursorClipEnabled);
+	g_activeWindow->EnableCursorClip(g_windowSetup.cursorClipEnabled);
 	TimerInit();
 
 	// winmain.cpp calls RawInput_Initialize(hwnd) at the equivalent point.
@@ -352,8 +613,9 @@ int main(int argc, char** argv)
 
 	bool running = true;
 	while (running) {
-		// X11 events first. PumpEvents returns false on WM_DELETE_WINDOW.
-		if (!g_window.PumpEvents())
+		// Window events first. PumpEvents returns false on WM_DELETE_WINDOW (X11),
+		// a close request or a lost connection (Wayland).
+		if (!g_activeWindow->PumpEvents())
 			break;
 
 		// Input is drained here, on the game thread. The Win32 backend does
@@ -432,7 +694,7 @@ int main(int argc, char** argv)
 	LOG_INFO("Shutdown: GL context...");
 	DeleteGLContext();
 	LOG_INFO("Shutdown: window...");
-	g_window.Destroy();
+	g_activeWindow->Destroy();
 	LOG_INFO("Shutdown: complete");
 	Log::close();
 

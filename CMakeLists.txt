@@ -415,27 +415,79 @@ elseif(UNIX AND NOT APPLE)
     if(ALSA_FOUND)
         list(APPEND AAE_PLATFORM_LIBS ALSA::ALSA)
     endif()
-    # PulseAudio client libraries, optional. When present, the audio backend
-    # opens the Pulse/PipeWire server NATIVELY with explicit channel positions
-    # (the cubeb/Dolphin model) instead of going through the ALSA compat shim,
-    # which is what made 6-channel output unverifiable (silent rears on the
-    # Steam Machine). Without them the raw-ALSA path still covers everything -
-    # Pi console builds and bare cabinets have no server anyway.
-    # pa_strerror lives in libpulse proper, hence both libraries.
-    find_library(PULSE_SIMPLE_LIBRARY pulse-simple)
-    find_library(PULSE_LIBRARY pulse)
-    if(PULSE_SIMPLE_LIBRARY AND PULSE_LIBRARY)
-        list(APPEND AAE_PLATFORM_LIBS ${PULSE_SIMPLE_LIBRARY} ${PULSE_LIBRARY})
-        add_compile_definitions(AAE_HAVE_PULSE)
-        message(STATUS "PulseAudio native output enabled: ${PULSE_SIMPLE_LIBRARY}")
+    # libpipewire, optional. When present the audio backend talks to PipeWire
+    # NATIVELY: it can ask the default sink what layout it really runs and open
+    # the stream in exactly that layout, which libpulse's simple API cannot do
+    # (pa_simple forces a format and cannot enumerate or query a sink) and which
+    # the ALSA compat shim hides (a discrete 6-channel stream through the pulse
+    # path lost its rears on the Steam Machine while PipeWire's native protocol
+    # played them). libpulse is therefore no longer used at all. Without
+    # libpipewire the raw-ALSA path still covers everything - Pi console builds
+    # and bare cabinets have no server anyway.
+    # >=1.0: the Flatpak SDK (Freedesktop 24.08) ships PipeWire 1.2, and the
+    # sibling video player builds against the same SDK.
+    find_package(PkgConfig QUIET)
+    if(PKG_CONFIG_FOUND)
+        pkg_check_modules(PIPEWIRE QUIET IMPORTED_TARGET libpipewire-0.3>=1.0)
+    endif()
+    if(PIPEWIRE_FOUND)
+        list(APPEND AAE_PLATFORM_LIBS PkgConfig::PIPEWIRE)
+        add_compile_definitions(AAE_HAVE_PIPEWIRE)
+        message(STATUS "PipeWire native audio enabled: libpipewire-0.3 ${PIPEWIRE_VERSION}")
     else()
-        message(STATUS "libpulse-simple not found - audio will use raw ALSA only")
+        message(STATUS "libpipewire-0.3 not found - audio will use raw ALSA only")
     endif()
     if(X11_FOUND)
         list(APPEND AAE_PLATFORM_LIBS X11::X11)
     endif()
     if(GLEW_FOUND)
         list(APPEND AAE_PLATFORM_LIBS GLEW::GLEW)
+    endif()
+
+    # Native Wayland window backend, alongside the X11 one (never instead of it:
+    # linux_main.cpp falls back to X11 when Wayland is unavailable or fails, and
+    # gamescope / Steam Game Mode stays on X11 by default). It is the shared
+    # native_window library, vendored UNMODIFIED in aae/system/3rdparty/native_window
+    # (see native_window_PINNED.txt) because the Flatpak build sees only this
+    # tree, plus wayland_window.cpp, the AAE adapter over it.
+    #
+    # Optional, probed here and applied to the aae target further down. Everything
+    # it needs is in the Freedesktop 24.08 SDK; on a plain distro box it is
+    #   Debian/Ubuntu:  sudo apt install libwayland-dev libxkbcommon-dev \
+    #                                    libegl-dev wayland-protocols
+    # A box without them still gets a working X11-only build, and -DAAE_WAYLAND=OFF
+    # asks for exactly that. The Windows build never reaches this branch.
+    option(AAE_WAYLAND "Build the native Wayland window backend (X11 stays as the fallback)" ON)
+    set(AAE_WAYLAND_ENABLED OFF)
+    if(AAE_WAYLAND)
+        if(PKG_CONFIG_FOUND)
+            pkg_check_modules(AAE_WAYLAND_DEPS QUIET
+                wayland-client>=1.22 wayland-cursor xkbcommon wayland-egl wayland-protocols>=1.32)
+        endif()
+        find_program(AAE_WAYLAND_SCANNER wayland-scanner)
+        find_package(OpenGL QUIET COMPONENTS EGL)
+        if(AAE_WAYLAND_DEPS_FOUND AND AAE_WAYLAND_SCANNER AND OpenGL_EGL_FOUND)
+            set(AAE_WAYLAND_ENABLED ON)
+        endif()
+    endif()
+
+    if(AAE_WAYLAND_ENABLED)
+        # Normal variables, not cache entries: native_window's CMakeLists declares
+        # these as option()s and, with policy CMP0077 NEW (cmake_minimum_required
+        # 3.20 there), an option() leaves an existing normal variable alone. The
+        # example consumer and the test executables are for working on the library,
+        # not for building AAE.
+        set(NATIVE_WINDOW_BUILD_EXAMPLE OFF)
+        set(BUILD_TESTING OFF)
+        add_subdirectory(aae/system/3rdparty/native_window ${CMAKE_BINARY_DIR}/native_window)
+        include(aae/system/3rdparty/native_window/egl.cmake)
+        list(APPEND AAE_PLATFORM_SOURCES aae/system/window/linux/wayland_window.cpp)
+        message(STATUS "AAE: native Wayland window backend enabled (X11 stays the fallback)")
+    elseif(AAE_WAYLAND)
+        message(STATUS "AAE: Wayland dependencies not found - X11 only. "
+                       "Install libwayland-dev libxkbcommon-dev libegl-dev wayland-protocols")
+    else()
+        message(STATUS "AAE: native Wayland window backend disabled (AAE_WAYLAND=OFF) - X11 only")
     endif()
 else()
     message(FATAL_ERROR "Unsupported platform - AAE targets Windows and Linux only")
@@ -694,6 +746,17 @@ else()
     target_link_libraries(aae PRIVATE
         -Wl,--whole-archive aae_core -Wl,--no-whole-archive
         ${AAE_PLATFORM_LIBS})
+endif()
+
+# The native Wayland backend (probed in the Linux branch above). Applied to the
+# aae target ONLY: aae_core, aae_headless, aae_audiotest and aae_inputtest have no
+# window and must neither link the Wayland libraries nor see AAE_HAVE_WAYLAND.
+# native_window::core and ::egl pull in wayland-client, wayland-cursor, xkbcommon
+# and wayland-egl transitively; OpenGL::EGL is for the eglSwapInterval call in
+# sys_gl.cpp.
+if(UNIX AND NOT APPLE AND AAE_WAYLAND_ENABLED)
+    target_link_libraries(aae PRIVATE native_window::egl native_window::core OpenGL::EGL)
+    target_compile_definitions(aae PRIVATE AAE_HAVE_WAYLAND)
 endif()
 
 if(WIN32)
@@ -964,6 +1027,12 @@ else()
     endif()
     target_include_directories(aae_audiotest PRIVATE aae/system/audio/linux)
     target_link_libraries(aae_audiotest PRIVATE ALSA::ALSA pthread)
+    # alsa_backend.cpp is compiled here, and AAE_HAVE_PIPEWIRE is a global
+    # definition (see the libpipewire lookup above), so the library has to follow
+    # it or the audio test fails to link on a box that has the dev package.
+    if(PIPEWIRE_FOUND)
+        target_link_libraries(aae_audiotest PRIVATE PkgConfig::PIPEWIRE)
+    endif()
 endif()
 
 # =============================================================================

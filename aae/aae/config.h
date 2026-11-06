@@ -111,10 +111,14 @@ typedef struct {
 	int debug;
 	// DVG_ENGINE_MAME (default) or DVG_ENGINE_VECSIM. [main] dvg_engine=
 	// "mame"|"vecsim", per-game overridable. Only the asteroid driver
-	// (asteroid/astdelux + bootlegs) consults it; every other vector game is
+	// (asteroid/astdelux + bootlegs) and Omega Race consult it; every other vector game is
 	// hard-wired to the MAME engine. Read once at game init - no runtime
-	// switching, same policy as `renderer` below.
+	// switching, same policy as `renderer` below. VIDEO SETUP's DVG ENGINE
+	// item (shown only when the running driver honors it) edits the _pending
+	// value and saves it to the game's ini.
 	int dvg_engine;
+	int dvg_engine_pending;   // what VIDEO SETUP's DVG ENGINE item edits; written to the game's ini, applies next launch of that game
+	int dvg_engine_selectable; // 1 while the running driver honors dvg_engine (set in its init, cleared per game load)
 	int renderer;         // RENDERER_VULKAN (default) or RENDERER_OPENGL
 	// The VIDEO menu's RENDERER item edits THIS, never `renderer` above.
 	// init_gl() latches s_active from config.renderer on EVERY game load, so
@@ -146,21 +150,36 @@ typedef struct {
 	int audio_force_resample;
 	int kbleds;
 	int samplerate;
-	// Output speaker request, [main] speakers: 2 = stereo (default - the
-	// Dolphin model: the sound server / soundbar fills the room from clean
-	// stereo), 6 = discrete 5.1 with AAE's own pseudo-surround upmix (for
-	// hardware that genuinely takes 6-channel PCM), 0 = auto-negotiate.
-	// Linux backend only; Windows XAudio2 output is unaffected.
+	// Output speaker request, [main] speakers: 0 = follow the output's
+	// reported layout (default - the native PipeWire backend opens the
+	// default sink's real layout and fills every channel with AAE's own
+	// upmix), 2 = always stereo, 6 = legacy "surround when available" (same
+	// as 0). Linux backend only; Windows XAudio2 output is unaffected.
 	int speakers;
-	// Matrix surround ENCODE for the stereo path, [main] surround_encode
-	// (default 1). Arcade audio is near-mono, and every difference-driven
-	// upmixer (PipeWire psd, Pro Logic, soundbar processing) derives rears
-	// from L-R - which is ~zero for mono content, so the rears stay silent
-	// no matter how good the chain is (measured: Dolphin's rich-stereo games
-	// light the same upmixer up; our mono content doesn't). This injects a
-	// delayed mono ambience ANTIPHASE into L/R, giving those decoders real
-	// difference content to send rearward. 0 = plain untouched stereo.
+	// Matrix surround ENCODE, [main] surround_encode (default 1); only used
+	// when the output ends up stereo. Arcade audio is near-mono, and every
+	// difference-driven upmixer (PipeWire psd, Pro Logic, soundbar
+	// processing) derives rears from L-R - which is ~zero for mono content,
+	// so the rears stay silent no matter how good the chain is (measured:
+	// Dolphin's rich-stereo games light the same upmixer up; our mono
+	// content doesn't). This injects a delayed mono ambience ANTIPHASE into
+	// L/R, giving those decoders real difference content to send rearward.
+	// 0 = plain untouched stereo.
 	int surround_encode;
+	// [main] hdmi_passthrough (Linux): stereo PCM processing for a TV/soundbar
+	// that does its own surround - mono sources widened, output on FL/FR only
+	// (mono_stereo_width.h). NOT bitstream passthrough. -1 = auto (on for an
+	// HDMI PipeWire sink), 0 = off, 1 = on.
+	int hdmi_passthrough;
+	// [main] audio_output: the one user-facing output setting. 0 = auto
+	// (legacy speakers / surround_encode / hdmi_passthrough keys decide),
+	// 1 = soundbar (plain stereo PCM on FL/FR, mono widened), 2 = surround
+	// (5.1, discrete upmix), 3 = stereo. Global device setting: read from
+	// aae.ini only, never from a per-game ini. Applies at next game start.
+	int audio_output;
+	// [main] audio_filter: global output "cabinet tone" low-pass (output_tone.h).
+	// 0 = off, 1 = light (12 kHz), 2 = warm (7 kHz). Live from the Sound menu.
+	int audio_filter;
 
 	char* raster_effect;
 	// Display aspect override: "AUTO" (natural computed aspect, the default)

@@ -170,6 +170,7 @@
   <ItemGroup>
     <ClInclude Include="aae\aae_emulator.h" />
     <ClInclude Include="aae\aae_mame_driver.h" />
+    <ClInclude Include="aae\aae_video\cabinet_quad.h" />
     <ClInclude Include="aae\aae_video\gl_fbo.h" />
     <ClInclude Include="aae\aae_video\gl_shader.h" />
     <ClInclude Include="aae\aae_video\gl_texturing.h" />

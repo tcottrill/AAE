@@ -65,7 +65,7 @@ if [ -z "$DEST" ] || [ -z "$MODE" ]; then
     echo "  --release  roms/artwork/samples exactly as the public AAE repo ships them" >&2
     echo "  --testing  everything in the local x64/Release (full rom collection)" >&2
     echo >&2
-    echo "  Re-staging PRESERVES the target's aae.ini, video.ini, video2.ini and ini/ -" >&2
+    echo "  Re-staging PRESERVES the target's aae.ini, video.ini, video_vecsim.ini and ini/ -" >&2
     echo "  those hold tuning done on that machine (Pi glow values especially)." >&2
     echo "  --force-config overwrites them with this machine's config instead." >&2
     echo >&2
@@ -177,16 +177,23 @@ done
 #
 # So: seed these when absent, never clobber them. Pass --force-config to push
 # the dev box's config over the target's on purpose.
+#
+# video2.ini was renamed video_vecsim.ini (2026-11): keep the target's tuned
+# copy by moving it to the new name before seeding.
+if [ -f "$DEST/x64/Release/video2.ini" ] && [ ! -f "$DEST/x64/Release/video_vecsim.ini" ]; then
+    mv "$DEST/x64/Release/video2.ini" "$DEST/x64/Release/video_vecsim.ini"
+    echo "  renamed the target's video2.ini to video_vecsim.ini"
+fi
 if [ "$FORCE_CONFIG" = "1" ]; then
     echo "config (--force-config: OVERWRITING the target's settings)..."
     [ -d "$SRC/x64/Release/ini" ] && rsync -a "$SRC/x64/Release/ini/" "$DEST/x64/Release/ini/"
-    for f in aae.ini video.ini video2.ini; do
+    for f in aae.ini video.ini video_vecsim.ini; do
         [ -f "$SRC/x64/Release/$f" ] && cp "$SRC/x64/Release/$f" "$DEST/x64/Release/"
     done
 else
     echo "config (seeding only - the target's own tuning is preserved)..."
     [ -d "$SRC/x64/Release/ini" ] && rsync -a --ignore-existing "$SRC/x64/Release/ini/" "$DEST/x64/Release/ini/"
-    for f in aae.ini video.ini video2.ini; do
+    for f in aae.ini video.ini video_vecsim.ini; do
         if [ -f "$SRC/x64/Release/$f" ] && [ ! -f "$DEST/x64/Release/$f" ]; then
             cp "$SRC/x64/Release/$f" "$DEST/x64/Release/"
         elif [ -f "$DEST/x64/Release/$f" ]; then

@@ -86,6 +86,7 @@
 #include <cstring>  // strcmp for raster_effect name check
 #include <cmath>    // log2f for the mono monitor halation mip bias
 #include "mame_late_avgdvg.h"
+#include "cabinet_quad.h"      // cabinet_art_quad: true-aspect backdrop/bezel quad
 // ---------------------------------------------------------------------------
 // Module-level globals
 // ---------------------------------------------------------------------------
@@ -655,6 +656,98 @@ static void render_vector_color_monitor()
 	glBindTexture(GL_TEXTURE_2D, 0);
 }
 
+// ---------------------------------------------------------------------------
+// Cabinet-art texture size (px) for the true-aspect quad rule.
+// get_texture_size() answers from the load_texture() registry (mutex + hash
+// lookup, no GL query; the GL fallback only runs for textures not loaded via
+// load_texture, which cabinet art always is). Looked up per use rather than
+// cached here: GL texture ids are reused after destroy_all_textures(), so a
+// local id-keyed cache could go stale across game loads. Falls back to 0x0
+// (= 4:3 in cabinet_art_quad).
+// ---------------------------------------------------------------------------
+static void cabinet_art_tex_size(GLuint tex, float* w, float* h)
+{
+	int iw = 0, ih = 0;
+	if (!get_texture_size(tex, &iw, &ih)) { iw = 0; ih = 0; }
+	*w = (float)iw;
+	*h = (float)ih;
+}
+
+// On-screen aspect the 1024x1024 canvas is displayed at (see
+// cabinet_canvas_aspect in cabinet_quad.h): ws.aspectRatio, inverted under a
+// 90/270 system rotation. 4:3 for landscape games, 3:4 for sideways games.
+static float cabinet_canvas_aspect_gl()
+{
+	return cabinet_canvas_aspect(GetWindowSetup().aspectRatio,
+		orientation_to_rect2_rotation(config.system_rotation));
+}
+
+// ---------------------------------------------------------------------------
+// Cabinet art "wings".
+// The 1024x1024 composite is shown at ws.aspectRatio (4:3 landscape, 3:4 for
+// sideways games), so a backdrop/bezel wider than the canvas
+// (quad extends past 0..1024) loses its overhang in FBO4. In a window wider
+// than the 4:3 picture this pass draws the SAME canvas quads straight into the
+// backbuffer, mapped through the letterbox rect (window pixels, Y-up like the
+// FBO4 canvas: X = rx + x/1024*rw, Y = ry + y/1024*rh). The img4a blit that
+// follows is an opaque copy, so the centre is unchanged and the art simply
+// continues into the side areas. Same gates / tint / alpha test as the
+// final_render layers; vector games only, not the GUI, no system rotation.
+// Leaves blend disabled and texture unit 0 unbound-safe for the blit.
+// ---------------------------------------------------------------------------
+static void render_cabinet_wings()
+{
+	if (!screen_rect || !Machine || !Machine->drv) return;
+	if (!(Machine->drv->video_attributes & VIDEO_TYPE_VECTOR)) return;
+	if (emulator_is_gui_active()) return;
+	if (orientation_to_rect2_rotation(config.system_rotation) != 0) return;
+
+	const bool doBackdrop = config.artwork && art_loaded[0] && art_tex[0];
+	const bool doBezel = config.bezel && art_loaded[3] && art_tex[3];
+	if (!doBackdrop && !doBezel) return;
+
+	float rx = 0.0f, ry = 0.0f, rw = 0.0f, rh = 0.0f;
+	screen_rect->GetScreenRect(&rx, &ry, &rw, &rh);
+	if (rw <= 0.0f || rh <= 0.0f) return;
+	// No side areas (4:3 window, or pillar-less letterbox): nothing to add.
+	// (When rx > 0 the rect always spans the full window height, so the
+	// wings can never bleed into top/bottom bars.)
+	if (rx < 1.0f) return;
+
+	// drawTexturedQuad uses the CURRENTLY bound program when one is bound
+	// (composite shaders), and the UI overlay pass may leave one bound; the
+	// wings need the plain textured shader, so start from none.
+	glUseProgram(0);
+
+	auto draw = [&](GLuint tex, float rT, float gT, float bT, float aT, float alphaTest) {
+		set_texture(&tex, 1, 0, 0, 0);
+		float tw = 0.0f, th = 0.0f;
+		cabinet_art_tex_size(tex, &tw, &th);
+		const CabinetQuad q = cabinet_art_quad(tw, th, config.artcrop != 0,
+			(float)bezelx, (float)bezely, bezelzoom, cabinet_canvas_aspect_gl());
+		const float k = 1.0f / 1024.0f;
+		drawTexturedQuad(rx + q.x1 * k * rw, rx + q.x2 * k * rw,
+			ry + q.y1 * k * rh, ry + q.y2 * k * rh,
+			false, rT, gT, bT, aT, alphaTest);
+		};
+
+	if (doBackdrop)
+	{
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		draw(art_tex[0], 0.5f, 0.5f, 0.5f, 1.0f, 0.0f);
+	}
+	if (doBezel)
+	{
+		glDisable(GL_BLEND);
+		draw(art_tex[3], 1.0f, 1.0f, 1.0f, 1.0f, 0.2f);
+	}
+
+	glDisable(GL_BLEND);
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, 0);
+}
+
 void end_render_fbo4()
 {
 	check_gl_error_named("end_render_fbo4 (enter)");
@@ -673,6 +766,9 @@ void end_render_fbo4()
 	set_ortho(ws.clientWidth, ws.clientHeight);
 
 	glDisable(GL_BLEND);
+
+	// Cabinet art overhang in the side areas (before either blit path).
+	render_cabinet_wings();
 
 	if (color_vector_shader_active())
 	{
@@ -1244,6 +1340,30 @@ void glchain_render()
 //   8. video_loop()   : any game-specific per-frame overlay (score display etc.)
 // ---------------------------------------------------------------------------
 
+// The overlay gel quad (overlay1 and overlay2). The base draw swaps bottom/top
+// against the bezel/backdrop draws (AAE overlay PNGs are stored V-flipped,
+// e.g. bzone_overlay2.png has its red band at the bottom). On top of that the
+// overlay takes a VECTOR driver's FLIP_X / FLIP_Y: the driver flip moves only
+// the beams (mame_vector.cpp), so without this the gel stays put while the
+// picture flips under it. The Cinematronics flips used to live in inverted
+// video.ini rects, which flipped beams and overlay together, and their
+// overlay PNGs (wotw, armora, demon, solarq) are authored for that. Raster
+// drivers are left alone: their orientation is handled on the bitmap.
+// VK twin: OverlayUv in vector_post_vk.cpp.
+static void drawOverlayQuad(int left, int right, int bottom, int top, float alpha)
+{
+	const int vattr = (Machine && Machine->drv) ? Machine->drv->video_attributes : 0;
+	const int rot = (Machine && Machine->drv) ? Machine->drv->rotation : 0;
+	const bool flipX = (vattr & VIDEO_TYPE_VECTOR) && (rot & ORIENTATION_FLIP_X);
+	const bool flipY = (vattr & VIDEO_TYPE_VECTOR) && (rot & ORIENTATION_FLIP_Y);
+
+	const float x0 = (float)(flipX ? right : left);
+	const float x1 = (float)(flipX ? left : right);
+	const float yb = (float)(flipY ? bottom : top);
+	const float yt = (float)(flipY ? top : bottom);
+	drawTexturedQuad(x0, x1, yb, yt, false, 1.0f, 1.0f, 1.0f, alpha);
+}
+
 void final_render(int left, int right, int bottom, int top)
 {
 	// TODO: HACK - When the GUI is running and the menu opens, the dim overlay would otherwise
@@ -1407,7 +1527,7 @@ void final_render(int left, int right, int bottom, int top)
 		else
 			glBlendFunc(GL_DST_COLOR, GL_SRC_COLOR);
 
-		drawTexturedQuad((float)left, (float)right, (float)top, (float)bottom, false);
+		drawOverlayQuad(left, right, bottom, top, 1.0f);
 	}
 
 	//--------------------------------------------------------------------------
@@ -1420,18 +1540,13 @@ void final_render(int left, int right, int bottom, int top)
 			if (!tex) return;
 			set_texture(&tex, 1, 0, 0, 0);
 
-			float base_h = 1024; //is_pre_squished ? 1024.0f : (1024.0f * 0.75f);
-
-			if (config.artcrop) {
-				float x1 = (float)bezelx;
-				float y1 = (float)bezely;
-				float x2 = 1024.0f * bezelzoom + bezelx;
-				float y2 = base_h * bezelzoom + bezely;
-				drawTexturedQuad(x1, x2, y1, y2, false, rT, gT, bT, aT, alphaTest);
-			}
-			else {
-				drawTexturedQuad(0.0f, 1024.0f, 0.0f, base_h, false, rT, gT, bT, aT, alphaTest);
-			}
+			// True-aspect quad from the layer's own texture size (shared rule,
+			// see cabinet_quad.h). A 4:3 texture gives the historical quad.
+			float tw = 0.0f, th = 0.0f;
+			cabinet_art_tex_size(tex, &tw, &th);
+			const CabinetQuad q = cabinet_art_quad(tw, th, config.artcrop != 0,
+				(float)bezelx, (float)bezely, bezelzoom, cabinet_canvas_aspect_gl());
+			drawTexturedQuad(q.x1, q.x2, q.y1, q.y2, false, rT, gT, bT, aT, alphaTest);
 		};
 
 	if (config.artwork && art_loaded[0]) {
@@ -1469,7 +1584,7 @@ void final_render(int left, int right, int bottom, int top)
 		glEnable(GL_BLEND);
 		glBlendFunc(GL_ONE_MINUS_SRC_ALPHA, GL_SRC_COLOR);
 
-		drawTexturedQuad((float)left, (float)right, (float)top, (float)bottom, false, 1.0f, 1.0f, 1.0f, 0.5f);
+		drawOverlayQuad(left, right, bottom, top, 0.5f);
 	}
 
 	//--------------------------------------------------------------------------

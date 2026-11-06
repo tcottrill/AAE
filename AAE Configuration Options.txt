@@ -90,6 +90,93 @@
   hvnoise               int       0         High-voltage noise effect.
   pshiss                int       0         Power-supply hiss effect.
   audio_force_resample  int       0         Force audio resampling (1 = on).
+  audio_filter          string    light     Output "cabinet tone" filter on the final mix: off,
+                                            light or warm.  Softens harsh
+                                            highs, MAME-style.  off = untouched.
+                                            light = 20 Hz DC block + 12 kHz
+                                            low-pass.  warm = DC block + 7 kHz
+                                            low-pass.  Global setting; LIVE: the
+                                            Sound menu AUDIO FILTER changes it
+                                            immediately and is saved here.
+  audio_output          string    auto      Where the sound goes: auto, soundbar,
+                                            surround (also "5.1") or stereo.
+                                            Global device setting: read from
+                                            aae.ini only (a per-game ini cannot
+                                            change it), also set by the Sound
+                                            menu's OUTPUT MODE.  Applies at the
+                                            next game start.  This is stereo/PCM
+                                            processing, NOT Dolby/DTS bitstream
+                                            passthrough.
+                                            soundbar : plain stereo PCM on front
+                                              left/right for a TV that forwards
+                                              only stereo to a soundbar.  Mono
+                                              sounds get a 12 ms-delayed,
+                                              opposite-polarity copy added to
+                                              left/right so the soundbar has
+                                              something to derive rears and sub
+                                              from (genuine stereo is left
+                                              alone).  Same as hdmi_passthrough=1.
+                                            surround : a 5.1 (or larger) speaker
+                                              layout.  Every speaker is filled by
+                                              AAE (center, LFE, rears).  Same as
+                                              hdmi_passthrough=0 + speakers=6.
+                                              On Windows the device must be set
+                                              to 5.1 in Sound settings > device >
+                                              Speaker setup / Configure; a stereo
+                                              device logs a warning.
+                                            stereo   : plain 2-channel output,
+                                              no processing.  Same as
+                                              hdmi_passthrough=0 + speakers=2.
+                                            auto     : the legacy keys below
+                                              decide (nothing changes for
+                                              existing setups).  On Windows
+                                              auto picks soundbar when the
+                                              default output is HDMI/DisplayPort
+                                              or S/PDIF, otherwise follows the
+                                              device layout (a 5.1 device gets
+                                              AAE's own upmix; headphone devices,
+                                              including Windows Sonic for
+                                              Headphones, are left untouched).
+                                            Not "auto": audio_output takes
+                                            precedence over speakers and
+                                            hdmi_passthrough.  systemlog.txt has
+                                            one line saying which mode was
+                                            chosen and why; the Sound menu shows
+                                            it as ACTIVE.
+  speakers              int       0         Output layout request: 0 = follow
+                                            the device, 2 = stereo, 6 = 5.1.
+                                            Honoured on Linux; on Windows only 2
+                                            (stereo) and 6 (warns if the device
+                                            is stereo) have an effect.
+                                            Overridden by audio_output unless
+                                            that is auto.
+  surround_encode       int       1         Linux only (Windows ignores it):
+                                            on a stereo output, inject a delayed
+                                            antiphase mono ambience so downstream
+                                            upmixers have L-R content to send to
+                                            the rears.  0 = plain stereo.
+  hdmi_passthrough      string    auto      Stereo PCM processing for a TV or
+                                            soundbar that makes its own surround
+                                            from stereo.  This is NOT Dolby/DTS
+                                            bitstream passthrough.  On, mono
+                                            sounds get a 12 ms-delayed, opposite-
+                                            polarity copy added to left/right so
+                                            the TV/soundbar has something to
+                                            derive rears and sub from (genuine
+                                            stereo is left alone), and the
+                                            output carries only front left and
+                                            front right.  auto = on when the
+                                            output is HDMI/DisplayPort (Linux:
+                                            PipeWire port name; Windows: the
+                                            default endpoint's form factor,
+                                            or S/PDIF), off for every other
+                                            output and for the raw ALSA
+                                            fallback.  on / 1 forces it,
+                                            off / 0 disables it (discrete
+                                            per-speaker upmix).  Overridden by
+                                            audio_output unless that is auto.
+                                            systemlog.txt says which was chosen
+                                            and why.
 
   DISPLAY / WINDOW  (legacy keys, see also [window] section)
   ---------------------------------------------------------------------------
@@ -99,6 +186,17 @@
   widescreen            int       0         Widescreen mode hint.
   windowed              int       -         Legacy fullscreen toggle.
                                             Prefer [window] fullscreen.
+  display               string    auto      Linux only: which window backend
+                                            to use.  auto = native Wayland on
+                                            a Wayland desktop, X11 under
+                                            gamescope (Steam Game Mode) or
+                                            when no Wayland session exists;
+                                            wayland and x11 force one.  If
+                                            Wayland cannot start, AAE falls
+                                            back to X11 and says why in
+                                            systemlog.txt.  The -wayland and
+                                            -x11 command-line switches
+                                            override it for one launch.
 
   PATHS
   ---------------------------------------------------------------------------

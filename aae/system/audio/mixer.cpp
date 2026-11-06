@@ -139,6 +139,8 @@
  // Note for ME: This is the FULL INTEGER version of this code, for AAE only: 8/15/25
 
 #include "mixer.h"
+#include "mono_stereo_width.h"
+#include "sample_fold.h"
 #include "mixer_groups.h"
 #include "audio_backend.h"   // IAudioBackend + create_audio_backend(); NOT xaudio2_backend.h
 #include "audio_3d.h"
@@ -237,6 +239,85 @@ static CHANNEL channel[MAX_CHANNELS];
 constexpr int MIXER_END_FADE_MS = 30;
 static double fade_step[MAX_CHANNELS] = {};
 
+// Anti-alias filter for native-rate chip streams (stream_set_native_rate) whose
+// rate is above SYS_FREQ: the mix loop decimates them with linear interpolation,
+// so anything above SYS_FREQ/2 would alias. MAME-style fix: low-pass the freshly
+// written buffer in place at the native rate. 8th-order Butterworth = 4 cascaded
+// RBJ biquads (Q 0.5098, 0.6013, 0.9000, 2.5629), fc = 0.45 * SYS_FREQ. State is
+// per interleaved channel (mono/stereo) and persists across calls: the stream is
+// continuous. Disabled (and cleared) for streams not above the output rate.
+// All access is under audioMutex; nothing here allocates.
+struct StreamAA {
+	static constexpr int kStages = 4;
+	bool   enabled = false;
+	double b0[kStages] = {}, b1[kStages] = {}, b2[kStages] = {}, a1[kStages] = {}, a2[kStages] = {};
+	double z1[2][kStages] = {}, z2[2][kStages] = {};
+
+	void clear()
+	{
+		for (int c = 0; c < 2; ++c)
+			for (int s = 0; s < kStages; ++s) z1[c][s] = z2[c][s] = 0.0;
+	}
+	void disable() { enabled = false; clear(); }
+	void configure(double fs, double fc)
+	{
+		static const double kQ[kStages] = { 0.5098, 0.6013, 0.9000, 2.5629 };
+		const double pi = 3.14159265358979323846;
+		const double w0 = 2.0 * pi * fc / fs, cw = std::cos(w0), sw = std::sin(w0);
+		for (int s = 0; s < kStages; ++s) {
+			const double al = sw / (2.0 * kQ[s]);
+			const double a0 = 1.0 + al;
+			b0[s] = ((1.0 - cw) * 0.5) / a0;
+			b1[s] = (1.0 - cw) / a0;
+			b2[s] = b0[s];
+			a1[s] = (-2.0 * cw) / a0;
+			a2[s] = (1.0 - al) / a0;
+		}
+		clear();
+		enabled = true;
+	}
+	// One sample through the cascade for interleaved channel c (0 or 1).
+	double run(int c, double x)
+	{
+		for (int s = 0; s < kStages; ++s) {
+			const double y = b0[s] * x + z1[c][s];
+			z1[c][s] = b1[s] * x - a1[s] * y + z2[c][s];
+			z2[c][s] = b2[s] * x - a2[s] * y;
+			x = y;
+		}
+		return x;
+	}
+	void process16(int16_t* d, uint32_t count, uint32_t chans)
+	{
+		if (!enabled || chans < 1 || chans > 2) return;
+		for (uint32_t i = 0; i < count; ++i) {
+			const double y = run((int)(i % chans), (double)d[i]);
+			const long v = std::lrint(y);
+			d[i] = (int16_t)(v < -32768 ? -32768 : (v > 32767 ? 32767 : v));
+		}
+		flush();
+	}
+	void process8(uint8_t* d, uint32_t count, uint32_t chans)
+	{
+		if (!enabled || chans < 1 || chans > 2) return;
+		for (uint32_t i = 0; i < count; ++i) {
+			const double y = run((int)(i % chans), (double)d[i] - 128.0) + 128.0;
+			const long v = std::lrint(y);
+			d[i] = (uint8_t)(v < 0 ? 0 : (v > 255 ? 255 : v));
+		}
+		flush();
+	}
+	void flush()
+	{
+		for (int c = 0; c < 2; ++c)
+			for (int s = 0; s < kStages; ++s) {
+				if (std::fabs(z1[c][s]) < 1e-20) z1[c][s] = 0.0;
+				if (std::fabs(z2[c][s]) < 1e-20) z2[c][s] = 0.0;
+			}
+	}
+};
+static StreamAA g_streamAA[MAX_CHANNELS];
+
 // The one place a channel's applied linear gain is derived: its own byte
 // under its group's byte. Callers hold audioMutex (or are inside a start
 // function that already does).
@@ -250,6 +331,7 @@ static inline float channel_gain(const CHANNEL& ch)
 // ring buffers, and (as of Task 2) the per-channel voice path. mixer.cpp only
 // ever holds an opaque VoiceHandle* per channel and routes all voice
 // operations through g_backend.
+static MonoStereoWidth g_chipWidth;
 static std::unique_ptr<IAudioBackend> g_backend;
 
 // See declaration in xaudio2_backend.h.
@@ -569,6 +651,46 @@ int load_sample_from_buffer(const uint8_t* data, size_t size, const char* name, 
 		sample->name = name;
 	}
 
+	// A 2-channel file with identical channels is mono content: fold it to mono
+	// so soundbar widening applies (docs/audio-soundbar-widening.md). Before
+	// the resample so it only processes one channel.
+	if (sample->fx.channels == 2 && sample->sampleCount >= 2) {
+		const size_t frames = sample->sampleCount / 2;
+		bool folded = false;
+		if (sample->fx.bits == 16 && sample->data16) {
+			std::vector<int16_t> mono;
+			if (fold_dual_mono_16(sample->data16.get(), frames, mono)) {
+				auto out = std::make_unique<int16_t[]>(frames);
+				std::memcpy(out.get(), mono.data(), frames * sizeof(int16_t));
+				sample->data16 = std::move(out);
+				sample->data8.reset();
+				sample->buffer = sample->data16.get();
+				sample->dataSize = (uint32_t)(frames * sizeof(int16_t));
+				folded = true;
+			}
+		}
+		else if (sample->fx.bits == 8 && sample->data8) {
+			std::vector<uint8_t> mono;
+			if (fold_dual_mono_8(sample->data8.get(), frames, mono)) {
+				auto out = std::make_unique<uint8_t[]>(frames);
+				std::memcpy(out.get(), mono.data(), frames);
+				sample->data8 = std::move(out);
+				sample->data16.reset();
+				sample->buffer = sample->data8.get();
+				sample->dataSize = (uint32_t)frames;
+				folded = true;
+			}
+		}
+		if (folded) {
+			sample->sampleCount = (uint32_t)frames;
+			sample->fx.channels = 1;
+			sample->fx.block_align = (uint16_t)(sample->fx.bits / 8);
+			sample->fx.avg_bytes_sec = sample->fx.rate * sample->fx.block_align;
+			LOG_INFO("Sample '%s': 2-channel file with identical channels folded to mono (eligible for soundbar widening)",
+				sample->name.empty() ? "(unnamed)" : sample->name.c_str());
+		}
+	}
+
 	if (force_resample && sample->fx.rate != (uint32_t)SYS_FREQ) {
 		if (sample->fx.bits == 8) resample_wav_8(sample.get(), SYS_FREQ);
 		else                                resample_wav_16(sample.get(), SYS_FREQ, /*use_cubic=*/true);
@@ -862,6 +984,8 @@ int mixer_init(int rate, int fps)  // <<< integer FPS
 			}
 		}
 	}
+	// The backend decided hdmi_passthrough during Init; the chip widener follows.
+	g_chipWidth.configure(backend->HdmiStereoActive(), rate);
 	g_backend = std::move(backend);
 
 	// A new session always starts unpaused. This must precede the master
@@ -929,12 +1053,55 @@ int mixer_get_output_rate(void)
 // Speaker request - see mixer.h. Plain int, set once before mixer_init on the
 // game thread and read once inside backend Init on the same call chain.
 // -----------------------------------------------------------------------------
-static int g_speaker_config  = 2;
+static int g_speaker_config  = 0;
 static int g_surround_encode = 1;
+
+// [main] hdmi_passthrough: -1 auto, 0 off, 1 on. Set before mixer_init; the
+// Linux backend resolves it once at Init (see mixer.h).
+static int g_hdmi_passthrough = -1;
+
+void mixer_set_hdmi_passthrough(int mode)
+{
+	g_hdmi_passthrough = (mode == 0 || mode == 1) ? mode : -1;
+}
+
+int mixer_get_hdmi_passthrough(void)
+{
+	return g_hdmi_passthrough;
+}
+
+static int g_audio_output = 0;
+
+void mixer_set_audio_output(int mode)
+{
+	g_audio_output = (mode >= 1 && mode <= 3) ? mode : 0;
+}
+
+int mixer_get_audio_output(void)
+{
+	return g_audio_output;
+}
+
+static std::atomic<int> g_output_filter{ 1 };
+
+void mixer_set_output_filter(int preset)
+{
+	g_output_filter.store((preset >= 0 && preset <= 2) ? preset : 1, std::memory_order_relaxed);
+}
+
+int mixer_get_output_filter(void)
+{
+	return g_output_filter.load(std::memory_order_relaxed);
+}
+
+const char* mixer_get_output_mode_description(void)
+{
+	return g_backend ? g_backend->OutputModeDescription() : "";
+}
 
 void mixer_set_speaker_config(int channels)
 {
-	g_speaker_config = (channels == 6 || channels == 0) ? channels : 2;
+	g_speaker_config = (channels == 6 || channels == 2) ? channels : 0;
 }
 
 int mixer_get_speaker_config(void)
@@ -1030,10 +1197,13 @@ static void mixer_update_internal()
 	int32_t peakL = 0; // max |L|
 	int32_t peakR = 0; // max |R|
 
+	const bool widen = g_chipWidth.enabled();
+
 	for (int i = 0; i < samplesThisFrame; ++i)
 	{
 		int32_t fmixL = 0;
 		int32_t fmixR = 0;
+		int32_t mono = 0;
 
 		if (!sound_paused)
 		{
@@ -1134,7 +1304,11 @@ static void mixer_update_internal()
 					mixer_pan_gains(ch.pan, gL, gR);
 				}
 
-				fmixL += static_cast<int32_t>(sL * vol * gL);
+				const int32_t left = static_cast<int32_t>(sL * vol * gL);
+				fmixL += left;
+				// Only mono sources feed the HDMI widener; genuine stereo
+				// samples are never processed.
+				if (chCount == 1 && widen) mono += left;
 				fmixR += static_cast<int32_t>(sR * vol * gR);
 
 				// Release fade (sample_end_mixer): one gain step per output
@@ -1157,6 +1331,12 @@ static void mixer_update_internal()
 				ch.pos_q32 += ch.step_q32;
 				++it;
 			}
+		}
+
+		if (widen) {
+			int dl, dr;
+			g_chipWidth.process(mono, dl, dr);
+			if (!sound_paused) { fmixL += dl; fmixR += dr; }
 		}
 
 		accumL[i] = fmixL;
@@ -1365,6 +1545,7 @@ static void stop_channel_locked(int chanid)
 	// source of truth, so re-sync the applied gain and disarm the fade.
 	fade_step[chanid] = 0.0;
 	ch.vol = channel_gain(ch);
+	g_streamAA[chanid].disable();
 
 	ch.state             = SoundState::Stopped;
 	ch.isPlaying         = false;
@@ -1973,6 +2154,7 @@ void stream_start(int chanid, int /*stream*/, int bits, int frame_rate, bool ste
 	ch.group = mixer_group_for_start(chanid, /*is_stream=*/true);
 	fade_step[chanid] = 0.0;
 	ch.vol = channel_gain(ch);
+	g_streamAA[chanid].disable();   // enabled again by stream_set_native_rate if needed
 
 	// Build the per-frame stream SAMPLE inline -- create_sample takes its own
 	// lock so we can't call it from inside this scope without re-entering the
@@ -2092,6 +2274,7 @@ void stream_update(int chanid, short* data)
 		auto& sample = ch.playing_sample;
 		if (sample && sample->data16) {
 			std::memcpy(sample->data16.get(), data, sample->dataSize);
+			g_streamAA[chanid].process16(sample->data16.get(), sample->sampleCount, sample->fx.channels);
 			stream_reanchor_locked(ch, *sample);
 		}
 	}
@@ -2110,6 +2293,7 @@ void stream_update(int chanid, unsigned char* data)
 		auto& sample = ch.playing_sample;
 		if (sample && sample->data8) {
 			std::memcpy(sample->data8.get(), data, sample->dataSize);
+			g_streamAA[chanid].process8(sample->data8.get(), sample->sampleCount, sample->fx.channels);
 			stream_reanchor_locked(ch, *sample);
 		}
 	}
@@ -2177,6 +2361,17 @@ void stream_set_native_rate(int chanid, int native_rate)
 
 	LOG_INFO("stream_set_native_rate: chan %d -> %d Hz, buffer %u frames (step_q32=0x%llX)",
 		chanid, native_rate, new_frames, static_cast<unsigned long long>(ch.step_q32));
+
+	// Native rate above the output rate: the mix loop decimates, so band-limit
+	// first (see StreamAA). Otherwise make sure the filter is off.
+	if (native_rate > SYS_FREQ) {
+		const double fc = 0.45 * (double)SYS_FREQ;
+		g_streamAA[chanid].configure((double)native_rate, fc);
+		LOG_INFO("stream_set_native_rate: chan %d anti-alias enabled (8th-order Butterworth, %d Hz native, fc %.0f Hz)",
+			chanid, native_rate, fc);
+	} else {
+		g_streamAA[chanid].disable();
+	}
 }
 
 void restore_audio()

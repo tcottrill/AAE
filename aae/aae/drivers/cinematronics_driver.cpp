@@ -219,12 +219,18 @@ static int boxingb_dial_r(int offset)
  *
  *************************************/
 
+/* Tail Gunner test mode: frames left in which START is forced held (0 = off) */
+static int tailg_force_start = 0;
+static int tailg_service_prev = 0;
+
 UINT16 get_ccpu_inputs(int offset)
 {
 	switch (ccpuinput_type)
 	{
 	case CCPU_INPUTS::CCPUIN:
 	{
+		/* Tail Gunner F2 test mode: START (input 7) forced held, active low */
+		if (tailg_force_start > 0 && offset == 7) return 0;
 		return (readinputportbytag("INPUTS") >> offset) & 1;
 		break;
 	}
@@ -386,8 +392,45 @@ int init_warrior()
 	return 1;
 }
 
+/* Tail Gunner has no test switch. Shortly after a CPU reset (INIT2) the ROM
+   reads input 7 (START) once: held jumps to the test pattern, otherwise the
+   main loop runs. F2 resets the CPU and forces START held for 2 seconds,
+   mirroring holding START at power-on. The test pattern is an endless loop
+   that only a reset leaves (a power cycle on the cabinet), so F2 toggles:
+   the next press resets normally, back to the game. */
+static int tailg_in_test = 0;
+
+void run_tailg(void)
+{
+	run_cinemat();
+
+	int service = (readinputportbytag("INPUTS") & 0x0400) != 0;
+	if (service && !tailg_service_prev)
+	{
+		cpu_reset(0);
+		if (!tailg_in_test)
+		{
+			LOG_INFO("TailGunner: F2 test mode - reset with START held 2 s");
+			tailg_force_start = 2 * 38;	/* 2 seconds at the driver's 38 fps */
+			tailg_in_test = 1;
+		}
+		else
+		{
+			LOG_INFO("TailGunner: F2 - leaving test mode (normal reset)");
+			tailg_force_start = 0;
+			tailg_in_test = 0;
+		}
+	}
+	else if (tailg_force_start > 0)
+		tailg_force_start--;
+	tailg_service_prev = service;
+}
+
 int init_tailg()
 {
+	tailg_force_start = 0;
+	tailg_service_prev = 0;
+	tailg_in_test = 0;
 	init_cinemat();
 	init_cinemat_snd(tailg_sound);
 	video_type_set(COLOR_BILEVEL, 0);
@@ -693,7 +736,7 @@ ART_END
 
 ART_START(ripoff_art)
 ART_LOAD("custom.zip", "cineshot.png", GAME_TEX, 0)
-ART_LOAD("ripoff.zip", "ripoff.png", ART_TEX, 3)
+ART_LOAD("ripoff_aae.zip", "ripoff_bezel_aae.png", ART_TEX, 3)
 ART_END
 
 ART_START(starhawk_art)
@@ -705,7 +748,8 @@ ART_END
 
 ART_START(demon_art)
 ART_LOAD("custom.zip", "cineshot.png", GAME_TEX, 0)
-ART_LOAD("demon.zip", "demon.png", ART_TEX, 1)
+ART_LOAD("demon_aae.zip", "demon_overlay.png", ART_TEX, 1)
+ART_LOAD("demon_aae.zip", "demon_bezel_aae.png", ART_TEX, 3)
 ART_END
 
 ART_START(spacewar_art)
@@ -714,11 +758,12 @@ ART_END
 
 ART_START(tailg_art)
 ART_LOAD("custom.zip", "astdelux_overlay.png", ART_TEX, 1)
+ART_LOAD("tailg_aae.zip", "tailgunner_bezel.png", ART_TEX, 3)
 ART_END
 
 ART_START(armora_art)
-ART_LOAD("armora.zip", "armorattackmaster.png", ART_TEX, 1)
-ART_LOAD("armora.zip", "armor_attack_bezel.png", ART_TEX, 3)
+ART_LOAD("armora.zip", "armoraoverlay.png", ART_TEX, 1)
+ART_LOAD("armora.zip", "armora.png", ART_TEX, 3)
 ART_LOAD("custom.zip", "cineshot.png", GAME_TEX, 0)
 ART_END
 
@@ -742,8 +787,8 @@ ART_LOAD("starcas_aae.zip", "cineshot.png", GAME_TEX, 0)
 ART_END
 
 ART_START(wotw_art)
-ART_LOAD("wotw.zip", "wotw_overlay.png", ART_TEX, 1)
-ART_LOAD("wotw.zip", "wotw.png", ART_TEX, 3)
+ART_LOAD("wotw_aae.zip", "wotw_overlay_aae.png", ART_TEX, 1)
+ART_LOAD("wotw_aae.zip", "wotw.png", ART_TEX, 3)
 ART_END
 
 /***************************************************************************
@@ -967,13 +1012,13 @@ PORT_DIPSETTING(0x23, "80")
 PORT_DIPNAME(0x04, 0x04, DEF_STR(Coinage))
 PORT_DIPSETTING(0x00, DEF_STR(2C_1C))
 PORT_DIPSETTING(0x04, DEF_STR(1C_1C))
-PORT_DIPNAME(0x08, 0x08, DEF_STR(Unknown))
+PORT_DIPNAME(0x08, 0x08, DEF_STR(Unused))
 PORT_DIPSETTING(0x08, DEF_STR(Off))
 PORT_DIPSETTING(0x00, DEF_STR(On))
-PORT_DIPNAME(0x10, 0x10, DEF_STR(Unknown))
+PORT_DIPNAME(0x10, 0x10, DEF_STR(Unused))
 PORT_DIPSETTING(0x10, DEF_STR(Off))
 PORT_DIPSETTING(0x00, DEF_STR(On))
-PORT_DIPNAME(0x40, 0x40, DEF_STR(Unknown))
+PORT_DIPNAME(0x40, 0x40, DEF_STR(Unused))
 PORT_DIPSETTING(0x40, DEF_STR(Off))
 PORT_DIPSETTING(0x00, DEF_STR(On))
 PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_COIN1)
@@ -983,7 +1028,10 @@ PORT_BIT(0x001f, IP_ACTIVE_LOW, IPT_UNUSED)
 PORT_BIT(0x0020, IP_ACTIVE_LOW, IPT_BUTTON1)
 PORT_BIT(0x0040, IP_ACTIVE_LOW, IPT_BUTTON2)
 PORT_BIT(0x0080, IP_ACTIVE_LOW, IPT_START1)
-PORT_BIT(0xff00, IP_ACTIVE_LOW, IPT_UNUSED)
+PORT_BIT(0x0300, IP_ACTIVE_LOW, IPT_UNUSED)
+/* Input 10 is never read by the ROM; used as a host-side test mode key */
+PORT_BITX(0x0400, IP_ACTIVE_HIGH, IPT_SERVICE, "Test Mode (reset with START held)", OSD_KEY_F2, IP_JOY_NONE)
+PORT_BIT(0xf800, IP_ACTIVE_LOW, IPT_UNUSED)
 
 PORT_START("ANALOGX") /* analog stick X */
 PORT_ANALOG(0xff, 0x80, IPT_AD_STICK_X, 100, 5, 0x20, 0xe0)
@@ -1111,16 +1159,22 @@ PORT_START("WHEEL")/* fake - steering wheel (in4) */
 	PORT_DIPNAME(0x04, 0x00, DEF_STR(Language))
 	PORT_DIPSETTING(0x04, DEF_STR(Japanese))
 	PORT_DIPSETTING(0x00, DEF_STR(English))
-	PORT_DIPNAME(0x08, 0x08, DEF_STR(Coinage)) // supposedly coinage, doesn't work
+	// Verified by disassembling the ROM (DIP reads at $02A8, $02E3, $1075):
+	// with 0x08 clear START2 needs two coins' worth of time banked and takes
+	// both; set, one coin starts a 2-player game. It only shows with one coin
+	// banked and START2 pressed (the ready prompt reads "1 PLAYER" instead of
+	// "1-2 PLAYER"), which is why MAME notes it as "doesn't work".
+	PORT_DIPNAME(0x08, 0x08, DEF_STR(Coinage))
 	PORT_DIPSETTING(0x08, "1 coin/2 players")
 	PORT_DIPSETTING(0x00, "2 coins/2 players")
-	PORT_DIPNAME(0x10, 0x10, DEF_STR(Unknown))
+	// 0x10, 0x20, 0x40 are never read anywhere in the ROM.
+	PORT_DIPNAME(0x10, 0x10, DEF_STR(Unused))
 	PORT_DIPSETTING(0x10, DEF_STR(Off))
 	PORT_DIPSETTING(0x00, DEF_STR(On))
-	PORT_DIPNAME(0x20, 0x20, DEF_STR(Unknown))
+	PORT_DIPNAME(0x20, 0x20, DEF_STR(Unused))
 	PORT_DIPSETTING(0x20, DEF_STR(Off))
 	PORT_DIPSETTING(0x00, DEF_STR(On))
-	PORT_DIPNAME(0x40, 0x40, DEF_STR(Unknown))
+	PORT_DIPNAME(0x40, 0x40, DEF_STR(Unused))
 	PORT_DIPSETTING(0x40, DEF_STR(Off))
 	PORT_DIPSETTING(0x00, DEF_STR(On))
 	PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_COIN1)
@@ -1176,23 +1230,23 @@ PORT_START("WHEEL")/* fake - steering wheel (in4) */
 	INPUT_PORTS_START(warrior)
 
 	PORT_START("SWITCHES")
-	PORT_DIPNAME(0x01, 0x01, DEF_STR(Unknown))
-	PORT_DIPSETTING(0x01, DEF_STR(Off))
-	PORT_DIPSETTING(0x00, DEF_STR(On))
-	PORT_DIPNAME(0x02, 0x02, DEF_STR(Unknown))
-	PORT_DIPSETTING(0x02, DEF_STR(Off))
-	PORT_DIPSETTING(0x00, DEF_STR(On))
+	// Names and settings from current MAME cinemat.cpp (SW1:1-7).
+	PORT_DIPNAME(0x03, 0x02, "Time")
+	PORT_DIPSETTING(0x00, "0:30/coin")
+	PORT_DIPSETTING(0x02, "1:00/coin")
+	PORT_DIPSETTING(0x01, "1:30/coin")
+	PORT_DIPSETTING(0x03, "2:00/coin")
 	PORT_SERVICE(0x04, IP_ACTIVE_HIGH)
-	PORT_DIPNAME(0x08, 0x08, DEF_STR(Unknown))
-	PORT_DIPSETTING(0x08, DEF_STR(Off))
-	PORT_DIPSETTING(0x00, DEF_STR(On))
-	PORT_DIPNAME(0x10, 0x10, DEF_STR(Unknown))
+	PORT_DIPNAME(0x08, 0x08, DEF_STR(Coinage))
+	PORT_DIPSETTING(0x00, DEF_STR(2C_1C))
+	PORT_DIPSETTING(0x08, DEF_STR(1C_1C))
+	PORT_DIPNAME(0x10, 0x10, DEF_STR(Unused))
 	PORT_DIPSETTING(0x10, DEF_STR(Off))
 	PORT_DIPSETTING(0x00, DEF_STR(On))
-	PORT_DIPNAME(0x20, 0x20, DEF_STR(Unknown))
+	PORT_DIPNAME(0x20, 0x20, DEF_STR(Unused))
 	PORT_DIPSETTING(0x20, DEF_STR(Off))
 	PORT_DIPSETTING(0x00, DEF_STR(On))
-	PORT_DIPNAME(0x40, 0x40, DEF_STR(Unknown))
+	PORT_DIPNAME(0x40, 0x40, DEF_STR(Unused))
 	PORT_DIPSETTING(0x40, DEF_STR(Off))
 	PORT_DIPSETTING(0x00, DEF_STR(On))
 	PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_COIN1)
@@ -1392,9 +1446,9 @@ PORT_START("WHEEL")/* fake - steering wheel (in4) */
 	PORT_DIPNAME(0x01, 0x01, DEF_STR(Unknown))
 	PORT_DIPSETTING(0x01, DEF_STR(Off))
 	PORT_DIPSETTING(0x00, DEF_STR(On))
-	PORT_DIPNAME(0x02, 0x02, DEF_STR(Lives))
-	PORT_DIPSETTING(0x02, "3")
-	PORT_DIPSETTING(0x00, "5")
+	PORT_DIPNAME(0x02, 0x00, DEF_STR(Lives))	// current MAME: 0x00 = 3, 0x02 = 5
+	PORT_DIPSETTING(0x00, "3")
+	PORT_DIPSETTING(0x02, "5")
 	PORT_DIPNAME(0x04, 0x04, DEF_STR(Unknown))
 	PORT_DIPSETTING(0x04, DEF_STR(Off))
 	PORT_DIPSETTING(0x00, DEF_STR(On))
@@ -1712,7 +1766,11 @@ PORT_START("WHEEL")/* fake - steering wheel (in4) */
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY())
 	AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_BW | VECTOR_USES_OVERLAY1, ORIENTATION_FLIP_Y)
-	AAE_DRIVER_SCREEN(1024, 768, 0, 1024, 0, 768)
+	// Star Castle draws its test-mode edge markers a few units outside 0..1024 x
+	// 0..768 (the CCPU passes signed coordinates through unclipped), so the shared
+	// Cinematronics area cut them at the canvas edge - MAME does the same. A
+	// margin of 32 (x) / 24 (y) keeps exactly 4:3 (1088 x 816) and shows them.
+	AAE_DRIVER_SCREEN(1024, 768, -32, 1056, -24, 792)
 	AAE_DRIVER_RASTER_NONE()
 	AAE_DRIVER_HISCORE_NONE()
 	AAE_DRIVER_VECTORRAM(0, 0)
@@ -1821,7 +1879,7 @@ PORT_START("WHEEL")/* fake - steering wheel (in4) */
 	// TailGunner
 	AAE_DRIVER_BEGIN(drv_tailg, "tailg", "TailGunner")
 	AAE_DRIVER_ROM(rom_tailg)
-	AAE_DRIVER_FUNCS(&init_tailg, &run_cinemat, &end_cinemat)
+	AAE_DRIVER_FUNCS(&init_tailg, &run_tailg, &end_cinemat)
 	AAE_DRIVER_INPUT(input_ports_tailg)
 	AAE_DRIVER_SAMPLES(tailg_samples)
 	AAE_DRIVER_ART(tailg_art)
@@ -1971,7 +2029,7 @@ PORT_START("WHEEL")/* fake - steering wheel (in4) */
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY(),
 		AAE_CPU_NONE_ENTRY())
-	AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR | VECTOR_USES_OVERLAY2, ORIENTATION_FLIP_Y)
+	AAE_DRIVER_VIDEO_CORE(38, 0, VIDEO_TYPE_VECTOR | VECTOR_USES_COLOR , ORIENTATION_FLIP_Y)
 	AAE_DRIVER_SCREEN(1024, 768, 0, 1024, 0, 768)
 	AAE_DRIVER_RASTER_NONE()
 	AAE_DRIVER_HISCORE_NONE()

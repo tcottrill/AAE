@@ -136,7 +136,11 @@ static const char* ansiReset() { return "\x1b[0m"; }
 
 
 static const char* baseName(const char* path) {
-	const char* slash = strrchr(path, '\\');
+	// __FILE__ uses '\' under MSVC and '/' under GCC/Clang; take whichever
+	// separator comes last so Linux logs show the file name, not the full path.
+	const char* back = strrchr(path, '\\');
+	const char* forward = strrchr(path, '/');
+	const char* slash = forward > back ? forward : back;
 	return slash ? slash + 1 : path;
 }
 
@@ -183,8 +187,10 @@ namespace {
 	}
 
 	void logWorker() {
-		while (running.load() || !messageQueue.empty()) {
-			std::unique_lock<std::mutex> lock(queueMutex);
+		// messageQueue is only ever examined with queueMutex held; the file and
+		// console writes below run with it released.
+		std::unique_lock<std::mutex> lock(queueMutex);
+		for (;;) {
 			queueCV.wait(lock, [] {
 				return !messageQueue.empty() || !running.load();
 				});
@@ -207,6 +213,10 @@ namespace {
 
 				lock.lock();
 			}
+			// Queue drained with the lock held, so nothing queued before
+			// close() set running to false can be left behind.
+			if (!running.load())
+				return;
 		}
 	}
 

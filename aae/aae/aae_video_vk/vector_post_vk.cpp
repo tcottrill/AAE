@@ -9,6 +9,7 @@
 // -----------------------------------------------------------------------------
 
 #include "vector_post_vk.h"
+#include "../aae_video/cabinet_quad.h"   // cabinet_art_quad (shared GL/VK rule)
 #include "sys_log.h"
 #include "gpu_profiler_vk.h"   // GPU_ZONE - per-pass GPU timing ([main] vk_profile)
 #include "fuzz_state.h"        // Fuzz_Get (composite defocus/whiteout)
@@ -980,6 +981,24 @@ void VectorPostVK::RecordComposite(VkContext& ctx, VkCommandBuffer cmd, uint32_t
 }
 
 // -----------------------------------------------------------------------------
+// OverlayUv - uvrect for the overlay gel quad (overlay1 and overlay2).
+// Base is the V-swapped {0,1,1,0} described at RecordFrameBuild. On top of
+// that the overlay takes the vector driver's FLIP_X / FLIP_Y: the driver flip
+// moves only the beams (mame_vector.cpp), so without this the gel stays put
+// while the picture flips under it. The flip used to live in inverted
+// video.ini rects, which flipped beams and overlay together; overlay PNGs for
+// those games (wotw, armora, demon, solarq) are authored for that. GL twin:
+// overlay_flip_bits in opengl_renderer.cpp.
+// -----------------------------------------------------------------------------
+static void OverlayUv(const VectorArtworkVK& art, float* uv)
+{
+    uv[0] = art.overlayFlipX ? 1.0f : 0.0f;
+    uv[2] = art.overlayFlipX ? 0.0f : 1.0f;
+    uv[1] = art.overlayFlipY ? 0.0f : 1.0f;
+    uv[3] = art.overlayFlipY ? 1.0f : 0.0f;
+}
+
+// -----------------------------------------------------------------------------
 // RecordFrameBuild - GL LAYER 5A + 5B: build the CRT image (beam+glow+trail)
 // into the 1024x1024 frame RT at the game_rect quad, then modulate it with
 // the OVERLAY1 color gel. Runs OUTSIDE any pass (after RecordPost, before
@@ -1029,8 +1048,7 @@ void VectorPostVK::RecordFrameBuild(VkContext& ctx, VkCommandBuffer cmd, uint32_
         po.rect[0] = grL;      po.rect[1] = 1024.0f - grT;
         po.rect[2] = grR;      po.rect[3] = 1024.0f - grB;
         po.tsize[0] = 1024.0f; po.tsize[1] = 1024.0f;
-        po.uvrect[0] = 0.0f; po.uvrect[1] = 1.0f;
-        po.uvrect[2] = 1.0f; po.uvrect[3] = 0.0f;
+        OverlayUv(art, po.uvrect);
         po.tint[0] = po.tint[1] = po.tint[2] = po.tint[3] = 1.0f;
         po.params[3] = 1.0f;   // real texture alpha (GL fragBasicTex)
         DrawQuadS(ctx, cmd, frameIndex,
@@ -1081,16 +1099,13 @@ void VectorPostVK::RecordCompositeLayered(VkContext& ctx, VkCommandBuffer cmd, u
         p.tsize[1] = sh;
     };
 
-    // Cabinet scaling (GL DrawCabinetScaledLayer): artcrop pans/zooms the
-    // backdrop/bezel quad, otherwise they fill the full 1024 canvas.
-    float cabX1 = 0.0f, cabY1 = 0.0f, cabX2 = 1024.0f, cabY2 = 1024.0f;
-    if (art.artcrop)
-    {
-        cabX1 = art.bezelX;
-        cabY1 = art.bezelY;
-        cabX2 = 1024.0f * art.bezelZoom + art.bezelX;
-        cabY2 = 1024.0f * art.bezelZoom + art.bezelY;
-    }
+    // Cabinet scaling (GL DrawCabinetScaledLayer): each layer is drawn at the
+    // TRUE aspect of its own texture (cabinet_quad.h); artcrop pans/zooms it.
+    // A 4:3 texture gives the old full-canvas quad.
+    const CabinetQuad qBackdrop = cabinet_art_quad(art.backdropW, art.backdropH,
+        art.artcrop, art.bezelX, art.bezelY, art.bezelZoom, art.canvasAspect);
+    const CabinetQuad qBezel = cabinet_art_quad(art.bezelW, art.bezelH,
+        art.artcrop, art.bezelX, art.bezelY, art.bezelZoom, art.canvasAspect);
 
     const bool haveBackdrop = art.backdropView != VK_NULL_HANDLE;
     const bool haveOverlay2 = art.overlay2 && art.overlayView != VK_NULL_HANDLE;
@@ -1100,7 +1115,7 @@ void VectorPostVK::RecordCompositeLayered(VkContext& ctx, VkCommandBuffer cmd, u
     if (haveBackdrop)
     {
         PostPush p{};
-        mapRect(cabX1, cabY1, cabX2, cabY2, p);
+        mapRect(qBackdrop.x1, qBackdrop.y1, qBackdrop.x2, qBackdrop.y2, p);
         p.uvrect[0] = 0.0f; p.uvrect[1] = 0.0f;
         p.uvrect[2] = 1.0f; p.uvrect[3] = 1.0f;
         p.tint[0] = p.tint[1] = p.tint[2] = 0.5f; p.tint[3] = 1.0f;
@@ -1153,8 +1168,7 @@ void VectorPostVK::RecordCompositeLayered(VkContext& ctx, VkCommandBuffer cmd, u
     {
         PostPush p{};
         mapRect(grL, grB, grR, grT, p);
-        p.uvrect[0] = 0.0f; p.uvrect[1] = 1.0f;
-        p.uvrect[2] = 1.0f; p.uvrect[3] = 0.0f;
+        OverlayUv(art, p.uvrect);
         p.tint[0] = p.tint[1] = p.tint[2] = 1.0f; p.tint[3] = 0.5f;
         p.params[3] = 1.0f;   // real texture alpha
         DrawQuadS(ctx, cmd, frameIndex, v->artOver2,
@@ -1166,12 +1180,81 @@ void VectorPostVK::RecordCompositeLayered(VkContext& ctx, VkCommandBuffer cmd, u
     if (art.bezelView != VK_NULL_HANDLE)
     {
         PostPush p{};
-        mapRect(cabX1, cabY1, cabX2, cabY2, p);
+        mapRect(qBezel.x1, qBezel.y1, qBezel.x2, qBezel.y2, p);
         p.uvrect[0] = 0.0f; p.uvrect[1] = 0.0f;
         p.uvrect[2] = 1.0f; p.uvrect[3] = 1.0f;
         p.tint[0] = p.tint[1] = p.tint[2] = p.tint[3] = 1.0f;
         p.params[2] = 0.2f;   // alpha test threshold
         p.params[3] = 1.0f;   // real texture alpha
+        DrawQuadS(ctx, cmd, frameIndex, v->artOpaque,
+                  art.bezelView, art.bezelSampler, p, tw, th);
+    }
+}
+
+// -----------------------------------------------------------------------------
+// RecordCabinetWings - backdrop then bezel only, straight into the swapchain
+// through the 4:3 letterbox map, so cabinet art wider than 4:3 shows in the
+// side areas on the CANVAS path (where the square canvas blit would clip it).
+// Same quads / tint / alpha test as RecordCompositeLayered steps 1 and 5. The
+// canvas blit that follows draws the centre on top, so the centre is
+// unchanged; see the caller for why that overdraw is exact.
+// -----------------------------------------------------------------------------
+void VectorPostVK::RecordCabinetWings(VkContext& ctx, VkCommandBuffer cmd, uint32_t frameIndex,
+                                      float lx, float lyUp, float vw, float vh,
+                                      const VectorArtworkVK& art,
+                                      int targetW, int targetH)
+{
+    if (!initialized_)
+        return;
+    if (art.backdropView == VK_NULL_HANDLE && art.bezelView == VK_NULL_HANDLE)
+        return;
+
+    CompVariant* v = GetVariant(ctx);
+    if (!v || !EnsureArtPipelines(ctx, *v))
+        return;
+
+    const int tw = (targetW > 0) ? targetW : (int)ctx.swapchainExtent.width;
+    const int th = (targetH > 0) ? targetH : (int)ctx.swapchainExtent.height;
+    const float sw = (float)tw;
+    const float sh = (float)th;
+    if (sw <= 0.0f || sh <= 0.0f || vw <= 0.0f || vh <= 0.0f)
+        return;
+
+    auto mapRect = [&](float x1, float y1, float x2, float y2, PostPush& p)
+    {
+        p.rect[0] = lx + x1 / 1024.0f * vw;
+        p.rect[1] = sh - (lyUp + y2 / 1024.0f * vh);
+        p.rect[2] = lx + x2 / 1024.0f * vw;
+        p.rect[3] = sh - (lyUp + y1 / 1024.0f * vh);
+        p.tsize[0] = sw;
+        p.tsize[1] = sh;
+    };
+
+    if (art.backdropView != VK_NULL_HANDLE)
+    {
+        const CabinetQuad q = cabinet_art_quad(art.backdropW, art.backdropH,
+            art.artcrop, art.bezelX, art.bezelY, art.bezelZoom, art.canvasAspect);
+        PostPush p{};
+        mapRect(q.x1, q.y1, q.x2, q.y2, p);
+        p.uvrect[0] = 0.0f; p.uvrect[1] = 0.0f;
+        p.uvrect[2] = 1.0f; p.uvrect[3] = 1.0f;
+        p.tint[0] = p.tint[1] = p.tint[2] = 0.5f; p.tint[3] = 1.0f;
+        p.params[3] = 1.0f;
+        DrawQuadS(ctx, cmd, frameIndex, v->artAlpha,
+                  art.backdropView, art.backdropSampler, p, tw, th);
+    }
+
+    if (art.bezelView != VK_NULL_HANDLE)
+    {
+        const CabinetQuad q = cabinet_art_quad(art.bezelW, art.bezelH,
+            art.artcrop, art.bezelX, art.bezelY, art.bezelZoom, art.canvasAspect);
+        PostPush p{};
+        mapRect(q.x1, q.y1, q.x2, q.y2, p);
+        p.uvrect[0] = 0.0f; p.uvrect[1] = 0.0f;
+        p.uvrect[2] = 1.0f; p.uvrect[3] = 1.0f;
+        p.tint[0] = p.tint[1] = p.tint[2] = p.tint[3] = 1.0f;
+        p.params[2] = 0.2f;
+        p.params[3] = 1.0f;
         DrawQuadS(ctx, cmd, frameIndex, v->artOpaque,
                   art.bezelView, art.bezelSampler, p, tw, th);
     }

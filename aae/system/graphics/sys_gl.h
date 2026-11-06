@@ -102,6 +102,20 @@ void sys_gl_set_x11_target(void* display, unsigned long window);
 // Typed void* so this header stays free of Xlib (see the note above).
 // -----------------------------------------------------------------------------
 void* sys_gl_choose_x11_visual(void* display, int screen, int enableMultisample);
+
+#ifdef AAE_HAVE_WAYLAND
+// -----------------------------------------------------------------------------
+// Linux, native Wayland backend only (OpenGL renderer; Vulkan does not use it).
+// WaylandWindow::Create() calls this with its nw::Window BEFORE
+// InitOpenGLContext(), which then builds an EGL context on that window instead
+// of a GLX one - the Wayland twin of sys_gl_set_x11_target().
+//
+// Typed void* so this header needs no native_window include; it is an opaque
+// nw::Window*, borrowed. Passing nullptr clears the target and destroys any EGL
+// binding made on the old window, which must not outlive it.
+// -----------------------------------------------------------------------------
+void sys_gl_set_wayland_target(void* nwWindow);
+#endif
 #endif
 
 #define check_gl_error()          CheckGLErrorEx(nullptr, __FILE__, __LINE__)
