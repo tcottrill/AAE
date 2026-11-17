@@ -86,6 +86,15 @@ typedef struct {
 	float glow2_tail;     // tail body (mid re-injection)  (default 0.6; Pi 0.3)
 	float glow2_core;     // hot-core hardness             (default 1.0; Pi 0.5)
 
+	// --- HDR10 output (Vulkan renderer only; see aae_video_vk/hdr_math.h) ---
+	// [main] hdr = "auto" | "on" | "off" (default auto), per-game overridable.
+	// Menu items live in VIDEO SETUP. The mode applies at next launch. hdr_beam_curve is ini-only (no menu item).
+	int   hdr;              // 0 = off, 1 = auto, 2 = on (hdr::kModeOff/Auto/On)
+	float hdr_paper_white;  // SDR white in nits, 80..500   (default 200)
+	float hdr_beam_peak;    // beam peak in nits, 400..4000 (default 1000)
+	float hdr_beam_curve;   // highlight curve exponent, 0.5..4.0 (default 2.0)
+	float hdr_shot_boost;   // HDR-only brightness multiplier for shot cores, 1.0..4.0, default 2.0, 1.0 = off
+
 	// --- Modern vector beam renderer (menu + aae.ini; per-game overridable) ---
 	float line_smoothing;   // edge AA feather in px (0.4..2.0)
 	float corner_strength;  // beam corner/point disc size (0.3..2.5)

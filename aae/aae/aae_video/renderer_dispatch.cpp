@@ -23,6 +23,8 @@
 #include "sys_gl.h"
 #include "../aae_video_vk/vulkan_renderer.h"
 #include "texture_handler.h"   // snapshot() declaration + the shared PNG writer
+#include "process_result.h"    // procres_fatal - graphics init failure is a process result
+#include "aae_mame_driver.h"   // have_error
 
 void allegro_message(const char* title, const char* message);
 
@@ -82,7 +84,13 @@ int init_gl(void)
 				"Update your graphics driver. Remote Desktop and some\n"
 				"virtual machines do not provide either API.");
 #endif
-			exit(1);
+			// No usable graphics API. Report it as the process result and let
+			// run_game() unwind (it checks have_error right after init_gl) so
+			// the normal shutdown path runs instead of the process exiting here.
+			procres_fatal(AAE_EXIT_DEVICE,
+				"AAE: graphics initialization failed: neither Vulkan nor OpenGL 3.3 could be started");
+			have_error = 4;
+			return 0;
 		}
 	}
 

@@ -24,6 +24,7 @@ public:
 	void GetDrawableSize(int* w, int* h) const override;
 	const char* const* RequiredVkInstanceExtensions(uint32_t* count) const override;
 	bool CreateVkSurface(void* instance, void* outSurface) override;
+	bool QueryDisplayHdr(DisplayHdrInfo* out) const override;
 };
 
 // The Win32 ISystemWindow. Methods re-home the bodies that used to live as

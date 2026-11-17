@@ -47,6 +47,7 @@ namespace VkSnapshot
 		uint32_t       width = 0;
 		uint32_t       height = 0;
 		bool           bgraSwizzle = false;  // swapchain is B8G8R8A8_*
+		bool           hdr = false;          // taken from the float scene image (8 bytes/px, RGBA halves)
 		bool           active = false;
 	};
 

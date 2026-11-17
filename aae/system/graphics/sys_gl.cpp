@@ -38,6 +38,7 @@
 #endif
 #include "sys_log.h"
 #include "sys_gl.h"
+#include "process_result.h"
 
 // -----------------------------------------------------------------------------
 // Static Globals
@@ -333,6 +334,10 @@ static void ReportOpenGLCapabilities()
 static bool FailOpenGLInit(const char* reason)
 {
 	LOG_ERROR("InitOpenGLContext: %s", reason);
+	// Required device init failure: record it as the process result (exit 4).
+	procres_fatal(AAE_EXIT_DEVICE, "AAE: OpenGL initialization failed: %s (OpenGL 3.3 or newer is required)", reason);
+	if (procres_frontend_mode())
+		return false;   // a frontend reads stderr; no modal box
 	char msg[512];
 	snprintf(msg, sizeof(msg),
 		"OpenGL could not be started:\n%s\n\n"
@@ -862,6 +867,9 @@ void CheckGLVersionSupport()
 	if (major < 2)
 	{
 #ifdef _WIN32
+		if (procres_frontend_mode())
+			procres_message("OpenGL Version Warning", "This program may not work. Your OpenGL version is less than 2.0.");
+		else
 		MessageBox(nullptr, L"This program may not work. Your OpenGL version is less than 2.0.",
 			L"OpenGL Version Warning", MB_ICONERROR | MB_OK);
 #else

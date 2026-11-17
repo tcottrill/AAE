@@ -147,17 +147,35 @@ static const char* baseName(const char* path) {
 namespace {
 	FILE* stream = nullptr;
 	std::mutex configMutex;
-	Log::Level currentLogLevel = Log::Level::Debug;
-	bool consoleOutput = true;
+	std::atomic<Log::Level> currentLogLevel{ Log::Level::Debug };
 
+	// Console mirroring is done ONLY by the writer thread, so lines are never
+	// duplicated or interleaved between threads. consoleOutput mirrors plain
+	// text to stdout (the default, useful when run from a terminal);
+	// setConsoleOutputEnabled(true) also turns on per-level colours.
+	std::atomic<bool> consoleOutput{ true };
+	std::atomic<bool> consoleColor{ false };
+
+	struct QueuedMessage { Log::Level level; std::string text; };
 	std::mutex queueMutex;
 	std::condition_variable queueCV;
-	std::queue<std::string> messageQueue;
+	std::queue<QueuedMessage> messageQueue;
 	std::thread logThread;
 	std::atomic<bool> running = false;
 
-	static std::atomic<bool> consoleOutputEnabled = false;
+	// Messages logged before open() (or after a failed open) wait in the queue
+	// for a writer. Cap them so a log that never opens - a read-only data
+	// folder, say - cannot grow memory without limit.
+	constexpr size_t kMaxQueuedWithoutWriter = 4096;
+	size_t droppedWithoutWriter = 0;
+
 	static std::once_flag consoleInitFlag;
+
+	void emitConsole(const QueuedMessage& msg) {
+		if (!consoleOutput.load()) return;
+		if (consoleColor.load()) std::cout << levelToAnsi(msg.level) << msg.text << ansiReset();
+		else std::cout << msg.text;
+	}
 
 	const char* levelToString(Log::Level level) {
 		switch (level) {
@@ -196,20 +214,17 @@ namespace {
 				});
 
 			while (!messageQueue.empty()) {
-				std::string msg = std::move(messageQueue.front());
+				QueuedMessage msg = std::move(messageQueue.front());
 				messageQueue.pop();
 				lock.unlock();
 
 				// Write to file
 				if (stream) {
-					std::fputs(msg.c_str(), stream);
+					std::fputs(msg.text.c_str(), stream);
 					std::fflush(stream);
 				}
 
-				// Optional console output
-				if (consoleOutput) {
-					std::cout << msg;
-				}
+				emitConsole(msg);
 
 				lock.lock();
 			}
@@ -220,10 +235,14 @@ namespace {
 		}
 	}
 
-	void enqueueMessage(std::string&& msg) {
+	void enqueueMessage(Log::Level level, std::string&& msg) {
 		{
 			std::lock_guard<std::mutex> lock(queueMutex);
-			messageQueue.push(std::move(msg));
+			if (!running.load() && messageQueue.size() >= kMaxQueuedWithoutWriter) {
+				++droppedWithoutWriter;
+				return;
+			}
+			messageQueue.push({ level, std::move(msg) });
 		}
 		queueCV.notify_one();
 	}
@@ -251,6 +270,14 @@ namespace Log {
 			return false;
 #endif
 
+		{
+			std::lock_guard<std::mutex> qlock(queueMutex);
+			if (droppedWithoutWriter) {
+				messageQueue.push({ Level::Warn, "WARN  (sys_log) - " + std::to_string(droppedWithoutWriter) +
+					" earlier message(s) dropped while no log file was open\n" });
+				droppedWithoutWriter = 0;
+			}
+		}
 		running = true;
 		logThread = std::thread(logWorker);
 		return true;
@@ -270,11 +297,10 @@ namespace Log {
 		// Flush any remaining messages
 		std::lock_guard<std::mutex> lock(queueMutex);
 		while (!messageQueue.empty()) {
-			const std::string& msg = messageQueue.front();
+			const QueuedMessage& msg = messageQueue.front();
 			if (stream)
-				std::fputs(msg.c_str(), stream);
-			if (consoleOutput)
-				std::cout << msg;
+				std::fputs(msg.text.c_str(), stream);
+			emitConsole(msg);
 			messageQueue.pop();
 		}
 
@@ -293,6 +319,7 @@ namespace Log {
 	void setConsoleOutputEnabled(bool enabled) {
 		std::lock_guard<std::mutex> lock(configMutex);
 		consoleOutput = enabled;
+		consoleColor = enabled;   // an explicitly enabled console gets level colours
 
 		if (enabled) {
 			std::call_once(consoleInitFlag, []() {
@@ -351,14 +378,8 @@ namespace Log {
 			<< baseName(file) << ":" << line << " " << function << ") - "
 			<< formatted << "\n";
 
-		enqueueMessage(std::move(oss.str()));
-
-		if (consoleOutputEnabled) {
-			// One code path for both platforms. The Win32 console-attribute
-			// save/restore dance this replaced did the same job, but only on
-			// Windows; the escape codes work everywhere and need no handle.
-			std::cout << levelToAnsi(level) << oss.str() << ansiReset();
-			std::cout.flush();
-		}
+		// Console mirroring happens on the writer thread (emitConsole), in
+		// order with the file. The ANSI colour codes work on both platforms.
+		enqueueMessage(level, oss.str());
 	}
 }

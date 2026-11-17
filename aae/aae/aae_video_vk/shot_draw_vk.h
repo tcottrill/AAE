@@ -72,7 +72,8 @@ public:
                 const float proj[16], const txdata* verts, uint32_t count,
                 VkImageView texView, VkSampler texSampler,
                 uint32_t targetWidth, uint32_t targetHeight,
-                float fadeInner = 0.20f, float fadeOuter = 1.00f);
+                float fadeInner = 0.20f, float fadeOuter = 1.00f,
+                float hdrShotBoost = 1.0f);
 
     bool IsValid() const { return initialized_; }
 
@@ -81,7 +82,8 @@ private:
     {
         float proj[16];
         float fade[4];   // x = inner, y = outer
-    };
+        float hdrShotBoost;   // offset 80; 1.0 = off
+    };                        // 84 bytes
 
     bool EnsureBuffer(VkContext& ctx, uint32_t frameIndex, VkDeviceSize neededBytes);
 

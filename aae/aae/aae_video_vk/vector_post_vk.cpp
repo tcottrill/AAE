@@ -103,14 +103,29 @@ bool VectorPostVK::Init(VkContext& ctx, const VectorPostVKCreateInfo* ci)
     dualUpSpv_   = ci->dualUpSpv;
     ssaa_     = (ci->ssaa >= 1) ? ci->ssaa : 1;
     beamDim_  = 1024 * ssaa_;
+    hdr_      = ci->hdr;
 
-    // All post RTs are RGBA8_UNORM for the same reason as the raster game RT
-    // (format trace in vulkan_renderer.cpp): byte-identical blending math to
+    // SDR: all post RTs are RGBA8_UNORM for the same reason as the raster game
+    // RT (format trace in vulkan_renderer.cpp): byte-identical blending math to
     // the GL chain's non-color-managed FBOs, single sRGB encode at the
     // swapchain composite.
+    //
+    // HDR: the beam, glow (half/A/B), dual-filter pyramid and frame targets are
+    // R16G16B16A16_SFLOAT so overlapping additive beams can exceed 1.0. The
+    // trail accumulator stays RGBA8 (its ONE_MINUS_DST_COLOR/SRC_ALPHA blend
+    // assumes values <= 1). Nothing extra is checked here: sys_vk
+    // CreateSwapchain only sets ctx.hdrActive after verifying RGBA16F supports
+    // colour attachment, blend, linear filtering and blit src/dst (the beam
+    // mip chain's needs), so a true ci->hdr (taken from ctx.hdrActive) is safe.
+    //
+    // Float targets do not clamp writes to 0..1 the way UNORM ones do, and the
+    // glow chain relies on that clipping (gain 10 is driven into saturation on
+    // purpose). Hence the explicit clamp()s in the blur / dual-filter / tex
+    // fragment shaders; see the per-pass notes in RecordPost.
+    const VkFormat rtFmt = hdr_ ? VK_FORMAT_R16G16B16A16_SFLOAT : VK_FORMAT_R8G8B8A8_UNORM;
     RenderTargetVKCreateInfo rt{};
     rt.filter = rtFilterVK::Linear;
-    rt.colorFormat = VK_FORMAT_R8G8B8A8_UNORM;
+    rt.colorFormat = rtFmt;
 
     // Mip depth: only as many levels as something actually SAMPLES.
     //
@@ -137,8 +152,11 @@ bool VectorPostVK::Init(VkContext& ctx, const VectorPostVKCreateInfo* ci)
     rt.width = beamDim_;  rt.height = beamDim_;  rt.mipLevels = kBeamMipLevels;
     if (!rtBeam_.Init(ctx, rt)) { LOG_ERROR("VectorPostVK: beam RT init failed"); Shutdown(ctx); return false; }
 
+    // Trail accumulator: RGBA8 in BOTH modes (see the format note above).
+    rt.colorFormat = VK_FORMAT_R8G8B8A8_UNORM;
     rt.width = 1024;      rt.height = 1024;      rt.mipLevels = kBeamMipLevels;
     if (!rtTrail_.Init(ctx, rt)) { LOG_ERROR("VectorPostVK: trail RT init failed"); Shutdown(ctx); return false; }
+    rt.colorFormat = rtFmt;
 
     rt.mipLevels = 1;
     rt.width = 512;  rt.height = 512;
@@ -165,19 +183,22 @@ bool VectorPostVK::Init(VkContext& ctx, const VectorPostVKCreateInfo* ci)
     if (!CreateLayouts(ctx))     { Shutdown(ctx); return false; }
     if (!CreateDescriptors(ctx)) { Shutdown(ctx); return false; }
 
-    // The three RGBA8 offscreen pipelines are fixed-format; build them now so
-    // shader problems surface at init. The composite variant is lazy (active
-    // format known only inside the swapchain pass).
+    // The offscreen pipelines are fixed-format; build them now so shader
+    // problems surface at init. Each is built against the format of the target
+    // it actually draws into: the trail pipeline is always RGBA8 (rtTrail_),
+    // every other one draws into a glow / pyramid / frame target, i.e. rtFmt.
+    // The composite variants are lazy (active format known only inside the
+    // swapchain pass).
     const VkFormat rgba8 = VK_FORMAT_R8G8B8A8_UNORM;
-    if (!BuildPipeline(ctx, rgba8, blurSpv_.c_str(), POST_BLEND_NONE,  pipeLayoutS_, pipeBlurCopy_) ||
-        !BuildPipeline(ctx, rgba8, blurSpv_.c_str(), POST_BLEND_ADD,   pipeLayoutS_, pipeBlurAccum_) ||
+    if (!BuildPipeline(ctx, rtFmt, blurSpv_.c_str(), POST_BLEND_NONE,  pipeLayoutS_, pipeBlurCopy_) ||
+        !BuildPipeline(ctx, rtFmt, blurSpv_.c_str(), POST_BLEND_ADD,   pipeLayoutS_, pipeBlurAccum_) ||
         !BuildPipeline(ctx, rgba8, texSpv_.c_str(),  POST_BLEND_TRAIL, pipeLayoutS_, pipeTrail_) ||
-        !BuildPipeline(ctx, rgba8, multiSpv_.c_str(), POST_BLEND_ONEONE, pipeLayoutM_, pipeFrameMulti_) ||
-        !BuildPipeline(ctx, rgba8, texSpv_.c_str(),  POST_BLEND_MUL,    pipeLayoutS_, pipeArtMul_) ||
-        !BuildPipeline(ctx, rgba8, texSpv_.c_str(),  POST_BLEND_MUL_BW, pipeLayoutS_, pipeArtMulBW_) ||
-        !BuildPipeline(ctx, rgba8, dualDownSpv_.c_str(), POST_BLEND_NONE, pipeLayoutS_, pipeDualDown_) ||
-        !BuildPipeline(ctx, rgba8, dualUpSpv_.c_str(),   POST_BLEND_NONE, pipeLayoutS_, pipeDualUp_) ||
-        !BuildPipeline(ctx, rgba8, texSpv_.c_str(),      POST_BLEND_ADD,  pipeLayoutS_, pipeTexAdd_))
+        !BuildPipeline(ctx, rtFmt, multiSpv_.c_str(), POST_BLEND_ONEONE, pipeLayoutM_, pipeFrameMulti_) ||
+        !BuildPipeline(ctx, rtFmt, texSpv_.c_str(),  POST_BLEND_MUL,    pipeLayoutS_, pipeArtMul_) ||
+        !BuildPipeline(ctx, rtFmt, texSpv_.c_str(),  POST_BLEND_MUL_BW, pipeLayoutS_, pipeArtMulBW_) ||
+        !BuildPipeline(ctx, rtFmt, dualDownSpv_.c_str(), POST_BLEND_NONE, pipeLayoutS_, pipeDualDown_) ||
+        !BuildPipeline(ctx, rtFmt, dualUpSpv_.c_str(),   POST_BLEND_NONE, pipeLayoutS_, pipeDualUp_) ||
+        !BuildPipeline(ctx, rtFmt, texSpv_.c_str(),      POST_BLEND_ADD,  pipeLayoutS_, pipeTexAdd_))
     {
         Shutdown(ctx);
         return false;
@@ -185,8 +206,10 @@ bool VectorPostVK::Init(VkContext& ctx, const VectorPostVKCreateInfo* ci)
 
     beamReady_ = trailReady_ = glowReady_ = frameReady_ = false;
     initialized_ = true;
-    LOG_INFO("VectorPostVK: online (beam %dx%d ssaa=%d %u mips, trail 1024 %u mips, glow 512/256/256)",
-             beamDim_, beamDim_, ssaa_, rtBeam_.GetMipLevels(), rtTrail_.GetMipLevels());
+    LOG_INFO("VectorPostVK: online (beam %dx%d ssaa=%d %u mips, trail 1024 %u mips, glow 512/256/256, "
+             "format %d%s)",
+             beamDim_, beamDim_, ssaa_, rtBeam_.GetMipLevels(), rtTrail_.GetMipLevels(),
+             (int)rtFmt, hdr_ ? " HDR float" : "");
     return true;
 }
 
@@ -790,6 +813,12 @@ void VectorPostVK::RecordPost(VkContext& ctx, VkCommandBuffer cmd, uint32_t fram
                 // a=1 (GL RGB8 semantics) so SRC_ALPHA/ONE adds tex * weight.
                 push.params[0] = push.params[1] = 0.0f;
                 push.params[2] = 0.0f; push.params[3] = 0.0f;
+                // params.x = 1 asks the tex frag to clamp its OUTPUT to 0..1,
+                // which a UNORM target does implicitly per fragment BEFORE the
+                // blend (the core add carries weight core*gain, i.e. up to 10).
+                // Float targets do not, so without this the add would blow out.
+                // The other tex-frag users leave params.x at 0.
+                push.params[0] = 1.0f;
                 DrawQuadS(ctx, cmd, frameIndex, pipeTexAdd_,
                           addSrc.VK_GetColorView(), addSrc.VK_GetSampler(),
                           push, dstSize, dstSize);
@@ -829,6 +858,11 @@ void VectorPostVK::RecordPost(VkContext& ctx, VkCommandBuffer cmd, uint32_t fram
             // (GL clears img3b up front; LOAD+first-draw-into-clear is identical).
             static constexpr float v1 = 1.0f;
             static constexpr float v2 = 2.0f;
+            // HDR note: the SRC_ALPHA/ONE accumulate into a float target can
+            // sum past 1.0 where a UNORM target would have saturated at every
+            // write. The sums are only ever READ back through the blur frag
+            // (A<->B ping-pong) and the composite, and both clamp what they
+            // sample, so the over-range value never reaches the picture.
             static constexpr float gx = -0.05f;
             static constexpr float gy = -0.20f;
             static const float fshifta[] = {
@@ -935,12 +969,28 @@ void VectorPostVK::DrawMultiQuad(VkContext& ctx, VkCommandBuffer cmd, uint32_t f
 }
 
 // -----------------------------------------------------------------------------
+// SetHdrPush - encode the HDR mode into push.tsize.zw (see the header).
+// -----------------------------------------------------------------------------
+void VectorPostVK::SetHdrPush(PostPush& p, const VectorHdrVK& hdr, bool expand)
+{
+    if (!hdr.active)
+    {
+        p.tsize[2] = 0.0f;
+        p.tsize[3] = 0.0f;
+        return;
+    }
+    p.tsize[2] = expand ? hdr.k : 1.0f;
+    p.tsize[3] = hdr.curve;
+}
+
+// -----------------------------------------------------------------------------
 // RecordComposite - fragMulti quad into the open swapchain pass.
 // -----------------------------------------------------------------------------
 void VectorPostVK::RecordComposite(VkContext& ctx, VkCommandBuffer cmd, uint32_t frameIndex,
                                    float x0, float y0, float x1, float y1,
                                    int vectrail, int vecglow,
-                                   int targetW, int targetH)
+                                   int targetW, int targetH,
+                                   const VectorHdrVK& hdr)
 {
     if (!initialized_ || !beamReady_)
         return;
@@ -976,6 +1026,9 @@ void VectorPostVK::RecordComposite(VkContext& ctx, VkCommandBuffer cmd, uint32_t
     push.params[1] = usefb   ? 1.0f : 0.0f;
     push.params[2] = useglow ? 1.0f : 0.0f;
     push.params[3] = Fuzz_Get();                  // Star Wars explosion fuzz
+    // Direct composite: the ONE place the highlight expansion happens on the
+    // no-artwork path (HDR only; SDR leaves tsize.zw = 0 = the 0..1 clamp).
+    SetHdrPush(push, hdr, /*expand=*/true);
 
     DrawMultiQuad(ctx, cmd, frameIndex, pipe, push, tw, th);
 }
@@ -1017,7 +1070,8 @@ static void OverlayUv(const VectorArtworkVK& art, float* uv)
 void VectorPostVK::RecordFrameBuild(VkContext& ctx, VkCommandBuffer cmd, uint32_t frameIndex,
                                     float grL, float grR, float grB, float grT,
                                     int vectrail, int vecglow,
-                                    const VectorArtworkVK& art)
+                                    const VectorArtworkVK& art,
+                                    const VectorHdrVK& hdr)
 {
     if (!initialized_ || !beamReady_ || !rtFrame_.IsValid())
         return;
@@ -1038,6 +1092,9 @@ void VectorPostVK::RecordFrameBuild(VkContext& ctx, VkCommandBuffer cmd, uint32_
     push.params[1] = usefb   ? 1.0f : 0.0f;
     push.params[2] = useglow ? 1.0f : 0.0f;
     push.params[3] = Fuzz_Get();                  // Star Wars explosion fuzz
+    // HDR: UNEXPANDED but not clamped to 1.0 (the float frame RT keeps overlap
+    // headroom); the expansion happens later, in RecordCompositeLayered.
+    SetHdrPush(push, hdr, /*expand=*/false);
     DrawMultiQuad(ctx, cmd, frameIndex, pipeFrameMulti_, push, 1024, 1024);
 
     // OVERLAY1: modulate the CRT image in place (GL DST_COLOR/SRC_COLOR "2x
@@ -1068,7 +1125,8 @@ void VectorPostVK::RecordCompositeLayered(VkContext& ctx, VkCommandBuffer cmd, u
                                           float lx, float lyUp, float vw, float vh,
                                           float grL, float grR, float grB, float grT,
                                           const VectorArtworkVK& art,
-                                          int targetW, int targetH)
+                                          int targetW, int targetH,
+                                          const VectorHdrVK& hdr)
 {
     if (!initialized_ || !frameReady_)
         return;
@@ -1155,6 +1213,10 @@ void VectorPostVK::RecordCompositeLayered(VkContext& ctx, VkCommandBuffer cmd, u
         const float boost = haveBackdrop ? 0.2f : (haveOverlay2 ? 0.25f : 0.0f);
         p.tint[0] = p.tint[1] = p.tint[2] = 1.0f + boost;
         p.tint[3] = 1.0f;
+        // HDR: expand the sampled CRT value BEFORE this tint multiplies it (the
+        // boost then scales the expanded value). The ONE place the expansion
+        // happens on the artwork path; the frame RT itself is unexpanded.
+        SetHdrPush(p, hdr, /*expand=*/true);
         // params.w = 0: force sampled alpha to 1 (GL RGB8 semantics; ONE/ONE
         // ignores alpha for color anyway).
         DrawQuadS(ctx, cmd, frameIndex, v->artAdd,

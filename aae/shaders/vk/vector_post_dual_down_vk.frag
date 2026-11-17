@@ -22,11 +22,13 @@ layout(location = 0) out vec4 FragColor;
 void main()
 {
     vec2 h = pc.params.xy;
-    vec3 sum = texture(colorMap, vUV).rgb * 4.0;
-    sum += texture(colorMap, vUV + h).rgb;
-    sum += texture(colorMap, vUV - h).rgb;
-    sum += texture(colorMap, vUV + vec2(h.x, -h.y)).rgb;
-    sum += texture(colorMap, vUV - vec2(h.x, -h.y)).rgb;
+    // HDR: float sources/targets do not clamp like UNORM ones; clamp each tap
+    // and the output (exact no-ops on UNORM). See vector_post_blur_vk.frag.
+    vec3 sum = clamp(texture(colorMap, vUV).rgb, 0.0, 1.0) * 4.0;
+    sum += clamp(texture(colorMap, vUV + h).rgb, 0.0, 1.0);
+    sum += clamp(texture(colorMap, vUV - h).rgb, 0.0, 1.0);
+    sum += clamp(texture(colorMap, vUV + vec2(h.x, -h.y)).rgb, 0.0, 1.0);
+    sum += clamp(texture(colorMap, vUV - vec2(h.x, -h.y)).rgb, 0.0, 1.0);
     // a = 1: GL RGB8 semantics, same rule as vector_post_blur_vk.frag.
-    FragColor = vec4(sum * (1.0 / 8.0), 1.0);
+    FragColor = vec4(clamp(sum * (1.0 / 8.0), 0.0, 1.0), 1.0);
 }

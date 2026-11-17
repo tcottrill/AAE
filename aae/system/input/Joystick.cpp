@@ -937,6 +937,9 @@ namespace dinput {
 	static Device s_devices[MAX_DEVICES];
 	static int s_num_devices = 0;
 
+	// aae.ini [input] joystick_ignore, set via joystick_set_ignore_list().
+	static char s_ignore_list[512] = "";
+
 	static void guid_to_string(const GUID& g, char* out, size_t outlen)
 	{
 		snprintf(out, outlen, "{%08lX-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X}",
@@ -1071,6 +1074,26 @@ namespace dinput {
 		if (is_xinput_vidpid(vid, pid))
 		{
 			LOG_INFO("DirectInput: skipping XInput device %s (handled by XInput)", inst->tszInstanceName);
+			return DIENUM_CONTINUE;
+		}
+
+		// aae.ini [input] joystick_ignore. Applies to DirectInput devices only:
+		// XInput pads carry no name or vid/pid here. enum_cb runs again on every
+		// rescan and an ignored device is never registered, so remember which
+		// instances were already announced to keep it to one log line each.
+		if (pad_ignore_match(s_ignore_list, vid, pid, inst->tszInstanceName))
+		{
+			static GUID s_announced[16];
+			static int  s_num_announced = 0;
+			bool seen = false;
+			for (int i = 0; i < s_num_announced; i++)
+				if (IsEqualGUID(s_announced[i], inst->guidInstance)) { seen = true; break; }
+			if (!seen)
+			{
+				if (s_num_announced < 16) s_announced[s_num_announced++] = inst->guidInstance;
+				LOG_INFO("DirectInput: ignoring '%s' [%04x:%04x] (aae.ini [input] joystick_ignore)",
+					inst->tszInstanceName, vid, pid);
+			}
 			return DIENUM_CONTINUE;
 		}
 
@@ -1360,6 +1383,15 @@ namespace dinput {
 //==============================================================================
 // Public API Implementation
 //==============================================================================
+
+// Applies to DirectInput devices only (the XInput path has no name or vid/pid).
+void joystick_set_ignore_list(const char* list)
+{
+	snprintf(dinput::s_ignore_list, sizeof(dinput::s_ignore_list), "%s", list ? list : "");
+}
+
+// Steam's SDL hide variables are a Linux/SteamOS matter; nothing to do here.
+void joystick_set_steam_hide_env(const char*, const char*) {}
 
 int install_joystick()
 {

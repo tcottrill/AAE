@@ -41,9 +41,15 @@ void main()
     // the ping-pong SRC_ALPHA/ONE accumulate effectively full-strength
     // ONE/ONE, exactly like GL - sampling the RGBA8 VK RT's real (feathered,
     // mostly-zero) beam alpha instead had the glow accumulating a*a-weak.
+    //
+    // HDR: the beam RT and the glow targets are float, which neither clamp
+    // writes nor stop an additive accumulate from passing 1.0. UNORM targets
+    // did both implicitly, and the glow look depends on that, so clamp each
+    // tap (what the UNORM texel would have held) and the output (what the
+    // UNORM write would have stored). Both are exact no-ops on UNORM.
     vec4 sum = vec4(0.0);
     for (int i = 0; i < 9; i++)
-        sum += vec4(texture(colorMap, vUV + offset[i]).rgb, 1.0) * kernel_[i];
+        sum += vec4(clamp(texture(colorMap, vUV + offset[i]).rgb, 0.0, 1.0), 1.0) * kernel_[i];
 
-    FragColor = sum * 1.12;
+    FragColor = clamp(sum * 1.12, 0.0, 1.0);
 }

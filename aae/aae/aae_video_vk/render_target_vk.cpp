@@ -97,7 +97,7 @@ bool RenderTargetVK::Init(VkContext& ctx, const RenderTargetVKCreateInfo& ci)
     // Honor an explicit format from the caller; default to swapchain format.
     vk_colorFormat_ = (ci.colorFormat != VK_FORMAT_UNDEFINED)
         ? ci.colorFormat
-        : ctx.swapchainFormat;
+        : ctx.frameFormat;
 
     // Resolve the mip request.
     //   0 or 1 -> 1;  -1 -> full chain;  N > 1 -> min(N, full chain).

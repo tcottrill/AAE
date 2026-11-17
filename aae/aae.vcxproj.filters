@@ -19,6 +19,9 @@
     <ClCompile Include="system\graphics\vk\sys_vk.cpp">
       <Filter>Source Files\system\graphics\vk</Filter>
     </ClCompile>
+    <ClCompile Include="system\graphics\vk\hdr_output_vk.cpp">
+      <Filter>Source Files\system\graphics\vk</Filter>
+    </ClCompile>
     <ClCompile Include="system\graphics\texrect.cpp">
       <Filter>Source Files\system\graphics</Filter>
     </ClCompile>
@@ -216,6 +219,9 @@
     <ClInclude Include="system\graphics\vk\sys_vk.h">
       <Filter>Source Files\system\graphics\vk</Filter>
     </ClInclude>
+    <ClInclude Include="system\graphics\vk\hdr_output_vk.h">
+      <Filter>Source Files\system\graphics\vk</Filter>
+    </ClInclude>
     <ClInclude Include="system\graphics\texrect.h">
       <Filter>Source Files\system\graphics</Filter>
     </ClInclude>
@@ -373,6 +379,9 @@
       <Filter>Source Files\aae\aae_video_vk</Filter>
     </ClInclude>
     <ClInclude Include="aae\aae_video_vk\fast_poly_vk.h">
+      <Filter>Source Files\aae\aae_video_vk</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\aae_video_vk\hdr_math.h">
       <Filter>Source Files\aae\aae_video_vk</Filter>
     </ClInclude>
     <ClInclude Include="aae\aae_video_vk\layout_vk.h">
@@ -554,6 +563,12 @@
       <Filter>Shaders\vk</Filter>
     </CustomBuild>
     <CustomBuild Include="shaders\vk\vector_post_vk.vert">
+      <Filter>Shaders\vk</Filter>
+    </CustomBuild>
+    <CustomBuild Include="shaders\vk\hdr_output_vk.vert">
+      <Filter>Shaders\vk</Filter>
+    </CustomBuild>
+    <CustomBuild Include="shaders\vk\hdr_output_vk.frag">
       <Filter>Shaders\vk</Filter>
     </CustomBuild>
     <CustomBuild Include="shaders\vk\vector_post_blur_vk.frag">

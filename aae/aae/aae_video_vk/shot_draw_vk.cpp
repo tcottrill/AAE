@@ -92,7 +92,7 @@ bool ShotDrawVK::Init(VkContext& ctx, const ShotDrawVKCreateInfo* ci)
     initialCap_ = (ci->initialVertexCapacity >= 6) ? ci->initialVertexCapacity : 6;
 
     const VkFormat colorFormat = (ci->colorFormat != VK_FORMAT_UNDEFINED)
-        ? ci->colorFormat : ctx.swapchainFormat;
+        ? ci->colorFormat : ctx.frameFormat;
 
     // Descriptor set layout: binding 0 = the shot texture.
     {
@@ -366,7 +366,7 @@ void ShotDrawVK::Record(VkContext& ctx, VkCommandBuffer cmd, uint32_t frameIndex
                         const float proj[16], const txdata* verts, uint32_t count,
                         VkImageView texView, VkSampler texSampler,
                         uint32_t targetWidth, uint32_t targetHeight,
-                        float fadeInner, float fadeOuter)
+                        float fadeInner, float fadeOuter, float hdrShotBoost)
 {
     if (!initialized_ || cmd == VK_NULL_HANDLE || !verts || count == 0)
         return;
@@ -420,6 +420,7 @@ void ShotDrawVK::Record(VkContext& ctx, VkCommandBuffer cmd, uint32_t frameIndex
     memcpy(push.proj, proj, sizeof(push.proj));
     push.fade[0] = fadeInner;
     push.fade[1] = fadeOuter;
+    push.hdrShotBoost = hdrShotBoost;
     ctx.vkCmdPushConstants_(cmd, pipeLayout_,
                             VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
                             0, sizeof(ShotPush), &push);

@@ -38,7 +38,8 @@ struct BeamPushVK
     float uBloomPower;     // 80
     float uBloomIntensity; // 84
     float uOverdrive;      // 88
-};                         // 92 bytes (<= 128 guaranteed push-constant limit)
+    float uHdrShotBoost;   // 92 (shot fragment shader only; 1.0 = off)
+};                         // 96 bytes (<= 128 guaranteed push-constant limit)
 
 enum { VKBLEND_ADDITIVE, VKBLEND_OVER, VKBLEND_MAX };
 
@@ -270,7 +271,7 @@ bool VectorDrawVK::CreatePipelines(VkContext& ctx, const VectorDrawVKCreateInfo&
         return false;
     }
 
-    m_colorFormat = (ci.colorFormat != VK_FORMAT_UNDEFINED) ? ci.colorFormat : ctx.swapchainFormat;
+    m_colorFormat = (ci.colorFormat != VK_FORMAT_UNDEFINED) ? ci.colorFormat : ctx.frameFormat;
 
     const VkVertexInputAttributeDescription lineA[4] = {
         { 0, 0, VK_FORMAT_R32G32_SFLOAT,  (uint32_t)offsetof(BeamLine, p0)    },
@@ -359,7 +360,7 @@ void VectorDrawVK::OnFrameBegin(VkContext& ctx, uint32_t frameIndex)
 
 void VectorDrawVK::Record(VkContext& ctx, VkCommandBuffer cmd, uint32_t fi,
                           const float proj[16], bool additive,
-                          uint32_t targetWidth, uint32_t targetHeight)
+                          uint32_t targetWidth, uint32_t targetHeight, float hdrShotBoost)
 {
     if (cmd == VK_NULL_HANDLE || fi >= VkContext::kFramesInFlight || !m_pipeLayout) return;
 
@@ -429,6 +430,7 @@ void VectorDrawVK::Record(VkContext& ctx, VkCommandBuffer cmd, uint32_t fi,
     pc.uStrength = 1.0f;                     // disc radius already baked per-instance
     pc.uPremult  = additive ? 1.0f : 0.0f;   // disc: premultiplied coverage for the MAX path
     pc.uCorePower = 6.0f; pc.uBloomPower = 2.5f; pc.uBloomIntensity = 0.3f; pc.uOverdrive = 1.5f;
+    pc.uHdrShotBoost = 1.0f;   // lines/joins ignore it; set for the shot batch below
 
     const VkShaderStageFlags pcStages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
     const VkDeviceSize zero = 0;
@@ -455,7 +457,8 @@ void VectorDrawVK::Record(VkContext& ctx, VkCommandBuffer cmd, uint32_t fi,
               additive ? m_pipeLineAdd : m_pipeLineOver);
     drawBatch(BATCH_JOIN, joins.data(),   (uint32_t)joins.size(),   sizeof(BeamJoin),
               additive ? m_pipeDiscMax : m_pipeDiscOver);
-    drawBatch(BATCH_SHOT, shots.data(),   (uint32_t)shots.size(),   sizeof(BeamShot),
+    pc.uHdrShotBoost = hdrShotBoost;
+    drawBatch(BATCH_SHOT, shots.data(),  (uint32_t)shots.size(),   sizeof(BeamShot),
               m_pipeShotAdd);
 }
 

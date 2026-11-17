@@ -119,9 +119,21 @@ public:
 // Implemented only by backends that actually present to a display. Kept
 // separate from ISystemWindow so a headless backend can satisfy the window
 // contract honestly instead of stubbing a swapchain it has no concept of.
+// Display HDR state as the platform reports it for the monitor the window is
+// on. known=false means the platform could not tell.
+struct DisplayHdrInfo {
+	bool  known;
+	bool  hdrEnabled;
+	float maxNits;
+};
+
 class IPresentSurface {
 public:
 	virtual ~IPresentSurface() = default;
+
+	// Whether the display under the window currently has HDR on. The default
+	// returns false (state unknown); platforms that can tell override it.
+	virtual bool QueryDisplayHdr(DisplayHdrInfo* out) const { (void)out; return false; }
 
 	virtual void SwapBuffers() = 0;
 	virtual void GetDrawableSize(int* w, int* h) const = 0;

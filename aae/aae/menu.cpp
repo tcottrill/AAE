@@ -10,6 +10,9 @@
 #include "osdepend.h"
 #include "os_input.h"
 #include "config.h"
+#include "aae_video_vk/hdr_math.h"
+#include <memory>
+#include "aae_video_vk/vulkan_renderer.h"   // vkchain_hdr_status (no Vulkan types)
 #include "sys_str.h"   // aae_stricmp
 #include "colordefs.h"
 #include "mixer.h"
@@ -412,6 +415,12 @@ private:
     // Key/joy polling state for input assignment screens
     bool   m_isPolling      = false;
     bool   m_pollingIsJoy   = false;
+    // Joystick capture only accepts a button once every pad button has been
+    // seen released since the capture began. The pad's A press that selects
+    // the row is still held on the frame polling starts (select runs in
+    // msg_loop, PollInput later the same frame in do_the_menu), so without
+    // this the row would bind to A instantly.
+    bool   m_pollArmed      = false;
     std::function<void(int code)> m_inputAssignmentHandler;
 
     // Menu Builders
@@ -602,6 +611,17 @@ void MenuManager::SaveConfigIfRequired(MenuID fromId) {
         my_set_config_int("main", "overlay",     config.overlay,  vidPath);
         my_set_config_int("main", "bezel",       config.bezel,    vidPath);
         my_set_config_int("main", "artcrop",     config.artcrop,  vidPath);
+        // HDR items exist only under the Vulkan renderer; saving them
+        // otherwise would pin every game's ini for no reason.
+        if (config.renderer == RENDERER_VULKAN) {
+            my_set_config_string("main", "hdr",
+                (config.hdr == hdr::kModeOff) ? "off" : (config.hdr == hdr::kModeOn) ? "on" : "auto",
+                vidPath);
+            my_set_config_float("main", "hdr_paper_white", config.hdr_paper_white, vidPath);
+            my_set_config_float("main", "hdr_beam_peak",   config.hdr_beam_peak,   vidPath);
+            my_set_config_float("main", "hdr_shot_boost",  config.hdr_shot_boost,  vidPath);
+            my_set_config_float("main", "hdr_beam_curve",  config.hdr_beam_curve,  vidPath);
+        }
     }
     else if (fromId == MenuID::InputDevices) {
         // Device-to-player assignments are machine-level settings: always
@@ -636,7 +656,7 @@ void MenuManager::SaveConfigIfRequired(MenuID fromId) {
         my_set_config_float("main", "glow2_spread", config.glow2_spread, vidPath);
         my_set_config_float("main", "glow2_tail",   config.glow2_tail,   vidPath);
         my_set_config_float("main", "glow2_core",   config.glow2_core,   vidPath);
-        my_set_config_int("main", "m_line",      config.m_line,   vidPath);
+        my_set_config_int("main", "m_line",     config.m_line,   vidPath);
         my_set_config_int("main", "m_point",     config.m_point,  vidPath);
         my_set_config_int("main", "gain",        config.gain,     vidPath);
         my_set_config_float("main", "line_smoothing",  config.line_smoothing,  vidPath);
@@ -920,6 +940,114 @@ void MenuManager::BuildVideoMenu() {
         ga.isDisabledFn = []() { return GetWindowSetup().aspectOverrideActive; };
         ga.disabledReason = "-ASPECT FORCED";
         m_items.push_back(ga);
+    }
+
+    // HDR10 output: Vulkan renderer only. The mode applies at next launch.
+    // Paper white also affects raster games and the menu. Values are nits,
+    // shown as whole numbers.
+    if (config.renderer == RENDERER_VULKAN) {
+        m_items.push_back(MenuItem::Integer("HDR (NEXT LAUNCH)", &config.hdr,
+            hdr::kModeOff, hdr::kModeOn, { "OFF", "AUTO", "ON" }));
+
+        // Display-only status row. A plain enabled item (normal colours) with
+        // no onAdjust and no arrows, so it ignores input; the text comes from
+        // the live renderer state each draw, so it follows a monitor change.
+        // "NOT AVAILABLE" is short for the ~19-char column.
+        auto hdrStatusText = []() {
+            switch (vkchain_hdr_status()) {
+            case VKCHAIN_HDR_ACTIVE:          return std::string("ACTIVE");
+            case VKCHAIN_HDR_OFF_IN_SETTINGS: return std::string("OFF IN SETTINGS");
+            default:                          return std::string("NOT AVAILABLE");
+            }
+        };
+        {
+            MenuItem st;
+            st.label = "HDR STATUS";
+            st.getValueDisplay = hdrStatusText;
+            st.hasLeft  = []() { return false; };
+            st.hasRight = []() { return false; };
+            st.onActivate = []() {};
+            m_items.push_back(st);
+        }
+
+        auto addNitsItem = [this](const char* label, float* value,
+                                  float lo, float hi, float step, int decimals = 0,
+                                  std::function<std::string()> suffix = nullptr) {
+            MenuItem it;
+            // Greyed out and not adjustable unless HDR output is running.
+            it.isDisabledFn = []() { return vkchain_hdr_status() != VKCHAIN_HDR_ACTIVE; };
+            it.disabledReason = "HDR NOT ACTIVE";
+            it.label = label;
+            it.getValueDisplay = [value, decimals, suffix]() {
+                char buf[32];
+                snprintf(buf, 32, "%.*f", decimals, *value);
+                std::string s(buf);
+                if (suffix) s += suffix();
+                return s;
+                };
+            it.onAdjust = [value, lo, hi, step, decimals](int dir) {
+                *value += step * (float)dir;
+                if (decimals > 0) {   // keep fractional steps from drifting
+                    const float s = (decimals == 1) ? 10.0f : 100.0f;
+                    *value = std::round(*value * s) / s;
+                }
+                *value = std::clamp(*value, lo, hi);
+                };
+            it.hasLeft  = [value, lo]() { return *value > lo; };
+            it.hasRight = [value, hi]() { return *value < hi; };
+            it.onActivate = []() {};
+            m_items.push_back(it);
+            };
+        addNitsItem("HDR PAPER WHITE", &config.hdr_paper_white,  80.0f,  500.0f, 10.0f);
+        // When the display's maximum is below the setting, show the value in
+        // use: "1000 (MAX 418)". The stored setting is never changed.
+        float* beamPeak = &config.hdr_beam_peak;
+        addNitsItem("HDR BEAM PEAK",   beamPeak,   400.0f, 4000.0f, 50.0f, 0,
+            [beamPeak]() {
+                const float mx = vkchain_hdr_display_max_nits();
+                if (mx > 0.0f && *beamPeak > mx) {
+                    char b[32];
+                    snprintf(b, 32, " (MAX %.0f)", mx);
+                    return std::string(b);
+                }
+                return std::string();
+            });
+        addNitsItem("HDR SHOT BOOST",  &config.hdr_shot_boost,  1.0f,   4.0f,    0.1f, 1);
+
+        // Two-step reset of all HDR settings. Never greyed out, so a bad
+        // setting can always be undone. state: 0 idle, 1 armed, 2 done.
+        // The row is shown idle whenever the cursor is elsewhere, so moving
+        // off the row disarms it; left/right also disarm. A menu rebuild
+        // creates fresh state. Saving happens when the menu is left (the
+        // Video branch of SaveConfigIfRequired writes these values).
+        {
+            auto state = std::make_shared<int>(0);
+            const int rowIndex = (int)m_items.size();
+            MenuItem rs;
+            rs.label = "HDR RESET TO DEFAULTS";
+            rs.getValueDisplay = [this, state, rowIndex]() {
+                if (m_selectedIndex != rowIndex) *state = 0;
+                if (*state == 1) return std::string("PRESS AGAIN");
+                if (*state == 2) return std::string("DONE");
+                return std::string();
+            };
+            rs.hasLeft  = []() { return false; };
+            rs.hasRight = []() { return false; };
+            rs.onAdjust = [state](int) { *state = 0; };
+            rs.onActivate = [this, state]() {
+                if (*state != 1) { *state = 1; RecalculateLayout(); return; }
+                config.hdr             = hdr::kDefaultMode;
+                config.hdr_paper_white = hdr::kDefaultPaperWhite;
+                config.hdr_beam_peak   = hdr::kDefaultBeamPeak;
+                config.hdr_beam_curve  = hdr::kDefaultBeamCurve;
+                config.hdr_shot_boost  = hdr::kDefaultShotBoost;
+                set_points_lines();
+                setup_video_config();
+                *state = 2;
+                RecalculateLayout();
+            };
+            m_items.push_back(rs);
+        }
     }
 
     // Monitor setup submenus. Each one only applies to its monitor class,
@@ -1717,6 +1845,7 @@ void MenuManager::BuildInputMenu(bool isGlobal, bool isJoystick) {
                 item.onActivate = [this, in, isJoystick]() {
                     m_isPolling    = true;
                     m_pollingIsJoy = isJoystick;
+                    m_pollArmed    = false;   // see PollInput: the A that got us here may still be down
                     m_inputAssignmentHandler = [in, isJoystick](int code) {
                         // No osd_key_invalid() filter — UI hotkeys are now
                         // rebindable via the same menu, so no keys are reserved.
@@ -1760,6 +1889,7 @@ void MenuManager::BuildInputMenu(bool isGlobal, bool isJoystick) {
                 item.onActivate = [this, in, isJoystick]() {
                     m_isPolling    = true;
                     m_pollingIsJoy = isJoystick;
+                    m_pollArmed    = false;   // see PollInput: the A that got us here may still be down
                     m_inputAssignmentHandler = [in, isJoystick](int code) {
                         // No osd_key_invalid() filter — see global menu above.
                         if (isJoystick) in->joystick = code;
@@ -1981,12 +2111,20 @@ void MenuManager::PollInput() {
     int detectedCode = -1;
 
     if (m_pollingIsJoy) {
+        int firstPressed = -1;
         for (int j = 1; j < OSD_MAX_JOY; ++j) {
             if (osd_joy_pressed(j)) {
-                detectedCode = j;
+                firstPressed = j;
                 break;
             }
         }
+        // Arm on the first frame with nothing held; until then a held button
+        // (the select press, or a button down when the menu was opened) is not
+        // a binding.
+        if (firstPressed < 0)
+            m_pollArmed = true;
+        else if (m_pollArmed)
+            detectedCode = firstPressed;
     }
     else {
         int k = osd_read_key_immediate();
@@ -2146,6 +2284,7 @@ void set_menu_status(int on)  { MenuManager::Instance().SetStatus(on);      }
 int  get_menu_level()         { return MenuManager::Instance().GetLevel();   }
 void set_menu_level_top()     { MenuManager::Instance().SetLevelTop();       }
 void menu_navigate_back()     { MenuManager::Instance().NavigateBack();      }
+bool menu_is_polling()        { return MenuManager::Instance().IsPolling();  }
 
 void do_the_menu() {
     // If we are waiting for a key/joy assignment, service that first.

@@ -23,15 +23,18 @@ layout(location = 0) out vec4 FragColor;
 void main()
 {
     vec2 h = pc.params.xy;
+    // HDR: clamp each tap and the output (the output clamp is where the
+    // gain-driven saturation happens; UNORM did it on write). Exact no-ops on
+    // UNORM. See vector_post_blur_vk.frag.
     vec3 sum;
-    sum  = texture(colorMap, vUV + vec2(-h.x * 2.0, 0.0)).rgb;
-    sum += texture(colorMap, vUV + vec2(-h.x,  h.y)).rgb * 2.0;
-    sum += texture(colorMap, vUV + vec2(0.0,  h.y * 2.0)).rgb;
-    sum += texture(colorMap, vUV + vec2( h.x,  h.y)).rgb * 2.0;
-    sum += texture(colorMap, vUV + vec2( h.x * 2.0, 0.0)).rgb;
-    sum += texture(colorMap, vUV + vec2( h.x, -h.y)).rgb * 2.0;
-    sum += texture(colorMap, vUV + vec2(0.0, -h.y * 2.0)).rgb;
-    sum += texture(colorMap, vUV + vec2(-h.x, -h.y)).rgb * 2.0;
+    sum  = clamp(texture(colorMap, vUV + vec2(-h.x * 2.0, 0.0)).rgb, 0.0, 1.0);
+    sum += clamp(texture(colorMap, vUV + vec2(-h.x,  h.y)).rgb, 0.0, 1.0) * 2.0;
+    sum += clamp(texture(colorMap, vUV + vec2(0.0,  h.y * 2.0)).rgb, 0.0, 1.0);
+    sum += clamp(texture(colorMap, vUV + vec2( h.x,  h.y)).rgb, 0.0, 1.0) * 2.0;
+    sum += clamp(texture(colorMap, vUV + vec2( h.x * 2.0, 0.0)).rgb, 0.0, 1.0);
+    sum += clamp(texture(colorMap, vUV + vec2( h.x, -h.y)).rgb, 0.0, 1.0) * 2.0;
+    sum += clamp(texture(colorMap, vUV + vec2(0.0, -h.y * 2.0)).rgb, 0.0, 1.0);
+    sum += clamp(texture(colorMap, vUV + vec2(-h.x, -h.y)).rgb, 0.0, 1.0) * 2.0;
     // a = 1: GL RGB8 semantics, same rule as vector_post_blur_vk.frag.
-    FragColor = vec4(sum * (1.0 / 12.0) * pc.params.z, 1.0);
+    FragColor = vec4(clamp(sum * (1.0 / 12.0) * pc.params.z, 0.0, 1.0), 1.0);
 }

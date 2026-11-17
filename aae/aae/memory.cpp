@@ -13,6 +13,7 @@
 
 #include "aae_mame_driver.h"
 #include "aae_emulator.h"   // emulator_exit_now
+#include "process_result.h"
 #include "memory.h"
 #include <stdlib.h>
 #include <string.h>
@@ -148,7 +149,12 @@ void new_memory_region(int num, int size, int type)
 			// fail-fast instead of the allocation failure that actually
 			// happened.
 			LOG_ERROR("Can't allocate system ram for Cpu Emulation! - This is bad. Exiting System!");
-			emulator_exit_now(1);
+			// Tell the launching frontend why, then leave through the same
+			// no-destructor exit (exit code 3 = other fatal error).
+			procres_fatal(AAE_EXIT_FATAL, "AAE: out of memory allocating %u bytes for memory region %d",
+				(unsigned)size, (int)num);
+			procres_finish();
+			emulator_exit_now(AAE_EXIT_FATAL);
 		}
 
 		memset(Machine->memory_region[num], 0, size);

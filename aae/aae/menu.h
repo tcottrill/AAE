@@ -42,6 +42,10 @@ void set_menu_level_top();
 // Go back one menu level (nested submenus return to their parent, e.g.
 // the monitor setups return to VIDEO SETUP; top-level submenus to root).
 void menu_navigate_back();
+// True while a PRESS KEY/BUTTON capture is waiting. msg_loop must not feed the
+// pad's menu shortcuts (back, select, stick) to the menu then, or they would
+// abort the capture instead of being bound.
+bool menu_is_polling();
 void do_the_menu();
 void change_menu_level(int dir);
 void change_menu_item(int dir);

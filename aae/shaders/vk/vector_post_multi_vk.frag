@@ -10,11 +10,27 @@ layout(set = 0, binding = 2) uniform sampler2D trailMap;  // GL mytex4 (img1c)
 
 layout(push_constant) uniform Push {
     vec4 rect;
-    vec4 tsize;
+    vec4 tsize;   // x,y = target size (vertex stage); z = HDR k, w = HDR curve
     vec4 uvrect;
     vec4 tint;
     vec4 params;  // x = glowamt, y = usefb (0/1), z = useglow (0/1), w = fuzz
 } pc;
+
+// HDR mode, carried in tsize.zw (CPU side: VectorPostVK::SetHdrPush):
+//   tsize.w <= 0           SDR: clamp the sum to 0..1 (the original behaviour).
+//   tsize.w >  0, z <= 1   HDR, UNEXPANDED: clamp below at 0 only, keep values
+//                          above 1.0 (frame build into the float frame RT).
+//   tsize.w >  0, z >  1   HDR, EXPANDED: expand_crt(max(sum,0), k = z,
+//                          curve = w), unclamped (direct composite).
+// One gain from the brightest channel is applied to all three (preserves hue).
+// Keep expand_crt in sync with hdr::ExpandCrtRgb (hdr_math.h) and with
+// vector_post_tex_vk.frag.
+vec3 expand_crt(vec3 v, float k, float curve)
+{
+    float m = max(v.r, max(v.g, v.b));
+    float g = 1.0 + (k - 1.0) * pow(clamp(m, 0.0, 1.0), curve);
+    return v * pow(g, 1.0 / 2.2);
+}
 
 layout(location = 0) in vec2 vUV;
 layout(location = 0) out vec4 FragColor;
@@ -84,7 +100,8 @@ vec3 fuzz_defocus(sampler2D tex, vec2 uv, float amount)
         float r  = sqrt(fi / float(kFuzzTaps));   // even coverage by AREA
         float th = fi * 2.39996323;               // golden angle
         vec2  o  = rot * vec2(cos(th), sin(th)) * (r * radius);
-        acc += textureLod(tex, clamp(uv + o, 0.0, 1.0), lod).rgb;
+        // rgb clamp: float beam texels can exceed 1.0 (HDR); UNORM never did.
+        acc += clamp(textureLod(tex, clamp(uv + o, 0.0, 1.0), lod).rgb, 0.0, 1.0);
     }
     return acc / float(kFuzzTaps);
 }
@@ -93,7 +110,12 @@ void main()
 {
     // GL RGB8 semantics: all three GL source textures read a=1.0.
     vec3 result = texture(beamMap, vUV).rgb;
-    result += texture(glowMap,  vUV).rgb * pc.params.x * pc.params.z;
+    // HDR: the glow target is float and an additive accumulate can leave it
+    // above 1.0; a UNORM glow target never held more. Clamp the sample so the
+    // glow contribution is what it always was (no-op on UNORM). The beam
+    // sample above is deliberately NOT clamped (overlapping beams may exceed
+    // 1.0); the final clamp below keeps the output equal for now.
+    result += clamp(texture(glowMap, vUV).rgb, 0.0, 1.0) * pc.params.x * pc.params.z;
     result += texture(trailMap, vUV).rgb * 0.25 * pc.params.y;
 
     // Star Wars Death Star explosion blowout. 0 for every other game, and this
@@ -128,7 +150,7 @@ void main()
         // Deliberately NOT gated by the threshold or the fence: glare washes
         // over everything, and it falls off with distance on its own.
         float vlod = kFuzzVeilLod + log2(float(textureSize(beamMap, 0).x) / 1024.0);
-        result += textureLod(beamMap, vUV, vlod).rgb * (kFuzzVeil * pc.params.w);
+        result += clamp(textureLod(beamMap, vUV, vlod).rgb, 0.0, 1.0) * (kFuzzVeil * pc.params.w);
     }
 
     // GL parity clamp (GL stores this sum into the RGBA8 fbo4, clamping at
@@ -136,5 +158,18 @@ void main()
     // CreateSwapchain prefers it precisely so raw byte output displays like
     // GL's non-sRGB window); a briefly-shipped srgb_to_linear cancellation
     // here targeted the old forced-SRGB swapchain and was removed with it.
-    FragColor = vec4(clamp(result, 0.0, 1.0), 1.0);
+    if (pc.tsize.w <= 0.0)
+    {
+        FragColor = vec4(clamp(result, 0.0, 1.0), 1.0);
+    }
+    else
+    {
+        // HDR: the highlight expansion applies to the finished sum (beam +
+        // glow + trail), gain from the brightest channel. k <= 1 = frame build: no expansion, and
+        // no clamp above 1.0 so overlapping beams keep their headroom.
+        vec3 hdr = max(result, vec3(0.0));
+        if (pc.tsize.z > 1.0)
+            hdr = expand_crt(hdr, pc.tsize.z, pc.tsize.w);
+        FragColor = vec4(hdr, 1.0);
+    }
 }

@@ -63,6 +63,21 @@ struct VectorPostVKCreateInfo
     // passes the same value to VectorDrawVKCreateInfo::ssaa so the AA feather
     // divide matches the RT density.
     int ssaa = 2;
+
+    // HDR: the beam, glow, pyramid and frame targets are R16G16B16A16_SFLOAT
+    // instead of RGBA8 (the trail accumulator stays RGBA8). Pass ctx.hdrActive.
+    // The chain must be rebuilt when that value changes (vulkan_renderer.cpp).
+    bool hdr = false;
+};
+
+// HDR highlight expansion state for the composite draws, filled per frame by
+// vulkan_renderer.cpp. active == false: every draw behaves exactly as in SDR.
+// k = hdr_beam_peak / hdr_paper_white; curve = hdr_beam_curve.
+struct VectorHdrVK
+{
+    bool  active = false;
+    float k      = 1.0f;
+    float curve  = 2.0f;
 };
 
 // Per-frame artwork layer set for the layered composite (the VK mirror of GL
@@ -170,7 +185,8 @@ public:
     void RecordComposite(VkContext& ctx, VkCommandBuffer cmd, uint32_t frameIndex,
                          float x0, float y0, float x1, float y1,
                          int vectrail, int vecglow,
-                         int targetW = 0, int targetH = 0);
+                         int targetW = 0, int targetH = 0,
+                         const VectorHdrVK& hdr = VectorHdrVK());
 
     // ---- Artwork path (GL final_render LAYER 5A/5B/5C/6 mirror) ----
     //
@@ -183,7 +199,8 @@ public:
     void RecordFrameBuild(VkContext& ctx, VkCommandBuffer cmd, uint32_t frameIndex,
                           float grL, float grR, float grB, float grT,
                           int vectrail, int vecglow,
-                          const VectorArtworkVK& art);
+                          const VectorArtworkVK& art,
+                          const VectorHdrVK& hdr = VectorHdrVK());
 
     // RecordCompositeLayered: the layered swapchain draw (GL LAYER 5C + 6):
     // backdrop (alpha blend, 0.5 tint, cabinet scaling) -> frame RT ONE/ONE
@@ -199,7 +216,8 @@ public:
                                 float lx, float lyUp, float vw, float vh,
                                 float grL, float grR, float grB, float grT,
                                 const VectorArtworkVK& art,
-                                int targetW = 0, int targetH = 0);
+                                int targetW = 0, int targetH = 0,
+                                const VectorHdrVK& hdr = VectorHdrVK());
 
     // RecordCabinetWings: backdrop then bezel only, into the open swapchain
     // pass through the letterbox map (lx/lyUp/vw/vh as RecordCompositeLayered).
@@ -215,7 +233,8 @@ public:
     bool BeamReady()  const { return beamReady_; }
     bool FrameReady() const { return frameReady_; }
     int  BeamDim()    const { return beamDim_; }
-    VkFormat BeamFormat() const { return rtBeam_.GetFormat(); }
+    VkFormat BeamFormat() const { return rtBeam_.GetFormat(); }   // the REAL beam RT format
+    bool     Hdr()        const { return hdr_; }                   // value Init was given
 
 private:
     // Worst case single-sampler draws per frame: trail(1) + glow downsamples
@@ -230,7 +249,7 @@ private:
     struct PostPush
     {
         float rect[4];    // x0,y0,x1,y1 target px, y-down
-        float tsize[4];   // target w,h,0,0
+        float tsize[4];   // target w,h, HDR k, HDR curve (z,w: see SetHdrPush)
         float uvrect[4];  // u,v at rect min; u,v at rect max
         float tint[4];
         float params[4];  // blur: w,h | multi: glowamt, usefb, useglow
@@ -258,6 +277,16 @@ private:
     VkPipeline   GetCompositePipeline(VkContext& ctx);
     bool         EnsureArtPipelines(VkContext& ctx, CompVariant& v);
 
+    // Encodes the HDR mode into push.tsize.zw for vector_post_multi_vk.frag
+    // and vector_post_tex_vk.frag (both decode it the same way):
+    //   hdr.active == false  -> z = w = 0: SDR behaviour (0..1 clamp).
+    //   active, expand false -> z = 1, w = curve: HDR, no expansion, values
+    //                           above 1.0 kept (frame build into float RT).
+    //   active, expand true  -> z = k (> 1), w = curve: HDR, expanded. k <= 1
+    //                           means no expansion (same as expand false).
+    // w > 0 is the HDR switch; z > 1 is the expansion switch.
+    static void SetHdrPush(PostPush& p, const VectorHdrVK& hdr, bool expand);
+
     // Records one quad with the single-sampler layout into the open pass.
     void DrawQuadS(VkContext& ctx, VkCommandBuffer cmd, uint32_t frameIndex,
                    VkPipeline pipeline, VkImageView view, VkSampler sampler,
@@ -272,6 +301,7 @@ private:
     bool initialized_ = false;
     int  beamDim_ = 2048;
     int  ssaa_ = 2;
+    bool hdr_  = false;
 
     std::string vertSpv_, blurSpv_, texSpv_, multiSpv_, dualDownSpv_, dualUpSpv_;
 
@@ -303,14 +333,17 @@ private:
     VkPipelineLayout pipeLayoutS_ = VK_NULL_HANDLE;
     VkPipelineLayout pipeLayoutM_ = VK_NULL_HANDLE;
 
-    VkPipeline pipeBlurCopy_  = VK_NULL_HANDLE;  // no blend, blur frag (RGBA8)
-    VkPipeline pipeBlurAccum_ = VK_NULL_HANDLE;  // SRC_ALPHA/ONE, blur frag (RGBA8)
-    VkPipeline pipeTrail_     = VK_NULL_HANDLE;  // ONE_MINUS_DST_COLOR/SRC_ALPHA, tex frag (RGBA8)
-    VkPipeline pipeDualDown_  = VK_NULL_HANDLE;  // no blend, dual-filter downsample (RGBA8)
-    VkPipeline pipeDualUp_    = VK_NULL_HANDLE;  // no blend, dual-filter upsample (RGBA8)
+    // Offscreen pipelines are fixed-format, built at Init against the target
+    // they draw into: RGBA8 in SDR, R16G16B16A16_SFLOAT in HDR - except
+    // pipeTrail_, which is RGBA8 in both (rtTrail_ stays 8-bit).
+    VkPipeline pipeBlurCopy_  = VK_NULL_HANDLE;  // no blend, blur frag (glow targets)
+    VkPipeline pipeBlurAccum_ = VK_NULL_HANDLE;  // SRC_ALPHA/ONE, blur frag (glow targets)
+    VkPipeline pipeTrail_     = VK_NULL_HANDLE;  // ONE_MINUS_DST_COLOR/SRC_ALPHA, tex frag (always RGBA8)
+    VkPipeline pipeDualDown_  = VK_NULL_HANDLE;  // no blend, dual-filter downsample (pyramid)
+    VkPipeline pipeDualUp_    = VK_NULL_HANDLE;  // no blend, dual-filter upsample (pyramid / glow B)
     VkPipeline pipeTexAdd_    = VK_NULL_HANDLE;  // SRC_ALPHA/ONE, tex frag - pyramid core/tail re-inject
 
-    // Frame-RT (RGBA8) artwork pipelines, fixed-format, built at Init.
+    // Frame-RT artwork pipelines (RGBA8 in SDR, float in HDR), built at Init.
     VkPipeline pipeFrameMulti_ = VK_NULL_HANDLE; // multi frag, ONE/ONE (CRT into frame RT)
     VkPipeline pipeArtMul_     = VK_NULL_HANDLE; // tex frag, DST_COLOR/SRC_COLOR (overlay1)
     VkPipeline pipeArtMulBW_   = VK_NULL_HANDLE; // tex frag, DST_COLOR/ZERO (overlay1, RASTER_BW)

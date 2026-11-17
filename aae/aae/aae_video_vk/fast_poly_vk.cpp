@@ -435,7 +435,7 @@ bool FpolyVK::Init(VkContext& ctx, int surfaceW, int surfaceH, const FastPolyVKC
     // straight to the swapchain. A caller drawing into an offscreen
     // RenderTargetVK passes that target's format instead.
     const VkFormat pipelineColorFormat =
-        (m_colorFormat != VK_FORMAT_UNDEFINED) ? m_colorFormat : ctx.swapchainFormat;
+        (m_colorFormat != VK_FORMAT_UNDEFINED) ? m_colorFormat : ctx.frameFormat;
 
     VkPipelineRenderingCreateInfo pr{ VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO };
     pr.colorAttachmentCount = 1;

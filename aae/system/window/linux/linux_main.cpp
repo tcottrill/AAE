@@ -25,6 +25,7 @@
 #include "joystick.h"
 #include "linux/evdev_input.h"
 #include "aae_mame_driver.h"   // the global `done` - ESC sets it, see the loop
+#include "process_result.h"    // exit codes + stderr diagnostics for a launching frontend
 
 #include <X11/Xlib.h>   // screen-size probe below; the window owns its own Display
 #include <X11/Xatom.h>  // XA_CARDINAL - the _NET_WORKAREA read below
@@ -109,6 +110,11 @@ void WindowUtil_UpdateAspect(float gameAspect)
 void allegro_message(const char* title, const char* message)
 {
 	LOG_ERROR("%s: %s", title ? title : "MESSAGE", message ? message : "");
+	if (procres_frontend_mode())
+	{
+		procres_message(title ? title : "MESSAGE", message ? message : "");
+		return;
+	}
 	fprintf(stderr, "%s: %s\n", title ? title : "MESSAGE", message ? message : "");
 }
 
@@ -372,6 +378,11 @@ static void SizeFromWayland(bool explicitSize, int cfgScreenW, int cfgScreenH)
 
 int main(int argc, char** argv)
 {
+	// Frontend mode is decided before anything can fail: -frontend, or an
+	// explicit game on the command line (how current frontends launch us).
+	procres_set_frontend_mode(aae_cmdline_has(argc, argv, "-frontend") ||
+	                          aae_find_game_arg(argc, argv) >= 0);
+
 	Log::open("systemlog.txt");
 	// Build stamp. Without one, "am I running the build you just gave me?"
 	// could only be answered by grepping the binary for strings that happened
@@ -519,8 +530,9 @@ int main(int argc, char** argv)
 	if (!windowCreated) {
 		if (!g_window.Create(g_windowSetup)) {
 			LOG_ERROR("Window creation failed - cannot continue");
+			procres_fatal(AAE_EXIT_DEVICE, "AAE: window creation failed (no X11 or Wayland display could be opened)");
 			Log::close();
-			return 1;
+			return procres_finish();
 		}
 		g_activeWindow = &g_window;
 	}
@@ -549,9 +561,10 @@ int main(int argc, char** argv)
 		// Core profile, matching winmain.cpp's InitOpenGLContext(false, false, true).
 		if (!InitOpenGLContext(false, false, true)) {
 			LOG_ERROR("OpenGL context creation failed - cannot continue");
+			procres_fatal(AAE_EXIT_DEVICE, "AAE: OpenGL initialization failed (context creation failed; OpenGL 3.3 is required)");
 			g_activeWindow->Destroy();
 			Log::close();
-			return 1;
+			return procres_finish();
 		}
 	} else {
 		LOG_INFO("Renderer=vulkan: skipping GL context creation (window layer)");
@@ -590,6 +603,23 @@ int main(int argc, char** argv)
 	// links that backend but not iniFile.cpp, so the reference would not link.
 	osd_led_service_start();
 
+	// [input] joystick_ignore must be handed down BEFORE install_joystick() scans
+	// for pads. The ini is readable here (get_config_string reads the file
+	// directly, as the renderer lookup above already relies on); only the
+	// config struct is filled later. The backend cannot read the ini itself:
+	// aae_inputtest links it without iniFile.cpp.
+	{
+		// std::string overload (string literals would pick the char* one, which
+		// the caller must delete[]).
+		const std::string ignore = get_config_string(
+			std::string("input"), std::string("joystick_ignore"), std::string());
+		joystick_set_ignore_list(ignore.c_str());
+
+		// Steam sets these to the physical pads it has virtualized (see
+		// joystick.h); Flatpak passes the environment through.
+		joystick_set_steam_hide_env(getenv("SDL_GAMECONTROLLER_IGNORE_DEVICES"),
+		                            getenv("SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT"));
+	}
 	install_joystick();
 
 	emulator_init(argc, argv);
@@ -611,7 +641,9 @@ int main(int argc, char** argv)
 	double   lastHitchAt = -1.0;
 	int64_t  hitchGaps   = 0;
 
-	bool running = true;
+	// emulator_init can finish with done already set and no game started (unknown
+	// game, bad option, failed start). emulator_run() must not run then.
+	bool running = !done;
 	while (running) {
 		// Window events first. PumpEvents returns false on WM_DELETE_WINDOW (X11),
 		// a close request or a lost connection (Wayland).
@@ -698,6 +730,8 @@ int main(int argc, char** argv)
 	LOG_INFO("Shutdown: complete");
 	Log::close();
 
-	LOG_INFO("AAE exiting");
-	return 0;
+	// The process result: 0 for a normal quit, the recorded code otherwise.
+	// Written to fd 2 (inherited from the launcher, no TTY needed). Does not
+	// log, so it is fine after Log::close().
+	return procres_finish();
 }

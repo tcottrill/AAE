@@ -48,6 +48,7 @@
 #include "win32/win32_private.h"
 #include "win32/win32_window.h"
 #include "aae_emulator.h"
+#include "process_result.h"
 #include "resource.h"
 #include "joystick.h"
 #include "sys_timer.h"
@@ -764,11 +765,8 @@ WindowSetup GenerateFinalWindowSetup(bool forceWindowed = false)
 	// (LoadWindowIniConfig and ParseCommandLineArgs both write to config.startingMonitor)
 	targetMonitor = Win32_GetStartingMonitorRect(config);
 
-#ifndef WIN7BUILD
-	if (config.dpiAware) {
-		EnableDPIAwareness(); // from win10_win11_required_code
-	}
-#endif
+	// EnableDPIAwareness() moved to the top of wWinMain: it must run before the
+	// first monitor query, and only succeeds once per process.
 
 	WindowSetup finalSetup;
 	finalSetup.aspectRatio = config.aspectRatio;
@@ -862,7 +860,10 @@ HWND CreateConfiguredWindow(HINSTANCE hInstance, const wchar_t* className, const
 
 	if (!hwnd)
 	{
-		MessageBoxW(nullptr, L"Failed to create window", title, MB_OK | MB_ICONERROR);
+		LOG_ERROR("CreateWindowExW failed (%lu)", GetLastError());
+		procres_fatal(AAE_EXIT_DEVICE, "AAE: window creation failed (error %lu)", GetLastError());
+		if (!procres_frontend_mode())
+			MessageBoxW(nullptr, L"Failed to create window", title, MB_OK | MB_ICONERROR);
 		return nullptr;
 	}
 
@@ -984,6 +985,61 @@ const char* const* Win32PresentSurface::RequiredVkInstanceExtensions(uint32_t* c
 	static const char* kExtensions[] = { "VK_KHR_surface", "VK_KHR_win32_surface" };
 	if (count) *count = 2;
 	return kExtensions;
+}
+
+#ifndef WIN7BUILD
+#include <dxgi1_6.h>
+#pragma comment(lib, "dxgi.lib")
+#endif
+
+// Reports whether the monitor under the window has HDR on. The DXGI output is
+// chosen ONLY by matching its HMONITOR to the window's monitor (never by
+// enumeration index, which can reshuffle). Any failure returns false.
+bool Win32PresentSurface::QueryDisplayHdr(DisplayHdrInfo* out) const
+{
+#ifdef WIN7BUILD
+	(void)out;
+	return false;
+#else
+	if (!out || !g_hWnd) return false;
+	HMONITOR mon = MonitorFromWindow(g_hWnd, MONITOR_DEFAULTTONEAREST);
+	if (!mon) return false;
+
+	IDXGIFactory1* factory = nullptr;
+	if (FAILED(CreateDXGIFactory1(__uuidof(IDXGIFactory1), (void**)&factory)) || !factory)
+		return false;
+
+	bool found = false;
+	for (UINT ai = 0; !found; ++ai)
+	{
+		IDXGIAdapter1* adapter = nullptr;
+		if (factory->EnumAdapters1(ai, &adapter) == DXGI_ERROR_NOT_FOUND || !adapter)
+			break;
+		for (UINT oi = 0; !found; ++oi)
+		{
+			IDXGIOutput* output = nullptr;
+			if (adapter->EnumOutputs(oi, &output) == DXGI_ERROR_NOT_FOUND || !output)
+				break;
+			IDXGIOutput6* output6 = nullptr;
+			if (SUCCEEDED(output->QueryInterface(__uuidof(IDXGIOutput6), (void**)&output6)) && output6)
+			{
+				DXGI_OUTPUT_DESC1 desc{};
+				if (SUCCEEDED(output6->GetDesc1(&desc)) && desc.Monitor == mon)
+				{
+					out->known = true;
+					out->hdrEnabled = (desc.ColorSpace == DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020);
+					out->maxNits = desc.MaxLuminance;
+					found = true;
+				}
+				output6->Release();
+			}
+			output->Release();
+		}
+		adapter->Release();
+	}
+	factory->Release();
+	return found;
+#endif
 }
 
 bool Win32PresentSurface::CreateVkSurface(void* instance, void* outSurface)
@@ -1451,6 +1507,16 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance,
 	_In_ int nCmdShow
 )
 {
+	// Frontend mode is decided before anything can fail or show a dialog:
+	// -frontend, or an explicit game on the command line (how current
+	// frontends launch us). The UTF-8 argv is built once, here, and reused
+	// for emulator_init below.
+	int argc = 0;
+	char** argv = nullptr;
+	BuildUTF8Args(argc, argv);
+	procres_set_frontend_mode(aae_cmdline_has(argc, argv, "-frontend") ||
+	                          aae_find_game_arg(argc, argv) >= 0);
+
 	std::wstring temppath = getpathU(0, 0);
 
 	// Initialize Logging and Directory EARLY so initialization doesn't fail
@@ -1459,6 +1525,16 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance,
 	if (!SetCurrentDirectory(temppath.c_str())) {
 		LOG_ERROR("SetCurrentDirectory failed (%lu)", GetLastError());
 	}
+
+#ifndef WIN7BUILD
+	// DPI awareness must be on BEFORE the first monitor query (monsel::), or the
+	// monitor rects are DPI-virtualised and -monitor N lands on the wrong display.
+	// Same ini file and key as LoadWindowIniConfig uses for config.dpiAware.
+	SetIniFile(getpathM(0, "aae.ini").c_str());
+	if (get_config_bool("window", "dpi_aware", true)) {
+		EnableDPIAwareness(); // from win10_win11_required_code
+	}
+#endif
 
 	const wchar_t CLASS_NAME[] = L"OpenGLWindowClass";
 
@@ -1504,7 +1580,29 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance,
 	// Step 3: Create window and show it
 	// -------------------------------------------------------------------------
 	g_hWnd = CreateConfiguredWindow(hInstance, CLASS_NAME, L"AAE Emulator", g_windowSetup);
-	if (!g_hWnd) return -1;
+
+	// Guarded teardown shared by the early failure exits and the normal exit:
+	// only what was actually brought up is undone, in reverse order.
+	bool did_access = false, did_led = false, did_joystick = false;
+	bool did_rawinput = false, did_timer = false, did_emulator = false;
+	auto shutdown_all = [&]() {
+		if (did_emulator) emulator_end();
+		if (did_led) osd_led_service_stop();
+		if (did_joystick && !did_emulator) remove_joystick();   // normal exit never did
+		if (did_access) RestoreAccessibilityPopups();
+		if (did_timer) TimerShutdown();
+		if (IsOpenGLInitialized()) DeleteGLContext();
+		if (did_rawinput) RawInput_Shutdown();
+		if (!did_emulator && g_hWnd) { DestroyWindow(g_hWnd); g_hWnd = nullptr; }
+		LogClose();   // procres_finish does not log, so it may run after this
+	};
+
+	if (!g_hWnd)
+	{
+		procres_fatal(AAE_EXIT_DEVICE, "AAE: window creation failed");
+		shutdown_all();
+		return procres_finish();
+	}
 
 	SendMessage(g_hWnd, WM_SETICON, ICON_SMALL, (LPARAM)hIcon);
 	SendMessage(g_hWnd, WM_SETICON, ICON_BIG,   (LPARAM)hIcon);
@@ -1515,12 +1613,16 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance,
 	// instead of an uninitialized white client area.
 
 	SaveAndDisableAccessibilityPopups();
+	did_access = true;
 
 	// Register Raw Input devices (keyboard + mouse)
 	if (FAILED(RawInput_Initialize(g_hWnd))) {
 		LOG_ERROR("Failed to initialize Raw Input");
-		return false;
+		procres_fatal(AAE_EXIT_DEVICE, "AAE: input initialization failed (Raw Input could not be registered)");
+		shutdown_all();
+		return procres_finish();
 	}
+	did_rawinput = true;
 
 	// Start keyboard LED service (pushes LED states to all KeyboardClass
 	// devices). Gated by [main] led_service in aae.ini: arcade keyboard
@@ -1531,10 +1633,21 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance,
 	// cabinet installs with an encoder. Gating the start call is sufficient:
 	// without the service thread there is no enumeration, no cached handles,
 	// and osd_set_leds() only stores a mask it never applies.
+	did_led = true;   // osd_led_service_stop is safe whether or not it was started
 	if (get_config_int("main", "led_service", 1) != 0)
 		osd_led_service_start();
 	else
 		LOG_INFO("LED service disabled via aae.ini [main] led_service=0");
+
+	// [input] joystick_ignore (DirectInput devices; see joystick.h). Must be set
+	// before install_joystick() enumerates.
+	{
+		// std::string overload (string literals would pick the char* one, which
+		// the caller must delete[]).
+		const std::string ignore = get_config_string(
+			std::string("input"), std::string("joystick_ignore"), std::string());
+		joystick_set_ignore_list(ignore.c_str());
+	}
 
 	if (!install_joystick()) {
 		LOG_INFO("Win32 joystick initialized: %d detected", num_joysticks);
@@ -1542,6 +1655,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance,
 	else {
 		LOG_ERROR("No joysticks detected or initialization failed");
 	}
+	did_joystick = true;
 
 	const bool wantVulkan = EarlyRendererIsVulkan();
 
@@ -1552,7 +1666,10 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance,
 		// no client arrays, core FBO calls, all #version 330 core shaders).
 		if (!InitOpenGLContext(false, false, true)) {
 			LOG_ERROR("Failed to initialize OpenGL");
-			return -1;
+			// InitOpenGLContext normally recorded the specific cause already.
+			procres_fatal(AAE_EXIT_DEVICE, "AAE: OpenGL initialization failed");
+			shutdown_all();
+			return procres_finish();
 		}
 
 		// Present one black frame into the front buffer *before* the window is
@@ -1753,13 +1870,10 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance,
 
 	// This sets the High Performance timer.
 	TimerInit();
+	did_timer = true;
 
-	int argc = 0;
-	char** argv = nullptr;
-
-	BuildUTF8Args(argc, argv);
-
-	// Init Emulator Here.
+	// Init Emulator Here (argv was built at the top of this function).
+	did_emulator = true;
 	emulator_init(argc, argv);
 
 	// -------------------------------------------------------------------------
@@ -1825,15 +1939,9 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance,
 	}
 
 exit_main:
-	// Shutdown Emulator Here
-	emulator_end();
-	// Stop keyboard LED service thread
-	osd_led_service_stop();
-	RestoreAccessibilityPopups();
-	TimerShutdown();
-	if (IsOpenGLInitialized())
-		DeleteGLContext();
-	RawInput_Shutdown();
-	LogClose();
-	return static_cast<int>(msg.wParam);
+	// Shutdown Emulator, LED service, accessibility, timer, GL, raw input, log.
+	shutdown_all();
+	// The process result, never WM_QUIT's wParam: a recorded fatal must not be
+	// masked, and a normal quit is 0.
+	return procres_finish();
 }

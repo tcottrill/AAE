@@ -33,6 +33,7 @@
     <ClCompile Include="aae\machine_state.cpp" />
     <ClCompile Include="aae\memory.cpp" />
     <ClCompile Include="aae\os_input.cpp" />
+    <ClCompile Include="aae\process_result.cpp" />
     <ClCompile Include="aae\cpu_code\ccpu.cpp">
       <Filter>cpu_code</Filter>
     </ClCompile>
@@ -357,6 +358,7 @@
     <ClInclude Include="aae\inptport.h" />
     <ClInclude Include="aae\memory.h" />
     <ClInclude Include="aae\os_input.h" />
+    <ClInclude Include="aae\process_result.h" />
     <ClInclude Include="aae\cpu_code\ccpu.h">
       <Filter>cpu_code</Filter>
     </ClInclude>

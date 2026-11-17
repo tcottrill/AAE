@@ -170,6 +170,7 @@
     <ClCompile Include="aae\machine_state.cpp" />
     <ClCompile Include="aae\memory.cpp" />
     <ClCompile Include="aae\os_input.cpp" />
+    <ClCompile Include="aae\process_result.cpp" />
     <ClCompile Include="aae\sndhrdwr\c012294_interface.cpp" />
     <ClCompile Include="aae\sndhrdwr\c012294.c" />
     <ClCompile Include="aae\sndhrdwr\astrocade_sound.cpp" />
@@ -280,6 +281,7 @@
     <ClInclude Include="aae\machine\starwars_machine.h" />
     <ClInclude Include="aae\memory.h" />
     <ClInclude Include="aae\os_input.h" />
+    <ClInclude Include="aae\process_result.h" />
     <ClInclude Include="aae\sndhrdwr\c012294_interface.h" />
     <ClInclude Include="aae\sndhrdwr\c012294.h" />
     <ClInclude Include="aae\sndhrdwr\astrocade_sound.h" />

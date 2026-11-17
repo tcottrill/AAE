@@ -3,6 +3,7 @@
 // ASCII-only comments.
 
 #include "sys_vk.h"
+#include "hdr_output_vk.h"
 #include "sys_window.h"
 #include "sys_log.h"
 
@@ -171,6 +172,10 @@ static bool PickPhysicalDevice(VkContext& ctx)
 	return true;
 }
 
+// HDR scene image + encode pass. Exists (Init'ed) only while ctx.hdrActive;
+// created by CreateSwapchain, released by DestroySwapchain.
+static HdrOutputVK s_hdr;
+
 // -----------------------------------------------------------------------------
 // Swapchain creation
 // -----------------------------------------------------------------------------
@@ -234,6 +239,89 @@ static bool CreateSwapchain(VkContext& ctx)
 	}
 
 	ctx.swapchainFormat = chosen.format;
+	ctx.swapchainColorSpace = chosen.colorSpace;
+	ctx.frameFormat = ctx.swapchainFormat;
+	ctx.hdrActive = false;
+
+	// HDR detection. Re-runs on every swapchain creation. Request numbers: 0
+	// off, 1 auto, 2 on. When HDR is available, hdrWanted/hdrFmt carry the
+	// 10-bit HDR10 surface format; the scene image is set up after the extent
+	// is known (below) and only then does hdrActive become true.
+	bool hdrWanted = false;
+	VkSurfaceFormatKHR hdrFmt{};
+	{
+		const char* reason = "";
+		bool avail = false;
+		bool hdr10Listed = false;
+		// Prefer A2B10G10R10 over A2R10G10B10 (either is a 10-bit UNORM surface
+		// carrying PQ-encoded BT.2020).
+		for (auto& f : fmts)
+		{
+			if (f.colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT &&
+				f.format == VK_FORMAT_A2B10G10R10_UNORM_PACK32)
+			{
+				hdrFmt = f;
+				hdr10Listed = true;
+				break;
+			}
+		}
+		if (!hdr10Listed)
+		{
+			for (auto& f : fmts)
+			{
+				if (f.colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT &&
+					f.format == VK_FORMAT_A2R10G10B10_UNORM_PACK32)
+				{
+					hdrFmt = f;
+					hdr10Listed = true;
+					break;
+				}
+			}
+		}
+
+		bool fmtOk = false;
+		if (hdr10Listed && ctx.vkGetPhysicalDeviceFormatProperties_)
+		{
+			VkFormatProperties fp{};
+			ctx.vkGetPhysicalDeviceFormatProperties_(ctx.phys, VK_FORMAT_R16G16B16A16_SFLOAT, &fp);
+			const VkFormatFeatureFlags need =
+				VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT |
+				VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BLEND_BIT |
+				VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT |
+				VK_FORMAT_FEATURE_BLIT_SRC_BIT |
+				VK_FORMAT_FEATURE_BLIT_DST_BIT;
+			fmtOk = (fp.optimalTilingFeatures & need) == need;
+		}
+
+		ctx.displayMaxNits = 0.0f;
+		DisplayHdrInfo di{ false, false, 0.0f };
+		bool diKnown = false;
+		if (ctx.present)
+			diKnown = ctx.present->QueryDisplayHdr(&di) && di.known;
+		if (diKnown)
+			ctx.displayMaxNits = di.maxNits;
+
+		if (ctx.hdrRequest == 0)
+			reason = "HDR off in settings";
+		else if (!hdr10Listed)
+			reason = "no HDR10 surface format";
+		else if (!fmtOk)
+			reason = "RGBA16F lacks required features";
+		else if (ctx.hdrRequest == 1 && diKnown && !di.hdrEnabled)
+			reason = "display HDR is off";
+		else
+		{
+			avail = true;
+			reason = (ctx.hdrRequest == 1 && !diKnown) ? "HDR10 surface, display state unknown"
+				: (ctx.hdrRequest == 1 ? "HDR10 surface, display HDR on" : "HDR10 surface");
+		}
+		ctx.hdrAvailable = avail;
+		hdrWanted = avail;
+
+		static const char* const kReq[] = { "off", "auto", "on" };
+		LOG_INFO("CreateSwapchain: HDR %s (%s), request=%s",
+			avail ? "available" : "unavailable", reason, kReq[ctx.hdrRequest]);
+	}
 
 	LOG_INFO("CreateSwapchain: using %s swapchain format",
 		(chosen.format == VK_FORMAT_B8G8R8A8_UNORM || chosen.format == VK_FORMAT_R8G8B8A8_UNORM)
@@ -281,6 +369,31 @@ static bool CreateSwapchain(VkContext& ctx)
 
 	LOG_INFO("CreateSwapchain: extent=%ux%u (caps.currentExtent=%ux%u)",
 		extent.width, extent.height, caps.currentExtent.width, caps.currentExtent.height);
+
+	// HDR output: switch the swapchain to the 10-bit HDR10 format and build the
+	// float scene image plus the encode pass. Any failure falls back to the SDR
+	// format chosen above (anti-goal: never present a wrong picture).
+	if (hdrWanted)
+	{
+		const VkFormat sdrFormat = ctx.swapchainFormat;
+		const VkColorSpaceKHR sdrColorSpace = ctx.swapchainColorSpace;
+		ctx.swapchainFormat = hdrFmt.format;
+		ctx.swapchainColorSpace = hdrFmt.colorSpace;
+		if (s_hdr.Init(ctx))
+		{
+			chosen = hdrFmt;
+			ctx.frameFormat = HdrOutputVK::kSceneFormat;
+			ctx.hdrActive = true;
+			LOG_INFO("CreateSwapchain: HDR output active (swapchain format=%d, scene format=%d, "
+				"displayMaxNits=%.0f)", (int)hdrFmt.format, (int)ctx.frameFormat, ctx.displayMaxNits);
+		}
+		else
+		{
+			ctx.swapchainFormat = sdrFormat;
+			ctx.swapchainColorSpace = sdrColorSpace;
+			LOG_ERROR("CreateSwapchain: HDR scene setup failed; falling back to SDR");
+		}
+	}
 
 	// Present mode. FIFO is always available and is the vsync choice. With
 	// vsync off, prefer MAILBOX (no tearing, low latency), then IMMEDIATE.
@@ -345,6 +458,27 @@ static bool CreateSwapchain(VkContext& ctx)
 	if (ctx.vkCreateSwapchainKHR_(ctx.device, &sci, nullptr, &ctx.swapchain) != VK_SUCCESS)
 		return false;
 
+	// Mastering metadata (optional, VK_EXT_hdr_metadata): BT.2020 primaries, D65
+	// white, max luminance = beam peak (capped at the display maximum when
+	// known). Skipped silently when the extension is not on the device.
+	if (ctx.hdrActive && ctx.vkSetHdrMetadataEXT_)
+	{
+		float peak = ctx.hdrBeamPeak;
+		if (ctx.displayMaxNits > 0.0f && peak > ctx.displayMaxNits)
+			peak = ctx.displayMaxNits;
+
+		VkHdrMetadataEXT md{ VK_STRUCTURE_TYPE_HDR_METADATA_EXT };
+		md.displayPrimaryRed = { 0.708f, 0.292f };
+		md.displayPrimaryGreen = { 0.170f, 0.797f };
+		md.displayPrimaryBlue = { 0.131f, 0.046f };
+		md.whitePoint = { 0.3127f, 0.3290f };
+		md.maxLuminance = peak;
+		md.minLuminance = 0.0f;
+		md.maxContentLightLevel = peak;
+		md.maxFrameAverageLightLevel = ctx.hdrPaperWhite;
+		ctx.vkSetHdrMetadataEXT_(ctx.device, 1, &ctx.swapchain, &md);
+	}
+
 	// Images
 	uint32_t scCount = 0;
 	if (ctx.vkGetSwapchainImagesKHR_(ctx.device, ctx.swapchain, &scCount, nullptr) != VK_SUCCESS || scCount == 0)
@@ -391,6 +525,10 @@ static bool CreateSwapchain(VkContext& ctx)
 
 static void DestroySwapchain(VkContext& ctx)
 {
+	// Scene image, encode pipeline and descriptor (no-op when HDR was not
+	// active). Callers have already drained the device.
+	s_hdr.Shutdown(ctx);
+
 	for (auto s : ctx.renderFinished)
 	{
 		if (s)
@@ -460,7 +598,17 @@ bool VK_Init(VkContext& ctx, IPresentSurface& present, bool enableValidation, bo
 	// members (swapchainImages, swapchainViews, cmdBuffers, renderFinished),
 	// and memset over a live vector is undefined behavior. Assignment runs
 	// the proper destructors/constructors and works on a reused context too.
+	// hdrRequest is set by VK_SetHdrRequest BEFORE this call, so it must
+	// survive the reset.
+	// hdrPaperWhite / hdrBeamPeak (VK_SetHdrLevels) likewise survive, so the
+	// first swapchain's mastering metadata uses the configured peak.
+	const int savedHdrRequest = ctx.hdrRequest;
+	const float savedPaperWhite = ctx.hdrPaperWhite;
+	const float savedBeamPeak = ctx.hdrBeamPeak;
 	ctx = VkContext{};
+	ctx.hdrRequest = savedHdrRequest;
+	ctx.hdrPaperWhite = savedPaperWhite;
+	ctx.hdrBeamPeak = savedBeamPeak;
 	ctx.present = &present;
 	ctx.vsync = vsync;
 
@@ -568,6 +716,23 @@ bool VK_Init(VkContext& ctx, IPresentSurface& present, bool enableValidation, bo
 		else
 		{
 			LOG_INFO("VK_Init: validation requested but VK_LAYER_KHRONOS_validation is not installed");
+		}
+	}
+
+	// Optional: VK_EXT_swapchain_colorspace exposes the HDR10 surface formats.
+	// Pushed only when the loader reports it; nothing depends on it being there.
+	{
+		PFN_vkEnumerateInstanceExtensionProperties enumExt =
+			(PFN_vkEnumerateInstanceExtensionProperties)ctx.vkGetInstanceProcAddr_(nullptr, "vkEnumerateInstanceExtensionProperties");
+		uint32_t n = 0;
+		if (enumExt && enumExt(nullptr, &n, nullptr) == VK_SUCCESS && n > 0)
+		{
+			std::vector<VkExtensionProperties> allExts(n);
+			if (enumExt(nullptr, &n, allExts.data()) == VK_SUCCESS &&
+				HasExtension(allExts, VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME))
+			{
+				instExts.push_back(VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME);
+			}
 		}
 	}
 
@@ -719,10 +884,27 @@ bool VK_Init(VkContext& ctx, IPresentSurface& present, bool enableValidation, bo
 	qci.queueCount = 1;
 	qci.pQueuePriorities = &prio;
 
-	const char* devExts[] =
+	std::vector<const char*> devExts;
+	devExts.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+
+	// Optional device extension: VK_EXT_hdr_metadata (mastering metadata for
+	// HDR10). Enabled only when the device lists it.
+	bool hdrMetadataEnabled = false;
 	{
-		VK_KHR_SWAPCHAIN_EXTENSION_NAME
-	};
+		PFN_vkEnumerateDeviceExtensionProperties enumDevExt =
+			(PFN_vkEnumerateDeviceExtensionProperties)GI(ctx, "vkEnumerateDeviceExtensionProperties");
+		uint32_t n = 0;
+		if (enumDevExt && enumDevExt(ctx.phys, nullptr, &n, nullptr) == VK_SUCCESS && n > 0)
+		{
+			std::vector<VkExtensionProperties> devAll(n);
+			if (enumDevExt(ctx.phys, nullptr, &n, devAll.data()) == VK_SUCCESS &&
+				HasExtension(devAll, VK_EXT_HDR_METADATA_EXTENSION_NAME))
+			{
+				devExts.push_back(VK_EXT_HDR_METADATA_EXTENSION_NAME);
+				hdrMetadataEnabled = true;
+			}
+		}
+	}
 
 	// Vulkan 1.3 features the engine records with. BOTH must be explicitly
 	// enabled: using vkCmdPipelineBarrier2 / vkQueueSubmit2 without the
@@ -739,8 +921,8 @@ bool VK_Init(VkContext& ctx, IPresentSurface& present, bool enableValidation, bo
 	dci.pNext = &dr;
 	dci.queueCreateInfoCount = 1;
 	dci.pQueueCreateInfos = &qci;
-	dci.enabledExtensionCount = (uint32_t)(sizeof(devExts) / sizeof(devExts[0]));
-	dci.ppEnabledExtensionNames = devExts;
+	dci.enabledExtensionCount = (uint32_t)devExts.size();
+	dci.ppEnabledExtensionNames = devExts.data();
 
 	LOG_INFO("VK_Init: loading vkCreateDevice");
 
@@ -977,6 +1159,10 @@ bool VK_Init(VkContext& ctx, IPresentSurface& present, bool enableValidation, bo
 		LOG_INFO("VK_Init: timestamp query entry points incomplete; GPU profiler unavailable");
 	}
 
+	// Optional (see sys_vk.h): HDR mastering metadata. NOT in required[].
+	if (hdrMetadataEnabled)
+		ctx.vkSetHdrMetadataEXT_ = (PFN_vkSetHdrMetadataEXT)GD(ctx, "vkSetHdrMetadataEXT");
+
 	ctx.vkCreatePipelineCache_ = (PFN_vkCreatePipelineCache)ctx.vkGetDeviceProcAddr_(ctx.device, "vkCreatePipelineCache");
 	if (!ctx.vkCreatePipelineCache_) LOG_ERROR("VK_Init: vkCreatePipelineCache_ is NULL");
 	ctx.vkDestroyPipelineCache_ = (PFN_vkDestroyPipelineCache)ctx.vkGetDeviceProcAddr_(ctx.device, "vkDestroyPipelineCache");
@@ -1187,6 +1373,17 @@ bool VK_Init(VkContext& ctx, IPresentSurface& present, bool enableValidation, bo
 
 	LOG_INFO("VK_Init: success");
 	return true;
+}
+
+void VK_SetHdrRequest(VkContext& ctx, int mode)
+{
+	ctx.hdrRequest = (mode < 0) ? 0 : (mode > 2 ? 2 : mode);
+}
+
+void VK_SetHdrLevels(VkContext& ctx, float paperWhite, float beamPeak)
+{
+	ctx.hdrPaperWhite = paperWhite;
+	ctx.hdrBeamPeak = beamPeak;
 }
 
 void VK_Shutdown(VkContext& ctx)
@@ -1525,14 +1722,59 @@ void VK_EnsureFramePass(VkContext& ctx, VkCommandBuffer cmd)
 
 	const bool firstOpen = !s_framePassEverOpened;
 
+	// HDR: the frame draws into the float scene image instead of the
+	// swapchain image (which only the encode pass in VK_EndFrame writes).
+	VkImageView passView = s_frameSwapView;
+	VkFormat    passFormat = ctx.swapchainFormat;
+	if (ctx.hdrActive)
+	{
+		if (!s_hdr.IsValid())
+		{
+			LOG_ERROR("VK_EnsureFramePass: HDR active but no scene image; ignoring");
+			return;
+		}
+		passView = s_hdr.SceneView();
+		passFormat = ctx.frameFormat;
+	}
+
 	if (firstOpen)
 	{
-		// Was in VK_BeginFrame. The image is fresh from vkAcquireNextImage,
-		// so UNDEFINED is the correct old layout (we do not need its
-		// contents - the clear below defines them).
-		CmdSwapchainBarrier(ctx, cmd, s_frameSwapImage,
-			VK_IMAGE_LAYOUT_UNDEFINED,
-			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+		if (ctx.hdrActive)
+		{
+			// Scene image: contents are discarded (the clear defines them).
+			// The source scope covers the previous frame's encode-pass read
+			// (write-after-read) and its attachment writes (write-after-
+			// write); both are earlier in submission order on this queue.
+			VkImageMemoryBarrier2 b{ VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2 };
+			b.srcStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT |
+				VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+			b.srcAccessMask = 0;
+			b.dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+			b.dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT |
+				VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT;
+			b.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+			b.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+			b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			b.image = s_hdr.SceneImage();
+			b.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			b.subresourceRange.levelCount = 1;
+			b.subresourceRange.layerCount = 1;
+
+			VkDependencyInfo dep{ VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
+			dep.imageMemoryBarrierCount = 1;
+			dep.pImageMemoryBarriers = &b;
+			ctx.vkCmdPipelineBarrier2_(cmd, &dep);
+		}
+		else
+		{
+			// Was in VK_BeginFrame. The image is fresh from vkAcquireNextImage,
+			// so UNDEFINED is the correct old layout (we do not need its
+			// contents - the clear below defines them).
+			CmdSwapchainBarrier(ctx, cmd, s_frameSwapImage,
+				VK_IMAGE_LAYOUT_UNDEFINED,
+				VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+		}
 	}
 
 	// Black clear: game pixels are the proof of rendering, and the letterbox
@@ -1544,7 +1786,7 @@ void VK_EnsureFramePass(VkContext& ctx, VkCommandBuffer cmd)
 	clearVal.color.float32[3] = 1.0f;
 
 	VkRenderingAttachmentInfo colorAtt{ VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
-	colorAtt.imageView = s_frameSwapView;
+	colorAtt.imageView = passView;
 	colorAtt.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 	colorAtt.loadOp = firstOpen ? VK_ATTACHMENT_LOAD_OP_CLEAR
 	                            : VK_ATTACHMENT_LOAD_OP_LOAD;
@@ -1561,7 +1803,7 @@ void VK_EnsureFramePass(VkContext& ctx, VkCommandBuffer cmd)
 	ctx.vkCmdBeginRendering_(cmd, &ri);
 	s_framePassOpen = true;
 	s_framePassEverOpened = true;
-	ctx.activeColorFormat = ctx.swapchainFormat;
+	ctx.activeColorFormat = passFormat;
 
 	// Default full-surface viewport/scissor, exactly what VK_BeginFrame used
 	// to establish - subsystems recording after this inherit it unless they
@@ -1713,6 +1955,39 @@ bool VK_EndFrame(VkContext& ctx, uint32_t imageIndex)
 	// across the frame -- the swapchain isn't being recreated mid-frame.
 	VkImage scImg = s_frameSwapImage;
 
+	// HDR: the scene pass just closed. Make the scene readable by the encode
+	// pass, bring the (never yet touched this frame) swapchain image to
+	// COLOR_ATTACHMENT_OPTIMAL, and run the scene -> PQ/BT.2020 pass into it.
+	// The COLOR->PRESENT barrier below then applies unchanged.
+	if (ctx.hdrActive && s_hdr.IsValid())
+	{
+		VkImageMemoryBarrier2 sb{ VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2 };
+		sb.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+		sb.srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+		sb.dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+		sb.dstAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
+		sb.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+		sb.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		sb.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		sb.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		sb.image = s_hdr.SceneImage();
+		sb.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		sb.subresourceRange.levelCount = 1;
+		sb.subresourceRange.layerCount = 1;
+
+		VkDependencyInfo dep{ VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
+		dep.imageMemoryBarrierCount = 1;
+		dep.pImageMemoryBarriers = &sb;
+		ctx.vkCmdPipelineBarrier2_(cmd, &dep);
+
+		CmdSwapchainBarrier(ctx, cmd, scImg,
+			VK_IMAGE_LAYOUT_UNDEFINED,
+			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+		const float maxNits = (ctx.displayMaxNits > 0.0f) ? ctx.displayMaxNits : ctx.hdrBeamPeak;
+		s_hdr.RecordEncode(ctx, cmd, imageIndex, ctx.hdrPaperWhite, maxNits);
+	}
+
 	if (trace) LOG_INFO("VK_EndFrame: step 3 - about to barrier COLOR->PRESENT on scImg=%p", (void*)scImg);
 
 	CmdSwapchainBarrier(ctx, cmd, scImg,
@@ -1834,6 +2109,11 @@ void VK_SuspendFramePass(VkContext& ctx, VkCommandBuffer cmd)
 	// No pass open now; offscreen pass owners (RenderTargetVK::Begin) publish
 	// their own format and GenerateMips asserts on UNDEFINED.
 	ctx.activeColorFormat = VK_FORMAT_UNDEFINED;
+}
+
+VkImage VK_HdrSceneImage(const VkContext& ctx)
+{
+	return (ctx.hdrActive && s_hdr.IsValid()) ? s_hdr.SceneImage() : VK_NULL_HANDLE;
 }
 
 void VK_ResumeFramePass(VkContext& ctx, VkCommandBuffer cmd, uint32_t imageIndex)

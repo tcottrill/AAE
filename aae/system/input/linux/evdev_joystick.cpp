@@ -23,6 +23,8 @@
 #include "sys_log.h"
 
 #include <algorithm>
+#include <climits>      // PATH_MAX
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -97,6 +99,15 @@ std::vector<EvdevDevice> s_devices;
 
 // Nodes already probed and decided about, including rejects - see ScanPads.
 std::vector<std::string> s_examined;
+
+// aae.ini [input] joystick_ignore, set by the entry point before install_joystick
+// (the backend cannot read the ini itself - see joystick.h).
+std::string s_ignoreList;
+
+// Steam's SDL_GAMECONTROLLER_IGNORE_DEVICES[_EXCEPT] (see joystick.h): the
+// physical pads Steam replaced with virtual ones. Empty = unset.
+std::string s_steamIgnore;
+std::string s_steamExcept;
 
 JoystickHotplugCallback s_hotplugCallback = nullptr;
 bool s_deviceChangePending = false;
@@ -279,6 +290,51 @@ void ReadAxisRange(const EvdevDevice& dev, int code, PadSlot::Axis& out)
 }
 
 //------------------------------------------------------------------------------
+// Slot rank of a gamepad-class device (pad_rank in pad_map.h has the tiers).
+int RankOf(const EvdevDevice& dev)
+{
+	PadCaps c;
+	c.btnSouth    = dev.HasKeyCode(BTN_GAMEPAD);
+	c.btnJoystick = dev.HasKeyCode(BTN_JOYSTICK);
+	c.absRx       = dev.HasAbsAxis(ABS_RX);
+	c.absRy       = dev.HasAbsAxis(ABS_RY);
+	c.absZ        = dev.HasAbsAxis(ABS_Z);
+	c.absRz       = dev.HasAbsAxis(ABS_RZ);
+	c.absHat0X    = dev.HasAbsAxis(ABS_HAT0X);
+	c.btnDpadUp   = dev.HasKeyCode(BTN_DPAD_UP);
+	return pad_rank(c);
+}
+
+// "/dev/input/event12" -> 12. Numeric, because the nodes arrive sorted as
+// strings (event10 before event2). Unparseable -> 0.
+int EventNumber(const std::string& devNode)
+{
+	size_t i = devNode.size();
+	while (i > 0 && devNode[i - 1] >= '0' && devNode[i - 1] <= '9') --i;
+	return (i < devNode.size()) ? atoi(devNode.c_str() + i) : 0;
+}
+
+// True when the kernel device behind an event node was created in software
+// (uinput) rather than by a hardware driver: its sysfs path resolves under
+// /sys/devices/virtual/. Steam Input's pads are made this way, and the legacy
+// one reports 045e:028e - the same ids as a real wired Xbox 360 pad. Steam's
+// SDL_GAMECONTROLLER_IGNORE_DEVICES names PHYSICAL pads only, so it must never
+// be applied to a virtual node, or hiding a real 360 pad would also hide the
+// virtual pad that replaces it and leave no controller at all. Uses sysfs, not
+// /dev/input/by-id: Bluetooth pads are physical but have no by-id entry.
+// If sysfs cannot be read (unusual sandbox), the node is treated as physical,
+// which is the pre-existing behaviour.
+bool IsVirtualInputNode(const std::string& devNode)
+{
+	const size_t slash = devNode.find_last_of('/');
+	const std::string base = (slash == std::string::npos) ? devNode : devNode.substr(slash + 1);
+	const std::string sysPath = "/sys/class/input/" + base;
+	char resolved[PATH_MAX] = {0};
+	if (!realpath(sysPath.c_str(), resolved)) return false;
+	return strstr(resolved, "/devices/virtual/") != nullptr;
+}
+
+//------------------------------------------------------------------------------
 void AttachPad(int devIndex, const EvdevDevice& dev)
 {
 	int slot = -1;
@@ -313,9 +369,9 @@ void AttachPad(int devIndex, const EvdevDevice& dev)
 	ReadAxisRange(dev, ABS_HAT0X, p.hatX);
 	ReadAxisRange(dev, ABS_HAT0Y, p.hatY);
 
-	LOG_INFO("evdev: gamepad %d connected: %s [%04x:%04x] (X %d..%d flat %d, "
+	LOG_INFO("evdev: gamepad %d connected: %s [%04x:%04x] (rank %d, X %d..%d flat %d, "
 	         "RX %d..%d flat %d, rumble %s%s)",
-	         slot, p.name.c_str(), dev.vendorId(), dev.productId(),
+	         slot, p.name.c_str(), dev.vendorId(), dev.productId(), RankOf(dev),
 	         p.lx.min, p.lx.max, p.lx.flat,
 	         p.rx.min, p.rx.max, p.rx.flat,
 	         dev.SupportsRumble() ? "yes" : "no",
@@ -339,6 +395,14 @@ void DetachPad(int slot)
 void ScanPads()
 {
 	const std::vector<EvdevNode> nodes = EvdevEnumerateNodes();
+
+	// Newly found gamepad-class devices this scan, attached together at the end.
+	struct Candidate {
+		EvdevDevice dev;
+		int rank  = 3;
+		int evnum = 0;
+	};
+	std::vector<Candidate> found;
 
 	// Forget nodes that have gone, so a replugged pad is probed again.
 	s_examined.erase(
@@ -376,7 +440,53 @@ void ScanPads()
 		if (!dev.Open(node.devNode, node.identity)) continue;
 		if (dev.kind() != EvdevKind::Gamepad) continue;
 
-		s_devices.push_back(std::move(dev));
+		// Once per device: s_examined above keeps this node from being probed
+		// again until it vanishes and comes back.
+		if (pad_ignore_match(s_ignoreList.c_str(), dev.vendorId(), dev.productId(),
+		                     dev.name().c_str())) {
+			LOG_INFO("evdev: ignoring '%s' [%04x:%04x] (aae.ini [input] joystick_ignore)",
+			         dev.name().c_str(), dev.vendorId(), dev.productId());
+			continue;
+		}
+
+		// Steam virtualizes some physical pads (Deck controls 28de:1205, Xbox
+		// pads via xpad, ...) and tells games to hide the originals through
+		// SDL's env vars. We read evdev, not SDL, so honour them here or the
+		// same person would show up as two players. Physical nodes only - see
+		// IsVirtualInputNode.
+		if (!IsVirtualInputNode(node.devNode) &&
+		    pad_env_ignore_match(s_steamIgnore.c_str(), s_steamExcept.c_str(),
+		                         dev.vendorId(), dev.productId())) {
+			LOG_INFO("evdev: skipping '%s' [%04x:%04x] (hidden by Steam via "
+			         "SDL_GAMECONTROLLER_IGNORE_DEVICES[_EXCEPT])",
+			         dev.name().c_str(), dev.vendorId(), dev.productId());
+			continue;
+		}
+
+		// Do not attach yet: slots are handed out in rank order below, not in
+		// the order this loop happens to meet the nodes.
+		Candidate c;
+		c.rank  = RankOf(dev);
+		c.evnum = EventNumber(node.devNode);
+		c.dev   = std::move(dev);
+		found.push_back(std::move(c));
+	}
+
+	// Event numbers are assigned in probe order, and a gaming keyboard's or
+	// mouse's extra pad-class nodes probe before a pad plugged in later - so
+	// event order alone put the real pad at JOY 4. Full pads first, then the
+	// event number as the tie-break (which is also the old behaviour for a
+	// machine with only identical pads). std::stable_sort keeps equal keys in
+	// enumeration order. Only NEW devices are ranked: slots already handed out
+	// never move, and a pad hotplugged later still appends.
+	std::stable_sort(found.begin(), found.end(),
+		[](const Candidate& a, const Candidate& b) {
+			if (a.rank != b.rank) return a.rank < b.rank;
+			return a.evnum < b.evnum;
+		});
+
+	for (Candidate& c : found) {
+		s_devices.push_back(std::move(c.dev));
 		const int idx = (int)s_devices.size() - 1;
 		AttachPad(idx, s_devices[idx]);
 	}
@@ -490,6 +600,21 @@ void PublishPad(int slot)
 //==============================================================================
 // Public API
 //==============================================================================
+void joystick_set_ignore_list(const char* list)
+{
+	s_ignoreList = list ? list : "";
+}
+
+void joystick_set_steam_hide_env(const char* ignoreDevices, const char* ignoreDevicesExcept)
+{
+	s_steamIgnore = ignoreDevices ? ignoreDevices : "";
+	s_steamExcept = ignoreDevicesExcept ? ignoreDevicesExcept : "";
+	if (!s_steamIgnore.empty() || !s_steamExcept.empty())
+		LOG_INFO("evdev: Steam device hiding active: SDL_GAMECONTROLLER_IGNORE_DEVICES='%s' "
+		         "SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT='%s'",
+		         s_steamIgnore.c_str(), s_steamExcept.c_str());
+}
+
 int install_joystick()
 {
 	if (_joystick_installed) return 0;

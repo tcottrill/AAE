@@ -591,6 +591,25 @@ static int resolve_joy(int n)
 	return v;
 }
 
+/* The joy[] slot that drives the menu and the exit-confirm dialog: Player 1's
+   pad, as the INPUT DEVICES assignment (or AUTO) resolves it, so the menu is
+   navigated with the same pad that plays the game rather than whatever
+   happens to sit at joy[0] (a keyboard/mouse peripheral's virtual pad can
+   take that slot). Falls back to the first connected gamepad-class device,
+   then to 0. With AUTO and one pad at slot 0 this is 0, as before. */
+int osd_menu_joy_index(void)
+{
+	const int p1 = resolve_joy(0);
+	if (p1 >= 0 && p1 < MAX_JOYSTICKS && joystick_is_connected(p1))
+		return p1;
+
+	for (int i = 0; i < MAX_JOYSTICKS; i++)
+		if (joystick_is_connected(i) && joy[i].is_gamepad)
+			return i;
+
+	return 0;
+}
+
 /* return a value in the range -128 .. 128 (yes, 128, not 127) */
 void osd_analogjoy_read(int player, int* analog_x, int* analog_y)
 {

@@ -44,6 +44,9 @@
 #include "sha-1.h"
 #include "iniFile.h"
 #include "mixer.h"
+#include "process_result.h"
+#include <set>
+#include <vector>
 
 #define DEBUG_LOG 1
 
@@ -360,6 +363,170 @@ int verify_sample(const char** samples, int num)
 }
 
 // -----------------------------------------------------------------------------
+// ROM set validation (read-only pre-pass for load_roms)
+//
+// Walks the same entries load_roms will, locates each ROM with the SAME rules
+// (own zip by name, own by CRC, parent by name, parent by CRC), and records
+// every problem instead of stopping at the first. Nothing is allocated or
+// copied, so a bad set is reported completely before any region exists.
+// CRC / SHA-1 mismatches are not problems here: load_roms only logs those.
+// -----------------------------------------------------------------------------
+namespace
+{
+    struct RomZipProbe
+    {
+        std::string    name;          // "foo.zip"
+        bool           exists = false;
+        bool           open = false;
+        mz_zip_archive zip;
+    };
+
+    void probe_rom_zip(const char* base, RomZipProbe& p)
+    {
+        memset(&p.zip, 0, sizeof(p.zip));
+        p.name = std::string(base) + ".zip";
+
+        // Same two places load_roms opens from.
+        std::string path = std::string(config.exrompath ? config.exrompath : "") + "/" + p.name;
+        if (!file_exists(path))
+            path = getpathM("roms", 0) + "/" + p.name;
+
+        p.exists = file_exists(path);
+        if (p.exists)
+            p.open = mz_zip_reader_init_file(&p.zip, path.c_str(), 0) != 0;
+    }
+
+    void close_rom_zip(RomZipProbe& p)
+    {
+        if (p.open) mz_zip_reader_end(&p.zip);
+        p.open = false;
+    }
+
+    // Human text for where an archive is looked for.
+    std::string rom_search_places()
+    {
+        std::string ex = config.exrompath ? config.exrompath : "";
+        while (!ex.empty() && (ex.back() == '/' || ex.back() == '\\')) ex.pop_back();
+        if (ex.empty() || ex == "roms")
+            return "roms/";
+        return ex + "/ and roms/";
+    }
+
+    // "foo.zip NOT FOUND (searched ...)" or "foo.zip: unreadable or corrupt archive"
+    std::string describe_bad_archive(const RomZipProbe& p)
+    {
+        if (p.exists)
+            return p.name + ": unreadable or corrupt archive";
+        return p.name + " NOT FOUND (searched " + rom_search_places() + ")";
+    }
+
+    const char* rom_game_name(const char* archname)
+    {
+        if (Machine && Machine->gamedrv && Machine->gamedrv->name)
+            return Machine->gamedrv->name;
+        return archname ? archname : "?";
+    }
+}
+
+// Returns true when every required ROM can be found with the right size.
+// Otherwise fills `problems` (one line each, decisive file name first).
+static bool validate_rom_set(const char* archname, const char* parentname,
+                             const struct RomModule* p, std::vector<std::string>& problems)
+{
+    RomZipProbe own, parent;
+    probe_rom_zip(archname, own);
+
+    bool parentProbed = false;
+    auto ensure_parent = [&]() -> bool {
+        if (!parentProbed)
+        {
+            parentProbed = true;
+            if (parentname) probe_rom_zip(parentname, parent);
+        }
+        return parent.open;
+    };
+
+    bool ok = true;
+    std::set<std::string> seen;
+    auto add_problem = [&](const std::string& line) {
+        ok = false;
+        if (seen.insert(line).second) problems.push_back(line);
+    };
+
+    // Whole-archive failures, exactly where load_roms would give up.
+    if (!own.open && !(parentname && ensure_parent()))
+    {
+        add_problem(describe_bad_archive(own));
+        if (parentname)
+            add_problem(describe_bad_archive(parent));
+        close_rom_zip(own);
+        close_rom_zip(parent);
+        return false;
+    }
+
+    for (int i = 0; p[i].romSize > 0; ++i)
+    {
+        if (p[i].loadAddr == ROM_REGION_START) continue;           // region header
+        if (p[i].filename == (char*)-1) continue;                  // ROM_RELOAD
+        if (p[i].filename == (char*)-2) continue;                  // ROM_CONTINUE
+        if (!p[i].filename) continue;
+
+        const char* fname = p[i].filename;
+        mz_zip_archive* src = nullptr;
+        const char* srcName = nullptr;
+        mz_uint idx = (mz_uint)-1;
+
+        if (own.open)
+        {
+            idx = mz_zip_reader_locate_file(&own.zip, fname, 0, 0);
+            if (idx == (mz_uint)-1) idx = find_file_by_crc(&own.zip, p[i].crc);
+            if (idx != (mz_uint)-1) { src = &own.zip; srcName = own.name.c_str(); }
+        }
+        if (idx == (mz_uint)-1 && parentname && ensure_parent())
+        {
+            idx = mz_zip_reader_locate_file(&parent.zip, fname, 0, 0);
+            if (idx == (mz_uint)-1) idx = find_file_by_crc(&parent.zip, p[i].crc);
+            if (idx != (mz_uint)-1) { src = &parent.zip; srcName = parent.name.c_str(); }
+        }
+
+        if (idx == (mz_uint)-1 || !src)
+        {
+            std::string where;
+            if (own.open) where = own.name;
+            if (parentname && parent.open)
+                where += (where.empty() ? "" : ", ") + parent.name;
+            std::string line = std::string(fname) + " NOT FOUND (searched " + where + " by name and CRC";
+            if (!own.open)
+                line += "; " + own.name + (own.exists ? " unreadable" : " not found");
+            if (parentname && !parent.open)
+                line += "; " + parent.name + (parent.exists ? " unreadable" : " not found");
+            line += ")";
+            add_problem(line);
+            continue;
+        }
+
+        mz_zip_archive_file_stat st;
+        if (!mz_zip_reader_file_stat(src, idx, &st))
+        {
+            add_problem(std::string(fname) + ": cannot read archive entry in " + srcName + " (corrupt archive?)");
+            continue;
+        }
+
+        // Same size rule as the load loop: a ROM_CONTINUE entry after this one
+        // means the file legitimately differs from this entry's size.
+        if ((mz_uint64)p[i].romSize != st.m_uncomp_size && p[i + 1].filename != (char*)-2)
+        {
+            add_problem(std::string(fname) + " WRONG SIZE: expected " + std::to_string(p[i].romSize) +
+                " bytes, found " + std::to_string((unsigned long long)st.m_uncomp_size) + " in " + srcName);
+        }
+    }
+
+    close_rom_zip(own);
+    close_rom_zip(parent);
+    return ok;
+}
+
+// -----------------------------------------------------------------------------
 // load_roms
 // This requires complex iteration over the ZIP file which sys_fileio (loadZip)
 // does not support (it only supports loading one specific file).
@@ -389,6 +556,22 @@ int load_roms(const char* archname, const char* parentname, const struct RomModu
     bool own_open = false;
     bool parent_open = false;
     bool parent_attempted = false;
+
+    // Read-only pre-pass: report EVERY unusable ROM before anything is loaded.
+    {
+        std::vector<std::string> problems;
+        if (!validate_rom_set(archname, parentname, p, problems))
+        {
+            procres_fatal(AAE_EXIT_MISSING_FILES,
+                "AAE: unable to start game \"%s\": required ROM files unavailable.", rom_game_name(archname));
+            for (const std::string& line : problems)
+            {
+                LOG_ERROR("ROM check: %s", line.c_str());
+                procres_detail("%s", line.c_str());
+            }
+            return EXIT_FAILURE;
+        }
+    }
 
     temppath = config.exrompath;
     temppath.append("/");
@@ -431,6 +614,9 @@ int load_roms(const char* archname, const char* parentname, const struct RomModu
     if (!own_open) {
         if (!open_parent_if_needed()) {
             LOG_ERROR("Zip File %s failed to open. Archive missing?", archname);
+            procres_fatal(AAE_EXIT_MISSING_FILES,
+                "AAE: unable to start game \"%s\": required ROM files unavailable.", rom_game_name(archname));
+            procres_detail("%s.zip NOT FOUND or unreadable (searched %s)", archname, rom_search_places().c_str());
             return EXIT_FAILURE;
         }
         LOG_INFO("Archive %s.zip not found; loading from parent archive %s.zip instead", archname, parentname);
@@ -503,6 +689,23 @@ int load_roms(const char* archname, const char* parentname, const struct RomModu
 
             if (file_index == (mz_uint)-1 || !src_zip) {
                 LOG_ERROR("File not found in zip: %s", p[i].filename ? p[i].filename : "<null>");
+                if (p[i].filename == (char*)-1)
+                {
+                    // ROM_RELOAD with no preceding source: the driver table is wrong.
+                    procres_fatal(AAE_EXIT_FATAL, "AAE: driver error in ROM table for game \"%s\"", rom_game_name(archname));
+                    procres_detail("ROM_RELOAD at entry %d has no preceding ROM to reload", i);
+                }
+                else
+                {
+                    procres_fatal(AAE_EXIT_MISSING_FILES,
+                        "AAE: unable to start game \"%s\": required ROM files unavailable.", rom_game_name(archname));
+                    if (parentname)
+                        procres_detail("%s NOT FOUND (searched %s.zip, %s.zip)",
+                            p[i].filename ? p[i].filename : "<null>", archname, parentname);
+                    else
+                        procres_detail("%s NOT FOUND (searched %s.zip)",
+                            p[i].filename ? p[i].filename : "<null>", archname);
+                }
                 ret = EXIT_FAILURE;
                 goto end;
             }
@@ -513,7 +716,14 @@ int load_roms(const char* archname, const char* parentname, const struct RomModu
             }
 
             status = mz_zip_reader_file_stat(src_zip, file_index, &file_stat);
-            if (status != MZ_TRUE) { LOG_ERROR("Could not read file in Zip, corrupt?"); ret = EXIT_FAILURE; goto end; }
+            if (status != MZ_TRUE)
+            {
+                LOG_ERROR("Could not read file in Zip, corrupt?");
+                procres_fatal(AAE_EXIT_MISSING_FILES,
+                    "AAE: unable to start game \"%s\": required ROM files unusable.", rom_game_name(archname));
+                procres_detail("%s: cannot read archive entry (corrupt archive?)", p[i].filename && p[i].filename != (char*)-1 ? p[i].filename : (last_reload_filename ? last_reload_filename : "<reload>"));
+                ret = EXIT_FAILURE; goto end;
+            }
 
             // CHANGED: Assignment only, declaration moved to top
             current_uncomp_size = (unsigned int)file_stat.m_uncomp_size;
@@ -523,13 +733,31 @@ int load_roms(const char* archname, const char* parentname, const struct RomModu
                 if (p[i + 1].filename != (char*)-2) // Not ROM_CONTINUE
                 {
                     LOG_ERROR("Warning: File Size Mismatch, check your rom definition and romset.");
+                    procres_fatal(AAE_EXIT_MISSING_FILES,
+                        "AAE: unable to start game \"%s\": required ROM files unusable.", rom_game_name(archname));
+                    procres_detail("%s WRONG SIZE: expected %d bytes, found %llu",
+                        p[i].filename && p[i].filename != (char*)-1 ? p[i].filename : (last_reload_filename ? last_reload_filename : "<reload>"),
+                        p[i].romSize, (unsigned long long)file_stat.m_uncomp_size);
                     ret = EXIT_FAILURE; goto end;
                 }
             }
 
             zipdata = (unsigned char*)malloc(current_uncomp_size);
+            if (!zipdata && current_uncomp_size > 0)
+            {
+                LOG_ERROR("Out of memory allocating %u bytes for ROM", current_uncomp_size);
+                procres_fatal(AAE_EXIT_FATAL, "AAE: out of memory loading ROMs for game \"%s\"", rom_game_name(archname));
+                ret = EXIT_FAILURE; goto end;
+            }
             status = mz_zip_reader_extract_to_mem(src_zip, file_index, zipdata, current_uncomp_size, 0);
-            if (status != MZ_TRUE) { LOG_ERROR("File Failed to Extract"); ret = EXIT_FAILURE; goto end; }
+            if (status != MZ_TRUE)
+            {
+                LOG_ERROR("File Failed to Extract");
+                procres_fatal(AAE_EXIT_MISSING_FILES,
+                    "AAE: unable to start game \"%s\": required ROM files unusable.", rom_game_name(archname));
+                procres_detail("%s: extraction failed (corrupt archive?)", p[i].filename && p[i].filename != (char*)-1 ? p[i].filename : (last_reload_filename ? last_reload_filename : "<reload>"));
+                ret = EXIT_FAILURE; goto end;
+            }
 
             if (p[i].filename != (char*)-1 && p[i].filename != (char*)-2)
             {
@@ -548,6 +776,9 @@ int load_roms(const char* archname, const char* parentname, const struct RomModu
 
             if (!Machine->memory_region[region]) {
                 LOG_ERROR("ROM %s targets memory region %d, which was not allocated", p[i].filename ? p[i].filename : "<reload>", region);
+                procres_fatal(AAE_EXIT_FATAL, "AAE: driver error in ROM table for game \"%s\"", rom_game_name(archname));
+                procres_detail("%s targets memory region %d, which the driver never allocated",
+                    p[i].filename && p[i].filename != (char*)-1 ? p[i].filename : "<reload>", region);
                 ret = EXIT_FAILURE; goto end;
             }
 
@@ -614,8 +845,21 @@ struct MallocDeleter {
     void operator()(uint8_t* p) const { free(p); }
 };
 
-int load_sample_core(const std::string& zip_path, const std::string& zip_entry, const std::string& disk_path)
+// Why a sample could not be used (load_sample_core's out-parameter).
+enum SampleFail
 {
+    SAMPLE_FAIL_NONE = 0,
+    SAMPLE_FAIL_MISSING,    // no zip entry and no loose file
+    SAMPLE_FAIL_EMPTY,      // found, but zero length
+    SAMPLE_FAIL_BAD_DATA    // found, but not decodable WAV data
+};
+
+// `why` may be null. Returns the sample id (>= 0) or a negative value. Note a
+// corrupt WAV still returns a valid id (the mixer registers its error.wav);
+// *why is SAMPLE_FAIL_BAD_DATA then so the caller can report it.
+static int load_sample_core(const std::string& zip_path, const std::string& zip_entry, const std::string& disk_path, SampleFail* why)
+{
+    if (why) *why = SAMPLE_FAIL_NONE;
     std::unique_ptr<uint8_t, MallocDeleter> buffer;
     size_t size = 0;
     bool loaded_from_zip = false;
@@ -643,11 +887,14 @@ int load_sample_core(const std::string& zip_path, const std::string& zip_entry, 
     if (!buffer || size == 0) {
         LOG_ERROR("Failed to load sample: '%s' (Checked Zip: '%s' and Disk: '%s')",
             zip_entry.c_str(), zip_path.c_str(), disk_path.c_str());
+        if (why) *why = buffer ? SAMPLE_FAIL_EMPTY : SAMPLE_FAIL_MISSING;
         return -1;
     }
 
     // D: Submit to Mixer
-    int sample_id = load_sample_from_buffer(buffer.get(), size, zip_entry.c_str(), true);
+    bool decode_failed = false;
+    int sample_id = load_sample_from_buffer_ex(buffer.get(), size, zip_entry.c_str(), true, &decode_failed);
+    if (why && (decode_failed || sample_id < 0)) *why = SAMPLE_FAIL_BAD_DATA;
 
     if (sample_id >= 0) {
         LOG_INFO("Loaded sample ID %d: %s %s",
@@ -681,7 +928,18 @@ void load_samples_batch(const char* const* sample_list)
         std::string entryName = filename;
         std::string fullDiskPath = "samples/" + subFolderName + "/" + entryName;
 
-        if (load_sample_core(fullZipPath, entryName, fullDiskPath) < 0) {
+        SampleFail why = SAMPLE_FAIL_NONE;
+        const int sample_id = load_sample_core(fullZipPath, entryName, fullDiskPath, &why);
+
+        // Optional audio: never fatal, but the frontend is told once at exit.
+        if (why == SAMPLE_FAIL_MISSING)
+            procres_optional_sample(PROCRES_SAMPLE_MISSING, entryName.c_str(), nullptr);
+        else if (why == SAMPLE_FAIL_EMPTY)
+            procres_optional_sample(PROCRES_SAMPLE_UNREADABLE, entryName.c_str(), "empty file");
+        else if (why == SAMPLE_FAIL_BAD_DATA)
+            procres_optional_sample(PROCRES_SAMPLE_UNREADABLE, entryName.c_str(), "invalid WAV data");
+
+        if (sample_id < 0) {
             // Sample file missing/unloadable: register a silent placeholder so the
             // remaining samples keep their expected indices. Drivers call
             // sample_start() with hard-coded indices that must match the load
@@ -736,7 +994,14 @@ void load_ambient_samples()
         const std::string entryName = ambient_files[i];
         const std::string diskPath = diskBase + entryName;
 
-        int id = load_sample_core(zipPath, entryName, diskPath);
+        SampleFail why = SAMPLE_FAIL_NONE;
+        int id = load_sample_core(zipPath, entryName, diskPath, &why);
+
+        // Missing ambient files are normal and silent (optional AAE extras).
+        // A file that is present but unusable is worth telling the user about.
+        if (why == SAMPLE_FAIL_EMPTY || why == SAMPLE_FAIL_BAD_DATA)
+            procres_optional_sample(PROCRES_SAMPLE_UNREADABLE, ("AAE ambient " + entryName).c_str(),
+                why == SAMPLE_FAIL_EMPTY ? "empty file" : "invalid WAV data");
 
         if (id >= 0) {
             LOG_INFO("Ambient sample '%s' loaded as sample ID %d", entryName.c_str(), id);

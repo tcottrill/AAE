@@ -16,6 +16,8 @@
 #include "menu.h"
 #include "sys_log.h"
 #include "path_helper.h"
+#include "process_result.h"
+#include "aae_video_vk/hdr_math.h"
 #include <string>
 #include <cstdio>
 #include <cmath>
@@ -182,6 +184,18 @@ void setup_config() {
     config.glow2_tail   = get_config_float("main", "glow2_tail",   0.6f);
     config.glow2_core   = get_config_float("main", "glow2_core",   1.0f);
 #endif
+    {
+        // HDR10 mode string: "off" / "on" / anything else (incl. "auto") = auto.
+        const char* h = get_config_string("main", "hdr", "auto");
+        config.hdr = (h && strcmp(h, "off") == 0) ? hdr::kModeOff
+                   : (h && strcmp(h, "on") == 0)  ? hdr::kModeOn
+                   : (h && strcmp(h, "auto") == 0) ? hdr::kModeAuto
+                                                  : hdr::kDefaultMode;
+    }
+    config.hdr_paper_white = get_config_float("main", "hdr_paper_white", hdr::kDefaultPaperWhite);
+    config.hdr_beam_peak   = get_config_float("main", "hdr_beam_peak",   hdr::kDefaultBeamPeak);
+    config.hdr_beam_curve  = get_config_float("main", "hdr_beam_curve",  hdr::kDefaultBeamCurve);
+    config.hdr_shot_boost  = get_config_float("main", "hdr_shot_boost",  hdr::kDefaultShotBoost);
     config.gain = get_config_int("main", "gain", 1);
     config.line_smoothing  = get_config_float("main", "line_smoothing",  1.0f);
     config.corner_strength = get_config_float("main", "corner_strength", 0.85f);
@@ -375,6 +389,17 @@ void setup_config() {
         config.glow2_spread = get_config_float("main", "glow2_spread", config.glow2_spread);
         config.glow2_tail   = get_config_float("main", "glow2_tail",   config.glow2_tail);
         config.glow2_core   = get_config_float("main", "glow2_core",   config.glow2_core);
+        {
+            const char* h = get_config_string("main", "hdr",
+                (config.hdr == hdr::kModeOff) ? "off" : (config.hdr == hdr::kModeOn) ? "on" : "auto");
+            config.hdr = (h && strcmp(h, "off") == 0) ? hdr::kModeOff
+                       : (h && strcmp(h, "on") == 0)  ? hdr::kModeOn
+                                                      : hdr::kModeAuto;
+        }
+        config.hdr_paper_white = get_config_float("main", "hdr_paper_white", config.hdr_paper_white);
+        config.hdr_beam_peak   = get_config_float("main", "hdr_beam_peak",   config.hdr_beam_peak);
+        config.hdr_beam_curve  = get_config_float("main", "hdr_beam_curve",  config.hdr_beam_curve);
+        config.hdr_shot_boost  = get_config_float("main", "hdr_shot_boost",  config.hdr_shot_boost);
         config.gain = get_config_int("main", "gain", config.gain);
         config.line_smoothing  = get_config_float("main", "line_smoothing",  config.line_smoothing);
         config.corner_strength = get_config_float("main", "corner_strength", config.corner_strength);
@@ -612,6 +637,7 @@ void sanity_check_config()
     if (config.prescale < 1 || config.prescale > 5)
     {
         LOG_INFO("!!!!!Raster prescale set to unsupported value, supported values are 1 - 5");
+        procres_fatal(AAE_EXIT_INVALID_CONFIG, "AAE: invalid configuration: prescale=%g (allowed: 1 to 5)", (double)config.prescale);
         config.prescale = 2; have_error = 3;
     }
 
@@ -622,7 +648,23 @@ void sanity_check_config()
     if (config.vk_ssaa != 1 && config.vk_ssaa != 2)
     {
         LOG_INFO("!!!!!vk_ssaa set to unsupported value, supported values are 1 (1024x1024 beam buffer) or 2 (2048x2048)");
+        procres_fatal(AAE_EXIT_INVALID_CONFIG, "AAE: invalid configuration: vk_ssaa=%d (allowed: 1 or 2)", (int)config.vk_ssaa);
         config.vk_ssaa = 1; have_error = 3;
+    }
+
+    // HDR settings: clamp to the ranges in hdr_math.h (display peak unknown here).
+    {
+        hdr::Settings hs;
+        hs.mode       = config.hdr;
+        hs.paperWhite = config.hdr_paper_white;
+        hs.beamPeak   = config.hdr_beam_peak;
+        hs.curve      = config.hdr_beam_curve;
+        hs = hdr::ClampSettings(hs, 0.0f);
+        config.hdr             = hs.mode;
+        config.hdr_paper_white = hs.paperWhite;
+        config.hdr_beam_peak   = hs.beamPeak;
+        config.hdr_beam_curve  = hs.curve;
+        config.hdr_shot_boost  = hdr::ClampShotBoost(config.hdr_shot_boost);
     }
 
     // Diagnostic toggle, so anything non-zero means "on" - but pin it to 0/1
@@ -634,6 +676,7 @@ void sanity_check_config()
     {
         if (config.anisfilter != 0) { //FINAL CHECK
             LOG_INFO("!!!!!Ansitropic Filterings set to unsupported value, supported values are 2,4,8,16 !!!!!");
+            procres_fatal(AAE_EXIT_INVALID_CONFIG, "AAE: invalid configuration: anisfilter=%d (allowed: 0, 2, 4, 8 or 16)", (int)config.anisfilter);
             have_error = 3;
             config.anisfilter = 0; //RESET TIL FIXED
         }

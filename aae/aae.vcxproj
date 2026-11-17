@@ -180,6 +180,7 @@
     <ClInclude Include="aae\aae_video_vk\crt_post_vk.h" />
     <ClInclude Include="aae\aae_video_vk\fast_poly_vk.h" />
     <ClInclude Include="aae\aae_video_vk\gpu_profiler_vk.h" />
+    <ClInclude Include="aae\aae_video_vk\hdr_math.h" />
     <ClInclude Include="aae\aae_video_vk\layout_vk.h" />
     <ClInclude Include="aae\aae_video_vk\raster_tex_vk.h" />
     <ClInclude Include="aae\aae_video_vk\render_target_vk.h" />
@@ -232,6 +233,7 @@
     <ClInclude Include="system\graphics\sys_texture.h" />
     <ClInclude Include="system\graphics\texrect.h" />
     <ClInclude Include="system\graphics\vk\sys_vk.h" />
+    <ClInclude Include="system\graphics\vk\hdr_output_vk.h" />
     <ClInclude Include="system\input\joystick.h" />
     <ClInclude Include="system\input\pad_map.h" />
     <ClInclude Include="system\input\rawinput_win32.h" />
@@ -303,6 +305,7 @@
     <ClCompile Include="system\graphics\sys_texture.cpp" />
     <ClCompile Include="system\graphics\texrect.cpp" />
     <ClCompile Include="system\graphics\vk\sys_vk.cpp" />
+    <ClCompile Include="system\graphics\vk\hdr_output_vk.cpp" />
     <ClCompile Include="system\input\Joystick.cpp" />
     <ClCompile Include="system\input\pad_map.cpp" />
     <ClCompile Include="system\input\rawinput.cpp" />
@@ -510,6 +513,20 @@
       <Message>glslc %(Filename)%(Extension)</Message>
     </CustomBuild>
     <CustomBuild Include="shaders\vk\vector_post_vk.vert">
+      <Command>if not exist "$(OutDir)shaders\vk" mkdir "$(OutDir)shaders\vk"
+"$(ProjectDir)..\tools\glslc.exe" "%(FullPath)" -o "$(OutDir)shaders\vk\%(Filename)%(Extension).spv"</Command>
+      <Outputs>$(OutDir)shaders\vk\%(Filename)%(Extension).spv</Outputs>
+      <AdditionalInputs>$(ProjectDir)..\tools\glslc.exe</AdditionalInputs>
+      <Message>glslc %(Filename)%(Extension)</Message>
+    </CustomBuild>
+    <CustomBuild Include="shaders\vk\hdr_output_vk.vert">
+      <Command>if not exist "$(OutDir)shaders\vk" mkdir "$(OutDir)shaders\vk"
+"$(ProjectDir)..\tools\glslc.exe" "%(FullPath)" -o "$(OutDir)shaders\vk\%(Filename)%(Extension).spv"</Command>
+      <Outputs>$(OutDir)shaders\vk\%(Filename)%(Extension).spv</Outputs>
+      <AdditionalInputs>$(ProjectDir)..\tools\glslc.exe</AdditionalInputs>
+      <Message>glslc %(Filename)%(Extension)</Message>
+    </CustomBuild>
+    <CustomBuild Include="shaders\vk\hdr_output_vk.frag">
       <Command>if not exist "$(OutDir)shaders\vk" mkdir "$(OutDir)shaders\vk"
 "$(ProjectDir)..\tools\glslc.exe" "%(FullPath)" -o "$(OutDir)shaders\vk\%(Filename)%(Extension).spv"</Command>
       <Outputs>$(OutDir)shaders\vk\%(Filename)%(Extension).spv</Outputs>

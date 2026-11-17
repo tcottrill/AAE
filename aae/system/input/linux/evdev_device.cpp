@@ -6,6 +6,7 @@
 // evdev_device.cpp -- one /dev/input/event* node: open, classify, read, rumble.
 //==============================================================================
 #include "evdev_device.h"
+#include "pad_map.h"
 #include "sys_log.h"
 
 #include <dirent.h>
@@ -243,26 +244,36 @@ void EvdevDevice::Classify()
 	                         TestBit(ledBits, LED_CAPSL) ||
 	                         TestBit(ledBits, LED_SCROLLL));
 
-	const bool padButtons = hasEvKey &&
-		(TestBit(keyBits, BTN_GAMEPAD) ||   // == BTN_SOUTH / BTN_A
-		 TestBit(keyBits, BTN_JOYSTICK));   // == BTN_TRIGGER
 	const bool padAxes = hasEvAbs &&
 		TestBit(absBits, ABS_X) && TestBit(absBits, ABS_Y);
 
 	const bool mouseAxes    = hasEvRel &&
 		TestBit(relBits, REL_X) && TestBit(relBits, REL_Y);
-	const bool mouseButtons = hasEvKey && TestBit(keyBits, BTN_LEFT);
 
 	const int letters = hasEvKey ? CountLetterKeys(keyBits) : 0;
 
-	if (padButtons || (padAxes && hasEvKey && !mouseAxes))
-		m_kind = EvdevKind::Gamepad;
-	else if (mouseAxes && mouseButtons)
-		m_kind = EvdevKind::Mouse;
-	else if (letters >= 20)              // a real keyboard has all 26
-		m_kind = EvdevKind::Keyboard;
-	else
-		m_kind = EvdevKind::Unknown;
+	// The decision itself lives in pad_classify_node (pad_map.cpp) so it is
+	// unit-tested against real device fixtures. A keyboard, a mouse or anything
+	// with BTN_LEFT is never a pad: gaming keyboards and mice expose extra nodes
+	// carrying ABS_X/ABS_Y or stray BTN_* bits, which would take JOY 1.
+	PadNodeCaps pc;
+	pc.hasEvKey   = hasEvKey;
+	pc.btnGamepad = hasEvKey && TestBit(keyBits, BTN_GAMEPAD);    // == BTN_SOUTH / BTN_A
+	pc.btnJoystick = hasEvKey && TestBit(keyBits, BTN_JOYSTICK);  // == BTN_TRIGGER
+	pc.btnLeft    = hasEvKey && TestBit(keyBits, BTN_LEFT);
+	pc.relX = hasEvRel && TestBit(relBits, REL_X);
+	pc.relY = hasEvRel && TestBit(relBits, REL_Y);
+	pc.absX = hasEvAbs && TestBit(absBits, ABS_X);
+	pc.absY = hasEvAbs && TestBit(absBits, ABS_Y);
+	pc.letters = letters;
+
+	const char* padVeto = nullptr;
+	switch (pad_classify_node(pc, &padVeto)) {
+	case PADNODE_GAMEPAD:  m_kind = EvdevKind::Gamepad;  break;
+	case PADNODE_MOUSE:    m_kind = EvdevKind::Mouse;    break;
+	case PADNODE_KEYBOARD: m_kind = EvdevKind::Keyboard; break;
+	default:               m_kind = EvdevKind::Unknown;  break;
+	}
 
 	LOG_INFO("evdev: %s '%s' -> %s (letters=%d rel=%d abs=%d ff_rumble=%d "
 	         "leds=%d writable=%d identity=%s%s)",
@@ -270,6 +281,10 @@ void EvdevDevice::Classify()
 	         letters, mouseAxes ? 1 : 0, padAxes ? 1 : 0, m_hasRumble ? 1 : 0,
 	         m_hasLeds ? 1 : 0, m_writable ? 1 : 0, m_identity.c_str(),
 	         m_weakIdentity ? " WEAK" : "");
+
+	if (padVeto)
+		LOG_INFO("evdev: '%s' looks like a pad but is not one (%s) - not a gamepad",
+		         m_name.c_str(), padVeto);
 
 	if (m_weakIdentity && m_kind != EvdevKind::Unknown) {
 		LOG_WARN("evdev: '%s' has no /dev/input/by-id/ entry, so its identity is "

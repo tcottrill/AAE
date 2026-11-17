@@ -35,7 +35,9 @@
 
 #include "sys_vk.h"
 #include "sys_log.h"
+#include "hdr_math.h"
 
+#include <cstdint>
 #include <vector>
 
 // Shared PNG writer (fileio/texture_handler.cpp): snap/ creation, the
@@ -92,7 +94,13 @@ bool BeginCapture(VkContext& ctx, VkCommandBuffer cmd, uint32_t imageIndex, Capt
 		return false;
 	s_requested = false;          // one-shot, whatever happens below
 
-	if (!ctx.swapchainTransferSrc)
+	// HDR: the readback comes from the float scene image (always created with
+	// TRANSFER_SRC), not the swapchain, so the swapchain usage flag and format
+	// do not matter. The mode is fixed here and remembered in cap.hdr.
+	const VkImage hdrImg = VK_HdrSceneImage(ctx);
+	const bool hdrCapture = (hdrImg != VK_NULL_HANDLE);
+
+	if (!hdrCapture && !ctx.swapchainTransferSrc)
 	{
 		LOG_ERROR("snapshot (vulkan): swapchain images lack TRANSFER_SRC usage "
 			"(surface does not support it); cannot read back");
@@ -128,20 +136,23 @@ bool BeginCapture(VkContext& ctx, VkCommandBuffer cmd, uint32_t imageIndex, Capt
 	}
 
 	// Byte layout only - see the ALPHA/SWIZZLE note at the top of the file.
-	bool bgra;
-	switch (ctx.swapchainFormat)
+	bool bgra = false;
+	if (!hdrCapture)
 	{
-	case VK_FORMAT_B8G8R8A8_UNORM:
-	case VK_FORMAT_B8G8R8A8_SRGB: bgra = true;  break;
-	case VK_FORMAT_R8G8B8A8_UNORM:
-	case VK_FORMAT_R8G8B8A8_SRGB: bgra = false; break;
-	default:
-		LOG_ERROR("snapshot (vulkan): unsupported swapchain format %d",
-			(int)ctx.swapchainFormat);
-		return false;
+		switch (ctx.swapchainFormat)
+		{
+		case VK_FORMAT_B8G8R8A8_UNORM:
+		case VK_FORMAT_B8G8R8A8_SRGB: bgra = true;  break;
+		case VK_FORMAT_R8G8B8A8_UNORM:
+		case VK_FORMAT_R8G8B8A8_SRGB: bgra = false; break;
+		default:
+			LOG_ERROR("snapshot (vulkan): unsupported swapchain format %d",
+				(int)ctx.swapchainFormat);
+			return false;
+		}
 	}
 
-	const VkDeviceSize bytes = (VkDeviceSize)w * (VkDeviceSize)h * 4u;
+	const VkDeviceSize bytes = (VkDeviceSize)w * (VkDeviceSize)h * (hdrCapture ? 8u : 4u);
 
 	VkBufferCreateInfo bci{ VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
 	bci.size = bytes;
@@ -178,7 +189,17 @@ bool BeginCapture(VkContext& ctx, VkCommandBuffer cmd, uint32_t imageIndex, Capt
 		return false;
 	}
 
-	VkImage scImg = ctx.swapchainImages[imageIndex];
+	// In HDR this is the scene image: the frame pass renders into it, so at
+	// this point (pass open or suspended) it is in COLOR_ATTACHMENT_OPTIMAL,
+	// exactly as the swapchain image is in SDR. It goes back to that layout
+	// below; VK_EndFrame then moves it to SHADER_READ_ONLY for the encode pass.
+	VkImage scImg = hdrCapture ? hdrImg : ctx.swapchainImages[imageIndex];
+
+	// HDR only: make sure the frame pass has been opened at least once (it is
+	// lazily opened; a no-op when already open), so the scene image has left
+	// UNDEFINED and holds this frame's content.
+	if (hdrCapture)
+		VK_ResumeFramePass(ctx, cmd, imageIndex);
 
 	// -----------------------------------------------------------------------
 	// Record: suspend the frame pass, round-trip the swapchain image through
@@ -283,6 +304,7 @@ bool BeginCapture(VkContext& ctx, VkCommandBuffer cmd, uint32_t imageIndex, Capt
 	cap.width = w;
 	cap.height = h;
 	cap.bgraSwizzle = bgra;
+	cap.hdr = hdrCapture;
 	cap.active = true;
 	return true;
 }
@@ -328,7 +350,20 @@ void FinishCapture(VkContext& ctx, Capture& cap, bool frameSubmitted)
 
 	// Straight linear walk: the copy is tightly packed and top-row-first, so
 	// scanline order needs no reordering at all (see the ROW ORDER note).
-	if (cap.bgraSwizzle)
+	if (cap.hdr)
+	{
+		// Float scene image: 4 halves per pixel (R,G,B,A), top row first.
+		// Gamma-encoded, 1.0 = paper white; beams exceed 1.0 and clip to white.
+		const uint16_t* half = static_cast<const uint16_t*>(mapped);
+		for (size_t i = 0; i < texels; ++i)
+		{
+			dst[i * 4 + 0] = hdr::HalfToSdrByte(half[i * 4 + 0]);
+			dst[i * 4 + 1] = hdr::HalfToSdrByte(half[i * 4 + 1]);
+			dst[i * 4 + 2] = hdr::HalfToSdrByte(half[i * 4 + 2]);
+			dst[i * 4 + 3] = 255;
+		}
+	}
+	else if (cap.bgraSwizzle)
 	{
 		for (size_t i = 0; i < texels; ++i)
 		{

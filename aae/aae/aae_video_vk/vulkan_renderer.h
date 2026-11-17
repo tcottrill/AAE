@@ -66,6 +66,17 @@ void vkchain_init_raster_overlay(void);
 void vkchain_shutdown_raster_overlay(void);
 int  vkchain_get_error(void);
 
+// Live HDR output state for the display the window is on (menu status line).
+// Plain ints so callers need no Vulkan types.
+enum VkChainHdrStatus {
+	VKCHAIN_HDR_ACTIVE          = 0,   // HDR output is running
+	VKCHAIN_HDR_NOT_AVAILABLE   = 1,   // this display does not offer HDR10 (or chain not up)
+	VKCHAIN_HDR_OFF_IN_SETTINGS = 2    // renderer was started with HDR off
+};
+int  vkchain_hdr_status(void);
+// Display maximum in nits when HDR is active and the display reports it, else 0.
+float vkchain_hdr_display_max_nits(void);
+
 // Vector artwork: the VK mirror of run_game Step 6's load_artwork
 // call. Frees the previous game's artwork VkTextures (device drain inside -
 // call between games only, never mid-frame) and loads the driver's ART_TEX

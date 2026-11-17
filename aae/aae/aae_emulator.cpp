@@ -40,6 +40,7 @@
 // ---------------------------------------------------------------------------
 #include "aae_emulator.h"
 #include "aae_mame_driver.h"
+#include "process_result.h"   // exit codes + stderr diagnostics for a launching frontend
 #include "sys_timer.h"
 #include "acommon.h"
 #include "fileio/texture_handler.h"
@@ -301,6 +302,12 @@ bool emulator_apply_pending_switch()
 	const int guiIdx = FindGuiGameIndex();
 	if (guiIdx >= 0)
 	{
+		// An interactive switch that failed and fell back to the GUI is a
+		// recovered failure: it must not decide the process exit code. A
+		// frontend launch keeps its fatal (it asked for that game).
+		if (!procres_frontend_mode())
+			procres_discard_recovered();
+
 		done = 0;
 		emulator_start_game(guiIdx);
 		done = 0;
@@ -577,10 +584,11 @@ void gameparse(int argc, char* argv[])
 		else if (arg == "-wavwrite")
 		{
 			// MAME-style session audio recording. Filename optional: the
-			// next argument is taken as the path unless it is another
-			// option; empty path -> <gamename>.wav at capture start.
+			// next argument is taken as the path only if it looks like one
+			// (aae_wavwrite_value_follows, shared with the game-name scan);
+			// empty path -> <gamename>.wav at capture start.
 			config.wavwrite = 1;
-			if (i + 1 < argc && argv[i + 1][0] != '-' && argv[i + 1][0] != '/')
+			if (i + 1 < argc && aae_wavwrite_value_follows(argv[i + 1]))
 			{
 				snprintf(config.wavwrite_path, sizeof(config.wavwrite_path),
 				         "%s", argv[++i]);
@@ -864,6 +872,10 @@ void run_game(void)
 	game_loaded_sentinel = false;
 	float gameAspect = 0;
 
+	// New start attempt: forget the previous attempt's optional sample warnings
+	// (a recorded fatal is process-level state and is left alone).
+	procres_begin_attempt();
+
 	auto& ws = GetWindowSetup();
 
 	// Step 1: Bind Machine to the chosen driver.
@@ -944,8 +956,11 @@ void run_game(void)
 
 	// Step 4: OpenGL init (guarded - only runs once per process lifetime).
 	LOG_INFO("OpenGL init...");
-	init_gl();
-	did_init_gl = true;
+	// init_gl() returns 0 only when no graphics API could be started; it has
+	// then recorded the process result and set have_error, and there is no GL
+	// state to tear down in the fail path.
+	did_init_gl = (init_gl() != 0);
+	if (!did_init_gl && have_error == 0) have_error = 4;
 	if (have_error != 0) goto fail;
 
 	// Step 5: Initialize the raster rendering pipeline (raster games only).
@@ -1201,6 +1216,21 @@ fail:
 		(Machine && Machine->gamedrv && Machine->gamedrv->name) ? Machine->gamedrv->name : "UNKNOWN",
 		have_error);
 
+	// Record the process result BEFORE the cleanup below (which resets state
+	// and may itself log more failures). A specific cause recorded closer to
+	// the origin (ROM loader, config check, renderer init) wins; this only
+	// fills in when nothing did. Internal have_error values are not exit codes.
+	if (!procres_has_fatal())
+	{
+		const char* gname = (Machine && Machine->gamedrv && Machine->gamedrv->name) ? Machine->gamedrv->name : "UNKNOWN";
+		if (have_error == 10)
+			procres_fatal(AAE_EXIT_MISSING_FILES, "AAE: unable to start game \"%s\": required ROM files unavailable.", gname);
+		else if (have_error == 3)
+			procres_fatal(AAE_EXIT_INVALID_CONFIG, "AAE: unable to start game \"%s\": invalid configuration", gname);
+		else
+			procres_fatal(AAE_EXIT_FATAL, "AAE: unable to start game \"%s\": initialization failed (internal error %d)", gname, have_error);
+	}
+
 	done = 1;
 
 	save_input_port_settings();
@@ -1342,13 +1372,15 @@ void msg_loop(void)
 	{
 		// Read joystick directional state for left/right navigation.
 		// Use Check_Input for proper repeat timing on the stick.
-		const bool joyLeft = Check_Input(JOY_INPUT_LEFT, joy[0].stick[0].axis[0].d1) != 0;
-		const bool joyRight = Check_Input(JOY_INPUT_RIGHT, joy[0].stick[0].axis[0].d2) != 0;
+		// The pad is Player 1's, not raw joy[0] (see osd_menu_joy_index).
+		const JOYSTICK_INFO& mj = joy[osd_menu_joy_index()];
+		const bool joyLeft = Check_Input(JOY_INPUT_LEFT, mj.stick[0].axis[0].d1) != 0;
+		const bool joyRight = Check_Input(JOY_INPUT_RIGHT, mj.stick[0].axis[0].d2) != 0;
 
 		// A button (0) or Start (7) for select in the confirm dialog.
 		// Start is safe here because the dialog consumes all input this frame.
 		const bool joySelect = KeyFlip(JOY_INPUT_SELECT,
-			(joy[0].button[0].b != 0) || (joy[0].button[7].b != 0)) != 0;
+			(mj.button[0].b != 0) || (mj.button[7].b != 0)) != 0;
 
 		// Left/Right move the highlight between YES (0) and NO (1).
 		if (osd_key_pressed_memory(OSD_KEY_UI_LEFT) || joyLeft ||
@@ -1414,7 +1446,16 @@ void msg_loop(void)
 	//   4. Menu is closed, at GUI or launched from command line:
 	//      exit the emulator (with optional confirm dialog)
 	// -------------------------------------------------------------------------
-	if (osd_key_pressed_memory(OSD_KEY_CANCEL) ||
+	// While the menu is waiting for a key/button (PRESS KEY/BUTTON OR ESC TO
+	// CANCEL), keyboard ESC belongs to MenuManager::PollInput, which runs later
+	// this frame from do_the_menu() and treats it as "cancel the capture" only.
+	// Consuming the ESC edge here would navigate back a level as well (and
+	// clear the capture before PollInput could see the key), so the edge is
+	// left unread. Snapshotted before anything below can change it; the pad
+	// shortcuts in the menu block use it too.
+	const bool menuPollingAtStart = get_menu_status() && menu_is_polling();
+
+	if ((!menuPollingAtStart && osd_key_pressed_memory(OSD_KEY_CANCEL)) ||
 		joystick_check_combo(0, JOY_COMBO_ESC))
 	{
 		if (get_menu_status())
@@ -1482,10 +1523,25 @@ void msg_loop(void)
 		// acceleration and repeat timing - same system used by the GUI driver.
 		// Slots JOY_INPUT_UP/DOWN/LEFT/RIGHT/SELECT/BACK are reserved for
 		// menu joystick navigation (see inptport.h).
-		const bool joyUp = Check_Input(JOY_INPUT_UP, joy[0].stick[0].axis[1].d1) != 0;
-		const bool joyDown = Check_Input(JOY_INPUT_DOWN, joy[0].stick[0].axis[1].d2) != 0;
-		const bool joyLeft = Check_Input(JOY_INPUT_LEFT, joy[0].stick[0].axis[0].d1) != 0;
-		const bool joyRight = Check_Input(JOY_INPUT_RIGHT, joy[0].stick[0].axis[0].d2) != 0;
+		//
+		// The pad is Player 1's, not raw joy[0] (see osd_menu_joy_index).
+		//
+		// While a key/button capture is waiting the pad's menu shortcuts must do
+		// nothing: B in particular is a button the user may want to BIND, and
+		// "back" would abort the capture and leave the submenu. The functions
+		// below are still called every frame, deliberately - Check_Input and
+		// KeyFlip keep per-slot edge/repeat state, and skipping them would leave
+		// a B that is still held after being bound looking like a fresh press on
+		// the first frame after the capture ends. Their results are then masked
+		// out. The mask covers "was polling at the start of this frame OR is
+		// polling now" so the frame the capture ends (and the frame it starts,
+		// when select begins it mid-block) is ignored too.
+		const JOYSTICK_INFO& mj = joy[osd_menu_joy_index()];
+		const bool padMenuBlocked = menuPollingAtStart || menu_is_polling();
+		const bool joyUp = Check_Input(JOY_INPUT_UP, mj.stick[0].axis[1].d1) != 0 && !padMenuBlocked;
+		const bool joyDown = Check_Input(JOY_INPUT_DOWN, mj.stick[0].axis[1].d2) != 0 && !padMenuBlocked;
+		const bool joyLeft = Check_Input(JOY_INPUT_LEFT, mj.stick[0].axis[0].d1) != 0 && !padMenuBlocked;
+		const bool joyRight = Check_Input(JOY_INPUT_RIGHT, mj.stick[0].axis[0].d2) != 0 && !padMenuBlocked;
 
 		// A button (0) only for select inside the menu.
 		// Start (7) is intentionally excluded here - it is reserved for the
@@ -1493,12 +1549,12 @@ void msg_loop(void)
 		// bare select would make it too easy to accidentally confirm items
 		// when attempting to close the menu with the combo.
 		const bool joySelect = KeyFlip(JOY_INPUT_SELECT,
-			joy[0].button[0].b != 0) != 0;
+			mj.button[0].b != 0) != 0 && !padMenuBlocked;
 
 		// B button (1) acts as Back/ESC within the menu only.
 		// Uses KeyFlip so it fires once per press rather than every frame.
 		const bool joyBack = KeyFlip(JOY_INPUT_BACK,
-			joy[0].button[1].b != 0) != 0;
+			mj.button[1].b != 0) != 0 && !padMenuBlocked;
 
 		if (osd_key_pressed_memory_repeat(OSD_KEY_UI_UP, 4) || joyUp)   change_menu_level(0);
 		if (osd_key_pressed_memory_repeat(OSD_KEY_UI_DOWN, 4) || joyDown) change_menu_level(1);
@@ -1562,7 +1618,9 @@ void msg_loop(void)
 		// Only reachable here (inside get_menu_status() block) so it cannot
 		// accidentally trigger an exit when the menu is closed.
 		// -------------------------------------------------------------------------
-		if (joyBack)
+		// Re-checked: the select above can start a capture this very frame, and a
+		// B pressed together with A must not back out of the row just entered.
+		if (joyBack && !menu_is_polling())
 		{
 			if (get_menu_level() > 100)
 			{
@@ -1733,6 +1791,7 @@ void emulator_init(int argc, char** argv)
 	// -debug       => config.debug = 1
 	// -debug 0/1   => config.debug = 0/1
 
+	bool bad_cmdline = false;
 	for (int i = 1; i < argc; ++i)
 	{
 		if (!argv[i]) continue;
@@ -1750,14 +1809,25 @@ void emulator_init(int argc, char** argv)
 		}
 		else if (arg == "-renderer")
 		{
-			if (i + 1 < argc && argv[i + 1])
+			const char* rv = (i + 1 < argc && argv[i + 1]) ? argv[i + 1] : "";
+			const std::string val = to_lowercase(rv);
+			if (val == "vulkan")      renderer_override = RENDERER_VULKAN;
+			else if (val == "opengl") renderer_override = RENDERER_OPENGL;
+			else
 			{
-				const std::string val = to_lowercase(argv[i + 1]);
-				if (val == "vulkan")      renderer_override = RENDERER_VULKAN;
-				else if (val == "opengl") renderer_override = RENDERER_OPENGL;
-				else LOG_INFO("-renderer: unknown value '%s' (use opengl|vulkan)", argv[i + 1]);
+				LOG_INFO("-renderer: unknown value '%s' (use opengl|vulkan)", rv);
+				procres_fatal(AAE_EXIT_INVALID_CONFIG,
+					"AAE: invalid value \"%s\" for -renderer (allowed: opengl, vulkan)", rv);
+				bad_cmdline = true;
 			}
 		}
+	}
+
+	if (bad_cmdline)
+	{
+		// No game is started; the entry point unwinds and returns the result.
+		done = 1;
+		return;
 	}
 
 	// Parse rotation flags early as global options, so they work regardless of
@@ -1775,14 +1845,27 @@ void emulator_init(int argc, char** argv)
 		else if (arg == "-norotate") rotation_override = ROT0;
 	}
 
-	// Normalize all command-line args to lowercase before further parsing.
+	// Find the game token BEFORE any lowercasing (option arity is judged on the
+	// original tokens), and keep its original spelling for diagnostics.
+	const int gameArgIndex = aae_find_game_arg(argc, argv);
+	const std::string gameArgOriginal = (gameArgIndex >= 0) ? std::string(argv[gameArgIndex]) : std::string();
+
+	// Normalize option names and the game name to lowercase before further
+	// parsing. Option VALUES (a -wavwrite path, an -aspect, a monitor id...) are
+	// left exactly as given so their case and UTF-8 survive.
 	for (int i = 1; i < argc; ++i)
 	{
 		if (!argv[i]) continue;
 		if (argv[i][0] == '-' || argv[i][0] == '/')
+		{
+			const int valueTokens = aae_option_value_count(argc, argv, i);
 			toLowerCase(argv[i] + 1);   // skip the dash/slash prefix
-		else
+			i += valueTokens;           // leave the option's value untouched
+		}
+		else if (i == gameArgIndex)
+		{
 			toLowerCase(argv[i]);
+		}
 	}
 
 	// Handle global utility options that do not require a game to be loaded.
@@ -1808,16 +1891,8 @@ void emulator_init(int argc, char** argv)
 
 	// Pick the first non-option token as the game name (if any).
 	// If none is found, the GUI will start instead.
-	const char* gameArg = nullptr;
-	int         gameArgIndex = -1;
-	for (int i = 1; i < argc; ++i)
-	{
-		if (!argv[i] || argv[i][0] == '\0') continue;
-		if (argv[i][0] == '-' || argv[i][0] == '/') continue;
-		gameArg = argv[i];
-		gameArgIndex = i;
-		break;
-	}
+	// (gameArgIndex was found above, with option values skipped.)
+	const char* gameArg = (gameArgIndex >= 0) ? argv[gameArgIndex] : nullptr;
 
 	started_from_command_line = 0;
 
@@ -1834,7 +1909,14 @@ void emulator_init(int argc, char** argv)
 			}
 		}
 		if (!started_from_command_line)
-			LOG_INFO("Unknown game '%s' -> starting GUI.", gameArg);
+		{
+			// An explicit game that does not exist is an error for whoever
+			// launched us, not a cue to open the game selector.
+			LOG_ERROR("Unknown game '%s'", gameArg);
+			procres_fatal(AAE_EXIT_NO_SUCH_GAME, "AAE: unknown game \"%s\"", gameArgOriginal.c_str());
+			done = 1;
+			return;
+		}
 	}
 	else
 	{

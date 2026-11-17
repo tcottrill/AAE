@@ -117,9 +117,11 @@ set(AAE_CORE_SOURCES
     aae/aae/drivers/jrpacman.cpp
     aae/aae/drivers/llander.cpp
     aae/aae/drivers/mappy.cpp
+    aae/aae/drivers/mario.cpp
     aae/aae/drivers/mhavoc.cpp
     aae/aae/drivers/milliped.cpp
     aae/aae/drivers/missile.cpp
+    aae/aae/drivers/mpatrol.cpp
     aae/aae/drivers/omegrace.cpp
     aae/aae/drivers/pacman.cpp
     aae/aae/drivers/phoenix.cpp
@@ -133,6 +135,7 @@ set(AAE_CORE_SOURCES
     aae/aae/drivers/vertigo.cpp
     aae/aae/drivers/vicdual.cpp
     aae/aae/drivers/warlord.cpp
+    aae/aae/drivers/williams.cpp
     aae/aae/drivers/xevious.cpp
     aae/aae/drivers/yiear.cpp
     aae/aae/driver_registry.cpp
@@ -153,6 +156,8 @@ set(AAE_CORE_SOURCES
     aae/aae/machine_state.cpp
     aae/aae/memory.cpp
     aae/aae/os_input.cpp
+    aae/aae/process_result.cpp
+    aae/aae/sndhrdwr/c012294.c
     aae/aae/sndhrdwr/c012294_interface.cpp
     aae/aae/sndhrdwr/astrocade_sound.cpp
     aae/aae/sndhrdwr/ay8910.cpp
@@ -163,6 +168,9 @@ set(AAE_CORE_SOURCES
     aae/aae/sndhrdwr/cinematronics_sound.cpp
     aae/aae/sndhrdwr/dac.cpp
     aae/aae/sndhrdwr/exidy440_sound.cpp
+    aae/aae/sndhrdwr/hc55516.cpp
+    aae/aae/sndhrdwr/irem_snd.cpp
+    aae/aae/sndhrdwr/msm5205.cpp
     aae/aae/sndhrdwr/okim6295_loader.cpp
     aae/aae/sndhrdwr/phoenix_audio.cpp
     aae/aae/sndhrdwr/pleiads_audio.cpp
@@ -170,8 +178,8 @@ set(AAE_CORE_SOURCES
     aae/aae/sndhrdwr/starwars_snd.cpp
     aae/aae/sndhrdwr/tms36xx.cpp
     aae/aae/sndhrdwr/tms5220.cpp
-    aae/aae/vidhrdwr/aae_avg.cpp
     aae/aae/vidhrdwr/fuzz_state.cpp
+    aae/aae/vidhrdwr/mame_late_avgdvg.cpp
     aae/aae/vidhrdwr/mame_vector.cpp
     aae/aae/vidhrdwr/centiped_vid.cpp
     aae/aae/vidhrdwr/astrocde_video.cpp
@@ -186,9 +194,11 @@ set(AAE_CORE_SOURCES
     aae/aae/vidhrdwr/vertigo_video.cpp
     aae/aae/vidhrdwr/xevious_video.cpp
 )
+# 113 = aae_core.vcxproj's 114 <ClCompile> entries minus vidhrdwr/aae_avg.cpp,
+# which the vcxproj lists but marks ExcludedFromBuild (retired AVG path).
 list(LENGTH AAE_CORE_SOURCES _aae_core_count)
-if(NOT _aae_core_count EQUAL 102)
-    message(FATAL_ERROR "aae_core source list has ${_aae_core_count} entries, expected 102 - it has drifted from aae/aae_core.vcxproj")
+if(NOT _aae_core_count EQUAL 113)
+    message(FATAL_ERROR "aae_core source list has ${_aae_core_count} entries, expected 113 - it has drifted from aae/aae_core.vcxproj")
 endif()
 
 # -----------------------------------------------------------------------------
@@ -266,6 +276,7 @@ set(AAE_COMMON_SOURCES
     aae/system/graphics/sys_texture.cpp
     aae/system/graphics/texrect.cpp
     aae/system/graphics/vk/sys_vk.cpp
+    aae/system/graphics/vk/hdr_output_vk.cpp
     aae/system/util/iniFile.cpp
     aae/system/util/path_helper.cpp
     aae/system/util/sys_fileio.cpp
@@ -288,6 +299,7 @@ if(WIN32)
         aae/system/input/Joystick.cpp
         aae/system/input/pad_map.cpp
         aae/system/audio/xaudio2_backend.cpp
+        aae/system/audio/wav_writer.cpp
         aae/system/audio/audio_3d.cpp
         aae/system/util/wintimer.cpp
     )
@@ -424,7 +436,7 @@ elseif(UNIX AND NOT APPLE)
     # played them). libpulse is therefore no longer used at all. Without
     # libpipewire the raw-ALSA path still covers everything - Pi console builds
     # and bare cabinets have no server anyway.
-    # >=1.0: the Flatpak SDK (Freedesktop 24.08) ships PipeWire 1.2, and the
+    # >=1.0: the Flatpak SDK (Freedesktop 26.08) ships PipeWire 1.6, and the
     # sibling video player builds against the same SDK.
     find_package(PkgConfig QUIET)
     if(PKG_CONFIG_FOUND)
@@ -452,7 +464,7 @@ elseif(UNIX AND NOT APPLE)
     # tree, plus wayland_window.cpp, the AAE adapter over it.
     #
     # Optional, probed here and applied to the aae target further down. Everything
-    # it needs is in the Freedesktop 24.08 SDK; on a plain distro box it is
+    # it needs is in the Freedesktop 26.08 SDK; on a plain distro box it is
     #   Debian/Ubuntu:  sudo apt install libwayland-dev libxkbcommon-dev \
     #                                    libegl-dev wayland-protocols
     # A box without them still gets a working X11-only build, and -DAAE_WAYLAND=OFF
@@ -496,8 +508,8 @@ endif()
 list(LENGTH AAE_COMMON_SOURCES _aae_common_count)
 list(LENGTH AAE_PLATFORM_SOURCES _aae_platform_count)
 math(EXPR _aae_exe_count "${_aae_common_count} + ${_aae_platform_count}")
-if(WIN32 AND NOT _aae_exe_count EQUAL 56)
-    message(FATAL_ERROR "aae executable source count is ${_aae_exe_count} (common=${_aae_common_count} + platform=${_aae_platform_count}), expected 56 on Windows - it has drifted from aae/aae.vcxproj's <ClCompile> list. Anything that moves between aae.vcxproj and aae_core.vcxproj must move between AAE_COMMON_SOURCES and AAE_CORE_SOURCES here too.")
+if(WIN32 AND NOT _aae_exe_count EQUAL 57)
+    message(FATAL_ERROR "aae executable source count is ${_aae_exe_count} (common=${_aae_common_count} + platform=${_aae_platform_count}), expected 57 on Windows - it has drifted from aae/aae.vcxproj's <ClCompile> list. Anything that moves between aae.vcxproj and aae_core.vcxproj must move between AAE_COMMON_SOURCES and AAE_CORE_SOURCES here too.")
 endif()
 
 # =============================================================================
@@ -794,6 +806,8 @@ set(AAE_VK_SHADERS
     crt_scanline_vk.frag
     fast_poly_vk.frag
     fast_poly_vk.vert
+    hdr_output_vk.frag
+    hdr_output_vk.vert
     layout_quad_vk.frag
     screen_quad_rect_vk.frag
     screen_quad_rect_vk.vert
@@ -984,6 +998,7 @@ set(AAE_AUDIOTEST_SOURCES
 if(WIN32)
     list(APPEND AAE_AUDIOTEST_SOURCES
         aae/system/audio/xaudio2_backend.cpp
+        aae/system/audio/wav_writer.cpp
         aae/system/audio/audio_3d.cpp)
 else()
     list(APPEND AAE_AUDIOTEST_SOURCES

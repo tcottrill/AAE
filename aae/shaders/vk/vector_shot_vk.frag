@@ -16,6 +16,7 @@ layout(push_constant) uniform Push {
     float uBloomPower;
     float uBloomIntensity;
     float uOverdrive;
+    float uHdrShotBoost;   // 1.0 = off (SDR, or shots not in the HDR float beam target)
 } pc;
 
 layout(location = 0) out vec4 frag;
@@ -25,5 +26,11 @@ void main() {
     float g = clamp(1.0 - d * 2.0, 0.0, 1.0);
     float profile = pow(g, pc.uCorePower) + pow(g, pc.uBloomPower) * pc.uBloomIntensity;
     float z = vColor.a;
-    frag = vec4(vColor.rgb * pc.uOverdrive * profile, profile * z);
+    vec3 rgb = vColor.rgb * pc.uOverdrive * profile;
+    float a  = profile * z;
+    // HDR shot boost: weights the hot core. Mirrors hdr::ShotBoostFactor (hdr_math.h);
+    // m is the brightest channel of the blended contribution (colour * alpha).
+    float m = clamp(max(rgb.r, max(rgb.g, rgb.b)) * a, 0.0, 1.0);
+    rgb *= 1.0 + (pc.uHdrShotBoost - 1.0) * m * m;
+    frag = vec4(rgb, a);
 }

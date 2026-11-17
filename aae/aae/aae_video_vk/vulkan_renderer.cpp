@@ -22,6 +22,7 @@
 #include "sys_vk.h"
 #include "sys_window.h"
 #include "config.h"
+#include "hdr_math.h"          // hdr::EffectiveBeamPeak
 #include "mame_vector.h"       // vector_start / vector_clear_list; pulls in
                                // aae_mame_driver.h for Machine and
                                // VIDEO_TYPE_VECTOR (safe direction: driver
@@ -252,7 +253,7 @@ static bool         s_vectorFailed = false;
 
 // Vector post chain: NON-GUI vector games render
 // beams into VectorPostVK's SSAA RT through a SECOND VectorDrawVK instance
-// (g_vectorDrawRT - its pipelines are built against the RT's RGBA8 format and
+// (g_vectorDrawRT - its pipelines are built against the beam RT's format (RGBA8, or float in HDR) and
 // its AA feather uses the RT's ssaa; g_vectorDraw above stays swapchain-format
 // for the gated GUI direct path). VectorPostVK then runs trail/glow and the
 // composite. Same lazy-init + failure-latch discipline as the other
@@ -388,7 +389,7 @@ static bool EnsureRotTarget(void)
 {
 	if (s_rtRotFailed)
 		return false;
-	if (s_rtRot.IsValid() && s_rtRotFormat == g_vk.swapchainFormat)
+	if (s_rtRot.IsValid() && s_rtRotFormat == g_vk.frameFormat)
 		return true;
 
 	if (s_rtRot.IsValid())
@@ -407,7 +408,7 @@ static bool EnsureRotTarget(void)
 	ci.width = kRotCanvas;
 	ci.height = kRotCanvas;
 	ci.filter = rtFilterVK::Linear;
-	ci.colorFormat = VK_FORMAT_UNDEFINED;   // = the swapchain format (see s_rtRot)
+	ci.colorFormat = VK_FORMAT_UNDEFINED;   // = the frame format (see s_rtRot)
 	// Full chain: the plain rotated blit is 1:1-ish and never minified hard,
 	// but the color VECTOR monitor pass samples this canvas with textureLod
 	// for its halation taps (GL's fbo_generate_mipmaps({img4a})). The levels
@@ -419,7 +420,7 @@ static bool EnsureRotTarget(void)
 		LOG_ERROR("vkchain: rotation output RT init failed; system rotation disabled this session");
 		return false;
 	}
-	s_rtRotFormat = g_vk.swapchainFormat;
+	s_rtRotFormat = g_vk.frameFormat;
 	LOG_INFO("vkchain: rotation output RT online (%dx%d, swapchain format %d)",
 		kRotCanvas, kRotCanvas, (int)s_rtRotFormat);
 	return true;
@@ -640,6 +641,7 @@ static void EnsureVectorPost(void)
 
 	VectorPostVKCreateInfo pci{};
 	pci.ssaa = (config.vk_ssaa == 2) ? 2 : 1;   // sanity_check_config pins it to 1 or 2
+	pci.hdr = g_vk.hdrActive;   // float beam/glow/frame targets; rebuilt on a change (CheckFrameFormatChange)
 	if (!g_vectorPost.Init(g_vk, &pci))
 	{
 		s_vecPostFailed = true;
@@ -717,6 +719,89 @@ static void RecreateSwapchainOrDefer(void)
 		s_deferRetryTick = 0;
 		LOG_INFO("vulkan_renderer: swapchain recreate failed; deferring (retry ~2s or on resize)");
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Frame-format change detection (HDR on/off at run time).
+//
+// CreateSwapchain re-decides ctx.hdrActive / ctx.frameFormat on EVERY swapchain
+// (re)creation, so dragging the window between an SDR and an HDR monitor, or
+// toggling Windows HDR, flips the format the frame pass draws in. Several
+// renderers bake that format (or one derived from it) into pipelines/targets at
+// Init and are not otherwise told:
+//   FpolyVK (g_guiPoints), VectorDrawVK (g_vectorDraw, g_vectorDrawRT),
+//   ShotDrawVK, VectorPostVK (its float/RGBA8 target choice), CrtPostVK.
+// s_rtRot self-heals (it compares s_rtRotFormat with frameFormat itself), and
+// ScreenQuadVK / LayoutVK / the lazy variant caches build per format on demand.
+//
+// This records the (frameFormat, hdrActive) pair the renderers were built for
+// and, at a frame boundary (vkchain_set_render, nothing open), shuts the
+// format-dependent ones down and clears their Init latches so the existing
+// lazy Ensure* functions / draw-time inits rebuild them for the new format.
+// ---------------------------------------------------------------------------
+static VkFormat s_builtFrameFormat = VK_FORMAT_UNDEFINED;
+static bool     s_builtHdr = false;
+
+static void RecordBuiltFrameFormat(void)
+{
+	s_builtFrameFormat = g_vk.frameFormat;
+	s_builtHdr = g_vk.hdrActive;
+}
+
+static void CheckFrameFormatChange(void)
+{
+	if (g_vk.frameFormat == s_builtFrameFormat && g_vk.hdrActive == s_builtHdr)
+		return;
+
+	LOG_INFO("vkchain: frame format changed (%d -> %d), rebuilding renderers",
+		(int)s_builtFrameFormat, (int)g_vk.frameFormat);
+
+	// In-flight frames may still reference the pipelines, buffers and targets
+	// destroyed below. Same guarantee as the raster rebuild path
+	// (EnsureRasterRenderer): drain the device first. Safe here, no frame is
+	// open (vkchain_set_render's s_frameOpen early-out precedes the call).
+	if (g_vk.device && g_vk.vkDeviceWaitIdle_)
+		g_vk.vkDeviceWaitIdle_(g_vk.device);
+
+	// Same order as vkchain_shutdown. Clearing the Init flags (and the failure
+	// latches, so a previous failure does not block the retry) lets the lazy
+	// Ensure* / draw-time inits rebuild on the next frame that needs them.
+	if (s_vectorInit)
+	{
+		g_vectorDraw.Shutdown(g_vk);
+		s_vectorInit = false;
+	}
+	s_vectorFailed = false;
+	if (s_vecPostInit)
+	{
+		g_vectorDrawRT.Shutdown(g_vk);
+		g_vectorPost.Shutdown(g_vk);
+		s_vecPostInit = false;
+	}
+	s_vecPostFailed = false;
+	if (s_shotInit)
+	{
+		g_shotDraw.Shutdown(g_vk);
+		s_shotInit = false;
+	}
+	if (s_guiPointsInit)
+	{
+		g_guiPoints.Shutdown(g_vk);
+		s_guiPointsInit = false;
+	}
+	s_guiPointsFailed = false;
+	if (s_crtPostInit)
+	{
+		g_crtPost.Shutdown(g_vk);
+		s_crtPostInit = false;
+	}
+	s_crtPostFailed = false;
+
+	// The trail accumulator was just recreated empty (and its format contract
+	// may differ); clear it on first use like a new game load.
+	s_trailClearPending = true;
+
+	RecordBuiltFrameFormat();
 }
 
 // The GL chain allocates the MAME vector display list in glchain_init
@@ -887,7 +972,7 @@ static void EnsureCrtPost(void)
 		return;
 
 	CrtPostVKCreateInfo ci{};
-	ci.gameRtFormat = s_rtGame.IsValid() ? s_rtGame.GetFormat() : g_vk.swapchainFormat;
+	ci.gameRtFormat = s_rtGame.IsValid() ? s_rtGame.GetFormat() : g_vk.frameFormat;
 	if (g_crtPost.Init(g_vk, &ci))
 	{
 		s_crtPostInit = true;
@@ -1189,12 +1274,15 @@ int vkchain_init(void)
 	// before FrameLimiter::Throttle() ever ran, and any driver whose fps was
 	// not the monitor rate (asteroid at 62) silently played back at 60.
 	// FrameLimiter is the pacing authority; vsync is a user preference.
+	VK_SetHdrRequest(g_vk, config.hdr);
+	VK_SetHdrLevels(g_vk, (float)config.hdr_paper_white, (float)config.hdr_beam_peak);
 	if (!VK_Init(g_vk, *present, validation, /*vsync=*/(config.forcesync != 0)))
 	{
 		LOG_ERROR("vkchain_init: VK_Init failed");
 		VK_Shutdown(g_vk);
 		return 0;
 	}
+	RecordBuiltFrameFormat();   // the format every renderer below is first built for
 
 	// ScreenQuadVK is game-independent: init once with the VK context, keep
 	// it across game loads, shut down in vkchain_shutdown. Defaults resolve
@@ -1316,6 +1404,8 @@ void vkchain_shutdown(void)
 	if (s_rtRot.IsValid())
 		s_rtRot.Shutdown(g_vk);
 	s_rtRotFormat = VK_FORMAT_UNDEFINED;
+	s_builtFrameFormat = VK_FORMAT_UNDEFINED;
+	s_builtHdr = false;
 	s_rtRotFailed = false;
 	s_rotTargetActive = false;
 	s_rasterTexFailed = false;
@@ -1362,6 +1452,12 @@ void vkchain_set_render(void)
 		RecreateSwapchainOrDefer();
 		return;
 	}
+
+	// A swapchain recreate (resize, monitor change, Windows HDR toggle) may have
+	// flipped ctx.hdrActive / frameFormat since the renderers were built; rebuild
+	// the format-dependent ones before this frame records anything. No frame is
+	// open and no recreate is pending (both guaranteed above).
+	CheckFrameFormatChange();
 
 	// Service a deferred raster-texture rebuild here, where no frame is open (the
 	// s_frameOpen early-out above guarantees it), so the device drain and
@@ -1557,6 +1653,10 @@ static void RecordUiOverlays(void)
 
 void vkchain_render(void)
 {
+	// HDR output levels (live from the menu); read by VK_EndFrame's encode
+	// pass. Two float stores; inert when HDR is not active.
+	VK_SetHdrLevels(g_vk, (float)config.hdr_paper_white, (float)config.hdr_beam_peak);
+
 	// Display-time system rotation (-ror / -rol / 180). Resolved once here so
 	// every branch below agrees, and so the whole feature is one compare away
 	// from being provably inert: at rot == 0 every `rotActive` below is false
@@ -2068,6 +2168,31 @@ void vkchain_render(void)
 		const bool canvasActive =
 			((rot != 0) || cvShader) && s_screenQuadInit && EnsureRotTarget();
 
+		// HDR highlight expansion for the CRT image, filled every frame (also
+		// while paused: the composite below runs on retained targets and reads
+		// this same value). Config levels are already clamped; k = peak/paper.
+		// The color-vector MONITOR SHADER path (crt_color_vk over the canvas)
+		// is NOT expanded: that shader post-processes the canvas (mask,
+		// halation taps) and its offscreen output RT is 8-bit, so expanding
+		// there would need restructuring. Such games run the HDR scene
+		// unexpanded and clamped exactly as in SDR.
+		VectorHdrVK vhdr;
+		vhdr.active = g_vk.hdrActive && !cvShader;
+		vhdr.k      = (config.hdr_paper_white > 0.0f)
+			? hdr::EffectiveBeamPeak((float)config.hdr_beam_peak, (float)config.hdr_paper_white,
+			                         g_vk.displayMaxNits) / (float)config.hdr_paper_white
+			: 1.0f;
+		vhdr.curve  = (float)config.hdr_beam_curve;
+		if (g_vk.hdrActive && cvShader)
+		{
+			static bool s_loggedCvNoHdr = false;
+			if (!s_loggedCvNoHdr)
+			{
+				s_loggedCvNoHdr = true;
+				LOG_INFO("vkchain: HDR: the colour-vector monitor shader path is not HDR-expanded (beams stay at paper white)");
+			}
+		}
+
 		// Mirror glchain_render's !paused guard; unlike the direct path,
 		// pause here shows the RETAINED frame (composite below still runs),
 		// matching GL's frozen fbo1.
@@ -2098,8 +2223,12 @@ void vkchain_render(void)
 			passSuspended = true;
 			GPU_ZONE_BEGIN("beam");
 			g_vectorPost.BeginBeamPass(g_vk, cmd);
+			// Shot boost applies only to shots drawn into the float beam
+			// target while the HDR expanded composite is active.
+			const float shotBoost = vhdr.active ? (float)config.hdr_shot_boost : 1.0f;
 			g_vectorDrawRT.Record(g_vk, cmd, g_vk.frameIndex, proj, additive,
-				(uint32_t)g_vectorPost.BeamDim(), (uint32_t)g_vectorPost.BeamDim());
+				(uint32_t)g_vectorPost.BeamDim(), (uint32_t)g_vectorPost.BeamDim(),
+				shotBoost);
 			GPU_ZONE_END();
 			// Textured shots: the GL analog draws texlist right
 			// after beam_draw_all into fbo1 with the same projection
@@ -2119,7 +2248,8 @@ void vkchain_render(void)
 						shots, (uint32_t)shotVerts,
 						shotTex->view, shotTex->sampler,
 						(uint32_t)g_vectorPost.BeamDim(),
-						(uint32_t)g_vectorPost.BeamDim());
+						(uint32_t)g_vectorPost.BeamDim(),
+						0.20f, 1.00f, shotBoost);
 				}
 			}
 			g_vectorPost.EndBeamPass(g_vk, cmd);
@@ -2148,7 +2278,7 @@ void vkchain_render(void)
 				GPU_ZONE("framebuild");
 				g_vectorPost.RecordFrameBuild(g_vk, cmd, g_vk.frameIndex,
 					m.grL, m.grR, m.grB, m.grT,
-					config.vectrail, config.vecglow, art);
+					config.vectrail, config.vecglow, art, vhdr);
 			}
 			// The rotated path stays suspended: its output RT is another
 			// offscreen pass, and resuming only to suspend again would be a
@@ -2186,7 +2316,7 @@ void vkchain_render(void)
 				g_vectorPost.RecordCompositeLayered(g_vk, cmd, g_vk.frameIndex,
 					0.0f, 0.0f, (float)kRotCanvas, (float)kRotCanvas,
 					m.grL, m.grR, m.grB, m.grT, art,
-					kRotCanvas, kRotCanvas);
+					kRotCanvas, kRotCanvas, vhdr);
 			}
 			else
 			{
@@ -2198,7 +2328,7 @@ void vkchain_render(void)
 					m.grL, (float)kRotCanvas - m.grT,
 					m.grR, (float)kRotCanvas - m.grB,
 					config.vectrail, config.vecglow,
-					kRotCanvas, kRotCanvas);
+					kRotCanvas, kRotCanvas, vhdr);
 			}
 
 			// UI overlays go in the SAME canvas so they turn with the frame -
@@ -2350,7 +2480,7 @@ void vkchain_render(void)
 				GPU_ZONE("composite");
 				g_vectorPost.RecordCompositeLayered(g_vk, cmd, g_vk.frameIndex,
 					m.lx, m.ly, m.vw, m.vh,
-					m.grL, m.grR, m.grB, m.grT, art);
+					m.grL, m.grR, m.grB, m.grT, art, 0, 0, vhdr);
 			}
 			else
 			{
@@ -2365,7 +2495,7 @@ void vkchain_render(void)
 				GPU_ZONE("composite");
 				g_vectorPost.RecordComposite(g_vk, cmd, g_vk.frameIndex,
 					x0, (float)sh - yTopUp, x1, (float)sh - yBotUp,
-					config.vectrail, config.vecglow);
+					config.vectrail, config.vecglow, 0, 0, vhdr);
 			}
 
 			// Texture overlay over the composited game image, tiled 1:1 on
@@ -3074,3 +3204,17 @@ void vkchain_shutdown_raster_overlay(void)
 }
 
 int  vkchain_get_error(void) { return 0; }
+
+int  vkchain_hdr_status(void)
+{
+	if (!s_initialized) return VKCHAIN_HDR_NOT_AVAILABLE;
+	if (g_vk.hdrActive) return VKCHAIN_HDR_ACTIVE;
+	if (g_vk.hdrRequest == 0) return VKCHAIN_HDR_OFF_IN_SETTINGS;
+	return VKCHAIN_HDR_NOT_AVAILABLE;
+}
+
+float vkchain_hdr_display_max_nits(void)
+{
+	if (!s_initialized || !g_vk.hdrActive) return 0.0f;
+	return (float)g_vk.displayMaxNits;
+}

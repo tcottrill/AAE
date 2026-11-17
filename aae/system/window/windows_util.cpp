@@ -6,6 +6,7 @@
 // -----------------------------------------------------------------------------
 
 #include "windows_util.h"
+#include "process_result.h"
 #include "sys_log.h"
 #include "win32/win32_private.h"
 #include "utf8conv.h"
@@ -132,6 +133,15 @@ void osMessage(int ID, const char* fmt, ...)
 //========================================================================
 void allegro_message(const char* title, const char* message)
 {
+	// A launching frontend reads stderr and cannot dismiss a modal box:
+	// log the notice and hand it to the process-result transport instead.
+	if (procres_frontend_mode())
+	{
+		LOG_ERROR("%s: %s", title ? title : "MESSAGE", message ? message : "");
+		procres_message(title ? title : "MESSAGE", message ? message : "");
+		return;
+	}
+
 	try {
 		std::wstring wideTitle = win32::Utf8ToUtf16(title ? title : "Message");
 		std::wstring wideMessage = win32::Utf8ToUtf16(message ? message : "");

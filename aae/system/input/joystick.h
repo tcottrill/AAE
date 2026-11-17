@@ -423,6 +423,20 @@ extern JOYSTICK_INFO joy[MAX_JOYSTICKS];
 // Public API
 //------------------------------------------------------------------------------
 
+// aae.ini [input] joystick_ignore, handed down by the entry point BEFORE
+// install_joystick() (token syntax: pad_map.h, pad_ignore_match). A setter
+// rather than a backend read of the ini because aae_inputtest links the
+// backend without iniFile.cpp. The string is copied; nullptr/"" clears it.
+// Devices it matches are never given a joy[] slot.
+void joystick_set_ignore_list(const char* list);
+
+// Steam's device hiding (Linux): the values of SDL_GAMECONTROLLER_IGNORE_DEVICES
+// and SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT (nullptr when unset), handed down
+// by the entry point before install_joystick() - see pad_env_ignore_match in
+// pad_map.h. Honoured by the evdev backend so the physical pad Steam has
+// virtualized is not seen twice; a no-op on Windows.
+void joystick_set_steam_hide_env(const char* ignoreDevices, const char* ignoreDevicesExcept);
+
 // Initialize joystick support. Returns 0 on success, -1 on failure.
 // NOTE: Returns success even if no joysticks are currently connected,
 // allowing hotplug detection during polling.

@@ -53,6 +53,29 @@ struct VkContext
     // Swapchain sizing
     VkExtent2D swapchainExtent{ 0, 0 };
     VkFormat   swapchainFormat = VK_FORMAT_B8G8R8A8_UNORM;
+    VkColorSpaceKHR swapchainColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+
+    // HDR10 output state. hdrRequest uses 0 = off, 1 = auto, 2 = on (same
+    // numbers as hdr::kModeOff/kModeAuto/kModeOn in hdr_math.h); set it with
+    // VK_SetHdrRequest. hdrAvailable is recomputed at every swapchain
+    // creation. hdrActive is true when the frame is drawn into the float
+    // scene image and encoded to HDR10 by VK_EndFrame (see hdr_output_vk.h);
+    // frameFormat is then R16G16B16A16_SFLOAT while swapchainFormat stays the
+    // real 10-bit surface format.
+    int   hdrRequest = 0;
+    bool  hdrAvailable = false;
+    bool  hdrActive = false;
+    float displayMaxNits = 0.0f;
+
+    // Levels read by VK_EndFrame's encode pass and the HDR metadata. Set every
+    // frame with VK_SetHdrLevels. Like hdrRequest they survive VK_Init.
+    float hdrPaperWhite = 200.0f;   // nits that scene value 1.0 maps to
+    float hdrBeamPeak = 1000.0f;    // nits; the encode clamp when the display max is unknown
+
+    // Format of the pass the scene draws into (what subsystems fall back to
+    // when no explicit colour format is given). Equals swapchainFormat
+    // unless HDR output renders the frame in a different format.
+    VkFormat frameFormat = VK_FORMAT_UNDEFINED;
 
     // True when CreateSwapchain was able to add TRANSFER_SRC to the swapchain
     // images' usage (i.e. the surface reported it in supportedUsageFlags).
@@ -251,6 +274,10 @@ struct VkContext
     PFN_vkCmdBlitImage vkCmdBlitImage_ = nullptr;
     PFN_vkGetPhysicalDeviceFormatProperties vkGetPhysicalDeviceFormatProperties_ = nullptr;
 
+    // VK_EXT_hdr_metadata (device extension, optional): only loaded when the
+    // device lists it and it was enabled. Null-check before use.
+    PFN_vkSetHdrMetadataEXT vkSetHdrMetadataEXT_ = nullptr;
+
     PFN_vkCreatePipelineCache   vkCreatePipelineCache_ = nullptr;
     PFN_vkDestroyPipelineCache  vkDestroyPipelineCache_ = nullptr;
     PFN_vkGetPipelineCacheData  vkGetPipelineCacheData_ = nullptr;
@@ -275,7 +302,7 @@ inline VkFormat VK_ActiveColorFormat(const VkContext& ctx)
 {
     return (ctx.activeColorFormat != VK_FORMAT_UNDEFINED)
         ? ctx.activeColorFormat
-        : ctx.swapchainFormat;
+        : (ctx.frameFormat != VK_FORMAT_UNDEFINED ? ctx.frameFormat : ctx.swapchainFormat);
 }
 
 // -----------------------------------------------------------------------------
@@ -288,6 +315,13 @@ inline VkFormat VK_ActiveColorFormat(const VkContext& ctx)
 // -----------------------------------------------------------------------------
 bool VK_Init(VkContext& ctx, IPresentSurface& present, bool enableValidation = false, bool vsync = true);
 void VK_Shutdown(VkContext& ctx);
+
+// HDR request: 0 = off, 1 = auto, 2 = on. Call before VK_Init; a later change
+// applies at the next VK_RecreateSwapchain.
+void VK_SetHdrRequest(VkContext& ctx, int mode);
+
+// HDR levels in nits, read by VK_EndFrame. Call once per frame (cheap).
+void VK_SetHdrLevels(VkContext& ctx, float paperWhite, float beamPeak);
 
 bool VK_BeginFrame(VkContext& ctx, uint32_t& outImageIndex);
 bool VK_EndFrame(VkContext& ctx, uint32_t imageIndex);
@@ -315,6 +349,11 @@ bool VK_EndFrame(VkContext& ctx, uint32_t imageIndex);
 // -----------------------------------------------------------------------------
 void VK_SuspendFramePass(VkContext& ctx, VkCommandBuffer cmd);
 void VK_ResumeFramePass(VkContext& ctx, VkCommandBuffer cmd, uint32_t imageIndex);
+
+// HDR only: the float scene image (R16G16B16A16_SFLOAT, swapchain extent,
+// TRANSFER_SRC usage) the frame is drawn into. VK_NULL_HANDLE when HDR is not
+// active or the image does not exist. Used by the F12 screenshot readback.
+VkImage VK_HdrSceneImage(const VkContext& ctx);
 
 // Opens the swapchain render pass if it is not already open; no-op if it is.
 // VK_BeginFrame deliberately does NOT open it (that cost a tile store+reload

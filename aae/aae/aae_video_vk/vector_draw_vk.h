@@ -94,7 +94,8 @@ public:
     // 0/0 falls back to ctx.swapchainExtent for direct-to-swapchain callers.
     void Record(VkContext& ctx, VkCommandBuffer cmd, uint32_t frameIndex,
                 const float proj[16], bool additive,
-                uint32_t targetWidth = 0, uint32_t targetHeight = 0);
+                uint32_t targetWidth = 0, uint32_t targetHeight = 0,
+                float hdrShotBoost = 1.0f);   // >1 only for the HDR float beam target
 
 private:
     enum BatchType { BATCH_LINE = 0, BATCH_JOIN = 1, BATCH_SHOT = 2, BATCH_COUNT = 3 };

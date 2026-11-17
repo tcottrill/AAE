@@ -221,6 +221,7 @@ char* get_config_string(const char*, const char*, const char* szDefaultValue)
 // from load_ambient_samples()/load_samples_batch(), neither of which
 // headless_main.cpp calls - same whole-TU-pull-in reason as above.
 int load_sample_from_buffer(const uint8_t*, size_t, const char*, bool) { return -1; }
+int load_sample_from_buffer_ex(const uint8_t*, size_t, const char*, bool, bool*) { return -1; }
 int load_silent_sample(const char*) { return -1; }
 
 // --- CCPU CPU core -----------------------------------------------------------
@@ -264,6 +265,8 @@ void ccpu_reset() {}
 // Stubbed here (not exercised meaningfully - asteroid/bzone read no live
 // input over a fixed 600-frame headless run) purely so the link completes.
 int install_joystick() { return 0; }
+void joystick_set_ignore_list(const char*) {}
+void joystick_set_steam_hide_env(const char*, const char*) {}
 int poll_joystick() { return 0; }
 int joystick_find_by_id(const char*) { return -1; }
 void get_mouse_mickeys_ex(int, int* mickeyx, int* mickeyy) { if (mickeyx) *mickeyx = 0; if (mickeyy) *mickeyy = 0; }

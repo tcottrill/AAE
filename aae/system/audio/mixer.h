@@ -756,6 +756,11 @@ int mixer_add_sub_octave(int samplenum, float cutoff_hz, float gain_db);
 // -----------------------------------------------------------------------------
 int load_sample_from_buffer(const uint8_t* data, size_t size, const char* name = nullptr, bool force_resample = true);
 
+// As load_sample_from_buffer, plus *decode_failed (may be null) is set true when
+// the data was not a decodable WAV and the built-in error.wav was registered in
+// its place (the returned id is still valid then).
+int load_sample_from_buffer_ex(const uint8_t* data, size_t size, const char* name, bool force_resample, bool* decode_failed);
+
 // -----------------------------------------------------------------------------
 // load_silent_sample
 // Register a silent placeholder sample (built-in emptywav silence). Call this
