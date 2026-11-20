@@ -235,6 +235,8 @@
     <ClInclude Include="system\graphics\vk\sys_vk.h" />
     <ClInclude Include="system\graphics\vk\hdr_output_vk.h" />
     <ClInclude Include="system\input\joystick.h" />
+    <ClInclude Include="system\input\pad_db.h" />
+    <ClInclude Include="system\input\sdl_gamepad_db_windows.h" />
     <ClInclude Include="system\input\pad_map.h" />
     <ClInclude Include="system\input\rawinput_win32.h" />
     <ClInclude Include="system\math\circle.h" />
@@ -307,6 +309,7 @@
     <ClCompile Include="system\graphics\vk\sys_vk.cpp" />
     <ClCompile Include="system\graphics\vk\hdr_output_vk.cpp" />
     <ClCompile Include="system\input\Joystick.cpp" />
+    <ClCompile Include="system\input\pad_db.cpp" />
     <ClCompile Include="system\input\pad_map.cpp" />
     <ClCompile Include="system\input\rawinput.cpp" />
     <ClCompile Include="system\util\iniFile.cpp" />

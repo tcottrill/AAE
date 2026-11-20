@@ -267,6 +267,7 @@ void ccpu_reset() {}
 int install_joystick() { return 0; }
 void joystick_set_ignore_list(const char*) {}
 void joystick_set_steam_hide_env(const char*, const char*) {}
+void joystick_set_mapping_sources(const char*, const char*) {}
 int poll_joystick() { return 0; }
 int joystick_find_by_id(const char*) { return -1; }
 void get_mouse_mickeys_ex(int, int* mickeyx, int* mickeyy) { if (mickeyx) *mickeyx = 0; if (mickeyy) *mickeyy = 0; }

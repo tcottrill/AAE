@@ -81,6 +81,8 @@ EvdevDevice& EvdevDevice::operator=(EvdevDevice&& other) noexcept
 		m_identity     = std::move(other.m_identity);
 		m_vendorId     = other.m_vendorId;
 		m_productId    = other.m_productId;
+		m_busType      = other.m_busType;
+		m_version      = other.m_version;
 		m_weakIdentity = other.m_weakIdentity;
 		m_seenInput    = other.m_seenInput;
 		m_writable     = other.m_writable;
@@ -154,8 +156,10 @@ bool EvdevDevice::Open(const std::string& devNode, const std::string& identity)
 	if (ioctl(m_fd, EVIOCGID, &id) == 0) {
 		m_vendorId  = id.vendor;
 		m_productId = id.product;
+		m_busType   = id.bustype;
+		m_version   = id.version;
 	} else {
-		m_vendorId = m_productId = 0;
+		m_vendorId = m_productId = m_busType = m_version = 0;
 	}
 
 	if (!identity.empty()) {
@@ -515,6 +519,41 @@ bool EvdevDevice::HasKeyCode(int keyCode) const
 }
 
 //------------------------------------------------------------------------------
+bool EvdevDevice::FillPadDbCaps(PadDbCaps* out) const
+{
+	*out = PadDbCaps();
+	if (m_fd < 0) return false;
+
+	out->bus     = m_busType;
+	out->vendor  = m_vendorId;
+	out->product = m_productId;
+	out->version = m_version;
+	snprintf(out->name, sizeof(out->name), "%s", m_name.c_str());
+
+	unsigned long keyBits[BitsToLongs(KEY_MAX + 1)] = {0};
+	unsigned long absBits[BitsToLongs(ABS_MAX + 1)] = {0};
+	if (ioctl(m_fd, EVIOCGBIT(EV_KEY, sizeof(keyBits)), keyBits) >= 0)
+		for (int k = 0; k <= KEY_MAX && k < PADDB_NUM_KEYS; k++)
+			out->hasKey[k] = TestBit(keyBits, (size_t)k);
+	if (ioctl(m_fd, EVIOCGBIT(EV_ABS, sizeof(absBits)), absBits) >= 0)
+		for (int a = 0; a <= ABS_MAX && a < PADDB_NUM_ABS; a++)
+			out->hasAbs[a] = TestBit(absBits, (size_t)a);
+
+	for (int a = PADDB_ABS_HAT0X; a <= PADDB_ABS_HAT3Y; a++) {
+		if (!out->hasAbs[a]) continue;
+		input_absinfo info {};
+		if (!GetAbsInfo(a, &info)) { out->hasAbs[a] = false; continue; }
+		PadDbCaps::HatAbs& h = out->hat[a - PADDB_ABS_HAT0X];
+		h.min = info.minimum;
+		h.max = info.maximum;
+		h.fuzz = info.fuzz;
+		h.flat = info.flat;
+		h.resolution = info.resolution;
+	}
+	return true;
+}
+
+//------------------------------------------------------------------------------
 // Rumble.
 //
 // The evdev model is upload-then-play, not set-magnitude: an ff_effect is
@@ -662,6 +701,12 @@ std::string EvdevSanitizeIdentity(const std::string& path)
 		if (!ok) c = '_';
 	}
 	return out;
+}
+
+bool EvdevNodeDenied(const std::string& devNode)
+{
+	if (access(devNode.c_str(), R_OK) == 0) return false;
+	return errno == EACCES || errno == EPERM;
 }
 
 std::vector<EvdevNode> EvdevEnumerateNodes()

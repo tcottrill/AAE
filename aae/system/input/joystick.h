@@ -43,7 +43,10 @@
 // ----------
 // After poll_joystick(), the global state is:
 //
-//   num_joysticks          -- count of currently connected controllers (0..8)
+//   num_joysticks          -- highest connected slot + 1 (0 if none). A slot
+//                             BOUND, not a head count: slots are stable, so an
+//                             unplugged pad leaves a gap below it. Use
+//                             joystick_is_connected(i) to test one slot.
 //   joy[i]                 -- JOYSTICK_INFO for controller i
 //     .num_sticks          -- number of stick/axis groups
 //     .num_buttons         -- number of buttons
@@ -436,6 +439,15 @@ void joystick_set_ignore_list(const char* list);
 // pad_map.h. Honoured by the evdev backend so the physical pad Steam has
 // virtualized is not seen twice; a no-op on Windows.
 void joystick_set_steam_hide_env(const char* ignoreDevices, const char* ignoreDevicesExcept);
+
+// Extra gamepad mappings for the Linux evdev backend (SDL mapping strings, one
+// per line; blank lines and '#' comments ignored), handed down before
+// install_joystick(): the value of the SDL_GAMECONTROLLERCONFIG environment
+// variable (Steam exports its mappings there) and the text of an optional
+// gamecontrollerdb.txt next to aae.ini; either may be nullptr. Searched in that
+// order, ahead of the built-in SDL list - see pad_db.h. Both strings are
+// copied. A no-op on Windows.
+void joystick_set_mapping_sources(const char* envConfig, const char* userDbText);
 
 // Initialize joystick support. Returns 0 on success, -1 on failure.
 // NOTE: Returns success even if no joysticks are currently connected,

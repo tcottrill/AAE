@@ -69,7 +69,7 @@ struct VkContext
 
     // Levels read by VK_EndFrame's encode pass and the HDR metadata. Set every
     // frame with VK_SetHdrLevels. Like hdrRequest they survive VK_Init.
-    float hdrPaperWhite = 200.0f;   // nits that scene value 1.0 maps to
+    float hdrPaperWhite = 150.0f;  // nits that scene value 1.0 maps to
     float hdrBeamPeak = 1000.0f;    // nits; the encode clamp when the display max is unknown
 
     // Format of the pass the scene draws into (what subsystems fall back to

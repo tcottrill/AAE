@@ -388,9 +388,84 @@ static float sw_fuzz_target()
 	return 1.0f;
 }
 
+/************ Yoke calibration *****************************/
+
+// The game calibrates the yoke itself. RHLIM (IRQ, once per picture) keeps a
+// low limit (RHS_LO) and a spread multiplier (RHS_SP) per pot and computes
+//
+//     normalised = (pot - LO) * (1 + SP/256) - $80
+//
+// so the centre of the screen is the middle of the pot travel it has SEEN, not
+// ADC $80. Both values only ever correct downward, one step per picture, and
+// only while the yoke is held against a stop; everything else pushes them up:
+// PHERES_100 pulls each value read from NVRAM a notch toward $40 at power-up,
+// every game start does INC on all four ("PERTURB RHEOSTAT LIMITS"), and the
+// result is written back to NVRAM (POTSAV) at the end of every game. On a
+// cabinet that is fine, the yoke hits its stops all the time. An emulated pot
+// that spans the whole ADC (0..$FF, centre $80) needs LO = 0 and SP = 0, and
+// every bit of upward drift lands on the same side: LO = SP = $20 puts a
+// centred stick 15% left of centre, the NVRAM default LO = SP = $40 puts it
+// 37% left, and it stays there until the stick is held hard left and then
+// hard right for a second or so.
+//
+// With starwars_yoke_cal = 1 (the default) the driver keeps LO and SP at the
+// values a perfectly calibrated full-travel pot has, so a centred stick is
+// the centre of the screen from the first frame. 0 leaves the game's own
+// calibration alone.
+//
+// The two RAM blocks are taken from the ROM itself: RHCTRL loads them as
+//     LDX #RHEOP / LDA <PT_VL2 / NOP / JSR RHLIM / LDA RHS_NML,X / CMPA #..
+// once for pitch and again for yaw. That sequence is in every Star Wars set
+// ($F18D: blocks $4866/$486F) and in ESB ($ED1A: $4865/$486E); TomCat has no
+// such code, so nothing is touched there.
+static constexpr int YOKE_RHS_LO = 0;   // low limit
+static constexpr int YOKE_RHS_SP = 2;   // spread multiplier
+
+static UINT16 yoke_block[2];
+static int yoke_blocks = 0;
+
+static void yoke_cal_find()
+{
+	const UINT8* rom = memory_region(REGION_CPU1);
+
+	yoke_blocks = 0;
+	for (int a = 0x6000; a < 0xfff0 && yoke_blocks < 2; a++)
+	{
+		if (rom[a] == 0x8e && rom[a + 3] == 0x96 && rom[a + 5] == 0x12 && rom[a + 6] == 0xbd
+			&& rom[a + 9] == 0xa6 && rom[a + 10] == 0x04 && rom[a + 11] == 0x81)
+		{
+			const UINT16 block = (UINT16)((rom[a + 1] << 8) | rom[a + 2]);
+			// Program RAM only, and not the block already found.
+			if (block >= 0x4800 && block < 0x5000 - 8 && (yoke_blocks == 0 || yoke_block[0] != block))
+				yoke_block[yoke_blocks++] = block;
+		}
+	}
+
+	if (yoke_blocks == 2)
+		LOG_INFO("starwars: yoke calibration blocks at $%04X (pitch) and $%04X (yaw)", yoke_block[0], yoke_block[1]);
+	else
+	{
+		yoke_blocks = 0;
+		LOG_INFO("starwars: no yoke calibration code in this ROM set, starwars_yoke_cal has no effect");
+	}
+}
+
+static void yoke_cal_hold()
+{
+	if (!config.starwars_yoke_cal) return;
+
+	UINT8* ram = Machine->memory_region[0];
+	for (int i = 0; i < yoke_blocks; i++)
+	{
+		ram[yoke_block[i] + YOKE_RHS_LO] = 0;
+		ram[yoke_block[i] + YOKE_RHS_SP] = 0;
+	}
+}
+
 void run_starwars()
 {
 	starwars_sh_update();
+	yoke_cal_hold();
 
 	// F7 fires the Death Star explosion on demand - poking PHASE is exactly
 	// what the ROM does at $6BC8 when the exhaust port is hit, so everything
@@ -547,6 +622,8 @@ int init_esb()
 	sw_fuzz_game = false;
 	sw_fuzz_level = 0.0f;
 
+	yoke_cal_find();
+
 	return 0;
 }
 
@@ -575,6 +652,8 @@ int init_starwars(void)
 	             || strcmp(Machine->gamedrv->name, "starwars1") == 0
 	             || strcmp(Machine->gamedrv->name, "starwarso") == 0);
 	sw_fuzz_level = 0.0f;
+
+	yoke_cal_find();
 
 	LOG_INFO("Star Wars Init Completed");
 	return 0;

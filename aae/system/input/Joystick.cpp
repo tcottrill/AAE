@@ -13,6 +13,8 @@
 
 #include "joystick.h"
 #include "pad_map.h"
+#include "pad_db.h"
+#include "sdl_gamepad_db_windows.h"   // kSdlWindowsGamepadDb
 #include "sys_log.h"
 
 #include <windows.h>
@@ -20,11 +22,14 @@
 #include <Xinput.h>
 #define DIRECTINPUT_VERSION 0x0800
 #include <dinput.h>
+#include <hidsdi.h>  // HidD_GetManufacturerString / HidD_GetProductString
 #include <cstring>
 #include <cstdio>   // snprintf
 #include <atomic>   // device-change flag
 #include <new>      // std::nothrow
 #include <cstdlib>  // atoi
+#include <string>
+#include <vector>
 #include "win32/win32_private.h"  // win_get_window
 
 // joystick.h declares the neutral AAE_JOYBTN_* bits so it can stay free of
@@ -50,6 +55,7 @@ static_assert(AAE_JOYBTN_Y              == XINPUT_GAMEPAD_Y,              "AAE_J
 
 #pragma comment(lib, "dinput8.lib")
 #pragma comment(lib, "dxguid.lib")
+#pragma comment(lib, "hid.lib")
 
 #pragma comment(lib, "winmm.lib")
 #ifndef WIN7BUILD
@@ -931,14 +937,44 @@ namespace dinput {
 		LONG  DIJOYSTATE2::* extra[6];  // source members for the extras
 		int   has_pov;
 		int   sony;                   // pad_map_is_sony matched: fill canonical layout
+		int   mapped;                 // SDL database entry found: fill canonical layout from s_layouts[]
 	};
 
 	static IDirectInput8A* s_di = nullptr;
 	static Device s_devices[MAX_DEVICES];
+	// canonical control <- DirectInput source, per device (mapped devices only).
+	// Kept out of Device: a member with default initialisers made MSVC's compiler
+	// crash (C1001) on the static Device array.
+	static PadLayout s_layouts[MAX_DEVICES];
 	static int s_num_devices = 0;
 
 	// aae.ini [input] joystick_ignore, set via joystick_set_ignore_list().
 	static char s_ignore_list[512] = "";
+
+	// Extra SDL mapping lines (joystick_set_mapping_sources), searched before the
+	// built-in list. The pointer vectors are what pad_db_find walks.
+	static std::vector<std::string> s_env_lines, s_user_lines;
+	static std::vector<const char*> s_env_ptrs,  s_user_ptrs;
+
+	// 8-way decode of a DirectInput POV value (hundredths of a degree, 0 = up,
+	// centred = 0xFFFF): px -1/0/+1 (left/right), py -1/0/+1 (up/down).
+	static void decode_pov(DWORD pov, int* px, int* py)
+	{
+		*px = 0;
+		*py = 0;
+		if ((pov & 0xFFFF) != 0xFFFF)
+		{
+			int deg = pov / 100;   // 0 = up, 90 = right ...
+			if (deg > 337 || deg < 23)        *py = -1;
+			else if (deg < 68) { *py = -1; *px = 1; }
+			else if (deg < 113)                *px = 1;
+			else if (deg < 158) { *py = 1; *px = 1; }
+			else if (deg < 203)                *py = 1;
+			else if (deg < 248) { *py = 1; *px = -1; }
+			else if (deg < 293)                *px = -1;
+			else { *py = -1; *px = -1; }
+		}
+	}
 
 	static void guid_to_string(const GUID& g, char* out, size_t outlen)
 	{
@@ -1004,7 +1040,7 @@ namespace dinput {
 	// 1-axis sticks, then a digital hat).
 	static void setup_descriptor(int d)
 	{
-		if (s_devices[d].sony) { setup_pad_descriptor(d); return; }
+		if (s_devices[d].sony || s_devices[d].mapped) { setup_pad_descriptor(d); return; }
 
 		JOYSTICK_INFO& j = joy[d];
 		Device& D = s_devices[d];
@@ -1044,7 +1080,9 @@ namespace dinput {
 	}
 
 	// EnumObjects callback: note which optional axes exist.
-	struct AxisProbe { bool z, rx, ry, rz; int sliders; };
+	// x and y are only used by the SDL-database path (axis numbering counts them);
+	// the raw-stick path assumes X/Y exist, as it always has.
+	struct AxisProbe { bool z, rx, ry, rz; int sliders; bool x, y; };
 	static BOOL CALLBACK axis_cb(LPCDIDEVICEOBJECTINSTANCEA obj, LPVOID ref)
 	{
 		AxisProbe* p = (AxisProbe*)ref;
@@ -1053,7 +1091,64 @@ namespace dinput {
 		else if (obj->guidType == GUID_RyAxis) p->ry = true;
 		else if (obj->guidType == GUID_RzAxis) p->rz = true;
 		else if (obj->guidType == GUID_Slider) p->sliders++;
+		else if (obj->guidType == GUID_XAxis) p->x = true;
+		else if (obj->guidType == GUID_YAxis) p->y = true;
 		return DIENUM_CONTINUE;
+	}
+
+	static std::string wide_to_utf8(const WCHAR* w)
+	{
+		if (!w || !w[0]) return std::string();
+		const int n = WideCharToMultiByte(CP_UTF8, 0, w, -1, nullptr, 0, nullptr, nullptr);
+		if (n <= 1) return std::string();
+		std::string s((size_t)n, '\0');
+		WideCharToMultiByte(CP_UTF8, 0, w, -1, &s[0], n, nullptr, nullptr);
+		s.resize((size_t)n - 1);
+		return s;
+	}
+
+	// The strings SDL checksums for the GUID (DINPUT_JoystickPrepareDevice): the
+	// HID manufacturer and product strings when the device interface can be
+	// opened, else DirectInput's own product name. Best effort: any failure
+	// leaves a string empty.
+	static void query_device_strings(IDirectInputDevice8A* dev, LPCDIDEVICEINSTANCEA inst,
+	                                 std::string* mfr, std::string* hidProduct, std::string* diName)
+	{
+		DIPROPSTRING ps;
+		std::memset(&ps, 0, sizeof(ps));
+		ps.diph.dwSize = sizeof(ps);
+		ps.diph.dwHeaderSize = sizeof(ps.diph);
+		ps.diph.dwObj = 0;
+		ps.diph.dwHow = DIPH_DEVICE;
+		if (SUCCEEDED(dev->GetProperty(DIPROP_PRODUCTNAME, &ps.diph)))
+			*diName = wide_to_utf8(ps.wsz);
+		if (diName->empty())
+			*diName = inst->tszProductName;
+
+		DIPROPGUIDANDPATH gp;
+		std::memset(&gp, 0, sizeof(gp));
+		gp.diph.dwSize = sizeof(gp);
+		gp.diph.dwHeaderSize = sizeof(gp.diph);
+		gp.diph.dwObj = 0;
+		gp.diph.dwHow = DIPH_DEVICE;
+		if (FAILED(dev->GetProperty(DIPROP_GUIDANDPATH, &gp.diph)))
+			return;
+
+		// Desired access 0: enough to query the descriptor strings and never
+		// competes with DirectInput's own handle.
+		HANDLE h = CreateFileW(gp.wszPath, 0, FILE_SHARE_READ | FILE_SHARE_WRITE,
+			nullptr, OPEN_EXISTING, 0, nullptr);
+		if (h == INVALID_HANDLE_VALUE)
+			return;
+
+		WCHAR buf[256];
+		std::memset(buf, 0, sizeof(buf));
+		if (HidD_GetManufacturerString(h, buf, (ULONG)(sizeof(buf) - sizeof(WCHAR))))
+			*mfr = wide_to_utf8(buf);
+		std::memset(buf, 0, sizeof(buf));
+		if (HidD_GetProductString(h, buf, (ULONG)(sizeof(buf) - sizeof(WCHAR))))
+			*hidProduct = wide_to_utf8(buf);
+		CloseHandle(h);
 	}
 
 	static BOOL CALLBACK enum_cb(LPCDIDEVICEINSTANCEA inst, LPVOID ref)
@@ -1132,6 +1227,76 @@ namespace dinput {
 		D.sony = sony ? 1 : 0;
 		D.alive = 1;
 
+		// Non-Sony devices: is this pad in the SDL gamepad database? (Sony pads keep
+		// their hand-written table; XInput pads never get here.) A device with no
+		// entry stays on the raw-stick path below, unchanged.
+		std::string mfrStr, hidProdStr, diNameStr;
+		char sdlGuidStr[33] = "";
+		char mapDesc[640] = "";
+		bool mapped = false;
+		if (!sony)
+		{
+			query_device_strings(dev, inst, &mfrStr, &hidProdStr, &diNameStr);
+
+			const std::string productStr = !hidProdStr.empty() ? hidProdStr : diNameStr;
+			const std::string crcStr = (!mfrStr.empty() && !hidProdStr.empty())
+				? mfrStr + " " + hidProdStr : productStr;
+
+			PadDbDinputInfo info;
+			info.vendor = vid;
+			info.product = pid;
+			info.crcString = crcStr.c_str();
+			info.crcFallback = diNameStr.c_str();
+			info.nameForm = productStr.c_str();
+			info.nButtons = (int)caps.dwButtons;
+			info.axisPresent[PADDB_DI_AXIS_X] = probe.x;
+			info.axisPresent[PADDB_DI_AXIS_Y] = probe.y;
+			info.axisPresent[PADDB_DI_AXIS_Z] = probe.z;
+			info.axisPresent[PADDB_DI_AXIS_RX] = probe.rx;
+			info.axisPresent[PADDB_DI_AXIS_RY] = probe.ry;
+			info.axisPresent[PADDB_DI_AXIS_RZ] = probe.rz;
+			info.axisPresent[PADDB_DI_AXIS_SLIDER0] = probe.sliders >= 1;
+			info.axisPresent[PADDB_DI_AXIS_SLIDER1] = probe.sliders >= 2;
+			info.nPovs = (int)caps.dwPOVs;
+
+			PadDbList lists[3];
+			int nLists = 0;
+			if (!s_env_ptrs.empty()) {
+				lists[nLists].lines = s_env_ptrs.data();
+				lists[nLists].count = s_env_ptrs.size();
+				lists[nLists].label = "SDL_GAMECONTROLLERCONFIG";
+				nLists++;
+			}
+			if (!s_user_ptrs.empty()) {
+				lists[nLists].lines = s_user_ptrs.data();
+				lists[nLists].count = s_user_ptrs.size();
+				lists[nLists].label = "user gamecontrollerdb.txt";
+				nLists++;
+			}
+			lists[nLists].lines = kSdlWindowsGamepadDb;
+			lists[nLists].count = sizeof(kSdlWindowsGamepadDb) / sizeof(kSdlWindowsGamepadDb[0]);
+			lists[nLists].label = "SDL db";
+			nLists++;
+
+			uint8_t guidBytes[16];
+			PadLayout layout;
+			mapped = pad_db_resolve_dinput(info, lists, nLists, &layout, guidBytes);
+			pad_db_guid_to_string(guidBytes, sdlGuidStr);
+
+			char layoutDesc[512];
+			if (mapped)
+			{
+				D.mapped = 1;
+				s_layouts[s_num_devices] = layout;
+				pad_db_describe_layout(layout, layoutDesc, sizeof(layoutDesc), PADDB_DESCRIBE_WINDOWS);
+				snprintf(mapDesc, sizeof(mapDesc), "map=[%s] %s", layout.source, layoutDesc);
+			}
+			else
+			{
+				snprintf(mapDesc, sizeof(mapDesc), "map=[none: raw stick]");
+			}
+		}
+
 		if (sony)
 		{
 			// Canonical pad: left stick lX/lY, right stick lZ/lRz, all signed.
@@ -1142,6 +1307,23 @@ namespace dinput {
 			set_axis_range(dev, DIJOFS_Y,  -128, 127);
 			set_axis_range(dev, DIJOFS_Z,  -128, 127);
 			set_axis_range(dev, DIJOFS_RZ, -128, 127);
+		}
+		else if (mapped)
+		{
+			// Canonical pad from the SDL database entry. SDL gives every DirectInput
+			// axis the full signed 16-bit range (SDL_dinputjoystick.c,
+			// EnumDevObjectsCallback), so a half-axis ("+a2") or inverted ("a1~")
+			// source means what the mapping's author measured. Every present axis
+			// gets it, sliders included; poll() fills the canonical layout.
+			D.num_extra = 0;
+			if (probe.x)  set_axis_range(dev, DIJOFS_X,  -32768, 32767);
+			if (probe.y)  set_axis_range(dev, DIJOFS_Y,  -32768, 32767);
+			if (probe.z)  set_axis_range(dev, DIJOFS_Z,  -32768, 32767);
+			if (probe.rx) set_axis_range(dev, DIJOFS_RX, -32768, 32767);
+			if (probe.ry) set_axis_range(dev, DIJOFS_RY, -32768, 32767);
+			if (probe.rz) set_axis_range(dev, DIJOFS_RZ, -32768, 32767);
+			if (probe.sliders >= 1) set_axis_range(dev, DIJOFS_SLIDER(0), -32768, 32767);
+			if (probe.sliders >= 2) set_axis_range(dev, DIJOFS_SLIDER(1), -32768, 32767);
 		}
 		else
 		{
@@ -1169,10 +1351,19 @@ namespace dinput {
 		s_num_devices++;
 		*added = true;
 
-		LOG_INFO("DirectInput: joystick %d registered: %s [%s] (%d buttons%s%s)",
+		// Non-Sony devices also log what the database lookup saw, which is how a
+		// pad that maps wrongly (or not at all) is diagnosed.
+		char sdlInfo[1024] = "";
+		if (!sony)
+			snprintf(sdlInfo, sizeof(sdlInfo),
+				" sdl_guid=%s vid:pid=%04x:%04x mfr='%s' product='%s' di_name='%s' %s",
+				sdlGuidStr, vid, pid, mfrStr.c_str(), hidProdStr.c_str(), diNameStr.c_str(), mapDesc);
+
+		LOG_INFO("DirectInput: joystick %d registered: %s [%s] (%d buttons%s%s)%s",
 			s_num_devices, D.name, D.guid_str, D.num_buttons,
 			D.has_pov ? ", hat" : "",
-			D.sony ? ", sony pad map" : "");
+			D.sony ? ", sony pad map" : "",
+			sdlInfo);
 
 		return DIENUM_CONTINUE;
 	}
@@ -1213,6 +1404,114 @@ namespace dinput {
 		rescan();
 		LOG_INFO("DirectInput: %d generic joystick device(s)", s_num_devices);
 		return true;
+	}
+
+	// ---- SDL-database devices: PadLayout (DirectInput sources) -> canonical joy[] ----
+	// Every axis of such a device is set to this range at registration.
+	static constexpr int MAP_AXIS_MIN = -32768;
+	static constexpr int MAP_AXIS_MAX = 32767;
+
+	static int mapped_axis_raw(const DIJOYSTATE2& st, int id)
+	{
+		switch (id) {
+		case PADDB_DI_AXIS_X:       return (int)st.lX;
+		case PADDB_DI_AXIS_Y:       return (int)st.lY;
+		case PADDB_DI_AXIS_Z:       return (int)st.lZ;
+		case PADDB_DI_AXIS_RX:      return (int)st.lRx;
+		case PADDB_DI_AXIS_RY:      return (int)st.lRy;
+		case PADDB_DI_AXIS_RZ:      return (int)st.lRz;
+		case PADDB_DI_AXIS_SLIDER0: return (int)st.rglSlider[0];
+		case PADDB_DI_AXIS_SLIDER1: return (int)st.rglSlider[1];
+		default:                    return 0;
+		}
+	}
+
+	// A POV hat against SDL's mask bits (up 1, right 2, down 4, left 8).
+	static bool mapped_hat_pressed(const DIJOYSTATE2& st, const PadSrc& s)
+	{
+		const int pov = ((int)s.code - PADDB_ABS_HAT0X) / 2;
+		if (pov < 0 || pov >= PADDB_DI_MAX_POVS || !s.hatMask) return false;
+		int px, py;
+		decode_pov(st.rgdwPOV[pov], &px, &py);
+		const int bits = (py < 0 ? PADDB_HAT_UP : 0) | (px > 0 ? PADDB_HAT_RIGHT : 0) |
+		                 (py > 0 ? PADDB_HAT_DOWN : 0) | (px < 0 ? PADDB_HAT_LEFT : 0);
+		return (bits & s.hatMask) == s.hatMask;
+	}
+
+	static int mapped_axis_norm255(const DIJOYSTATE2& st, const PadSrc& s)
+	{
+		return pad_db_axis_norm255(mapped_axis_raw(st, s.code), MAP_AXIS_MIN, MAP_AXIS_MAX,
+			s.axisHalf, s.invert);
+	}
+
+	// Is a digital control down? An axis counts as pressed past half of its
+	// (half-)range.
+	static bool mapped_src_pressed(const DIJOYSTATE2& st, const PadSrc& s)
+	{
+		switch (s.kind) {
+		case PADSRC_KEY:  return s.code < PADDB_DI_MAX_BUTTONS && (st.rgbButtons[s.code] & 0x80) != 0;
+		case PADSRC_HAT:  return mapped_hat_pressed(st, s);
+		case PADSRC_AXIS: return s.code < PADDB_DI_AXIS_COUNT && mapped_axis_norm255(st, s) > 127;
+		default:          return false;
+		}
+	}
+
+	// A trigger, 0..255: analogue from an axis, 255 when a button/hat source is down.
+	static int mapped_trigger(const DIJOYSTATE2& st, const PadSrc& s)
+	{
+		if (s.kind == PADSRC_AXIS && s.code < PADDB_DI_AXIS_COUNT)
+			return mapped_axis_norm255(st, s);
+		return mapped_src_pressed(st, s) ? 255 : 0;
+	}
+
+	static int mapped_stick(const DIJOYSTATE2& st, const PadSrc& s)
+	{
+		if (s.kind != PADSRC_AXIS || s.code >= PADDB_DI_AXIS_COUNT) return 0;
+		// DirectInput already reports up as negative, AAE's convention: no inversion
+		// here (unlike XInput). The SDL mapping's own "~" is honoured.
+		return pad_db_stick_value(mapped_axis_raw(st, s.code), MAP_AXIS_MIN, MAP_AXIS_MAX, 0,
+			s.axisHalf, s.invert);
+	}
+
+	static void set_stick_axis(JOYSTICK_AXIS_INFO& axis, int pos)
+	{
+		axis.pos = clamp_int(pos, -128, 127);
+		axis.d1 = (axis.pos < -DIGITAL_THRESHOLD) ? 1 : 0;
+		axis.d2 = (axis.pos > DIGITAL_THRESHOLD) ? 1 : 0;
+	}
+
+	static void fill_mapped(const PadLayout& L, const DIJOYSTATE2& st, JOYSTICK_INFO& j)
+	{
+		set_stick_axis(j.stick[0].axis[0], mapped_stick(st, L.stick[PADDB_STICK_LX]));
+		set_stick_axis(j.stick[0].axis[1], mapped_stick(st, L.stick[PADDB_STICK_LY]));
+		set_stick_axis(j.stick[1].axis[0], mapped_stick(st, L.stick[PADDB_STICK_RX]));
+		set_stick_axis(j.stick[1].axis[1], mapped_stick(st, L.stick[PADDB_STICK_RY]));
+
+		uint8_t canonical[PAD_BTN_COUNT];
+		for (int b = 0; b < 14; ++b)
+			canonical[b] = mapped_src_pressed(st, L.btn[b]) ? 1 : 0;
+		canonical[PAD_BTN_LT] = (mapped_trigger(st, L.btn[PAD_BTN_LT]) > xinput::TRIGGER_THRESHOLD) ? 1 : 0;
+		canonical[PAD_BTN_RT] = (mapped_trigger(st, L.btn[PAD_BTN_RT]) > xinput::TRIGGER_THRESHOLD) ? 1 : 0;
+
+		// D-pad overrides the left stick, as the Sony branch (and XInput's
+		// apply_dpad_to_left_stick) do.
+		const int px = (canonical[PAD_BTN_DPAD_RIGHT] ? 1 : 0) - (canonical[PAD_BTN_DPAD_LEFT] ? 1 : 0);
+		const int py = (canonical[PAD_BTN_DPAD_DOWN] ? 1 : 0) - (canonical[PAD_BTN_DPAD_UP] ? 1 : 0);
+		if (px)
+		{
+			j.stick[0].axis[0].pos = px * 127;
+			j.stick[0].axis[0].d1 = (px < 0);
+			j.stick[0].axis[0].d2 = (px > 0);
+		}
+		if (py)
+		{
+			j.stick[0].axis[1].pos = py * 127;
+			j.stick[0].axis[1].d1 = (py < 0);
+			j.stick[0].axis[1].d2 = (py > 0);
+		}
+
+		for (int b = 0; b < PAD_BTN_COUNT; ++b)
+			j.button[b].b = canonical[b];
 	}
 
 	// Fill joy[0..count-1] from device state. Returns the device count.
@@ -1273,19 +1572,7 @@ namespace dinput {
 				// D-pad: POV hat -> canonical 10..13 + stick[0] override,
 				// mirroring xinput's apply_dpad_to_left_stick behavior.
 				int px = 0, py = 0;
-				DWORD pov = st.rgdwPOV[0];
-				if ((pov & 0xFFFF) != 0xFFFF)
-				{
-					int deg = pov / 100;
-					if (deg > 337 || deg < 23)         py = -1;
-					else if (deg < 68)  { py = -1; px = 1; }
-					else if (deg < 113)                 px = 1;
-					else if (deg < 158) { py = 1; px = 1; }
-					else if (deg < 203)                 py = 1;
-					else if (deg < 248) { py = 1; px = -1; }
-					else if (deg < 293)                 px = -1;
-					else                { py = -1; px = -1; }
-				}
+				decode_pov(st.rgdwPOV[0], &px, &py);
 				canonical[PAD_BTN_DPAD_UP]    = (py < 0) ? 1 : 0;
 				canonical[PAD_BTN_DPAD_DOWN]  = (py > 0) ? 1 : 0;
 				canonical[PAD_BTN_DPAD_LEFT]  = (px < 0) ? 1 : 0;
@@ -1307,6 +1594,12 @@ namespace dinput {
 					j.button[b].b = canonical[b];
 
 				continue;   // generic fill below must not run for this device
+			}
+
+			if (D.mapped)
+			{
+				fill_mapped(s_layouts[d], st, j);
+				continue;   // generic raw fill below must not run for this device
 			}
 
 			// stick 0: signed X/Y with digital thresholds
@@ -1335,20 +1628,8 @@ namespace dinput {
 			// hat (POV 0): centered = 0xFFFF/-1
 			if (D.has_pov && n_stick < j.num_sticks)
 			{
-				DWORD pov = st.rgdwPOV[0];
 				int px = 0, py = 0;
-				if ((pov & 0xFFFF) != 0xFFFF)
-				{
-					int deg = pov / 100;   // 0 = up, 90 = right ...
-					if (deg > 337 || deg < 23)        py = -1;
-					else if (deg < 68) { py = -1; px = 1; }
-					else if (deg < 113)                px = 1;
-					else if (deg < 158) { py = 1; px = 1; }
-					else if (deg < 203)                py = 1;
-					else if (deg < 248) { py = 1; px = -1; }
-					else if (deg < 293)                px = -1;
-					else { py = -1; px = -1; }
-				}
+				decode_pov(st.rgdwPOV[0], &px, &py);
 				j.stick[n_stick].axis[0].pos = px * 128;
 				j.stick[n_stick].axis[0].d1 = (px < 0) ? 1 : 0;
 				j.stick[n_stick].axis[0].d2 = (px > 0) ? 1 : 0;
@@ -1392,6 +1673,28 @@ void joystick_set_ignore_list(const char* list)
 
 // Steam's SDL hide variables are a Linux/SteamOS matter; nothing to do here.
 void joystick_set_steam_hide_env(const char*, const char*) {}
+
+// Extra SDL gamepad mappings for DirectInput pads, searched (in this order)
+// before the built-in SDL list: the SDL_GAMECONTROLLERCONFIG lines, then the
+// user's gamecontrollerdb.txt. Must be set before install_joystick().
+void joystick_set_mapping_sources(const char* envConfig, const char* userDbText)
+{
+	dinput::s_env_lines.clear();
+	dinput::s_user_lines.clear();
+	pad_db_load_text(envConfig, &dinput::s_env_lines);
+	pad_db_load_text(userDbText, &dinput::s_user_lines);
+
+	// The pointer vectors are rebuilt only after both line vectors have settled:
+	// a std::string's buffer moves when its vector grows.
+	dinput::s_env_ptrs.clear();
+	dinput::s_user_ptrs.clear();
+	for (const std::string& l : dinput::s_env_lines)  dinput::s_env_ptrs.push_back(l.c_str());
+	for (const std::string& l : dinput::s_user_lines) dinput::s_user_ptrs.push_back(l.c_str());
+
+	if (!dinput::s_env_lines.empty() || !dinput::s_user_lines.empty())
+		LOG_INFO("DirectInput: gamepad mappings loaded: %d from SDL_GAMECONTROLLERCONFIG, %d from "
+		         "gamecontrollerdb.txt", (int)dinput::s_env_lines.size(), (int)dinput::s_user_lines.size());
+}
 
 int install_joystick()
 {

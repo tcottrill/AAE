@@ -178,6 +178,11 @@ static int pot_r(int offset)
 	return (readinputport(5) >> offset) << 7;
 }
 
+// The DIP bank on chip 0's pot pins, as the pin mask (POKEY D27): a set bit
+// is a line that never trips (latches 228/229, bit 7 set), a clear bit one
+// that never loads. The POKEY adapter takes it over pot_r.
+static int foodf_allpot_r(int) { return readinputport(5) & 0xFF; }
+
 static struct POKEYinterface foodf_pokey_interface =
 {
 	3,	/* 3 chips */
@@ -193,7 +198,7 @@ static struct POKEYinterface foodf_pokey_interface =
 	{ pot_r, 0, 0 },
 	{ pot_r, 0, 0 },
 	/* The allpot handler */
-	{ 0, 0, 0 }
+	{ foodf_allpot_r, 0, 0 }
 };
 
 // ---------------------------------------------------------------------------

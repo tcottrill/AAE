@@ -9,8 +9,10 @@
  * AAE's virtual PokeyHost.  The audio poly tables and the SKCTL hold on
  * the audio side follow MAME's pokey.cpp (0.286,
  * src/devices/sound/pokey.cpp) - credit to the MAME team for the LFSR
- * arithmetic.  The pot scanner follows the Altirra Hardware Reference
- * (Avery Lee), which measured the real chip.  The RANDOM shift chain -
+ * arithmetic.  The pot scanner is built stage by stage from the
+ * reconstructed schematic's page 4 (see pot_clock()), checked against the
+ * Altirra Hardware Reference (Avery Lee), which measured the real chip.
+ * The RANDOM shift chain -
  * its registers, what SKCTL's init bits do to it clock by clock, and
  * which timers keep counting while it is held - follows a gate-level
  * transcription of Atari's schematics (Nick Mikstas's atari_pokey,
@@ -96,7 +98,7 @@
 
 static void notify_pins(ad_pokey *p);
 static void notify_clocks(ad_pokey *p, bool force);
-static void pot_step(ad_pokey *p);
+static void pot_clock(ad_pokey *p);
 static void cycle_audio_step(ad_pokey *p, const uint32_t *borrows);
 static void cycle_audio_sample(ad_pokey *p);
 static int32_t cycle_audio_level(const ad_pokey *p);
@@ -671,14 +673,21 @@ void ad_pokey_reset(ad_pokey *p)
     recompute_all(p);
     p->p4 = p->p5 = 0;
     p->SKCTL = 0;
-    p->pot_scanning = false;
-    p->pot_scan_ever = false;
-    p->pot_scan_start = 0;
-    p->pot_count = p->pot_previous = 0;
-    p->pot_clear_delay = p->pot_finish_delay = 0;
-    p->pot_transition = false;
-    p->pot_next_tick = 0;
-    memset(p->pot_latch, 0, sizeof p->pot_latch);
+    /* Pots: the dump latch is left set, so ALLPOT reads $00 and the dump
+     * transistors are on until the first POTGO (D25); the counter and the
+     * registers start from 0.  pot_pins_src and pot_lines are host wiring. */
+    p->pot_counter = p->pot_counter_prev = 0;
+    p->pot_stepped = false;
+    p->pot_go_hold = 0;
+    p->pot_dump_latch = true;
+    p->pot_pins = 0;
+    p->pot_load = 0;
+    memset(p->POT, 0, sizeof p->POT);
+    p->pot_tick_due = false;
+    if (!p->pot_dump_level) {       /* latch set, fast scan off: dump on */
+        p->pot_dump_level = 1;
+        if (p->io && p->io->pot_dump) p->io->pot_dump(p->io->ctx, 1, p->cycles);
+    }
     p->rng_enabled = 0;
     p->rng_init_prev = 1;   /* reset leaves the chip held, so Init is asserted */
     p->rng_sel9_prev = 0;   /* AUDCTL is 0 after reset */
@@ -730,9 +739,9 @@ void ad_pokey_reset(ad_pokey *p)
     audio_level_refresh(p);
     notify_pins(p);
     notify_clocks(p, false);
-    /* p->cycles, p->allpot and p->host are this port's stand-ins for
-     * host-owned state (the machine clock, the DIP bank, the callback
-     * wiring) - a chip reset doesn't touch any of them, same as
+    /* p->cycles, p->pot_pins_src/pot_lines and p->host are this port's
+     * stand-ins for host-owned state (the machine clock, the pot pins, the
+     * callback wiring) - a chip reset doesn't touch any of them, same as
      * Pokey::reset() never touches its host. */
 }
 
@@ -742,6 +751,7 @@ void ad_pokey_init(ad_pokey *p, uint32_t clock_hz, uint32_t sample_rate)
     p->base_clock = clock_hz ? clock_hz : 1;
     p->sys_freq = sample_rate ? sample_rate : 1;
     p->quiet_skip = true;
+    p->pot_pins_src = 0xFF;   /* no mask set: every line still counting */
     build_tables();
     /* The measured DAC is the chip; 20 Hz DC removal at unity gain is the
      * default playback stage (ad_pokey_set_measured_audio() changes it). */
@@ -754,48 +764,116 @@ void ad_pokey_set_quiet_skip(ad_pokey *p, bool enabled)
     p->quiet_skip = enabled;
 }
 
+/* ------------------------------------------------------------------ */
+/* Pot scanner                                                         */
+/* ------------------------------------------------------------------ */
+/* The chip's own pot block, stage for stage from PokeyReSchem p.4 (cells
+ * on p.7), with Nick Mikstas's POT_core.v as a guide to the logic; the
+ * schematic wins where they differ.  tests/test_pot_oracle.c transcribes
+ * the page phase by phase and holds this function to it clock for clock;
+ * the crops are rendered by tools/render_schematic.py into obj/schem.  A
+ * "1" stage passes on phase 1, a "2" stage on phase 2; a "2"/"1" pair is
+ * one clock (D3).
+ *
+ * POTGO (p4_1250_1040_200dpi.png, p4_1000_700_100dpi.png): the write
+ * strobe AddrBw sets a static RS pair; one "1" inverter gives potPreset,
+ * which presets the counter; potPreset then runs through two "2"/"1"
+ * pairs (up the right column, down the left) to delay2, which resets the
+ * RS pair and clears the dump latch.  So a write that lands on a clock
+ * boundary presets the counter on the next POT_DUMP_CLEAR_DELAY clocks,
+ * and delay2 follows for as many clocks, clearing the dump latch:
+ * POT_GO_HOLD clocks in all.  A second write while that is in flight
+ * changes nothing - the pair is either still set, or delay2 resets it on
+ * the very next clock - so the hold is not restarted. */
+#define POT_DUMP_CLEAR_DELAY 2   /* two "2"/"1" pairs from potPreset to delay2 */
+#define POT_GO_HOLD (2 * POT_DUMP_CLEAR_DELAY)   /* preset, then delay2 */
+#define POT_TERMINAL_COUNT 228   /* count complete: Cell 23 Q = $1B */
+
 void ad_pokey_set_allpot(ad_pokey *p, uint8_t v)
 {
-    if (p->pot_counter_mode && p->pot_scanning) {
-        for (int i = 0; i < 8; ++i)
-            if ((p->allpot & (1u << i)) && !(v & (1u << i)))
-                p->pot_latch[i] = p->pot_count;
-    }
-    p->allpot = v;
+    p->pot_pins_src = v;
 }
 
-void ad_pokey_set_pot_scan(ad_pokey *p, bool enabled)
+void ad_pokey_set_pot_lines(ad_pokey *p, uint8_t (*fn)(void *ctx, uint64_t cycle), void *ctx)
 {
-    p->pot_counter_mode = enabled;
+    p->pot_lines = fn;
+    p->pot_lines_ctx = ctx;
 }
 
-static void pot_step(ad_pokey *p)
+bool ad_pokey_pot_dump_on(const ad_pokey *p)
 {
-    if (!p->pot_counter_mode || !p->pot_scanning) return;
-    p->pot_transition = false;
-    if (p->pot_finish_delay && --p->pot_finish_delay == 0) {
-        p->pot_scanning = false;
-        return;
+    return p->pot_dump_level != 0;
+}
+
+uint8_t ad_pokey_pot_count(const ad_pokey *p)
+{
+    return p->pot_counter;
+}
+
+bool ad_pokey_pot_scan_active(const ad_pokey *p)
+{
+    return !p->pot_dump_latch;
+}
+
+/* One clock of the pot block, in the timing half (advance_clock()).  The
+ * values a stage reads are the ones the previous clock left, as on the
+ * die; the comments name the stage.
+ *
+ *   Load lines: Ld = NOR "1"(Cell 26 /Q, dump latch) (p4_1000_700_100dpi
+ *     .png).  Cell 26 (p7_2150_700_200dpi.png) takes the pad on phase 2,
+ *     so this clock's lines are last clock's pins and last clock's latch.
+ *     ALLPOT reads them (Cell 8's RdK path, p4_250_320_200dpi.png).
+ *   Dump output: NOR "2"(Skctls_2, "1"-inverted latch) (p4_260_1320
+ *     _150dpi.png): last clock's latch, this clock's SKCTL bit.
+ *   Counter: eight Cell 23 stages (p4_1070_310_200dpi.png, p7_2150_640
+ *     _150dpi.png).  potPreset forces the state node itself, so under
+ *     preset the count is 0 and nothing toggles underneath; otherwise the
+ *     count steps if bit 0's carry is up, which is nPotClk = NOR "2"
+ *     (~keybClk, Skctls_2) registered last clock (p4_1380_220_200dpi.png):
+ *     every clock in fast mode, the clock after the 15 kHz pulse in slow
+ *     mode (the same clock the keyboard scan takes, kbd_scan_due).
+ *   Dump latch: NOR "1"(count complete, latch) into NOR "2"(delay2, NOR
+ *     "1"): set by the count as it stood (228) unless delay2 clears it.
+ *   Registers: Cell 1 latches are transparent while Ld, D = the count, so
+ *     a loading POTn ends the clock holding this clock's count.
+ *   Pins: Cell 26 latches the pad for the next clock's load lines; only
+ *     needed while the latch is clear, so the reader is only called then
+ *     (the result could not reach a load line otherwise). */
+static void pot_clock(ad_pokey *p)
+{
+    const bool fast = (p->SKCTL & SK_FASTPOT) != 0;
+    const bool preset = p->pot_go_hold > POT_DUMP_CLEAR_DELAY;
+    const bool delay2 = p->pot_go_hold && !preset;
+    if (p->pot_go_hold) --p->pot_go_hold;
+
+    const uint8_t load = p->pot_dump_latch ? 0 : p->pot_pins;
+    const uint8_t dump = (uint8_t)(p->pot_dump_latch && !fast);
+    const bool complete = p->pot_counter == POT_TERMINAL_COUNT;
+
+    p->pot_counter_prev = p->pot_counter;
+    p->pot_stepped = false;
+    if (preset) {
+        p->pot_counter = 0;
+    } else if (p->pot_tick_due) {
+        ++p->pot_counter;
+        p->pot_stepped = true;
     }
-    if (p->pot_clear_delay) {
-        --p->pot_clear_delay;
-        p->pot_count = 0;
-    } else {
-        bool tick = (p->SKCTL & SK_FASTPOT) != 0;
-        if (!tick && p->rng_enabled && p->pot_next_tick == p->cycles) tick = true;
-        if (tick) {
-            p->pot_previous = p->pot_count;
-            ++p->pot_count;
-            p->pot_transition = true;
-            if (p->pot_count == 228) p->pot_finish_delay = 2;
-            if (p->pot_count == 229) p->pot_transition = false;
-        }
-    }
-    /* The pot increment follows the shared 15K source pulse by one clock. */
-    if (p->rng_enabled && p->slow_next_15 == p->cycles)
-        p->pot_next_tick = p->cycles + 1;
+
+    p->pot_dump_latch = !delay2 && (complete || p->pot_dump_latch);
+
     for (int i = 0; i < 8; ++i)
-        if (p->allpot & (1u << i)) p->pot_latch[i] = p->pot_count;
+        if (load & (1u << i)) p->POT[i] = p->pot_counter;
+    p->pot_load = load;
+
+    p->pot_tick_due = fast || (p->rng_enabled && p->slow_next_15 == p->cycles);
+
+    if (!p->pot_dump_latch)
+        p->pot_pins = p->pot_lines ? p->pot_lines(p->pot_lines_ctx, p->cycles) : p->pot_pins_src;
+
+    if (dump != p->pot_dump_level) {
+        p->pot_dump_level = dump;
+        if (p->io && p->io->pot_dump) p->io->pot_dump(p->io->ctx, dump, p->cycles);
+    }
 }
 
 void ad_pokey_set_host(ad_pokey *p, const ad_pokey_host *h)
@@ -926,6 +1004,7 @@ void ad_pokey_set_io(ad_pokey *p, const ad_pokey_io *io)
     p->serial_level = (p->SKCTL & SK_TWOTONE) ? p->cassette_level : (uint8_t)sdo_line(p);
     if (io && io->irq_line) io->irq_line(io->ctx, p->irq_level, p->cycles);
     if (io && io->serial_output) io->serial_output(io->ctx, p->serial_level, p->cycles);
+    if (io && io->pot_dump) io->pot_dump(io->ctx, p->pot_dump_level, p->cycles);
 }
 
 static void notify_clocks(ad_pokey *p, bool force)
@@ -1143,12 +1222,13 @@ static uint8_t advance_clock(ad_pokey *p, bool with_audio)
     /* Roll the two shared slow-clock phase markers past this slice before
      * any post-timer logic (two-tone/serial) can rearm a timer at the
      * current machine time. */
-    pot_step(p);
+    pot_clock(p);
     /* The keyboard scan and the pot counter are ONE clock: "the polling
      * counter is driven by the same clock that is used by the keyboard scan"
      * (Altirra HRM 5.9), and Altirra schedules both on the same tick, 81 +
      * 114 N clocks after the Init release.  That is the clock after the
-     * 15 kHz pulse the timers count (pot_step() above). */
+     * 15 kHz pulse the timers count (pot_clock() registers the pulse in
+     * pot_tick_due, as this does in kbd_scan_due). */
     if (p->kbd_scan_due) {
         p->kbd_scan_due = 0;
         if (p->rng_enabled) keyboard_scan_step(p);
@@ -1219,7 +1299,7 @@ static uint8_t advance_clock(ad_pokey *p, bool with_audio)
  * Most clocks change nothing but the RANDOM chain, the poly counters, the
  * timer countdowns and the audio integrator: no timer reaches its borrow,
  * nothing is in the reload or IRQ pipelines, no two-tone resync or
- * high-pass latch is pending, the pot counter is idle and the serial port
+ * high-pass latch is pending, no pot scan is running and the serial port
  * is unclocked (it polls the host and watches the input line every clock
  * once a receive clock is selected).  quiet_span() says how many such
  * clocks lie ahead, at most `limit`, and advance_quiet() takes them in one
@@ -1249,14 +1329,25 @@ static uint32_t quiet_span(const ad_pokey *p, uint32_t limit)
     if (p->timer_reload_delay[0] | p->timer_reload_delay[1] |
         p->timer_reload_delay[2] | p->timer_reload_delay[3])
         return 0;
-    if (p->pot_counter_mode && p->pot_scanning)
-        return 0;
+    /* Pots: a scan running (pins sampled every clock), POTGO in flight,
+     * load lines still up, the dump output or the counter's clock about to
+     * follow an SKCTL write, or a slow step due: all events.  Left over is
+     * the idle block between scans, where only the free-running counter
+     * moves - every clock in fast mode, which advance_quiet() adds up. */
+    {
+        const bool fast = (p->SKCTL & SK_FASTPOT) != 0;
+        if (!p->pot_dump_latch || p->pot_go_hold || p->pot_load ||
+            p->pot_dump_level != (uint8_t)!fast || p->pot_tick_due != fast)
+            return 0;
+    }
     if (p->SKCTL & 0x30)            /* receive clock selected, or async hold */
         return 0;
     uint32_t k = limit;
-    /* The keyboard scanner ticks on every 15 kHz pulse: stop the span
-     * there (the pulse clock itself is quiet). */
-    if ((p->SKCTL & SK_KEYSCAN) && p->rng_enabled && p->slow_next_15 > p->cycles) {
+    /* The keyboard scanner and the slow pot clock tick on the clock after
+     * every 15 kHz pulse: stop the span before the pulse, so the pulse
+     * clock and the one after run on the one-clock path. */
+    if (((p->SKCTL & SK_KEYSCAN) || !(p->SKCTL & SK_FASTPOT)) &&
+        p->rng_enabled && p->slow_next_15 > p->cycles) {
         uint64_t to_pulse = p->slow_next_15 - p->cycles;
         if (to_pulse <= 1) return 0;
         if (to_pulse - 1 < k) k = (uint32_t)(to_pulse - 1);
@@ -1297,6 +1388,17 @@ static void advance_quiet(ad_pokey *p, uint32_t k)
     for (int w = 0; w < 4; ++w)
         if (run_mask & (1u << w))
             p->tcnt[w] -= k;
+
+    /* The idle pot counter (quiet_span()): k steps in fast mode, none in
+     * slow; the dump latch is already set, so passing 228 changes nothing. */
+    if (p->pot_tick_due) {
+        p->pot_counter = (uint8_t)(p->pot_counter + k);
+        p->pot_counter_prev = (uint8_t)(p->pot_counter - 1u);
+        p->pot_stepped = true;
+    } else {
+        p->pot_counter_prev = p->pot_counter;
+        p->pot_stepped = false;
+    }
 
     slow_clocks_advance_phase(p);
 }
@@ -1634,12 +1736,10 @@ void ad_pokey_write(ad_pokey *p, uint8_t reg, uint8_t v)
         break;
 
     case W_POTGO:
-        p->pot_scanning = true;
-        p->pot_scan_ever = true;
-        p->pot_scan_start = p->cycles;
-        p->pot_clear_delay = 1;
-        p->pot_finish_delay = 0;
-        p->pot_transition = false;
+        /* The strobe sets the POTGO pair; pot_clock() takes it from the
+         * next clock, as every write here lands (STIMER's, D21).  One
+         * already in flight is not restarted (see POT_GO_HOLD). */
+        if (!p->pot_go_hold) p->pot_go_hold = POT_GO_HOLD;
         break;
 
     case W_SEROUT:
@@ -1697,53 +1797,20 @@ static uint8_t read_random(const ad_pokey *p)
     return (uint8_t)~p->rng.l9;
 }
 
-/* Digital POT model: ALLPOT follows the host-supplied comparator mask
- * until the scan's terminal count, then returns zero until the next POTGO.
- * With no scan active it reads $00 - before the first POTGO as well as after
- * a finished scan - as Altirra has it (pokey.cpp: mALLPOT = 0 at cold reset
- * and whenever no scan is active).  D25, 2026-09-21: until then the core
- * returned the mask before the first POTGO, a tuning for arcade DIP banks
- * (Asteroids Deluxe test mode).  The arcade code read so far does not need
- * it: Space Duel writes POTGO and reads ALLPOT four cycles later every time
- * ($76DC, $4218, $8492, $84A5), with SKCTL = $07 - fast pot scan, which also
- * turns the dump transistors off so the pins are plain switch inputs.  NOT
- * measured; the Space Duel board can measure it (its DIPs are on these pins).
- * POT0-7 read host callbacks; independent analog paddle
- * counters and per-input completion are not implemented.
- *
- * Terminal counts follow Altirra HRM 5.9: 228 slow counts or 229 fast
- * counts. The host owns DIP polarity and calls ad_pokey_set_allpot(). */
-
-static uint8_t allpot_read(ad_pokey *p)
-{
-    if (p->pot_counter_mode)
-        return p->pot_scanning ? p->allpot : 0;
-    if (p->pot_scanning) {
-        const uint64_t elapsed = p->cycles - p->pot_scan_start;
-        /* The scan ends at the counter's terminal count: 228 in slow
-         * mode, one count per 114-cycle scan line; 229 in fast mode, one
-         * count per machine cycle (the counter stops one value higher in
-         * fast mode - Altirra HRM 5.9). All durations are POKEY cycles. */
-        const uint64_t need = (p->SKCTL & SK_FASTPOT) ? 229u : (228u * DIV_15);
-        if (elapsed >= need)
-            p->pot_scanning = false;
-    }
-    /* ALLPOT is not a latch during a scan: it follows the pins live, so
-     * a line that trips reads 0 and one that drops back below threshold
-     * reads 1 again (POT0-7 counters are not modelled).  The host keeps `allpot` at the pins' current
-     * grounded-line mask with ad_pokey_set_allpot().  Only the finished
-     * scan is a latch, forced to 0 until the next POTGO. */
-    if (!p->pot_scanning)
-        return 0x00;           /* no scan active - none yet, or complete: 0 */
-    return p->allpot;          /* mid-scan: the comparators' mask, live */
-}
-
+/* ALLPOT is the eight load lines (Cell 8's RdK path, PokeyReSchem p.4):
+ * a line still below threshold while the dump latch is clear.  So $00
+ * whenever no scan is running - before the first POTGO, as reset leaves
+ * the latch set, and from the end of a scan until the next POTGO - as
+ * Altirra has it (pokey.cpp: mALLPOT = 0 at cold reset and whenever no
+ * scan is active; D25).  Space Duel writes POTGO and reads ALLPOT four
+ * cycles later ($76DC, $4218, $8492, $84A5) with SKCTL = $07: the load
+ * lines are up by then (pot_clock()).  See pot_clock() for the scan. */
 uint8_t ad_pokey_read(ad_pokey *p, uint8_t reg)
 {
     const uint8_t a = reg & 0x0F;
     switch (a) {
     case R_RANDOM: return read_random(p);
-    case R_ALLPOT: return allpot_read(p);
+    case R_ALLPOT: return p->pot_load;
     case R_IRQST: {
         /* Pending IRQs read as 0.  Bit 3 is not a latch: it is low
          * whenever the transmitter is idle, whatever IRQEN says. */
@@ -1758,14 +1825,12 @@ uint8_t ad_pokey_read(ad_pokey *p, uint8_t reg)
         /* POT0-7 share offsets 0x00-0x07 with AUDF1-4/AUDC1-4's write
          * side; on the read side they are the only registers there. */
         if (a <= R_POT0 + 7) {
-            if (p->pot_counter_mode) {
-                if (p->pot_scanning && (p->allpot & (1u << a)) && p->pot_transition)
-                    return p->pot_count & p->pot_previous;
-                return p->pot_latch[a];
-            }
-            if (p->host && p->host->pot_read)
-                return (uint8_t)p->host->pot_read(p->host->ctx, a);
-            return 0xFF;   /* AAE's default with no pot handler wired up */
+            /* A loading register read on a clock the counter steps shows
+             * the old and new counts ANDed (HRM 5.9, "Reading live
+             * counters"); otherwise the register. */
+            if (p->pot_stepped && (p->pot_load & (1u << a)))
+                return (uint8_t)(p->pot_counter & p->pot_counter_prev);
+            return p->POT[a];
         }
         return 0xFF;
     }

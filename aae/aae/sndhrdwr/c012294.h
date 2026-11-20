@@ -1,10 +1,11 @@
 /* c012294.h - portable Atari C012294 (POKEY) core, plain C11.
  *
  * Provides audio, RANDOM, timers/IRQs, serial, the keyboard matrix scanner
- * (ad_pokey_set_key_matrix / ad_pokey_set_key_lines) and POT counters, with
- * IRQ, pot and serial-byte inputs through an optional ad_pokey_host
- * callback interface. Derived
- * from AAE's POKEY core; see c012294.c for attribution.
+ * (ad_pokey_set_key_matrix / ad_pokey_set_key_lines) and the pot scanner
+ * (ad_pokey_set_allpot / ad_pokey_set_pot_lines: pin levels in, the chip's
+ * own counter, POT0-7, ALLPOT and the dump output out), with IRQ and
+ * serial-byte inputs through an optional ad_pokey_host callback interface.
+ * Derived from AAE's POKEY core; see c012294.c for attribution.
  *
  * Time model
  * ----------
@@ -180,7 +181,6 @@ typedef struct ad_rng_chain {
 typedef struct ad_pokey_host {
     void *ctx;
     void (*raise_irq)(void *ctx, uint8_t mask);          /* IRQST bits that just fired */
-    int  (*pot_read)(void *ctx, int n);                   /* POT0-7 count, 0..228 */
     int  (*serial_in)(void *ctx);                         /* next SERIN byte, or -1 */
     void (*serial_out)(void *ctx, uint8_t data);
 } ad_pokey_host;
@@ -193,6 +193,9 @@ typedef struct ad_pokey_io {
     void *ctx;
     void (*irq_line)(void *ctx, int asserted, uint64_t cycle);
     void (*serial_output)(void *ctx, int mark, uint64_t cycle);
+    /* the pot dump transistors: on = P0-P7 pulled to ground (dump latch
+     * set and SKCTL fast-scan bit clear) */
+    void (*pot_dump)(void *ctx, int on, uint64_t cycle);
 } ad_pokey_io;
 
 /* Optional clock pins, separate from ad_pokey_io for existing host initializers.
@@ -388,19 +391,28 @@ typedef struct ad_pokey {
     uint8_t  st_latch;
 
     /* running machine time in POKEY cycles, fed only by
-     * ad_pokey_advance(); the ALLPOT scan window measures against it */
+     * ad_pokey_advance(); callback timestamps are this value */
     uint64_t cycles;
 
-    /* pots: ALLPOT is derived from the scan window (see ad_pokey_read's
-     * R_ALLPOT case) - during a scan it reads the still-counting-line
-     * mask (the host-supplied DIP byte), after it 0x00. */
-    uint8_t  allpot;          /* the DIP bank on the pot pins, host-supplied */
-    bool     pot_scanning;
-    bool     pot_scan_ever;   /* sticky: true from this chip's first POTGO on */
-    uint64_t pot_scan_start;
+    /* Pot scanner, shaped like the die (PokeyReSchem p.4; see c012294.c's
+     * pot_clock()).  Pin levels: bit i = line i below threshold, still
+     * counting. */
+    uint8_t  pot_counter;      /* the count software sees (~Q of the Cell 23 stages) */
+    uint8_t  pot_counter_prev; /* the count before this clock's step (transitional reads) */
+    bool     pot_stepped;      /* the counter stepped on this clock */
+    uint8_t  pot_go_hold;      /* POTGO latch + delay line in flight, clocks left */
+    bool     pot_dump_latch;   /* set = scan over, dump armed; reset leaves it set */
+    uint8_t  pot_pins;         /* the pins as Cell 26 last latched them */
+    uint8_t  pot_pins_src;     /* static pin mask (ad_pokey_set_allpot); host wiring */
+    uint8_t  pot_load;         /* the eight Ld lines this clock: what ALLPOT reads */
+    uint8_t  POT[8];           /* POT0-7 position registers */
+    uint8_t (*pot_lines)(void *ctx, uint64_t cycle);   /* per-clock pins, or NULL */
+    void    *pot_lines_ctx;
+    uint8_t  pot_dump_level;   /* the dump output as last reported */
+    bool     pot_tick_due;     /* nPotClk registered: the counter steps next clock */
 
     /* host wiring: NULL until ad_pokey_set_host() - see ad_pokey_host
-     * above.  Not touched by ad_pokey_reset(), same as allpot: it is
+     * above.  Not touched by ad_pokey_reset(), same as pot_pins_src: it is
      * host-owned wiring, not chip state a reset clears. */
     const ad_pokey_host *host;
     const ad_pokey_io *io;
@@ -409,11 +421,6 @@ typedef struct ad_pokey {
     uint8_t serial_output_delay; /* timer IRQ stage to serial action: two clocks */
     uint8_t clock_out_level, clock_bi_level, clock_bi_driven;
     uint8_t irq_level, serial_level, external_clock, cassette_level;
-    bool pot_counter_mode;
-    uint8_t pot_count, pot_previous, pot_clear_delay, pot_finish_delay;
-    uint8_t pot_latch[8];
-    bool pot_transition;
-    uint64_t pot_next_tick;
     /* Playback stage after the DAC, fixed point so the core has no
      * floating point in any per-clock or per-sample path and produces
      * bit-identical PCM on every compiler/CPU.  audio_dc is the DC
@@ -462,11 +469,6 @@ void ad_pokey_set_clocks(ad_pokey *p, const ad_pokey_clocks *clocks);
  * Repeating a level has no effect. Internal-clock directions ignore it. */
 void ad_pokey_serial_clock(ad_pokey *p, int high);
 bool ad_pokey_irq_asserted(const ad_pokey *p);
-/* Opt into hardware counters. set_allpot supplies the live comparator mask
- * (1 = below threshold). The host models capacitor charging and discharge;
- * changing a pin to 0 latches its counter independently. Default is legacy
- * digital scan timeout with direct host POT reads. Select before POTGO. */
-void ad_pokey_set_pot_scan(ad_pokey *p, bool enabled);
 /* Drop queued PCM and the integrator state so output restarts at a fresh
  * sample boundary; the oscillators, latches and registers are untouched.
  * Queue overflow drops the oldest samples and increments a count. */
@@ -488,14 +490,34 @@ uint64_t ad_pokey_audio_overruns(const ad_pokey *p);
 int ad_pokey_audio_read(ad_pokey *p, int16_t *dst, int n);
 
 /* Initialize once per instance with positive clock and sample rates.
- * init clears all state and host wiring; reset preserves cycles, allpot,
- * host wiring and clock/sample-rate configuration. */
+ * init clears all state and host wiring; reset preserves cycles, the pot
+ * pin mask and callback, host wiring and clock/sample-rate configuration. */
 void    ad_pokey_init(ad_pokey *p, uint32_t clock_hz, uint32_t sample_rate);
 void    ad_pokey_reset(ad_pokey *p);
 void    ad_pokey_write(ad_pokey *p, uint8_t reg, uint8_t v);   /* reg 0..15 */
 uint8_t ad_pokey_read(ad_pokey *p, uint8_t reg);               /* RANDOM, ALLPOT, IRQST, SKSTAT,
                                                                 * KBCODE, SERIN, POT0-7; else 0xFF */
-void    ad_pokey_set_allpot(ad_pokey *p, uint8_t v);           /* the DIP bank on the pot pins */
+/* The pot pins.  The core runs the chip's own scanner: POTGO presets the
+ * counter and clears the dump latch, every line still below threshold
+ * reloads its POTn with the count each clock, ALLPOT shows those lines,
+ * and the count reaching 228 ends the scan.  The host supplies only pin
+ * levels (bit i = line i below threshold, still counting; 0 = tripped)
+ * and models the capacitors itself.  set_allpot is a static mask (a DIP
+ * bank on the pins); set_pot_lines installs a per-clock reader, called
+ * with the machine cycle on every clock a scan can use the pins, which
+ * takes precedence over the mask (NULL removes it).  Both are host wiring
+ * a reset keeps.  Do not reenter the core from the callback. */
+void    ad_pokey_set_allpot(ad_pokey *p, uint8_t v);
+void    ad_pokey_set_pot_lines(ad_pokey *p, uint8_t (*fn)(void *ctx, uint64_t cycle), void *ctx);
+/* The dump transistors' state, for hosts whose circuit depends on it
+ * (also reported through ad_pokey_io.pot_dump). */
+bool    ad_pokey_pot_dump_on(const ad_pokey *p);
+/* Read-only view of the scanner for hosts that turn a position into a pin
+ * level: the live count, and whether a scan is running (dump latch clear).
+ * Observation only - nothing done with these changes what POTn or ALLPOT
+ * return. */
+uint8_t ad_pokey_pot_count(const ad_pokey *p);
+bool    ad_pokey_pot_scan_active(const ad_pokey *p);
 void    ad_pokey_set_host(ad_pokey *p, const ad_pokey_host *h); /* NULL = no host (default) */
 void    ad_pokey_advance(ad_pokey *p, uint32_t cycles);        /* full-core machine time, POKEY cycles */
 /* Split-core API: choose this pair OR ad_pokey_advance for an instance's

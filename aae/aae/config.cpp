@@ -164,6 +164,7 @@ void setup_config() {
     config.vecglow = get_config_int("main", "vectorglow", 5);
     config.vectrail = get_config_int("main", "vectortrail", 1);
     config.starwars_fuzz = get_config_int("main", "starwars_fuzz", 1);
+    config.starwars_yoke_cal = get_config_int("main", "starwars_yoke_cal", 1);
     config.gui_vector_only = get_config_int("main", "gui_vector_only", 0);
     config.glow_filter  = get_config_int("main", "glow_filter", 0);
     // Pyramid glow (glow_filter=1) defaults. On the Pi 5 (Mesa v3d - the
@@ -185,8 +186,9 @@ void setup_config() {
     config.glow2_core   = get_config_float("main", "glow2_core",   1.0f);
 #endif
     {
-        // HDR10 mode string: "off" / "on" / anything else (incl. "auto") = auto.
-        const char* h = get_config_string("main", "hdr", "auto");
+        // HDR10 mode string: "off" / "on" / "auto"; a missing key or anything
+        // else is the factory default (hdr::kDefaultMode, off).
+        const char* h = get_config_string("main", "hdr", "");
         config.hdr = (h && strcmp(h, "off") == 0) ? hdr::kModeOff
                    : (h && strcmp(h, "on") == 0)  ? hdr::kModeOn
                    : (h && strcmp(h, "auto") == 0) ? hdr::kModeAuto
@@ -384,6 +386,7 @@ void setup_config() {
         config.vecglow = get_config_int("main", "vectorglow", config.vecglow);
         config.vectrail = get_config_int("main", "vectortrail", config.vectrail);
         config.starwars_fuzz = get_config_int("main", "starwars_fuzz", config.starwars_fuzz);
+        config.starwars_yoke_cal = get_config_int("main", "starwars_yoke_cal", config.starwars_yoke_cal);
         config.glow_filter  = get_config_int("main", "glow_filter", config.glow_filter);
         config.glow2_gain   = get_config_float("main", "glow2_gain",   config.glow2_gain);
         config.glow2_spread = get_config_float("main", "glow2_spread", config.glow2_spread);

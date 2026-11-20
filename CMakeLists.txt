@@ -369,10 +369,13 @@ elseif(UNIX AND NOT APPLE)
     #   pad_map.cpp       - pure gamepad-normalization logic (chord masks,
     #                       combo hold counters) shared with the Windows
     #                       Joystick.cpp; evdev_joystick.cpp's chord path.
+    #   pad_db.cpp        - SDL gamepad database lookup + Linux automapper for
+    #                       evdev_joystick.cpp (Linux only; no OS headers).
     set(AAE_LINUX_EXTRA_SOURCES
         aae/system/audio/voice_mixer.cpp
         aae/system/audio/linux/audio_3d_null.cpp
         aae/system/input/pad_map.cpp
+        aae/system/input/pad_db.cpp
     )
     set(AAE_PLATFORM_SOURCES "")
     set(_aae_missing_backends "")
@@ -1091,6 +1094,7 @@ if(UNIX AND NOT APPLE)
         aae/system/input/linux/evdev_keymap.cpp
         aae/system/input/linux/evdev_joystick.cpp
         aae/system/input/pad_map.cpp
+        aae/system/input/pad_db.cpp
         aae/system/util/sys_log.cpp
     )
     target_compile_features(aae_inputtest PRIVATE cxx_std_17)

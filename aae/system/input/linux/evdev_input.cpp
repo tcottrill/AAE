@@ -376,13 +376,18 @@ void ScanDevices()
 		// stutter roughly once a second.
 		if (std::find(s_examined.begin(), s_examined.end(), node.devNode) != s_examined.end())
 			continue;
-		s_examined.push_back(node.devNode);
 
 		EvdevDevice dev;
 		if (!dev.Open(node.devNode, node.identity)) {
 			permissionDenied++;
+			// A node that is not readable YET stays un-examined so the next
+			// scan tries again: a just-plugged device waits a moment for udev
+			// to grant access (see EvdevNodeDenied). The failed open is one
+			// cheap syscall and logs once per node, unlike the probe above.
+			if (!EvdevNodeDenied(node.devNode)) s_examined.push_back(node.devNode);
 			continue;
 		}
+		s_examined.push_back(node.devNode);
 		if (dev.kind() != EvdevKind::Keyboard && dev.kind() != EvdevKind::Mouse)
 			continue;                     // gamepads and unclassifiable nodes
 

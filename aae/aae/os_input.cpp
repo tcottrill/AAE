@@ -431,6 +431,46 @@ void osd_poll_joysticks(void)
 
 static int resolve_joy(int n);   /* defined below, near osd_analogjoy_read */
 
+/* Player 1's device's RIGHT thumbstick, as a digital direction. `dir` is one
+   of OSD_JOY_LEFT/RIGHT/UP/DOWN. 0 when Player 1 has no two-stick device. */
+static int p1_right_stick_pressed(int dir)
+{
+	const int p1 = resolve_joy(0);
+	if (p1 < 0 || p1 >= num_joysticks || joy[p1].num_sticks < 2)
+		return 0;
+
+	switch (dir)
+	{
+	case OSD_JOY_LEFT:  return joy[p1].stick[1].axis[0].d1;
+	case OSD_JOY_RIGHT: return joy[p1].stick[1].axis[0].d2;
+	case OSD_JOY_UP:    return joy[p1].stick[1].axis[1].d1;
+	case OSD_JOY_DOWN:  return joy[p1].stick[1].axis[1].d2;
+	}
+	return 0;
+}
+
+/* Joystick check for Player 1's second (fire) stick of a twin-stick panel,
+   IPT_JOYSTICKRIGHT_*. Its default binding is a JOY2 direction, which plain
+   osd_joy_pressed only hands to Player 1's right thumbstick when there is no
+   second device. A second device is often present and is not a fire stick:
+   another player's pad, or Steam's virtual pad on SteamOS Desktop, which can
+   mirror the real pad so that its LEFT stick would fire. So when Player 1
+   holds a gamepad (canonical two-stick layout) a JOY2 direction on this input
+   means that pad's right thumbstick and nothing else - one pad carries both
+   sticks, as in current MAME. With a non-gamepad device for Player 1 (arcade
+   stick, encoder) JOY2 is the second device, as before. Any other binding is
+   read as it is. */
+int osd_joy_pressed_fire_stick(int joycode)
+{
+	if (joycode >= OSD_JOY2_LEFT && joycode <= OSD_JOY2_DOWN)
+	{
+		const int p1 = resolve_joy(0);
+		if (p1 >= 0 && p1 < num_joysticks && joy[p1].is_gamepad && joy[p1].num_sticks >= 2)
+			return p1_right_stick_pressed(joycode - OSD_JOY2_LEFT + OSD_JOY_LEFT);
+	}
+	return osd_joy_pressed(joycode);
+}
+
 /* check if the joystick is moved in the specified direction, defined in */
 /* osdepend.h. Return 0 if it is not pressed, nonzero otherwise. */
 int osd_joy_pressed(int joycode)
@@ -492,22 +532,16 @@ int osd_joy_pressed(int joycode)
 	 * device to answer it, read player 1's device's second stick instead.
 	 * The two twin-stick games, Black Widow and Robotron, default their
 	 * fire stick to the JOY2 directions, so one pad plays them twin-stick;
-	 * with two pads present, JOY2 still means the second pad, as before. */
-	if (requested == 1 && (joy_num < 0 || joy_num + 1 > num_joysticks) &&
-		joycode >= OSD_JOY_LEFT && joycode <= OSD_JOY_DOWN)
+	 * with two pads present, JOY2 still means the second pad, as before.
+	 *
+	 * "No second device" includes JOY2 resolving to the very device Player 1
+	 * uses: with Player 1 assigned to slot 1 in INPUT DEVICES and Player 2
+	 * left on AUTO, JOY2 is also slot 1, and reading its LEFT stick made one
+	 * stick both move and fire. */
+	if (requested == 1 && joycode >= OSD_JOY_LEFT && joycode <= OSD_JOY_DOWN &&
+		(joy_num < 0 || joy_num + 1 > num_joysticks || joy_num == resolve_joy(0)))
 	{
-		const int p1 = resolve_joy(0);
-		if (p1 >= 0 && p1 < num_joysticks && joy[p1].num_sticks >= 2)
-		{
-			switch (joycode)
-			{
-			case OSD_JOY_LEFT:  return joy[p1].stick[1].axis[0].d1;
-			case OSD_JOY_RIGHT: return joy[p1].stick[1].axis[0].d2;
-			case OSD_JOY_UP:    return joy[p1].stick[1].axis[1].d1;
-			case OSD_JOY_DOWN:  return joy[p1].stick[1].axis[1].d2;
-			}
-		}
-		return 0;
+		return p1_right_stick_pressed(joycode);
 	}
 
 	if (joy_num < 0)

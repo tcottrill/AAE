@@ -19,6 +19,8 @@
 
 #include <linux/input.h>
 
+#include "pad_db.h"
+
 #include <array>
 #include <cstdint>
 #include <string>
@@ -62,6 +64,13 @@ public:
 	// and the face-button note above EvdevButtonToAae.
 	uint16_t vendorId()  const { return m_vendorId; }
 	uint16_t productId() const { return m_productId; }
+	uint16_t busType()   const { return m_busType; }    // BUS_USB, BUS_BLUETOOTH, ...
+	uint16_t version()   const { return m_version; }
+
+	// Everything pad_db needs to know about this device, read with two EVIOCGBIT
+	// calls (keys, abs) plus EVIOCGABS for the eight hat axes only. A hat axis
+	// whose EVIOCGABS fails is reported absent, as SDL treats it.
+	bool FillPadDbCaps(PadDbCaps* out) const;
 
 	bool  weakIdentity() const { return m_weakIdentity; }
 	bool  seenInput()    const { return m_seenInput; }
@@ -128,6 +137,8 @@ private:
 	std::string m_identity;
 	uint16_t    m_vendorId  = 0;
 	uint16_t    m_productId = 0;
+	uint16_t    m_busType   = 0;
+	uint16_t    m_version   = 0;
 	bool        m_weakIdentity = false;
 	bool        m_seenInput    = false;
 	bool        m_writable     = false;
@@ -162,6 +173,14 @@ struct EvdevNode {
 // Every event node on the system, each paired with its by-id identity when one
 // exists. Sorted by devNode so enumeration order is stable within a boot.
 std::vector<EvdevNode> EvdevEnumerateNodes();
+
+// True when the node exists but this process may not read it. A scanner calls
+// it after a failed Open to decide whether the node is worth another try: a
+// freshly plugged device is created root-only and udev grants access (group
+// change, or logind's uaccess ACL on Debian/Ubuntu) a moment later, so a scan
+// that lands in between sees "permission denied" for a device that is about to
+// become readable. Such a node must NOT be remembered as examined.
+bool EvdevNodeDenied(const std::string& devNode);
 
 // Maps every character that is not [0-9A-Za-z] to '_'.
 //

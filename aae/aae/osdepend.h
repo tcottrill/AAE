@@ -285,6 +285,7 @@ const char* osd_key_name(int keycode);
 const char* osd_joy_name(int joycode);
 void        osd_poll_joysticks(void);
 int         osd_joy_pressed(int joycode);
+int         osd_joy_pressed_fire_stick(int joycode);   // Player 1 IPT_JOYSTICKRIGHT_*: also P1 pad's right thumbstick
 int         osd_menu_joy_index(void);   // joy[] slot the menu/exit dialog follow (Player 1's pad)
 void        osd_analogjoy_read(int player, int* analog_x, int* analog_y);
 void        osd_trak_read(int player, int* deltax, int* deltay);

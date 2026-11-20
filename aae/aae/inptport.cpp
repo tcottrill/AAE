@@ -263,8 +263,8 @@ struct ipd inputport_defaults[] =
 	{ (IPT_PADDLE | IPF_PLAYER2) + IPT_EXTENSION,             "Paddle 2",      OSD_KEY_G,     OSD_JOY2_RIGHT },
 	{ IPT_PADDLE | IPF_PLAYER3,  "Paddle 3",      OSD_KEY_J,     OSD_JOY3_LEFT },
 	{ (IPT_PADDLE | IPF_PLAYER3) + IPT_EXTENSION,             "Paddle 3",      OSD_KEY_L,     OSD_JOY3_RIGHT },
-	{ IPT_PADDLE | IPF_PLAYER4,  "Paddle 4",      0, 0 },
-	{ (IPT_PADDLE | IPF_PLAYER4) + IPT_EXTENSION,             "Paddle 4",      0, 0 },
+	{ IPT_PADDLE | IPF_PLAYER4,  "Paddle 4",      0,             OSD_JOY4_LEFT },
+	{ (IPT_PADDLE | IPF_PLAYER4) + IPT_EXTENSION,             "Paddle 4",      0,             OSD_JOY4_RIGHT },
 	{ IPT_DIAL | IPF_PLAYER1,    "Dial",          OSD_KEY_LEFT,  OSD_JOY_LEFT },
 	{ (IPT_DIAL | IPF_PLAYER1) + IPT_EXTENSION,               "Dial",          OSD_KEY_RIGHT, OSD_JOY_RIGHT },
 	{ IPT_DIAL | IPF_PLAYER2,    "Dial 2",        OSD_KEY_D,     OSD_JOY2_LEFT },
@@ -751,6 +751,18 @@ int input_port_key(const struct InputPort* in)
 		return inputport_defaults[i].keyboard;
 }
 
+/* Joystick check for a digital port bit. Player 1's IPT_JOYSTICKRIGHT_* (the
+   fire stick of Black Widow / Robotron) goes through the twin-stick rule in
+   osd_joy_pressed_fire_stick; everything else is a plain osd_joy_pressed. */
+static int port_joy_pressed(const struct InputPort* in, int joy)
+{
+	const int basetype = (in->type & ~IPF_MASK);
+	if (basetype >= IPT_JOYSTICKRIGHT_UP && basetype <= IPT_JOYSTICKRIGHT_RIGHT &&
+		(in->type & IPF_PLAYERMASK) == IPF_PLAYER1)
+		return osd_joy_pressed_fire_stick(joy);
+	return osd_joy_pressed(joy);
+}
+
 int input_port_joy(const struct InputPort* in)
 {
 	int i, type;
@@ -1144,7 +1156,7 @@ void update_input_ports(void)
 					joydir = ((in->type & ~IPF_MASK) - IPT_JOYSTICK_UP) % 4;
 
 					if ((key != 0 && key != IP_KEY_NONE && osd_key_pressed_for(player, key)) ||
-						(joy != 0 && joy != IP_JOY_NONE && osd_joy_pressed(joy)))
+						(joy != 0 && joy != IP_JOY_NONE && port_joy_pressed(in, joy)))
 					{
 						if (joyserial[joynum][joydir] == 0)
 							joyserial[joynum][joydir] = update_serial_number;
@@ -1266,7 +1278,7 @@ void update_input_ports(void)
 					// Standard MAME input handling for all other types
 					//////////////////////////////////////////////////////
 					else if ((key != 0 && key != IP_KEY_NONE && osd_key_pressed_for(kplayer, key)) ||
-						(joy != 0 && joy != IP_JOY_NONE && osd_joy_pressed(joy)))
+						(joy != 0 && joy != IP_JOY_NONE && port_joy_pressed(in, joy)))
 					{
 						/* skip if coin input and it's locked out
 						if ((in->type & ~IPF_MASK) >= IPT_COIN1 &&

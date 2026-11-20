@@ -39,6 +39,8 @@
 #include <windows.h>
 #include <string>
 #include <cstdio>
+#include <cstdlib>
+#include <fstream>
 #include "iniFile.h"
 #include "path_helper.h"
 #include "sys_log.h"
@@ -1647,6 +1649,26 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance,
 		const std::string ignore = get_config_string(
 			std::string("input"), std::string("joystick_ignore"), std::string());
 		joystick_set_ignore_list(ignore.c_str());
+
+		// Extra SDL gamepad mappings for DirectInput pads: the
+		// SDL_GAMECONTROLLERCONFIG variable, and an optional gamecontrollerdb.txt
+		// next to aae.ini / the exe (same lookup as the Linux entry point).
+		// Optional; capped at 4 MB.
+		std::string userDb;
+		{
+			std::ifstream f(getpathM(nullptr, "gamecontrollerdb.txt"), std::ios::binary);
+			if (f) {
+				constexpr std::streamsize kMaxDb = 4 * 1024 * 1024;
+				userDb.resize((size_t)kMaxDb);
+				f.read(&userDb[0], kMaxDb);
+				userDb.resize((size_t)f.gcount());
+			}
+		}
+#pragma warning(push)
+#pragma warning(disable : 4996)   // getenv: a read-only lookup, as in path_helper.cpp
+		const char* envConfig = std::getenv("SDL_GAMECONTROLLERCONFIG");
+#pragma warning(pop)
+		joystick_set_mapping_sources(envConfig, userDb.empty() ? nullptr : userDb.c_str());
 	}
 
 	if (!install_joystick()) {

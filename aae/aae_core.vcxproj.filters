@@ -283,9 +283,6 @@
     <ClCompile Include="aae\vidhrdwr\centiped_vid.cpp">
       <Filter>vidhrdwr</Filter>
     </ClCompile>
-    <ClCompile Include="aae\vidhrdwr\cinematronics_video.cpp">
-      <Filter>vidhrdwr</Filter>
-    </ClCompile>
     <ClCompile Include="aae\vidhrdwr\galaxian_vid.cpp">
       <Filter>vidhrdwr</Filter>
     </ClCompile>
@@ -347,9 +344,14 @@
     <ClCompile Include="aae\drivers\qix.cpp">
       <Filter>drivers\raster</Filter>
     </ClCompile>
-    <ClCompile Include="aae\sndhrdwr\sound_latch.cpp" />
     <ClCompile Include="aae\vidhrdwr\mame_late_avgdvg.cpp">
       <Filter>vidhrdwr</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\vidhrdwr\cinematronics_video.cpp">
+      <Filter>vidhrdwr</Filter>
+    </ClCompile>
+    <ClCompile Include="aae\sndhrdwr\sound_latch.cpp">
+      <Filter>sndhrdwr</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -584,9 +586,6 @@
     <ClInclude Include="aae\vidhrdwr\centiped_vid.h">
       <Filter>vidhrdwr</Filter>
     </ClInclude>
-    <ClInclude Include="aae\vidhrdwr\cinematronics_video.h">
-      <Filter>vidhrdwr</Filter>
-    </ClInclude>
     <ClInclude Include="aae\vidhrdwr\galaxian_vid.h">
       <Filter>vidhrdwr</Filter>
     </ClInclude>
@@ -636,9 +635,14 @@
     <ClInclude Include="aae\drivers\qix.h">
       <Filter>drivers\raster</Filter>
     </ClInclude>
-    <ClInclude Include="aae\sndhrdwr\sound_latch.h" />
     <ClInclude Include="aae\vidhrdwr\mame_late_avgdvg.h">
       <Filter>vidhrdwr</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\vidhrdwr\cinematronics_video.h">
+      <Filter>vidhrdwr</Filter>
+    </ClInclude>
+    <ClInclude Include="aae\sndhrdwr\sound_latch.h">
+      <Filter>sndhrdwr</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

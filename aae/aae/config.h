@@ -73,6 +73,13 @@ typedef struct {
 	// 0 = off, 1 = on. Shaping constants live in the composite shaders.
 	int starwars_fuzz;
 
+	// Star Wars / Empire Strikes Back: keep the game's own yoke calibration
+	// (pot low limit and spread) at the values of a centred full-travel pot,
+	// so a centred stick is the centre of the screen. 0 = leave the game's
+	// self-calibration alone (it drifts left until the stick is held against
+	// both stops). See "Yoke calibration" in drivers/starwars.cpp.
+	int starwars_yoke_cal;
+
 	// --- Glow blur selector + dual-filter pyramid tuning (glow_filter=1) ---
 	// All live-adjustable from the VECTOR MONITOR SETUP menu; both renderers
 	// read them per frame. gain is deliberately large: the pyramid is
@@ -88,11 +95,11 @@ typedef struct {
 
 	// --- HDR10 output (Vulkan renderer only; see aae_video_vk/hdr_math.h) ---
 	// [main] hdr = "auto" | "on" | "off" (default auto), per-game overridable.
-	// Menu items live in VIDEO SETUP. The mode applies at next launch. hdr_beam_curve is ini-only (no menu item).
+	// Menu items live in VIDEO SETUP. The mode applies at next launch.
 	int   hdr;              // 0 = off, 1 = auto, 2 = on (hdr::kModeOff/Auto/On)
-	float hdr_paper_white;  // SDR white in nits, 80..500   (default 200)
+	float hdr_paper_white;  // SDR white in nits, 80..500   (default 150)
 	float hdr_beam_peak;    // beam peak in nits, 400..4000 (default 1000)
-	float hdr_beam_curve;   // highlight curve exponent, 0.5..4.0 (default 2.0)
+	float hdr_beam_curve;   // highlight curve exponent, 0.5..16.0 (default 2.0); high = only near-max beams expand
 	float hdr_shot_boost;   // HDR-only brightness multiplier for shot cores, 1.0..4.0, default 2.0, 1.0 = off
 
 	// --- Modern vector beam renderer (menu + aae.ini; per-game overridable) ---

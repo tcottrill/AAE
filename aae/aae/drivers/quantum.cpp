@@ -85,21 +85,16 @@ READ16_HANDLER(quantum_switches_r)
 	return (input_port_0_r(0) | (avgdvg_done() ? 1 : 0));
 }
 
-static int quantum_input_1_r(int offset)
-{
-	return (readinputportbytag("DSW0") << (7 - (offset ))) & 0x80;
-}
-static int quantum_input_2_r(int offset)
-{
-	return (readinputportbytag("DSW1") << (7 - (offset ))) & 0x80;
-}
-
-// Quantum reads its two DIP-switch banks through the POKEY ALLPOT register,
-// exactly like current MAME (pokey1->allpot_r = DSW0, pokey2->allpot_r = DSW1).
-// The POKEY core's ALLPOT read returns the driver's allpot handler whenever one
-// is present (value >= 0), so wiring these bypasses the internal pot-scan model.
-static int quantum_allpot_1_r(int offset) { return readinputportbytag("DSW0"); }
-static int quantum_allpot_2_r(int offset) { return readinputportbytag("DSW1"); }
+// Quantum's two DIP banks sit on the pot pins of the two POKEYs (DSW0 on the
+// first, DSW1 on the second; switch n on pot line n). The bank byte is the
+// pin mask (POKEY D27): a set bit is a line that never trips, so a scan
+// latches 228/229 in POTn (bit 7 set) and ALLPOT shows the bit while the scan
+// runs; a clear bit is a line that never loads (POTn stays 0, bit 7 clear).
+// MAME 0.286 has only per-line pot_r handlers returning $80/$00 per switch,
+// the same bit 7 in POTn; the per-line handlers this driver used to carry
+// next to these were redundant (the adapter's mask wins) and are gone.
+static int quantum_allpot_1_r(int) { return readinputportbytag("DSW0") & 0xFF; }
+static int quantum_allpot_2_r(int) { return readinputportbytag("DSW1") & 0xFF; }
 
 WRITE16_HANDLER(quantum_led_write)
 {
@@ -149,16 +144,16 @@ static struct POKEYinterface pokey_interface =
 	2,	/* 2 chips */
 	600000,        /* .6 MHz? (hand tuned) */
 	{ 80,80 },
-	/* The 8 pot handlers */
-	{ quantum_input_1_r, quantum_input_2_r },
-	{ quantum_input_1_r, quantum_input_2_r },
-	{ quantum_input_1_r, quantum_input_2_r },
-	{ quantum_input_1_r, quantum_input_2_r },
-	{ quantum_input_1_r, quantum_input_2_r },
-	{ quantum_input_1_r, quantum_input_2_r },
-	{ quantum_input_1_r, quantum_input_2_r },
-	{ quantum_input_1_r, quantum_input_2_r },
-	/* The allpot handler: Quantum's DSWs are read here (MAME allpot handling) */
+	/* The 8 pot handlers: none, the DIP banks are the pin masks below */
+	{ 0, 0 },
+	{ 0, 0 },
+	{ 0, 0 },
+	{ 0, 0 },
+	{ 0, 0 },
+	{ 0, 0 },
+	{ 0, 0 },
+	{ 0, 0 },
+	/* The allpot handler: DSW0 / DSW1 as the pot pin masks */
 	{ quantum_allpot_1_r, quantum_allpot_2_r },
 };
 

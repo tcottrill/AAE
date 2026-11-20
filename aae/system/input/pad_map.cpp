@@ -179,14 +179,55 @@ bool pad_env_ignore_match(const char* ignore, const char* except,
     return false;
 }
 
+bool pad_right_stick_on_z_rz(const PadCaps& c)
+{
+    return !c.absRx && !c.absRy && c.absZ && c.absRz;
+}
+
 int pad_rank(const PadCaps& c)
 {
-    if (c.btnSouth && c.absRx && c.absRy &&
+    if (pad_right_stick_on_z_rz(c)) {
+        // Z/RZ are the stick here, so they cannot also vouch for triggers.
+        if (c.btnSouth && (c.absHat0X || c.btnDpadUp)) return 0;
+    }
+    else if (c.btnSouth && c.absRx && c.absRy &&
         (c.absZ || c.absRz || c.absHat0X || c.btnDpadUp))
         return 0;
     if (c.btnSouth)    return 1;
     if (c.btnJoystick) return 2;
     return 3;
+}
+
+bool pad_is_steam_virtual_id(uint16_t vid, uint16_t pid)
+{
+    return (vid == 0x28de && pid == 0x11ff) || (vid == 0x045e && pid == 0x028e);
+}
+
+bool pad_demote_steam_virtual(bool isVirtualNode, uint16_t vid, uint16_t pid,
+                              const char* ignoreEnv, const char* exceptEnv)
+{
+    if (!isVirtualNode || !pad_is_steam_virtual_id(vid, pid)) return false;
+    const bool steamHiding = (ignoreEnv && ignoreEnv[0]) || (exceptEnv && exceptEnv[0]);
+    return !steamHiding;
+}
+
+bool pad_slot_before(int rankA, bool demotedA, int evnumA,
+                     int rankB, bool demotedB, int evnumB)
+{
+    // Doubled rank, with a demoted pad placed just after the physical
+    // gamepads (ranks 0 and 1) and still ahead of sticks and axis-only nodes.
+    const int keyA = demotedA ? 3 : rankA * 2;
+    const int keyB = demotedB ? 3 : rankB * 2;
+    if (keyA != keyB) return keyA < keyB;
+    return evnumA < evnumB;
+}
+
+int pad_hotplug_slot(const bool* slotDemoted, int numSlots, int newRank, bool newDemoted)
+{
+    if (newDemoted || newRank > 1) return numSlots;
+    for (int i = 0; i < numSlots; i++)
+        if (slotDemoted[i]) return i;
+    return numSlots;
 }
 
 void pad_map_sony_buttons(const uint8_t raw[PAD_SONY_RAW_BUTTONS],

@@ -36,6 +36,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <string>
 
 // Emulator entry points (aae_emulator.cpp)
@@ -619,6 +620,22 @@ int main(int argc, char** argv)
 		// joystick.h); Flatpak passes the environment through.
 		joystick_set_steam_hide_env(getenv("SDL_GAMECONTROLLER_IGNORE_DEVICES"),
 		                            getenv("SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT"));
+
+		// Extra SDL gamepad mappings: Steam exports its own in
+		// SDL_GAMECONTROLLERCONFIG, and a gamecontrollerdb.txt next to aae.ini
+		// (same directory) lets a user add a pad. Optional; capped at 4 MB.
+		std::string userDb;
+		{
+			std::ifstream f(getpathM(nullptr, "gamecontrollerdb.txt"), std::ios::binary);
+			if (f) {
+				constexpr std::streamsize kMaxDb = 4 * 1024 * 1024;
+				userDb.resize((size_t)kMaxDb);
+				f.read(&userDb[0], kMaxDb);
+				userDb.resize((size_t)f.gcount());
+			}
+		}
+		joystick_set_mapping_sources(getenv("SDL_GAMECONTROLLERCONFIG"),
+		                             userDb.empty() ? nullptr : userDb.c_str());
 	}
 	install_joystick();
 

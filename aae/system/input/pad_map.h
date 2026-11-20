@@ -110,6 +110,13 @@ struct PadCaps {
     bool btnDpadUp = false;
 };
 
+// True when the right stick arrives on ABS_Z/ABS_RZ instead of ABS_RX/ABS_RY:
+// the HID gamepad layout (an Xbox Wireless Controller over Bluetooth,
+// 045e:0b13, and most DirectInput-style pads). There the triggers are
+// ABS_BRAKE (left) / ABS_GAS (right). xpad-style pads have RX/RY and use Z/RZ
+// for the triggers, so the two readings of Z/RZ are mutually exclusive.
+bool pad_right_stick_on_z_rz(const PadCaps& caps);
+
 // Slot ranking, lowest first:
 //   0 full pad (south button + right stick + a trigger/hat/d-pad)
 //   1 any other BTN_GAMEPAD device
@@ -118,6 +125,36 @@ struct PadCaps {
 // Real pads sort ahead of the odd gamepad-class nodes keyboards and mice
 // expose, so Player 1 lands on the pad the user is actually holding.
 int pad_rank(const PadCaps& caps);
+
+// True for the ids Steam Input gives its uinput pads: 28de:11ff, and the X360
+// emulation 045e:028e. The second is also a real wired 360 pad, so the caller
+// must have established that the node is virtual (sysfs) before asking.
+bool pad_is_steam_virtual_id(uint16_t vid, uint16_t pid);
+
+// A Steam virtual pad is a stand-in only when Steam launched us: it then
+// exports its device-hiding variables and the physical pad is skipped. With
+// neither variable set (SteamOS Desktop, AAE started outside Steam) the
+// physical pad is still visible and is the one that reports the user's input
+// as-is; the virtual pad carries Steam's desktop layout (mouse/keys), so it
+// must not take Player 1 ahead of it. `ignoreEnv`/`exceptEnv` may be null.
+bool pad_demote_steam_virtual(bool isVirtualNode, uint16_t vid, uint16_t pid,
+                              const char* ignoreEnv, const char* exceptEnv);
+
+// Slot order of two newly found pads: physical gamepads (rank 0, then 1),
+// then demoted pads (see above), then rank 2 and 3; event number breaks ties.
+// Strict weak ordering for std::stable_sort.
+bool pad_slot_before(int rankA, bool demotedA, int evnumA,
+                     int rankB, bool demotedB, int evnumB);
+
+// Slot for a pad that appears when slots are already handed out (hotplug, or
+// a later scan). Normally it appends (returns numSlots) and nothing moves. The
+// one exception keeps pad_slot_before's order true after a hotplug: a physical
+// gamepad (rank 0 or 1, not demoted) goes in at the first demoted slot, and
+// the caller shifts the demoted pads from there down by one. Without it a
+// second real pad plugged in on SteamOS Desktop landed behind the first pad's
+// Steam virtual twin, so Player 2 was that twin and the new pad was Player 3.
+// `slotDemoted[i]` says whether slot i holds a demoted pad.
+int pad_hotplug_slot(const bool* slotDemoted, int numSlots, int newRank, bool newDemoted);
 
 // Combos must be held this many consecutive polls to fire.
 constexpr int PAD_COMBO_CONFIRM_FRAMES = 2;

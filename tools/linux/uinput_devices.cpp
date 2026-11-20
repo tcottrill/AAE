@@ -42,6 +42,22 @@
 //                                           while the devices exist
 //   --sony-pad                              also create 'pspad', a SECOND pad
 //                                           identifying as a DualSense
+//   --steamos-desktop                       create ONLY two pads that reproduce the
+//                                           SteamOS Desktop case: 'steampad' (Steam's
+//                                           virtual X-Box 360 pad, 28de:11ff) and
+//                                           'xbpad' (a Bluetooth Xbox Wireless
+//                                           Controller, 045e:0b13). No keyboards,
+//                                           mouse or 'pad'.
+//   --real-first                            with --steamos-desktop, create xbpad
+//                                           BEFORE steampad (so the real pad gets the
+//                                           lower event number); default is the reverse
+//   --debian-desktop                        create ONLY six devices that reproduce a Debian
+//                                           desktop with a gaming keyboard and mouse: four
+//                                           junk/weak nodes (kbaux mouse mouseaux perpad), an
+//                                           Ultimarc arcade stick (stick) and the real pad
+//                                           (xbpad) created LAST, so it gets the highest
+//                                           event number. Cannot be combined with
+//                                           --steamos-desktop.
 //
 // --exec turns the whole test into ONE command and one password prompt:
 //
@@ -61,6 +77,9 @@
 //   sleep <ms>
 //   echo  <text>
 // <dev> is one of: kbd1 kbd2 mouse pad  (and pspad with --sony-pad)
+//                  steampad xbpad       (only with --steamos-desktop)
+//                  kbaux mouse mouseaux perpad stick xbpad
+//                                       (only with --debian-desktop)
 //==============================================================================
 
 #include <linux/uinput.h>
@@ -131,6 +150,11 @@ static const CodeName kKeyNames[] = {
 	{"BTN_WEST",BTN_WEST},{"BTN_TL",BTN_TL},{"BTN_TR",BTN_TR},
 	{"BTN_SELECT",BTN_SELECT},{"BTN_START",BTN_START},{"BTN_MODE",BTN_MODE},
 	{"BTN_THUMBL",BTN_THUMBL},{"BTN_THUMBR",BTN_THUMBR},
+	{"BTN_C",BTN_C},{"BTN_Z",BTN_Z},{"BTN_TL2",BTN_TL2},{"BTN_TR2",BTN_TR2},
+	// joystick-class buttons (arcade sticks report these)
+	{"BTN_TRIGGER",BTN_TRIGGER},{"BTN_THUMB",BTN_THUMB},{"BTN_THUMB2",BTN_THUMB2},
+	{"BTN_TOP",BTN_TOP},{"BTN_TOP2",BTN_TOP2},{"BTN_PINKIE",BTN_PINKIE},
+	{"BTN_BASE",BTN_BASE},{"BTN_BASE2",BTN_BASE2},
 };
 
 static const CodeName kRelNames[] = {
@@ -141,6 +165,7 @@ static const CodeName kAbsNames[] = {
 	{"ABS_X",ABS_X},{"ABS_Y",ABS_Y},{"ABS_Z",ABS_Z},
 	{"ABS_RX",ABS_RX},{"ABS_RY",ABS_RY},{"ABS_RZ",ABS_RZ},
 	{"ABS_HAT0X",ABS_HAT0X},{"ABS_HAT0Y",ABS_HAT0Y},
+	{"ABS_GAS",ABS_GAS},{"ABS_BRAKE",ABS_BRAKE},
 };
 
 static int lookup_code(const CodeName* table, size_t n, const char* s)
@@ -246,14 +271,17 @@ static std::string resolve_event_node(int uifd)
 // per-axis ranges so each device can advertise its own, which is the whole
 // point of the pad's odd ones.
 //------------------------------------------------------------------------------
-struct AbsAxis { int code; int min; int max; int flat; };
+// rest is the value the axis reports before any event: the midpoint for sticks,
+// the minimum for triggers.
+struct AbsAxis { int code; int min; int max; int flat; int rest; };
 
 static bool create_device(VirtualDevice& dev,
                           const std::vector<int>& keyCodes,
                           const std::vector<int>& relCodes,
                           const std::vector<AbsAxis>& absAxes,
                           bool wantRumble,
-                          unsigned short vendor, unsigned short product)
+                          unsigned short vendor, unsigned short product,
+                          unsigned short bustype = BUS_USB, unsigned short version = 1)
 {
 	// O_RDWR, not O_WRONLY: force-feedback upload requests arrive by READING
 	// this same fd. A write-only fd creates a pad that advertises FF_RUMBLE and
@@ -283,7 +311,7 @@ static bool create_device(VirtualDevice& dev,
 			as.absinfo.minimum = a.min;
 			as.absinfo.maximum = a.max;
 			as.absinfo.flat    = a.flat;
-			as.absinfo.value   = (a.min + a.max) / 2;   // centred at rest
+			as.absinfo.value   = a.rest;   // centred for sticks, minimum for triggers
 			if (ioctl(dev.fd, UI_ABS_SETUP, &as) < 0)
 				fprintf(stderr, "  UI_ABS_SETUP(%d): %s\n", a.code, strerror(errno));
 		}
@@ -295,10 +323,10 @@ static bool create_device(VirtualDevice& dev,
 	}
 
 	struct uinput_setup us {};
-	us.id.bustype = BUS_USB;
+	us.id.bustype = bustype;
 	us.id.vendor  = vendor;
 	us.id.product = product;
-	us.id.version = 1;
+	us.id.version = version;
 	us.ff_effects_max = wantRumble ? 16 : 0;
 	snprintf(us.name, sizeof(us.name), "%s", dev.deviceName.c_str());
 
@@ -362,13 +390,155 @@ static VirtualDevice* find_device(const char* shortName)
 //------------------------------------------------------------------------------
 // The device set.
 //------------------------------------------------------------------------------
-static bool create_all(bool wantSonyPad)
+// The 11 standard gamepad buttons, shared by the Xbox and Steam virtual pads.
+static std::vector<int> gamepad_buttons()
 {
-	std::vector<int> fullKeyboard;
+	return {
+		BTN_SOUTH, BTN_EAST, BTN_NORTH, BTN_WEST, BTN_TL, BTN_TR,
+		BTN_SELECT, BTN_START, BTN_MODE, BTN_THUMBL, BTN_THUMBR
+	};
+}
+
+// A Bluetooth Xbox Wireless Controller (045e:0b13, HID layout - right stick on
+// ABS_Z/ABS_RZ, triggers on ABS_BRAKE/ABS_GAS). One definition for every
+// scenario that needs it, so the scenarios cannot drift apart.
+static bool create_xbox_wireless_pad(VirtualDevice& dev)
+{
+	const std::vector<AbsAxis> xbAxes = {
+		{ABS_X,       0, 65535, 4095, 32767},
+		{ABS_Y,       0, 65535, 4095, 32767},
+		{ABS_Z,       0, 65535, 4095, 32767},   // right stick X on this pad
+		{ABS_RZ,      0, 65535, 4095, 32767},   // right stick Y on this pad
+		{ABS_GAS,     0,  1023,    0, 0},       // right trigger
+		{ABS_BRAKE,   0,  1023,    0, 0},       // left trigger
+		{ABS_HAT0X,  -1,     1,    0, 0},
+		{ABS_HAT0Y,  -1,     1,    0, 0},
+	};
+	return create_device(dev, gamepad_buttons(), {}, xbAxes, true,
+	                     0x045E, 0x0B13, BUS_BLUETOOTH, 0x0905);
+}
+
+// Every kKeyNames entry that is a real key (code < BTN_MISC), no BTN_*.
+static std::vector<int> full_keyboard_keys()
+{
+	std::vector<int> keys;
 	for (size_t i = 0; i < sizeof(kKeyNames) / sizeof(kKeyNames[0]); i++) {
 		const int c = kKeyNames[i].code;
-		if (c < BTN_MISC) fullKeyboard.push_back(c);   // keys only, no BTN_*
+		if (c < BTN_MISC) keys.push_back(c);   // keys only, no BTN_*
 	}
+	return keys;
+}
+
+static bool create_steamos_desktop(bool realFirst)
+{
+	// SteamOS Desktop case, reproduced from a user's log: a Bluetooth Xbox
+	// Wireless Controller (045e:0b13, HID layout - right stick on ABS_Z/ABS_RZ,
+	// triggers on ABS_BRAKE/ABS_GAS) alongside Steam's virtual pad (28de:11ff),
+	// with no Steam SDL ignore environment variables set. AAE must put the real
+	// pad in slot 0. Both are uinput devices here, so both sit under
+	// /sys/devices/virtual; that is fine because AAE demotes only the two Steam
+	// virtual ids, not everything that is virtual.
+	const std::vector<int> buttons = gamepad_buttons();
+	const std::vector<AbsAxis> steamAxes = {
+		{ABS_X,     -32768, 32767, 128, 0},
+		{ABS_Y,     -32768, 32767, 128, 0},
+		{ABS_RX,    -32768, 32767, 128, 0},
+		{ABS_RY,    -32768, 32767, 128, 0},
+		{ABS_Z,          0,   255,   0, 0},   // triggers rest at minimum
+		{ABS_RZ,         0,   255,   0, 0},
+		{ABS_HAT0X,     -1,     1,   0, 0},
+		{ABS_HAT0Y,     -1,     1,   0, 0},
+	};
+
+	// Both entries go in before either is created: create_device takes a
+	// reference into g_devices, which a later push_back would invalidate.
+	g_devices.push_back({"steampad", "Microsoft X-Box 360 pad 0"});
+	g_devices.push_back({"xbpad",    "Xbox Wireless Controller"});
+	const size_t steamIdx = 0, xbIdx = 1;
+
+	printf("Creating virtual devices (SteamOS Desktop, %s first):\n",
+	       realFirst ? "real pad" : "Steam virtual pad");
+
+	for (int step = 0; step < 2; step++) {
+		const bool doXb = realFirst ? (step == 0) : (step == 1);
+		if (doXb) {
+			if (!create_xbox_wireless_pad(g_devices[xbIdx])) return false;
+		} else {
+			if (!create_device(g_devices[steamIdx], buttons, {}, steamAxes, true,
+			                   0x28DE, 0x11FF, BUS_USB, 1)) return false;
+		}
+	}
+	printf("\n");
+	return true;
+}
+
+static bool create_debian_desktop()
+{
+	// Debian desktop case: a gaming keyboard and mouse expose extra event nodes
+	// carrying ABS_X/ABS_Y or stray BTN_* bits. Those once took JOY 1..3 and
+	// pushed the real pad to JOY 4. AAE must classify kbaux/mouse/mouseaux as
+	// non-pads and order the real pad first, the weak gamepad-class node
+	// ('perpad') second and the arcade stick third, whatever the event numbers
+	// are. The junk nodes are created first so they get the lowest event numbers
+	// and the real pad last.
+	const std::vector<AbsAxis> xyAxes = {
+		{ABS_X, 0, 255, 0, 127},
+		{ABS_Y, 0, 255, 0, 127},
+	};
+
+	// All six entries go in before any is created: create_device takes a
+	// reference into g_devices, which a later push_back would invalidate.
+	g_devices.push_back({"kbaux",    "Corsair K70 Gaming Keyboard"});
+	g_devices.push_back({"mouse",    "Logitech G502"});
+	g_devices.push_back({"mouseaux", "Logitech G502 Keyboard"});
+	g_devices.push_back({"perpad",   "Gaming Keyboard Consumer Control"});
+	g_devices.push_back({"stick",    "Ultimarc Ultra-Stik Ultimarc Ultra-Stik Player 1"});
+	g_devices.push_back({"xbpad",    "Xbox Wireless Controller"});
+
+	printf("Creating virtual devices (Debian desktop: gaming keyboard and mouse nodes ahead of the real pad):\n");
+
+	// Expected in AAE: a KEYBOARD, not a gamepad.
+	if (!create_device(g_devices[0], full_keyboard_keys(), {}, xyAxes, false,
+	                   0x1B1C, 0x1B49, BUS_USB, 0x0111)) return false;
+
+	// Expected: a MOUSE.
+	if (!create_device(g_devices[1], {BTN_LEFT, BTN_RIGHT, BTN_MIDDLE},
+	                   {REL_X, REL_Y, REL_WHEEL}, xyAxes, false,
+	                   0x046D, 0xC08D, BUS_USB, 0x0111)) return false;
+
+	// Expected: NOT a gamepad (vetoed).
+	if (!create_device(g_devices[2], {BTN_SOUTH}, {REL_X}, xyAxes, false,
+	                   0x046D, 0xC08D, BUS_USB, 0x0111)) return false;
+
+	// Expected: admitted as a gamepad-class node but ranked BEHIND the real pad
+	// (rank 1).
+	if (!create_device(g_devices[3], {BTN_SOUTH, BTN_EAST}, {}, xyAxes, false,
+	                   0x1532, 0x0266, BUS_USB, 0x0111)) return false;
+
+	// Expected: an arcade stick, rank 2, raw button order.
+	if (!create_device(g_devices[4],
+	                   {BTN_TRIGGER, BTN_THUMB, BTN_THUMB2, BTN_TOP,
+	                    BTN_TOP2, BTN_PINKIE, BTN_BASE, BTN_BASE2},
+	                   {},
+	                   {{ABS_X, 0, 255, 15, 127}, {ABS_Y, 0, 255, 15, 127}}, false,
+	                   0xD209, 0x0501, BUS_USB, 0x0111)) return false;
+
+	// The real pad, last: identical to the SteamOS scenario's 'xbpad'.
+	if (!create_xbox_wireless_pad(g_devices[5])) return false;
+
+	printf("\n");
+	return true;
+}
+
+static bool create_all(bool wantSonyPad, bool steamosDesktop = false, bool realFirst = false,
+                       bool debianDesktop = false)
+{
+	if (steamosDesktop)
+		return create_steamos_desktop(realFirst);
+	if (debianDesktop)
+		return create_debian_desktop();
+
+	const std::vector<int> fullKeyboard = full_keyboard_keys();
 
 	g_devices.push_back({"kbd1",  "AAE Test Keyboard Alpha"});
 	g_devices.push_back({"kbd2",  "AAE Test Keyboard Beta"});
@@ -394,12 +564,12 @@ static bool create_all(bool wantSonyPad)
 	// -32768..32767 reads the left stick as pinned hard left forever; a
 	// backend that honours EVIOCGABS reads it centred.
 	const std::vector<AbsAxis> padAxes = {
-		{ABS_X,        0, 1023, 16},    // unsigned, 10-bit
-		{ABS_Y,        0, 1023, 16},
-		{ABS_RX,   -2048, 2047, 32},    // signed, 12-bit
-		{ABS_RY,   -2048, 2047, 32},
-		{ABS_HAT0X,   -1,    1,  0},    // d-pad as a hat
-		{ABS_HAT0Y,   -1,    1,  0},
+		{ABS_X,        0, 1023, 16, 511},   // unsigned, 10-bit
+		{ABS_Y,        0, 1023, 16, 511},
+		{ABS_RX,   -2048, 2047, 32,  -1},   // signed, 12-bit
+		{ABS_RY,   -2048, 2047, 32,  -1},
+		{ABS_HAT0X,   -1,    1,  0,   0},   // d-pad as a hat
+		{ABS_HAT0Y,   -1,    1,  0,   0},
 	};
 	const std::vector<int> padButtons = {
 		BTN_SOUTH, BTN_EAST, BTN_NORTH, BTN_WEST, BTN_TL, BTN_TR,
@@ -690,11 +860,22 @@ int main(int argc, char** argv)
 	const char* scriptPath = nullptr;
 	const char* execCmd = nullptr;
 	bool wantSonyPad = false;
+	bool steamosDesktop = false;
+	bool realFirst = false;
+	bool debianDesktop = false;
 
 	for (int i = 2; i < argc; i++) {
 		if (strcmp(argv[i], "--exec") == 0 && i + 1 < argc) execCmd = argv[++i];
 		else if (strcmp(argv[i], "--sony-pad") == 0)        wantSonyPad = true;
+		else if (strcmp(argv[i], "--steamos-desktop") == 0) steamosDesktop = true;
+		else if (strcmp(argv[i], "--real-first") == 0)      realFirst = true;
+		else if (strcmp(argv[i], "--debian-desktop") == 0)  debianDesktop = true;
 		else if (argv[i][0] != '-' && !scriptPath)          scriptPath = argv[i];
+	}
+
+	if (steamosDesktop && debianDesktop) {
+		fprintf(stderr, "--steamos-desktop and --debian-desktop cannot be combined\n");
+		return 1;
 	}
 
 	if (geteuid() != 0) {
@@ -706,7 +887,7 @@ int main(int argc, char** argv)
 	signal(SIGINT,  on_signal);
 	signal(SIGTERM, on_signal);
 
-	if (!create_all(wantSonyPad)) {
+	if (!create_all(wantSonyPad, steamosDesktop, realFirst, debianDesktop)) {
 		destroy_all();
 		return 1;
 	}

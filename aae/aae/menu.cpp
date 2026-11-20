@@ -1013,6 +1013,9 @@ void MenuManager::BuildVideoMenu() {
                 return std::string();
             });
         addNitsItem("HDR SHOT BOOST",  &config.hdr_shot_boost,  1.0f,   4.0f,    0.1f, 1);
+        // Higher = dimmer beams stay at their SDR level and only beams near
+        // maximum intensity reach the beam peak.
+        addNitsItem("HDR BEAM CURVE",  &config.hdr_beam_curve,  hdr::kCurveMin, hdr::kCurveMax, 0.5f, 1);
 
         // Two-step reset of all HDR settings. Never greyed out, so a bad
         // setting can always be undone. state: 0 idle, 1 armed, 2 done.

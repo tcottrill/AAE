@@ -22,11 +22,17 @@ constexpr int kModeAuto = 1;
 constexpr int kModeOn   = 2;
 
 // Factory defaults: the single source for config.cpp and the menu reset.
-constexpr int   kDefaultMode       = kModeAuto;
-constexpr float kDefaultPaperWhite = 200.0f;
+constexpr int   kDefaultMode       = kModeOff;
+constexpr float kDefaultPaperWhite = 150.0f;
 constexpr float kDefaultBeamPeak   = 1000.0f;
 constexpr float kDefaultBeamCurve  = 2.0f;
 constexpr float kDefaultShotBoost  = 2.0f;
+
+// Highlight curve exponent range. A high exponent keeps mid-intensity beams
+// at their SDR level and gives the expansion only to beams near maximum
+// intensity, which still land on the beam peak.
+constexpr float kCurveMin = 0.5f;
+constexpr float kCurveMax = 16.0f;
 
 // ST.2084 inverse EOTF: absolute luminance in nits (clamped 0..10000) -> 0..1.
 inline float PqEncode(float nits)
@@ -127,7 +133,7 @@ inline Settings ClampSettings(Settings s, float displayMaxNits)
     s.beamPeak   = (std::min)((std::max)(s.beamPeak, 400.0f), 4000.0f);
     if (displayMaxNits > 0.0f) s.beamPeak = (std::min)(s.beamPeak, displayMaxNits);
     s.beamPeak   = (std::max)(s.beamPeak, s.paperWhite);
-    s.curve      = (std::min)((std::max)(s.curve, 0.5f), 4.0f);
+    s.curve      = (std::min)((std::max)(s.curve, kCurveMin), kCurveMax);
     return s;
 }
 

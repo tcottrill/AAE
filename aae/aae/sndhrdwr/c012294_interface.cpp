@@ -69,22 +69,38 @@ void host_raise_irq(void* ctx, uint8_t mask)
 	if (g_intf && g_intf->interrupt_cb[i]) g_intf->interrupt_cb[i]((int)mask);
 }
 
-int host_pot_read(void* ctx, int n)
+// Pot pins (D27). The core runs the chip's own scan and asks for the eight
+// pin levels on every clock a scan can use them: bit n = 1 while line n is
+// below threshold (still counting), 0 once it has tripped.
+//  - A driver with an allpot_r handler hands back the pins themselves (DIP
+//    switches strapped to the pot inputs). That byte wins over any POTn
+//    handlers on the same chip: a set bit never trips and latches 228/229,
+//    a clear bit never loads.
+//  - Otherwise a POTn handler's value is the count the line should latch
+//    (Warlords' paddles): the line reads 1 while the live count is below it
+//    and 0 from the clock the count reaches it, which latches exactly that
+//    value (test_pot_hrm check 9; 0, and 1 in fast mode, cannot be produced
+//    and leave the previous value). No handler: 228, a line that never trips.
+//  - Between scans every line reads 1: the dump has drained the capacitor.
+uint8_t host_pot_lines(void* ctx, uint64_t cycle)
 {
-	const int i = slot_index(ctx);
-	if (!g_intf) return 228;
-	int (*h)(int) = nullptr;
-	switch (n) {
-	case 0: h = g_intf->pot0_r[i]; break;
-	case 1: h = g_intf->pot1_r[i]; break;
-	case 2: h = g_intf->pot2_r[i]; break;
-	case 3: h = g_intf->pot3_r[i]; break;
-	case 4: h = g_intf->pot4_r[i]; break;
-	case 5: h = g_intf->pot5_r[i]; break;
-	case 6: h = g_intf->pot6_r[i]; break;
-	case 7: h = g_intf->pot7_r[i]; break;
+	(void)cycle;
+	ChipSlot& s = *static_cast<ChipSlot*>(ctx);
+	const int i = s.index;
+	if (!g_intf) return 0xFF;
+	if (g_intf->allpot_r[i]) return (uint8_t)g_intf->allpot_r[i](0);
+	if (!ad_pokey_pot_scan_active(&s.chip)) return 0xFF;
+	int (*const h[8])(int) = {
+		g_intf->pot0_r[i], g_intf->pot1_r[i], g_intf->pot2_r[i], g_intf->pot3_r[i],
+		g_intf->pot4_r[i], g_intf->pot5_r[i], g_intf->pot6_r[i], g_intf->pot7_r[i],
+	};
+	const int count = ad_pokey_pot_count(&s.chip);
+	uint8_t v = 0;
+	for (int n = 0; n < 8; ++n) {
+		const int target = h[n] ? (h[n](n) & 0xFF) : 228;
+		if (count < target) v |= (uint8_t)(1u << n);
 	}
-	return h ? h(n) : 228;
+	return v;
 }
 
 int host_key_lines(void* ctx, uint8_t code)
@@ -168,16 +184,6 @@ int read_chip(int chip, int offset)
 	if (chip >= g_num) return 0xFF;
 	catch_up(chip);
 	const uint8_t reg = (uint8_t)(offset & 0x0F);
-	// Arcade boards strap DIP switches and buttons to the pot pins and read
-	// them through ALLPOT. The driver's allpot_r handler is the live state
-	// of those pins, so hand it to the core as the comparator mask and let
-	// the core's scan-window model answer: the mask before any POTGO and
-	// mid-scan, 0x00 once a scan has finished. Asteroids Deluxe's self-test
-	// (PKYTST, "S/B 0") reads ALLPOT well after its POTGO and needs that
-	// post-scan 0; returning the handler directly fails it. Chips with no
-	// handler keep the 0xFF mask set in pokey_sh_start.
-	if (reg == R_ALLPOT && g_intf && g_intf->allpot_r[chip])
-		ad_pokey_set_allpot(&g_slot[chip].chip, (uint8_t)(g_intf->allpot_r[chip](0) & 0xFF));
 	const int v = ad_pokey_read(&g_slot[chip].chip, reg);
 	if (g_trace) std::fprintf(g_trace, "R %d %d %d\n", chip, reg, v);
 	return v;
@@ -259,12 +265,12 @@ int pokey_sh_start(POKEYinterface* intf)
 		// 20 Hz DC removal at unity gain. Level against samples is the user's
 		// CHIP VOLUME / SAMPLE VOLUME (mixer_groups.h), not a constant here.
 		ad_pokey_set_measured_audio(&s.chip, 20.0, 1.0);
-		// No handler = every pot line still counting (the previous adapter's
-		// answer); read_chip refreshes this from allpot_r when one exists.
+		// The static mask is unused while the pin reader below is installed;
+		// $FF (every line still counting) is the core's own default.
 		ad_pokey_set_allpot(&s.chip, 0xFF);
+		ad_pokey_set_pot_lines(&s.chip, host_pot_lines, &s);
 		s.host.ctx           = &s;
 		s.host.raise_irq     = host_raise_irq;
-		s.host.pot_read      = host_pot_read;
 		s.host.serial_in     = host_serial_in;
 		s.host.serial_out    = host_serial_out;
 		ad_pokey_set_host(&s.chip, &s.host);
